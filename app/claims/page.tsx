@@ -93,6 +93,10 @@ export default async function ClaimsPage({
     // Per-type receipt window ⇒ the earliest date the picker allows for THIS type.
     minDate: new Date(new Date(`${today}T00:00:00Z`).getTime() - ct.maxReceiptAgeDays * dayMs).toISOString().slice(0, 10),
     balance: {
+      // e7eb5d83 rev 5 — each sub-claim's own pot, passed straight through so the form can show the
+      // selected sub-claim's remaining beside the claim type's. Data only: this is a server component
+      // handing a client island plain values, never a closure.
+      items: ct.balance.items,
       annualLimit: ct.balance.annualLimit,
       usedThisYear: ct.balance.usedThisYear,
       reservedThisYear: ct.balance.reservedThisYear,

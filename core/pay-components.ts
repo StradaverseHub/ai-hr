@@ -4,7 +4,7 @@
  * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
  * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
  */
-import { and, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -41,6 +41,7 @@ import {
   type PayRuleCatalogNode,
   type PayRuleComponentNotice,
   type PayRuleErrorCode,
+  type PayRuleTraceStep,
 } from './pay-rule';
 
 // ── Pack-supplied vocabulary (ADR-0080 D6, rung 5a) ──────────────────────────────────────────────
@@ -620,8 +621,10 @@ export class PayComponentInUseError extends Error {
 // resolvePayComponentSet — the SAME function core/payroll.ts's kernel calls — rather than a parallel
 // implementation, so a preview that disagrees with the run is not merely unlikely, it is unrepresentable.
 
-/** A pickable employee for the preview selector. */
-export type PayRulePreviewCandidate = { employmentId: string; name: string; basic: number };
+/** A pickable employee for the preview selector. e318eaec — `employeeCode` joins the shape because the
+ *  option has to read "Irwin Law (X000001)": a tenant with two people of the same name needs the ID to
+ *  tell them apart, and the ID is what the operator searches by. */
+export type PayRulePreviewCandidate = { employmentId: string; name: string; employeeCode: string | null; basic: number };
 
 export type PayRulePreviewResult =
   | {
@@ -637,17 +640,42 @@ export type PayRulePreviewResult =
        *  employee (a zero-hours month, no fixed allowances). `ok` is still true and the amount is still a
        *  real figure: this is the explanation, not a failure. Null when nothing divided by zero. */
       zeroDivisor?: { divisor: string; step: number } | null;
+      /** e318eaec — "show the working": the running figure after each step of the fold, straight out of the
+       *  evaluator (see PayRuleTraceStep). Empty for a non-formula rule. */
+      steps: PayRuleTraceStep[];
     }
   | { ok: false; code: PayRuleErrorCode };
 
-/** Employees who can be previewed against: active employments with a compensation record, newest first. */
-export function listPayRulePreviewCandidates(ctx: SessionContext, limit = 50) {
+/**
+ * Employees who can be previewed against: active employments, searchable by name or employee ID.
+ *
+ * ── e318eaec — WHY THE OLD LABEL SAID "null null", AND WHY IT SAID IT FOR EVERY SINGLE PERSON ──────
+ * This query used to select `person.firstName` / `person.lastName` and build the label as
+ * `` `${r.firstName} ${r.lastName}`.trim() ``. On the reporter's tenant — measured read-only on production
+ * 2026-08-12 — `first_name` and `last_name` are NULL on 40 of 40 people and `full_name` is populated on 40
+ * of 40, because every screen in this product captures ONE name field. Template-interpolating null yields
+ * the literal string "null null", which `.trim()` cannot remove, so the dropdown was not degraded for some
+ * employees: it was that string for all of them, and had been since the panel shipped.
+ *
+ * The fix is to read what the rest of this codebase reads. `person.fullName` is the display name in
+ * core/analytics.ts, core/attendance.ts, core/claims.ts, core/back-pay.ts and every other list; the pairing
+ * with `employment.employeeCode` is the house `EmployeeName` shape (components/ui.tsx). No new fallback was
+ * invented, because inventing one is how the second version of this bug gets written.
+ *
+ * SEARCH replaces the old bare `limit 50` newest-first window. That window was itself a defect the ticket
+ * names: on a catalog of any size the person you want is simply not in the list and there is no way to
+ * reach them. `query` matches the full name OR the employee code, case-insensitively; `limit` still caps
+ * the rows so this stays a picker rather than a report.
+ */
+export function listPayRulePreviewCandidates(ctx: SessionContext, p: { query?: string; limit?: number } = {}) {
+  const limit = p.limit ?? 50;
+  const q = (p.query ?? '').trim();
   return withTenant(ctx, async (tx): Promise<PayRulePreviewCandidate[]> => {
     const rows = await tx
       .select({
         employmentId: employment.id,
-        firstName: person.firstName,
-        lastName: person.lastName,
+        fullName: person.fullName,
+        employeeCode: employment.employeeCode,
         basic: compensation.basicSalary,
       })
       .from(employment)
@@ -656,12 +684,21 @@ export function listPayRulePreviewCandidates(ctx: SessionContext, limit = 50) {
         compensation,
         and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
       )
-      .where(and(eq(employment.tenantId, ctx.tenantId), isNull(employment.terminatedOn)))
-      .orderBy(desc(employment.hiredOn))
+      .where(
+        and(
+          eq(employment.tenantId, ctx.tenantId),
+          isNull(employment.terminatedOn),
+          q === '' ? undefined : or(ilike(person.fullName, `%${q}%`), ilike(employment.employeeCode, `%${q}%`)),
+        ),
+      )
+      // By NAME, not by hire date: a picker you search is read alphabetically, and "newest first" is only
+      // useful for the list this one stopped being when it grew a search box.
+      .orderBy(person.fullName)
       .limit(limit);
     return rows.map((r) => ({
       employmentId: r.employmentId,
-      name: `${r.firstName} ${r.lastName}`.trim(),
+      name: (r.fullName ?? '').trim(),
+      employeeCode: r.employeeCode,
       basic: Number(r.basic ?? 0),
     }));
   });
@@ -743,6 +780,7 @@ export function previewPayRule(
       scope: { basic: r.basic, days: r.days, hours: r.hours },
       inputs,
       zeroDivisor: r.zeroDivisor,
+      steps: r.steps,
     };
   });
 }
@@ -758,6 +796,9 @@ type EmploymentRuleResolution = {
   hours: number;
   resolved: { code: string; amount: number }[];
   zeroDivisor: { divisor: string; step: number } | null;
+  /** e318eaec — the fold, step by step, for the TARGET item. Empty for every non-formula rule (there are no
+   *  steps to show) and for a rule the zero-divisor guard stopped at its first step. */
+  steps: PayRuleTraceStep[];
 };
 
 /**
@@ -827,6 +868,19 @@ async function resolveRuleForEmploymentTx(
   const days = p.override?.days ?? periodDays;
   const hours = p.override?.hours ?? periodHours;
 
+  // e318eaec — the two operands this path must also supply, or a formula reading them would silently read
+  // 0 here while the kernel read a real figure, and the preview would lie about the run.
+  //   • calendarDays: the length of the period's OWN month, derived from periodStart rather than from
+  //     `periodDays`, so a keyed `days` override (the one-off transaction path) cannot move it — the month
+  //     is 31 days long whatever quantity the operator typed.
+  //   • proratedBasic: this path deliberately answers for a FULL period (factor 1) — the divergence
+  //     documented at length on previewPayRule and stated on screen by payRule.previewNote. At factor 1
+  //     the EA-1955 prorated basic IS the basic, so that is what it reports, consistently with `days`
+  //     already being the full period here.
+  const [periodYear, periodMonth] = periodStart.split('-').map(Number);
+  const calendarDays = new Date(Date.UTC(periodYear, periodMonth, 0)).getUTCDate();
+  const proratedBasic = basic;
+
   // This employee's recurring pay items in the period window (the same period-aware predicate the kernel
   // uses), so a rule that reads another pay item reads that employee's REAL value for it.
   const recurring = await tx
@@ -873,12 +927,16 @@ async function resolveRuleForEmploymentTx(
 
   // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the answer
   // must agree with the run on what `component:'BASIC'` means, not just on the arithmetic.
-  const scope = { basic, daysWorked: days, hours, components: { BASIC: basic } };
+  const scope = { basic, daysWorked: days, hours, calendarDays, proratedBasic, components: { BASIC: basic } };
   // 2da9937a — the same notices channel the run uses. On a screen it turns "RM 0.00" from a figure the
   // admin has to explain to themselves into a sentence naming the input that was zero, BEFORE a payroll
   // run has to surface it instead.
   const notices: PayRuleComponentNotice[] = [];
-  const resolvedAmounts = resolvePayComponentSet(set, scope, notices);
+  // e318eaec — "show the working". The steps come OUT OF THE FOLD that produced the figure (see
+  // PayRuleTraceStep), for the TARGET item only, so the panel cannot describe a route to the answer that
+  // the evaluator did not take.
+  const steps: PayRuleTraceStep[] = [];
+  const resolvedAmounts = resolvePayComponentSet(set, scope, notices, { index: targetIdx, steps });
 
   // Only the notice for the TARGET item — a zero divisor on some OTHER pay item is that item's problem and
   // belongs on that item's screen, not on this answer.
@@ -890,6 +948,7 @@ async function resolveRuleForEmploymentTx(
     hours,
     resolved: set.map((s, i) => ({ code: s.code.trim().toUpperCase(), amount: resolvedAmounts[i] })),
     zeroDivisor: zeroDivisor ? { divisor: zeroDivisor.divisor, step: zeroDivisor.step } : null,
+    steps,
   };
 }
 

@@ -2472,6 +2472,13 @@
       "when": 1781862534000,
       "tag": "0434_attendance_request_remark_kind_attachment",
       "breakpoints": true
+    },
+    {
+      "idx": 435,
+      "version": "7",
+      "when": 1781862535000,
+      "tag": "0435_claim_policy_claim_item",
+      "breakpoints": true
     }
   ]
 }

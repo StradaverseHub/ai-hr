@@ -146,7 +146,13 @@ export async function ComponentForm({
               rule={(component?.rule ?? null) as PayRule | null}
               aiEnabled={aiEnabled}
               payItems={payItems}
-              previewEmployees={previewEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name }))}
+              previewEmployees={previewEmployees.map((e) => ({
+                employmentId: e.employmentId,
+                name: e.name,
+                // e318eaec — the ID is half of the option label ("Irwin Law (X000001)") and half of what the
+                // search matches on, so it has to cross the RSC boundary with the name.
+                employeeCode: e.employeeCode,
+              }))}
             />
           </div>
         </Card>

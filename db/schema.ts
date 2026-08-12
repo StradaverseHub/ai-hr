@@ -3803,8 +3803,21 @@ export type ShiftType = 'normal' | 'semi_flexi' | 'full_flexi';
 // a VALIDATOR change (core/pay-rule.ts); the aggregate half is this new ref. It names no pay code — it is
 // the SUM of the employee's fixed allowances, so it stays correct as the catalog grows instead of needing
 // the formula re-edited every time an allowance is added.
+// ── e318eaec — NAMED numbers, and two values the kernel already computes ────────────────────────────
+// The reporter's complaint was legibility, not arithmetic: in `… / 26 / 8 × 1.5 × hours`, the 26, the 8 and
+// the 1.5 all render as "A fixed amount" and nothing says which is a working-day divisor, which is an hours
+// divisor and which is an overtime rate. `label` is the operator's own name for that number. It is DISPLAY
+// ONLY — readOperand never reads it, so a labelled rule and an unlabelled one resolve to the same cent — and
+// it is OPTIONAL, so every rule already stored (including the reporter's live OT1_5) stays valid, unchanged
+// and byte-identical without a migration or a backfill.
+//
+// `calendar_days` and `prorated_basic` are figures the payroll kernel ALREADY works out per employee and had
+// no way to expose to a formula. Neither is a new calculation: see core/pay-rule.ts PayRuleScope.
+// DELIBERATELY ABSENT: working_days and working_hours_per_day. There is no single definition of either in
+// this system (roster vs shift vs attendance policy, and per-employee), so offering one would be inventing a
+// number rather than exposing one. Stated as a follow-up on the board item.
 export type FormulaOperand =
-  | { ref: 'number'; value: number } //   a literal / fixed rate
+  | { ref: 'number'; value: number; label?: string } // a literal / fixed rate, optionally NAMED (display only)
   | { ref: 'basic' } //                   the employee's Personnel Basic Salary (same figure percent_of reads)
   | { ref: 'days' } //                    days worked in the period (factor × days-in-month)
   | { ref: 'hours' } //                   attendance worked hours in the period
@@ -3812,6 +3825,10 @@ export type FormulaOperand =
   //                                      isFixedAllowanceComponent: kind 'allowance', non-statutory, paid as
   //                                      a stored amount). Ranks strictly below the item reading it, so it
   //                                      can never include a rule-driven item and cannot reintroduce a cycle.
+  | { ref: 'calendar_days' } //           e318eaec — days in the payroll month (31 in August, 30 in September).
+  //                                      NOT `days`, which is the TENURE-PRORATED count. See PayRuleScope.
+  | { ref: 'prorated_basic' } //          e318eaec — basic AFTER the EA-1955 joiner/leaver factor the kernel
+  //                                      already applies, so a formula never rebuilds proration by hand.
   | { ref: 'component'; code: string }; // another pay item's resolved amount for this employee
 
 export type FormulaOp = '+' | '-' | '*' | '/';
@@ -6763,6 +6780,30 @@ export const claimPolicy = pgTable(
      */
     gradeId: uuid('grade_id').references(() => jobGrade.id),
     /**
+     * ─────────── SUB-CLAIM LIMITS: the SECOND level, not a third one (e7eb5d83 rev 5, 0435) ───────────
+     *
+     * NULL ⇒ this row is a limit on the claim TYPE — every row that existed before 0435, and the only
+     * kind the engine had. Non-null ⇒ a limit on that one `claim_item`, checked IN ADDITION to its
+     * type's limit, never instead of it.
+     *
+     * Revision 4 refused this as "a third group/claim/sub-claim level" and that was our error, recorded
+     * here so it is not repeated: MEDICAL 001 is the TYPE and MEDICAL 002/003 are its claim_item rows,
+     * the second level, which has existed since the module shipped. It had no limit columns of its own
+     * and claim_policy had no way to point at it, so the screen could only ever say "shares Medical's".
+     *
+     * ⚠️ EVERY TYPE-LEVEL READ MUST CARRY `claim_item_id IS NULL`. Resolution picks the latest
+     * valid_from within a tier, so an item row is otherwise indistinguishable from a newer version of
+     * the type's own policy and would REPLACE it for every employee. That includes setClaimPolicy's
+     * close-and-insert predicate, where the omission does not merely mis-read but DESTROYS: saving a
+     * limit for Outpatient would close Medical's own open version.
+     *
+     * WHY NOT LIMIT COLUMNS ON claim_item INSTEAD. A sub-claim limit is effective-dated and per-grade
+     * for exactly the reasons the type's is — "RM1,000 for Dental, RM500 for Executives, from April" —
+     * and claim_item is a flat master row with no versioning and no grade dimension. Putting them there
+     * means either re-inventing both, or a sub-limit that silently re-prices history when edited.
+     */
+    claimItemId: uuid('claim_item_id').references(() => claimItem.id),
+    /**
      * NULL = unlimited. Annual cap on the total (pending+approved+paid) of this type per employee.
      *
      * e7eb5d83 — THIS COMMENT USED TO SAY "approved claims", AND THAT WAS NEVER WHAT THE CODE DID. The
@@ -6821,6 +6862,8 @@ export const claimPolicy = pgTable(
   (t) => [
     index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom),
     index('claim_policy_type_grade_idx').on(t.claimTypeId, t.gradeId, t.validFrom),
+    // 0435 — the resolver's predicate order once item rows share the table (type, grade, item, valid_from).
+    index('claim_policy_type_grade_item_idx').on(t.claimTypeId, t.gradeId, t.claimItemId, t.validFrom),
   ],
 );
 

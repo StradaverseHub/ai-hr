@@ -635,13 +635,34 @@ describe('e7eb5d83 — configurable claim management', () => {
     expect((err as Error).message).toMatch(/No mileage rate has been set up/);
   });
 
-  it('the limit editor no longer offers Mileage, and STILL offers Fixed allowance', () => {
-    const src = read('components/claim-limit-editor.tsx');
-    // One production policy is fixed_allowance (MOBILE 001, RM180) — removing the whole dropdown would
-    // have broken it, which is why only the mileage option went.
-    expect(src).not.toMatch(/<option value="mileage_flat"/);
-    expect(src).not.toMatch(/name="ratePerKm"/);
-    expect(src).toMatch(/<option value="fixed_allowance"/);
+  it('THE LIMIT EDITOR IS GONE, and the grid that replaced it asks for no rate at all', () => {
+    // e7eb5d83 rev 5 step 3 — this assertion used to read components/claim-limit-editor.tsx and check
+    // that its Calculation dropdown had lost the Mileage option but kept Fixed allowance. That component
+    // no longer exists: the one-claim-type-at-a-time card was DELETED, not hidden, because leaving it
+    // beside the grid would be two ways to write the same row. So the property worth pinning changed
+    // shape — it is no longer "which options does the dropdown offer" but "there is no dropdown".
+    expect(() => read('components/claim-limit-editor.tsx')).toThrow(/ENOENT/);
+
+    const grid = read('components/claim-limits-grid.tsx');
+    const action = read('app/admin/claims/limits/actions.ts');
+    for (const src of [grid, action]) {
+      // No rate control, no rate parse, no rate posted — the plan's promise that "saving limits will
+      // never touch a rate again". It is only SAFE because setClaimPolicyTx inherits rate_config when the
+      // caller supplies none (step 1a): a grid Save touches every changed row of a grade, so a screen
+      // that posted a default rate would be the fastest way in the product to delete a live mileage rate.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(code).not.toMatch(/rateKind/);
+      expect(code).not.toMatch(/ratePerKm/);
+      expect(code).not.toMatch(/mileage_flat/);
+      expect(code).not.toMatch(/fixed_allowance/);
+      expect(code).not.toMatch(/rateConfig/);
+    }
+    // ⚠️ THE CONSEQUENCE, PINNED SO IT CANNOT BE DISCOVERED IN PRODUCTION. Deleting the editor removes the
+    // only screen that could SET a fixed_allowance. Existing ones (MOBILE 001, RM180) survive untouched
+    // because inheritance carries them forward through every grid Save — that is what this asserts — but
+    // there is currently no UI to create a NEW one. It is a deliberate consequence of the approved plan,
+    // not an oversight, and re-adding a rate control belongs on Claim Types, not here.
+    expect(grid).toMatch(/setGradeClaimLimitsAction/);
   });
 
   it('the claim FORM designer lives in the claim-type panel, and the Claim Forms tab is gone', () => {

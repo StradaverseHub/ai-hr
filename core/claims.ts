@@ -77,6 +77,8 @@ export type ClaimPolicyRow = {
   maxClaimsPerYear: number | null;
   /** Which grade this resolved row is scoped to (null = the all-grades default). (ccbd0508) */
   gradeId: string | null;
+  /** Which sub-claim this row limits (null = the claim TYPE's own limit). (e7eb5d83 rev 5, 0435) */
+  claimItemId: string | null;
   rateConfig: ClaimRateConfig | null;
   /** e7eb5d83 rev 4 — "RM2,000 every 2 years". null = no per-block rule (every row before 0428). */
   block: ClaimBlockRule | null;
@@ -180,6 +182,7 @@ const toPolicyRow = (row: RawPolicy): ClaimPolicyRow => ({
   lifetimeLimit: num(row.lifetimeLimit),
   maxClaimsPerYear: row.maxClaimsPerYear ?? null,
   gradeId: row.gradeId ?? null,
+  claimItemId: row.claimItemId ?? null,
   rateConfig: row.rateConfig ?? null,
   block: toBlockRule(row),
   validFrom: row.validFrom,
@@ -198,6 +201,20 @@ export async function getActiveClaimPolicy(
   claimTypeId: string,
   asOf: string,
   gradeId: string | null = null,
+  /**
+   * ⚠️ THE SUB-CLAIM DIMENSION (e7eb5d83 rev 5, 0435), AND ITS DEFAULT IS THE WHOLE SAFETY OF IT.
+   *
+   * null (the default) = the TYPE-level read, and it is a `claim_item_id IS NULL` PREDICATE, not the
+   * absence of one. Leaving it absent was the hazard the plan named as the one that would bite: within a
+   * tier this resolver takes the latest valid_from, so an item row is indistinguishable from a newer
+   * version of the type's own policy. A sub-claim limit saved today would have OUTRANKED Medical's own
+   * limit for every employee — silently, with no error and no migration to blame.
+   *
+   * An id = that sub-claim's own row and only it. There is deliberately NO fallback from item to type
+   * here: the two are separate pots checked in sequence (see enforceLimitsAtSubmit), and an item that
+   * "inherits" its type's numbers would be double-counted against the same money.
+   */
+  claimItemId: string | null = null,
 ): Promise<ClaimPolicyRow | null> {
   const rows = await tx
     .select()
@@ -205,6 +222,7 @@ export async function getActiveClaimPolicy(
     .where(
       and(
         eq(claimPolicy.claimTypeId, claimTypeId),
+        claimItemId == null ? isNull(claimPolicy.claimItemId) : eq(claimPolicy.claimItemId, claimItemId),
         lte(claimPolicy.validFrom, asOf),
         or(isNull(claimPolicy.validTo), sql`${claimPolicy.validTo} > ${asOf}`),
       ),
@@ -311,9 +329,14 @@ export async function listClaimLimits(ctx: SessionContext, p?: { asOf?: string }
       .from(claimPolicy)
       .innerJoin(claimType, eq(claimType.id, claimPolicy.claimTypeId))
       .leftJoin(jobGrade, eq(jobGrade.id, claimPolicy.gradeId))
+      // NOTE the predicate added below: this is a TYPE-level read (one row per type × grade) and 0435 put
+      // sub-claim rows in the same table. Without `claim_item_id IS NULL` a type with three sub-limits
+      // returns four rows for one grade, and listClaimLimitsForGrade — which picks by grade and takes the
+      // first match — would show whichever sub-claim's numbers happened to sort first as the TYPE's limit.
       .where(
         and(
           isNull(claimType.archivedAt),
+          isNull(claimPolicy.claimItemId),
           lte(claimPolicy.validFrom, asOf),
           or(isNull(claimPolicy.validTo), sql`${claimPolicy.validTo} > ${asOf}`),
         ),
@@ -336,6 +359,78 @@ export async function listClaimLimits(ctx: SessionContext, p?: { asOf?: string }
         annualBudget: num(r.annualBudget),
         perClaimCap: num(r.perClaimCap),
         monthlyLimit: num(r.monthlyLimit),
+        lifetimeLimit: num(r.lifetimeLimit),
+        maxClaimsPerYear: r.maxClaimsPerYear ?? null,
+        rateConfig: r.rateConfig ?? null,
+        block: toBlockRule(r),
+        validFrom: r.validFrom,
+      });
+    }
+    return out;
+  });
+}
+
+/** One active SUB-CLAIM limit row: the same numbers as ClaimLimitRow, for one (item, grade). */
+export type ClaimItemLimitRow = ClaimLimitValues & {
+  claimTypeId: string;
+  claimItemId: string;
+  gradeId: string | null;
+};
+
+/**
+ * The ACTIVE sub-claim limit rows — claim_policy rows WITH a claim_item_id (e7eb5d83 rev 5, 0435).
+ *
+ * The exact mirror of listClaimLimits, and separate from it on purpose rather than a flag on it. The two
+ * answer different questions ("what is this claim type limited to" / "what is this sub-claim limited to"),
+ * every caller wants one or the other, and a single function returning both is precisely the shape that
+ * lets an item row reach a type-level caller — the failure 0435's header warns about. Keeping them apart
+ * makes that a type error rather than a silent wrong number.
+ */
+export async function listClaimItemLimits(ctx: SessionContext, p?: { asOf?: string }): Promise<ClaimItemLimitRow[]> {
+  const asOf = p?.asOf ?? today();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        claimTypeId: claimPolicy.claimTypeId,
+        claimItemId: claimPolicy.claimItemId,
+        gradeId: claimPolicy.gradeId,
+        annualBudget: claimPolicy.annualBudget,
+        perClaimCap: claimPolicy.perClaimCap,
+        monthlyLimit: claimPolicy.monthlyLimit,
+        lifetimeLimit: claimPolicy.lifetimeLimit,
+        maxClaimsPerYear: claimPolicy.maxClaimsPerYear,
+        rateConfig: claimPolicy.rateConfig,
+        blockLength: claimPolicy.blockLength,
+        blockUnit: claimPolicy.blockUnit,
+        blockLimit: claimPolicy.blockLimit,
+        blockStartOn: claimPolicy.blockStartOn,
+        validFrom: claimPolicy.validFrom,
+      })
+      .from(claimPolicy)
+      .innerJoin(claimItem, eq(claimItem.id, claimPolicy.claimItemId))
+      .where(
+        and(
+          isNull(claimItem.archivedAt),
+          lte(claimPolicy.validFrom, asOf),
+          or(isNull(claimPolicy.validTo), sql`${claimPolicy.validTo} > ${asOf}`),
+        ),
+      )
+      .orderBy(desc(claimPolicy.validFrom));
+    // Latest active version per (item, grade) — listClaimLimits' idiom, one key wider.
+    const seen = new Set<string>();
+    const out: ClaimItemLimitRow[] = [];
+    for (const r of rows) {
+      if (r.claimItemId == null) continue; // unreachable through the inner join; narrows the type
+      const key = `${r.claimItemId}:${r.gradeId ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        claimTypeId: r.claimTypeId,
+        claimItemId: r.claimItemId,
+        gradeId: r.gradeId ?? null,
+        perClaimCap: num(r.perClaimCap),
+        monthlyLimit: num(r.monthlyLimit),
+        annualBudget: num(r.annualBudget),
         lifetimeLimit: num(r.lifetimeLimit),
         maxClaimsPerYear: r.maxClaimsPerYear ?? null,
         rateConfig: r.rateConfig ?? null,
@@ -372,12 +467,29 @@ export type ClaimLimitValues = {
   validFrom: string;
 };
 
+/**
+ * A sub-claim as the grade screen sees it: the item, plus its OWN limit row resolved the same way the
+ * type's is (e7eb5d83 rev 5). Extends ClaimItemRow, so every existing reader of `.id/.code/.name` on
+ * `items` keeps compiling and keeps working — the limits are additive.
+ *
+ * `effective` here is the sub-claim's own pot and NOT a fallback to its type's numbers. A sub-claim with
+ * no row of its own is unlimited IN ITSELF and still bounded by its type, which is exactly today's
+ * behaviour and what the reporter means by "all sub-claims deduct from the parent Claim Limit".
+ */
+export type ClaimGradeItemLimitRow = ClaimItemRow & {
+  own: ClaimLimitValues | null;
+  fallback: ClaimLimitValues | null;
+  effective: ClaimLimitValues | null;
+  source: 'grade' | 'company' | 'none';
+};
+
 export type ClaimGradeLimitRow = {
   claimTypeId: string;
   typeCode: string;
   typeName: string;
-  /** Sub-types (claim_item) of this type — the screen indents them under their parent row. */
-  items: ClaimItemRow[];
+  /** Sub-types (claim_item) of this type — the screen indents them under their parent row, each now
+   *  carrying its own limit (e7eb5d83 rev 5). */
+  items: ClaimGradeItemLimitRow[];
   /** The row set ON the selected grade, or null when this grade has none. */
   own: ClaimLimitValues | null;
   /** The tenant-wide (grade_id NULL) row, or null when the tenant has none either. */
@@ -400,6 +512,29 @@ const toLimitValues = (r: ClaimLimitRow): ClaimLimitValues => ({
 });
 
 /**
+ * "The grade's own row wins, grade_id NULL is the fallback" — written ONCE and used by the type rows and
+ * the sub-claim rows alike (e7eb5d83 rev 5).
+ *
+ * The type-level version of this rule was already a deliberate re-use of getActiveClaimPolicy's tiering
+ * rather than a second copy; the sub-claim rows arriving is exactly the moment a THIRD copy would have
+ * been written, and a sub-claim resolving by a different rule from its own claim type is the kind of
+ * divergence nobody notices until an employee is refused a claim the screen said they could file.
+ */
+function tierOf<T extends { gradeId: string | null }>(
+  rows: T[],
+  gradeId: string | null,
+  toValues: (r: T) => ClaimLimitValues,
+): { own: ClaimLimitValues | null; fallback: ClaimLimitValues | null; effective: ClaimLimitValues | null; source: 'grade' | 'company' | 'none' } {
+  const fallbackRow = rows.find((r) => r.gradeId == null) ?? null;
+  const ownRow = gradeId == null ? fallbackRow : (rows.find((r) => r.gradeId === gradeId) ?? null);
+  const own = ownRow ? toValues(ownRow) : null;
+  const fallback = fallbackRow ? toValues(fallbackRow) : null;
+  const effective = own ?? fallback;
+  const source = gradeId != null && own != null ? 'grade' : effective != null ? 'company' : 'none';
+  return { own, fallback, effective, source };
+}
+
+/**
  * Every non-archived claim type as seen BY ONE JOB GRADE: its own limit row, the tenant-wide fallback, and
  * which of the two applies. `gradeId: null` selects the tenant-wide view (own === fallback by construction,
  * source 'company' when a row exists).
@@ -415,28 +550,32 @@ export async function listClaimLimitsForGrade(
   p: { gradeId: string | null; asOf?: string },
 ): Promise<ClaimGradeLimitRow[]> {
   const asOf = p.asOf ?? today();
-  const [limits, types] = await Promise.all([listClaimLimits(ctx, { asOf }), listClaimTypes(ctx, { asOf })]);
+  const [limits, itemLimits, types] = await Promise.all([
+    listClaimLimits(ctx, { asOf }),
+    listClaimItemLimits(ctx, { asOf }),
+    listClaimTypes(ctx, { asOf }),
+  ]);
   const byType = new Map<string, ClaimLimitRow[]>();
   for (const l of limits) {
     const arr = byType.get(l.claimTypeId);
     if (arr) arr.push(l);
     else byType.set(l.claimTypeId, [l]);
   }
+  const byItem = new Map<string, ClaimItemLimitRow[]>();
+  for (const l of itemLimits) {
+    const arr = byItem.get(l.claimItemId);
+    if (arr) arr.push(l);
+    else byItem.set(l.claimItemId, [l]);
+  }
+  const identity = (r: ClaimItemLimitRow): ClaimLimitValues => r; // ClaimItemLimitRow IS a ClaimLimitValues
   return types.map((t) => {
-    const rows = byType.get(t.id) ?? [];
-    const fallbackRow = rows.find((r) => r.gradeId == null) ?? null;
-    const ownRow = p.gradeId == null ? fallbackRow : (rows.find((r) => r.gradeId === p.gradeId) ?? null);
-    const own = ownRow ? toLimitValues(ownRow) : null;
-    const fallback = fallbackRow ? toLimitValues(fallbackRow) : null;
     // Mirrors getActiveClaimPolicy's tiering exactly: grade-match wins, else the null-grade default.
-    const effective = own ?? fallback;
-    const source: ClaimGradeLimitRow['source'] =
-      p.gradeId != null && own != null ? 'grade' : effective != null ? 'company' : 'none';
+    const { own, fallback, effective, source } = tierOf(byType.get(t.id) ?? [], p.gradeId, toLimitValues);
     return {
       claimTypeId: t.id,
       typeCode: t.code,
       typeName: t.name,
-      items: t.items,
+      items: t.items.map((i) => ({ ...i, ...tierOf(byItem.get(i.id) ?? [], p.gradeId, identity) })),
       own,
       fallback,
       effective,
@@ -445,10 +584,35 @@ export async function listClaimLimitsForGrade(
   });
 }
 
+/**
+ * One sub-claim's OWN pot, for the balance panel (e7eb5d83 rev 5).
+ *
+ * Present for every live sub-claim of the type; all-null limits mean "no limit of its own", which is every
+ * sub-claim until an admin sets one. `usedThisYear` is still counted even when there is no limit, because
+ * "Outpatient: RM400 used" is useful on its own and it is the same sum the refusal would quote.
+ *
+ * These are the SUB-pots. They sit BESIDE the type's figures above, never instead of them — a Dental claim
+ * spends both, which is what the reporter's own worked example (RM2,000 Medical, RM1,000 Dental,
+ * RM1,000 Optical ⇒ RM0 Medical remaining) describes.
+ */
+export type ClaimItemBalance = {
+  claimItemId: string;
+  itemName: string;
+  annualLimit: number | null;
+  usedThisYear: number;
+  remainingThisYear: number | null;
+  monthlyLimit: number | null;
+  usedThisMonth: number;
+  remainingThisMonth: number | null;
+  perClaimCap: number | null;
+};
+
 export type ClaimBalanceRow = {
   claimTypeId: string;
   typeCode: string;
   typeName: string;
+  /** Per-sub-claim pots, one per live claim_item of this type (empty when the type has none). */
+  items: ClaimItemBalance[];
   /** null across the board ⇒ no limit configured for this employee's grade (unlimited). */
   annualLimit: number | null;
   /** Total held against the annual limit this year: pending + approved + paid (drafts hold nothing). */
@@ -728,38 +892,127 @@ function assertValidRateConfig(rc: ClaimRateConfig): void {
   }
 }
 
+/** The one input shape for a claim-limit write, named so setClaimPolicy and setClaimPolicyTx
+ *  cannot drift apart — the grade grid writes through the Tx form, everything else through the
+ *  wrapper, and both must mean exactly the same thing. (e7eb5d83 rev 5) */
+export type SetClaimPolicyInput = {
+  claimTypeId: string;
+  annualBudget: number | null;
+  perClaimCap: number | null;
+  effectiveFrom: string;
+  /**
+   * ⚠️ EXPLICIT TRI-STATE (e7eb5d83 rev 5, step 1a) — `undefined` and `null` mean DIFFERENT things:
+   *   • ABSENT (undefined) ⇒ INHERIT the rate config from the version this insert closes.
+   *   • null               ⇒ CLEAR it (the type goes back to plain 'receipt' pricing).
+   *   • a config           ⇒ replace it.
+   *
+   * This exists because it was a live money bug, not a nicety. A limits screen that does not ASK for a
+   * rate was still POSTing one: `rateConfigFrom()` always returned a config, so the first re-save of the
+   * Mileage limit would have written `{kind:'receipt'}` over `{kind:'mileage_flat', ratePerKm:0.7}` and
+   * stopped mileage claiming for the whole company with "No mileage rate has been set up". A caller that
+   * does not know about rates must not be able to destroy one by staying silent — the same inheritance
+   * blockStartOn already has, and for the same reason.
+   */
+  rateConfig?: ClaimRateConfig | null;
+  /** null (or absent) = the all-grades default row; a grade id = a per-grade limit. (ccbd0508) */
+  gradeId?: string | null;
+  /**
+   * null (or absent) = a limit on the claim TYPE — every caller before 0435. An id = a limit on that
+   * one sub-claim, which is checked IN ADDITION to the type's, never instead of it. (e7eb5d83 rev 5)
+   *
+   * ⚠️ THIS IS PART OF THE VERSIONING KEY, not just a column on the insert. The close-and-insert below
+   * compares (type, grade, item) three ways null-safe, and the item arm is the one that destroys data
+   * if it is forgotten: setting Outpatient's limit would close MEDICAL 001's own open version, so the
+   * claim type's RM1,000 would not change value — it would stop existing, for everybody, silently.
+   */
+  claimItemId?: string | null;
+  monthlyLimit?: number | null;
+  lifetimeLimit?: number | null;
+  maxClaimsPerYear?: number | null;
+  /**
+   * PER BLOCK (e7eb5d83 rev 4). Give length + unit + limit to set a rule; omit all three to clear it.
+   *
+   * blockStartOn is OPTIONAL and that is the important part: when a rule is being set and no anchor is
+   * given, the anchor is INHERITED from the version this insert closes, falling back to 1 January of
+   * effectiveFrom's year only when there is nothing to inherit. An admin who edits the per-claim cap
+   * next month and re-posts the same block rule must not silently restart everybody's two-year window.
+   */
+  blockLength?: number | null;
+  blockUnit?: string | null;
+  blockLimit?: number | null;
+  blockStartOn?: string | null;
+};
+
+
 /**
  * Set the budget policy for a claim type, effective-dated (CLOSE the open version + INSERT a new one — never
  * UPDATE business columns in place). NULL budget/cap = unlimited / no cap. `rateConfig` (optional) carries the
  * per-type calculation kind; because policies are append-only, a rate change is a new effective-dated version
  * with full history — no destructive in-place overwrite, no silent re-pricing of historical claims.
  */
-export async function setClaimPolicy(
+export async function setClaimPolicy(ctx: SessionContext, p: SetClaimPolicyInput): Promise<{ id: string }> {
+  return withTenant(ctx, (tx) => setClaimPolicyTx(tx, ctx, p));
+}
+
+/** One row of a grade-wide save: a claim type, or one of its sub-claims, with the limits typed into it. */
+export type GradeLimitEdit = Omit<SetClaimPolicyInput, 'effectiveFrom' | 'gradeId' | 'rateConfig'>;
+
+/**
+ * Write EVERY changed limit for ONE job grade, atomically, on ONE effective-from date (e7eb5d83 rev 5).
+ *
+ * This is the service behind the grade grid, and it exists because the old screen made an admin open a
+ * one-claim-type-at-a-time form once per row: four claim types on a grade meant four trips, and a
+ * sub-claim could not be reached at all. The reporter's words were "click GRADE 12, type down the page,
+ * press Save once".
+ *
+ * ONE TRANSACTION, so a grade is never half-configured. If row six is invalid, rows one to five are not
+ * written either — the admin fixes the message and presses Save again, rather than trying to work out
+ * which of nine rows landed.
+ *
+ * ONE effective-from FOR THE WHOLE SAVE. Per-row dates would let an admin write versions that interleave
+ * in an order they never chose, and there is no screen affordance for it in the approved design.
+ *
+ * ⚠️ IT NEVER SENDS A rateConfig, AND `GradeLimitEdit` MAKES THAT A TYPE ERROR RATHER THAN A CONVENTION.
+ * That is the promise in the plan — "saving limits will never touch a rate again" — and it is only true
+ * because setClaimPolicyTx treats an absent rateConfig as INHERIT (step 1a). A grid Save touches every row
+ * of the grade, so without both halves this would have been the fastest possible way to destroy the
+ * company's mileage rate.
+ */
+export async function setGradeClaimLimits(
   ctx: SessionContext,
-  p: {
-    claimTypeId: string;
-    annualBudget: number | null;
-    perClaimCap: number | null;
-    effectiveFrom: string;
-    rateConfig?: ClaimRateConfig | null;
-    /** null (or absent) = the all-grades default row; a grade id = a per-grade limit. (ccbd0508) */
-    gradeId?: string | null;
-    monthlyLimit?: number | null;
-    lifetimeLimit?: number | null;
-    maxClaimsPerYear?: number | null;
-    /**
-     * PER BLOCK (e7eb5d83 rev 4). Give length + unit + limit to set a rule; omit all three to clear it.
-     *
-     * blockStartOn is OPTIONAL and that is the important part: when a rule is being set and no anchor is
-     * given, the anchor is INHERITED from the version this insert closes, falling back to 1 January of
-     * effectiveFrom's year only when there is nothing to inherit. An admin who edits the per-claim cap
-     * next month and re-posts the same block rule must not silently restart everybody's two-year window.
-     */
-    blockLength?: number | null;
-    blockUnit?: string | null;
-    blockLimit?: number | null;
-    blockStartOn?: string | null;
-  },
+  p: { gradeId: string | null; effectiveFrom: string; rows: GradeLimitEdit[] },
+): Promise<{ written: number }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
+  if (p.rows.length === 0) return { written: 0 };
+  // A duplicated (type, item) inside one save would close the version its own sibling just opened, and the
+  // admin would see whichever arrived last with no hint that the other was discarded. The screen cannot
+  // produce one; a forged POST can.
+  const seen = new Set<string>();
+  for (const r of p.rows) {
+    const key = `${r.claimTypeId}:${r.claimItemId ?? ''}`;
+    if (seen.has(key)) throw new Error('The same claim type or sub-claim appears twice in one save');
+    seen.add(key);
+  }
+  return withTenant(ctx, async (tx) => {
+    for (const row of p.rows) {
+      await setClaimPolicyTx(tx, ctx, { ...row, gradeId: p.gradeId, effectiveFrom: p.effectiveFrom });
+    }
+    return { written: p.rows.length };
+  });
+}
+
+/**
+ * setClaimPolicy's BODY, running inside a caller-provided transaction (e7eb5d83 rev 5).
+ *
+ * Extracted so the grade grid can write every changed row of one grade in ONE transaction. That is
+ * not a performance choice: a grid Save is a single user action over up to nine rows, and a partial
+ * one leaves the grade half-configured with no way for the admin to tell which half landed. The
+ * public wrapper above keeps every existing caller on the one-row-one-transaction path unchanged.
+ */
+export async function setClaimPolicyTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: SetClaimPolicyInput,
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
   if (p.annualBudget != null && p.annualBudget < 0) throw new Error('Annual budget must be ≥ 0');
@@ -772,6 +1025,7 @@ export async function setClaimPolicy(
   }
   if (p.rateConfig != null) assertValidRateConfig(p.rateConfig);
   const gradeId = p.gradeId ?? null;
+  const claimItemId = p.claimItemId ?? null;
 
   // ── Per block: validate the rule as a WHOLE, before anything is written ──
   // "All four or none" is checked here with a readable message; claim_policy_block_ck is the backstop for
@@ -791,81 +1045,103 @@ export async function setClaimPolicy(
     }
   }
 
-  return withTenant(ctx, async (tx) => {
-    // The version this insert is about to close, read BEFORE closing it — the only place the previous
-    // anchor still exists. Carrying block_start_on forward from here is what stops an unrelated edit
-    // (a new per-claim cap, a rate change) from restarting every employee's block.
-    const [prevOpen] = await tx
-      .select({ blockStartOn: claimPolicy.blockStartOn })
-      .from(claimPolicy)
-      .where(
-        and(
-          eq(claimPolicy.claimTypeId, p.claimTypeId),
-          isNull(claimPolicy.validTo),
-          gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
-        ),
-      )
+  // A sub-claim limit must belong to the claim type it is being filed under. Checked in the SERVICE, not
+  // only by the foreign key: the FK proves the item exists, not that it is an item OF THIS TYPE, and a
+  // policy row pointing at another type's item would be a limit no claim could ever match.
+  if (claimItemId != null) {
+    const [it] = await tx
+      .select({ id: claimItem.id })
+      .from(claimItem)
+      .where(and(eq(claimItem.id, claimItemId), eq(claimItem.claimTypeId, p.claimTypeId), isNull(claimItem.archivedAt)))
       .limit(1);
-    const blockStartOn = wantsBlock
-      ? (p.blockStartOn ?? prevOpen?.blockStartOn ?? `${p.effectiveFrom.slice(0, 4)}-01-01`)
-      : null;
+    if (!it) throw new Error('That sub-claim does not belong to this claim type');
+  }
 
-    // Close the currently-open policy version for THIS (type, grade) only (half-open validity) — a
-    // null-safe grade compare so changing the Executive-Medical limit never closes the Manager-Medical row.
-    await tx
-      .update(claimPolicy)
-      .set({ validTo: p.effectiveFrom })
-      .where(
-        and(
-          eq(claimPolicy.claimTypeId, p.claimTypeId),
-          isNull(claimPolicy.validTo),
-          gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
-        ),
-      );
-    const [row] = await tx
-      .insert(claimPolicy)
-      .values({
-        tenantId: ctx.tenantId,
-        claimTypeId: p.claimTypeId,
-        gradeId,
-        annualBudget: p.annualBudget == null ? null : p.annualBudget.toFixed(2),
-        perClaimCap: p.perClaimCap == null ? null : p.perClaimCap.toFixed(2),
-        monthlyLimit: p.monthlyLimit == null ? null : p.monthlyLimit.toFixed(2),
-        lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
-        maxClaimsPerYear,
-        rateConfig: p.rateConfig ?? null,
-        blockLength: wantsBlock ? p.blockLength : null,
-        blockUnit: wantsBlock ? p.blockUnit : null,
-        blockLimit: wantsBlock && p.blockLimit != null ? p.blockLimit.toFixed(2) : null,
-        blockStartOn,
-        validFrom: p.effectiveFrom,
-      })
-      .returning({ id: claimPolicy.id });
-    await appendEvent(tx, {
+  /**
+   * THE VERSIONING KEY: (claim type, grade, sub-claim), compared THREE WAYS NULL-SAFE.
+   *
+   * Written once and used by both statements below, because the read that inherits and the update that
+   * closes MUST agree — if they ever drift, a version is closed whose anchor and rate were inherited
+   * from a different row. `= NULL` is never true in SQL, so each dimension needs its IS NULL arm; the
+   * grade arm has been here since ccbd0508 and the item arm is 0435's, and it is the dangerous one:
+   * without it, saving Outpatient's limit closes MEDICAL 001's own open version.
+   */
+  const versionKey = and(
+    eq(claimPolicy.claimTypeId, p.claimTypeId),
+    isNull(claimPolicy.validTo),
+    gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
+    claimItemId == null ? isNull(claimPolicy.claimItemId) : eq(claimPolicy.claimItemId, claimItemId),
+  );
+
+  // The version this insert is about to close, read BEFORE closing it — the only place the previous
+  // anchor and the previous rate still exist. Carrying block_start_on forward from here is what stops an
+  // unrelated edit (a new per-claim cap, a rate change) from restarting every employee's block; carrying
+  // rate_config forward is what stops a screen that never asked for a rate from silently deleting one.
+  const [prevOpen] = await tx
+    .select({ blockStartOn: claimPolicy.blockStartOn, rateConfig: claimPolicy.rateConfig })
+    .from(claimPolicy)
+    .where(versionKey)
+    .limit(1);
+  const blockStartOn = wantsBlock
+    ? (p.blockStartOn ?? prevOpen?.blockStartOn ?? `${p.effectiveFrom.slice(0, 4)}-01-01`)
+    : null;
+  // The tri-state resolved: `undefined` inherits, `null` clears. `??` would be wrong here — it cannot
+  // tell "the caller said clear it" from "the caller said nothing", and collapsing the two is exactly
+  // the bug this guards against, in the other direction.
+  const rateConfig: ClaimRateConfig | null =
+    p.rateConfig === undefined ? (prevOpen?.rateConfig ?? null) : p.rateConfig;
+
+  // Close the currently-open version for THIS (type, grade, sub-claim) only (half-open validity), on the
+  // same key the inheritance above was read under: changing the Executive-Medical limit never closes the
+  // Manager-Medical row, and setting Outpatient's never closes Medical's.
+  await tx.update(claimPolicy).set({ validTo: p.effectiveFrom }).where(versionKey);
+  const [row] = await tx
+    .insert(claimPolicy)
+    .values({
       tenantId: ctx.tenantId,
-      aggregateType: 'claim-policy',
-      aggregateId: row.id,
-      eventType: 'claim-policy.set',
-      actor: actorOf(ctx),
-      // limits + rateConfig are RATES/config (not a claim amount) — safe to log (ADR-0030).
-      payload: {
-        claimTypeId: p.claimTypeId,
-        gradeId,
-        annualBudget: p.annualBudget,
-        perClaimCap: p.perClaimCap,
-        monthlyLimit: p.monthlyLimit ?? null,
-        lifetimeLimit: p.lifetimeLimit ?? null,
-        maxClaimsPerYear,
-        effectiveFrom: p.effectiveFrom,
-        rateConfig: p.rateConfig ?? null,
-        blockLength: wantsBlock ? p.blockLength : null,
-        blockUnit: wantsBlock ? p.blockUnit : null,
-        blockLimit: wantsBlock ? p.blockLimit : null,
-        blockStartOn,
-      },
-    });
-    return { id: row.id };
+      claimTypeId: p.claimTypeId,
+      gradeId,
+      claimItemId,
+      annualBudget: p.annualBudget == null ? null : p.annualBudget.toFixed(2),
+      perClaimCap: p.perClaimCap == null ? null : p.perClaimCap.toFixed(2),
+      monthlyLimit: p.monthlyLimit == null ? null : p.monthlyLimit.toFixed(2),
+      lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
+      maxClaimsPerYear,
+      rateConfig,
+      blockLength: wantsBlock ? p.blockLength : null,
+      blockUnit: wantsBlock ? p.blockUnit : null,
+      blockLimit: wantsBlock && p.blockLimit != null ? p.blockLimit.toFixed(2) : null,
+      blockStartOn,
+      validFrom: p.effectiveFrom,
+    })
+    .returning({ id: claimPolicy.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'claim-policy',
+    aggregateId: row.id,
+    eventType: 'claim-policy.set',
+    actor: actorOf(ctx),
+    // limits + rateConfig are RATES/config (not a claim amount) — safe to log (ADR-0030).
+    payload: {
+      claimTypeId: p.claimTypeId,
+      gradeId,
+      claimItemId,
+      annualBudget: p.annualBudget,
+      perClaimCap: p.perClaimCap,
+      monthlyLimit: p.monthlyLimit ?? null,
+      lifetimeLimit: p.lifetimeLimit ?? null,
+      maxClaimsPerYear,
+      effectiveFrom: p.effectiveFrom,
+      // The RESOLVED config (inherited or supplied) — the audit trail must show what was WRITTEN, not
+      // what the caller happened to type, or an inherited rate looks like a rate that was deleted.
+      rateConfig,
+      blockLength: wantsBlock ? p.blockLength : null,
+      blockUnit: wantsBlock ? p.blockUnit : null,
+      blockLimit: wantsBlock ? p.blockLimit : null,
+      blockStartOn,
+    },
   });
+  return { id: row.id };
 }
 
 /**
@@ -1467,10 +1743,31 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
         const usedThisBlock = blockWindow
           ? await claimedInScope(tx, employmentId, t.id, 'block', asOf, usedStatuses, undefined, blockWindow)
           : 0;
+        // e7eb5d83 rev 5 — each sub-claim's own pot, resolved on the SAME grade and read with the item
+        // predicate so a type-level row can never answer here. Sequential rather than parallel: this runs
+        // inside one transaction, and six items × two sums is a handful of indexed aggregates, not a page.
+        const itemBalances: ClaimItemBalance[] = [];
+        for (const it of items) {
+          const ip = await getActiveClaimPolicy(tx, t.id, asOf, gradeId, it.id);
+          const itemUsedYear = await claimedInScope(tx, employmentId, t.id, 'year', asOf, usedStatuses, undefined, undefined, it.id);
+          const itemUsedMonth = await claimedInScope(tx, employmentId, t.id, 'month', asOf, usedStatuses, undefined, undefined, it.id);
+          itemBalances.push({
+            claimItemId: it.id,
+            itemName: it.name,
+            annualLimit: ip?.annualBudget ?? null,
+            usedThisYear: itemUsedYear,
+            remainingThisYear: ip?.annualBudget == null ? null : Math.max(0, ip.annualBudget - itemUsedYear),
+            monthlyLimit: ip?.monthlyLimit ?? null,
+            usedThisMonth: itemUsedMonth,
+            remainingThisMonth: ip?.monthlyLimit == null ? null : Math.max(0, ip.monthlyLimit - itemUsedMonth),
+            perClaimCap: ip?.perClaimCap ?? null,
+          });
+        }
         const balance: ClaimBalanceRow = {
           claimTypeId: t.id,
           typeCode: t.code,
           typeName: t.name,
+          items: itemBalances,
           annualLimit: policy?.annualBudget ?? null,
           usedThisYear,
           reservedThisYear,
@@ -1609,8 +1906,17 @@ const scopeCond = (scope: LimitScope, incurredOn: string, block?: ClaimBlockWind
   return sql`true`; // lifetime — no period filter
 };
 
-/** Sum of a claim type's amounts for an employment within a period scope (by incurred_on), over the given
- *  statuses — used for budget/monthly/lifetime/per-block enforcement. */
+/**
+ * Sum of a claim type's amounts for an employment within a period scope (by incurred_on), over the given
+ * statuses — used for budget/monthly/lifetime/per-block enforcement.
+ *
+ * ⚠️ `claimItemId` ABSENT/NULL MEANS "EVERY CLAIM OF THIS TYPE, SUB-CLAIMS INCLUDED", and that is not an
+ * oversight to be tidied up — it is the behaviour the reporter says already works and asked us to keep.
+ * The type's pot is spent by Outpatient and Inpatient alike ("Dental claimed RM1,000, Optical claimed
+ * RM1,000, remaining Medical limit RM0"), which is true today precisely because this filters on
+ * claim_type_id alone. Passing an id NARROWS the sum to that one sub-claim's own pot; it never widens or
+ * replaces the type's. (e7eb5d83 rev 5)
+ */
 async function claimedInScope(
   tx: Tx,
   employmentId: string,
@@ -1620,6 +1926,7 @@ async function claimedInScope(
   statuses: ClaimStatus[],
   excludeId?: string,
   block?: ClaimBlockWindow,
+  claimItemId?: string | null,
 ): Promise<number> {
   const conds = [
     eq(claimRequest.employmentId, employmentId),
@@ -1627,12 +1934,14 @@ async function claimedInScope(
     scopeCond(scope, incurredOn, block),
     inArray(claimRequest.status, statuses),
   ];
+  if (claimItemId != null) conds.push(eq(claimRequest.claimItemId, claimItemId));
   if (excludeId) conds.push(sql`${claimRequest.id} <> ${excludeId}`);
   const [row] = await tx.select({ s: sql<string>`coalesce(sum(${claimRequest.amount}), 0)` }).from(claimRequest).where(and(...conds));
   return Number(row?.s ?? 0);
 }
 
-/** Count of a claim type's claims for an employment within a period scope — used for the claims-per-year cap. */
+/** Count of a claim type's claims for an employment within a period scope — used for the claims-per-year
+ *  cap. `claimItemId` narrows to one sub-claim, on claimedInScope's rule exactly. */
 async function claimCountInScope(
   tx: Tx,
   employmentId: string,
@@ -1641,6 +1950,7 @@ async function claimCountInScope(
   incurredOn: string,
   statuses: ClaimStatus[],
   excludeId?: string,
+  claimItemId?: string | null,
 ): Promise<number> {
   const conds = [
     eq(claimRequest.employmentId, employmentId),
@@ -1648,6 +1958,7 @@ async function claimCountInScope(
     scopeCond(scope, incurredOn),
     inArray(claimRequest.status, statuses),
   ];
+  if (claimItemId != null) conds.push(eq(claimRequest.claimItemId, claimItemId));
   if (excludeId) conds.push(sql`${claimRequest.id} <> ${excludeId}`);
   const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(claimRequest).where(and(...conds));
   return Number(row?.n ?? 0);
@@ -1655,6 +1966,186 @@ async function claimCountInScope(
 
 /** Human date for a limit message — the day the current block's pot runs to, inclusive. */
 const blockEndMsg = (w: ClaimBlockWindow): string => w.endOn;
+
+// ══════════ THE LIMIT GAUNTLET, run once per POT (e7eb5d83 rev 5) ══════════
+//
+// Sub-claim limits are not a new kind of check. They are the SAME five checks — per claim, monthly,
+// annual, lifetime, per block, plus the count cap — run a SECOND time against a second policy row with
+// one extra predicate on the sums. So the checks moved into a function instead of being copied: two
+// hand-maintained copies of a money rule drift, and the drift is invisible until an employee is refused
+// a claim the balance panel said they could file (or, worse, allowed one they could not).
+//
+// `subject` is the ONLY thing that differs in the messages, and it has to: "you have RM200 remaining this
+// year for this claim type" is actively misleading when what ran out was Dental. The plan says the message
+// must name the sub-claim, and this is where that is true.
+//
+// NO reserved_amount COLUMN IS INVOLVED, at either level. The reservation stays derived from
+// RESERVING_STATUSES, which is what makes release-on-reject free and what makes a sub-pot correct for
+// nothing: a stored counter is what gets decremented twice.
+
+/** Names the pot a refusal is about: the claim type as a whole, or one sub-claim by name. */
+type LimitSubject = { subject: string; claimItemId: string | null };
+
+const TYPE_SUBJECT: LimitSubject = { subject: 'this claim type', claimItemId: null };
+
+/**
+ * SUBMIT-time enforcement for ONE pot. Sums are over RESERVING_STATUSES (drafts hold nothing, pending
+ * holds), so filing reserves and rejecting releases with no counter to keep in step.
+ */
+async function enforceLimitsAtSubmit(
+  tx: Tx,
+  p: {
+    policy: ClaimPolicyRow | null;
+    pot: LimitSubject;
+    employmentId: string;
+    claimTypeId: string;
+    amount: number;
+    incurredOn: string;
+    statuses: ClaimStatus[];
+    excludeId?: string;
+  },
+): Promise<void> {
+  const { policy, amount, excludeId } = p;
+  if (policy == null) return;
+  const of = p.pot.subject;
+  const item = p.pot.claimItemId;
+  const sum = (scope: LimitScope, block?: ClaimBlockWindow) =>
+    claimedInScope(tx, p.employmentId, p.claimTypeId, scope, p.incurredOn, p.statuses, excludeId, block, item);
+
+  if (policy.perClaimCap != null && amount > policy.perClaimCap) {
+    throw new ClaimError(
+      `This claim's amount (${rmMsg(amount)}) exceeds the per-claim cap for ${of} ` +
+        `(${rmMsg(policy.perClaimCap)}). Reduce the amount, split it across multiple claims if appropriate, ` +
+        `or ask an admin to review the cap.`,
+    );
+  }
+  if (policy.annualBudget != null) {
+    const used = await sum('year');
+    if (used + amount > policy.annualBudget) {
+      const remaining = Math.max(0, policy.annualBudget - used);
+      throw new ClaimError(
+        `This claim (${rmMsg(amount)}) would bring your total for ${of} this year to ` +
+          `${rmMsg(used + amount)}, which exceeds the annual limit of ${rmMsg(policy.annualBudget)}. You have ` +
+          `${rmMsg(remaining)} remaining this year for ${of}.`,
+      );
+    }
+  }
+  if (policy.monthlyLimit != null) {
+    const used = await sum('month');
+    if (used + amount > policy.monthlyLimit) {
+      const remaining = Math.max(0, policy.monthlyLimit - used);
+      throw new ClaimError(
+        `This claim (${rmMsg(amount)}) would exceed the monthly limit of ${rmMsg(policy.monthlyLimit)} for ${of}` +
+          `. You have ${rmMsg(remaining)} remaining this month for ${of}.`,
+      );
+    }
+  }
+  if (policy.lifetimeLimit != null) {
+    const used = await sum('lifetime');
+    if (used + amount > policy.lifetimeLimit) {
+      const remaining = Math.max(0, policy.lifetimeLimit - used);
+      throw new ClaimError(
+        `This claim (${rmMsg(amount)}) would exceed the lifetime limit of ${rmMsg(policy.lifetimeLimit)} for ${of}` +
+          `. You have ${rmMsg(remaining)} remaining for ${of}.`,
+      );
+    }
+  }
+  // PER BLOCK (e7eb5d83 rev 4) — "RM2,000 every 2 years". Same derived-reservation sum as every check
+  // above, over a different window. A claim incurred BEFORE the anchor falls in no block and skips THIS
+  // check only; the per-claim, monthly and annual checks have already run on it.
+  //
+  // The message names the DATE the pot runs to, not just the amount: "you have RM800 left" is unusable
+  // advice on a two-year window if the employee cannot tell whether that is for this month or until 2027.
+  if (policy.block != null) {
+    const window = claimBlockWindow(policy.block, p.incurredOn);
+    if (window) {
+      const used = await sum('block', window);
+      if (used + amount > policy.block.limit) {
+        const remaining = Math.max(0, policy.block.limit - used);
+        throw new ClaimError(
+          `This claim (${rmMsg(amount)}) would bring your total for ${of} to ${rmMsg(used + amount)} ` +
+            `for the period ${window.startOn} to ${blockEndMsg(window)}, which exceeds the limit of ` +
+            `${rmMsg(policy.block.limit)} for that period. You have ${rmMsg(remaining)} remaining until ` +
+            `${blockEndMsg(window)}.`,
+        );
+      }
+    }
+  }
+  if (policy.maxClaimsPerYear != null) {
+    const count = await claimCountInScope(
+      tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, p.statuses, excludeId, item,
+    );
+    if (count + 1 > policy.maxClaimsPerYear) {
+      throw new ClaimError(`You have reached the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year for ${of}.`);
+    }
+  }
+}
+
+/**
+ * APPROVE-time re-check for ONE pot, against SETTLED_STATUSES so a pile of pending claims cannot block
+ * each other's approval. Deliberately its own function rather than a mode flag on the submit one: the
+ * status set is different, the exclusion is different, and the messages address an APPROVER, not the
+ * employee who filed.
+ */
+async function enforceLimitsAtApprove(
+  tx: Tx,
+  p: {
+    policy: ClaimPolicyRow | null;
+    pot: LimitSubject;
+    employmentId: string;
+    claimTypeId: string;
+    amount: number;
+    incurredOn: string;
+    statuses: ClaimStatus[];
+    excludeId: string;
+  },
+): Promise<void> {
+  const { policy, amount } = p;
+  if (policy == null) return;
+  const item = p.pot.claimItemId;
+  // The type-level messages are unchanged, verbatim; the item-level ones add "for <sub-claim>" so an
+  // approver told a limit is breached can tell WHICH.
+  const forPot = item == null ? '' : ` for ${p.pot.subject}`;
+  const sum = (scope: LimitScope, block?: ClaimBlockWindow) =>
+    claimedInScope(tx, p.employmentId, p.claimTypeId, scope, p.incurredOn, p.statuses, p.excludeId, block, item);
+
+  if (policy.annualBudget != null) {
+    if ((await sum('year')) + amount > policy.annualBudget) {
+      throw new ClaimError(`Approving this would exceed the annual limit${forPot} (${rmMsg(policy.annualBudget)})`);
+    }
+  }
+  if (policy.monthlyLimit != null) {
+    if ((await sum('month')) + amount > policy.monthlyLimit) {
+      throw new ClaimError(`Approving this would exceed the monthly limit${forPot} (${rmMsg(policy.monthlyLimit)})`);
+    }
+  }
+  if (policy.lifetimeLimit != null) {
+    if ((await sum('lifetime')) + amount > policy.lifetimeLimit) {
+      throw new ClaimError(`Approving this would exceed the lifetime limit${forPot} (${rmMsg(policy.lifetimeLimit)})`);
+    }
+  }
+  // PER BLOCK — the approve-time twin of the submit check. Same window derivation, so an approval cannot
+  // push a block over its limit even though the submit that filed it was inside.
+  if (policy.block != null) {
+    const window = claimBlockWindow(policy.block, p.incurredOn);
+    if (window) {
+      if ((await sum('block', window)) + amount > policy.block.limit) {
+        throw new ClaimError(
+          `Approving this would exceed the limit of ${rmMsg(policy.block.limit)}${forPot} for the period ` +
+            `${window.startOn} to ${blockEndMsg(window)}`,
+        );
+      }
+    }
+  }
+  if (policy.maxClaimsPerYear != null) {
+    const others = await claimCountInScope(
+      tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, p.statuses, p.excludeId, item,
+    );
+    if (others + 1 > policy.maxClaimsPerYear) {
+      throw new ClaimError(`Approving this would exceed the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year${forPot}`);
+    }
+  }
+}
 
 
 /** Submit a claim (employee, for their own employment — RLS enforces). Resolves the per-type rate config,
@@ -1794,71 +2285,32 @@ async function priceAndCheckClaimTx(
     amount = computeClaimAmount(rc, { quantityKm: p.quantityKm, enteredAmount: p.amount });
   }
   if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
-  if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
-    throw new ClaimError(
-      `This claim's amount (${rmMsg(amount)}) exceeds the per-claim cap for this claim type ` +
-        `(${rmMsg(policy.perClaimCap)}). Reduce the amount, split it across multiple claims if appropriate, ` +
-        `or ask an admin to review the cap.`,
-    );
-  }
-  if (policy?.annualBudget != null) {
-    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed, excludeId);
-    if (used + amount > policy.annualBudget) {
-      const remaining = Math.max(0, policy.annualBudget - used);
-      throw new ClaimError(
-        `This claim (${rmMsg(amount)}) would bring your total for this claim type this year to ` +
-          `${rmMsg(used + amount)}, which exceeds the annual limit of ${rmMsg(policy.annualBudget)}. You have ` +
-          `${rmMsg(remaining)} remaining this year for this claim type.`,
-      );
-    }
-  }
-  if (policy?.monthlyLimit != null) {
-    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'month', p.incurredOn, committed, excludeId);
-    if (used + amount > policy.monthlyLimit) {
-      const remaining = Math.max(0, policy.monthlyLimit - used);
-      throw new ClaimError(
-        `This claim (${rmMsg(amount)}) would exceed the monthly limit of ${rmMsg(policy.monthlyLimit)} for this ` +
-          `claim type. You have ${rmMsg(remaining)} remaining this month for this claim type.`,
-      );
-    }
-  }
-  if (policy?.lifetimeLimit != null) {
-    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'lifetime', p.incurredOn, committed, excludeId);
-    if (used + amount > policy.lifetimeLimit) {
-      const remaining = Math.max(0, policy.lifetimeLimit - used);
-      throw new ClaimError(
-        `This claim (${rmMsg(amount)}) would exceed the lifetime limit of ${rmMsg(policy.lifetimeLimit)} for this ` +
-          `claim type. You have ${rmMsg(remaining)} remaining for this claim type.`,
-      );
-    }
-  }
-  // PER BLOCK (e7eb5d83 rev 4) — "RM2,000 every 2 years". Same derived-reservation sum as every check
-  // above, over a different window. A claim incurred BEFORE the anchor falls in no block and skips THIS
-  // check only; the per-claim, monthly and annual checks have already run on it.
+
+  // ── 5b. THE LIMITS: the claim TYPE's pot first, then the sub-claim's own (e7eb5d83 rev 5) ──
   //
-  // The message names the DATE the pot runs to, not just the amount: "you have RM800 left" is unusable
-  // advice on a two-year window if the employee cannot tell whether that is for this month or until 2027.
-  if (policy?.block != null) {
-    const window = claimBlockWindow(policy.block, p.incurredOn);
-    if (window) {
-      const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'block', p.incurredOn, committed, excludeId, window);
-      if (used + amount > policy.block.limit) {
-        const remaining = Math.max(0, policy.block.limit - used);
-        throw new ClaimError(
-          `This claim (${rmMsg(amount)}) would bring your total for this claim type to ${rmMsg(used + amount)} ` +
-            `for the period ${window.startOn} to ${blockEndMsg(window)}, which exceeds the limit of ` +
-            `${rmMsg(policy.block.limit)} for that period. You have ${rmMsg(remaining)} remaining until ` +
-            `${blockEndMsg(window)}.`,
-        );
-      }
-    }
-  }
-  if (policy?.maxClaimsPerYear != null) {
-    const count = await claimCountInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed, excludeId);
-    if (count + 1 > policy.maxClaimsPerYear) {
-      throw new ClaimError(
-        `You have reached the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year for this claim type.`,
-      );
+  // TYPE FIRST, and the order is a decision. When both pots are breached the employee is told about the
+  // type's, because that is the bigger, harder constraint: being told "Dental is full" when Medical is
+  // also exhausted would send them to file the same money against Optical and be refused again.
+  const common = {
+    employmentId: p.employmentId,
+    claimTypeId: p.claimTypeId,
+    amount,
+    incurredOn: p.incurredOn,
+    statuses: committed,
+    excludeId,
+  };
+  await enforceLimitsAtSubmit(tx, { policy, pot: TYPE_SUBJECT, ...common });
+
+  // The SUB-CLAIM's own pot. Resolved on the same grade as the type's and read with the item predicate,
+  // so a type-level row can never answer here. Absent = the sub-claim has no limit of its own, which is
+  // every sub-claim before this round and stays the default: unlimited in itself, still bounded by its
+  // type. Note what is NOT here — the type's sums are untouched, so a Dental claim still spends Medical's
+  // pot exactly as it does today.
+  if (claimItemId != null) {
+    const itemPolicy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn, gradeId, claimItemId);
+    if (itemPolicy != null) {
+      const itemName = items.find((i) => i.id === claimItemId)?.name ?? 'this sub-claim';
+      await enforceLimitsAtSubmit(tx, { policy: itemPolicy, pot: { subject: `“${itemName}”`, claimItemId }, ...common });
     }
   }
 
@@ -1999,43 +2451,33 @@ export async function decideClaim(
       const policy = await getActiveClaimPolicy(tx, claim.claimTypeId, claim.incurredOn, emp?.gradeId ?? null);
       const amount = Number(claim.amount);
       const settled: ClaimStatus[] = [...SETTLED_STATUSES];
-      if (policy?.annualBudget != null) {
-        const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'year', claim.incurredOn, settled, claim.id);
-        if (others + amount > policy.annualBudget) {
-          throw new ClaimError(`Approving this would exceed the annual limit (${rmMsg(policy.annualBudget)})`);
-        }
-      }
-      if (policy?.monthlyLimit != null) {
-        const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'month', claim.incurredOn, settled, claim.id);
-        if (others + amount > policy.monthlyLimit) {
-          throw new ClaimError(`Approving this would exceed the monthly limit (${rmMsg(policy.monthlyLimit)})`);
-        }
-      }
-      if (policy?.lifetimeLimit != null) {
-        const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'lifetime', claim.incurredOn, settled, claim.id);
-        if (others + amount > policy.lifetimeLimit) {
-          throw new ClaimError(`Approving this would exceed the lifetime limit (${rmMsg(policy.lifetimeLimit)})`);
-        }
-      }
-      // PER BLOCK (e7eb5d83 rev 4) — the approve-time twin of the submit check, against SETTLED_STATUSES
-      // so a pile of pending claims cannot block each other's approval. Same window derivation, so an
-      // approval cannot push a block over its limit even though the submit that filed it was inside.
-      if (policy?.block != null) {
-        const window = claimBlockWindow(policy.block, claim.incurredOn);
-        if (window) {
-          const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'block', claim.incurredOn, settled, claim.id, window);
-          if (others + amount > policy.block.limit) {
-            throw new ClaimError(
-              `Approving this would exceed the limit of ${rmMsg(policy.block.limit)} for the period ` +
-                `${window.startOn} to ${blockEndMsg(window)}`,
-            );
-          }
-        }
-      }
-      if (policy?.maxClaimsPerYear != null) {
-        const others = await claimCountInScope(tx, claim.employmentId, claim.claimTypeId, 'year', claim.incurredOn, settled, claim.id);
-        if (others + 1 > policy.maxClaimsPerYear) {
-          throw new ClaimError(`Approving this would exceed the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year`);
+      const common = {
+        employmentId: claim.employmentId,
+        claimTypeId: claim.claimTypeId,
+        amount,
+        incurredOn: claim.incurredOn,
+        statuses: settled,
+        excludeId: claim.id,
+      };
+      await enforceLimitsAtApprove(tx, { policy, pot: TYPE_SUBJECT, ...common });
+      // e7eb5d83 rev 5 — the sub-claim's pot, mirrored here for the same reason the type's re-check exists
+      // at all: submit reserved against PENDING, approval settles against SETTLED, and a limit that is only
+      // checked on the way in can be exceeded by the order approvals happen to be granted in.
+      if (claim.claimItemId != null) {
+        const itemPolicy = await getActiveClaimPolicy(
+          tx, claim.claimTypeId, claim.incurredOn, emp?.gradeId ?? null, claim.claimItemId,
+        );
+        if (itemPolicy != null) {
+          const [it] = await tx
+            .select({ name: claimItem.name })
+            .from(claimItem)
+            .where(eq(claimItem.id, claim.claimItemId))
+            .limit(1);
+          await enforceLimitsAtApprove(tx, {
+            policy: itemPolicy,
+            pot: { subject: `“${it?.name ?? 'this sub-claim'}”`, claimItemId: claim.claimItemId },
+            ...common,
+          });
         }
       }
       await tx

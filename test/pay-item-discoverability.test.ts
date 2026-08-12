@@ -213,7 +213,24 @@ describe('61bf109d rev2 — THE SCOPE GUARD: still no parser, no eval, no expres
     // approved item, and this line is what makes the next unplanned addition fail. The set is still CLOSED;
     // it is one member longer, and every consumer driven by this constant (the operand picker, the words
     // module's exhaustiveness switch, the six locale catalogs) had to be updated to match.
-    expect([...FORMULA_OPERAND_REFS]).toEqual(['number', 'basic', 'days', 'hours', 'fixed_allowances', 'component']);
+    //
+    // e318eaec RESTATES IT AGAIN, for the same reason and under the same discipline. `prorated_basic` and
+    // `calendar_days` are both figures the payroll kernel ALREADY computes per employee and had no way to
+    // expose to a formula; each is placed beside the operand it is most likely to be confused with, because
+    // this array is also the dropdown order. Both were added by an approved item, and the same three
+    // consumers were updated in the same commit. DELIBERATELY STILL ABSENT: working_days and
+    // working_hours_per_day — the system has no single definition of either (roster vs shift vs attendance
+    // policy, and per-employee), so offering one would be inventing a number rather than exposing one.
+    expect([...FORMULA_OPERAND_REFS]).toEqual([
+      'number',
+      'basic',
+      'prorated_basic',
+      'days',
+      'calendar_days',
+      'hours',
+      'fixed_allowances',
+      'component',
+    ]);
     expect([...FORMULA_OPS]).toEqual(['+', '-', '*', '/']);
     expect(ruleSrc, 'the evaluator is still here and still string-free').toContain('export function resolvePayRule');
     expect(ruleSrc).not.toMatch(/\beval\s*\(|new Function\s*\(/);

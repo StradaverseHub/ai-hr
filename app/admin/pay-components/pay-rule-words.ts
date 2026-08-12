@@ -49,7 +49,14 @@ export function formulaOperandInWords(operand: FormulaOperand, o: PayRuleWordsOp
     case 'number': {
       const fmt = o.formatNumber ?? ((n: number) => String(n));
       // A literal reads as the number itself — "A fixed amount (250)" would be noise on a list row.
-      return Number.isFinite(operand.value) ? fmt(operand.value) : base;
+      if (!Number.isFinite(operand.value)) return base;
+      const value = fmt(operand.value);
+      // e318eaec — a NAMED number carries its name here too, so the list row says which 26 that is. Same
+      // two shapes as the readable formula line (core/pay-rule.ts formatPayRuleOperand), and for the same
+      // reason: the value is only ever suppressed when the label demonstrably already contains it.
+      const label = typeof operand.label === 'string' ? operand.label.trim() : '';
+      if (!label) return value;
+      return label.includes(value) || label.includes(String(operand.value)) ? label : `${value} (${label})`;
     }
     case 'component': {
       const code = (operand.code ?? '').trim().toUpperCase();
@@ -64,6 +71,9 @@ export function formulaOperandInWords(operand: FormulaOperand, o: PayRuleWordsOp
     // allowances"). It reads exactly like the other scope operands, which is the point: on a list row the
     // administrator sees "divide by Days worked", not a token they have to look up.
     case 'fixed_allowances':
+    // e318eaec — same shape: a scope figure whose label is the whole phrase.
+    case 'calendar_days':
+    case 'prorated_basic':
       return base;
     default: {
       // Exhaustiveness guard — a new FormulaOperand ref without a branch is a compile error, which is the
