@@ -37,7 +37,7 @@
  * pay_component.resolution_order (migration 0330) and resolvePayComponentSet() replays that recorded order,
  * so the order that was validated is the order that pays and two runs of the same payroll cannot disagree.
  */
-import type { FormulaOperand, FormulaTerm, PayRule } from '../db/schema';
+import type { FormulaOp, FormulaOperand, FormulaTerm, PayRule } from '../db/schema';
 
 export { type PayRule, type FormulaOperand, type FormulaOp, type FormulaTerm } from '../db/schema';
 
@@ -73,14 +73,30 @@ export type PayRuleKind = (typeof PAY_RULE_KINDS)[number];
 
 /** The FIXED, NAMED input set a formula may read. Exported so the UI builds its operand picker from the
  *  same list the validator enforces — there is exactly one definition of "what a formula may reference".
- *  2da9937a adds `fixed_allowances` (the SUM of the employee's fixed allowances) — see the file header. */
-export const FORMULA_OPERAND_REFS = ['number', 'basic', 'days', 'hours', 'fixed_allowances', 'component'] as const;
+ *  2da9937a adds `fixed_allowances` (the SUM of the employee's fixed allowances) — see the file header.
+ *  e318eaec adds `calendar_days` and `prorated_basic`, both figures the kernel already computes (PayRuleScope).
+ *  ORDER IS THE DROPDOWN ORDER: each new ref sits beside the one it is most likely to be confused with, so
+ *  "Days worked" and "Calendar days in the month" are adjacent rather than a screen apart. */
+export const FORMULA_OPERAND_REFS = [
+  'number',
+  'basic',
+  'prorated_basic',
+  'days',
+  'calendar_days',
+  'hours',
+  'fixed_allowances',
+  'component',
+] as const;
 export type FormulaOperandRef = (typeof FORMULA_OPERAND_REFS)[number];
 export const FORMULA_OPS = ['+', '-', '*', '/'] as const;
 
 /** A formula is a fold, not a tree, so its size is trivially bounded. Eight steps is far past any real pay
  *  rule and keeps the stored JSONB small enough to stay readable in an audit. */
 export const FORMULA_MAX_TERMS = 8;
+
+/** e318eaec — a named number's label is a caption on a formula line, not a description. Bounded so the
+ *  readable formula stays readable and a corrupted JSONB value cannot carry an essay onto a screen. */
+export const FORMULA_LABEL_MAX_LENGTH = 40;
 
 /**
  * Pay codes that are LEGISLATED, not configured. `localization/my` owns these rates and
@@ -132,7 +148,14 @@ function validateOperand(op: FormulaOperand | undefined): PayRuleValidation {
   }
   switch (op.ref) {
     case 'number':
-      return inMoney(op.value) ? { ok: true } : { ok: false, code: 'OUT_OF_RANGE' };
+      if (!inMoney(op.value)) return { ok: false, code: 'OUT_OF_RANGE' };
+      // e318eaec — the optional display name. Checked here so a corrupted or oversized value is refused at
+      // SAVE time like everything else in this union, rather than reaching a screen. It never reaches
+      // readOperand, so this can only ever be a legibility check, never an arithmetic one.
+      if (op.label !== undefined && (typeof op.label !== 'string' || op.label.length > FORMULA_LABEL_MAX_LENGTH)) {
+        return { ok: false, code: 'OUT_OF_RANGE' };
+      }
+      return { ok: true };
     case 'basic':
     case 'days':
     case 'hours':
@@ -140,6 +163,10 @@ function validateOperand(op: FormulaOperand | undefined): PayRuleValidation {
     // not a validation at all: it is defined as the sum of items ranking strictly BELOW the one reading it
     // (resolvePayComponentSet), which is what makes it unable to reintroduce the cycle the planner refuses.
     case 'fixed_allowances':
+    // e318eaec — both name no code and carry no data: the kernel supplies them on the scope, exactly as it
+    // supplies `basic` and `days`, so there is nothing structural to check.
+    case 'calendar_days':
+    case 'prorated_basic':
       return { ok: true };
     case 'component':
       return normCode(op.code) === '' ? { ok: false, code: 'UNKNOWN_COMPONENT' } : { ok: true };
@@ -510,6 +537,24 @@ export type PayRuleScope = {
    *  field only so resolvePayRule can be called on ONE rule in isolation — which is what a unit test and the
    *  AI validator do. Absent ⇒ 0, like an absent component code. */
   fixedAllowances?: number;
+  /**
+   * e318eaec — CALENDAR days in the payroll month: 31 in August, 30 in September, 28 in February. The kernel
+   * already has this as `dim = daysInMonth(year, month1)` and passes it here.
+   *
+   * IT IS NOT `daysWorked`, AND CONFLATING THE TWO IS THE MISTAKE THIS FIELD EXISTS TO PREVENT.
+   * `daysWorked` is `factor × dim` — the TENURE-PRORATED count, smaller than the month for a mid-month
+   * joiner. `calendarDays` is the month's own length, the same for everybody. A formula that means
+   * "monthly amount ÷ the length of this month × days actually worked" needs BOTH, and before this it could
+   * only reach the prorated one. Absent ⇒ 0, like every other optional scope input.
+   */
+  calendarDays?: number;
+  /**
+   * e318eaec — basic salary AFTER the EA-1955 joiner/leaver tenure factor the kernel already applies
+   * (`basicGross = round2(basic × factor)`). Exposed so a formula can USE the system's proration instead of
+   * rebuilding it out of days and divisors, which is the only way the formula and the payroll run can be
+   * guaranteed to agree. Absent ⇒ 0.
+   */
+  proratedBasic?: number;
 };
 
 /** Read one formula operand against the scope. The ONLY place a named input becomes a number. */
@@ -527,6 +572,14 @@ function readOperand(op: FormulaOperand, scope: PayRuleScope): number {
       // Absent reads as 0 for the same reason an absent component code does: the employee simply has no
       // fixed allowances this period. A figure, not an error — it must never abort a batch.
       return scope.fixedAllowances ?? 0;
+    // e318eaec — supplied by every caller that has them (the kernel, the admin preview, the one-off
+    // transaction path, the back-pay recompute). Absent ⇒ 0, and 0 as a DIVISOR is caught by the
+    // zero-divisor guard below, so a caller that forgets one pays 0 and says so rather than paying a wrong
+    // figure quietly.
+    case 'calendar_days':
+      return scope.calendarDays ?? 0;
+    case 'prorated_basic':
+      return scope.proratedBasic ?? 0;
     case 'component':
       return scope.components?.[normCode(op.code)] ?? 0;
     default: {
@@ -549,6 +602,26 @@ export type PayRuleZeroDivisorNotice = { divisor: FormulaOperandRef; step: numbe
 export type PayRuleComponentNotice = PayRuleZeroDivisorNotice & { code: string };
 
 /**
+ * e318eaec — ONE step of a formula fold, as it happened, so a screen can SHOW THE WORKING:
+ * "5,000.00 + 400.00 = 5,400.00", then "÷ 26 = 207.6923", and so on.
+ *
+ * IT IS EMITTED BY THE FOLD ITSELF, not reconstructed afterwards, and that is the entire design decision
+ * here. A second walk over the terms to "explain" what the first walk computed is a parallel implementation
+ * of the evaluator: it would agree on the day it was written and drift silently, and the drift would be a
+ * screen telling an administrator their payslip was reached a way it was not. The trace is therefore an
+ * optional out-channel on resolvePayRule, exactly like `notices` — the same fold, reported.
+ */
+export type PayRuleTraceStep = {
+  /** `null` for the seed operand (there is no operator before the first value). */
+  op: FormulaOp | null;
+  operand: FormulaOperand;
+  /** What the operand resolved to for this employee. */
+  value: number;
+  /** The running total AFTER this step. The last one is the fold's result, before the final clamp. */
+  running: number;
+};
+
+/**
  * Resolve a rule to a single ringgit number. `fixed` (or null) returns the caller-supplied `amount` — the
  * kernel passes the stored component amount in, so a fixed rule is byte-identical to the legacy path.
  * Guards Number.isFinite on the result (PayRuleEvalError on a corrupted value).
@@ -563,6 +636,10 @@ export function resolvePayRule(
   scope: PayRuleScope,
   amount: number,
   notices?: PayRuleZeroDivisorNotice[],
+  /** e318eaec — OPTIONAL out-channel for the step-by-step working (see PayRuleTraceStep). Same shape and
+   *  same reason as `notices`: passing an array is how a caller opts into being told HOW, and every
+   *  pre-existing caller keeps compiling and behaving identically. Only `formula` has steps to report. */
+  trace?: PayRuleTraceStep[],
 ): number {
   let out: number;
   if (rule == null) {
@@ -603,6 +680,10 @@ export function resolvePayRule(
         // zero-hours month, an employee with no fixed allowances. The contract is then: stop, pay 0 for
         // this component, and report which input it was. Never Infinity, never NaN, never a thrown batch.
         let acc = readOperand(rule.start, scope);
+        // e318eaec — the trace is written FROM the fold, one push per step actually taken. A step that the
+        // zero-divisor guard stops is not pushed, so the working ends exactly where the arithmetic did and
+        // the panel's last line is the last thing that really happened.
+        trace?.push({ op: null, operand: rule.start, value: acc, running: acc });
         let blocked: PayRuleZeroDivisorNotice | null = null;
         for (const [i, t] of rule.terms.entries()) {
           const v = readOperand(t.operand, scope);
@@ -616,6 +697,7 @@ export function resolvePayRule(
           else if (t.op === '-') acc -= v;
           else if (t.op === '*') acc *= v;
           else acc = NaN;
+          trace?.push({ op: t.op, operand: t.operand, value: v, running: acc });
         }
         if (blocked) {
           notices?.push(blocked);
@@ -687,6 +769,14 @@ export function resolvePayComponentSet(
   comps: readonly ResolvablePayComponent[],
   scope: PayRuleScope,
   notices?: PayRuleComponentNotice[],
+  /**
+   * e318eaec — capture the step-by-step working for ONE input position, into `steps`.
+   *
+   * Scoped to a single index on purpose. The admin preview asks "how was THIS item's figure reached?" about
+   * the item under edit; tracing the whole set would allocate a walk per pay item on every payroll run for
+   * a screen that shows one. `index` is a position in `comps`, the same coordinate the returned array uses.
+   */
+  traceFor?: { index: number; steps: PayRuleTraceStep[] },
 ): number[] {
   const out = new Array<number>(comps.length).fill(0);
   const components: Record<string, number> = { ...(scope.components ?? {}) };
@@ -761,7 +851,8 @@ export function resolvePayComponentSet(
       const c = comps[i];
       // A null / `fixed` rule short-circuits to the stored amount — the exact expression the kernel used
       // before 61bf109d, so an all-fixed catalog is untouched by the ordering machinery.
-      const v = c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, scoped, c.amount, local) : c.amount;
+      const stepsOut = traceFor && traceFor.index === i ? traceFor.steps : undefined;
+      const v = c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, scoped, c.amount, local, stepsOut) : c.amount;
       if (local?.length) {
         for (const n of local) notices!.push({ code, ...n });
         local.length = 0;
@@ -774,4 +865,128 @@ export function resolvePayComponentSet(
     if (!pinned.has(code)) components[code] = total;
   }
   return out;
+}
+
+// ── e318eaec — THE READABLE FORMULA LINE ────────────────────────────────────────────────────────────
+//
+// ⚠️ READ THIS BEFORE CHANGING ANYTHING BELOW. THIS IS A RENDERER, NOT A PARSER, AND THAT IS THE WHOLE
+// POINT OF IT.
+//
+// The board item asks for two things that look like one: a formula shown "in a readable mathematical
+// format" with brackets, AND "normal mathematical operator precedence". The first is a legibility problem.
+// The second would silently re-price live pay, and it is refused.
+//
+// The reporter's own OT1_5 is stored as a fold:
+//     basic  +fixed_allowances  /26  /8  *1.5  *hours
+// Folded left-to-right — which is what resolvePayRule does, and has always done — that IS
+//     (basic + fixed_allowances) / 26 / 8 × 1.5 × hours
+// and it is the figure on their payslips (RM584.13 for 15 hours on a RM5,000 basic with RM400 of fixed
+// allowances). Read with school precedence, the SAME stored rule would mean
+//     basic + (fixed_allowances / 26 / 8 × 1.5 × hours)
+// i.e. "basic salary plus a fraction of the allowances" — a different number, on overtime that has already
+// been paid. So the evaluation order does not change. Instead this function emits the brackets that
+// DESCRIBE the order the fold already runs in, which is exactly the string the reporter asked to see.
+//
+// The bracketing is minimal and mechanical: the running expression carries the precedence of the loosest
+// operator currently at its top level, and it is parenthesised the moment a tighter operator would
+// otherwise steal its right-hand end. That is precisely the condition under which "read normally" and
+// "folded left-to-right" would disagree, so the emitted string is guaranteed to evaluate — under ordinary
+// precedence, by any reader or any reference parser — to the number resolvePayRule computes.
+// test/pay-rule-format.test.ts asserts that round trip, including on the live OT1_5, and it is the guard
+// that makes this claim checkable rather than merely stated.
+
+/** Conventional (school) precedence — used ONLY to decide where a bracket has to be drawn. Nothing in the
+ *  evaluator reads it, and nothing may start to. */
+const FORMULA_OP_PRECEDENCE: Record<FormulaOp, number> = { '+': 1, '-': 1, '*': 2, '/': 2 };
+/** The symbols the line is drawn with. Mathematical notation, not words, so it needs no translation. */
+const FORMULA_OP_SYMBOL: Record<FormulaOp, string> = { '+': '+', '-': '-', '*': '×', '/': '/' };
+
+/** Everything the renderer needs from OUTSIDE the rule value, injected so this stays pure and
+ *  locale-agnostic: the client builder passes next-intl's `t`, the server preview passes getTranslations',
+ *  and a test passes stubs. One function, two call sites, so the live line in the builder and the line in
+ *  the preview panel cannot describe the same formula two different ways. */
+export type PayRuleFormatLabels = {
+  /** `payRule.operand_<ref>` — the exact strings the builder's operand dropdown shows. */
+  operand: (ref: FormulaOperandRef) => string;
+  /** Display name for a referenced pay code; null/undefined ⇒ the CODE is printed instead. */
+  payItem?: (code: string) => string | null | undefined;
+  /** Locale number formatting for a literal. Defaults to `String(n)` so a test need not stub it. */
+  number?: (value: number) => string;
+};
+
+/**
+ * One operand as it appears on the formula line. Exported because the preview panel labels each step of the
+ * working with the same string the line uses.
+ *
+ * A NAMED NUMBER reads one of two ways, and the rule is not cosmetic:
+ *   • the label already contains the number ("Rate 1.5" on a value of 1.5) ⇒ `[Rate 1.5]`, the shape the
+ *     ticket asks for. Printing "1.5 (Rate 1.5)" would say the same thing twice.
+ *   • otherwise ⇒ `26 (Working days)`. THE VALUE IS ALWAYS SHOWN IN THIS CASE, deliberately: a label is
+ *     free text, so someone can name a number "Rate 1.5" and later change its value to 2. Suppressing the
+ *     figure whenever a label merely looks rate-ish would print a confident lie on a payroll screen; keying
+ *     it off "does the label actually contain this value" makes the display self-correcting instead.
+ */
+export function formatPayRuleOperand(operand: FormulaOperand, labels: PayRuleFormatLabels): string {
+  const base = labels.operand(operand.ref);
+  switch (operand.ref) {
+    case 'number': {
+      // A half-typed number field is NaN. Fall back to the operand's own name rather than printing "NaN"
+      // at the admin — the live validator is already telling them the box is empty.
+      if (!Number.isFinite(operand.value)) return base;
+      const value = (labels.number ?? ((n: number) => String(n)))(operand.value);
+      const label = typeof operand.label === 'string' ? operand.label.trim() : '';
+      if (!label) return value;
+      return label.includes(value) || label.includes(String(operand.value)) ? `[${label}]` : `${value} (${label})`;
+    }
+    case 'component': {
+      const code = normCode(operand.code);
+      if (!code) return base;
+      // The NAME reads better in a maths line and the builder row directly below shows "CODE — Name" in its
+      // dropdown, so the code is never more than a glance away. Unknown/archived ⇒ the code itself.
+      return labels.payItem?.(code) || code;
+    }
+    case 'basic':
+    case 'prorated_basic':
+    case 'days':
+    case 'calendar_days':
+    case 'hours':
+    case 'fixed_allowances':
+      return base;
+    default: {
+      // Exhaustiveness guard — a new ref without a branch is a compile error here, which is how a widened
+      // union is stopped from silently rendering as an empty gap in the middle of a formula.
+      const _never: never = operand;
+      void _never;
+      return '';
+    }
+  }
+}
+
+/**
+ * The stored fold as an explicitly bracketed infix line, e.g.
+ * `(Basic salary + All fixed allowances) / 26 (Working days) / 8 (Working hours) × [Rate 1.5] × Hours worked`.
+ *
+ * `null` for any rule that is not a `formula` — the other six kinds are fully described by their own Input
+ * Type label and have nothing to draw.
+ */
+export function formatPayRule(rule: PayRule | null | undefined, labels: PayRuleFormatLabels): string | null {
+  if (!rule || rule.kind !== 'formula') return null;
+  let expr = formatPayRuleOperand(rule.start, labels);
+  // How loosely the current expression binds at its top level. An atom binds tighter than any operator.
+  let bound = Number.POSITIVE_INFINITY;
+  for (const term of Array.isArray(rule.terms) ? rule.terms : []) {
+    // Defensive on a corrupted JSONB value: an unknown operator is skipped rather than printed raw (the
+    // validator refuses such a rule at save time, so this is only reachable via a hand-edited row).
+    if (!term || !(term.op in FORMULA_OP_PRECEDENCE)) continue;
+    const prec = FORMULA_OP_PRECEDENCE[term.op];
+    if (prec > bound) {
+      // A tighter operator is about to bind to the tail of a looser expression — the one case where reading
+      // the line normally would NOT reproduce the fold. Bracket, and the result is an atom again.
+      expr = `(${expr})`;
+      bound = Number.POSITIVE_INFINITY;
+    }
+    expr = `${expr} ${FORMULA_OP_SYMBOL[term.op]} ${formatPayRuleOperand(term.operand, labels)}`;
+    bound = Math.min(bound, prec);
+  }
+  return expr;
 }
