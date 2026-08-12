@@ -10,10 +10,14 @@ import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { readFileSync } from 'node:fs';
 import {
+  ClaimError,
   createClaimItem,
   createClaimType,
+  decideClaim,
   deleteClaimType,
   getActiveClaimPolicy,
+  getEmployeeClaimTypes,
+  listClaimItemLimits,
   listClaimLimits,
   listClaimTypes,
   setClaimPolicy,
@@ -307,6 +311,178 @@ describe('ccbd0508 — claim limits by grade', () => {
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
       expect(code).not.toContain('mileage_flat');
       expect(code).not.toContain('ratePerKm');
+    });
+  });
+
+  // ══════════ e7eb5d83 rev 5 STEP 2 — SUB-CLAIM LIMITS (0435: claim_policy.claim_item_id) ══════════
+  //
+  // MEDICAL 001 is the claim TYPE; MEDICAL 002 (Outpatient) and MEDICAL 003 (Inpatient) are its claim_item
+  // rows — the SECOND level, which has existed since the module shipped. Revision 4 refused this as "a
+  // third group/claim/sub-claim level" and that was our error. What was genuinely missing was a place to
+  // PUT a sub-claim's limit; what already worked, and must keep working, is that spending on a sub-claim
+  // comes out of its parent's pot.
+  describe('sub-claim limits sit BESIDE the type limit, never instead of it', () => {
+    const on = () => todayInKualaLumpur();
+
+    async function medicalWithItems(p: { typeAnnual: number | null; outpatientAnnual?: number | null }) {
+      const a = adminCtx(base);
+      const { id: typeId } = await createClaimType(a, {
+        code: 'MEDICAL',
+        name: 'Medical',
+        defaultTaxable: false,
+        requiresReceipt: false,
+      });
+      const out = await createClaimItem(a, { claimTypeId: typeId, code: 'MEDICAL 002', name: 'Outpatient' });
+      const inp = await createClaimItem(a, { claimTypeId: typeId, code: 'MEDICAL 003', name: 'Inpatient' });
+      if (p.typeAnnual != null) {
+        await setClaimPolicy(a, { claimTypeId: typeId, annualBudget: p.typeAnnual, perClaimCap: null, effectiveFrom: '2026-01-01' });
+      }
+      if (p.outpatientAnnual != null) {
+        await setClaimPolicy(a, {
+          claimTypeId: typeId,
+          claimItemId: out.id,
+          annualBudget: p.outpatientAnnual,
+          perClaimCap: null,
+          effectiveFrom: '2026-01-01',
+        });
+      }
+      const E = await hireEmployee(a, {
+        person: { fullName: `Claimant ${Math.random().toString(36).slice(2, 8)}`, primaryEmail: `c${Math.random().toString(36).slice(2, 8)}@acme.test` },
+        companyId: base.companyId,
+        departmentId: base.deptA,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      });
+      return { a, typeId, out, inp, employmentId: E.employmentId };
+    }
+
+    it('THE HAZARD: setting a sub-claim limit does not close the TYPE\'s policy version', async () => {
+      // The one that destroys data rather than merely mis-reading. setClaimPolicy's close-and-insert
+      // predicate has to compare (type, grade, item) THREE ways null-safe; with only two arms, saving
+      // Outpatient's limit closes MEDICAL 001's own open version and the type's RM2,000 stops existing.
+      const { a, typeId, out } = await medicalWithItems({ typeAnnual: 2000 });
+      await setClaimPolicy(a, { claimTypeId: typeId, claimItemId: out.id, annualBudget: 1000, perClaimCap: null, effectiveFrom: '2026-05-01' });
+
+      const openTypeRows = await owner.db
+        .select()
+        .from(schema.claimPolicy)
+        .where(eq(schema.claimPolicy.claimTypeId, typeId));
+      const openType = openTypeRows.filter((r) => r.claimItemId == null && r.validTo == null);
+      expect(openType.length).toBe(1); // still exactly one open TYPE version …
+      expect(Number(openType[0].annualBudget)).toBe(2000); // … and it still holds its own number
+    });
+
+    it('getActiveClaimPolicy never returns an item row for a type-level read', async () => {
+      // Resolution takes the latest valid_from within a tier, so an item row saved LATER than the type's
+      // would outrank it — silently, with the sub-claim's smaller number applying to every claim.
+      const { typeId, out } = await medicalWithItems({ typeAnnual: 2000 });
+      await setClaimPolicy(adminCtx(base), {
+        claimTypeId: typeId,
+        claimItemId: out.id,
+        annualBudget: 1,
+        perClaimCap: 1,
+        effectiveFrom: '2026-12-31', // deliberately the newest version in the table
+      });
+      const typeLevel = await withTenant(adminCtx(base), (tx) => getActiveClaimPolicy(tx, typeId, '2026-12-31', null));
+      expect(typeLevel?.annualBudget).toBe(2000);
+      expect(typeLevel?.claimItemId).toBeNull();
+      // …and the item-level read gets the item row, not the type's.
+      const itemLevel = await withTenant(adminCtx(base), (tx) => getActiveClaimPolicy(tx, typeId, '2026-12-31', null, out.id));
+      expect(itemLevel?.annualBudget).toBe(1);
+      expect(itemLevel?.claimItemId).toBe(out.id);
+    });
+
+    it('listClaimLimits stays type-level — an item row never appears as the type\'s limit', async () => {
+      const { typeId, out } = await medicalWithItems({ typeAnnual: 2000 });
+      await setClaimPolicy(adminCtx(base), { claimTypeId: typeId, claimItemId: out.id, annualBudget: 1, perClaimCap: null, effectiveFrom: '2026-12-31' });
+      const rows = (await listClaimLimits(adminCtx(base), { asOf: '2026-12-31' })).filter((r) => r.claimTypeId === typeId);
+      expect(rows.length).toBe(1);
+      expect(rows[0].annualBudget).toBe(2000);
+      // The sub-claim's own row is readable, just not from there.
+      const items = (await listClaimItemLimits(adminCtx(base), { asOf: '2026-12-31' })).filter((r) => r.claimTypeId === typeId);
+      expect(items).toMatchObject([{ claimItemId: out.id, annualBudget: 1 }]);
+    });
+
+    it('a SUB-CLAIM limit refuses at submit while the TYPE limit still has room', async () => {
+      const { a, typeId, out, employmentId } = await medicalWithItems({ typeAnnual: 2000, outpatientAnnual: 300 });
+      await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 250, incurredOn: on() });
+      const err = await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 100, incurredOn: on() }).catch((e) => e);
+      expect(err).toBeInstanceOf(ClaimError); // the identity, not merely "it threw"
+      expect(err.message).toMatch(/Outpatient/); // the message NAMES the sub-claim, not the type
+      expect(err.message).toMatch(/300/);
+    });
+
+    it('the TYPE limit refuses even when the sub-claim has room', async () => {
+      const { a, typeId, out, inp, employmentId } = await medicalWithItems({ typeAnnual: 400, outpatientAnnual: 5000 });
+      await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: inp.id, amount: 350, incurredOn: on() });
+      const err = await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 100, incurredOn: on() }).catch((e) => e);
+      expect(err).toBeInstanceOf(ClaimError);
+      expect(err.message).toMatch(/this claim type/); // the TYPE's message wins when both could bite
+      expect(err.message).not.toMatch(/Outpatient/);
+    });
+
+    it('spend on one sub-claim reduces the parent and its own pot, but NOT a sibling\'s', async () => {
+      // The half the reporter says already works (parent deduction) and the half that is new (sub-pots),
+      // asserted in one place so a future change cannot trade one for the other.
+      const a = adminCtx(base);
+      const { typeId, out, inp, employmentId } = await medicalWithItems({ typeAnnual: 2000, outpatientAnnual: 1000 });
+      await setClaimPolicy(a, { claimTypeId: typeId, claimItemId: inp.id, annualBudget: 1000, perClaimCap: null, effectiveFrom: '2026-01-01' });
+      await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 600, incurredOn: on() });
+
+      const [type] = await getEmployeeClaimTypes(a, employmentId).then((ts) => ts.filter((t) => t.id === typeId));
+      expect(type.balance.usedThisYear).toBe(600); // the PARENT pot was spent …
+      expect(type.balance.remainingThisYear).toBe(1400);
+      const outB = type.balance.items.find((i) => i.claimItemId === out.id);
+      const inpB = type.balance.items.find((i) => i.claimItemId === inp.id);
+      expect(outB).toMatchObject({ usedThisYear: 600, remainingThisYear: 400 }); // … and Outpatient's own …
+      expect(inpB).toMatchObject({ usedThisYear: 0, remainingThisYear: 1000 }); // … but Inpatient's is untouched
+    });
+
+    it('the approve-time re-check mirrors the sub-claim limit too', async () => {
+      // Submit reserves against PENDING, approval settles against SETTLED. A sub-limit checked only on the
+      // way in can be exceeded by the order approvals are granted in — the type's re-check has always
+      // existed for exactly this, and the sub-claim's has to exist for the same reason.
+      const a = adminCtx(base);
+      const { typeId, out, employmentId } = await medicalWithItems({ typeAnnual: 5000, outpatientAnnual: 500 });
+      const first = await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 400, incurredOn: on() });
+      // Widen the sub-limit so a SECOND claim can be filed, then narrow it back before deciding: the
+      // approve path must re-read the policy rather than trust the submit that let the claim in.
+      await setClaimPolicy(a, { claimTypeId: typeId, claimItemId: out.id, annualBudget: 5000, perClaimCap: null, effectiveFrom: '2026-01-01' });
+      const second = await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 400, incurredOn: on() });
+      await setClaimPolicy(a, { claimTypeId: typeId, claimItemId: out.id, annualBudget: 500, perClaimCap: null, effectiveFrom: '2026-01-01' });
+
+      await decideClaim(a, { claimRequestId: first.id, decision: 'approve' });
+      const err = await decideClaim(a, { claimRequestId: second.id, decision: 'approve' }).catch((e) => e);
+      expect(err).toBeInstanceOf(ClaimError);
+      expect(err.message).toMatch(/Outpatient/);
+    });
+
+    it('a sub-claim limit cannot be filed against a claim type the sub-claim does not belong to', async () => {
+      // The foreign key proves the item EXISTS, not that it is an item of THIS type — a policy row pointing
+      // at another type's item is a limit no claim could ever match, so the service refuses it outright.
+      const a = adminCtx(base);
+      const { out } = await medicalWithItems({ typeAnnual: 100 });
+      const { id: otherType } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false });
+      const err = await setClaimPolicy(a, {
+        claimTypeId: otherType,
+        claimItemId: out.id,
+        annualBudget: 100,
+        perClaimCap: null,
+        effectiveFrom: '2026-01-01',
+      }).catch((e) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toMatch(/does not belong to this claim type/);
+    });
+
+    it('a sub-claim with no limit of its own is unlimited IN ITSELF and still bounded by its type', async () => {
+      // The default every sub-claim starts on, and the one that must not change: before this round every
+      // claim_policy row was a type row, so "no item row" has to keep meaning exactly what it meant.
+      const a = adminCtx(base);
+      const { typeId, out, employmentId } = await medicalWithItems({ typeAnnual: 500 });
+      await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 500, incurredOn: on() });
+      const err = await submitClaim(a, { employmentId, claimTypeId: typeId, claimItemId: out.id, amount: 1, incurredOn: on() }).catch((e) => e);
+      expect(err).toBeInstanceOf(ClaimError);
+      expect(err.message).toMatch(/this claim type/); // refused by the TYPE, the only limit there is
     });
   });
 });

@@ -81,7 +81,10 @@ async function main() {
       })
       .from(claimPolicy)
       .innerJoin(claimType, eq(claimType.id, claimPolicy.claimTypeId))
-      .where(and(eq(claimPolicy.tenantId, t.id), isNull(claimPolicy.validTo)));
+      // claim_item_id IS NULL — a TYPE-level read. 0435 put sub-claim rows in this table, and a mileage
+      // rate is a property of the claim type, never of one sub-claim; without the predicate a sub-claim row
+      // that somehow carried a rate would seed a second company-wide band table for the same type.
+      .where(and(eq(claimPolicy.tenantId, t.id), isNull(claimPolicy.validTo), isNull(claimPolicy.claimItemId)));
 
     for (const row of openFlat) {
       if (row.rateConfig?.kind !== 'mileage_flat') continue;
