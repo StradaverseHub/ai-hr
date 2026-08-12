@@ -117,6 +117,50 @@ is produced by the guard rather than doubled by the database.**
 bulk tool that removes shifts inherits protection for add and change and silently does not for remove.
 **Raised as board item `154865f4`** so the reporter owns the decision; closing it needs a restrictive
 DELETE policy or per-command policies.
+### ⚠️ THE THREE STATUTORY-FORM ITEMS — READ THIS BEFORE BUILDING ANY OF THEM (planned 2026-08-13)
+
+`88076362` CP22 · `9c8dad7a` EPF Borang A · `8ca344bf` SOCSO Borang 8A, all `planned` rev 1 with mockups.
+Recommended order **CP22 → Borang 8A → Borang A**, three rounds not one. Four findings that change the work:
+
+1. **THE EPF AND SOCSO ATTACHMENTS ARE NOT AGENCY ARTWORK.** Both are `Developer Express Inc. DXperience
+   v23.2.5` outputs dated 2026-08-12 — **completed forms from another payroll system**, with the
+   auto-filled values highlighted. The highlighting IS the field map and was used as one. But it means
+   neither form can ever carry `fidelity: 'official'`: PERKESO and KWSP publish no blank page for these.
+   Both plans propose ONE new shared fidelity value — the agency's own layout, drawn by us — so the union
+   gains exactly one member for the pair, and `my.cp22` stays the only `official` entry (that assertion
+   stands).
+2. **CP22 [Pin.1/2021] CARRIES LHDN'S OWN "UNTUK RUJUKAN SAHAJA" WATERMARK**, vector-drawn across both
+   pages, rendered by both `pdftoppm` and `mutool`. It is deliberate: since 2024-09-01 CP22 is filed
+   through e-CP22 on MyTax and paper is not accepted. **Ship what LHDN publishes, stamp included** — do
+   not erase a government stamp to make the output look cleaner.
+3. **THE 2021 ARTWORK INVALIDATES ALL 33 MAPPED AREAS — it does not shift them.** It is TWO pages (A/B/C
+   then D/E/F) against 2020's one; it has **no character cells anywhere**, so the `comb` type, `maxLen`,
+   the 14-position tax-number gap and the two-part telephone split all become dead code; B12/B13 become
+   3 free rows plus separate Poskod/Bandar/Negeri boxes, so reusing `addressLines()` would put the state
+   in a free row and leave three printed boxes empty — **the r175a silent-loss class, relocated**. Box 1
+   and Box 27 lose their targets; A4, B15, B17, C4 and all of section F are new. **~50 areas, up from 33.**
+   There is also no "Kepada / To" block, so the ticket's "Submit To" cannot print.
+4. **NO MIGRATION IS NEEDED FOR ANY OF THE THREE. `0436` IS NOT CONSUMED.** Every field the tickets ask
+   for already exists under a different name: `epf_reference_no` → `company_statutory_my.epf_employer_no`;
+   `socso_employer_code` → exact match; `mycoid_no` → `ssm_registration_no`, which
+   `localization/my/socso-eis-file.ts` ALREADY reads as the ASSIST file's MyCoID; `epf_member_no` →
+   `employee_statutory_my.epf_number` (9 of 33 populated); SOCSO's IC → `ic_number` (33 of 33).
+   `company_statutory_authority` exists with a UI and has **ZERO rows on production** — it needs filling,
+   not building.
+
+**THE +1-MONTH TRAP THE REPORTER PRE-EMPTED.** Their two specimens are the SAME July 2026 payroll: EPF
+stamped `Bulan Caruman 0826`, SOCSO stamped `CARUMAN GAJI BULAN 07 / 2026`. Borang A is cycle **+1**;
+Borang 8A is the cycle month **directly**. Both plans pin it, including `2026-12 → 2027-01` and
+`2026-12 → 2026-12`, plus a joint test that runs one cycle through both and **fails if they ever agree**.
+
+⚠️ **DO NOT TREAT THE SPECIMENS AS ARITHMETIC FIXTURES.** The SOCSO specimen's RM202.35 does not reconcile
+to the EPF specimen's RM6,200 wage on either a SOCSO-only or SOCSO+EIS reading under the current PERKESO
+table. Take the figure from the run and show the run's own total beside the form total on the preview.
+
+⚠️ **`payslip.statutory.bases` IS ONLY ON 60 OF 121 PAYSLIPS** (stamped from r187 onward), and
+`loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
+silently fall back to gross.
+
 ### r189 (2026-08-12) — CLAIMS GRADE-FIRST LIMITS (`0435`) AND THE PAY-ITEM FORMULA BUILDER
 
 `e7eb5d83` rev5 + `e318eaec`. Gate **660 declared / 660 counted / every chunk exit=0 / 8,597 tests / 0
