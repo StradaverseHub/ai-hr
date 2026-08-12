@@ -38,6 +38,7 @@ import {
   payComponent,
   position,
   payrollBatchComponent,
+  payrollStatutoryAdjustment,
   leaveLedger,
   leaveRequest,
   leaveRequestDate,
@@ -2757,6 +2758,22 @@ export async function generatePayslips(
     // 1.2.8 Loan instalment(s) reserved on this batch (ADR-0060): POST-TAX, read unconditionally, subtracted
     // after statutory like tp1/zakat. The ledger is advanced by applyLoansForBatch AFTER the payslip loop.
     const loanByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.loanDeduction)]));
+    // ── 2961a7ae — the manual statutory overrides keyed against this run ────────────────────────────
+    // Read like any other INPUT, alongside payroll_input above, because that is what it is: the operator's
+    // declaration of what a statutory line must FINALLY be. Applied to the computed `st` in the payslip
+    // loop below (applyStatutoryAdjustment), before total_deductions / net_pay / employer_cost are
+    // composed, so every downstream figure, report and statutory form reads the final number. An empty
+    // map ⇒ every payslip is byte-identical to the pre-2961a7ae kernel.
+    const statutoryAdjustmentRows = await tx
+      .select()
+      .from(payrollStatutoryAdjustment)
+      .where(eq(payrollStatutoryAdjustment.batchId, p.batchId));
+    const statutoryAdjustmentByEmp = new Map(
+      statutoryAdjustmentRows.map((r) => [
+        r.employmentId,
+        { values: valuesOfAdjustmentRow(r as unknown as Record<string, unknown>), reason: r.reason },
+      ]),
+    );
     // 1.2.8 C1 fix: the ACTUAL loan recovered per employee after the authoritative net≥0 clamp (cents). The
     // payslip loop fills this; applyLoansForBatch advances the ledger by these actuals (NOT the reserved due).
     const appliedLoanCentsByEmp = new Map<string, number>();
@@ -4176,7 +4193,7 @@ export async function generatePayslips(
         pcb: round2(wagesExOt + statOvertime + statAdditional),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
       };
-      const st = {
+      const stComputed = {
         ...stCore,
         bases: statBases,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
@@ -4223,6 +4240,18 @@ export async function generatePayslips(
         // the replay). Key present only when at least one code was used — legacy slips are byte-identical.
         ...(!isAdditionalRun && Object.keys(en.exemptionUsed).length ? { exemptionUsed: en.exemptionUsed } : {}),
       };
+
+      // ── 2961a7ae — THE MANUAL OVERRIDE, applied here and nowhere else ──────────────────────────────
+      // Between the computed figures and everything composed FROM them. Downstream — statDeductions, the
+      // net-floor clamp, employer_cost, the batch totals, the GL lines, the payslip row, the statutory
+      // reports and the r185 forms shelf — all read `st`, so the adjusted figure is the figure everywhere
+      // without a second write path. No override ⇒ `st` IS `stComputed`, the same object, byte-identical.
+      //
+      // NO CASCADE, deliberately: overriding EPF does not re-derive PCB from the new EPF figure. See
+      // applyStatutoryAdjustment's doc comment. And note what this placement makes STRUCTURAL rather than
+      // a rule to remember — the employer legs are read only by employerCost below and never by
+      // statDeductions, so an employer-side override cannot reduce anyone's net pay.
+      const st = applyStatutoryAdjustment(stComputed, statutoryAdjustmentByEmp.get(e.employmentId) ?? null);
 
       // Item 5a461b99 — "Employer bears" reassignment. The contribution is still computed AND reported in
       // full (st.socsoEmployee / st.eisEmployee / st.socsoSkbbk are untouched, so SOCSO/EIS reports + the
@@ -4345,7 +4374,11 @@ export async function generatePayslips(
         ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer + employerBorneTotal)
         // Step 4 (f3148da1) — the converted OT excess is real employer outlay (paid to the employee), so it
         // adds to employer cost alongside the OT it was rerouted from. Default (no convert) ⇒ 0 ⇒ unchanged.
-        : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf + employerBorneTotal);
+        // 2961a7ae — `st.hrdf`, not the local `hrdf`. On a regular run st.hrdf IS hrdf (st sets
+        // `hrdf: isAdditionalRun ? 0 : hrdf`), so this is byte-identical — but it is `st` that carries a
+        // manual override, and employer cost must move with an overridden levy rather than with the
+        // computed one. The additional-run branch above has no hrdf leg at all, so nothing changes there.
+        : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + st.hrdf + employerBorneTotal);
 
       // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — disburse this employee's NET across the run's cut-off
       // CYCLES. Recurring pay (basic + allowance + bonus) prorates by cycle days; OT follows each cycle's OT
@@ -4515,7 +4548,7 @@ export async function generatePayslips(
       totals.eisEmployee += st.eisEmployee;
       totals.eisEmployer += st.eisEmployer;
       totals.pcb += st.pcb;
-      totals.hrdfEmployer += isAdditionalRun ? 0 : hrdf;
+      totals.hrdfEmployer += Number(st.hrdf); // 2961a7ae — st.hrdf is already 0 on an additional run
       totals.deductions += totalDeductions;
       totals.employerCost += employerCost;
     }
@@ -6582,5 +6615,488 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         absentDays: absent.get(e.employmentId) ?? 0,
       };
     });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// 2961a7ae — STATUTORY ADJUSTMENT: the manual override of a computed statutory figure
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// There was nowhere in the system to overrule a statutory figure. Overtime, bonus, TP1 relief, zakat and
+// claim allowances can all be keyed against a run (payroll_input); EPF, SOCSO, EIS, SKBBK, PCB and the HRD
+// levy came out of the calculation and that was the end of it. When an agency confirms a different figure,
+// the only ways out were to change something upstream and reprocess, or leave the payslip wrong.
+//
+// STORED AS AN INPUT, NOT AS A STAMPED RESULT (migration 0430, db/schema.ts payrollStatutoryAdjustment).
+// Reprocessing recomputes a payslip from scratch and bumps payslip.version, so an override written ONTO
+// the payslip row would be destroyed by the next reprocess — and this reporter reprocesses constantly. As
+// an input the generator reads, it is idempotent across reprocesses and Revert is a row delete.
+//
+// NINE LINES, NOT THE TEN THE REQUEST LISTS. SKBBK / Lindung 24 Jam exists only as an EMPLOYEE-paid leg
+// (localization/my/payroll.ts socso() → { employer, employee, skbbk }); there is no employer SKBBK figure
+// in the engine, so the screen shows nine lines rather than inventing an always-zero tenth.
+
+/** The nine overridable statutory lines, employee side first, in the order the screen renders them. */
+export const STATUTORY_ADJUSTMENT_LINES = [
+  'pcb',
+  'epfEmployee',
+  'socsoEmployee',
+  'socsoSkbbk',
+  'eisEmployee',
+  'hrdf',
+  'epfEmployer',
+  'socsoEmployer',
+  'eisEmployer',
+] as const;
+export type StatutoryAdjustmentLine = (typeof STATUTORY_ADJUSTMENT_LINES)[number];
+
+/** The employer-funded legs. These move employer cost and can never reduce the employee's net pay —
+ *  structural, because net_pay is composed from the EMPLOYEE legs and employer_cost from these. */
+export const STATUTORY_ADJUSTMENT_EMPLOYER_LINES: readonly StatutoryAdjustmentLine[] = [
+  'hrdf',
+  'epfEmployer',
+  'socsoEmployer',
+  'eisEmployer',
+];
+const isEmployerLine = (k: StatutoryAdjustmentLine) => STATUTORY_ADJUSTMENT_EMPLOYER_LINES.includes(k);
+
+/**
+ * One override set. `null` on a line means NO override (use the system figure); `0` means override to
+ * zero. That distinction IS the requirement — never collapse an absent value and a zero into one.
+ */
+export type StatutoryAdjustmentValues = Partial<Record<StatutoryAdjustmentLine, number | null>>;
+
+/** What the payslip carries about an override: the system figure, the applied figure, and the reason. */
+export type StatutoryAdjustmentStamp = {
+  reason: string;
+  lines: Partial<Record<StatutoryAdjustmentLine, { system: number; applied: number }>>;
+};
+
+export class StatutoryAdjustmentBatchNotOpenError extends Error {
+  constructor() {
+    super('statutory-adjustment-batch-not-open');
+    this.name = 'StatutoryAdjustmentBatchNotOpenError';
+  }
+}
+export class StatutoryAdjustmentReasonRequiredError extends Error {
+  constructor() {
+    super('statutory-adjustment-reason-required');
+    this.name = 'StatutoryAdjustmentReasonRequiredError';
+  }
+}
+export class StatutoryAdjustmentAmountInvalidError extends Error {
+  constructor(public readonly line: string) {
+    super('statutory-adjustment-amount-invalid');
+    this.name = 'StatutoryAdjustmentAmountInvalidError';
+  }
+}
+export class StatutoryAdjustmentNotFoundError extends Error {
+  constructor() {
+    super('statutory-adjustment-not-found');
+    this.name = 'StatutoryAdjustmentNotFoundError';
+  }
+}
+
+/** Read a stored numeric column into an override value: NULL stays null, '0.00' becomes 0. */
+const adjNum = (v: string | null): number | null => (v == null ? null : round2(Number(v)));
+
+/** The stored row's nine columns as a values object. */
+function valuesOfAdjustmentRow(r: Record<string, unknown>): StatutoryAdjustmentValues {
+  const out: StatutoryAdjustmentValues = {};
+  for (const k of STATUTORY_ADJUSTMENT_LINES) out[k] = adjNum((r[k] ?? null) as string | null);
+  return out;
+}
+
+/**
+ * THE ENGINE HOOK, pure. Applies an override set to the computed statutory object and stamps the three
+ * values the reporter asks to retain (system → adjustment → final).
+ *
+ * `adj === null` returns the computed object UNCHANGED — not a copy with extra keys, the same object —
+ * so every payslip on every run without an override is byte-identical to the pre-2961a7ae kernel.
+ *
+ * DELIBERATELY NO CASCADE. Overriding EPF does NOT re-derive PCB from the new EPF figure, even though
+ * pcbMonth normally takes epfClaimed from the computed EPF. An override is a declaration about the FINAL
+ * line; quietly moving a figure the operator did not touch is how a screen like this loses trust. PCB has
+ * its own line and its own box — override both if both should move. (Stated in the plan's GOOD TO KNOW.)
+ *
+ * The stamp is a SEPARATE member (`statutory.adjustment`), not new statutory line keys, so
+ * diffPayslipVersions / STATUTORY_LINE_KEYS keep reporting exactly the nine money lines and never start
+ * reporting the stamp itself as a movement.
+ */
+export function applyStatutoryAdjustment<T extends Record<string, unknown>>(
+  computed: T,
+  adj: { values: StatutoryAdjustmentValues; reason: string } | null,
+): T {
+  if (!adj) return computed;
+  const lines: StatutoryAdjustmentStamp['lines'] = {};
+  const patch: Record<string, number> = {};
+  for (const k of STATUTORY_ADJUSTMENT_LINES) {
+    const applied = adj.values[k];
+    if (applied == null) continue; // blank ⇒ keep the system figure
+    const system = round2(Number(computed[k] ?? 0));
+    patch[k] = round2(applied);
+    lines[k] = { system, applied: round2(applied) };
+  }
+  if (Object.keys(patch).length === 0) return computed;
+  const stamp: StatutoryAdjustmentStamp = { reason: adj.reason, lines };
+  return { ...computed, ...patch, adjustment: stamp } as T;
+}
+
+/**
+ * The before/after the Review step shows, computed as a DELTA off the stored payslip rather than by
+ * re-deriving gross→net. Re-deriving would be a second implementation of the kernel's composition and
+ * would drift from it; a delta cannot, because it starts from the figure the kernel actually produced.
+ *
+ * Gross NEVER moves — a statutory line is not a gross-pay component (the reporter's rule 8).
+ *
+ * `employerBears` matters and is not cosmetic: when an employee's SOCSO / EIS / SKBBK / PCB / EPF share
+ * is employer-funded, that share is subtracted from their deductions and added to employer cost, so
+ * overriding it moves EMPLOYER cost and leaves net pay alone. Passing the flags keeps the preview honest
+ * for those employees instead of promising a net-pay change that will not happen.
+ *
+ * CAVEAT, stated rather than hidden: the kernel clamps post-tax deductions so net ≥ 0 (EA s.24 net
+ * floor). An override large enough to drive net below zero will be clamped at generation and the applied
+ * result will differ from this preview. `netFloorReached` reports exactly that case.
+ */
+export function previewStatutoryAdjustment(p: {
+  statutory: Record<string, unknown>;
+  grossPay: number;
+  totalDeductions: number;
+  netPay: number;
+  employerCost: number;
+  values: StatutoryAdjustmentValues;
+  employerBears?: { socso?: boolean; eis?: boolean; skbbk?: boolean; tax?: boolean; epf?: boolean };
+}): {
+  lines: { line: StatutoryAdjustmentLine; system: number; applied: number; delta: number }[];
+  grossBefore: number; grossAfter: number;
+  deductionsBefore: number; deductionsAfter: number;
+  netBefore: number; netAfter: number;
+  employerCostBefore: number; employerCostAfter: number;
+  netFloorReached: boolean;
+} {
+  const bears = p.employerBears ?? {};
+  // Which employee-side lines the employer funds. A funded line's movement lands on employer cost, not
+  // on the employee's deductions — the same reassignment the kernel performs (employerBorneTotal).
+  const funded: Partial<Record<StatutoryAdjustmentLine, boolean>> = {
+    socsoEmployee: bears.socso === true,
+    eisEmployee: bears.eis === true,
+    socsoSkbbk: bears.skbbk === true,
+    pcb: bears.tax === true,
+    epfEmployee: bears.epf === true,
+  };
+
+  const lines: { line: StatutoryAdjustmentLine; system: number; applied: number; delta: number }[] = [];
+  let employeeDelta = 0; // change to what the employee actually pays
+  let employerDelta = 0; // change to employer cost
+  for (const k of STATUTORY_ADJUSTMENT_LINES) {
+    const applied = p.values[k];
+    if (applied == null) continue;
+    const system = round2(Number(p.statutory[k] ?? 0));
+    const delta = round2(round2(applied) - system);
+    lines.push({ line: k, system, applied: round2(applied), delta });
+    if (isEmployerLine(k)) employerDelta = round2(employerDelta + delta);
+    else if (funded[k]) employerDelta = round2(employerDelta + delta); // employer-funded employee share
+    else employeeDelta = round2(employeeDelta + delta);
+  }
+
+  const deductionsBefore = round2(p.totalDeductions);
+  const netBefore = round2(p.netPay);
+  const deductionsAfter = round2(deductionsBefore + employeeDelta);
+  const netAfter = round2(netBefore - employeeDelta);
+  return {
+    lines,
+    grossBefore: round2(p.grossPay),
+    grossAfter: round2(p.grossPay), // never moves
+    deductionsBefore,
+    deductionsAfter,
+    netBefore,
+    netAfter,
+    employerCostBefore: round2(p.employerCost),
+    employerCostAfter: round2(round2(p.employerCost) + employerDelta),
+    netFloorReached: netAfter < 0,
+  };
+}
+
+/**
+ * Payroll runs an adjustment may be entered against: PROCESSED and not closed, newest period first.
+ *
+ * "Payroll Cycle" on the reporter's mock-up is `payroll_batch.run_type` here — regular / additional /
+ * off_cycle. payroll_cycle is a per-company CATALOG (name + code + run type) with no foreign key from a
+ * batch, so the run's own run_type is the only cycle fact a batch actually carries; filtering on the
+ * catalog would be filtering on something the run is not stamped with.
+ */
+export function listAdjustableBatches(
+  ctx: SessionContext,
+  p: { companyId?: string; year?: string; month?: string; runType?: string } = {},
+) {
+  return withTenant(ctx, async (tx) => {
+    const conds = [eq(payrollBatch.tenantId, ctx.tenantId), eq(payrollBatch.status, 'processed')];
+    if (p.companyId) conds.push(eq(payrollBatch.companyId, p.companyId));
+    if (p.year && p.month) conds.push(eq(payrollBatch.payPeriod, `${p.year}-${p.month}`));
+    else if (p.year) conds.push(like(payrollBatch.payPeriod, `${p.year}-%`));
+    if (p.runType) conds.push(eq(payrollBatch.runType, p.runType as 'regular'));
+    return tx
+      .select({
+        batchId: payrollBatch.id,
+        companyId: payrollBatch.companyId,
+        companyName: company.legalName,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        needsRecalcAt: payrollBatch.needsRecalcAt,
+      })
+      .from(payrollBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(and(...conds))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+  });
+}
+
+/** The employees on a run, with whether each already carries an override. `q` matches code or name. */
+export function listAdjustmentEmployees(ctx: SessionContext, p: { batchId: string; q?: string }) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        employmentId: payslip.employmentId,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        netPay: payslip.netPay,
+        adjustedAt: payrollStatutoryAdjustment.updatedAt,
+      })
+      .from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        payrollStatutoryAdjustment,
+        and(
+          eq(payrollStatutoryAdjustment.batchId, payslip.batchId),
+          eq(payrollStatutoryAdjustment.employmentId, payslip.employmentId),
+        ),
+      )
+      .where(eq(payslip.batchId, p.batchId))
+      .orderBy(employment.employeeCode);
+    const q = (p.q ?? '').trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) => (r.employeeCode ?? '').toLowerCase().includes(q) || (r.name ?? '').toLowerCase().includes(q),
+    );
+  });
+}
+
+/**
+ * Everything the adjustment screen needs for ONE employee on ONE run: the system figures from the stored
+ * payslip, any override already saved, the payslip totals the preview works off, the employer-bears flags
+ * and the downstream warnings (already filed / already paid out).
+ *
+ * `batchDownstreamWarnings` is REUSED, not re-derived — it is the same derivation unlockClosedBatch and
+ * the Individual Transaction screen show, so the three screens cannot disagree about whether a figure has
+ * already left the building.
+ */
+export function getStatutoryAdjustmentDetail(ctx: SessionContext, p: { batchId: string; employmentId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) return null;
+    const [slip] = await tx
+      .select()
+      .from(payslip)
+      .where(and(eq(payslip.batchId, p.batchId), eq(payslip.employmentId, p.employmentId)))
+      .limit(1);
+    if (!slip) return null;
+    const [emp] = await tx
+      .select({ code: employment.employeeCode, name: person.fullName })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const [bears] = await tx
+      .select({
+        socso: employeeStatutoryMy.employerBearsSocso,
+        eis: employeeStatutoryMy.employerBearsEis,
+        skbbk: employeeStatutoryMy.employerBearsSkbbk,
+        tax: employeeStatutoryMy.employerBearsTax,
+        epf: employeeStatutoryMy.employerBearsEpf,
+      })
+      .from(employeeStatutoryMy)
+      .innerJoin(employment, eq(employment.personId, employeeStatutoryMy.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const [existing] = await tx
+      .select()
+      .from(payrollStatutoryAdjustment)
+      .where(
+        and(
+          eq(payrollStatutoryAdjustment.batchId, p.batchId),
+          eq(payrollStatutoryAdjustment.employmentId, p.employmentId),
+        ),
+      )
+      .limit(1);
+    const warnings = await batchDownstreamWarnings(tx, {
+      batchId: p.batchId,
+      companyId: batch.companyId,
+      payPeriod: batch.payPeriod,
+    });
+    const stored = (slip.statutory ?? {}) as Record<string, unknown>;
+    // The SYSTEM figure is the computed one, which is NOT the stored line once an override is applied —
+    // the stamp keeps the original, so "System Amount" survives every reprocess. Falls back to the stored
+    // line for a slip with no stamp (no override has ever been applied).
+    const stamp = (stored.adjustment ?? null) as StatutoryAdjustmentStamp | null;
+    const system: Record<StatutoryAdjustmentLine, number> = {} as Record<StatutoryAdjustmentLine, number>;
+    for (const k of STATUTORY_ADJUSTMENT_LINES) {
+      system[k] = round2(Number(stamp?.lines?.[k]?.system ?? stored[k] ?? 0));
+    }
+    return {
+      batchId: p.batchId,
+      employmentId: p.employmentId,
+      status: batch.status as 'draft' | 'processed' | 'closed',
+      payPeriod: batch.payPeriod,
+      companyId: batch.companyId,
+      employeeCode: emp?.code ?? null,
+      employeeName: emp?.name ?? null,
+      system,
+      current: existing ? valuesOfAdjustmentRow(existing as unknown as Record<string, unknown>) : null,
+      reason: existing?.reason ?? '',
+      grossPay: round2(Number(slip.grossPay)),
+      totalDeductions: round2(Number(slip.totalDeductions)),
+      netPay: round2(Number(slip.netPay)),
+      employerCost: round2(Number(slip.employerCost)),
+      employerBears: {
+        socso: bears?.socso ?? false,
+        eis: bears?.eis ?? false,
+        skbbk: bears?.skbbk ?? false,
+        tax: bears?.tax ?? false,
+        epf: bears?.epf ?? false,
+      },
+      ...warnings,
+    };
+  });
+}
+
+/** Validate one keyed amount. '' ⇒ null (no override). '0' ⇒ 0 (override to zero). Negative ⇒ refused. */
+export function parseAdjustmentAmount(raw: string | null | undefined, line: string): number | null {
+  const s = (raw ?? '').trim();
+  if (s === '') return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) throw new StatutoryAdjustmentAmountInvalidError(line);
+  return round2(n);
+}
+
+/**
+ * Save (or replace) the override set for one employee on one run.
+ *
+ * REFUSED unless the run is PROCESSED — a draft has no result to override and a closed run is frozen
+ * (0011_payroll_immutability.sql freezes its payslips at trigger level, so an app that permitted this
+ * would be offering an edit the database rejects). Refused HERE, before any write, with a named error,
+ * rather than letting the trigger raise a Postgres message onto the screen.
+ *
+ * Marks the run for recalculation and names the employee, so Close refuses until the result is caught up
+ * (the refusal already exists in closeBatch). Emits payroll-batch.statutory-adjusted carrying the line,
+ * system amount, applied amount and the reason — the "who typed what" half; the MONEY trail is already
+ * free, because payroll_employee_result_history records the before/after blobs on every regeneration.
+ */
+export function saveStatutoryAdjustment(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; values: StatutoryAdjustmentValues; reason: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const reason = (p.reason ?? '').trim();
+    if (!reason) throw new StatutoryAdjustmentReasonRequiredError();
+    const [batch] = await tx
+      .select({ status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch || batch.status !== 'processed') throw new StatutoryAdjustmentBatchNotOpenError();
+    const [slip] = await tx
+      .select({ statutory: payslip.statutory })
+      .from(payslip)
+      .where(and(eq(payslip.batchId, p.batchId), eq(payslip.employmentId, p.employmentId)))
+      .limit(1);
+    if (!slip) throw new StatutoryAdjustmentNotFoundError();
+
+    const cols: Record<string, string | null> = {};
+    const changed: { line: StatutoryAdjustmentLine; system: number; applied: number }[] = [];
+    const stored = (slip.statutory ?? {}) as Record<string, unknown>;
+    const stamp = (stored.adjustment ?? null) as StatutoryAdjustmentStamp | null;
+    for (const k of STATUTORY_ADJUSTMENT_LINES) {
+      const v = p.values[k];
+      if (v != null && v < 0) throw new StatutoryAdjustmentAmountInvalidError(k);
+      // NULL and 0.00 are DIFFERENT values and are written as such — the whole blank-vs-zero requirement.
+      cols[k] = v == null ? null : v.toFixed(2);
+      if (v != null) {
+        changed.push({ line: k, system: round2(Number(stamp?.lines?.[k]?.system ?? stored[k] ?? 0)), applied: round2(v) });
+      }
+    }
+
+    const [row] = await tx
+      .insert(payrollStatutoryAdjustment)
+      .values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        employmentId: p.employmentId,
+        ...cols,
+        reason,
+        createdByUserId: ctx.userId ?? null,
+      } as typeof payrollStatutoryAdjustment.$inferInsert)
+      .onConflictDoUpdate({
+        target: [payrollStatutoryAdjustment.batchId, payrollStatutoryAdjustment.employmentId],
+        set: { ...cols, reason, createdByUserId: ctx.userId ?? null, updatedAt: new Date() },
+      })
+      .returning({ id: payrollStatutoryAdjustment.id });
+
+    await markBatchNeedsRecalc(tx, ctx, { batchId: p.batchId, employmentIds: [p.employmentId] });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.statutory-adjusted',
+      actor: actorOf(ctx),
+      payload: { employmentId: p.employmentId, reason, lines: changed },
+    });
+    return { id: row.id, lines: changed };
+  });
+}
+
+/** Remove the override entirely and mark the run so the computed figures come back on the next run. */
+export function revertStatutoryAdjustment(ctx: SessionContext, p: { batchId: string; employmentId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch || batch.status !== 'processed') throw new StatutoryAdjustmentBatchNotOpenError();
+    const [existing] = await tx
+      .select()
+      .from(payrollStatutoryAdjustment)
+      .where(
+        and(
+          eq(payrollStatutoryAdjustment.batchId, p.batchId),
+          eq(payrollStatutoryAdjustment.employmentId, p.employmentId),
+        ),
+      )
+      .limit(1);
+    if (!existing) throw new StatutoryAdjustmentNotFoundError();
+    await tx
+      .delete(payrollStatutoryAdjustment)
+      .where(eq(payrollStatutoryAdjustment.id, existing.id));
+    await markBatchNeedsRecalc(tx, ctx, { batchId: p.batchId, employmentIds: [p.employmentId] });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.statutory-adjustment-reverted',
+      actor: actorOf(ctx),
+      payload: { employmentId: p.employmentId, reason: existing.reason },
+    });
+    return { reverted: true as const };
   });
 }

@@ -5315,6 +5315,56 @@ export const payrollInput = pgTable(
   (t) => [uniqueIndex('payroll_input_batch_emp_uq').on(t.batchId, t.employmentId)],
 );
 
+// ─────────── 2961a7ae — Statutory Adjustment: the manual override, stored as an INPUT ───────────
+// Migration 0430. One row per (batch, employment), mirroring payroll_input above — deliberately, because
+// this IS an input: the generator reads it and applies it to the computed figures. It is NOT a stamped
+// result. An override written onto the payslip row would be destroyed by the next reprocess (which
+// recomputes from scratch and bumps payslip.version), and this reporter reprocesses constantly. As an
+// input it is idempotent across reprocesses and Revert is a row delete plus a reprocess.
+//
+// EVERY AMOUNT IS NULLABLE WITH NO DEFAULT, AND THAT IS THE WHOLE "BLANK VS ZERO" REQUIREMENT:
+//   null → no override on this line, use the system-calculated figure
+//   0.00 → override this line to zero
+// Defaulting any column to 0 would collapse the two into one value.
+//
+// NINE LINES, NOT TEN: SKBBK / Lindung 24 Jam exists only as an EMPLOYEE-paid leg in the engine
+// (localization/my/payroll.ts socso() → { employer, employee, skbbk }, surfaced as socsoSkbbk). There is
+// no employer SKBBK figure to override, so there is no column for one.
+export const payrollStatutoryAdjustment = pgTable(
+  'payroll_statutory_adjustment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // Employee side — these move Total Deduction and therefore Net Pay.
+    pcb: numeric('pcb', { precision: 12, scale: 2 }),
+    epfEmployee: numeric('epf_employee', { precision: 12, scale: 2 }),
+    socsoEmployee: numeric('socso_employee', { precision: 12, scale: 2 }),
+    socsoSkbbk: numeric('socso_skbbk', { precision: 12, scale: 2 }),
+    eisEmployee: numeric('eis_employee', { precision: 12, scale: 2 }),
+    // Employer side — these move employer cost and can never touch net pay (structural: core/payroll.ts
+    // composes employer_cost from the employer legs and net_pay from the employee legs).
+    hrdf: numeric('hrdf', { precision: 12, scale: 2 }),
+    epfEmployer: numeric('epf_employer', { precision: 12, scale: 2 }),
+    socsoEmployer: numeric('socso_employer', { precision: 12, scale: 2 }),
+    eisEmployer: numeric('eis_employer', { precision: 12, scale: 2 }),
+    // Required on every save, including an adjustment to zero (the reporter's rule 10).
+    reason: text('reason').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('payroll_statutory_adjustment_batch_employment_uq').on(t.batchId, t.employmentId),
+    index('payroll_statutory_adjustment_batch_idx').on(t.batchId),
+  ],
+);
+
 // ─────────────── Typed pay components (Wave 3 #9, ADR-0025) ───────────────
 // GATED behind TYPED_PAY_COMPONENTS_ENABLED — the kernel only reads these when the flag is on.
 export const payComponentKindEnum = pgEnum('pay_component_kind', [
