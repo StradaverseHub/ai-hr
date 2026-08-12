@@ -3435,6 +3435,22 @@ export async function generatePayslips(
     ): {
       basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
       overtime: number; bonus: number; reimburse: number; deduct: number;
+      // ── Feedback 017d9c25 (r187) — the statutory BASE carve-outs the pay-item ticks demand ──
+      // `allowanceApplied` (the Y1 wage stream) and `bonus` (the Yt additional stream) are ROUTING
+      // decisions, driven by the item's declared pcb_remuneration_type. They say which PCB stream the
+      // money rides and which payslip box it prints in. They do NOT say which agency charges it — the
+      // EPF and SOCSO/EIS ticks do, and before r187 a declared remuneration type silently overrode them.
+      // These four numbers carry the ticks through to `pack.payroll.statutory` without disturbing the
+      // meaning of `wage` / `additional` (see the opts doc in localization/my/payroll.ts).
+      /** Of `allowanceApplied`: the part sitting on a 'normal' item ticked NOT subject to EPF. */
+      epfWageExcluded: number;
+      /** Of `bonus`: the part sitting on an 'additional' item ticked NOT subject to EPF. */
+      epfAdditionalExcluded: number;
+      /** Of `allowanceApplied`: the part sitting on a 'normal' item ticked NOT subject to SOCSO/EIS. */
+      socsoWageExcluded: number;
+      /** Of `bonus`: the part sitting on an 'additional' item ticked SUBJECT TO SOCSO/EIS (the OT1_5 leg —
+       *  the one carve-out that ADDS a contribution rather than removing one). */
+      socsoWageExtra: number;
       recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
@@ -3457,6 +3473,13 @@ export async function generatePayslips(
           bonus: round2(bonusByEmp.get(e.employmentId) ?? 0),
           reimburse: 0,
           deduct: 0,
+          // 017d9c25 — with typed components off there are no pay-item ticks to honour: the figures come
+          // from compensation + payroll_input, whose agency treatment is fixed by the legacy contract.
+          // All-zero ⇒ the statutory call is byte-identical to the pre-r187 kernel.
+          epfWageExcluded: 0,
+          epfAdditionalExcluded: 0,
+          socsoWageExcluded: 0,
+          socsoWageExtra: 0,
           recordLines: [],
           // Nothing to itemise: with typed components off there IS no per-component detail — the figures
           // come from compensation + payroll_input, which is a different shape entirely.
@@ -3471,6 +3494,8 @@ export async function generatePayslips(
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
+      // 017d9c25 — the four base carve-outs, accumulated beside the buckets they carve (see the return type).
+      let epfWageExcluded = 0, epfAdditionalExcluded = 0, socsoWageExcluded = 0, socsoWageExtra = 0;
       const recordLines: PayslipRecordLine[] = [];
       // Feedback 862ed0ad — per-component provenance for the CASH buckets. recordLines already itemises
       // record-only components, which is why one-off items could always be broken down; the PAID recurring
@@ -3647,9 +3672,26 @@ export async function generatePayslips(
             wageAllow = round2(wageAllow + taxable);
             contributes('wage', taxable);
             if (c.hrdf) hrdfAllow = round2(hrdfAllow + taxable);
+            // ── Feedback 017d9c25 (r187) — THE FIX. ──────────────────────────────────────────────────
+            // The declaration above chose the STREAM (Y1 vs Yt: a PCB question, and the payslip box).
+            // It does NOT get to answer the agency question as well. Before r187 it did — reaching this
+            // `continue` skipped the epf/socso flag inference entirely, so an allowance ticked "not
+            // subject to EPF" and classified 'normal' was charged EPF anyway (measured on production:
+            // A0013's 2026-01 slip charged EPF on 7,552.00 instead of 5,952.00, employee 836 vs 660).
+            // The ticks are now carried to the statutory call as base carve-outs; routing is unchanged,
+            // so gross, net-before-statutory, the payslip boxes and the PCB stream are all untouched.
+            if (!c.epf) epfWageExcluded = round2(epfWageExcluded + taxable);
+            if (!c.socso) socsoWageExcluded = round2(socsoWageExcluded + taxable);
           } else {
             bonusAmt = round2(bonusAmt + taxable);
             contributes('bonus', taxable);
+            // Same rule on the additional stream. `epfBonus2012` codes are validated to require
+            // includedInEpf (core/pay-components.ts `epfBonusRequiresEpf`), so they never carve EPF out.
+            // The SOCSO leg is the ADDING one: Overtime 1.5 on this tenant is ticked "not EPF, yes
+            // SOCSO/EIS" but classified 'additional', so today it is charged EPF and left OUT of
+            // SOCSO/EIS — wrong in both directions. Both directions are corrected here.
+            if (!c.epf) epfAdditionalExcluded = round2(epfAdditionalExcluded + taxable);
+            if (c.socso) socsoWageExtra = round2(socsoWageExtra + taxable);
           }
           continue;
         }
@@ -3658,7 +3700,7 @@ export async function generatePayslips(
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -3952,6 +3994,13 @@ export async function generatePayslips(
           employeeRate: e.epfEmployeeRate != null ? Number(e.epfEmployeeRate) : null,
           employerRate: e.epfEmployerRate != null ? Number(e.epfEmployerRate) : null,
         },
+        // Feedback 017d9c25 (r187) — the pay-item EPF / SOCSO-EIS ticks, carried through as base carve-outs.
+        // `wagesExOt` already has `unpaidDeduction` taken off it, so a carve-out can in principle exceed the
+        // base it carves; the pack clamps at 0 (Math.max(0, wage - excluded)).
+        epfWageExcluded: en.epfWageExcluded,
+        epfAdditionalExcluded: en.epfAdditionalExcluded,
+        socsoWageExcluded: en.socsoWageExcluded,
+        socsoWageExtra: en.socsoWageExtra,
       };
       // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
       // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
@@ -3974,14 +4023,19 @@ export async function generatePayslips(
             : 0;
       // `zakatCurrent` defaults to the resolved figure, but the percent_of_pcb probe passes 0 to read the
       // pre-offset normal MTD without a circular dependency.
-      const computeMonth = (additional: number, ot: number, zakatCurrent = effectiveZakat) =>
+      // 017d9c25 — `bases` lets the additional-run BASELINE call drop THIS run's additional-stream
+      // carve-outs. The baseline means "the cumulative month WITHOUT this run's additional remuneration",
+      // so a carve-out describing money this run is paying must not appear on that side of the delta, or
+      // the increment comes out wrong in both directions. The WAGE-side carve-outs stay on both sides:
+      // both calls re-fold the same recurring components, so they describe the same money.
+      const computeMonth = (additional: number, ot: number, zakatCurrent = effectiveZakat, bases = stOpts) =>
         pack.payroll.statutory(
           wagesExOt,
           taxProfile,
           additional,
           ot,
           { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent },
-          stOpts,
+          bases,
           rules,
         );
       // Step 4 (f3148da1) — the OT figure fed to the statutory engine INCLUDES the converted excess, so the
@@ -3996,11 +4050,30 @@ export async function generatePayslips(
       const stCore = isAdditionalRun
         ? deltaStat(
             computeMonth(earlierRun.additional + bonus, earlierRun.overtime),
-            computeMonth(earlierRun.additional, earlierRun.overtime),
+            computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {
+              ...stOpts,
+              epfAdditionalExcluded: 0,
+              socsoWageExtra: 0,
+            }),
           )
         : computeMonth(bonus, otStat);
+      // ── Feedback 017d9c25 (r187) — THE WORKING BETWEEN the pay items and the answers ──
+      // "Today you can see the pay items and you can see the answers, but not the working in between."
+      // These are the four figures each agency was actually charged on, for THIS computation (on an
+      // additional run that is the cumulative month, matching the `now` side of the delta). Read as
+      // absent on every payslip written before r187, which is exactly what the disclosure renders.
+      const statAdditional = isAdditionalRun ? round2(earlierRun.additional + bonus) : bonus;
+      const statOvertime = isAdditionalRun ? earlierRun.overtime : otStat;
+      const statBases = {
+        epf: Math.max(0, round2(wagesExOt - en.epfWageExcluded)),
+        epfAdditional: Math.max(0, round2(statAdditional - en.epfAdditionalExcluded)),
+        socsoEis: Math.max(0, round2(wagesExOt + statOvertime - en.socsoWageExcluded + en.socsoWageExtra)),
+        pcb: round2(wagesExOt + statOvertime + statAdditional),
+        hrdf: isAdditionalRun ? 0 : hrdfBase,
+      };
       const st = {
         ...stCore,
+        bases: statBases,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
         zakat: effectiveZakat,
