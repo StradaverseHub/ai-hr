@@ -2465,6 +2465,13 @@
       "when": 1781862533000,
       "tag": "0433_employee_list_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 434,
+      "version": "7",
+      "when": 1781862534000,
+      "tag": "0434_attendance_request_remark_kind_attachment",
+      "breakpoints": true
     }
   ]
 }

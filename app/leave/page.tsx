@@ -110,6 +110,12 @@ export default async function LeavePage({
     // already saved keeps working against its new base path.
     // R37 e5a158d3: as-at date for the (relocated) detailed leave-balance table's entitlement breakdown.
     asOf?: string;
+    // 2166ef79 — the date the Request Leave dialog OPENS ON. My Attendance offers "request leave instead"
+    // on an absent day and sends the employee here with `?apply=1&start=YYYY-MM-DD`, so the absent date is
+    // carried across rather than retyped. `apply=1` (a46fe0c0) already opens the dialog; this fills it in.
+    // Read here rather than inside the dialog because `startDefault` is already a prop it takes — the
+    // alternative was a second dialog, which the plan explicitly rules out.
+    start?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -541,7 +547,10 @@ export default async function LeavePage({
               {ess && (
                 <RequestLeaveDialog
                   types={requestLeaveTypeOptions}
-                  startDefault={today}
+                  // 2166ef79 — `?start=` when My Attendance sent the employee here to explain an absent
+                  // day, otherwise today, exactly as before. Shape-checked, never passed through raw: this
+                  // value seeds a date input and rides no further.
+                  startDefault={/^\d{4}-\d{2}-\d{2}$/.test(sp.start ?? '') ? sp.start! : today}
                   employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                   submitAction={requestLeaveAction}
                   previewAction={previewLeaveDeductionAction}
