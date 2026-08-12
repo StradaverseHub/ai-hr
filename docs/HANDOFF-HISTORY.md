@@ -1,3 +1,108 @@
+## r180 (2026-08-10) — TWO DEFECT FIXES, BOTH DEPLOYED. One of them was paying people twice.
+
+**1. RECURRING PAY ITEMS HAVE BEEN PAYING TWICE, AND IT REACHED ISSUED PAYSLIPS.** Found while planning
+board item `2f889bae`, then verified independently on production.
+
+`setEmploymentPayComponent` closed the prior row ON the new start date, and its comment claimed "so there
+is no double-count". **`validTo` is INCLUSIVE for pay components** — the kernel selects
+`validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)` and pays each returned row its
+FULL amount — so both rows sat in the month containing the change.
+
+MEASURED ON PRODUCTION, not inferred: **four employments carry overlapping live rows**, two of them real
+customer records (Eee Lee Yong / Fiamma, TEST0002 / ISEDECOR). **Aisyah Rahman's 2026-04, 2026-05 and
+2026-07 payslips each read allowance 140.00 where a single row gives 120.00** — RM20 per month on three
+issued slips. One row is structurally impossible (`valid_from 2026-01-31`, `valid_to 2026-01-06`); Postgres'
+own `daterange` refuses to construct it, which is how it surfaced.
+
+**THE ROOT CAUSE IS A SEMANTIC MISMATCH BETWEEN TWO TABLES THAT SHARE A WRITER SHAPE.** `core/comp.ts` does
+the IDENTICAL close-at-`effectiveFrom`, and compensation is safe — because its kernel reads a single open
+row and its `compensation_no_overlap` EXCLUDE constraint uses a HALF-OPEN daterange, i.e. `valid_to` is
+EXCLUSIVE there. Same writer, opposite boundary semantics, opposite safety. **Do not "align" one to the
+other without moving the reader that goes with it** — this is recorded at the call site.
+
+**WHAT SHIPPED:** the prior row is closed the DAY BEFORE the new start; a restatement from the row's own
+start date SUPERSEDES it rather than inverting the window; a backwards restatement is refused. Chosen over
+flipping the kernel's `gte` to `gt`, which would silently change what every EXISTING end-dated row pays in
+its final month.
+
+⚠️ **THE FIX IS NECESSARY BUT NOT SUFFICIENT, AND THE SUITE SAYS SO.** A MID-MONTH restatement STILL pays
+twice: the two windows are adjacent (`…-05-09` and `05-10-…`) but both overlap the month, and the kernel
+pays full amount for any overlap. The first regression test written returned **1554 = 777 + 777**. It is
+recorded as `it.fails` in `test/fixed-transaction.test.ts` — the same idiom this repo uses for the known
+width no-op — so the gate goes RED when someone fixes it. **Fixing it is a DESIGN DECISION**: prorate a
+partial window, take latest-row-wins per period, or refuse a mid-period restatement. Each changes what
+correctly-dated rows pay today, so it belongs to the reporter, not to a patch.
+
+**THREE EXISTING ASSERTIONS PINNED THE BUG** while calling it "no double-count"; they are corrected. The new
+boundary test asserts the MONEY through a real payslip — the pre-existing "no double-count" test only ever
+checked row shape and never generated a payslip, which is exactly how this shipped.
+
+**NOT DONE, DELIBERATELY:** the data repair of the four employments and the overlap EXCLUDE constraint. Both
+change customer records and sit in `2f889bae`'s pushed plan awaiting approval. The constraint CANNOT be
+applied before the repair. **The uniqueness key is an open question** — the pending constraint is keyed on
+employment + component, while board item `2aed39d4` asks for employee + pay item + PAYROLL CYCLE.
+
+**THE REPORTER HAS INDEPENDENTLY REPORTED THE SAME DEFECT as `2aed39d4`** ("the system can create duplicated
+Start Date / End Date / Payroll Cycle records ... incorrect payroll calculations"). They arrived from the UI,
+we arrived from the data. Do not plan the work twice.
+
+**CORRECTED MEASUREMENT:** the paid-item removal guard depends on payslips storing WHICH component produced
+a line. This file used to cite 7 of 50 payslips (~14%). Re-measured 2026-08-10: **19 of 83 carry
+`componentLines`**, and of the 24 live non-BASIC items a processed payslip covers, only 12 carry line
+evidence — so the guard still refuses about half of what it should.
+
+**2. THE PERSONNEL RECALC-REASON LABELS.** `people.detail.recalcReason.*` is a COMPUTED key, invisible to
+i18n coverage check C. The page had a fallback that COULD NEVER FIRE: it compared the translated value
+against the RELATIVE key while next-intl returns the FULLY-QUALIFIED path on a miss. Measured live:
+**50 of 72 audit rows rendered a raw key path at the user**. Fixed with `t.has` (the house idiom —
+`app/admin/scheduled-actions/page.tsx` does the same), so an unlabelled reason degrades to the raw word;
+five missing labels added in all six catalogues. **It PREDATED r179** — the block is byte-identical at
+`d51c8f4d`. `test/recalc-reason-labels.test.ts` pins both halves, strips comments before source assertions
+(its own explanation quotes the broken expression), and deliberately does NOT claim to enumerate every
+emitted reason: six catalogued reasons appear nowhere in source, so any static list is provably incomplete.
+
+
+## r184 (2026-08-11) — THE PAYROLL REPROCESS PAIR, BUILT AND DEPLOYED
+
+`fbcf706d` (add a period-eligible employee to a processed run without resetting it) and `7076f8af` (Reset
+lands back in the run flow; the adjustments panel and CSV import move off the run screen). Built in ONE
+worktree, sequentially, because they overlap `app/payroll/[batchId]/page.tsx`, `app/payroll/actions.ts`,
+`core/payroll.ts` and all six catalogues — the file-overlap rule, not the theme rule.
+Gate **637 files / 6 chunks / every chunk exit=0 / 8,121 tests**; tsc 0; `next build` clean; render-checked
+on a seeded dev server with zero MISSING_MESSAGE; deployed and proved by a zero-change dry-run.
+**NO MIGRATION — `0426` is still free.**
+
+**THE VERIFY-BEFORE-BUILDING GATE IS WHY THIS WORKED, AND IT SHOULD BE COPIED.** The plan's load-bearing
+claim — that the subset path inserts a correct payslip for an employment with no payslip — was derived by
+READING the engine and had never been executed: **0 of 123 production result-history rows had a null
+`version_before`.** The build was gated on proving it first, with an explicit instruction to STOP and
+re-plan if it failed. It held (gross 4000.00 at version 1, batch totals moved by the addition alone, the
+already-paid payslip byte-identical), and measuring it turned three PREDICTED gaps into MEASURED ones:
+`employee_count` stayed 1, the audit row rendered a phantom 0.00→4000 rise, and the no-salary case failed
+closed with a misleading message. A premise that has never executed in production is a hypothesis; test it
+before you build a screen on it.
+
+**TWO MONEY GUARDS WERE ADDED BEYOND THE PLAN, AND THAT WAS RIGHT.** Item 5's scope bypass makes two
+previously UNREACHABLE double-payment paths reachable: a claim allowance already written into
+`payroll_input` by the draft-only prefill would be paid from the added payslip AND left payable on the next
+run. Both now fail closed with a truthful message. **The claim mark-paid on a subset is deliberately
+STRICTER than the full path** — the full generation infers "got a payslip therefore was disbursed" because
+prefill and generation are one workflow; an add is not that workflow, so the requeue arm is not present on
+a subset at all. A reviewer will notice the asymmetry; it is deliberate.
+
+**`applyLoansForBatch` gained an OPTIONAL 5th parameter.** Omitted ⇒ byte-identical for the sole existing
+caller. An empty array means "nobody" and returns early rather than widening to "all" — the difference
+between those two readings is a double loan advance.
+
+**THE PANEL WAS MOVED, NOT DELETED, and the board point was honoured BY PATH.** It is the only route by
+which approved overtime, claims, loan instalments, shift differential, zakat, TP1 relief and attendance
+allowances reach a payslip. Deleting it would leave approved amounts with no path to anyone's pay, silently.
+`test/tp1-relief-reaches-payroll.test.ts` went red on all six bridges the moment the panel left the run
+screen — it exists because `prefillTp1Action` once shipped bound to no form — and it was MOVED AND
+STRENGTHENED, not relaxed. Seven prefill actions gained a `returnTo` because they hard-redirected to the
+very screen this item removes from the path.
+
+
 ## r178 (2026-08-10) — plans-only round, superseded
 
 Every plan it pushed has since been approved, built or re-planned. Kept for its DECISIONS.

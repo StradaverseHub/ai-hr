@@ -18,99 +18,208 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-10 (r177 + r179 + r180 ALL SHIPPED · r178 was plans-only)
+## CURRENT STATE — snapshot 2026-08-12 (r185 SHIPPED · r186 BUILT, NOT DEPLOYED)
 
-**`main@1d5ceab0` IS WHAT RUNS ON PRODUCTION, and there is NO pending deploy** — verified by a
-zero-change `rsync -azi --delete --dry-run` after the last deploy (not by `deploy.sh` succeeding, which is
-not proof). **Production is on 345 migrations. Next free migration is `0426`** (`0423` was allocated and
-deliberately unused; gaps are fine).
+**`main@468fc827` IS WHAT RUNS ON PRODUCTION** — r185, seven items, deployed 2026-08-12 and verified by a
+zero-change `rsync -azi --delete --dry-run` (not by `deploy.sh` succeeding, which is not proof; the one
+line it reports is `next-env.d.ts`, which the box regenerates during its own build). **Production is on
+347 migrations** (`0426` fixed-transaction overlap EXCLUDE, `0427` payroll import codes). Constraint and
+table both confirmed present on the live schema, GRANTs present, `GET /` 401, service active.
 
-**r177 IS NO LONGER HELD — it shipped 2026-08-10 with r179, on the owner's command.** `0425` applied
-(344 -> 345) after a shadow rehearsal PASS against a live-shaped schema; the three `payroll_anomaly*` tables
-exist on production. Everything this file used to say about r177 being held is history.
+⚠️ **r186 IS BUILT AND MERGED NOWHERE — it lives on `build/r186` and is NOT deployed.** Eight items,
+migrations `0428` (claim block limits + mileage type) and `0429` (shift cut-off + four-way day kinds).
+**Next free migration is `0430`.** Do not treat `main` as containing it. Full entry below.
 
-**⚠️ THE GATE NOW NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see
-"Local Postgres" below. Four gates died on 2026-08-10 before this was understood.
+**⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
+
+⚠️ **A GATE POISONED BY A CONCURRENT DEV SERVER LOOKS EXACTLY LIKE A BROKEN ROUND, AND IT HAPPENED AGAIN
+ON 2026-08-12.** r186's first gate came back 4 of 6 chunks red. Three of those chunks had **zero**
+`AssertionError`s and 9–10 tests each timing out at ~187s; the fourth had exactly one assertion failure
+that was a real defect. The cause was planning agents running `pnpm dev` + `db:seed` while the gate ran —
+rule 12, broken by the parent's own briefing, not by an agent. **The diagnostic that separated them in one
+command was the per-chunk cause tally**, not reading test names:
+
+    for f in /tmp/aihr-gate/chunk*.log; do
+      printf "%s: AssertionError=%s timeouts=%s\n" "$(basename $f)" \
+        "$(grep -c AssertionError $f)" "$(grep -c 'timed out' $f)"; done
+
+**`/tmp/aihr-gate/chunkN.log` is where the real failure text lives** — the summary log the gate prints to
+stdout carries counts only, so grepping IT for `AssertionError` finds nothing and invites the wrong
+conclusion that everything was environmental. Read the chunk logs.
+
+⚠️ **A BACKGROUND `Bash` TASK'S EXIT CODE IS ITS LAST COMMAND'S.** `gate-chunked.sh > log; echo "GATE_EXIT=$?"; date`
+reports **`date`'s** exit status to the task notification — so the harness said "completed (exit code 0)"
+over a RED gate. Same class as the pipe trap in "Running and reading test gates". Read `GATE_EXIT` out of
+the output file, never the notification.
 
 **r176 (2026-08-10) SHIPPED ADR-0077 SLICES 6 AND 9** — full entry in `docs/HANDOFF-HISTORY.md`.
 Slice 6's remaining piece (the deploy-failing flip) still needs the owner; slice 9 is complete.
 
-### r177 · r179 · r180 — ALL SHIPPED 2026-08-10. Full entries in `docs/HANDOFF-HISTORY.md`.
+### r177 · r179 · r180 · r184 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
-**What is now live that was not this morning:** the ADR-0076 payroll anomaly layer (r177, migration `0425`,
-three tables); `b00f9e6e` the overtime seeder guard; `388e53c2` Team Leave Tracker as the way in to the
-three HR leave sections, including the sidebar-highlight fix that was the reporter's original complaint;
-`98e69987` Transaction Detail; `f35f758a` the Individual Payslip screen and document. Gate on `main`:
-**634 files across 6 chunks, every chunk exit=0, 8,050 tests**; tsc 0; `next build` clean; four-identity
-render check with zero MISSING_MESSAGE.
+⚠️ **THE PANEL ROUND TRIP IS NOW COMPLETE, AND IT IS THE MOST EXPENSIVE LESSON ON THIS BOARD.**
+r179 REMOVED the left-hand employee panel from Transaction View and Individual Payslip in favour of a top
+search field. The approved plan EXPLICITLY warned that the reporter had previously asked for that panel to
+EXIST on the neighbouring payroll screens, said both could not be true, and offered "reject this and say
+so". They approved it, saw it live, contested both — and **r185 put the panel back on both screens.**
 
-⚠️ **TWO OF THOSE ITEMS CAME STRAIGHT BACK AS `contested`, AND THE REASON IS WORTH KEEPING.** `98e69987`
-and `f35f758a` both removed the left-hand employee panel in favour of a top search field. The approved plan
-EXPLICITLY warned that the reporter had previously asked for that panel to EXIST on the neighbouring payroll
-screens (`f3ae3245`, `ec845c7d`, both deployed), said both could not be true, and offered "if you would
-rather every payroll screen moved to a top row, reject this and say so". They approved it, saw it live, and
-changed their mind. **The lesson is not that the warning failed — it is that a warning in prose does not
-substitute for seeing it.** A mockup showed the new layout; nothing showed them what they were LOSING.
-`f35f758a` additionally now wants preview in a NEW TAB, Earnings beside Deductions, a new Non-Payable
-Amount section, and the bank account UNMASKED.
+**The lesson is not that the warning failed — it is that a warning in prose does not substitute for seeing
+it.** A mockup showed the new layout; nothing showed them what they were LOSING. Draw BOTH states whenever
+a plan trades one thing away for another.
+
+**AND IT MAY BE ABOUT TO HAPPEN A THIRD TIME.** Open item `1372d169` "Payroll Transaction View – Full-Width
+Layout Enhancement" is asking for the width back. Full width and the left panel are the SAME trade-off they
+have now reversed once in each direction. Whoever plans it must show both states and say plainly that this
+is the choice — **do not silently re-remove the panel they just asked to have back.**
 
 ### ⚠️ THE ROSTER WRITE PERMISSION IS NOT SYMMETRIC — DELETE IS NOT GUARDED BY THE DATABASE
 
 `roster_assignment_rls` is a `FOR ALL` policy, so `WITH CHECK` (`can_admin_employment`) governs INSERT and
 the new row of UPDATE, while **DELETE is governed by `USING` alone (`can_see_employment`)** — which a
 supervisor, and the employee themselves, both pass. Only the application guard `assertRosterAdmin` stops
-`clearRoster`. The INSERT/UPDATE half WAS measured on production (a rolled-back transaction raised `42501`
-on a tomorrow-dated row for a real direct report); the DELETE half rests on the policy text plus documented
-PostgreSQL semantics, because the classifier blocked firing even a rolled-back DELETE.
-**No live exposure — the app guard covers it — but "the database decides who may change the roster" is only
-true for two of the three verbs, and any widening must split the policy or the two answers stay different.**
-Full narrative: `docs/HANDOFF-HISTORY.md`.
-### r184 (2026-08-11) — THE PAYROLL REPROCESS PAIR, BUILT AND DEPLOYED
+`clearRoster`.
 
-`fbcf706d` (add a period-eligible employee to a processed run without resetting it) and `7076f8af` (Reset
-lands back in the run flow; the adjustments panel and CSV import move off the run screen). Built in ONE
-worktree, sequentially, because they overlap `app/payroll/[batchId]/page.tsx`, `app/payroll/actions.ts`,
-`core/payroll.ts` and all six catalogues — the file-overlap rule, not the theme rule.
-Gate **637 files / 6 chunks / every chunk exit=0 / 8,121 tests**; tsc 0; `next build` clean; render-checked
-on a seeded dev server with zero MISSING_MESSAGE; deployed and proved by a zero-change dry-run.
-**NO MIGRATION — `0426` is still free.**
+**THIS IS NO LONGER INFERRED — r186's `42afb2d2` MEASURED ALL THREE VERBS** (this entry used to say the
+DELETE half rested on policy text plus documented PostgreSQL semantics). Run as the real unprivileged role
+(`rolsuper=f`, `rolbypassrls=f`) inside a **rolled-back** transaction, with a manager holding an active
+administrative `reporting_line` to the subject:
 
-**THE VERIFY-BEFORE-BUILDING GATE IS WHY THIS WORKED, AND IT SHOULD BE COPIED.** The plan's load-bearing
-claim — that the subset path inserts a correct payslip for an employment with no payslip — was derived by
-READING the engine and had never been executed: **0 of 123 production result-history rows had a null
-`version_before`.** The build was gated on proving it first, with an explicit instruction to STOP and
-re-plan if it failed. It held (gross 4000.00 at version 1, batch totals moved by the addition alone, the
-already-paid payslip byte-identical), and measuring it turned three PREDICTED gaps into MEASURED ones:
-`employee_count` stayed 1, the audit row rendered a phantom 0.00→4000 rise, and the no-salary case failed
-closed with a misleading message. A premise that has never executed in production is a hypothesis; test it
-before you build a screen on it.
+| verb | supervisor → direct report | employee → self |
+|---|---|---|
+| INSERT, future-dated | **42501 refused** | 42501 refused |
+| UPDATE, future-dated, constraint-valid | **42501 refused** | — |
+| DELETE, future-dated **and** past-dated | **`DELETE 1` ALLOWED** | **`DELETE 1` ALLOWED** |
 
-**TWO MONEY GUARDS WERE ADDED BEYOND THE PLAN, AND THAT WAS RIGHT.** Item 5's scope bypass makes two
-previously UNREACHABLE double-payment paths reachable: a claim allowance already written into
-`payroll_input` by the draft-only prefill would be paid from the added payslip AND left payable on the next
-run. Both now fail closed with a truthful message. **The claim mark-paid on a subset is deliberately
-STRICTER than the full path** — the full generation infers "got a payslip therefore was disbursed" because
-prefill and generation are one workflow; an add is not that workflow, so the requeue arm is not present on
-a subset at all. A reviewer will notice the asymmetry; it is deliberate.
+Negative control: the same employee against a row they cannot see returns **`DELETE 0`** — silently
+filtered, no error — which is exactly what `USING` does and proves the ALLOWED result is not a harness
+artefact. Re-measured through the real functions: `assignShift` throws, `setRestDay` throws,
+**`clearRoster` does not throw at all**. So of the three brushes, **`clear` is the only one whose refusal
+is produced by the guard rather than doubled by the database.**
 
-**`applyLoansForBatch` gained an OPTIONAL 5th parameter.** Omitted ⇒ byte-identical for the sole existing
-caller. An empty array means "nobody" and returns early rather than widening to "all" — the difference
-between those two readings is a double loan advance.
+**No live exposure — the app guard covers it.** The hazard is forward-looking: any future screen, import or
+bulk tool that removes shifts inherits protection for add and change and silently does not for remove.
+**Raised as board item `154865f4`** so the reporter owns the decision; closing it needs a restrictive
+DELETE policy or per-command policies.
+### r185 (2026-08-12) — SEVEN APPROVED ITEMS, SHIPPED. Migrations `0426` + `0427`.
 
-**THE PANEL WAS MOVED, NOT DELETED, and the board point was honoured BY PATH.** It is the only route by
-which approved overtime, claims, loan instalments, shift differential, zakat, TP1 relief and attendance
-allowances reach a payslip. Deleting it would leave approved amounts with no path to anyone's pay, silently.
-`test/tp1-relief-reaches-payroll.test.ts` went red on all six bridges the moment the panel left the run
-screen — it exists because `prefillTp1Action` once shipped bound to no form — and it was MOVED AND
-STRENGTHENED, not relaxed. Seven prefill actions gained a `returnTo` because they hard-redirected to the
-very screen this item removes from the path.
+`98e69987` · `f35f758a` · `2aed39d4` · `587ee719` · `4157a498` · `510f4bd1` · `009c8a37`.
+74 files, +9046/−2075. Gate **638 files / 6 chunks / every chunk exit=0 / 8,216 tests / 1 expected fail /
+0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 347/347; render check 0 MISSING_MESSAGE
+across 16 routes × 6 locales. All seven marked `deployed`.
 
-### ⚠️ THE FIXTURE TIME BOMB HAS NOW FIRED TWO NIGHTS RUNNING — READ THIS BEFORE "FIXING" IT AGAIN
+**THE BOARD SAID `approved = 1` AND IT WAS ACTUALLY 8** — and by the time the round finished it was 16.
+This file's own instruction ("Counts live in CURRENT STATE … **Always RE-COUNT**") is the only reason the
+round was not planned around one item. It has now been wrong in this direction three times.
 
-On 2026-08-10 three leave-cancellation cases went red; on 2026-08-11 it was **11 cases across 3 files**,
-mid-gate, at 00:24 MYT: `LeaveCancellationTooLateError: Leave for 2026-08-11 can no longer be cancelled`.
-The fixtures hardcode a 10–12 Aug 2026 window chosen when that was "well in the future". **Each day more of
-it rots into the past and the product correctly refuses.** The product is right; the tests are wrong.
+#### ⚠️ THE DEPLOY ORDER WAS NOT THE USUAL ONE, AND THE FAILURE IT AVOIDED LOOKS LIKE NOTHING YOU EXPECT
+
+**`scripts/repair-fixed-transaction-overlaps.ts --apply` had to run BEFORE `0426`.** `deploy.sh` is what
+runs `db:migrate`, and the repair script only reaches the box via the release rsync — so the release was
+split: **rsync → repair → `deploy.sh` → zero-change dry-run**, not one `improve:release` call. Keep that
+shape for any migration whose precondition is a data repair.
+
+Production carried ONE inverted row (`valid_to` before `valid_from`). An inverted row does **not** raise an
+exclusion conflict — `daterange()` raises `range lower bound must be less than or equal to range upper
+bound` while merely BUILDING the index entry, so the `ALTER TABLE` aborts on an error mentioning neither
+overlaps nor the constraint. **`gate:shadow` cannot catch this**: it dumps the live schema STRUCTURE ONLY,
+no rows, so it passed 347/347 while production would have failed. A shadow PASS proves a migration is
+well-formed, not that it will apply.
+
+Applied outcome: 9 rows superseded (1 inverted + 8 overlapping), 52 → 43 live, payslips untouched at 84,
+and **0 remaining overlapping pairs measured with the constraint's own predicate**. X000001 keeps the
+150.00 written last, which does NOT match the 100.00 its July payslip paid — stated in the approved plan,
+intended, not a defect.
+
+#### THE `daterange` EXCLUDE IS NOW PROVEN, AND THE BOUNDS ARE LOAD-BEARING
+Executed on **PostgreSQL 16.14, which is what production runs**, across eight probes:
+
+    daterange('2026-01-01','2026-07-01','[]') && daterange('2026-07-01','9999-12-31','[]')  ->  true
+    daterange('2026-01-01','2026-07-01','[)') && daterange('2026-07-01','9999-12-31','[)')  ->  false
+
+`employment_pay_component.valid_to` is **INCLUSIVE**; `compensation.valid_to` is **EXCLUSIVE**. The two
+precedents for this constraint shape (`0004`, `0117`) are both HALF-OPEN — **copy their shape, never their
+bounds.** `COALESCE(valid_to, DATE '9999-12-31')` because `'[]'` cannot be applied to an infinite bound.
+The same asymmetry bit twice: `overlapsClosedPeriod` was written for `compensation` and its `to` is
+EXCLUSIVE, so it is called with `addDaysIso(validTo, 1)` or a row whose last paid month IS the closed month
+walks past the guard.
+
+#### THREE APPROVED PLANS WERE WRONG ABOUT THE TREE, AND THE BUILDS WERE RIGHT TO REFUSE THEM
+A plan is a specification, not scripture. Each was reported, not silently followed or silently dropped.
+1. **`2aed39d4` step 5 misread `test/fixed-transaction.test.ts:323`** — its two windows do not touch, so
+   "gap is intended" still holds. The overlapping sibling was what changed.
+2. **`2aed39d4` step 7 named `processedPeriodsTx`**, which returns processed-OR-closed and would have
+   re-implemented the very rule the step exists to reverse. `closedPeriodsTx` is correct.
+3. **`f35f758a` item 4 called a comment stale** that the SAME ROUND made true again.
+
+#### ⚠️ A LINT RULE FIRING IDENTICALLY IN EVERY LOCALE IS EVIDENCE ABOUT THE LINT RULE
+`scripts/i18n-check.mjs` flagged `payroll.historyImport.missingColumns`, diagnosed TWICE (by an agent and
+by the parent relaying it) as a translated placeholder name that would throw `FORMATTING_ERROR`.
+**Both diagnoses were wrong.** `{count, plural, one {column} other {columns}}` — `column` is a plural
+BRANCH BODY, ordinary text, not an argument. The tell both missed: it fired in **all five** non-English
+locales. Five translators do not make the same mistake; a checker does. Its regex cannot tell a branch body
+from an argument name. Verified properly by FORMATTING all 786 messages in the namespace through
+`intl-messageformat` with the arguments the call sites pass (0 failures) and parsing all 51,564 (0
+unparseable). **Follow-up, not on the board: teach the checker to skip plural/select branch bodies.**
+
+#### THE SIX CATALOGUES SURVIVED FIVE BRANCHES BECAUSE THE MERGE WAS AUDITED, NOT ASSUMED
+Five branches edited all six files and **28 keys were deliberately DELETED**. This is the r138/r141 trap:
+a naive recursive merge reads "present in theirs, absent in ours" as an addition and resurrects every
+retired key. **PRESENCE IS A VALUE — consult the merge BASE for absence too.** Git's line-based merge did
+handle it, but that was verified with a base-aware audit (RESURRECTED / LOST / CLOBBERED) against the base
+and all five sides: **8549 → 8668 keys, zero problems**, union +127/−28 reconciling exactly, all 28
+deletions confirmed absent BY NAME. Note agents' self-counts ran high — **a REWORDED key is not an
+addition.** Tool kept at `scratchpad/check-catalog-merge.mjs`; worth promoting into the repo.
+
+#### `i18n/request.ts` IGNORED next-intl's REQUESTED LOCALE — A WHOLE FEATURE WOULD HAVE SHIPPED SILENT
+`getRequestConfig` took no arguments and read the cookie unconditionally, so `getTranslations({locale})`
+resolved to the COOKIE's catalogue: HTTP 200, a valid PDF, wrong language, every gate green. Now honours
+`requested`, falling back to the cookie. **Blast radius measured before accepting: exactly 1 of 269
+`getTranslations` call sites passes an explicit locale.** Proven by decompressing both PDFs' content
+streams — the override beats the cookie in BOTH directions and the row count holds at 52 across the swap.
+
+#### VERIFY ON THE ARTEFACT, NOT ON THE LAYOUT MATHS
+r175a's CP22 lesson applied to the new two-column payslip: rasterised in **both** `mutool` and `pdftoppm`
+across five fixtures, row count read off the artefact (all 70 items present in both, `missing=0`), geometry
+read back with `pdftotext -bbox`. **The plan's own pt budget was pessimistic** — it predicted a spill that
+does not happen; its figures came from a re-implementation, as it warned.
+
+#### TWO DEFECTS FOUND BY RENDERING THAT NO TEST HELD
+`?txnStatus=processed` returned rows the same grid labelled *Pending reprocessing*; and a wholly-failed
+month produced no row at all in the import preview. Related and worth keeping: **`cleanBatchStatus` FAILS
+OPEN** — an unrecognised filter value returns `undefined`, which DROPS the filter and silently shows
+everything.
+
+#### DELIBERATE ASYMMETRIES A REVIEWER WILL QUESTION — ALL INTENDED
+- **`2aed39d4`'s key excludes `run_type`** though the ticket asked for it: the kernel never reads it and
+  pays every returned row in full, so including it would have LEGALISED 2 of the 10 live clashes.
+- **`4157a498` never lets `Override?` overwrite an occupied month**, and reports `updated = 0` always.
+  `loadBatchRows` selects every batch for a (company, period) with no `run_type` and no `status` filter and
+  SUMs, so a second load would submit someone paid 5,000 as 10,000. There is no undo — `0011` blocks UPDATE
+  and DELETE on a closed batch at trigger level.
+- **`4157a498` folds on (Employee No, Payroll Period)**, not the five-part key — `payslip_batch_employment_uq`
+  allows exactly one payslip per employment per batch.
+
+#### c8052ae3 — STILL NOT RUN. THE PLAN'S BACKUP COMMAND DOES NOT WORK ON THIS DATABASE.
+Step 0's `pg_dump "$U" -Fc -f …` **exits 1** and leaves an ~889 KB partial that looks like a backup and is
+not: `ai_provider_config`, `leave_adjustment_batch` and `platform_user` are FORCE RLS, `ai_hr_owner` has
+neither superuser nor BYPASSRLS, and there is no passwordless sudo to `postgres`. Taken instead 2026-08-11,
+both verified with `pg_restore -l`: a broad dump with those three tables' DATA excluded (85.5 MB, 1954 TOC
+entries) plus a targeted dump of `leave_ledger`, `leave_entitlement_recalc_audit` and
+`leave_ledger_reset_archive`. **All three excluded tables hold 0 rows, so the broad dump is complete.**
+**Correct step 0 before the next operator runs it.** The rehearsal on the box is from 08-10 and its plan
+wants rehearsal and apply in ONE sitting — re-run it fresh.
+
+### ✅ THE FIXTURE TIME BOMB IS DEFUSED — the clock pinning HELD on 2026-08-12
+
+It fired on 2026-08-10 (three cases) and 2026-08-11 (**11 cases across 3 files**, mid-gate at 00:24 MYT:
+`LeaveCancellationTooLateError: Leave for 2026-08-11 can no longer be cancelled`). The fixtures hardcode a
+10–12 Aug 2026 window chosen when that was "well in the future", and each day more of it rotted into the
+past while the product correctly refused. **`1d5ceab0` pinned the clock on 24 cases (13 were already
+pinned, 2 deliberately left on the real clock), and on 2026-08-12 — the last day of that window, when the
+bomb should have been at its worst — two full gates ran with ZERO date-shaped failures.** The fix is
+confirmed working, not merely believed to work.
+
+**Keep this entry anyway**, because the reasoning is what generalises and this class WILL recur:
 
 **THE FIX IS TO PIN THE CLOCK, NOT TO MOVE THE WINDOW.** `edd9707d` tried deriving the window from
 `todayInKualaLumpur()` and went from 3 failures to 16 — roughly 100 assertions are pinned to the literal
@@ -131,68 +240,23 @@ dev database with it. Both r184 build agents found 0 tenants and 0 payroll batch
 because of it. **Seed AFTER the gate, never before** — and a render check run before a gate proves nothing
 about the tree you are about to ship.
 
-### ⚠️ r180 (2026-08-10) — TWO DEFECT FIXES, BOTH DEPLOYED. One of them was paying people twice.
+### r180 IS ARCHIVED (history) — but ONE thing it found is still live and unfixed
 
-**1. RECURRING PAY ITEMS HAVE BEEN PAYING TWICE, AND IT REACHED ISSUED PAYSLIPS.** Found while planning
-board item `2f889bae`, then verified independently on production.
+r180 found recurring pay items paying TWICE on issued payslips, and fixed the writer. r185's `2aed39d4`
+then added the `employment_pay_component_no_overlap` EXCLUDE constraint and repaired the 9 bad rows, so
+the *overlap* half is closed. **What is NOT closed:**
 
-`setEmploymentPayComponent` closed the prior row ON the new start date, and its comment claimed "so there
-is no double-count". **`validTo` is INCLUSIVE for pay components** — the kernel selects
-`validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)` and pays each returned row its
-FULL amount — so both rows sat in the month containing the change.
+⚠️ **A MID-MONTH RESTATEMENT STILL PAYS BOTH LINES IN FULL.** End one line on 15/07 and start the next on
+16/07: the two windows are adjacent and legal under the constraint, but BOTH overlap the month and the
+kernel pays each returned row its FULL amount. The first regression test written returned **1554 = 777 +
+777**. It is recorded as `it.fails` in `test/fixed-transaction.test.ts` — the same idiom this repo uses for
+the known width no-op — **so the gate turns RED when someone fixes it.** Leave it failing and leave it
+labelled.
 
-MEASURED ON PRODUCTION, not inferred: **four employments carry overlapping live rows**, two of them real
-customer records (Eee Lee Yong / Fiamma, TEST0002 / ISEDECOR). **Aisyah Rahman's 2026-04, 2026-05 and
-2026-07 payslips each read allowance 140.00 where a single row gives 120.00** — RM20 per month on three
-issued slips. One row is structurally impossible (`valid_from 2026-01-31`, `valid_to 2026-01-06`); Postgres'
-own `daterange` refuses to construct it, which is how it surfaced.
-
-**THE ROOT CAUSE IS A SEMANTIC MISMATCH BETWEEN TWO TABLES THAT SHARE A WRITER SHAPE.** `core/comp.ts` does
-the IDENTICAL close-at-`effectiveFrom`, and compensation is safe — because its kernel reads a single open
-row and its `compensation_no_overlap` EXCLUDE constraint uses a HALF-OPEN daterange, i.e. `valid_to` is
-EXCLUSIVE there. Same writer, opposite boundary semantics, opposite safety. **Do not "align" one to the
-other without moving the reader that goes with it** — this is recorded at the call site.
-
-**WHAT SHIPPED:** the prior row is closed the DAY BEFORE the new start; a restatement from the row's own
-start date SUPERSEDES it rather than inverting the window; a backwards restatement is refused. Chosen over
-flipping the kernel's `gte` to `gt`, which would silently change what every EXISTING end-dated row pays in
-its final month.
-
-⚠️ **THE FIX IS NECESSARY BUT NOT SUFFICIENT, AND THE SUITE SAYS SO.** A MID-MONTH restatement STILL pays
-twice: the two windows are adjacent (`…-05-09` and `05-10-…`) but both overlap the month, and the kernel
-pays full amount for any overlap. The first regression test written returned **1554 = 777 + 777**. It is
-recorded as `it.fails` in `test/fixed-transaction.test.ts` — the same idiom this repo uses for the known
-width no-op — so the gate goes RED when someone fixes it. **Fixing it is a DESIGN DECISION**: prorate a
-partial window, take latest-row-wins per period, or refuse a mid-period restatement. Each changes what
-correctly-dated rows pay today, so it belongs to the reporter, not to a patch.
-
-**THREE EXISTING ASSERTIONS PINNED THE BUG** while calling it "no double-count"; they are corrected. The new
-boundary test asserts the MONEY through a real payslip — the pre-existing "no double-count" test only ever
-checked row shape and never generated a payslip, which is exactly how this shipped.
-
-**NOT DONE, DELIBERATELY:** the data repair of the four employments and the overlap EXCLUDE constraint. Both
-change customer records and sit in `2f889bae`'s pushed plan awaiting approval. The constraint CANNOT be
-applied before the repair. **The uniqueness key is an open question** — the pending constraint is keyed on
-employment + component, while board item `2aed39d4` asks for employee + pay item + PAYROLL CYCLE.
-
-**THE REPORTER HAS INDEPENDENTLY REPORTED THE SAME DEFECT as `2aed39d4`** ("the system can create duplicated
-Start Date / End Date / Payroll Cycle records ... incorrect payroll calculations"). They arrived from the UI,
-we arrived from the data. Do not plan the work twice.
-
-**CORRECTED MEASUREMENT:** the paid-item removal guard depends on payslips storing WHICH component produced
-a line. This file used to cite 7 of 50 payslips (~14%). Re-measured 2026-08-10: **19 of 83 carry
-`componentLines`**, and of the 24 live non-BASIC items a processed payslip covers, only 12 carry line
-evidence — so the guard still refuses about half of what it should.
-
-**2. THE PERSONNEL RECALC-REASON LABELS.** `people.detail.recalcReason.*` is a COMPUTED key, invisible to
-i18n coverage check C. The page had a fallback that COULD NEVER FIRE: it compared the translated value
-against the RELATIVE key while next-intl returns the FULLY-QUALIFIED path on a miss. Measured live:
-**50 of 72 audit rows rendered a raw key path at the user**. Fixed with `t.has` (the house idiom —
-`app/admin/scheduled-actions/page.tsx` does the same), so an unlabelled reason degrades to the raw word;
-five missing labels added in all six catalogues. **It PREDATED r179** — the block is byte-identical at
-`d51c8f4d`. `test/recalc-reason-labels.test.ts` pins both halves, strips comments before source assertions
-(its own explanation quotes the broken expression), and deliberately does NOT claim to enumerate every
-emitted reason: six catalogued reasons appear nowhere in source, so any static list is provably incomplete.
+**Fixing it is a DESIGN DECISION, not a patch:** prorate a partial window, take latest-row-wins per period,
+or refuse a mid-period restatement. Each changes what CORRECTLY-dated rows pay today, so it belongs to the
+reporter. `2aed39d4`'s approved plan names it in GOOD TO KNOW as a request of its own — it has not been
+raised yet.
 
 ### r176, r175, r174, r173 and r172 are SHIPPED — full entries in `docs/HANDOFF-HISTORY.md`
 
@@ -239,18 +303,33 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**AS OF 2026-08-11 THERE ARE ZERO OPEN AND ZERO CONTESTED ITEMS.** Counts on the box:
-`deployed = 634` · `planned = 15` · `approved = 1` · `cancelled = 14`. The one approved item is
-`c8052ae3`, which needs no build — only the operator run. **Every live item has a plan
-awaiting the reporter**, including revisions for the two payroll screens they contested after r179 and an
-answer to the attendance calculation question. **The constraint is no longer our planning throughput — it
-is their approval throughput, fifteen deep. Look at that queue before planning anything new.**
+**COUNTS ON THE BOX, 2026-08-12 (re-count before trusting these):**
+`deployed = 641` · `approved = 9` · `open = 9` · `planned = 6` · `cancelled = 14`.
 
-**THE ONLY BUILDABLE WORK IS THE THREE APPROVED ITEMS**, and two of them are the same job:
-`c8052ae3` needs no build at all (operator run; backup and rehearsal done, `--apply` outstanding), while
-`fbcf706d` and `7076f8af` — joined by the now-planned `510f4bd1` — are ONE workflow, reprocessing an open
-payroll period. Each of their plans says it must be decided once rather than three times. Build them
-together or not at all.
+**THE CONSTRAINT HAS FLIPPED BACK TO US.** For weeks it was their approval throughput. On 2026-08-12 they
+approved 8 items in a morning while r185 was mid-build, and the open queue is now 9 deep with only 6
+carrying a plan. **Plans, not builds, are the bottleneck again — check which side is short before choosing
+what to do next.**
+
+**THE 9 APPROVED, AND WHAT IS BUILT:** the r186 eight (`e7eb5d83`, `74d00fd2`, `7c834696`, `b8aa3466`,
+`af7a8eb4`, `42afb2d2`, `2ec1e3d2`, and `009c8a37`'s siblings) are BUILT on `build/r186` and awaiting a
+green gate. Still unbuilt and approved: **`c8052ae3`** (operator run only — see its entry above; backups
+taken, rehearsal stale) and **`2f889bae`**.
+
+⚠️ **`2f889bae` MUST NOT BE BUILT AS WRITTEN — it would REVERT what r185 shipped.** Its steps 3, 4 and 5
+are the same data repair, the same EXCLUDE constraint and the same widened lookup `2aed39d4` already
+shipped, and **its step 7 asks for the OPPOSITE of what shipped**: it wants Remove refused for any
+COMPLETED run, where r185 shipped Remove allowed while processed and refused only once CLOSED, on the
+reporter's newer and more explicit instruction. `2aed39d4`'s approved plan called this collision in
+advance — *"whichever item builds FIRST carries them … if 2f889bae builds first its step 7 must be
+re-planned to match. Do not ship both."* r185 built first, so **step 7 needs re-planning**. Its genuinely
+new part (a View/Edit link from the Personnel Payroll tab, which is read-only today while the real buttons
+sit one screen away at `app/payroll/transactions/fixed/[id]`) survives and is worth building.
+
+**TWO ITEMS RAISED BY US ON 2026-08-12**, both from findings that belonged to no approved plan:
+`47609f53` (supervisors are shown dashboard links to screens that refuse them — the `2ec1e3d2` plan
+claimed it had checked for siblings and found none, which was wrong) and `154865f4` (the roster DELETE
+asymmetry above). Both `open` with `reporter_label = 'CLAUDE AI'`.
 
 ⚠️ **A RAISED ITEM NEEDS A PLAN, NOT AN ANSWER — this file said the opposite and it cost a day.** An item
 created by `improve:raise` lands `open` with `plan_revision = 0`, and **an item with no plan has no approve
@@ -951,14 +1030,25 @@ method or carry-forward is WRONG.**
 
 ---
 
-**NO BRANCH IS IN FLIGHT — but `main` IS ahead of production by r177 (see CURRENT STATE).** The old text
-here said "Nothing is in flight. r173 shipped 2026-08-08 … the only change since is the crontab line",
-which was three rounds stale. Both pre-planning checks were re-run 2026-08-10 (r178). Every unmerged
-`build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed, ancestrally unrelated),
-`r163-g-release3` and `r163g-picker`, whose content reached main by another route: their migration `0405`
-is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000 lines relative to
-both, which is the tell. On ship, a round's entry moves to the top of `docs/HANDOFF-HISTORY.md`.
-**"Nothing in flight" is a claim about BRANCHES — it is NEVER a claim that `main` has been deployed.
-Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.**
+## ⚠️ A BRANCH *IS* IN FLIGHT — `build/r186`, EIGHT ITEMS, BUILT AND NOT DEPLOYED
 
-**Shipped round entries (r66–r176): `docs/HANDOFF-HISTORY.md`.**
+`main@468fc827` is r185 and IS deployed (proved by dry-run rsync, 2026-08-12). **`build/r186` is NOT
+merged and NOT deployed**: eight items, migrations `0428` and `0429`, 64 files, +5418/−1450, tsc clean,
+i18n clean, catalogues audited. It was awaiting a green gate at the time of writing — **check
+`git log --oneline main..build/r186` and re-gate before assuming either way.**
+
+Worktrees for it are under `.claude/worktrees/r186-*`; prune them once merged.
+
+Every OTHER unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed, ancestrally
+unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route: their
+migration `0405` is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000
+lines relative to both, which is the tell.
+
+**"Nothing in flight" is a claim about BRANCHES — it is NEVER a claim that `main` has been deployed.
+Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.** And
+the converse now applies too: **`main` being deployed is not a claim that the round's work is shipped**,
+because r186 sits beside it on a branch.
+
+On ship, a round's entry moves to the top of `docs/HANDOFF-HISTORY.md`.
+
+**Shipped round entries (r66–r185): `docs/HANDOFF-HISTORY.md`.**
