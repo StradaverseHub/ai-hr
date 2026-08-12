@@ -653,19 +653,50 @@ export function statutory(
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
     epfCitizenship?: EpfCitizenship;
+    // ── Feedback 017d9c25 (r187) — PER-AGENCY BASE CARVE-OUTS ──────────────────────────────────────
+    // `wage` / `additional` / `overtime` keep their meanings EXACTLY (the whole golden suite is pinned
+    // to them). These four numbers say how much of that money a specific agency's base must NOT (or
+    // must ALSO) see, because the pay item carrying it is ticked in/out of that agency.
+    //
+    // WHY THEY EXIST. Before r187 a pay item's `pcb_remuneration_type` decided which statutory pot the
+    // amount fell into and the EPF / SOCSO-EIS ticks were not read at all once it was declared. An
+    // allowance ticked "not subject to EPF" but classified 'normal' still landed in the EPF wage; an
+    // overtime code ticked "not EPF, yes SOCSO" but classified 'additional' was charged EPF AND left
+    // out of SOCSO — backwards in both directions. The kernel now routes by the declaration (which is
+    // a PCB question: Y1 vs Yt) and carves the bases by the ticks (which is the agency question).
+    //
+    // ALL DEFAULT 0 ⇒ byte-identical for every existing caller and every golden test.
+    /** Money inside `wage` that is NOT EPF-liable (a 'normal'-stream item ticked not-subject-to-EPF). */
+    epfWageExcluded?: number;
+    /** Money inside `additional` that is NOT EPF-liable (an 'additional'-stream item ticked not-subject-to-EPF). */
+    epfAdditionalExcluded?: number;
+    /** Money inside `wage` that is NOT SOCSO/EIS-liable (a 'normal'-stream item ticked not-subject-to-SOCSO/EIS). */
+    socsoWageExcluded?: number;
+    /** Money inside `additional` that IS SOCSO/EIS-liable (an 'additional'-stream item ticked subject-to-SOCSO/EIS —
+     *  the overtime-classified-as-additional case). The only carve-out that ADDS a contribution. */
+    socsoWageExtra?: number;
   },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
+  // Feedback 017d9c25 — the agency bases after the pay-item ticks are honoured. PCB is deliberately NOT
+  // carved: every one of these items is still taxable remuneration (the ticks are about EPF/PERKESO
+  // liability, not about tax), so `pcbMonth` below keeps reading the full `cashWage` + `additional`.
+  const epfWage = Math.max(0, round2(wage - Math.max(0, opts?.epfWageExcluded ?? 0)));
+  const epfAdditional = Math.max(0, round2(additional - Math.max(0, opts?.epfAdditionalExcluded ?? 0)));
+  const socsoWage = Math.max(
+    0,
+    round2(cashWage - Math.max(0, opts?.socsoWageExcluded ?? 0) + Math.max(0, opts?.socsoWageExtra ?? 0)),
+  );
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.
-  const eC = epfContribution(wage, additional, rules.epf, opts?.epfElection, {
+  const eC = epfContribution(epfWage, epfAdditional, rules.epf, opts?.epfElection, {
     age: opts?.epfAge,
     citizenship: opts?.epfCitizenship,
   });
   const e = { employee: eC.employee, employer: eC.employer };
-  const sRaw = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
+  const sRaw = socso(socsoWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
   // Item 5a461b99 — "Subject to SOCSO" gates the SOCSO Injury/Invalidity legs; "Subject to SKBBK" gates the
   // (independent) SKBBK leg. Both default on so existing behaviour is byte-identical. Unchecked ⇒ 0 in the
   // reported figure (the employee is exempt), not merely undeducted (that is the separate employer-bears case).
@@ -677,7 +708,7 @@ export function statutory(
     skbbk: skbbkOn ? sRaw.skbbk : 0,
   };
   const eisOn = opts?.eisEligible ?? true;
-  const i = eisOn ? eis(cashWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
+  const i = eisOn ? eis(socsoWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
   // EPF relief split: the employee share on the bonus (Kₜ) — 0 for seniors (Part E) and the flat
   // non-citizen rate; for citizens < 60 it is the effective (incl. i-Topup) employee rate on the bonus.
   const epfOnBonus = eC.employeeOnBonus;

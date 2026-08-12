@@ -153,7 +153,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, HandCoins, History, Landmark, ReceiptText, Settings2, Table2, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, HandCoins, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -214,6 +214,10 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // Transaction View → History; what was missing was a menu row that says "payslip", which is why the
     // reporter concluded the screen did not exist. Ranked into the same REVIEW phase, beside it.
     { href: '/payroll/individual-payslip', labelKey: 'payrollIndividualPayslip', icon: ReceiptText },
+    // 2961a7ae — Statutory Adjustment. Same REVIEW rank as the payslip screen above and written
+    // literally after it, so it lands beside the result it corrects. `sort` is stable, so its literal
+    // position is what decides it within the rank.
+    { href: '/payroll/statutory-adjustment', labelKey: 'payrollStatutoryAdjustment', icon: SlidersHorizontal },
     { href: '/payroll/reports', labelKey: 'payrollReports', icon: FileText },
     // 956cec85 — the reporter asked for "a centralized location" for the statutory forms. The forms
     // themselves already existed on Reports; this row is the home they were missing.
