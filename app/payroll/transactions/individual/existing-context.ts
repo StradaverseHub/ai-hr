@@ -75,6 +75,14 @@ export type TxnPanelInputRow = {
   quantity: string | null;
   unit: string | null;
   notes: string | null;
+  /** 4e403268 — the pay item this line was keyed against, and where the line came from. All four are
+   *  OPTIONAL and their absence makes NO claim, exactly as `facts` on `txnStatusOf` does: callers that
+   *  have them always pass them (`listIndividualTxnsAcross` fills all four), and a fixture that omits them
+   *  gets a group keyed on the generic kind and a source of 'manual', which is what such a row is. */
+  componentId?: string | null;
+  componentCode?: string | null;
+  componentName?: string | null;
+  source?: string | null;
   runType: string | null;
   runSeq: number | null;
   batchStatus: string | null;
@@ -102,7 +110,21 @@ export type StrandedInputRow = {
   arrivedAfterProcessing: boolean;
 };
 
-export type TxnPanelRow = TxnPanelInputRow & {
+/** 4e403268 — the ledger's provenance vocabulary, mirrored here as a literal for the same reason
+ *  WRITABLE_BATCH_STATUSES is: this pure module and the client component that consumes it must never
+ *  import the DB-touching service across the RSC boundary. core/payroll-individual-txn.ts TXN_SOURCES is
+ *  authoritative; test/existing-txn-context.test.ts pins the two lists equal. */
+export const TXN_SOURCE_LABELS = ['manual', 'attendance', 'leave', 'import', 'system'] as const;
+
+/** A stored `source` as the screen reads it. NULL — every row written before 0432 — means 'manual', which
+ *  is the truth about all of them, and NOT "unknown". An unrecognised value degrades the same way rather
+ *  than rendering a token the operator has never seen. */
+export const panelSourceOf = (v: string | null | undefined): string =>
+  (TXN_SOURCE_LABELS as readonly string[]).includes(v ?? '') ? (v as string) : 'manual';
+
+export type TxnPanelRow = Omit<TxnPanelInputRow, 'source'> & {
+  /** The NORMALISED provenance — always one of TXN_SOURCE_LABELS, never null. */
+  source: string;
   status: TxnStatus;
   /** True while the row may still be changed — mirrors the service's unattached / draft / processed rule. */
   editable: boolean;
@@ -215,6 +237,7 @@ export function buildTxnPanel(
     });
     return {
       ...r,
+      source: panelSourceOf(r.source),
       status,
       editable: txnEditableOf(r.batchStatus),
       attached: r.batchStatus != null,
@@ -273,4 +296,152 @@ export function buildTxnPanel(
       .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0)) // newest month first, like the listing
       .map(([payPeriod, a]) => ({ payPeriod, count: a.count, total: fixed2(a.cents) })),
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// 4e403268 — DAY-BY-DAY GROUPING
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One (pay period, pay item) group: the request's point 7 ("the payroll result should still show
+ * Overtime 1.5 – RM248.80 while the detailed daily records remain available") and point 16 (the daily
+ * breakdown survives payroll processing, as the audit trail behind the figure).
+ *
+ * Derived, never stored. Nothing about the ledger changes to produce this — the rows were always there,
+ * one per date; what was missing was anything that added them up.
+ */
+export type TxnGroup = {
+  /** Stable identity for React keys and for the expand/collapse set: `${payPeriod}|${componentId ?? kind}`. */
+  key: string;
+  payPeriod: string;
+  /** Null for a generic-kind row that names no Payroll Item Master component. */
+  componentId: string | null;
+  /** The pay item's code, or null when the group is a generic kind. */
+  componentCode: string | null;
+  /** The pay item's name, or null when the group is a generic kind — the caller falls back to the kind
+   *  label, which is an i18n concern and therefore not this module's business. */
+  componentName: string | null;
+  /** The ledger kind every row in the group shares (a group is keyed within one pay item, and a pay item
+   *  maps to exactly one kind). */
+  kind: string;
+  count: number;
+  /**
+   * THE SUMMED QUANTITY, AND IT IS NULL MORE OFTEN THAN YOU MIGHT EXPECT — on purpose.
+   *
+   * It is a figure only when EVERY row in the group carries a quantity AND they all agree on the unit.
+   * Two hours and three days do not add up to five of anything, and printing "5.00" over a mixed group
+   * would be a number that means nothing sitting directly above the rows that disprove it. Mixed, or
+   * partially absent, reads as null and the screen shows a dash.
+   */
+  quantity: string | null;
+  /** The unit those quantities are in, when they agree; null whenever `quantity` is null. */
+  unit: string | null;
+  /** Summed in integer cents, like the panel totals, and for the same reason (see the module doc). */
+  total: string;
+  /**
+   * THE GROUP'S STATUS, and the precedence is the whole point. 510f4bd1 split one boolean into three
+   * states, and a group must not undo that split: a group holding ONE row that is not in the employee's
+   * latest payslip is not "Processed", and a group holding one unpaid row is not "Processed" either.
+   * So: any reprocessRequired ⇒ reprocessRequired; else any pending ⇒ pending; else processed.
+   *
+   * The direction is deliberate and it is the safe one — this is the one place the screen could claim
+   * money has been paid, and a mixed group is not evidence of that.
+   */
+  status: TxnStatus;
+  /** The per-status counts behind that verdict, so the screen can be specific rather than only cautious. */
+  pendingCount: number;
+  processedCount: number;
+  reprocessCount: number;
+  /** True when ANY row in the group came from somewhere other than a person typing it. Nothing sets this
+   *  today (nothing writes a non-manual source yet); it exists so the grouped view does not need changing
+   *  when Attendance and Leave learn to post. */
+  hasExternalSource: boolean;
+  /** The member rows, newest date last — the reading order of a month, and the same order the flat
+   *  listing uses within a month. */
+  rows: TxnPanelRow[];
+};
+
+/** The group key for one row: the pay item when it has one, otherwise the generic kind. Exported so the
+ *  screen can highlight the group a freshly-saved row landed in without re-deriving the rule. */
+export const txnGroupKey = (r: { payPeriod: string; componentId?: string | null; kind: string }): string =>
+  `${r.payPeriod}|${r.componentId ?? `k:${r.kind}`}`;
+
+/**
+ * Group an employee's panel rows by (pay period, pay item) and total each group.
+ *
+ * PURE. No React, no db, no i18n — the same split as `buildTxnPanel` above, and for the same reason: the
+ * arithmetic, the mixed-unit refusal and the status precedence are the parts worth unit-testing, and none
+ * of them needs a session.
+ *
+ * Groups come back newest month first (matching the listing's default sort), and within a month by pay
+ * item code so two months of the same item read down the screen in the same column order.
+ */
+export function buildTxnGroups(rows: readonly TxnPanelRow[]): TxnGroup[] {
+  const groups = new Map<string, TxnGroup & { _cents: number; _qtyCents: number }>();
+
+  for (const r of rows) {
+    const key = txnGroupKey(r);
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        key,
+        payPeriod: r.payPeriod,
+        componentId: r.componentId ?? null,
+        componentCode: r.componentCode ?? null,
+        componentName: r.componentName ?? null,
+        kind: r.kind,
+        count: 0,
+        quantity: null,
+        unit: r.unit ?? null,
+        total: '0.00',
+        status: 'processed',
+        pendingCount: 0,
+        processedCount: 0,
+        reprocessCount: 0,
+        hasExternalSource: false,
+        rows: [],
+        _cents: 0,
+        _qtyCents: 0,
+      };
+      groups.set(key, g);
+    }
+    g.count += 1;
+    g._cents += cents(r.amount);
+    g.rows.push(r);
+    if (r.status === 'pending') g.pendingCount += 1;
+    else if (r.status === 'reprocessRequired') g.reprocessCount += 1;
+    else g.processedCount += 1;
+    if (r.source !== 'manual') g.hasExternalSource = true;
+    // The mixed-unit refusal, applied incrementally: `unit` is set to '' the moment two rows disagree or
+    // one row carries no quantity at all, and '' can never become a unit again.
+    if (r.quantity == null || r.unit == null || (g.unit !== null && g.unit !== r.unit)) g.unit = '';
+    else g._qtyCents += cents(r.quantity);
+  }
+
+  return [...groups.values()]
+    .map((g) => {
+      const { _cents, _qtyCents, ...rest } = g;
+      const summable = rest.unit !== '' && rest.unit !== null;
+      return {
+        ...rest,
+        total: fixed2(_cents),
+        quantity: summable ? fixed2(_qtyCents) : null,
+        unit: summable ? rest.unit : null,
+        // Precedence, stated once: not-in-the-latest-payslip beats unpaid beats paid.
+        status: (rest.reprocessCount > 0
+          ? 'reprocessRequired'
+          : rest.pendingCount > 0
+            ? 'pending'
+            : 'processed') as TxnStatus,
+        rows: [...rest.rows].sort((a, b) =>
+          a.txnDate !== b.txnDate ? (a.txnDate < b.txnDate ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+        ),
+      };
+    })
+    .sort((a, b) => {
+      if (a.payPeriod !== b.payPeriod) return a.payPeriod < b.payPeriod ? 1 : -1; // newest month first
+      const ac = a.componentCode ?? a.kind;
+      const bc = b.componentCode ?? b.kind;
+      return ac < bc ? -1 : ac > bc ? 1 : a.key < b.key ? -1 : 1;
+    });
 }

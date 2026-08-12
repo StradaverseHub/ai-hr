@@ -7,6 +7,8 @@ import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/co
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { EmployeePicker, type PickerEmployee } from './employee-picker';
 import { FixedToolbar } from './add-fixed-dialog';
+import { TxnImportButtons } from '../import-excel/txn-import-dialog';
+import { buildTxnTemplateReference } from '../import-excel/reference';
 import { FixedTxnList, type FixedTxnRow } from './fixed-list';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
@@ -88,6 +90,11 @@ export default async function FixedTransactionPage({
     : [[], []];
   const activeComponents = components.filter((c) => c.archivedAt == null);
 
+  // 5c65367d — the Excel import's reference sheets. Read WITHOUT a selected employee on purpose: an
+  // import is multi-employee by nature (the reporter's whole point is loading a month for forty people),
+  // so requiring somebody to be picked first would be the friction it exists to remove.
+  const importReference = await buildTxnTemplateReference(s, scopeIds);
+
   // ENDED is derived against the TENANT timezone, on the server. Deriving it in the browser would call an
   // item ended a day early or late for anyone whose device clock sits either side of MYT midnight.
   const today = todayInKualaLumpur();
@@ -142,6 +149,10 @@ export default async function FixedTransactionPage({
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('fixed.title')}
         description={t('fixed.subtitle')}
+        // 5c65367d — Import Excel + Download Template. In the page header rather than beside Add,
+        // because Add belongs to ONE selected employee and an import does not: these two must be
+        // reachable before anybody is picked.
+        actions={<TxnImportButtons kind="fixed" reference={importReference} />}
       />
 
       {!typedComponentsOn && (

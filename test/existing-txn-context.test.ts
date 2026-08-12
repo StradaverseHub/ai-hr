@@ -20,12 +20,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  buildTxnGroups,
   buildTxnPanel,
   txnStatusOf,
+  TXN_SOURCE_LABELS,
   type StrandedInputRow,
   type TxnPanelInputRow,
 } from '../app/payroll/transactions/individual/existing-context';
 import { INDIVIDUAL_TXN_STATUS_FILTERS } from '../core/payroll-view';
+import { TXN_SOURCES } from '../core/payroll-individual-txn';
 
 // 510f4bd1 — the DEFAULT row is a FRESH one: keyed before its payslip was worked out. Every pre-existing
 // expectation in this file was written when a processed row could only mean "paid", so the default has to
@@ -390,5 +393,187 @@ describe('44129979 — the stranded warning is the fault subset only', () => {
     const panel = buildTxnPanel([row({ id: 'a', batchStatus: 'processed' })], []);
     expect(panel.stranded).toEqual([]);
     expect(panel.totals.processedCount).toBe(1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// 4e403268 — DAY-BY-DAY GROUPING
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The request asks for a dated grid and a subtotal under it. The grid was the easy half — the ledger has
+ * carried `txn_date NOT NULL` since it existed, and the table comment says multiple dated entries per
+ * (batch, employment) are allowed BY DESIGN. What was missing is anything that adds them up, and three
+ * things can go wrong in the adding:
+ *
+ *   1. THE MIXED-UNIT SUM. Two hours plus three days is not five of anything. A group that sums them
+ *      prints a number directly above the rows that disprove it.
+ *   2. THE STATUS ROLL-UP. 510f4bd1 split "paid" three ways precisely so the screen could stop
+ *      overclaiming. A group is the one place that split could quietly be put back together.
+ *   3. PER-DAY ROUNDING. Each date is priced and rounded on its own, so a split can total a cent away
+ *      from the same quantity keyed once. That is stated on the approved plan; it is pinned here so it
+ *      cannot change without someone noticing.
+ */
+const dayRow = (p: Partial<TxnPanelInputRow> & { id: string }): TxnPanelInputRow =>
+  row({ componentId: 'c-ot15', componentCode: 'OT1_5', componentName: 'Overtime 1.5', unit: 'hours', ...p });
+
+const groupsOf = (rows: TxnPanelInputRow[]) => buildTxnGroups(buildTxnPanel(rows).rows);
+
+describe('4e403268 — grouping an employee’s days by month and pay item', () => {
+  it('groups on (pay period, pay item) and totals the money in cents', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', txnDate: '2026-08-01', quantity: '2.00', amount: '77.88' }),
+      dayRow({ id: 'b', txnDate: '2026-08-05', quantity: '3.00', amount: '116.83' }),
+      dayRow({ id: 'c', txnDate: '2026-08-12', quantity: '2.50', amount: '97.36' }),
+    ]);
+    expect(gs).toHaveLength(1);
+    expect(gs[0].count).toBe(3);
+    expect(gs[0].total).toBe('292.07');
+    expect(gs[0].quantity).toBe('7.50');
+    expect(gs[0].unit).toBe('hours');
+    expect(gs[0].componentCode).toBe('OT1_5');
+  });
+
+  it('keeps two different pay items in the same month apart', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', quantity: '2.00', amount: '77.88' }),
+      dayRow({ id: 'b', componentId: 'c-upl', componentCode: 'UPL', componentName: 'Unpaid leave', kind: 'unpaid', unit: 'days', quantity: '1.00', amount: '80.65' }),
+    ]);
+    expect(gs).toHaveLength(2);
+    expect(gs.map((g) => g.componentCode).sort()).toEqual(['OT1_5', 'UPL']);
+  });
+
+  it('keeps the same pay item in two months apart, newest month first', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', payPeriod: '2026-07', txnDate: '2026-07-03', quantity: '1.00', amount: '38.94' }),
+      dayRow({ id: 'b', payPeriod: '2026-08', txnDate: '2026-08-03', quantity: '1.00', amount: '38.94' }),
+    ]);
+    expect(gs.map((g) => g.payPeriod)).toEqual(['2026-08', '2026-07']);
+  });
+
+  it('falls back to the generic kind when the row names no pay item', () => {
+    const gs = groupsOf([row({ id: 'a', kind: 'overtime' }), row({ id: 'b', kind: 'overtime' })]);
+    expect(gs).toHaveLength(1);
+    expect(gs[0].componentId).toBeNull();
+    expect(gs[0].componentCode).toBeNull();
+    expect(gs[0].kind).toBe('overtime');
+  });
+
+  // ── 1. THE MIXED-UNIT REFUSAL ──
+  it('REFUSES to sum a quantity when the units disagree', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', unit: 'hours', quantity: '2.00', amount: '77.88' }),
+      dayRow({ id: 'b', unit: 'days', quantity: '1.00', amount: '80.65' }),
+    ]);
+    expect(gs).toHaveLength(1);
+    // The money still totals — ringgit are ringgit whatever was counted to earn them.
+    expect(gs[0].total).toBe('158.53');
+    // The quantity does not, and says so with null rather than with a meaningless 3.00.
+    expect(gs[0].quantity).toBeNull();
+    expect(gs[0].unit).toBeNull();
+  });
+
+  it('REFUSES to sum a quantity when one row in the group has none', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', unit: 'hours', quantity: '2.00', amount: '77.88' }),
+      dayRow({ id: 'b', unit: null, quantity: null, amount: '50.00' }),
+    ]);
+    expect(gs[0].total).toBe('127.88');
+    expect(gs[0].quantity).toBeNull();
+  });
+
+  // ── 2. THE STATUS ROLL-UP ──
+  it('a group holding ONE stale row is NOT Processed', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', batchStatus: 'processed', amount: '77.88', quantity: '2.00' }),
+      dayRow({ id: 'b', batchStatus: 'processed', amount: '116.83', quantity: '3.00', changedAt: AFTER_CALC }),
+    ]);
+    expect(gs[0].status).toBe('reprocessRequired');
+    expect(gs[0].processedCount).toBe(1);
+    expect(gs[0].reprocessCount).toBe(1);
+  });
+
+  it('a group holding ONE unpaid row is NOT Processed', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', batchStatus: 'processed', amount: '77.88', quantity: '2.00' }),
+      dayRow({ id: 'b', batchStatus: null, amount: '116.83', quantity: '3.00' }),
+    ]);
+    expect(gs[0].status).toBe('pending');
+    expect(gs[0].pendingCount).toBe(1);
+    expect(gs[0].processedCount).toBe(1);
+  });
+
+  it('stale beats unpaid beats paid — the precedence, stated once', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', batchStatus: 'processed', amount: '10.00', quantity: '1.00' }),
+      dayRow({ id: 'b', batchStatus: null, amount: '10.00', quantity: '1.00' }),
+      dayRow({ id: 'c', batchStatus: 'processed', amount: '10.00', quantity: '1.00', changedAt: AFTER_CALC }),
+    ]);
+    expect(gs[0].status).toBe('reprocessRequired');
+  });
+
+  it('reads Processed only when EVERY row in it is', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', batchStatus: 'processed', amount: '10.00', quantity: '1.00' }),
+      dayRow({ id: 'b', batchStatus: 'closed', amount: '10.00', quantity: '1.00' }),
+    ]);
+    expect(gs[0].status).toBe('processed');
+  });
+
+  // ── 3. PER-DAY ROUNDING, the difference the plan promised the reporter ──
+  it('per-day rounding totals a cent ABOVE the same hours keyed as one entry', () => {
+    // Irwin Law, X000001, August 2026, OT1_5. Basic 5000.00 + fixed allowance 400.00, /26 /8 * 1.5 =
+    // 38.942307... an hour. Fifteen hours keyed as ONE entry is 584.1346… ⇒ 584.13, and that is the row
+    // that is actually on production. Split 2 / 3 / 2.5 / 4 / 3.5, each date is rounded on its own first.
+    const HOURLY = ((5000 + 400) / 26 / 8) * 1.5;
+    const split = [2, 3, 2.5, 4, 3.5];
+    expect(split.reduce((a, b) => a + b, 0)).toBe(15);
+    const perDay = split.map((h) => (HOURLY * h).toFixed(2));
+    const gs = groupsOf(
+      perDay.map((amount, i) => dayRow({ id: `d${i}`, txnDate: `2026-08-0${i + 1}`, quantity: String(split[i]), amount })),
+    );
+    expect(gs[0].quantity).toBe('15.00');
+    expect(gs[0].total).toBe('584.14');
+    expect((HOURLY * 15).toFixed(2)).toBe('584.13');
+  });
+
+  // ── PROVENANCE ──
+  it('reads a null source as Manual, which is what every row written before 0432 is', () => {
+    const gs = groupsOf([dayRow({ id: 'a', source: null, quantity: '1.00', amount: '10.00' })]);
+    expect(gs[0].rows[0].source).toBe('manual');
+    expect(gs[0].hasExternalSource).toBe(false);
+  });
+
+  it('flags a group that contains anything not keyed by hand', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'a', source: null, quantity: '1.00', amount: '10.00' }),
+      dayRow({ id: 'b', source: 'attendance', txnDate: '2026-08-11', quantity: '1.00', amount: '10.00' }),
+    ]);
+    expect(gs[0].hasExternalSource).toBe(true);
+    expect(gs[0].rows.map((r) => r.source)).toEqual(['manual', 'attendance']);
+  });
+
+  it('degrades an unrecognised source to Manual rather than rendering a token nobody has seen', () => {
+    const gs = groupsOf([dayRow({ id: 'a', source: 'martian', quantity: '1.00', amount: '10.00' })]);
+    expect(gs[0].rows[0].source).toBe('manual');
+  });
+
+  it('the screen-side source vocabulary equals the service’s, so a new one cannot be half-added', () => {
+    // The literal in existing-context.ts exists only to keep the RSC boundary intact; it is a MIRROR and
+    // this is what stops it drifting from the authority in core/payroll-individual-txn.ts.
+    expect([...TXN_SOURCE_LABELS]).toEqual([...TXN_SOURCES]);
+  });
+
+  it('orders the days inside a group by date, which is how a month reads', () => {
+    const gs = groupsOf([
+      dayRow({ id: 'c', txnDate: '2026-08-20', quantity: '1.00', amount: '10.00' }),
+      dayRow({ id: 'a', txnDate: '2026-08-01', quantity: '1.00', amount: '10.00' }),
+      dayRow({ id: 'b', txnDate: '2026-08-05', quantity: '1.00', amount: '10.00' }),
+    ]);
+    expect(gs[0].rows.map((r) => r.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is empty for an employee with nothing on file', () => {
+    expect(groupsOf([])).toEqual([]);
   });
 });

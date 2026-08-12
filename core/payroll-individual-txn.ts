@@ -45,6 +45,26 @@ export const TXN_UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
 export type TxnUnit = (typeof TXN_UNITS)[number];
 export const isTxnUnit = (v: unknown): v is TxnUnit => TXN_UNITS.includes(v as TxnUnit);
 
+/**
+ * 4e403268 (0432) — WHERE a ledger line came from. Same shape as TXN_UNITS above and for the same reason:
+ * a text column validated by ONE literal set here, not a pg enum that costs a migration every time another
+ * module learns to post into payroll.
+ *
+ * `manual` is first and is the DEFAULT MEANING OF NULL — see `txnSourceOf`. That is what makes this
+ * column additive with no backfill: every row written before 0432 was keyed by hand, so reading null as
+ * 'manual' states the truth about all of them.
+ *
+ * Nothing writes anything but 'manual' today. Attendance and Leave do not post into this ledger (the
+ * request's points 13–15), and the Import / Sync button from the wireframe is deliberately not built —
+ * it would be furniture with no behaviour behind it. The vocabulary and the uniqueness guard exist so
+ * that work is a writer, not a schema change.
+ */
+export const TXN_SOURCES = ['manual', 'attendance', 'leave', 'import', 'system'] as const;
+export type TxnSource = (typeof TXN_SOURCES)[number];
+export const isTxnSource = (v: unknown): v is TxnSource => TXN_SOURCES.includes(v as TxnSource);
+/** A stored `source` as the application reads it. NULL means 'manual' — never "unknown". */
+export const txnSourceOf = (v: string | null | undefined): TxnSource => (isTxnSource(v) ? v : 'manual');
+
 /** Thrown when an individual-transaction row is absent (missing / already-deleted id). Distinct from
  *  `BatchNotDraftError`, which is reserved for the real non-draft batch case. */
 export class TxnNotFoundError extends Error {
@@ -67,6 +87,15 @@ export class InvalidTxnUnitError extends Error {
   constructor(public readonly unit: string) {
     super(`"${unit}" is not a valid individual-transaction unit.`);
     this.name = 'InvalidTxnUnitError';
+  }
+}
+
+/** 4e403268 — thrown when an entry's `source` is not one of TXN_SOURCES. Refused rather than coerced to
+ *  'manual': a row whose provenance we cannot name must not be recorded as hand-keyed. */
+export class InvalidTxnSourceError extends Error {
+  constructor(public readonly source: string) {
+    super(`"${source}" is not a valid individual-transaction source.`);
+    this.name = 'InvalidTxnSourceError';
   }
 }
 
@@ -556,6 +585,12 @@ export type BulkTxnRow = {
   unit?: string | null;
   notes?: string | null;
   componentId?: string | null;
+  /** 4e403268 — one of TXN_SOURCES. Omitted / null means hand-keyed (see `txnSourceOf`); the day-by-day
+   *  grid leaves it null rather than writing the string 'manual', so a hand-keyed row written today is
+   *  byte-identical to the 47 already on production and no backfill can ever be needed. */
+  source?: string | null;
+  /** The originating module's record id. Null for anything keyed by hand. */
+  sourceRef?: string | null;
 };
 
 /**
@@ -621,11 +656,13 @@ export function createIndividualTxnsBulk(
 
     // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
     // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
-    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null; componentId?: string | null }> = [];
+    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null; componentId?: string | null; source?: string | null; sourceRef?: string | null }> = [];
     const seenSignatures = new Set<string>();
     for (const r of p.rows) {
       if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
       if (r.unit != null && !isTxnUnit(r.unit)) throw new InvalidTxnUnitError(r.unit);
+      // 4e403268 — validated with the same shape as `unit` above. Null is legal and means hand-keyed.
+      if (r.source != null && !isTxnSource(r.source)) throw new InvalidTxnSourceError(r.source);
       assertDateInPeriod(r.txnDate, payPeriod);
       if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
       // Duplicate-record validation: reject a byte-for-byte identical row within the same submission (the
@@ -634,7 +671,7 @@ export function createIndividualTxnsBulk(
       const sig = txnRowSignature(r);
       if (seenSignatures.has(sig)) throw new DuplicateTxnRowError(sig);
       seenSignatures.add(sig);
-      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes, componentId: r.componentId });
+      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes, componentId: r.componentId, source: r.source, sourceRef: r.sourceRef });
     }
     // Phase 3 — component picks validated in ONE query (exists / not archived / kind match); a new payable
     // (earning/deduction) row REQUIRES a component while INDIVIDUAL_TXN_PAY_ENABLED is on.
@@ -660,6 +697,8 @@ export function createIndividualTxnsBulk(
             quantity: r.quantity != null ? money(r.quantity) : null,
             unit: r.unit ?? null,
             notes: r.notes ?? null,
+            source: r.source ?? null,
+            sourceRef: r.sourceRef ?? null,
           })
           .returning({ id: payrollIndividualTxn.id });
         // C7 — one event PER row, byte-identical in shape to the single-row create event.

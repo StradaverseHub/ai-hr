@@ -124,19 +124,27 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
                 )}
               </td>
               <td className="whitespace-nowrap px-4 py-2.5 tabular-nums">{r.txnDate}</td>
-              <td className="px-4 py-2.5 font-medium">
+              {/* 1372d169 — one line each for the identity columns. Notes below stays wrappable, capped
+                  and truncated: it is free text and one long note would otherwise stretch the table. */}
+              <td className="whitespace-nowrap px-4 py-2.5 font-medium">
                 {r.employeeName}
                 {r.employeeCode && <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>}
               </td>
-              <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
               <td className="px-4 py-2.5">
                 <Badge>{t(`individual.kindLabel.${r.kind}`)}</Badge>
               </td>
               <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.amount).toFixed(2)}</td>
-              <td className="px-4 py-2.5 text-muted-foreground">
+              <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                 {r.quantity != null ? `${r.quantity}${r.unit ? ` ${t(`individual.unitLabel.${r.unit}`)}` : ''}` : '—'}
               </td>
-              <td className="px-4 py-2.5 text-muted-foreground">{r.notes ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">
+                {/* Free text — capped and truncated rather than nowrapped, so one long note cannot push
+                    every other column off the screen. The full text stays available on hover. */}
+                <span className="block max-w-[16rem] truncate" title={r.notes ?? undefined}>
+                  {r.notes ?? '—'}
+                </span>
+              </td>
               <td className="px-4 py-2.5">
                 {/* 510f4bd1 — the SAME verdict the Individual Transaction screen shows, read off the row
                     rather than re-derived here, so the two screens can never say different things about
