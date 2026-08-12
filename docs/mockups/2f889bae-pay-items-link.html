@@ -1,0 +1,231 @@
+<meta charset="utf-8">
+<title>2f889bae — Pay items: one link to the buttons that already exist</title>
+<!--
+  Mockup for 2f889bae, plan revision 2. Sketch — wording, spacing and colours will differ.
+  Rows are Aisyah Rahman's REAL live pay items on production (EMP-0001, read 2026-08-12), in the real
+  order (component code, then start date) and with the real column set from the Personnel Payroll tab.
+  The right-hand panel is the screen that ALREADY EXISTS at Payroll → Transactions → Fixed → a row;
+  its headings and its Remove wording are the live text, not a proposal.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 18px}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);margin:0 0 8px}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:8px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .tag.grey{background:var(--muted);color:var(--mf)}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .sh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;
+      border-bottom:1px solid var(--border)}
+  .st{font-size:13px;font-weight:700}
+  .cnt{display:inline-block;margin-left:7px;background:var(--muted);color:var(--mf);border-radius:999px;
+       padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px}
+  .btn{border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:11px;color:#33333f;background:#fff}
+  .btn.p{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+  .hint{padding:8px 14px 12px;font-size:10.5px;color:var(--mf)}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border)}
+  th.r{text-align:right}
+  td{padding:8px 10px;border-bottom:1px solid #f2f2f7;font-variant-numeric:tabular-nums;vertical-align:top;
+     white-space:nowrap}
+  td.r{text-align:right;font-weight:600}
+  tr:last-child td{border-bottom:none}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  .nm{color:var(--mf)}
+  .bdg{display:inline-block;padding:1px 8px;border-radius:999px;font-size:9.5px;font-weight:700}
+  .bdg.a{background:#dcfce7;color:#166534}
+  .bdg.e{background:var(--muted);color:var(--mf)}
+  .ve{display:inline-block;border:1px solid var(--primary);color:var(--primary);border-radius:7px;
+      padding:2px 8px;font-size:10.5px;font-weight:600;background:#f4f3ff}
+  .newcol{background:#f8f7ff}
+  th.newcol{background:#f0eeff;color:var(--primary)}
+
+  .two{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start;margin-top:8px}
+  .arrow{font-size:11px;color:var(--primary);font-weight:700;margin:10px 0 6px}
+
+  /* right-hand: the existing item page */
+  .amber{background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;margin:11px 14px;
+         font-size:10.5px;color:#78350f}
+  .amber b{display:block;font-size:11px;margin-bottom:2px}
+  .sec{border-top:1px solid var(--border);padding:10px 14px}
+  .sec .h{font-size:11.5px;font-weight:700;margin-bottom:7px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .fl{font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+  .fi{border:1px solid var(--border);border-radius:7px;background:#fff;padding:4px 8px;font-size:11px;margin-top:2px}
+  .idl{font-size:11px;color:var(--mf);padding:0 14px 2px}
+  .idl b{color:var(--fg);font-size:12px}
+
+  .strip{border-radius:12px;padding:13px 15px;margin-top:18px;font-size:11.5px;line-height:1.6}
+  .strip.good{background:var(--goodbg);border:1px solid #86efac;color:#14532d}
+  .strip.warn{background:#fffbeb;border:1px solid #fde68a;color:#7c2d12}
+  .strip b{font-weight:700}
+  .strip ul{margin:7px 0 0;padding-left:17px}
+  .strip li{margin-bottom:3px}
+  .foot{font-size:10.5px;color:var(--mf);margin-top:16px;line-height:1.65}
+</style>
+
+<h1>Pay items — one link to the buttons that already exist</h1>
+<p class="sub">Aisyah Rahman (EMP-0001), Personnel &rarr; Payroll tab. Real records, read from your system on 12 August 2026. Sketch: wording, spacing and colours will differ from the finished screen.</p>
+
+<div class="two">
+
+  <div>
+    <span class="tag bad">TODAY — read only</span>
+    <div class="card">
+      <div class="sh">
+        <div class="st">Pay items<span class="cnt">4</span></div>
+        <div class="btn p">Add pay item</div>
+      </div>
+      <table>
+        <tr>
+          <th>Component</th><th>Currency</th><th class="r">Amount</th><th>Start</th><th>End</th>
+          <th>Prorate</th><th>Remarks</th><th>Status</th>
+        </tr>
+        <tr>
+          <td><span class="code">ALLOWANCE</span> <span class="nm">Fixed allowance</span></td>
+          <td class="code">MYR</td><td class="r">20.00</td><td>2026-01-06</td><td>2026-07-31</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg e">Ended</span></td>
+        </tr>
+        <tr>
+          <td><span class="code">ALLOWANCE</span> <span class="nm">Fixed allowance</span></td>
+          <td class="code">MYR</td><td class="r">500.00</td><td>2026-08-01</td><td>&mdash;</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg a">Active</span></td>
+        </tr>
+        <tr>
+          <td><span class="code">ATTENDANCE</span> <span class="nm">Attendance allowance</span></td>
+          <td class="code">MYR</td><td class="r">100.00</td><td>2026-01-06</td><td>&mdash;</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg a">Active</span></td>
+        </tr>
+        <tr>
+          <td><span class="code">BASIC</span> <span class="nm">Basic salary</span></td>
+          <td class="code">MYR</td><td class="r">6,800.00</td><td>2026-08-01</td><td>&mdash;</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg a">Active</span></td>
+        </tr>
+      </table>
+      <p class="hint">Recurring pay items for this employee. Applied to payroll once typed components are enabled.</p>
+    </div>
+
+    <div class="arrow">PROPOSED &mdash; one new column, nothing else on this screen changes</div>
+    <span class="tag good">AFTER</span>
+    <div class="card">
+      <div class="sh">
+        <div class="st">Pay items<span class="cnt">4</span></div>
+        <div class="btn p">Add pay item</div>
+      </div>
+      <table>
+        <tr>
+          <th>Component</th><th>Currency</th><th class="r">Amount</th><th>Start</th><th>End</th>
+          <th>Prorate</th><th>Remarks</th><th>Status</th><th class="newcol r">&nbsp;</th>
+        </tr>
+        <tr>
+          <td><span class="code">ALLOWANCE</span> <span class="nm">Fixed allowance</span></td>
+          <td class="code">MYR</td><td class="r">20.00</td><td>2026-01-06</td><td>2026-07-31</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg e">Ended</span></td>
+          <td class="newcol r"><span class="ve">View / Edit</span></td>
+        </tr>
+        <tr>
+          <td><span class="code">ALLOWANCE</span> <span class="nm">Fixed allowance</span></td>
+          <td class="code">MYR</td><td class="r">500.00</td><td>2026-08-01</td><td>&mdash;</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg a">Active</span></td>
+          <td class="newcol r"><span class="ve">View / Edit</span></td>
+        </tr>
+        <tr>
+          <td><span class="code">ATTENDANCE</span> <span class="nm">Attendance allowance</span></td>
+          <td class="code">MYR</td><td class="r">100.00</td><td>2026-01-06</td><td>&mdash;</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg a">Active</span></td>
+          <td class="newcol r"><span class="ve">View / Edit</span></td>
+        </tr>
+        <tr>
+          <td><span class="code">BASIC</span> <span class="nm">Basic salary</span></td>
+          <td class="code">MYR</td><td class="r">6,800.00</td><td>2026-08-01</td><td>&mdash;</td>
+          <td>Yes</td><td class="nm">&mdash;</td><td><span class="bdg a">Active</span></td>
+          <td class="newcol r"><span class="ve">View / Edit</span></td>
+        </tr>
+      </table>
+      <p class="hint">Recurring pay items for this employee. Applied to payroll once typed components are enabled.</p>
+    </div>
+  </div>
+
+  <div>
+    <span class="tag grey">WHERE IT TAKES YOU &mdash; this screen already exists today, unchanged</span>
+    <div class="card">
+      <div class="sh"><div class="st">ALLOWANCE &mdash; Fixed allowance</div></div>
+      <p class="idl" style="padding-top:9px"><b>EMP-0001 &middot; Aisyah Rahman</b></p>
+      <p class="idl">Current amount <b>500.00</b> &nbsp; Status <span class="bdg a">Active</span></p>
+      <div class="amber">
+        <b>Changing this item does not overwrite it.</b>
+        Saving closes the current value from the effective date you choose and starts a new one, so the
+        history stays intact. Two records for the same pay item can never cover the same day: if your
+        dates run into a record that is already there, the save is refused and the message names it.
+      </div>
+      <div class="sec">
+        <div class="h">Edit</div>
+        <div class="fields">
+          <div><div class="fl">Amount</div><div class="fi">500.00</div></div>
+          <div><div class="fl">Payroll cycle</div><div class="fi">&mdash;</div></div>
+          <div><div class="fl">Start date</div><div class="fi">2026-08-01</div></div>
+          <div><div class="fl">End date</div><div class="fi">&nbsp;</div></div>
+        </div>
+        <div style="margin-top:8px"><span class="btn p">Save</span> <span class="btn">Cancel</span></div>
+      </div>
+      <div class="sec">
+        <div class="h">Stop</div>
+        <div class="fields">
+          <div><div class="fl">Last date to pay</div><div class="fi">2026-08-12</div></div>
+          <div style="display:flex;align-items:flex-end"><span class="btn">Stop from date</span></div>
+        </div>
+      </div>
+      <div class="sec">
+        <div class="h">Remove</div>
+        <p style="font-size:10.5px;color:var(--mf);margin:0 0 8px">
+          Removing an item hides it and excludes it from all future payroll. This stays possible after a
+          pay run has been processed, so a wrong item can be taken out and the run reprocessed. Once a run
+          is closed it can no longer be removed for that period &mdash; end it from a date instead.
+        </p>
+        <span class="btn">Remove</span>
+      </div>
+    </div>
+    <p class="foot" style="margin-top:11px">
+      Every control in this panel is live today. Nothing on this screen is being built or changed by this
+      request &mdash; including the Remove rule quoted above, which was delivered by your later request and
+      is what is running now.
+    </p>
+  </div>
+
+</div>
+
+<div class="strip good">
+  <b>Already delivered, by your later request about fixed transactions.</b> These were in the plan you
+  approved. They are built, tested and live on your system, so this revision does not ask for them again:
+  <ul>
+    <li>A change now ends the old version the day BEFORE the new one starts, so no month pays it twice.</li>
+    <li>Two records for the same pay item can never cover the same day &mdash; refused when you save, and
+        refused underneath as well.</li>
+    <li>An end date before its own start date is refused.</li>
+    <li>The duplicate records four employees were carrying have been cleaned up.</li>
+    <li>Saving an item that already has an end date changes that record instead of quietly copying it.</li>
+  </ul>
+</div>
+
+<div class="strip warn">
+  <b>One point in the approved plan now says the opposite of what is running.</b> It asked for Remove to be
+  refused as soon as any pay run had been processed. Your later request asked for the reverse and that is
+  what was built: Remove stays available while a run is processed, so a wrong item can be taken out and the
+  run reprocessed, and is refused only once the run is closed. This revision keeps the behaviour you asked
+  for most recently and drops that point.
+</div>
+
+<p class="foot">
+  What is left, and all this request now builds, is the column in the second picture: one link per row,
+  from the employee's own Payroll tab to the page that already holds Edit, Stop and Remove.
+</p>

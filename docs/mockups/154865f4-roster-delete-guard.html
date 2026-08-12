@@ -1,0 +1,123 @@
+<meta charset="utf-8">
+<title>154865f4 — Roster: two locks on add and change, one on remove</title>
+<!--
+  Mockup for 154865f4, plan revision 1. NOT a screen — this item changes nothing anyone can see, so a
+  screenshot would be a lie. This is the diagram of which of the three roster actions is refused by
+  which layer. Every cell was MEASURED on a disposable database on 2026-08-12, acting as the real
+  unprivileged application role inside a transaction that was rolled back: INSERT and UPDATE returned
+  42501 for a supervisor and for the employee; DELETE returned DELETE 1 for both; the negative control
+  (a row the actor cannot see) returned DELETE 0.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 18px}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);margin:0 0 9px}
+
+  .grid{display:grid;grid-template-columns:190px 1fr 1fr 1fr;gap:10px;align-items:stretch}
+  .hd{font-size:11.5px;font-weight:700;color:var(--mf);display:flex;align-items:flex-end;padding:0 0 6px 2px}
+  .act{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:10px 12px;text-align:center}
+  .act b{font-size:13px}
+  .act span{display:block;font-size:10.5px;color:var(--mf);margin-top:1px}
+
+  .lane{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 12px;
+        display:flex;flex-direction:column;justify-content:center}
+  .lane .t{font-size:12.5px;font-weight:700}
+  .lane .d{font-size:10.5px;color:var(--mf);margin-top:2px}
+
+  .cell{border-radius:11px;padding:12px 10px;text-align:center;border:1px solid var(--border);background:#fff;
+        display:flex;flex-direction:column;justify-content:center;gap:3px}
+  .cell.ok{background:var(--goodbg);border-color:#86efac}
+  .cell.no{background:var(--badbg);border-color:#fca5a5}
+  .cell .m{font-size:19px;font-weight:800;line-height:1}
+  .cell.ok .m{color:var(--good)} .cell.no .m{color:var(--bad)}
+  .cell .l{font-size:11px;font-weight:700}
+  .cell.ok .l{color:#14532d} .cell.no .l{color:#7f1d1d}
+  .cell .s{font-size:9.5px;color:var(--mf);font-variant-numeric:tabular-nums}
+
+  .strip{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-top:16px}
+  .strip.warn{background:#fffbeb;border-color:#fde68a}
+  .strip.good{background:var(--goodbg);border-color:#86efac}
+  .strip p{margin:0;font-size:12px;line-height:1.6}
+  .strip p+p{margin-top:7px}
+  .strip b{color:#22222c}
+  .strip.warn b{color:#7c2d12}
+  .strip.good b{color:#14532d}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+  .foot{font-size:10.5px;color:var(--mf);margin-top:16px;line-height:1.65}
+  .after{margin-top:20px}
+</style>
+
+<h1>Roster: add and change are locked twice, remove is locked once</h1>
+<p class="sub">This request has no screen. Nothing here is visible to anyone using the system - it is about which layer refuses what. Sketch: labels and colours will differ from any future document.</p>
+
+<h2>Today</h2>
+<div class="grid">
+  <div class="hd"></div>
+  <div class="act"><b>Add a shift</b><span>put a shift on a day</span></div>
+  <div class="act"><b>Change a shift</b><span>swap the shift on a day</span></div>
+  <div class="act"><b>Remove a shift</b><span>clear the day</span></div>
+
+  <div class="lane"><div class="t">The screen refuses</div><div class="d">Only an HR administrator may change the roster. Checked before anything is saved.</div></div>
+  <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+  <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+  <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+
+  <div class="lane"><div class="t">The store underneath refuses</div><div class="d">The independent second lock, which holds even if something bypasses the screen.</div></div>
+  <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div><div class="s">measured: supervisor and employee both blocked</div></div>
+  <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div><div class="s">measured: supervisor and employee both blocked</div></div>
+  <div class="cell no"><div class="m">&#10007;</div><div class="l">Allowed</div><div class="s">measured: supervisor and employee both succeeded</div></div>
+</div>
+
+<div class="strip good">
+  <p><b>There is no exposure today.</b> The top row is complete: every way into the system today goes
+  through a screen that already refuses all three actions to anyone who is not an HR administrator. We
+  checked every route that removes a shift - the roster grid, the multi-day clear, and the roster upload -
+  and all of them ask that question first.</p>
+</div>
+
+<div class="strip warn">
+  <p><b>Why it is still worth closing.</b> The second lock is what makes the first one safe to be wrong
+  about. Today, anyone adding a new way to put shifts in - a new screen, an import, a bulk tool - inherits
+  the protection for add and change without having to think about it, and silently does not inherit it for
+  remove. That is the kind of gap nobody notices until it is used.</p>
+  <p>It is also a sentence we have been writing that is not true. We have said the store underneath decides
+  who may change the roster. It decides that for two of the three actions.</p>
+</div>
+
+<div class="after">
+  <h2>After the change</h2>
+  <div class="grid">
+    <div class="hd"></div>
+    <div class="act"><b>Add a shift</b><span></span></div>
+    <div class="act"><b>Change a shift</b><span></span></div>
+    <div class="act"><b>Remove a shift</b><span></span></div>
+
+    <div class="lane"><div class="t">The screen refuses</div><div class="d">Unchanged.</div></div>
+    <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+    <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+    <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+
+    <div class="lane"><div class="t">The store underneath refuses</div><div class="d">One rule added, for remove only.</div></div>
+    <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+    <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div></div>
+    <div class="cell ok"><div class="m">&#10003;</div><div class="l">Refused</div><div class="s">the one thing this request adds</div></div>
+  </div>
+</div>
+
+<p class="foot">
+  How the "measured" cells were established: we acted as a real supervisor against a real direct report,
+  and as an employee against their own day, using the same restricted identity the running system uses -
+  not an administrator, and not a shortcut. Every attempt to add or change a future day was refused.
+  Every attempt to remove one succeeded. The control case, removing a day the actor is not allowed to see,
+  quietly did nothing, which is the expected behaviour. All of it ran inside a transaction that was
+  rolled back, so no record was changed.
+  <br><br>
+  Nobody gains or loses a permission, no figure changes, and no screen changes. An HR administrator's
+  roster works exactly as it does today.
+</p>

@@ -1,0 +1,557 @@
+<meta charset="utf-8">
+<title>e7eb5d83 rev 5 — Claim Limits, grade-first and editable, with sub-claim limits</title>
+<!--
+  Mockup for e7eb5d83 ("Configurable Claim Management Module"), plan revision 5.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here.
+
+  · HOW THIS WAS DRAWN. Not a screenshot (no dev server was run — the cluster was reserved). Reconstructed
+    from the DEPLOYED source at main@3e449428 = /opt/ai-hr on production (files stamped 2026-08-12 11:53,
+    353 migrations applied) plus production data read by SELECT on 2026-08-12.
+
+  · THE "TODAY" SCREEN IS THE REAL SCREEN, columns in source order
+    (app/admin/claims/limits/page.tsx:94-101): Claim Type · Per-claim cap (RM) · Monthly limit ·
+    Annual limit (RM) · Per block · Claims / year · Effective from. Every caption is resolved from
+    messages/en.json (admin.claims.*), not invented — including "Falls back to the company-wide limit"
+    (fallbackBadge), "Unlimited" (unlimitedBadge), "Sub-types share their claim type's limit."
+    (subTypesInheritHint), "All grades (company-wide)" (companyWide), "Set a claim limit" (newLimitTitle)
+    and "Save limit" (saveLimit). The grade rail on the left is REAL and already shipped (r186) — the
+    contest is about editing, not about finding the grade.
+
+  · THE DATA IS REAL AND IT IS THE REPORTER'S OWN, tenant 11111111-…-111111111111:
+      claim_type   MEDICAL 001 "Medical" · OPTICAL 001 "Optical" · MOBILE 001 "Mobile" ·
+                   MILEAGE 001 "Mileage" (is_mileage = true)
+      claim_item   MEDICAL 002 "OUTPATIENT MEDICAL CLAIM" · MEDICAL 003 "INPATIENT MEDICAL CLAIM" ·
+                   GLASSES 001 "Glasses" · CONTACT LENSES · MOBILE "Handphone" ·
+                   1-500KM "RM1.00/km"  (501-1000KM "RM0.60/km" is archived, so it is NOT drawn)
+      claim_policy MEDICAL 001 @ GRADE 12 (PERMANENT): per-claim 100.00, annual 1,500.00, from 2026-08-01
+                   — saved by the reporter at 15:35 on 2026-08-12, eleven minutes before the contest.
+                   MEDICAL 001 company-wide: 150.00 / 1,000.00.  MILEAGE 001 company-wide: 100.00 / 100.00,
+                   rate_config {"kind":"mileage_flat","ratePerKm":0.7}.  MOBILE 001: 180.00 / 180.00,
+                   fixed_allowance.  OPTICAL 001: annual 500.00.  No row has ever carried a per-block rule
+                   or a lifetime limit.
+      job_grade    55 live. GRADE 12 (PERMANENT) headcount = 0.
+      mileage      claim_mileage_rate: five rows, ALL on GRADE 12 (PERMANENT) — 0-100km RM1.0000,
+                   100-300km RM0.8000, 300km+ RM0.6000, from 2026-08-10. No company-wide table exists.
+
+  · WHY THE MILEAGE RATE APPEARS UNDER CLAIM LIMITS. There is no rate field on the limit editor any more
+    (r186 removed it). The mileage rate the reporter can still see under Claim Limits is their own leftover
+    sub-claim row "RM1.00/km (1-500KM)", which the screen lists under the Mileage claim type. It is drawn
+    exactly where the real screen puts it, and flagged.
+
+  · THE "AFTER" GRID DRAWS ONLY WHAT WILL BE BUILT. The parent rows are pre-filled with the figures
+    actually on file. The sub-claim boxes are drawn EMPTY with the "Unlimited" placeholder, because no
+    sub-claim limit exists today — except MEDICAL 002, drawn mid-typing with 1,000.00 and labelled as
+    being typed, to show what the new box does. Nothing in the picture claims a saved sub-limit.
+
+  · WHAT IS DELIBERATELY NOT DRAWN: claim cycles, currencies, duplicate detection, receipt scanning,
+    approval rules, Google Maps, the Entitled tick, and a third level below sub-claim. None is in this plan.
+
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px;margin-bottom:16px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  .scr{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);padding:0 10px}
+  .tab{padding:8px 11px;font-size:11px;color:var(--mf);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.on{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+  .ph{padding:11px 12px 9px}
+  .ph .t{font-size:12.5px;font-weight:700}
+  .ph .d{font-size:10.5px;color:var(--mf);margin-top:2px}
+
+  .body{display:grid;grid-template-columns:212px 1fr;gap:12px;padding:0 12px 12px}
+  .pane{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .sechdr{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;font-size:11px;
+          font-weight:600;background:#fafbff;border-bottom:1px solid var(--border)}
+  .cnt{font-weight:400;color:var(--mf);font-size:10px}
+  .rail{padding:6px}
+  .rw{display:block;padding:5px 9px;border-radius:6px;font-size:10.5px;color:var(--mf);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rw.on{background:color-mix(in srgb,var(--primary) 10%,white);color:var(--primary);font-weight:600}
+  .rw .mk{float:right;font-size:8.5px;color:var(--primary);font-weight:700}
+  .more{padding:5px 9px;font-size:10px;color:#a3a4b4}
+
+  table{border-collapse:collapse;width:100%}
+  th{background:var(--muted);color:var(--mf);font-size:8.5px;text-transform:uppercase;letter-spacing:.03em;
+     font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:6px 8px;font-size:10.5px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  th.num{text-align:right}
+  .nm{font-weight:600;font-size:11px}
+  .code{color:var(--mf);font-size:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .fb{font-size:9px;color:var(--warn);margin-top:2px}
+  .x{color:#b9bacb}
+  .subrow td{background:#fbfbfe;border-bottom:1px dashed var(--border)}
+  .subnm{padding-left:22px;color:var(--mf);font-size:10.5px}
+  .subnm b{color:var(--fg);font-weight:600}
+  .hintrow td{background:#fbfbfe;font-size:9.5px;color:var(--mf);padding-top:0}
+
+  .inp{display:block;background:#fff;border:1px solid #d4d5e4;border-radius:7px;padding:4px 7px;
+       font-size:10.5px;text-align:right;font-variant-numeric:tabular-nums;min-width:74px}
+  .inp.ph2{color:#a9aabb;font-style:normal}
+  .inp.typing{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 16%,white);
+              color:var(--fg);font-weight:600}
+  .inp.l{text-align:left}
+  .selbox{display:inline-block;background:#fff;border:1px solid #d4d5e4;border-radius:7px;padding:4px 7px;
+          font-size:10px;color:var(--fg)}
+  .blk{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap}
+  .blk .lbl2{font-size:9px;color:var(--mf)}
+  .tick{width:12px;height:12px;border:1.5px solid #b9bacb;border-radius:3px;display:inline-block;
+        vertical-align:-2px;flex:none}
+  .tick.on{background:var(--primary);border-color:var(--primary)}
+  .mini{width:32px;min-width:32px;padding:3px 4px;font-size:10px}
+  .mini2{width:58px;min-width:58px;padding:3px 5px;font-size:10px}
+  .blk .selbox{padding:3px 5px;font-size:9px}
+
+  .flagbox{border:1px solid color-mix(in srgb,var(--bad) 32%,white);
+           background:color-mix(in srgb,var(--bad) 6%,white);border-radius:8px;padding:6px 9px;
+           font-size:9.5px;color:#8f1d1d;line-height:1.45;margin-top:5px}
+  .warnbox{border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+           background:color-mix(in srgb,var(--warn) 8%,white);border-radius:9px;padding:9px 11px;
+           font-size:10.5px;color:#7c4a06;line-height:1.5}
+  .okbox{border:1px solid color-mix(in srgb,var(--good) 30%,white);
+         background:color-mix(in srgb,var(--good) 6%,white);border-radius:9px;padding:9px 11px;
+         font-size:10.5px;color:#14532d;line-height:1.5}
+  .mileline{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--mf)}
+  .lnk{color:var(--primary);font-weight:600}
+
+  .formttl{font-size:11.5px;font-weight:600;padding:10px 12px 0}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 10px;padding:8px 12px 0}
+  .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;
+       margin-bottom:3px}
+  .inp2{background:#fff;border:1px solid #d4d5e4;border-radius:7px;padding:5px 8px;font-size:10.5px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .acts{display:flex;gap:7px;align-items:center;padding:10px 12px 12px}
+  .btn{border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:8px;
+       padding:6px 13px;font-size:10.5px;font-weight:600;display:inline-block}
+  .btn.sec{background:#fff;color:var(--fg);border-color:var(--border);font-weight:500}
+  .savebar{display:flex;align-items:center;gap:10px;padding:9px 11px;border-top:1px solid var(--border);
+           background:#fafbff}
+  .savebar .sp{flex:1}
+  .eff{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--mf)}
+
+  .note{font-size:10.5px;color:var(--mf);margin:11px 0 0;line-height:1.55}
+  .note b{color:var(--fg)}
+  .red{color:var(--bad);font-weight:600}
+  .grn{color:var(--good);font-weight:600}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .pot{border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:10.5px;line-height:1.55}
+  .pot h3{margin:0 0 5px;font-size:11px}
+  .bar{height:9px;border-radius:999px;background:var(--muted);overflow:hidden;margin:4px 0 3px}
+  .bar i{display:block;height:100%;background:var(--primary)}
+  .bar i.g{background:var(--good)}
+</style>
+
+<!-- ─────────────────────────────  TODAY  ───────────────────────────── -->
+<div class="card">
+  <h2>Today &mdash; Grade 12 shows every claim limit, but you can only change one at a time<span class="chip now">today</span></h2>
+  <p class="sub">
+    Claims &rarr; Claim Limits, with GRADE 12 (PERMANENT) picked on the left. This is the real screen and
+    your real claim types, sub-claims and figures, exactly as they stand on your system.
+  </p>
+
+  <div class="scr">
+    <div class="tabs">
+      <span class="tab">Claim Types</span><span class="tab on">Claim Limits</span>
+      <span class="tab">Mileage Rates</span><span class="tab">Reimbursements</span>
+    </div>
+    <div class="ph">
+      <div class="t">Claim Limits</div>
+      <div class="d">Configure claim eligibility and limits per Job Grade &mdash; reusing the grades already maintained for Leave.</div>
+    </div>
+
+    <div class="body">
+      <div class="pane">
+        <div class="sechdr"><span>Job grades</span><span class="cnt">55</span></div>
+        <div class="rail">
+          <span class="rw">All grades (company-wide)</span>
+          <span class="rw on">GRADE 12 (PERMANENT)</span>
+          <span class="rw">GRADE 12 (CONTRACT)</span>
+          <span class="rw">GRADE 15 (PERMANENT)</span>
+          <span class="rw">GRADE 17 (PERMANENT)</span>
+          <span class="rw">GRADE 18 (PERMANENT)</span>
+          <span class="rw">GRADE 21 (CONTRACT)</span>
+          <span class="more">&hellip; 48 more</span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="sechdr"><span>GRADE 12 (PERMANENT)</span><span class="cnt">4</span></div>
+        <table>
+          <tr>
+            <th style="width:31%">Claim Type</th>
+            <th class="num">Per-claim cap (RM)</th><th class="num">Monthly limit</th>
+            <th class="num">Annual limit (RM)</th><th class="num">Per block</th>
+            <th class="num">Claims / year</th><th class="num">Effective from</th>
+          </tr>
+
+          <tr>
+            <td><div class="nm">Medical</div><div class="code">MEDICAL 001</div></td>
+            <td class="num">RM 100.00</td><td class="num x">&mdash;</td><td class="num">RM 1,500.00</td>
+            <td class="num x">&mdash;</td><td class="num x">&mdash;</td><td class="num">2026-08-01</td>
+          </tr>
+          <tr class="subrow">
+            <td colspan="7" class="subnm">
+              &#8627; <b>OUTPATIENT MEDICAL CLAIM</b> <span class="code">(MEDICAL 002)</span><br>
+              &#8627; <b>INPATIENT MEDICAL CLAIM</b> <span class="code">(MEDICAL 003)</span>
+              <div style="margin-top:3px">Sub-types share their claim type&rsquo;s limit.
+                <span class="red">&larr; no box to type a limit into</span></div>
+            </td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="nm">Mileage</div><div class="code">MILEAGE 001</div>
+              <div class="fb">Falls back to the company-wide limit</div>
+            </td>
+            <td class="num">RM 100.00</td><td class="num x">&mdash;</td><td class="num">RM 100.00</td>
+            <td class="num x">&mdash;</td><td class="num x">&mdash;</td><td class="num">2026-06-30</td>
+          </tr>
+          <tr class="subrow">
+            <td colspan="7" class="subnm">
+              &#8627; <b>RM1.00/km</b> <span class="code">(1-500KM)</span>
+              <div class="flagbox">
+                <b>This is the mileage rate showing up under Claim Limits.</b> It is an old sub-claim row
+                from before Mileage Rates existed. Your real per-kilometre bands now live on Mileage Rates
+                &mdash; RM1.00 for the first 100&nbsp;km, RM0.80 to 300&nbsp;km, RM0.60 after that.
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="nm">Mobile</div><div class="code">MOBILE 001</div>
+              <div class="fb">Falls back to the company-wide limit</div>
+            </td>
+            <td class="num">RM 180.00</td><td class="num x">&mdash;</td><td class="num">RM 180.00</td>
+            <td class="num x">&mdash;</td><td class="num x">&mdash;</td><td class="num">2026-06-30</td>
+          </tr>
+          <tr class="subrow">
+            <td colspan="7" class="subnm">&#8627; <b>Handphone</b> <span class="code">(MOBILE)</span></td>
+          </tr>
+
+          <tr>
+            <td>
+              <div class="nm">Optical</div><div class="code">OPTICAL 001</div>
+              <div class="fb">Falls back to the company-wide limit</div>
+            </td>
+            <td class="num x">&mdash;</td><td class="num x">&mdash;</td><td class="num">RM 500.00</td>
+            <td class="num x">&mdash;</td><td class="num x">&mdash;</td><td class="num">2026-06-30</td>
+          </tr>
+          <tr class="subrow">
+            <td colspan="7" class="subnm">
+              &#8627; <b>CONTACT LENSES</b> <span class="code">(CONTACT LENSES)</span><br>
+              &#8627; <b>Glasses</b> <span class="code">(GLASSES 001)</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border)">
+      <p class="formttl">Set a claim limit</p>
+      <p class="sub" style="padding:0 12px;margin:2px 0 0">
+        Choose a grade and claim type, then set the limits. Saving records a new effective-dated version.
+      </p>
+      <div class="grid4">
+        <div><div class="lbl">Job Grade</div><div class="inp2">GRADE 12 (PERMANENT) &#9662;</div></div>
+        <div><div class="lbl">Claim Type</div><div class="inp2">Medical (MEDICAL 001) &#9662;</div></div>
+        <div><div class="lbl">Per-claim cap (RM)</div><div class="inp2">&nbsp;</div></div>
+        <div><div class="lbl">Annual limit (RM)</div><div class="inp2">&nbsp;</div></div>
+      </div>
+      <div class="acts">
+        <span class="btn">Save limit</span>
+        <span class="note" style="margin:0">
+          <span class="red">One claim type per save.</span> Four claim types on this grade means opening
+          this form four times &mdash; and it cannot reach a sub-claim at all.
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    Three things are wrong here and you named all three. <b>One</b> &mdash; clicking GRADE 12 shows you
+    everything, but changing it means dropping to the form at the bottom and doing one claim type at a time.
+    <b>Two</b> &mdash; <span class="red">RM1.00/km is sitting under Claim Limits</span>, where a rate does
+    not belong. <b>Three</b> &mdash; MEDICAL 002 and MEDICAL 003 are listed but have nowhere to put a limit;
+    the screen simply says they share Medical&rsquo;s.
+  </p>
+</div>
+
+<!-- ─────────────────────────────  AFTER  ───────────────────────────── -->
+<div class="card">
+  <h2>Proposed &mdash; click a grade, type every limit on the page, press Save once<span class="chip new">proposed</span></h2>
+  <p class="sub">
+    Same tab, same grade list. The table becomes the form: every claim type <em>and</em> every sub-claim
+    gets its own boxes, and one Save writes the lot for that grade.
+  </p>
+
+  <div class="scr">
+    <div class="tabs">
+      <span class="tab">Claim Types</span><span class="tab on">Claim Limits</span>
+      <span class="tab">Mileage Rates</span><span class="tab">Reimbursements</span>
+    </div>
+    <div class="ph">
+      <div class="t">Claim Limits</div>
+      <div class="d">Pick a job grade, then set every claim limit for that grade on one page.</div>
+    </div>
+
+    <div class="body">
+      <div class="pane">
+        <div class="sechdr"><span>Job grades</span><span class="cnt">55</span></div>
+        <div class="rail">
+          <span class="rw">All grades (company-wide) <span class="mk">SET</span></span>
+          <span class="rw on">GRADE 12 (PERMANENT) <span class="mk">SET</span></span>
+          <span class="rw">GRADE 12 (CONTRACT)</span>
+          <span class="rw">GRADE 15 (PERMANENT)</span>
+          <span class="rw">GRADE 17 (PERMANENT)</span>
+          <span class="rw">GRADE 18 (PERMANENT)</span>
+          <span class="rw">GRADE 21 (CONTRACT)</span>
+          <span class="more">&hellip; 48 more</span>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="sechdr">
+          <span>GRADE 12 (PERMANENT) <span class="cnt">&mdash; 4 claim types, 5 sub-claims</span></span>
+          <span class="eff">Effective from <span class="selbox">12/08/2026</span></span>
+        </div>
+        <table>
+          <tr>
+            <th style="width:26%">Claim Type / Sub-claim</th>
+            <th class="num">Per-claim cap (RM)</th><th class="num">Monthly limit</th>
+            <th class="num">Annual limit (RM)</th><th style="width:22%">Per block</th>
+            <th class="num" style="width:11%">Claims / year</th>
+          </tr>
+
+          <!-- MEDICAL -->
+          <tr>
+            <td><div class="nm">Medical</div><div class="code">MEDICAL 001</div></td>
+            <td><span class="inp">100.00</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp">1,500.00</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="subrow">
+            <td class="subnm">&#8627; <b>OUTPATIENT MEDICAL CLAIM</b><br><span class="code" style="padding-left:14px">MEDICAL 002</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp typing">1,000.00</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="subrow">
+            <td class="subnm">&#8627; <b>INPATIENT MEDICAL CLAIM</b><br><span class="code" style="padding-left:14px">MEDICAL 003</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="hintrow">
+            <td colspan="6" style="padding-left:22px">
+              Anything claimed on a sub-claim still comes out of Medical&rsquo;s RM1,500 as well.
+              An empty box means that sub-claim has no limit of its own.
+            </td>
+          </tr>
+
+          <!-- MILEAGE -->
+          <tr>
+            <td>
+              <div class="nm">Mileage</div><div class="code">MILEAGE 001</div>
+              <div class="fb">Falls back to the company-wide limit</div>
+            </td>
+            <td><span class="inp">100.00</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp">100.00</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="hintrow">
+            <td colspan="6" style="padding-left:22px">
+              <div class="mileline">
+                &#128663; Priced per kilometre on <span class="lnk">Mileage Rates &rarr;</span>
+                &nbsp;&middot;&nbsp; RM1.00 to 100&nbsp;km, RM0.80 to 300&nbsp;km, RM0.60 after that.
+                <span class="grn">No rate is asked for here.</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- MOBILE -->
+          <tr>
+            <td>
+              <div class="nm">Mobile</div><div class="code">MOBILE 001</div>
+              <div class="fb">Falls back to the company-wide limit</div>
+            </td>
+            <td><span class="inp">180.00</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp">180.00</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="subrow">
+            <td class="subnm">&#8627; <b>Handphone</b><br><span class="code" style="padding-left:14px">MOBILE</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+
+          <!-- OPTICAL -->
+          <tr>
+            <td>
+              <div class="nm">Optical</div><div class="code">OPTICAL 001</div>
+              <div class="fb">Falls back to the company-wide limit</div>
+            </td>
+            <td><span class="inp ph2">No cap</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp">500.00</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick on"></span><span class="inp mini2">2,000.00</span>
+                <span class="lbl2">every</span><span class="inp mini">2</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="subrow">
+            <td class="subnm">&#8627; <b>CONTACT LENSES</b><br><span class="code" style="padding-left:14px">CONTACT LENSES</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+          <tr class="subrow">
+            <td class="subnm">&#8627; <b>Glasses</b><br><span class="code" style="padding-left:14px">GLASSES 001</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td><span class="inp ph2">Unlimited</span></td>
+            <td>
+              <div class="blk">
+                <span class="tick"></span><span class="inp mini2 ph2">RM</span>
+                <span class="lbl2">every</span><span class="inp mini ph2">1</span>
+                <span class="selbox">Year(s) &#9662;</span>
+              </div>
+            </td>
+            <td><span class="inp ph2">Unlimited</span></td>
+          </tr>
+        </table>
+
+        <div class="savebar">
+          <span class="btn">Save all limits for GRADE 12 (PERMANENT)</span>
+          <span class="btn sec">Reset</span>
+          <span class="sp"></span>
+          <span class="cnt">Only the boxes you changed are written. Leave a box empty for no limit.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    Nine rows, every one of them typeable, one Save. The mileage rate has left this screen &mdash; Mileage
+    keeps its money limits (RM100 a claim, RM100 a year) but is priced entirely on Mileage Rates. The
+    Optical row shows the every-2-years limit you approved last time, filled in as an example so you can
+    see where it now lives. <b>Nothing about how a claim is calculated changes</b> &mdash; this is the same
+    limits, in boxes you can reach.
+  </p>
+</div>
+
+<!-- ─────────────────────────  HOW A SUB-LIMIT BEHAVES + THE MILEAGE WARNING  ───────────────────────── -->
+<div class="card">
+  <h2>What a sub-claim limit does, and one thing on your mileage we should fix while we are here</h2>
+
+  <div class="two">
+    <div class="pot">
+      <h3>Medical RM1,500 a year, Outpatient RM1,000 of it</h3>
+      <div>Somebody on GRADE 12 claims RM600 of Outpatient in March.</div>
+      <div class="bar"><i style="width:40%"></i></div>
+      <div>Medical used RM600 of RM1,500 &mdash; <b>RM900 left</b></div>
+      <div class="bar"><i class="g" style="width:60%"></i></div>
+      <div>Outpatient used RM600 of RM1,000 &mdash; <b>RM400 left</b></div>
+      <div style="margin-top:6px;color:var(--mf)">
+        They can still claim RM900 of Inpatient, but only RM400 more of Outpatient. Both pots are checked
+        when they press submit, and a claim that would break either one is refused there and then.
+      </div>
+      <div style="margin-top:5px" class="grn">
+        The part where a sub-claim already comes out of the parent pot works today &mdash; it is the
+        sub-claim&rsquo;s own limit that has never existed.
+      </div>
+    </div>
+
+    <div>
+      <div class="warnbox">
+        <b>Your mileage rate is being held in an old place, and it is one click from being wiped.</b><br>
+        Every mileage claim in your company is currently priced at <b>RM0.70 per kilometre</b> from a
+        setting attached to the old Claim Limit row. The proper bands you set up &mdash; RM1.00 / RM0.80 /
+        RM0.60 &mdash; are saved against GRADE 12 (PERMANENT) only, and
+        <b>nobody is on that grade</b>, so nobody is getting them. Re-saving the Mileage limit on the
+        current screen throws the RM0.70 away, and mileage claiming stops for everyone.
+      </div>
+      <div class="okbox" style="margin-top:9px">
+        <b>What we will do about it.</b> Saving limits will never touch a rate again. And we will put your
+        RM0.70 per kilometre in as the company-wide mileage rate, so everyone is priced the way they
+        already are today, while GRADE 12 keeps its own RM1.00 / RM0.80 / RM0.60 bands. Nobody&rsquo;s
+        claim changes by a cent &mdash; it just stops depending on an old setting.
+      </div>
+    </div>
+  </div>
+</div>

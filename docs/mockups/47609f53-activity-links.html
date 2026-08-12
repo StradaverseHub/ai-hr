@@ -1,0 +1,164 @@
+<meta charset="utf-8">
+<title>47609f53 — Recent activity: a row is a link only when it opens</title>
+<!--
+  Mockup for 47609f53, plan revision 1. Sketch — wording, spacing and colours will differ.
+  Rows are REAL production events (domain_event, measured 2026-08-12): employment.* rows carry a
+  subject so a supervisor can see them; employment-pay-component / leave-request carry no destination
+  and already render as plain text. Card text matches app/page.tsx exactly: the row's second line is
+  record type, then who did it, then how long ago — it never names the employee.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:15px;margin:0 0 2px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 16px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+  .ch{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .ct{font-size:13px;font-weight:700}
+  .cs{font-size:11px;color:var(--mf);margin:1px 0 0}
+  ul{list-style:none;margin:14px 0 0;padding:0}
+  li{display:flex;align-items:flex-start;gap:10px;margin-bottom:11px}
+  .dot{width:7px;height:7px;border-radius:999px;background:var(--primary);flex:none;margin-top:6px}
+  .dot.sys{background:#8b8b9c}
+  .ev{font-size:12.5px;font-weight:600;line-height:1.35}
+  .meta{font-size:11px;color:var(--mf);margin-top:1px}
+  .lnk{color:var(--primary);text-decoration:underline;text-underline-offset:2px}
+  .plain{color:var(--mf)}
+  .mark{position:relative}
+  .mark .ev,.mark .meta{background:#fff4f4;border-radius:4px}
+
+  .legend{margin-top:9px;font-size:11px;color:var(--mf)}
+  .k{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .k.b{background:#fca5a5}.k.g{background:#86efac}
+
+  .callout{border-radius:10px;padding:10px 12px;font-size:11.5px;margin-top:12px;line-height:1.55}
+  .callout.bad{background:var(--badbg);border:1px solid #fca5a5;color:#7f1d1d}
+  .callout.good{background:var(--goodbg);border:1px solid #86efac;color:#14532d}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;background:#fff;
+        border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:700;padding:6px 10px;background:var(--muted)}
+  td{padding:6px 10px;border-top:1px solid var(--border)}
+  td.y{color:var(--good);font-weight:700}
+  td.n{color:var(--bad);font-weight:700}
+  .foot{font-size:10.5px;color:var(--mf);margin-top:14px;line-height:1.6}
+</style>
+
+<h1>Recent activity — a row is a link only when it opens</h1>
+<p class="sub">What a supervisor sees on their dashboard today, and what we propose. Sketch: wording, spacing and colours will differ from the finished screen.</p>
+
+<div class="two">
+
+  <div>
+    <span class="tag bad">TODAY</span>
+    <div class="card">
+      <div class="ch">
+        <div>
+          <div class="ct">Recent Activity</div>
+          <p class="cs">Latest changes across the system</p>
+        </div>
+      </div>
+      <ul>
+        <li class="mark"><span class="dot"></span><div>
+          <div class="ev">Employment shift arrangement assigned</div>
+          <div class="meta"><span class="lnk">Employee</span> · HR Admin · 2d ago</div>
+        </div></li>
+        <li><span class="dot"></span><div>
+          <div class="ev">Employment pay component set</div>
+          <div class="meta"><span class="plain">Employment pay component</span> · HR Admin · 3h ago</div>
+        </div></li>
+        <li class="mark"><span class="dot sys"></span><div>
+          <div class="ev">Employment movement applied</div>
+          <div class="meta"><span class="lnk">Employee</span> · system · 1d ago</div>
+        </div></li>
+        <li><span class="dot"></span><div>
+          <div class="ev">Performance review submitted</div>
+          <div class="meta"><span class="lnk">Performance review</span> · Aisyah Rahman · 3d ago</div>
+        </div></li>
+        <li class="mark"><span class="dot sys"></span><div>
+          <div class="ev">Employment grade changed</div>
+          <div class="meta"><span class="lnk">Employee</span> · system · 2d ago</div>
+        </div></li>
+        <li><span class="dot"></span><div>
+          <div class="ev">Leave request approved</div>
+          <div class="meta"><span class="plain">Leave request</span> · Daniel Tan · 4d ago</div>
+        </div></li>
+      </ul>
+    </div>
+    <div class="callout bad">
+      The three tinted rows are links to the Personnel admin screen. A supervisor can click them and is
+      sent straight back to this dashboard. The tint is an explanation for this sketch — the real screen
+      does not have it.
+    </div>
+  </div>
+
+  <div>
+    <span class="tag good">PROPOSED</span>
+    <div class="card">
+      <div class="ch">
+        <div>
+          <div class="ct">Recent Activity</div>
+          <p class="cs">Latest changes across the system</p>
+        </div>
+      </div>
+      <ul>
+        <li><span class="dot"></span><div>
+          <div class="ev">Employment shift arrangement assigned</div>
+          <div class="meta"><span class="plain">Employee</span> · HR Admin · 2d ago</div>
+        </div></li>
+        <li><span class="dot"></span><div>
+          <div class="ev">Employment pay component set</div>
+          <div class="meta"><span class="plain">Employment pay component</span> · HR Admin · 3h ago</div>
+        </div></li>
+        <li><span class="dot sys"></span><div>
+          <div class="ev">Employment movement applied</div>
+          <div class="meta"><span class="plain">Employee</span> · system · 1d ago</div>
+        </div></li>
+        <li><span class="dot"></span><div>
+          <div class="ev">Performance review submitted</div>
+          <div class="meta"><span class="lnk">Performance review</span> · Aisyah Rahman · 3d ago</div>
+        </div></li>
+        <li><span class="dot sys"></span><div>
+          <div class="ev">Employment grade changed</div>
+          <div class="meta"><span class="plain">Employee</span> · system · 2d ago</div>
+        </div></li>
+        <li><span class="dot"></span><div>
+          <div class="ev">Leave request approved</div>
+          <div class="meta"><span class="plain">Leave request</span> · Daniel Tan · 4d ago</div>
+        </div></li>
+      </ul>
+    </div>
+    <div class="callout good">
+      Same rows, same wording, same order. The supervisor still reads everything they read before.
+      Only the links they cannot follow become plain text. The performance review row stays a link,
+      because that screen does open for the people involved in the review.
+    </div>
+  </div>
+
+</div>
+
+<table>
+  <tr><th>Where a row can send you</th><th>Who the destination opens for</th><th>Supervisor today</th><th>Proposed</th></tr>
+  <tr><td>Employee record (Personnel admin)</td><td>Administrators</td><td class="n">Link that bounces back</td><td class="y">Plain text</td></tr>
+  <tr><td>Pay run</td><td>Administrators</td><td class="y">Never appears</td><td class="y">Unchanged</td></tr>
+  <tr><td>Review cycle</td><td>Administrators</td><td class="y">Never appears</td><td class="y">Unchanged</td></tr>
+  <tr><td>Performance review</td><td>The employee and their reviewer</td><td class="y">Link that works</td><td class="y">Stays a link</td></tr>
+</table>
+
+<p class="foot">
+  "Never appears" means what it says: pay-run and review-cycle activity is already withheld from anyone
+  who is not an administrator, so a supervisor never sees those rows at all. Only the employee rows are
+  both visible and unusable — that is the one to fix.
+  An administrator's dashboard is unchanged: every row stays a link for them. The card's "View all" link
+  is already hidden from anyone who is not an administrator, in both pictures.
+</p>

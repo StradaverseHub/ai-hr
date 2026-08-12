@@ -1,0 +1,391 @@
+<meta charset="utf-8">
+<title>009c8a37 — Search first, employee list next, filters behind More filters</title>
+<!--
+  Mockup for 009c8a37 ("Payroll Module – Employee List Hide/Show UIUX Enhancement"), plan revision 2 —
+  the CONTINUATION request: Search Employee at the top, the employee list under it, the remaining
+  filters collapsed behind an expander that is closed by default.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW = the panel as it stands today. Individual Transaction draws its own copy of this list inside
+    app/payroll/transactions/individual/txn-workspace.tsx:1250-1345; the other six screens draw
+    EmployeeScopePanel (components/collapsible-employee-panel.tsx:290-397). Both stack the narrowing
+    controls FIRST and put Search employee LAST, immediately above the names. The order drawn here is
+    the real one, field for field.
+  · The Hide employee list control on the detail header line is ALREADY BUILT (r186, plan revision 1 of
+    this same item). It is drawn because it is on the screen, not because it is being changed again.
+  · AFTER = what we will build: Search employee (with Reset beside it) first, the employee list directly
+    under it, and Company / Business unit / Department / Status inside a "More filters" section that is
+    CLOSED when the screen opens. The count in brackets appears only when a hidden filter is narrowing
+    the list.
+  · Payroll period is drawn OUTSIDE the More filters group on purpose. It is not an employee filter —
+    it narrows the selected person's transactions — and item e1e33ca0 moves it out of this panel
+    altogether. See that item's sketch for where it lands.
+  · PERSONAL DATA IS REAL. The employee names, employee IDs, companies and departments below are actual
+    records from your system, as are the pay item names, the column headings and every control caption.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+
+  .ph{font-size:15px;font-weight:700;margin:0}
+  .phs{font-size:11px;color:var(--mf);margin:1px 0 12px}
+
+  .split{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+  .split > *{min-width:0}
+
+  .pnl{border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden}
+  .pnlh{padding:10px 12px;border-bottom:1px solid var(--border)}
+  .pnlh b{font-size:12px}
+  .pnlh p{margin:2px 0 0;font-size:10.5px;color:var(--mf);line-height:1.4}
+  .pnlb{padding:11px 12px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:600;margin-bottom:3px}
+  .inp{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11.5px;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ghost{color:#9a9ba8}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px}
+  .one{margin-bottom:7px}
+  .searchrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:end}
+  .reset{border:1px solid var(--border);border-radius:8px;padding:6px 11px;font-size:11px;color:var(--mf);
+         background:#fff;white-space:nowrap}
+  ul{list-style:none;margin:9px 0 0;padding:0;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  li{padding:6px 9px;border-bottom:1px solid var(--border);font-size:11.5px}
+  li:last-child{border-bottom:0}
+  li.on{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+  .who{font-weight:600}
+  .meta{color:var(--mf);font-size:10.5px}
+  .code{color:var(--mf);font-size:10.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .exp{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--border);
+       border-radius:9px;padding:7px 10px;font-size:11.5px;font-weight:600;background:#fbfbff;margin-top:9px}
+  .exp .cnt{font-weight:600;color:var(--primary);font-size:10.5px}
+  .expbody{border:1px solid var(--border);border-top:0;border-radius:0 0 9px 9px;padding:10px;margin-top:-1px;
+           background:#fbfbff}
+
+  .toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;
+          padding:5px 10px;font-size:10.5px;color:var(--mf);background:#fff;white-space:nowrap}
+
+  .detail{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
+  .hdrcard{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;
+           padding:9px 12px;background:#fff;margin-bottom:12px}
+  .hdrcard .id{min-width:0;flex:1}
+  .hdrcard .id .n{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hdrcard .id .m{font-size:10.5px;color:var(--mf);margin-top:1px;white-space:nowrap;overflow:hidden;
+                  text-overflow:ellipsis}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 13px;font-size:11px;font-weight:600;
+       display:inline-block;white-space:nowrap}
+  .totals{display:flex;flex-wrap:wrap;gap:18px;padding:8px 12px;border-bottom:1px solid var(--border);
+          background:#fafaff;font-size:10.5px;color:var(--mf)}
+  .totals b{color:var(--fg);font-variant-numeric:tabular-nums}
+  .totals .amber b{color:var(--warn)}
+  .bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:10.5px}
+  .seg span{padding:4px 9px}
+  .seg .sel{background:var(--muted);font-weight:600}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;width:100%;table-layout:fixed}
+  th,td{padding:5px 10px;border-bottom:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;
+        white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  th{font-size:9px;text-transform:uppercase;letter-spacing:.03em;color:var(--mf);font-weight:600;
+     text-align:left;background:var(--muted)}
+  th.n,td.n{text-align:right}
+  td.n{font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:600;
+         background:#fef3c7;color:#92400e}
+  .act{color:var(--mf);font-size:10px}
+
+  .callout{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;color:var(--bad);margin:10px 0 0;
+           line-height:1.5}
+  .callout i{font-style:normal;font-weight:700}
+  .callout.ok{color:var(--good)}
+  .cut{font-size:11.5px;color:var(--mf);margin:11px 0 0;line-height:1.55}
+  .cut b{color:var(--fg)}
+  .screens{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px}
+  .screens div{border:1px solid var(--border);border-radius:9px;padding:7px 9px;font-size:11px;background:#fff}
+  .disclaimer{font-size:11.5px;color:var(--mf);border:1px dashed var(--border);border-radius:10px;
+              padding:9px 11px;margin:0 0 18px;line-height:1.55;background:#fff}
+  .sidebyside{display:grid;grid-template-columns:300px 300px minmax(0,1fr);gap:16px;align-items:start}
+</style>
+
+<p class="disclaimer">
+  Sketch for the employee panel's new order. Wording, spacing and colours will differ slightly in the built
+  screen. <b>The employee names, employee IDs, companies and departments below are real records from your
+  system</b>, as are the pay item names, column headings and control captions. The screen drawn is Individual
+  Transaction; the same panel appears on six other screens, all listed at the bottom.
+</p>
+
+<!-- ══════════════════ NOW ══════════════════ -->
+<div class="card">
+  <h2>Now<span class="chip now">today, on every screen with an employee list</span></h2>
+  <p class="sub">The panel opens with the narrowing choices stacked at the top. Search employee is the last
+    control on the panel, so the box people use every time sits below four or five boxes most people never
+    touch &mdash; and the names start further down again.</p>
+
+  <p class="ph">Individual Transaction</p>
+  <p class="phs">One-off pay items for one employee at a time.</p>
+
+  <div class="split">
+    <div>
+      <div class="pnl">
+        <div class="pnlh"><b>Employees</b>
+          <p>Pick an employee to see and change their one-off transactions.</p></div>
+        <div class="pnlb">
+          <div class="one"><div class="lbl">Company</div><div class="inp">&mdash; &#9662;</div></div>
+          <div class="two">
+            <div><div class="lbl">Business unit</div><div class="inp">All business units &#9662;</div></div>
+            <div><div class="lbl">Department</div><div class="inp">All departments &#9662;</div></div>
+          </div>
+          <div class="two">
+            <div><div class="lbl">Status</div><div class="inp">All statuses &#9662;</div></div>
+            <div><div class="lbl">Payroll period</div><div class="inp">2026-07</div></div>
+          </div>
+          <div class="one"><div class="lbl">Search employee</div>
+            <div class="inp"><span class="ghost">Search by name or employee ID&hellip;</span></div></div>
+          <ul>
+            <li class="on"><span class="who">EMP-0001 &middot; Aisyah Rahman</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Group Office &middot; Active</span></li>
+            <li><span class="who">EMP-0004 &middot; Arjun Kumar</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+            <li><span class="who">EMP-0005 &middot; Daniel Tan</span><br>
+              <span class="meta">Demo Group Holdings Bhd &middot; Group Office &middot; Active</span></li>
+            <li><span class="who">EMP-0002 &middot; Daniel Tan</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+          </ul>
+        </div>
+      </div>
+      <p class="callout"><i>&#9650;</i> Six controls before the first name. Two people here are both called
+        Daniel Tan, so the search box is the one control that reliably separates them &mdash; and it is the
+        last one you reach.</p>
+    </div>
+
+    <div>
+      <div class="hdrcard">
+        <div class="id">
+          <div class="n">EMP-0001 &middot; Aisyah Rahman</div>
+          <div class="m">Demo Sdn Bhd &middot; Group Office &middot; Finance Controller</div>
+        </div>
+        <span class="btn">+ Add new transaction</span>
+        <span class="toggle">&#9776; Hide employee list</span>
+      </div>
+      <div class="detail">
+        <div class="totals">
+          <span>Entered <b>5 transactions &middot; RM 17,670.00</b></span>
+          <span class="amber">Not yet paid <b>5 transactions &middot; RM 17,670.00</b></span>
+          <span>Paid <b>0 transactions &middot; RM 0.00</b></span>
+          <span>Showing 2026-07 only</span>
+        </div>
+        <div class="bar">
+          <div class="inp" style="max-width:210px"><span class="ghost">Search transactions&hellip;</span></div>
+          <div class="seg"><span class="sel">By transaction</span><span>Grouped</span></div>
+        </div>
+        <table>
+          <colgroup><col style="width:64px"><col style="width:92px"><col><col style="width:106px">
+            <col style="width:86px"><col style="width:116px"><col style="width:112px"></colgroup>
+          <thead><tr><th>Month</th><th>Payroll item</th><th>Remarks</th><th>Effective date</th>
+            <th class="n">Amount</th><th>Status</th><th class="n">Actions</th></tr></thead>
+          <tbody>
+            <tr><td>2026-07</td><td>Earning</td><td>BONUS &mdash; Bonus</td><td>2026-07-01</td>
+              <td class="n">10,000.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Earning</td><td>BONUS &mdash; Bonus</td><td>2026-07-01</td>
+              <td class="n">7,500.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Earning</td><td>ATTENDANCE &mdash; Attendance allowance</td>
+              <td>2026-07-01</td><td class="n">100.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Deduction</td><td>DEDUCTION &mdash; Deduction</td><td>2026-07-01</td>
+              <td class="n">20.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ AFTER ══════════════════ -->
+<div class="card">
+  <h2>After<span class="chip new">what we will build</span></h2>
+  <p class="sub">Search employee first, with Reset beside it. The names directly under it. Company, Business
+    unit, Department and Status move into <b>More filters</b>, closed when the screen opens. Everything on the
+    right of the screen is untouched.</p>
+
+  <p class="ph">Individual Transaction</p>
+  <p class="phs">One-off pay items for one employee at a time.</p>
+
+  <div class="split">
+    <div>
+      <div class="pnl">
+        <div class="pnlh"><b>Employees</b>
+          <p>Pick an employee to see and change their one-off transactions.</p></div>
+        <div class="pnlb">
+          <div class="searchrow">
+            <div><div class="lbl">Search employee</div>
+              <div class="inp"><span class="ghost">Search by name or employee ID&hellip;</span></div></div>
+            <span class="reset">Reset</span>
+          </div>
+          <ul>
+            <li class="on"><span class="who">EMP-0001 &middot; Aisyah Rahman</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Group Office &middot; Active</span></li>
+            <li><span class="who">EMP-0004 &middot; Arjun Kumar</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+            <li><span class="who">EMP-0005 &middot; Daniel Tan</span><br>
+              <span class="meta">Demo Group Holdings Bhd &middot; Group Office &middot; Active</span></li>
+            <li><span class="who">EMP-0002 &middot; Daniel Tan</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+            <li><span class="who">100814 &middot; Eee Lee Yong</span><br>
+              <span class="meta">ISEDECOR BINA SDN BHD &middot; Finance &middot; Active</span></li>
+            <li><span class="who">EMP-0008 &middot; Elon Musk</span><br>
+              <span class="meta">Demo Group Holdings Bhd &middot; Group Office &middot; Active</span></li>
+          </ul>
+          <div class="exp"><span>&#9656; More filters</span></div>
+        </div>
+      </div>
+      <p class="callout ok"><i>&#10003;</i> The search box is the first thing on the panel, and two more names
+        fit in the same height. The search itself behaves exactly as it does today.</p>
+    </div>
+
+    <div>
+      <div class="hdrcard">
+        <div class="id">
+          <div class="n">EMP-0001 &middot; Aisyah Rahman</div>
+          <div class="m">Demo Sdn Bhd &middot; Group Office &middot; Finance Controller</div>
+        </div>
+        <span class="btn">+ Add new transaction</span>
+        <span class="toggle">&#9776; Hide employee list</span>
+      </div>
+      <div class="detail">
+        <div class="totals">
+          <span>Entered <b>5 transactions &middot; RM 17,670.00</b></span>
+          <span class="amber">Not yet paid <b>5 transactions &middot; RM 17,670.00</b></span>
+          <span>Paid <b>0 transactions &middot; RM 0.00</b></span>
+          <span>Showing 2026-07 only</span>
+        </div>
+        <div class="bar">
+          <div class="inp" style="max-width:210px"><span class="ghost">Search transactions&hellip;</span></div>
+          <div class="seg"><span class="sel">By transaction</span><span>Grouped</span></div>
+        </div>
+        <table>
+          <colgroup><col style="width:64px"><col style="width:92px"><col><col style="width:106px">
+            <col style="width:86px"><col style="width:116px"><col style="width:112px"></colgroup>
+          <thead><tr><th>Month</th><th>Payroll item</th><th>Remarks</th><th>Effective date</th>
+            <th class="n">Amount</th><th>Status</th><th class="n">Actions</th></tr></thead>
+          <tbody>
+            <tr><td>2026-07</td><td>Earning</td><td>BONUS &mdash; Bonus</td><td>2026-07-01</td>
+              <td class="n">10,000.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Earning</td><td>BONUS &mdash; Bonus</td><td>2026-07-01</td>
+              <td class="n">7,500.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Earning</td><td>ATTENDANCE &mdash; Attendance allowance</td>
+              <td>2026-07-01</td><td class="n">100.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Earning</td><td>CLAIM &mdash; Taxable claim allowance</td>
+              <td>2026-07-01</td><td class="n">50.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+            <tr><td>2026-07</td><td>Deduction</td><td>DEDUCTION &mdash; Deduction</td><td>2026-07-01</td>
+              <td class="n">20.00</td><td><span class="badge">Pending payroll</span></td>
+              <td class="n act">View &middot; Edit &middot; Delete</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cut"><b>Where did Payroll period go?</b> It is not an employee filter &mdash; it narrows the
+        transactions on this side of the screen, not who is in the list &mdash; so it does not belong in the
+        More filters group. Your separate request moves it up beside Search transactions, above this table.
+        Until that one is built it stays on the panel, on its own line below More filters.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ THE EXPANDER, OPEN ══════════════════ -->
+<div class="card">
+  <h2>More filters, opened<span class="chip new">one click</span></h2>
+  <p class="sub">Click More filters and the four narrowing choices appear, exactly as they read today. They
+    stay open while you are on the screen, and start closed again next time. When a filter is on while the
+    section is closed, the line says how many &mdash; so a shortened list is never a mystery.</p>
+
+  <div class="sidebyside">
+    <div>
+      <div class="pnl">
+        <div class="pnlh"><b>Employees</b></div>
+        <div class="pnlb">
+          <div class="searchrow">
+            <div><div class="lbl">Search employee</div>
+              <div class="inp"><span class="ghost">Search by name or employee ID&hellip;</span></div></div>
+            <span class="reset">Reset</span>
+          </div>
+          <ul>
+            <li class="on"><span class="who">EMP-0001 &middot; Aisyah Rahman</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Group Office &middot; Active</span></li>
+            <li><span class="who">EMP-0004 &middot; Arjun Kumar</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+            <li><span class="who">EMP-0002 &middot; Daniel Tan</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+          </ul>
+          <div class="exp"><span>&#9662; More filters</span></div>
+          <div class="expbody">
+            <div class="one"><div class="lbl">Company</div><div class="inp">&mdash; &#9662;</div></div>
+            <div class="two">
+              <div><div class="lbl">Business unit</div><div class="inp">All business units &#9662;</div></div>
+              <div><div class="lbl">Department</div><div class="inp">All departments &#9662;</div></div>
+            </div>
+            <div class="one"><div class="lbl">Status</div><div class="inp">All statuses &#9662;</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="callout ok"><i>&#10003;</i> Open &mdash; the same four choices, in the same words.</p>
+    </div>
+
+    <div>
+      <div class="pnl">
+        <div class="pnlh"><b>Employees</b></div>
+        <div class="pnlb">
+          <div class="searchrow">
+            <div><div class="lbl">Search employee</div>
+              <div class="inp"><span class="ghost">Search by name or employee ID&hellip;</span></div></div>
+            <span class="reset">Reset</span>
+          </div>
+          <ul>
+            <li class="on"><span class="who">EMP-0004 &middot; Arjun Kumar</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+            <li><span class="who">EMP-0002 &middot; Daniel Tan</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+            <li><span class="who">EMP-0007 &middot; Wei Jie Lim</span><br>
+              <span class="meta">Demo Sdn Bhd &middot; Engineering &middot; Active</span></li>
+          </ul>
+          <div class="exp"><span>&#9656; More filters</span><span class="cnt">2 on</span></div>
+        </div>
+      </div>
+      <p class="callout ok"><i>&#10003;</i> Closed, with Company set to Demo Sdn Bhd and Department to
+        Engineering. The line says 2 on, so you can see why only three names are showing.</p>
+    </div>
+
+    <div>
+      <p class="cut" style="margin-top:0"><b>This panel is shared, so this changes seven screens</b> &mdash;
+        not only the one you photographed. The order, the More filters section and the Reset button will be
+        identical on all of them:</p>
+      <div class="screens" style="grid-template-columns:1fr 1fr">
+        <div>Individual Transaction</div>
+        <div>Fixed Transaction</div>
+        <div>TP1 Relief</div>
+        <div>Zakat</div>
+        <div>Individual Payslip</div>
+        <div>Loans <span class="meta">(under Admin)</span></div>
+        <div style="grid-column:span 2">Transaction View &mdash; Transaction Detail tab</div>
+      </div>
+      <p class="cut"><b>Nothing else moves.</b> The Hide employee list control stays exactly where the last
+        round put it, on the same line as the employee's name. Selecting a person, the transactions on the
+        right, and every figure on the screen are untouched.</p>
+    </div>
+  </div>
+</div>
