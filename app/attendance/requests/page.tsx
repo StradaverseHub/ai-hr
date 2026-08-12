@@ -371,7 +371,10 @@ export default async function MyAttendancePage({
             <div className="border-b border-border px-4 py-3 text-sm font-semibold">
               {fixDay ? t('maFixHeading', { date: fixDay.date }) : t('maFixAnotherHeading')}
             </div>
-            <form action={myRequestCorrection} encType="multipart/form-data" className="space-y-2.5 p-4">
+            {/* NO explicit encType: React sets multipart itself for a form whose action is a function, and
+                spelling it out earns "Cannot specify a encType or method for a form that specifies a
+                function as the action" in the dev log on every render. The file input below still uploads. */}
+            <form action={myRequestCorrection} className="space-y-2.5 p-4">
               <input type="hidden" name="section" value={section} />
               <input type="hidden" name="requestKind" value={KIND_OF_SECTION[section]} />
               {fixDay ? (
