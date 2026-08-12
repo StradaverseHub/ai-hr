@@ -390,4 +390,35 @@ describe('579255c3 — one parse of the query string, for the screen and the exp
     // …and the Draft selection shows them.
     expect(draftMatchesQuery(draft, parsePersonnelListQuery({ bucket: 'draft' }))).toBe(true);
   });
+
+  /**
+   * THE DRAFT CARD COUNTS WHAT CLICKING IT WOULD SHOW.
+   *
+   * Found by RENDERING, not by a test: with Active selected the Draft card read "0" beside two records
+   * that plainly existed, because the count was taken under the bucket already chosen. Clicking a card
+   * REPLACES the bucket, so the honest preview strips it — every other count on the page was
+   * individually correct, which is exactly why nothing caught it.
+   */
+  it('previews the Draft count with the chosen bucket set aside', () => {
+    const draft = { companyId: 'c1', label: 'abc', reservedEmployeeCode: 'X00010', companyName: 'Demo Sdn Bhd' };
+    const chosen = parsePersonnelListQuery({ bucket: 'active' });
+    expect(draftMatchesQuery(draft, chosen)).toBe(false); // the ROWS: no draft is in an employment bucket
+    expect(draftMatchesQuery(draft, { ...chosen, bucket: undefined })).toBe(true); // the CARD: click me
+    // A filter a draft genuinely cannot satisfy still zeroes the card, because clicking KEEPS that
+    // filter — so the card and the rows it leads to still agree.
+    const byDept = parsePersonnelListQuery({ dept: 'd1', bucket: 'active' });
+    expect(draftMatchesQuery(draft, { ...byDept, bucket: undefined })).toBe(false);
+  });
+});
+
+describe('579255c3 — the page wires the Draft card to that preview, not to the visible rows', () => {
+  it('reads draftCardCount rather than the filtered row list', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../app/admin/personnel/page.tsx', import.meta.url), 'utf8');
+    expect(src).toContain('const draftCardCount = allDrafts.filter');
+    expect(src).toContain('bucket: undefined');
+    expect(src).toContain("count: draftCardCount");
+    // The ROWS still come from the full query — the two must not be collapsed back into one.
+    expect(src).toContain('const matchingDrafts = allDrafts.filter((d) => draftMatchesQuery(d, query));');
+  });
 });

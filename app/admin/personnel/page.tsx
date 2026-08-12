@@ -180,6 +180,13 @@ export default async function PeoplePage({
   // Which filters hide a draft, and why, now lives in ONE predicate (draftMatchesQuery) shared with the
   // Draft card's count and with the export, so a card can never promise records the table then refuses.
   const matchingDrafts = allDrafts.filter((d) => draftMatchesQuery(d, query));
+  // THE DRAFT CARD COUNTS WHAT CLICKING IT WOULD SHOW, not what the current selection shows. Clicking a
+  // card REPLACES the bucket, so counting the drafts under the bucket already chosen made the card read
+  // "0" the moment Active was selected — a card offering nothing, next to two records that exist. Caught
+  // by rendering, not by a test: every count was individually correct.
+  const draftCardCount = allDrafts.filter((d) =>
+    draftMatchesQuery(d, { ...query, bucket: undefined }),
+  ).length;
   // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these are
   // outstanding" and start reading as a rendering fault. Under the Draft selection there is only one
   // page, so this costs nothing there.
@@ -283,7 +290,7 @@ export default async function PeoplePage({
     { key: 'resigned', label: tStatus('resigned'), hint: t('cardResignedHint'), count: n('resigned') },
     // The Draft figure comes from the OTHER table, counted through the same predicate that decides
     // which draft rows the table shows.
-    { key: DRAFT_BUCKET, label: t('statusDraft'), hint: t('cardDraftHint'), count: matchingDrafts.length },
+    { key: DRAFT_BUCKET, label: t('statusDraft'), hint: t('cardDraftHint'), count: draftCardCount },
   ] as const;
   const activeCard = draftOnly ? DRAFT_BUCKET : (query.bucket ?? null);
 
