@@ -135,11 +135,18 @@ async function expectPgConstraint(run: Promise<unknown>, constraint: string) {
   expect(detail).toContain(constraint);
 }
 
-/** Punch a day and monetise it end to end, returning both the minutes and the ringgit. */
-async function dayThroughPayroll(shiftId: string, date: string, inAt: string, outAt: string, email: string) {
+/** Punch one day and read what the ENGINE made of it. No payroll — a batch is unique per company+period,
+ *  so a test that needs two employees cannot create two of them. */
+async function punchDay(shiftId: string, date: string, inAt: string, outAt: string, email: string) {
   const { a, employmentId } = await employeeOn(shiftId, email);
   await checkIn(a, { employmentId, date, time: inAt });
   const out = await checkOut(a, { employmentId, date, time: outAt });
+  return { a, employmentId, out };
+}
+
+/** Punch a day and monetise it end to end, returning both the minutes and the ringgit. */
+async function dayThroughPayroll(shiftId: string, date: string, inAt: string, outAt: string, email: string) {
+  const { a, employmentId, out } = await punchDay(shiftId, date, inAt, outAt, email);
   const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
   await prefillOvertimeFromAttendance(a, { batchId });
   const amount = await otAmountOf(batchId, employmentId);
@@ -194,9 +201,9 @@ describe('b8aa3466 item 8 — the half-day cut-off', () => {
     // 8h required ⇒ 4h of work ⇒ 07:00 + 4h = 11:00. Clocking out at 10:30 is before it, so the day is a
     // half day; clocking out at 11:30 is after it, so it is not.
     const shift = await semiFlexiShift(480);
-    const early = await dayThroughPayroll(shift.id, TUE, '07:00:00', '10:30:00', `sf_half_${randomUUID()}@t.local`);
+    const early = await punchDay(shift.id, TUE, '07:00:00', '10:30:00', `sf_half_${randomUUID()}@t.local`);
     expect(early.out.status).toBe('half_day');
-    const late = await dayThroughPayroll(shift.id, TUE, '07:00:00', '11:30:00', `sf_full_${randomUUID()}@t.local`);
+    const late = await punchDay(shift.id, TUE, '07:00:00', '11:30:00', `sf_full_${randomUUID()}@t.local`);
     expect(late.out.status).not.toBe('half_day');
   });
 
@@ -215,7 +222,7 @@ describe('b8aa3466 item 8 — the half-day cut-off', () => {
       halfDayFirstOut: '09:00:00',
     });
     // With the explicit 09:00, a 10:30 clock-out is now AFTER the cut-off and is no longer a half day.
-    const d = await dayThroughPayroll(shift.id, TUE, '07:00:00', '10:30:00', `sf_expl_${randomUUID()}@t.local`);
+    const d = await punchDay(shift.id, TUE, '07:00:00', '10:30:00', `sf_expl_${randomUUID()}@t.local`);
     expect(d.out.status).not.toBe('half_day');
   });
 
@@ -229,9 +236,9 @@ describe('b8aa3466 item 8 — the half-day cut-off', () => {
       halfDayFirstOut: '12:00:00',
       weeklyPattern: [1, 2, 3, 4, 5],
     });
-    const before = await dayThroughPayroll(shift.id, TUE, '08:00:00', '11:30:00', `n_half_${randomUUID()}@t.local`);
+    const before = await punchDay(shift.id, TUE, '08:00:00', '11:30:00', `n_half_${randomUUID()}@t.local`);
     expect(before.out.status).toBe('half_day');
-    const after = await dayThroughPayroll(shift.id, TUE, '08:00:00', '12:30:00', `n_full_${randomUUID()}@t.local`);
+    const after = await punchDay(shift.id, TUE, '08:00:00', '12:30:00', `n_full_${randomUUID()}@t.local`);
     expect(after.out.status).not.toBe('half_day');
   });
 });
@@ -278,23 +285,44 @@ describe('b8aa3466 item 9 — four-way working days', () => {
     );
   });
 
-  it('a HALF day starts paying overtime after HALF a normal day', async () => {
-    // Saturday is Half. 08:00-17:00 less a 60-minute break = a 480-minute normal day, so 240 on a half day.
-    // Clocking 08:00 -> 13:00 is 300 span - 60 break = 240 worked... so take an hour more: 08:00 -> 14:00 is
-    // 360 - 60 = 300 worked, which is 60 minutes past the 240-minute half day = one hour of overtime.
+  it('a HALF day starts paying overtime after HALF a day — RM15 on a payslip', async () => {
+    // Saturday is Half. The shift is 08:00-17:00, a 540-minute span, so a half day ends 270 minutes in, at
+    // 12:30. Clocking 08:00 -> 13:30 is therefore 60 minutes past the half day's own time-out = one hour of
+    // overtime. (Worked is 330: the 60-minute break only comes off a span of 6h or more.)
     const shift = await mb28({ weeklyPattern: [1, 2, 3, 4, 5], halfPattern: [6] });
-    const { out, amount } = await dayThroughPayroll(shift.id, SAT, '08:00:00', '14:00:00', `half_${randomUUID()}@t.local`);
-    expect(out.workedMinutes).toBe(300);
+    const { out, amount, batchId, employmentId } = await dayThroughPayroll(
+      shift.id,
+      SAT,
+      '08:00:00',
+      '13:30:00',
+      `half_${randomUUID()}@t.local`,
+    );
+    expect(out.workedMinutes).toBe(330);
     expect(out.otMinutes).toBe(60);
     expect(amount).toBeCloseTo(ONE_HOUR_OT, 2);
+    await generatePayslips(await entitledCtx(b), { batchId });
+    const [ps] = await owner.db
+      .select()
+      .from(schema.payslip)
+      .where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, employmentId)));
+    expect(Number(ps.overtimePay)).toBeCloseTo(ONE_HOUR_OT, 2);
   });
 
   it('the SAME Saturday as a FULL day pays no overtime — the halving is what produced it', async () => {
     const shift = await mb28({ weeklyPattern: [1, 2, 3, 4, 5, 6] });
-    const { out, amount } = await dayThroughPayroll(shift.id, SAT, '08:00:00', '14:00:00', `full6_${randomUUID()}@t.local`);
-    expect(out.workedMinutes).toBe(300);
+    const { out, amount } = await dayThroughPayroll(shift.id, SAT, '08:00:00', '13:30:00', `full6_${randomUUID()}@t.local`);
+    expect(out.workedMinutes).toBe(330);
     expect(out.otMinutes).toBe(0);
     expect(amount).toBeCloseTo(0, 2);
+  });
+
+  it('a half day HALVES the scheduled minutes too, so short hours are measured against half a day', async () => {
+    const shift = await mb28({ weeklyPattern: [1, 2, 3, 4, 5], halfPattern: [6] });
+    // 08:00 -> 11:00 is 180 worked against a 240-minute half day ⇒ 60 minutes short. Against the FULL 480
+    // it would have read 300 short, which is the figure a screen would have shown before this change.
+    const { out, employmentId } = await punchDay(shift.id, SAT, '08:00:00', '11:00:00', `halfshort_${randomUUID()}@t.local`);
+    expect(out.workedMinutes).toBe(180);
+    expect((await attendanceOf(employmentId, SAT)).underMinutes).toBe(60);
   });
 
   it('an OFF day pays WORKDAY overtime from the first minute — 1.5x, not rest-day rates', async () => {
@@ -325,7 +353,7 @@ describe('b8aa3466 item 9 — four-way working days', () => {
 
   it('a REST day still pays rest-day rates — Off did not swallow Rest', async () => {
     const shift = await mb28({ weeklyPattern: [1, 2, 3, 4, 5] }); // Saturday is in nothing ⇒ Rest
-    const { employmentId } = await dayThroughPayroll(shift.id, SAT, '08:00:00', '14:00:00', `rest_${randomUUID()}@t.local`);
+    const { employmentId } = await punchDay(shift.id, SAT, '08:00:00', '14:00:00', `rest_${randomUUID()}@t.local`);
     expect((await attendanceOf(employmentId, SAT)).dayType).toBe('rest_day');
   });
 
@@ -357,7 +385,7 @@ describe('b8aa3466 item 7 — the daily cut-off', () => {
 
   it('OFF (every shift today) keeps the hard-coded 12-hour placement byte-identically', async () => {
     const shift = await nightShift();
-    const { out } = await dayThroughPayroll(shift.id, TUE, '22:00:00', '06:00:00', `noco_${randomUUID()}@t.local`);
+    const { out } = await punchDay(shift.id, TUE, '22:00:00', '06:00:00', `noco_${randomUUID()}@t.local`);
     expect(out.workedMinutes).toBe(480);
   });
 
@@ -377,7 +405,7 @@ describe('b8aa3466 item 7 — the daily cut-off', () => {
     expect(row.dailyCutoffTime).toBe('02:00:00');
     // A 22:00 -> 06:00 night still measures eight hours: 22:00 is after the 02:00 cut-off so it opens this
     // shift-day, and 06:00 is placed on the same timeline by the same rule.
-    const { out } = await dayThroughPayroll(shift.id, TUE, '22:00:00', '06:00:00', `co_${randomUUID()}@t.local`);
+    const { out } = await punchDay(shift.id, TUE, '22:00:00', '06:00:00', `co_${randomUUID()}@t.local`);
     expect(out.workedMinutes).toBe(480);
   });
 });
