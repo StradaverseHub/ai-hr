@@ -3402,7 +3402,13 @@
       "reprocessReviewAddNote": "{n} of them are being added to this run for the first time: their payslip is created, the run’s headcount goes up, and their loans, claims and one-off payments are settled with it.",
       "reprocessResultAdded": "Added to this run",
       "reprocessResultAddedCount": "{n} added to this run",
-      "reprocessWhyAdded": "This is their first payslip on this run, so there is nothing to compare it with."
+      "reprocessWhyAdded": "This is their first payslip on this run, so there is nothing to compare it with.",
+      "disclosureBasesHeading": "Charged on",
+      "baseEpf": "EPF wage",
+      "baseEpfAdditional": "EPF on additional remuneration",
+      "baseSocsoEis": "SOCSO / EIS wage",
+      "basePcb": "PCB remuneration",
+      "baseHrdf": "HRD levy base"
     },
     "reports": {
       "pageTitle": "Payroll",

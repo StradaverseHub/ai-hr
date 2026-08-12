@@ -3789,7 +3789,13 @@
       "reprocessReviewAddNote": "{n} daripada mereka ditambah ke larian ini buat kali pertama: slip gaji mereka dijana, bilangan pekerja larian bertambah, dan pinjaman, tuntutan serta bayaran sekali sahaja mereka diselesaikan bersamanya.",
       "reprocessResultAdded": "Ditambah ke larian ini",
       "reprocessResultAddedCount": "{n} ditambah ke larian ini",
-      "reprocessWhyAdded": "Ini slip gaji pertama mereka dalam larian ini, jadi tiada apa-apa untuk dibandingkan."
+      "reprocessWhyAdded": "Ini slip gaji pertama mereka dalam larian ini, jadi tiada apa-apa untuk dibandingkan.",
+      "disclosureBasesHeading": "Dikenakan atas",
+      "baseEpf": "Upah KWSP",
+      "baseEpfAdditional": "KWSP atas saraan tambahan",
+      "baseSocsoEis": "Upah PERKESO / SIP",
+      "basePcb": "Saraan PCB",
+      "baseHrdf": "Asas levi HRD"
     },
     "transactions": {
       "title": "Transaksi",

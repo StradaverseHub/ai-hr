@@ -403,3 +403,27 @@ describe('017d9c25 — a DECLARED bonus stays out of SOCSO/EIS even when the box
     expect(st.bases!.socsoEis).toBeCloseTo(4000, 2);
   });
 });
+
+describe('017d9c25 — the working is recoverable from the payslip', () => {
+  /**
+   * `statutory.bases` is what makes "why was EPF charged on that?" answerable after the fact. It is a
+   * SEPARATE member, not new statutory line keys: diffPayslipVersions reports the nine money lines and
+   * must not start reporting a base movement as a statutory movement.
+   */
+  it('diffPayslipVersions surfaces the bases and does NOT report them as statutory movements', async () => {
+    const { diffPayslipVersions, payslipStatutoryBases, STATUTORY_LINE_KEYS } = await import('../core/payslip-recompute');
+    const before = { grossPay: 7552, netPay: 6075.7, version: 1, statutory: { epfEmployee: 836, bases: { epf: 7552, epfAdditional: 0, socsoEis: 7552, pcb: 7552, hrdf: 7552 } } };
+    const after = { grossPay: 7552, netPay: 6251.7, version: 2, statutory: { epfEmployee: 660, bases: { epf: 5952, epfAdditional: 0, socsoEis: 6052, pcb: 7552, hrdf: 6052 } } };
+    const d = diffPayslipVersions(before, after);
+    expect(d.basesBefore!.epf).toBe(7552);
+    expect(d.basesAfter!.epf).toBe(5952);
+    expect(d.basesAfter!.socsoEis).toBe(6052);
+    // The ONLY reported movement is the money line. A base is the explanation, not the movement.
+    expect(d.moved.map((m) => m.key)).toEqual(['epfEmployee']);
+    expect(STATUTORY_LINE_KEYS as readonly string[]).not.toContain('bases');
+
+    // A payslip written before r187 carries no stamp — and that reads as UNKNOWN, never as zero.
+    expect(payslipStatutoryBases({ epfEmployee: 836 })).toBeNull();
+    expect(diffPayslipVersions({ statutory: { epfEmployee: 836 } }, { statutory: { epfEmployee: 660 } }).basesAfter).toBeNull();
+  });
+});

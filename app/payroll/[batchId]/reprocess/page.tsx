@@ -3,7 +3,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, getReprocessJob, listBatches, listPayslipLessEligible, reprocessEligibility } from '@/core/payroll';
 import { listRecomputeDisclosure } from '@/core/payroll-view';
-import type { StatutoryLineKey } from '@/core/payslip-recompute';
+import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
@@ -31,6 +31,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** 97a9b0ab — statutory line key → its payroll.batch label key. Exhaustive by TYPE (Record over
  *  StatutoryLineKey), so adding a key to STATUTORY_LINE_KEYS without a label fails the build rather
  *  than rendering `lineundefined` at runtime. Moved here with the disclosure it labels. */
+/** 017d9c25 — statutory BASE key → its payroll.batch label key. Exhaustive by TYPE over
+ *  STATUTORY_BASE_KEYS, for the same reason the line map below is: a new base without a label fails
+ *  the build rather than rendering `baseundefined`. */
+const STATUTORY_BASE_LABEL: Record<StatutoryBaseKey, string> = {
+  epf: 'baseEpf',
+  epfAdditional: 'baseEpfAdditional',
+  socsoEis: 'baseSocsoEis',
+  pcb: 'basePcb',
+  hrdf: 'baseHrdf',
+};
+
 const STATUTORY_LINE_LABEL: Record<StatutoryLineKey, string> = {
   epfEmployee: 'lineEpfEmployee',
   epfEmployer: 'lineEpfEmployer',
@@ -406,6 +417,37 @@ export default async function ReprocessPage({
                           </li>
                         ))}
                       </ul>
+                      {/* 017d9c25 — THE WORKING BETWEEN the pay items and the answers: what each
+                          agency was actually charged on. Rendered only when the AFTER computation
+                          carries the stamp; a payslip written before r187 has none, and printing
+                          zeroes there would state a figure nobody computed. The BEFORE column appears
+                          only when it too is known AND differs, so an unchanged base stays quiet. */}
+                      {d.basesAfter && (
+                        <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
+                          <p className="mb-1 font-medium">{t('disclosureBasesHeading')}</p>
+                          <ul className="space-y-0.5">
+                            {STATUTORY_BASE_KEYS.map((k) => {
+                              const after = d.basesAfter![k];
+                              const before = d.basesBefore?.[k] ?? null;
+                              if (k === 'epfAdditional' && after === 0 && (before ?? 0) === 0) return null;
+                              return (
+                                <li key={k} className="flex items-baseline justify-between gap-4">
+                                  <span className="text-muted-foreground">{t(STATUTORY_BASE_LABEL[k])}</span>
+                                  <span className="tabular-nums">
+                                    {before != null && before !== after && (
+                                      <>
+                                        <span className="text-muted-foreground">{money(before)}</span>
+                                        {' → '}
+                                      </>
+                                    )}
+                                    <span className="font-medium">{money(after)}</span>
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
                       <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
                         <p className="mb-1 font-medium">{t('disclosureCauseHeading')}</p>
                         <ul className="space-y-1 text-muted-foreground">
