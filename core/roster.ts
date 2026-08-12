@@ -23,7 +23,7 @@ import {
   type ShiftOtRule,
   type ShiftType,
 } from '../db/schema';
-import { isWorkingDayKind, isoWeekday, netScheduledMinutes, shiftDayKindFor, shiftSpan } from './attendance';
+import { isWorkingDayKind, netScheduledMinutes, shiftDayKindFor, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployees, listEmployeesPage } from './read';
 import { isAdmin } from '../lib/authz';
