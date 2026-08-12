@@ -2752,7 +2752,9 @@
     "maFoundEarlyBy": "Về sớm · {minutes} phút",
     "maFoundShort": "Ít hơn số giờ theo lịch",
     "maAskedOvertime": "Làm thêm {hours} giờ",
-    "maAskedTimes": "Vào {in} · Ra {out}"
+    "maAskedTimes": "Vào {in} · Ra {out}",
+    "maAlsoWaiting": "Cũng đang chờ bạn — {section}",
+    "maSeeAllInSection": "Xem tất cả {count}"
   },
   "approvals": {
     "title": "Phê duyệt",

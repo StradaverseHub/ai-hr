@@ -2752,7 +2752,9 @@
     "maFoundEarlyBy": "Balik awal · {minutes} minit",
     "maFoundShort": "Kurang daripada jam berjadual",
     "maAskedOvertime": "Kerja lebih masa {hours} jam",
-    "maAskedTimes": "Masuk {in} · Keluar {out}"
+    "maAskedTimes": "Masuk {in} · Keluar {out}",
+    "maAlsoWaiting": "Turut menunggu anda — {section}",
+    "maSeeAllInSection": "Lihat kesemua {count}"
   },
   "approvals": {
     "title": "Kelulusan",

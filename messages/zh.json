@@ -2752,7 +2752,9 @@
     "maFoundEarlyBy": "提早下班 · {minutes} 分钟",
     "maFoundShort": "未达排班工时",
     "maAskedOvertime": "加班 {hours} 小时",
-    "maAskedTimes": "上班 {in} · 下班 {out}"
+    "maAskedTimes": "上班 {in} · 下班 {out}",
+    "maAlsoWaiting": "另外等待处理 — {section}",
+    "maSeeAllInSection": "查看全部 {count} 项"
   },
   "approvals": {
     "title": "审批",

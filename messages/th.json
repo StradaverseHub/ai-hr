@@ -2752,7 +2752,9 @@
     "maFoundEarlyBy": "ออกก่อนเวลา · {minutes} นาที",
     "maFoundShort": "น้อยกว่าชั่วโมงตามตาราง",
     "maAskedOvertime": "ล่วงเวลา {hours} ชั่วโมง",
-    "maAskedTimes": "เข้า {in} · ออก {out}"
+    "maAskedTimes": "เข้า {in} · ออก {out}",
+    "maAlsoWaiting": "ยังรอคุณอยู่ด้วย — {section}",
+    "maSeeAllInSection": "ดูทั้งหมด {count} รายการ"
   },
   "approvals": {
     "title": "การอนุมัติ",

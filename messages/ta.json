@@ -2752,7 +2752,9 @@
     "maFoundEarlyBy": "முன்னதாகச் சென்றது · {minutes} நிமிடம்",
     "maFoundShort": "திட்டமிட்ட நேரத்தை விடக் குறைவு",
     "maAskedOvertime": "கூடுதல் நேரம் {hours} மணி",
-    "maAskedTimes": "உள்ளே {in} · வெளியே {out}"
+    "maAskedTimes": "உள்ளே {in} · வெளியே {out}",
+    "maAlsoWaiting": "உங்களுக்காகக் காத்திருப்பவை — {section}",
+    "maSeeAllInSection": "அனைத்து {count} ஐயும் பார்"
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",

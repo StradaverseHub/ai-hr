@@ -176,7 +176,17 @@ export default async function MyAttendancePage({
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
         title={t('myAttendanceTitle')}
-        description={t('maPeriodRange', { from, to })}
+        description={
+          <>
+            {/* Whose days these are, and over what window. The employee is looking at their own record,
+                so the identity line is confirmation rather than disclosure — and the window matters
+                because it IS the correction cut-off: a day outside it cannot be asked about. */}
+            <span>
+              {[me.name, me.employeeCode, me.position, me.company].filter(Boolean).join(' · ')}
+            </span>
+            <span className="mt-0.5 block">{t('maPeriodRange', { from, to })}</span>
+          </>
+        }
         actions={
           <Button asChild size="sm">
             {/* Apply OT Plan is UNTOUCHED where it lives; only its entry point moved onto this screen. */}
@@ -296,72 +306,74 @@ export default async function MyAttendancePage({
               )}
             </Card>
           ) : (
-            /* ── Short Hours · Incomplete Entry · Absent — the days found FOR the employee ─────────── */
-            <Card className="overflow-hidden">
-              <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                {t('maFoundForYou', { section: TABS.find((x) => x.key === section)!.label })}
-              </div>
-              {!onClocking ? (
-                <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoClockingRecords')}</p>
-              ) : sectionDays.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  {section === 'incomplete'
-                    ? t('maEmptyIncomplete')
-                    : section === 'short'
-                      ? t('maEmptyShort')
-                      : t('maEmptyAbsent')}
-                </p>
-              ) : (
-                <div className={tableWrapCls}>
-                  <table className="w-full text-sm">
-                    <thead className={theadCls}>
-                      <tr>
-                        <th className={thCls}>{t('maColDate')}</th>
-                        <th className={thCls}>{t('maColScheduled')}</th>
-                        <th className={thCls}>{t('maColFound')}</th>
-                        <th className={thCls}>{t('maColHave')}</th>
-                        <th className={thCls} />
-                      </tr>
-                    </thead>
-                    <tbody className={tbodyCls}>
-                      {sectionDays.map((d) => (
-                        <tr key={d.date} className={d.date === sp.fix ? 'bg-accent/40' : undefined}>
-                          <td className="px-3 py-2.5">
-                            <div className="tabular-nums">{d.date}</div>
-                            <div className="text-[11px] text-muted-foreground">{dayName(d.date)}</div>
-                          </td>
-                          <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
-                            {d.scheduledFrom && d.scheduledTo ? `${d.scheduledFrom} – ${d.scheduledTo}` : '—'}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="font-medium text-amber-700 dark:text-amber-400">
-                              {foundText(d, t)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
-                            {t('maHaveInOut', { in: d.actualIn ?? '—', out: d.actualOut ?? '—' })}
-                          </td>
-                          <td className="px-3 py-2.5 text-right">
-                            {pendingDates.has(d.date) ? (
-                              <span className="text-xs text-muted-foreground">{t('maAlreadyRequested')}</span>
-                            ) : (
-                              <Button asChild size="sm" variant={d.date === sp.fix ? 'default' : 'outline'}>
-                                <Link href={href({ fix: d.date })}>{t('maFixThis')}</Link>
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <>
+              {/* ── Short Hours · Incomplete Entry · Absent — the days found FOR the employee ───────── */}
+              <Card className="overflow-hidden">
+                <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+                  {t('maFoundForYou', { section: TABS.find((x) => x.key === section)!.label })}
                 </div>
-              )}
-              {section === 'absent' && sectionDays.length > 0 && (
-                <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-                  {t('maAbsentTwoRoutes')}
-                </p>
-              )}
-            </Card>
+                {!onClocking ? (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoClockingRecords')}</p>
+                ) : sectionDays.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    {section === 'incomplete'
+                      ? t('maEmptyIncomplete')
+                      : section === 'short'
+                        ? t('maEmptyShort')
+                        : t('maEmptyAbsent')}
+                  </p>
+                ) : (
+                  <ExceptionTable
+                    days={sectionDays}
+                    t={t}
+                    openDate={sp.fix}
+                    pendingDates={pendingDates}
+                    fixHref={(d) => href({ fix: d })}
+                  />
+                )}
+                {section === 'absent' && sectionDays.length > 0 && (
+                  <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+                    {t('maAbsentTwoRoutes')}
+                  </p>
+                )}
+              </Card>
+
+              {/* ── "Also waiting for you" — the OTHER sections' days, in view. ──────────────────────
+                  The counts on the tabs already say a section is not empty; this says WHAT is in it, so a
+                  missing clock-out and a late arrival do not need two visits to be seen. Only the first
+                  few rows, with a link into the section for the rest — the mockup draws one such card,
+                  and an Absent section with twenty days would otherwise bury the tab the employee chose. */}
+              {onClocking &&
+                OTHER_SECTIONS[section].map((other) => {
+                  const days = other === 'incomplete' ? found.incomplete : other === 'short' ? found.short : found.absent;
+                  if (days.length === 0) return null;
+                  const label = TABS.find((x) => x.key === other)!.label;
+                  return (
+                    <Card key={other} className="overflow-hidden">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                        <span className="text-sm font-semibold">{t('maAlsoWaiting', { section: label })}</span>
+                        {days.length > ALSO_ROWS && (
+                          <Link
+                            href={href({ section: other, fix: null })}
+                            className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                          >
+                            {t('maSeeAllInSection', { count: days.length })}
+                          </Link>
+                        )}
+                      </div>
+                      <ExceptionTable
+                        days={days.slice(0, ALSO_ROWS)}
+                        t={t}
+                        openDate={undefined}
+                        pendingDates={pendingDates}
+                        // Fixing from here SWITCHES to that section, so the panel beside it files the
+                        // request under the right kind — the stored kind is what the request list reads.
+                        fixHref={(d) => href({ section: other, fix: d })}
+                      />
+                    </Card>
+                  );
+                })}
+            </>
           )}
         </div>
 
@@ -626,6 +638,17 @@ const addDays = (iso: string, days: number) =>
 const dayName = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
 
+/** How many rows an "Also waiting for you" card shows before it links into its own section. */
+const ALSO_ROWS = 3;
+
+/** For each exception section, the OTHER two — in the same worst-first order the tabs use. */
+const OTHER_SECTIONS: Record<AttendanceSection, Exclude<AttendanceSection, 'overtime'>[]> = {
+  overtime: [],
+  incomplete: ['short', 'absent'],
+  short: ['incomplete', 'absent'],
+  absent: ['incomplete', 'short'],
+};
+
 const STATUS_FILTERS = [null, 'pending', 'approved', 'rejected', 'cancelled'] as const;
 
 const parseStatus = (raw: string | undefined) =>
@@ -653,6 +676,75 @@ const CATEGORY_KEY = {
 } as const;
 
 type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
+
+/**
+ * The days-we-found table, stated ONCE and rendered in two places (the open section, and the "Also
+ * waiting for you" cards). A second copy would be the fastest way for the two to start describing the
+ * same day differently.
+ *
+ * A plain function taking `t` rather than a `<Component>` boundary: this is server-rendered throughout,
+ * so there is no serialisation to respect — and passing `t` or `fixHref` across a real client boundary is
+ * exactly the closure-from-a-server-component 500 that test/server-client-boundary.test.ts exists for.
+ */
+function ExceptionTable({
+  days,
+  t,
+  openDate,
+  pendingDates,
+  fixHref,
+}: {
+  days: ExceptionDay[];
+  t: T;
+  openDate: string | undefined;
+  pendingDates: Set<string>;
+  fixHref: (date: string) => string;
+}) {
+  return (
+    <div className={tableWrapCls}>
+      <table className="w-full text-sm">
+        <thead className={theadCls}>
+          <tr>
+            <th className={thCls}>{t('maColDate')}</th>
+            <th className={thCls}>{t('maColScheduled')}</th>
+            <th className={thCls}>{t('maColFound')}</th>
+            <th className={thCls}>{t('maColHave')}</th>
+            <th className={thCls} />
+          </tr>
+        </thead>
+        <tbody className={tbodyCls}>
+          {days.map((d) => (
+            <tr key={d.date} className={d.date === openDate ? 'bg-accent/40' : undefined}>
+              <td className="px-3 py-2.5">
+                <div className="tabular-nums">{d.date}</div>
+                <div className="text-[11px] text-muted-foreground">{dayName(d.date)}</div>
+              </td>
+              <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
+                {d.scheduledFrom && d.scheduledTo ? `${d.scheduledFrom} – ${d.scheduledTo}` : '—'}
+              </td>
+              <td className="px-3 py-2.5">
+                <span className="font-medium text-amber-700 dark:text-amber-400">{foundText(d, t)}</span>
+              </td>
+              <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
+                {t('maHaveInOut', { in: d.actualIn ?? '—', out: d.actualOut ?? '—' })}
+              </td>
+              <td className="px-3 py-2.5 text-right">
+                {/* A date that already has a request WAITING cannot take a second one (the partial unique
+                    index), so it says so rather than offering a button the service would refuse. */}
+                {pendingDates.has(d.date) ? (
+                  <span className="text-xs text-muted-foreground">{t('maAlreadyRequested')}</span>
+                ) : (
+                  <Button asChild size="sm" variant={d.date === openDate ? 'default' : 'outline'}>
+                    <Link href={fixHref(d.date)}>{t('maFixThis')}</Link>
+                  </Button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /**
  * `cancelled` is the STORED status; on an overtime plan the employee WITHDREW it, and "Cancelled" would

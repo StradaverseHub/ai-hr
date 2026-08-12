@@ -2752,7 +2752,9 @@
     "maFoundEarlyBy": "Left early · {minutes} min",
     "maFoundShort": "Short of the scheduled hours",
     "maAskedOvertime": "Overtime {hours} h",
-    "maAskedTimes": "Clock in {in} · Clock out {out}"
+    "maAskedTimes": "Clock in {in} · Clock out {out}",
+    "maAlsoWaiting": "Also waiting for you — {section}",
+    "maSeeAllInSection": "See all {count}"
   },
   "approvals": {
     "title": "Approvals",
