@@ -19,7 +19,22 @@ import {
  */
 const LIST = '/admin/attendance-policy';
 const num = (fd: FormData, key: string): number => Math.trunc(Number(fd.get(key) ?? 0)) || 0;
-const bool = (fd: FormData, key: string): boolean => fd.get(key) != null;
+/** True only when the field is present AND carries a value.
+ *
+ *  7c834696 contested: this used to be `fd.get(key) != null`, which is correct for a real checkbox — the
+ *  browser omits an unchecked one entirely — but WRONG for a hidden input, which is always submitted. The
+ *  OT editor's "Apply to Early Overtime" is a controlled React checkbox with no `name`, so its value rides
+ *  a hidden field; unticked, that field arrived as an empty string, `'' != null` was true, and the flag
+ *  saved as ON every time. It could not be turned off at all, on a setting that folds pre-shift minutes
+ *  into paid overtime.
+ *
+ *  Safe for every caller: a checked checkbox with no explicit `value` submits the string 'on', and none of
+ *  the checkboxes on this form carries an explicit value — verified, not assumed. The editor now also omits
+ *  the hidden field when off, so the two halves of the fix are independent. */
+const bool = (fd: FormData, key: string): boolean => {
+  const v = fd.get(key);
+  return v != null && v !== '';
+};
 
 /** Parse the OT-rows hidden JSON field into typed rows. Invalid / empty ⇒ []. */
 function parseOtRows(raw: string): OtRowInput[] {

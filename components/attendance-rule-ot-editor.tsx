@@ -152,7 +152,17 @@ export function AttendanceRuleOtEditor({
   return (
     <fieldset className="w-full">
       <input type="hidden" name="otRows" value={serialized} />
-      <input type="hidden" name="applyToEarlyOt" value={applyEarly ? 'on' : ''} />
+      {/* 7c834696 contested — "How come I cannot untick Apply to Early Overtime?" They were right, and the
+          cause was here. A hidden input is submitted ALWAYS, whatever its value, so an unticked box still
+          put `applyToEarlyOt` in the FormData with an empty string — and the reader (rule-actions.ts) asked
+          only whether the field was PRESENT. The flag therefore saved as true on every save and could never
+          be cleared, on a setting that folds pre-shift minutes into paid overtime.
+
+          Rendered conditionally so it behaves exactly like the real checkboxes on this form: present when
+          on, ABSENT when off. The visible control above carries no `name` (it is a controlled React
+          checkbox), which is why this hidden field exists at all. rule-actions.ts's reader is hardened in
+          the same change, so neither half depends on the other being right. */}
+      {applyEarly && <input type="hidden" name="applyToEarlyOt" value="on" />}
       <div className="mb-2 flex items-center justify-between gap-2">
         <legend className="text-sm font-semibold text-foreground">{labels.sectionTitle}</legend>
         <button
