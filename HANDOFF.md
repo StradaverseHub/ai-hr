@@ -341,36 +341,39 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**COUNTS ON THE BOX, end of 2026-08-12 (RE-COUNT before trusting these — this line has been wrong
-three times):** `deployed = 655` · `planned = 10` · `open = 3` · `approved = 2` · `cancelled = 14`.
+**COUNTS ON THE BOX, 2026-08-13 (RE-COUNT before trusting these — this line has been wrong three
+times):** `deployed = 656` · `planned = 10` · `open = 3` · `approved = 1` · `cancelled = 14`.
 
-**The two approved are both blocked on something other than code:** `c8052ae3` is an OPERATOR RUN only
-(backups taken and verified; its rehearsal on the box is stale and its plan wants rehearsal and apply in
-ONE sitting, so re-run it fresh), and whatever else has been approved since — re-pull, do not trust this.
+**c8052ae3 IS DONE — the leave reset RAN on 2026-08-12.** It was the longest-open item on the board.
+147 `leave_ledger` rows and 22 `leave_entitlement_recalc_audit` rows archived under capture tag
+**`c8052ae3-2026-08-12`** and then deleted; `leave_ledger` went 318 → 171, leave requests (41) and
+payslips (121) untouched, no entitlement generation run. Medical and Hospitalization now read 0.00 for
+everyone because no rows exist, not because something granted zero. The record is at
+`/admin/leave/entitlements/ledger-archive`, reached from the Entitlements screen and deliberately not in
+the sidebar.
 
-**THE CONSTRAINT FLIPPED TWICE IN ONE DAY.** It was their approval throughput; then ours (13 items planned
-in an afternoon); then theirs again. **Check which side is short before choosing what to do next** —
-`improve:pull` for unplanned work, `improve:pull-approved` for unbuilt work.
+⚠️ **TWO STEPS OF THAT PLAN WERE WRONG, AND ONLY RUNNING IT FOUND THEM. Fix them before reusing it.**
+1. **Step 0's `pg_dump "$U" -Fc -f …` EXITS 1 on this database** and leaves an ~889 KB partial that looks
+   like a backup and is not. `ai_provider_config`, `leave_adjustment_batch` and `platform_user` are FORCE
+   RLS; `ai_hr_owner` has neither superuser nor BYPASSRLS and there is no passwordless sudo to `postgres`.
+   The working form adds `--exclude-table-data=` for those three — and all three hold **0 rows**, so the
+   dump is complete anyway. **Verify a dump with `pg_restore -l`, never with its exit code alone.**
+2. **Step 4's check `leave_entitlement_recalc_audit 0` IS WRONG** and reports failure on a correct run.
+   It must read **0 FOR THE TWO RESET TYPES**. After the real run the table holds 50 rows, every one of
+   them ANNUAL — which the script correctly did not touch. A check that fails on success is how a good
+   result gets rolled back.
 
-**THE CONSTRAINT HAS FLIPPED BACK TO US.** For weeks it was their approval throughput. On 2026-08-12 they
-approved 8 items in a morning while r185 was mid-build, and the open queue is now 9 deep with only 6
-carrying a plan. **Plans, not builds, are the bottleneck again — check which side is short before choosing
-what to do next.**
+**THE CONSTRAINT FLIPPED TWICE IN ONE DAY** — theirs, then ours (13 items planned in an afternoon), then
+theirs again. **Check which side is short before choosing what to do next:** `improve:pull` for unplanned
+work, `improve:pull-approved` for unbuilt work.
 
-**THE 9 APPROVED, AND WHAT IS BUILT:** the r186 eight (`e7eb5d83`, `74d00fd2`, `7c834696`, `b8aa3466`,
-`af7a8eb4`, `42afb2d2`, `2ec1e3d2`, and `009c8a37`'s siblings) are BUILT on `build/r186` and awaiting a
-green gate. Still unbuilt and approved: **`c8052ae3`** (operator run only — see its entry above; backups
-taken, rehearsal stale) and **`2f889bae`**.
-
-⚠️ **`2f889bae` MUST NOT BE BUILT AS WRITTEN — it would REVERT what r185 shipped.** Its steps 3, 4 and 5
-are the same data repair, the same EXCLUDE constraint and the same widened lookup `2aed39d4` already
-shipped, and **its step 7 asks for the OPPOSITE of what shipped**: it wants Remove refused for any
-COMPLETED run, where r185 shipped Remove allowed while processed and refused only once CLOSED, on the
-reporter's newer and more explicit instruction. `2aed39d4`'s approved plan called this collision in
-advance — *"whichever item builds FIRST carries them … if 2f889bae builds first its step 7 must be
-re-planned to match. Do not ship both."* r185 built first, so **step 7 needs re-planning**. Its genuinely
-new part (a View/Edit link from the Personnel Payroll tab, which is read-only today while the real buttons
-sit one screen away at `app/payroll/transactions/fixed/[id]`) survives and is worth building.
+⚠️ **`2f889bae` IS NO LONGER APPROVED — it was RE-PLANNED at revision 2 on 2026-08-12 and now awaits the
+reporter.** Do not build it from an older reading. Of its seven revision-1 steps, **five were already
+delivered** (step 1 by r180's `34cc8137`; steps 2–5 by r185's `2aed39d4`), **step 7 asks for the OPPOSITE
+of what is live** (it wants Remove refused for any COMPLETED run; r185 shipped Remove allowed while
+`processed` and refused only once `closed`, on the reporter's newer instruction), and the only work left is
+a View/Edit link on the Personnel Payroll tab, which is read-only today while the real buttons sit one
+screen away at `app/payroll/transactions/fixed/[id]`.
 
 **TWO ITEMS RAISED BY US ON 2026-08-12**, both from findings that belonged to no approved plan:
 `47609f53` (supervisors are shown dashboard links to screens that refuse them — the `2ec1e3d2` plan
