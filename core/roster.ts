@@ -1369,7 +1369,26 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
   });
 }
 
-/** Remove an assignment → the date falls back to the company policy. */
+/**
+ * Remove an assignment → the date falls back to the company policy.
+ *
+ * 42afb2d2 — THE DELETE ASYMMETRY, MEASURED 2026-08-12. DO NOT ADD A CALLER THAT SKIPS
+ * `assertRosterAdmin`. `roster_assignment_rls` (db/migrations/0075_shift_roster.sql:50-53) is a single
+ * FOR ALL policy, so its WITH CHECK (`app.can_admin_employment`) governs INSERT and the new row of an
+ * UPDATE — but a DELETE is checked against USING ALONE, which is `app.can_see_employment`. A supervisor
+ * and the employee themselves both pass that. Measured on a disposable database as `ai_hr_app` in a
+ * rolled-back transaction, with a real active administrative reporting line: the same manager session
+ * that gets 42501 for an INSERT and for a constraint-valid UPDATE on a future-dated row of a direct
+ * report gets `DELETE 1` for the delete of that row — future-dated or past-dated, it makes no
+ * difference, because the storage layer carries no date rule either. The employee's own roster day
+ * likewise deletes under a plain `employee` grant. The negative control holds: the same employee
+ * against a row they cannot see gets `DELETE 0`, silently filtered rather than refused, which is what
+ * USING does.
+ *
+ * So for the OTHER two verbs `assertRosterAdmin` is belt over a brace, and for THIS one it is the only
+ * thing there is. Closing the gap needs a restrictive DELETE policy or per-command policies, i.e. a
+ * centrally numbered migration; it was measured and reported under 42afb2d2, not built.
+ */
 export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
   return withTenant(ctx, async (tx) => {
     // The deleted row IS the "before" — returning it costs nothing and needs no second read.
@@ -1823,8 +1842,10 @@ export async function rosterMonthView(
 /**
  * 23390097 BLOCKER — WHO MAY CHANGE THE ROSTER AT ALL, answered in the SERVER before any SQL runs.
  *
- * Writing roster_assignment requires app.can_admin_employment → app.is_admin_for, so ROW-LEVEL SECURITY
- * already refuses a supervisor. WHAT IT REFUSES WITH was the hole: drizzle wraps PostgresError 42501 as
+ * INSERTING OR UPDATING roster_assignment requires app.can_admin_employment → app.is_admin_for, so
+ * ROW-LEVEL SECURITY already refuses a supervisor those two verbs. READ THE DELETE NOTE ON
+ * `clearRoster` BEFORE TREATING THAT AS "the database decides" — it does not decide the third verb,
+ * and this guard is the only thing that does. WHAT IT REFUSES WITH was the hole: drizzle wraps 42501 as
  * `Failed query: insert into "roster_assignment" … params: <tenant uuid>,<employment uuid>,…`, and the
  * roster actions copy `(e as Error).message` verbatim into a toast (the three cell actions) or into
  * `?error=`, which app/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
@@ -1857,12 +1878,14 @@ export function assertRosterAdmin(ctx: SessionContext): void {
  * already been attended — the attendance figures for it were fixed when the day was saved — so only an
  * HR administrator may re-write it, and the UI confirms first.
  *
- * READ THIS BEFORE QUOTING THE `shiftDate > today` BRANCH AS A SUPERVISOR CAPABILITY. Writing
- * roster_assignment at all already requires app.can_admin_employment → app.is_admin_for, i.e. an
- * hr_admin or super_admin grant. Every session that reaches a roster write is therefore an admin,
- * `isAdmin(ctx)` is already true, and the left-hand branch never decides anything at the write boundary.
- * A supervisor clicking tomorrow does not get "allowed" — RLS refuses the insert with 42501. The grid is
- * rendered READ-ONLY for a non-admin for exactly that reason (components/roster-grid.tsx).
+ * READ THIS BEFORE QUOTING THE `shiftDate > today` BRANCH AS A SUPERVISOR CAPABILITY. Inserting or
+ * updating roster_assignment already requires app.can_admin_employment → app.is_admin_for, i.e. an
+ * hr_admin or super_admin grant; and `assertRosterAdmin` is called before this predicate in every write
+ * path, so every session that reaches it is an admin, `isAdmin(ctx)` is already true, and the left-hand
+ * branch never decides anything at the write boundary. A supervisor clicking tomorrow does not get
+ * "allowed" — RLS refuses the insert with 42501. The grid is rendered READ-ONLY for a non-admin for
+ * exactly that reason (components/roster-grid.tsx). (DELETE is the exception RLS does NOT cover; see the
+ * measurement on `clearRoster` above. It changes nothing here, because `assertRosterAdmin` runs first.)
  *
  * The predicate is kept as belt-and-braces, so that if roster_assignment's RLS is ever widened to
  * supervisors, today-and-earlier stays administrator-only without a second change. It is NOT evidence
