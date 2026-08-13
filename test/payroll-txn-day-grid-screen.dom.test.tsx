@@ -113,7 +113,26 @@ const EMPTY_PANEL: TxnPanel = {
   stranded: [],
 };
 
-function renderWorkspace(panel: TxnPanel = EMPTY_PANEL) {
+/**
+ * c11e81aa — a FIXED-AMOUNT pay item: one figure for the month, so it cannot be split across dates.
+ * `variesByDay` is the server's answer (payRuleAllowsDayByDay over a `fixed` rule), not a UI guess —
+ * note that it is indistinguishable from an item with NO rule by `derives`/`inputUnit` alone, which is
+ * exactly why the screen is handed the third boolean rather than inferring it.
+ */
+const HANDPHONE: TxnPayItem = {
+  id: 'hp',
+  code: 'HANDPHONE',
+  name: 'Handphone Allowance',
+  kind: 'allowance',
+  derives: false,
+  inputUnit: null,
+  variesByDay: false,
+};
+
+function renderWorkspace(
+  panel: TxnPanel = EMPTY_PANEL,
+  opts: { payItems?: TxnPayItem[]; batches?: TxnBatch[] } = {},
+) {
   panelMock.mockResolvedValue(panel);
   previewOneMock.mockResolvedValue({ ok: true, derived: false });
   previewManyMock.mockImplementation((input: { quantities: string[] }) =>
@@ -127,14 +146,15 @@ function renderWorkspace(panel: TxnPanel = EMPTY_PANEL) {
     }),
   );
   dayGridMock.mockResolvedValue({ ok: true, id: 'n1', count: 5 });
+  createMock.mockResolvedValue({ ok: true, id: 'n1' });
   detailMock.mockResolvedValue(null);
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <TxnWorkspace
         employees={[EMPLOYEE]}
-        batches={[BATCH]}
+        batches={opts.batches ?? [BATCH]}
         companies={[COMPANY]}
-        payItems={[OT]}
+        payItems={opts.payItems ?? [OT]}
         processHref="/payroll"
         requireComponent={false}
         currentPeriod="2026-08"
@@ -602,5 +622,211 @@ describe('r191 · 009c8a37 + e1e33ca0 — the panel does one job, the toolbar do
     // `startCreate` seeds the new entry from `periodFilter`. It reads the state, not the control's
     // position, which is exactly why the move had to keep the state in this component scope.
     expect(screen.getByLabelText('Month')).toHaveValue('2026-07');
+  });
+});
+
+/**
+ * c11e81aa — the listing says WHICH pay item, the entry surfaces open over it, the Pay cycle is a
+ * control, and Day by day is not offered where it cannot work.
+ *
+ * These live here rather than in a new file for the reason the header above gives: every one of them is
+ * client state that only exists after a click, so a dev-server log and a 200 cannot see any of it. The
+ * three the approved plan singles out as the RISKS of this change are pinned first — the search predicate
+ * silently narrowing, the FormState/DailyState invariant, and `resolvedBatchId` being turned into stored
+ * state — because each is a regression that leaves the screen looking entirely correct.
+ */
+describe('c11e81aa · the listing identifies the pay item', () => {
+  const NOTED: TxnPanel = {
+    ...EMPTY_PANEL,
+    rows: [
+      panelRow({ id: 'r1', txnDate: '2026-08-01', quantity: '2.00', amount: '77.88', notes: 'Weekend callout' }),
+    ],
+    totals: { ...EMPTY_PANEL.totals, count: 1, total: '77.88', pendingCount: 1, pendingTotal: '77.88' },
+  };
+
+  it('prints the pay item CODE and its description — not the ledger kind and the typed note', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(NOTED);
+    await user.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Description' })).toBeInTheDocument();
+    expect(within(table).getByText('OT1_5')).toBeInTheDocument();
+    expect(within(table).getByText('Overtime 1.5')).toBeInTheDocument();
+    // "Earning" was the whole content of the Payroll item column before this change, on nearly every row.
+    expect(within(table).queryByText('Earning')).toBeNull();
+    // THE NOTE HAS LEFT THE LISTING. It is not deleted — the next case opens it.
+    expect(within(table).queryByText('Weekend callout')).toBeNull();
+  });
+
+  it('View opens over the listing and is where the transaction’s own note now lives', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(NOTED);
+    await user.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+    await user.click(await screen.findByRole('button', { name: 'View' }));
+
+    const prompt = screen.getByRole('dialog', { name: 'Transaction details' });
+    expect(within(prompt).getByText('Weekend callout')).toBeInTheDocument();
+    expect(within(prompt).getByText('OT1_5')).toBeInTheDocument();
+    // OVER the listing, not instead of it — the reason for the change is that you keep your place.
+    expect(screen.getByRole('table')).toBeInTheDocument();
+
+    // Two ways out on purpose — the × in the header and the button at the foot. Click the button.
+    const closes = within(prompt).getAllByRole('button', { name: 'Close' });
+    await user.click(closes[closes.length - 1]);
+    expect(screen.queryByRole('dialog', { name: 'Transaction details' })).toBeNull();
+  });
+
+  /**
+   * RISK 1 OF 3 — the search predicate silently narrowing. Moving the note out of the listing invites
+   * narrowing the match to what a column now shows, and the failure is invisible: the box still works,
+   * it just stops finding rows by the remark somebody typed on them.
+   */
+  it('still finds a row by its REMARK, and now also by the pay item code and description', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(NOTED);
+    await user.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+    const box = await screen.findByLabelText('Search transactions');
+
+    for (const term of ['callout', 'OT1_5', 'Overtime']) {
+      await user.clear(box);
+      await user.type(box, term);
+      expect(await screen.findByText('1 row'), `searching "${term}"`).toBeInTheDocument();
+    }
+    await user.clear(box);
+    await user.type(box, 'nothing-matches-this');
+    expect(await screen.findByText('0 rows')).toBeInTheDocument();
+  });
+});
+
+describe('c11e81aa · Add and Edit open in a prompt', () => {
+  it('the entry form is a prompt over the listing, and the listing is still there behind it', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+
+    const prompt = screen.getByRole('dialog', { name: 'New transaction' });
+    expect(within(prompt).getByLabelText('Month')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  /**
+   * RISK 2 OF 3 — the FormState/DailyState invariant. The two entry modes are a deliberate discriminated
+   * union (4e403268) with at most one non-null, and putting them inside a prompt is exactly the change
+   * that tempts somebody to fold them into one object with a mode flag. If that happened, both would be
+   * on screen at once — which is what this asserts cannot be.
+   */
+  it('only ever shows ONE entry machine: switching to the grid closes the single-entry prompt', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+
+    await user.click(screen.getByRole('radio', { name: 'Day by day' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: 'Add transactions day by day' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'New transaction' })).toBeNull();
+
+    await user.click(screen.getByRole('radio', { name: 'One total for the month' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: 'New transaction' })).toBeInTheDocument();
+  });
+
+  /**
+   * Dismissing the prompt is now the likelier way to lose unsaved work than switching employee — the
+   * employee list is behind the backdrop while a form is open — so the unsaved-changes gate answers it.
+   */
+  it('asks before throwing away a half-typed entry when the prompt is dismissed', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+    await user.type(screen.getByLabelText('Amount'), '120');
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    expect(screen.getByText('Do you want to save before closing?')).toBeInTheDocument();
+    // The entry is still there behind the question — "Cancel" on the gate means "keep typing".
+    expect(screen.getByRole('dialog', { name: 'New transaction' })).toBeInTheDocument();
+
+    // The gate is rendered last, over the prompt it is asking about, so its Cancel is the last one.
+    const cancels = screen.getAllByRole('button', { name: 'Cancel' });
+    await user.click(cancels[cancels.length - 1]);
+    expect(screen.queryByText('You have unsaved changes')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'New transaction' })).toBeInTheDocument();
+  });
+});
+
+describe('c11e81aa · Pay cycle is a control, and the target run stays DERIVED', () => {
+  const JULY: TxnBatch = { ...BATCH, id: 'b-jul', payPeriod: '2026-07', runType: 'regular', runSeq: 1 };
+  const AUG_BONUS: TxnBatch = { ...BATCH, id: 'b-aug-bonus', payPeriod: '2026-08', runType: 'bonus', runSeq: 1 };
+
+  it('is selectable when the month has exactly ONE run — 21 of 22 production months', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    await openAddForm(user);
+
+    // It used to be a paragraph here, with nothing to click, which is what made the field feel broken.
+    const cycle = screen.getByLabelText('Pay cycle');
+    expect(cycle.tagName).toBe('SELECT');
+    expect(cycle).toHaveValue('b1');
+    expect(within(cycle as HTMLSelectElement).getByRole('option', { name: 'Regular' })).toBeInTheDocument();
+    // No blank option above one run: the derivation resolves '' straight back to the sole run, so an
+    // option that cannot change the answer would be a second way of saying the same thing.
+    expect(within(cycle as HTMLSelectElement).queryByRole('option', { name: '—' })).toBeNull();
+  });
+
+  /**
+   * RISK 3 OF 3 — `resolvedBatchId` turned into stored state. It is DERIVED precisely so a pick cannot
+   * outlive the month it was made in: a stored id is a second copy of what month + employee already
+   * determine, and the window where they disagree is a window where a row is written against a run that
+   * no longer covers the employee. Pick the bonus run in August, move to July, and the answer must be
+   * July's own run — both on screen and in what the save posts.
+   */
+  it('a pick made in one month does not survive into another', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(EMPTY_PANEL, { batches: [BATCH, AUG_BONUS, JULY] });
+    await openAddForm(user);
+
+    await user.selectOptions(screen.getByLabelText('Pay cycle'), 'b-aug-bonus');
+    expect(screen.getByLabelText('Pay cycle')).toHaveValue('b-aug-bonus');
+
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '2026-07' } });
+    expect(screen.getByLabelText('Pay cycle')).toHaveValue('b-jul');
+
+    await user.type(screen.getByLabelText('Effective date'), '2026-07-10');
+    await user.type(screen.getByLabelText('Amount'), '250');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(createMock).toHaveBeenCalled());
+    expect((createMock.mock.calls[0][0] as { batchId: string }).batchId).toBe('b-jul');
+  });
+});
+
+describe('c11e81aa · Day by day is not offered for a fixed-amount pay item', () => {
+  it('greys the option out and says why, instead of offering a choice that cannot work', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(EMPTY_PANEL, { payItems: [OT, HANDPHONE] });
+    await openAddForm(user);
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:hp');
+    expect(screen.getByRole('radio', { name: 'Day by day' })).toBeDisabled();
+    expect(screen.getByText(/cannot be split across dates/)).toBeInTheDocument();
+
+    // …and an item whose rule reads hours is unaffected: a day is worth its own hours.
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    expect(screen.getByRole('radio', { name: 'Day by day' })).toBeEnabled();
+    expect(screen.queryByText(/cannot be split across dates/)).toBeNull();
+  });
+
+  it('and it cannot be reached from inside the grid by changing the pay item', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(EMPTY_PANEL, { payItems: [OT, HANDPHONE] });
+    await openAddForm(user);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('radio', { name: 'Day by day' }));
+
+    const picker = screen.getByRole('combobox', { name: 'Payroll item' });
+    expect(within(picker).getByRole('option', { name: /HANDPHONE/ })).toBeDisabled();
+    expect(within(picker).getByRole('option', { name: /OT1_5/ })).toBeEnabled();
   });
 });
