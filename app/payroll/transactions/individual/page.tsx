@@ -4,7 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
-import { payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay-rule';
+import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ErrorBanner, PageHeader } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee } from './txn-workspace';
@@ -69,6 +69,12 @@ export default async function IndividualTransactionPage({
     kind: c.kind,
     derives: payRuleDerivesAmount(c.rule as PayRule | null),
     inputUnit: payRuleInputUnit(c.rule as PayRule | null),
+    // c11e81aa — the THIRD question, and the same discipline: whether a day can be worth something
+    // different from the day beside it is a fact about the item's rule, so it is answered here rather
+    // than guessed from `derives` and `inputUnit` on the screen (which cannot tell a `fixed` monthly
+    // allowance apart from an item with no rule at all — both read false/null, and only one of them
+    // may be keyed day by day).
+    variesByDay: payRuleAllowsDayByDay(c.rule as PayRule | null),
   }));
 
   // The Company pre-filter is view-only narrowing on the already access-fenced employee list, so scope the

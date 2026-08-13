@@ -4297,7 +4297,12 @@
           "leave": "Nghỉ phép",
           "import": "Nhập khẩu",
           "system": "Hệ thống"
-        }
+        },
+        "colDescription": "Mô tả",
+        "viewTxnTitle": "Chi tiết giao dịch",
+        "close": "Đóng",
+        "inputMethodDailyUnavailable": "Khoản lương này trả một số tiền cố định cho cả tháng nên không thể tách theo từng ngày.",
+        "unsavedBodyClose": "Bạn có muốn lưu trước khi đóng không?"
       },
       "tp1": {
         "title": "Miễn giảm TP1",

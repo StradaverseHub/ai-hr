@@ -4297,7 +4297,12 @@
           "leave": "休假",
           "import": "导入",
           "system": "系统"
-        }
+        },
+        "colDescription": "说明",
+        "viewTxnTitle": "交易详情",
+        "close": "关闭",
+        "inputMethodDailyUnavailable": "此薪资项目每月支付一笔固定金额，因此无法按日期拆分。",
+        "unsavedBodyClose": "关闭前是否要先保存？"
       },
       "tp1": {
         "title": "TP1 减免",

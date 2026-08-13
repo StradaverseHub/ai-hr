@@ -4297,7 +4297,12 @@
           "leave": "Cuti",
           "import": "Import",
           "system": "Sistem"
-        }
+        },
+        "colDescription": "Keterangan",
+        "viewTxnTitle": "Butiran transaksi",
+        "close": "Tutup",
+        "inputMethodDailyUnavailable": "Item gaji ini membayar satu jumlah tetap bagi bulan tersebut, jadi ia tidak boleh dipecahkan mengikut tarikh.",
+        "unsavedBodyClose": "Adakah anda mahu menyimpan sebelum menutup?"
       },
       "tp1": {
         "title": "Pelepasan TP1",

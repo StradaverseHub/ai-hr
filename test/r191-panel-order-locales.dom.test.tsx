@@ -129,6 +129,8 @@ const OT: TxnPayItem = {
   kind: 'allowance',
   derives: true,
   inputUnit: 'hours',
+  // c11e81aa — per_hour, so a day can be worth something different from the day beside it.
+  variesByDay: true,
 };
 const EMPTY_PANEL: TxnPanel = {
   rows: [],
