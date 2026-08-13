@@ -39,80 +39,38 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**1. NOTHING IS IN FLIGHT.** r190 and r191 both shipped as ONE release, `main@de887a85`. Every
-`build/*` branch through r191 is merged. Prove it independently rather than trusting this line —
-`git for-each-ref refs/heads/build` plus a dry-run rsync.
+**1. NOTHING IS IN FLIGHT AND THE APPROVED QUEUE IS EMPTY.** r185–r194 are all shipped;
+`main@dec4bb73` is deployed and every `build/*` branch through r194 is merged. Prove it independently
+rather than trusting this line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
+The board is **2 open, 2 planned, 0 approved, 0 contested**. The constraint is the reporter, not us.
 
-**2. SIX APPROVED, AND FOUR OF THEM WERE APPROVED WHILE r191 WAS DEPLOYING.** In build order:
+**2. THE ONE LIVE HAZARD: ENTITY TRANSFER STAGE ONE UNDERPAYS IF A MONTH IS RE-RUN.** Full detail in the
+r194 entry below — read it before touching payroll. In one line: proration is right, but the counterpart
+payslip in the OTHER company's batch is never created, and no single-batch operation can create it.
+**Do not re-run August for employee 100814.** Stage two is board item `1b0943d5`, and cross-batch segment
+creation must be the FIRST thing its plan answers, ahead of attendance and leave.
 
-- **`2333b7fb` → `0253dc7c`** — ONE root cause seen from two screens, and they must ship in that
-  order: `2333b7fb` is the calculation (a deduction pay item's own statutory ticks are read by
-  NOTHING — `core/payroll.ts` ~3757 `continue`s out of the deduction branch before any flag is read),
-  `0253dc7c` is the disclosure of the same numbers on Transaction Detail. Only **four payslips of 121**
-  carry a deduction ticked into any base; employee net moves **+RM172.25** total, employer **−RM107.63**.
-  ⚠️ **Neither may restate January** — see `0db616f3` below, which blocks it.
-- **`31e39d74`** — entitlement not generating. **`9a65f808` IS NOT A BLOCKER FOR IT** (see below).
-- **`5ff7daff`** Replacement Leave — the request dialog, the service and the credit-minting are ALL
-  built and switched on; what is missing is that **`decideReplacementLeaveRequestAction` has ZERO
-  callers** — there is no approval screen anywhere, which is why production has 0 accruals. Also:
-  production carries **two** replacement leave types because `core/toil.ts:186` still matches
-  `lower(code)='replacement'` instead of `leave_type.role` — the same class as the `EMERGENCY_LEAVE_CODE`
-  trap that `leaveTypeIs` was introduced to fix. Safe to consolidate (0 accruals, 0 requests, 0 ledger).
-- **`8ca344bf` Borang 8A · `9c8dad7a` Borang A** — deliberately DEFERRED from r191. Their plan says
-  **three rounds, not one**, and CP22 (the first of the trio) shipped in r191. Read the dedicated
-  statutory section below BEFORE touching them: the EPF/SOCSO attachments are another payroll system's
-  DevExpress output, not agency artwork, so neither form may be labelled `official`.
+**3. THE CODE IS ON GITHUB NOW** — `github.com/zenlam/ai-hr`, PRIVATE, `main` only (the `build/*` branches
+are not pushed). Push new branches explicitly if the owner needs to see them from a phone.
 
-**3. `0db616f3` IS THE MOST URGENT THING ON THE BOARD (raised by us, r191, still `open`).** January
-regular batch `368c67fc` (2026-01, **processed**) carries **24 `source='import'` rows worth
-RM106,073.31**, created 12 Aug at 15:27 and 15:30 — **after** its 19 payslips were written at 15:04, so
-they are unconsumed and nobody has been paid them. **Eleven of the 24 are exact duplicates** (same
-employment, component and amount, one from each import run three minutes apart) worth **RM43,548.80**.
-The fold at `core/payroll.ts:3389` is `where(eq(payrollIndividualTxn.batchId, p.batchId))` and **the
-table has no consumed marker in any column**, so re-running January pays all 24 including all 11
-repeats. The bonus batch `fc9e5309` shows 19 payslips at net 0.00 because the rows went to the regular
-batch. **This blocks any January restatement, including `2333b7fb`'s.**
+**4. OPEN ITEMS (2):** `1b0943d5` (entity transfer stage two, above) and `c11e81aa`'s two stale-plan
+findings worth telling the reporter — its Excel import Pay Cycle was ALREADY delivered by r193, and its
+fixed-amount day-by-day gate is a **no-op on this tenant** because no pay item is configured `fixed`
+(23 of 24 have no rule at all). **PLANNED, awaiting the reporter (2):** `31e39d74` and `9a65f808`.
 
-**4. `9a65f808` DOES NOT BLOCK `31e39d74` — this was chased and DISPROVED in r191, do not re-derive it.**
-Production holds exactly one eligibility rule, `PERMANENT`, created **2026-08-13 10:38:34** and retired
-**the same morning** (`valid_to = 2026-08-13`), narrowing on 14 axes. The tempting story is that the
-product refused it. It did not: `ASSIGNABLE_ELIGIBILITY_AXES` (`companyIds`, `employmentTypes`,
-`gradeIds`) lives in `core/leave-approval-template.ts:385` and is read at **exactly one place** —
-`app/admin/leave/approval/page.tsx:351`, the **Approval Assignment Template picker**. The entitlement
-resolver `buildTemplateEntitlementResolver` (`core/entitlement-template.ts:557`) applies **no axis
-restriction at all**; it hands the full criteria to `resolveOrgCriteriaTargets`. **That 14-axis rule
-would have generated entitlement perfectly well.** It is absent because it was retired, not refused.
-(`usesUndatedEligibilityAxis` was checked as an alternative explanation and has **no UI caller** — it is
-exported and tested only, so no warning ever reached the reporter.)
+**5. TWO STANDING DECISIONS NOBODY HAS REVISITED**: `ALLOW_DEMO_SESSION=true` is live on the box a real
+customer's payroll runs on, and `fixed_allowance` can no longer be CREATED from any screen after r189.
 
-**5. TWO STANDING DECISIONS NOBODY HAS REVISITED**, both flagged rather than actioned:
-`ALLOW_DEMO_SESSION=true` is live on the box a real customer's payroll runs on; and `fixed_allowance`
-can no longer be CREATED from any screen after r189 (existing ones survive; a rate control belongs on
-Claim Types).
+**6. A CREDENTIAL WAS EXPOSED IN A SESSION TRANSCRIPT ON 2026-08-14** — the production
+`MIGRATION_DATABASE_URL` password, printed by a bad `sed` while building a scratch-restore URL. It is
+UNCHANGED and still valid. Rotate it when convenient, and never reconstruct that URL by substring
+replacement: `s|/ai_hr|…|` matches the ROLE NAME `ai_hr_owner` first.
 
-**THIRTY-SIX ITEMS SHIPPED IN TWO DAYS, ACROSS SEVEN ROUNDS.** r185 (seven, `0426`+`0427`), r186 (eight,
-`0428`+`0429`), r187 (seven, `0430`/`0432`/`0433`/`0434`), r188 (one defect fix, no migration), r189 (two,
-`0435`), r190+r191 (eleven, `0436`, shipped as one release). Every new column, table, index, CHECK
-constraint and POLICY was confirmed present on the live schema after each deploy, with GRANTs, rather than
-inferred from `deploy.sh` exiting 0 — and payslip and batch counts were re-checked unchanged after every one.
-
-⚠️ **`deploy.sh` DOES NOT RUN SCRIPTS, ONLY MIGRATIONS.** r189's live-risk fix was half-armed until
-`scripts/backfill-mileage-flat-rate.ts --apply` was run BY HAND after the deploy. If a round's fix depends
-on a script, the round is not finished when `deploy.sh` returns. Run it, and verify the row it writes.
 
 ⚠️ **`ALLOW_DEMO_SESSION=true` IS SET ON PRODUCTION.** The dev identity switcher is active on the box a real
 customer's payroll runs on — 40 employees, issued payslips, statutory filings. Deliberate for a gated
 consultant demo, per the startup warning, but it is a standing decision nobody has revisited. Not ours to
 flip; raise it rather than leave it as a warning line nobody reads.
-
-**r186 SHIPPED 2026-08-12 — `main@bed6c212`, migrations `0428` and `0429`, production on 349.** Full
-entry below. (That round's `0430`-`0435` and r191's `0436` are all applied — **next free is `0437`**,
-stated once in CURRENT STATE above and not repeated.)
-
-**NOTHING IS IN FLIGHT.** Everything r185–r194 is merged. Prove it independently before trusting this
-line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
-
-**⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
 
 ⚠️ **A GATE POISONED BY A CONCURRENT DEV SERVER LOOKS EXACTLY LIKE A BROKEN ROUND, AND IT HAPPENED AGAIN
 ON 2026-08-12.** r186's first gate came back 4 of 6 chunks red. Three of those chunks had **zero**
@@ -125,18 +83,10 @@ command was the per-chunk cause tally**, not reading test names:
       printf "%s: AssertionError=%s timeouts=%s\n" "$(basename $f)" \
         "$(grep -c AssertionError $f)" "$(grep -c 'timed out' $f)"; done
 
-**`/tmp/aihr-gate/chunkN.log` is where the real failure text lives** — the summary log the gate prints to
-stdout carries counts only, so grepping IT for `AssertionError` finds nothing and invites the wrong
-conclusion that everything was environmental. Read the chunk logs.
-
 ⚠️ **A BACKGROUND `Bash` TASK'S EXIT CODE IS ITS LAST COMMAND'S.** `gate-chunked.sh > log; echo "GATE_EXIT=$?"; date`
 reports **`date`'s** exit status to the task notification — so the harness said "completed (exit code 0)"
 over a RED gate. Same class as the pipe trap in "Running and reading test gates". Read `GATE_EXIT` out of
 the output file, never the notification.
-
-**r176 (2026-08-10) SHIPPED ADR-0077 SLICES 6 AND 9** — full entry in `docs/HANDOFF-HISTORY.md`.
-Slice 6's remaining piece (the deploy-failing flip) still needs the owner; slice 9 is complete.
-
 ### r177 · r179 · r180 · r184 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
 ⚠️ **THE PANEL ROUND TRIP IS NOW COMPLETE, AND IT IS THE MOST EXPENSIVE LESSON ON THIS BOARD.**
@@ -268,19 +218,51 @@ file, built together for shared groundwork).
   builder deliberately did NOT widen it to null-rule items — null-rule is precisely the case the day grid
   exists for (`ABSENT`, `UNPAID LEAVE`), and widening would have reversed r191's feature.
 
-⚠️ **TWO HAND-RUN SCRIPTS WRITTEN AND NOT RUN** (rule 13 — the round is not finished until they are, and
-both are DATA changes needing the owner's go-ahead):
-  `scripts/backfill-assignment-company.ts` — writes today's company onto open assignment rows and splits
-  the covering row at the movement effective date. For employment aa899123 (employee 100814) the assignment
-  split date (2026-08-10) and the movement effective date (2026-08-11) DISAGREE; the movement date wins.
-  `scripts/archive-duplicate-replacement-leave-type.ts` — archives the duplicate `REPLACEMENT` type created
-  by `core/toil.ts`'s `lower(code)='replacement'` match (now fixed to read `leave_type.role`).
-Remember rule 21: `node --env-file=` cannot run on the server; source `.env.production` instead.
+✅ **BOTH HAND-RUN SCRIPTS HAVE NOW BEEN RUN** (2026-08-14, against a fresh backup
+`/home/ubuntu/backups/aihr-pre-r194-scripts-20260814-015648.dump`):
+  `scripts/backfill-assignment-company.ts --apply` → **1 split, 54 stamps**; 55 of 59 assignment rows now
+  carry a company. The 4 without are all `superseded` and the resolver filters those
+  (`isNull(assignment.supersededAt)`, core/employment-company.ts:83), so they are not a gap.
+  `scripts/archive-duplicate-replacement-leave-type.ts --apply --tenant=…` → archived `REPLACEMENT`, kept
+  `RL`. **It REFUSES `--apply` without `--tenant`** — it will not guess which customer to write to.
 
-**`3c88d593` IS MARKED DEPLOYED FOR STAGE ONE ONLY.** Stage two — attendance, leave and reporting reading
-the company-for-date resolver — is raised separately as **`1b0943d5`** and is deliberately gated on the
-backfill running and 100814's August being re-checked, that being the only real mid-month transfer on
-production.
+### ⚠️⚠️ ENTITY TRANSFER: STAGE ONE IS INCOMPLETE IN A WAY THAT UNDERPAYS. READ BEFORE RE-RUNNING ANY MONTH.
+
+**Proven on production 2026-08-14, and it produced a real underpayment that had to be reversed.** Employee
+100814 (employment `aa899123`) transferred Fiamma → ISEDECOR BINA effective 2026-08-11. Reprocessing their
+August through `reprocessSelectedEmployees` gave:
+
+    BEFORE  1 payslip · gross 6,600.00 · net 5,832.35 · 31 days · v2
+    AFTER   1 payslip · gross 4,470.97 · net 3,946.82 · 21 days · v3      ← 6600 ÷ 31 × 21, the ISEDECOR part
+    MISSING the Fiamma 1–10 Aug counterpart, 6600 ÷ 31 × 10 = 2,129.03
+
+The proration is CORRECT. What does not happen is the second payslip, **and it structurally cannot**:
+**every company has its OWN batch for a period** — 2026-08 has EIGHT batches, one per company (Fiamma
+`30ba5f09` 1 employee; ISEDECOR `3b62dc57` 23) — and `reprocessSelectedEmployees` recomputes strictly
+within the ONE batch it is given. A mid-month transfer therefore spans two batches by construction, and no
+single-batch operation can complete it. The batch total fell by exactly 2,129.03, which is how it was
+caught.
+
+**RESTORED** to the pre-reprocess figures (payslip v4, batch totals back to gross 98,952.09 / net
+86,792.14, verified equal to the sum of its 23 payslips). Both directions are in
+`payroll_employee_result_history` with reasons. **The assignment company history was LEFT INTACT** — it is
+correct: three periods, Fiamma to 2026-08-10, Fiamma 08-10→08-11, ISEDECOR from 08-11.
+
+**DO NOT RE-RUN AUGUST FOR 100814** until cross-batch segment creation exists. That is the first thing
+stage two (`1b0943d5`) must answer — ahead of attendance and leave, which is not how that item is currently
+written.
+
+**TWO RESTORE LESSONS, both cost time here:**
+  1. `payroll_employee_result_history.before` carries only SIX keys — `grossPay`, `netPay`,
+     `totalDeductions`, `employerCost`, `version`, `statutory`. It does NOT carry `basic_salary`,
+     `allowance`, `overtime_pay`, `other_deductions`, `bonus` or `days_worked`, so it is NOT sufficient to
+     rebuild a payslip on its own. The backup was needed for the rest.
+  2. **You cannot restore a scratch database on the server**: `ai_hr_owner` is `rolcreatedb=f`,
+     `rolsuper=f`, so `CREATE DATABASE` is refused. Read rows straight out of the dump instead —
+     `pg_restore -t <table> -a -f - <dump>` emits the COPY block and its column header, and you can grep the
+     row you want. No database required.
+
+**`3c88d593` IS MARKED DEPLOYED FOR STAGE ONE ONLY**, with `build_ref` saying so. Stage two is `1b0943d5`.
 
 ### r193 (2026-08-13) — TEN ITEMS, THREE MIGRATIONS, AND THE JANUARY BONUS REPAIR RUN BY HAND
 
