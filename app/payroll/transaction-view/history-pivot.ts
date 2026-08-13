@@ -228,6 +228,28 @@ export type PayItemSubject = {
 /** The tenant's live Pay Item settings, keyed by code — read on the SERVER and passed in as data. */
 export type PayItemSubjectMap = Record<string, { epf: boolean; socso: boolean; pcb: boolean }>;
 
+/**
+ * 0253dc7c — the five statutory-subject columns, in the reporter's order, declared ONCE.
+ *
+ * THREE OF THEM READ ONE FIELD. `included_in_socso_eis` is a single setting and there is no per-item
+ * SKBBK column anywhere in the schema (SKBBK is charged on the SOCSO wage), so SOCSO, EIS and SKBBK
+ * always agree and the caption under the table says so. Do not invent a third field to make them
+ * look independent.
+ *
+ * It lives in this pure module rather than in the client component because THREE files consume it —
+ * the screen, the export route and the i18n-resolution test — and a header order that disagrees with
+ * a cell order produces a spreadsheet whose columns are silently mislabelled. `key` is also the i18n
+ * key under `payroll.transactions.view.grid.subject.*`, resolved with a computed t() the static scan
+ * cannot see, which is why the test asserts over this list rather than a copy of it.
+ */
+export const SUBJECT_COLUMNS: readonly { key: string; read: 'epf' | 'socso' | 'pcb' }[] = [
+  { key: 'epf', read: 'epf' },
+  { key: 'socso', read: 'socso' },
+  { key: 'eis', read: 'socso' },
+  { key: 'skbbk', read: 'socso' },
+  { key: 'tax', read: 'pcb' },
+];
+
 export type HistoryGrid = {
   rows: HistoryGridRow[];
   /** Month numbers (1-12) whose columns are shown, ascending. */

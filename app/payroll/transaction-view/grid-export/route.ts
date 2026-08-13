@@ -22,7 +22,13 @@ import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
 import { employeeLabel } from '@/lib/employee-code';
-import { cleanMonths, filterGridRows, pivotHistoryGrid, type PayItemSubjectMap } from '../history-pivot';
+import {
+  SUBJECT_COLUMNS,
+  cleanMonths,
+  filterGridRows,
+  pivotHistoryGrid,
+  type PayItemSubjectMap,
+} from '../history-pivot';
 
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 
@@ -103,9 +109,10 @@ export async function GET(req: Request) {
   // never "N", which would be an answer nobody gave). One `socso` field feeds three of the columns.
   const subjectCells = (r: (typeof rows)[number]) =>
     showSubject
-      ? ([r.subject?.epf, r.subject?.socso, r.subject?.socso, r.subject?.socso, r.subject?.pcb] as const).map((v) =>
-          v == null ? '' : v ? t('view.grid.subject.yes') : t('view.grid.subject.no'),
-        )
+      ? SUBJECT_COLUMNS.map((c) => {
+          const v = r.subject?.[c.read];
+          return v == null ? '' : v ? t('view.grid.subject.yes') : t('view.grid.subject.no');
+        })
       : [];
 
   const data: ReportData = {
@@ -117,7 +124,7 @@ export async function GET(req: Request) {
       t('view.grid.colCode'),
       t('view.grid.colDescription'),
       t('view.grid.colCycle'),
-      ...(showSubject ? ['epf', 'socso', 'eis', 'skbbk', 'tax'].map((k) => t(`view.grid.subject.${k}`)) : []),
+      ...(showSubject ? SUBJECT_COLUMNS.map((c) => t(`view.grid.subject.${c.key}`)) : []),
       ...grid.months.map((m) => labels[m - 1]),
       t('view.grid.colTotal'),
     ],

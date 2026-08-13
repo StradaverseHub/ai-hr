@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
+import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
 
 /**
  * Feedback 080de5cf — the spreadsheet grid for Transaction View › History › Grid.
@@ -50,19 +50,6 @@ const GROUPS: { group: GridRowGroup; key: string }[] = [
   { group: 'summary', key: 'summary' },
 ];
 
-/**
- * 0253dc7c — the five statutory-subject columns, in the reporter's order. THREE OF THEM READ ONE
- * FIELD: SOCSO, EIS and SKBBK are all `included_in_socso_eis`, because that is the only setting the
- * schema has (SKBBK is charged on the SOCSO wage). They will always agree, and the caption under the
- * table says so rather than leaving it to look like a bug.
- */
-const SUBJECT_COLS: { key: string; read: 'epf' | 'socso' | 'pcb' }[] = [
-  { key: 'epf', read: 'epf' },
-  { key: 'socso', read: 'socso' },
-  { key: 'eis', read: 'socso' },
-  { key: 'skbbk', read: 'socso' },
-  { key: 'tax', read: 'pcb' },
-];
 
 /**
  * Amount tint. The pair is the codebase's existing positive/negative vocabulary (the dashboard and
@@ -138,7 +125,7 @@ export function HistoryGrid({
     showSubject: showSubject ? '1' : '0',
   }).toString()}`;
 
-  const colCount = 3 + (showSubject ? SUBJECT_COLS.length : 0) + months.length + 1;
+  const colCount = 3 + (showSubject ? SUBJECT_COLUMNS.length : 0) + months.length + 1;
 
   return (
     <div className="space-y-3">
@@ -218,7 +205,7 @@ export function HistoryGrid({
                   the frozen block is three columns wide by design and widening it leaves a phone no
                   room for a month. */}
               {showSubject &&
-                SUBJECT_COLS.map((c) => (
+                SUBJECT_COLUMNS.map((c) => (
                   <th key={c.key} className="min-w-[4.5rem] px-3 py-2 text-center font-medium">
                     {t(`view.grid.subject.${c.key}`)}
                   </th>
@@ -275,7 +262,7 @@ export function HistoryGrid({
                           a row with no setting to report has not answered "no", and printing one would
                           be a wrong answer on the screen this whole item is about. */}
                       {showSubject &&
-                        SUBJECT_COLS.map((c) => (
+                        SUBJECT_COLUMNS.map((c) => (
                           <td key={c.key} className="px-3 py-2 text-center text-xs">
                             {r.subject ? (
                               <span className={r.subject[c.read] ? 'font-medium text-foreground' : 'text-muted-foreground'}>
