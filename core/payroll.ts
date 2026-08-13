@@ -586,6 +586,60 @@ export async function clearBatchRecalc(
 }
 
 /**
+ * 0db616f3 (0437) — STAMP THE ONE-OFF LINES THIS RUN JUST PAID.
+ *
+ * Called from `generatePayslips` in the SAME transaction as the payslip inserts, so "there is a payslip"
+ * and "the line is marked consumed" can never come apart. What it marks is the run, not a boolean: the
+ * fold reads `consumed_batch_id IS NULL OR = this batch`, which keeps every legitimate re-run of THIS
+ * run paying exactly what it paid before while refusing a SECOND run the same money.
+ *
+ * `isNull(consumedBatchId)` in the predicate is why `consumed_at` stays the instant of the FIRST payment:
+ * a reset→re-generate cycle, or a selective reprocess, re-pays lines this run already owns and must not
+ * re-date them. It also makes the call idempotent, which is what lets it sit on both the full-generation
+ * and the subset-reprocess paths without either having to know what the other did.
+ *
+ * DELIBERATELY NOT GATED ON WHETHER THE ROW'S KIND MOVED CASH. A 'leave' row is record-only and an
+ * overtime row on an additional run folds to zero, but both were INCLUDED in the payslip this run wrote —
+ * they appear on it as named provenance lines. "Included" is the claim the marker makes, and the marker
+ * only ever stops the SAME line being included by a DIFFERENT run, which is never right for any kind.
+ */
+async function markIndividualTxnsConsumed(
+  tx: Tx,
+  p: { batchId: string; employmentIds: string[] },
+): Promise<void> {
+  if (p.employmentIds.length === 0) return;
+  await tx
+    .update(payrollIndividualTxn)
+    .set({ consumedBatchId: p.batchId, consumedAt: new Date() })
+    .where(
+      and(
+        eq(payrollIndividualTxn.batchId, p.batchId),
+        inArray(payrollIndividualTxn.employmentId, p.employmentIds),
+        isNull(payrollIndividualTxn.consumedBatchId),
+      ),
+    );
+}
+
+/**
+ * 0db616f3 (0437) — RELEASE the lines a run consumed, because its payslips no longer exist.
+ *
+ * Called from the two places that destroy a run's payslips: `resetProcessedBatch` (back to draft for a
+ * correction) and `teardownDraftChildren` (draft delete, where the rows are detached to survive as
+ * keyed-in business records). A line whose payslip has been deleted has NOT been paid, and leaving it
+ * marked would strand real money — the row would silently drop out of every future run's fold with no
+ * error anywhere.
+ *
+ * Keyed on `consumed_batch_id`, NOT on `batch_id`, on purpose: after a hand repair re-points a row to
+ * another run those two disagree, and it is the run that PAID which has to release it.
+ */
+async function releaseIndividualTxnsConsumed(tx: Tx, batchId: string): Promise<void> {
+  await tx
+    .update(payrollIndividualTxn)
+    .set({ consumedBatchId: null, consumedAt: null })
+    .where(eq(payrollIndividualTxn.consumedBatchId, batchId));
+}
+
+/**
  * What a run has already sent downstream — a payment file exported, statutory returns recorded.
  *
  * EXTRACTED, NOT REWRITTEN. `unlockClosedBatch` has derived exactly these three facts since 9bc442bc, for
@@ -1451,6 +1505,13 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
     .from(payrollBatch)
     .where(eq(payrollBatch.id, batchId))
     .limit(1);
+  // 0db616f3 (0437) — release anything this run consumed BEFORE the detach, and keyed on
+  // `consumed_batch_id` rather than `batch_id` so a row a hand repair re-pointed elsewhere is released
+  // too. The payslips are deleted a few lines below and the batch row itself is deleted by the caller: a
+  // line whose payslip no longer exists has not been paid, and leaving it marked would silently drop it
+  // out of every future run's fold. (The FK's ON DELETE SET NULL is the backstop, not the mechanism —
+  // relying on it would leave the release invisible in the code that causes it.)
+  await releaseIndividualTxnsConsumed(tx, batchId);
   const detachedIndividualTxns = await tx
     .update(payrollIndividualTxn)
     .set({ batchId: null, companyId: teardownBatch?.companyId, payPeriod: teardownBatch?.payPeriod })
@@ -3386,7 +3447,25 @@ export async function generatePayslips(
         })
         .from(payrollIndividualTxn)
         .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
-        .where(eq(payrollIndividualTxn.batchId, p.batchId));
+        // 0db616f3 (0437) — THE CONSUMED MARKER, and this `or` is the whole guard.
+        //
+        // Before it, this predicate was `batch_id = $1` and nothing else: every row hanging off the run
+        // was folded on EVERY generation of it, and a row that moved to a second run was folded there
+        // too, with nothing recording that its money had already reached somebody. That is the January
+        // 2026 shape — 24 imported bonus lines on the regular run, a bonus run showing nineteen zero
+        // payslips, and one `generatePayslips` call between the ledger and paying all 24.
+        //
+        // "Consumed by NOBODY, or consumed by ME." The second half is not a loophole, it is the three
+        // legitimate re-runs: `resetProcessedBatch` destroys this run's payslips so a correction can be
+        // re-generated, a selective reprocess rewrites a subset of them, and both must still pay these
+        // lines. What the first half refuses is the case with no defence today — a DIFFERENT run paying
+        // a line an earlier run already paid.
+        .where(
+          and(
+            eq(payrollIndividualTxn.batchId, p.batchId),
+            or(isNull(payrollIndividualTxn.consumedBatchId), eq(payrollIndividualTxn.consumedBatchId, p.batchId)),
+          ),
+        );
       // `nonPayable: false` is stamped HERE rather than at each call site: every line this helper carries is
       // provenance for money that MOVED (an overtime payment, a one-off earning, a one-off deduction), and
       // a future call site that forgot the flag would silently print a paid item as never paid.
@@ -4812,6 +4891,11 @@ export async function generatePayslips(
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
       // marked, which is the whole point: Close stays refused until every stale employee is dealt with.
       await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+      // 0db616f3 — these employees' payslips have just been rewritten from the current ledger, so every
+      // one-off row of theirs on this run is now IN a payslip. Marking it here (and not only on the full
+      // generation) is what covers the fbcf706d ADDED employment: its first payslip on this run is being
+      // written now, and the rows attach-on-generate just stamped onto the run are in it.
+      await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
       return {
         reprocessed: emps.length,
         recalculated: recalculatedCount,
@@ -4829,6 +4913,11 @@ export async function generatePayslips(
     // inputs, so nothing on it can still be stale. (Reaching here means the run was draft, and a draft is
     // never marked; this clears the mark a reset→regenerate cycle would otherwise have to remember to.)
     await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: null });
+    // 0db616f3 — and every one-off line this run folded is now IN a payslip. Stamped with the run that
+    // paid it so a SECOND run cannot pay it again; a re-generation of THIS run still can, which is what
+    // keeps reset→correct→re-run working. Same transaction as the payslip inserts above, so "paid" and
+    // "marked paid" cannot come apart.
+    await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
 
     // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
     // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.
@@ -5183,6 +5272,12 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     // (Per-payslip history lives on the earlier processed-batch events; the batch-level reset event
     // below records the count — same convention as teardownDraftChildren's child deletes.)
     const clearedSlips = await tx.delete(payslip).where(eq(payslip.batchId, p.batchId)).returning({ id: payslip.id });
+    // 0db616f3 (0437) — the payslips that justified the consumed marker have just been deleted, so the
+    // one-off lines this run paid are unpaid again and the corrected re-run must pay them. Without this
+    // the re-run would still pay them (the fold's `OR consumed_batch_id = this batch` half), but the row
+    // would read "paid by a run that no longer has a payslip for it" to everything else, and a row
+    // re-pointed to another run afterwards would be refused money nobody ever received.
+    await releaseIndividualTxnsConsumed(tx, p.batchId);
     // 49e7e0a2 — clear the recalculation mark BEFORE the status goes back to draft. Every payslip on the
     // run has just been deleted, so there is no longer a stale figure for it to describe; leaving it set
     // would block the Close of the run that eventually replaces these payslips for a staleness that no
