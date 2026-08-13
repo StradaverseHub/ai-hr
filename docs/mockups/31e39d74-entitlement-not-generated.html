@@ -1,0 +1,228 @@
+<meta charset="utf-8">
+<title>31e39d74 — Say why a balance is 0.00</title>
+<!--
+  Mockup for 31e39d74 (New Medical & Hospitalization Leave Entitlement Not Reflected in Employee My Leave).
+
+  EVERYTHING BELOW IS MEASURED ON PRODUCTION, READ-ONLY, 2026-08-13:
+    - 47 entitlement tables in force; 0 employee eligibility rules in force
+      (one rule "PERMANENT" was created 10:38 and stopped 10:42 the same morning).
+    - Medical Leave: 6 tables, all effective from 2026-08-01. PERMANENT = 14 / 18 / 22 days by service.
+    - Hospitalization Leave: 1 table "ALL", effective from 2026-01-01, 60 days, and the leave type
+      has no earning method chosen.
+    - Medical Leave and Hospitalization Leave hold 0 ledger rows for every employee (the approved
+      c8052ae3 clean-out, archived at /admin/leave/entitlements/ledger-archive).
+    - 0 entitlement generation runs have ever been made.
+    - FARAH (Chin Hin Construction Engineering, joined 1 May 2025) is a real employee; her other
+      figures below (Annual 19.50, Compassionate 3.00, Maternity 98.00) are her real ones.
+  Column labels verbatim from messages/en.json (leave.inquiry.* and me.leaveBalanceTable.*).
+  Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--mf);
+     font-weight:600;padding:6px 6px;background:var(--muted)}
+  th.r,td.r{text-align:right}
+  td{padding:7px 6px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.t{white-space:normal}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:14px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .panel{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600}
+  .link{color:var(--primary);text-decoration:underline}
+  .code{font-weight:600;color:var(--primary)}
+  .why{display:block;font-size:10.5px;color:var(--warn);font-weight:600;margin-top:2px;white-space:normal}
+  .why.grey{color:var(--mf);font-weight:500}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:4px 11px;
+       font-size:11px;font-weight:600;white-space:nowrap}
+  .btn.sm{padding:2px 9px;font-size:10.5px;border-radius:7px}
+  .banner{display:flex;gap:10px;align-items:flex-start;background:#fffbeb;border:1px solid #fcd34d;
+          border-radius:10px;padding:10px 12px;margin:0 0 12px}
+  .banner .bt{font-size:11.5px;font-weight:700;color:#7c2d12;display:block;margin-bottom:3px}
+  .banner .bd{font-size:11.5px;color:#7c2d12}
+  .bullets{margin:6px 0 0;padding-left:17px;font-size:11.5px;color:#7c2d12}
+  .bullets li{margin-bottom:2px}
+  .mfoot{font-size:10.5px;color:var(--mf);margin-top:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .kv{display:flex;justify-content:space-between;font-size:11.5px;padding:5px 0;border-top:1px solid var(--border)}
+  .kv:first-child{border-top:0}
+  .ok{color:var(--good);font-weight:700}
+  .no{color:var(--bad);font-weight:700}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700}
+  .chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .hdr{font-size:16px;font-weight:700;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 16px}
+</style>
+
+<p class="hdr">Medical &amp; Hospitalization show 0.00 and say nothing — here is what the screen would say instead</p>
+<p class="sub">Sketch. Wording, spacing and colours will differ in the built screen. Every name, table name and
+figure below is read from your live system on 13 August 2026.</p>
+
+<div class="card">
+  <h2><span class="num">1</span>Employee Balances — FARAH, Chin Hin Construction Engineering</h2>
+  <p class="q">“The entitlement configuration has been set up, but the employee's actual leave balance remains unchanged.”</p>
+
+  <div class="box bad">
+    <span class="tag bad">TODAY — 0.00, with no explanation anywhere on the screen</span>
+    <div class="panel">
+      <div class="ph">FARAH · Chin Hin Construction Engineering</div>
+      <table>
+        <thead><tr>
+          <th style="width:24%">Leave Code</th><th>Entitlement Year</th><th class="r">YTD Entitled</th>
+          <th class="r">Brought Forward</th><th class="r">Taken</th><th class="r">Pending Approval</th>
+          <th class="r">Adjustment</th><th class="r">Overutilized</th><th class="r">Forfeited BF</th>
+          <th class="r">Balance</th><th>Date</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="t"><span class="code">ANNUAL</span> <span style="color:var(--mf)">Annual Leave</span></td>
+            <td>2026</td><td class="r">11.00</td><td class="r">10.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">-1.50</td><td class="r">0.00</td><td class="r">0.67</td><td class="r"><b>19.50</b></td><td>2026-08-13</td></tr>
+          <tr><td class="t"><span class="code">CPL</span> <span style="color:var(--mf)">Compassionate Leave</span></td>
+            <td>2026</td><td class="r">3.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>3.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fff5f5"><td class="t"><span class="code">SICK</span> <span style="color:var(--mf)">Medical Leave</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fff5f5"><td class="t"><span class="code">HOSPITALIZATION</span> <span style="color:var(--mf)">Hospitalization Leave</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr><td class="t"><span class="code">MTL</span> <span style="color:var(--mf)">Maternity Leave</span></td>
+            <td>2026</td><td class="r">98.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>98.00</b></td><td>2026-08-13</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">You have written six Medical Leave tables and one Hospitalization Leave table. The two rows
+      above look exactly the same as a leave type nobody has ever configured.</p>
+  </div>
+
+  <div class="box good">
+    <span class="tag good">PROPOSED — the same two rows, saying why, with the next step on the row</span>
+    <div class="panel">
+      <div class="ph">FARAH · Chin Hin Construction Engineering</div>
+      <div style="padding:11px 12px 0">
+        <div class="banner">
+          <div>
+            <span class="bt">2 leave types are configured but have not been generated yet</span>
+            <span class="bd">Medical Leave and Hospitalization Leave have entitlement tables, but nobody has run
+              Generate Entitlement since they were written, so there is nothing to show a balance from.</span>
+            <div style="margin-top:8px"><span class="btn">Go to Generate Entitlement</span></div>
+          </div>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:24%">Leave Code</th><th>Entitlement Year</th><th class="r">YTD Entitled</th>
+          <th class="r">Brought Forward</th><th class="r">Taken</th><th class="r">Pending Approval</th>
+          <th class="r">Adjustment</th><th class="r">Overutilized</th><th class="r">Forfeited BF</th>
+          <th class="r">Balance</th><th>Date</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="t"><span class="code">ANNUAL</span> <span style="color:var(--mf)">Annual Leave</span></td>
+            <td>2026</td><td class="r">11.00</td><td class="r">10.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">-1.50</td><td class="r">0.00</td><td class="r">0.67</td><td class="r"><b>19.50</b></td><td>2026-08-13</td></tr>
+          <tr><td class="t"><span class="code">CPL</span> <span style="color:var(--mf)">Compassionate Leave</span></td>
+            <td>2026</td><td class="r">3.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>3.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fefce8"><td class="t"><span class="code">SICK</span> <span style="color:var(--mf)">Medical Leave</span>
+              <span class="why">No employee eligibility rule is in force, so no table reaches this employee yet
+                <span class="btn sm" style="margin-left:4px">Fix in Entitlement tables</span></span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fefce8"><td class="t"><span class="code">HOSPITALIZATION</span> <span style="color:var(--mf)">Hospitalization Leave</span>
+              <span class="why">Table “ALL” applies, but no earning method has been chosen for this leave type
+                <span class="btn sm" style="margin-left:4px">Choose earning method</span></span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr><td class="t"><span class="code">MTL</span> <span style="color:var(--mf)">Maternity Leave</span></td>
+            <td>2026</td><td class="r">98.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r"><b>98.00</b></td><td>2026-08-13</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Not one figure moves. The only thing that changes is that a 0.00 now tells you which of the
+      three things is missing, and takes you to the screen that fixes it. The same line appears on the
+      employee's own My Leave page.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Entitlement tables — a readiness line per leave type</h2>
+  <p class="q">“…the system should clearly indicate that the entitlement is configured but not yet generated, rather than silently showing 0.00.”</p>
+
+  <div class="panel">
+    <div class="ph">Entitlement tables · readiness <span class="chip new">NEW</span></div>
+    <table>
+      <thead><tr>
+        <th style="width:20%">Leave type</th><th>Tables in force</th><th>Employees covered</th>
+        <th>Entitlement generated</th><th style="width:38%">What is still missing</th><th></th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="t">Annual Leave</td><td>16</td><td>0 of 31</td><td>0 of 31</td>
+          <td class="t"><span class="no">✕</span> No employee eligibility rule is in force</td>
+          <td><span class="btn sm">Add a rule</span></td></tr>
+        <tr style="background:#fefce8"><td class="t">Medical Leave</td><td>6</td><td>0 of 31</td><td>0 of 31</td>
+          <td class="t"><span class="no">✕</span> No employee eligibility rule is in force<br>
+            <span class="no">✕</span> Tables start 1 Aug 2026 — a run for leave year 2026 asks what applied on 1 Jan 2026</td>
+          <td><span class="btn sm">Add a rule</span></td></tr>
+        <tr style="background:#fefce8"><td class="t">Hospitalization Leave</td><td>1</td><td>0 of 31</td><td>0 of 31</td>
+          <td class="t"><span class="no">✕</span> No employee eligibility rule is in force<br>
+            <span class="no">✕</span> No earning method chosen for this leave type</td>
+          <td><span class="btn sm">Add a rule</span></td></tr>
+        <tr><td class="t">Compassionate Leave</td><td>3</td><td>0 of 31</td><td>3 of 31</td>
+          <td class="t"><span class="no">✕</span> No employee eligibility rule is in force</td>
+          <td><span class="btn sm">Add a rule</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mfoot">Read from your live setup on 13 August 2026: 47 tables in force, 0 employee eligibility rules
+    in force, and no entitlement generation run has ever been made. The eligibility rule named PERMANENT was
+    created at 10:38 this morning and stopped again at 10:42, which is why every line reads 0 covered.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>Generate Entitlement — one warning before the run, not after it</h2>
+  <div class="panel">
+    <div class="ph">Generate Entitlement · Validation &amp; Preview</div>
+    <div style="padding:12px">
+      <div class="banner">
+        <div>
+          <span class="bt">This run would grant nothing for 2 of the 3 leave types you picked</span>
+          <ul class="bullets">
+            <li><b>Medical Leave</b> — your tables start 1 August 2026. A run for leave year 2026 grants what
+              applied on 1 January 2026, so nothing is found. Give Medical Leave a table starting 1 January 2026.</li>
+            <li><b>Hospitalization Leave</b> — table “ALL” (60 days) applies, but no earning method has been
+              chosen for the leave type, so 0.00 days would be granted.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <div class="kv"><span>Employees selected</span><span><b>22</b></span></div>
+          <div class="kv"><span>Will be granted</span><span class="no">0</span></div>
+          <div class="kv"><span>Nothing to grant</span><span><b>22</b></span></div>
+        </div>
+        <div>
+          <div class="kv"><span>Not reached — joined during 2026</span><span><b>13</b></span></div>
+          <div class="kv"><span style="color:var(--mf)">Includes Arjun Kumar, joined 6 Jan 2026</span><span></span></div>
+        </div>
+      </div>
+      <p class="mfoot">The rehearsal already exists and already writes nothing. What is new is the plain-English
+        warning above it, naming the exact thing to change before you press Generate.</p>
+    </div>
+  </div>
+</div>

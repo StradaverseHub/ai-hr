@@ -1,0 +1,357 @@
+<meta charset="utf-8">
+<title>9a65f808 rev 2 — the whole grade selection leaves Approval Workflow</title>
+<!--
+  Mockup for 9a65f808 revision 2 (Move Grade Group Selection to Eligibility Rules), contested at rev 1
+  with: "what I want is the entire grade selection move into eligibility rules".
+
+  BOTH screens, before and after — the reporter is asking for something to LEAVE one screen and ARRIVE
+  on another, so a picture of only the destination would hide half the change.
+
+  Every name and number measured read-only on production 2026-08-13:
+    16 grade groups (names + member counts verbatim from grade_group / grade_group_member)
+    55 job grades, 54 grouped, 1 ungrouped ("Executive")
+    GRADE 12-18 (CONTRACT) = GRADE 12..18 (CONTRACT), 7 grades
+    205 of 261 leave_approval_policy rows carry a grade group
+    1 entitlement eligibility rule ("PERMANENT"), created 2026-08-13 10:38
+  Labels verbatim from messages/en.json (leaveApproval.*, admin.benefitScheme.*,
+  admin.entitlementTemplates.*, admin.leave.adjustmentsCriteria.*).
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 13px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .box{border:1px solid var(--border);border-radius:11px;padding:12px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:9px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11px;color:var(--mf);margin-top:9px}
+  .panel{border:1px solid var(--border);border-radius:10px;background:#fff}
+  .ph{padding:7px 11px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600}
+  .pb{padding:10px 11px}
+  .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600;display:block;margin-bottom:3px}
+  .hint{font-size:10.5px;color:var(--mf);margin:0 0 7px}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:7px;padding:4px 11px;font-size:11px;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .inp{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:6px;
+       padding:4px 8px;font-size:11px;color:var(--fg)}
+  .inp.ph2{color:var(--mf)}
+  .sel{display:flex;justify-content:space-between;align-items:center;background:#fff;
+       border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px}
+  .sel .cv{color:var(--mf)}
+  .sel.hot{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 16%,white)}
+  .col4{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .col2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .col3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+  .list{border:1px solid var(--border);border-radius:7px;background:#fff;height:104px;overflow:hidden;padding:5px 7px}
+  .li{display:flex;gap:6px;align-items:center;font-size:10.5px;padding:1.5px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cb{display:inline-block;width:10px;height:10px;border:1px solid #b9bacb;border-radius:2px;flex:none;background:#fff}
+  .cb.on{background:var(--primary);border-color:var(--primary)}
+  .emptyc{display:flex;align-items:center;justify-content:center;height:104px;border:1px solid var(--border);
+          border-radius:7px;background:#fff;color:var(--mf);font-size:10.5px;text-align:center;padding:0 10px}
+  .u{font-size:10px;color:var(--mf);margin-top:3px}
+  .rows{border:1px solid var(--border);border-radius:8px;background:#fff}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;font-size:11px;border-top:1px solid var(--border)}
+  .row:first-child{border-top:0}
+  .row .n{color:var(--mf);font-size:10px}
+  .ggwrap{border:2px solid var(--bad);border-radius:11px;padding:9px;margin-top:10px;background:#fff}
+  .arrow{font-size:11px;color:var(--bad);font-weight:700}
+  .gone{border:1px dashed #cbd5e1;border-radius:11px;padding:16px;margin-top:10px;text-align:center;
+        color:var(--mf);font-size:11px;background:repeating-linear-gradient(45deg,#fafafa,#fafafa 6px,#f3f4f6 6px,#f3f4f6 12px)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .chip{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:10px;font-weight:600;
+        background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .newtag{display:inline-block;padding:1px 6px;border-radius:999px;font-size:9px;font-weight:700;
+          background:#dcfce7;color:#166534;margin-left:5px;vertical-align:middle}
+  .pop{border:1px solid var(--primary);border-radius:8px;background:#fff;margin-top:5px;
+       box-shadow:0 6px 18px rgba(79,70,229,.14);padding:6px 7px}
+  .popsearch{border:1px solid var(--border);border-radius:5px;padding:3px 7px;font-size:10px;color:var(--mf);margin-bottom:5px}
+  .popbar{display:flex;gap:10px;font-size:9.5px;color:var(--primary);font-weight:600;margin-bottom:4px}
+  .wchip{display:inline-block;padding:0 5px;border-radius:999px;font-size:8.5px;font-weight:700;
+         background:#fef3c7;color:#92400e}
+  .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;font-size:11px;
+        color:#7c2d12;margin-top:9px}
+  .steps{display:flex;gap:6px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+  .crumb{font-size:10.5px;color:var(--mf);margin-bottom:8px}
+  .crumb b{color:var(--fg);font-weight:600}
+  .sechd{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:600;
+         padding:6px 0 7px}
+  .cnt{display:inline-block;background:var(--muted);color:var(--mf);border-radius:999px;
+       padding:0 7px;font-size:9.5px;font-weight:700;margin-left:5px}
+  .det{border:1px solid var(--border);border-radius:7px;background:#fff;margin-bottom:6px}
+  .dets{display:flex;justify-content:space-between;align-items:center;padding:5px 9px;font-size:11px;font-weight:500}
+  .detb{border-top:1px solid var(--border);padding:8px 9px}
+</style>
+
+<div class="card">
+  <h2><span class="num">1</span>Screen one — Approval Workflow. Everything about grades leaves it.</h2>
+  <p class="q">“what I want is the entire grade selection move into eligibility rules”</p>
+
+  <div class="two">
+    <!-- ── BEFORE ──────────────────────────────────────────────────────────── -->
+    <div class="box bad">
+      <span class="tag bad">NOW — Leave config › Approval Workflow</span>
+
+      <div class="panel">
+        <div class="ph">Assign template</div>
+        <div class="pb">
+          <span class="lbl">Template</span>
+          <div class="inp ph2" style="margin-bottom:9px">—</div>
+          <div class="col4">
+            <div>
+              <span class="lbl">Companies</span>
+              <div class="list">
+                <div class="li"><span class="cb"></span>Chin Hin Construction Engineering</div>
+                <div class="li"><span class="cb"></span>Chin Hin Property Group</div>
+                <div class="li"><span class="cb"></span>Demo Group Holdings Bhd</div>
+                <div class="li"><span class="cb"></span>Demo Sdn Bhd</div>
+                <div class="li"><span class="cb"></span>Fiamma (Chin Hin Property)</div>
+                <div class="li"><span class="cb"></span>ISEDECOR BINA SDN BHD</div>
+              </div>
+              <div class="u">Pick at least one</div>
+            </div>
+            <div>
+              <span class="lbl">Leave types</span>
+              <div class="list">
+                <div class="li"><span class="cb"></span>Annual Leave</div>
+                <div class="li"><span class="cb"></span>Caregiver Leave</div>
+                <div class="li"><span class="cb"></span>Compassionate Leave</div>
+                <div class="li"><span class="cb"></span>Emergency Leave</div>
+                <div class="li"><span class="cb"></span>Examination Leave</div>
+                <div class="li"><span class="cb"></span>Graduation Leave</div>
+              </div>
+              <div class="u">Pick at least one</div>
+            </div>
+            <div>
+              <span class="lbl">Eligibility rules</span>
+              <div class="emptyc">No eligibility rules for the chosen companies.</div>
+              <div class="u">None selected = applies to all</div>
+            </div>
+            <div>
+              <span class="lbl">Conditions</span>
+              <div class="list"><div class="li"><span class="cb"></span>Add a condition</div></div>
+              <div class="u">None selected = applies to all</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rows" style="margin-top:10px">
+        <div class="row"><b style="font-size:11px">Approval Escalation Settings</b><span class="n">per company</span></div>
+        <div class="row"><span>Chin Hin Construction Engineering</span><span class="n">›</span></div>
+        <div class="row"><span>Chin Hin Property Group</span><span class="n">›</span></div>
+        <div class="row"><span>Demo Group Holdings Bhd</span><span class="n">›</span></div>
+      </div>
+
+      <div class="ggwrap">
+        <div class="sechd" style="padding-top:0">
+          <span>Grade Groups<span class="cnt">16</span></span>
+          <span class="arrow">↑ “move this into eligibility rules”</span>
+        </div>
+        <p class="hint">Group several grades so an approval rule can cover them at once (e.g. “Grade 12–15”). A grade belongs to one group.</p>
+        <div class="rows">
+          <div class="row"><span>CONTRACT - GRADE 12 - 18 (SPECIAL)</span><span class="n">7 grades</span></div>
+          <div class="row"><span>CONTRACT - GRADE &gt;= 19 (SPECIAL)</span><span class="n">5 grades</span></div>
+          <div class="row"><span>GRADE 12-18 (CONTRACT)</span><span class="n">7 grades</span></div>
+          <div class="row"><span>GRADE 12-15 (PERMANENT)</span><span class="n">4 grades</span></div>
+          <div class="row"><span class="n">…12 more, and the form that creates a new group</span><span></span></div>
+        </div>
+      </div>
+      <p class="note">The list of groups, the group name, and the 55 tick-boxes that choose which grades go in a group — all of it is here, on the approval screen.</p>
+    </div>
+
+    <!-- ── AFTER ───────────────────────────────────────────────────────────── -->
+    <div class="box good">
+      <span class="tag good">AFTER — Leave config › Approval Workflow</span>
+
+      <div class="panel">
+        <div class="ph">Assign template</div>
+        <div class="pb">
+          <span class="lbl">Template</span>
+          <div class="inp ph2" style="margin-bottom:9px">—</div>
+          <div class="col4">
+            <div>
+              <span class="lbl">Companies</span>
+              <div class="list">
+                <div class="li"><span class="cb on"></span>Chin Hin Construction Engineering</div>
+                <div class="li"><span class="cb"></span>Chin Hin Property Group</div>
+                <div class="li"><span class="cb"></span>Demo Group Holdings Bhd</div>
+                <div class="li"><span class="cb"></span>Demo Sdn Bhd</div>
+                <div class="li"><span class="cb"></span>Fiamma (Chin Hin Property)</div>
+                <div class="li"><span class="cb"></span>ISEDECOR BINA SDN BHD</div>
+              </div>
+              <div class="u">Pick at least one</div>
+            </div>
+            <div>
+              <span class="lbl">Leave types</span>
+              <div class="list">
+                <div class="li"><span class="cb on"></span>Annual Leave</div>
+                <div class="li"><span class="cb"></span>Caregiver Leave</div>
+                <div class="li"><span class="cb"></span>Compassionate Leave</div>
+                <div class="li"><span class="cb"></span>Emergency Leave</div>
+                <div class="li"><span class="cb"></span>Examination Leave</div>
+                <div class="li"><span class="cb"></span>Graduation Leave</div>
+              </div>
+              <div class="u">Pick at least one</div>
+            </div>
+            <div>
+              <span class="lbl">Eligibility rules</span>
+              <div class="list">
+                <div class="li"><span class="cb on"></span>Contract executives 12–18</div>
+                <div class="li"><span class="cb"></span>PERMANENT <span class="wchip">cannot route</span></div>
+              </div>
+              <div class="u">None selected = applies to all</div>
+            </div>
+            <div>
+              <span class="lbl">Conditions</span>
+              <div class="list"><div class="li"><span class="cb"></span>Add a condition</div></div>
+              <div class="u">None selected = applies to all</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rows" style="margin-top:10px">
+        <div class="row"><b style="font-size:11px">Approval Escalation Settings</b><span class="n">per company</span></div>
+        <div class="row"><span>Chin Hin Construction Engineering</span><span class="n">›</span></div>
+        <div class="row"><span>Chin Hin Property Group</span><span class="n">›</span></div>
+        <div class="row"><span>Demo Group Holdings Bhd</span><span class="n">›</span></div>
+      </div>
+
+      <div class="gone">Grade Groups is gone from this screen.<br>No link, no placeholder, nothing in its place.</div>
+      <p class="note">Approval flows still route by grade group underneath, exactly as they do today — all 205 of your saved approval settings that use one keep working. Only the place you <b>edit</b> the groups has moved.</p>
+      <p class="note">Your saved rule “PERMANENT” still shows the warning it shows today: it also narrows by department, position, nationality and a dozen more, which approval routing cannot scope on. Grade Group does not clear that on its own.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Screen two — Entitlement › Employee eligibility. Everything about grades arrives here.</h2>
+  <p class="q">Leave config › Entitlement › Entitlement tables — the screen you write eligibility rules on.</p>
+
+  <div class="two">
+    <!-- ── BEFORE ──────────────────────────────────────────────────────────── -->
+    <div class="box bad">
+      <span class="tag bad">NOW — writing an eligibility rule</span>
+      <div class="crumb"><b>Employee eligibility</b> › New eligibility rule</div>
+
+      <div class="panel">
+        <div class="pb">
+          <div class="col3" style="margin-bottom:9px">
+            <div><span class="lbl">Rule name</span><div class="inp">Contract executives 12–18</div></div>
+            <div><span class="lbl">Entitlement table</span><div class="inp">Annual Leave — contract</div></div>
+            <div><span class="lbl">Effective from</span><div class="inp">2026-08-01</div></div>
+          </div>
+
+          <div class="det"><div class="dets"><span>Company Information</span><span class="n">›</span></div></div>
+
+          <div class="det">
+            <div class="dets"><span>Employment Information</span><span class="n">⌄</span></div>
+            <div class="detb">
+              <div class="col2">
+                <div><span class="lbl">Employment Type</span><div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div></div>
+                <div><span class="lbl">Employee Status</span><div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div></div>
+                <div style="grid-column:1/3">
+                  <span class="lbl">Job Grade</span>
+                  <div class="sel"><span>7 selected</span><span class="cv">⌄</span></div>
+                  <div class="chips">
+                    <span class="chip">GRADE 12 (CONTRACT)</span><span class="chip">GRADE 13 (CONTRACT)</span>
+                    <span class="chip">GRADE 14 (CONTRACT)</span><span class="chip">GRADE 15 (CONTRACT)</span>
+                    <span class="chip">GRADE 16 (CONTRACT)</span><span class="chip">GRADE 17 (CONTRACT)</span>
+                    <span class="chip">GRADE 18 (CONTRACT)</span>
+                  </div>
+                  <div class="u">Seven correct ticks out of 55, and you have to know which seven.</div>
+                </div>
+                <div><span class="lbl">Position</span><div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div></div>
+                <div><span class="lbl">Cost centre</span><div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="det"><div class="dets"><span>Employee Information</span><span class="n">›</span></div></div>
+          <div class="det"><div class="dets"><span>Service Information</span><span class="n">›</span></div></div>
+        </div>
+      </div>
+
+      <div class="warn">Miss one of the seven and the rule saves, but the Approval Workflow screen refuses it later: “covers only part of grade group GRADE 12-18 (CONTRACT)” — a group you were never shown while writing the rule.</div>
+    </div>
+
+    <!-- ── AFTER ───────────────────────────────────────────────────────────── -->
+    <div class="box good">
+      <span class="tag good">AFTER — writing an eligibility rule</span>
+      <div class="crumb"><b>Employee eligibility</b> › New eligibility rule</div>
+
+      <div class="panel">
+        <div class="pb">
+          <div class="col3" style="margin-bottom:9px">
+            <div><span class="lbl">Rule name</span><div class="inp">Contract executives 12–18</div></div>
+            <div><span class="lbl">Entitlement table</span><div class="inp">Annual Leave — contract</div></div>
+            <div><span class="lbl">Effective from</span><div class="inp">2026-08-01</div></div>
+          </div>
+
+          <div class="det"><div class="dets"><span>Company Information</span><span class="n">›</span></div></div>
+
+          <div class="det">
+            <div class="dets"><span>Employment Information</span><span class="n">⌄</span></div>
+            <div class="detb">
+              <div class="col2">
+                <div><span class="lbl">Employment Type</span><div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div></div>
+                <div><span class="lbl">Employee Status</span><div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div></div>
+                <div style="grid-column:1/3">
+                  <span class="lbl">Grade Group<span class="newtag">NEW</span></span>
+                  <div class="sel hot"><span>1 selected</span><span class="cv">⌄</span></div>
+                  <div class="pop">
+                    <div class="popsearch">Search…</div>
+                    <div class="popbar"><span>Select all</span><span>Deselect all</span></div>
+                    <div class="li"><span class="cb on"></span>GRADE 12-18 (CONTRACT) &nbsp;<span class="n">7 grades</span></div>
+                    <div class="li"><span class="cb"></span>GRADE 12-15 (PERMANENT) &nbsp;<span class="n">4 grades</span></div>
+                    <div class="li"><span class="cb"></span>GRADE  16-19 (PERMANENT) &nbsp;<span class="n">4 grades</span></div>
+                    <div class="li"><span class="cb"></span>GRADE 20-23 (PERMANENT) &nbsp;<span class="n">4 grades</span></div>
+                    <div class="li"><span class="cb"></span>GRADE &gt;= 19 (CONTRACT) &nbsp;<span class="n">5 grades</span></div>
+                    <div class="li"><span class="cb"></span>CONTRACT - GRADE 12 - 18 (SPECIAL) &nbsp;<span class="n">7 grades</span></div>
+                    <div class="li"><span class="cb"></span>CONTRACT - GRADE &gt;= 19 (SPECIAL) &nbsp;<span class="n">5 grades</span></div>
+                    <div class="li"><span class="n">…9 more of your 16 groups</span></div>
+                  </div>
+                  <div class="chips"><span class="chip">GRADE 12-18 (CONTRACT)</span></div>
+                  <div class="u">One tick. The whole group, always — so the refusal on the right cannot happen.</div>
+                </div>
+                <div style="grid-column:1/3">
+                  <span class="lbl">Job Grade</span>
+                  <div class="sel"><span class="cv">Add…</span><span class="cv">⌄</span></div>
+                  <div class="u">Still here, for when you really do want one grade on its own.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="det"><div class="dets"><span>Employee Information</span><span class="n">›</span></div></div>
+          <div class="det"><div class="dets"><span>Service Information</span><span class="n">›</span></div></div>
+        </div>
+      </div>
+
+      <div class="ggwrap" style="border-color:#86efac">
+        <div class="sechd" style="padding-top:0">
+          <span>Grade Groups<span class="cnt">16</span><span class="newtag">MOVED HERE</span></span>
+        </div>
+        <p class="hint">Group several grades so a rule can cover them at once (e.g. “Grade 12–15”). A grade belongs to one group.</p>
+        <div class="rows">
+          <div class="row"><span>CONTRACT - GRADE 12 - 18 (SPECIAL)</span><span class="n">7 grades</span></div>
+          <div class="row"><span>GRADE 12-18 (CONTRACT)</span><span class="n">7 grades</span></div>
+          <div class="row"><span>GRADE 12-15 (PERMANENT)</span><span class="n">4 grades</span></div>
+          <div class="row"><span class="n">…13 more, and the form that creates a new group</span><span></span></div>
+        </div>
+      </div>
+      <p class="note">Same card, same 16 groups, same buttons — sitting directly under Employee eligibility, on the screen where the rules that use them are written.</p>
+    </div>
+  </div>
+</div>

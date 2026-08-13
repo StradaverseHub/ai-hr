@@ -1,0 +1,248 @@
+<meta charset="utf-8">
+<title>5ff7daff — Replacement Leave: waiting vs available, and somewhere to approve</title>
+<!--
+  Mockup for 5ff7daff ("Replacement Leave - Employee Request, Approval and Balance Display"), plan revision 1.
+
+  HONESTY NOTES - a mockup is a promise, so read these before changing anything here.
+
+  · THE "TODAY" COLUMN IS REAL, read READ-ONLY from production on 2026-08-13.
+      - FARAH, employee 100009, Chin Hin Construction Engineering. Her company has replacement leave
+        enabled (toil_policy.enabled = true, employee_request_enabled = TRUE) and her wages of RM7,313
+        are above the RM4,000 overtime wage ceiling, so she genuinely does see the request button today.
+      - Annual Leave 19.50 is her real leave_ledger sum.
+      - There really ARE two Replacement Leave entries in this tenant's catalogue:
+          RL          "Replacement Leave"           role=replacement, ess_placement=primary, visible, created 2026-07-09
+          REPLACEMENT "Replacement Leave (in lieu)" role=NULL, created 2026-08-11 16:27:09 by the system
+        Both resolve to a PRIMARY card, so both are on her screen right now, and both read 0.00.
+      - toil_accrual, replacement_leave_request and replacement_leave_request_date each hold 0 rows,
+        tenant-wide. Nobody has ever had a credit.
+      - app/approvals/page.tsx contains no occurrence of "replacement". There is no approval screen.
+  · THE WORKED EXAMPLE (13/08/2026, 09:00-18:00, 1.00 day, approved 15/08/2026, expires 15/11/2026)
+    IS THE REPORTER'S OWN, copied from their request, and is labelled as theirs on the page. It is NOT
+    presented as measured data, because there is none - no employee in this account has ever submitted one.
+  · THE "AFTER" BANKED CREDITS TABLE draws the four columns the reporter listed. Three of them already
+    exist on screen today (Approval Date, Credit shown as "Number", Expiry Date shown as "Expired Date");
+    only the Available column is new. That split is marked on the drawing.
+  · NOT DRAWN: the request popup itself, because it already exists and already does what the request
+    describes - the only change there is a per-row total, which is too small to be worth a picture.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 11px;line-height:1.45}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+  .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:var(--mf);
+       margin:0 0 7px}
+  .lbl.now{color:var(--bad)} .lbl.next{color:var(--good)}
+  .screen{border:1px solid var(--border);border-radius:11px;background:#fff;padding:11px;
+          box-shadow:0 1px 2px rgba(20,20,40,.05)}
+  .screen.dim{background:#fcfcfe}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .bal{border:1px solid var(--border);border-radius:9px;padding:8px 9px;background:#fff;min-width:0}
+  .bal .t{font-size:9.6px;color:var(--mf);line-height:1.3;min-height:24px}
+  .bal .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px}
+  .bal.dup{border-color:#f2b8b8;background:color-mix(in srgb,#dc2626 4%,white)}
+  .bal.hero{grid-column:span 2;border-color:var(--primary);
+            background:color-mix(in srgb,#4f46e5 4%,white)}
+  .two{display:flex;gap:16px;margin-top:5px;flex-wrap:wrap}
+  .two .k{font-size:9.4px;color:var(--mf);display:block}
+  .two .n{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
+  .n.wait{color:var(--warn)} .n.avail{color:var(--good)}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;width:100%}
+  th,td{padding:5px 8px;border-bottom:1px solid var(--border);text-align:left}
+  tr:last-child td{border-bottom:0}
+  th{font-size:8.5px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:700;
+     background:var(--muted)}
+  th.new{background:color-mix(in srgb,#15803d 13%,white);color:#14532d}
+  .tbl{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.2px}
+  .sm{font-size:9.6px;color:var(--mf)}
+  .pill{display:inline-block;padding:1.5px 7px;border-radius:999px;font-size:9.3px;font-weight:700}
+  .pNew{background:color-mix(in srgb,#15803d 14%,white);color:#14532d}
+  .pHave{background:color-mix(in srgb,#4f46e5 12%,white);color:#312e81}
+  .pWait{background:color-mix(in srgb,#b45309 16%,white);color:#7c2d12}
+  .pNo{background:color-mix(in srgb,#dc2626 13%,white);color:#991b1b}
+  .credits{max-width:560px}
+  .callout{display:flex;gap:7px;font-size:11px;margin:9px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)} .callout.w{color:var(--warn)}
+  .callout i{font-style:normal;font-weight:800}
+  .btn{display:inline-block;border-radius:8px;padding:3.5px 10px;font-size:10.3px;font-weight:600}
+  .btn.p{background:var(--primary);color:#fff}
+  .btn.s{border:1px solid var(--border);color:var(--fg);background:#fff}
+  .btn.dead{border:1px dashed #d8b4b4;color:#a33;background:#fff}
+  .aprow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+         border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:#fff}
+  .aprow .who{font-size:11.3px;font-weight:700}
+  .aprow .meta{font-size:9.7px;color:var(--mf);margin-top:1px}
+  .foot{font-size:10.7px;color:var(--mf);line-height:1.55;margin:0}
+  .foot b{color:var(--fg)}
+  .foot p{margin:0 0 7px} .foot p:last-child{margin:0}
+  .note{font-size:9.7px;color:var(--mf);margin:6px 0 0;line-height:1.4}
+  .stage{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:2px}
+  .st{border:1px solid var(--border);border-radius:10px;padding:9px 10px;background:#fff}
+  .st .h{font-size:10.2px;font-weight:700;margin-bottom:6px}
+  .st .r{display:flex;justify-content:space-between;font-size:10.6px;padding:2px 0}
+  .st .r span:last-child{font-variant-numeric:tabular-nums;font-weight:700}
+</style>
+
+<p class="ph">My Leave &rsaquo; Replacement Leave &mdash; waiting, and available</p>
+<p class="phs">Sketch, built on the real Replacement Leave setup of FARAH (employee 100009, Chin Hin Construction Engineering), read on 13 Aug 2026. The 1.00-day example is your own, from your request. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <h2>The employee's My Leave balances</h2>
+  <p class="sub">FARAH's company already has replacement leave switched on, and she is one of the people who can see the request button. Here is what her balance strip shows today, and what it would show instead.</p>
+  <div class="split">
+
+    <div>
+      <p class="lbl now">Today &mdash; two entries, both empty, meanings swapped</p>
+      <div class="screen dim">
+        <div class="cards">
+          <div class="bal"><div class="t">Annual Leave</div><div class="v">19.50</div></div>
+          <div class="bal dup"><div class="t">Replacement Leave (in lieu)</div><div class="v">0.00</div></div>
+          <div class="bal dup"><div class="t">Replacement Leave</div><div class="v">0.00</div></div>
+        </div>
+      </div>
+      <p class="callout b"><i>&times;</i> Two Replacement Leave entries. The second one was created by the system on 11 Aug when replacement leave was switched on, and it is the one approved credits would land in &mdash; so the entry carrying your own name would read zero forever.</p>
+      <p class="callout b"><i>&times;</i> Neither entry says anything about a request that is waiting. If FARAH submits a claim today, nothing on this screen changes.</p>
+    </div>
+
+    <div>
+      <p class="lbl next">After this change &mdash; one entry, both stages</p>
+      <div class="screen">
+        <div class="cards">
+          <div class="bal"><div class="t">Annual Leave</div><div class="v">19.50</div></div>
+          <div class="bal hero">
+            <div class="t">Replacement Leave</div>
+            <div class="two">
+              <div><span class="k">In Lieu &mdash; waiting on your manager</span><span class="n wait">1.00</span></div>
+              <div><span class="k">Available to use</span><span class="n avail">0.00</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="callout g"><i>&check;</i> One entry, carrying your own leave type's name, showing both stages side by side.</p>
+      <p class="note">Drawn at the moment FARAH has submitted your worked example &mdash; 13/08/2026, 09:00 to 18:00 &mdash; and her line manager has not decided yet.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <h2>The three stages, on the same two figures</h2>
+  <p class="sub">Your own example, carried all the way through. These are the numbers the employee reads off the entry above.</p>
+  <div class="stage">
+    <div class="st">
+      <div class="h"><span class="pill pWait">Submitted, not yet decided</span></div>
+      <div class="r"><span>Replacement Leave in Lieu</span><span>1.00 Day</span></div>
+      <div class="r"><span>Replacement Leave</span><span>0.00 Day</span></div>
+      <p class="note">The amount is not usable yet. It cannot be spent on a leave request.</p>
+    </div>
+    <div class="st">
+      <div class="h"><span class="pill pNew">Line manager approved</span></div>
+      <div class="r"><span>Replacement Leave in Lieu</span><span>0.00 Day</span></div>
+      <div class="r"><span>Replacement Leave</span><span>1.00 Day</span></div>
+      <p class="note">Moves across the moment they approve. Now spendable through the ordinary Request Leave popup.</p>
+    </div>
+    <div class="st">
+      <div class="h"><span class="pill pNo">Line manager rejected</span></div>
+      <div class="r"><span>Replacement Leave in Lieu</span><span>0.00 Day</span></div>
+      <div class="r"><span>Replacement Leave</span><span>0.00 Day</span></div>
+      <p class="note">Nothing is created. No credit, no expiry, nothing left behind.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Where the line manager approves it</h2>
+  <p class="sub">This is the piece that does not exist at all today. The rules behind it are written and tested &mdash; there is simply no screen that reaches them, which is why no one in your account has ever received a credit.</p>
+  <div class="split">
+
+    <div>
+      <p class="lbl now">Today &mdash; Approval Items</p>
+      <div class="screen dim">
+        <div class="aprow" style="margin-bottom:6px">
+          <div><div class="who">Leave requests</div><div class="meta">Annual, Emergency, Unpaid &hellip;</div></div>
+          <span class="btn s">Open</span>
+        </div>
+        <div class="aprow" style="margin-bottom:6px">
+          <div><div class="who">Attendance corrections</div><div class="meta">including rest-day overtime</div></div>
+          <span class="btn s">Open</span>
+        </div>
+        <div class="aprow">
+          <div><div class="who">Travel, profile changes, claims, resignations, reviews</div><div class="meta">five more sections</div></div>
+          <span class="btn s">Open</span>
+        </div>
+      </div>
+      <p class="callout b"><i>&times;</i> No replacement leave section. A submitted claim appears nowhere, for anyone.</p>
+    </div>
+
+    <div>
+      <p class="lbl next">After this change</p>
+      <div class="screen">
+        <div class="aprow" style="margin-bottom:6px">
+          <div><div class="who">Leave requests</div><div class="meta">unchanged</div></div>
+          <span class="btn s">Open</span>
+        </div>
+        <div class="aprow" style="border-color:var(--primary);background:color-mix(in srgb,#4f46e5 3%,white)">
+          <div>
+            <div class="who">FARAH <span class="pill pNew" style="margin-left:5px">Replacement leave</span></div>
+            <div class="meta">Worked 13/08/2026, 09:00&ndash;18:00 &mdash; 8 hours &mdash; total 1.00 day</div>
+          </div>
+          <div style="display:flex;gap:5px;white-space:nowrap">
+            <span class="btn p">Approve</span><span class="btn s">Reject</span>
+          </div>
+        </div>
+      </div>
+      <p class="callout g"><i>&check;</i> A new section in the inbox the manager already opens every day. Every worked date on the claim is listed with its hours and its own total.</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <h2>Banked Credits &mdash; one row per approved credit</h2>
+  <p class="sub">This table already exists on the Replacement Leave entry, with the heading "Banked Credits" and, when empty, exactly the sentence you asked for: "No replacement leave credits have been banked yet." Three of your four columns are already on it. Only the last one is new.</p>
+  <div class="tbl credits"><table>
+    <thead><tr>
+      <th>Approval Date</th>
+      <th class="n">Credit</th>
+      <th>Expiry Date</th>
+      <th class="n new">Available</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td class="mono">15/08/2026</td>
+        <td class="n">1.00 Day</td>
+        <td class="mono">15/11/2026</td>
+        <td class="n">1.00</td>
+      </tr>
+    </tbody>
+  </table></div>
+  <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px">
+    <span class="pill pHave">Approval Date &mdash; already on screen</span>
+    <span class="pill pHave">Credit &mdash; already on screen</span>
+    <span class="pill pHave">Expiry Date &mdash; already on screen</span>
+    <span class="pill pNew">Available &mdash; the one we are adding</span>
+  </div>
+  <p class="callout g"><i>&check;</i> The expiry counts from the day the line manager approved. 15 Aug plus your 3-month setting is 15 Nov. Never from the date worked, never from the date submitted.</p>
+  <p class="callout w"><i>!</i> Your expiry is currently set to 90 days rather than 3 months. Both are supported and it is a setting on your Replacement Leave settings screen &mdash; this drawing uses your 3-month example, and we are not changing your setting for you.</p>
+</div>
+
+<div class="card">
+  <div class="foot">
+    <p><b>What already works and is not being rebuilt.</b> The request popup itself. An employee picks Day or Hour, enters the dates they worked, adds and removes as many as they need, and sees the total before submitting. Hour rows work the hours out from the From and To times. We are only adding a total on each row, which is too small to be worth drawing.</p>
+    <p><b>Nothing recorded is disturbed.</b> No one in your account holds a replacement leave credit and no claim has ever been submitted, so there is no history to unpick and no figure that can move.</p>
+    <p><b>One thing you may want to change yourself.</b> Your policy says employees paid at or below the statutory overtime wage ceiling must be paid overtime in cash rather than banking it. Four of the ten people in your two replacement-leave companies sit at or below it, and they will not see the request button. There is a setting that allows them to bank time instead, and it asks each of them to agree when they submit. We are leaving it exactly as you have it.</p>
+  </div>
+</div>

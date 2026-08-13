@@ -1,0 +1,230 @@
+<meta charset="utf-8">
+<title>46afcc48 — Showing a Shared Leave Group on My Leave</title>
+<!--
+  Mockup for 46afcc48 ("Shared Leave Group - Employee My Leave Display Setting"), plan revision 1.
+
+  HONESTY NOTES - a mockup is a promise, so read these before changing anything here.
+
+  · EVERY FIGURE AND EVERY NAME HERE IS REAL, read READ-ONLY from production on 2026-08-13.
+      - leave_shared_group holds exactly one row: "Special Leave", 10.00 days shared per year,
+        maximum 3.00 days per application, created 2026-08-04.
+      - leave_shared_group_member holds six rows, and these are their real names:
+        Caregiver Leave, Compassionate Leave, Examination Leave, Graduation Leave,
+        Natural Disaster Leave, Study Leave.
+      - The employee is FARAH, 100009, Chin Hin Construction Engineering. Her real leave_ledger sums
+        for those six are 3.00 / 3.00 / 0.00 / 0.00 / 3.00 / 0.00 - nine days between them.
+      - leave_request rows against ANY of the six: ZERO. The pool has never been touched, so
+        "used 0.00, left 10.00" is measured, not assumed.
+      - Her Annual Leave 19.50 is her real ledger sum.
+  · THE "TODAY" COLUMN IS WHERE THOSE SIX GENUINELY APPEAR. None of the six codes is in
+    SECONDARY_GROUP_BY_CODE or PRIMARY_CODES (lib/leave-groups.ts), so all six resolve to
+    secondary/other and render inside the "Other Leave" panel. Verified in source, not assumed.
+  · THE 9.00 FIGURE IS THE POINT OF THIS DRAWING AND IT IS ARITHMETIC ON REAL DATA:
+    min(10.00 pool remaining, 9.00 of member allowance) = 9.00. Drawing 10.00 would promise a day
+    FARAH cannot take, because each type's own balance is also enforced.
+  · NOT DRAWN: the Hidden option's screen, because Hidden IS the "Today" column - drawing it twice
+    would imply it was something new.
+  · Wording, spacing and colours will differ from the finished screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .ph{font-size:16px;font-weight:700;margin:0}
+  .phs{font-size:11.5px;color:var(--mf);margin:2px 0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .sub{font-size:11px;color:var(--mf);margin:0 0 11px;line-height:1.45}
+  .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+  .three > *{min-width:0}
+  .split{display:grid;grid-template-columns:0.95fr 1.05fr;gap:16px;align-items:start}
+  .split > *{min-width:0}
+  .lbl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:var(--mf);
+       margin:0 0 7px}
+  .lbl.now{color:var(--bad)} .lbl.next{color:var(--good)}
+  .screen{border:1px solid var(--border);border-radius:11px;background:#fff;padding:10px;
+          box-shadow:0 1px 2px rgba(20,20,40,.05)}
+  .screen.dim{background:#fcfcfe}
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:7px;margin-bottom:8px}
+  .bal{border:1px solid var(--border);border-radius:9px;padding:8px 9px;background:#fff;min-width:0}
+  .bal .t{font-size:9.6px;color:var(--mf);line-height:1.3}
+  .bal .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px}
+  .bal.hero{border-color:var(--primary);background:color-mix(in srgb,#4f46e5 4%,white)}
+  .panel{border:1px solid var(--border);border-radius:9px;background:#fff;overflow:hidden}
+  .panel .ph2{font-size:9.6px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+              color:var(--mf);background:var(--muted);padding:5px 9px}
+  .row{display:flex;justify-content:space-between;gap:8px;font-size:10.7px;padding:4px 9px;
+       border-bottom:1px solid var(--border)}
+  .row:last-child{border-bottom:0}
+  .row span:last-child{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+  .row.grp{border-color:var(--primary);background:color-mix(in srgb,#4f46e5 4%,white);font-weight:700}
+  .row.zero span{color:var(--mf)}
+  table{border-collapse:separate;border-spacing:0;font-size:11px;width:100%}
+  th,td{padding:5px 9px;border-bottom:1px solid var(--border);text-align:left}
+  tr:last-child td{border-bottom:0}
+  th{font-size:8.5px;text-transform:uppercase;letter-spacing:.045em;color:var(--mf);font-weight:700;
+     background:var(--muted)}
+  .tbl{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.tot td{background:color-mix(in srgb,#4f46e5 5%,white);font-weight:700}
+  .sm{font-size:9.6px;color:var(--mf)}
+  .callout{display:flex;gap:7px;font-size:11px;margin:9px 0 0;line-height:1.45}
+  .callout.b{color:var(--bad)} .callout.g{color:var(--good)} .callout.w{color:var(--warn)}
+  .callout i{font-style:normal;font-weight:800}
+  .radio{border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:#fff}
+  .radio .o{display:flex;gap:8px;align-items:flex-start;font-size:11px;padding:4px 0}
+  .radio .dot{width:11px;height:11px;border-radius:50%;border:1.6px solid #b9bacb;flex:0 0 auto;margin-top:3px}
+  .radio .o.on .dot{border-color:var(--primary);box-shadow:inset 0 0 0 2.6px var(--primary)}
+  .radio .o b{font-weight:700}
+  .radio .o .d{color:var(--mf);font-size:10.2px;display:block;line-height:1.4}
+  .foot{font-size:10.7px;color:var(--mf);line-height:1.55;margin:0}
+  .foot b{color:var(--fg)}
+  .foot p{margin:0 0 7px} .foot p:last-child{margin:0}
+  .cap{font-size:9.7px;color:var(--mf);margin:6px 0 0;line-height:1.4}
+</style>
+
+<p class="ph">Leave config &rsaquo; Shared Leave Groups &mdash; and what the employee sees</p>
+<p class="phs">Sketch, built entirely on your real Special Leave group and on FARAH's real balances (employee 100009, Chin Hin Construction Engineering), read on 13 Aug 2026. Wording, spacing and colours will differ.</p>
+
+<div class="card">
+  <h2>The new setting, where you set the group up</h2>
+  <div class="split">
+    <div>
+      <p class="sub" style="margin-top:0">One new choice on the Shared Leave Groups panel, beside the shared limit and the per-application maximum you already set. Every group you already have starts on Hidden, so approving this changes nothing on anyone's screen until you pick.</p>
+      <div class="radio">
+        <div class="sm" style="font-weight:700;color:var(--fg);margin-bottom:4px">Special Leave &mdash; Employee My Leave display</div>
+        <div class="o"><span class="dot"></span><span><b>Primary</b><span class="d">Show it at the top of My Leave as a headline balance, beside Annual Leave.</span></span></div>
+        <div class="o"><span class="dot"></span><span><b>Secondary</b><span class="d">Show it as one row down in the Other Leave section.</span></span></div>
+        <div class="o on"><span class="dot"></span><span><b>Hidden</b><span class="d">Show nothing about the group. This is what employees see today, and it is where every existing group starts.</span></span></div>
+      </div>
+      <p class="callout g"><i>&check;</i> Whichever you pick, the shared limit itself is untouched &mdash; 10 days a year, 3 per application, checked when someone applies and again when it is approved.</p>
+    </div>
+    <div>
+      <p class="sub" style="margin-top:0">Your Special Leave group as it stands, read from your account today.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Special Leave &mdash; the six types in the group</th><th class="n">FARAH's own allowance</th></tr></thead>
+        <tbody>
+          <tr><td>Caregiver Leave</td><td class="n">3.00</td></tr>
+          <tr><td>Compassionate Leave</td><td class="n">3.00</td></tr>
+          <tr><td>Natural Disaster Leave</td><td class="n">3.00</td></tr>
+          <tr><td>Examination Leave</td><td class="n">0.00</td></tr>
+          <tr><td>Graduation Leave</td><td class="n">0.00</td></tr>
+          <tr><td>Study Leave</td><td class="n">0.00</td></tr>
+          <tr class="tot"><td>Their own allowances add up to</td><td class="n">9.00</td></tr>
+        </tbody>
+      </table></div>
+      <p class="cap">Shared limit 10.00 days a year &middot; used so far 0.00 &middot; left in the pool 10.00. Nobody in your account has ever applied for any of these six, so the pool is completely untouched.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What FARAH sees on My Leave</h2>
+  <p class="sub">The same person, the same real balances, under each of the three settings.</p>
+  <div class="three">
+
+    <div>
+      <p class="lbl now">Hidden &mdash; and this is also today</p>
+      <div class="screen dim">
+        <div class="strip">
+          <div class="bal"><div class="t">Annual Leave</div><div class="v">19.50</div></div>
+          <div class="bal"><div class="t">Replacement Leave</div><div class="v">0.00</div></div>
+        </div>
+        <div class="panel">
+          <div class="ph2">Other Leave</div>
+          <div class="row"><span>Caregiver Leave</span><span>3.00</span></div>
+          <div class="row"><span>Compassionate Leave</span><span>3.00</span></div>
+          <div class="row zero"><span>Examination Leave</span><span>0.00</span></div>
+          <div class="row zero"><span>Graduation Leave</span><span>0.00</span></div>
+          <div class="row"><span>Natural Disaster Leave</span><span>3.00</span></div>
+          <div class="row zero"><span>Study Leave</span><span>0.00</span></div>
+          <div class="row"><span class="sm">Marriage Leave</span><span class="sm">0.00</span></div>
+          <div class="row"><span class="sm">Paternity Leave</span><span class="sm">7.00</span></div>
+        </div>
+      </div>
+      <p class="callout b"><i>&times;</i> Six separate rows, and nothing anywhere says they share one pot of 10 days. FARAH finds out only when an application is refused.</p>
+    </div>
+
+    <div>
+      <p class="lbl next">Secondary</p>
+      <div class="screen">
+        <div class="strip">
+          <div class="bal"><div class="t">Annual Leave</div><div class="v">19.50</div></div>
+          <div class="bal"><div class="t">Replacement Leave</div><div class="v">0.00</div></div>
+        </div>
+        <div class="panel">
+          <div class="ph2">Other Leave</div>
+          <div class="row grp"><span>Special Leave</span><span>9.00</span></div>
+          <div class="row"><span class="sm">Marriage Leave</span><span class="sm">0.00</span></div>
+          <div class="row"><span class="sm">Paternity Leave</span><span class="sm">7.00</span></div>
+        </div>
+      </div>
+      <p class="callout g"><i>&check;</i> One Special Leave row in place of the six. The six are gathered into it, so the same allowance is never shown twice.</p>
+    </div>
+
+    <div>
+      <p class="lbl next">Primary</p>
+      <div class="screen">
+        <div class="strip">
+          <div class="bal"><div class="t">Annual Leave</div><div class="v">19.50</div></div>
+          <div class="bal hero"><div class="t">Special Leave</div><div class="v">9.00</div></div>
+        </div>
+        <div class="panel">
+          <div class="ph2">Other Leave</div>
+          <div class="row"><span class="sm">Marriage Leave</span><span class="sm">0.00</span></div>
+          <div class="row"><span class="sm">Paternity Leave</span><span class="sm">7.00</span></div>
+        </div>
+      </div>
+      <p class="callout g"><i>&check;</i> Special Leave stands at the top beside Annual Leave, as a balance in its own right.</p>
+    </div>
+
+  </div>
+  <p class="cap">Marriage Leave and Paternity Leave are shown only to make the Other Leave section look like itself &mdash; they are real types on FARAH's screen and are not in the group, so nothing about them changes.</p>
+</div>
+
+<div class="card">
+  <h2>Why the figure reads 9.00 and not 10.00</h2>
+  <div class="split">
+    <div>
+      <p class="sub" style="margin-top:0">Two limits apply to Special Leave, and an employee can only ever take the smaller of them. The entry shows that smaller number, because the larger one would promise a day FARAH cannot actually take.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>The limit</th><th class="n">Days</th></tr></thead>
+        <tbody>
+          <tr><td>Left in the shared pool (10.00 shared, 0.00 used)</td><td class="n">10.00</td></tr>
+          <tr><td>Her six types' own allowances, added up</td><td class="n">9.00</td></tr>
+          <tr class="tot"><td>What she can actually take &mdash; the smaller of the two</td><td class="n">9.00</td></tr>
+        </tbody>
+      </table></div>
+      <p class="callout w"><i>!</i> Both of these are already enforced today. Nothing new is being enforced &mdash; we are only showing the answer instead of leaving it to be discovered at the point of refusal.</p>
+      <p class="cap">The two limits move independently. As soon as somebody uses one of the six types, the pool starts coming down and the group figure follows whichever of the two is lower at that moment. On a group whose member types carry more allowance between them than the shared limit, the pool is the one that binds and the figure would read the pool instead.</p>
+    </div>
+    <div>
+      <p class="sub" style="margin-top:0">Opening the Special Leave entry shows both halves, so the figure is never a mystery.</p>
+      <div class="panel">
+        <div class="ph2">Special Leave &mdash; available 9.00 days</div>
+        <div class="row"><span>Shared limit for the year</span><span>10.00</span></div>
+        <div class="row"><span>Already taken or booked this year</span><span>0.00</span></div>
+        <div class="row"><span>Left in the shared pool</span><span>10.00</span></div>
+        <div class="row"><span class="sm" style="font-weight:700">Where it can be spent</span><span></span></div>
+        <div class="row"><span class="sm">Caregiver Leave</span><span class="sm">3.00</span></div>
+        <div class="row"><span class="sm">Compassionate Leave</span><span class="sm">3.00</span></div>
+        <div class="row"><span class="sm">Natural Disaster Leave</span><span class="sm">3.00</span></div>
+        <div class="row zero"><span class="sm">Examination Leave</span><span class="sm">0.00</span></div>
+        <div class="row zero"><span class="sm">Graduation Leave</span><span class="sm">0.00</span></div>
+        <div class="row zero"><span class="sm">Study Leave</span><span class="sm">0.00</span></div>
+      </div>
+      <p class="cap">Maximum 3.00 days in any one application still applies, exactly as it does now.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="foot">
+    <p><b>Nothing about entitlement changes.</b> No new allowance is created for the group, no employee gains or loses a day, and the shared-limit rule is applied at the same two moments it is applied today and refuses exactly the same applications.</p>
+    <p><b>Everything already saved keeps working exactly as it does now.</b> Your existing group starts on Hidden, which is the screen employees see today, so approving this changes nothing until you choose Primary or Secondary yourself.</p>
+    <p><b>Why the member types are gathered in rather than listed as well.</b> Showing an employee the same ten days twice on one screen &mdash; once as a group and once as six rows &mdash; is the most reliable way a balance screen gets reported back as wrong. If you would rather have both, that is a fair call to make, and the plan says how to ask for it.</p>
+  </div>
+</div>

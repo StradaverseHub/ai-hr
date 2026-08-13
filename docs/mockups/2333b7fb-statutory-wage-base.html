@@ -1,0 +1,164 @@
+<meta charset="utf-8">
+<title>2333b7fb — Statutory wage base: A0006, January 2026</title>
+<!--
+  Mockup for 2333b7fb, plan revision 1. Sketch — wording, spacing and colours will differ.
+
+  EVERY FIGURE IS A0006's REAL JANUARY 2026 PAYROLL, read from production 2026-08-13:
+    payslip 97b1deae (batch 368c67fc, 2026-01 regular, version 4, written 2026-08-12 15:04)
+    basic 5000.00 · allowance 100.00 (A0027 HANDPHONE ALLOWANCE, wage bucket)
+    UPL UNPAID LEAVE 322.58 (kind=deduction, deduct bucket) · statutory.bases.epf = 5100
+    stored: epfEe 561 epfEr 612 socsoEe 25.25 socsoEr 88.35 eisEe 10.10 eisEr 10.10 pcb 116 hrdf 51
+            other_deductions 322.58 total_deductions 1034.93 net 4065.07 employer_cost 5861.45
+  The AFTER column is the same pack (localization/my/payroll statutory + hrdfLevy) run at wage 4777.42:
+    epfEe 526 epfEr 622 socsoEe 23.75 socsoEr 83.15 eisEe 9.50 eisEr 9.50 pcb 96.65 hrdf 47.77
+  The TODAY column was reproduced by the same call at wage 5100 and matched the stored payslip exactly.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:16px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 16px}
+  h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);margin:0 0 8px;font-weight:700}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+  .two{display:grid;grid-template-columns:1.15fr 1fr;gap:14px;align-items:start}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:700;padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th.r,td.r{text-align:right}
+  th.c,td.c{text-align:center}
+  td{padding:7px 8px;border-bottom:1px solid #f2f2f7;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--mf)}
+  .num{font-weight:600}
+  .y{color:var(--good);font-weight:700}
+  .n{color:var(--mf)}
+  .rowHi{background:#fff7ed}
+  .rowHi td{border-bottom-color:#fde9d0}
+  .flag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:999px;background:#fed7aa;
+        color:#7c2d12;font-size:9.5px;font-weight:700;vertical-align:1px}
+  .tot td{border-top:2px solid var(--border);border-bottom:none;font-weight:700;padding-top:9px}
+  .up{color:var(--good);font-weight:700}
+  .dn{color:var(--bad);font-weight:700}
+  .flat{color:var(--mf)}
+  .eq{font-size:12.5px;line-height:2;margin:0}
+  .eq .lbl{display:inline-block;min-width:132px;color:var(--mf);font-size:11px}
+  .eq b{font-variant-numeric:tabular-nums}
+  .strike{color:#a1a1ad;text-decoration:line-through}
+  .callout{border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:10px 12px;
+           font-size:11.5px;color:#78350f;margin-top:10px}
+  .callout b{display:block;font-size:12px;margin-bottom:2px}
+  .note{font-size:10.5px;color:var(--mf);margin-top:9px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:700}
+  .pill.a{background:var(--muted);color:var(--mf)}
+  .pill.b{background:#e0e7ff;color:#312e81}
+  .hdr{display:flex;align-items:baseline;gap:9px;margin-bottom:9px}
+  .hdr .t{font-size:13px;font-weight:700}
+</style>
+
+<h1>Employee A0006 — January 2026: what the EPF wage is built from</h1>
+<p class="sub">Sketch on this employee's real January payroll. Wording, spacing and colours will differ from the finished screen.</p>
+
+<div class="two">
+
+  <div class="card">
+    <div class="hdr"><span class="t">The pay items on this payroll</span><span class="pill a">as recorded</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Code</th><th>Description</th><th class="r">Amount</th>
+          <th class="c">EPF</th><th class="c">SOCSO</th><th class="c">EIS</th><th class="c">SKBBK</th><th class="c">Tax</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="code">BASIC</td><td>Basic Salary</td><td class="r num">5,000.00</td>
+          <td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td>
+        </tr>
+        <tr>
+          <td class="code">A0027</td><td>Handphone Allowance</td><td class="r num">100.00</td>
+          <td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td>
+        </tr>
+        <tr class="rowHi">
+          <td class="code">UPL</td><td>Unpaid Leave<span class="flag">ticked, not applied today</span></td>
+          <td class="r num">−322.58</td>
+          <td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td><td class="c y">Y</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="height:14px"></div>
+    <h2>EPF wage — the arithmetic</h2>
+    <p class="eq">
+      <span class="lbl">Today</span>
+      5,000.00 + 100.00 <span class="strike">− 322.58</span> = <b>RM 5,100.00</b><br>
+      <span class="lbl">After the change</span>
+      5,000.00 + 100.00 − 322.58 = <b>RM 4,777.42</b>
+    </p>
+
+    <div class="callout">
+      <b>One result that looks backwards, and is correct</b>
+      Dropping the EPF wage from RM5,100 to RM4,777.42 takes it under RM5,000, and below that line the
+      employer's EPF rate is 13% instead of 12%. So the employer's EPF goes <b style="display:inline">UP</b>
+      by RM10.00 even though the wage goes down. The employee's own EPF falls RM35.00.
+    </div>
+
+    <div style="height:16px"></div>
+    <h2>Every payslip in your history with the same situation</h2>
+    <table>
+      <thead>
+        <tr><th>Employee</th><th>Month</th><th>Deduction ticked in</th><th class="r">Amount</th><th class="r">Take-home</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>A0006</td><td>January 2026</td><td>Unpaid Leave</td><td class="r num">322.58</td><td class="r up">+56.45</td></tr>
+        <tr><td>A0002</td><td>January 2026</td><td>Absent</td><td class="r num">174.19</td><td class="r up">+30.85</td></tr>
+        <tr><td>A0007</td><td>January 2026</td><td>Absent</td><td class="r num">122.58</td><td class="r up">+26.45</td></tr>
+        <tr><td>T100777</td><td>July 2026</td><td>Short Notice</td><td class="r num">500.00</td><td class="r up">+58.50</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Four payslips out of 121. Monthly Parking is a deduction too and is ticked into
+      nothing, so it stays out of every wage base exactly as it does today — that part was already right.
+      These four only move if those months are run again, which this plan does not do.</p>
+  </div>
+
+  <div class="card">
+    <div class="hdr"><span class="t">Wage base each contribution is worked out on</span></div>
+    <table>
+      <thead><tr><th>Wage base</th><th class="r">Today</th><th class="r">After</th></tr></thead>
+      <tbody>
+        <tr><td>EPF Wages</td><td class="r num">5,100.00</td><td class="r num">4,777.42</td></tr>
+        <tr><td>SOCSO Wages</td><td class="r num">5,100.00</td><td class="r num">4,777.42</td></tr>
+        <tr><td>EIS Wages</td><td class="r num">5,100.00</td><td class="r num">4,777.42</td></tr>
+        <tr><td>SKBBK Wages</td><td class="r num">5,100.00</td><td class="r num">4,777.42</td></tr>
+        <tr><td>PCB Wages</td><td class="r num">5,100.00</td><td class="r num">4,777.42</td></tr>
+        <tr><td>HRDF Wages</td><td class="r num">5,100.00</td><td class="r num">4,777.42</td></tr>
+      </tbody>
+    </table>
+
+    <div style="height:16px"></div>
+    <h2>What that changes on this payslip</h2>
+    <table>
+      <thead><tr><th></th><th class="r">Today</th><th class="r">After</th><th class="r">Change</th></tr></thead>
+      <tbody>
+        <tr><td>EPF — employee</td><td class="r num">561.00</td><td class="r num">526.00</td><td class="r dn">−35.00</td></tr>
+        <tr><td>EPF — employer</td><td class="r num">612.00</td><td class="r num">622.00</td><td class="r up">+10.00</td></tr>
+        <tr><td>SOCSO — employee</td><td class="r num">25.25</td><td class="r num">23.75</td><td class="r dn">−1.50</td></tr>
+        <tr><td>SOCSO — employer</td><td class="r num">88.35</td><td class="r num">83.15</td><td class="r dn">−5.20</td></tr>
+        <tr><td>EIS — employee</td><td class="r num">10.10</td><td class="r num">9.50</td><td class="r dn">−0.60</td></tr>
+        <tr><td>EIS — employer</td><td class="r num">10.10</td><td class="r num">9.50</td><td class="r dn">−0.60</td></tr>
+        <tr><td>PCB — income tax</td><td class="r num">116.00</td><td class="r num">96.65</td><td class="r dn">−19.35</td></tr>
+        <tr><td>HRDF — employer levy</td><td class="r num">51.00</td><td class="r num">47.77</td><td class="r dn">−3.23</td></tr>
+        <tr><td>Unpaid leave off pay</td><td class="r num">322.58</td><td class="r num">322.58</td><td class="r flat">no change</td></tr>
+        <tr class="tot"><td>Take-home pay</td><td class="r num">4,065.07</td><td class="r num">4,121.52</td><td class="r up">+56.45</td></tr>
+        <tr class="tot"><td>Total cost to the company</td><td class="r num">5,861.45</td><td class="r num">5,862.42</td><td class="r up">+0.97</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Gross pay is unchanged at RM5,100.00 — this changes only the wage each contribution is
+      charged on, never what the employee is paid before deductions. Payslips already issued are not
+      touched; the new rule applies the next time a payroll is run.</p>
+  </div>
+
+</div>

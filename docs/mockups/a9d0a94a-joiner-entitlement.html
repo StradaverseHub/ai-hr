@@ -1,0 +1,238 @@
+<meta charset="utf-8">
+<title>a9d0a94a — Arjun Kumar joined during the year</title>
+<!--
+  Mockup for a9d0a94a (Employee Entitlement Not Generated Despite Valid Entitlement Configuration – Arjun Kumar).
+
+  MEASURED ON PRODUCTION, READ-ONLY, 2026-08-13:
+    - Arjun Kumar, Demo Sdn Bhd, grade Executive, full time, JOINED 6 JANUARY 2026, not terminated.
+    - His whole leave ledger is 9 Annual Leave rows. He holds no row for any other leave type.
+      Annual: 10.00 entitled, 5.00 taken, 5.00 balance. Everything else reads 0.00.
+    - openLeaveYear only visits employments with hired_on < 1 January of the chosen year, and the
+      Generate Entitlement selection resolves criteria as at 1 January too — so Arjun is not even in
+      the selected set for leave year 2026.
+    - 13 active employments joined during 2026 and are in the same position; their real names and join
+      dates are listed below.
+    - Their configured figures, used verbatim: Medical Leave table PERMANENT = 14 days (0-2 years) /
+      18 (2-5) / 22 (5+); Hospitalization Leave table ALL = 60 days.
+  Column labels verbatim from messages/en.json (leave.inquiry.*, me.leaveBalanceTable.*, admin.leave.generate*).
+  Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--badbg:#fef2f2;--good:#15803d;--goodbg:#f0fdf4;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h2{font-size:13.5px;margin:0 0 3px}
+  .q{font-size:12px;color:var(--mf);margin:0 0 12px;font-style:italic}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  .num{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;border-radius:6px;
+       background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:7px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--mf);
+     font-weight:600;padding:6px 6px;background:var(--muted)}
+  th.r,td.r{text-align:right}
+  td{padding:7px 6px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.t{white-space:normal}
+  .box{border:1px solid var(--border);border-radius:11px;padding:13px;margin-bottom:14px}
+  .box.bad{border-color:#fca5a5;background:var(--badbg)}
+  .box.good{border-color:#86efac;background:var(--goodbg)}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-bottom:10px}
+  .tag.bad{background:#fee2e2;color:#991b1b}
+  .tag.good{background:#dcfce7;color:#166534}
+  .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+  .panel{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .ph{padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600}
+  .code{font-weight:600;color:var(--primary)}
+  .why{display:block;font-size:10.5px;color:var(--warn);font-weight:600;margin-top:2px;white-space:normal}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:4px 11px;
+       font-size:11px;font-weight:600;white-space:nowrap}
+  .btn.sm{padding:2px 9px;font-size:10.5px;border-radius:7px}
+  .btn.ghost{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .banner{display:flex;gap:10px;align-items:flex-start;background:#fffbeb;border:1px solid #fcd34d;
+          border-radius:10px;padding:10px 12px;margin:0 0 12px}
+  .banner .bt{font-size:11.5px;font-weight:700;color:#7c2d12;display:block;margin-bottom:3px}
+  .banner .bd{font-size:11.5px;color:#7c2d12}
+  .mfoot{font-size:10.5px;color:var(--mf);margin-top:8px}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700}
+  .chip.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .hdr{font-size:16px;font-weight:700;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 16px}
+  .kv{display:flex;justify-content:space-between;font-size:11.5px;padding:5px 0;border-top:1px solid var(--border)}
+  .kv:first-child{border-top:0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  .steps{display:flex;gap:7px;align-items:center;margin-bottom:11px;flex-wrap:wrap}
+  .step{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:#fff;
+        border-radius:999px;padding:3px 11px 3px 4px;font-size:11.5px;color:var(--mf)}
+  .step.on{background:color-mix(in srgb,var(--primary) 10%,white);
+           border-color:color-mix(in srgb,var(--primary) 35%,white);color:var(--fg);font-weight:600}
+  .sn{display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:999px;
+      background:var(--muted);color:var(--mf);font-size:9.5px;font-weight:700}
+  .step.on .sn{background:var(--primary);color:#fff}
+  .dash{color:#c9cad6;font-size:11px}
+  .no{color:var(--bad);font-weight:700}
+  .ok{color:var(--good);font-weight:700}
+</style>
+
+<p class="hdr">Arjun Kumar joined on 6 January 2026 — the yearly run starts on 1 January, so it never reaches him</p>
+<p class="sub">Sketch. Wording, spacing and colours will differ in the built screen. Every name, join date and
+table figure below is read from your live system on 13 August 2026.</p>
+
+<div class="card">
+  <h2><span class="num">1</span>What we found on Arjun Kumar's record</h2>
+  <p class="q">“Please check why the configured entitlement is not being applied to Arjun Kumar.”</p>
+  <div class="grid2">
+    <div>
+      <div class="kv"><span>Company</span><span><b>Demo Sdn Bhd</b></span></div>
+      <div class="kv"><span>Grade</span><span><b>Executive</b></span></div>
+      <div class="kv"><span>Employment type</span><span><b>Full time</b></span></div>
+      <div class="kv"><span>Joined</span><span><b>6 January 2026</b></span></div>
+      <div class="kv"><span>Still employed</span><span class="ok">Yes</span></div>
+    </div>
+    <div>
+      <div class="kv"><span>Grade, company or position blocking him</span><span class="ok">No — none of these</span></div>
+      <div class="kv"><span>Service period wrongly worked out</span><span class="ok">No — it is correct</span></div>
+      <div class="kv"><span>An old or reset record in the way</span><span class="ok">No — he has none</span></div>
+      <div class="kv"><span>Entitlement sitting there but not shown</span><span class="ok">No — nothing was ever created</span></div>
+      <div class="kv"><span>Reached by the yearly run for 2026</span><span class="no">No — he joined after 1 January</span></div>
+    </div>
+  </div>
+  <p class="note">His whole leave record is nine Annual Leave entries. He holds nothing at all for any other
+    leave type, which is why every other line reads 0.00.</p>
+</div>
+
+<div class="card">
+  <h2><span class="num">2</span>Employee Balances — Arjun Kumar</h2>
+
+  <div class="box bad">
+    <span class="tag bad">TODAY — 0.00 on every line except Annual, with no explanation</span>
+    <div class="panel">
+      <div class="ph">Arjun Kumar · Demo Sdn Bhd</div>
+      <table>
+        <thead><tr>
+          <th style="width:26%">Leave Code</th><th>Entitlement Year</th><th class="r">YTD Entitled</th>
+          <th class="r">Brought Forward</th><th class="r">Taken</th><th class="r">Pending Approval</th>
+          <th class="r">Adjustment</th><th class="r">Balance</th><th>Date</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="t"><span class="code">ANNUAL</span> <span style="color:var(--mf)">Annual Leave</span></td>
+            <td>2026</td><td class="r">10.00</td><td class="r">0.00</td><td class="r">5.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>5.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fff5f5"><td class="t"><span class="code">SICK</span> <span style="color:var(--mf)">Medical Leave</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fff5f5"><td class="t"><span class="code">HOSPITALIZATION</span> <span style="color:var(--mf)">Hospitalization Leave</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr><td class="t"><span class="code">CPL</span> <span style="color:var(--mf)">Compassionate Leave</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="box good">
+    <span class="tag good">PROPOSED — the row says which run he is outside of, and offers the run that reaches him</span>
+    <div class="panel">
+      <div class="ph">Arjun Kumar · Demo Sdn Bhd</div>
+      <div style="padding:11px 12px 0">
+        <div class="banner">
+          <div>
+            <span class="bt">Arjun Kumar joined on 6 January 2026, during the leave year</span>
+            <span class="bd">The yearly entitlement run grants a whole leave year on 1 January and only covers
+              people who were already employed on that day. Employees who join later are granted on their
+              joining date instead — and Arjun joined before any entitlement table existed, so nothing was
+              created for him.</span>
+            <div style="margin-top:8px"><span class="btn">Generate for employees who joined during the year</span></div>
+          </div>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:26%">Leave Code</th><th>Entitlement Year</th><th class="r">YTD Entitled</th>
+          <th class="r">Brought Forward</th><th class="r">Taken</th><th class="r">Pending Approval</th>
+          <th class="r">Adjustment</th><th class="r">Balance</th><th>Date</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="t"><span class="code">ANNUAL</span> <span style="color:var(--mf)">Annual Leave</span></td>
+            <td>2026</td><td class="r">10.00</td><td class="r">0.00</td><td class="r">5.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>5.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fefce8"><td class="t"><span class="code">SICK</span> <span style="color:var(--mf)">Medical Leave</span>
+            <span class="why">Joined 6 Jan 2026 — the 2026 yearly run covers employees employed on 1 Jan 2026</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr style="background:#fefce8"><td class="t"><span class="code">HOSPITALIZATION</span> <span style="color:var(--mf)">Hospitalization Leave</span>
+            <span class="why">Joined 6 Jan 2026 — the 2026 yearly run covers employees employed on 1 Jan 2026</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+          <tr><td class="t"><span class="code">CPL</span> <span style="color:var(--mf)">Compassionate Leave</span>
+            <span class="why">Joined 6 Jan 2026 — the 2026 yearly run covers employees employed on 1 Jan 2026</span></td>
+            <td>—</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td><td class="r">0.00</td>
+            <td class="r">0.00</td><td class="r"><b>0.00</b></td><td>2026-08-13</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">No figure changes here. The row simply stops being silent about why it is zero.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="num">3</span>The new run — Generate Entitlement for employees who joined during the year</h2>
+  <div class="steps">
+    <span class="step"><span class="sn">1</span>Leave Selection</span><span class="dash">—</span>
+    <span class="step"><span class="sn">2</span>Generation Settings</span><span class="dash">—</span>
+    <span class="step"><span class="sn">3</span>Employee Selection</span><span class="dash">—</span>
+    <span class="step on"><span class="sn">4</span>Validation &amp; Preview</span><span class="dash">—</span>
+    <span class="step"><span class="sn">5</span>Process</span>
+  </div>
+  <div class="panel">
+    <div class="ph">Joined during 2026 · rehearsal <span class="chip new">NEW</span> — nothing is written until you press Generate</div>
+    <table>
+      <thead><tr>
+        <th style="width:24%">Employee</th><th>Joined</th><th>Leave type</th><th>Entitlement table</th>
+        <th class="r">Days</th><th style="width:26%">How it is worked out</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="t"><b>Arjun Kumar</b> <span style="color:var(--mf)">Demo Sdn Bhd</span></td><td>6 Jan 2026</td>
+          <td>Medical Leave</td><td>PERMANENT</td><td class="r"><b>14.00</b></td>
+          <td class="t">0–2 years of service. Granted in full — sick leave is a whole-year entitlement.</td></tr>
+        <tr><td class="t"><b>Arjun Kumar</b> <span style="color:var(--mf)">Demo Sdn Bhd</span></td><td>6 Jan 2026</td>
+          <td>Hospitalization Leave</td><td>ALL</td><td class="r"><b>60.00</b></td>
+          <td class="t">Granted in full — hospitalisation leave is a whole-year entitlement.</td></tr>
+        <tr><td class="t">Aisyah Rahman <span style="color:var(--mf)">Demo Sdn Bhd</span></td><td>6 Jan 2026</td>
+          <td>Medical Leave</td><td>PERMANENT</td><td class="r">14.00</td>
+          <td class="t">0–2 years of service.</td></tr>
+        <tr><td class="t">Ou Yang Na Na <span style="color:var(--mf)">Chin Hin Property Group</span></td><td>1 May 2026</td>
+          <td>Medical Leave</td><td>CONTRACT - GRADE >= 19</td><td class="r">18.00</td>
+          <td class="t">Contract, grade 21.</td></tr>
+        <tr><td class="t">Elon Musk <span style="color:var(--mf)">Demo Group Holdings Bhd</span></td><td>1 Jul 2026</td>
+          <td>Medical Leave</td><td>PERMANENT</td><td class="r">14.00</td>
+          <td class="t">0–2 years of service.</td></tr>
+        <tr><td class="t">NURUL ALIAH BINTI ACHIN <span style="color:var(--mf)">Fiamma (Chin Hin Property)</span></td><td>27 Jul 2026</td>
+          <td>Medical Leave</td><td>PERMANENT</td><td class="r">14.00</td>
+          <td class="t">0–2 years of service.</td></tr>
+        <tr><td class="t" colspan="6" style="color:var(--mf)">…and 8 more who joined during 2026:
+          TEST0005, Daniel Tan, Mei Ling, Daniel Tan, Taylor Swift, Wei Jie Lim, Irwin Law, Eee Lee Yong.</td></tr>
+      </tbody>
+    </table>
+    <div style="padding:11px 12px;border-top:1px solid var(--border)">
+      <div class="grid2">
+        <div>
+          <div class="kv"><span>Employees who joined during 2026</span><span><b>13</b></span></div>
+          <div class="kv"><span>Will be granted</span><span class="ok"><b>13</b></span></div>
+        </div>
+        <div>
+          <div class="kv"><span>Already granted — will be skipped</span><span><b>0</b></span></div>
+          <div class="kv"><span>Written now</span><span><b>Nothing — this is a rehearsal</b></span></div>
+        </div>
+      </div>
+      <div style="margin-top:10px"><span class="btn">Generate</span>
+        <span class="btn ghost" style="margin-left:6px">Download log</span></div>
+    </div>
+  </div>
+  <p class="mfoot">The day figures above are your own: Medical Leave table PERMANENT gives 14 days for 0–2 years
+    of service, and Hospitalization Leave table ALL gives 60. They are shown as they would read once an
+    employee eligibility rule points those tables at these people — which is the other request in this pair.
+    Annual Leave is not listed because these employees already hold theirs.</p>
+</div>
