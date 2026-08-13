@@ -4895,7 +4895,15 @@ export async function generatePayslips(
       // one-off row of theirs on this run is now IN a payslip. Marking it here (and not only on the full
       // generation) is what covers the fbcf706d ADDED employment: its first payslip on this run is being
       // written now, and the rows attach-on-generate just stamped onto the run are in it.
-      await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+      //
+      // GATED ON THE SAME FLAG THE FOLD IS, and this is not caution — it is the marker's only claim. With
+      // `payroll.individual_txn_pay_enabled` off the ledger is RECORD-ONLY and the fold above never ran,
+      // so no row reached a payslip. Marking one consumed would be a lie that permanently strands it the
+      // day the tenant turns the flag on. (Production has it on — verified 2026-08-13 — so the guard is
+      // armed there; a tenant with it off has no double-pay to prevent because it pays none of these rows.)
+      if (individualTxnPay) {
+        await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+      }
       return {
         reprocessed: emps.length,
         recalculated: recalculatedCount,
@@ -4916,8 +4924,10 @@ export async function generatePayslips(
     // 0db616f3 — and every one-off line this run folded is now IN a payslip. Stamped with the run that
     // paid it so a SECOND run cannot pay it again; a re-generation of THIS run still can, which is what
     // keeps reset→correct→re-run working. Same transaction as the payslip inserts above, so "paid" and
-    // "marked paid" cannot come apart.
-    await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+    // "marked paid" cannot come apart. Gated on the fold's own flag — see the subset branch's note.
+    if (individualTxnPay) {
+      await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+    }
 
     // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
     // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.

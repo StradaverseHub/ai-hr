@@ -53,7 +53,12 @@ import {
   TXN_KINDS,
   TXN_UNITS,
 } from '../core/payroll-individual-txn';
-import { BatchNotDraftError, IndividualTxnRequiresTypedComponentsError, createAdditionalRun } from '../core/payroll';
+import {
+  BatchNotDraftError,
+  IndividualTxnRequiresTypedComponentsError,
+  createAdditionalRun,
+  resetProcessedBatch,
+} from '../core/payroll';
 import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
 import { exportIndividualTxnsCsv } from '../core/payroll-view';
 import {
@@ -1228,6 +1233,131 @@ describe('1.2.2 Individual Transaction', () => {
       await setModule(base.tenantId, 'typed_pay_components', null);
       const on = await entitledCtx(base);
       await expect(generatePayslips(on, { batchId: w.batchId })).rejects.toBeInstanceOf(IndividualTxnRequiresTypedComponentsError);
+    });
+
+    /**
+     * ════════════════════════════════════════════════════════════════════════════════════════════════
+     * 0db616f3 (migration 0437) — THE CONSUMED MARKER
+     * ════════════════════════════════════════════════════════════════════════════════════════════════
+     *
+     * MEASURED ON PRODUCTION 2026-08-13: `payroll_individual_txn` carried no column of any kind saying
+     * whether a row had been paid, and the fold's predicate was `batch_id = $1` and nothing else. So a
+     * row moved from one run to another — by a repair, or by an operator re-pointing it — would be paid
+     * a second time with nothing recording that the money had already gone out. That is the class the
+     * import-side duplicate refusal does NOT close, and it is what January was one generation away from.
+     *
+     * The marker names the RUN rather than being a boolean, and these three cases are why.
+     */
+    describe('0db616f3 — a line paid by one run cannot be paid by another', () => {
+      it('the marker is stamped by the run that paid it, and only once it really has', async () => {
+        const w = await setupEmployee();
+        const { ids } = await createIndividualTxnsBulk(w.a, {
+          batchId: w.batchId,
+          employmentIds: [w.employmentId],
+          rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 500, notes: 'Spot award' }],
+        });
+        const before = await owner.db
+          .select()
+          .from(schema.payrollIndividualTxn)
+          .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+        expect(before[0].consumedBatchId).toBeNull(); // a keyed row is not a paid row
+        expect(before[0].consumedAt).toBeNull();
+
+        await generateAndRead(w.batchId);
+        const [after] = await owner.db
+          .select()
+          .from(schema.payrollIndividualTxn)
+          .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+        expect(after.consumedBatchId).toBe(w.batchId);
+        expect(after.consumedAt).not.toBeNull();
+      });
+
+      /**
+       * THE ONE THAT CLOSES THE CLASS. A line paid by the regular run, then re-pointed at a second run of
+       * the same month — the shape the January repair script produces on purpose, and the shape an
+       * operator produces by accident. The second run must pay NOTHING for it.
+       */
+      it('re-pointing a PAID line at a second run of the same month does not pay it again', async () => {
+        await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+        const w = await setupEmployee();
+        const bonusId = await componentIdByCode('BONUS');
+        await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', true);
+        const on = await entitledCtx(base);
+        const { ids } = await createIndividualTxnsBulk(on, {
+          batchId: w.batchId,
+          employmentIds: [w.employmentId],
+          rows: [{ kind: 'earning', componentId: bonusId, txnDate: '2026-05-10', amount: 500, notes: 'Bonus' }],
+        });
+        const { ps: paidOnce } = await generateAndRead(w.batchId);
+        expect(Number(paidOnce.grossPay)).toBeGreaterThan(5000); // the 500 really was paid
+
+        // Now the row is moved to a BONUS run of the same month, exactly as a repair would move it.
+        const [company] = await owner.db
+          .select({ companyId: schema.payrollBatch.companyId })
+          .from(schema.payrollBatch)
+          .where(eq(schema.payrollBatch.id, w.batchId));
+        const multi = await entitledCtx(base);
+        const bonusRun = await createAdditionalRun(multi, {
+          companyId: company.companyId,
+          payPeriod: '2026-05',
+          runType: 'bonus',
+        });
+        await owner.db
+          .update(schema.payrollIndividualTxn)
+          .set({ batchId: bonusRun.batchId })
+          .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+
+        await generatePayslips(multi, { batchId: bonusRun.batchId });
+        const [bonusSlip] = await owner.db
+          .select()
+          .from(schema.payslip)
+          .where(eq(schema.payslip.batchId, bonusRun.batchId));
+        // Before 0437 this payslip carried the 500 a second time. The marker still names the run that
+        // paid it, so the bonus run's fold never saw the row.
+        expect(Number(bonusSlip.grossPay)).toBeCloseTo(0, 2);
+        const [row] = await owner.db
+          .select()
+          .from(schema.payrollIndividualTxn)
+          .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+        expect(row.consumedBatchId).toBe(w.batchId);
+      });
+
+      /**
+       * AND THE HALF THAT MUST STILL WORK. `resetProcessedBatch` exists so a mistake can be corrected and
+       * the month re-run; a boolean marker would have made every one-off row vanish from that re-run, and
+       * an operator correcting a typo would have silently stopped paying someone's overtime.
+       */
+      it('reset → re-generate still pays the line, and the marker is released while the payslips are gone', async () => {
+        const w = await setupEmployee();
+        const { ids } = await createIndividualTxnsBulk(w.a, {
+          batchId: w.batchId,
+          employmentIds: [w.employmentId],
+          rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 500, notes: 'Spot award' }],
+        });
+        const { ps: first } = await generateAndRead(w.batchId);
+
+        // a03b2d9b — reset is behind its own setting, and test/env.ts deletes the env default so every
+        // test that wants it opts in explicitly. Resolved AFTER the write, because a snapshot is
+        // point-in-time and `generateAndRead` above already resolved one for the generation.
+        await setSetting(base.tenantId, 'payroll.reset_enabled', true);
+        const on = await entitledCtx(base);
+        await resetProcessedBatch(on, { batchId: w.batchId, reason: 'correcting a typo' });
+        const [released] = await owner.db
+          .select()
+          .from(schema.payrollIndividualTxn)
+          .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+        // The payslip that justified the marker no longer exists, so neither does the marker.
+        expect(released.consumedBatchId).toBeNull();
+        expect(released.consumedAt).toBeNull();
+
+        const { ps: second } = await generateAndRead(w.batchId);
+        expect(Number(second.grossPay)).toBeCloseTo(Number(first.grossPay), 2);
+        const [reconsumed] = await owner.db
+          .select()
+          .from(schema.payrollIndividualTxn)
+          .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+        expect(reconsumed.consumedBatchId).toBe(w.batchId);
+      });
     });
   });
 });
