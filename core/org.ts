@@ -14,7 +14,7 @@ import { generateEmployeeCode } from './employee-id-config';
 // so the rule cannot live there without a cycle — and two copies of it would let an ID be issued twice.
 import { findEmployeeCodeClaim } from './employee-code-claims';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, composeEntitlement, isA2cFirstYear, isAccrualUnconfigured, isEarnedMethod, leaveTypeRuleColumns } from './leave';
+import { applyMaxBalance, applyRounding, composeEntitlement, hireYearGrantDays, isAccrualUnconfigured, isEarnedMethod, leaveTypeRuleColumns } from './leave';
 // 6e9a126e RELEASE TWO — the entitlement TEMPLATE resolver. Imported from its own module rather than
 // re-exported through core/leave, which core/org.ts already imports: one hop, no cycle either way.
 import { buildTemplateEntitlementResolver } from './entitlement-template';
@@ -371,7 +371,6 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           .from(leaveType)
           .where(inArray(leaveType.id, p.grantLeaveTypes.map((t) => t.id)));
         const typeRulesById = new Map(typeRuleRows.map((r) => [r.id, r]));
-        const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
           // bc36c768 — THE NOT-CONFIGURED GATE, FIRST, before any method resolution. This is the gate that
           // makes the reset safe for NEW JOINERS: a cleared type has no accrual_method, an absent method
@@ -404,11 +403,17 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // A fresh hire has no terminatedOn, so no serviceEnd is passed and it gets the full up-front value;
           // reprojectA2cEntitlement / a profile recalc keep it in sync (and would cap a later leaver at their
           // exit). Non-ANNUAL a2c types keep the existing full grant (s.60F).
-          const grantRaw = isA2cFirstYear(lt.yearCycleOverride, lt.code, p.hiredOn, p.hiredOn)
-            ? a2cFirstYearEntitledToDate(p.hiredOn, p.hiredOn, days)
-            : lt.code === 'ANNUAL'
-              ? Math.round(((days * (12 - (month - 1))) / 12) * 100) / 100
-              : days;
+          //
+          // r193 LIFTED THIS OUT VERBATIM into `hireYearGrantDays` (core/leave.ts) — unchanged in every
+          // branch — because `openLeaveYear` now reaches employments hired during the leave year and must
+          // shape their first year IDENTICALLY or the recalc kernel claws the difference back. One
+          // definition, two callers; see that function's header for the argument.
+          const grantRaw = hireYearGrantDays({
+            days,
+            typeCode: lt.code,
+            yearCycleOverride: lt.yearCycleOverride,
+            hiredOn: p.hiredOn,
+          });
           // Feedback b81d3c52 — Rounding Method: the reporter's own worked example (a 6-Jan joiner whose
           // pro-rated entitlement lands on a fraction). Tidy the CALCULATED figure to a whole day as the
           // FINAL step of the earning calculation and BEFORE the max-balance clamp — the identical point

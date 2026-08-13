@@ -106,8 +106,10 @@ export type EligibilityRuleRow = {
 
 /** What actually decided an employee's days, and why — the shape a screen needs to say "this rule won". */
 export type ResolvedEntitlement = {
-  ruleName: string;
-  ruleLineageId: string;
+  /** The eligibility rule that won — NULL when the leave type had exactly one table in force and no rule
+   *  in force, so there was nothing to choose between and no rule was consulted (r193 fault 3). */
+  ruleName: string | null;
+  ruleLineageId: string | null;
   templateName: string;
   templateLineageId: string;
   serviceBands: ServiceBand[];
@@ -115,6 +117,10 @@ export type ResolvedEntitlement = {
   specificity: number;
   /** Every rule that ALSO matched, most-specific first. A screen shows this so the win is never a guess. */
   alsoMatched: { ruleName: string; specificity: number }[];
+  /** r193 FAULT 3 — this answer came from the leave type's ONLY table in force, with no rule consulted
+   *  because none exists to consult. A screen must say "the only table for this leave type", not name a
+   *  rule that does not exist. False for every rule-decided answer. */
+  viaSoleTemplate: boolean;
 };
 
 // ── Templates ────────────────────────────────────────────────────────────────────────────────────────
@@ -579,6 +585,40 @@ export async function buildTemplateEntitlementResolver(
   const templates = await activeTemplatesAt(tx, p.asOf, typeIds);
   if (templates.size === 0) return empty;
 
+  // ── r193 FAULT 3 — A LEAVE TYPE WITH EXACTLY ONE TABLE AND NO RULE NEEDS NO RULE ────────────────────
+  //
+  // The reporter's words: "the run insists on an eligibility rule even where there is nothing to choose
+  // between". Hospitalization Leave has ONE table in force on their account and no rule anywhere, and the
+  // `ruleRows.length === 0 ⇒ empty` short-circuit below meant it resolved to nothing — so the screen asked
+  // them to configure a rule whose only possible answer was the table they had already written.
+  //
+  // THE GATE IS TWO CONDITIONS, AND THE SECOND ONE IS THE SAFETY ARGUMENT:
+  //   (1) exactly ONE template lineage in force for this leave type on `asOf`, and
+  //   (2) NO eligibility rule in force for that leave type at all.
+  //
+  // (2) is not redundant and must never be dropped. A tenant with one table AND a rule that narrows it to
+  // (say) Executives has deliberately excluded everybody else; "there is only one table so give it to
+  // everyone" would silently reverse that exclusion. Where a rule exists, "not eligible" IS the answer and
+  // this fallback stays out of the way.
+  //
+  // And it is deliberately NOT "pick the first when there are several". Annual Leave has SIXTEEN tables in
+  // force on the reporter's account; picking one of those would be a silent mis-grant, which is worse than
+  // granting nothing. Several tables genuinely need a rule, and that is the separate item 9a65f808.
+  const lineagesByType = new Map<string, EntitlementTemplateRow[]>();
+  for (const t of templates.values()) {
+    const arr = lineagesByType.get(t.leaveTypeId);
+    if (arr) arr.push(t);
+    else lineagesByType.set(t.leaveTypeId, [t]);
+  }
+  const soleCandidates = [...lineagesByType].filter(([, rows]) => rows.length === 1).map(([id]) => id);
+  const ruledTypeIds = soleCandidates.length
+    ? await leaveTypeIdsWithEligibilityRulesAt(tx, p.asOf, soleCandidates)
+    : new Set<string>();
+  const soleTemplateByType = new Map<string, EntitlementTemplateRow>();
+  for (const typeId of soleCandidates) {
+    if (!ruledTypeIds.has(typeId)) soleTemplateByType.set(typeId, lineagesByType.get(typeId)![0]);
+  }
+
   const ruleRows = (
     await tx
       .select()
@@ -595,7 +635,10 @@ export async function buildTemplateEntitlementResolver(
     // table had not been written yet (or had been closed) at that date. Silently resolving it against some
     // OTHER version would be the staleness the lineage design exists to remove.
     .filter((r) => templates.has(r.templateLineageId));
-  if (ruleRows.length === 0) return empty;
+  // r193: `&& soleTemplateByType.size === 0` — a tenant with tables but no rules used to short-circuit to
+  // "nothing configured" HERE, which is the whole of fault 3. It still short-circuits when there is also
+  // nothing unambiguous to apply, so the back-compat guarantee in this function's header is untouched.
+  if (ruleRows.length === 0 && soleTemplateByType.size === 0) return empty;
 
   // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch.
   const matchedByEmp = new Map<string, EligibilityRuleRow[]>();
@@ -611,7 +654,7 @@ export async function buildTemplateEntitlementResolver(
       else matchedByEmp.set(id, [rule]);
     }
   }
-  if (matchedByEmp.size === 0) return empty;
+  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0) return empty;
 
   // Ranked once per (employment, leave type) and memoised — the grant loops ask for the same pair at
   // several service lengths (the anniversary re-resolution in projectExpectedEntitlement asks twice for
@@ -641,7 +684,26 @@ export async function buildTemplateEntitlementResolver(
         alsoMatched: ranked
           .slice(1)
           .map((r) => ({ ruleName: r.name, specificity: orgCriteriaSpecificity(r.criteria) })),
+        viaSoleTemplate: false,
       };
+    }
+    // r193 FAULT 3: no rule decided this pair. If the leave type has exactly one table in force and no
+    // rule in force at all (see the gate above), that table IS the answer — there is nothing else it
+    // could be. A type with several tables, or with any rule, still resolves to null here.
+    if (out === null) {
+      const sole = soleTemplateByType.get(leaveTypeId);
+      if (sole) {
+        out = {
+          ruleName: null,
+          ruleLineageId: null,
+          templateName: sole.name,
+          templateLineageId: sole.lineageId,
+          serviceBands: sole.serviceBands,
+          specificity: 0,
+          alsoMatched: [],
+          viaSoleTemplate: true,
+        };
+      }
     }
     winners.set(key, out);
     return out;
@@ -669,6 +731,12 @@ export async function buildTemplateEntitlementResolver(
  * "a live leave_policy version, or a scheme entitlement row". A type configured ONLY through the new layer
  * would have been skipped entirely — HR would write a table, watch it save, and never see a day of it
  * reach anybody. That is the exact defect those two items were raised for; this is its third limb.
+ *
+ * ⚠️ r193 — THIS IS A POINT-IN-TIME READER AND `openLeaveYear` NO LONGER USES IT. Asking it at 1 January
+ * for a whole leave year is the primary blocker r193 fixed: a table written in August is not in force on
+ * 1 January and the year-open granted nobody anything. Use `templateStartsWithinWindow` above whenever the
+ * question spans a PERIOD. This one is correct only where `asOf` is genuinely the single instant the
+ * caller resolves at — which is `accrueEarnedLeave`, its remaining caller, running at today's date.
  */
 export async function leaveTypeIdsWithTemplatesAt(tx: Tx, asOf: string): Promise<Set<string>> {
   const rows = await tx
@@ -678,6 +746,96 @@ export async function leaveTypeIdsWithTemplatesAt(tx: Tx, asOf: string): Promise
       and(
         lte(entitlementTemplate.validFrom, asOf),
         or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, asOf)),
+      ),
+    );
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
+ * r193 FAULT 1 — WHEN, INSIDE A WINDOW, EACH LEAVE TYPE'S ENTITLEMENT TABLE STARTS APPLYING.
+ *
+ * ⚠️ THIS IS THE FIX FOR ONE OF THE TWO BLOCKERS, and it is worth stating plainly because the symptom
+ * looked like something else entirely. `leaveTypeIdsWithTemplatesAt` below asks "which tables were in
+ * force ON this one date", and `openLeaveYear` asked it at 1 JANUARY. On the reporting account 46 of the
+ * 47 tables in force carry `valid_from >= 2026-08-01`, because that is the day HR built them — so on
+ * 1 January 2026 the answer was a SINGLE leave type (Hospitalization, whose one table is dated
+ * 2026-01-01), and the eight custom types configured in August were never visited by a year-open at all.
+ *
+ * MEASURED, NOT ASSUMED, AND IT CORRECTS THE ROUND'S OWN PLAN: that plan said all 47 carried
+ * `valid_from >= 2026-08-01` and that the set therefore came back EMPTY. It did not — one table predates
+ * the year, and the three statutory standing codes are in the sweep's type list whatever this reader says
+ * (see `openLeaveYear`'s own comment). The net symptom the reporter saw was still "nothing generated",
+ * but for the standing types the cause was the eligibility short-circuit below, not this date.
+ *
+ * So the question changes from a point to a WINDOW: which types have a table in force at ANY point in the
+ * leave year, and FROM WHEN. The value is `max(windowStart, earliest validFrom in force during the
+ * window)` — the date that table actually starts applying, clamped to the window:
+ *
+ *   table valid from 2020-01-01, still open   →  2026-01-01   (in force all year; nothing changes)
+ *   table valid from 2026-08-01, still open   →  2026-08-01   (grants from August, not retroactively)
+ *   table valid to   2026-01-01               →  absent       (half-open [from, to) — gone before the year)
+ *
+ * THE CLAMP IS THE POINT AND IT IS NOT "resolve at today". A leave year opened in December must not
+ * silently grant a table that only started in November as though it had been in force since January.
+ * Pro-rating from that date is the configured earning method's job, not a new rule invented here.
+ *
+ * Absent from the map ⇒ no table in force at any point in the window, which is the same "not configured"
+ * answer the point-in-time reader gave and is still what `openLeaveYear` filters on.
+ */
+export async function templateStartsWithinWindow(
+  tx: Tx,
+  p: { windowStart: string; windowEnd: string; leaveTypeIds?: string[] },
+): Promise<Map<string, string>> {
+  const typeIds = [...new Set((p.leaveTypeIds ?? []).filter(Boolean))];
+  const rows = await tx
+    .select({ leaveTypeId: entitlementTemplate.leaveTypeId, validFrom: entitlementTemplate.validFrom })
+    .from(entitlementTemplate)
+    .where(
+      and(
+        typeIds.length ? inArray(entitlementTemplate.leaveTypeId, typeIds) : undefined,
+        // The version's window [validFrom, validTo) must OVERLAP [windowStart, windowEnd]. Same half-open
+        // comparison `activeTemplatesAt` uses, so "in force" means one thing in this file.
+        lte(entitlementTemplate.validFrom, p.windowEnd),
+        or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, p.windowStart)),
+      ),
+    );
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const start = r.validFrom > p.windowStart ? r.validFrom : p.windowStart;
+    const prev = out.get(r.leaveTypeId);
+    if (prev === undefined || start < prev) out.set(r.leaveTypeId, start);
+  }
+  return out;
+}
+
+/**
+ * r193 FAULT 3's SAFETY CONDITION — which of these leave types have an eligibility rule in force on `asOf`.
+ *
+ * Joined rule → template on the lineage rather than reading a denormalised leave type off the rule: a
+ * rule's leave type IS its template's, and a copy of it is a copy that can disagree (the same argument
+ * `countEligibilityRulesForLeaveType` makes). EVERY version of the lineage is joined, not just the one in
+ * force, because a lineage's leave type never changes and the question here is only "does HR have an
+ * opinion about who gets what for this type" — a rule pointing at a lineage whose current version is
+ * closed is still HR having stated an opinion, and the sole-table fallback must stay out of its way.
+ */
+async function leaveTypeIdsWithEligibilityRulesAt(
+  tx: Tx,
+  asOf: string,
+  leaveTypeIds: string[],
+): Promise<Set<string>> {
+  if (leaveTypeIds.length === 0) return new Set<string>();
+  const rows = await tx
+    .selectDistinct({ id: entitlementTemplate.leaveTypeId })
+    .from(entitlementEligibilityRule)
+    .innerJoin(
+      entitlementTemplate,
+      eq(entitlementTemplate.lineageId, entitlementEligibilityRule.templateLineageId),
+    )
+    .where(
+      and(
+        inArray(entitlementTemplate.leaveTypeId, leaveTypeIds),
+        lte(entitlementEligibilityRule.validFrom, asOf),
+        or(isNull(entitlementEligibilityRule.validTo), gt(entitlementEligibilityRule.validTo, asOf)),
       ),
     );
   return new Set(rows.map((r) => r.id));

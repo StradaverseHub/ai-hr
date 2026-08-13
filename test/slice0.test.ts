@@ -1420,11 +1420,24 @@ describe('Leave year boundary — openLeaveYear', () => {
       grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
     });
     const first = await openLeaveYear(a, { year: 2026 });
-    expect(first.granted).toBe(1); // only the 2025 hire; the Jan-1 hire is in-year
+    expect(first.granted).toBe(1); // only the 2025 hire GRANTS…
+    // ⚠️ r193 CHANGED HOW THE IN-YEAR HIRE IS LEFT ALONE, NOT WHETHER IT IS.
+    //
+    // The sweep used to skip anyone hired on or after 1 January before looking at them at all
+    // (`hiredOn < yearStart`), which is the fault item a9d0a94a was raised for: 18 of the reporting
+    // account's 40 employments joined during the year and could never be granted anything, even when they
+    // had no hire grant to fall back on. It now VISITS them and finds their hire grant — an accrual row
+    // dated inside this leave year is this pair's year-open marker (`yearOpenMarkerCond`) — so it skips
+    // them as `already_open` instead of never seeing them.
+    //
+    // The outcome this case exists to protect is IDENTICAL and is still asserted below: the Jan-1 hire's
+    // grant is not touched, and nobody is granted twice. Only the counter moved, because a skip that is
+    // recorded is now visible where a skip that never happened was not.
+    expect(first.skipped).toBe(1); // …and the in-year hire is SEEN and skipped, not silently passed over
     const vetBalance = await ledgerBalance(vet.employmentId, b.annualLeaveTypeId);
     const second = await openLeaveYear(a, { year: 2026 });
     expect(second.granted).toBe(0);
-    expect(second.skipped).toBe(1);
+    expect(second.skipped).toBe(2); // both, now that the in-year hire is reached
     expect(await ledgerBalance(vet.employmentId, b.annualLeaveTypeId)).toBe(vetBalance);
     expect(await ledgerBalance(jan.employmentId, b.annualLeaveTypeId)).toBe(8); // untouched hire grant
   });

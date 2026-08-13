@@ -442,11 +442,17 @@ export function GenerateForm({
                 <ul className="space-y-0.5 pt-1">
                   {preview.decidedBy.map((d) => (
                     <li key={d.employmentId} className="text-[11px] text-muted-foreground">
-                      {t('generateDecidedByLine', {
-                        rule: d.ruleName,
-                        template: d.templateName,
-                        also: d.alsoMatched,
-                      })}
+                      {/* r193: a NULL rule is not a missing rule — it is a leave type with exactly one
+                          entitlement table and no rule in force, which needs none. Naming a rule that does
+                          not exist (or rendering the word "null") is what made this feel like the product
+                          wanted a second setup. It gets its own sentence instead. */}
+                      {d.ruleName == null
+                        ? t('generateDecidedBySoleLine', { template: d.templateName })
+                        : t('generateDecidedByLine', {
+                            rule: d.ruleName,
+                            template: d.templateName,
+                            also: d.alsoMatched,
+                          })}
                     </li>
                   ))}
                 </ul>
