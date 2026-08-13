@@ -104,15 +104,23 @@ were all added on 2026-08-12/13, each after it cost a real round:
     half moved. **Two tests asserting opposite things are invisible to targeted runs — only the full gate
     sees both.**
 
-19. **A CLEAN AUTO-MERGE OF `messages/*.json` PROVES NOTHING — AUDIT IT BASE-AWARE.** Git merges JSON by
-    LINE and resolves at HUNK granularity, so a branch that edited lines *next to* a key while carrying the
-    base value *for* that key silently wins, reverting the other branch's edit with **no conflict raised**.
-    r191 lost a rewritten `payroll.cp22.monthHint` in all six catalogues this way, and `i18n-check.mjs`
-    passed the whole time — the key was present, parity held, placeholders matched; only the TEXT was stale,
-    and it described a form field the same branch had deleted. **`i18n-check` answers "is the key there?",
-    never "is the value the one someone chose".** After merging two or more branches that touch `messages/`,
-    diff base vs merged vs EVERY side and report RESURRECTED / LOST / CLOBBERED. Same root as the
-    presence-is-a-value trap: consult the base for absence AND for the old value.
+19. **DO NOT INTEGRATE WHILE AGENTS ARE STILL COMMITTING — A MERGED SNAPSHOT GOES STALE SILENTLY.** r191
+    merged seven branches at 13:04 while a resumed workflow was still running; three more commits landed on
+    two of those branches at 13:37–13:44 and **missed the release entirely**, including a real defect fix.
+    Nothing complains: the merge succeeded, the gate was green, and the round looked finished.
+    **A workflow reporting "N workstreams complete" is not the same as its branches being frozen** — a
+    resumed or retried run spawns fresh agents that keep committing. Before merging, and again immediately
+    before the final gate, run `git log --oneline main..<branch>` for EVERY branch and confirm the tip is
+    what you merged. Recording the tip SHA per branch at merge time is what makes that check meaningful.
+19b. **AUDIT MERGED `messages/*.json` BASE-AWARE — but compare against the side you MERGED, not the branch's
+    current HEAD.** `i18n-check.mjs` answers "is the key there?" (parity + placeholders), never "is the value
+    the one someone chose", so a stale VALUE passes it. A base-aware diff (base vs merged vs every side)
+    catches that, and it is what caught r191's stale `payroll.cp22.monthHint` — a hint describing a form
+    field the same round had deleted. **But read the verdict carefully: r191's audit said CLOBBERED and the
+    round wrote it up as a hunk-granularity merge fault, which was WRONG.** Re-checked against the merge
+    commits, the value was the base value at every single merge including that branch's own — the branch had
+    simply moved on since (rule 19). Same root as the presence-is-a-value trap: consult the base for absence
+    AND for the old value — and consult the right side.
 20. **A NEW GUARDED `page.tsx` NEEDS A COLUMN IN THE FUNCTION-ACCESS MATRIX** (`lib/permissions.ts`), or
     `test/function-access.test.ts`'s reverse-completeness case fails — the route becomes a screen nobody can
     grant or revoke. Attach it to an EXISTING screen key where one fits (the screen that links to it) and

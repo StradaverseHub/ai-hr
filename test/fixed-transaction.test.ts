@@ -412,6 +412,28 @@ describe('1.2.1 Fixed Transaction', () => {
     expect(err).toMatchObject({ nextFirstOfMonth: '2026-09-01' });
   });
 
+  // DECEMBER ROLLS OVER TO JANUARY OF THE NEXT YEAR. The suggestion is month arithmetic
+  // (`addMonths(monthOf(iso), 1)`), not a `+1` on a two-digit month, and December is the only month
+  // where those two differ — a naive version suggests "2026-13-01", which is not a date at all and
+  // which every other month in this file would pass over in silence.
+  it('suggests January of the NEXT YEAR when the entered date is in December', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthDecember', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01' });
+    const err = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-12-15', today: '2026-08-13',
+    }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionMidMonthError);
+    expect(err).toMatchObject({ effectiveFrom: '2026-12-15', nextFirstOfMonth: '2027-01-01' });
+    // …and the suggestion it gives is genuinely accepted, which is the only thing that makes a
+    // suggested date worth printing.
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2027-01-01' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
   // An EDIT (updateEmploymentPayComponent → replacesId) is the same aggregate and the same defect:
   // moving an open row's start date into the middle of a month closes it on the 9th and starts the new
   // version on the 10th, and May pays both. `replacesId` exempts a row from the overlap/backwards

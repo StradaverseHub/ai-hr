@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-13 (r185–r191 SHIPPED · NOTHING IN FLIGHT · 6 APPROVED)
+## CURRENT STATE — snapshot 2026-08-13 (r185–r192 SHIPPED · NOTHING IN FLIGHT · 6 APPROVED)
 
 **`main` IS WHAT RUNS ON PRODUCTION, BYTE FOR BYTE** — verified by an `rsync -azi --delete --dry-run`
 that reported **completely empty output**, not by `deploy.sh` succeeding, which is not proof. The code
@@ -107,7 +107,7 @@ flip; raise it rather than leave it as a warning line nobody reads.
 entry below. (That round's `0430`-`0435` and r191's `0436` are all applied — **next free is `0437`**,
 stated once in CURRENT STATE above and not repeated.)
 
-**NOTHING IS IN FLIGHT.** Everything r185–r191 is merged. Prove it independently before trusting this
+**NOTHING IS IN FLIGHT.** Everything r185–r192 is merged. Prove it independently before trusting this
 line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
 
 **⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
@@ -235,6 +235,33 @@ table. Take the figure from the run and show the run's own total beside the form
 `loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
 silently fall back to gross.
 
+### r192 (2026-08-13) — THE THREE COMMITS r191 LEFT BEHIND, AND A CORRECTION TO ITS OWN WRITE-UP
+
+Not a board round: no item changed state. r191 was declared complete while **three commits sat unmerged on
+two of its branches** — a resumed workflow kept committing at 13:37–13:44, half an hour after the
+integration merged those branches at 13:04. Found only because a routine `git for-each-ref refs/heads/build`
+sweep showed `build/r191-cp22` two ahead and `build/r191-midmonth` one ahead of main. **That is now
+AGENTS.md rule 19.**
+
+What shipped here:
+
+- **`723904b1` — a REAL defect on the CP22 review screen.** The preview computed its listed box values from
+  the CORRECTED record but its "this box will not hold its whole value" warning from the BARE one, so a
+  correction that overflows was shown in full and announced nowhere — reachable through the very boxes the
+  reporter asked to have made editable. Cause was two sources of truth: `page.tsx` had INLINED
+  `applyCp22Review`'s body instead of calling it. Fixed to one call feeding both, pinned from both ends
+  (trap 17's shape).
+- **`7f2bc027`** — pins the December→January rollover in `nextFirstOfMonth`; a naive +1 on the month would
+  suggest `2026-13-01` and every other month in the file passes over it in silence.
+- **`b5269a56`** — already live by content: r191's hand-fix set the identical string in all six catalogues.
+
+**AND IT CORRECTS r191'S OWN DIAGNOSIS.** r191 wrote up its stale-translation catch as a hunk-granularity
+merge fault and made a standing order out of it. Re-checked here by reading `messages/en.json` at each of
+the eight merge commits: **the value was main's at every one, including cp22's own merge — nothing reverted
+anything.** The audit had compared the merged tree against a branch HEAD that had moved since. The catch was
+real and the fix was right; the explanation was wrong, and a wrong standing order is worse than none.
+Rule 19 is now the staleness rule; 19b keeps the base-aware audit with the correction attached.
+
 ### r190+r191 (2026-08-13) — ELEVEN ITEMS AS ONE RELEASE, `main@de887a85`, migration `0436`
 
 Built by a 7-workstream Workflow plus r190 carried over. Gate **666 declared / 666 counted / every chunk
@@ -248,16 +275,21 @@ Transaction) · `3ddae357`+`38b94df7` (balances As-at date, searchable picker) �
 THEM.** Seven worktrees, each green on its own targeted tests; the integration found two faults that only
 existed once the branches met:
 
-1. **A MERGE SILENTLY REVERTED A TRANSLATION, AND `i18n-check` CANNOT SEE IT.** Merging the balances
-   branch reverted `payroll.cp22.monthHint` in all six catalogues to main's value. Git resolved at HUNK
-   granularity: balances edited lines adjacent to that key while carrying base content for the key
-   itself, so its side won and **no conflict was raised**. `scripts/i18n-check.mjs` passed throughout —
-   the key was present in every locale, parity held, no placeholder changed; only the TEXT was stale.
-   It mattered because cp22 had also DELETED `branchLabel`/`branchPlaceholder` and rewritten that hint to
-   stop referring to them, so shipping it would have described a "branch you type" field that no longer
-   exists on the screen. **Only a BASE-AWARE audit (base vs merged vs every side) reads a value as
-   CLOBBERED rather than merely present.** This is the same family as the resurrect-a-deleted-key trap
-   and is now AGENTS.md rule 19.
+1. **A STALE TRANSLATION THAT `i18n-check` CANNOT SEE — and the round's own explanation of it was WRONG,
+   corrected in r192.** The shipped `payroll.cp22.monthHint` was main's old value, describing a "branch you
+   type" field the same round had DELETED. `scripts/i18n-check.mjs` passed throughout: the key was present
+   in every locale, parity held, no placeholder changed; only the TEXT was stale. **Only a base-aware audit
+   (base vs merged vs every side) reads a value as stale rather than merely present** — that part stands,
+   and it is why the defect was caught at all.
+
+   **The CAUSE written up at the time — "the balances merge reverted it at hunk granularity" — did not
+   happen.** Re-checked in r192 by reading `messages/en.json` at each of the eight merge commits: the value
+   was main's at *every* one, including `build/r191-cp22`'s own merge. Nothing reverted anything. The real
+   cause is rule 19: the integration merged at 13:04 while a resumed workflow was still running, and the
+   cp22 branch rewrote that hint at 13:37 — so the audit compared the merged tree against a branch HEAD that
+   had MOVED SINCE. The hand-fix applied then is byte-identical to what the branch later committed, so the
+   shipped text was right; only the reasoning was wrong. **Three commits missed r191 entirely because of
+   this, one of them a real defect fix — shipped in r192.**
 2. **A NEW GUARDED PAGE WITH NO MATRIX COLUMN.** cp22 added `/payroll/cp22/[employmentId]/preview` and
    never registered it, so `test/function-access.test.ts`'s reverse-completeness case failed — a guarded
    route nobody can grant or revoke. Registered on the same `scopedAdmin` key as
@@ -1087,10 +1119,10 @@ method or carry-forward is WRONG.**
 
 ---
 
-## NOTHING IS IN FLIGHT — r190 and r191 shipped together as `main@de887a85`
+## NOTHING IS IN FLIGHT — r190+r191 shipped as `de887a85`, r192 as the follow-up that caught what they missed
 
 `main@de887a85` is r185 through r191 and IS deployed (dry-run rsync, 2026-08-13, reporting only the
-box-regenerated gitignored `next-env.d.ts`). Every r185–r191 branch is merged.
+box-regenerated gitignored `next-env.d.ts`). Every r185–r192 branch is merged.
 
 Every remaining unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
 ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route:
