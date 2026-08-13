@@ -41,6 +41,7 @@ import {
   FixedTransactionAmountError,
   FixedTransactionBackwardsError,
   FixedTransactionDateError,
+  FixedTransactionMidMonthError,
   FixedTransactionNotFoundError,
   FixedTransactionOverlapError,
   FixedTransactionPaidError,
@@ -248,20 +249,22 @@ describe('1.2.1 Fixed Transaction', () => {
     expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
   });
 
-  // ⚠️ STILL BROKEN, DELIBERATELY RECORDED — restating an item MID-MONTH still pays it twice.
+  // ───────────────────── a3d485f6: the mid-month restatement, CLOSED ─────────────────────
   //
-  // Closing the prior row the day before the new start is necessary but NOT sufficient. For a restatement
-  // inside the month being paid, the two windows are adjacent (…-05-09 and 05-10-…) and BOTH overlap May,
-  // and the kernel pays each row its FULL amount for any overlap (core/payroll.ts documents that rule
-  // explicitly). So the item pays 777 + 777.
+  // THIS BLOCK WAS AN `it.fails` UNTIL a3d485f6. It recorded, deliberately and in the same idiom this
+  // repo uses for the known width no-op, that closing the prior row the day before the new start is
+  // necessary but NOT sufficient: for a restatement INSIDE the month being paid the two windows are
+  // adjacent (…-05-09 and 05-10-…), both overlap May, and the kernel pays each returned row its FULL
+  // amount — so the item paid 777 + 777. The comment said the gate would go red the moment someone
+  // fixed it, and that fixing it was a design decision belonging to the board. It is now decided: the
+  // writer REFUSES the entry, the kernel is untouched (flipping its gte to gt was rejected in r180 —
+  // it would change what every existing end-dated row pays in its final month), and no existing figure
+  // moves. The assertions below are the same shape, no longer inverted.
   //
-  // Fixing it is a DESIGN DECISION, not a patch: either prorate a partial window by days, or take the
-  // latest row per code per period, or refuse a restatement that lands mid-period. Each changes what
-  // existing correctly-dated rows pay, so it belongs with board item 2f889bae and its owner, not here.
-  //
-  // Recorded with it.fails on purpose (the same idiom this repo uses for the known width no-op): the gate
-  // goes RED the moment someone fixes it, which is the prompt to delete this block and assert 777.
-  it.fails('KNOWN: restating an item mid-month still pays it twice', async () => {
+  // Kept as an `it.fails`-shaped pair on purpose: first that the entry is refused, then — the half that
+  // actually matters and the half whose absence let this class ship — that the MONEY on a generated
+  // payslip is 777 and not 1554.
+  it('refuses a mid-month restatement, and the month pays 777 not 1554', async () => {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
     const e = await hire(a, base, 'MidMonthRestate', '2026-01-01');
@@ -271,11 +274,158 @@ describe('1.2.1 Fixed Transaction', () => {
     const allowId = await codeId(a, 'ALLOWANCE');
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-01-01', prorateOverride: false });
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-05-10', prorateOverride: false });
 
+    // The write that used to produce the second May row. `today` is pinned so the suggested date is a
+    // fixed value rather than a function of when the suite runs; production callers omit it and get the
+    // MYT calendar day (a UTC instant would name YESTERDAY between 00:00 and 08:00 MYT).
+    const err = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-05-10',
+      prorateOverride: false, today: '2026-05-04',
+    }).catch((x) => x);
+    // Identity, not `rejects.toThrow()` — that passes on the WRONG throw, and three other refusals in
+    // this writer would satisfy a message match.
+    expect(err).toBeInstanceOf(FixedTransactionMidMonthError);
+    expect(err).toMatchObject({ code: 'ALLOWANCE', effectiveFrom: '2026-05-10', nextFirstOfMonth: '2026-06-01' });
+
+    // THE MONEY. Row-shape assertions are what let this class ship, so the figure is read off a
+    // generated payslip: the refused write left the table alone, so May pays the one 777 line once.
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(await typedComponentsCtx(base), { batchId });
     expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
+  });
+
+  // The same defect WITHOUT an overlap and WITHOUT a clash: stop the item on the 9th (a legal end date,
+  // and endEmploymentPayComponent is deliberately untouched by a3d485f6), then start the next line on
+  // the 15th. Nothing overlaps, so the 0426 EXCLUDE constraint, the overlap refusal and the backwards
+  // refusal all stay silent — and May pays 777 + 777 all the same. This is why the refusal is scanned
+  // over the calendar MONTH rather than over the clash list.
+  it('refuses a mid-month RESTART after a mid-month stop — no overlap, no clash, still two lines in one month', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthRestart', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-01-01', prorateOverride: false });
+    // Stopping mid-month is still allowed — one row ending mid-month cannot pay anyone twice.
+    await endEmploymentPayComponent(a, { id, employmentId: e.employmentId, effectiveTo: '2026-05-09' });
+    const err = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-05-15', today: '2026-05-04',
+    }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionMidMonthError);
+    // The first of the NEXT month is offered, not the first of the month they typed.
+    expect(err).toMatchObject({ nextFirstOfMonth: '2026-06-01' });
+    // …and the same restart from the first of the next month is accepted.
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-06-01' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  // THE CASE THIS MUST NEVER REFUSE. 24 live rows on production start part-way through a month — mid-month
+  // joiners, earliest 2016-10-04 — and every one of them is paid a full month today. A rule keyed on the
+  // DATE rather than on a surviving sibling would have refused every one of them, and that is a real bill.
+  it('ALLOWS a mid-month FIRST line for a pay item the employee does not already hold (the new-hire case)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthJoiner', '2026-05-16');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  // …and the corollary: those 24 rows must stay CORRECTABLE. Restating one from its own start date
+  // supersedes it outright (supersededAt is set, and the kernel filters on isNull(supersededAt)), so one
+  // row remains and the month pays once — there is nothing to refuse. Refusing it would have made every
+  // mid-month row on production permanently unamendable.
+  it('ALLOWS restating a mid-month line from its OWN start date — the row is superseded, not doubled', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthAmend', '2026-05-16');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-05-16' });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-05-16', prorateOverride: false });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-05-16', prorateOverride: false }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+    // The money confirms it: the corrected amount once, not the old one plus the new one.
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
+  });
+
+  // A first-of-month restatement is the whole point of the refusal's message — it must still work, and
+  // it must still pay once. This is 2f889bae's case re-read through a3d485f6's guard.
+  it('ALLOWS a first-of-month restatement and still pays it once', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'FirstOfMonthRestate', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 400, effectiveFrom: '2026-01-01', prorateOverride: false });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: '2026-05-01', prorateOverride: false });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(777, 2);
+  });
+
+  // A mid-month line whose only live sibling ended in an EARLIER month is not a restatement of anything
+  // that pays this month — the gap is genuine and the write is allowed. Guards the refusal against
+  // becoming "no mid-month dates, ever".
+  it('ALLOWS a mid-month line when the only live sibling ended in an earlier month', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthAfterGap', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01', effectiveTo: '2026-03-31' });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-05-10' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  // The refusal is per PAY ITEM, not per employee: a mid-month line for a DIFFERENT component cannot
+  // double-pay the first one, and two different items in one month is ordinary.
+  it('ALLOWS a mid-month line for a DIFFERENT pay item the employee already holds', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthOtherItem', '2026-01-01');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'ALLOWANCE'), amount: 300, effectiveFrom: '2026-01-01' });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await codeId(a, 'BASIC'), amount: 1000, effectiveFrom: '2026-05-10' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  // The suggested date never points backwards. Entering a date in a month that has already passed still
+  // yields a first-of-month the operator can adopt going forward, computed off the MYT calendar day.
+  it('suggests a first-of-month that has not already gone by', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthBackdated', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01' });
+    const err = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-05-10', today: '2026-08-13',
+    }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionMidMonthError);
+    expect(err).toMatchObject({ nextFirstOfMonth: '2026-09-01' });
+  });
+
+  // An EDIT (updateEmploymentPayComponent → replacesId) is the same aggregate and the same defect:
+  // moving an open row's start date into the middle of a month closes it on the 9th and starts the new
+  // version on the 10th, and May pays both. `replacesId` exempts a row from the overlap/backwards
+  // refusals — it must NOT exempt it from this one.
+  it('refuses an EDIT that moves an item to a mid-month start', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'MidMonthEdit', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01' });
+    const err = await updateEmploymentPayComponent(a, {
+      id, employmentId: e.employmentId, amount: 500, effectiveFrom: '2026-05-10',
+    }).catch((x) => x);
+    expect(err).toBeInstanceOf(FixedTransactionMidMonthError);
   });
 
   it('restating an item from its OWN start date supersedes it rather than inverting the window', async () => {
