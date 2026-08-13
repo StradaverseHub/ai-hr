@@ -103,7 +103,7 @@ export type ReportSubmission = {
  * against. So every entry declares its fidelity, the card renders it, and the button has to match:
  *
  *   `official`   — the agency's own published artwork, filled from payroll. Today: `my.cp22` and
- *                  NOTHING else (public/forms/cp22-pin-1-2020.pdf, mapped in lib/cp22-fields.ts).
+ *                  NOTHING else (public/forms/cp22-pin-1-2021.pdf, mapped in lib/cp22-fields.ts).
  *   `figures`    — every number the form needs, complete, in OUR layout rather than the agency's page.
  *   `draft-file` — built to the layout an agency publishes for portal upload, never yet accepted BY
  *                  that portal, so it stays marked draft until it has been.
@@ -1096,9 +1096,13 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // the blank fillable CP22. The per-joiner document hangs off the worklist ROWS, not off this shelf entry.
   //
   // 587ee719 — `fidelity: 'official'` HERE AND NOWHERE ELSE. CP22 is the only form in this catalog drawn
-  // on the agency's own published page (public/forms/cp22-pin-1-2020.pdf; 33 areas mapped in
-  // lib/cp22-fields.ts, 26 pre-filled and 7 left blank by design). A second `official` in this catalog is
-  // a test failure, deliberately: it is the claim that costs the most if it is untrue.
+  // on the agency's own published page (public/forms/cp22-pin-1-2021.pdf; 53 areas mapped in
+  // lib/cp22-fields.ts, 38 pre-filled and 15 left blank by design). A second `official` in this catalog
+  // is a test failure, deliberately: it is the claim that costs the most if it is untrue.
+  //
+  // 88076362 — the edition changed under this entry and the entry did not: LHDN superseded Pin. 1/2020
+  // with the two-page [Pin.1/2021], so `official` now means THAT page. The shelf position, the fidelity
+  // and the assertion that it is the only 'official' row are all unchanged.
   {
     id: 'my.cp22',
     labelKey: 'link_cp22',
