@@ -17,6 +17,9 @@ import {
 } from '../../db/schema';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
+// 8ca344bf — Borang 8A's read lives in its own file (it needs hire/termination dates and the employer
+// header, which no other report on this shelf reads) but registers here like every other form.
+import { borang8AReport } from './borang-8a';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
 export type ReportRow = Record<string, string | number | null>;
@@ -35,6 +38,20 @@ export type ReportResult = {
     summary?: { label: string; value: string | number }[];
     /** Caveats for this report (e.g. fields the payroll system does not track). */
     notes?: string[];
+    /**
+     * 8ca344bf — the header values a FORM RENDERER needs and a TABLE has no column for.
+     *
+     * A Borang 8A carries an employer code, a MyCoID, an employer address, a contribution month and a
+     * payment deadline. None of those is a per-employee column, and none of them belongs in `summary`,
+     * which is headline COUNTS the screen prints in tiles. Optional and untyped-by-key on purpose: the
+     * kernel must not learn one jurisdiction's form fields, so the key list is owned by the renderer
+     * (lib/borang-8a.ts BORANG_8A_HEADER_KEYS) and pinned across both halves in test/borang-8a.test.ts.
+     *
+     * Values are SCALAR strings — a multi-line address is joined with '\n' and split back by the
+     * renderer — so this stays a flat, serialisable blob that crosses the server/client boundary
+     * exactly like the rest of `meta`.
+     */
+    formHeader?: Record<string, string>;
   };
 };
 export type ReportParams = { companyId: string; periodKey: string };
@@ -108,10 +125,24 @@ export type ReportSubmission = {
  *   `draft-file` — built to the layout an agency publishes for portal upload, never yet accepted BY
  *                  that portal, so it stays marked draft until it has been.
  *
- * A fourth status, "not built yet", is deliberately NOT in this union: it belongs to `PlannedFormDef`,
+ * 8ca344bf ADDS A FOURTH, AND IT SITS BETWEEN `official` AND `figures`:
+ *
+ *   `agency-layout` — the AGENCY'S OWN LAYOUT, drawn by us, because the agency publishes no blank page
+ *                     to print onto. Every box, column and heading is where the agency's form puts it,
+ *                     but the paper is ours.
+ *
+ * WHY IT HAD TO EXIST RATHER THAN REUSING EITHER NEIGHBOUR. `official` is a claim about GOVERNMENT
+ * ARTWORK and is `my.cp22`'s alone — the specimen Borang 8A we built against is another payroll vendor's
+ * DevExpress output, not a PERKESO page, and PERKESO publishes no blank one; claiming `official` for it
+ * would be the exact untrue claim this whole vocabulary exists to prevent. `figures` is equally wrong in
+ * the other direction: its hint says "laid out our way, not on the agency's own document", and a Borang
+ * 8A drawn line for line to the agency's form is not laid out our way. Two forms share this value — this
+ * one and the EPF Borang A that follows it — so the union gains exactly one member for the pair.
+ *
+ * A fifth status, "not built yet", is deliberately NOT in this union: it belongs to `PlannedFormDef`,
  * which has no href and no action key at all, so the type itself makes an action impossible.
  */
-export type FormFidelity = 'official' | 'figures' | 'draft-file';
+export type FormFidelity = 'official' | 'agency-layout' | 'figures' | 'draft-file';
 
 /** What comes out of a form, for the chips on its card. `file` is the agency upload file (draft). */
 export type FormOutput = 'pdf' | 'xlsx' | 'csv' | 'print' | 'file';
@@ -1013,6 +1044,27 @@ export const MY_REPORTS: ReportDef[] = [
   { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis,
     descriptionKey: 'desc_socso_eis', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 1,
     submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
+  // 8ca344bf — BORANG 8A, built. It LEFT MY_PLANNED_FORMS and joined this list at the same shelfOrder 2 it
+  // held there, which is the migration path `PlannedFormDef` was designed for: the shelf is unchanged, the
+  // card simply stops saying "not built yet" and grows an action.
+  //
+  // A SECOND PERKESO ENTRY, AND NOT A CONTRADICTION OF `my.socso-eis` ABOVE. That one is the COMBINED
+  // SOCSO + EIS listing that goes up through ASSIST — one filing, one shelf, and it keeps its honest name.
+  // This is a different document: PERKESO's own monthly contribution SCHEDULE, one SOCSO figure per person,
+  // and it is emphatically not produced by relabelling the listing above.
+  //
+  // `dueDayOfNextMonth: null` IS DELIBERATE AND IS NOT AN OVERSIGHT. This form's deadline is the LAST DAY
+  // OF THE CONTRIBUTION MONTH ITSELF, which `submissionDueFor` — which models "day N of the month AFTER the
+  // period" and nothing else — cannot express. Writing 15 here would print the ASSIST deadline on a form
+  // whose own deadline is two weeks earlier, and an invented statutory date is worse than an absent one
+  // because somebody files against it. The real deadline is computed by `paymentDueDateFor` and printed ON
+  // THE FORM, which is where the reporter's own specimen carries it.
+  //
+  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
+  // vendor's DevExpress output and PERKESO publishes no blank page.
+  { id: 'my.borang-8a', label: 'Borang 8A — monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borang8AReport,
+    descriptionKey: 'desc_borang_8a', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 2,
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: null } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
   //
   // ONE GENERATOR, TWO CATALOG ENTRIES. `cp8d` returns the Form E Part A headcounts (meta.summary, via
@@ -1142,7 +1194,9 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
 export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   { id: 'epf.borang-a', labelKey: 'planned_epf_borang_a', hintKey: 'planned_epf_borang_a_hint', body: 'epf', cadence: 'monthly', shelfOrder: 2 },
   { id: 'epf.borang-bbcb', labelKey: 'planned_epf_borang_bbcb', hintKey: 'planned_epf_borang_bbcb_hint', body: 'epf', cadence: 'monthly', shelfOrder: 3 },
-  { id: 'perkeso.borang-8a', labelKey: 'planned_perkeso_borang_8a', hintKey: 'planned_perkeso_borang_8a_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 2 },
+  // 8ca344bf — `perkeso.borang-8a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list
+  // and joined MY_REPORTS at the same shelfOrder 2, which is exactly the path this type's doc-comment
+  // describes. Its two message keys went with it; the shelf and this screen were not touched.
   { id: 'perkeso.borang-8b', labelKey: 'planned_perkeso_borang_8b', hintKey: 'planned_perkeso_borang_8b_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 3 },
   { id: 'perkeso.sip', labelKey: 'planned_perkeso_sip', hintKey: 'planned_perkeso_sip_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 4 },
   { id: 'perkeso.employee-registration', labelKey: 'planned_perkeso_employee_registration', hintKey: 'planned_perkeso_employee_registration_hint', body: 'perkeso', cadence: 'event', shelfOrder: 5 },

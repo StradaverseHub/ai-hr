@@ -48,16 +48,20 @@ const EA_LANGS = ['en', 'ms'] as const;
 type EaLang = (typeof EA_LANGS)[number];
 const FIDELITY_KEY: Record<string, string> = {
   official: 'fidelity_official',
+  // 8ca344bf — the agency's own layout, drawn by us because the agency publishes no blank page.
+  'agency-layout': 'fidelity_agency_layout',
   figures: 'fidelity_figures',
   'draft-file': 'fidelity_draft_file',
 };
 const FIDELITY_HINT_KEY: Record<string, string> = {
   official: 'fidelity_official_hint',
+  'agency-layout': 'fidelity_agency_layout_hint',
   figures: 'fidelity_figures_hint',
   'draft-file': 'fidelity_draft_file_hint',
 };
 const FIDELITY_CLS: Record<string, string> = {
   official: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+  'agency-layout': 'border-teal-300 bg-teal-50 text-teal-800 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300',
   figures: 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300',
   'draft-file': 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
 };
@@ -298,6 +302,20 @@ export default async function StatutoryFormPage({
                   title={t('socsoEisDownloadTitle')}
                 >
                   ⬇ {t('socsoEisDownloadLabel')}
+                </a>
+              )}
+              {/* 8ca344bf — the DOCUMENT, one press further on. This screen is the figures; the review
+                  screen is where a status is typed against a row and where the drawn form and its plain-text
+                  twin are downloaded from. Deliberately NOT gated on `ready`: the review screen's whole job
+                  is to NAME whoever is missing an identity card number, which it cannot do if you cannot
+                  reach it. The downloads themselves are gated, on that screen AND in the routes. */}
+              {formId === 'my.borang-8a' && (
+                <a
+                  href={`/payroll/borang-8a/preview?companyId=${encodeURIComponent(companyId)}&periodKey=${encodeURIComponent(periodKey)}`}
+                  className={outBtn}
+                  title={t('borang8aReviewTitle')}
+                >
+                  {t('borang8aReview')}
                 </a>
               )}
               <a href={exportHref('pdf')} className={outBtn}>
