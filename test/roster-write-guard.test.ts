@@ -20,12 +20,20 @@
  *
  * 42afb2d2, 2026-08-12 — "app.can_admin_employment rejected every one of them" WOULD HAVE BEEN WRONG,
  * and the earlier draft of this header said it. roster_assignment_rls is ONE `FOR ALL` policy: its
- * WITH CHECK (can_admin_employment) governs INSERT and the new row of an UPDATE, but a DELETE is checked
+ * WITH CHECK (can_admin_employment) governs INSERT and the new row of an UPDATE, but a DELETE was checked
  * against USING alone (can_see_employment), which a supervisor and the employee themselves both pass.
  * Measured as ai_hr_app in a rolled-back transaction against a real active reporting line: INSERT 42501,
- * UPDATE 42501, DELETE 1. So of the three brushes below, `clear` is the ONLY one whose refusal is
- * produced by `assertRosterAdmin` rather than doubled by the database — delete that guard and the other
- * two still fail on RLS while `clear` quietly succeeds. See the note on core/roster.ts's `clearRoster`.
+ * UPDATE 42501, DELETE 1. So of the three brushes below, `clear` was the ONLY one whose refusal was
+ * produced by `assertRosterAdmin` rather than doubled by the database.
+ *
+ * 154865f4, 2026-08-13 — THAT GAP IS NOW CLOSED, and this file did not need to change for it.
+ * `0436_roster_assignment_delete_guard.sql` adds a RESTRICTIVE FOR DELETE policy, so the database
+ * refuses all three verbs; test/roster-delete-rls.test.ts holds the matrix and the watched-fail.
+ * `assertRosterAdmin` is now belt over a brace for `clear` as it always was for the other two — and it
+ * stays, because the database's DELETE refusal is SILENT (a restrictive USING clause filters rather
+ * than raising: zero rows removed, no error), so without this guard a supervisor would be told the
+ * removal worked. Everything asserted below is unchanged and still measures the guard, not the policy.
+ * See the note on core/roster.ts's `clearRoster`.
  *
  * WATCHED-FAIL (recorded, not assumed): with `assertRosterAdmin` removed from core/roster.ts and from
  * the five actions, the first describe below still passes — the database still refuses — and every
@@ -147,7 +155,7 @@ describe('why the guard exists — the database refuses, in its own words', () =
     // The unguarded call the five actions used to make. Nothing here is being fixed — this is the
     // measurement that makes the rest of the file necessary, and it must keep passing: where RLS stops
     // refusing, the application guard becomes the only thing standing between a supervisor and the
-    // roster. For DELETE that is already true today (see the 42afb2d2 note in the header).
+    // roster. For DELETE that was literally true until 154865f4 (see the note in the header).
     const err = await assignShift(supervisor, { employmentId, shiftDate: FUTURE, shiftId }).catch((e: unknown) => e);
     expect(err, 'RLS must refuse a supervisor outright').toBeInstanceOf(Error);
     const chain = flatten(err);
@@ -167,8 +175,11 @@ describe('why the guard exists — the database refuses, in its own words', () =
 });
 
 describe('the five roster writes refuse a supervisor IN THE SERVER (23390097)', () => {
-  // `clear` is the load-bearing one: it ends in a DELETE, and RLS does not refuse a supervisor a DELETE
-  // (42afb2d2, header). The other two brushes would still fail on 42501 with the guard removed.
+  // `clear` was the load-bearing one: it ends in a DELETE, which RLS did not refuse a supervisor until
+  // 154865f4 (42afb2d2 → 0436, header). It still is the load-bearing one, for a second reason: the
+  // database's delete refusal is silent, so this guard is what makes it a MESSAGE. The other two
+  // brushes would fail on 42501 with the guard removed; `clear` would report a success that removed
+  // nothing.
   it('assignCellAction — a shift, a rest day and a clear are all refused, readably', async () => {
     for (const brush of [shiftId, 'rest', 'clear']) {
       const seen = await whatTheUserSees(() => assignCellAction({ employmentId, shiftDate: FUTURE, brush }));

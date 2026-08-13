@@ -1,0 +1,45 @@
+-- 154865f4 — ROSTER: REMOVING A SHIFT IS NOT PROTECTED LIKE ADDING OR CHANGING ONE.
+--
+-- THE GAP, MEASURED (42afb2d2, 2026-08-12; re-verified 2026-08-13 before this migration was written).
+-- `roster_assignment_rls` (0075_shift_roster.sql:51-53) is a single FOR ALL policy:
+--     USING      (tenant_id = app.current_tenant_id() AND app.can_see_employment(employment_id))
+--     WITH CHECK (tenant_id = app.current_tenant_id() AND app.can_admin_employment(employment_id))
+-- Postgres applies WITH CHECK to INSERT and to the NEW row of an UPDATE only. A DELETE is checked
+-- against USING ALONE — i.e. `app.can_see_employment`, which the subject's administrative manager AND
+-- the employee themselves both pass. Measured on a disposable database as `ai_hr_app` (NOBYPASSRLS)
+-- inside a rolled-back transaction, with a real active administrative reporting line: the same manager
+-- session that gets 42501 for an INSERT and for a constraint-valid UPDATE of a FUTURE-dated row of a
+-- direct report gets `DELETE 1` for the delete of that same row. Future-dated or past-dated makes no
+-- difference — the storage layer carries no date rule either. The employee's own roster day likewise
+-- deletes under a plain `employee` grant. Negative control: the same employee against a row they cannot
+-- see gets `DELETE 0`, silently filtered rather than refused, which is what USING does.
+--
+-- NO LIVE EXPOSURE TODAY — re-verified 2026-08-13, caller by caller, not assumed. `clearRoster`
+-- (core/roster.ts) is the ONLY DELETE against this table anywhere in the product, and every caller
+-- asks the administrator question first: app/roster/actions.ts `assignCellAction` and `bulkAssignAction`
+-- both call `assertRosterAdmin`, core/roster.ts `assignRosterRow` calls it before the loop, and the
+-- upload path (core/roster-import.ts) is reached only through app/roster/import/actions.ts, whose two
+-- actions and whose page are `requireAdmin`. So this closes a FORWARD-LOOKING gap: any future screen,
+-- import or bulk tool that removes shifts would inherit the protection for add and change automatically
+-- and would silently NOT inherit it for remove.
+--
+-- THE FIX, and why RESTRICTIVE. A RESTRICTIVE policy is AND'ed with the permissive ones rather than
+-- OR'ed with them, so this adds a requirement to DELETE and changes nothing else: the FOR ALL policy is
+-- untouched, and reads stay `can_see_employment` so supervisors and employees keep SEEING the roster.
+-- Narrowing that USING clause to `can_admin_employment` instead would have been a visible behaviour
+-- change and is explicitly not what this asks for. Same shape and same reasoning as
+-- `compensation_delete_admin` (0277_compensation_delete_guard.sql:11), `leave_year_config_delete_admin`
+-- (0282) and `toil_accrual_delete_admin_only` (0314) — all shipped BEFORE any delete path existed.
+--
+-- NO GRANT IS OWED: this creates no object ai_hr_app needs privileges on. The table's
+-- SELECT/INSERT/UPDATE/DELETE grants were issued in 0075 and are unchanged.
+--
+-- NO DATA PRECONDITION. This is a pure DDL policy addition; it reads no rows and depends on none, so it
+-- cannot abort on the state of production data (the failure mode `gate:shadow` structurally cannot see,
+-- because it dumps schema only). Nothing needs to be backfilled and no script needs to run after deploy.
+--
+-- MIGRATIONS ARE NOT AFFECTED BY IT. `roster_assignment` is ENABLE (not FORCE) row level security, and
+-- migrations connect as the table OWNER, which bypasses RLS — the convention documented at
+-- 0059_ai_provider_config_rls.sql. DO NOT ADD FORCE ROW LEVEL SECURITY to this table.
+CREATE POLICY roster_assignment_delete_admin ON roster_assignment AS RESTRICTIVE FOR DELETE
+  USING (tenant_id = app.current_tenant_id() AND app.can_admin_employment(employment_id));
