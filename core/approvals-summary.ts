@@ -16,7 +16,8 @@
  *     them, just with disabled actions).
  * Status mapping per category:
  *   - leave: native approved / rejected / cancelled.
- *   - leave cancellation, travel, profile changes: approved / rejected only → cancelled renders a dash.
+ *   - leave cancellation, replacement leave, travel, profile changes: approved / rejected only → cancelled
+ *     renders a dash.
  *   - corrections: split Attendance vs Overtime by the ONE shared isOvertimeCorrection predicate;
  *     approved / rejected only.
  *   - claim: 'paid' folds into approved (a paid claim was approved first); has a real cancelled bucket.
@@ -38,6 +39,7 @@ import {
   leaveCancellationRequest,
   leaveRequest,
   profileChangeRequest,
+  replacementLeaveRequest,
   resignationRequest,
   travelRequest,
 } from '../db/schema';
@@ -159,6 +161,25 @@ async function profileChangeCounts(
   return { approved: m.get('approved') ?? 0, rejected: m.get('rejected') ?? 0, cancelled: null };
 }
 
+/**
+ * 5ff7daff — replacement leave. approved / rejected only (the table has no cancelled state), scoped by
+ * company exactly like its pending list, and INCLUDING the viewer's own rows for the same reason the leave
+ * bucket does: that queue renders them, just with the buttons replaced by "Your request".
+ */
+async function replacementLeaveCounts(
+  tx: Tx,
+  scopeIds: string[] | undefined,
+): Promise<DecidedStatusCounts> {
+  const rows = await tx
+    .select({ status: replacementLeaveRequest.status, count })
+    .from(replacementLeaveRequest)
+    .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
+    .where(companyScope(scopeIds))
+    .groupBy(replacementLeaveRequest.status);
+  const m = toMap(rows);
+  return { approved: m.get('approved') ?? 0, rejected: m.get('rejected') ?? 0, cancelled: null };
+}
+
 async function resignationCounts(tx: Tx): Promise<DecidedStatusCounts> {
   const rows = await tx
     .select({ status: resignationRequest.status, count })
@@ -184,6 +205,8 @@ export async function decidedStatusCounts(
         return leaveCounts(tx, scopeIds);
       case 'leaveCancellation':
         return cancellationCounts(tx, ctx, scopeIds);
+      case 'replacementLeave':
+        return replacementLeaveCounts(tx, scopeIds);
       case 'attendance':
         return (await correctionCounts(tx, scopeIds)).attendance;
       case 'overtime':
@@ -204,6 +227,7 @@ export async function decidedStatusCounts(
         const parts: DecidedStatusCounts[] = [
           await leaveCounts(tx, scopeIds),
           await cancellationCounts(tx, ctx, scopeIds),
+          await replacementLeaveCounts(tx, scopeIds),
           ...(Object.values(await correctionCounts(tx, scopeIds)) as DecidedStatusCounts[]),
           await claimCounts(tx),
           await travelCounts(tx, ctx, scopeIds),

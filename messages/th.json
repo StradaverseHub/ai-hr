@@ -1864,14 +1864,20 @@
           "number": "จำนวน",
           "unit": "หน่วย",
           "approvalDate": "วันที่อนุมัติ",
-          "expiredDate": "วันที่หมดอายุ"
+          "expiredDate": "วันที่หมดอายุ",
+          "remaining": "คงเหลือ"
         },
         "unitDay": "วัน",
         "unitHour": "ชั่วโมง",
         "statusTaken": "ใช้แล้ว",
         "statusExpired": "หมดอายุ",
         "statusConverted": "จ่ายเป็นเงินแล้ว",
-        "statusPartlyUsed": "ใช้บางส่วน"
+        "statusPartlyUsed": "ใช้บางส่วน",
+        "pendingLabel": "วันลาชดเชยที่รออนุมัติ",
+        "pendingHint": "รอหัวหน้างานอนุมัติ",
+        "approvedLabel": "วันลาชดเชย",
+        "approvedHint": "อนุมัติแล้วและพร้อมใช้งาน",
+        "cardPending": "{days} รออนุมัติ"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "รอดำเนินการ",
     "summaryApproved": "อนุมัติแล้ว",
     "summaryRejected": "ปฏิเสธแล้ว",
-    "summaryCancelled": "ยกเลิกแล้ว"
+    "summaryCancelled": "ยกเลิกแล้ว",
+    "replacementLeaveTitle": "คำขอวันลาชดเชย",
+    "noPendingReplacement": "ไม่มีคำขอวันลาชดเชยที่รออนุมัติ",
+    "replacementDatesWorked": "วันที่ทำงาน",
+    "replacementApproved": "อนุมัติวันลาชดเชยแล้ว",
+    "replacementRejected": "ปฏิเสธวันลาชดเชยแล้ว"
   },
   "performance": {
     "list": {
@@ -5980,7 +5991,8 @@
         "number": "จำนวน",
         "unit": "หน่วย",
         "approvalDate": "วันที่อนุมัติ",
-        "expiredDate": "วันที่หมดอายุ"
+        "expiredDate": "วันที่หมดอายุ",
+        "remaining": "คงเหลือ"
       },
       "dayTypeInclusion": {
         "sectionTitle": "การนับประเภทวัน",

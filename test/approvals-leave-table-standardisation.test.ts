@@ -62,14 +62,22 @@ function approvalsLeaveSection(): string {
   return approvals.slice(from, to);
 }
 
-/** The Approval Items leave-CANCELLATION section only — from its Card marker to the claims section that
- *  follows it. r80 brought this queue onto the same shared cells; before that it was still rendering the
- *  pre-r77 bare name + plain type text directly beneath the restyled request table. */
+/** The Approval Items leave-CANCELLATION section only — from its Card marker to the START OF WHATEVER
+ *  SECTION FOLLOWS IT. r80 brought this queue onto the same shared cells; before that it was still
+ *  rendering the pre-r77 bare name + plain type text directly beneath the restyled request table.
+ *
+ *  5ff7daff: the end marker used to be the literal `t('claims')`, which quietly assumed the claims section
+ *  came next. When the replacement-leave queue was inserted between them this slice swallowed it whole and
+ *  the column guard below failed with SIX extra headings — a red test reporting a defect that did not
+ *  exist, in a table nothing had touched. Ending at the next `<SectionHeader` instead asks the real
+ *  question ("where does this section stop?") and survives the next insertion too. */
 function approvalsCancellationSection(): string {
   const from = approvals.indexOf('APPROVAL_SECTION_ID.leaveCancellation');
-  const to = approvals.indexOf("t('claims')");
   expect(from, 'approvals leave-cancellation section start marker').toBeGreaterThan(-1);
-  expect(to, 'approvals claims section marker (cancellation section end)').toBeGreaterThan(from);
+  const ownHeader = approvals.indexOf('<SectionHeader', from);
+  expect(ownHeader, 'the cancellation section renders a SectionHeader').toBeGreaterThan(from);
+  const to = approvals.indexOf('<SectionHeader', ownHeader + 1);
+  expect(to, 'a section follows the cancellation queue (its end marker)').toBeGreaterThan(ownHeader);
   return approvals.slice(from, to);
 }
 

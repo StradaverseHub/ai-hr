@@ -15,7 +15,7 @@ import {
   replacementLeaveLedger,
 } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
-import { essViewHasAnyVisibleRow, isReplacementLeaveCode } from '@/core/ess-view';
+import { essViewHasAnyVisibleRow, isReplacementLeaveType } from '@/core/ess-view';
 import { Card, PageHeader } from '@/components/ui';
 // 388e53c2 — the Employee Details listing, its left-side rail, its filter panel and the People status
 // vocabulary all LEFT this page with the HR-admin inquiry surface. They live on app/leave/tracker/page.tsx
@@ -32,7 +32,7 @@ import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
 // read that decides whether to offer it, and the action it posts to.
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
-import { replacementRequestAvailability } from '@/packs/leave/service';
+import { listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
@@ -293,8 +293,21 @@ export default async function LeavePage({
   // ONE EXTRA READ, AND ONLY WHEN IT IS RENDERED. Loaded only when the employee actually has a visible
   // REPLACEMENT card (ESS surface + a primary-placed type whose code is REPLACEMENT), so an admin page load
   // and every tenant without the module pay nothing for it. Nothing else on this page changes shape.
-  const replacementBalance = ess ? selfBalances.find((b) => b.placement === 'primary' && isReplacementLeaveCode(b.code)) : undefined;
+  //
+  // 5ff7daff: matched BY ROLE, with the seeded code as the fallback. The code-only match was reading a
+  // tenant's catalogue against the code the SEED writes, and production's own replacement type is coded
+  // `RL` — so on the tenant that asked for this feature the customer's own card never matched, and the
+  // panel opened on an auto-created duplicate instead. Same fix, same precedence, as `leaveTypeIs`.
+  const replacementBalance = ess ? selfBalances.find((b) => b.placement === 'primary' && isReplacementLeaveType(b)) : undefined;
   const replacementLedger = replacementBalance && me ? await replacementLeaveLedger(session, me.employmentId) : null;
+  // 5ff7daff — THE EMPLOYEE'S OWN PENDING CLAIMS. `listReplacementLeaveRequests` had no UI caller either,
+  // so once an employee pressed Submit nothing on My Leave acknowledged the request existed. Summed over
+  // `pending` rows only: an approved request has already become a credit on the ledger above, and counting
+  // it in both places would double it. Loaded on exactly the same condition as the ledger, so a page
+  // without a Replacement Leave card still pays nothing.
+  const replacementRequests = replacementBalance && me ? await listReplacementLeaveRequests(session, me.employmentId) : [];
+  const replacementPendingDays =
+    Math.round(replacementRequests.filter((r) => r.status === 'pending').reduce((sum, r) => sum + r.totalDays, 0) * 100) / 100;
 
   const primaryCards: LeaveCardEntry[] = selfBalances
     .filter((b) => b.placement === 'primary')
@@ -312,13 +325,16 @@ export default async function LeavePage({
       // breakdown read every other card uses; for a REPLACEMENT type core/read resolves them over the five
       // column keys instead of the nine summary keys, so heading and wording are always keyed alike.
       replacement:
-        replacementLedger && isReplacementLeaveCode(b.code)
+        replacementLedger && isReplacementLeaveType(b)
           ? {
               rows: replacementLedger.rows,
               leaveUnit: replacementLedger.leaveUnit,
               explanations: breakdownByType.get(b.leaveTypeId)?.formulaExplanations ?? {},
+              pendingDays: replacementPendingDays,
             }
           : null,
+      // The card's own "waiting on your line manager" line. Undefined on every other type.
+      pendingInLieu: replacementLedger && isReplacementLeaveType(b) ? replacementPendingDays : undefined,
     }));
   // Canonical PRIMARY_CODES order first (Annual, Medical, Hospitalisation, Emergency, Replacement), then
   // any other HR-promoted primaries alphabetically — same reading order the /me tab had.

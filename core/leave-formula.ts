@@ -34,6 +34,7 @@ import {
   ESS_VIEW_COMPONENT_KEYS,
   essViewKeysForCode,
   isEssViewComponentKeyForCode,
+  type LeaveTypeRef,
   type EssViewComponentKey,
 } from './ess-view';
 
@@ -78,25 +79,27 @@ export function isLeaveExplanationKey(k: string): k is LeaveExplanationKey {
 // asserted per type instead of once globally, which is the only way it can stay true when two types render
 // different things. LEAVE_EXPLANATION_KEYS === ESS_VIEW_COMPONENT_KEYS still holds and is still pinned.
 
-/** The explanation keys for ONE leave type: the five Replacement Leave columns, or the nine summary items. */
-export function leaveExplanationKeysForCode(code: string | null | undefined): readonly string[] {
-  return essViewKeysForCode(code);
+/** The explanation keys for ONE leave type: the six Replacement Leave columns, or the nine summary items.
+ *  5ff7daff: takes the same `LeaveTypeRef` as the ess-view side — a leave-type ROW (role-aware) or a bare
+ *  code — so a tenant whose replacement type is coded `RL` annotates its columns, not the nine. */
+export function leaveExplanationKeysForCode(ref: LeaveTypeRef): readonly string[] {
+  return essViewKeysForCode(ref);
 }
 
 /** True when `k` may carry an explanation FOR THIS LEAVE TYPE. */
-export function isLeaveExplanationKeyForCode(code: string | null | undefined, k: string): boolean {
-  return isEssViewComponentKeyForCode(code, k);
+export function isLeaveExplanationKeyForCode(ref: LeaveTypeRef, k: string): boolean {
+  return isEssViewComponentKeyForCode(ref, k);
 }
 
 /** Resolve a stored config over ONE leave type's key set. Same semantics as `resolveLeaveFormula` (missing
  *  or all-blank ⇒ null, unknown stored keys ignored) — this is what the render sites call once they know
  *  which panel they are drawing. */
 export function resolveLeaveFormulaForCode(
-  code: string | null | undefined,
+  ref: LeaveTypeRef,
   config: Record<string, LeaveFormulaEntry> | null | undefined,
 ): Record<string, LeaveFormulaEntry | null> {
   const out: Record<string, LeaveFormulaEntry | null> = {};
-  for (const key of leaveExplanationKeysForCode(code)) {
+  for (const key of leaveExplanationKeysForCode(ref)) {
     const v = config?.[key];
     out[key] = v && (v.description || v.formula) ? v : null;
   }
@@ -108,7 +111,7 @@ export function resolveLeaveFormulaForCode(
  * drop an entry whose fields are all blank. Returns null when nothing meaningful remains (⇒ clear the column,
  * so the default "no explanation" path stays clean). Throws on an over-long field or an unknown key.
  */
-export function normalizeLeaveFormulaConfig(input: LeaveFormulaConfig, code?: string | null): LeaveFormulaConfig | null {
+export function normalizeLeaveFormulaConfig(input: LeaveFormulaConfig, code?: LeaveTypeRef): LeaveFormulaConfig | null {
   // Indexed as a plain string map: since 00307068 the accepted key set depends on `code`, so the check below
   // is a boolean rather than a type predicate and cannot narrow `key` to the nine-item union. The refusal on
   // the line above is what makes this safe — nothing unvalidated reaches these two lookups.
