@@ -1992,7 +1992,12 @@
       "pageNext": "下一頁",
       "pageAria": "第 {page} 頁",
       "noEmployeesFiltered": "沒有符合篩選條件的員工。",
-      "detailsDescription": "选择你要查看假期的员工。"
+      "detailsDescription": "选择你要查看假期的员工。",
+      "empSearchPlaceholder": "按员工编号或姓名搜索",
+      "empSearchAriaLabel": "搜索员工",
+      "empSearchResultsLabel": "员工搜索结果",
+      "empSearchNoMatches": "没有匹配的员工",
+      "empSearchClear": "清除员工"
     },
     "override": {
       "title": "Before you submit",

@@ -1992,7 +1992,12 @@
       "pageNext": "Next",
       "pageAria": "Page {page}",
       "noEmployeesFiltered": "No employees match the filters.",
-      "detailsDescription": "Pick the employee whose leave you want to look up."
+      "detailsDescription": "Pick the employee whose leave you want to look up.",
+      "empSearchPlaceholder": "Search by Employee ID or name",
+      "empSearchAriaLabel": "Search employee",
+      "empSearchResultsLabel": "Employee search results",
+      "empSearchNoMatches": "No matching employee",
+      "empSearchClear": "Clear employee"
     },
     "override": {
       "title": "Before you submit",

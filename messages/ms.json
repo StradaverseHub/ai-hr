@@ -1992,7 +1992,12 @@
       "pageNext": "Seterusnya",
       "pageAria": "Halaman {page}",
       "noEmployeesFiltered": "Tiada pekerja sepadan dengan penapis.",
-      "detailsDescription": "Pilih pekerja yang cutinya ingin anda semak."
+      "detailsDescription": "Pilih pekerja yang cutinya ingin anda semak.",
+      "empSearchPlaceholder": "Cari mengikut ID Pekerja atau nama",
+      "empSearchAriaLabel": "Cari pekerja",
+      "empSearchResultsLabel": "Hasil carian pekerja",
+      "empSearchNoMatches": "Tiada pekerja yang sepadan",
+      "empSearchClear": "Kosongkan pekerja"
     },
     "override": {
       "title": "Before you submit",

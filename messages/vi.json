@@ -1992,7 +1992,12 @@
       "pageNext": "Tiếp",
       "pageAria": "Trang {page}",
       "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc.",
-      "detailsDescription": "Chọn nhân viên bạn muốn tra cứu phép."
+      "detailsDescription": "Chọn nhân viên bạn muốn tra cứu phép.",
+      "empSearchPlaceholder": "Tìm theo Mã nhân viên hoặc tên",
+      "empSearchAriaLabel": "Tìm nhân viên",
+      "empSearchResultsLabel": "Kết quả tìm nhân viên",
+      "empSearchNoMatches": "Không có nhân viên phù hợp",
+      "empSearchClear": "Xóa nhân viên"
     },
     "override": {
       "title": "Before you submit",

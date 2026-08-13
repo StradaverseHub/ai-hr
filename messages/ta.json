@@ -1992,7 +1992,12 @@
       "pageNext": "அடுத்தது",
       "pageAria": "பக்கம் {page}",
       "noEmployeesFiltered": "வடிகட்டிகளுக்கு பொருந்தும் ஊழியர் யாரும் இல்லை.",
-      "detailsDescription": "விடுப்பை நீங்கள் பார்க்க விரும்பும் ஊழியரைத் தேர்ந்தெடுக்கவும்."
+      "detailsDescription": "விடுப்பை நீங்கள் பார்க்க விரும்பும் ஊழியரைத் தேர்ந்தெடுக்கவும்.",
+      "empSearchPlaceholder": "பணியாளர் ஐடி அல்லது பெயரால் தேடுங்கள்",
+      "empSearchAriaLabel": "பணியாளரைத் தேடு",
+      "empSearchResultsLabel": "பணியாளர் தேடல் முடிவுகள்",
+      "empSearchNoMatches": "பொருந்தும் பணியாளர் இல்லை",
+      "empSearchClear": "பணியாளரை அழி"
     },
     "override": {
       "title": "Before you submit",
