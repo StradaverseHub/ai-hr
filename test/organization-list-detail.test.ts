@@ -229,8 +229,19 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
 
     expect(props.company.id).toBe(ids['Beta East Sdn Bhd']);
     expect(props.company.name).toBe('Beta East Sdn Bhd');
-    // The maintenance screen opens; a collapsed panel here is a page whose only content is hidden.
-    expect(props.defaultExpanded).toBe(true);
+
+    // ── THE MAINTENANCE SCREEN OPENS ────────────────────────────────────────────────────────────
+    // This assertion used to read `expect(props.defaultExpanded).toBe(true)`. Item 3c2f55d7 did not
+    // reverse what it was protecting — it made the protection unnecessary: the panel no longer folds
+    // at ALL, so there is no flag left to pass. (This page was its only caller and always passed it,
+    // and the three folds INSIDE the panel went with it.) The half that still matters is the
+    // BEHAVIOUR, not the prop, so it is now asserted on the markup, where a reintroduced disclosure
+    // would actually show up. `defaultExpanded` must NOT come back as a silently-ignored prop.
+    expect(props, 'the panel no longer takes an expand flag').not.toHaveProperty('defaultExpanded');
+    const openHtml = renderToStaticMarkup(createElement(CompanyPanel, props));
+    expect(openHtml, 'nothing on an opened company may need opening again').not.toContain('<details');
+    expect(openHtml, 'the General tab renders its content on arrival').toContain('name="legalName"');
+
     // Every write the panel offers still reaches a real server action.
     for (const k of [
       'updateCompany',

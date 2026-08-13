@@ -5407,8 +5407,6 @@
       "bankNoFileFormatGroup": "Ngân hàng khác (chưa có định dạng tệp lương)",
       "bankMasterHint": "Danh sách ngân hàng là danh mục ngân hàng Malaysia được duy trì cùng sản phẩm — mỗi mục mang mã định tuyến BNM chính thức, nên không thể chỉnh sửa riêng theo từng khách hàng.",
       "bankAccountAdd": "+ Thêm tài khoản ngân hàng",
-      "bankAccountEdit": "Sửa",
-      "bankAccountCollapse": "Đóng",
       "bankAccountLabel": "Nhãn tài khoản",
       "bankAccountLabelHint": "ví dụ: Lương — Maybank",
       "bankAccountName": "Tên chủ tài khoản",

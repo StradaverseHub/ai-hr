@@ -5407,8 +5407,6 @@
       "bankNoFileFormatGroup": "Bank lain (tiada format fail gaji lagi)",
       "bankMasterHint": "Senarai bank ialah senarai induk bank Malaysia yang diselenggara bersama produk — setiap entri membawa kod perutingan rasmi BNM, jadi ia tidak boleh disunting oleh setiap pelanggan.",
       "bankAccountAdd": "+ Tambah akaun bank",
-      "bankAccountEdit": "Sunting",
-      "bankAccountCollapse": "Tutup",
       "bankAccountLabel": "Label akaun",
       "bankAccountLabelHint": "cth. Gaji — Maybank",
       "bankAccountName": "Nama pemegang akaun",
