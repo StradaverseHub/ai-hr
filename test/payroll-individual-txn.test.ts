@@ -60,6 +60,10 @@ import {
   resetProcessedBatch,
 } from '../core/payroll';
 import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
+// 0db616f3 — the hand-run January repair is rehearsed in this file, against a real cluster, on a fixture
+// built to the shape measured on production. It deletes rows and moves money between runs; a script like
+// that is not something to first exercise on the only copy of the data that matters.
+import { runJanuaryRepair } from '../scripts/repair-january-bonus-double-import';
 import { exportIndividualTxnsCsv } from '../core/payroll-view';
 import {
   adminCtx,
@@ -1358,6 +1362,196 @@ describe('1.2.2 Individual Transaction', () => {
           .where(eq(schema.payrollIndividualTxn.id, ids[0]));
         expect(reconsumed.consumedBatchId).toBe(w.batchId);
       });
+    });
+  });
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════════════════
+   * 0db616f3 — THE JANUARY REPAIR, REHEARSED
+   * ══════════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * scripts/repair-january-bonus-double-import.ts is run BY HAND against production after the release
+   * that carries migration 0437 (`deploy.sh` runs migrations, not scripts). It deletes rows and moves
+   * money between runs, so it is rehearsed here against a real cluster on a fixture built to the exact
+   * shape measured on production 2026-08-13 — 24 imported rows, 11 duplicated pairs, 13 distinct rows
+   * totalling RM62,524.51, with two rows that appear in only ONE of the two waves.
+   *
+   * The last of those is the whole reason the script is not "delete the second import": one row exists
+   * only in the earlier wave (RM1,650.71) and a different one only in the later (RM17,325.00), so either
+   * naive answer silently drops money a real person is owed.
+   */
+  describe('0db616f3 — the January bonus repair script', () => {
+    /** The production multiset, by (employee, amount, how many copies). One employment carries the ten
+     *  BONUS amounts; three carry the RM500 ANGPOW line, which is what makes them three groups and not
+     *  one. Total 24 rows, 13 groups, RM62,524.51 distinct — the plan's own figures. */
+    const AMOUNTS: [empIndex: number, amount: string, copies: number][] = [
+      [0, '6195.00', 2],
+      [0, '1700.00', 2],
+      [0, '6249.60', 2],
+      [0, '3990.00', 2],
+      [0, '8400.00', 2],
+      [0, '1234.20', 2],
+      [0, '5250.00', 2],
+      [0, '9030.00', 2],
+      [0, '17325.00', 1], // only in the LATER wave on production
+      [0, '1650.71', 1], // only in the EARLIER wave on production
+      [0, '500.00', 2],
+      [1, '500.00', 2],
+      [2, '500.00', 2],
+    ];
+
+    async function january() {
+      await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+      const a = adminCtx(base);
+      const emps: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const e = await hireEmployee(a, {
+          person: { fullName: `Jan Bonus ${i}`, primaryEmail: `jan${randomUUID()}@acme.test` },
+          companyId: base.companyId,
+          departmentId: base.deptA,
+          employmentType: 'full_time',
+          hiredOn: '2025-01-01',
+        });
+        await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2025-01-01' });
+        emps.push(e.employmentId);
+      }
+      await seedPayComponentCatalog(a);
+      const [bonusComp] = await owner.db
+        .select({ id: schema.payComponent.id })
+        .from(schema.payComponent)
+        .where(and(eq(schema.payComponent.tenantId, base.tenantId), eq(schema.payComponent.code, 'BONUS')));
+
+      const { batchId: regularId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-01' });
+      const multi = await entitledCtx(base);
+      const bonus = await createAdditionalRun(multi, {
+        companyId: base.companyId,
+        payPeriod: '2026-01',
+        runType: 'bonus',
+      });
+
+      // The 24 imported rows, all on the REGULAR run — which is the defect.
+      const ids: string[] = [];
+      for (const [empIndex, amount, copies] of AMOUNTS) {
+        for (let c = 0; c < copies; c += 1) {
+          const [row] = await owner.db
+            .insert(schema.payrollIndividualTxn)
+            .values({
+              tenantId: base.tenantId,
+              batchId: regularId,
+              companyId: base.companyId,
+              payPeriod: '2026-01',
+              employmentId: emps[empIndex],
+              kind: 'earning',
+              componentId: bonusComp.id,
+              txnDate: '2026-01-31',
+              amount,
+              source: 'import',
+            })
+            .returning({ id: schema.payrollIndividualTxn.id });
+          ids.push(row.id);
+        }
+      }
+      // …and ONE hand-keyed row that the script must never see, let alone touch.
+      const [handKeyed] = await owner.db
+        .insert(schema.payrollIndividualTxn)
+        .values({
+          tenantId: base.tenantId,
+          batchId: regularId,
+          companyId: base.companyId,
+          payPeriod: '2026-01',
+          employmentId: emps[0],
+          kind: 'earning',
+          componentId: bonusComp.id,
+          txnDate: '2026-01-15',
+          amount: '123.45',
+        })
+        .returning({ id: schema.payrollIndividualTxn.id });
+
+      return { regularId, bonusId: bonus.batchId, emps, handKeyedId: handKeyed.id, importedIds: ids };
+    }
+
+    const url = () => process.env.TEST_MIGRATION_DATABASE_URL!;
+
+    it('report-only names 13 keepers at RM62,524.51 and 11 duplicates, and writes nothing', async () => {
+      const f = await january();
+      const dry = await runJanuaryRepair(url(), {
+        apply: false,
+        sourceBatchId: f.regularId,
+        targetBatchId: f.bonusId,
+      });
+      expect(dry.refusals).toEqual([]);
+      expect(dry.keep).toHaveLength(13);
+      expect(dry.keepTotal).toBe('62524.51');
+      expect(dry.surplus).toHaveLength(11);
+      expect(dry.alreadyCorrect).toBe(false);
+
+      // Nothing moved.
+      const still = await owner.db
+        .select({ id: schema.payrollIndividualTxn.id })
+        .from(schema.payrollIndividualTxn)
+        .where(and(eq(schema.payrollIndividualTxn.batchId, f.regularId), eq(schema.payrollIndividualTxn.source, 'import')));
+      expect(still).toHaveLength(24);
+    });
+
+    it('apply leaves 13 rows on the BONUS run, deletes 11, and is safe to run again', async () => {
+      const f = await january();
+      const wet = await runJanuaryRepair(url(), { apply: true, sourceBatchId: f.regularId, targetBatchId: f.bonusId });
+      expect(wet.refusals).toEqual([]);
+
+      const onBonus = await owner.db
+        .select({ id: schema.payrollIndividualTxn.id, amount: schema.payrollIndividualTxn.amount })
+        .from(schema.payrollIndividualTxn)
+        .where(and(eq(schema.payrollIndividualTxn.batchId, f.bonusId), eq(schema.payrollIndividualTxn.source, 'import')));
+      expect(onBonus).toHaveLength(13);
+      expect(onBonus.reduce((t, r) => t + Math.round(Number(r.amount) * 100), 0)).toBe(6252451);
+
+      // BOTH single-wave rows survive — the two the naive answers would have dropped.
+      const amounts = onBonus.map((r) => Number(r.amount));
+      expect(amounts).toContain(17325);
+      expect(amounts).toContain(1650.71);
+
+      // The regular run keeps its hand-keyed row and nothing else.
+      const onRegular = await owner.db
+        .select({ id: schema.payrollIndividualTxn.id })
+        .from(schema.payrollIndividualTxn)
+        .where(eq(schema.payrollIndividualTxn.batchId, f.regularId));
+      expect(onRegular.map((r) => r.id)).toEqual([f.handKeyedId]);
+
+      // IDEMPOTENT: a second run finds nothing to do and still verifies the same 13 / RM62,524.51.
+      const again = await runJanuaryRepair(url(), { apply: true, sourceBatchId: f.regularId, targetBatchId: f.bonusId });
+      expect(again.refusals).toEqual([]);
+      expect(again.alreadyCorrect).toBe(true);
+      expect(again.keep).toHaveLength(13);
+      expect(again.keepTotal).toBe('62524.51');
+      expect(again.surplus).toHaveLength(0);
+    });
+
+    /** THE REFUSAL THAT MATTERS MOST. Moving a line that has already been paid is how money gets paid
+     *  twice, which is the whole reason 0437 exists. If this ever fires on production the data has moved
+     *  since the plan was approved and a human has to look. */
+    it('refuses outright — and writes nothing — if any row has already been paid', async () => {
+      const f = await january();
+      await owner.db
+        .update(schema.payrollIndividualTxn)
+        .set({ consumedBatchId: f.regularId, consumedAt: new Date() })
+        .where(eq(schema.payrollIndividualTxn.id, f.importedIds[0]));
+
+      const r = await runJanuaryRepair(url(), { apply: true, sourceBatchId: f.regularId, targetBatchId: f.bonusId });
+      expect(r.refusals.some((m) => m.includes('already been paid'))).toBe(true);
+      const untouched = await owner.db
+        .select({ id: schema.payrollIndividualTxn.id })
+        .from(schema.payrollIndividualTxn)
+        .where(and(eq(schema.payrollIndividualTxn.batchId, f.regularId), eq(schema.payrollIndividualTxn.source, 'import')));
+      expect(untouched).toHaveLength(24);
+    });
+
+    it('refuses a target run that is not the month\'s bonus run', async () => {
+      const f = await january();
+      const r = await runJanuaryRepair(url(), {
+        apply: true,
+        sourceBatchId: f.regularId,
+        targetBatchId: f.regularId, // the regular run pointed at itself
+      });
+      expect(r.refusals.some((m) => m.includes("not the month's bonus run"))).toBe(true);
     });
   });
 });

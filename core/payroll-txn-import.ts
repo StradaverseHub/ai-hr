@@ -386,8 +386,10 @@ const dupKey = (p: {
 const fileDigest = (records: TxnImportRecord[]): string => {
   const h = createHash('sha256');
   for (const rec of records) {
-    for (const k of Object.keys(rec).sort()) h.update(`${k}=${rec[k]}`);
-    h.update('');
+    // The separators are explicit and non-printable on purpose: without them 'a=1','b=2' and
+    // 'a=12','b=' would digest identically, and two different files would claim the same identity.
+    for (const k of Object.keys(rec).sort()) h.update(`${k}=${rec[k]}\u001f`);
+    h.update('\u001e');
   }
   return h.digest('hex').slice(0, 32);
 };
