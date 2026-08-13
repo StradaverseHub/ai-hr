@@ -20,6 +20,11 @@ import { coordinatedPcbForPerson } from './payroll';
 // 8ca344bf — Borang 8A's read lives in its own file (it needs hire/termination dates and the employer
 // header, which no other report on this shelf reads) but registers here like every other form.
 import { borang8AReport } from './borang-8a';
+// 9c8dad7a — Borang A's read lives in its own file for the same reason Borang 8A's does (it needs the
+// employer header, the authorised-representative block and the EPF wage BASIS, which no other report on
+// this shelf reads) and registers here like every other form. The two files share NO code: their
+// contribution-month rules are opposites, and a shared helper is how one acquires the other's.
+import { borangAReport } from './borang-a';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
 export type ReportRow = Record<string, string | number | null>;
@@ -1033,10 +1038,30 @@ export const MY_REPORTS: ReportDef[] = [
     descriptionKey: 'desc_cp39', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
   // NOT "Borang A", and it never becomes Borang A by being renamed. What this produces is a contributions
-  // listing; Borang A is a KWSP form we have never seen the layout of. It keeps its honest name and Borang
-  // A keeps its place on the shelf as an unbuilt form — see MY_PLANNED_FORMS.
+  // listing whose wage column is GROSS PAY; Borang A wants the EPF-liable wage and is a different document
+  // that now sits beside this one at shelfOrder 2. This keeps its honest name.
   { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport,
     descriptionKey: 'desc_epf', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 1,
+    submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
+  // 9c8dad7a / 3aae0789 — BORANG A, built. It LEFT MY_PLANNED_FORMS and joined this list at the same
+  // shelfOrder 2 it held there, which is the migration path `PlannedFormDef` was designed for: the shelf
+  // is unchanged, the card simply stops saying "not built yet" and grows an action.
+  //
+  // A SECOND EPF ENTRY, AND NOT A CONTRADICTION OF `my.epf` ABOVE. That one is our own contributions
+  // LISTING, and its wage column is gross pay. This is KWSP's own monthly contribution FORM: Upah is the
+  // wage EPF was actually charged on, and it is emphatically not produced by relabelling the listing.
+  //
+  // `dueDayOfNextMonth: 15` — KWSP's deadline, the same one `my.epf` carries, because it is the same
+  // filing deadline for the same body. (Borang 8A's null is a different situation: PERKESO's deadline is
+  // the last day of the contribution month, which this field cannot express.)
+  //
+  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
+  // vendor's DevExpress output and KWSP publishes no blank page.
+  //
+  // `outputs` carries `file` as well as `pdf`/`print`: item 3aae0789 is the i-Akaun upload file, built
+  // from the SAME rows as the drawn page, behind its own route.
+  { id: 'my.borang-a', label: 'Borang A — monthly contribution form (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borangAReport,
+    descriptionKey: 'desc_borang_a', fidelity: 'agency-layout', outputs: ['pdf', 'print', 'file'], shelfOrder: 2,
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.
@@ -1192,7 +1217,8 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
  * exists to avoid.
  */
 export const MY_PLANNED_FORMS: PlannedFormDef[] = [
-  { id: 'epf.borang-a', labelKey: 'planned_epf_borang_a', hintKey: 'planned_epf_borang_a_hint', body: 'epf', cadence: 'monthly', shelfOrder: 2 },
+  // 9c8dad7a — `epf.borang-a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list and
+  // joined MY_REPORTS at the same shelfOrder 2, exactly as `perkeso.borang-8a` did one round earlier.
   { id: 'epf.borang-bbcb', labelKey: 'planned_epf_borang_bbcb', hintKey: 'planned_epf_borang_bbcb_hint', body: 'epf', cadence: 'monthly', shelfOrder: 3 },
   // 8ca344bf — `perkeso.borang-8a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list
   // and joined MY_REPORTS at the same shelfOrder 2, which is exactly the path this type's doc-comment
