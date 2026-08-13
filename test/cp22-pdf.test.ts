@@ -47,12 +47,14 @@ import {
   type Cp22Field,
 } from '../lib/cp22-fields';
 import {
+  CP22_CONTINUED,
   cp22Amount,
   cp22BatchPrefix,
   cp22FieldValues,
   dmy,
   fitBlock,
   fitSingleLine,
+  fitToWidth,
   foldToRows,
   renderCp22Batch,
   renderCp22Pdf,
@@ -182,7 +184,7 @@ const data: Cp22PdfData = {
   employee: {
     fullName: 'Nur Aisyah binti Rahman',
     designation: 'Site Supervisor',
-    natureOfEmployment: 'Permanent',
+    natureOfEmployment: 'Full time',
     commencementDate: '2026-07-02',
     expectedDuration: 'Permanent',
     residentialAddress: {
@@ -662,7 +664,17 @@ describe('CP22 multi-row blocks — every line reaches the page', () => {
         // ONE size for the whole block — a second line two points smaller reads as a rendering fault.
         expect(new Set(fit.rows.map((r) => r.fontSize)).size).toBe(1);
         const all = fit.rows.map((r) => r.text).join('\n');
-        for (const line of input) expect(all, `${f.code} +${extra}: lost "${line}"`).toContain(line);
+        // THE INVARIANT IS "NEVER SILENTLY", NOT "NEVER". Every input line reaches the page UNLESS the
+        // block ran out of room even at the smallest legible face — and then the form SAYS the list is
+        // continued. `+5` on a two-row block is deliberately past that point: it is what proves the
+        // continuation exists at all, and asserting "everything always fits" here would be asserting
+        // something no 62pt-wide box can deliver.
+        const continued = fit.rows.some((r) => r.continued);
+        if (continued) {
+          expect(all, `${f.code} +${extra}: cut without saying so`).toMatch(/\(lihat lampiran|\.\.\.$/);
+        } else {
+          for (const line of input) expect(all, `${f.code} +${extra}: lost "${line}"`).toContain(line);
+        }
       }
       // A value that already fits is left completely alone — this is the everyday case.
       const short = Array.from({ length: f.rows! }, () => 'Ampang');
@@ -676,6 +688,65 @@ describe('CP22 multi-row blocks — every line reaches the page', () => {
     expect(foldToRows(['a', 'b', 'c', 'd'], 3, ', ')).toEqual(['a', 'b', 'c, d']);
     expect(foldToRows(['a', 'b', 'c', 'd', 'e'], 2, '; ')).toEqual(['a', 'b; c; d; e']);
     expect(foldToRows(['a'], 3, ', ')).toEqual(['a']);
+  });
+
+  /**
+   * ══ THE HOLE THE 900dpi VERIFICATION FOUND, AND THE ONLY REASON THIS ROUND HAS A CONTINUATION MARKER ══
+   *
+   * `fitSingleLine` bottoms out at the smallest legible face and returns it WHETHER OR NOT the value fits.
+   * The first version of this renderer then wrote the whole value at that size and let pdf-lib's clip
+   * decide where it ended. Rendered at 900 dpi, MuPDF (drawing the embedded stream) ended D4's specify
+   * rule at "…Elaun makan haria" and Poppler (regenerating from /V) ended it at "…Daily me" — the same
+   * declaration truncated in two different places by two renderers, which is exactly the r175a signature
+   * and exactly why the brief demands both.
+   *
+   * So this pins the fix at the unit level, where the render check cannot be run: a value that will not
+   * fit is cut AT AN ITEM BOUNDARY and carries LHDN's own "use an additional sheet" wording. Half a label
+   * is a different fact from no label and the reader cannot tell which; "see attached" is neither.
+   */
+  it('never lets a value be clipped mid-word — it cuts at an item boundary and says so', async () => {
+    const font = await helvetica();
+    const rule = CP22_FIELDS.find((f) => f.code === 'D4ms')!;
+    const many = [
+      'Elaun tetap bulanan / Fixed monthly allowance',
+      'Elaun pengangkutan / Transport allowance',
+      'Elaun telefon bimbit / Mobile phone allowance',
+      'Elaun makan harian / Daily meal allowance',
+      'Elaun perumahan / Housing allowance',
+    ].join('; ');
+    const fit = fitToWidth(many, rule.rect, rule.fontSize!, font, '; ');
+    expect(fit.continued, 'five long bilingual labels cannot fit one printed rule').toBe(true);
+    expect(fit.text.endsWith(CP22_CONTINUED)).toBe(true);
+    // Cut at a separator, never inside a label — the whole point.
+    const kept = fit.text.slice(0, -CP22_CONTINUED.length);
+    for (const part of kept.split('; ')) {
+      expect(many.split('; '), `"${part}" is a fragment of a label, not a whole one`).toContain(part);
+    }
+    // And what is printed genuinely fits: this is the assertion whose absence caused the bug.
+    expect(font.widthOfTextAtSize(fit.text, fit.fontSize)).toBeLessThanOrEqual(rule.rect.width - 2);
+  });
+
+  it('leaves an ordinary allowance list alone — the marker is the exception, not the rule', async () => {
+    const font = await helvetica();
+    const rule = CP22_FIELDS.find((f) => f.code === 'D4ms')!;
+    const ordinary = 'Elaun tetap bulanan / Fixed monthly allowance; Transport; Phone; Meal';
+    const fit = fitToWidth(ordinary, rule.rect, rule.fontSize!, font, '; ');
+    expect(fit.continued, 'four ordinary allowances must fit without a continuation').toBe(false);
+    expect(fit.text).toBe(ordinary);
+  });
+
+  /** Whatever the value, what reaches the page always fits the box. This is the invariant, stated once. */
+  it('produces a value that fits its box for EVERY field, at any length', async () => {
+    const font = await helvetica();
+    const ABSURD = Array.from({ length: 40 }, (_, i) => `Perkara nombor ${i + 1} yang sangat panjang`).join('; ');
+    for (const f of CP22_FIELDS.filter((x) => x.type !== 'checkbox')) {
+      for (const row of fitBlock(ABSURD, f, font).rows) {
+        expect(
+          font.widthOfTextAtSize(row.text, row.fontSize),
+          `${f.code}: "${row.text.slice(0, 40)}…" is wider than its box and would be clipped`,
+        ).toBeLessThanOrEqual(row.rect.width - 2 + 0.01);
+      }
+    }
   });
 
   it('leaves an empty block empty, at its own size', async () => {
@@ -732,9 +803,10 @@ describe('CP22 value formatting and the D-section', () => {
     });
     expect(v.d1SalaryOvertime).toBe('6,500.00');
     expect(v.d4CashAllowances).toBe('550.50');
-    expect(v.d4SpecifyMs).toBe(
-      'Elaun tetap bulanan / Fixed monthly allowance - RM 250.00; Transport allowance - RM 300.50',
-    );
+    // "Nyatakan jenis elaun / Specify the TYPE of allowance" — the kind, not the money. The amounts are
+    // in D4's own box and itemised in the text export; repeating them here doubles the length of a value
+    // that has ONE printed rule to live on, for something the form did not ask for.
+    expect(v.d4SpecifyMs).toBe('Elaun tetap bulanan / Fixed monthly allowance; Transport allowance');
     // Both printed rules carry the same answer — the form asks the question twice, in two languages.
     expect(v.d4SpecifyEn).toBe(v.d4SpecifyMs);
     expect(v.dTotal).toBe('7,050.50');
@@ -760,7 +832,7 @@ describe('CP22 value formatting and the D-section', () => {
   it('fills B15 Jawatan and B17 Jenis pekerjaan as the two different questions they are', () => {
     const v = cp22FieldValues(data);
     expect(v.designation).toBe('Site Supervisor');
-    expect(v.natureOfEmployment).toBe('Permanent');
+    expect(v.natureOfEmployment).toBe('Full time');
   });
 });
 

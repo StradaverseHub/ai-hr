@@ -931,8 +931,11 @@ export function cp22Particulars(
         // lives on ASSIGNMENT (see the trap noted above the `current` query) and is written back in the
         // stored vocabulary rather than reworded into LHDN's.
         designation: current?.title ?? null,
+        // Written back in the stored vocabulary, never reworded into LHDN's — but the STORED form is
+        // 'full_time', and an underscore on a government form reads as a database leak rather than an
+        // answer. Only the separator changes.
         natureOfEmployment: current?.employmentType
-          ? current.employmentType.charAt(0).toUpperCase() + current.employmentType.slice(1)
+          ? current.employmentType.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
           : null,
         commencementDate: base.hiredOn,
         expectedDuration,

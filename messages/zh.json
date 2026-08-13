@@ -3458,7 +3458,8 @@
       "reviewView": "查看",
       "reviewText": "下载为文本（A–F）",
       "reviewTextTitle": "以纯列表形式呈现相同信息，每个字段和数值各占一行，按 A 至 F 部分分组。这就是您在 MyTax 中录入的内容，也是您留存的记录。",
-      "watermarkNote": "LHDN 发布此表格时，在两页上均斜向加盖了“Untuk Rujukan Sahaja”（仅供参考）字样，因为自 2024 年 9 月起，CP22 须通过 MyTax 的 e-CP22 提交，纸质表格不再受理。这是 LHDN 自己的版本，因此该印记会保留在您的副本上。"
+      "watermarkNote": "LHDN 发布此表格时，在两页上均斜向加盖了“Untuk Rujukan Sahaja”（仅供参考）字样，因为自 2024 年 9 月起，CP22 须通过 MyTax 的 e-CP22 提交，纸质表格不再受理。这是 LHDN 自己的版本，因此该印记会保留在您的副本上。",
+      "continuedNote": "栏位 {codes} 的内容超出打印表格的可容纳范围。表格上会印出“lihat lampiran / see attached”（见附件），这正是 LHDN 在 D 部分开头的指示——请附上完整清单。以下完整显示所有内容，纯文本下载也包含全部。"
     },
     "config": {
       "title": "法定配置",

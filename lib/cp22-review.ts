@@ -19,8 +19,9 @@
  * and the screen says plainly that it does not print. Quietly dropping it would be worse; quietly printing
  * it somewhere it does not belong would be worse still.
  */
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import type { Cp22PdfData } from './cp22-pdf';
-import { cp22Amount, cp22FieldValues, dmy } from './cp22-pdf';
+import { cp22Amount, cp22FieldValues, dmy, fitBlock } from './cp22-pdf';
 import { CP22_FIELDS, CP22_SECTIONS, cp22Section } from './cp22-fields';
 
 /** The query-string names. Short, stable, and part of the URL contract the three routes share. */
@@ -199,3 +200,22 @@ export const cp22Total = (d: Cp22PdfData): string =>
 
 /** ISO → dd/mm/yyyy for the screen, using the renderer's own formatter so the two never diverge. */
 export const cp22DisplayDate = dmy;
+
+/**
+ * Which boxes will NOT hold their whole value on the printed form, so the review screen can say so.
+ *
+ * A CP22 with more recurring allowances than D4's one printed rule can hold ends with LHDN's own
+ * continuation wording on that rule (`CP22_CONTINUED`) — which is what the form itself instructs, and is
+ * honest on paper. It would NOT be honest on this screen to show the complete list with no hint that the
+ * PDF does not carry all of it, so the screen asks the renderer the same question the renderer answers
+ * when it draws, using the same font and the same geometry. Nothing is estimated here.
+ *
+ * Returns the affected field CODES (e.g. `['D4ms', 'D4en']`), empty when everything fits.
+ */
+export async function cp22ContinuedCodes(d: Cp22PdfData): Promise<string[]> {
+  const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+  const values = cp22FieldValues(d);
+  return CP22_FIELDS.filter(
+    (f) => f.type !== 'checkbox' && fitBlock(values[f.name] ?? '', f, font).rows.some((r) => r.continued),
+  ).map((f) => f.code);
+}

@@ -116,7 +116,9 @@ describe('cp22Particulars — the CP22 read', () => {
     // B15 Jawatan is the job title; B17 Jenis pekerjaan is the KIND of engagement. The 2020 page asked
     // only one of these and the title answered it; on the 2021 page they are two different boxes.
     expect(p.employee.designation).toBe('Executive'); // the current assignment's position title
-    expect(p.employee.natureOfEmployment).toBe('Full_time'); // the assignment's employmentType
+    // …and the stored 'full_time' loses its underscore: a database separator on a government form
+    // reads as a leak rather than an answer. The vocabulary itself is unchanged.
+    expect(p.employee.natureOfEmployment).toBe('Full time');
     expect(p.employee.commencementDate).toBe('2026-07-02');
     expect(p.employee.expectedDuration).toBe('Permanent');
     // THE SPLIT. Street lines stay street lines; postcode, town and state travel separately to the three

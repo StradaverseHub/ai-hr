@@ -3458,7 +3458,8 @@
       "reviewView": "Xem",
       "reviewText": "Tải dưới dạng văn bản (A–F)",
       "reviewTextTitle": "Cùng thông tin đó dưới dạng danh sách thuần, mỗi trường và giá trị trên một dòng, nhóm theo phần A đến F. Đây là thứ bạn nhập vào MyTax, và là bản ghi bạn giữ lại.",
-      "watermarkNote": "LHDN phát hành mẫu này có đóng dấu “Untuk Rujukan Sahaja” — chỉ để tham khảo — chéo qua cả hai trang, vì từ tháng 9 năm 2024 CP22 được nộp qua dịch vụ e-CP22 trên MyTax và bản in không được chấp nhận. Đó là bản của chính LHDN, nên con dấu vẫn giữ nguyên trên bản của bạn."
+      "watermarkNote": "LHDN phát hành mẫu này có đóng dấu “Untuk Rujukan Sahaja” — chỉ để tham khảo — chéo qua cả hai trang, vì từ tháng 9 năm 2024 CP22 được nộp qua dịch vụ e-CP22 trên MyTax và bản in không được chấp nhận. Đó là bản của chính LHDN, nên con dấu vẫn giữ nguyên trên bản của bạn.",
+      "continuedNote": "Các ô {codes} chứa nhiều hơn phần mẫu in có thể chứa. Mẫu sẽ ghi “lihat lampiran / see attached” ở các ô đó, đúng như hướng dẫn của chính LHDN ở đầu phần D — hãy đính kèm danh sách đầy đủ. Bên dưới hiển thị đầy đủ mọi thứ, và bản tải văn bản thuần cũng mang toàn bộ."
     },
     "config": {
       "title": "Cấu hình pháp định",

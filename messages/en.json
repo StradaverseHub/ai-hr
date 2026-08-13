@@ -3767,7 +3767,8 @@
       "reviewView": "View",
       "reviewText": "Download as text (A–F)",
       "reviewTextTitle": "The same information as a plain list, every field and value on its own line, grouped by section A to F. This is what you key into MyTax, and what you keep.",
-      "watermarkNote": "LHDN publishes this form stamped “Untuk Rujukan Sahaja” — for reference only — diagonally across both pages, because since September 2024 a CP22 is filed through e-CP22 on MyTax and a printed one is not accepted. That is LHDN’s own copy, so the stamp stays on yours."
+      "watermarkNote": "LHDN publishes this form stamped “Untuk Rujukan Sahaja” — for reference only — diagonally across both pages, because since September 2024 a CP22 is filed through e-CP22 on MyTax and a printed one is not accepted. That is LHDN’s own copy, so the stamp stays on yours.",
+      "continuedNote": "Boxes {codes} hold more than the printed form has room for. The form says “lihat lampiran / see attached” on them, which is what LHDN’s own instruction at the head of section D tells you to do — attach the full list. Everything is shown below in full, and the plain-text download carries all of it."
     },
     "config": {
       "title": "Statutory Configuration",

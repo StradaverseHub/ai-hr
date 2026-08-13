@@ -34,11 +34,12 @@
  *      b. A LINE TOO WIDE FOR ITS BOX. pdf-lib's `layoutSinglelineText` neither wraps nor truncates: it
  *         draws the whole line and `drawTextField`'s own clip path cuts it off mid-word, with nothing in
  *         any log. THE 2020 RENDERER NEVER GUARDED THIS AT ALL — a long legal name in a 195pt box was
- *         already being clipped in production. `fitSingleLine` shrinks until it fits.
+ *         already being clipped in production. `fitToWidth` shrinks until it fits, and where even the
+ *         smallest legible face will not do, cuts at an item boundary and prints `CP22_CONTINUED`.
  *    Both are checked by RENDERING at 900dpi under BOTH Poppler and MuPDF, because a green suite, a 200
  *    and even one of the two renderers all reported this page as correct while it was wrong: Poppler
  *    regenerates appearances when NeedAppearances is set, MuPDF draws the embedded stream, and the
- *    disagreement between them IS the instrument.
+ *    disagreement between them IS the instrument. IT FIRED AGAIN ON THIS ROUND — see `CP22_CONTINUED`.
  *
  * 5. THE RIGHT PAGE. The form is two pages and `Cp22Field.page` says which. A widget added to the wrong
  *    page still opens, still prints and still passes every green check.
@@ -202,7 +203,12 @@ const titleCase = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice
  */
 export function cp22FieldValues(d: Cp22PdfData): Record<string, string> {
   const allowanceTotal = d.pay.cashAllowances.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
-  const allowanceNames = d.pay.cashAllowances.map((a) => `${a.label} - RM ${cp22Amount(a.amount)}`).join('; ');
+  // "NYATAKAN JENIS ELAUN / SPECIFY THE TYPE OF ALLOWANCE" — the TYPE, not the amount. The 2020 page's
+  // box 27 was a three-row list and carried "label - RM amount" on each row because it was the only place
+  // the itemisation could go; on the 2021 page the money already has its own box (D4) and this is a
+  // one-line question about kind. Carrying the amounts onto it doubles the length of a value that has one
+  // printed rule to live on, for information the form did not ask for and already has.
+  const allowanceNames = d.pay.cashAllowances.map((a) => a.label).join('; ');
   // The printed total is the sum of the boxes THIS renderer filled. The blank D-lines contribute nothing
   // because we hold nothing for them — an operator who fills one must update the total, and the preview
   // screen says so. A PDF cannot recompute after it is saved.
@@ -277,13 +283,44 @@ const TRANSPARENT = { backgroundColor: undefined, borderColor: undefined, border
 
 /** pdf-lib's own text-field inset (`appearances.ts`: `padding = 1` for a non-combed field). */
 const WIDGET_PADDING = 1;
-/** Below this the text is unreadable; a value that will not fit even here is drawn at it and clipped,
- *  which cannot happen for any real value in a 60pt-wide box and is a formality rather than a fallback. */
-const MIN_FONT_SIZE = 4;
+/**
+ * The smallest face this form is allowed to print. Below it a statutory declaration is not readable at
+ * print size, so shrinking further would trade one kind of unusable for another.
+ */
+const MIN_FONT_SIZE = 5;
 /** Small enough that the chosen size is never visibly below the largest that fits. */
 const FONT_SIZE_STEP = 0.05;
 /** How an address folds. A LIST folds with a semicolon — see `Cp22Field.foldWith`. */
 const DEFAULT_FOLD = ', ';
+
+/**
+ * LHDN'S OWN ANSWER to a value that will not fit, printed on the form itself: "Sila gunakan lampiran
+ * tambahan secara berasingan jika ruang tidak mencukupi / Please use additional sheet separately in case
+ * of insufficient space", at the head of section D.
+ *
+ * WHY THIS EXISTS AT ALL — it is the hole the 900dpi verification found. `fitSingleLine` used to bottom out
+ * at pdf-lib's own 4pt minimum and return it whether or not the value fitted; the caller then wrote the
+ * full text and pdf-lib's clip cut it off MID-WORD, with nothing in any log. Rendered at 900 dpi, MuPDF
+ * (drawing the embedded stream) ended D4's specify rule at "…Elaun makan haria" and Poppler (regenerating
+ * from /V) ended it at "…Daily me" — two renderers truncating the same declaration in two different
+ * places, which is precisely the r175a signature.
+ *
+ * So a value that cannot fit at MIN_FONT_SIZE is no longer drawn and clipped. It is cut at an item
+ * boundary and this marker is appended, which turns a silent loss into a printed statement that the list
+ * continues elsewhere — the thing the form itself tells you to do. The COMPLETE list is always on the
+ * review screen and in the plain-text export, which is what the operator keys into MyTax anyway.
+ */
+export const CP22_CONTINUED = ' (lihat lampiran / see attached)';
+
+/**
+ * The same statement for a box too narrow to hold the sentence — B14 is 62pt wide, and the full marker is
+ * 67pt at the smallest legible face, so appending it would overflow the very box it exists to protect.
+ * (Found by the "fits its box for EVERY field" assertion, not by reasoning: the first version of the
+ * marker fixed the specify rule and broke the date box.) Reachable only for a value no real record
+ * produces, but the invariant is "what is printed always fits", and an invariant with an exception is not
+ * one.
+ */
+export const CP22_CONTINUED_SHORT = ' ...';
 
 /** pdf-lib's `lineSplit(cleanText(...))` (utils/strings.ts), so a block splits into the rows it will use. */
 const layoutLines = (text: string): string[] =>
@@ -304,29 +341,77 @@ export function foldToRows(lines: string[], rows: number, separator: string): st
   return [...lines.slice(0, rows - 1), lines.slice(rows - 1).join(separator)];
 }
 
+/** The usable width of a widget — pdf-lib's clip is the rect inset by `padding` on each side. */
+const innerWidth = (rect: Cp22Rect) => rect.width - WIDGET_PADDING * 2;
+
 /**
- * The largest size at or below `maxSize` at which `value` fits inside `rect` on ONE line.
+ * The largest size at or below `maxSize` at which `value` fits inside `rect` on ONE line, or
+ * `MIN_FONT_SIZE` when nothing in the range fits.
  *
- * Exported because test/cp22-fields.test.ts and test/cp22-pdf.test.ts both assert against it: the whole
- * point is that no value is ever cut, so "what size did it choose" is the observable that proves it.
+ * Exported because both test files assert against it: the whole point is that no value is ever cut, so
+ * "what size did it choose" is the observable that proves it. Use `fitToWidth` to lay a value out — this
+ * function answers only the sizing half, and a caller that writes `value` at the size it returns without
+ * checking `fits` is exactly the bug the 900dpi verification found.
  */
 export function fitSingleLine(value: string, rect: Cp22Rect, maxSize: number, font: PDFFont): number {
-  const maxWidth = rect.width - WIDGET_PADDING * 2;
   if (!value) return maxSize;
   for (let size = maxSize; size >= MIN_FONT_SIZE; size = Math.round((size - FONT_SIZE_STEP) * 100) / 100) {
-    if (font.widthOfTextAtSize(value, size) <= maxWidth) return size;
+    if (font.widthOfTextAtSize(value, size) <= innerWidth(rect)) return size;
   }
   return MIN_FONT_SIZE;
 }
 
+export type Cp22Fit = {
+  /** What goes in /V — and therefore what a regenerating viewer lays out, not just what we drew. */
+  text: string;
+  fontSize: number;
+  /** True when the value did not fit even at MIN_FONT_SIZE and carries `CP22_CONTINUED`. */
+  continued: boolean;
+};
+
+/**
+ * Lay ONE value into ONE printed box, losslessly.
+ *
+ * Three outcomes, in order: it fits at the block's own size; it fits smaller; or it does not fit at any
+ * legible size, in which case it is cut AT AN ITEM BOUNDARY and `CP22_CONTINUED` is appended so the form
+ * says the list goes on elsewhere. The one thing that never happens is the old behaviour — writing the
+ * whole value at the floor size and letting pdf-lib's clip decide where it ends.
+ */
+export function fitToWidth(value: string, rect: Cp22Rect, maxSize: number, font: PDFFont, splitOn: string): Cp22Fit {
+  const size = fitSingleLine(value, rect, maxSize, font);
+  const width = innerWidth(rect);
+  const at = (s: string) => font.widthOfTextAtSize(s, size);
+  if (!value || at(value) <= width) return { text: value, fontSize: size, continued: false };
+
+  // The loudest marker the box can hold. The full sentence is 67pt at 5pt and B14's box is 62pt, so a
+  // narrow box gets the short form rather than an overflowing sentence.
+  const marker = at(CP22_CONTINUED) < width ? CP22_CONTINUED : CP22_CONTINUED_SHORT;
+  // Cut at an item boundary rather than mid-word: half a label is a different fact from no label, and the
+  // reader cannot tell which. Falls back to a word boundary for a value with no separators in it.
+  const room = width - at(marker);
+  const parts = value.includes(splitOn) ? value.split(splitOn) : value.split(' ');
+  const join = value.includes(splitOn) ? splitOn : ' ';
+  let kept = '';
+  for (const part of parts) {
+    const next = kept ? kept + join + part : part;
+    if (at(next) > room) break;
+    kept = next;
+  }
+  const text = `${kept}${marker}`;
+  // A box too narrow even for the short marker is unreachable for any rect on this form (the smallest is
+  // 62pt and ' ...' is ~5pt at the floor), but printing something that overflows would defeat the whole
+  // guard, so an empty box beats a fragment.
+  return { text: at(text) <= width ? text : '', fontSize: size, continued: true };
+}
+
 export type Cp22RowFit = {
   /** One entry per printed row, in order. Never longer than the block's `rows`, never missing input. */
-  rows: { text: string; rect: Cp22Rect; fontSize: number }[];
+  rows: { text: string; rect: Cp22Rect; fontSize: number; continued: boolean }[];
 };
 
 /**
  * Lay a field's value out over its printed row(s): fold the overflow into the last row, then choose a size
- * per row that fits it whole.
+ * that fits every row whole.
  *
  * ONE SIZE FOR THE WHOLE BLOCK, not per row — an address whose second line came out two points smaller
  * than its first reads as a rendering fault. The block takes the smallest size any of its rows needs.
@@ -334,11 +419,15 @@ export type Cp22RowFit = {
 export function fitBlock(value: string, field: Cp22Field, font: PDFFont): Cp22RowFit {
   const rects = cp22Widgets(field);
   const maxSize = field.fontSize ?? CP22_DEFAULT_FONT_SIZE;
-  const folded = foldToRows(layoutLines(safe(value)), rects.length, field.foldWith ?? DEFAULT_FOLD);
-  const size = Math.min(
-    ...rects.map((rect, i) => fitSingleLine(folded[i] ?? '', rect, maxSize, font)),
-  );
-  return { rows: rects.map((rect, i) => ({ text: folded[i] ?? '', rect, fontSize: size })) };
+  const fold = field.foldWith ?? DEFAULT_FOLD;
+  const folded = foldToRows(layoutLines(safe(value)), rects.length, fold);
+  const size = Math.min(...rects.map((rect, i) => fitSingleLine(folded[i] ?? '', rect, maxSize, font)));
+  return {
+    rows: rects.map((rect, i) => {
+      const fit = fitToWidth(folded[i] ?? '', rect, size, font, fold);
+      return { text: fit.text, rect, fontSize: size, continued: fit.continued };
+    }),
+  };
 }
 
 function addField(

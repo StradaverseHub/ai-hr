@@ -3458,7 +3458,8 @@
       "reviewView": "Lihat",
       "reviewText": "Muat turun sebagai teks (A–F)",
       "reviewTextTitle": "Maklumat yang sama sebagai senarai biasa, setiap medan dan nilai pada barisnya sendiri, dikumpulkan mengikut bahagian A hingga F. Inilah yang anda kunci masuk ke MyTax, dan yang anda simpan.",
-      "watermarkNote": "LHDN menerbitkan borang ini dengan cop “Untuk Rujukan Sahaja” secara pepenjuru merentasi kedua-dua muka surat, kerana sejak September 2024 CP22 difailkan melalui e-CP22 di MyTax dan borang bercetak tidak diterima. Itu salinan LHDN sendiri, jadi cop itu kekal pada salinan anda."
+      "watermarkNote": "LHDN menerbitkan borang ini dengan cop “Untuk Rujukan Sahaja” secara pepenjuru merentasi kedua-dua muka surat, kerana sejak September 2024 CP22 difailkan melalui e-CP22 di MyTax dan borang bercetak tidak diterima. Itu salinan LHDN sendiri, jadi cop itu kekal pada salinan anda.",
+      "continuedNote": "Ruangan {codes} mengandungi lebih daripada yang muat pada borang bercetak. Borang itu menyatakan “lihat lampiran / see attached” pada ruangan tersebut, iaitu apa yang diarahkan oleh LHDN sendiri di bahagian atas seksyen D — lampirkan senarai penuh. Semuanya ditunjukkan sepenuhnya di bawah, dan muat turun teks biasa membawa kesemuanya."
     },
     "config": {
       "title": "Konfigurasi Berkanun",
