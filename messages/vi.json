@@ -2797,7 +2797,13 @@
     "maAskedOvertime": "Làm thêm {hours} giờ",
     "maAskedTimes": "Vào {in} · Ra {out}",
     "maAlsoWaiting": "Cũng đang chờ bạn — {section}",
-    "maSeeAllInSection": "Xem tất cả {count}"
+    "maSeeAllInSection": "Xem tất cả {count}",
+    "sharedLeaveGroups": {
+      "heading": "Số dư phép dùng chung",
+      "ofLimit": "trên {limit} ngày dùng chung",
+      "sharedAcross": "Dùng chung giữa: {types}",
+      "maxPerApplication": "Tối đa {days} ngày trong một đơn"
+    }
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -6050,7 +6056,14 @@
         "membersSummary": "Dùng chung: {types}",
         "required": "bắt buộc",
         "errorAlreadyGrouped": "{type} đã thuộc nhóm nghỉ phép dùng chung \"{group}\". Hãy gỡ khỏi nhóm đó trước.",
-        "errorNameTaken": "Đã có nhóm nghỉ phép dùng chung tên \"{name}\"."
+        "errorNameTaken": "Đã có nhóm nghỉ phép dùng chung tên \"{name}\".",
+        "placementLabel": "Nơi nhân viên nhìn thấy nhóm này",
+        "placementOption": {
+          "primary": "Thẻ chính",
+          "secondary": "Nhóm phụ",
+          "hidden": "Ẩn"
+        },
+        "placementHelp": "Chọn nơi nhóm dùng chung này xuất hiện trên tab Nghỉ phép của nhân viên: một thẻ số dư ở trên cùng, ở phía dưới cùng với các loại nghỉ phép khác, hoặc Ẩn. Cài đặt này tách biệt với vị trí của từng loại nghỉ phép — ẩn một loại thành viên không bao giờ làm thay đổi số dư dùng chung hay những gì có thể xin nghỉ. Nhóm mới và nhóm hiện có đều bắt đầu ở trạng thái Ẩn."
       },
       "carryPercentLabel": "Phần trăm chuyển tiếp (%)",
       "halfDayDeductionCompaniesLabel": "Các công ty áp dụng",

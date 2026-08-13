@@ -2797,7 +2797,13 @@
     "maAskedOvertime": "Overtime {hours} h",
     "maAskedTimes": "Clock in {in} · Clock out {out}",
     "maAlsoWaiting": "Also waiting for you — {section}",
-    "maSeeAllInSection": "See all {count}"
+    "maSeeAllInSection": "See all {count}",
+    "sharedLeaveGroups": {
+      "heading": "Shared leave balances",
+      "ofLimit": "of {limit} shared days",
+      "sharedAcross": "Shared across: {types}",
+      "maxPerApplication": "Up to {days} days in one application"
+    }
   },
   "approvals": {
     "title": "Approvals",
@@ -6050,7 +6056,14 @@
         "membersSummary": "Sharing: {types}",
         "required": "required",
         "errorAlreadyGrouped": "{type} already belongs to the shared leave group \"{group}\". Remove it from that group first.",
-        "errorNameTaken": "A shared leave group named \"{name}\" already exists."
+        "errorNameTaken": "A shared leave group named \"{name}\" already exists.",
+        "placementLabel": "Where employees see this group",
+        "placementOption": {
+          "primary": "Primary card",
+          "secondary": "Secondary group",
+          "hidden": "Hidden"
+        },
+        "placementHelp": "Choose where this shared group appears on the employee’s Leave tab: as one balance card at the top, lower down with the other leave, or Hidden. This is separate from each leave type’s own placement — hiding a member type never changes the shared balance or what may be applied for. New and existing groups start Hidden."
       },
       "carryPercentLabel": "Carry forward percentage (%)",
       "halfDayDeductionCompaniesLabel": "Companies this applies to",

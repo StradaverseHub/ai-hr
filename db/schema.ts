@@ -1959,6 +1959,22 @@ export const leaveSharedGroup = pgTable(
     // application. NULL = no cap. Measured in CALENDAR days spanned by the application; the units live in
     // applicationSpanDays() (core/leave.ts), not here.
     maxDaysPerApplication: numeric('max_days_per_application', { precision: 6, scale: 2 }),
+    // Shared Leave Group display (feedback 46afcc48, migration 0438): WHERE this group is drawn on the
+    // employee self-service Leave tab — 'primary' (one balance card at the top), 'secondary' (lower down
+    // with the other-leave section) or 'hidden' (not drawn at all). NOT NULL DEFAULT 'hidden', so every
+    // existing group keeps today's behaviour: the group has never been shown to an employee, and it stays
+    // that way until HR chooses a placement.
+    //
+    // 'hidden' IS STORED HERE, unlike leave_type.ess_placement — and that difference is deliberate, not a
+    // drift. A leave TYPE already owns one hidden switch (visible_to_employee, 7b11f1c1), so 0193 refuses
+    // to store a second spelling of hidden in its placement column. A GROUP has no such twin flag, so this
+    // column IS the single source of truth for a hidden group and the DB CHECK admits all three values.
+    //
+    // DISPLAY ONLY, and in particular NOT enforcement: the shared annual ceiling (total_limit_days) and the
+    // per-application cap (max_days_per_application) are applied by core/leave.ts at apply and at approval
+    // regardless of what this column says. Hiding a group — or every one of its member types — changes what
+    // is DRAWN and never what may be TAKEN.
+    essPlacement: text('ess_placement').notNull().default('hidden'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('leave_shared_group_name_uq').on(t.tenantId, t.name)],

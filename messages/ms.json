@@ -2797,7 +2797,13 @@
     "maAskedOvertime": "Kerja lebih masa {hours} jam",
     "maAskedTimes": "Masuk {in} · Keluar {out}",
     "maAlsoWaiting": "Turut menunggu anda — {section}",
-    "maSeeAllInSection": "Lihat kesemua {count}"
+    "maSeeAllInSection": "Lihat kesemua {count}",
+    "sharedLeaveGroups": {
+      "heading": "Baki cuti dikongsi",
+      "ofLimit": "daripada {limit} hari dikongsi",
+      "sharedAcross": "Dikongsi antara: {types}",
+      "maxPerApplication": "Sehingga {days} hari dalam satu permohonan"
+    }
   },
   "approvals": {
     "title": "Kelulusan",
@@ -6050,7 +6056,14 @@
         "membersSummary": "Berkongsi: {types}",
         "required": "wajib",
         "errorAlreadyGrouped": "{type} sudah berada dalam kumpulan cuti dikongsi \"{group}\". Keluarkannya daripada kumpulan itu dahulu.",
-        "errorNameTaken": "Kumpulan cuti dikongsi bernama \"{name}\" sudah wujud."
+        "errorNameTaken": "Kumpulan cuti dikongsi bernama \"{name}\" sudah wujud.",
+        "placementLabel": "Di mana pekerja melihat kumpulan ini",
+        "placementOption": {
+          "primary": "Kad utama",
+          "secondary": "Kumpulan sekunder",
+          "hidden": "Tersembunyi"
+        },
+        "placementHelp": "Pilih di mana kumpulan dikongsi ini muncul pada tab Cuti pekerja: sebagai satu kad baki di bahagian atas, di bawah bersama cuti lain, atau Tersembunyi. Ini berasingan daripada penempatan setiap jenis cuti — menyembunyikan jenis ahli tidak pernah mengubah baki dikongsi atau apa yang boleh dipohon. Kumpulan baharu dan sedia ada bermula sebagai Tersembunyi."
       },
       "carryPercentLabel": "Peratusan bawa ke hadapan (%)",
       "halfDayDeductionCompaniesLabel": "Syarikat yang terpakai",

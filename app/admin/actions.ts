@@ -2102,6 +2102,10 @@ export async function createLeaveSharedGroupAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
       maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
+      // 46afcc48 — the group's placement on the employee Leave tab. Read BY VALUE from a <select> that is
+      // always submitted: reading it by presence would be trap 17 (an always-sent field cannot answer a
+      // yes/no question). An absent or tampered value is narrowed to Hidden by the service, not here.
+      essPlacement: String(fd.get('essPlacement') ?? ''),
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
@@ -2118,6 +2122,10 @@ export async function updateLeaveSharedGroupAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
       maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
+      // 46afcc48 — the group's placement on the employee Leave tab. Read BY VALUE from a <select> that is
+      // always submitted: reading it by presence would be trap 17 (an always-sent field cannot answer a
+      // yes/no question). An absent or tampered value is narrowed to Hidden by the service, not here.
+      essPlacement: String(fd.get('essPlacement') ?? ''),
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {

@@ -112,3 +112,86 @@ export function resolveSecondaryGroup(code: string | null | undefined): Secondar
   const c = (code ?? '').toUpperCase();
   return SECONDARY_GROUP_BY_CODE[c] ?? 'other';
 }
+
+// ── SHARED LEAVE GROUPS on the employee Leave tab (feedback 46afcc48) ──────────────────────────────
+//
+// A SHARED LEAVE GROUP (leave_shared_group, r88) is several leave types drawing on one pooled annual
+// allowance — "Special Leave: 10 days shared between six types, at most 3 in one application". Until
+// 46afcc48 the group was ENFORCEMENT ONLY: it refused applications past its ceiling and appeared on no
+// employee screen at all. This block is the display half, and it is display ONLY — nothing here is ever
+// consulted by enforceSharedLeaveGroupLimit / enforceApplicationLengthLimit (core/leave.ts).
+//
+// THE GROUP'S PLACEMENT IS INDEPENDENT OF ITS MEMBERS' PLACEMENTS, in both directions. A group placed
+// Primary shows as one balance at the top whether its six member types are Primary, Secondary or Hidden;
+// and hiding every member changes neither the group's figure nor what the employee may apply for. That
+// independence is the reporter's explicit ask (revision 2, after they contested a revision-1 plan that
+// had the group fold its members in) and it is pinned by a test.
+
+/** A shared group's placement DEFAULT. Hidden, so an existing group is drawn nowhere until HR chooses —
+ *  a new balance must never appear on every employee's screen because a release happened. Mirrors the
+ *  NOT NULL DEFAULT on leave_shared_group.ess_placement (migration 0438). */
+export const SHARED_GROUP_DEFAULT_PLACEMENT: EssPlacement = 'hidden';
+
+/**
+ * Resolve a shared group's stored placement.
+ *
+ * UNLIKE a leave type, ALL THREE values are storable for a group: a type expresses Hidden through the
+ * single visible_to_employee switch it already owns (7b11f1c1), while a group has no such flag, so its
+ * placement column is the one source of truth for hidden. There is therefore no code-keyed default map
+ * and no flag to consult — an unreadable/absent value simply falls back to Hidden, the safe direction.
+ */
+export function resolveSharedGroupPlacement(value: string | null | undefined): EssPlacement {
+  return (ESS_PLACEMENTS as readonly string[]).includes(value ?? '')
+    ? (value as EssPlacement)
+    : SHARED_GROUP_DEFAULT_PLACEMENT;
+}
+
+/**
+ * THE CYCLE a shared group's usage is summed over: the CALENDAR YEAR of the application's start date.
+ *
+ * Stated once, here, because TWO callers need the identical window and a second spelling of it is how the
+ * number the employee reads stops matching the verdict the engine gives:
+ *   - `enforceSharedLeaveGroupLimit` (core/leave.ts) — the refusal, unchanged in behaviour;
+ *   - `sharedLeaveGroupBalances` (core/leave-shared-group.ts) — the figure drawn on the Leave tab.
+ * The calendar keying mirrors leave_year_config and is the window the group has enforced since 4c48fd1f;
+ * this extraction does not change it.
+ */
+export function sharedGroupCycleWindow(startDate: string): { start: string; end: string } {
+  const year = startDate.slice(0, 4);
+  return { start: `${year}-01-01`, end: `${year}-12-31` };
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * WHAT A SHARED GROUP HAS LEFT, as the employee should read it.
+ *
+ * ⚠️ THIS IS NOT THE CEILING, AND DRAWING THE CEILING WOULD BE A PROMISE THE SYSTEM THEN REFUSES.
+ * A group's `total_limit_days` caps what may be TAKEN across its member types; it never GRANTS anything.
+ * The days themselves come from each member type's own entitlement. So two independent limits apply and
+ * the employee can only draw the SMALLER:
+ *
+ *   1. what is left under the shared ceiling — `totalLimitDays - usedDays`, where `usedDays` is the same
+ *      pending+approved sum across every member type that `enforceSharedLeaveGroupLimit` measures;
+ *   2. what the member types between them actually still hold — the sum of their Available figures.
+ *
+ * Measured on production 2026-08-13: "Special Leave" has a 10.00 ceiling, but for at least one employee
+ * the six member types carry only 9.00 between them. Showing 10.00 would invite an application the group
+ * guard refuses. Showing 9.00 is the honest number, and it is the one the approved plan promises.
+ *
+ * NEITHER TERM IS CLAMPED AT ZERO. A member type can legitimately sit below zero (a pending request
+ * against no balance), and the per-type cards on the same screen already print that negative figure via
+ * deriveBalanceRow. Clamping only the pooled figure would make the group disagree with the rows it is
+ * pooling. `usedDays` is likewise not clamped — it cannot exceed the ceiling in practice, because the
+ * guard refuses the application that would take it there.
+ */
+export function sharedGroupAvailableDays(p: {
+  totalLimitDays: number;
+  /** Pending + approved days across ALL member types in the cycle — never filtered by visibility. */
+  usedDays: number;
+  /** Sum of the member types' Available figures — likewise never filtered by visibility. */
+  memberAvailableSum: number;
+}): number {
+  const underCeiling = round2(p.totalLimitDays - p.usedDays);
+  return Math.min(underCeiling, round2(p.memberAvailableSum));
+}
