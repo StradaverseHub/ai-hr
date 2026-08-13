@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { getMileageClaimType, listMileageRateTables, MILEAGE_VEHICLE_CLASSES } from '@/core/claims';
 import { listJobGrades } from '@/core/read';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import { setMileageRateTableAction } from './actions';
 
@@ -34,6 +34,11 @@ const BLANK_ROWS = 3;
  *
  * The grade PILLS became the same left rail Claim Limits uses, including its ?gradeId= selection and its
  * scope guard — 55 grades as a wrapped row of buttons was the complaint.
+ *
+ * e7eb5d83 rev 6 — FULL WIDTH, with the rest of the claim configuration module. This screen was not one
+ * of the two the reporter named, but it carries the SAME grade rail beside the same kind of table, and a
+ * module whose four screens disagree about their width is the drift pageWideCls exists to stop. Its band
+ * tables keep their own `overflow-x-auto` wrappers for the same reason the limits grid does.
  *
  * Everything selectable lives in the URL (?gradeId= / ?vehicleClass=): this is a server component, so
  * client-held selection would mean either a function prop across the RSC boundary or a second fetch. Each
@@ -88,7 +93,7 @@ export default async function ClaimMileagePage({
     }`;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('mileageTitle')} description={t('mileageSubtitle')} />
       <ClaimsTabs active="mileage" />
       <ErrorBanner message={error} />

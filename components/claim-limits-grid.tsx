@@ -64,6 +64,28 @@ export type ClaimLimitGridRow = {
   hint: { kind: 'sub'; typeName: string } | { kind: 'mileage'; bands: string } | null;
 };
 
+/**
+ * THE PER BLOCK CELL (e7eb5d83 rev 6). Five controls on one row — tick, amount, "every", count, unit —
+ * and the reporter's complaint was that they stacked.
+ *
+ * They stacked because this was an UNCONDITIONAL `flex-wrap` in the sixth column of a six-column table on
+ * a page capped at 1152px. Those five need roughly 16 + 96 + label + 56 + 112 plus gaps ≈ 370px, and a
+ * sixth of the space left over after the 15rem grade rail is nowhere near that, so the only column
+ * allowed to fold folded. `flex-wrap` did not cause it, but it was the release valve, which is why it
+ * LOOKED like a component bug and was actually the page width — both halves ship together or neither
+ * works.
+ *
+ * Mobile-first, so read it in that order: below `md` the row still wraps (a tablet has no room for 370px
+ * in one column and stacking there is the right answer), and at `md` and above it may not. Tailwind here
+ * has no `max-*` variants anywhere in this repo, so "wrap only on small screens" is spelled as a base
+ * rule plus a breakpoint override rather than the other way round.
+ *
+ * ⚠️ AT `md` AND ABOVE THE TABLE MAY BE WIDER THAN ITS FRAME, and that is the intended outcome, not a
+ * regression: the grid's `overflow-x-auto` wrapper scrolls the TABLE. Removing that wrapper would make a
+ * narrow window scroll the whole PAGE sideways instead.
+ */
+const blockCellCls = 'flex flex-wrap items-center gap-1.5 md:flex-nowrap';
+
 const sameValues = (a: ClaimLimitGridValues, b: ClaimLimitGridValues): boolean =>
   a.perClaimCap === b.perClaimCap &&
   a.monthlyLimit === b.monthlyLimit &&
@@ -212,27 +234,32 @@ export function ClaimLimitsGrid({
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    {/* ⚠️ THE WRAP IS CONDITIONAL ON PURPOSE — see blockCellCls above. `shrink-0` on every
+                        control is the half that makes it real: without it the five controls would squeeze
+                        instead of wrapping, which is the same illegible row by another route. */}
+                    <div className={blockCellCls}>
                       <input
-                        type="checkbox" className="size-4" checked={v.blockEnabled}
+                        type="checkbox" className="size-4 shrink-0" checked={v.blockEnabled}
                         aria-label={t('blockEnableLabel')}
                         onChange={(e) => set(r.key, { blockEnabled: e.target.checked })}
                       />
                       <input
                         type="number" min="0" step="0.01" placeholder={t('unlimited')}
                         disabled={!v.blockEnabled}
-                        className={`${inputCls} w-24 text-right tabular-nums disabled:opacity-50`}
+                        className={`${inputCls} w-24 shrink-0 text-right tabular-nums disabled:opacity-50`}
                         value={v.blockLimit} onChange={(e) => set(r.key, { blockLimit: e.target.value })}
                       />
-                      <span className="text-xs text-muted-foreground">{t('blockEveryLabel').toLowerCase()}</span>
+                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                        {t('blockEveryLabel').toLowerCase()}
+                      </span>
                       <input
                         type="number" min="1" step="1" disabled={!v.blockEnabled}
-                        className={`${inputCls} w-14 text-right tabular-nums disabled:opacity-50`}
+                        className={`${inputCls} w-14 shrink-0 text-right tabular-nums disabled:opacity-50`}
                         value={v.blockLength} onChange={(e) => set(r.key, { blockLength: e.target.value })}
                       />
                       <select
                         disabled={!v.blockEnabled}
-                        className={`${inputCls} w-28 disabled:opacity-50`}
+                        className={`${inputCls} w-28 shrink-0 disabled:opacity-50`}
                         value={v.blockUnit} onChange={(e) => set(r.key, { blockUnit: e.target.value })}
                       >
                         <option value="month">{t('blockUnit_month')}</option>

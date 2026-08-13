@@ -1,12 +1,17 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listReimbursementsDue } from '@/core/claims';
-import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import { markReimbursementsPaidAction } from './actions';
 
 /** Approved NON-taxable claims awaiting an off-cycle reimbursement: review, export a bank-upload CSV,
- *  then mark them paid once the transfer is done. (Taxable claims are paid through payroll instead.) */
+ *  then mark them paid once the transfer is done. (Taxable claims are paid through payroll instead.)
+ *
+ *  e7eb5d83 rev 6 — FULL WIDTH, with the rest of the claim configuration module. This is the widest table
+ *  of the four (employee, type, incurred, bank, amount) and it was the narrowest page at `max-w-4xl`, so
+ *  bank name and account number were the pair that ran out of room. The table keeps its own
+ *  `overflow-x-auto`: full width is not infinite width. */
 export default async function ReimbursementsPage({
   searchParams,
 }: {
@@ -22,7 +27,7 @@ export default async function ReimbursementsPage({
   const missingBank = due.filter((r) => !r.bankName || !r.bankAccountNo).length;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: '/admin/claims', label: t('back') }}
         title={t('title')}

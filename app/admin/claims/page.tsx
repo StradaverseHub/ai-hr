@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { CLAIM_FIELD_KINDS, listClaimFormFields, listClaimTypes } from '@/core/claims';
-import { Button, Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import { ClaimTypePanel } from '@/components/claim-type-panel';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import {
@@ -18,6 +18,17 @@ import {
   updateClaimTypeAction,
 } from './actions';
 
+/**
+ * e7eb5d83 rev 6 — FULL WIDTH, with the rest of the claim configuration module. The reporter named the
+ * Limits screen, but "the claim config screens are narrow" is a module-level complaint and the four
+ * screens behind ClaimsTabs must not disagree about their width — a tab strip whose content jumps from
+ * 768px to 1152px as you click along it is its own defect.
+ *
+ * The create form inside the disclosure keeps `sm:grid-cols-2`, so at full width it is two wide columns
+ * rather than four cramped ones. That is deliberate: it is a SHORT form behind a disclosure that is shut
+ * on arrival, and giving it a private cap here would put back exactly the kind of hand-written width
+ * pageWideCls exists to remove.
+ */
 export default async function ClaimsConfigPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.claims');
@@ -34,7 +45,7 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
   );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ClaimsTabs active="types" />
       <ErrorBanner message={error} />
