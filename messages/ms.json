@@ -3430,7 +3430,7 @@
       "columnHeading": "Borang CP22",
       "cp22aNotYet": "Pemberitahuan pekerja berhenti CP22A belum dibina.",
       "monthTitle": "Pekerja baharu pada {month}",
-      "monthHint": "Dibaca daripada tarikh mula kerja pada profil setiap orang. Ini bulan yang anda pilih di atas — bulan mula kerja, bukan tempoh gaji. Cawangan yang anda taip akan muncul pada setiap halaman dalam fail.",
+      "monthHint": "Dibaca daripada tarikh mula kerja pada profil setiap orang. Ini bulan yang anda pilih di atas — bulan mula kerja, bukan tempoh gaji. Buka seseorang pekerja untuk menyemak dan membetulkan borangnya sebelum anda memuat turun.",
       "monthEmpty": "Tiada sesiapa mula bekerja pada {month}.",
       "monthEmptyHint": "Tiada sesiapa di {company} mempunyai tarikh mula kerja dalam bulan ini, jadi tiada apa untuk dimuat turun. Pilih bulan lain di atas.",
       "downloadAll": "Muat turun semua sebagai satu fail",

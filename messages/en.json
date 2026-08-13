@@ -3739,7 +3739,7 @@
       "columnHeading": "CP22 form",
       "cp22aNotYet": "The CP22A leaver notice is not built yet.",
       "monthTitle": "New joiners in {month}",
-      "monthHint": "Read from the hire date on each person's profile. This is the month you chose above — it is a hire month, not a payroll period. The branch you type lands on every page in the file.",
+      "monthHint": "Read from the hire date on each person's profile. This is the month you chose above — it is a hire month, not a payroll period. Open a joiner to review and correct their form before you download it.",
       "monthEmpty": "Nobody started in {month}.",
       "monthEmptyHint": "No one at {company} has a hire date in this month, so there is nothing to download. Pick another month above.",
       "downloadAll": "Download all as one file",

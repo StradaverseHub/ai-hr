@@ -3430,7 +3430,7 @@
       "columnHeading": "Mẫu CP22",
       "cp22aNotYet": "Thông báo nghỉ việc CP22A chưa được xây dựng.",
       "monthTitle": "Nhân viên mới vào trong {month}",
-      "monthHint": "Đọc từ ngày vào làm trên hồ sơ của từng người. Đây là tháng bạn đã chọn ở trên — là tháng vào làm, không phải kỳ lương. Chi nhánh bạn nhập sẽ xuất hiện trên mọi trang của tệp.",
+      "monthHint": "Đọc từ ngày vào làm trên hồ sơ của từng người. Đây là tháng bạn đã chọn ở trên — là tháng vào làm, không phải kỳ lương. Mở một nhân viên mới để xem lại và sửa biểu mẫu trước khi tải xuống.",
       "monthEmpty": "Không ai vào làm trong {month}.",
       "monthEmptyHint": "Không ai tại {company} có ngày vào làm trong tháng này, nên không có gì để tải về. Hãy chọn tháng khác ở trên.",
       "downloadAll": "Tải tất cả thành một tệp",
