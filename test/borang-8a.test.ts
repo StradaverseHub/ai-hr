@@ -585,6 +585,32 @@ describe('the review screen’s own words', () => {
   });
 
   /**
+   * A message carrying `{placeholders}` rendered through a plain `t('…')` with no arguments throws
+   * FORMATTING_ERROR at RENDER time and paints the raw key path on screen — while the route still answers
+   * 200 and every static guard stays green. So: every key this screen renders WITHOUT arguments must be
+   * brace-free, and every key it renders WITH them must carry braces (or the argument is being thrown at
+   * a message that has nowhere to put it, which is the same defect from the other side).
+   */
+  it('never renders a braced message without arguments, or an argument without a brace', () => {
+    const ns = en.payroll.borang8a as Record<string, string>;
+    const withArgs = new Set<string>();
+    for (const m of PREVIEW.matchAll(/\bt\('([a-zA-Z0-9_]+)',\s*\{/g)) withArgs.add(m[1]);
+    const bare = new Set<string>();
+    for (const m of PREVIEW.matchAll(/\bt\('([a-zA-Z0-9_]+)'\s*\)/g)) bare.add(m[1]);
+
+    const bracedButBare = [...bare].filter((k) => /[{}]/.test(ns[k] ?? ''));
+    expect(bracedButBare, 'these are rendered with no arguments and must not contain {placeholders}').toEqual([]);
+    const argsButUnbraced = [...withArgs].filter((k) => !/\{/.test(ns[k] ?? ''));
+    expect(argsButUnbraced, 'these are given arguments the message has nowhere to put').toEqual([]);
+    expect(withArgs.size, 'the interpolated keys must actually be found by this scan').toBeGreaterThan(3);
+
+    // The two shelf keys the [formId] screen renders bare — outside this namespace, so scanned by hand.
+    for (const k of ['borang8aReview', 'borang8aReviewTitle', 'desc_borang_8a', 'fidelity_agency_layout', 'fidelity_agency_layout_hint']) {
+      expect(/[{}]/.test((en.payroll.statutoryForms as Record<string, string>)[k]), k).toBe(false);
+    }
+  });
+
+  /**
    * The status chip must not claim more than the form is. `agency-layout` says the LAYOUT is the agency's;
    * it must never read as the agency's own page, nor as validated or accepted anywhere.
    */
