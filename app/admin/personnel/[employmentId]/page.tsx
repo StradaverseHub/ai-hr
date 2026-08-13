@@ -201,6 +201,10 @@ export default async function EmployeePage({
 }) {
   const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.detail');
+  // 2f889bae — the Pay items row link reuses Fixed Transactions' OWN labels rather than minting
+  // `people.detail` copies, so the two surfaces can never drift into calling the same destination two
+  // different things. Both keys already exist and are translated in all six catalogues.
+  const tFixed = await getTranslations('payroll.transactions.fixed');
   const tp = await getTranslations('payrollPolicy');
   const tc = await getTranslations('people.detail.clocking');
   const tStatus = await getTranslations('people.employeeStatus');
@@ -1187,7 +1191,8 @@ export default async function EmployeePage({
                   <th className="py-2 pr-3 font-medium">{t('colEnd')}</th>
                   <th className="py-2 pr-3 font-medium">{t('colProrate')}</th>
                   <th className="py-2 pr-3 font-medium">{t('colRemarks')}</th>
-                  <th className="py-2 font-medium">{t('status')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('status')}</th>
+                  <th className="py-2 text-right font-medium">{tFixed('actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1207,8 +1212,24 @@ export default async function EmployeePage({
                       <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{pc.validTo ?? '—'}</td>
                       <td className="py-2 pr-3">{prorate ? t('prorateYes') : t('prorateNo')}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{pc.remarks ?? '—'}</td>
-                      <td className="py-2">
+                      <td className="py-2 pr-3">
                         <Badge variant={ended ? 'default' : 'success'}>{ended ? t('statusEnded') : t('statusActive')}</Badge>
+                      </td>
+                      <td className="py-2 text-right">
+                        {/* 2f889bae — the shortcut the reporter asked for. Edit, Stop and Remove already
+                            live on the item's own page; this tab was read-only and gave no way through to
+                            it. Same href shape and classes as fixed-list.tsx, so the two entry points stay
+                            one destination rather than drifting apart. Every row gets a link, BASIC
+                            included — that is what Fixed Transactions itself does, and inventing a filter
+                            this item did not ask for would be the surprise. Note Basic Salary also has its
+                            own card with its own View/Edit on this tab, so BASIC has two routes to one
+                            figure; deliberate, and recorded rather than silently filtered. */}
+                        <Link
+                          href={`/payroll/transactions/fixed/${pc.id}?employmentId=${encodeURIComponent(employmentId)}`}
+                          className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          {tFixed('viewEdit')}
+                        </Link>
                       </td>
                     </tr>
                   );
@@ -1218,14 +1239,22 @@ export default async function EmployeePage({
           </div>
         )}
       </section>
-      {/* NO per-row Edit here, deliberately — and the reason is a payroll figure, not effort. A pay item
-          is effective-dated: setEmploymentPayComponent closes the open row at the new effectiveFrom and
-          inserts a fresh one, while the kernel selects every row with
-          `validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)`. Re-stating an item
-          inside the month it already runs in therefore leaves BOTH rows inside that period's window and
-          the item is counted twice. An "Edit" button whose natural default is the row's own start date
-          would make that the one-click path. Changing an item stays where the effective-dating is
-          explicit: Add (a dated revision) here, or Payroll → Transactions → Fixed for the full record. */}
+      {/* 2f889bae — THE ROW LINK IS NEW, AND THE REASON THIS TABLE USED TO HAVE NONE IS GONE. Do not
+          revert it on the strength of the old comment that stood here.
+          That comment said a per-row Edit was omitted because `setEmploymentPayComponent` closed the open
+          row AT `effectiveFrom`, leaving BOTH rows inside the period's window so the kernel paid the item
+          twice. Two shipped changes retired that reason: r180's `34cc8137` now closes the prior row the
+          day BEFORE the new start, and r185's `2aed39d4` added `employment_pay_component_no_overlap`, an
+          EXCLUDE constraint that makes two live rows covering one day impossible at the database. The
+          one-click duplicate it feared is separately closed — `updateEmploymentPayComponent` passes the
+          row's own id as `replacesId`, so re-saving the open form VERSIONS the row instead of cloning it.
+          Its recommended alternative was never the safer route either: "Add a dated revision here" posts
+          through this page's own actions into the very same writer.
+          WHAT IS STILL TRUE, AND IS SOMEONE ELSE'S ITEM: restating an item MID-MONTH still pays both
+          lines in full, because two adjacent windows both overlap the month and the kernel pays each
+          returned row its full amount. That is pinned as an `it.fails` in test/fixed-transaction.test.ts
+          and raised with the reporter as `a3d485f6` — it is a design decision (prorate, latest-row-wins,
+          or refuse a mid-period restatement), not something a default value on this link could fix. */}
       <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
     </Card>
   ) : null;
