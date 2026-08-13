@@ -136,7 +136,14 @@ describe('20c699f8: Employee Balances', () => {
   it('derives from the SAME reads and the SAME helper the employee sees on their own page', () => {
     // 994a5287 added the ADMIN opt-in: a leave type HR has hidden from employee self-service must still be
     // listed on HR's own screen. Same read, same figures — only the visibility gate differs.
-    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale, { includeHidden: true })');
+    //
+    // 3ddae357 UPDATED THIS CASE rather than dropping it. It pinned the call as
+    // `{ includeHidden: true }` with NO date, which was precisely the defect: `asOf` reached the breakdown
+    // and not the balances, so Taken / Pending / Overutilized / Balance answered for the whole record at
+    // every date. `includeHidden` is still required and is still asserted; only the "and nothing else"
+    // half was retired. Both reads must now take THE SAME `asOf` — that is the property this case exists
+    // to hold, and a screen where the two reads disagree about the date is the bug returning.
+    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale, { includeHidden: true, asOf })');
     expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
     expect(rowsHelper).toContain('deriveBalanceRow(');
     // ESS per-component hiding is a self-service rule; HR sees the figure.
@@ -162,9 +169,15 @@ describe('20c699f8: Employee Balances', () => {
     expect(balancesPage).toContain('colSpan={11}');
   });
 
-  it('re-runs the breakdown when the as-at date changes (nothing is cached against another date)', () => {
+  it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {
     expect(balancesPage).toContain('name="asOf"');
     expect(balancesPage).toContain('employeeBalanceRows(session, selected.employmentId, asOf, locale');
+    // 3ddae357 — the title of this case was true of the BREAKDOWN and false of the balances, which is how
+    // the defect passed review for four releases. The claim is only worth making if both reads take the
+    // date, so the second half is pinned here too. Point-in-time behaviour itself is proven against real
+    // ledger rows in test/leave-balance-as-at-date.test.ts; this is the composition half.
+    expect(read('core/read.ts')).toContain('lte(leaveLedger.effectiveOn, asOf)');
+    expect(read('core/read.ts')).toContain('lte(leaveRequest.startDate, asOf)');
   });
 
   it('sorts by leave code A→Z by default and can flip to Z→A', () => {

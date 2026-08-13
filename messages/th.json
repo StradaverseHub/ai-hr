@@ -1993,7 +1993,12 @@
       "pageNext": "ถัดไป",
       "pageAria": "หน้า {page}",
       "noEmployeesFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง",
-      "detailsDescription": "เลือกพนักงานที่คุณต้องการดูข้อมูลการลา"
+      "detailsDescription": "เลือกพนักงานที่คุณต้องการดูข้อมูลการลา",
+      "empSearchPlaceholder": "ค้นหาด้วยรหัสพนักงานหรือชื่อ",
+      "empSearchAriaLabel": "ค้นหาพนักงาน",
+      "empSearchResultsLabel": "ผลการค้นหาพนักงาน",
+      "empSearchNoMatches": "ไม่พบพนักงานที่ตรงกัน",
+      "empSearchClear": "ล้างพนักงาน"
     },
     "override": {
       "title": "Before you submit",

@@ -5,6 +5,7 @@ import { listEmployees, listLeaveRequestsPage, listLeaveTypes } from '@/core/rea
 import { Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { EmployeeSearchField } from '@/components/employee-search-field';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { adminCancelLeaveAction } from '@/app/leave/actions';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
@@ -140,6 +141,27 @@ export default async function EmployeeLeaveRecordPage({
     return `/leave/employee-records/export?${p.toString()}`;
   };
 
+  // 38b94df7 — WIDER THAN REPORTED: this page carried a byte-identical copy of the whole-list employee
+  // dropdown the ticket raised against Employee Balances, so both are converted in one change rather than
+  // leaving the reporter to re-report the same thing on the next tab. (The literal markup is deliberately
+  // NOT quoted in this comment: the guard in test/leave-inquiry-employee-search.test.ts reads the file as
+  // text and does not strip comments, so a quoted example would read as a surviving control.)
+  // Captions are resolved here and passed as plain strings —
+  // EmployeeSearchField is a client island and no translator closure may cross that boundary (r123).
+  const empSearchLabels = {
+    placeholder: tInq('empSearchPlaceholder'),
+    ariaLabel: tInq('empSearchAriaLabel'),
+    resultsLabel: tInq('empSearchResultsLabel'),
+    noMatches: tInq('empSearchNoMatches'),
+    clear: tInq('empSearchClear'),
+  };
+  const empSearchOptions = employees.map((e) => ({
+    value: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    secondary: e.company,
+  }));
+
   const filterFields: FilterField[] = [
     {
       kind: 'multi',
@@ -240,17 +262,19 @@ export default async function EmployeeLeaveRecordPage({
         <div className="min-w-0 flex-1 space-y-4">
           <div className="flex flex-wrap items-end gap-2">
             <form method="get" action="/leave/employee-records" className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {tInq('employee')}
-              <select name="emp" defaultValue={selected?.employmentId ?? ''} className={`${inputCls} w-72`}>
-                {employees.map((e) => (
-                  <option key={e.employmentId} value={e.employmentId}>
-                    {e.company} · {e.name}
-                    {e.employeeCode ? ` (${e.employeeCode})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* 38b94df7: same searchable field as Employee Balances, posting the same `name="emp"` — the
+                submitted query string, the export links and the chip action are all unchanged. */}
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              <label htmlFor="records-emp">{tInq('employee')}</label>
+              <EmployeeSearchField
+                id="records-emp"
+                name="emp"
+                employees={empSearchOptions}
+                value={selected?.employmentId ?? null}
+                labels={empSearchLabels}
+                className="w-72"
+              />
+            </div>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('filters.search')}
               <input
