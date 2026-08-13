@@ -2486,6 +2486,13 @@
       "when": 1781862536000,
       "tag": "0436_roster_assignment_delete_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 438,
+      "version": "7",
+      "when": 1781862538000,
+      "tag": "0438_leave_shared_group_ess_placement",
+      "breakpoints": true
     }
   ]
 }

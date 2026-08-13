@@ -2797,7 +2797,13 @@
     "maAskedOvertime": "加班 {hours} 小时",
     "maAskedTimes": "上班 {in} · 下班 {out}",
     "maAlsoWaiting": "另外等待处理 — {section}",
-    "maSeeAllInSection": "查看全部 {count} 项"
+    "maSeeAllInSection": "查看全部 {count} 项",
+    "sharedLeaveGroups": {
+      "heading": "共享假期余额",
+      "ofLimit": "共享额度 {limit} 天",
+      "sharedAcross": "共享类型：{types}",
+      "maxPerApplication": "单次申请最多 {days} 天"
+    }
   },
   "approvals": {
     "title": "审批",
@@ -6020,7 +6026,14 @@
         "membersSummary": "共享：{types}",
         "required": "必填",
         "errorAlreadyGrouped": "{type} 已属于共享休假组“{group}”。请先将其从该组移出。",
-        "errorNameTaken": "名为“{name}”的共享休假组已存在。"
+        "errorNameTaken": "名为“{name}”的共享休假组已存在。",
+        "placementLabel": "员工在何处看到此组",
+        "placementOption": {
+          "primary": "主卡片",
+          "secondary": "次级分组",
+          "hidden": "隐藏"
+        },
+        "placementHelp": "选择此共享组在员工休假页中的显示位置：置顶显示为一张余额卡片、与其他休假一同显示在下方，或隐藏。此设置与各休假类型自身的显示位置互不相干——隐藏成员类型绝不会改变共享余额，也不会改变可申请的内容。新建和现有的组均默认为隐藏。"
       },
       "carryPercentLabel": "结转百分比 (%)",
       "halfDayDeductionCompaniesLabel": "适用的公司",

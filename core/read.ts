@@ -2047,9 +2047,14 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
   );
 }
 
-/** R37 (2F-2): resolve a leave-type name to the viewer's locale, falling back to the default name. */
-type LeaveTypeI18n = Record<string, { name: string }> | null;
-function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): string {
+/** R37 (2F-2): resolve a leave-type name to the viewer's locale, falling back to the default name.
+ *
+ *  EXPORTED for 46afcc48: `sharedLeaveGroupBalances` (core/leave-shared-group.ts) names a shared group's
+ *  member leave types on the employee's Leave tab and must resolve them the SAME way every other leave
+ *  surface does. Copying these two lines into that module would have been the second spelling of one rule
+ *  — the class of duplication this file's own leave-type reads were consolidated to remove. */
+export type LeaveTypeI18n = Record<string, { name: string }> | null;
+export function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): string {
   return (locale && locale !== 'en' && i18n?.[locale]?.name) || name;
 }
 
@@ -2110,8 +2115,20 @@ export function leaveBalances(
   employmentId: string,
   locale?: string,
   opts: {
-    /** ADMIN reads only: keep leave types HR has hidden from employee self-service. The employee's own
-     *  screens must never pass this — a hidden type is hidden from THEM by design (7b11f1c1). */
+    /** Keep leave types HR has hidden from employee self-service. Two callers, and only two:
+     *
+     *  1. ADMIN reads (Employee Balances, the Personnel leave card, 994a5287). A hidden type is hidden from
+     *     the EMPLOYEE by design (7b11f1c1); it was never meant to vanish from HR's own screens.
+     *
+     *  2. 46afcc48 — `sharedLeaveGroupBalances`, which is a SELF-SERVICE caller and passes this ON PURPOSE.
+     *     It does NOT display these rows: it sums them into ONE pooled figure for a shared leave group. The
+     *     reporter's requirement is that hiding a member type is a display decision that changes nothing
+     *     about the pool, and the group guard (`enforceSharedLeaveGroupLimit`, core/leave.ts) has never
+     *     consulted visibility either — so summing the FILTERED list would make the number on screen
+     *     disagree with the verdict the engine gives, which is the one thing that must not happen. No
+     *     hidden type's own name or figure reaches the employee through this path.
+     *
+     *  Any THIRD caller on an employee-facing path is a leak until it can say which of these it is. */
     includeHidden?: boolean;
     /**
      * 3ddae357 — POINT-IN-TIME cut-off, `YYYY-MM-DD`. Ledger rows count when `effective_on <= asOf`, and a

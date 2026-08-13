@@ -44,10 +44,17 @@ import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/le
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 import { SecondaryLeaveGroups } from '@/components/leave/secondary-leave-groups';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
+// Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
+// as ONE balance at the placement HR chose for the GROUP. Independent of each member type's own placement.
+import { SharedLeaveGroupCards } from '@/components/leave/shared-leave-group-cards';
+import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import { durationLabel } from '@/lib/leave-duration';
+// 46afcc48 — the shared-group context lines interpolate day figures, and a day figure is printed one way
+// in this repo (4a1abc4a). Interpolating a raw Number would print "10" beside the card's "9.00".
+import { formatDays } from '@/lib/day-format';
 // fef49b9a — ONE derivation of the paid/unpaid breakdown, shared with the other three surfaces.
 import { leaveDisplaySplit } from '@/lib/leave-split';
 import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
@@ -331,6 +338,37 @@ export default async function LeavePage({
     types: selfBalances.filter((b) => b.placement === 'secondary' && resolveSecondaryGroup(b.code) === group),
   })).filter((g) => g.types.length > 0);
 
+  // ── Shared leave groups, as ONE pooled balance each (feedback 46afcc48) ──────────────────────────────
+  //
+  // `sharedLeaveGroupBalances` returns only the groups HR has actually PLACED (Hidden groups never come
+  // back), each with the figure that is genuinely drawable — min(what is left under the shared ceiling,
+  // what the member types still hold) — NOT the raw ceiling. It also sums the member types WITHOUT regard
+  // to their visibility, which is the point of the request: hiding a member is a display decision and
+  // changes neither this figure nor what the group guard allows.
+  //
+  // ESS-only, like the cards and the balance table below it: an HR admin's own pooled balance does not
+  // belong on their employee-inquiry page (8ec63139), and the `ess` gate suppresses the READ as well.
+  const sharedGroupBalances =
+    ess && me ? await sharedLeaveGroupBalances(session, me.employmentId, { locale, asOf: breakdownAsOf }) : [];
+  // Pre-translate here (t() is server-side) so the card component stays a plain presentational function.
+  const sharedGroupEntriesAt = (placement: 'primary' | 'secondary') =>
+    sharedGroupBalances
+      .filter((g) => g.placement === placement)
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        available: g.available,
+        // The ceiling is CONTEXT beside the figure, never the figure — see the component header.
+        limitLabel: tMe('sharedLeaveGroups.ofLimit', { limit: formatDays(g.totalLimitDays) }),
+        capLabel:
+          g.maxDaysPerApplication == null
+            ? null
+            : tMe('sharedLeaveGroups.maxPerApplication', { days: formatDays(g.maxDaysPerApplication) }),
+        membersLabel: tMe('sharedLeaveGroups.sharedAcross', { types: g.memberNames.join(', ') }),
+      }));
+  const sharedGroupsPrimary = sharedGroupEntriesAt('primary');
+  const sharedGroupsSecondary = sharedGroupEntriesAt('secondary');
+
   // History: the viewer's OWN requests, and only those.
   //
   // This used to be a two-branch destructure of eight names. afd0a87c emptied the admin branch of its
@@ -613,6 +651,16 @@ export default async function LeavePage({
           Clicking a card opens THAT type's details in the right-side slide-out panel, exactly as on /me.
           The `me-leave` tour anchor moves with the cards so the My Profile walkthrough still lands on them
           (its step now routes here — see lib/module-tours.json). Empty ⇒ row omitted (e.g. not linked). */}
+      {/* Shared leave groups placed PRIMARY (46afcc48): the pooled balance sits at the TOP of My Leave,
+          above the per-type cards, because that is what "Primary" means on this screen and it is what the
+          reporter asked to see — "Special Leave appears as one balance at the top". Empty ⇒ omitted, which
+          is every tenant on the day this ships (the placement column defaults to Hidden). */}
+      {ess && sharedGroupsPrimary.length > 0 && (
+        <Card className="p-5">
+          <SharedLeaveGroupCards heading={tMe('sharedLeaveGroups.heading')} entries={sharedGroupsPrimary} />
+        </Card>
+      )}
+
       {ess && primaryCards.length > 0 && (
         <Card className="p-5" data-tour="me-leave">
           <LeaveCards entries={primaryCards} />
@@ -685,6 +733,17 @@ export default async function LeavePage({
         )}
         </CollapsibleCardSection>
       </Card>
+      )}
+
+      {/* Shared leave groups placed SECONDARY (46afcc48): the same pooled balance, drawn lower down —
+          below the detailed balance table, above the "Other leave" / history pairing. Deliberately its own
+          full-width Card rather than a row inside SecondaryLeaveGroups: that component's rows are LEAVE
+          TYPES with a per-type breakdown side-sheet, and a group has no per-type breakdown to open, so
+          folding it in would put a row there that behaves unlike every other row in the list. */}
+      {ess && sharedGroupsSecondary.length > 0 && (
+        <Card className="p-5">
+          <SharedLeaveGroupCards heading={tMe('sharedLeaveGroups.heading')} entries={sharedGroupsSecondary} />
+        </Card>
       )}
 
       {/* Self-service view — compact card history (feedback 657962ec, replacing the 56a0deb9 list): the

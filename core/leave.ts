@@ -17,6 +17,11 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
 // same function, and so `@/core/leave` stays their public server-side door.
 import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
+// 46afcc48 — the shared group's CYCLE, stated once. The window below used to be spelled inline here; the
+// Leave tab's new group figure must count over exactly the same one, and two spellings of "the group's
+// year" is how a displayed number and an enforcement verdict start disagreeing. Behaviour is unchanged:
+// the helper returns the same calendar-year pair this function has always built.
+import { sharedGroupCycleWindow } from '../lib/leave-groups';
 import { consumeReplacementLeaveTx } from './toil';
 import {
   holidayDatesFor,
@@ -1608,9 +1613,13 @@ async function enforceSharedLeaveGroupLimit(
   if (memberTypeIds.length === 0) return;
   // Per-cycle usage across all member types = pending + approved requests whose start falls in the same
   // calendar year, minus the request being re-evaluated (avoids double-counting on the approval path).
-  const year = p.startDate.slice(0, 4);
-  const windowStart = `${year}-01-01`;
-  const windowEnd = `${year}-12-31`;
+  // 46afcc48: the window comes from `sharedGroupCycleWindow` so the figure the employee reads on their
+  // Leave tab is summed over the identical cycle. Same dates, one definition.
+  //
+  // NOTE WHAT IS *NOT* HERE, because 46afcc48 is a display request and this is the enforcement: no member
+  // type's visibility, and no group placement, is consulted anywhere in this function. Hiding a member —
+  // or the whole group — cannot move this verdict, and a test pins exactly that.
+  const { start: windowStart, end: windowEnd } = sharedGroupCycleWindow(p.startDate);
   const [used] = await tx
     .select({ total: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
     .from(leaveRequest)

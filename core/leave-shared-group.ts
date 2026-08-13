@@ -29,10 +29,18 @@
  *
  * Every state-changing function runs under withTenant and appends a DomainEvent (substrate discipline).
  */
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, gte, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { leaveSharedGroup, leaveSharedGroupMember, leaveType } from '../db/schema';
+import { leaveRequest, leaveSharedGroup, leaveSharedGroupMember, leaveType } from '../db/schema';
+import {
+  resolveSharedGroupPlacement,
+  sharedGroupAvailableDays,
+  sharedGroupCycleWindow,
+  type EssPlacement,
+} from '../lib/leave-groups';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { leaveBalances, pickName } from './read';
 
 /** A shared group as the config surfaces read it. `leaveTypeIds` is the tick list. */
 export type LeaveSharedGroupRow = {
@@ -41,6 +49,9 @@ export type LeaveSharedGroupRow = {
   totalLimitDays: number;
   /** null = no per-application cap. */
   maxDaysPerApplication: number | null;
+  /** 46afcc48 — WHERE this group is drawn on the employee Leave tab. 'hidden' ⇒ drawn nowhere, which is
+   *  what every existing group reads (the column's DEFAULT, migration 0438). Display only. */
+  essPlacement: EssPlacement;
   leaveTypeIds: string[];
 };
 
@@ -96,6 +107,14 @@ function cleanMaxDaysPerApplication(v: number | null | undefined): string | null
   }
   if (v > 999) throw new Error('Shared leave group: maximum days per application is too large.');
   return v.toFixed(2);
+}
+
+/** 46afcc48 — WHERE the group is drawn on the employee Leave tab. Unlike a leave TYPE, 'hidden' is a
+ *  legitimate STORED value here (a group has no visible_to_employee twin to express it with); the DB CHECK
+ *  admits all three. Anything unrecognised — an omitted form field, a tampered post — resolves to Hidden,
+ *  which is the safe direction: a group is never revealed to every employee by accident. */
+function cleanEssPlacement(v: string | null | undefined): EssPlacement {
+  return resolveSharedGroupPlacement(v);
 }
 
 function cleanMemberTypeIds(ids: string[] | undefined): string[] {
@@ -168,6 +187,7 @@ export async function listLeaveSharedGroups(ctx: SessionContext): Promise<LeaveS
         name: leaveSharedGroup.name,
         totalLimitDays: leaveSharedGroup.totalLimitDays,
         maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
+        essPlacement: leaveSharedGroup.essPlacement,
       })
       .from(leaveSharedGroup)
       .orderBy(asc(leaveSharedGroup.name));
@@ -192,6 +212,7 @@ export async function listLeaveSharedGroups(ctx: SessionContext): Promise<LeaveS
       name: g.name,
       totalLimitDays: Number(g.totalLimitDays),
       maxDaysPerApplication: g.maxDaysPerApplication == null ? null : Number(g.maxDaysPerApplication),
+      essPlacement: resolveSharedGroupPlacement(g.essPlacement),
       leaveTypeIds: byGroup.get(g.id) ?? [],
     }));
   });
@@ -204,18 +225,22 @@ export async function createLeaveSharedGroup(
     totalLimitDays: number;
     /** Omit or null for an uncapped group. */
     maxDaysPerApplication?: number | null;
+    /** 46afcc48 — where the group is drawn on the employee Leave tab. Omitted ⇒ Hidden, matching the
+     *  column DEFAULT: a group created without a deliberate choice appears on nobody's screen. */
+    essPlacement?: string | null;
     leaveTypeIds: string[];
   },
 ) {
   const name = cleanName(p.name);
   const totalLimitDays = cleanTotalLimitDays(p.totalLimitDays);
   const maxDaysPerApplication = cleanMaxDaysPerApplication(p.maxDaysPerApplication);
+  const essPlacement = cleanEssPlacement(p.essPlacement);
   const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
   return withTenant(ctx, async (tx) => {
     await assertTypesUngrouped(tx, leaveTypeIds, null);
     const [row] = await tx
       .insert(leaveSharedGroup)
-      .values({ tenantId: ctx.tenantId, name, totalLimitDays, maxDaysPerApplication })
+      .values({ tenantId: ctx.tenantId, name, totalLimitDays, maxDaysPerApplication, essPlacement })
       .returning({ id: leaveSharedGroup.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new LeaveSharedGroupNameTakenError(name);
@@ -228,7 +253,7 @@ export async function createLeaveSharedGroup(
       aggregateId: row.id,
       eventType: 'leave-shared-group.created',
       actor: actorOf(ctx),
-      payload: { name, totalLimitDays, maxDaysPerApplication, leaveTypeIds },
+      payload: { name, totalLimitDays, maxDaysPerApplication, essPlacement, leaveTypeIds },
     });
     return row;
   });
@@ -243,6 +268,10 @@ export async function updateLeaveSharedGroup(
     /** ABSOLUTE set, not a patch — null clears the cap. Any form posting this action must carry the field
      *  (visible or hidden), or saving the name would silently drop the cap. */
     maxDaysPerApplication?: number | null;
+    /** ABSOLUTE, like every other field on this action: omitted ⇒ Hidden, NOT "leave as it was". Any form
+     *  posting this must carry the control (a <select> always submits, which is why one was used rather
+     *  than a checkbox — trap 17: a field that is always sent cannot be read by presence). */
+    essPlacement?: string | null;
     leaveTypeIds: string[];
   },
 ) {
@@ -250,6 +279,7 @@ export async function updateLeaveSharedGroup(
   const name = cleanName(p.name);
   const totalLimitDays = cleanTotalLimitDays(p.totalLimitDays);
   const maxDaysPerApplication = cleanMaxDaysPerApplication(p.maxDaysPerApplication);
+  const essPlacement = cleanEssPlacement(p.essPlacement);
   const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -261,7 +291,7 @@ export async function updateLeaveSharedGroup(
     await assertTypesUngrouped(tx, leaveTypeIds, p.id);
     await tx
       .update(leaveSharedGroup)
-      .set({ name, totalLimitDays, maxDaysPerApplication })
+      .set({ name, totalLimitDays, maxDaysPerApplication, essPlacement })
       .where(eq(leaveSharedGroup.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) throw new LeaveSharedGroupNameTakenError(name);
@@ -274,9 +304,160 @@ export async function updateLeaveSharedGroup(
       aggregateId: p.id,
       eventType: 'leave-shared-group.updated',
       actor: actorOf(ctx),
-      payload: { name, totalLimitDays, maxDaysPerApplication, leaveTypeIds },
+      payload: { name, totalLimitDays, maxDaysPerApplication, essPlacement, leaveTypeIds },
     });
   });
+}
+
+// ── THE DISPLAY READ (feedback 46afcc48) ─────────────────────────────────────────────────────────────
+//
+// Until now a shared group was ENFORCEMENT ONLY: it refused applications past its ceiling and appeared on
+// no employee screen. The reporter asked to see the pot itself — "Special Leave" as ONE balance — with its
+// six member types still shown or hidden individually, and hiding them changing nothing about the pot.
+//
+// THIS FUNCTION LIVES IN THIS FILE ON PURPOSE. `test/shared-leave-group-single-mechanism.test.ts` pins
+// that exactly two core modules touch `leaveSharedGroupMember`: this one, which CONFIGURES, and
+// core/leave.ts, which ENFORCES. Putting a third reader in core/read.ts would have failed that guard, and
+// the guard is right: the fewer modules that can read the group, the fewer can start disagreeing about it.
+
+/** One shared group as the employee's Leave tab draws it. */
+export type SharedLeaveGroupBalance = {
+  id: string;
+  name: string;
+  /** Where to draw it. 'hidden' groups are never returned — the caller cannot forget to filter. */
+  placement: Exclude<EssPlacement, 'hidden'>;
+  /** The configured shared ceiling. Shown as context ("of 10.00"), never as the available figure. */
+  totalLimitDays: number;
+  /** null = no per-application cap. */
+  maxDaysPerApplication: number | null;
+  /** WHAT IS GENUINELY LEFT — see `sharedGroupAvailableDays`. NOT `totalLimitDays`. */
+  available: number;
+  /** Pending + approved days already committed across every member type this cycle. */
+  usedDays: number;
+  /** EVERY member type's name in the viewer's locale, name-ordered — including the ones HR has hidden.
+   *  The pot is what it is; naming only the visible half would describe a different pot. */
+  memberNames: string[];
+};
+
+/**
+ * The shared-group balances for ONE employment, ready to render.
+ *
+ * ⚠️ MEMBER VISIBILITY IS NOT AN INPUT TO ANY FIGURE HERE, and that is the reporter's central requirement.
+ * `leaveBalances` is called with `includeHidden: true` so the member sum covers every member type whether
+ * or not HR has hidden it from the employee's screens. Summing the filtered list instead would make this
+ * number shrink when a type is hidden while `enforceSharedLeaveGroupLimit` — which has never consulted
+ * visibility — kept allowing the same applications. A displayed figure that disagrees with the engine's
+ * verdict is the exact failure this whole area is built to avoid. No hidden type's own name or balance is
+ * disclosed: they are summed into one figure and `memberNames` is the group's membership, which the
+ * employee is being told about by definition.
+ *
+ * ⚠️ AND IT CHANGES NOTHING ABOUT ENFORCEMENT. This is a read. The ceiling, the per-application cap and
+ * both refusals live in core/leave.ts and are untouched by 46afcc48.
+ *
+ * COST: two small queries, and the balance read only when a non-hidden group actually exists — so every
+ * tenant with no groups (and every tenant whose groups are still Hidden, which is all of them on the day
+ * this ships) pays two indexed lookups and nothing else.
+ */
+export async function sharedLeaveGroupBalances(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: {
+    locale?: string;
+    /** Point-in-time cut passed through to `leaveBalances` for the member sum, and the date whose CALENDAR
+     *  YEAR is the group's cycle. Omit for today. */
+    asOf?: string;
+  } = {},
+): Promise<SharedLeaveGroupBalance[]> {
+  const onDate = opts.asOf ?? todayInKualaLumpur();
+  const { start: windowStart, end: windowEnd } = sharedGroupCycleWindow(onDate);
+
+  // Step 1 — the groups that are actually drawn, with their members and this employee's usage. All of it
+  // in one withTenant so the three reads see one snapshot.
+  const shown = await withTenant(ctx, async (tx) => {
+    const groups = await tx
+      .select({
+        id: leaveSharedGroup.id,
+        name: leaveSharedGroup.name,
+        totalLimitDays: leaveSharedGroup.totalLimitDays,
+        maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
+        essPlacement: leaveSharedGroup.essPlacement,
+      })
+      .from(leaveSharedGroup)
+      .orderBy(asc(leaveSharedGroup.name));
+    const visible = groups.filter((g) => resolveSharedGroupPlacement(g.essPlacement) !== 'hidden');
+    if (visible.length === 0) return null;
+    const groupIds = visible.map((g) => g.id);
+
+    // Members, with the name columns the tab prints. `leaveType.i18n` is resolved through the SAME
+    // `pickName` every other leave surface uses — see its export note in core/read.ts.
+    const members = await tx
+      .select({
+        groupId: leaveSharedGroupMember.groupId,
+        leaveTypeId: leaveSharedGroupMember.leaveTypeId,
+        name: leaveType.name,
+        i18n: leaveType.i18n,
+      })
+      .from(leaveSharedGroupMember)
+      .innerJoin(leaveType, eq(leaveType.id, leaveSharedGroupMember.leaveTypeId))
+      .where(inArray(leaveSharedGroupMember.groupId, groupIds))
+      .orderBy(asc(leaveType.name));
+
+    // Usage per group — the SAME measure `enforceSharedLeaveGroupLimit` takes: pending + approved days
+    // across every member type whose request STARTS inside the cycle. Deliberately NOT cut at `asOf`:
+    // the guard counts the whole cycle, and a figure cut differently would announce room the guard then
+    // refuses to give.
+    const usage = await tx
+      .select({
+        groupId: leaveSharedGroupMember.groupId,
+        used: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+      })
+      .from(leaveSharedGroupMember)
+      .innerJoin(leaveRequest, eq(leaveRequest.leaveTypeId, leaveSharedGroupMember.leaveTypeId))
+      .where(
+        and(
+          inArray(leaveSharedGroupMember.groupId, groupIds),
+          eq(leaveRequest.employmentId, employmentId),
+          inArray(leaveRequest.status, ['pending', 'approved']),
+          gte(leaveRequest.startDate, windowStart),
+          lte(leaveRequest.startDate, windowEnd),
+        ),
+      )
+      .groupBy(leaveSharedGroupMember.groupId);
+
+    return { visible, members, usage };
+  });
+  if (!shown) return [];
+
+  // Step 2 — the member types' own Available figures, UNFILTERED by visibility. See the warning above.
+  const balances = await leaveBalances(ctx, employmentId, opts.locale, {
+    includeHidden: true,
+    ...(opts.asOf ? { asOf: opts.asOf } : {}),
+  });
+  const availableByType = new Map(balances.map((b) => [b.leaveTypeId, b.available]));
+  const usedByGroup = new Map(shown.usage.map((u) => [u.groupId, Number(u.used ?? 0)]));
+
+  const out: SharedLeaveGroupBalance[] = [];
+  for (const g of shown.visible) {
+    const placement = resolveSharedGroupPlacement(g.essPlacement);
+    if (placement === 'hidden') continue; // unreachable (filtered above); kept so the type narrows honestly
+    const mine = shown.members.filter((m) => m.groupId === g.id);
+    // A member type the employee has no ledger row, no request and no eligibility for contributes 0 —
+    // absent from `leaveBalances` is "nothing available from this type", not "unknown".
+    const memberAvailableSum = mine.reduce((sum, m) => sum + (availableByType.get(m.leaveTypeId) ?? 0), 0);
+    const totalLimitDays = Number(g.totalLimitDays);
+    const usedDays = usedByGroup.get(g.id) ?? 0;
+    out.push({
+      id: g.id,
+      name: g.name,
+      placement,
+      totalLimitDays,
+      maxDaysPerApplication: g.maxDaysPerApplication == null ? null : Number(g.maxDaysPerApplication),
+      available: sharedGroupAvailableDays({ totalLimitDays, usedDays, memberAvailableSum }),
+      usedDays,
+      memberNames: mine.map((m) => pickName(m.name, m.i18n as Record<string, { name: string }> | null, opts.locale)),
+    });
+  }
+  return out;
 }
 
 export async function deleteLeaveSharedGroup(ctx: SessionContext, p: { id: string }) {

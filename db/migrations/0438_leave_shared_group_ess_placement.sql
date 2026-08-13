@@ -1,0 +1,36 @@
+-- Shared Leave Group display (feedback 46afcc48, revision 2).
+--
+-- Adds ONE additive column to leave_shared_group so a shared group can be PLACED on the employee
+-- self-service Leave tab, the same way a leave TYPE already can (b653ac1b / migration 0193):
+--
+--   ess_placement — 'primary' | 'secondary' | 'hidden'. NOT NULL, DEFAULT 'hidden'.
+--
+-- WHY 'hidden' IS STORABLE HERE AND IS *NOT* STORABLE ON leave_type. 0193 deliberately refuses to store
+-- 'hidden' in leave_type.ess_placement because a leave type already has ONE hidden mechanism —
+-- leave_type.visible_to_employee (7b11f1c1) — and a second one would give HR two competing controls for
+-- the same concept. A shared GROUP has no such twin: it has never been shown to an employee at all, and
+-- there is no group-level visibility flag to reuse. So for the group the placement column IS the single
+-- source of truth for hidden, and the CHECK admits all three values. The two CHECKs therefore differ ON
+-- PURPOSE; they are not a copy that drifted.
+--
+-- WHY THE DEFAULT IS 'hidden'. Production carries exactly one group ("Special Leave", 10.00 shared days,
+-- max 3.00 per application, six member types). Defaulting to 'primary' would put a brand-new balance on
+-- every employee's Leave screen the morning after a release, unasked. Hidden means approving this item
+-- changes NOTHING on screen until HR chooses where the group should appear — which is what the approved
+-- plan promises the reporter in as many words.
+--
+-- DISPLAY ONLY. Nothing in this column is ever read for entitlement, accrual, eligibility, workflow or
+-- payroll, and it does not touch ENFORCEMENT: the group's shared annual ceiling and its per-application
+-- cap are decided by enforceSharedLeaveGroupLimit / enforceApplicationLengthLimit (core/leave.ts) from
+-- total_limit_days and max_days_per_application exactly as before. This column only decides whether, and
+-- where, the group is drawn.
+--
+-- NO GRANT IS OWED. This is an ALTER TABLE on an existing table, not a CREATE TABLE: leave_shared_group
+-- already carries its tenant-read / admin-write policies and its role grants, and a new column inherits
+-- them (same as 0193 on leave_type). Additive, no backfill beyond the DEFAULT, and every existing row
+-- reads 'hidden' — today's exact behaviour, because today the group is drawn nowhere.
+ALTER TABLE leave_shared_group ADD COLUMN IF NOT EXISTS ess_placement text NOT NULL DEFAULT 'hidden';
+--> statement-breakpoint
+ALTER TABLE leave_shared_group DROP CONSTRAINT IF EXISTS leave_shared_group_ess_placement_chk;
+--> statement-breakpoint
+ALTER TABLE leave_shared_group ADD CONSTRAINT leave_shared_group_ess_placement_chk CHECK (ess_placement IN ('primary', 'secondary', 'hidden'));
