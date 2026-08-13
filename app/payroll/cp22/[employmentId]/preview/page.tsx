@@ -4,7 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { cp22Particulars } from '@/core/reporting';
 import { cp22FieldValues } from '@/lib/cp22-pdf';
 import { CP22_FIELDS, CP22_SECTIONS, cp22Section } from '@/lib/cp22-fields';
-import { CP22_REVIEW_PARAMS, cp22ContinuedCodes, cp22ReviewFrom } from '@/lib/cp22-review';
+import { CP22_REVIEW_PARAMS, applyCp22Review, cp22ContinuedCodes, cp22ReviewFrom } from '@/lib/cp22-review';
 import { Card, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 
 /**
@@ -70,19 +70,21 @@ export default async function Cp22PreviewPage({
 
   const q = toQuery(sp);
   const review = cp22ReviewFrom(particulars, q);
+  // THE CORRECTED RECORD, ONCE — and everything on this screen is derived from it.
+  //
+  // This used to inline `applyCp22Review`'s body here and then ask `cp22ContinuedCodes` about the BARE
+  // `particulars`, so the screen showed the operator's own correction in full while the "will not fit"
+  // warning still described the record they had just changed. Typing a long expected duration into the
+  // review box (B16's printed box is 62.76pt) produced exactly the thing this screen exists to prevent:
+  // the full value on screen, LHDN's continuation marker on the PDF, and nothing saying so.
+  //
+  // One `applyCp22Review` call fixes both halves, because the bug was not the warning — it was having two
+  // sources of truth for "what will the form say" on a screen whose whole job is to answer that.
+  const reviewed = applyCp22Review(particulars, review);
   // The values EXACTLY as the PDF will print them — same function, same corrections applied. If this
   // screen computed its own display values it would be a second copy of the mapping, free to drift from
   // the document it claims to preview.
-  const values = cp22FieldValues({
-    ...particulars,
-    employer: { ...particulars.employer, name: review.employerName ?? '' },
-    employee: {
-      ...particulars.employee,
-      incomeTaxNo: review.incomeTaxNo,
-      commencementDate: review.commencementDate,
-      expectedDuration: review.expectedDuration,
-    },
-  });
+  const values = cp22FieldValues(reviewed);
 
   // The corrections travel to the three actions as the SAME query string this page was reached with, so
   // "what I am looking at" and "what I download" cannot differ.
@@ -96,7 +98,7 @@ export default async function Cp22PreviewPage({
   // Boxes whose value will NOT fit on the printed form. The list below shows all of it; the PDF says
   // "see attached" on that box, which is what LHDN's own instruction at the head of section D tells you
   // to do. Saying nothing here would let the screen imply the form carries more than it does.
-  const continued = await cp22ContinuedCodes(particulars);
+  const continued = await cp22ContinuedCodes(reviewed);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
