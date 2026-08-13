@@ -2507,6 +2507,13 @@
       "when": 1781862539000,
       "tag": "0439_ot_rounding_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 440,
+      "version": "7",
+      "when": 1781862540000,
+      "tag": "0440_assignment_company",
+      "breakpoints": true
     }
   ]
 }

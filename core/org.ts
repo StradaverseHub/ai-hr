@@ -282,6 +282,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       positionId: p.positionId ?? null,
       costCenterId: p.costCenterId ?? null,
       employmentType: p.employmentType,
+      // 3c88d593 — every employment's entity history now STARTS here, on the hire, so nobody hired after
+      // migration 0440 ever needs the backfill or the resolver's employment.company_id fallback.
+      companyId: p.companyId,
       validFrom: p.hiredOn,
       validTo: null,
     });
@@ -592,6 +595,10 @@ export async function transferEmployee(
         businessUnitId: cur.businessUnitId,
         locationId: nextLocationId,
         employmentType: cur.employmentType,
+        // 3c88d593 — carried, exactly like the business unit above and for the same reason: a department
+        // transfer inside one legal entity must not silently blank the entity history. NO caller of this
+        // writer moves a company (that is transferEmploymentCompanyTx's job), so there is no parameter.
+        companyId: cur.companyId,
         validFrom: p.effectiveDate,
         validTo: null,
       })
@@ -1701,6 +1708,23 @@ export async function setEmploymentAssignment(
     locationId?: string | null;
     employmentType?: EmploymentTypeValue;
     /**
+     * 3c88d593 — THE LEGAL ENTITY this dated version belongs to (migration 0440). undefined = carry
+     * forward, which is what every existing caller does and why they are all unchanged.
+     *
+     * Only ONE caller passes a value: the entity-transfer writer below, which is the only act in this
+     * system that moves a person between companies. It is a parameter rather than a read of
+     * `employment.company_id` because the transfer flips that column first (so the later legs validate
+     * against the destination) — reading it here would make the OLD range look as though it had always
+     * been the new entity, which is the exact fault this item exists to fix.
+     *
+     * The carry-forward stamps the employment's CURRENT company when the open version predates 0440 and
+     * carries NULL. That is deliberate: a new version opens on `effectiveDate`, which is now or later,
+     * and today's column is authoritative for now — so entity history starts accreting from the first
+     * assignment change after deploy even on a tenant whose backfill has not run. It never rewrites the
+     * closed range it inherited from, which stays NULL and stays served by the resolver's fallback.
+     */
+    companyId?: string;
+    /**
      * R81 (9cbf5e0d) — the `status?: AssignmentStatusValue` (a now-deleted alias) parameter that used to sit here is REMOVED, and
      * with it the last way anything in this system could set an Employee Status by hand. It was the live
      * end of the manual path: the Personnel form behind it was already deleted (8ebabbf2) and no caller
@@ -1741,6 +1765,21 @@ export async function setEmploymentAssignment(
       p.costCenterId === undefined ? cur.costCenterId : p.costCenterId || null;
     const nextLocationId = p.locationId === undefined ? cur.locationId : p.locationId || null;
     const nextEmploymentType = p.employmentType ?? cur.employmentType;
+    // 3c88d593 — the entity for the new version: what the caller named, else what the open version
+    // already carries, else today's column (see the parameter note). The employment read fires ONLY on
+    // the third branch — a pre-0440 row that has not been backfilled — so once the backfill has run this
+    // costs nothing.
+    const nextCompanyId =
+      p.companyId ??
+      cur.companyId ??
+      (
+        await tx
+          .select({ companyId: employment.companyId })
+          .from(employment)
+          .where(eq(employment.id, p.employmentId))
+          .limit(1)
+      )[0]?.companyId ??
+      null;
 
     // 1001ff61 / 570e3311 — referential integrity + company scope for a newly-selected BU / Department /
     // Position: it must exist, be un-archived, and be a label this employment's company MAY use under the
@@ -1837,7 +1876,19 @@ export async function setEmploymentAssignment(
       nextBusinessUnitId === cur.businessUnitId &&
       nextCostCenterId === cur.costCenterId &&
       nextLocationId === cur.locationId &&
-      nextEmploymentType === cur.employmentType;
+      nextEmploymentType === cur.employmentType &&
+      // 3c88d593 — the entity is a dimension of this row like any other, so a version that changes ONLY
+      // the company is a change. Without this line an entity transfer that moves nothing else (the
+      // restructure case: same department, same position, new legal entity) would be swallowed by the
+      // no-op guard and write no dated history at all — which is the fault, not a saving.
+      //
+      // ⚠️ IT ASKS WHAT THE CALLER NAMED, not what `nextCompanyId` resolved to, and the difference is
+      // deliberate. The carry-forward branch above turns a pre-0440 NULL into today's company, so testing
+      // the resolved value would make a save that changes NOTHING write a version — and emit an
+      // Employment History row — the first time anybody touched any employee after deploy. A no-op stays
+      // a no-op; the resolved value is still what gets STAMPED whenever some other dimension does move,
+      // so history accretes on real changes without inventing one.
+      !(p.companyId !== undefined && p.companyId !== cur.companyId);
     if (unchanged) return { assignmentId: cur.id, changed: false as const };
 
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
@@ -1853,6 +1904,8 @@ export async function setEmploymentAssignment(
         costCenterId: nextCostCenterId,
         locationId: nextLocationId,
         employmentType: nextEmploymentType,
+        // 3c88d593 — the legal entity, effective-dated at last (migration 0440).
+        companyId: nextCompanyId,
         validFrom: p.effectiveDate,
         validTo: null,
       })
@@ -2000,6 +2053,10 @@ export async function changeEmploymentCompany(
       {
         employmentId: p.employmentId,
         effectiveDate: emp.hiredOn,
+        // 3c88d593 — a CORRECTION, not a movement: the employee was never in the old company, so the
+        // whole dated range is re-homed onto the destination rather than split at a date. Dating it at
+        // `hiredOn` is what makes that true — the version it opens covers the employment from day one.
+        companyId: p.newCompanyId,
         departmentId: p.departmentId,
         positionId: p.positionId ?? null,
         businessUnitId: p.businessUnitId ?? null,
@@ -2126,6 +2183,15 @@ export async function transferEmploymentCompanyTx(
       locationId?: string | null;
       managerEmploymentId?: string | null;
     };
+    /**
+     * 3c88d593 — the employment-type delta, when the same movement moves one. It is NOT part of
+     * `placement` because placement is the set of fields this writer CHECKS against the destination
+     * company, and an employment type is company-blind. It is here because the entity leg now owns the
+     * assignment version (see the setEmploymentAssignment call at the end): without it, a transfer that
+     * also changed contract→permanent would have its type leg written by a SECOND version on the same
+     * date, leaving a zero-length row behind. Absent ⇒ carried forward, exactly as before.
+     */
+    employmentType?: EmploymentTypeValue;
     movement: MovementTag;
   },
 ) {
@@ -2283,6 +2349,54 @@ export async function transferEmploymentCompanyTx(
       movement: p.movement,
     },
   });
+
+  /**
+   * 3c88d593 — AND THE DATED HALF, which is the whole point of the item.
+   *
+   * Until now this writer moved the COLUMN and nothing else. `employment.company_id` holds one value, so
+   * the moment it was overwritten the fact that the employee had been somewhere else on 8 August ceased
+   * to exist anywhere a reader could reach — and payroll, which had nothing to look up, paid the whole of
+   * August under the destination. Reproduced on production for employee 100814 before this was written.
+   *
+   * The entity now closes the outgoing assignment version at `effectiveDate` and opens a new one carrying
+   * the destination company, through the SAME guarded delegate every other placement change uses. Three
+   * things follow from routing it through setEmploymentAssignment rather than a fourth hand-rolled
+   * CLOSE+INSERT here:
+   *
+   *   • the placement deltas travel WITH the entity, in one version. The movement form can move the
+   *     department, position, business unit, location and employment type in the same act as the company,
+   *     and one version carrying all of them is the truth — two versions dated the same day, one per leg,
+   *     would leave a zero-length row and an Employment History that says the person changed twice.
+   *     THIS IS WHY core/movement.ts SKIPS ITS OWN ASSIGNMENT LEG WHEN THE COMPANY MOVED: the leg is not
+   *     lost, it is folded in here, with the deltas the caller already handed to `placement`.
+   *   • the guards it already performs (label usable by the destination, live location, dated-range
+   *     sanity) run on the version that is actually written, not on a copy of them.
+   *   • the ROLLBACK is free. reverseLegTx already knows how to undo an `employment.assignment.changed`
+   *     (supersede the new row, reopen the previous one), so an Entity Transfer that is rolled back now
+   *     restores the entity history as well as the column, with no new reversal case to write.
+   *
+   * It runs AFTER the flip so the delegate's own cross-company guards resolve against the DESTINATION —
+   * the same ordering, and the same reason, as the note on the flip above.
+   */
+  await setEmploymentAssignment(
+    ctx,
+    {
+      employmentId: p.employmentId,
+      effectiveDate: p.effectiveDate,
+      companyId: p.newCompanyId,
+      // `pl` is the RESOLVED placement — deltas where the form moved something, carried-forward stored
+      // values where it did not — so re-supplying an unchanged value is a no-op to the delegate's
+      // changed-only guards and can never blank a dimension this form does not show.
+      departmentId: pl.departmentId ?? undefined,
+      positionId: pl.positionId,
+      businessUnitId: pl.businessUnitId,
+      costCenterId: pl.costCenterId,
+      locationId: pl.locationId,
+      ...(p.employmentType ? { employmentType: p.employmentType } : {}),
+      movement: p.movement,
+    },
+    tx,
+  );
 
   return { from: emp.companyId, to: p.newCompanyId };
 }
