@@ -1,6 +1,7 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { payslipEmployerBorne, type EmployerBorneView } from '@/core/payslip-employer-borne';
+import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recompute';
 
 /**
  * Pure derivation of the itemized History breakdown (feedback 5f8d8395) from a processed-payslip view row.
@@ -25,7 +26,17 @@ export type ComponentLine = {
   name: string;
   amount: number;
   buckets: { bucket: ComponentBucket; amount: number }[];
+  // Feedback 2333b7fb/0253dc7c — the item's statutory ticks AS THIS RUN FOLDED THEM. Stamped by the
+  // kernel from r193 onward; ABSENT on every earlier payslip, which is why every reader must treat
+  // `undefined` as "this run did not record it" and fall back to the live catalogue rather than
+  // reading it as false. There is no per-item SKBBK setting anywhere in the schema: `socso` is one
+  // stored answer behind the SOCSO, EIS and SKBBK captions on screen.
+  epf?: boolean;
+  socso?: boolean;
+  pcb?: boolean;
+  hrdf?: boolean;
 };
+
 
 export type BreakdownStat = {
   epfEmployee?: number;
@@ -82,6 +93,19 @@ export type HistoryBreakdown = {
   /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
    *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
   detailNotRecorded: boolean;
+  /**
+   * Feedback 0253dc7c — the wage each agency was ACTUALLY charged on, as this run recorded it
+   * (`statutory.bases`, stamped from r187 onward). NULL on a payslip written before that stamp
+   * existed: 61 of the 121 production payslips are in that state, and the screen renders null as an
+   * em dash with a caption. It is NEVER replaced by gross pay or by any other figure — a wrong wage
+   * base on a reconciliation screen is worse than a blank one, and the whole point of the disclosure
+   * is that the number can be trusted.
+   *
+   * On an ADDITIONAL run these describe the CUMULATIVE month, not that run's own money (A0006's
+   * 2026-01 bonus payslip is all zeros yet stamps an EPF base of 5,100). Grid rows are keyed by run
+   * type, so that lands on its own line rather than being added to anything.
+   */
+  bases: StatutoryBases | null;
 };
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -137,5 +161,8 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     componentLines,
     componentsByBucket: groupByBucket(componentLines),
     detailNotRecorded: componentLines.length === 0,
+    // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
+    // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.
+    bases: payslipStatutoryBases(row.statutory),
   };
 }

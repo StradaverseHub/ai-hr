@@ -4488,14 +4488,19 @@
           "export": "Eksport ke Excel",
           "hideZeroRows": "Sembunyikan baris yang semuanya sifar",
           "hideSystemCodes": "Sembunyikan kod sistem",
+          "showSubject": "Tunjukkan tertakluk statutori",
           "summary": "{payslips} slip gaji · {rows} baris",
           "detailNotRecorded": "Sebahagian proses gaji pada tahun ini tidak menyimpan butiran setiap item — sama ada ia dikira sebelum sistem mula merekodkannya, atau ia proses tambahan yang memang tidak mengulang item berulang. Baris ringkasan tetap lengkap.",
+          "basesNotRecorded": "Sebahagian proses gaji pada tahun ini tidak merekodkan upah yang dikenakan bagi setiap caruman, jadi bulan tersebut memaparkan sengkang. Tiada angka gantian digunakan — asas upah hanya dipaparkan apabila proses gaji itu sendiri merekodkannya.",
+          "subjectFromPayslip": "Y / N ialah tetapan yang direkodkan oleh setiap proses gaji pada masa ia dikira. PERKESO, SIP dan SKBBK ialah satu tetapan bagi setiap item gaji, jadi ketiga-tiga lajur itu sentiasa sama.",
+          "subjectFromCatalogue": "Y / N diambil daripada tetapan Item Gaji semasa jika sesuatu proses gaji tidak merekodkan tetapannya sendiri. Jika tetapan diubah selepas sesuatu proses, angka di atasnya mungkin masih mengikut tetapan lama. PERKESO, SIP dan SKBBK ialah satu tetapan bagi setiap item gaji, jadi ketiga-tiga lajur itu sentiasa sama.",
           "notRegistered": "Tidak berdaftar",
           "colCode": "Kod item bayaran",
           "colDescription": "Keterangan item bayaran",
           "colCycle": "Kitaran gaji",
           "colTotal": "Jumlah",
           "section": {
+            "wagebase": "Asas upah",
             "earnings": "Pendapatan",
             "deductions": "Potongan",
             "employer": "Caruman majikan",
@@ -4503,6 +4508,13 @@
             "summary": "Ringkasan"
           },
           "row": {
+            "epfWages": "Upah EPF",
+            "epfAdditionalWages": "Upah EPF (saraan tambahan)",
+            "socsoWages": "Upah PERKESO",
+            "eisWages": "Upah SIP",
+            "skbbkWages": "Upah SKBBK",
+            "pcbWages": "Upah PCB (saraan bercukai)",
+            "hrdfWages": "Upah HRDF",
             "basic": "Gaji asas",
             "allowance": "Elaun",
             "otConvert": "Kerja lebih masa dibayar sebagai item gaji",
@@ -4525,6 +4537,15 @@
             "gross": "Gaji kasar",
             "totalDeductions": "Jumlah potongan",
             "net": "Gaji bersih"
+          },
+          "subject": {
+            "epf": "EPF",
+            "socso": "PERKESO",
+            "eis": "SIP",
+            "skbbk": "SKBBK",
+            "tax": "Cukai",
+            "yes": "Y",
+            "no": "N"
           }
         }
       },

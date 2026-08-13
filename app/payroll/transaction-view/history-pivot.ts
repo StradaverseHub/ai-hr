@@ -48,15 +48,35 @@ import { deriveHistoryBreakdown } from './history-breakdown';
  * far better failure than a column that silently does not add up.
  */
 
+/**
+ * ── Feedback 0253dc7c (r193) — THE WORKING BETWEEN THE ITEMS AND THE ANSWERS, ON SCREEN ────────────
+ *
+ * "The wage each contribution was charged on has been recorded against every recent payroll run, and
+ * it appears nowhere on screen, so the only way to check a figure is to redo the arithmetic by hand."
+ * Three additions, all of them DISCLOSURE — not one figure is recomputed anywhere in this file:
+ *
+ *   1. A WAGE BASE block, rendered FIRST, straight out of `statutory.bases` (r187's stamp). Every one
+ *      of its rows is `reconciling: false`, so the two reconciliation invariants below are untouched.
+ *      A run with no stamp renders an em dash and sets `basesNotRecorded`; it NEVER borrows grossPay.
+ *   2. STATUTORY SUBJECT columns (EPF / SOCSO / EIS / SKBBK / Tax, Y or N) behind a new switch,
+ *      preferring the tick the payslip itself stamped (r193) and falling back to today's catalogue.
+ *   3. The ALLOW and OTHER_DED lump-sum rows drop out on their own once the item rows fully account
+ *      for them — which is the reporter's actual request, without breaking `Hide system codes`
+ *      (all-or-nothing by design) for the people who use it.
+ */
+
 /** Which block of the grid a row belongs to. Ordered exactly as the sections are rendered/exported. */
-export type GridRowGroup = 'earning' | 'deduction' | 'employer' | 'item' | 'summary';
+export type GridRowGroup = 'wagebase' | 'earning' | 'deduction' | 'employer' | 'item' | 'summary';
 
 const GROUP_ORDER: Record<GridRowGroup, number> = {
-  earning: 0,
-  deduction: 1,
-  employer: 2,
-  item: 3,
-  summary: 4,
+  // 0253dc7c — FIRST. The reporter reads the wage base and then checks the items against it; putting
+  // the answer above the working is the order they described.
+  wagebase: 0,
+  earning: 1,
+  deduction: 2,
+  employer: 3,
+  item: 4,
+  summary: 5,
 };
 
 /**
@@ -75,6 +95,21 @@ const SYNTHETIC: {
   /** Part of the mutually exclusive set whose column sum equals a stored payslip total. */
   reconciling: boolean;
 }[] = [
+  // ── Wage bases (0253dc7c): what each agency was CHARGED ON. Never part of any reconciling sum —
+  // a base is not money that moved, and adding one to a column of payments would be nonsense.
+  //
+  // SOCSO, EIS and SKBBK are THREE CAPTIONS OVER ONE STORED FIGURE (`bases.socsoEis`). SKBBK is
+  // charged on the SOCSO wage and there is no separate base for it anywhere in the schema; the three
+  // rows will therefore always agree, and that is a fact about the law, not a copy-paste bug.
+  { key: 'epfWages', code: 'EPF_WAGE', group: 'wagebase', reconciling: false },
+  // Emitted ONLY when the run recorded a non-zero additional-remuneration EPF base, so a month with
+  // no bonus grows no row at all rather than a line of zeroes on every payslip ever produced.
+  { key: 'epfAdditionalWages', code: 'EPF_ADD_WAGE', group: 'wagebase', reconciling: false },
+  { key: 'socsoWages', code: 'SOCSO_WAGE', group: 'wagebase', reconciling: false },
+  { key: 'eisWages', code: 'EIS_WAGE', group: 'wagebase', reconciling: false },
+  { key: 'skbbkWages', code: 'SKBBK_WAGE', group: 'wagebase', reconciling: false },
+  { key: 'pcbWages', code: 'PCB_WAGE', group: 'wagebase', reconciling: false },
+  { key: 'hrdfWages', code: 'HRDF_WAGE', group: 'wagebase', reconciling: false },
   // ── Earnings: these six sum to gross, exactly ──
   { key: 'basic', code: 'BASIC', group: 'earning', reconciling: true },
   { key: 'allowance', code: 'ALLOW', group: 'earning', reconciling: true },
@@ -142,7 +177,56 @@ export type HistoryGridRow = {
    *  policy statement rather than a computation. The screen must say so — feedback efece4ce is exactly the
    *  ambiguity of an unregistered company looking like a levy that failed to compute. */
   notRegistered?: boolean;
+  /**
+   * 0253dc7c, WAGE BASE ROWS ONLY. `true` at month i ⇒ a payslip DID contribute to that cell but
+   * carried no `statutory.bases` (a run from before r187), so the base is unknown. The screen renders
+   * an em dash there and the row total sums only the months that were recorded.
+   *
+   * ⚠️ THIS IS NOT "the base was zero". Rendering 0.00 there — or substituting grossPay, which is the
+   * tempting fix — would put a WRONG wage base on the one screen whose entire purpose is checking a
+   * figure by hand. 61 of the 121 production payslips are in this state.
+   *
+   * A month with NO payslip at all is left as a plain 0, exactly like every other row on the grid:
+   * "nobody was paid that month" is already what a zero means here.
+   */
+  unrecordedMonths?: boolean[];
+  /**
+   * 0253dc7c — the pay item's statutory subject flags, for the Y/N columns. Present only on a row
+   * whose code IS a pay item (every item row, plus the synthetic rows whose display code happens to
+   * be a real component code — BASIC is the one the ticket names). `null`/absent ⇒ the columns stay
+   * blank for that row, which is what "rows that are not pay items should remain blank" asks for.
+   *
+   * ONE `socso` ANSWER DRIVES THREE COLUMNS (SOCSO, EIS, SKBBK): `included_in_socso_eis` is a single
+   * setting and there is no per-item SKBBK column in the schema. Do not invent one.
+   */
+  subject?: PayItemSubject | null;
+  /**
+   * 0253dc7c — the lump-sum row (ALLOW / OTHER_DED) is FULLY accounted for by the item rows below it,
+   * in EVERY contributing month, so `filterGridRows` drops it. Row-level and never cell-level:
+   * blanking one month of a row would break the row total, which is the property this screen exists
+   * for. A month that does not reconcile — a residual holding a loan or a carry-forward deferral, or
+   * a run with no stored item detail — keeps the whole row.
+   */
+  itemised?: boolean;
 };
+
+/** A pay item's statutory subject answers, and where this screen got them from. */
+export type PayItemSubject = {
+  epf: boolean;
+  /** `included_in_socso_eis` — ONE setting behind the SOCSO, EIS and SKBBK columns. */
+  socso: boolean;
+  pcb: boolean;
+  /**
+   * 'payslip' — the tick the run itself stamped (r193 onward), i.e. what was true when that pay was
+   * calculated. 'catalogue' — today's Pay Item setting, used for every payslip that predates the
+   * stamp. The screen says which it is showing, because the two can legitimately disagree and an
+   * unlabelled Y beside an old figure is exactly the confusion this item was raised about.
+   */
+  source: 'payslip' | 'catalogue';
+};
+
+/** The tenant's live Pay Item settings, keyed by code — read on the SERVER and passed in as data. */
+export type PayItemSubjectMap = Record<string, { epf: boolean; socso: boolean; pcb: boolean }>;
 
 export type HistoryGrid = {
   rows: HistoryGridRow[];
@@ -154,6 +238,14 @@ export type HistoryGrid = {
    *  stamps one. Its pay items were never written down and cannot be reconstructed, so the screen SAYS so
    *  rather than presenting a grid whose item rows are silently missing a month. */
   detailNotRecorded: boolean;
+  /** 0253dc7c — at least one folded run predates r187's `statutory.bases` stamp, so part of the wage
+   *  base block is em dashes. Drives a caption; the alternative (a plausible-looking substitute) is
+   *  the one outcome this disclosure must never produce. */
+  basesNotRecorded: boolean;
+  /** 0253dc7c — at least one subject answer on screen came from TODAY'S catalogue rather than from
+   *  the payslip's own stamp, so the caption must say that a setting changed since a run could make
+   *  the Y/N disagree with the figures above it. */
+  subjectFromCatalogue: boolean;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -188,13 +280,27 @@ type Cell = {
   group: GridRowGroup;
   reconciling: boolean;
   amount: number;
+  /** 0253dc7c, wage-base cells only: this payslip carried no `statutory.bases`, so the base is
+   *  UNKNOWN rather than zero. See `HistoryGridRow.unrecordedMonths`. */
+  unrecorded?: boolean;
+  /** 0253dc7c, item rows only: the ticks this run stamped on the line. Undefined on every payslip
+   *  written before r193, which is what makes the catalogue fallback necessary rather than optional. */
+  stampedSubject?: { epf: boolean; socso: boolean; pcb: boolean };
 };
 
 /**
  * Everything one payslip contributes, as flat cells. Reads ONLY `deriveHistoryBreakdown` — the payslip's
  * own stored figures — so a category or a rate changed after the run cannot rewrite what it says.
+ *
+ * `lumpAccounted` reports, for THIS payslip, whether the ALLOW and OTHER_DED lump sums are fully
+ * explained by the item rows it stamped. Computed here because this is where both halves are in scope.
  */
-function cellsFor(row: ProcessedPayslipViewRow): { cells: Cell[]; detailNotRecorded: boolean } {
+function cellsFor(row: ProcessedPayslipViewRow): {
+  cells: Cell[];
+  detailNotRecorded: boolean;
+  basesNotRecorded: boolean;
+  lumpAccounted: { allowance: boolean; otherDeductions: boolean };
+} {
   const b = deriveHistoryBreakdown(row);
   const st = b.st;
   const emp = b.employerBorne.employee;
@@ -208,7 +314,23 @@ function cellsFor(row: ProcessedPayslipViewRow): { cells: Cell[]; detailNotRecor
     b.totalDeductions - (emp.epf + emp.socso + emp.skbbk + emp.eis + emp.pcb) - cp38,
   );
 
+  // 0253dc7c — the wage bases, straight out of the payslip's own stamp. `null` (a pre-r187 run) is
+  // carried as UNKNOWN all the way to the screen; `?? 0` here would be the substitution the plan
+  // forbids, so the amount is only ever read when `bases` exists.
+  const bases = b.bases;
+  const baseAmounts: Record<string, number> = {
+    epfWages: bases?.epf ?? 0,
+    epfAdditionalWages: bases?.epfAdditional ?? 0,
+    // ONE stored figure, three captions — SKBBK is charged on the SOCSO wage (see the SYNTHETIC note).
+    socsoWages: bases?.socsoEis ?? 0,
+    eisWages: bases?.socsoEis ?? 0,
+    skbbkWages: bases?.socsoEis ?? 0,
+    pcbWages: bases?.pcb ?? 0,
+    hrdfWages: bases?.hrdf ?? 0,
+  };
+
   const amounts: Record<string, number> = {
+    ...baseAmounts,
     basic: b.basic,
     allowance: b.allowanceNet,
     otConvert: b.otConvertAmount,
@@ -233,16 +355,23 @@ function cellsFor(row: ProcessedPayslipViewRow): { cells: Cell[]; detailNotRecor
     net: b.net,
   };
 
-  const cells: Cell[] = SYNTHETIC.map((s) => ({
-    kind: 'synthetic' as const,
-    code: s.code,
-    labelKey: s.key,
-    // The OT-conversion line names the pay item the excess was paid as, when the payslip recorded one.
-    name: s.key === 'otConvert' && st.otConvert?.name ? st.otConvert.name : '',
-    group: s.group,
-    reconciling: s.reconciling,
-    amount: amounts[s.key] ?? 0,
-  }));
+  const cells: Cell[] = SYNTHETIC
+    // 0253dc7c — the additional-remuneration EPF base is a row only when this run actually had one.
+    // Every other wage-base row is emitted always (an em dash is information; a missing row is not),
+    // but a line of zeroes on every payslip ever produced for a company that pays no bonus is noise.
+    .filter((s) => s.key !== 'epfAdditionalWages' || (bases != null && bases.epfAdditional !== 0))
+    .map((s) => ({
+      kind: 'synthetic' as const,
+      code: s.code,
+      labelKey: s.key,
+      // The OT-conversion line names the pay item the excess was paid as, when the payslip recorded one.
+      name: s.key === 'otConvert' && st.otConvert?.name ? st.otConvert.name : '',
+      group: s.group,
+      reconciling: s.reconciling,
+      amount: amounts[s.key] ?? 0,
+      // A wage-base cell on a run that never stamped one is UNKNOWN, not zero.
+      ...(s.group === 'wagebase' && bases == null ? { unrecorded: true } : {}),
+    }));
 
   // ── Item rows: the pay items as the payslip recorded them ──
   for (const l of b.componentLines) {
@@ -258,6 +387,13 @@ function cellsFor(row: ProcessedPayslipViewRow): { cells: Cell[]; detailNotRecor
       group: isDeduction ? 'deduction' : 'earning',
       reconciling: false,
       amount: num(l.amount),
+      // 0253dc7c — the ticks THIS run stamped, when it stamped any. `l.epf` is undefined on every
+      // payslip written before r193, and `undefined` must not collapse to false: an item read as
+      // "not subject to EPF" when nobody recorded an answer is a wrong Y/N, which is the whole
+      // failure this disclosure exists to prevent. Hence the explicit presence test.
+      ...(typeof l.epf === 'boolean'
+        ? { stampedSubject: { epf: l.epf, socso: l.socso === true, pcb: l.pcb === true } }
+        : {}),
     });
   }
   for (const l of b.recordLines) {
@@ -271,9 +407,35 @@ function cellsFor(row: ProcessedPayslipViewRow): { cells: Cell[]; detailNotRecor
       amount: num(l.amount),
     });
   }
+  // ── 0253dc7c — is each lump-sum row fully explained by the item rows above? ──────────────────────
+  // The reporter wants Allowances and Other deductions gone, and they can go the moment the named
+  // items behind them add up to the same money. A payslip with NO stored item detail can never
+  // satisfy this (nothing accounts for the figure), and neither can a residual holding a loan, a
+  // carry-forward deferral or policy rounding that no pay item produced.
+  //
+  // Both tests are "is the figure zero, or do the items make it exactly?" — never "close enough".
+  // The 0.005 tolerance is one tenth of a cent, present only because these are sums of 2dp figures.
+  const bucketSum = (...want: string[]) =>
+    round2(
+      b.componentLines.reduce(
+        (s, l) => s + (l.buckets ?? []).reduce((t, x) => t + (want.includes(x.bucket) ? num(x.amount) : 0), 0),
+        0,
+      ),
+    );
+  const hasDetail = b.componentLines.length > 0;
+  // `allowanceNet` is `allowanceApplied + reimburse` (the OT-converted excess is taken back out and
+  // stands as its own line), which is exactly the wage + reimburse buckets — including a component
+  // that SPLIT across both because part of it was exempt. If the display overlay re-categorised
+  // money into the allowance box from elsewhere the sums stop agreeing and the row correctly stays.
+  const lumpAccounted = {
+    allowance: b.allowanceNet === 0 || (hasDetail && Math.abs(bucketSum('wage', 'reimburse') - b.allowanceNet) < 0.005),
+    otherDeductions:
+      otherDeductions === 0 || (hasDetail && Math.abs(bucketSum('deduct') - otherDeductions) < 0.005),
+  };
+
   // 862ed0ad — a run stamped before the per-item detail existed, or an additional run (which never stamps
   // one), contributes no item rows at all. Reported rather than left to look like a gap in the data.
-  return { cells, detailNotRecorded: b.detailNotRecorded };
+  return { cells, detailNotRecorded: b.detailNotRecorded, basesNotRecorded: bases == null, lumpAccounted };
 }
 
 /**
@@ -291,18 +453,34 @@ export function pivotHistoryGrid(p: {
   months?: number[];
   /** Companies whose HRD Corp levy is registered (efece4ce). */
   hrdfRegisteredCompanyIds?: string[];
+  /**
+   * 0253dc7c — the tenant's LIVE Pay Item settings, keyed by code. Read on the server (this file is
+   * pure and does no I/O) and used ONLY where a payslip did not stamp its own answer: a run from
+   * before r193 has no ticks recorded, and a blank column there would be less useful than today's
+   * setting clearly labelled as today's setting. Omitted ⇒ only stamped answers are shown.
+   */
+  payItemSubjects?: PayItemSubjectMap;
 }): HistoryGrid {
   const months = p.months && p.months.length > 0 ? [...new Set(p.months)].sort((a, b) => a - b) : [...ALL_MONTHS];
   const shown = new Set(months);
   const hrdfRegistered = new Set(p.hrdfRegisteredCompanyIds ?? []);
+  const catalogue = p.payItemSubjects ?? {};
   const yearPrefix = `${p.year}-`;
 
   const acc = new Map<string, HistoryGridRow>();
+  /** Which month supplied the subject stamp currently on a row — a LATER run's answer replaces an
+   *  earlier one, so the column shows the most recent thing that was actually true of real pay. */
+  const subjectMonth = new Map<string, number>();
   let payslipCount = 0;
   let detailNotRecorded = false;
+  let basesNotRecorded = false;
   // Tracked across the whole fold rather than per row: HRDF is one line, and it may be fed by payslips from
   // two companies if the employee moved mid-year.
   let anyHrdfRegistered = false;
+  // Per (runType), whether EVERY contributing payslip's lump-sum row was fully explained by its items.
+  // Keyed by run type because the rows are: a bonus run stamps no item detail at all, and it must not
+  // be able to suppress the regular run's Allowances line (or be suppressed by it).
+  const lumpAccounted = new Map<string, { allowance: boolean; otherDeductions: boolean }>();
 
   for (const row of p.rows) {
     if (!row.payPeriod.startsWith(yearPrefix)) continue;
@@ -313,6 +491,11 @@ export function pivotHistoryGrid(p: {
 
     const slip = cellsFor(row);
     if (slip.detailNotRecorded) detailNotRecorded = true;
+    if (slip.basesNotRecorded) basesNotRecorded = true;
+    const lump = lumpAccounted.get(row.runType) ?? { allowance: true, otherDeductions: true };
+    lump.allowance &&= slip.lumpAccounted.allowance;
+    lump.otherDeductions &&= slip.lumpAccounted.otherDeductions;
+    lumpAccounted.set(row.runType, lump);
     for (const c of slip.cells) {
       // `kind` and `group` are in the key, not just the code. Two DIFFERENT things can carry one code and
       // must never be summed into a single line: the synthetic BASIC row and a pay item an operator coded
@@ -340,14 +523,49 @@ export function pivotHistoryGrid(p: {
       // A later payslip may carry a name where an earlier one did not (the OT-conversion line, or an item
       // renamed between runs) — keep the first non-empty one so the description column is never blank.
       if (!target.name && c.name) target.name = c.name;
-      target.months[month - 1] = round2(target.months[month - 1] + c.amount);
+      // 0253dc7c — an UNRECORDED wage base does not add zero, it adds nothing, and the cell says so.
+      // The month keeps whatever a sibling run of the same type already put there (there is normally
+      // none), so a recorded figure is never overwritten by an unknown.
+      if (c.unrecorded) {
+        target.unrecordedMonths ??= new Array(12).fill(false);
+        target.unrecordedMonths[month - 1] = true;
+      } else {
+        target.months[month - 1] = round2(target.months[month - 1] + c.amount);
+      }
+      // 0253dc7c — the subject stamp, latest month wins (see `subjectMonth`).
+      if (c.stampedSubject && month >= (subjectMonth.get(key) ?? 0)) {
+        subjectMonth.set(key, month);
+        target.subject = { ...c.stampedSubject, source: 'payslip' };
+      }
     }
   }
 
   const rows = [...acc.values()];
+  let subjectFromCatalogue = false;
+  const lumpFor = (runType: string) => lumpAccounted.get(runType) ?? { allowance: false, otherDeductions: false };
   for (const r of rows) {
     r.total = round2(r.months.reduce((s, m) => s + m, 0));
     if (r.kind === 'synthetic' && r.labelKey === 'hrdf' && !anyHrdfRegistered) r.notRegistered = true;
+    // 0253dc7c — the catalogue fallback, for any row whose code IS a pay item and that carries no
+    // stamp of its own. This deliberately fills the synthetic BASIC row (the BASIC pay item exists
+    // and is ticked into everything, and the ticket asks to see it); every synthetic row whose
+    // display code is NOT a component code — ALLOW, OT, EPF_EE, GROSS, the wage bases — matches
+    // nothing and stays blank, which is the "should remain blank" the ticket asks for.
+    if (!r.subject) {
+      const cat = catalogue[r.code];
+      if (cat) {
+        r.subject = { ...cat, source: 'catalogue' };
+        subjectFromCatalogue = true;
+      }
+    }
+    // 0253dc7c — suppress a lump-sum row only when EVERY contributing month of ITS OWN run type was
+    // fully accounted for by item rows. Marked here, dropped in `filterGridRows`, so the pivot's own
+    // reconciliation invariants (Σ earnings = Σ gross, Σ deductions = Σ total deductions) are
+    // computed over the complete row set exactly as before.
+    if (r.kind === 'synthetic' && r.labelKey === 'allowance' && lumpFor(r.runType).allowance) r.itemised = true;
+    if (r.kind === 'synthetic' && r.labelKey === 'otherDeductions' && lumpFor(r.runType).otherDeductions) {
+      r.itemised = true;
+    }
   }
 
   rows.sort((a, b) => {
@@ -362,7 +580,7 @@ export function pivotHistoryGrid(p: {
     return a.runType.localeCompare(b.runType);
   });
 
-  return { rows, months, payslipCount, detailNotRecorded };
+  return { rows, months, payslipCount, detailNotRecorded, basesNotRecorded, subjectFromCatalogue };
 }
 
 /**
@@ -380,12 +598,28 @@ export function filterGridRows(
   opts: { hideZero: boolean; hideSystem: boolean },
 ): HistoryGridRow[] {
   return rows.filter((r) => {
+    // 0253dc7c — the lump-sum row the item rows already account for, in every month. NOT a switch and
+    // NOT `hideSystem`: that one is all-or-nothing by design (it also removes EPF, SOCSO, EIS, PCB,
+    // Gross and Net), which is exactly why nobody used it for this. Applied HERE rather than in the
+    // pivot so the screen and the export cannot diverge — both call this function.
+    if (r.itemised) return false;
     if (opts.hideSystem && r.kind === 'synthetic') return false;
     // `notRegistered` survives hide-zero on purpose. Its zeroes are a POLICY STATEMENT — the company is
     // not registered for the levy — and hide-zero exists to drop rows that carry no information. Letting
     // the default switch delete the one row that explains itself would recreate feedback efece4ce, where
     // an unregistered company was indistinguishable from a levy that failed to compute.
-    if (opts.hideZero && !r.notRegistered && r.months.every((m) => m === 0)) return false;
+    //
+    // 0253dc7c — an UNRECORDED wage base survives it for the same reason: "we did not write this
+    // down" is information, and its cell is an em dash, not a zero. Dropping the row would leave the
+    // operator with no wage-base block at all on an older year and nothing saying why.
+    if (
+      opts.hideZero &&
+      !r.notRegistered &&
+      !r.unrecordedMonths?.some(Boolean) &&
+      r.months.every((m) => m === 0)
+    ) {
+      return false;
+    }
     return true;
   });
 }

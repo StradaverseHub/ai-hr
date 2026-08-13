@@ -4488,14 +4488,19 @@
           "export": "Xuất ra Excel",
           "hideZeroRows": "Ẩn các dòng toàn số không",
           "hideSystemCodes": "Ẩn mã hệ thống",
+          "showSubject": "Hiện diện chịu các khoản luật định",
           "summary": "{payslips} phiếu lương · {rows} dòng",
           "detailNotRecorded": "Một số lần tính lương trong năm nay không lưu chi tiết từng khoản — hoặc chúng được tính trước khi hệ thống bắt đầu ghi nhận, hoặc chúng là các lần tính bổ sung vốn cố ý không lặp lại các khoản định kỳ. Trong cả hai trường hợp, các dòng tổng hợp đều đầy đủ.",
+          "basesNotRecorded": "Một số kỳ tính lương trong năm này không ghi lại mức lương dùng để tính từng khoản đóng góp, nên các tháng đó hiển thị dấu gạch ngang. Không có số nào được thay thế — mức lương căn cứ chỉ hiển thị khi chính kỳ tính lương đã ghi lại.",
+          "subjectFromPayslip": "Y / N là thiết lập mà mỗi kỳ tính lương đã ghi lại tại thời điểm tính. SOCSO, EIS và SKBBK là một thiết lập chung cho mỗi khoản lương, nên ba cột đó luôn trùng nhau.",
+          "subjectFromCatalogue": "Ở những chỗ kỳ tính lương không ghi lại thiết lập riêng, Y / N lấy từ thiết lập Khoản lương hiện tại. Nếu thiết lập được đổi sau một kỳ tính, các con số phía trên vẫn có thể phản ánh thiết lập cũ. SOCSO, EIS và SKBBK là một thiết lập chung cho mỗi khoản lương, nên ba cột đó luôn trùng nhau.",
           "notRegistered": "Chưa đăng ký",
           "colCode": "Mã khoản thanh toán",
           "colDescription": "Mô tả khoản thanh toán",
           "colCycle": "Chu kỳ lương",
           "colTotal": "Tổng",
           "section": {
+            "wagebase": "Mức lương căn cứ",
             "earnings": "Thu nhập",
             "deductions": "Khấu trừ",
             "employer": "Đóng góp của người sử dụng lao động",
@@ -4503,6 +4508,13 @@
             "summary": "Tổng hợp"
           },
           "row": {
+            "epfWages": "Lương tính EPF",
+            "epfAdditionalWages": "Lương tính EPF (thù lao bổ sung)",
+            "socsoWages": "Lương tính SOCSO",
+            "eisWages": "Lương tính EIS",
+            "skbbkWages": "Lương tính SKBBK",
+            "pcbWages": "Lương tính PCB (thù lao chịu thuế)",
+            "hrdfWages": "Lương tính HRDF",
             "basic": "Lương cơ bản",
             "allowance": "Phụ cấp",
             "otConvert": "Tăng ca trả dưới dạng khoản lương",
@@ -4525,6 +4537,15 @@
             "gross": "Lương gộp",
             "totalDeductions": "Tổng khấu trừ",
             "net": "Lương thực lãnh"
+          },
+          "subject": {
+            "epf": "EPF",
+            "socso": "SOCSO",
+            "eis": "EIS",
+            "skbbk": "SKBBK",
+            "tax": "Thuế",
+            "yes": "Y",
+            "no": "N"
           }
         }
       },

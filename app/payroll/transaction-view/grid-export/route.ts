@@ -17,11 +17,12 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
+import { listPayComponents } from '@/core/pay-components';
 import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
 import { employeeLabel } from '@/lib/employee-code';
-import { cleanMonths, filterGridRows, pivotHistoryGrid } from '../history-pivot';
+import { cleanMonths, filterGridRows, pivotHistoryGrid, type PayItemSubjectMap } from '../history-pivot';
 
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 
@@ -62,6 +63,9 @@ export async function GET(req: Request) {
   const cycle = rawCycle && (CYCLES as readonly string[]).includes(rawCycle) ? rawCycle : undefined;
   const hideZero = sp.get('hideZero') !== '0';
   const hideSystem = sp.get('hideSystem') === '1';
+  // 0253dc7c — the third switch. Same posture as the other two: off unless the link says on, so a
+  // pre-existing bookmark produces exactly the file it produced before.
+  const showSubject = sp.get('showSubject') === '1';
 
   const locale = await getLocale();
   const t = await getTranslations('payroll.transactions');
@@ -82,9 +86,27 @@ export async function GET(req: Request) {
         .map((r) => r.companyId)
     : [];
 
-  const grid = pivotHistoryGrid({ rows: payslips, year, months, hrdfRegisteredCompanyIds });
+  // 0253dc7c — the SAME catalogue read the page does, so the Y/N in the file is the Y/N on screen.
+  const payItemSubjects: PayItemSubjectMap = selected
+    ? Object.fromEntries(
+        (await listPayComponents(s, { includeArchived: true })).map((c) => [
+          c.code,
+          { epf: c.includedInEpf, socso: c.includedInSocsoEis, pcb: c.includedInPcb },
+        ]),
+      )
+    : {};
+
+  const grid = pivotHistoryGrid({ rows: payslips, year, months, hrdfRegisteredCompanyIds, payItemSubjects });
   const rows = filterGridRows(grid.rows, { hideZero, hideSystem });
   const labels = monthLabels(locale);
+  // 0253dc7c — Y / N / blank, exactly as the screen renders it (blank on a row that is not a pay item;
+  // never "N", which would be an answer nobody gave). One `socso` field feeds three of the columns.
+  const subjectCells = (r: (typeof rows)[number]) =>
+    showSubject
+      ? ([r.subject?.epf, r.subject?.socso, r.subject?.socso, r.subject?.socso, r.subject?.pcb] as const).map((v) =>
+          v == null ? '' : v ? t('view.grid.subject.yes') : t('view.grid.subject.no'),
+        )
+      : [];
 
   const data: ReportData = {
     filename: `payroll-history-${selected?.employeeCode ?? 'employee'}-${year}`,
@@ -95,6 +117,7 @@ export async function GET(req: Request) {
       t('view.grid.colCode'),
       t('view.grid.colDescription'),
       t('view.grid.colCycle'),
+      ...(showSubject ? ['epf', 'socso', 'eis', 'skbbk', 'tax'].map((k) => t(`view.grid.subject.${k}`)) : []),
       ...grid.months.map((m) => labels[m - 1]),
       t('view.grid.colTotal'),
     ],
@@ -105,11 +128,17 @@ export async function GET(req: Request) {
       // the coverage a computed t() key cannot get from the static i18n scan.
       r.labelKey ? r.name || t(`view.grid.row.${r.labelKey}`) : r.name,
       t(`individual.cycle.${r.runType}`),
+      ...subjectCells(r),
       // Figures go in UNFORMATTED. `toXlsxReport` marks a cell `x:num` only when it parses as a bare
       // number, and a cell carrying "RM 2,500.00" is text an operator cannot sum — which would defeat the
       // one thing this export exists for.
-      ...grid.months.map((m) => (r.notRegistered ? '' : r.months[m - 1].toFixed(2))),
-      r.notRegistered ? '' : r.total.toFixed(2),
+      //
+      // 0253dc7c — an UNRECORDED wage base exports as an EMPTY cell, never 0.00. A spreadsheet is where
+      // a wrong zero does the most damage: it sums, and nothing on the sheet says it was a guess.
+      ...grid.months.map((m) =>
+        r.notRegistered || r.unrecordedMonths?.[m - 1] ? '' : r.months[m - 1].toFixed(2),
+      ),
+      r.notRegistered || grid.months.every((m) => r.unrecordedMonths?.[m - 1]) ? '' : r.total.toFixed(2),
     ]),
     layout: {
       orientation: 'landscape',

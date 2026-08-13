@@ -4488,14 +4488,19 @@
           "export": "导出到 Excel",
           "hideZeroRows": "隐藏全为零的行",
           "hideSystemCodes": "隐藏系统代码",
+          "showSubject": "显示法定适用性",
           "summary": "{payslips} 张工资单 · {rows} 行",
           "detailNotRecorded": "本年度部分薪资计算没有保存逐项明细 —— 或是在系统开始记录之前计算的，或是附加计算，后者本就不重复列出经常性项目。无论哪种情况，汇总行都是完整的。",
+          "basesNotRecorded": "本年度部分薪资计算没有记录各项缴纳所依据的工资，因此这些月份显示为短横线。系统不会用任何数字代替 —— 只有薪资计算本身记录过的工资基数才会显示。",
+          "subjectFromPayslip": "Y / N 是各次薪资计算当时所记录的设置。SOCSO、EIS 和 SKBBK 在每个薪资项目上是同一个设置，因此这三列始终一致。",
+          "subjectFromCatalogue": "若某次薪资计算未记录自身设置，Y / N 取自当前的薪资项目设置。如果设置在计算之后被修改，上方的金额仍可能反映旧设置。SOCSO、EIS 和 SKBBK 在每个薪资项目上是同一个设置，因此这三列始终一致。",
           "notRegistered": "未注册",
           "colCode": "薪资项目代码",
           "colDescription": "薪资项目说明",
           "colCycle": "薪资周期",
           "colTotal": "合计",
           "section": {
+            "wagebase": "工资基数",
             "earnings": "收入",
             "deductions": "扣除",
             "employer": "雇主缴纳",
@@ -4503,6 +4508,13 @@
             "summary": "汇总"
           },
           "row": {
+            "epfWages": "EPF 工资",
+            "epfAdditionalWages": "EPF 工资（额外报酬）",
+            "socsoWages": "SOCSO 工资",
+            "eisWages": "EIS 工资",
+            "skbbkWages": "SKBBK 工资",
+            "pcbWages": "PCB 工资（应税报酬）",
+            "hrdfWages": "HRDF 工资",
             "basic": "基本工资",
             "allowance": "津贴",
             "otConvert": "以薪资项目支付的加班费",
@@ -4525,6 +4537,15 @@
             "gross": "应发工资",
             "totalDeductions": "扣除合计",
             "net": "实发工资"
+          },
+          "subject": {
+            "epf": "EPF",
+            "socso": "SOCSO",
+            "eis": "EIS",
+            "skbbk": "SKBBK",
+            "tax": "所得税",
+            "yes": "Y",
+            "no": "N"
           }
         }
       },

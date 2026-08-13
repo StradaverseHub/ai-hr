@@ -354,9 +354,16 @@ describe('080de5cf — the two switches from the reference', () => {
     const all = filterGridRows(grid.rows, { hideZero: false, hideSystem: false });
     const hidden = filterGridRows(grid.rows, { hideZero: true, hideSystem: false });
     expect(hidden.length).toBeLessThan(all.length);
-    // …every surviving row carries an amount, apart from the one whose zero is itself the statement
-    // (see the HRDF case below).
-    expect(hidden.every((r) => r.notRegistered || r.months.some((m) => m !== 0))).toBe(true);
+    // …every surviving row carries an amount, apart from the rows whose ZERO IS ITSELF THE STATEMENT.
+    // There are now two of those, and both exemptions are deliberate:
+    //   notRegistered     — the company levies no HRDF (efece4ce), see the case below;
+    //   unrecordedMonths  — 0253dc7c: the run never wrote the wage base down, so the cell is an em
+    //                       dash, not a zero. Dropping it would leave an older year with no wage-base
+    //                       block at all and nothing on screen saying why.
+    // The rule this case exists for is unchanged: hide-zero drops rows that carry NO INFORMATION.
+    expect(
+      hidden.every((r) => r.notRegistered || r.unrecordedMonths?.some(Boolean) || r.months.some((m) => m !== 0)),
+    ).toBe(true);
     // CP38 is zero on this payslip and must be gone; BASIC is not and must remain.
     expect(hidden.some((r) => r.code === 'CP38')).toBe(false);
     expect(hidden.some((r) => r.code === 'BASIC' && r.kind === 'synthetic')).toBe(true);

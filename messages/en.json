@@ -4488,14 +4488,19 @@
           "export": "Export to Excel",
           "hideZeroRows": "Hide rows that are all zeroes",
           "hideSystemCodes": "Hide system codes",
+          "showSubject": "Show statutory subject",
           "summary": "{payslips} payslips · {rows} rows",
           "detailNotRecorded": "Some runs in this year have no per-item detail stored — either they were calculated before this payroll began recording it, or they are additional runs, which deliberately do not repeat the recurring items. The summarised rows are complete either way.",
+          "basesNotRecorded": "Some runs in this year did not record the wage each contribution was charged on, so those months show a dash. Nothing is substituted for them — a wage base is only shown when the payroll run itself wrote it down.",
+          "subjectFromPayslip": "Y / N is the setting each payroll run recorded at the time it was calculated. SOCSO, EIS and SKBBK are a single setting per pay item, so those three columns always agree.",
+          "subjectFromCatalogue": "Y / N comes from the current Pay Item settings wherever a payroll run did not record its own. If a setting was changed after a run, the figures above it can still reflect the older setting. SOCSO, EIS and SKBBK are a single setting per pay item, so those three columns always agree.",
           "notRegistered": "Not registered",
           "colCode": "Payment item code",
           "colDescription": "Payment item description",
           "colCycle": "Pay cycle",
           "colTotal": "Total",
           "section": {
+            "wagebase": "Wage base",
             "earnings": "Earnings",
             "deductions": "Deductions",
             "employer": "Employer contributions",
@@ -4503,6 +4508,13 @@
             "summary": "Summary"
           },
           "row": {
+            "epfWages": "EPF wages",
+            "epfAdditionalWages": "EPF wages (additional remuneration)",
+            "socsoWages": "SOCSO wages",
+            "eisWages": "EIS wages",
+            "skbbkWages": "SKBBK wages",
+            "pcbWages": "PCB wages (taxable remuneration)",
+            "hrdfWages": "HRDF wages",
             "basic": "Basic salary",
             "allowance": "Allowances",
             "otConvert": "Overtime paid as a pay item",
@@ -4525,6 +4537,15 @@
             "gross": "Gross pay",
             "totalDeductions": "Total deductions",
             "net": "Net pay"
+          },
+          "subject": {
+            "epf": "EPF",
+            "socso": "SOCSO",
+            "eis": "EIS",
+            "skbbk": "SKBBK",
+            "tax": "Tax",
+            "yes": "Y",
+            "no": "N"
           }
         }
       },
