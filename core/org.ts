@@ -2393,7 +2393,12 @@ export async function transferEmploymentCompanyTx(
       costCenterId: pl.costCenterId,
       locationId: pl.locationId,
       ...(p.employmentType ? { employmentType: p.employmentType } : {}),
-      movement: p.movement,
+      // SECONDARY, and this is not cosmetic. `p.movement` is the tag the caller minted for the company
+      // leg, and it is the PRIMARY one — the movement's history row projects from it. Forwarding it
+      // unchanged puts a second primary-tagged event in the same group and Employment History renders the
+      // transfer TWICE (caught by movement-entity-transfer.test.ts, "records ONE row"). Same group, same
+      // remarks, companion status: exactly what the hire's own reporting-line leg does (core/org.ts:338).
+      movement: { ...p.movement, secondary: true },
     },
     tx,
   );
