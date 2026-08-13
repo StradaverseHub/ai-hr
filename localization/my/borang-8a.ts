@@ -115,7 +115,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
   // Throws on a malformed period rather than reading it as a literal batch key — "2026-13" would otherwise
   // produce a plausible-looking empty form.
   const periodKey = contributionPeriodFor(params.periodKey);
-  return withTenant(ctx, async (tx) => {
+  // Annotated, not inferred: the no-batch branch returns `totals: {}`, which infers as
+  // `{ contribution?: undefined }` and stops being assignable to `Record<string, number>`.
+  return withTenant(ctx, async (tx): Promise<ReportResult> => {
     const [co] = await tx
       .select({
         legalName: company.legalName,

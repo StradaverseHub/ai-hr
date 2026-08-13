@@ -85,11 +85,42 @@ describe('the pack declares where each form is filed, and by when', () => {
     expect(byId.get('my.contributions')?.submission).toBeUndefined();
   });
 
-  // SOCSO and EIS go up TOGETHER through ASSIST. One shelf, because it is one filing — splitting them
-  // would put half a submission under each heading and imply two deadlines.
-  it('keeps SOCSO and EIS on ONE shelf, because they are one filing', () => {
+  /**
+   * SOCSO and EIS go up TOGETHER through ASSIST. One shelf, because it is one filing — splitting them
+   * would put half a submission under each heading and imply two deadlines.
+   *
+   * 8ca344bf: THE PERKESO SHELF NOW HOLDS TWO REPORTS, AND THE CLAIM ABOVE IS UNCHANGED. This used to
+   * assert the shelf held exactly `my.socso-eis`, which conflated two different things — "SOCSO and EIS
+   * are one filing" (still true, and pinned below) and "PERKESO has exactly one form" (never the claim,
+   * and no longer the fact). Borang 8A is a DIFFERENT DOCUMENT on the same shelf, not a second half of
+   * the combined return, so the half of this test that was still true is what is kept.
+   */
+  it('keeps SOCSO and EIS on ONE combined return, which is still the only combined one', () => {
     const perkeso = MY_REPORTS.filter((r) => r.submission?.body === 'perkeso');
-    expect(perkeso.map((r) => r.id)).toEqual(['my.socso-eis']);
+    expect(perkeso.map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.socso-eis']);
+    // The combined SOCSO+EIS return has not been split, and nothing else claims to be one.
+    const combined = perkeso.filter((r) => r.label.includes('EIS'));
+    expect(combined.map((r) => r.id)).toEqual(['my.socso-eis']);
+    // Borang 8A carries no EIS and is not offered as the combined return under another name.
+    expect(MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.label).not.toContain('EIS');
+  });
+
+  /**
+   * 8ca344bf — BORANG 8A'S DEADLINE IS NOT `dueDayOfNextMonth`, AND THE NULL IS DELIBERATE.
+   *
+   * `submissionDueFor` models "day N of the month AFTER the period" and nothing else. This form's deadline
+   * is the LAST DAY OF THE CONTRIBUTION MONTH ITSELF, two weeks earlier than the ASSIST 15th. Writing 15
+   * here to make the shelf card show something would print the wrong statutory date on a screen an
+   * operator files against — the exact failure the Form E null exists to prevent. The real deadline is
+   * computed by `paymentDueDateFor` and printed ON THE FORM, which is where the specimen carries it.
+   */
+  it('leaves Borang 8A’s deadline unset here, because its rule is not the one this field models', () => {
+    const b8a = byId.get('my.borang-8a')!;
+    expect(b8a.submission?.body).toBe('perkeso');
+    expect(b8a.submission?.agency).toBe('PERKESO');
+    expect(b8a.submission?.dueDayOfNextMonth).toBeNull();
+    // …and the SOCSO+EIS listing beside it keeps the ASSIST deadline it always had.
+    expect(byId.get('my.socso-eis')!.submission?.dueDayOfNextMonth).toBe(15);
   });
 });
 
@@ -139,10 +170,12 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
   // still names no form. If this ever became a literal list inside page.tsx the whole design is gone.
   it('carries the UNBUILT forms as catalog data too, on the reporter’s own shelves', () => {
     expect(myPack.plannedForms).toBe(MY_PLANNED_FORMS);
+    // 8ca344bf — `perkeso.borang-8a` LEFT this list because it was BUILT, and joined MY_REPORTS at the
+    // same shelfOrder 2 it held here. That migration is what `PlannedFormDef`'s doc-comment describes, and
+    // this list shrinking by exactly one entry is what proves it happened rather than being duplicated.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
       'epf.borang-a',
       'epf.borang-bbcb',
-      'perkeso.borang-8a',
       'perkeso.borang-8b',
       'perkeso.sip',
       'perkeso.employee-registration',
@@ -211,7 +244,7 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     }
     // 587ee719 — the status chips, the legend beside them and the output chips. All resolved through
     // lookup maps, so check C cannot see any of them and this is the only guard they have.
-    for (const st of ['official', 'figures', 'draft_file', 'planned']) {
+    for (const st of ['official', 'agency_layout', 'figures', 'draft_file', 'planned']) {
       expect(ns[`fidelity_${st}`], `fidelity_${st}`).toBeTruthy();
       expect(ns[`fidelity_${st}_hint`], `fidelity_${st}_hint`).toBeTruthy();
     }
@@ -234,7 +267,7 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       ...MY_STATUTORY_LINKS.flatMap((l) => [l.labelKey, l.hintKey, l.descriptionKey]),
       ...MY_PLANNED_FORMS.flatMap((p) => [p.labelKey, p.hintKey]),
       ...MY_REPORTS.map((r) => r.descriptionKey),
-      ...['official', 'figures', 'draft_file', 'planned'].flatMap((s) => [`fidelity_${s}`, `fidelity_${s}_hint`]),
+      ...['official', 'agency_layout', 'figures', 'draft_file', 'planned'].flatMap((s) => [`fidelity_${s}`, `fidelity_${s}_hint`]),
       ...['pdf', 'xlsx', 'csv', 'print', 'file'].map((o) => `output_${o}`),
       'legendTitle',
       'noAction',
@@ -356,7 +389,7 @@ describe('the per-form generation screen', () => {
     expect(FORM_PAGE).toContain('{def.fidelity && (');
     expect(FORM_PAGE).toContain('FIDELITY_HINT_KEY[def.fidelity]');
     const ns = en.payroll.statutoryForms as Record<string, string>;
-    for (const st of ['official', 'figures', 'draft_file']) {
+    for (const st of ['official', 'agency_layout', 'figures', 'draft_file']) {
       expect(ns[`fidelity_${st}_hint`]).not.toMatch(/\bvalidated\b|ready to file|approved by/i);
     }
     // The readiness banner and the two gated agency files are untouched by this round.
@@ -390,7 +423,11 @@ describe('the shelf cards, and the search above them (587ee719)', () => {
   });
 
   it('renders the four statuses in a legend, from the same map the chips use', () => {
-    expect(PAGE).toContain("STATUS_ORDER: FormStatus[] = ['official', 'figures', 'draft-file', 'planned']");
+    // 8ca344bf — `agency-layout` sits BETWEEN official and figures, and the order is the legend's meaning:
+    // it is read as a ladder of how close a form is to the agency's own document.
+    expect(PAGE).toContain(
+      "STATUS_ORDER: FormStatus[] = ['official', 'agency-layout', 'figures', 'draft-file', 'planned']",
+    );
     expect(PAGE).toContain("t('legendTitle')");
     expect(PAGE).toContain('FIDELITY_KEY[c.status]');
     expect(PAGE).toContain('FIDELITY_KEY[st]');
@@ -594,12 +631,22 @@ describe('the four pins', () => {
     // …and the claim is true: the artwork and its field map are both on disk.
     expect(fs.existsSync(path.join(ROOT, 'public/forms/cp22-pin-1-2021.pdf'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'lib/cp22-fields.ts'))).toBe(true);
-    // Every other entry that declares anything declares one of the two honest statuses.
+    // Every other entry that declares anything declares one of the three honest statuses.
+    //
+    // 8ca344bf ADDED `agency-layout` TO THAT LIST AND NOT TO THE LINE ABOVE, WHICH IS THE WHOLE POINT.
+    // The Borang 8A specimen we built against is another payroll vendor's DevExpress output, not PERKESO
+    // artwork, and PERKESO publishes no blank page — so the form is drawn to the agency's layout on our
+    // own paper and says so. `my.cp22` remains the ONLY `official` entry, deliberately: it is the claim
+    // that costs the most if it is untrue.
     for (const e of [...MY_REPORTS, ...MY_STATUTORY_LINKS]) {
       if (e.fidelity && e.id !== 'my.cp22') {
-        expect(['figures', 'draft-file'], `${e.id}`).toContain(e.fidelity);
+        expect(['agency-layout', 'figures', 'draft-file'], `${e.id}`).toContain(e.fidelity);
       }
     }
+    // Borang 8A specifically: it is `agency-layout`, and there is no PERKESO artwork on disk for it to
+    // have been drawn onto — which is exactly why it may not claim `official`.
+    expect(MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.fidelity).toBe('agency-layout');
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /8a/i.test(f))).toEqual([]);
   });
 
   /**
