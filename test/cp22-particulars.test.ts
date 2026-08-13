@@ -1,5 +1,5 @@
 /**
- * d3a9383c — `cp22Particulars`, the read behind the CP22 download.
+ * d3a9383c / 88076362 — `cp22Particulars`, the read behind the CP22 download.
  *
  * TWO REFUSALS AND ONE PROMISE. The refusals are the load-bearing part: an employment the caller may not
  * see reads as ABSENT (RLS returns nothing, the read returns null, the route answers 404 — the same 404 an
@@ -113,11 +113,29 @@ describe('cp22Particulars — the CP22 read', () => {
     expect(p.employer.addressLines).toEqual(['No. 12, Jalan Damai 3', 'Taman Damai', '43000 Kajang, Selangor']);
 
     expect(p.employee.fullName).toBe('Nur Aisyah binti Rahman');
-    expect(p.employee.natureOfEmployment).toBe('Executive'); // the current assignment's position title
+    // B15 Jawatan is the job title; B17 Jenis pekerjaan is the KIND of engagement. The 2020 page asked
+    // only one of these and the title answered it; on the 2021 page they are two different boxes.
+    expect(p.employee.designation).toBe('Executive'); // the current assignment's position title
+    expect(p.employee.natureOfEmployment).toBe('Full_time'); // the assignment's employmentType
     expect(p.employee.commencementDate).toBe('2026-07-02');
     expect(p.employee.expectedDuration).toBe('Permanent');
-    expect(p.employee.residentialAddressLines).toEqual(['No. 8, Jalan Melur 2/3', '68000 Ampang, Selangor']);
-    expect(p.employee.correspondenceAddressLines).toEqual(['PO Box 100', '50450 Kuala Lumpur, Wilayah Persekutuan']);
+    // THE SPLIT. Street lines stay street lines; postcode, town and state travel separately to the three
+    // boxes LHDN prints for them. A tail line like '68000 Ampang, Selangor' here would mean the 2020 fold
+    // survived and those three printed boxes ship empty.
+    expect(p.employee.residentialAddress).toEqual({
+      lines: ['No. 8, Jalan Melur 2/3'],
+      postcode: '68000',
+      town: 'Ampang',
+      state: 'Selangor',
+    });
+    expect(p.employee.correspondenceAddress).toEqual({
+      lines: ['PO Box 100'],
+      postcode: '50450',
+      town: 'Kuala Lumpur',
+      state: 'Wilayah Persekutuan',
+    });
+    // The EMPLOYER's address keeps the folded tail, because section A gives it three free rows and no
+    // structured postcode/town/state boxes at all. The asymmetry is the artwork's, not an oversight.
     expect(p.employee.phone).toBe('012-3456789');
     // The PERSONAL address wins over the login address for a form that goes to LHDN.
     expect(p.employee.email).toBe('aisyah.personal@example.test');
@@ -129,8 +147,8 @@ describe('cp22Particulars — the CP22 read', () => {
     expect(p.employee.dateOfBirth).toBe('1990-01-01');
     expect(p.employee.maritalStatus).toBe('married');
 
-    expect(p.pay.monthlyFixedRemuneration).toBe(6500);
-    expect(p.pay.allowances).toEqual([
+    expect(p.pay.salaryAndOvertime).toBe(6500); // D1
+    expect(p.pay.cashAllowances).toEqual([ // D4
       { label: 'Elaun tetap bulanan / Fixed monthly allowance', amount: 250 },
     ]);
     expect(p.today).toBe('2026-08-09');
@@ -148,9 +166,15 @@ describe('cp22Particulars — the CP22 read', () => {
       fullName: 'Ahmad bin Ismail',
       relationship: 'spouse',
       icOrPassport: '880202105678',
+      // C4 is NEW on the 2021 edition, and employeeDependent.phone already held it — no migration.
+      phone: '019-8765432',
     });
     const withSpouse = await cp22Particulars(a, { employmentId: e.employmentId });
-    expect(withSpouse!.spouse).toEqual({ fullName: 'Ahmad bin Ismail', icOrPassport: '880202105678' });
+    expect(withSpouse!.spouse).toEqual({
+      fullName: 'Ahmad bin Ismail',
+      icOrPassport: '880202105678',
+      phone: '019-8765432',
+    });
   });
 
   /**
@@ -186,9 +210,9 @@ describe('cp22Particulars — the CP22 read', () => {
     expect(p.employee.incomeTaxNo).toBeNull();
     expect(p.employee.icNo).toBeNull();
     expect(p.employee.passportNo).toBeNull();
-    expect(p.pay.monthlyFixedRemuneration).toBeNull();
-    expect(p.pay.allowances).toEqual([]);
-    expect(p.employee.residentialAddressLines).toEqual([]);
+    expect(p.pay.salaryAndOvertime).toBeNull();
+    expect(p.pay.cashAllowances).toEqual([]);
+    expect(p.employee.residentialAddress).toEqual({ lines: [], postcode: null, town: null, state: null });
   });
 
   /**
@@ -201,8 +225,8 @@ describe('cp22Particulars — the CP22 read', () => {
     const a = adminCtx(base);
 
     const unsigned = (await cp22Particulars(a, { employmentId: e.employmentId }))!;
-    expect(unsigned.signatory).toEqual({ name: null, designation: null });
-    expect(unsigned.signatory.name).not.toBe('Acme Sdn Bhd');
+    expect(unsigned.declarant).toEqual({ name: null, designation: null, icOrPassport: null });
+    expect(unsigned.declarant.name).not.toBe('Acme Sdn Bhd');
 
     const hr = await hireEmployee(a, {
       person: { fullName: 'Tan Wei Ming', primaryEmail: 'weiming@acme.test' },
@@ -215,7 +239,18 @@ describe('cp22Particulars — the CP22 read', () => {
     const hrUser = await createAppUser(base.tenantId, hr.personId, 'hr_admin');
     const hrCtx: SessionContext = { ...a, userId: hrUser, personId: hr.personId };
     const signed = (await cp22Particulars(hrCtx, { employmentId: e.employmentId }))!;
-    expect(signed.signatory).toEqual({ name: 'Tan Wei Ming', designation: 'Executive' });
+    // F2 asks for the DECLARANT'S own identification number — their record, on a form they sign. Null
+    // here because this HR person has no Malaysian statutory row; the box stays empty and typeable.
+    expect(signed.declarant).toEqual({ name: 'Tan Wei Ming', designation: 'Executive', icOrPassport: null });
+
+    await setStatutoryProfileMY(a, {
+      personId: hr.personId,
+      icNumber: '850505145555',
+      taxCategory: 1,
+      numChildren: 0,
+    });
+    const withIc = (await cp22Particulars(hrCtx, { employmentId: e.employmentId }))!;
+    expect(withIc.declarant.icOrPassport).toBe('850505145555');
   });
 
   /** employmentType is on ASSIGNMENT, not on employment — and it is what decides this box. */

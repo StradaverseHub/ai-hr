@@ -525,16 +525,27 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   });
 
   /**
-   * The download hangs off the worklist ROWS, because the document is per employee. CP22A gets no button:
+   * The action hangs off the worklist ROWS, because the document is per employee. CP22A gets no button:
    * the leaver notice is a later round, and a button that produced the joiner form for a leaver would be
-   * worse than the dash that sits there now.
+   * worse than the dash that sits there now — that half is unchanged.
+   *
+   * 88076362 REVERSED THE OTHER HALF. This used to assert the row linked straight to `/pdf`, and that WAS
+   * the reporter's complaint: "you press Download beside a new joiner and a finished form arrives; there
+   * is nowhere to check or correct anything first." The row now opens the REVIEW screen, and the download
+   * is one press further on. The `/pdf` route still exists and still works on its own — it is what the
+   * review screen's own Download button points at — so its existence stays pinned here.
    */
-  it('puts a Download CP22 on every new-hire row, and nothing on the CP22A rows', () => {
-    expect(PAGE).toContain('/payroll/cp22/${w.employmentId}/pdf');
+  it('opens the CP22 review screen from every new-hire row, and nothing on the CP22A rows', () => {
+    expect(PAGE).toContain('/payroll/cp22/${w.employmentId}/preview');
     expect(PAGE).toContain("w.form === 'CP22'");
-    expect(PAGE).toContain("tCp22('download')");
+    expect(PAGE).toContain("tCp22('reviewLink')");
     expect(PAGE).toContain("tCp22('cp22aNotYet')");
+    // The row must NOT go straight to the document any more — that is the behaviour this round removed.
+    expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/pdf');
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/preview/page.tsx'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/pdf/route.ts'))).toBe(true);
+    // …and the third output the reporter asked for: the same content as plain text, grouped A-F.
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/text/route.ts'))).toBe(true);
   });
 
   /**
@@ -581,7 +592,7 @@ describe('the four pins', () => {
     ];
     expect(official).toEqual(['my.cp22']);
     // …and the claim is true: the artwork and its field map are both on disk.
-    expect(fs.existsSync(path.join(ROOT, 'public/forms/cp22-pin-1-2020.pdf'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'public/forms/cp22-pin-1-2021.pdf'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'lib/cp22-fields.ts'))).toBe(true);
     // Every other entry that declares anything declares one of the two honest statuses.
     for (const e of [...MY_REPORTS, ...MY_STATUTORY_LINKS]) {
