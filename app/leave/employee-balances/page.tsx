@@ -23,8 +23,18 @@ import { employeeBalanceRows } from './rows';
  * blanks figures an HR admin has hidden from SELF-SERVICE, which is not a rule about what HR may see, so
  * the row is derived with an empty essView (missing key ⇒ visible).
  *
- * Changing the as-at date re-runs the breakdown, so YTD Entitled / Taken / Pending / Adjustment /
- * Overutilized / Balance all move with it — no figure on this screen is cached against another date.
+ * THE AS-AT DATE (3ddae357). This comment used to claim that changing the date re-ran the breakdown so
+ * "YTD Entitled / Taken / Pending / Adjustment / Overutilized / Balance all move with it — no figure on
+ * this screen is cached against another date". THAT WAS FALSE for four of them, and stating it is how the
+ * defect survived review: `asOf` reached `leaveEntitlementBreakdown` but NOT `leaveBalances`, which had no
+ * date argument at all, so Taken, Pending Approval, Overutilized and BALANCE were the whole-record running
+ * total at every date — while the last column echoed the typed date and made the screen look responsive.
+ *
+ * It is now true, and true for one reason: `leaveBalances` takes an optional `asOf` and `employeeBalanceRows`
+ * passes it the same date it passes the breakdown. Every figure in a row answers for the same date, and the
+ * CSV/Excel export carries the same dated figures because it renders from the same `employeeBalanceRows`.
+ * If you ever add a column, take its figure from one of those two reads — a third source is how this
+ * happened.
  */
 
 export default async function EmployeeBalancesPage({

@@ -39,7 +39,14 @@ export async function employeeBalanceRows(
   // self-service must still be listed here. Without it the reporter's "some Leave Types may not appear"
   // reproduced exactly: a visible_to_employee=false type was absent from these rows. The eligible-but-
   // inactive types (0.00, no ledger entry) were already handled inside leaveBalances since R18.
-  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true });
+  //
+  // 3ddae357: `asOf` — the SAME date the breakdown below already took. It was threaded into one read and
+  // not the other, so five columns moved with the As-at date and four (Taken, Pending Approval,
+  // Overutilized, Balance) answered for the whole record whatever date was typed. Passing it here is the
+  // whole of the fix on this side: `deriveBalanceRow` maps whatever it is handed and needs no change,
+  // which is exactly the property to preserve — HR's screen and the employee's own screen keep ONE
+  // derivation.
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, asOf });
   const breakdowns = await Promise.all(
     balances.map((b) => leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)),
   );
