@@ -57,6 +57,7 @@
  */
 import { and, asc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
 
+import { compareEntitlementTables } from '../lib/entitlement-table-order';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { entitlementEligibilityRule, entitlementTemplate } from '../db/schema';
@@ -240,7 +241,9 @@ export async function updateEntitlementTemplate(
   });
 }
 
-/** Every template version in force on `asOf` (default: every version, newest window first). */
+/** Every template version in force on `asOf` (default: every version), in the order HR reads them —
+ *  PERMANENT, then CONTRACT, then its SPECIAL and RETIREE variants, then PART TIMER, with GRADE H
+ *  leading each block; `lib/entitlement-table-order.ts` owns the rule and explains it. */
 export async function listEntitlementTemplates(
   ctx: SessionContext,
   p?: { asOf?: string; leaveTypeId?: string },
@@ -256,8 +259,14 @@ export async function listEntitlementTemplates(
       .select()
       .from(entitlementTemplate)
       .where(conds.length ? and(...conds) : undefined)
+      // A deterministic BASE order, not the order anyone sees: the sort below is stable, so identical
+      // keys keep whatever this produced instead of varying between runs of the same query.
       .orderBy(asc(entitlementTemplate.name), asc(entitlementTemplate.validFrom));
-    return rows.map(toTemplateRow);
+    // 3214cb11 / 813fd22a — A-to-Z is not the order HR reads these in. Ordering HERE rather than in the
+    // block means every reader inherits it (the standalone screen, each leave type's Entitlement step,
+    // and the eligibility rule's template select all come off this one read) and there is no second
+    // sort to drift. See lib/entitlement-table-order.ts for why the rule is derived from the name.
+    return rows.map(toTemplateRow).sort(compareEntitlementTables);
   });
 }
 

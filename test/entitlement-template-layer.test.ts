@@ -509,3 +509,92 @@ describe('deleteLeaveType and the entitlement layer, after 4fdb69b2 made the del
     expect(still, 'a refused delete cascades nothing').toHaveLength(1);
   });
 });
+
+/**
+ * 3214cb11 / 813fd22a — THE ORDER THE READ HANDS BACK, through real Postgres.
+ *
+ * lib/entitlement-table-order.ts is unit-tested on its own (test/entitlement-table-order.test.ts). This
+ * case is the other half: that `listEntitlementTemplates` — the ONE read behind both reported surfaces
+ * — actually applies it, against the database rather than an array. The comparator could be perfect and
+ * the screens still scrambled if the query's `orderBy` were the last word, and that is precisely the
+ * shape of the bug being fixed.
+ *
+ * The sixteen names are production's, read from `entitlement_template` on 2026-08-13, and the expected
+ * order is the reporter's list position for position.
+ */
+describe('3214cb11 / 813fd22a — listEntitlementTemplates returns HR’s order, not A-to-Z', () => {
+  const REPORTERS_ORDER = [
+    'PERMANENT - GRADE H',
+    'PERMANENT - GRADE 12 - 15',
+    'PERMANENT - GRADE 16 - 19',
+    'PERMANENT - GRADE 20 - 23',
+    'CONTRACT - GRADE H',
+    'CONTRACT - GRADE 12 - 18',
+    'CONTRACT - GRADE >= 19',
+    'CONTRACT - SPECIAL (40 AL)',
+    'CONTRACT - GRADE H (SPECIAL)',
+    'CONTRACT - GRADE 12 - 18 (SPECIAL)',
+    'CONTRACT - GRADE >= 19 (SPECIAL)',
+    'CONTRACT - GRADE H (RETIREE)',
+    'CONTRACT - GRADE 12 - 15 (RETIREE)',
+    'CONTRACT - GRADE 16 - 19 (RETIREE)',
+    'CONTRACT - GRADE 20 - 23 (RETIREE)',
+    'PART TIMER',
+  ];
+
+  it('the sixteen Annual Leave tables come back in the requested order, whatever order they were created in', async () => {
+    const ctx = adminCtx(b);
+    // Created in A-to-Z order — the order the old query returned, so a read that ignored the comparator
+    // would hand back exactly the scrambled list the reporter photographed and still "pass" by accident.
+    for (const name of [...REPORTERS_ORDER].sort((x, y) => x.localeCompare(y))) {
+      await createEntitlementTemplate(ctx, {
+        leaveTypeId: b.annualLeaveTypeId,
+        name,
+        serviceBands: flat(14),
+        validFrom: '2026-01-01',
+      });
+    }
+    const rows = await listEntitlementTemplates(ctx, { leaveTypeId: b.annualLeaveTypeId });
+    expect(rows.map((r) => r.name)).toEqual(REPORTERS_ORDER);
+  });
+
+  it('the SAME read feeds the eligibility select, so both surfaces get that order', async () => {
+    // The select is built from the RUNNING versions of this very list (entitlement-tables-block.tsx:
+    // `running = templates.filter(...)` → `templateOptions`). Filtering preserves order, so pinning the
+    // running slice here is pinning what the dropdown shows.
+    const ctx = adminCtx(b);
+    for (const name of ['PART TIMER', 'CONTRACT - GRADE H', 'PERMANENT - GRADE H']) {
+      await createEntitlementTemplate(ctx, {
+        leaveTypeId: b.annualLeaveTypeId,
+        name,
+        serviceBands: flat(14),
+        validFrom: '2026-01-01',
+      });
+    }
+    const running = (await listEntitlementTemplates(ctx, { leaveTypeId: b.annualLeaveTypeId })).filter(
+      (r) => r.validTo == null,
+    );
+    expect(running.map((r) => r.name)).toEqual([
+      'PERMANENT - GRADE H',
+      'CONTRACT - GRADE H',
+      'PART TIMER',
+    ]);
+  });
+
+  it('two versions of one table stay in date order under their shared name', async () => {
+    const ctx = adminCtx(b);
+    const v1 = await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'PERMANENT - GRADE H',
+      serviceBands: flat(14),
+      validFrom: '2024-01-01',
+    });
+    await updateEntitlementTemplate(ctx, {
+      lineageId: v1.lineageId,
+      serviceBands: flat(18),
+      validFrom: '2026-01-01',
+    });
+    const rows = await listEntitlementTemplates(ctx, { leaveTypeId: b.annualLeaveTypeId });
+    expect(rows.map((r) => r.validFrom)).toEqual(['2024-01-01', '2026-01-01']);
+  });
+});
