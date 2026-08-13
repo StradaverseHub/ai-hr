@@ -1,52 +1,70 @@
 /**
- * CP22 (Pin. 1/2020) — overlay LHDN's official page with a fillable AcroForm and pre-fill what we hold.
+ * CP22 [Pin.1/2021] — overlay LHDN's official two-page form with a fillable AcroForm and pre-fill what we
+ * hold.
  *
  * THIS IS NOT A DRAWN DOCUMENT. lib/ea-pdf.ts, lib/payslip-pdf.ts and lib/review-letter-pdf.ts all draw an
- * A4 from scratch; this is the tree's FIRST `PDFDocument.load`, first `getForm` and first `createTextField`.
- * What downloads is LHDN's own artwork — same layout, same wording, same Malay and English — with 33 typing
- * boxes added ON TOP of it at the coordinates in lib/cp22-fields.ts. The template bytes are never modified;
- * they are loaded, widgets are added, and a COPY is saved.
+ * A4 from scratch; this loads LHDN's own artwork and adds typing boxes ON TOP of it at the coordinates in
+ * lib/cp22-fields.ts. The template bytes are never modified; they are loaded, widgets are added, and a
+ * COPY is saved — watermark and all.
  *
- * FOUR THINGS THIS FILE MUST KEEP DOING, EACH OF WHICH FAILS SILENTLY IF DROPPED:
+ * FIVE THINGS THIS FILE MUST KEEP DOING, EACH OF WHICH FAILS SILENTLY IF DROPPED:
  *
  * 1. APPEARANCE STREAMS. pdf-lib writes them only when asked. Without an embedded font, an explicit
- *    `updateFieldAppearances(font)` and `NeedAppearances = true` on the AcroForm dictionary, the added boxes
- *    render BLANK or unstyled in real viewers (Preview, Acrobat, Chrome's built-in reader) while tsc, the
- *    suite and `next build` all stay green — there is nothing to fail. test/cp22-pdf.test.ts asserts all
- *    three, because "it compiled" is not evidence for this class of bug.
+ *    `updateFieldAppearances(font)` and `NeedAppearances = true` on the AcroForm dictionary, the added
+ *    boxes render BLANK or unstyled in real viewers (Preview, Acrobat, Chrome's built-in reader) while
+ *    tsc, the suite and `next build` all stay green — there is nothing to fail. test/cp22-pdf.test.ts
+ *    asserts all three, because "it compiled" is not evidence for this class of bug.
  *
- * 2. THE FORM STAYS UNFLATTENED. Every box — including the 26 that arrive filled — must remain editable in
- *    the downloaded file, because the operator finishes the remaining boxes and corrects anything wrong
- *    before signing. `form.flatten()` must never appear here.
+ * 2. THE FORM STAYS UNFLATTENED. Every box — including the filled ones — must remain editable in the
+ *    downloaded file, because the operator finishes the rest and corrects anything wrong before signing.
+ *    `form.flatten()` must never appear here.
  *
- * 3. NOTHING IS EVER INVENTED. Seven of the 33 boxes have no answer anywhere in the schema, and they render
- *    as EMPTY, still-typeable boxes rather than a plausible guess:
- *      1  LHDN branch address     — which branch you file with is your choice, not a record we hold.
- *      11 tax-agent tick          — only the operator knows whether the correspondence address is an agent's.
- *      18 passport previously registered with LHDNM — never collected (employeeStatutoryMy.passportRemark is
- *         a free remark, not this field, and must not be used for it).
- *      25 spouse's income tax no. — employeeDependent has no tax column and employeeStatutoryMy is per-EMPLOYEE.
- *      28 fluctuating emoluments and when they will be known — not held anywhere.
- *      29 previous employer in Malaysia — no employment_history / work_experience / previous_employer table
- *         exists. employeeDependent.companyName / employerAddress are the SPOUSE'S employer and are NOT this.
- *      30 the signature itself.
- *    Boxes 23/24 (spouse) and 31/32 (the signatory) fill only when the record is there, and are blank
- *    otherwise — never the company name, never a stand-in.
+ * 3. NOTHING IS EVER INVENTED. Fifteen areas have no answer anywhere in the schema and render as EMPTY,
+ *    still-typeable boxes rather than a plausible guess. lib/cp22-fields.ts → `CP22_UNFILLABLE` names
+ *    every one and why. In particular the six blank D-lines are NOT written as "0.00": a zero asserts
+ *    "there is no leave pay / no bonus", which we do not know, and this is a legal declaration.
  *
- * 4. EVERY LINE OF A MULTI-ROW BLOCK IS DRAWN. pdf-lib lays a multiline field out downwards from the top
- *    of the widget rect and the appearance is clipped to it, so a line past the bottom is not drawn at all
- *    and the line sitting on the floor loses everything below its baseline — in both cases with nothing in
- *    any log. A four-entry address and a four-allowance payroll are both ordinary here, and both lost a
- *    line: an address short of its state, and box (b) short of an allowance, understating the remuneration
- *    declared to LHDN. `fitMultilineValue` below folds and, only if it must, shrinks the value so it
- *    cannot be laid out past the block's last row. It is checked by RENDERING: a green suite, a 200 and
- *    even one of the two PDF renderers all reported this page as correct while it was wrong.
+ * 4. EVERY LINE OF A MULTI-ROW BLOCK IS DRAWN, AND WHOLE. r175a: a four-line Malaysian address went to
+ *    LHDN without its state, because the renderer dropped everything past row three and the box still
+ *    looked full. On the 2021 form each row is its OWN drawn box and its own single-line widget, which
+ *    removes pdf-lib's multiline clip floor — and replaces it with two other silent drops, both guarded
+ *    below:
+ *      a. MORE LINES THAN ROWS. Line 4 of a 3-row block has no field to go in. `foldToRows` joins the
+ *         tail INTO the last row; nothing is ever dropped or truncated.
+ *      b. A LINE TOO WIDE FOR ITS BOX. pdf-lib's `layoutSinglelineText` neither wraps nor truncates: it
+ *         draws the whole line and `drawTextField`'s own clip path cuts it off mid-word, with nothing in
+ *         any log. THE 2020 RENDERER NEVER GUARDED THIS AT ALL — a long legal name in a 195pt box was
+ *         already being clipped in production. `fitToWidth` shrinks until it fits, and where even the
+ *         smallest legible face will not do, cuts at an item boundary and prints `CP22_CONTINUED`.
+ *    Both are checked by RENDERING at 900dpi under BOTH Poppler and MuPDF, because a green suite, a 200
+ *    and even one of the two renderers all reported this page as correct while it was wrong: Poppler
+ *    regenerates appearances when NeedAppearances is set, MuPDF draws the embedded stream, and the
+ *    disagreement between them IS the instrument. IT FIRED AGAIN ON THIS ROUND — see `CP22_CONTINUED`.
+ *
+ * 5. THE RIGHT PAGE. The form is two pages and `Cp22Field.page` says which. A widget added to the wrong
+ *    page still opens, still prints and still passes every green check.
  */
-import { PDFBool, PDFDocument, PDFName, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
-import { CP22_DEFAULT_FONT_SIZE, CP22_FIELDS, type Cp22Field } from './cp22-fields';
+import { PDFBool, PDFDocument, PDFName, StandardFonts, TextAlignment, type PDFFont, type PDFPage } from 'pdf-lib';
+import {
+  CP22_DEFAULT_FONT_SIZE,
+  CP22_FIELDS,
+  cp22RowName,
+  cp22Widgets,
+  type Cp22Field,
+  type Cp22Rect,
+} from './cp22-fields';
 
-/** One recurring earning in force on the commencement date — box (b) of the terms of employment. */
+/** One recurring cash earning in force on the commencement date — part of D4. */
 export type Cp22Allowance = { label: string; amount: number };
+
+/** An address as the 2021 form asks for it: free street rows, then postcode / town / state in their own boxes. */
+export type Cp22Address = {
+  /** Street lines only. The renderer folds any past the block's row count into the last row. */
+  lines: string[];
+  postcode: string | null;
+  town: string | null;
+  state: string | null;
+};
 
 /**
  * Everything the form can be filled from. Every field is nullable: an absent record produces an empty
@@ -54,51 +72,63 @@ export type Cp22Allowance = { label: string; amount: number };
  */
 export type Cp22PdfData = {
   employer: {
+    /** A1. */
     name: string;
-    /** Address lines, already ordered and free of blanks. */
+    /** A2 — address lines, already ordered and free of blanks. */
     addressLines: string[];
-    /** LHDN "E" number (company_statutory_my.lhdn_employer_no). */
+    /** A3 — the LHDN "E" number (company_statutory_my.lhdn_employer_no). The form prints the "E" itself. */
     eNumber: string | null;
+    /** A5. */
     phone: string | null;
   };
   employee: {
+    /** B1. */
     fullName: string;
-    /** Job title from the current assignment's position — the form's "Nature of employment". */
+    /** B15 Jawatan — the job title from the current assignment's position. */
+    designation: string | null;
+    /** B17 Jenis pekerjaan — the KIND of employment, not the title. */
     natureOfEmployment: string | null;
-    /** ISO yyyy-mm-dd. */
+    /** B14 — ISO yyyy-mm-dd. */
     commencementDate: string | null;
-    /** "Permanent", or the contract dates for a contract/intern assignment. Editable in the file. */
+    /** B16 — "Permanent", or the contract dates. Editable in the file. */
     expectedDuration: string | null;
-    residentialAddressLines: string[];
-    correspondenceAddressLines: string[];
+    /** B12. */
+    residentialAddress: Cp22Address;
+    /** B13. */
+    correspondenceAddress: Cp22Address;
+    /** B10. */
     phone: string | null;
+    /** B11. */
     email: string | null;
+    /** B2. */
     incomeTaxNo: string | null;
+    /** B3. */
     icNo: string | null;
+    /** B4. */
     passportNo: string | null;
-    /** person.gender — 'male' | 'female' | anything else (which yields an empty box). */
+    /** B7 — person.gender, written through as recorded. */
     gender: string | null;
-    /** person.nationality, free text. */
+    /** B6 — person.nationality, free text. */
     citizen: string | null;
-    /** ISO yyyy-mm-dd. */
+    /** B8 — ISO yyyy-mm-dd. */
     dateOfBirth: string | null;
-    /** person.maritalStatus — 'single' | 'married' | 'other'. */
+    /** B9 — person.maritalStatus. */
     maritalStatus: string | null;
   };
-  /** The employee's spouse, when one is on the family register. Null ⇒ boxes 23 and 24 stay empty. */
-  spouse: { fullName: string | null; icOrPassport: string | null } | null;
+  /** C — the spouse, when one is on the family register. Null ⇒ C1/C2/C4 stay empty. */
+  spouse: { fullName: string | null; icOrPassport: string | null; phone: string | null } | null;
   pay: {
-    /** Monthly basic — box (a). Printed after the form's own preprinted "RM". */
-    monthlyFixedRemuneration: number | null;
-    /** Fixed monthly allowances — box (b), one line each. */
-    allowances: Cp22Allowance[];
+    /** D1 — salary, fees, wages and overtime. */
+    salaryAndOvertime: number | null;
+    /** D4 — the cash allowances, one entry each; their total goes in D4 and their names on its rules. */
+    cashAllowances: Cp22Allowance[];
   };
   /**
-   * The person signing. Filled ONLY when the session resolves to a person with a current assignment —
-   * SessionContext.personId is documented null for an admin not tied to an employee. Blank otherwise.
+   * F — the person declaring. Filled ONLY when the session resolves to a person with a current
+   * assignment; SessionContext.personId is documented null for an admin not tied to an employee.
    */
-  signatory: { name: string | null; designation: string | null };
-  /** ISO yyyy-mm-dd — the date printed in the signature block (box 33). */
+  declarant: { name: string | null; designation: string | null; icOrPassport: string | null };
+  /** F5 — ISO yyyy-mm-dd, the date printed in the declaration block. */
   today: string;
 };
 
@@ -108,11 +138,13 @@ export type Cp22PdfData = {
  * lib/ea-pdf.ts narrows the EA: a documented, tracked limitation (embedding a Unicode font is the deferred
  * follow-up per ADR-0036), not an accidental silent drop.
  *
- * TWO DIFFERENCES FROM THE EA'S GUARD, BOTH LOAD-BEARING HERE. The newline SURVIVES — an address block on
- * this form is four ruled rows and the EA has no multi-line field, so the EA's guard turning \n into '?'
- * would put a whole address on one line with question marks between its lines (observed, first render).
- * And the punctuation a picker or an import routinely produces (en/em dashes, curly quotes) is folded to
- * its ASCII twin rather than lost to '?', because a legal name with a typographic apostrophe is common.
+ * The punctuation a picker or an import routinely produces (en/em dashes, curly quotes) is folded to its
+ * ASCII twin rather than lost to '?', because a legal name with a typographic apostrophe is common.
+ *
+ * THE NEWLINE SURVIVES, and it has to: a multi-row block arrives here as one value with one '\n' per
+ * printed row, and `fitBlock` splits it back out immediately afterwards. Sanitising '\n' to '?' would put
+ * a whole address on one line with question marks between its parts — which is exactly what the EA's
+ * version of this guard does, and why this one is not it.
  */
 const safe = (s: string): string =>
   (s ?? '')
@@ -124,103 +156,111 @@ const safe = (s: string): string =>
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-/** ISO yyyy-mm-dd → the 8 comb cells the form prints as hh/bb/tttt (dd/mm/yyyy). */
-export function ddmmyyyy(iso: string | null): string {
-  if (!iso || !ISO.test(iso)) return '';
-  return `${iso.slice(8, 10)}${iso.slice(5, 7)}${iso.slice(0, 4)}`;
-}
-
-/** ISO yyyy-mm-dd → dd/mm/yyyy, for the plain date box in the signature block. */
+/** ISO yyyy-mm-dd → dd/mm/yyyy. The 2021 form prints plain date boxes, not the 2020 page's comb cells. */
 export function dmy(iso: string | null): string {
   if (!iso || !ISO.test(iso)) return '';
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 }
 
 /**
- * An LHDN income tax number into the row's 14 comb positions.
+ * An LHDN income tax number, normalised to the prefix-plus-digits shape LHDN prints (SG 12345678901).
  *
- * The row prints TWO cells, a one-cell GAP, then eleven — so the file-type prefix (SG, OG) belongs in cells
- * 1–2 and the digits start at cell 4. Padding the prefix to three characters puts a space in the gap and
- * lands every digit on a printed cell. A value that does not parse is written through as-is rather than
- * reshaped: better slightly misaligned than silently altered, and it is editable either way.
+ * NO COMB PADDING. The 2020 page printed the number into fourteen character cells with a one-cell gap
+ * after the file-type prefix, and `taxNoComb` existed only to put a space in that gap; the 2021 page
+ * prints one plain box, so the gap logic is gone. A value that does not parse is written through as-is
+ * rather than reshaped: better slightly unusual than silently altered, and it is editable either way.
  */
-export function taxNoComb(v: string | null): string {
-  const raw = (v ?? '').replace(/[\s-]+/g, '').toUpperCase();
-  if (!raw) return '';
-  const m = /^([A-Z]{1,2})(\d+)$/.exec(raw);
-  const out = m ? `${m[1]}${' '.repeat(3 - m[1].length)}${m[2]}` : raw;
-  return out.slice(0, 14);
+export function taxNo(v: string | null): string {
+  const raw = (v ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const m = /^([A-Z]{1,2})\s*(\d+)$/.exec(raw.replace(/\s+/g, ''));
+  return m ? `${m[1]} ${m[2]}` : raw;
 }
 
-/** Strip a value down to what fits a row of printed character cells. */
-export function combValue(v: string | null, maxLen: number): string {
-  return (v ?? '').replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, maxLen);
-}
-
-/**
- * A Malaysian telephone number split across the form's PRINTED DASH: area/network prefix in the three
- * cells to its left, the rest in the eight to its right.
- *
- * Split on the stored separator when there is one — that is the operator's own grouping and it beats any
- * rule we could invent. With no separator, `01x` mobiles take three digits and everything else two, which
- * is the standard Malaysian grouping. Leading +60 / 60 is normalised back to a national 0 first.
- */
-export function splitMyPhone(v: string | null): { prefix: string; rest: string } {
-  const raw = (v ?? '').trim();
-  if (!raw) return { prefix: '', rest: '' };
-  const sep = /^[+()\d\s]*?(\d[\d\s]*?)\s*[-/]\s*([\d\s-]+)$/.exec(raw);
-  if (sep) return { prefix: digits(sep[1]).slice(-3), rest: digits(sep[2]).slice(0, 8) };
-  let d = digits(raw);
-  if (d.startsWith('60')) d = `0${d.slice(2)}`;
-  const cut = d.startsWith('01') ? 3 : 2;
-  return { prefix: d.slice(0, cut), rest: d.slice(cut, cut + 8) };
-}
-const digits = (s: string) => s.replace(/\D/g, '');
-
-/** 6500 → "6,500.00". The form prints its own "RM", so this carries no currency prefix. */
-const amount = (n: number) =>
+/** 6500 → "6,500.00". The column head prints "(RM)", so this carries no currency prefix. */
+export const cp22Amount = (n: number): string =>
   (Number(n) || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** 'married' → 'Married'. The stored vocabulary written back plainly, never reworded into LHDN's. */
 const titleCase = (s: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '');
 
-const GENDER_CELL: Record<string, string> = { male: '1', female: '2' };
-
 /**
  * The value for every field, keyed by `Cp22Field.name`. Pure and exported so the mapping can be tested
- * without producing a PDF. A missing key (or an empty string) means an empty, still-editable box.
+ * without producing a PDF.
+ *
+ * A multi-row block's value carries EMBEDDED NEWLINES — one per printed row — and `fitBlock` splits them
+ * back out. A missing key (or an empty string) means an empty, still-editable box.
+ *
+ * THE D-SECTION MAPPING, AND WHAT IT DELIBERATELY LEAVES BLANK. D1 takes the basic salary in force on the
+ * commencement date. D4 takes every recurring cash allowance, totalled, with the names written onto both
+ * of its "nyatakan / specify" rules. D2, D3, D5, D6, D7 and D8 are LEFT EMPTY: nothing in payroll holds a
+ * leave-pay, bonus, benefit-in-kind, accommodation, in-kind-allowance or other-payment figure at the point
+ * of hire, and writing 0.00 would declare their absence rather than ask the question.
+ *
+ * ALL RECURRING ALLOWANCES GO TO D4 (cash) RATHER THAN D7 (in kind). `payComponent.kind` has a single
+ * 'allowance' value covering both, so the two are not distinguishable here; cash is the overwhelmingly
+ * common case, D4's specify rules name every component that went in, and D7 stays empty and editable, so
+ * an operator with an in-kind item can see exactly what to move and where.
  */
 export function cp22FieldValues(d: Cp22PdfData): Record<string, string> {
-  const phone = splitMyPhone(d.employee.phone);
-  const v: Record<string, string> = {
-    employerNameAddress: [d.employer.name, ...d.employer.addressLines].filter(Boolean).join('\n'),
+  const allowanceTotal = d.pay.cashAllowances.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+  // "NYATAKAN JENIS ELAUN / SPECIFY THE TYPE OF ALLOWANCE" — the TYPE, not the amount. The 2020 page's
+  // box 27 was a three-row list and carried "label - RM amount" on each row because it was the only place
+  // the itemisation could go; on the 2021 page the money already has its own box (D4) and this is a
+  // one-line question about kind. Carrying the amounts onto it doubles the length of a value that has one
+  // printed rule to live on, for information the form did not ask for and already has.
+  const allowanceNames = d.pay.cashAllowances.map((a) => a.label).join('; ');
+  // The printed total is the sum of the boxes THIS renderer filled. The blank D-lines contribute nothing
+  // because we hold nothing for them — an operator who fills one must update the total, and the preview
+  // screen says so. A PDF cannot recompute after it is saved.
+  const total = (d.pay.salaryAndOvertime ?? 0) + allowanceTotal;
+  const anyPay = d.pay.salaryAndOvertime != null || d.pay.cashAllowances.length > 0;
+
+  return {
+    employerName: d.employer.name ?? '',
+    employerAddress: d.employer.addressLines.filter(Boolean).join('\n'),
     employerNo: d.employer.eNumber ?? '',
     employerPhone: d.employer.phone ?? '',
-    employeeFullName: d.employee.fullName ?? '',
-    natureOfEmployment: d.employee.natureOfEmployment ?? '',
-    commencementDate: ddmmyyyy(d.employee.commencementDate),
-    expectedDuration: d.employee.expectedDuration ?? '',
-    residentialAddress: d.employee.residentialAddressLines.filter(Boolean).join('\n'),
-    correspondenceAddress: d.employee.correspondenceAddressLines.filter(Boolean).join('\n'),
-    telephonePrefix: phone.prefix,
-    telephoneNumber: phone.rest,
-    email: d.employee.email ?? '',
-    incomeTaxNo: taxNoComb(d.employee.incomeTaxNo),
-    icNo: combValue(d.employee.icNo, 12),
-    currentPassportNo: combValue(d.employee.passportNo, 12),
-    gender: GENDER_CELL[(d.employee.gender ?? '').toLowerCase()] ?? '',
+
+    employeeName: d.employee.fullName ?? '',
+    incomeTaxNo: taxNo(d.employee.incomeTaxNo),
+    icNo: d.employee.icNo ?? '',
+    currentPassportNo: d.employee.passportNo ?? '',
     citizen: d.employee.citizen ?? '',
-    dateOfBirth: ddmmyyyy(d.employee.dateOfBirth),
+    gender: titleCase(d.employee.gender),
+    dateOfBirth: dmy(d.employee.dateOfBirth),
     maritalStatus: titleCase(d.employee.maritalStatus),
-    spouseFullName: d.spouse?.fullName ?? '',
-    spouseIcOrPassport: combValue(d.spouse?.icOrPassport ?? null, 12),
-    monthlyFixedRemuneration: d.pay.monthlyFixedRemuneration == null ? '' : amount(d.pay.monthlyFixedRemuneration),
-    monthlyAllowances: d.pay.allowances.map((a) => `${a.label} - RM ${amount(a.amount)}`).join('\n'),
-    signatoryName: d.signatory.name ?? '',
-    signatoryDesignation: d.signatory.designation ?? '',
-    signatureDate: dmy(d.today),
+    employeePhone: d.employee.phone ?? '',
+    employeeEmail: d.employee.email ?? '',
+
+    residentialAddress: d.employee.residentialAddress.lines.filter(Boolean).join('\n'),
+    residentialPostcode: d.employee.residentialAddress.postcode ?? '',
+    residentialTown: d.employee.residentialAddress.town ?? '',
+    residentialState: d.employee.residentialAddress.state ?? '',
+    correspondenceAddress: d.employee.correspondenceAddress.lines.filter(Boolean).join('\n'),
+    correspondencePostcode: d.employee.correspondenceAddress.postcode ?? '',
+    correspondenceTown: d.employee.correspondenceAddress.town ?? '',
+    correspondenceState: d.employee.correspondenceAddress.state ?? '',
+
+    commencementDate: dmy(d.employee.commencementDate),
+    designation: d.employee.designation ?? '',
+    expectedDuration: d.employee.expectedDuration ?? '',
+    natureOfEmployment: d.employee.natureOfEmployment ?? '',
+
+    spouseName: d.spouse?.fullName ?? '',
+    spouseIcOrPassport: d.spouse?.icOrPassport ?? '',
+    spousePhone: d.spouse?.phone ?? '',
+
+    d1SalaryOvertime: d.pay.salaryAndOvertime == null ? '' : cp22Amount(d.pay.salaryAndOvertime),
+    d4CashAllowances: d.pay.cashAllowances.length === 0 ? '' : cp22Amount(allowanceTotal),
+    d4SpecifyMs: allowanceNames,
+    d4SpecifyEn: allowanceNames,
+    dTotal: anyPay ? cp22Amount(total) : '',
+
+    declarantName: d.declarant.name ?? '',
+    declarantIcOrPassport: d.declarant.icOrPassport ?? '',
+    declarantDesignation: d.declarant.designation ?? '',
+    declarationDate: dmy(d.today),
   };
-  return v;
 }
 
 /** pdf-lib defaults a widget to a white background and a 1pt black border; the artwork already draws the
@@ -228,148 +268,166 @@ export function cp22FieldValues(d: Cp22PdfData): Record<string, string> {
 const TRANSPARENT = { backgroundColor: undefined, borderColor: undefined, borderWidth: 0 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// FITTING A VALUE TO A MULTI-ROW BLOCK — the guard against silent loss on a statutory form.
+// FITTING A VALUE TO ITS PRINTED BOXES — the guard against silent loss on a statutory form.
 //
-// pdf-lib lays a multiline field out from the TOP of the widget rect downwards and clips to the rect, and
-// it does BOTH WITHOUT COMPLAINT: a line whose baseline falls under the rect is simply never drawn, and a
-// line sitting on the rect's floor loses everything below its baseline. Two ordinary Malaysian shapes hit
-// it — a four-entry address (line1/line2/line3/"postcode city, state"), and a payroll with four recurring
-// allowances against a three-row box — and the page looks complete in both cases.
+// Everything below is derived from pdf-lib's OWN layout code (api/text/layout.ts, api/form/appearances.ts,
+// api/operations.ts), not from measurement, so the line count computed here is the one it will draw:
 //
-// THE TWO RENDERERS DISAGREE, WHICH IS HOW IT WAS FOUND AND WHY THE FIX GOES WHERE IT DOES. Probed with a
-// marker stream: MuPDF draws the EMBEDDED appearance (so it showed the damage), while Poppler regenerates
-// from /V and /DA because NeedAppearances is set, lays the lines out slightly higher, and drew the same
-// four-line address whole. "It looks fine in one renderer" is therefore not evidence. So the fit is
-// computed HERE, up front, from the same font metrics pdf-lib uses, and it is carried by the /DA size and
-// the /V text — the two things BOTH kinds of renderer read — rather than by the stream alone.
+//   bounds        = the widget rect inset by `padding` = 1 on every side (borderWidth is 0 here).
+//   single line   = drawn whole at its natural width, and CLIPPED to bounds. No wrap, no ellipsis.
+//   clip          = exactly `bounds`, so anything past the right edge is simply not there.
 //
-// The ceiling is `rows`, not "whatever the height allows": the block is a set of PRINTED ruled rows and a
-// line laid between two rules is struck through by one. The order is FOLD, then SHRINK, because shrinking
-// alone cannot help — the overflow is explicit newlines, and no font size turns five lines into four.
-// NOTHING IS EVER DROPPED OR TRUNCATED: an address that will not fit comes out smaller, or with its last
-// two lines joined, and is still complete. That is the right trade on a legal declaration.
+// So a single-line value is safe only when it is NARROWER than its bounds, and the only lossless way to
+// make it so is to shrink the face. Width is linear in size, so a size that fits always exists.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** pdf-lib's own text-field inset (appearances.ts: `padding = 1` for a non-combed field), and its clip floor. */
+/** pdf-lib's own text-field inset (`appearances.ts`: `padding = 1` for a non-combed field). */
 const WIDGET_PADDING = 1;
-/** pdf-lib's own line pitch: `heightAtSize(size) * 1.2` (layout.ts). */
-const LINE_HEIGHT_FACTOR = 1.2;
-/** pdf-lib's own floor for auto-sizing. Below it we also start breaking over-wide runs. */
-const PDFLIB_MIN_FONT_SIZE = 4;
+/**
+ * The smallest face this form is allowed to print. Below it a statutory declaration is not readable at
+ * print size, so shrinking further would trade one kind of unusable for another.
+ */
+const MIN_FONT_SIZE = 5;
 /** Small enough that the chosen size is never visibly below the largest that fits. */
 const FONT_SIZE_STEP = 0.05;
 /** How an address folds. A LIST folds with a semicolon — see `Cp22Field.foldWith`. */
 const DEFAULT_FOLD = ', ';
 
-/** pdf-lib's `lineSplit(cleanText(...))` (utils/strings.ts), so the line count here is the one it will use. */
+/**
+ * LHDN'S OWN ANSWER to a value that will not fit, printed on the form itself: "Sila gunakan lampiran
+ * tambahan secara berasingan jika ruang tidak mencukupi / Please use additional sheet separately in case
+ * of insufficient space", at the head of section D.
+ *
+ * WHY THIS EXISTS AT ALL — it is the hole the 900dpi verification found. `fitSingleLine` used to bottom out
+ * at pdf-lib's own 4pt minimum and return it whether or not the value fitted; the caller then wrote the
+ * full text and pdf-lib's clip cut it off MID-WORD, with nothing in any log. Rendered at 900 dpi, MuPDF
+ * (drawing the embedded stream) ended D4's specify rule at "…Elaun makan haria" and Poppler (regenerating
+ * from /V) ended it at "…Daily me" — two renderers truncating the same declaration in two different
+ * places, which is precisely the r175a signature.
+ *
+ * So a value that cannot fit at MIN_FONT_SIZE is no longer drawn and clipped. It is cut at an item
+ * boundary and this marker is appended, which turns a silent loss into a printed statement that the list
+ * continues elsewhere — the thing the form itself tells you to do. The COMPLETE list is always on the
+ * review screen and in the plain-text export, which is what the operator keys into MyTax anyway.
+ */
+export const CP22_CONTINUED = ' (lihat lampiran / see attached)';
+
+/**
+ * The same statement for a box too narrow to hold the sentence — B14 is 62pt wide, and the full marker is
+ * 67pt at the smallest legible face, so appending it would overflow the very box it exists to protect.
+ * (Found by the "fits its box for EVERY field" assertion, not by reasoning: the first version of the
+ * marker fixed the specify rule and broke the date box.) Reachable only for a value no real record
+ * produces, but the invariant is "what is printed always fits", and an invariant with an exception is not
+ * one.
+ */
+export const CP22_CONTINUED_SHORT = ' ...';
+
+/** pdf-lib's `lineSplit(cleanText(...))` (utils/strings.ts), so a block splits into the rows it will use. */
 const layoutLines = (text: string): string[] =>
   text
     .replace(/[\t\u0085\u2028\u2029]/g, '    ')
     .replace(/[\b\u000b]/g, '')
     .split(/[\n\f\r\u000b]/);
 
-/** pdf-lib's `lastIndexOfWhitespace` — note it never inspects index 0, which is why a leading space stays. */
-function lastWhitespaceIndex(line: string): number | undefined {
-  for (let idx = line.length; idx > 0; idx--) if (/\s/.test(line[idx])) return idx;
-  return undefined;
-}
-
 /**
- * pdf-lib's `splitOutLines`, replicated exactly — including the STRICT `width < maxWidth` and the fact
- * that an unbreakable run comes back whole and over-wide rather than being cut.
+ * Join everything past the last printed row back INTO the last row. The tail is folded, NEVER dropped.
  *
- * `hardBreak` is ours and is off until the size ladder is under pdf-lib's own minimum: it breaks such a
- * run on a character boundary so the value still cannot run out of the box sideways.
+ * THIS IS THE r175a GUARD. A four-line Malaysian address against a three-row block, or five recurring
+ * allowances against a rule that holds fewer, both arrive here; without this the surplus lines have no
+ * widget to be written to and vanish with nothing in any log, and the block still looks full.
  */
-function splitOutLine(input: string, maxWidth: number, font: PDFFont, size: number, hardBreak: boolean) {
-  let idx = input.length;
-  while (idx > 0) {
-    const line = input.substring(0, idx);
-    if (font.widthOfTextAtSize(line, size) < maxWidth) {
-      return { line, remainder: input.substring(idx) || undefined };
-    }
-    idx = lastWhitespaceIndex(line) ?? 0;
-  }
-  if (!hardBreak) return { line: input, remainder: undefined };
-  let cut = 1;
-  while (cut < input.length && font.widthOfTextAtSize(input.substring(0, cut + 1), size) < maxWidth) cut++;
-  return { line: input.substring(0, cut), remainder: input.substring(cut) || undefined };
-}
-
-/** The lines pdf-lib will actually draw for `text` in a box `maxWidth` wide at `size`. */
-function wrapLines(text: string, font: PDFFont, size: number, maxWidth: number, hardBreak = false): string[] {
-  const out: string[] = [];
-  for (const logical of layoutLines(text)) {
-    let rest: string | undefined = logical;
-    while (rest !== undefined) {
-      const { line, remainder } = splitOutLine(rest, maxWidth, font, size, hardBreak);
-      out.push(line);
-      // pdf-lib trims only what IT split off, and a remainder that trims to '' still costs a line.
-      rest = remainder === undefined ? undefined : remainder.trim();
-    }
-  }
-  return out;
-}
-
-/**
- * How many lines of `size` fit inside `rect` with their DESCENDERS clear of pdf-lib's clip floor.
- *
- * baseline_n = padding + inner − n × pitch, and the clip starts at `padding`; a line is only whole when
- * baseline_n − descender is still at or above it. Exported because test/cp22-fields.test.ts asserts this
- * against every block's declared `rows` — that assertion IS the headroom, and it is what stops a future
- * block being added one line short.
- */
-export function cp22FittingLineCount(
-  rect: { height: number },
-  size: number,
-  font: PDFFont,
-): number {
-  const inner = rect.height - WIDGET_PADDING * 2;
-  const pitch = font.heightAtSize(size) * LINE_HEIGHT_FACTOR;
-  const descender = font.heightAtSize(size) - font.heightAtSize(size, { descender: false });
-  return Math.floor((inner - descender) / pitch);
-}
-
-/** Join everything past the last row back INTO the last row. The tail is folded, never dropped. */
-function foldToRows(lines: string[], rows: number, separator: string): string[] {
+export function foldToRows(lines: string[], rows: number, separator: string): string[] {
   if (lines.length <= rows) return lines;
   return [...lines.slice(0, rows - 1), lines.slice(rows - 1).join(separator)];
 }
 
-export type Cp22MultilineFit = {
-  /** What goes in /V — folded if the value had more lines than the block has rows. */
+/** The usable width of a widget — pdf-lib's clip is the rect inset by `padding` on each side. */
+const innerWidth = (rect: Cp22Rect) => rect.width - WIDGET_PADDING * 2;
+
+/**
+ * The largest size at or below `maxSize` at which `value` fits inside `rect` on ONE line, or
+ * `MIN_FONT_SIZE` when nothing in the range fits.
+ *
+ * Exported because both test files assert against it: the whole point is that no value is ever cut, so
+ * "what size did it choose" is the observable that proves it. Use `fitToWidth` to lay a value out — this
+ * function answers only the sizing half, and a caller that writes `value` at the size it returns without
+ * checking `fits` is exactly the bug the 900dpi verification found.
+ */
+export function fitSingleLine(value: string, rect: Cp22Rect, maxSize: number, font: PDFFont): number {
+  if (!value) return maxSize;
+  for (let size = maxSize; size >= MIN_FONT_SIZE; size = Math.round((size - FONT_SIZE_STEP) * 100) / 100) {
+    if (font.widthOfTextAtSize(value, size) <= innerWidth(rect)) return size;
+  }
+  return MIN_FONT_SIZE;
+}
+
+export type Cp22Fit = {
+  /** What goes in /V — and therefore what a regenerating viewer lays out, not just what we drew. */
   text: string;
-  /** What goes in /DA, and therefore what both the embedded appearance and a regenerating viewer use. */
   fontSize: number;
-  /** The lines that will be drawn. Never longer than `rows`, and never missing any of the input. */
-  lines: string[];
+  /** True when the value did not fit even at MIN_FONT_SIZE and carries `CP22_CONTINUED`. */
+  continued: boolean;
 };
 
 /**
- * Fit `value` to a multiline block: fold its overflow into the last row, then take the largest size at or
- * below the block's own that lays it out in no more lines than the block has rows, all of them whole.
+ * Lay ONE value into ONE printed box, losslessly.
  *
- * The ladder terminates. Below pdf-lib's minimum size the wrap also breaks over-wide runs, so the drawn
- * line count converges on the folded line count (≤ rows) while the number of lines the box can hold grows
- * without bound as the size falls — there is always a size that fits, and the loop returns at the first
- * (largest) one. The 1pt floor is a formality, not a fallback anything real reaches.
+ * Three outcomes, in order: it fits at the block's own size; it fits smaller; or it does not fit at any
+ * legible size, in which case it is cut AT AN ITEM BOUNDARY and `CP22_CONTINUED` is appended so the form
+ * says the list goes on elsewhere. The one thing that never happens is the old behaviour — writing the
+ * whole value at the floor size and letting pdf-lib's clip decide where it ends.
  */
-export function fitMultilineValue(value: string, field: Cp22Field, font: PDFFont): Cp22MultilineFit {
-  const rows = field.rows ?? cp22FittingLineCount(field.rect, field.fontSize ?? CP22_DEFAULT_FONT_SIZE, font);
-  const maxWidth = field.rect.width - WIDGET_PADDING * 2;
-  const maxSize = field.fontSize ?? CP22_DEFAULT_FONT_SIZE;
-  const folded = foldToRows(layoutLines(value), Math.max(rows, 1), field.foldWith ?? DEFAULT_FOLD);
-  const text = folded.join('\n');
+export function fitToWidth(value: string, rect: Cp22Rect, maxSize: number, font: PDFFont, splitOn: string): Cp22Fit {
+  const size = fitSingleLine(value, rect, maxSize, font);
+  const width = innerWidth(rect);
+  const at = (s: string) => font.widthOfTextAtSize(s, size);
+  if (!value || at(value) <= width) return { text: value, fontSize: size, continued: false };
 
-  let last: Cp22MultilineFit = { text, fontSize: maxSize, lines: folded };
-  for (let size = maxSize; size >= 1; size = Math.round((size - FONT_SIZE_STEP) * 100) / 100) {
-    const hardBreak = size < PDFLIB_MIN_FONT_SIZE;
-    const lines = wrapLines(text, font, size, maxWidth, hardBreak);
-    // Hard-broken lines are only real if the reader sees them broken there, so they become the value.
-    last = { text: hardBreak ? lines.join('\n') : text, fontSize: size, lines };
-    if (lines.length <= rows && lines.length <= cp22FittingLineCount(field.rect, size, font)) return last;
+  // The loudest marker the box can hold. The full sentence is 67pt at 5pt and B14's box is 62pt, so a
+  // narrow box gets the short form rather than an overflowing sentence.
+  const marker = at(CP22_CONTINUED) < width ? CP22_CONTINUED : CP22_CONTINUED_SHORT;
+  // Cut at an item boundary rather than mid-word: half a label is a different fact from no label, and the
+  // reader cannot tell which. Falls back to a word boundary for a value with no separators in it.
+  const room = width - at(marker);
+  const parts = value.includes(splitOn) ? value.split(splitOn) : value.split(' ');
+  const join = value.includes(splitOn) ? splitOn : ' ';
+  let kept = '';
+  for (const part of parts) {
+    const next = kept ? kept + join + part : part;
+    if (at(next) > room) break;
+    kept = next;
   }
-  return last;
+  const text = `${kept}${marker}`;
+  // A box too narrow even for the short marker is unreachable for any rect on this form (the smallest is
+  // 62pt and ' ...' is ~5pt at the floor), but printing something that overflows would defeat the whole
+  // guard, so an empty box beats a fragment.
+  return { text: at(text) <= width ? text : '', fontSize: size, continued: true };
+}
+
+export type Cp22RowFit = {
+  /** One entry per printed row, in order. Never longer than the block's `rows`, never missing input. */
+  rows: { text: string; rect: Cp22Rect; fontSize: number; continued: boolean }[];
+};
+
+/**
+ * Lay a field's value out over its printed row(s): fold the overflow into the last row, then choose a size
+ * that fits every row whole.
+ *
+ * ONE SIZE FOR THE WHOLE BLOCK, not per row — an address whose second line came out two points smaller
+ * than its first reads as a rendering fault. The block takes the smallest size any of its rows needs.
+ */
+export function fitBlock(value: string, field: Cp22Field, font: PDFFont): Cp22RowFit {
+  const rects = cp22Widgets(field);
+  const maxSize = field.fontSize ?? CP22_DEFAULT_FONT_SIZE;
+  const fold = field.foldWith ?? DEFAULT_FOLD;
+  const folded = foldToRows(layoutLines(safe(value)), rects.length, fold);
+  const size = Math.min(...rects.map((rect, i) => fitSingleLine(folded[i] ?? '', rect, maxSize, font)));
+  return {
+    rows: rects.map((rect, i) => {
+      const fit = fitToWidth(folded[i] ?? '', rect, size, font, fold);
+      return { text: fit.text, rect, fontSize: size, continued: fit.continued };
+    }),
+  };
 }
 
 function addField(
@@ -380,62 +438,60 @@ function addField(
   font: PDFFont,
   namePrefix: string,
 ) {
-  const opts = { ...f.rect, ...TRANSPARENT, font };
   if (f.type === 'checkbox') {
-    // Created but never ticked: only the operator knows whether the correspondence address is a tax agent's.
-    form.createCheckBox(namePrefix + f.name).addToPage(page, opts);
+    // Created but never ticked: only the operator knows whether the correspondence address is an agent's.
+    form.createCheckBox(namePrefix + f.name).addToPage(page, { ...f.rect, ...TRANSPARENT });
     return;
   }
-  const field = form.createTextField(namePrefix + f.name);
-  // A multi-row block is measured BEFORE its /DA is written, because the fit is what decides the size: a
-  // value with more lines than the block has rows, or a line too wide for the box, comes back folded and
-  // (only if it must) smaller. Both halves have to reach the file — the size through /DA and the folded
-  // text through /V — or a viewer regenerating the appearance would lay out something we never checked.
-  const sized = f.type === 'multiline' ? fitMultilineValue(safe(value), f, font) : null;
-  // The point size goes in via the /DA string rather than `setFontSize`, which THROWS on a field that has
-  // no /DA yet — and a field pdf-lib has only just created has none. `updateFieldAppearances` reads the size
-  // back out of this /DA (a missing one means "auto-size to the box", which on an 11.5pt statutory cell is
-  // not what anyone wants) and rewrites it with the embedded font's real name.
-  field.acroField.setDefaultAppearance(
-    `/${font.name} ${sized?.fontSize ?? f.fontSize ?? CP22_DEFAULT_FONT_SIZE} Tf 0 g`,
-  );
-  if (f.type === 'multiline') field.enableMultiline();
-  if (f.type === 'comb' && f.maxLen) {
-    // Order matters: pdf-lib refuses to comb a field with no maxLength, and combing is what puts one glyph
-    // per PRINTED cell instead of a run of text lying across the cell borders.
-    field.setMaxLength(f.maxLen);
-    field.enableCombing();
-  }
-  const text = sized ? sized.text : safe(value);
-  if (text) field.setText(f.maxLen ? text.slice(0, f.maxLen) : text);
-  field.addToPage(page, opts);
+  // Measured BEFORE the /DA is written, because the fit is what decides the size. Both halves have to
+  // reach the file — the size through /DA and the text through /V — or a viewer regenerating the
+  // appearance (which is every viewer, once NeedAppearances is set) would lay out something we never
+  // checked. This is the half the 2020 renderer got right for multiline blocks and never did for
+  // single-line boxes, which is why a long name was being clipped in production.
+  const fit = fitBlock(value, f, font);
+  fit.rows.forEach((row, i) => {
+    const field = form.createTextField(namePrefix + cp22RowName(f.name, i));
+    // The point size goes in via the /DA string rather than `setFontSize`, which THROWS on a field that
+    // has no /DA yet — and a field pdf-lib has only just created has none. `updateFieldAppearances` reads
+    // the size back out of this /DA (a missing one means "auto-size to the box", which on a 20pt statutory
+    // cell is not what anyone wants) and rewrites it with the embedded font's real name.
+    field.acroField.setDefaultAppearance(`/${font.name} ${row.fontSize} Tf 0 g`);
+    if (f.alignRight) field.setAlignment(TextAlignment.Right);
+    if (row.text) field.setText(row.text);
+    field.addToPage(page, { ...row.rect, ...TRANSPARENT, font });
+  });
 }
 
 /**
- * Lay the 33 widgets over ONE already-drawn CP22 page.
+ * Lay every widget over ONE already-drawn CP22 — both its pages.
  *
- * `namePrefix` is empty for the single-person document — its field names are part of that file's contract
- * (test/cp22-pdf.test.ts and test/cp22-fields.test.ts address them by name, and so does an operator's PDF
- * viewer) — and is a per-record prefix in a batch. See `renderCp22Batch` for why the prefix is not optional
- * there.
+ * `namePrefix` is empty for the single-person document (its field names are part of that file's contract:
+ * the tests address them by name, and so does an operator's PDF viewer) and is a per-record prefix in a
+ * batch. See `renderCp22Batch` for why the prefix is not optional there.
  */
-function buildCp22Page(
-  page: PDFPage,
+function buildCp22Pages(
+  pages: PDFPage[],
   form: ReturnType<PDFDocument['getForm']>,
   font: PDFFont,
   values: Record<string, string>,
   namePrefix: string,
 ) {
-  for (const f of CP22_FIELDS) addField(form, page, f, values[f.name] ?? '', font, namePrefix);
+  for (const f of CP22_FIELDS) {
+    const page = pages[f.page];
+    // A field whose page does not exist means the artwork and the map have drifted, which is a broken
+    // document, not a field to skip quietly.
+    if (!page) throw new Error(`CP22 template has no page ${f.page} for field ${f.code}`);
+    addField(form, page, f, values[f.name] ?? '', font, namePrefix);
+  }
 }
 
 /**
- * The three things that must be true of the FINISHED document, whatever produced it — set once, after every
- * page and every widget exists. Doing any of them per page would either be wasted work or (for /DR and
- * NeedAppearances, which live on the one AcroForm dictionary) simply be overwritten.
+ * The three things that must be true of the FINISHED document, whatever produced it — set once, after
+ * every page and every widget exists. Doing any of them per page would either be wasted work or (for /DR
+ * and NeedAppearances, which live on the one AcroForm dictionary) simply be overwritten.
  */
 function finishCp22Form(doc: PDFDocument, form: ReturnType<PDFDocument['getForm']>, font: PDFFont) {
-  // (1) of the three — see the file header. Both halves are needed: the appearance streams are what most
+  // (1) of the five — see the file header. Both halves are needed: the appearance streams are what most
   // viewers draw, and NeedAppearances is what makes the ones that regenerate (and every viewer, after the
   // operator edits a box) lay the text out themselves instead of showing nothing.
   form.updateFieldAppearances(font);
@@ -449,94 +505,78 @@ function finishCp22Form(doc: PDFDocument, form: ReturnType<PDFDocument['getForm'
 }
 
 /**
- * Render a fillable CP22 over the bundled template.
+ * Render a fillable CP22 over the bundled two-page template.
  *
- * @param template the bytes of public/forms/cp22-pin-1-2020.pdf (the caller reads the file; this stays pure)
+ * @param template the bytes of public/forms/cp22-pin-1-2021.pdf (the caller reads the file; this stays pure)
  * @param data     the particulars to pre-fill, or `null` for the completely blank fillable copy
  */
 export async function renderCp22Pdf(template: Uint8Array, data: Cp22PdfData | null): Promise<Uint8Array> {
   const doc = await PDFDocument.load(template);
-  const page = doc.getPages()[0];
+  const pages = doc.getPages();
   // The template ships with NO /AcroForm; getForm creates one. Every widget below is added to it.
   const form = doc.getForm();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const values = data ? cp22FieldValues(data) : {};
 
-  // UNPREFIXED, and that is part of this file's contract: one person, one page, the names in
+  // UNPREFIXED, and that is part of this file's contract: one person, two pages, the names in
   // lib/cp22-fields.ts exactly as an operator's viewer shows them.
-  buildCp22Page(page, form, font, values, '');
+  buildCp22Pages(pages, form, font, values, '');
   finishCp22Form(doc, form, font);
 
-  // NEVER form.flatten(): every box, including the 26 filled ones, stays typeable in the downloaded file.
+  // NEVER form.flatten(): every box, including the filled ones, stays typeable in the downloaded file.
   // `updateFieldAppearances: false` because the call above already did it WITH our embedded font; letting
   // save() redo it would fall back to its own default.
   return doc.save({ updateFieldAppearances: false });
 }
 
-/** What the operator typed on the screen, stamped onto every page of a batch. */
-export type Cp22BatchOptions = {
-  /**
-   * The LHDN branch they file with — box 1, which has no answer in the schema and is therefore normally an
-   * empty editable box. This is OPERATOR INPUT travelling with the request, not a value this code invented,
-   * which is why stamping it does not breach the never-invent rule. Null/blank leaves box 1 empty, exactly
-   * as the single-person document does.
-   */
-  lhdnBranch?: string | null;
-};
-
-/** The AcroForm name prefix for the n-th page of a batch (0-based). See `renderCp22Batch`. */
+/** The AcroForm name prefix for the n-th record of a batch (0-based). See `renderCp22Batch`. */
 export const cp22BatchPrefix = (index: number): string => `p${index + 1}_`;
 
 /**
- * One document, one page per joiner, in the order given — every box on every page still editable.
+ * One document, TWO PAGES PER JOINER, in the order given — every box on every page still editable.
  *
  * NOT A LOOP AROUND `renderCp22Pdf`. Three things break if it is written the obvious way, and each of them
  * produces a file that opens, prints and passes every green check while being wrong:
  *
- * 1. ACROFORM FIELD NAMES ARE DOCUMENT-GLOBAL, NOT PER PAGE. Two widgets called `employeeFullName` are ONE
- *    field with two appearances: type into page 3's name box and page 1's changes too, and pdf-lib's own
- *    `createTextField` throws on the second. So every page's widgets carry `p<n>_` (`cp22BatchPrefix`) and
- *    the pages are genuinely independent. The prefix is a NAME change only — the comb, multiline and maxLen
- *    handling all key off `Cp22Field`, which is untouched.
- * 2. THE ARTWORK IS EMBEDDED ONCE. `embedPage` turns LHDN's page into a single Form XObject that each page
- *    draws; `copyPages` per joiner would duplicate all 153 KB of it per person (a 38-page file ≈ 5.8 MB for
- *    nothing). The page size comes from the embedded page itself rather than any constant, so the batch
- *    cannot drift from the artwork on disk.
+ * 1. ACROFORM FIELD NAMES ARE DOCUMENT-GLOBAL, NOT PER PAGE. Two widgets called `employeeName` are ONE
+ *    field with two appearances: type into joiner 3's name box and joiner 1's changes too, and pdf-lib's
+ *    own `createTextField` throws on the second. So every record's widgets carry `p<n>_`
+ *    (`cp22BatchPrefix`) and the records are genuinely independent. The prefix is a NAME change only —
+ *    the geometry, row folding and fitting all key off `Cp22Field`, which is untouched.
+ * 2. THE ARTWORK IS EMBEDDED ONCE PER PAGE. `embedPage` turns each of LHDN's two pages into a Form XObject
+ *    that every copy draws; `copyPages` per joiner would duplicate all 172 KB of it per person. The page
+ *    size comes from the embedded pages themselves rather than any constant, so the batch cannot drift
+ *    from the artwork on disk.
  * 3. NeedAppearances, /DR and `updateFieldAppearances` HAPPEN ONCE, AFTER ALL PAGES EXIST — see
- *    `finishCp22Form`. Per page, the AcroForm-level entries would just be rewritten, and the appearance
+ *    `finishCp22Form`. Per record, the AcroForm-level entries would just be rewritten, and the appearance
  *    pass would run N times over a growing form for no benefit.
  *
  * And, as everywhere in this file: NEVER `form.flatten()`.
  *
- * @param records one per page, already ordered by the caller (the screen's list order)
+ * @param records one per joiner, already ordered by the caller (the screen's list order)
  */
-export async function renderCp22Batch(
-  template: Uint8Array,
-  records: Cp22PdfData[],
-  opts: Cp22BatchOptions = {},
-): Promise<Uint8Array> {
+export async function renderCp22Batch(template: Uint8Array, records: Cp22PdfData[]): Promise<Uint8Array> {
   // A zero-page PDF is not a valid document and is not a useful answer. The route answers 404 for a month
   // with no joiners; this throw is what stops any other caller quietly producing a broken file.
   if (records.length === 0) throw new Error('renderCp22Batch: no records — a month with no joiners has no document');
 
   const source = await PDFDocument.load(template);
   const doc = await PDFDocument.create();
-  const templatePage = source.getPages()[0];
-  const { width, height } = templatePage.getSize();
-  const artwork = await doc.embedPage(templatePage);
+  const sourcePages = source.getPages();
+  const sizes = sourcePages.map((p) => p.getSize());
+  const artwork = await doc.embedPages(sourcePages);
   const form = doc.getForm();
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const branch = (opts.lhdnBranch ?? '').trim();
 
-  records.forEach((record, i) => {
-    const page = doc.addPage([width, height]);
-    page.drawPage(artwork, { x: 0, y: 0, width, height });
-    const values = cp22FieldValues(record);
-    // Box 1 is `prefilled: false` — it stays empty unless the operator typed a branch, and then it is
-    // THEIR text on every page rather than an empty box on every page.
-    if (branch) values.lhdnBranchAddress = branch;
-    buildCp22Page(page, form, font, values, cp22BatchPrefix(i));
-  });
+  for (const [i, record] of records.entries()) {
+    const pages = artwork.map((art, pageIndex) => {
+      const { width, height } = sizes[pageIndex];
+      const page = doc.addPage([width, height]);
+      page.drawPage(art, { x: 0, y: 0, width, height });
+      return page;
+    });
+    buildCp22Pages(pages, form, font, cp22FieldValues(record), cp22BatchPrefix(i));
+  }
 
   finishCp22Form(doc, form, font);
   return doc.save({ updateFieldAppearances: false });

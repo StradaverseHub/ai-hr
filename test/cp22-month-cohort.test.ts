@@ -306,8 +306,14 @@ describe('the CP22 copy says what the download is', () => {
     'monthHint',
     'monthEmpty',
     'monthEmptyHint',
-    'branchLabel',
-    'branchPlaceholder',
+    // 88076362 — `branchLabel` / `branchPlaceholder` were DELETED, not renamed away from a live screen.
+    // They labelled a month-card input that stamped box 1 of the 2020 page's "Kepada / To" block; the 2021
+    // form has no such block, so the input was removed rather than left to discard what was typed into it.
+    // The branch itself is not gone: it moved to the per-joiner review screen under `reviewSubmitTo`,
+    // which is asserted below with the note that says it does not print.
+    'reviewSubmitTo',
+    'reviewSubmitToPlaceholder',
+    'reviewSubmitToNote',
     'downloadAll',
     'downloadAllTitle',
     'notFilingTitle',
@@ -327,7 +333,7 @@ describe('the CP22 copy says what the download is', () => {
     expect(cp22.monthEmpty).toContain('{month}');
     expect(cp22.monthEmptyHint).toContain('{company}');
     expect(cp22.missingEmployerNo).toContain('{company}');
-    for (const k of ['monthHint', 'branchLabel', 'branchPlaceholder', 'downloadAll', 'notFilingTitle', 'notFiling', 'colHireDate', 'missingTaxNo', 'missingIdentityNo']) {
+    for (const k of ['monthHint', 'reviewSubmitTo', 'reviewSubmitToPlaceholder', 'downloadAll', 'notFilingTitle', 'notFiling', 'colHireDate', 'missingTaxNo', 'missingIdentityNo']) {
       expect(cp22[k], `${loc}.${k}`).not.toMatch(/\{/);
     }
   });
@@ -353,14 +359,27 @@ describe('the CP22 copy says what the download is', () => {
 });
 
 /**
- * THE ARTWORK. The reporter's reference shows CP22 [Pin. 1/2021]; what we hold and ship is [Pin. 1/2020].
- * We could not establish which revision LHDN publishes today, and the plan promises we will not swap the
- * artwork of a statutory form on a guess. Every rect in lib/cp22-fields.ts was measured against THIS file.
+ * THE ARTWORK — this pin is INVERTED, deliberately, and the half of it that was always the point is kept.
+ *
+ * db46d9a2 asserted the bundled page was still [Pin. 1/2020] and that no 2021 file existed, because at
+ * that time we could not establish which revision LHDN publishes and the plan promised not to swap the
+ * artwork of a statutory form on a guess. 88076362 removed the guess: the reporter attached LHDN's own
+ * CP22 [Pin.1/2021] (175,594 bytes, md5 b6db3238…, two pages, created 19 Sep 2024), it was extracted
+ * read-only from the feedback board on production and verified against that hash, and every rect in
+ * lib/cp22-fields.ts was re-derived from it.
+ *
+ * SO THE ASSERTION IS NOT DELETED, IT IS TURNED AROUND — and it still says the same thing it always said:
+ * the artwork on disk is EXACTLY the file the coordinate map was measured against, byte for byte, and no
+ * other edition is lying around. A silently swapped or re-saved template invalidates all 53 rects at once
+ * while every other test in this tree stays green, which is why the byte length is pinned rather than
+ * merely the filename.
  */
-describe('the bundled artwork is untouched by this round', () => {
-  it('is still the 1/2020 page, at the byte length the coordinate map was measured against', () => {
-    const bytes = fs.readFileSync(path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2020.pdf'));
-    expect(bytes.length).toBe(156503);
-    expect(fs.existsSync(path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2021.pdf'))).toBe(false);
+describe('the bundled artwork is exactly the page the coordinate map was derived from', () => {
+  it('is the two-page [Pin.1/2021], at the byte length the map was derived against', () => {
+    const bytes = fs.readFileSync(path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2021.pdf'));
+    expect(bytes.length).toBe(175594);
+    // The superseded edition is gone from the tree — public/ is served as static assets, so a leftover
+    // file would still hand somebody the document LHDN replaced.
+    expect(fs.existsSync(path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2020.pdf'))).toBe(false);
   });
 });
