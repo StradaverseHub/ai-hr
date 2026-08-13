@@ -5243,7 +5243,11 @@
       "downloadPdfTitle": "The drawn Borang 8A, paginated, with a total on every sheet.",
       "downloadText": "Download as text",
       "downloadTextTitle": "The same content as plain text, for keying into PERKESO’s own portal.",
-      "downloadsBlocked": "Downloads are blocked until every row has an identity card number."
+      "downloadsBlocked": "Downloads are blocked until every row has an identity card number.",
+      "headerMissingTitle": "This company cannot produce a Borang 8A yet:",
+      "headerMissingHint": "Set it under Organization → Statutory identity, then come back. Without it every page of the form has a gap in the same box.",
+      "headerField_employerCode": "SOCSO employer code (No. Kod Majikan)",
+      "headerField_employerName": "Company legal name"
     }
   },
   "admin": {

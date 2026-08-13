@@ -198,16 +198,37 @@ export function paginateBorang8A(rows: Borang8ARow[], perPage = BORANG_8A_ROWS_P
 const str = (v: unknown): string => (v == null ? '' : String(v));
 
 /**
+ * Which header fields a Borang 8A cannot be FILED without, and does not have.
+ *
+ * ⚠️ THIS IS A REPORT, NOT A THROW — and it was a throw for one afternoon, which is how the defect it
+ * now prevents was found. `borang8AFrom` used to reject an incomplete header, and the review screen calls
+ * it on a request path: a company that had simply never filled in its SOCSO employer code got a 500 on a
+ * screen whose entire purpose is to tell an operator what is missing. Refusing to PRODUCE the document is
+ * right; refusing to RENDER the page that explains why is not. So the gaps are reported here, the loader
+ * blocks the two downloads on them, and the screen names them beside the readiness list.
+ *
+ * `mycoid` and `employerAddress` are excluded: MyCoID is blank in the reporter's own specimen, and the
+ * address prints as however many lines exist. Everything else is either operator-owned (employer code,
+ * company legal name) or computed and therefore never blank in practice — listed anyway, because "it
+ * cannot be blank" is exactly the assumption that stops being true.
+ */
+export function missingBorang8AHeader(header: Record<string, unknown> | null | undefined): string[] {
+  const h = header ?? {};
+  return BORANG_8A_HEADER_KEYS.filter((k) => k !== 'mycoid' && k !== 'employerAddress').filter(
+    (k) => !str(h[k]).trim(),
+  );
+}
+
+/**
  * Assemble the printable form from what `reportPreview` returned.
  *
  * Deliberately takes PLAIN SHAPES rather than `ReportResult`: importing the pack contract here would put
  * lib → localization/country-pack → localization/my/reports → localization/my/borang-8a → lib in a cycle.
  * The caller passes `{ header: result.meta.formHeader ?? {}, rows: result.rows }`.
  *
- * THROWS on a header the read did not fill. A Borang 8A missing its employer code is not a form with a
- * gap in it — it is a document that cannot be filed, and silently drawing a blank box is how it would
- * reach PERKESO before anybody noticed. `mycoid` is the ONE exception: it is blank in the reporter's own
- * specimen, so an empty value is a legitimate answer for it.
+ * TOTAL — it never throws. A gap in the header comes back as an empty string on the form, and the CALLER
+ * decides what to do about it (`missingBorang8AHeader` above says what is missing; `loadBorang8A` refuses
+ * to hand the document over). That division is deliberate: this function is on a RENDER path.
  */
 export function borang8AFrom(p: {
   header: Record<string, unknown> | null | undefined;
@@ -215,9 +236,6 @@ export function borang8AFrom(p: {
   perPage?: number;
 }): Borang8AForm {
   const h = p.header ?? {};
-  const required = BORANG_8A_HEADER_KEYS.filter((k) => k !== 'mycoid' && k !== 'employerAddress');
-  const blank = required.filter((k) => !str(h[k]).trim());
-  if (blank.length) throw new Error(`Borang 8A header is incomplete: ${blank.join(', ')}`);
 
   const rows: Borang8ARow[] = p.rows.map((r) => ({
     employmentId: str(r.employmentId),

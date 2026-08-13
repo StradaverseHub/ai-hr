@@ -24,18 +24,31 @@ const W = 595.28;
 const H = 841.89;
 const M = 34;
 
-/** Column x-offsets, left edge, measured to match the specimen's proportions on A4. */
+/**
+ * Column x-offsets (left edge), measured to match the specimen's proportions on A4.
+ *
+ * ⚠️ THESE ARE MEASURED AGAINST THE HEADINGS, NOT GUESSED. The first version put `stop` at M+62 and
+ * `status` at M+124, and rendering it showed "(1) Tarikh Berhenti(2) Status" printed as one run — the
+ * heading was wider than its column and there is no clipping on a heading. Every gap below is wider than
+ * the bold 7pt heading that sits in it; the headings were also shortened so they can be.
+ */
 const COL = {
   start: M,
-  stop: M + 62,
-  status: M + 124,
-  ic: M + 190,
-  name: M + 288,
+  stop: M + 66,
+  status: M + 132,
+  ic: M + 194,
+  name: M + 266,
   rm: W - M - 96,
   sen: W - M - 30,
 };
 const RIGHT = W - M;
 const ROW_H = 16;
+/**
+ * The manual blocks are anchored to the FOOT of the page, not floated under the last row. A sheet with
+ * two employees and a sheet with twenty then put the signature box in the same place, which is what makes
+ * a stack of them signable without hunting — and it is what the specimen does.
+ */
+const MANUAL_BAND_TOP = M + 185;
 
 export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -49,10 +62,24 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
   const rule = rgb(0.6, 0.6, 0.65);
   const hair = rgb(0.82, 0.82, 0.86);
 
-  // Helvetica is WinAnsi (Latin-1); a Tamil or Chinese legal name would degrade to '?'. Same documented,
-  // tracked limitation lib/ea-pdf.ts carries (a Unicode embed is the deferred follow-up), and the same
-  // deliberate substitution rather than a silent drop.
-  const safe = (s: string) => (s ?? '').replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+  /**
+   * Helvetica is WinAnsi (Latin-1). Two different things fall outside it and they need different answers.
+   *
+   * TYPOGRAPHY IS FOLDED, NOT DROPPED. An em dash and a curly apostrophe are U+2014 / U+2019 — outside
+   * Latin-1 — so the first version printed our own footer as "Borang 8A ? bukan borang rasmi" and
+   * "the agency?s own page". Found by rasterising the PDF and looking at it; nothing else can see it.
+   * They fold to their ASCII equivalents, which is a faithful rendering rather than a lost character.
+   *
+   * A NAME still degrades to '?', and that stays a documented, tracked limitation rather than a silent
+   * drop — the same one lib/ea-pdf.ts carries, with a Unicode font embed as the deferred follow-up.
+   */
+  const fold = (s: string) =>
+    (s ?? '')
+      .replace(/[–—−]/g, '-')
+      .replace(/[‘’ʼ]/g, "'")
+      .replace(/[“”]/g, '"')
+      .replace(/…/g, '...');
+  const safe = (s: string) => fold(s).replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
 
   for (const pageData of form.pages) {
     const page = doc.addPage([W, H]);
@@ -113,16 +140,19 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
     y -= 14;
 
     // ── Column headings ─────────────────────────────────────────────────────────────────────────
-    text('(1) Tarikh Mula', COL.start, 7, bold, muted);
-    text('(1) Tarikh Berhenti', COL.stop, 7, bold, muted);
+    // Shortened from the specimen's full wording so each fits inside its own column. A heading is not
+    // clipped, so one that overflows prints straight into its neighbour — which is exactly what
+    // "(1) Tarikh Berhenti(2) Status" was before the layout was measured.
+    text('(1) Mula Kerja', COL.start, 7, bold, muted);
+    text('(1) Berhenti Kerja', COL.stop, 7, bold, muted);
     text('(2) Status', COL.status, 7, bold, muted);
     text('(3) No. K/P', COL.ic, 7, bold, muted);
     text('(4) Nama Pekerja', COL.name, 7, bold, muted);
     text('(5) Caruman  RM', COL.rm, 7, bold, muted);
     text('SEN', COL.sen, 7, bold, muted);
     y -= 9;
-    text('Kerja (hhbbtttt)', COL.start, 6.5, font, muted);
-    text('Kerja (hhbbtttt)', COL.stop, 6.5, font, muted);
+    text('(hhbbtttt)', COL.start, 6.5, font, muted);
+    text('(hhbbtttt)', COL.stop, 6.5, font, muted);
     y -= 6;
     line(y, 0.9);
     y -= 13;
@@ -170,49 +200,68 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
       y -= 18;
     }
 
-    // ── Manual blocks, drawn EMPTY ──────────────────────────────────────────────────────────────
-    const blockTop = Math.max(y, M + 132);
-    y = blockTop;
+    // ── Manual blocks, drawn EMPTY, anchored to the foot of the page ────────────────────────────
+    // Every box below is left blank on purpose: Kaedah Pembayaran, No. Cek / Kiriman Wang, Tandatangan,
+    // No. Tel & Cop Majikan and Kegunaan Ejen Pemungut are the operator's and the collecting agent's,
+    // never payroll-derived. The specimen leaves every one of them blank too. Pre-filling a payment
+    // method or stamping a signature box would be inventing a fact about a filing.
+    //
+    // The three boxes on the last row do NOT overlap, and that is measured rather than assumed: the first
+    // draft put the telephone box at M+268 w=160 (ending at 462) and the agent box at RIGHT-130 (431),
+    // so they printed through each other. Found by rasterising the page and looking at it.
+    y = MANUAL_BAND_TOP;
     text('Kaedah Pembayaran', M, 7.5, font, muted);
-    y -= 12;
+    y -= 13;
     for (const [i, opt] of ['Tunai', 'Cek', 'Kiriman Wang', 'Lain-lain'].entries()) {
-      const x = M + i * 92;
+      const x = M + i * 100;
       box(x, y - 1, 9, 9);
       page.drawText(safe(opt), { x: x + 13, y: y + 1, size: 7.5, font, color: muted });
     }
-    y -= 20;
+    y -= 24;
     text('No. Cek / Kiriman Wang', M, 7.5, font, muted);
-    box(M + 110, y - 4, 180, 16);
-    y -= 30;
+    box(M + 112, y - 4, 200, 16);
+    y -= 34;
     text('Tandatangan & Cop Majikan', M, 7.5, font, muted);
-    box(M, y - 44, 250, 44);
-    text('No. Tel Majikan', M + 268, 7.5, font, muted);
-    box(M + 268, y - 20, 160, 20);
-    text('Kegunaan Ejen Pemungut', RIGHT - 130, 7.5, font, muted);
-    box(RIGHT - 130, y - 44, 130, 44);
-    y -= 56;
+    text('No. Tel Majikan', M + 252, 7.5, font, muted);
+    text('Kegunaan Ejen Pemungut', M + 387, 7.5, font, muted);
+    y -= 4;
+    box(M, y - 46, 240, 46); // 34 → 274
+    box(M + 252, y - 46, 120, 46); // 286 → 406
+    box(M + 387, y - 46, 140, 46); // 421 → 561
 
     // ── Provenance band ─────────────────────────────────────────────────────────────────────────
-    y = M + 22;
+    // WRAPPED, not one long line. The English sentence is wider than A4 and the first draft ran it off
+    // the right edge — "never recalcula" was the last thing on the page.
+    y = M + 40;
     line(y + 12, 0.7, hair);
-    text(
+    const wrap = (s: string, size: number) => {
+      const maxW = RIGHT - M;
+      const out: string[] = [];
+      let cur = '';
+      for (const w of safe(s).split(/\s+/)) {
+        const trial = cur ? `${cur} ${w}` : w;
+        if (font.widthOfTextAtSize(trial, size) > maxW && cur) {
+          out.push(cur);
+          cur = w;
+        } else {
+          cur = trial;
+        }
+      }
+      if (cur) out.push(cur);
+      return out;
+    };
+    const band = [
       'Susun atur kami sendiri, dilukis mengikut Borang 8A — bukan borang rasmi PERKESO.',
-      M,
-      6.8,
-      font,
-      muted,
-    );
-    y -= 9;
-    text(
       'Our own layout, drawn to match Borang 8A. PERKESO publishes no blank form to print onto, so this is ' +
         'not the agency’s own page. Figures are taken from the payroll run, never recalculated.',
-      M,
-      6.8,
-      font,
-      muted,
-    );
-    y -= 9;
-    text(`Caruman gaji bulan ${form.contributionMonth} · payroll ${form.payrollPeriodKey}`, M, 6.8, font, muted);
+      `Caruman gaji bulan ${form.contributionMonth} · payroll ${form.payrollPeriodKey}`,
+    ];
+    for (const paragraph of band) {
+      for (const l of wrap(paragraph, 6.8)) {
+        text(l, M, 6.8, font, muted);
+        y -= 9;
+      }
+    }
   }
 
   return doc.save();

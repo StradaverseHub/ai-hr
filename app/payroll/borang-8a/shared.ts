@@ -16,6 +16,7 @@ import { scopedAdmin } from '@/lib/scope';
 import {
   applyStatusOverrides,
   borang8AFrom,
+  missingBorang8AHeader,
   statusOverridesFrom,
   type Borang8AForm,
 } from '@/lib/borang-8a';
@@ -29,7 +30,13 @@ const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 export type Borang8ALoad =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'no-batch' }
-  | { ok: false; reason: 'not-ready'; missing: { employmentId: string; name: string }[] }
+  | {
+      ok: false;
+      reason: 'not-ready';
+      missing: { employmentId: string; name: string }[];
+      /** Employer-level header fields the form cannot be filed without. See `missingBorang8AHeader`. */
+      headerMissing: string[];
+    }
   | {
       ok: true;
       form: Borang8AForm;
@@ -39,6 +46,8 @@ export type Borang8ALoad =
        * function rather than of each caller's discipline.
        */
       missing: { employmentId: string; name: string }[];
+      /** The employer-level gaps, same rule and same guarantee as `missing` above. */
+      headerMissing: string[];
       /** Reconciliation tiles: the run's own figures beside the form's. */
       summary: { label: string; value: string | number }[];
       notes: string[];
@@ -84,7 +93,14 @@ export async function loadBorang8A(p: {
   if (!result.meta.hasBatch) return { ok: false, reason: 'no-batch' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name }));
-  if (missing.length > 0 && !p.includeIncomplete) return { ok: false, reason: 'not-ready', missing };
+  // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee (no identity card number); `headerMissing` is
+  // employer-level (no SOCSO employer code) and gaps EVERY page at once. Either one means the document
+  // cannot be filed, so either one blocks the download — and the review screen shows both, which is the
+  // entire reason it must still render when they exist.
+  const headerMissing = missingBorang8AHeader(result.meta.formHeader);
+  if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete) {
+    return { ok: false, reason: 'not-ready', missing, headerMissing };
+  }
 
   const base = borang8AFrom({ header: result.meta.formHeader, rows: result.rows });
   // The statuses typed on the review screen, read BY VALUE — every row submits its box whether or not
@@ -104,6 +120,7 @@ export async function loadBorang8A(p: {
     ok: true,
     form,
     missing,
+    headerMissing,
     summary: result.meta.summary ?? [],
     notes: result.meta.notes ?? [],
     statutoryVersion: result.meta.statutoryVersion,

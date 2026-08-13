@@ -5243,7 +5243,11 @@
       "downloadPdfTitle": "绘制好的 Borang 8A，已分页，每页均有小计。",
       "downloadText": "下载为文本",
       "downloadTextTitle": "同样内容的纯文本，便于录入 PERKESO 自己的门户。",
-      "downloadsBlocked": "在每一行都有身份证号之前，下载将被阻止。"
+      "downloadsBlocked": "在每一行都有身份证号之前，下载将被阻止。",
+      "headerMissingTitle": "本公司暂时无法生成 Borang 8A：",
+      "headerMissingHint": "请在 组织 → 法定身份 中设置后再回到此页。缺少它，表单每一页都会在同一个格子上留空。",
+      "headerField_employerCode": "PERKESO 雇主代码（No. Kod Majikan）",
+      "headerField_employerName": "公司法定名称"
     }
   },
   "admin": {

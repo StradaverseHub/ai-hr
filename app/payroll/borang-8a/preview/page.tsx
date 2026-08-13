@@ -39,6 +39,19 @@ export const dynamic = 'force-dynamic';
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 
+/**
+ * The header fields an operator can actually go and fill in, named in their language.
+ *
+ * A PARTIAL MAP, DELIBERATELY. `missingBorang8AHeader` also reports the computed fields (the contribution
+ * month, the deadline, the two period keys), which cannot be blank in practice and which nobody can "go
+ * and set" if they somehow are. Those fall through to the raw key rather than being given a reassuring
+ * label that would send somebody looking for a field that does not exist on any screen.
+ */
+const HEADER_FIELD_LABEL: Record<string, string> = {
+  employerCode: 'headerField_employerCode',
+  employerName: 'headerField_employerName',
+};
+
 /** Default to the month just ENDED — the one whose Borang 8A is actually open. Same rule as the shelf. */
 function previousMonth(today: string): string {
   const y = Number(today.slice(0, 4));
@@ -158,8 +171,11 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
     );
   }
 
-  const { form, missing, summary, notes } = loaded;
-  const ready = missing.length === 0;
+  const { form, missing, headerMissing, summary, notes } = loaded;
+  // TWO KINDS OF GAP, ONE GATE — and the employer-level one is why this screen must render at all when a
+  // gap exists. `borang8AFrom` used to throw on a blank employer code, so a company that had simply never
+  // filled it in got a 500 on the screen whose whole job is to say what is missing. Found by rendering it.
+  const ready = missing.length === 0 && headerMissing.length === 0;
   const rows = form.pages.flatMap((p) => p.rows);
 
   return (
@@ -220,9 +236,25 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
         </Card>
       )}
 
-      {/* NAMED BEFORE THE DOWNLOAD, NOT DISCOVERED AFTER IT. While this list is non-empty there are no
-          download buttons below, and the routes refuse the request as well. */}
-      {!ready && (
+      {/* NAMED BEFORE THE DOWNLOAD, NOT DISCOVERED AFTER IT. While either list is non-empty there are no
+          download buttons below, and the routes refuse the request as well.
+
+          TWO SEPARATE BANNERS, because they are two different problems fixed in two different places: the
+          employer code is set ONCE under Organization and its absence gaps every page at once, while an
+          identity card number is fixed on one person's own record. Merging them into a single list would
+          send an operator to the wrong screen. */}
+      {headerMissing.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <p className="font-medium">{t('headerMissingTitle')}</p>
+          <ul className="mt-1 space-y-0.5">
+            {headerMissing.map((f) => (
+              <li key={f}>{HEADER_FIELD_LABEL[f] ? t(HEADER_FIELD_LABEL[f] as 'headerField_employerCode') : f}</li>
+            ))}
+          </ul>
+          <p className="mt-1">{t('headerMissingHint')}</p>
+        </div>
+      )}
+      {missing.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           <p className="font-medium">{t('missingTitle', { count: missing.length })}</p>
           <ul className="mt-1 space-y-0.5">

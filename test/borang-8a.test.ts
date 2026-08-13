@@ -25,6 +25,7 @@ import {
   contributionPeriodFor,
   fallsInMonth,
   formDate,
+  missingBorang8AHeader,
   money,
   paginateBorang8A,
   paymentDueDateFor,
@@ -34,6 +35,7 @@ import {
 } from '../lib/borang-8a';
 import { MY_REPORTS } from '../localization/my/reports';
 import { BORANG_8A_COLUMNS } from '../localization/my/borang-8a';
+import { borang8AFilename, renderBorang8APdf } from '../lib/borang-8a-pdf';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import en from '../messages/en.json';
 
@@ -287,17 +289,34 @@ describe('the header contract between the read and the renderer', () => {
     expect(code('localization/my/borang-8a.ts')).not.toContain('mycoidNo');
   });
 
-  it('refuses to draw a form whose header the read did not fill', () => {
+  /**
+   * ⚠️ THIS REVERSES HALF OF WHAT THIS TEST FIRST ASSERTED, AND THE REVERSAL IS THE FINDING.
+   *
+   * `borang8AFrom` originally THREW on an incomplete header, which is the right instinct in the wrong
+   * place. Rendering the review screen against a company that had never filled in its SOCSO employer code
+   * produced a 500 — on the one screen whose entire job is to tell an operator what is missing. Found by
+   * rendering it on a dev server; tsc, the suite and the route's own status were all green.
+   *
+   * The half that is still true — a Borang 8A missing its employer code must NOT be produced — is kept,
+   * and moved to where it belongs: the gaps are REPORTED by `missingBorang8AHeader` and the LOADER refuses
+   * the download. Reporting on a render path, refusing on a produce path.
+   */
+  it('reports an incomplete header instead of throwing on a render path', () => {
     for (const k of ['employerCode', 'employerName', 'contributionMonth', 'paymentDueDate']) {
       const broken = { ...HEADER, [k]: '' };
-      expect(() => borang8AFrom({ header: broken, rows: [] }), k).toThrow(/incomplete/i);
+      expect(missingBorang8AHeader(broken), k).toEqual([k]);
+      expect(() => borang8AFrom({ header: broken, rows: [] }), k).not.toThrow();
     }
-    expect(() => borang8AFrom({ header: undefined, rows: [] })).toThrow(/incomplete/i);
+    expect(missingBorang8AHeader(undefined).length).toBeGreaterThan(0);
+    expect(() => borang8AFrom({ header: undefined, rows: [] })).not.toThrow();
+    // …and a complete header reports nothing, or the gate would block every download forever.
+    expect(missingBorang8AHeader(HEADER)).toEqual([]);
   });
 
   /** MyCoID is blank in the reporter's own specimen, so an empty value is a legitimate answer for it. */
   it('accepts a blank MyCoID, because the specimen leaves it blank', () => {
-    expect(() => borang8AFrom({ header: { ...HEADER, mycoid: '' }, rows: [] })).not.toThrow();
+    expect(missingBorang8AHeader({ ...HEADER, mycoid: '' })).toEqual([]);
+    expect(missingBorang8AHeader({ ...HEADER, employerAddress: '' })).toEqual([]);
   });
 
   it('splits the employer address back into lines', () => {
@@ -383,6 +402,43 @@ describe('the plain-text twin', () => {
   });
 });
 
+describe('the drawn page actually renders', () => {
+  /**
+   * pdf-lib is only exercised at REQUEST time, so a bad coordinate, a missing glyph or an unembedded font
+   * is a 500 on the download and on nothing else — tsc and every other test here stay green. Rendering it
+   * in-process is the cheapest possible proof that the route does not crash.
+   */
+  it('produces a real PDF for one sheet and for two', async () => {
+    for (const [count, sheets] of [
+      [1, 1],
+      [25, 2],
+    ] as const) {
+      const form = borang8AFrom({
+        header: HEADER,
+        rows: Array.from({ length: count }, (_, i) =>
+          row({ employmentId: `e${i}`, contribution: 202.35, name: `EMPLOYEE NUMBER ${i}`, status: 'BARU' }),
+        ),
+      });
+      expect(form.pages.length).toBe(sheets);
+      const bytes = await renderBorang8APdf(form);
+      expect(Buffer.from(bytes.slice(0, 5)).toString('latin1')).toBe('%PDF-');
+      expect(bytes.byteLength).toBeGreaterThan(1000);
+    }
+  });
+
+  /** A non-Latin-1 legal name degrades to '?' rather than throwing — the documented ea-pdf limitation. */
+  it('does not crash on a name Helvetica cannot encode', async () => {
+    const form = borang8AFrom({ header: HEADER, rows: [row({ employmentId: 'a', contribution: 1, name: '陳大文' })] });
+    await expect(renderBorang8APdf(form)).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it('names the file after the employer code and the CONTRIBUTION month', () => {
+    const form = borang8AFrom({ header: HEADER, rows: [] });
+    expect(borang8AFilename(form, 'pdf')).toBe('borang-8a-B3201005082P-202607.pdf');
+    expect(borang8AFilename(form, 'txt')).toBe('borang-8a-B3201005082P-202607.txt');
+  });
+});
+
 describe('the catalog entry', () => {
   it('is a generatable report on the PERKESO shelf, at the position the planned entry held', () => {
     const def = MY_REPORTS.find((r) => r.id === 'my.borang-8a')!;
@@ -441,14 +497,19 @@ describe('the three surfaces cannot disagree, and the readiness gate is not a UI
    * bookmarked link file a Borang 8A with somebody's IC box empty. The gate lives in the loader, and only
    * the review screen — which exists to NAME who is missing — opts out of it.
    */
-  it('refuses to produce the document while anyone is missing an IC', () => {
-    expect(SHARED).toContain("if (missing.length > 0 && !p.includeIncomplete) return { ok: false, reason: 'not-ready', missing }");
+  it('refuses to produce the document while anyone is missing an IC, or the company its employer code', () => {
+    expect(SHARED).toContain('const headerMissing = missingBorang8AHeader(result.meta.formHeader)');
+    expect(SHARED).toContain('if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete)');
     expect(PREVIEW).toContain('includeIncomplete: true');
     expect(PDF_ROUTE_CODE).not.toContain('includeIncomplete');
     expect(TEXT_ROUTE_CODE).not.toContain('includeIncomplete');
     // …and the screen renders NO download buttons at all in that state — not disabled ones, which are
     // still buttons and still get clicked at.
-    expect(PREVIEW).toContain('const ready = missing.length === 0');
+    expect(PREVIEW).toContain('const ready = missing.length === 0 && headerMissing.length === 0');
+    // The employer-level gap gets its OWN banner: it is fixed once, under Organization, and merging it
+    // into the per-employee list would send an operator to the wrong screen.
+    expect(PREVIEW).toContain("t('headerMissingTitle')");
+    expect(PREVIEW).toContain("t('headerMissingHint')");
     expect(PREVIEW).toContain("t('downloadsBlocked')");
     expect(PREVIEW_CODE).not.toContain('disabled');
   });

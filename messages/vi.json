@@ -5243,7 +5243,11 @@
       "downloadPdfTitle": "Borang 8A đã vẽ, phân trang, mỗi tờ có tổng riêng.",
       "downloadText": "Tải dạng văn bản",
       "downloadTextTitle": "Cùng nội dung dưới dạng văn bản thuần, để nhập vào cổng của PERKESO.",
-      "downloadsBlocked": "Việc tải bị chặn cho tới khi mọi dòng đều có số căn cước."
+      "downloadsBlocked": "Việc tải bị chặn cho tới khi mọi dòng đều có số căn cước.",
+      "headerMissingTitle": "Công ty này chưa thể xuất Borang 8A:",
+      "headerMissingHint": "Hãy đặt tại Tổ chức → Định danh theo luật rồi quay lại. Thiếu nó thì mọi trang của biểu mẫu đều trống ở cùng một ô.",
+      "headerField_employerCode": "Mã người sử dụng lao động PERKESO (No. Kod Majikan)",
+      "headerField_employerName": "Tên pháp lý của công ty"
     }
   },
   "admin": {
