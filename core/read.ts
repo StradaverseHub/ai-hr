@@ -2204,6 +2204,11 @@ export function leaveBalances(
         color: null as string | null,
         icon: null as string | null,
         code: null as string | null,
+        // 5ff7daff: the ROLE marker travels with the balance for the same reason it travels with every other
+        // leave-type read (65f466e2) — the surfaces that decide what an employee SEES for a type (My Leave's
+        // Replacement Leave card and its per-credit panel) must ask the role, not a code the tenant never
+        // used. null = unclassified ⇒ callers fall back to the code, i.e. pre-5ff7daff behaviour exactly.
+        role: null as string | null,
         // Leave grouping visibility (b653ac1b): the HR-resolved placement ('primary'|'secondary'|'hidden')
         // for this type on the /me Leave tab. Placeholder; overwritten in the final pass once code +
         // ess_placement + visible_to_employee are known (resolvePlacement, lib/leave-groups.ts). The planned
@@ -2229,6 +2234,7 @@ export function leaveBalances(
         color: null as string | null,
         icon: null as string | null,
         code: null as string | null,
+        role: null as string | null,
         // Leave grouping visibility (b653ac1b): placeholder, overwritten in the final pass. See rows.map above.
         placement: 'secondary' as EssPlacement,
       });
@@ -2252,7 +2258,7 @@ export function leaveBalances(
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
-      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, placement: 'secondary' as EssPlacement });
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
     // archived types with old ledger entries fall back to their stored English name).
@@ -2270,14 +2276,14 @@ export function leaveBalances(
     // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
     const visualByType = new Map<
       string,
-      { color: string | null; icon: string | null; code: string | null; essPlacement: string | null; visibleToEmployee: boolean | null }
+      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null }
     >();
     if (seenIds.length > 0) {
       const visuals = await tx
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee })
+        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee })
         .from(leaveType)
         .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee });
+      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee });
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
@@ -2287,6 +2293,7 @@ export function leaveBalances(
         r.color = v.color;
         r.icon = v.icon;
         r.code = v.code;
+        r.role = v.role;
       }
       // Leave grouping visibility (b653ac1b): resolve the HR-editable placement for this type. Precedence
       // (single source of truth for hidden = visible_to_employee): flag false ⇒ 'hidden'; else an explicit
@@ -2594,7 +2601,7 @@ export function leaveEntitlementBreakdown(
       tx
         // 9816a5ad step 2: the type's own rules ride along — the carry cap and expiry this panel shows
         // must be the ones openLeaveYear / expireCarriedLeave actually enforce.
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
@@ -2847,9 +2854,12 @@ export function leaveEntitlementBreakdown(
         reason: r.reason,
       })),
       essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
-      // 00307068: resolved over THIS type's own key set — the five Replacement Leave columns for REPLACEMENT,
-      // the nine summary items for everything else. `type.code` is already selected above.
-      formulaExplanations: resolveLeaveFormulaForCode(type.code, type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
+      // 00307068: resolved over THIS type's own key set — the six Replacement Leave columns for the
+      // replacement type, the nine summary items for everything else.
+      // 5ff7daff: by ROLE first (the row is passed whole, not just its code), so a tenant whose replacement
+      // type is coded `RL` gets its COLUMN wording resolved instead of nine summary keys that name nothing
+      // on its table.
+      formulaExplanations: resolveLeaveFormulaForCode(type, type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
     };
   });
 }
@@ -2909,13 +2919,23 @@ export function replacementLeaveLedger(ctx: SessionContext, employmentId: string
       .where(eq(toilAccrual.employmentId, employmentId))
       .orderBy(asc(toilAccrual.expiresOn), asc(toilAccrual.workedDate));
 
-    // 00307068: the REPLACEMENT type's labelling unit. One narrow read rather than threading the whole
+    // 00307068: the replacement type's labelling unit. One narrow read rather than threading the whole
     // leave-type row: this function's callers ask for a credit register, not a type. Absent type ⇒ 'day'
     // (the column default), which is also what every tenant that has never touched the setting has.
+    // 5ff7daff: ROLE FIRST, seeded code as the fallback — the same precedence as `leaveTypeIs` and as
+    // ensureReplacementLeaveType. On a tenant whose replacement type is coded `RL` the old code-only match
+    // read the labelling unit off the wrong type (or off none), so an HR admin who set the type to Hour saw
+    // the register keep rendering days.
     const [rlType] = await tx
       .select({ leaveUnit: leaveType.leaveUnit })
       .from(leaveType)
-      .where(and(sql`lower(${leaveType.code}) = 'replacement'`, isNull(leaveType.archivedAt)))
+      .where(
+        and(
+          sql`(${leaveType.role} = 'replacement' or (coalesce(${leaveType.role}, '') = '' and lower(${leaveType.code}) = 'replacement'))`,
+          isNull(leaveType.archivedAt),
+        ),
+      )
+      .orderBy(sql`case when ${leaveType.role} = 'replacement' then 0 else 1 end`)
       .limit(1);
     const leaveUnit: 'day' | 'hour' = rlType?.leaveUnit === 'hour' ? 'hour' : 'day';
 
