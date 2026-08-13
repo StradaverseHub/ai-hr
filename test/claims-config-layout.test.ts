@@ -173,7 +173,11 @@ describe('e7eb5d83 rev 6 · D — w-* cannot override inputCls, and this is how 
         return { path: file, base: path.dirname(file), content: fs.readFileSync(file, 'utf8') };
       },
     });
-    const css = compiler.build(['w-full', 'w-14', 'w-24', 'w-28', 'basis-24', 'flex-wrap', 'md:flex-nowrap']);
+    const css = compiler.build([
+      'w-full', 'w-14', 'w-24', 'w-28',
+      'basis-14', 'basis-24', 'basis-28',
+      'shrink-0', 'flex-wrap', 'md:flex-nowrap',
+    ]);
 
     const at = (sel: string) => {
       const i = css.indexOf(sel);
@@ -183,8 +187,16 @@ describe('e7eb5d83 rev 6 · D — w-* cannot override inputCls, and this is how 
     for (const w of ['.w-14 ', '.w-24 ', '.w-28 ']) {
       expect(at('.w-full '), `${w.trim()} would lose to w-full`).toBeGreaterThan(at(w));
     }
-    // basis-* is on a different property, so it is not in that race at all.
-    expect(css).toMatch(/\.basis-24\s*\{\s*flex-basis:/);
+    // basis-* is on a different property, so it is not in that race at all. All THREE are checked, not
+    // just one: an unrecognised `basis-*` emits NOTHING rather than erroring, and a control that silently
+    // loses its width is the exact failure this whole round is about. Their values must also still be the
+    // sizes the old w-* asked for — swapping the utility must not quietly resize the row.
+    for (const [cls, steps] of [['basis-14', 14], ['basis-24', 24], ['basis-28', 28]] as const) {
+      const rule = new RegExp(`\\.${cls}\\s*\\{\\s*flex-basis:\\s*calc\\(var\\(--spacing\\) \\* ${steps}\\)`);
+      expect(css, `${cls} must emit a real flex-basis of ${steps} spacing steps`).toMatch(rule);
+    }
+    // shrink-0 is the other half of the sizing and is equally silent if it ever stops existing.
+    expect(css).toMatch(/\.shrink-0\s*\{\s*flex-shrink:\s*0/);
     // And the breakpoint override must come after the base rule for the same reason.
     expect(at('.md\\:flex-nowrap')).toBeGreaterThan(at('.flex-wrap '));
   });
