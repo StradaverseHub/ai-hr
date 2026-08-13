@@ -1,8 +1,16 @@
 /**
  * 0db616f3 — THE ONE-OFF TIDY-UP for January 2026's double-imported bonus file.
  *
- *   node --env-file=.env.production --import tsx scripts/repair-january-bonus-double-import.ts
- *   node --env-file=.env.production --import tsx scripts/repair-january-bonus-double-import.ts --apply
+ * ⚠️ `node --env-file=` DOES NOT WORK ON THE SERVER. The box runs node v18.19.1 and --env-file arrived
+ * in node 20 — it exits 9 with "bad option: --env-file". Twenty-three scripts in this directory document
+ * that invocation and none of them can be run as written on production. SOURCE THE ENV INSTEAD, which
+ * also keeps the credentials on the box:
+ *
+ *   cd /opt/ai-hr && set -a && . ./.env.production && set +a \
+ *     && node --import tsx scripts/repair-january-bonus-double-import.ts
+ *   …same, with --apply, to write.
+ *
+ * (The --env-file form is still correct for LOCAL runs against .env.local, where node is current.)
  *
  * REPORT-ONLY BY DEFAULT, like scripts/repair-fixed-transaction-overlaps.ts and
  * scripts/correct-hrdf-opt-outs.ts. Without --apply it prints every row it would delete and every row it

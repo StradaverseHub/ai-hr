@@ -24,7 +24,7 @@ read vitest's `RUN` line + file count; a gate in the wrong tree reports green fo
 (this has happened three times). Never let `isolation: 'worktree'` cut an agent's tree from the root
 HEAD — create worktrees from `main` yourself.
 
-**The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-20
+**The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-22
 were all added on 2026-08-12/13, each after it cost a real round:
 
 1. **One vitest at a time.** A second run wipes the first's worker DBs. Parallel agents get their own
@@ -127,6 +127,23 @@ were all added on 2026-08-12/13, each after it cost a real round:
     forward completeness is already satisfied. Route handlers (`route.ts`) are not pages and are not listed.
     **The branch that adds the page cannot see this** — 18 test files read that registry across the suite,
     so only the full gate catches it, and a targeted re-run after fixing it is not trustworthy.
+
+21. **`node --env-file=` CANNOT RUN ON THE SERVER — the box is node v18.19.1 and that flag arrived in
+    node 20.** It exits 9 with `bad option: --env-file`. **23 scripts in `scripts/` document exactly that
+    invocation** for production, and not one of them works as written. Run them by sourcing instead, which
+    also keeps credentials on the box:
+    `cd /opt/ai-hr && set -a && . ./.env.production && set +a && node --import tsx scripts/<x>.ts`
+    This compounds rule 13: the round is not finished until the script has RUN, and the command the script
+    itself documents will fail on the only machine that can run it.
+22. **THE MIGRATION JOURNAL IS APPEND-ONLY — NEVER RE-SORT IT.** Resolving a merge conflict in
+    `_journal.json` by sorting every entry on `when` breaks the *other* invariant: idx 240 shares its
+    `when` with 220 and sits below 230's, so sorting relocates it and
+    `test/migration-journal-ordering.test.ts`'s "strictly ascending idx" case fails. That 240/230 inversion
+    is deliberate and GRANDFATHERED (`GRANDFATHERED_NON_ASCENDING`) because both shipped in one R44 deploy
+    and re-stamping an applied migration would desync every migrated database's `created_at`. Keep the
+    existing order and APPEND. And when several branches each add a migration, resolve the conflict as the
+    UNION — taking either side DROPS a migration, leaving a `.sql` with no journal entry, which never runs
+    and reports nothing.
 
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round

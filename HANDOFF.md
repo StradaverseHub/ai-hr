@@ -18,17 +18,16 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-13 (r185–r192 SHIPPED · NOTHING IN FLIGHT · 6 APPROVED)
+## CURRENT STATE — snapshot 2026-08-13 (r185–r193 SHIPPED · NOTHING IN FLIGHT · 5 APPROVED)
 
-**`main@cf05fe59` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
-reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. **That one line is
-expected after EVERY deploy and is not a discrepancy**: it is gitignored (`.gitignore:43`) and
-`deploy.sh` rebuilds on the box, which rewrites it. A dry run is "clean" at one line, not zero — it only
-reads empty if you rsync again *after* the deploy, which is churn, not proof of anything more.
-The code release ref for r190+r191's eleven board items is **`de887a85`** (what their `build_ref`
-records); r192 sits on top of it. **Production is on 355 migrations** (watermark `391 @ 1781862536000`;
-r192 added none). Service active, `GET localhost:3000/` → 401. **All code is live.**
-**Next free migration is `0437`** (`0431` allocated and deliberately unused; gaps are fine).
+**`main@970a1f22` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
+reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. That one line is
+expected after EVERY deploy and is not a discrepancy: it is gitignored (`.gitignore:43`) and
+`deploy.sh` rebuilds on the box, which rewrites it. A dry run is "clean" at one line, not zero.
+**Production is on 358 migrations** (watermark `394 @ 1781862539000`; r193 added `0437`, `0438`,
+`0439`, all three verified present on the live schema). Service active, `GET localhost:3000/` → 401.
+**All code is live.**
+**Next free migration is `0440`** (`0431` allocated and deliberately unused; gaps are fine).
 
 ⚠️ **AI-HR IS NOT PUBLICLY EXPOSED — DO NOT "VERIFY" IT THROUGH A BROWSER.** It listens on
 **127.0.0.1:3000 only**, and **nothing in nginx proxies to :3000** (checked r191:
@@ -110,7 +109,7 @@ flip; raise it rather than leave it as a warning line nobody reads.
 entry below. (That round's `0430`-`0435` and r191's `0436` are all applied — **next free is `0437`**,
 stated once in CURRENT STATE above and not repeated.)
 
-**NOTHING IS IN FLIGHT.** Everything r185–r192 is merged. Prove it independently before trusting this
+**NOTHING IS IN FLIGHT.** Everything r185–r193 is merged. Prove it independently before trusting this
 line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
 
 **⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
@@ -237,6 +236,42 @@ table. Take the figure from the run and show the run's own total beside the form
 ⚠️ **`payslip.statutory.bases` IS ONLY ON 60 OF 121 PAYSLIPS** (stamped from r187 onward), and
 `loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
 silently fall back to gross.
+
+### r193 (2026-08-13) — TEN ITEMS, THREE MIGRATIONS, AND THE JANUARY BONUS REPAIR RUN BY HAND
+
+`main@970a1f22`. Nine parallel workstreams cut from main. Gate **677 declared / 677 counted / every
+chunk exit=0 / 8,974 tests / 0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 355→358.
+Shipped: `2333b7fb`+`0253dc7c` (statutory wage base — one root cause, two screens) · `a9d0a94a`
+(entitlement generation) · `0db616f3` (January double import, `0437`) · `46afcc48` (shared leave group
+display, `0438`) · `7c834696` (OT rounding, `0439`) · `e7eb5d83` (claim config width) · `6b018920`
+(back pay / statutory adjustment) · `3c2f55d7` (organization) · `8ca344bf` (SOCSO Borang 8A).
+
+**THE MIGRATION JOURNAL COST TWO ATTEMPTS AND BOTH FAILURES WERE THE INTEGRATOR'S** — now AGENTS rule 22.
+Three branches each appended an entry, so `_journal.json` conflicted. First attempt: the resolver
+asserted and aborted BEFORE writing, but `git add && git commit` was chained off the `git add`, so the
+file went in WITH CONFLICT MARKERS as invalid JSON. Second attempt: sorting every entry by `when`
+relocated idx 240 ahead of 225 — because 240 shares its `when` with 220 and sits below 230's — breaking
+`test/migration-journal-ordering.test.ts`'s strictly-ascending-idx case. **The full gate caught it: one
+AssertionError, everything else green.** The journal has TWO invariants that pull against each other on
+that one grandfathered pair; APPENDING satisfies both because main already does. Final diff vs main is
+purely additive, 21 insertions / 0 deletions. And resolve multi-branch journal conflicts as the UNION —
+taking either side DROPS a migration, leaving a `.sql` with no journal entry that never runs.
+
+**THE JANUARY REPAIR IS DONE — DO NOT RE-RUN IT.** `scripts/repair-january-bonus-double-import.ts
+--apply`, run by hand after the deploy (rule 13), against a fresh backup
+`/home/ubuntu/backups/aihr-pre-0db616f3-20260813-224333.dump` (108MB, pg_dump exit 0, 166 TABLE DATA
+entries, taken with `--exclude-table-data` for the three FORCE-RLS tables — all confirmed 0 rows).
+Result, verified independently of the script's own summary: **13 rows / RM62,524.51 now on the bonus run
+`fc9e5309`, 0 left on the regular run, 0 surplus duplicates**; the 17 hand-keyed rows (RM7,997.75) on
+`368c67fc` untouched; payslips 121 / batches 23 / ledger 171 unchanged; January payslip totals unchanged
+(regular 19 @ net 96,045.78, bonus 19 @ 0.00). **No payslip was touched — re-issuing the January bonus
+run remains a separate, deliberate act by the owner.** A0014's RM17,325.00 exists ONLY in the second
+import and A0001's RM1,650.71 ONLY in the first, so "delete the later import" would have stranded a real
+person's bonus; the keep-set is the distinct union, earliest of each pair.
+
+⚠️ **`node --env-file=` DOES NOT RUN ON THE SERVER** — node v18.19.1, flag arrived in node 20, exits 9.
+**23 scripts document that invocation** and none works as written on production. Source the env instead.
+Now AGENTS rule 21.
 
 ### r192 (2026-08-13) — THE THREE COMMITS r191 LEFT BEHIND, AND A CORRECTION TO ITS OWN WRITE-UP
 
