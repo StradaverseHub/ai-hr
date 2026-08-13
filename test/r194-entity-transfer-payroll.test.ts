@@ -49,7 +49,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createMovementEvent } from '../core/movement';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { batchInputRows, createBatch, generatePayslips, listPayslipLessEligible } from '../core/payroll';
 import {
   companyOnDate,
   companySegmentsForPeriod,
@@ -721,5 +721,67 @@ describe('unpaid leave in a transferred month is charged ONCE', () => {
     expect(Number(inc.otherDeductions)).toBe(0);
     // And it is ONE day's worth, not two: 6600/31 ≈ 212.90.
     expect(Number(out.otherDeductions)).toBeCloseTo(6600 / 31, 1);
+  });
+});
+
+// ─────────────────── 10. the screens around the run agree with the run ───────────────────
+
+describe('the outgoing run and the screens around it see the same people', () => {
+  /**
+   * THE DRIFT THIS PREVENTS, in miniature. Widening only the KERNEL's employee selection would produce an
+   * employee the run pays but whom the operator cannot see: no row on the payroll-input screen to key
+   * their ten days of overtime against, absent from the "eligible but not on this run" list, and skipped
+   * by the readiness gate that is supposed to cover the set the run computes. So every company-scoped
+   * employment read in the kernel goes through ONE shared predicate (`employedByCompanyDuring`), and this
+   * pins that they answer the same way.
+   */
+  it('the payroll INPUT rows and the payslip-less ELIGIBLE list both include a transferred-out employee', async () => {
+    const hire = await hireInto(b.companyId, b.deptA, '2026-07-23', '900101010601');
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-08-11',
+      companyId: coB,
+      departmentId: deptB2,
+    });
+    const a = adminCtx(b);
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+
+    // The input screen: without the shared predicate this list is EMPTY for this employee and there is
+    // nowhere to key the overtime they worked for this employer before the 11th.
+    const inputs = await batchInputRows(a, outgoing.batchId);
+    expect(inputs.map((r) => r.employmentId)).toContain(hire.employmentId);
+
+    // And the kernel agrees: it is the same predicate, so what the screen offers is what the run pays.
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    const slips = await payslipsOf(outgoing.batchId);
+    expect(slips.map((s) => s.employmentId)).toContain(hire.employmentId);
+  });
+
+  it('the payslip-less ELIGIBLE list offers a transferred-out employee a scoped run left out', async () => {
+    // `listPayslipLessEligible` answers "who was eligible for this month but has no payslip on this
+    // PROCESSED run" — the add-to-run list. A run scoped to somebody else is exactly how a transferred-out
+    // employee ends up eligible with no slip, and before the shared predicate they were invisible to it:
+    // the one person whose ten days the outgoing entity still owed could never be added.
+    const stayer = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010602');
+    const mover = await hireInto(b.companyId, b.deptA, '2026-07-23', '900101010603');
+    await createMovementEvent(adminCtx(b), {
+      employmentId: mover.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-08-11',
+      companyId: coB,
+      departmentId: deptB2,
+    });
+    const a = adminCtx(b);
+    const outgoing = await createBatch(a, {
+      companyId: b.companyId,
+      payPeriod: '2026-08',
+      scope: { employmentIds: [stayer.employmentId] },
+    });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    expect((await payslipsOf(outgoing.batchId)).map((s) => s.employmentId)).toEqual([stayer.employmentId]);
+
+    const eligible = await listPayslipLessEligible(a, { batchId: outgoing.batchId });
+    expect(eligible.map((r) => r.employmentId)).toContain(mover.employmentId);
   });
 });

@@ -17,7 +17,7 @@ import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-
 // 3c88d593 — "which legal entity did this person belong to on this date?", answered from the effective-dated
 // assignment spine (migration 0440). Payroll is the FIRST reader of it, deliberately: the resolver has to be
 // proven on the money before attendance, leave and reporting adopt it (stage two).
-import { companySegmentsForPeriodBulk, segmentForCompany } from './employment-company';
+import { companySegmentsForPeriodBulk, employedByCompanyDuring, segmentForCompany } from './employment-company';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { anomalyEvaluated, evaluateCircuitBreaker, openBlockingVerdicts } from './payroll-anomaly';
@@ -1939,7 +1939,10 @@ export async function prefillTp1FromSelfRelief(
       .innerJoin(person, eq(person.id, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         ),
@@ -2132,7 +2135,10 @@ export async function prefillFixedZakat(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           eq(employeeStatutoryMy.zakatActive, true),
@@ -2231,17 +2237,7 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           // an employee who transferred out mid-month still worked overtime for the outgoing entity, and
           // reading only today's column meant those hours went to whichever employer they happen to be
           // with now — or nowhere at all. Inert until the entity history exists.
-          or(
-            eq(employment.companyId, batch.companyId),
-            sql`exists (
-              select 1 from assignment a
-              where a.employment_id = ${employment.id}
-                and a.superseded_at is null
-                and a.company_id = ${batch.companyId}
-                and a.valid_from <= ${otWindow.end}
-                and (a.valid_to is null or a.valid_to > ${otWindow.start})
-            )`,
-          ),
+          employedByCompanyDuring(batch.companyId, otWindow.start, otWindow.end),
           gte(attendance.attendanceDate, otWindow.start),
           lte(attendance.attendanceDate, otWindow.end),
           gt(attendance.otMinutes, 0),
@@ -2627,7 +2623,12 @@ export async function generatePayslips(
         .innerJoin(person, eq(person.id, employment.personId))
         .where(
           and(
-            eq(employment.companyId, batch.companyId),
+            // 3c88d593 — the DATED entity question, and it MUST match the earnings query below. The
+            // comment above promises the two windows are read off the same facts so a row can never be
+            // classified ADDED and then dropped as ineligible; leaving this one on the column while the
+            // kernel asks the history would break that promise in the other direction — an employee the
+            // run will pay could never be ADDED to it.
+            employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
             lte(employment.hiredOn, periodEnd),
             or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
             inArray(employment.id, idFilter),
@@ -2836,17 +2837,7 @@ export async function generatePayslips(
           //
           // ⚠️ Pre-backfill this OR is inert: `assignment.company_id` is NULL on every legacy row, so the
           // EXISTS matches nothing and the predicate collapses to the column test it replaced.
-          or(
-            eq(employment.companyId, batch.companyId),
-            sql`exists (
-              select 1 from assignment a
-              where a.employment_id = ${employment.id}
-                and a.superseded_at is null
-                and a.company_id = ${batch.companyId}
-                and a.valid_from <= ${periodEnd}
-                and (a.valid_to is null or a.valid_to > ${periodStart})
-            )`,
-          ),
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           // fbcf706d — the batch scope narrows a FULL generation only. On a subset every posted id has
@@ -6329,7 +6320,10 @@ async function preProcessChecksTx(
     .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
     .where(
       and(
-        eq(employment.companyId, batch.companyId),
+        // 3c88d593 — the DATED entity question, same as generatePayslips: the readiness gate must cover
+        // exactly the set the kernel will compute, or a gap belonging to a transferred-out employee is
+        // silently not checked on the run that pays them.
+        employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
         lte(employment.hiredOn, periodEnd),
         or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         scopeFilter,
@@ -6541,7 +6535,10 @@ export function listPayslipLessEligible(
       .innerJoin(person, eq(person.id, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           // NOT EXISTS a payslip for this employment on this batch. Correlated rather than a NOT IN over a
@@ -6938,7 +6935,10 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       )
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         ),

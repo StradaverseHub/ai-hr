@@ -35,7 +35,7 @@
  * Dates are 'YYYY-MM-DD' strings throughout, the repo's convention for a calendar date with no timezone.
  * String comparison IS date comparison for that format, which is why this module does no Date parsing.
  */
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { assignment, employment } from '../db/schema';
 import type { Tx } from '../db/client';
 
@@ -220,6 +220,44 @@ export async function companySegmentsForPeriod(
 export async function companyOnDate(tx: Tx, employmentId: string, date: string): Promise<string | null> {
   const segs = await companySegmentsForPeriod(tx, employmentId, date, date);
   return segs[0]?.companyId ?? null;
+}
+
+/**
+ * "Was this employment with `companyId` at ANY POINT in [from, to]?", as a SQL predicate over the
+ * `employment` table — the question every company-scoped payroll read has to ask once the entity is
+ * effective-dated.
+ *
+ * ONE EXPRESSION, SHARED, because the alternative is what this item is fixing in miniature: the payroll
+ * KERNEL asking the dated question while the input screen, the eligibility list and the pre-processing
+ * check still ask the column-only one. Those four disagreeing is an employee who is paid by a run that
+ * would not let you key their overtime, and does not appear on the readiness check that is supposed to
+ * gate the run they are on.
+ *
+ *   • the column — everyone currently here, which is everyone who never moved plus anyone who moved IN;
+ *   • the dated history — anyone the `assignment` spine says belonged here over part of the window,
+ *     which is how the OUTGOING employer keeps seeing someone whose column has already moved on.
+ *
+ * `gt(valid_to, from)`, not `gte`: valid_to is EXCLUSIVE (migration 0001's `daterange(…, '[)')`), so a
+ * version closing at `from` last applied the day before and does not touch the window.
+ *
+ * INERT BEFORE THE BACKFILL — every pre-0440 row holds a NULL company, so the EXISTS matches nothing and
+ * the predicate collapses to the column test it replaced.
+ *
+ * ⚠️ RLS STILL FENCES THE ROWS THIS RETURNS. `employment_rls` uses `app.can_see_employment(id)`, which
+ * resolves through TODAY's `employment.company_id`, so an operator scoped to the OUTGOING company alone
+ * cannot see a transferred-out employment at all and this predicate returns nothing for them. It works for
+ * a group-wide operator and for one who administers both entities — which is who performs a transfer.
+ * Widening the RLS predicate to the dated history is a security-shaped decision and is NOT taken here.
+ */
+export function employedByCompanyDuring(companyId: string, from: string, to: string): SQL {
+  return sql`(${employment.companyId} = ${companyId} or exists (
+    select 1 from assignment a
+    where a.employment_id = ${employment.id}
+      and a.superseded_at is null
+      and a.company_id = ${companyId}
+      and a.valid_from <= ${to}
+      and (a.valid_to is null or a.valid_to > ${from})
+  ))`;
 }
 
 /**
