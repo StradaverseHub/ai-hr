@@ -175,7 +175,10 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       text(String(bil), COL.bil, 8.5);
       text(r.memberNo, COL.member, 8.5);
       text(r.ic, COL.ic, 8.5);
-      textClip(r.name, COL.name, COL.wageR - COL.name - 40, 8.5);
+      // The clip allowance is 56, not the 40 the first draft used: at 40 a 40-character legal name ran
+      // right up against the Upah figure with no visible gap ("…MOHAMED ZUL 6,200.00"). Found by
+      // rasterising the page and looking at it, which is the only thing that can see it.
+      textClip(r.name, COL.name, COL.wageR - COL.name - 56, 8.5);
       // A row whose EPF wage basis was never recorded cannot reach this renderer — the download gate
       // refuses it — but if it ever did, it must not print a zero that reads as a real wage.
       textR(r.wageRecorded ? money(r.wage) : '(tiada)', COL.wageR, 8.5);
@@ -213,6 +216,11 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     if (last) {
       y = REP_BAND_TOP;
       text('Wakil Yang Diberi Kuasa / Authorised Representative', M, 7.5, bold, muted);
+      // BOTH captions on the SAME line, and the signature box drawn NOW rather than after the loop
+      // below. The first draft drew this caption with whatever `y` the loop had left behind, which put
+      // "Tandatangan & Tarikh" UNDERNEATH its own box. Found by rasterising the page.
+      text('Tandatangan & Tarikh', M + 330, 7.5, bold, muted);
+      box(M + 330, REP_BAND_TOP - 64, 197, 58);
       y -= 13;
       const rep: [string, string][] = [
         ['Nama', form.repName],
@@ -232,9 +240,6 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
         }
         y -= 12;
       }
-      // Drawn empty on purpose — the operator's and the collecting agent's, never payroll-derived.
-      text('Tandatangan & Tarikh', M + 330, 7.5, font, muted);
-      box(M + 330, REP_BAND_TOP - 58, 197, 52);
     }
 
     // ── Provenance band ─────────────────────────────────────────────────────────────────────────
