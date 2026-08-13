@@ -67,6 +67,7 @@ import {
   formDate,
   type BorangARow,
 } from '../../lib/borang-a';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
 
@@ -197,7 +198,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       contributionPeriodKey,
       payrollPeriodKey: params.periodKey,
       // Tarikh DiCetak — the generation date, which is what the specimen's box holds.
-      printedOn: formDate(new Date().toISOString().slice(0, 10)),
+      printedOn: formDate(todayInKualaLumpur()),
       repName,
       repIc,
       repPosition,

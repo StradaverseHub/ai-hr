@@ -443,8 +443,14 @@ export async function decideReplacementLeaveRequestAction(formData: FormData) {
     // are computed in the ROOT layout, so a page-only revalidate leaves both stale until a hard reload.
     revalidatePath('/approvals');
     revalidatePath('/', 'layout');
-    const t = await getTranslations('approvals');
-    redirect(approvalsReturnUrl({ ...nav, toast: t(decision === 'approved' ? 'replacementApproved' : 'replacementRejected') }));
+    // NAMED tApprovals, not t. `t` is already bound to the `replacementRequest` namespace earlier in this
+    // file, and test/leave-i18n-key-resolution.test.ts resolves a key by mapping VARIABLE NAME → namespace.
+    // A second `const t` here rebinds that name for the whole file, so the earlier `t('submittedToast')`
+    // — correctly `replacementRequest.submittedToast`, which exists — was reported as the missing
+    // `approvals.submittedToast`. The key was never missing; the identifier was shadowed. Adding the key
+    // to `approvals` would have silenced a working guard with an entry no call site reads.
+    const tApprovals = await getTranslations('approvals');
+    redirect(approvalsReturnUrl({ ...nav, toast: tApprovals(decision === 'approved' ? 'replacementApproved' : 'replacementRejected') }));
   }
   redirect('/leave');
 }
