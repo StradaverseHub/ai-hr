@@ -55,6 +55,9 @@ import {
   segmentForCompany,
 } from '../core/employment-company';
 import { withTenant } from '../db/client';
+// The backfill is rehearsed HERE, against a real cluster, because it must NOT be run against production
+// blind and because "idempotent" is a claim only a second run can settle.
+import { companyAt, replayTimeline, runBackfill } from '../scripts/backfill-assignment-company';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -458,5 +461,155 @@ describe('an employment that never transferred is untouched', () => {
     const slip = (await payslipsOf(batchId)).find((s) => s.employmentId === hire.employmentId)!;
     expect(Number(slip.basicSalary)).toBe(6600);
     expect((slip.statutory as Record<string, unknown>).segment).toBeUndefined();
+  });
+});
+
+// ─────────────────────── 7. the backfill, rehearsed ───────────────────────
+
+/**
+ * THE BACKFILL IS A SCRIPT, NOT PART OF DEPLOY (`deploy.sh` runs migrations, not scripts), and it must
+ * not be run against production blind. It is rehearsed here against a real cluster for two reasons that
+ * a report-only dry run cannot cover: that it produces the RIGHT split for the reported shape, and that
+ * it is genuinely idempotent — a claim only a second run settles.
+ *
+ * THE FIXTURE REPRODUCES THE PRODUCTION SHAPE EXACTLY, including the part the approved plan got wrong.
+ * On production employee 100814's assignment boundary at 2026-08-10 belongs to a PROMOTION applied that
+ * day (domain_event seq 6886), and the 11 August transfer wrote no boundary at all — its `changes` are
+ * companyId and joinDate only. The plan reads those two dates as a disagreement to be reconciled by
+ * moving the boundary; doing that would destroy the promotion's own effective date. The right action is
+ * to SPLIT at the transfer date and leave the promotion's boundary alone, and that is what these cases
+ * pin.
+ */
+describe('the backfill: history for rows written before migration 0440', () => {
+  const url = () => process.env.TEST_MIGRATION_DATABASE_URL!;
+
+  /** Strip the entity history the new writers stamp, leaving exactly the pre-0440 shape. */
+  const eraseHistory = () => owner.db.update(schema.assignment).set({ companyId: null });
+
+  it('replayTimeline: no transfers ⇒ one company for all of history; a transfer opens a second range', () => {
+    expect(replayTimeline([], 'co-x', '2020-01-01')).toEqual([{ from: '2020-01-01', companyId: 'co-x' }]);
+    const t = [{ eventId: 'e1', effectiveDate: '2026-08-11', before: 'co-a', after: 'co-b' }];
+    expect(replayTimeline(t, 'co-b', '2026-07-23')).toEqual([
+      { from: '2026-07-23', companyId: 'co-a' },
+      { from: '2026-08-11', companyId: 'co-b' },
+    ]);
+    expect(companyAt(replayTimeline(t, 'co-b', '2026-07-23')!, '2026-08-10')).toBe('co-a');
+    expect(companyAt(replayTimeline(t, 'co-b', '2026-07-23')!, '2026-08-11')).toBe('co-b');
+  });
+
+  it('replayTimeline REFUSES when the replay does not land on the stored company', () => {
+    // The ledger and the column disagree about something the script does not model. Guessing at a legal
+    // entity is how you pay the wrong employer, so the employment is left completely alone.
+    const t = [{ eventId: 'e1', effectiveDate: '2026-08-11', before: 'co-a', after: 'co-b' }];
+    expect(replayTimeline(t, 'co-c', '2026-07-23')).toBeNull();
+  });
+
+  it('stamps a never-transferred employment with its single company, and re-running writes nothing', async () => {
+    const hire = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010401');
+    await eraseHistory();
+    expect((await assignmentsOf(hire.employmentId))[0].companyId).toBeNull();
+
+    const dry = await runBackfill(url(), { apply: false });
+    expect(dry.plans.find((p) => p.employmentId === hire.employmentId)!.stamps).toHaveLength(1);
+    expect((await assignmentsOf(hire.employmentId))[0].companyId).toBeNull(); // report-only wrote nothing
+
+    const wet = await runBackfill(url(), { apply: true });
+    expect(wet.applied.stamps).toBeGreaterThanOrEqual(1);
+    expect((await assignmentsOf(hire.employmentId))[0].companyId).toBe(b.companyId);
+
+    const again = await runBackfill(url(), { apply: false });
+    expect(again.plans.reduce((n, p) => n + p.stamps.length + p.splits.length, 0)).toBe(0);
+  });
+
+  it('THE REPORTED SHAPE: splits at the TRANSFER date and leaves an unrelated boundary where it is', async () => {
+    // 1. hired 23 July. 2. an unrelated movement on 10 August writes a boundary (production: a promotion).
+    // 3. a company-only transfer on 11 August, which before this item wrote no boundary at all.
+    const hire = await hireInto(b.companyId, b.deptA, '2026-07-23', '900101010402');
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'transfer',
+      effectiveDate: '2026-08-10',
+      departmentId: b.deptB,
+    });
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-08-11',
+      companyId: coB,
+      departmentId: deptB2,
+    });
+    // Erase BOTH the entity history and the boundary the new writer created, so the fixture is exactly
+    // the pre-0440 state the backfill will meet on production: a boundary at 08-10 and none at 08-11.
+    const before = await assignmentsOf(hire.employmentId);
+    await owner.db
+      .delete(schema.assignment)
+      .where(eq(schema.assignment.id, before[before.length - 1].id));
+    await owner.db
+      .update(schema.assignment)
+      .set({ validTo: null })
+      .where(eq(schema.assignment.id, before[before.length - 2].id));
+    await eraseHistory();
+    const pre = await assignmentsOf(hire.employmentId);
+    expect(pre.map((r) => [r.validFrom, r.validTo])).toEqual([
+      ['2026-07-23', '2026-08-10'],
+      ['2026-08-10', null],
+    ]);
+
+    await runBackfill(url(), { apply: true });
+
+    const post = await assignmentsOf(hire.employmentId);
+    expect(post.map((r) => [r.validFrom, r.validTo, r.companyId])).toEqual([
+      // the unrelated 10 August boundary is UNTOUCHED — moving it would destroy that movement's date
+      ['2026-07-23', '2026-08-10', b.companyId],
+      ['2026-08-10', '2026-08-11', b.companyId],
+      // …and the transfer date now has a boundary of its own
+      ['2026-08-11', null, coB],
+    ]);
+
+    // And the resolver now answers the question the whole item exists for.
+    const a = adminCtx(b);
+    await withTenant(a, async (tx) => {
+      expect(await companySegmentsForPeriod(tx, hire.employmentId, '2026-08-01', '2026-08-31')).toEqual([
+        { companyId: b.companyId, from: '2026-08-01', to: '2026-08-10' },
+        { companyId: coB, from: '2026-08-11', to: '2026-08-31' },
+      ]);
+    });
+
+    // Idempotent: a second run finds nothing to do.
+    const again = await runBackfill(url(), { apply: false });
+    expect(again.plans.reduce((n, p) => n + p.stamps.length + p.splits.length, 0)).toBe(0);
+  });
+
+  it('after the backfill, the outgoing entity pays exactly its ten days', async () => {
+    // End to end from the pre-0440 state: this is the assertion that would have caught the reported
+    // fault, and it is driven by the backfill rather than by the writers.
+    const hire = await hireInto(b.companyId, b.deptA, '2026-07-23', '900101010403');
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-08-11',
+      companyId: coB,
+      departmentId: deptB2,
+    });
+    await eraseHistory();
+    // Pre-backfill the resolver falls back to the column, so August is one segment on the DESTINATION —
+    // i.e. exactly the fault, still reproducible, which proves the fallback is what it claims to be.
+    const a = adminCtx(b);
+    const stale = await createBatch(a, { companyId: coB, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: stale.batchId });
+    const staleSlip = (await payslipsOf(stale.batchId)).find((s) => s.employmentId === hire.employmentId)!;
+    expect(Number(staleSlip.basicSalary)).toBe(6600); // the whole month, on the new entity
+
+    await runBackfill(url(), { apply: true });
+
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    const out = (await payslipsOf(outgoing.batchId)).find((s) => s.employmentId === hire.employmentId)!;
+    expect(Number(out.daysWorked)).toBe(10);
+    expect((out.statutory as Record<string, unknown>).segment).toEqual({
+      companyId: b.companyId,
+      from: '2026-08-01',
+      to: '2026-08-10',
+    });
   });
 });
