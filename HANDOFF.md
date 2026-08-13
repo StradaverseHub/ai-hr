@@ -18,58 +18,80 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-13 (r185–r189 SHIPPED · r190 BUILT AND UNGATED · 13 APPROVED)
+## CURRENT STATE — snapshot 2026-08-13 (r185–r191 SHIPPED · NOTHING IN FLIGHT · 6 APPROVED)
 
-**`main@2a085bf0` IS WHAT RUNS ON PRODUCTION** — verified by a zero-change `rsync -azi --delete
---dry-run` (not by `deploy.sh` succeeding, which is not proof; the single line it reports is
-`next-env.d.ts`, which the box regenerates during its own build). **Production is on 354 migrations.** Service active, `GET /` 401. Verified by a dry-run rsync that
-reports ONLY `HANDOFF.md`, `docs/HANDOFF-HISTORY.md`, `docs/mockups/*` and the box-regenerated
-`next-env.d.ts` — i.e. docs committed after the last deploy. **All code is live.**
-**Next free migration is `0436`** (`0431` allocated and deliberately unused; gaps are fine).
+**`main@de887a85` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run` that
+reports ONLY the box-regenerated `next-env.d.ts` (gitignored, `.gitignore:43`; the box rewrites it during
+its own build). Not by `deploy.sh` succeeding, which is not proof. **Production is on 355 migrations**
+(watermark `391 @ 1781862536000`). Service active. **All code is live.**
+**Next free migration is `0437`** (`0431` allocated and deliberately unused; gaps are fine).
+
+⚠️ **AI-HR IS NOT PUBLICLY EXPOSED — DO NOT "VERIFY" IT THROUGH A BROWSER.** It listens on
+**127.0.0.1:3000 only**, and **nothing in nginx proxies to :3000** (checked r191:
+`grep -rlE 'proxy_pass.*:3000' /etc/nginx/` returns nothing). The health check is
+`curl localhost:3000/` **ON THE BOX** → **401**, the password gate, plus `systemctl is-active aihr`.
+`https://203.142.6.241/` returns **403** and `sfm.stradaprop.com` is a **DIFFERENT APPLICATION** —
+it redirects to `/odoo` and lands on an Odoo login (Odoo listens on 8069 on the same host). Neither
+tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**1. `build/r190` IS BUILT, COMMITTED AND NOT GATED.** Two commits, `2f889bae` — a View/Edit link on the
-Personnel Payroll tab rows, plus the shape guard that pinned the decision it reverses. tsc clean, i18n
-clean, render-checked end to end (real click-through to the item page, six locales, zero
-MISSING_MESSAGE), and mutation-checked both ways. **Its last full gate was killed at chunk 4/6 with
-chunks 1-3 all exit=0** — including chunk 1, which held the previously-failing guard. It needs one clean
-`CHUNKS=6 bash scripts/gate-chunked.sh`, then merge → rsync → `deploy.sh` → verify → board. **No
-migration.** The cluster may be DOWN (the gate rebuilds it between chunks and was killed mid-rebuild) —
-`pnpm db:start` or just let the next gate rebuild it.
+**1. NOTHING IS IN FLIGHT.** r190 and r191 both shipped as ONE release, `main@de887a85`. Every
+`build/*` branch through r191 is merged. Prove it independently rather than trusting this line —
+`git for-each-ref refs/heads/build` plus a dry-run rsync.
 
-**2. THE BOARD FLIPPED OVERNIGHT: 13 APPROVED, 0 PLANNED.** The reporter worked through nearly the whole
-planned queue. **The constraint is builds again.** In rough dependency order:
+**2. SIX APPROVED, AND FOUR OF THEM WERE APPROVED WHILE r191 WAS DEPLOYING.** In build order:
 
-- **`2f889bae`** — built, see above.
-- **`88076362` CP22 · `8ca344bf` Borang 8A · `9c8dad7a` Borang A** — the statutory trio. Recommended
-  order CP22 → 8A → A, **three rounds not one**. Read the dedicated section below BEFORE touching them:
-  the EPF/SOCSO attachments are another payroll system's output rather than agency artwork, the 2021 CP22
-  invalidates all 33 mapped field positions, and **no migration is needed for any of the three**.
-- **`3214cb11` + `813fd22a`** — ONE fix, not two. Both surfaces are fed by a single page-level read.
-- **`38b94df7`** — the control already exists (`components/employee-search-field.tsx`) and is mounted
-  nowhere; it is also on Employee Leave Record, wider than the ticket says.
-- **`3ddae357`** — Large. 5 of 10 columns already respond to the As-at date; 4 never do; the Date column
-  echoes the input, which is what makes the screen LOOK responsive.
-- **`009c8a37` + `e1e33ca0`** — build in ONE pass, NEVER in parallel: they edit the same JSX block.
-  `009c8a37` lands on SEVEN screens, and the panel is not one implementation — Individual Transaction
-  draws its own inline list.
-- **`47609f53` · `154865f4` · `a3d485f6`** — the three we raised ourselves. `a3d485f6` closes the last
-  double-pay hole by refusing a mid-month restatement, and it converts an `it.fails` to passing.
+- **`2333b7fb` → `0253dc7c`** — ONE root cause seen from two screens, and they must ship in that
+  order: `2333b7fb` is the calculation (a deduction pay item's own statutory ticks are read by
+  NOTHING — `core/payroll.ts` ~3757 `continue`s out of the deduction branch before any flag is read),
+  `0253dc7c` is the disclosure of the same numbers on Transaction Detail. Only **four payslips of 121**
+  carry a deduction ticked into any base; employee net moves **+RM172.25** total, employer **−RM107.63**.
+  ⚠️ **Neither may restate January** — see `0db616f3` below, which blocks it.
+- **`31e39d74`** — entitlement not generating. **`9a65f808` IS NOT A BLOCKER FOR IT** (see below).
+- **`5ff7daff`** Replacement Leave — the request dialog, the service and the credit-minting are ALL
+  built and switched on; what is missing is that **`decideReplacementLeaveRequestAction` has ZERO
+  callers** — there is no approval screen anywhere, which is why production has 0 accruals. Also:
+  production carries **two** replacement leave types because `core/toil.ts:186` still matches
+  `lower(code)='replacement'` instead of `leave_type.role` — the same class as the `EMERGENCY_LEAVE_CODE`
+  trap that `leaveTypeIs` was introduced to fix. Safe to consolidate (0 accruals, 0 requests, 0 ledger).
+- **`8ca344bf` Borang 8A · `9c8dad7a` Borang A** — deliberately DEFERRED from r191. Their plan says
+  **three rounds, not one**, and CP22 (the first of the trio) shipped in r191. Read the dedicated
+  statutory section below BEFORE touching them: the EPF/SOCSO attachments are another payroll system's
+  DevExpress output, not agency artwork, so neither form may be labelled `official`.
 
-**3. `9a65f808` IS CONTESTED** and the reason is one line: *"what I want is the entire grade selection
-move into eligibility rules"* — i.e. wider than the plan's half-measure. Needs a revision 2.
+**3. `0db616f3` IS THE MOST URGENT THING ON THE BOARD (raised by us, r191, still `open`).** January
+regular batch `368c67fc` (2026-01, **processed**) carries **24 `source='import'` rows worth
+RM106,073.31**, created 12 Aug at 15:27 and 15:30 — **after** its 19 payslips were written at 15:04, so
+they are unconsumed and nobody has been paid them. **Eleven of the 24 are exact duplicates** (same
+employment, component and amount, one from each import run three minutes apart) worth **RM43,548.80**.
+The fold at `core/payroll.ts:3389` is `where(eq(payrollIndividualTxn.batchId, p.batchId))` and **the
+table has no consumed marker in any column**, so re-running January pays all 24 including all 11
+repeats. The bonus batch `fc9e5309` shows 19 payslips at net 0.00 because the rows went to the regular
+batch. **This blocks any January restatement, including `2333b7fb`'s.**
 
-**4. TWO STANDING DECISIONS NOBODY HAS REVISITED**, both flagged rather than actioned:
+**4. `9a65f808` DOES NOT BLOCK `31e39d74` — this was chased and DISPROVED in r191, do not re-derive it.**
+Production holds exactly one eligibility rule, `PERMANENT`, created **2026-08-13 10:38:34** and retired
+**the same morning** (`valid_to = 2026-08-13`), narrowing on 14 axes. The tempting story is that the
+product refused it. It did not: `ASSIGNABLE_ELIGIBILITY_AXES` (`companyIds`, `employmentTypes`,
+`gradeIds`) lives in `core/leave-approval-template.ts:385` and is read at **exactly one place** —
+`app/admin/leave/approval/page.tsx:351`, the **Approval Assignment Template picker**. The entitlement
+resolver `buildTemplateEntitlementResolver` (`core/entitlement-template.ts:557`) applies **no axis
+restriction at all**; it hands the full criteria to `resolveOrgCriteriaTargets`. **That 14-axis rule
+would have generated entitlement perfectly well.** It is absent because it was retired, not refused.
+(`usesUndatedEligibilityAxis` was checked as an alternative explanation and has **no UI caller** — it is
+exported and tested only, so no warning ever reached the reporter.)
+
+**5. TWO STANDING DECISIONS NOBODY HAS REVISITED**, both flagged rather than actioned:
 `ALLOW_DEMO_SESSION=true` is live on the box a real customer's payroll runs on; and `fixed_allowance`
 can no longer be CREATED from any screen after r189 (existing ones survive; a rate control belongs on
 Claim Types).
 
-**TWENTY-FIVE ITEMS SHIPPED IN ONE DAY, ACROSS FIVE ROUNDS.** r185 (seven, `0426`+`0427`), r186 (eight,
+**THIRTY-SIX ITEMS SHIPPED IN TWO DAYS, ACROSS SEVEN ROUNDS.** r185 (seven, `0426`+`0427`), r186 (eight,
 `0428`+`0429`), r187 (seven, `0430`/`0432`/`0433`/`0434`), r188 (one defect fix, no migration), r189 (two,
-`0435`). Every new column, table, index and CHECK constraint was confirmed present on the live schema after
-each deploy, with GRANTs, rather than inferred from `deploy.sh` exiting 0 — and payslip and batch counts
-were re-checked unchanged after every one.
+`0435`), r190+r191 (eleven, `0436`, shipped as one release). Every new column, table, index, CHECK
+constraint and POLICY was confirmed present on the live schema after each deploy, with GRANTs, rather than
+inferred from `deploy.sh` exiting 0 — and payslip and batch counts were re-checked unchanged after every one.
 
 ⚠️ **`deploy.sh` DOES NOT RUN SCRIPTS, ONLY MIGRATIONS.** r189's live-risk fix was half-armed until
 `scripts/backfill-mileage-flat-rate.ts --apply` was run BY HAND after the deploy. If a round's fix depends
@@ -81,12 +103,11 @@ consultant demo, per the startup warning, but it is a standing decision nobody h
 flip; raise it rather than leave it as a warning line nobody reads.
 
 **r186 SHIPPED 2026-08-12 — `main@bed6c212`, migrations `0428` and `0429`, production on 349.** Full
-entry below. (That round's `0430`-`0434` are long since applied — **next free is `0436`**, stated once in
-CURRENT STATE above and not repeated.)
+entry below. (That round's `0430`-`0435` and r191's `0436` are all applied — **next free is `0437`**,
+stated once in CURRENT STATE above and not repeated.)
 
-**ONE BRANCH IS IN FLIGHT: `build/r190`** — built, committed, NOT gated and NOT merged (see START HERE).
-Everything r185-r189 is merged and pruned. Prove both independently before trusting this line —
-`git for-each-ref refs/heads/build` plus a dry-run rsync.
+**NOTHING IS IN FLIGHT.** Everything r185–r191 is merged. Prove it independently before trusting this
+line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
 
 **⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
 
@@ -130,7 +151,7 @@ Layout Enhancement" is asking for the width back. Full width and the left panel 
 have now reversed once in each direction. Whoever plans it must show both states and say plainly that this
 is the choice — **do not silently re-remove the panel they just asked to have back.**
 
-### ⚠️ THE ROSTER WRITE PERMISSION IS NOT SYMMETRIC — DELETE IS NOT GUARDED BY THE DATABASE
+### ✅ THE ROSTER DELETE ASYMMETRY — CLOSED IN r191 BY `0436` (kept for the measurement, and the lesson)
 
 `roster_assignment_rls` is a `FOR ALL` policy, so `WITH CHECK` (`can_admin_employment`) governs INSERT and
 the new row of UPDATE, while **DELETE is governed by `USING` alone (`can_see_employment`)** — which a
@@ -154,10 +175,21 @@ artefact. Re-measured through the real functions: `assignShift` throws, `setRest
 **`clearRoster` does not throw at all**. So of the three brushes, **`clear` is the only one whose refusal
 is produced by the guard rather than doubled by the database.**
 
-**No live exposure — the app guard covers it.** The hazard is forward-looking: any future screen, import or
-bulk tool that removes shifts inherits protection for add and change and silently does not for remove.
-**Raised as board item `154865f4`** so the reporter owns the decision; closing it needs a restrictive
-DELETE policy or per-command policies.
+✅ **CLOSED IN r191 BY MIGRATION `0436` — THE TABLE ABOVE IS THE "BEFORE" STATE, KEPT AS THE MEASUREMENT
+THAT JUSTIFIED THE FIX.** `roster_assignment_delete_admin` is live on production, verified after deploy
+by reading `pg_policy` rather than trusting `deploy.sh`:
+
+    roster_assignment_delete_admin | d | f      ← polcmd=DELETE, polpermissive=f (RESTRICTIVE)
+    roster_assignment_rls          | * | t      ← the original FOR ALL, untouched
+
+**RESTRICTIVE was the whole point**: it is AND-ed with the permissive policy, so it adds a requirement to
+DELETE and changes nothing else. Narrowing the `FOR ALL` policy's `USING` to `can_admin_employment`
+instead would have stopped supervisors and employees SEEING the roster — a visible behaviour change
+nobody asked for. Same shape as `compensation_delete_admin` (0277), `leave_year_config_delete_admin`
+(0282) and `toil_accrual_delete_admin_only` (0314), all of which likewise shipped before any delete path
+existed. There was never live exposure: `clearRoster` is the only DELETE against this table and every
+caller already asserted admin. The fix is forward-looking — a future screen, import or bulk tool that
+removes shifts now inherits protection for remove the way it already did for add and change.
 ### ⚠️ THE THREE STATUTORY-FORM ITEMS — READ THIS BEFORE BUILDING ANY OF THEM (planned 2026-08-13)
 
 `88076362` CP22 · `9c8dad7a` EPF Borang A · `8ca344bf` SOCSO Borang 8A, all `planned` rev 1 with mockups.
@@ -202,166 +234,47 @@ table. Take the figure from the run and show the run's own total beside the form
 `loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
 silently fall back to gross.
 
-### r189 (2026-08-12) — CLAIMS GRADE-FIRST LIMITS (`0435`) AND THE PAY-ITEM FORMULA BUILDER
+### r190+r191 (2026-08-13) — ELEVEN ITEMS AS ONE RELEASE, `main@de887a85`, migration `0436`
 
-`e7eb5d83` rev5 + `e318eaec`. Gate **660 declared / 660 counted / every chunk exit=0 / 8,597 tests / 0
-AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS 354/354; render 0 MISSING_MESSAGE
-across 6 routes × 6 locales. Catalogues audited base-aware, 9023 → 9025, **all 17 deliberate deletions
-confirmed absent BY NAME**.
+Built by a 7-workstream Workflow plus r190 carried over. Gate **666 declared / 666 counted / every chunk
+exit=0 / 8,706 tests / 0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 355/355. Shipped:
+`2f889bae` (rev 2 — Pay Items View/Edit link) · `009c8a37`+`e1e33ca0` (employee panel + Individual
+Transaction) · `3ddae357`+`38b94df7` (balances As-at date, searchable picker) · `3214cb11`+`813fd22a`
+(entitlement table ordering — ONE fix, both surfaces) · `47609f53` (dashboard link gating) · `154865f4`
+(`0436`, roster DELETE) · `a3d485f6` (mid-month restatement refusal) · `88076362` (CP22 review screen).
 
-⚠️ **THE FIX WAS HALF-ARMED UNTIL A SCRIPT RAN BY HAND — AND `deploy.sh` DOES NOT RUN SCRIPTS.**
-Every mileage claim on production was priced by a legacy `mileage_flat` 0.70 scalar, because all five real
-`claim_mileage_rate` bands sit on GRADE 12, **which has zero employments**. The limit editor no longer
-offers that rate kind, so ANY re-save of the Mileage limit would have written `{"kind":"receipt"}`, dropped
-the 0.70, and stopped mileage claiming for all 40 people. Verified not yet triggered.
-The code fix (carry `rate_config` forward on re-save; delete the dead parser branch) stops FUTURE damage.
-Making the band table the live path needed `scripts/backfill-mileage-flat-rate.ts --apply`, run manually
-after the deploy — dry-run first, then verified: one company-wide band `[0 km → ∞] @ 0.70` from the flat
-policy's own `valid_from`, GRADE 12's five bands untouched, nobody's claim changed by a cent.
+**THE ROUND'S REAL LESSON IS THAT BOTH DEFECTS IT PRODUCED WERE INVISIBLE TO EVERY BRANCH THAT CAUSED
+THEM.** Seven worktrees, each green on its own targeted tests; the integration found two faults that only
+existed once the branches met:
 
-**REVISION 4 REFUSED A VALID REQUEST BY MISREADING THE LEVEL, AND THE SCHEMA NOW RECORDS IT.** The reporter
-asked for sub-claim limits; rev 4 deflected it as "a third group/claim/sub-claim level" and scoped it out.
-`MEDICAL 001` is the claim TYPE and `MEDICAL 002/003` are its `claim_item` rows — **the SECOND level, which
-has existed since the module shipped.** `0435` adds `claim_policy.claim_item_id`.
+1. **A MERGE SILENTLY REVERTED A TRANSLATION, AND `i18n-check` CANNOT SEE IT.** Merging the balances
+   branch reverted `payroll.cp22.monthHint` in all six catalogues to main's value. Git resolved at HUNK
+   granularity: balances edited lines adjacent to that key while carrying base content for the key
+   itself, so its side won and **no conflict was raised**. `scripts/i18n-check.mjs` passed throughout —
+   the key was present in every locale, parity held, no placeholder changed; only the TEXT was stale.
+   It mattered because cp22 had also DELETED `branchLabel`/`branchPlaceholder` and rewritten that hint to
+   stop referring to them, so shipping it would have described a "branch you type" field that no longer
+   exists on the screen. **Only a BASE-AWARE audit (base vs merged vs every side) reads a value as
+   CLOBBERED rather than merely present.** This is the same family as the resurrect-a-deleted-key trap
+   and is now AGENTS.md rule 19.
+2. **A NEW GUARDED PAGE WITH NO MATRIX COLUMN.** cp22 added `/payroll/cp22/[employmentId]/preview` and
+   never registered it, so `test/function-access.test.ts`'s reverse-completeness case failed — a guarded
+   route nobody can grant or revoke. Registered on the same `scopedAdmin` key as
+   `/payroll/statutory-forms/[formId]`, the screen that links to it. Its four siblings under
+   `/payroll/cp22` are route handlers, not pages, which is why exactly one route was missing. **18 test
+   files read that registry, spread across chunks — a targeted re-run could not have been trusted, so the
+   full gate was re-run.**
 
-⚠️ **EVERY TYPE-LEVEL READ NOW CARRIES `claim_item_id IS NULL`, AND ONE OMISSION WOULD DESTROY, NOT MISREAD.**
-Resolution picks the latest `valid_from` within a tier, so an item row is otherwise indistinguishable from a
-newer version of the type's own policy. In `setClaimPolicy`'s close-and-insert predicate that means **saving
-a limit for Outpatient would CLOSE Medical's own open version.** Readers were enumerated by grepping
-`claimPolicy` repo-wide and cross-checking `graphify explain "getActiveClaimPolicy"`, not from the plan's
-list. `deleteClaimType`'s DELETE is deliberately NOT filtered — item rows belong to the type being deleted.
+**Also settled in this round, both worth not re-deriving:** `9a65f808` does NOT block `31e39d74` (see
+START HERE §4), and ai-hr is loopback-only with no nginx route (see CURRENT STATE). Two board items were
+raised from what the work turned up: `0db616f3` (the January double-import, START HERE §3) and, earlier,
+`47609f53`/`154865f4`/`a3d485f6` which shipped here.
 
-**`e318eaec` SHIPS A RENDERER, NOT A PARSER — AND THAT REFUSAL IS THE ITEM.** The ticket asked for "normal
-operator precedence". The reporter's live `OT1_5` is stored as a LEFT-TO-RIGHT FOLD, and that is the only
-reason it computes the intended answer; literal precedence would have silently re-priced overtime that has
-already paid real money. `test/pay-rule-format.test.ts` asserts RM584.13 for 15h, asserts the precedence
-reading is a DIFFERENT number, and round-trips the rendered line through a reference precedence parser over
-`OT1_5` **and all 64 three-step operator combinations**, with a vacuity check that the 0-clamp never engages.
+### r187 · r188 · r189 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
-**`first_name`/`last_name` ARE NULL ON 40 OF 40 PEOPLE** — every name lives in `full_name`. A dropdown built
-from `${firstName} ${lastName}` read "null null" for EVERY option, not merely some. Fixed against the house
-display-name source (`person.fullName` + `employment.employeeCode`); a repo-wide grep found no second site.
-
-**KNOWN CONSEQUENCE, FLAGGED NOT ABSORBED: `fixed_allowance` can no longer be CREATED from any screen.**
-Deleting the old limit editor was the plan's instruction and the grid posts no rate by design. Existing ones
-(MOBILE 001, RM180) survive via the carry-forward and are pinned by a test, but a new one has no home. A rate
-control belongs on Claim Types. Needs its own item.
-
-### r188 (2026-08-12) — ONE DEFECT FIX, NO MIGRATION. "Apply to Early Overtime" could not be unticked.
-
-`7c834696` came back contested with *"How come I cannot untick Apply to Early Overtime?"* — and they were
-right. **A hidden input is submitted ALWAYS, whatever its value**, and the reader asked only whether the
-field was PRESENT (`fd.get(key) != null`). Unticked sent `''`; `'' != null` is true; the flag saved ON every
-time, on a setting that folds pre-shift minutes into PAID OVERTIME. Both production rules carried it true,
-including `Standard`, the tenant default.
-
-**Fixed on BOTH sides so neither depends on the other**: the hidden field renders only when on (absent when
-off, exactly like a real checkbox), and `bool()` requires a non-empty value. The other three `bool()` fields
-are real checkboxes and were never affected — verified, not assumed.
-
-**NOT introduced by r186's rounding work** — it arrived with the original attendance-rule library.
-
-**The test is SOURCE-SHAPE on purpose:** the defect lived in the form contract BETWEEN two files, so a unit
-test of either half in isolation passed throughout, which is exactly why it shipped. It also pins that **no
-OTHER hidden input on these forms is read by the presence-only pattern**, so the trap cannot generalise.
-
-### r187 (2026-08-12) — EIGHT APPROVED ITEMS, SHIPPED. Migrations `0430` · `0432` · `0433` · `0434`.
-
-`017d9c25` · `2961a7ae` · `1372d169` · `4e403268` · `5c65367d` · `579255c3` · `2166ef79`, plus the payroll
-pack-facade fix. Gate **657 declared / 657 counted / every chunk exit=0 / 8,545 tests / 1 expected fail /
-0 AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS 353/353; render check 0
-MISSING_MESSAGE across 22 routes × 6 locales. Verified live: 353 migrations, all four objects present with
-GRANTs, **payslips 84 and batches 22 UNCHANGED**, `GET /` 401, zero-change arrival dry-run.
-
-#### ⚠️⚠️ CENTRAL ALLOCATION IS NOT ENOUGH — MERGE ORDER CAN STILL SILENTLY SKIP A MIGRATION
-**This is a NEW failure mode and it nearly shipped.** The standing rule says allocate migration numbers
-centrally, and I did — `0430`–`0434`, one per parallel agent. But allocation fixes each `when` BY NUMBER
-while leaving **merge and deploy order free**, and drizzle's watermark is the last applied `when`.
-
-On the shared dev cluster `0433` was applied first, pushing the watermark to `1781862533000` — so `0430`
-(…530000) and `0432` (…532000) were **silently skipped, `drizzle-kit migrate` exit 0, no error, no table.**
-Two agents hit it independently; one caught it only by comparing migration HASHES.
-
-It would have been severe: `generatePayslips` now selects `payroll_statutory_adjustment` on EVERY run, so
-a skipped `0430` makes every payroll generation on production throw.
-
-**Production was safe only because r187 shipped as ONE unit** — the watermark was `1781862529000` and all
-four sat above it, so a single deploy applied all four in journal order (verified after: 353 applied,
-`0430` present with its 4 GRANTs).
-
-**THE RULE, going forward:** when parallel agents each get a migration number, **they must reach production
-in one pass or strictly ascending — never a subset out of order.** And `gate:shadow` cannot catch this: it
-applies the whole journal in order against a fresh schema, so it passes either way.
-
-#### `017d9c25` — THE DIAGNOSIS WAS INVERTED, AND THE FIX MOVED REAL MONEY
-Payroll does NOT hold a stale copy of pay-item config — `core/payroll.ts` joins `pay_component` live at
-generate time. The proof is in the reporter's own data: Director Fee was created 10 Aug, January was
-processed 24 Jul, and it IS on the January payslip, because they reprocessed on the 10th. **The reprocess
-read the NEW config and ignored the EPF box.** Root cause: a declared `pcbRemunerationType` short-circuited
-the EPF/SOCSO flag inference and routed the amount into the `wage` bucket feeding all four statutories —
-and the form makes that field compulsory once PCB is ticked, so the operator could not avoid it.
-
-**Measured impact: 30 of 31 itemised payslips across the three open runs. Employee net +RM859.90, employer
-cost −RM703.60.** Two results that contradict the approved plan and are both correct:
-- **EPF employer RISES RM38 for two employees** — dropping the EPF wage below RM5,000 moves the employer
-  rate from 12% to 13% under Third Schedule Part A. "EPF falls" is not universally true.
-- **PCB does NOT move for the reported employee** — the LHDN annual EPF+life relief cap (RM4,000) was
-  already reached at both figures, so K and the MTD are identical.
-
-**A deliberate narrowing:** `epfBonus2012` is exempted from the plan's "SOCSO tick adds to the base" rule,
-because SOCSO Act 1969 s.2 excludes a bonus from wages — honouring the tick there would compute an illegal
-contribution. The existing golden test stayed green UNCHANGED.
-
-#### THE PACK RATCHET FIRED FOR THE SECOND ROUND RUNNING
-`core/payroll-txn-import.ts` imported four payroll-pack modules directly (r186 was `core/absence-days.ts`
-against the attendance pack). **Any new `core/` file that needs a pack service must import
-`packs/<pack>/service`** — brief agents on this up front. The fix is never
-`test/pack-drift-allowlist.json`; the guard refuses additions in its own message because that list is
-audited kernel-contract debt and only ever shrinks. Seven `core/` files already import a facade, so there
-is precedent and no cycle.
-
-#### A SCOPE LEAK FOUND INCIDENTALLY, WORTH KNOWING
-`loadCatalogs` passed `scopeIds` straight to `listEmployees`, **which treats an empty array as "no filter"
-and returned the whole tenant.** Now fails closed, pinned by a test. Found by an agent testing the
-boundary rather than the happy path.
-
-#### `579255c3` — TWO DEFECTS THAT ONLY RENDERING CAUGHT
-`GROUP BY employmentStatusSql()` **fails outright** — the expression carries `today` as a bind parameter,
-so rendering it twice yields `$1/$2` against `$3/$4` and Postgres rejects the statement (fixed to
-`GROUP BY 1`). And the Draft card read **0** whenever another card was selected, because it counted under
-the already-chosen bucket while clicking a card REPLACES the bucket — every individual count was correct,
-which is exactly why only a render found it.
-
-### ✅ THE FIXTURE TIME BOMB IS DEFUSED — the clock pinning HELD on 2026-08-12
-
-It fired on 2026-08-10 (three cases) and 2026-08-11 (**11 cases across 3 files**, mid-gate at 00:24 MYT:
-`LeaveCancellationTooLateError: Leave for 2026-08-11 can no longer be cancelled`). The fixtures hardcode a
-10–12 Aug 2026 window chosen when that was "well in the future", and each day more of it rotted into the
-past while the product correctly refused. **`1d5ceab0` pinned the clock on 24 cases (13 were already
-pinned, 2 deliberately left on the real clock), and on 2026-08-12 — the last day of that window, when the
-bomb should have been at its worst — two full gates ran with ZERO date-shaped failures.** The fix is
-confirmed working, not merely believed to work.
-
-**Keep this entry anyway**, because the reasoning is what generalises and this class WILL recur:
-
-**THE FIX IS TO PIN THE CLOCK, NOT TO MOVE THE WINDOW.** `edd9707d` tried deriving the window from
-`todayInKualaLumpur()` and went from 3 failures to 16 — roughly 100 assertions are pinned to the literal
-dates. Pinning the clock moves one variable; moving the window moves a hundred. `requestLeaveCancellation`
-takes an injectable `today` for exactly this.
-
-**TWO TRAPS INSIDE THE FIX, both of which bit on 08-11:**
-1. **Some calls pass `today` as a SHORTHAND property**, not `today:`. A substring check for `today:` misses
-   them and writes a DUPLICATE key. tsc catches it — match the property name with a regex.
-2. **DO NOT PIN THE CLOCK-RELATIVE TESTS.** The past/future gate test derives its dates from
-   `todayInKualaLumpur()` precisely so it holds whenever the suite runs. Pinning it made it PASS FOR THE
-   WRONG REASON — it stopped rejecting, and the failure read `AssertionError: promise resolved`. A test
-   that starts passing when you pin its clock is a test you have just broken.
-State after 08-11: **24 pinned, 13 already pinned, 2 deliberately left on the real clock.**
-
-⚠️ **`scripts/gate-chunked.sh` WIPES `ai_hr_dev`.** It rebuilds the cluster between chunks, which drops the
-dev database with it. Both r184 build agents found 0 tenants and 0 payroll batches and could not render-check
-because of it. **Seed AFTER the gate, never before** — and a render check run before a gate proves nothing
-about the tree you are about to ship.
+r189 claims grade-first limits (`0435`) + the pay-item formula builder · r188 the "Apply to Early
+Overtime" untick defect (no migration) · r187 eight items (`0430`/`0432`/`0433`/`0434`), the round
+whose merge order silently skipped two migrations — that lesson lives in AGENTS.md rule 14.
 
 ### r180 IS ARCHIVED (history) — but ONE thing it found is still live and unfixed
 
@@ -1173,10 +1086,10 @@ method or carry-forward is WRONG.**
 
 ---
 
-## ONE BRANCH IS IN FLIGHT — `build/r190`, built and ungated (see START HERE)
+## NOTHING IS IN FLIGHT — r190 and r191 shipped together as `main@de887a85`
 
-`main@2a085bf0` is r185 through r189 and IS deployed (dry-run rsync, 2026-08-13). Every r185-r189 branch is merged and every `r185-*` … `r189-*` worktree is pruned. **`build/r190` is NOT
-merged** — two commits, no migration, awaiting one clean gate.
+`main@de887a85` is r185 through r191 and IS deployed (dry-run rsync, 2026-08-13, reporting only the
+box-regenerated gitignored `next-env.d.ts`). Every r185–r191 branch is merged.
 
 Every remaining unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
 ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route:
@@ -1186,8 +1099,11 @@ their migration `0405` is on main as `0410_entitlement_reset_drop_old_layers.sql
 **"Nothing in flight" is a claim about BRANCHES — it is NEVER a claim that `main` has been deployed.**
 Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.
 
-⚠️ **`2f889bae` IS APPROVED AND MUST NOT BE BUILT AS WRITTEN** — see The board, above. Its step 7 reverses
-what r185 shipped; it needs a re-plan, not a build.
+**`2f889bae` SHIPPED IN r191 AT REVISION 2, NOT AS ORIGINALLY WRITTEN.** Five of its seven original steps
+had already shipped under `2aed39d4` (r185) and step 7 contradicted live behaviour, so it was re-planned
+and the reporter approved rev 2. What shipped is one thing: a View/Edit LINK from the Personnel Payroll
+tab rows to the item's own page. Kept here because "approved" and "buildable as written" are not the same
+claim, and this item is the standing example.
 
 Every OTHER unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed, ancestrally
 unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route: their

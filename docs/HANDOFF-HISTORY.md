@@ -6128,3 +6128,170 @@ each deploy overwrite the last. Two anniversary tickets (`18e15fc1`, `f3a64d90`)
 to the up-front grant with the reporter's approval. Two further merge repairs: `b81d3c52` referenced an
 i18n key `eee43966` had renamed, and `eee43966`'s panel tests targeted a card `b8fcae73` deletes (both
 repointed, assertions verified to still bite). Its live operational notes are carried in r68's Outstanding.
+
+
+---
+
+# ARCHIVED FROM HANDOFF.md on 2026-08-13 (during r191) — rounds r187, r188, r189
+
+### r189 (2026-08-12) — CLAIMS GRADE-FIRST LIMITS (`0435`) AND THE PAY-ITEM FORMULA BUILDER
+
+`e7eb5d83` rev5 + `e318eaec`. Gate **660 declared / 660 counted / every chunk exit=0 / 8,597 tests / 0
+AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS 354/354; render 0 MISSING_MESSAGE
+across 6 routes × 6 locales. Catalogues audited base-aware, 9023 → 9025, **all 17 deliberate deletions
+confirmed absent BY NAME**.
+
+⚠️ **THE FIX WAS HALF-ARMED UNTIL A SCRIPT RAN BY HAND — AND `deploy.sh` DOES NOT RUN SCRIPTS.**
+Every mileage claim on production was priced by a legacy `mileage_flat` 0.70 scalar, because all five real
+`claim_mileage_rate` bands sit on GRADE 12, **which has zero employments**. The limit editor no longer
+offers that rate kind, so ANY re-save of the Mileage limit would have written `{"kind":"receipt"}`, dropped
+the 0.70, and stopped mileage claiming for all 40 people. Verified not yet triggered.
+The code fix (carry `rate_config` forward on re-save; delete the dead parser branch) stops FUTURE damage.
+Making the band table the live path needed `scripts/backfill-mileage-flat-rate.ts --apply`, run manually
+after the deploy — dry-run first, then verified: one company-wide band `[0 km → ∞] @ 0.70` from the flat
+policy's own `valid_from`, GRADE 12's five bands untouched, nobody's claim changed by a cent.
+
+**REVISION 4 REFUSED A VALID REQUEST BY MISREADING THE LEVEL, AND THE SCHEMA NOW RECORDS IT.** The reporter
+asked for sub-claim limits; rev 4 deflected it as "a third group/claim/sub-claim level" and scoped it out.
+`MEDICAL 001` is the claim TYPE and `MEDICAL 002/003` are its `claim_item` rows — **the SECOND level, which
+has existed since the module shipped.** `0435` adds `claim_policy.claim_item_id`.
+
+⚠️ **EVERY TYPE-LEVEL READ NOW CARRIES `claim_item_id IS NULL`, AND ONE OMISSION WOULD DESTROY, NOT MISREAD.**
+Resolution picks the latest `valid_from` within a tier, so an item row is otherwise indistinguishable from a
+newer version of the type's own policy. In `setClaimPolicy`'s close-and-insert predicate that means **saving
+a limit for Outpatient would CLOSE Medical's own open version.** Readers were enumerated by grepping
+`claimPolicy` repo-wide and cross-checking `graphify explain "getActiveClaimPolicy"`, not from the plan's
+list. `deleteClaimType`'s DELETE is deliberately NOT filtered — item rows belong to the type being deleted.
+
+**`e318eaec` SHIPS A RENDERER, NOT A PARSER — AND THAT REFUSAL IS THE ITEM.** The ticket asked for "normal
+operator precedence". The reporter's live `OT1_5` is stored as a LEFT-TO-RIGHT FOLD, and that is the only
+reason it computes the intended answer; literal precedence would have silently re-priced overtime that has
+already paid real money. `test/pay-rule-format.test.ts` asserts RM584.13 for 15h, asserts the precedence
+reading is a DIFFERENT number, and round-trips the rendered line through a reference precedence parser over
+`OT1_5` **and all 64 three-step operator combinations**, with a vacuity check that the 0-clamp never engages.
+
+**`first_name`/`last_name` ARE NULL ON 40 OF 40 PEOPLE** — every name lives in `full_name`. A dropdown built
+from `${firstName} ${lastName}` read "null null" for EVERY option, not merely some. Fixed against the house
+display-name source (`person.fullName` + `employment.employeeCode`); a repo-wide grep found no second site.
+
+**KNOWN CONSEQUENCE, FLAGGED NOT ABSORBED: `fixed_allowance` can no longer be CREATED from any screen.**
+Deleting the old limit editor was the plan's instruction and the grid posts no rate by design. Existing ones
+(MOBILE 001, RM180) survive via the carry-forward and are pinned by a test, but a new one has no home. A rate
+control belongs on Claim Types. Needs its own item.
+
+### r188 (2026-08-12) — ONE DEFECT FIX, NO MIGRATION. "Apply to Early Overtime" could not be unticked.
+
+`7c834696` came back contested with *"How come I cannot untick Apply to Early Overtime?"* — and they were
+right. **A hidden input is submitted ALWAYS, whatever its value**, and the reader asked only whether the
+field was PRESENT (`fd.get(key) != null`). Unticked sent `''`; `'' != null` is true; the flag saved ON every
+time, on a setting that folds pre-shift minutes into PAID OVERTIME. Both production rules carried it true,
+including `Standard`, the tenant default.
+
+**Fixed on BOTH sides so neither depends on the other**: the hidden field renders only when on (absent when
+off, exactly like a real checkbox), and `bool()` requires a non-empty value. The other three `bool()` fields
+are real checkboxes and were never affected — verified, not assumed.
+
+**NOT introduced by r186's rounding work** — it arrived with the original attendance-rule library.
+
+**The test is SOURCE-SHAPE on purpose:** the defect lived in the form contract BETWEEN two files, so a unit
+test of either half in isolation passed throughout, which is exactly why it shipped. It also pins that **no
+OTHER hidden input on these forms is read by the presence-only pattern**, so the trap cannot generalise.
+
+### r187 (2026-08-12) — EIGHT APPROVED ITEMS, SHIPPED. Migrations `0430` · `0432` · `0433` · `0434`.
+
+`017d9c25` · `2961a7ae` · `1372d169` · `4e403268` · `5c65367d` · `579255c3` · `2166ef79`, plus the payroll
+pack-facade fix. Gate **657 declared / 657 counted / every chunk exit=0 / 8,545 tests / 1 expected fail /
+0 AssertionErrors / 0 timeouts**; tsc 0; `next build` 0; `gate:shadow` PASS 353/353; render check 0
+MISSING_MESSAGE across 22 routes × 6 locales. Verified live: 353 migrations, all four objects present with
+GRANTs, **payslips 84 and batches 22 UNCHANGED**, `GET /` 401, zero-change arrival dry-run.
+
+#### ⚠️⚠️ CENTRAL ALLOCATION IS NOT ENOUGH — MERGE ORDER CAN STILL SILENTLY SKIP A MIGRATION
+**This is a NEW failure mode and it nearly shipped.** The standing rule says allocate migration numbers
+centrally, and I did — `0430`–`0434`, one per parallel agent. But allocation fixes each `when` BY NUMBER
+while leaving **merge and deploy order free**, and drizzle's watermark is the last applied `when`.
+
+On the shared dev cluster `0433` was applied first, pushing the watermark to `1781862533000` — so `0430`
+(…530000) and `0432` (…532000) were **silently skipped, `drizzle-kit migrate` exit 0, no error, no table.**
+Two agents hit it independently; one caught it only by comparing migration HASHES.
+
+It would have been severe: `generatePayslips` now selects `payroll_statutory_adjustment` on EVERY run, so
+a skipped `0430` makes every payroll generation on production throw.
+
+**Production was safe only because r187 shipped as ONE unit** — the watermark was `1781862529000` and all
+four sat above it, so a single deploy applied all four in journal order (verified after: 353 applied,
+`0430` present with its 4 GRANTs).
+
+**THE RULE, going forward:** when parallel agents each get a migration number, **they must reach production
+in one pass or strictly ascending — never a subset out of order.** And `gate:shadow` cannot catch this: it
+applies the whole journal in order against a fresh schema, so it passes either way.
+
+#### `017d9c25` — THE DIAGNOSIS WAS INVERTED, AND THE FIX MOVED REAL MONEY
+Payroll does NOT hold a stale copy of pay-item config — `core/payroll.ts` joins `pay_component` live at
+generate time. The proof is in the reporter's own data: Director Fee was created 10 Aug, January was
+processed 24 Jul, and it IS on the January payslip, because they reprocessed on the 10th. **The reprocess
+read the NEW config and ignored the EPF box.** Root cause: a declared `pcbRemunerationType` short-circuited
+the EPF/SOCSO flag inference and routed the amount into the `wage` bucket feeding all four statutories —
+and the form makes that field compulsory once PCB is ticked, so the operator could not avoid it.
+
+**Measured impact: 30 of 31 itemised payslips across the three open runs. Employee net +RM859.90, employer
+cost −RM703.60.** Two results that contradict the approved plan and are both correct:
+- **EPF employer RISES RM38 for two employees** — dropping the EPF wage below RM5,000 moves the employer
+  rate from 12% to 13% under Third Schedule Part A. "EPF falls" is not universally true.
+- **PCB does NOT move for the reported employee** — the LHDN annual EPF+life relief cap (RM4,000) was
+  already reached at both figures, so K and the MTD are identical.
+
+**A deliberate narrowing:** `epfBonus2012` is exempted from the plan's "SOCSO tick adds to the base" rule,
+because SOCSO Act 1969 s.2 excludes a bonus from wages — honouring the tick there would compute an illegal
+contribution. The existing golden test stayed green UNCHANGED.
+
+#### THE PACK RATCHET FIRED FOR THE SECOND ROUND RUNNING
+`core/payroll-txn-import.ts` imported four payroll-pack modules directly (r186 was `core/absence-days.ts`
+against the attendance pack). **Any new `core/` file that needs a pack service must import
+`packs/<pack>/service`** — brief agents on this up front. The fix is never
+`test/pack-drift-allowlist.json`; the guard refuses additions in its own message because that list is
+audited kernel-contract debt and only ever shrinks. Seven `core/` files already import a facade, so there
+is precedent and no cycle.
+
+#### A SCOPE LEAK FOUND INCIDENTALLY, WORTH KNOWING
+`loadCatalogs` passed `scopeIds` straight to `listEmployees`, **which treats an empty array as "no filter"
+and returned the whole tenant.** Now fails closed, pinned by a test. Found by an agent testing the
+boundary rather than the happy path.
+
+#### `579255c3` — TWO DEFECTS THAT ONLY RENDERING CAUGHT
+`GROUP BY employmentStatusSql()` **fails outright** — the expression carries `today` as a bind parameter,
+so rendering it twice yields `$1/$2` against `$3/$4` and Postgres rejects the statement (fixed to
+`GROUP BY 1`). And the Draft card read **0** whenever another card was selected, because it counted under
+the already-chosen bucket while clicking a card REPLACES the bucket — every individual count was correct,
+which is exactly why only a render found it.
+
+### ✅ THE FIXTURE TIME BOMB IS DEFUSED — the clock pinning HELD on 2026-08-12
+
+It fired on 2026-08-10 (three cases) and 2026-08-11 (**11 cases across 3 files**, mid-gate at 00:24 MYT:
+`LeaveCancellationTooLateError: Leave for 2026-08-11 can no longer be cancelled`). The fixtures hardcode a
+10–12 Aug 2026 window chosen when that was "well in the future", and each day more of it rotted into the
+past while the product correctly refused. **`1d5ceab0` pinned the clock on 24 cases (13 were already
+pinned, 2 deliberately left on the real clock), and on 2026-08-12 — the last day of that window, when the
+bomb should have been at its worst — two full gates ran with ZERO date-shaped failures.** The fix is
+confirmed working, not merely believed to work.
+
+**Keep this entry anyway**, because the reasoning is what generalises and this class WILL recur:
+
+**THE FIX IS TO PIN THE CLOCK, NOT TO MOVE THE WINDOW.** `edd9707d` tried deriving the window from
+`todayInKualaLumpur()` and went from 3 failures to 16 — roughly 100 assertions are pinned to the literal
+dates. Pinning the clock moves one variable; moving the window moves a hundred. `requestLeaveCancellation`
+takes an injectable `today` for exactly this.
+
+**TWO TRAPS INSIDE THE FIX, both of which bit on 08-11:**
+1. **Some calls pass `today` as a SHORTHAND property**, not `today:`. A substring check for `today:` misses
+   them and writes a DUPLICATE key. tsc catches it — match the property name with a regex.
+2. **DO NOT PIN THE CLOCK-RELATIVE TESTS.** The past/future gate test derives its dates from
+   `todayInKualaLumpur()` precisely so it holds whenever the suite runs. Pinning it made it PASS FOR THE
+   WRONG REASON — it stopped rejecting, and the failure read `AssertionError: promise resolved`. A test
+   that starts passing when you pin its clock is a test you have just broken.
+State after 08-11: **24 pinned, 13 already pinned, 2 deliberately left on the real clock.**
+
+⚠️ **`scripts/gate-chunked.sh` WIPES `ai_hr_dev`.** It rebuilds the cluster between chunks, which drops the
+dev database with it. Both r184 build agents found 0 tenants and 0 payroll batches and could not render-check
+because of it. **Seed AFTER the gate, never before** — and a render check run before a gate proves nothing
+about the tree you are about to ship.
+

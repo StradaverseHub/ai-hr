@@ -24,7 +24,7 @@ read vitest's `RUN` line + file count; a gate in the wrong tree reports green fo
 (this has happened three times). Never let `isolation: 'worktree'` cut an agent's tree from the root
 HEAD — create worktrees from `main` yourself.
 
-**The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-18
+**The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-20
 were all added on 2026-08-12/13, each after it cost a real round:
 
 1. **One vitest at a time.** A second run wipes the first's worker DBs. Parallel agents get their own
@@ -103,6 +103,22 @@ were all added on 2026-08-12/13, each after it cost a real round:
     asserted exactly that. Half of it was still right (no INLINE editor) and was kept; only the retired
     half moved. **Two tests asserting opposite things are invisible to targeted runs — only the full gate
     sees both.**
+
+19. **A CLEAN AUTO-MERGE OF `messages/*.json` PROVES NOTHING — AUDIT IT BASE-AWARE.** Git merges JSON by
+    LINE and resolves at HUNK granularity, so a branch that edited lines *next to* a key while carrying the
+    base value *for* that key silently wins, reverting the other branch's edit with **no conflict raised**.
+    r191 lost a rewritten `payroll.cp22.monthHint` in all six catalogues this way, and `i18n-check.mjs`
+    passed the whole time — the key was present, parity held, placeholders matched; only the TEXT was stale,
+    and it described a form field the same branch had deleted. **`i18n-check` answers "is the key there?",
+    never "is the value the one someone chose".** After merging two or more branches that touch `messages/`,
+    diff base vs merged vs EVERY side and report RESURRECTED / LOST / CLOBBERED. Same root as the
+    presence-is-a-value trap: consult the base for absence AND for the old value.
+20. **A NEW GUARDED `page.tsx` NEEDS A COLUMN IN THE FUNCTION-ACCESS MATRIX** (`lib/permissions.ts`), or
+    `test/function-access.test.ts`'s reverse-completeness case fails — the route becomes a screen nobody can
+    grant or revoke. Attach it to an EXISTING screen key where one fits (the screen that links to it) and
+    forward completeness is already satisfied. Route handlers (`route.ts`) are not pages and are not listed.
+    **The branch that adds the page cannot see this** — 18 test files read that registry across the suite,
+    so only the full gate catches it, and a targeted re-run after fixing it is not trustworthy.
 
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round
