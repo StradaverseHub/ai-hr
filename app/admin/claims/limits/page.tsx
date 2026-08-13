@@ -9,7 +9,7 @@ import {
   type ClaimLimitValues,
 } from '@/packs/claims/service';
 import { listJobGrades } from '@/core/read';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import { ClaimLimitsGrid, type ClaimLimitGridRow, type ClaimLimitGridValues } from '@/components/claim-limits-grid';
 
@@ -28,6 +28,15 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  * not reach a sub-claim at all; leaving it beside the grid would be two ways to write the same row, which
  * is how a screen starts disagreeing with itself. Its component (components/claim-limit-editor.tsx) and
  * its action (setClaimPolicyAction) are deleted in the same change.
+ *
+ * FULL WIDTH (e7eb5d83 rev 6). The reporter contested rev 5 twice — "the config screens are narrow" and
+ * "the Per Block controls stack" — and those are ONE fault, not two. This page was capped at
+ * `mx-auto max-w-6xl` (1152px); take the 15rem grade rail and the gap off that and the six-column table
+ * had roughly 890px, which is less than its own columns need. The Per Block cell was the column that
+ * gave way, because it was the only one allowed to `flex-wrap`. So the cap comes off here and the wrap
+ * becomes conditional in components/claim-limits-grid.tsx — fixing either half alone fixes neither.
+ * The grid keeps its own `overflow-x-auto`: full width is not infinite width, and a narrow window must
+ * scroll the TABLE, never the page.
  *
  * SELECTION LIVES IN THE URL (?gradeId=), not in client state. Two reasons, both load-bearing:
  *   • This is a server component. Holding the selection in a client island would mean passing the grade
@@ -141,7 +150,7 @@ export default async function ClaimLimitsPage({
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('limitsTitle')} description={t('limitsSubtitle')} />
       <ClaimsTabs active="limits" />
       <ErrorBanner message={error} />

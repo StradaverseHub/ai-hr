@@ -64,6 +64,45 @@ export type ClaimLimitGridRow = {
   hint: { kind: 'sub'; typeName: string } | { kind: 'mileage'; bands: string } | null;
 };
 
+/**
+ * ─────────── THE PER BLOCK CELL (e7eb5d83 rev 6) ───────────
+ *
+ * Five controls that must read as one row — tick, amount, "every", count, unit — and the reporter's
+ * complaint was that they stacked. There are TWO causes, and only fixing both puts the row back.
+ *
+ * ⚠️ CAUSE 1, AND IT IS NOT THE ONE THE PLAN NAMED: `w-24` NEVER APPLIED. These controls were written as
+ * `${inputCls} w-24`, and inputCls ALREADY CONTAINS `w-full`. Tailwind v4 emits `.w-full` AFTER `.w-24` /
+ * `.w-14` / `.w-28` in the utilities layer (measured: the four rules land in scale order, statics last),
+ * so with equal specificity the LAST one wins and every one of these boxes computed to `width: 100%` —
+ * of the flex container. In a `flex-wrap` row a 100%-wide item cannot share a line with anything, so the
+ * five controls stacked one per line AT EVERY PAGE WIDTH, on a 1920px monitor exactly as on a laptop.
+ * Class order in the attribute is not cascade order; that is the whole trap.
+ *
+ * The fix is `basis-*` rather than `w-*`: in a row flex container the main size comes from `flex-basis`
+ * when it is definite, so 6rem/3.5rem/7rem apply regardless of what `width` resolved to, and nothing has
+ * to out-order a utility we do not control. `shrink-0` then holds them there instead of letting them
+ * squeeze into the same illegible row by a different route. Adding `shrink-0` WITHOUT this change would
+ * have been strictly worse — five un-shrinkable 100%-wide boxes on one nowrap line.
+ *
+ * CAUSE 2, the page width, which the plan did name: this is the sixth column of a six-column table, and
+ * the page was capped at `mx-auto max-w-6xl` with a 15rem grade rail taken off the front. Even sized
+ * correctly the five need ~350px (16 + 96 + label + 56 + 112 + four 6px gaps) and the column had nowhere
+ * near it, so the one cell allowed to fold would have folded anyway. Hence app/admin/claims/limits/page.tsx
+ * goes full width in the same change.
+ *
+ * Mobile-first, so read the wrap rule in that order: below `md` the row still wraps (a tablet has no room
+ * for 350px in one column, and stacking is the right answer there), and at `md` and above it may not.
+ * This repo uses no `max-*` variants anywhere, so "wrap only on small screens" is spelled as a base rule
+ * plus a breakpoint override rather than the other way round.
+ *
+ * ⚠️ AT `md` AND ABOVE THE TABLE MAY BE WIDER THAN ITS FRAME, and that is the intended outcome, not a
+ * regression: the grid's `overflow-x-auto` wrapper scrolls the TABLE. Removing that wrapper would make a
+ * narrow window scroll the whole PAGE sideways instead.
+ */
+const blockCellCls = 'flex flex-wrap items-center gap-1.5 md:flex-nowrap';
+/** Shared by all three sized controls in that cell. No `w-*`: see above — it would lose to inputCls. */
+const blockBoxCls = 'shrink-0 disabled:opacity-50';
+
 const sameValues = (a: ClaimLimitGridValues, b: ClaimLimitGridValues): boolean =>
   a.perClaimCap === b.perClaimCap &&
   a.monthlyLimit === b.monthlyLimit &&
@@ -212,27 +251,32 @@ export function ClaimLimitsGrid({
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    {/* ⚠️ `basis-*` NOT `w-*`, and the wrap is conditional on purpose — blockCellCls and
+                        blockBoxCls above carry the reasoning, including why a `w-24` here silently did
+                        nothing for as long as this cell has existed. Do not "tidy" either back. */}
+                    <div className={blockCellCls}>
                       <input
-                        type="checkbox" className="size-4" checked={v.blockEnabled}
+                        type="checkbox" className="size-4 shrink-0" checked={v.blockEnabled}
                         aria-label={t('blockEnableLabel')}
                         onChange={(e) => set(r.key, { blockEnabled: e.target.checked })}
                       />
                       <input
                         type="number" min="0" step="0.01" placeholder={t('unlimited')}
                         disabled={!v.blockEnabled}
-                        className={`${inputCls} w-24 text-right tabular-nums disabled:opacity-50`}
+                        className={`${inputCls} ${blockBoxCls} basis-24 text-right tabular-nums`}
                         value={v.blockLimit} onChange={(e) => set(r.key, { blockLimit: e.target.value })}
                       />
-                      <span className="text-xs text-muted-foreground">{t('blockEveryLabel').toLowerCase()}</span>
+                      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                        {t('blockEveryLabel').toLowerCase()}
+                      </span>
                       <input
                         type="number" min="1" step="1" disabled={!v.blockEnabled}
-                        className={`${inputCls} w-14 text-right tabular-nums disabled:opacity-50`}
+                        className={`${inputCls} ${blockBoxCls} basis-14 text-right tabular-nums`}
                         value={v.blockLength} onChange={(e) => set(r.key, { blockLength: e.target.value })}
                       />
                       <select
                         disabled={!v.blockEnabled}
-                        className={`${inputCls} w-28 disabled:opacity-50`}
+                        className={`${inputCls} ${blockBoxCls} basis-28`}
                         value={v.blockUnit} onChange={(e) => set(r.key, { blockUnit: e.target.value })}
                       >
                         <option value="month">{t('blockUnit_month')}</option>
