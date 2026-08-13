@@ -246,19 +246,35 @@ describe('93249794 · B. the scope', () => {
     expect(widen.lines).toEqual([]);
   });
 
-  it('individual mode still applies the shared active-on-the-date rule, not a second one', async () => {
+  it('individual mode still applies the shared active-in-the-year rule, not a second one', async () => {
+    // ⚠️ r193 REVERSED HALF OF THIS CASE, DELIBERATELY, AND THE OTHER HALF STILL STANDS.
+    //
+    // As written, this asserted that somebody hired 2026-06-01 was "named explicitly, and still not a
+    // target for 2026". That was the behaviour item a9d0a94a was raised against: on the reporting account
+    // 18 of 40 active employments joined during the year and were dropped by this very selection, before
+    // the engine was called, so Generate Entitlement gave them nothing and could not be made to. A mid-year
+    // joiner IS a member of that leave year now, granted from their join date.
+    //
+    // What this case exists to prove is UNCHANGED and is still checked below: individual mode inherits the
+    // ONE shared `resolveOrgCriteriaTargets` predicate rather than a second hand-written one, so naming
+    // somebody who is genuinely outside the year does not force them in. The example simply had to move to
+    // an employment that is genuinely outside it — hired after the year ENDS.
     await policyFor(b.annualLeaveTypeId, 12);
     const serving = await hire('Mei Ling', { hiredOn: '2020-01-01' });
-    // Hired AFTER the year opens: named explicitly, and still not a target for that year.
-    const future = await hire('Newcomer', { hiredOn: '2026-06-01' });
+    // Joined DURING 2026: a target now, and granted from their join date (r193 fault 2).
+    const joiner = await hire('Newcomer', { hiredOn: '2026-06-01' });
+    // Hired after 2026 ended: named explicitly, and still not a target for that year.
+    const future = await hire('Next year', { hiredOn: '2027-06-01' });
 
     const res = await previewLeaveGeneration(adminCtx(b), {
       year: 2026,
       targetMode: 'individual',
-      employmentIds: [serving.employmentId, future.employmentId],
+      employmentIds: [serving.employmentId, joiner.employmentId, future.employmentId],
     });
-    expect(res.employeesSelected).toBe(1);
-    expect(res.lines.every((l) => l.employmentId === serving.employmentId)).toBe(true);
+    expect(res.employeesSelected).toBe(2);
+    expect(res.lines.some((l) => l.employmentId === serving.employmentId)).toBe(true);
+    expect(res.lines.some((l) => l.employmentId === joiner.employmentId)).toBe(true);
+    expect(res.lines.every((l) => l.employmentId !== future.employmentId)).toBe(true);
   });
 
   it('the UNSCOPED call is byte-identical to the bare year-open it replaces', async () => {
