@@ -1,0 +1,188 @@
+<meta charset="utf-8">
+<title>0253dc7c — Transaction Detail: wage base and Subject-to columns</title>
+<!--
+  Mockup for 0253dc7c, plan revision 1. Sketch — wording, spacing and colours will differ.
+
+  BEFORE is the REAL screen today: Payroll › Transaction View › Transaction Detail (the 'grid' tab;
+  payroll.transactions.view.grid.title = "Transaction Detail"). Row captions are the live en.json labels
+  (view.grid.row.*, view.grid.section.*, view.grid.hideZeroRows / hideSystemCodes / export / colCode /
+  colDescription / colCycle / colTotal). Hide-zero is ticked by default, which is why the all-zero
+  synthetic rows (OT, BONUS, CLAIM, SKBBK, CP38, ZAKAT, ER_BORNE) do not appear.
+
+  EVERY FIGURE IS A0006's REAL 2026 PAYROLL, read from production 2026-08-13 — payslips 97b1deae
+  (2026-01 regular), f4dda860 (2026-07), 2752d133 (2026-08), cycle = Regular, so the 2026-01 bonus run is
+  filtered out. July carries no statutory.bases and no componentLines (calculated before either was
+  recorded), which is why its wage-base cells are em dashes and it contributes no item rows.
+  Wage bases are exactly as STORED (EPF 5,100.00) — the companion request is what makes the ticked
+  Unpaid Leave come off that figure.
+  Tokens from app/globals.css. Everything inline — render.ts blocks external requests.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--em:#059669;--de:#e11d48}
+  *{box-sizing:border-box}
+  body{margin:0;padding:22px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  h1{font-size:16px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 16px}
+  .stage{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:0;margin-bottom:16px;
+         overflow:hidden}
+  .stageHead{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:10px;font-weight:700}
+  .pill.now{background:var(--muted);color:var(--mf)}
+  .pill.new{background:#e0e7ff;color:#312e81}
+  .stageHead .t{font-size:13px;font-weight:700}
+  .idline{padding:10px 14px 0;font-size:11.5px;color:var(--mf)}
+  .idline b{color:var(--fg);font-size:12.5px}
+  .sw{display:flex;align-items:center;gap:18px;padding:9px 14px 11px;font-size:11.5px;flex-wrap:wrap}
+  .sw label{display:flex;align-items:center;gap:6px}
+  .box{width:13px;height:13px;border:1.5px solid #b9bac8;border-radius:3px;display:inline-block}
+  .box.on{background:var(--primary);border-color:var(--primary);position:relative}
+  .box.on:after{content:"";position:absolute;left:3.5px;top:.5px;width:4px;height:8px;border:solid #fff;
+                border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .swNew{color:var(--primary);font-weight:700}
+  .exp{margin-left:auto;border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:11px;color:#33333f}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:700;padding:7px 9px;background:var(--muted);white-space:nowrap}
+  th.r,td.r{text-align:right}
+  th.c,td.c{text-align:center}
+  td{padding:6px 9px;border-bottom:1px solid #f4f4f8;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sec td{background:#fafafd;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);
+          font-weight:700;padding:6px 9px}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--mf)}
+  .earn{color:#047857;font-weight:600}
+  .ded{color:#be123c;font-weight:600}
+  .er{color:var(--mf)}
+  .sum td{font-weight:700}
+  .tot{background:#f7f7fb;font-weight:600}
+  .zero{color:#adadb8}
+  .dash{color:#adadb8}
+  .y{color:var(--good);font-weight:700}
+  .drop{background:#fff1f2}
+  .dropTag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:999px;background:#ffe4e6;
+           color:#9f1239;font-size:9px;font-weight:700;vertical-align:1px}
+  .newRow{background:#f4f4ff}
+  .newCol{background:#f4f4ff}
+  th.newCol{background:#e6e6fb;color:#312e81}
+  .foot{padding:9px 14px 12px;font-size:10.5px;color:var(--mf)}
+  .foot b{color:#312e81}
+</style>
+
+<h1>Payroll › Transaction View › Transaction Detail — employee A0006, 2026, Regular</h1>
+<p class="sub">Sketch on this employee's real payroll year. Wording, spacing and colours will differ from the finished screen.</p>
+
+<div class="stage">
+  <div class="stageHead"><span class="pill now">Today</span><span class="t">Transaction Detail</span></div>
+  <p class="idline"><b>A0006 · TEST0006</b> &nbsp;·&nbsp; ISEDECOR BINA SDN BHD · 2026</p>
+  <div class="sw">
+    <label><span class="box on"></span> Hide rows that are all zeroes</label>
+    <label><span class="box"></span> Hide system codes</label>
+    <span class="exp">Export to Excel</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Payment item code</th><th>Payment item description</th><th>Pay cycle</th>
+        <th class="r">January</th><th class="r">July</th><th class="r">August</th><th class="r">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="sec"><td colspan="7">Earnings</td></tr>
+      <tr><td class="code">BASIC</td><td>Basic salary</td><td class="er">Regular</td><td class="r earn">5,000.00</td><td class="r earn">5,000.00</td><td class="r earn">5,000.00</td><td class="r tot">15,000.00</td></tr>
+      <tr class="drop"><td class="code">ALLOW</td><td>Allowances<span class="dropTag">lump sum — goes away</span></td><td class="er">Regular</td><td class="r earn">100.00</td><td class="r zero">0.00</td><td class="r earn">100.00</td><td class="r tot">200.00</td></tr>
+      <tr><td class="code">A0027</td><td>HANDPHONE ALLOWANCE</td><td class="er">Regular</td><td class="r earn">100.00</td><td class="r zero">0.00</td><td class="r earn">100.00</td><td class="r tot">200.00</td></tr>
+
+      <tr class="sec"><td colspan="7">Deductions</td></tr>
+      <tr><td class="code">EPF_EE</td><td>EPF / KWSP (employee)</td><td class="er">Regular</td><td class="r ded">561.00</td><td class="r ded">550.00</td><td class="r ded">561.00</td><td class="r tot">1,672.00</td></tr>
+      <tr><td class="code">SOCSO_EE</td><td>SOCSO / PERKESO (employee)</td><td class="er">Regular</td><td class="r ded">25.25</td><td class="r ded">24.75</td><td class="r ded">25.25</td><td class="r tot">75.25</td></tr>
+      <tr><td class="code">EIS_EE</td><td>EIS / SIP (employee)</td><td class="er">Regular</td><td class="r ded">10.10</td><td class="r ded">9.90</td><td class="r ded">10.10</td><td class="r tot">30.10</td></tr>
+      <tr><td class="code">PCB</td><td>PCB / MTD (income tax)</td><td class="er">Regular</td><td class="r ded">116.00</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">116.00</td></tr>
+      <tr class="drop"><td class="code">OTHER_DED</td><td>Other deductions<span class="dropTag">lump sum — goes away</span></td><td class="er">Regular</td><td class="r ded">322.58</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">322.58</td></tr>
+      <tr><td class="code">UPL</td><td>UNPAID LEAVE</td><td class="er">Regular</td><td class="r ded">322.58</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">322.58</td></tr>
+
+      <tr class="sec"><td colspan="7">Employer contributions</td></tr>
+      <tr><td class="code">EPF_ER</td><td>EPF / KWSP (employer)</td><td class="er">Regular</td><td class="r er">612.00</td><td class="r er">650.00</td><td class="r er">612.00</td><td class="r tot">1,874.00</td></tr>
+      <tr><td class="code">SOCSO_ER</td><td>SOCSO / PERKESO (employer)</td><td class="er">Regular</td><td class="r er">88.35</td><td class="r er">86.65</td><td class="r er">88.35</td><td class="r tot">263.35</td></tr>
+      <tr><td class="code">EIS_ER</td><td>EIS / SIP (employer)</td><td class="er">Regular</td><td class="r er">10.10</td><td class="r er">9.90</td><td class="r er">10.10</td><td class="r tot">30.10</td></tr>
+      <tr><td class="code">HRDF</td><td>HRDF</td><td class="er">Regular</td><td class="r er">51.00</td><td class="r er">50.00</td><td class="r er">51.00</td><td class="r tot">152.00</td></tr>
+
+      <tr class="sec"><td colspan="7">Recorded items</td></tr>
+      <tr><td class="code">UPL</td><td>UPL — UNPAID LEAVE</td><td class="er">Regular</td><td class="r er">−322.58</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">−322.58</td></tr>
+
+      <tr class="sec"><td colspan="7">Summary</td></tr>
+      <tr class="sum"><td class="code">GROSS</td><td>Gross pay</td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r">5,000.00</td><td class="r">5,100.00</td><td class="r tot">15,200.00</td></tr>
+      <tr class="sum"><td class="code">TOTAL_DED</td><td>Total deductions</td><td class="er">Regular</td><td class="r">1,034.93</td><td class="r">584.65</td><td class="r">596.35</td><td class="r tot">2,215.93</td></tr>
+      <tr class="sum"><td class="code">NETPAY</td><td>Net pay</td><td class="er">Regular</td><td class="r">4,065.07</td><td class="r">4,415.35</td><td class="r">4,503.65</td><td class="r tot">12,984.07</td></tr>
+    </tbody>
+  </table>
+  <p class="foot">Nothing here says what wage each contribution was charged on, or which items were subject
+    to which scheme. Ticking Hide system codes today removes the two lump-sum rows — but it also removes
+    EPF, SOCSO, EIS, PCB, Gross pay and Net pay, which you want to keep.</p>
+</div>
+
+<div class="stage">
+  <div class="stageHead"><span class="pill new">Proposed</span><span class="t">Transaction Detail</span></div>
+  <p class="idline"><b>A0006 · TEST0006</b> &nbsp;·&nbsp; ISEDECOR BINA SDN BHD · 2026</p>
+  <div class="sw">
+    <label><span class="box on"></span> Hide rows that are all zeroes</label>
+    <label><span class="box"></span> Hide system codes</label>
+    <label class="swNew"><span class="box on"></span> Show statutory subject</label>
+    <span class="exp">Export to Excel</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Payment item code</th><th>Payment item description</th>
+        <th class="c newCol">EPF</th><th class="c newCol">SOCSO</th><th class="c newCol">EIS</th>
+        <th class="c newCol">SKBBK</th><th class="c newCol">Tax</th>
+        <th>Pay cycle</th>
+        <th class="r">January</th><th class="r">July</th><th class="r">August</th><th class="r">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="sec"><td colspan="12">Wage base</td></tr>
+      <tr class="newRow"><td class="code">EPF_WAGE</td><td>EPF Wages</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r dash">—</td><td class="r">5,100.00</td><td class="r tot">10,200.00</td></tr>
+      <tr class="newRow"><td class="code">SOCSO_WAGE</td><td>SOCSO Wages</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r dash">—</td><td class="r">5,100.00</td><td class="r tot">10,200.00</td></tr>
+      <tr class="newRow"><td class="code">EIS_WAGE</td><td>EIS Wages</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r dash">—</td><td class="r">5,100.00</td><td class="r tot">10,200.00</td></tr>
+      <tr class="newRow"><td class="code">SKBBK_WAGE</td><td>SKBBK Wages</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r dash">—</td><td class="r">5,100.00</td><td class="r tot">10,200.00</td></tr>
+      <tr class="newRow"><td class="code">PCB_WAGE</td><td>PCB Wages</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r dash">—</td><td class="r">5,100.00</td><td class="r tot">10,200.00</td></tr>
+      <tr class="newRow"><td class="code">HRDF_WAGE</td><td>HRDF Wages</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r dash">—</td><td class="r">5,100.00</td><td class="r tot">10,200.00</td></tr>
+
+      <tr class="sec"><td colspan="12">Earnings</td></tr>
+      <tr><td class="code">BASIC</td><td>Basic salary</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="er">Regular</td><td class="r earn">5,000.00</td><td class="r earn">5,000.00</td><td class="r earn">5,000.00</td><td class="r tot">15,000.00</td></tr>
+      <tr><td class="code">A0027</td><td>HANDPHONE ALLOWANCE</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="er">Regular</td><td class="r earn">100.00</td><td class="r zero">0.00</td><td class="r earn">100.00</td><td class="r tot">200.00</td></tr>
+
+      <tr class="sec"><td colspan="12">Deductions</td></tr>
+      <tr><td class="code">EPF_EE</td><td>EPF / KWSP (employee)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r ded">561.00</td><td class="r ded">550.00</td><td class="r ded">561.00</td><td class="r tot">1,672.00</td></tr>
+      <tr><td class="code">SOCSO_EE</td><td>SOCSO / PERKESO (employee)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r ded">25.25</td><td class="r ded">24.75</td><td class="r ded">25.25</td><td class="r tot">75.25</td></tr>
+      <tr><td class="code">EIS_EE</td><td>EIS / SIP (employee)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r ded">10.10</td><td class="r ded">9.90</td><td class="r ded">10.10</td><td class="r tot">30.10</td></tr>
+      <tr><td class="code">PCB</td><td>PCB / MTD (income tax)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r ded">116.00</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">116.00</td></tr>
+      <tr><td class="code">UPL</td><td>UNPAID LEAVE</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="er">Regular</td><td class="r ded">322.58</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">322.58</td></tr>
+
+      <tr class="sec"><td colspan="12">Employer contributions</td></tr>
+      <tr><td class="code">EPF_ER</td><td>EPF / KWSP (employer)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r er">612.00</td><td class="r er">650.00</td><td class="r er">612.00</td><td class="r tot">1,874.00</td></tr>
+      <tr><td class="code">SOCSO_ER</td><td>SOCSO / PERKESO (employer)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r er">88.35</td><td class="r er">86.65</td><td class="r er">88.35</td><td class="r tot">263.35</td></tr>
+      <tr><td class="code">EIS_ER</td><td>EIS / SIP (employer)</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r er">10.10</td><td class="r er">9.90</td><td class="r er">10.10</td><td class="r tot">30.10</td></tr>
+      <tr><td class="code">HRDF</td><td>HRDF</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r er">51.00</td><td class="r er">50.00</td><td class="r er">51.00</td><td class="r tot">152.00</td></tr>
+
+      <tr class="sec"><td colspan="12">Recorded items</td></tr>
+      <tr><td class="code">UPL</td><td>UPL — UNPAID LEAVE</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="c newCol y">Y</td><td class="er">Regular</td><td class="r er">−322.58</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td class="r tot">−322.58</td></tr>
+
+      <tr class="sec"><td colspan="12">Summary</td></tr>
+      <tr class="sum"><td class="code">GROSS</td><td>Gross pay</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">5,100.00</td><td class="r">5,000.00</td><td class="r">5,100.00</td><td class="r tot">15,200.00</td></tr>
+      <tr class="sum"><td class="code">TOTAL_DED</td><td>Total deductions</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">1,034.93</td><td class="r">584.65</td><td class="r">596.35</td><td class="r tot">2,215.93</td></tr>
+      <tr class="sum"><td class="code">NETPAY</td><td>Net pay</td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="c newCol"></td><td class="er">Regular</td><td class="r">4,065.07</td><td class="r">4,415.35</td><td class="r">4,503.65</td><td class="r tot">12,984.07</td></tr>
+    </tbody>
+  </table>
+  <p class="foot"><b>Wage base</b> is what each contribution was actually charged on, taken from the payroll
+    run itself. July shows a dash because that run was calculated before this figure began being recorded —
+    never a guess.
+    &nbsp;·&nbsp; <b>Y and N</b> come from the current Pay Item settings and cannot be changed here.
+    SOCSO, EIS and SKBBK share one setting per pay item, so those three columns always agree.
+    &nbsp;·&nbsp; <b>Allowances</b> and <b>Other deductions</b> are gone: every month behind them is fully
+    explained by the items above. Where a run is too old to have recorded its items, the lump-sum row stays
+    so the column still adds up.
+    &nbsp;·&nbsp; January shows EPF Wages 5,100.00 while Unpaid Leave is ticked Y for EPF — that is the gap
+    your other request fixes, and this screen is what makes it visible in one glance.</p>
+</div>
