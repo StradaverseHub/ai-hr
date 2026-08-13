@@ -1,0 +1,286 @@
+/**
+ * 8ca344bf — BORANG 8A (PERKESO monthly contribution schedule): the READ.
+ *
+ * Everything MY-specific and database-shaped lives here; the form's rules, its pagination and its text
+ * rendering are pure and live in `lib/borang-8a.ts`; the drawing lives in `lib/borang-8a-pdf.ts`. The
+ * split is not tidiness — it is what lets the two dating rules be asserted without a database, and what
+ * keeps `app/` from importing this pack directly (ADR-0080 D1: app/ reaches the pack only through
+ * core/reporting's `reportPreview`, never through this file).
+ *
+ * ── NOTHING NEW IS STORED, AND NO MIGRATION IS NEEDED ─────────────────────────────────────────────
+ * Every field this form needs already exists:
+ *   • `company_statutory_my.socso_employer_code` — No. Kod Majikan, already labelled "SOCSO employer code"
+ *     under Organization.
+ *   • `company_statutory_my.ssm_registration_no` — the MyCoID box. REUSED, not duplicated: it is already
+ *     what feeds the ASSIST upload file's ssm/MyCoID field (localization/my/socso-eis-file.ts ~line 140).
+ *     Adding a `mycoid_no` column beside it would give one number two homes that can disagree.
+ *   • `employee_statutory_my.ic_number` — column (3), and the only per-employee field this form needs.
+ *   • `employment.join_date` / `hired_on` / `terminated_on` — column (1).
+ * `socso_status_code` is the one field that genuinely does not exist, and it is deliberately NOT added.
+ * See THE STATUS COLUMN below.
+ *
+ * ── THE CONTRIBUTION FIGURE IS TAKEN, NEVER RECALCULATED ──────────────────────────────────────────
+ * `statutory.socsoEmployee + statutory.socsoEmployer`, off the payslips the run already produced. The form
+ * therefore always agrees with what was actually paid, and a change to the PERKESO bands cannot make a
+ * re-printed past month disagree with the month that was filed.
+ *
+ * EIS IS NOT FOLDED IN. Employment insurance is its own PERKESO filing (Borang SIP), and adding it to this
+ * column would inflate every line against the payroll it is supposed to reconcile to. SKBBK / Lindung 24
+ * Jam is likewise excluded and, because that is a judgement somebody may want to revisit, both figures are
+ * carried onto the preview beside the form total rather than dropped silently (`meta.summary`).
+ *
+ * ⚠️ THE SPECIMEN IS NOT AN ARITHMETIC FIXTURE. Its 202.35 does not reconcile to the EPF specimen's 6,200
+ * wage under the current PERKESO table on either a SOCSO-only or a SOCSO+EIS reading. It was used for the
+ * LAYOUT and the two dating rules, and for nothing else.
+ *
+ * ── THE STATUS COLUMN ─────────────────────────────────────────────────────────────────────────────
+ * PERKESO's official code list for column (2) is not in the specimen, and we are not inventing one. The
+ * reporter's own attachment leaves the column blank for a continuing employee and leaves Tarikh Mula /
+ * Berhenti blank too. So: the dates are filled from the dates we already hold WHEN THEY FALL INSIDE THE
+ * CONTRIBUTION MONTH, the status is blank for everyone who neither joined nor left, and the review screen
+ * accepts a typed status per row which is never persisted. When PERKESO's list is confirmed, nothing here
+ * has to be rebuilt.
+ */
+import { and, eq, inArray } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../../db/client';
+import {
+  company,
+  companyStatutoryMy,
+  employeeStatutoryMy,
+  employment,
+  payrollBatch,
+  payslip,
+  person,
+} from '../../db/schema';
+import {
+  contributionMonthLabel,
+  contributionPeriodFor,
+  fallsInMonth,
+  formDate,
+  paymentDueDateFor,
+  type Borang8ARow,
+} from '../../lib/borang-8a';
+import { MY_STATUTORY_VERSION } from './statutory-tables';
+import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const num = (v: unknown) => Number(v ?? 0);
+
+/** The schedule's own columns, in the specimen's own order and numbering. */
+export const BORANG_8A_COLUMNS: ReportColumn[] = [
+  { key: 'startDate', label: '(1) Tarikh Mula Kerja' },
+  { key: 'stopDate', label: '(1) Tarikh Berhenti Kerja' },
+  { key: 'status', label: '(2) Status' },
+  { key: 'ic', label: '(3) No. K/P' },
+  { key: 'name', label: '(4) Nama Pekerja' },
+  { key: 'contribution', label: '(5) Caruman (RM)', numeric: true },
+];
+
+const NOTE_NOT_ARTWORK =
+  'This is our own layout, drawn line for line to match a completed Borang 8A. PERKESO does not publish ' +
+  'a blank Borang 8A to print onto, so this is not the agency’s own page — check it before you file it.';
+const NOTE_NO_OFFSET =
+  'The contribution month is the payroll month itself, with no shift, and the payment deadline is the last ' +
+  'day of that same month. (The EPF Borang A for the same payroll month is stamped the month after — the ' +
+  'two rules are different on purpose.)';
+const NOTE_STATUS =
+  'Column (2) STATUS is left blank for anyone who neither joined nor left in the month, exactly as a filed ' +
+  'Borang 8A does. Type a status against any row on the review screen if you need one.';
+
+/** Employer address as printed: three free lines plus a postcode/town, state tail. */
+function addressLines(c: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  postcode: string | null;
+  city: string | null;
+  state: string | null;
+}): string[] {
+  const tail = [[c.postcode, c.city].filter(Boolean).join(' '), c.state].filter(Boolean).join(', ');
+  return [c.addressLine1, c.addressLine2, c.addressLine3, tail].map((s) => (s ?? '').trim()).filter(Boolean);
+}
+
+/**
+ * The Borang 8A for a company's payroll month, as the generic `ReportResult` every statutory-form surface
+ * already speaks.
+ *
+ * WHY A ReportResult AND NOT A BESPOKE TYPE. The shelf card, the [formId] preview screen, the readiness
+ * banner, the CSV/XLSX/PDF exports and "Record generation" are all driven off this one shape through
+ * `core/reporting.ts` — which is also the ONLY seam `app/` is allowed to reach the pack through. The form's
+ * own header (employer code, the two dates, MyCoID) has no column on a table, so it rides on
+ * `meta.formHeader`, whose key list is owned by `lib/borang-8a.ts` (BORANG_8A_HEADER_KEYS) precisely so
+ * the two halves of that contract can be pinned against one list.
+ */
+export function borang8AReport(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
+  // Throws on a malformed period rather than reading it as a literal batch key — "2026-13" would otherwise
+  // produce a plausible-looking empty form.
+  const periodKey = contributionPeriodFor(params.periodKey);
+  return withTenant(ctx, async (tx) => {
+    const [co] = await tx
+      .select({
+        legalName: company.legalName,
+        addressLine1: company.addressLine1,
+        addressLine2: company.addressLine2,
+        addressLine3: company.addressLine3,
+        postcode: company.postcode,
+        city: company.city,
+        state: company.state,
+      })
+      .from(company)
+      .where(eq(company.id, params.companyId))
+      .limit(1);
+    const [stat] = await tx
+      .select({ code: companyStatutoryMy.socsoEmployerCode, ssm: companyStatutoryMy.ssmRegistrationNo })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, params.companyId))
+      .limit(1);
+
+    const header: Record<string, string> = {
+      employerCode: stat?.code ?? '',
+      mycoid: stat?.ssm ?? '',
+      employerName: co?.legalName ?? '',
+      // Scalar, because ReportResult.meta values are scalars; lib/borang-8a.ts splits it back into lines.
+      employerAddress: co ? addressLines(co).join('\n') : '',
+      contributionMonth: contributionMonthLabel(periodKey),
+      contributionPeriodKey: periodKey,
+      payrollPeriodKey: params.periodKey,
+      paymentDueDate: paymentDueDateFor(periodKey),
+    };
+
+    const batches = await tx
+      .select({ id: payrollBatch.id, status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, periodKey)));
+
+    const baseMeta = {
+      statutoryVersion: MY_STATUTORY_VERSION,
+      formHeader: header,
+      notes: [NOTE_NOT_ARTWORK, NOTE_NO_OFFSET, NOTE_STATUS],
+    };
+    if (batches.length === 0) {
+      return {
+        columns: BORANG_8A_COLUMNS,
+        rows: [],
+        totals: {},
+        readiness: [],
+        meta: { hasBatch: false, ...baseMeta },
+      };
+    }
+    const batchIds = batches.map((b) => b.id);
+    const batchStatus = batches.every((b) => b.status === 'closed')
+      ? 'closed'
+      : batches.some((b) => b.status === 'draft')
+        ? 'draft'
+        : 'processed';
+
+    const slips = await tx
+      .select({
+        employmentId: payslip.employmentId,
+        name: person.fullName,
+        ic: employeeStatutoryMy.icNumber,
+        joinDate: employment.joinDate,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(inArray(payslip.batchId, batchIds))
+      .orderBy(person.fullName);
+
+    type Acc = {
+      employmentId: string;
+      name: string;
+      ic: string | null;
+      startIso: string | null;
+      stopIso: string | null;
+      socso: number;
+      eis: number;
+      skbbk: number;
+    };
+    const byEmp = new Map<string, Acc>();
+    const versions = new Set<string>();
+    // Summed straight off the payslips, INDEPENDENTLY of the per-employee aggregation below, so the
+    // reconciliation strip compares two different paths to the same number rather than printing one
+    // number twice. A divergence here means the grouping dropped or double-counted somebody.
+    let runSocso = 0;
+    for (const s of slips) {
+      const st = (s.statutory ?? {}) as Record<string, number> & { version?: string };
+      if (st.version) versions.add(st.version);
+      runSocso = round2(runSocso + num(st.socsoEmployee) + num(st.socsoEmployer));
+      let r = byEmp.get(s.employmentId);
+      if (!r) {
+        r = {
+          employmentId: s.employmentId,
+          name: s.name,
+          ic: s.ic,
+          // The date they joined THIS employer, not the group service date — the same distinction Form E
+          // Part A makes, and the one an entity transfer moves.
+          startIso: s.joinDate ?? s.hiredOn,
+          stopIso: s.terminatedOn,
+          socso: 0,
+          eis: 0,
+          skbbk: 0,
+        };
+        byEmp.set(s.employmentId, r);
+      }
+      // Summed across the period's runs (ADR-0024: a month may hold a regular plus an off-cycle run, and
+      // the statutory legs are deltas), so this is the month's true figure and is identical to the single
+      // stored value when there is only one run.
+      r.socso = round2(r.socso + num(st.socsoEmployee) + num(st.socsoEmployer));
+      r.eis = round2(r.eis + num(st.eisEmployee) + num(st.eisEmployer));
+      r.skbbk = round2(r.skbbk + num(st.socsoSkbbk));
+    }
+
+    const accs = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const rows: ReportRow[] = accs.map((a) => {
+      // Filled ONLY when the event falls inside the contribution month — the specimen leaves both blank
+      // for a continuing employee, and a joining date printed every month would read as a new joiner.
+      const started = fallsInMonth(a.startIso, periodKey);
+      const stopped = fallsInMonth(a.stopIso, periodKey);
+      const row: Borang8ARow = {
+        employmentId: a.employmentId,
+        startDate: started ? formDate(a.startIso) : '',
+        stopDate: stopped ? formDate(a.stopIso) : '',
+        // Blank unless the review screen types one in. No code list is invented here.
+        status: '',
+        ic: a.ic ?? '',
+        name: a.name,
+        contribution: a.socso,
+      };
+      return { ...row };
+    });
+
+    const total = round2(rows.reduce((acc, r) => acc + num(r.contribution), 0));
+    const eisTotal = round2(accs.reduce((acc, a) => acc + a.eis, 0));
+    const skbbkTotal = round2(accs.reduce((acc, a) => acc + a.skbbk, 0));
+
+    return {
+      columns: BORANG_8A_COLUMNS,
+      rows,
+      totals: { contribution: total },
+      // The ONE identifier this form needs. Named before the download, not discovered after it.
+      readiness: accs
+        .filter((a) => !a.ic)
+        .map((a) => ({ employmentId: a.employmentId, name: a.name, missing: ['IC'] })),
+      meta: {
+        hasBatch: true,
+        batchStatus,
+        statutoryVersion: versions.size ? [...versions].sort().join(',') : MY_STATUTORY_VERSION,
+        formHeader: header,
+        notes: [NOTE_NOT_ARTWORK, NOTE_NO_OFFSET, NOTE_STATUS],
+        // THE RECONCILIATION STRIP the build notes asked for: the run's own figures beside the form's, so
+        // any divergence is visible BEFORE filing rather than at the counter. `Amaun Caruman` is the form
+        // total; the two beneath it are what this form deliberately does not carry.
+        summary: [
+          { label: 'Amaun Caruman (form)', value: total.toFixed(2) },
+          { label: 'SOCSO in this run (EE+ER)', value: runSocso.toFixed(2) },
+          { label: 'EIS — filed separately', value: eisTotal.toFixed(2) },
+          { label: 'SKBBK — not on this form', value: skbbkTotal.toFixed(2) },
+        ],
+      },
+    };
+  });
+}
