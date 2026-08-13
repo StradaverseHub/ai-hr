@@ -2,7 +2,7 @@
  * 3214cb11 / 813fd22a — THE ORDER ENTITLEMENT TABLES ARE LISTED IN.
  *
  * Pure and DB-free: `lib/entitlement-table-order.ts` derives the order from the name alone, which is the
- * whole point of it (a hardcoded list of the sixteen strings would not generalise to the nine other leave
+ * whole point of it (a hardcoded list of the sixteen strings would not generalise to the TEN other leave
  * types that have tables, and would drop a renamed table to the bottom in silence).
  *
  * EVERY NAME IN §1–§3 IS A REAL PRODUCTION NAME, read from `entitlement_template` on 2026-08-13. That

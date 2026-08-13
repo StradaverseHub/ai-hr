@@ -8,9 +8,15 @@
  * "Choose an entitlement table" select are fed by ONE page-level read, so one ordering fixes both.
  *
  * ⚠️ THE ORDER IS DERIVED FROM THE NAME, NOT STORED AND NOT HARDCODED. A literal list of the sixteen
- * strings would not generalise to the other nine leave types that also have tables, would silently drop
+ * strings would not generalise to the other TEN leave types that also have tables, would silently drop
  * a renamed table to the bottom, and would need maintaining by hand forever. Every rank below is read
  * out of the name, so a table created later with a matching name lands in the right place on its own.
+ *
+ * Production on 2026-08-13 carries 47 running templates across ELEVEN leave types: Annual Leave 16;
+ * Medical Leave 6; Caregiver, Compassionate, Examination, Graduation, Marriage, Maternity, Paternity
+ * and Study 3 each; Hospitalization Leave 1, named "ALL" — which no rank below recognises, and which
+ * therefore falls to the unmatched bucket. That is correct: it is the only table on its type, so where
+ * it sorts cannot be wrong.
  *
  * The key is (family, variant, grade, name). Sorting is presentation only — no stored value moves.
  *
@@ -26,8 +32,10 @@
  * would move it into the SPECIAL block and break the order they asked for. Reading only a trailing
  * PARENTHETICAL — which is what the approved plan literally specified — gets that case right but then
  * ranks "CONTRACT - SPECIAL" and "CONTRACT - RETIREE" as equals, and the alphabetical tiebreak puts
- * RETIREE FIRST. That is the order the other nine leave types would have been given, and it is the
- * opposite of what those same plans state their test should assert. So: check the trailing
+ * RETIREE FIRST. That is the order the NINE leave types carrying a bare trailing token would have been
+ * given (the eight three-table types plus Medical Leave), and it is the opposite of what those same
+ * plans state their own test should assert — the plans contradict themselves here, and this resolves it
+ * the way both plans' TESTS section asks for. So: check the trailing
  * parenthetical FIRST, and fall back to a trailing bare token only when there is no parenthetical at
  * all. Both production shapes then land where the reporter put them.
  *
