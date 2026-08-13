@@ -13,7 +13,7 @@
  *
  * So this is a SIBLING of LeaveDetailsPanel, not a branch inside it. Same slide-out shell, same header,
  * same HR-authored info-icon behaviour — but the body is a table with one row per banked credit
- * (Request Date, Number, Unit, Approval Date, Expired Date) instead of a summary column. Keeping them
+ * (Request Date, Number, Unit, Approval Date, Expired Date, Available) instead of a summary column. Keeping them
  * separate is what stops the shared panel growing a leave-type conditional through its descriptor loop,
  * which is the property 584edf44 built that file around.
  *
@@ -54,6 +54,13 @@ export type ReplacementCreditRow = {
 /** The envelope the RSC pre-computes for the Replacement Leave card. */
 export type ReplacementPanelData = {
   rows: ReplacementCreditRow[];
+  /**
+   * 5ff7daff — the AWAITING-APPROVAL half of the reporter's two-stage view: the total days across this
+   * employee's replacement-leave requests that are still `pending`. NOT part of the balance and never added
+   * to it (nothing is banked until a line manager approves), which is exactly why it is shown as its own
+   * line rather than folded into the figure above the table.
+   */
+  pendingDays: number;
   /** The leave type's labelling unit (leave_type.leave_unit, e4980382) — display only, never a calculation. */
   leaveUnit: 'day' | 'hour';
   /** HR-authored per-COLUMN explanations, keyed by REPLACEMENT_COLUMN_KEYS. Missing ⇒ no info icon. */
@@ -69,6 +76,10 @@ const COLUMNS = [
   { key: 'unit', align: 'left' as const },
   { key: 'approvalDate', align: 'left' as const },
   { key: 'expiredDate', align: 'left' as const },
+  // 5ff7daff — "how much of THIS credit is still unused", the column the reporter listed and the only one
+  // of their four that was missing. `remaining` (daysCredited − daysTaken) has ridden on every row since
+  // 0113 and was already handed to this component; nothing new is computed here.
+  { key: 'remaining', align: 'right' as const },
 ];
 
 /** An ISO instant (approved_on is timestamptz) rendered as the DAY it happened — the table is a table of
@@ -176,12 +187,34 @@ export function ReplacementLeavePanel({
           </div>
 
           <div className="space-y-5 px-5 py-4">
-            {/* The running balance, ABOVE the table and sourced from leaveBalances — see the header note. */}
-            <div className="flex items-baseline justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-              <span className="text-sm font-semibold text-foreground">{t('field.availableBalance')}</span>
-              <span className="text-lg font-semibold tabular-nums text-foreground">
-                {formatDays(available)}
-              </span>
+            {/* 5ff7daff — THE TWO STAGES, in the reporter's own words. "Replacement Leave in Lieu" is what is
+                still waiting on the line manager; "Replacement Leave" is what has been approved and can
+                actually be spent. Before approval those read 1.00 waiting / 0.00 available; after it, 0.00
+                and 1.00; after a rejection, 0.00 and 0.00.
+
+                The available figure is still leaveBalances', never a sum of the rows below (the r75 rule —
+                the number an employee sees must be the number the apply popup enforces). The pending figure
+                is deliberately NOT added to it: nothing is banked until a manager approves, and a card that
+                counted unapproved claims as spendable balance would be lying about what can be booked. */}
+            <div className="divide-y divide-border rounded-lg border border-border">
+              <div className="flex items-baseline justify-between gap-3 px-3 py-2.5">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-muted-foreground">{t('replacement.pendingLabel')}</span>
+                  <span className="block text-xs text-muted-foreground/80">{t('replacement.pendingHint')}</span>
+                </span>
+                <span className="shrink-0 text-lg font-semibold tabular-nums text-muted-foreground">
+                  {formatDays(data.pendingDays)}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 px-3 py-2.5">
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-foreground">{t('replacement.approvedLabel')}</span>
+                  <span className="block text-xs text-muted-foreground/80">{t('replacement.approvedHint')}</span>
+                </span>
+                <span className="shrink-0 text-lg font-semibold tabular-nums text-foreground">
+                  {formatDays(available)}
+                </span>
+              </div>
             </div>
 
             <section>
@@ -192,7 +225,7 @@ export function ReplacementLeavePanel({
                 <p className="text-sm text-muted-foreground">{t('replacement.empty')}</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[34rem] text-sm">
+                  <table className="w-full min-w-[40rem] text-sm">
                     <thead>
                       <tr className="border-b border-border text-xs text-muted-foreground">
                         {COLUMNS.map((c) => {
@@ -286,6 +319,13 @@ export function ReplacementLeavePanel({
                                   {t(sk)}
                                 </span>
                               )}
+                            </td>
+                            {/* How much of THIS credit is still unused. A lapsed or paid-out row shows 0.00
+                                rather than its residue: the credit is gone, and printing what it once held
+                                beside an Expired badge is the "table contradicts the balance" complaint this
+                                panel exists to answer. */}
+                            <td className="whitespace-nowrap py-1.5 pr-3 text-right tabular-nums">
+                              {formatDays(r.status === 'active' ? r.remaining : 0)}
                             </td>
                           </tr>
                         );
