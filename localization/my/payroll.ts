@@ -675,20 +675,58 @@ export function statutory(
     /** Money inside `additional` that IS SOCSO/EIS-liable (an 'additional'-stream item ticked subject-to-SOCSO/EIS —
      *  the overtime-classified-as-additional case). The only carve-out that ADDS a contribution. */
     socsoWageExtra?: number;
+    // ── Feedback 2333b7fb (r193) — DEDUCTION-SIDE BASE REDUCTIONS ─────────────────────────────────────
+    // The r187 carve-outs above all describe money that is INSIDE `wage`/`additional` and must be taken
+    // back out of one agency's base. These four describe money that is NOT inside `wage` at all: a
+    // kind='deduction' pay item (unpaid leave, absence, short notice) whose amount was subtracted from
+    // take-home AFTER every contribution was computed, while its own EPF / SOCSO / PCB / HRDF boxes were
+    // read by nothing. Ticked, the item now reduces each base whose box it carries — judged separately,
+    // one box per agency, exactly as the operator set them.
+    //
+    // ⚠️ PCB IS CARVED HERE AND IS NOT AN OVERSIGHT — it is a DELIBERATE ASYMMETRY WITH r187, and the
+    // next reader will otherwise "fix" it back to match the comment above. For an EARNING the money is
+    // still taxable remuneration, so r187 correctly leaves the PCB base alone: the ticks there answer
+    // "which agency is liable", never "was this earned". For a DEDUCTION the money WAS NEVER EARNED —
+    // an unpaid-leave day is pay that did not happen — so the remuneration LHDN taxes legitimately
+    // falls with it. Removing `pcbWageDeduction` would tax an employee on wages they never received.
+    //
+    // ALL DEFAULT 0 ⇒ byte-identical for every existing caller and every golden test.
+    /** Deduction money to take OUT of the EPF wage base (item ticked "subject to EPF"). */
+    epfWageDeduction?: number;
+    /** Deduction money to take OUT of the SOCSO/EIS/SKBBK base (item ticked "subject to SOCSO/EIS"). */
+    socsoWageDeduction?: number;
+    /** Deduction money to take OUT of the PCB remuneration base (item ticked "subject to PCB"). */
+    pcbWageDeduction?: number;
   },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
-  // Feedback 017d9c25 — the agency bases after the pay-item ticks are honoured. PCB is deliberately NOT
-  // carved: every one of these items is still taxable remuneration (the ticks are about EPF/PERKESO
-  // liability, not about tax), so `pcbMonth` below keeps reading the full `cashWage` + `additional`.
-  const epfWage = Math.max(0, round2(wage - Math.max(0, opts?.epfWageExcluded ?? 0)));
+  // Feedback 017d9c25 — the agency bases after the EARNING-side pay-item ticks are honoured. PCB is
+  // deliberately NOT carved by those: every one of those items is still taxable remuneration (their
+  // ticks are about EPF/PERKESO liability, not about tax), so `epfWageExcluded` / `socsoWageExcluded` /
+  // `socsoWageExtra` never touch `pcbWage` below.
+  // Feedback 2333b7fb — …and the DEDUCTION-side reductions, subtracted at the same points and clamped
+  // the same way. `pcbWageDeduction` IS applied to `pcbWage`, and that asymmetry with r187 is the whole
+  // point: an earning is remuneration that WAS received, a ticked deduction is wage that was NOT. Read
+  // the opts doc block before changing either half.
+  const epfWage = Math.max(
+    0,
+    round2(wage - Math.max(0, opts?.epfWageExcluded ?? 0) - Math.max(0, opts?.epfWageDeduction ?? 0)),
+  );
   const epfAdditional = Math.max(0, round2(additional - Math.max(0, opts?.epfAdditionalExcluded ?? 0)));
   const socsoWage = Math.max(
     0,
-    round2(cashWage - Math.max(0, opts?.socsoWageExcluded ?? 0) + Math.max(0, opts?.socsoWageExtra ?? 0)),
+    round2(
+      cashWage -
+        Math.max(0, opts?.socsoWageExcluded ?? 0) +
+        Math.max(0, opts?.socsoWageExtra ?? 0) -
+        Math.max(0, opts?.socsoWageDeduction ?? 0),
+    ),
   );
+  /** The cash remuneration PCB is charged on. Identical to `cashWage` unless a ticked deduction says
+   *  some of that wage was never earned this month (unpaid leave / absence / short notice). */
+  const pcbWage = Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.
   const eC = epfContribution(epfWage, epfAdditional, rules.epf, opts?.epfElection, {
@@ -720,7 +758,7 @@ export function statutory(
   if (flatRate != null) {
     // Flat-rate MTD (spec §D.a for non-residents; the REP/Knowledge-Worker incentive schemes use the same
     // shape at 15%): flat % of taxable remuneration, no reliefs / accumulators.
-    const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * flatRate)));
+    const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + additional) * flatRate)));
     const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(additional * flatRate)));
     return {
       epfEmployee: e.employee,
@@ -740,7 +778,7 @@ export function statutory(
     };
   }
   const m = pcbMonth({
-    monthlyWage: cashWage,
+    monthlyWage: pcbWage,
     epfMonthly: Math.max(0, e.employee - epfOnBonus),
     month: pcbCtx?.month ?? 1,
     profile,
