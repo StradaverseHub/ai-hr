@@ -18,7 +18,15 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { attendancePolicy, attendanceRule, attendanceRuleOtRow, shift, type AttendanceOtRatePattern } from '../db/schema';
+import {
+  ATTENDANCE_OT_ROUNDING_MODES,
+  attendancePolicy,
+  attendanceRule,
+  attendanceRuleOtRow,
+  shift,
+  type AttendanceOtRatePattern,
+  type AttendanceOtRoundingMode,
+} from '../db/schema';
 
 const timeToMin = (t: string): number => {
   const [h, m] = t.split(':').map(Number);
@@ -33,7 +41,8 @@ export type ResolvedOtRow = {
   rate: number;
   /** 7c834696 — the band's public-holiday multiplier; null ⇒ use `rate` (today's behaviour). */
   phRate: number | null;
-  rounding: boolean;
+  /** 7c834696 contested (0439) — 'none' | 'down' | 'up'. Replaced the boolean whose direction was floor. */
+  roundingMode: AttendanceOtRoundingMode;
   roundToMinutes: number | null;
 };
 export type ResolvedAttendanceRule = {
@@ -62,6 +71,14 @@ export type ResolvedAttendanceRule = {
  * PURE + exported so the engine and the golden tests share one definition. Standard rules (no OT rows,
  * applyToEarlyOt=false) return the input unchanged, so today's OT stays byte-identical.
  *
+ * 7c834696 CONTESTED (2026-08-13, migration 0439) — ROUNDING NOW HAS A DIRECTION THE OPERATOR CHOOSES:
+ * 'none' | 'down' | 'up'. Until 0439 it was a boolean and this function only ever floored, so "round up"
+ * was not a setting the reporter had failed to find — it did not exist. The migration maps the old
+ * true → 'down' and false → 'none', which is the identity of what each already did, so NO stored band
+ * changes its minutes on the day this ships. Everything below about FLOOR is unchanged and still the
+ * reasoning behind 'down'; 'up' is the option that was refused as a GLOBAL default and is now offered as
+ * a per-band choice, which is a different thing.
+ *
  * RESOLVED BY 7c834696 rev 3 (2026-08-11) — ROUNDING IS DOWNWARD, and this is the ONE line in the item
  * that moves money. It was round-to-NEAREST, and nearest is unsound for a BANDED table because nothing
  * stopped the result exceeding either the band's own upper bound or the minutes actually worked:
@@ -78,12 +95,15 @@ export type ResolvedAttendanceRule = {
  * the one that was approved. Round-UP was refused for the opposite reason: it sends every 60–119 day to
  * 120 and makes the inflation universal.
  *
- * WHAT FLOOR COSTS, stated because it is the reason this needed an owner decision: in ANY band with
- * rounding on, an overtime SMALLER than the Round-To multiple now floors to ZERO — applyOtRuleRows(40, …)
- * against a round-to-60 band was 60 and is now 0. That is the request's own first example ("0:01–0:59 with
- * Round To 60 becomes 60") going the other way, and it is the price of never paying for unworked time. No
- * production rule is exposed to it: A02's 1–59 band has rounding OFF, and Standard's rounding band starts
- * at 60. The request's second example (121 at round-to 30 → 120; 150 stays 150) still holds under floor.
+ * WHAT FLOOR COSTS, stated because it is the reason this needed an owner decision: in ANY band set to
+ * 'down', an overtime SMALLER than the Round-To multiple floors to ZERO — applyOtRuleRows(40, …) against a
+ * round-to-60 band was 60 under nearest and is 0 under floor. That is the request's own first example
+ * ("0:01–0:59 with Round To 60 becomes 60") going the other way, and it is the price of never paying for
+ * unworked time. No production rule is exposed to it: A02's 1–59 band does not round, and Standard's
+ * rounding band starts at 60. The request's second example (121 at round-to 30 → 120; 150 stays 150) still
+ * holds under floor. THAT COST IS EXACTLY WHY THERE ARE THREE MODES: 'none' avoids it outright by using
+ * the exact minutes, and 'up' turns it into the opposite (40 against round-to-60 becomes 60). Neither is
+ * imposed — the band says which it wants, and a band that says nothing is 'none'.
  *
  * SCOPE, CORRECTED BY 7c834696 STAGE 1: the per-band rate now DOES something — it decides which rate
  * COLUMN a day's overtime minutes land in (core/attendance-calc.ts splitOtMinutes, called by the engine
@@ -105,9 +125,16 @@ export function applyOtRuleRows(
   if (rule?.applyToEarlyOt) ot += Math.max(0, earlyOtMinutes);
   if (!rule || rule.otRows.length === 0 || ot <= 0) return ot;
   const band = rule.otRows.find((r) => ot >= r.fromMinutes && (r.toMinutes <= r.fromMinutes || ot <= r.toMinutes));
-  if (band?.rounding && band.roundToMinutes != null && band.roundToMinutes > 0) {
-    // FLOOR — see the note above. Never returns more minutes than were worked, and never leaves the band.
-    ot = Math.floor(ot / band.roundToMinutes) * band.roundToMinutes;
+  const step = band?.roundToMinutes ?? 0;
+  // `step > 0` is still checked here and not only at the CHECK constraint: a row written before 0439's pair
+  // constraint existed, or by anything other than the service, must not divide by zero in the pay path.
+  if (band && step > 0) {
+    // 'down' is FLOOR — see the note above: never more minutes than were worked, and never leaves the band.
+    if (band.roundingMode === 'down') ot = Math.floor(ot / step) * step;
+    // 'up' is CEIL, and it is the one mode that can hand out minutes nobody worked. That is the operator's
+    // explicit choice per band, which is precisely why it is not, and never becomes, a default.
+    else if (band.roundingMode === 'up') ot = Math.ceil(ot / step) * step;
+    // 'none' falls through untouched — the exact minutes, nothing dropped.
   }
   return Math.max(0, ot);
 }
@@ -138,7 +165,7 @@ const toResolved = (
       ratePattern: r.ratePattern,
       rate: Number(r.rate),
       phRate: r.phRate == null ? null : Number(r.phRate),
-      rounding: r.rounding,
+      roundingMode: r.roundingMode,
       roundToMinutes: r.roundToMinutes,
     })),
 });
@@ -275,10 +302,14 @@ export type OtRowInput = {
   fromMinutes: number;
   toMinutes: number;
   ratePattern: AttendanceOtRatePattern;
-  rate: number;
+  /** 7c834696 contested — NULLABLE on purpose. A new band no longer arrives pre-filled with 1.5, so
+   *  "nothing has been typed here yet" is a state the form can now be in, and it must reach this layer as
+   *  itself rather than as a 0 the reader invented. Saving with it unset is refused, not defaulted. */
+  rate: number | null;
   /** 7c834696 — optional public-holiday multiplier for this band; null ⇒ the band uses `rate`. */
   phRate?: number | null;
-  rounding: boolean;
+  /** 7c834696 contested (0439) — 'none' | 'down' | 'up'; replaced the boolean that always meant floor. */
+  roundingMode: AttendanceOtRoundingMode;
   roundToMinutes: number | null;
 };
 export type AttendanceRuleInput = {
@@ -345,6 +376,14 @@ function normalizeInput(p: AttendanceRuleInput) {
     const fromMinutes = nonNeg(r.fromMinutes, 'OT “From”');
     const toMinutes = nonNeg(r.toMinutes, 'OT “To”');
     const ratePattern: AttendanceOtRatePattern = r.ratePattern === 'variable' ? 'variable' : 'flat';
+    // 7c834696 contested — the rate is REQUIRED and is no longer defaulted anywhere. The reporter's third
+    // point was that a new band arrived showing 1.5 as though the system had decided the band was
+    // time-and-a-half; the editor stopped seeding it, and the honest completion of that is to refuse an
+    // empty one here rather than to silently substitute 1.5 (the column default) or 0 (what `Number('')`
+    // would give). Both substitutions are the same defect the reporter raised, just quieter.
+    if (r.rate == null || (r.rate as unknown) === '') {
+      throw new Error(`Overtime row ${i + 1} has no rate. Enter the rate this band uses.`);
+    }
     const rate = Number(r.rate);
     // Zero is a legitimate multiplier — "record the hours but do not pay them" (request §7). It always was
     // accepted here; what was missing was a way to CHOOSE it, which the editor now offers.
@@ -354,16 +393,30 @@ function normalizeInput(p: AttendanceRuleInput) {
     if (phRate != null && (!Number.isFinite(phRate) || phRate < 0)) {
       throw new Error('Public-holiday OT rate must be a non-negative number.');
     }
-    const rounding = !!r.rounding;
-    const roundToMinutes = rounding ? nonNeg(r.roundToMinutes ?? 0, 'Round-to') : null;
-    if (rounding && (!roundToMinutes || roundToMinutes <= 0)) throw new Error('Choose a positive “Round to” value when rounding is on.');
+    // 7c834696 contested — an unrecognised mode falls back to 'none', the only value that cannot change
+    // what a band pays. Never to 'down': guessing a DIRECTION from a value we did not recognise is how a
+    // typo would start rounding somebody's overtime away.
+    const roundingMode: AttendanceOtRoundingMode = ATTENDANCE_OT_ROUNDING_MODES.includes(
+      r.roundingMode as AttendanceOtRoundingMode,
+    )
+      ? (r.roundingMode as AttendanceOtRoundingMode)
+      : 'none';
+    const roundToMinutes = roundingMode === 'none' ? null : nonNeg(r.roundToMinutes ?? 0, 'Round-to');
+    // "Refuse 0" is the point, not a formality: 0 divides by zero in applyOtRuleRows, and the `> 0` guard
+    // that stood in for this made 0 behave as 'none' by accident. Round To is a free minutes box now
+    // (5, 10, anything the policy uses), so a typed 0 is reachable in a way the old 15/30/60 list never was.
+    if (roundingMode !== 'none' && (!roundToMinutes || roundToMinutes <= 0)) {
+      throw new Error(
+        `Overtime row ${i + 1}: enter a “Round to” of at least 1 minute, or set rounding to “No rounding”.`,
+      );
+    }
     return {
       fromMinutes,
       toMinutes,
       ratePattern,
       rate: rate.toFixed(2),
       phRate: phRate == null ? null : phRate.toFixed(2),
-      rounding,
+      roundingMode,
       roundToMinutes,
       sortOrder: i,
     };

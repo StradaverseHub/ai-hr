@@ -116,7 +116,7 @@ describe('6da67ab7 — the rule reaches the employee through the SHIFT, not thro
       a,
       ruleInput('Round30', {
         lateGracePeriodMinutes: 60, // keep both days 'present' so status never clouds the OT figure
-        otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }],
+        otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, roundingMode: 'down', roundToMinutes: 30 }],
       }),
     );
     const shift = await createShift(a, workdayShift({ ruleId: rounded.id }));
@@ -182,7 +182,7 @@ describe('6da67ab7 — one Standard, one library, no company axis', () => {
     await updateAttendanceRule(a, {
       ruleId: stdId,
       ...ruleInput('Standard', {
-        otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }],
+        otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, roundingMode: 'down', roundToMinutes: 30 }],
       }),
     });
 

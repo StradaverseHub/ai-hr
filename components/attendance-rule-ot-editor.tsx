@@ -7,16 +7,20 @@ import { Fragment, useState } from 'react';
 // hidden `otRows` JSON field the server action parses (mirrors the shift break-periods island). All labels
 // are passed in already-translated so this island carries no next-intl dependency.
 
+export type OtRoundingMode = 'none' | 'down' | 'up';
+
 export type OtEditorRow = {
   fromH: number;
   fromM: number;
   toH: number;
   toM: number;
   ratePattern: 'flat' | 'variable';
+  /** '' ⇒ nothing typed yet. 7c834696 contested: a NEW band starts here rather than at 1.5 — see addRow. */
   rate: string;
   /** 7c834696 — this band's public-holiday multiplier. '' ⇒ none set ⇒ the band uses `rate`. */
   phRate: string;
-  rounding: boolean;
+  /** 7c834696 contested (0439) — replaced the boolean whose only direction was, invisibly, down. */
+  roundingMode: OtRoundingMode;
   roundToMinutes: number | null;
 };
 
@@ -32,8 +36,12 @@ export type OtEditorLabels = {
   colRemove: string;
   patternFlat: string;
   patternVariable: string;
-  roundingYes: string;
-  roundingNo: string;
+  roundingNone: string;
+  roundingDown: string;
+  roundingUp: string;
+  roundToHint: string;
+  rateFlatSuffix: string;
+  rateUnset: string;
   hour: string;
   min: string;
   applyEarlyOtLabel: string;
@@ -87,10 +95,14 @@ const ladderProblems = (rows: OtEditorRow[], labels: OtEditorLabels): Map<number
   return out;
 };
 
-/** The option string that represents a stored value, so string comparison in the select cannot miss. */
+/** The option string that represents a stored value, so string comparison in the select cannot miss.
+ *
+ *  '' short-circuits, and that guard is load-bearing rather than defensive: `Number('')` is 0, so without
+ *  it an EMPTY rate would match the '0.0' option and a band nobody had filled in would display — and then
+ *  save — as "record the hours, pay nothing". Empty became reachable in this release (addRow no longer
+ *  seeds 1.5), so the guard arrives with it. */
 const rateValue = (current: string): string =>
-  VARIABLE_RATES.find((v) => Number(v) === Number(current)) ?? current;
-const ROUND_TO = [15, 30, 60];
+  current === '' ? '' : (VARIABLE_RATES.find((v) => Number(v) === Number(current)) ?? current);
 
 /** The `From` a new row must start at: one minute past the last row's `To` (0 for the first row). */
 const nextFromMinutes = (rows: OtEditorRow[]): number => {
@@ -125,9 +137,13 @@ export function AttendanceRuleOtEditor({
         toH: 0,
         toM: 0,
         ratePattern: 'flat',
-        rate: '1.5',
+        // 7c834696 contested — EMPTY, not '1.5'. The reporter read a new Flat band's pre-filled 1.5 as the
+        // system having decided the band was time-and-a-half. The rate is real (core/attendance-calc.ts
+        // rateForDay reads it), so it cannot be removed; what it can stop doing is pretending to be an
+        // answer. Blank, plus the "× basic rate" label on the cell, plus a save that refuses an empty one.
+        rate: '',
         phRate: '',
-        rounding: false,
+        roundingMode: 'none',
         roundToMinutes: null,
       },
     ]);
@@ -138,10 +154,12 @@ export function AttendanceRuleOtEditor({
       fromMinutes: (Number(r.fromH) || 0) * 60 + (Number(r.fromM) || 0),
       toMinutes: (Number(r.toH) || 0) * 60 + (Number(r.toM) || 0),
       ratePattern: r.ratePattern,
-      rate: Number(r.rate) || 0,
+      // null, NOT 0 — the server must be able to tell "not filled in" from the deliberate 0× ("record the
+      // hours but do not pay them"). It refuses the first and stores the second.
+      rate: r.rate === '' || !Number.isFinite(Number(r.rate)) ? null : Number(r.rate),
       phRate: r.phRate === '' ? null : Number(r.phRate) || 0,
-      rounding: r.rounding,
-      roundToMinutes: r.rounding ? r.roundToMinutes : null,
+      roundingMode: r.roundingMode,
+      roundToMinutes: r.roundingMode === 'none' ? null : r.roundToMinutes,
     })),
   );
 
@@ -220,14 +238,25 @@ export function AttendanceRuleOtEditor({
                     </select>
                   </td>
                   <td className="py-1.5 pr-2">
+                    {/* 7c834696 contested — a band's rate is never guessed for the admin. `required` on both
+                        controls is real validation, not decoration: a control with no `name` is still a
+                        candidate for HTML constraint validation, so an empty rate blocks the submit in the
+                        browser, and core/attendance-rule.ts refuses it again on the server. */}
                     {r.ratePattern === 'variable' ? (
-                      <select value={rateValue(r.rate)} onChange={(e) => update(i, { rate: e.target.value })} className={selCls} aria-label={labels.colRate}>
+                      <select required value={rateValue(r.rate)} onChange={(e) => update(i, { rate: e.target.value })} className={selCls} aria-label={labels.colRate}>
+                        {r.rate === '' && <option value="">{labels.rateUnset}</option>}
                         {ratesFor(r.rate).map((v) => (
                           <option key={v} value={v}>{`${v}×`}</option>
                         ))}
                       </select>
                     ) : (
-                      <input type="number" min={0} step="0.01" value={r.rate} onChange={(e) => update(i, { rate: e.target.value })} className={`${numCls} w-20`} aria-label={labels.colRate} />
+                      <div className="flex items-center gap-1">
+                        <input type="number" required min={0} step="0.01" value={r.rate} onChange={(e) => update(i, { rate: e.target.value })} className={`${numCls} w-20`} aria-label={labels.colRate} />
+                        {/* The label the request asked for. "Flat" names the PATTERN (one rate for the whole
+                            band, whatever the day); the number is still a multiplier the engine reads, so it
+                            is labelled as one rather than hidden. */}
+                        <span className="whitespace-nowrap text-xs text-muted-foreground">{labels.rateFlatSuffix}</span>
+                      </div>
                     )}
                   </td>
                   <td className="py-1.5 pr-2">
@@ -246,29 +275,42 @@ export function AttendanceRuleOtEditor({
                     )}
                   </td>
                   <td className="py-1.5 pr-2">
+                    {/* 7c834696 contested — three answers, not two. The old Yes/No could not say WHICH WAY,
+                        and the engine's answer (always floor) was invisible on this screen. */}
                     <select
-                      value={r.rounding ? 'yes' : 'no'}
-                      onChange={(e) => update(i, { rounding: e.target.value === 'yes', roundToMinutes: e.target.value === 'yes' ? (r.roundToMinutes ?? 15) : null })}
+                      value={r.roundingMode}
+                      onChange={(e) => {
+                        const mode = e.target.value as OtRoundingMode;
+                        update(i, { roundingMode: mode, roundToMinutes: mode === 'none' ? null : (r.roundToMinutes ?? 15) });
+                      }}
                       className={selCls}
                       aria-label={labels.colRounding}
                     >
-                      <option value="no">{labels.roundingNo}</option>
-                      <option value="yes">{labels.roundingYes}</option>
+                      <option value="none">{labels.roundingNone}</option>
+                      <option value="down">{labels.roundingDown}</option>
+                      <option value="up">{labels.roundingUp}</option>
                     </select>
                   </td>
                   <td className="py-1.5 pr-2">
-                    <select
-                      value={r.roundToMinutes ?? ''}
-                      disabled={!r.rounding}
-                      onChange={(e) => update(i, { roundToMinutes: e.target.value === '' ? null : Number(e.target.value) })}
-                      className={`${selCls} disabled:opacity-40`}
-                      aria-label={labels.colRoundTo}
-                    >
-                      <option value="">—</option>
-                      {ROUND_TO.map((m) => (
-                        <option key={m} value={m}>{`${m} ${labels.min}`}</option>
-                      ))}
-                    </select>
+                    {/* Was a fixed 15 / 30 / 60 list, so a policy that rounds to 5 or 10 minutes could not be
+                        expressed at all. `min={1}` refuses 0 in the browser; core/attendance-rule.ts refuses
+                        it again on save, and 0439 refuses it in the database — 0 divides by zero in the pay
+                        path, and the old `> 0` guard made it behave as "no rounding" by accident. */}
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        required={r.roundingMode !== 'none'}
+                        value={r.roundingMode === 'none' ? '' : (r.roundToMinutes ?? '')}
+                        disabled={r.roundingMode === 'none'}
+                        onChange={(e) => update(i, { roundToMinutes: e.target.value === '' ? null : Math.trunc(Number(e.target.value)) })}
+                        className={`${numCls} disabled:opacity-40`}
+                        aria-label={labels.colRoundTo}
+                        title={labels.roundToHint}
+                      />
+                      <span className="text-xs text-muted-foreground">{labels.min}</span>
+                    </div>
                   </td>
                   <td className="py-1.5">
                     <button type="button" onClick={() => removeRow(i)} className="rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10" aria-label={labels.colRemove}>

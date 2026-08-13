@@ -39,7 +39,7 @@ const band = (over: Partial<ResolvedOtRow> = {}): ResolvedOtRow => ({
   ratePattern: 'flat',
   rate: 1.5,
   phRate: null,
-  rounding: false,
+  roundingMode: 'none',
   roundToMinutes: null,
   ...over,
 });
@@ -349,7 +349,7 @@ describe('splitOtMinutes — progressive bands', () => {
 
 describe('OT rounding is DOWNWARD — 7c834696 rev 3, and it moves two real days', () => {
   const round = (roundToMinutes: number) =>
-    rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, rounding: true, roundToMinutes })] });
+    rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, roundingMode: 'down', roundToMinutes })] });
 
   it("the request's second example still holds: round-to 30 turns 121 into 120 and leaves 150 at 150", () => {
     // Unchanged by the switch from nearest to floor — floor(121/30)=4 and floor(150/30)=5 give the same
@@ -408,8 +408,8 @@ describe('OT rounding is DOWNWARD — 7c834696 rev 3, and it moves two real days
   it("production rule A02's real two-row table: 60–119 all floor to 60, and 90/100 stop inflating", () => {
     const a02 = rule({
       otRows: [
-        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, rounding: false, roundToMinutes: null }),
-        band({ fromMinutes: 60, toMinutes: 119, ratePattern: 'variable', rate: 1.5, rounding: true, roundToMinutes: 60 }),
+        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, roundingMode: 'none', roundToMinutes: null }),
+        band({ fromMinutes: 60, toMinutes: 119, ratePattern: 'variable', rate: 1.5, roundingMode: 'down', roundToMinutes: 60 }),
       ],
     });
     // Row 1 — rounding OFF, so the exact minutes survive. These are Daniel Tan 18:29, 18:56 and Mei Ling
@@ -448,8 +448,8 @@ describe('OT rounding is DOWNWARD — 7c834696 rev 3, and it moves two real days
     const standard = rule({
       isDefault: true,
       otRows: [
-        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, phRate: 2, rounding: false }),
-        band({ fromMinutes: 60, toMinutes: 480, ratePattern: 'variable', rate: 1.5, phRate: 3, rounding: true, roundToMinutes: 60 }),
+        band({ fromMinutes: 1, toMinutes: 59, ratePattern: 'variable', rate: 1.5, phRate: 2, roundingMode: 'none' }),
+        band({ fromMinutes: 60, toMinutes: 480, ratePattern: 'variable', rate: 1.5, phRate: 3, roundingMode: 'down', roundToMinutes: 60 }),
       ],
     });
     expect(applyOtRuleRows(150, 0, standard)).toBe(120); // was 180 under nearest
@@ -464,7 +464,7 @@ describe('OT rounding is DOWNWARD — 7c834696 rev 3, and it moves two real days
   it('rounding never returns more minutes than were worked, for any band geometry', () => {
     // The property the whole fix exists for, asserted directly rather than only through examples.
     for (const roundTo of [5, 10, 15, 30, 45, 60, 90, 120]) {
-      const r = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, rounding: true, roundToMinutes: roundTo })] });
+      const r = rule({ otRows: [band({ fromMinutes: 0, toMinutes: 0, roundingMode: 'down', roundToMinutes: roundTo })] });
       for (let ot = 0; ot <= 600; ot += 1) {
         const out = applyOtRuleRows(ot, 0, r);
         expect(out, `roundTo=${roundTo} ot=${ot}`).toBeLessThanOrEqual(ot);

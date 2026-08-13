@@ -3553,8 +3553,18 @@ export const attendanceRule = pgTable(
 
 // One overtime time-band row of an attendance_rule (the reporter's "+ Add Row" OT table). fromMinutes..
 // toMinutes bound the OT duration (minutes past normal); ratePattern 'flat' (any numeric multiplier) or
-// 'variable' (a standardized multiplier). `rounding` + `roundToMinutes` round the matched OT minutes.
+// 'variable' (a standardized multiplier). `roundingMode` + `roundToMinutes` round the matched OT minutes.
 export type AttendanceOtRatePattern = 'flat' | 'variable';
+
+// 7c834696 contested (migration 0439) — rounding DIRECTION. It used to be a boolean, and the engine only
+// ever floored, so "round up" was not a setting anyone had failed to find: it did not exist. text + CHECK
+// rather than a pgEnum, for the widening reason recorded at OT_REASON_CATEGORIES above.
+//   none — the exact minutes are used, nothing dropped (the boolean's FALSE)
+//   down — the largest multiple of roundToMinutes not exceeding the overtime (the boolean's TRUE, verbatim)
+//   up   — the smallest multiple of roundToMinutes not below the overtime (NEW)
+// 0439 maps true → 'down' and false → 'none', so no band already saved changes what it does.
+export const ATTENDANCE_OT_ROUNDING_MODES = ['none', 'down', 'up'] as const;
+export type AttendanceOtRoundingMode = (typeof ATTENDANCE_OT_ROUNDING_MODES)[number];
 export const attendanceRuleOtRow = pgTable(
   'attendance_rule_ot_row',
   {
@@ -3572,7 +3582,10 @@ export const attendanceRuleOtRow = pgTable(
     // PUBLIC HOLIDAY. NULL ⇒ fall back to `rate`, which is exactly today's behaviour, so a band only
     // behaves differently on a holiday once someone fills this in.
     phRate: numeric('ph_rate', { precision: 6, scale: 2 }),
-    rounding: boolean('rounding').notNull().default(false),
+    roundingMode: text('rounding_mode').notNull().default('none').$type<AttendanceOtRoundingMode>(),
+    // NULL / ≤ 0 ⇒ no step to round to. `roundingMode <> 'none'` requires a positive step (CHECK in 0439):
+    // 0 would divide by zero in the engine, and until 0439 the `> 0` guard silently skipped rounding
+    // instead — the same outcome as 'none', but by accident rather than by the operator's choice.
     roundToMinutes: integer('round_to_minutes'),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
