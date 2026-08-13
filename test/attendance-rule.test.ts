@@ -98,13 +98,13 @@ describe('applyOtRuleRows (pure)', () => {
   });
 
   it('rounds OT DOWN to the matching band round-to value (7c834696 rev 3 — never above what was worked)', () => {
-    const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, phRate: null, rounding: true, roundToMinutes: 30 }] });
+    const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, phRate: null, roundingMode: 'down' as const, roundToMinutes: 30 }] });
     expect(applyOtRuleRows(70, 0, rule)).toBe(60); // 70 → floor to 30s = 60 (nearest gave 60 too)
     expect(applyOtRuleRows(80, 0, rule)).toBe(60); // 80 → floor to 30s = 60; nearest USED TO give 90
   });
 
   it('folds early-OT in only when applyToEarlyOt is set', () => {
-    const band = [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, rounding: false, roundToMinutes: null }];
+    const band = [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, roundingMode: 'none' as const, roundToMinutes: null }];
     expect(applyOtRuleRows(70, 20, ruleWith({ otRows: band, applyToEarlyOt: false }))).toBe(70);
     expect(applyOtRuleRows(70, 20, ruleWith({ otRows: band, applyToEarlyOt: true }))).toBe(90);
   });
@@ -205,7 +205,7 @@ describe('OT rows drive workday OT rounding through checkOut', () => {
       earlyDeductMinutes: 0,
       includeGraceInEarlyOut: false,
       applyToEarlyOt: false,
-      otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }],
+      otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, roundingMode: 'down' as const, roundToMinutes: 30 }],
     });
     // With the rounding rule: 550 worked − 480 normal = 70 OT → floored to a multiple of 30 = 60.
     const withRule = await createShift(a, workdayShift({ ruleId: rounded.id }));
@@ -317,7 +317,7 @@ const vband = (fromMinutes: number, toMinutes: number, rate: number) => ({
   toMinutes,
   ratePattern: 'variable' as const,
   rate,
-  rounding: false,
+  roundingMode: 'none' as const,
   roundToMinutes: null,
 });
 

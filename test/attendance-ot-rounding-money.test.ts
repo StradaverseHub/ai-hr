@@ -71,8 +71,8 @@ const randomIc = () => `9001010${String(10000 + (icSeq += 1)).slice(-5)}`;
 
 /** The production A02 table, both rows, with the first row's rounding OFF exactly as production has it. */
 const a02OtRows = () => [
-  { fromMinutes: 1, toMinutes: 59, ratePattern: 'variable' as const, rate: 1.5, rounding: false, roundToMinutes: null },
-  { fromMinutes: 60, toMinutes: 119, ratePattern: 'variable' as const, rate: 1.5, rounding: true, roundToMinutes: 60 },
+  { fromMinutes: 1, toMinutes: 59, ratePattern: 'variable' as const, rate: 1.5, roundingMode: 'none' as const, roundToMinutes: null },
+  { fromMinutes: 60, toMinutes: 119, ratePattern: 'variable' as const, rate: 1.5, roundingMode: 'down' as const, roundToMinutes: 60 },
 ];
 
 async function ruleWithBands() {

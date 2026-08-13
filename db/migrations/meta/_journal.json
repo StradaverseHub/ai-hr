@@ -2486,6 +2486,13 @@
       "when": 1781862536000,
       "tag": "0436_roster_assignment_delete_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 439,
+      "version": "7",
+      "when": 1781862539000,
+      "tag": "0439_ot_rounding_mode",
+      "breakpoints": true
     }
   ]
 }

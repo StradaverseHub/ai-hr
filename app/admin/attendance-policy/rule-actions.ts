@@ -48,9 +48,15 @@ function parseOtRows(raw: string): OtRowInput[] {
         fromMinutes: Math.trunc(Number(x.fromMinutes ?? 0)) || 0,
         toMinutes: Math.trunc(Number(x.toMinutes ?? 0)) || 0,
         ratePattern: x.ratePattern === 'variable' ? 'variable' : 'flat',
-        rate: Number(x.rate ?? 0) || 0,
+        // 7c834696 contested — an ABSENT rate stays absent. `Number(x.rate ?? 0) || 0` used to turn "the
+        // admin has not typed a rate" into a stored 0.00, which is a real and different setting ("record
+        // the hours, pay nothing"). Now the band that was never filled in is refused on save with a message
+        // naming the row, instead of being paid at a number nobody chose.
+        rate: x.rate == null || x.rate === '' ? null : Number(x.rate) || 0,
         phRate: x.phRate == null || x.phRate === '' ? null : Number(x.phRate) || 0,
-        rounding: x.rounding === true || x.rounding === 'true' || x.rounding === 'on',
+        // 0439 — three modes. Anything else (including the pre-0439 booleans, if a stale tab posts one)
+        // normalises to 'none' in core/attendance-rule.ts, which cannot change what a band pays.
+        roundingMode: x.roundingMode === 'down' || x.roundingMode === 'up' ? x.roundingMode : 'none',
         roundToMinutes: x.roundToMinutes == null || x.roundToMinutes === '' ? null : Math.trunc(Number(x.roundToMinutes)) || null,
       }));
   } catch {

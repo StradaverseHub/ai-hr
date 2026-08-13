@@ -37,7 +37,7 @@ export async function RuleForm({
     // the old toFixed(2) ("1.50") matched none of them, so a saved 1.5 band reopened showing the wrong rate.
     rate: Number(r.rate).toFixed(1),
     phRate: r.phRate == null ? '' : Number(r.phRate).toFixed(1),
-    rounding: r.rounding,
+    roundingMode: r.roundingMode,
     roundToMinutes: r.roundToMinutes,
   }));
 
@@ -53,8 +53,14 @@ export async function RuleForm({
     colRemove: t('otColRemove'),
     patternFlat: t('otPatternFlat'),
     patternVariable: t('otPatternVariable'),
-    roundingYes: t('roundingYes'),
-    roundingNo: t('roundingNo'),
+    // 7c834696 contested — Yes/No became None/Down/Up (migration 0439). `roundingYes` / `roundingNo` were
+    // retired from all six catalogues in the same change; nothing else read them.
+    roundingNone: t('roundingModeNone'),
+    roundingDown: t('roundingModeDown'),
+    roundingUp: t('roundingModeUp'),
+    roundToHint: t('otRoundToHint'),
+    rateFlatSuffix: t('otRateFlatSuffix'),
+    rateUnset: t('otRateUnset'),
     hour: t('unitHour'),
     min: t('unitMin'),
     applyEarlyOtLabel: t('applyEarlyOtLabel'),
