@@ -2486,6 +2486,27 @@
       "when": 1781862536000,
       "tag": "0436_roster_assignment_delete_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 437,
+      "version": "7",
+      "when": 1781862537000,
+      "tag": "0437_individual_txn_consumed",
+      "breakpoints": true
+    },
+    {
+      "idx": 438,
+      "version": "7",
+      "when": 1781862538000,
+      "tag": "0438_leave_shared_group_ess_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 439,
+      "version": "7",
+      "when": 1781862539000,
+      "tag": "0439_ot_rounding_mode",
+      "breakpoints": true
     }
   ]
 }

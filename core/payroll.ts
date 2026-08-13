@@ -586,6 +586,60 @@ export async function clearBatchRecalc(
 }
 
 /**
+ * 0db616f3 (0437) — STAMP THE ONE-OFF LINES THIS RUN JUST PAID.
+ *
+ * Called from `generatePayslips` in the SAME transaction as the payslip inserts, so "there is a payslip"
+ * and "the line is marked consumed" can never come apart. What it marks is the run, not a boolean: the
+ * fold reads `consumed_batch_id IS NULL OR = this batch`, which keeps every legitimate re-run of THIS
+ * run paying exactly what it paid before while refusing a SECOND run the same money.
+ *
+ * `isNull(consumedBatchId)` in the predicate is why `consumed_at` stays the instant of the FIRST payment:
+ * a reset→re-generate cycle, or a selective reprocess, re-pays lines this run already owns and must not
+ * re-date them. It also makes the call idempotent, which is what lets it sit on both the full-generation
+ * and the subset-reprocess paths without either having to know what the other did.
+ *
+ * DELIBERATELY NOT GATED ON WHETHER THE ROW'S KIND MOVED CASH. A 'leave' row is record-only and an
+ * overtime row on an additional run folds to zero, but both were INCLUDED in the payslip this run wrote —
+ * they appear on it as named provenance lines. "Included" is the claim the marker makes, and the marker
+ * only ever stops the SAME line being included by a DIFFERENT run, which is never right for any kind.
+ */
+async function markIndividualTxnsConsumed(
+  tx: Tx,
+  p: { batchId: string; employmentIds: string[] },
+): Promise<void> {
+  if (p.employmentIds.length === 0) return;
+  await tx
+    .update(payrollIndividualTxn)
+    .set({ consumedBatchId: p.batchId, consumedAt: new Date() })
+    .where(
+      and(
+        eq(payrollIndividualTxn.batchId, p.batchId),
+        inArray(payrollIndividualTxn.employmentId, p.employmentIds),
+        isNull(payrollIndividualTxn.consumedBatchId),
+      ),
+    );
+}
+
+/**
+ * 0db616f3 (0437) — RELEASE the lines a run consumed, because its payslips no longer exist.
+ *
+ * Called from the two places that destroy a run's payslips: `resetProcessedBatch` (back to draft for a
+ * correction) and `teardownDraftChildren` (draft delete, where the rows are detached to survive as
+ * keyed-in business records). A line whose payslip has been deleted has NOT been paid, and leaving it
+ * marked would strand real money — the row would silently drop out of every future run's fold with no
+ * error anywhere.
+ *
+ * Keyed on `consumed_batch_id`, NOT on `batch_id`, on purpose: after a hand repair re-points a row to
+ * another run those two disagree, and it is the run that PAID which has to release it.
+ */
+async function releaseIndividualTxnsConsumed(tx: Tx, batchId: string): Promise<void> {
+  await tx
+    .update(payrollIndividualTxn)
+    .set({ consumedBatchId: null, consumedAt: null })
+    .where(eq(payrollIndividualTxn.consumedBatchId, batchId));
+}
+
+/**
  * What a run has already sent downstream — a payment file exported, statutory returns recorded.
  *
  * EXTRACTED, NOT REWRITTEN. `unlockClosedBatch` has derived exactly these three facts since 9bc442bc, for
@@ -1451,6 +1505,13 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
     .from(payrollBatch)
     .where(eq(payrollBatch.id, batchId))
     .limit(1);
+  // 0db616f3 (0437) — release anything this run consumed BEFORE the detach, and keyed on
+  // `consumed_batch_id` rather than `batch_id` so a row a hand repair re-pointed elsewhere is released
+  // too. The payslips are deleted a few lines below and the batch row itself is deleted by the caller: a
+  // line whose payslip no longer exists has not been paid, and leaving it marked would silently drop it
+  // out of every future run's fold. (The FK's ON DELETE SET NULL is the backstop, not the mechanism —
+  // relying on it would leave the release invisible in the code that causes it.)
+  await releaseIndividualTxnsConsumed(tx, batchId);
   const detachedIndividualTxns = await tx
     .update(payrollIndividualTxn)
     .set({ batchId: null, companyId: teardownBatch?.companyId, payPeriod: teardownBatch?.payPeriod })
@@ -3386,7 +3447,25 @@ export async function generatePayslips(
         })
         .from(payrollIndividualTxn)
         .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
-        .where(eq(payrollIndividualTxn.batchId, p.batchId));
+        // 0db616f3 (0437) — THE CONSUMED MARKER, and this `or` is the whole guard.
+        //
+        // Before it, this predicate was `batch_id = $1` and nothing else: every row hanging off the run
+        // was folded on EVERY generation of it, and a row that moved to a second run was folded there
+        // too, with nothing recording that its money had already reached somebody. That is the January
+        // 2026 shape — 24 imported bonus lines on the regular run, a bonus run showing nineteen zero
+        // payslips, and one `generatePayslips` call between the ledger and paying all 24.
+        //
+        // "Consumed by NOBODY, or consumed by ME." The second half is not a loophole, it is the three
+        // legitimate re-runs: `resetProcessedBatch` destroys this run's payslips so a correction can be
+        // re-generated, a selective reprocess rewrites a subset of them, and both must still pay these
+        // lines. What the first half refuses is the case with no defence today — a DIFFERENT run paying
+        // a line an earlier run already paid.
+        .where(
+          and(
+            eq(payrollIndividualTxn.batchId, p.batchId),
+            or(isNull(payrollIndividualTxn.consumedBatchId), eq(payrollIndividualTxn.consumedBatchId, p.batchId)),
+          ),
+        );
       // `nonPayable: false` is stamped HERE rather than at each call site: every line this helper carries is
       // provenance for money that MOVED (an overtime payment, a one-off earning, a one-off deduction), and
       // a future call site that forgot the flag would silently print a paid item as never paid.
@@ -3523,6 +3602,23 @@ export async function generatePayslips(
       /** The whole resolved+prorated amount, before it was split across buckets. */
       amount: number;
       buckets: { bucket: PayComponentBucket; amount: number }[];
+      // ── Feedback 2333b7fb / 0253dc7c — the item's four statutory ticks, STAMPED AT GENERATE TIME ──
+      // Item 0253dc7c discloses these on Transaction Detail beside the wage bases. Stamping them here,
+      // from the catalogue row this run actually folded, is the only version that reports LAST MONTH'S
+      // answer about LAST MONTH'S pay — reading today's `pay_component` to caption an old payslip is
+      // the same class of mistake as re-deriving `recordLines.nonPayable` (see the note at the
+      // txnRecordLinesByEmp declaration, which was written after exactly that bug).
+      //
+      // Additive jsonb, no migration. Absent on every payslip written before this shipped, and the
+      // screen falls back to the live catalogue there and says on screen which it is showing.
+      /** included_in_epf on the pay item, as it stood when this run folded it. */
+      epf: boolean;
+      /** included_in_socso_eis — ONE setting behind the SOCSO, EIS and SKBBK captions on screen. */
+      socso: boolean;
+      /** included_in_pcb. */
+      pcb: boolean;
+      /** included_in_hrdf_base. */
+      hrdf: boolean;
     };
 
     // ── Feedback 3c473773 — the DISPLAY overlay ────────────────────────────────────────────────────────
@@ -3562,6 +3658,26 @@ export async function generatePayslips(
       /** Of `bonus`: the part sitting on an 'additional' item ticked SUBJECT TO SOCSO/EIS (the OT1_5 leg —
        *  the one carve-out that ADDS a contribution rather than removing one). */
       socsoWageExtra: number;
+      // ── Feedback 2333b7fb (r193) — the DEDUCTION side of the same fault ──────────────────────────
+      // r187 fixed the EARNING half: a pay item's EPF/SOCSO ticks were overridden by its declared
+      // remuneration type. The DEDUCTION half was untouched and is worse — the `kind === 'deduction'`
+      // branch below `continue`s before ANY statutory flag is read, so all four boxes on a deduction
+      // pay item are dead settings. They render on the Pay Item form, they save, and nothing anywhere
+      // reads them. A0006's UNPAID LEAVE is ticked into all four and came off take-home AFTER every
+      // contribution had already been charged on wage the employee never received.
+      //
+      // These four numbers are the amount to take back OUT of each agency's base, one box per agency,
+      // judged separately. A deduction with no box ticked contributes 0 to every one of them and is
+      // byte-identical to today (MONTHLY PARKING is that case on production and must stay that way).
+      /** Deduction money ticked "subject to EPF" — leaves the EPF wage base. */
+      epfWageDeduction: number;
+      /** Deduction money ticked "subject to SOCSO/EIS" — leaves the SOCSO/EIS/SKBBK base. */
+      socsoWageDeduction: number;
+      /** Deduction money ticked "subject to PCB" — leaves the taxable remuneration base. */
+      pcbWageDeduction: number;
+      /** Deduction money ticked "subject to HRDF" — leaves `hrdfBase` (applied in the payslip loop,
+       *  not inside `statutory()`: the levy base is built in the kernel, not in the pack). */
+      hrdfWageDeduction: number;
       recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
@@ -3591,6 +3707,12 @@ export async function generatePayslips(
           epfAdditionalExcluded: 0,
           socsoWageExcluded: 0,
           socsoWageExtra: 0,
+          // 2333b7fb — likewise: with typed components off there are no deduction pay items at all (the
+          // legacy path has no deduct bucket — `deduct: 0` above), so there is nothing to carve.
+          epfWageDeduction: 0,
+          socsoWageDeduction: 0,
+          pcbWageDeduction: 0,
+          hrdfWageDeduction: 0,
           recordLines: [],
           // Nothing to itemise: with typed components off there IS no per-component detail — the figures
           // come from compensation + payroll_input, which is a different shape entirely.
@@ -3607,6 +3729,8 @@ export async function generatePayslips(
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
       // 017d9c25 — the four base carve-outs, accumulated beside the buckets they carve (see the return type).
       let epfWageExcluded = 0, epfAdditionalExcluded = 0, socsoWageExcluded = 0, socsoWageExtra = 0;
+      // 2333b7fb — and the four deduction-side reductions, accumulated in the `kind === 'deduction'` branch.
+      let epfWageDeduction = 0, socsoWageDeduction = 0, pcbWageDeduction = 0, hrdfWageDeduction = 0;
       const recordLines: PayslipRecordLine[] = [];
       // Feedback 862ed0ad — per-component provenance for the CASH buckets. recordLines already itemises
       // record-only components, which is why one-off items could always be broken down; the PAID recurring
@@ -3730,7 +3854,8 @@ export async function generatePayslips(
         // factor (prorate ON = proportional for a mid-period joiner/resigner, OFF = full amount).
         const prorate = c.prorateOverride ?? c.prorates;
         const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
-        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [] };
+        // 2333b7fb/0253dc7c — the ticks ride the line from the row this run folded (see the type).
+        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf };
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
         // ── LHDN PCB 2026 declared classification (feedback 09b554e9) ──
@@ -3745,13 +3870,41 @@ export async function generatePayslips(
             lpDeclared = round2(lpDeclared + claim);
             useRoom(c.pcbExemptionCode!, claim);
           }
+          // 2333b7fb DELIBERATELY DOES NOT CARVE HERE, and this is the one place the two treatments must
+          // not be merged. A declared optional_deduction has ALREADY reduced this month's tax through
+          // `lpDeclared` → LP₁, exactly like an approved TP1 relief. Carving `pcbWageDeduction` as well
+          // would relieve the same ringgit twice. It is a relief CLAIM against income that WAS earned;
+          // the branch below is wage that was NOT earned. (No production pay item is in this state —
+          // ABSENT / UPL / DB018 all declare 'normal' and fall through to the branch below — so this is
+          // a guard against a future setting, not a live case.)
           if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
           if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
           reimburse = round2(reimburse + applied);
           contributes('reimburse', applied);
           continue;
         }
-        if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
+        // ── Feedback 2333b7fb (r193) — THE FIX. ────────────────────────────────────────────────────
+        // This branch used to `continue` before a single statutory flag was read, which made all four
+        // boxes on a deduction pay item dead settings. Note where it sits: BEFORE the declared-stream
+        // routing below, so a deduction declaring pcbRemunerationType 'normal' (which is what UPL,
+        // ABSENT and DB018 do on production) lands here and never reached a flag either.
+        //
+        // The cash treatment is UNCHANGED — the amount still comes off net through `deduct`, in full,
+        // whatever the ticks say. What changes is that each ticked box now also takes the amount out of
+        // that agency's base. Untouched by design: `unpaidDeduction` (leave-derived unpaid leave +
+        // absence + one-off 'unpaid' ledger rows), which is a SEPARATE pre-statutory path already
+        // subtracted from wagesExOt/hrdfBase. A tenant recording the same absence BOTH ways would
+        // double-reduce, and that is a data question, not a kernel one — test/deduction-statutory-
+        // base-2333b7fb.test.ts pins the two paths as independent so the next change cannot merge them.
+        if (c.kind === 'deduction') {
+          deduct = round2(deduct + applied);
+          contributes('deduct', applied);
+          if (c.epf) epfWageDeduction = round2(epfWageDeduction + applied);
+          if (c.socso) socsoWageDeduction = round2(socsoWageDeduction + applied);
+          if (c.pcb) pcbWageDeduction = round2(pcbWageDeduction + applied);
+          if (c.hrdf) hrdfWageDeduction = round2(hrdfWageDeduction + applied);
+          continue;
+        }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
         // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce
         // a wrong payslip.
@@ -3837,7 +3990,7 @@ export async function generatePayslips(
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -4045,7 +4198,12 @@ export async function generatePayslips(
       // HRD Corp levy (Wave 2A) — employer-only. Base = basic + FIXED (HRDF-flagged) allowance net of
       // unpaid leave; NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claims are excluded).
       const fixedAllowance = en.hrdfAllowApplied;
-      const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
+      // Feedback 2333b7fb — the HRDF leg of the deduction ticks is applied HERE and not inside
+      // `statutory()`: the levy base is built by the kernel (basic + HRDF-flagged allowance − unpaid),
+      // the pack only turns a base into a levy. `hrdfWageDeduction` is 0 unless a deduction pay item
+      // carries "subject to HRDF" (UPL and DB018 do on production; ABSENT and MONTHLY PARKING do not),
+      // so this is byte-identical for every run that has no such item.
+      const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction - en.hrdfWageDeduction));
       // Feedback 0df0c635 — per-employee "Subject to HRDF" (Others Statutory card), resolved via the pack
       // (D6 vocabulary — no direct core→localization/my import). Explicit false excludes this employee's
       // base from the levy entirely; explicit true keeps it in (the registration band below still sets the
@@ -4138,6 +4296,14 @@ export async function generatePayslips(
         epfAdditionalExcluded: en.epfAdditionalExcluded,
         socsoWageExcluded: en.socsoWageExcluded,
         socsoWageExtra: en.socsoWageExtra,
+        // Feedback 2333b7fb (r193) — the DEDUCTION pay-item ticks, same mechanism. Same clamping note:
+        // `wagesExOt` may already be smaller than the carve-out, and the pack clamps at 0.
+        // These three stay on BOTH sides of the additional-run delta below (unlike epfAdditionalExcluded
+        // / socsoWageExtra): they describe money the REGULAR run's fold pays, present identically in the
+        // baseline and the now-call, so they cancel exactly as the wage-side carve-outs do.
+        epfWageDeduction: en.epfWageDeduction,
+        socsoWageDeduction: en.socsoWageDeduction,
+        pcbWageDeduction: en.pcbWageDeduction,
       };
       // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
       // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
@@ -4201,11 +4367,20 @@ export async function generatePayslips(
       // absent on every payslip written before r187, which is exactly what the disclosure renders.
       const statAdditional = isAdditionalRun ? round2(earlierRun.additional + bonus) : bonus;
       const statOvertime = isAdditionalRun ? earlierRun.overtime : otStat;
+      // 2333b7fb — the deduction reductions belong here too, or `bases` stops being the figure the
+      // contribution was actually charged on, which is the ONE property item 0253dc7c's screen relies
+      // on. Each line mirrors the pack's own expression term for term (localization/my/payroll.ts:
+      // epfWage / socsoWage / pcbWage), INCLUDING the clamp, so the disclosed base and the charged base
+      // cannot disagree — `pcb` gains a Math.max it did not have, matching `pcbWage`'s clamp for the
+      // case where a deduction exceeds the month's wage.
       const statBases = {
-        epf: Math.max(0, round2(wagesExOt - en.epfWageExcluded)),
+        epf: Math.max(0, round2(wagesExOt - en.epfWageExcluded - en.epfWageDeduction)),
         epfAdditional: Math.max(0, round2(statAdditional - en.epfAdditionalExcluded)),
-        socsoEis: Math.max(0, round2(wagesExOt + statOvertime - en.socsoWageExcluded + en.socsoWageExtra)),
-        pcb: round2(wagesExOt + statOvertime + statAdditional),
+        socsoEis: Math.max(
+          0,
+          round2(wagesExOt + statOvertime - en.socsoWageExcluded + en.socsoWageExtra - en.socsoWageDeduction),
+        ),
+        pcb: round2(Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction)) + statAdditional),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
       };
       const stComputed = {
@@ -4812,6 +4987,19 @@ export async function generatePayslips(
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
       // marked, which is the whole point: Close stays refused until every stale employee is dealt with.
       await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+      // 0db616f3 — these employees' payslips have just been rewritten from the current ledger, so every
+      // one-off row of theirs on this run is now IN a payslip. Marking it here (and not only on the full
+      // generation) is what covers the fbcf706d ADDED employment: its first payslip on this run is being
+      // written now, and the rows attach-on-generate just stamped onto the run are in it.
+      //
+      // GATED ON THE SAME FLAG THE FOLD IS, and this is not caution — it is the marker's only claim. With
+      // `payroll.individual_txn_pay_enabled` off the ledger is RECORD-ONLY and the fold above never ran,
+      // so no row reached a payslip. Marking one consumed would be a lie that permanently strands it the
+      // day the tenant turns the flag on. (Production has it on — verified 2026-08-13 — so the guard is
+      // armed there; a tenant with it off has no double-pay to prevent because it pays none of these rows.)
+      if (individualTxnPay) {
+        await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+      }
       return {
         reprocessed: emps.length,
         recalculated: recalculatedCount,
@@ -4829,6 +5017,13 @@ export async function generatePayslips(
     // inputs, so nothing on it can still be stale. (Reaching here means the run was draft, and a draft is
     // never marked; this clears the mark a reset→regenerate cycle would otherwise have to remember to.)
     await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: null });
+    // 0db616f3 — and every one-off line this run folded is now IN a payslip. Stamped with the run that
+    // paid it so a SECOND run cannot pay it again; a re-generation of THIS run still can, which is what
+    // keeps reset→correct→re-run working. Same transaction as the payslip inserts above, so "paid" and
+    // "marked paid" cannot come apart. Gated on the fold's own flag — see the subset branch's note.
+    if (individualTxnPay) {
+      await markIndividualTxnsConsumed(tx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
+    }
 
     // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
     // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.
@@ -5183,6 +5378,12 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     // (Per-payslip history lives on the earlier processed-batch events; the batch-level reset event
     // below records the count — same convention as teardownDraftChildren's child deletes.)
     const clearedSlips = await tx.delete(payslip).where(eq(payslip.batchId, p.batchId)).returning({ id: payslip.id });
+    // 0db616f3 (0437) — the payslips that justified the consumed marker have just been deleted, so the
+    // one-off lines this run paid are unpaid again and the corrected re-run must pay them. Without this
+    // the re-run would still pay them (the fold's `OR consumed_batch_id = this batch` half), but the row
+    // would read "paid by a run that no longer has a payslip for it" to everything else, and a row
+    // re-pointed to another run afterwards would be refused money nobody ever received.
+    await releaseIndividualTxnsConsumed(tx, p.batchId);
     // 49e7e0a2 — clear the recalculation mark BEFORE the status goes back to draft. Every payslip on the
     // run has just been deleted, so there is no longer a stale figure for it to describe; leaving it set
     // would block the Close of the run that eventually replaces these payslips for a staleness that no

@@ -103,6 +103,7 @@ describe('entitlement templates — the reporter\'s named service-band tables', 
       serviceBands: tpl.serviceBands,
       specificity: 0,
       alsoMatched: [],
+      viaSoleTemplate: false,
     });
     expect(days(0)).toBe(14);
     expect(days(1)).toBe(14);

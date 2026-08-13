@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { ESS_PLACEMENTS, SHARED_GROUP_DEFAULT_PLACEMENT, type EssPlacement } from '@/lib/leave-groups';
 
 /**
  * SHARED LEAVE GROUPS — the LEAVE TYPE level configuration surface (r88, feedback 1ef1cf95).
@@ -33,7 +34,15 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
  * FORM SHAPE NOTE: `maxDaysPerApplication` is NOT tri-state. The update action reads it from the posted form
  * every time, so the edit form must always carry the input (an empty box is the real answer "no cap", which
  * is why the action maps '' to null rather than to Number('') === 0). Dropping the field from a form would
- * silently clear the cap on every save.
+ * silently clear the cap on every save. `essPlacement` (46afcc48) follows the same absolute-set rule and is
+ * a <select> for the same reason the placement control on the leave type is: it always submits a value, so
+ * there is no "unticked box reads as true" hazard to fall into (trap 17), and Hidden is a REAL choice the
+ * admin can make rather than the absence of one.
+ *
+ * WHERE THE GROUP IS DRAWN (46afcc48) is a property OF THE GROUP and is independent of every member type's
+ * own placement. Showing the group Primary while every member is Hidden is a supported, sensible setup —
+ * the pot at the top, the six types it covers not listed individually — and it changes neither the pot's
+ * figure nor what may be applied for.
  */
 export type SharedGroup = {
   id: string;
@@ -41,6 +50,8 @@ export type SharedGroup = {
   totalLimitDays: number;
   /** null = no per-application cap. */
   maxDaysPerApplication: number | null;
+  /** 46afcc48 — 'primary' | 'secondary' | 'hidden'. Existing groups read 'hidden' (the column DEFAULT). */
+  essPlacement: EssPlacement;
   leaveTypeIds: string[];
 };
 
@@ -134,7 +145,19 @@ export function LeaveSharedGroupConfig({
                           className={inputCls}
                         />
                       </Field>
+                      {/* 46afcc48 — where the employee sees this GROUP. Independent of every member type's
+                          own placement, which stays on the leave type where it already is. */}
+                      <Field label={t('placementLabel')}>
+                        <select name="essPlacement" defaultValue={g.essPlacement} className={inputCls}>
+                          {ESS_PLACEMENTS.map((pl) => (
+                            <option key={pl} value={pl}>
+                              {t(`placementOption.${pl}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
                     </div>
+                    <p className="text-xs text-muted-foreground">{t('placementHelp')}</p>
                     {/* Emits one hidden input per ticked id under this name — see ChipMultiSelect's form
                         contract. The action reads formData.getAll('leaveTypeIds'). */}
                     <ChipMultiSelect name="leaveTypeIds" defaultSelected={g.leaveTypeIds} {...chipCopy} />
@@ -189,7 +212,24 @@ export function LeaveSharedGroupConfig({
                     className={inputCls}
                   />
                 </Field>
+                {/* A NEW group starts Hidden too, and for the same reason an existing one does: a shared
+                    balance appears on employees' screens because someone chose it, never as a side effect
+                    of creating the configuration. */}
+                <Field label={t('placementLabel')}>
+                  <select
+                    name="essPlacement"
+                    defaultValue={SHARED_GROUP_DEFAULT_PLACEMENT}
+                    className={inputCls}
+                  >
+                    {ESS_PLACEMENTS.map((pl) => (
+                      <option key={pl} value={pl}>
+                        {t(`placementOption.${pl}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               </div>
+              <p className="text-xs text-muted-foreground">{t('placementHelp')}</p>
               <ChipMultiSelect name="leaveTypeIds" {...chipCopy} />
               <p className="text-xs text-muted-foreground">{t('createHint')}</p>
               <div className="flex justify-end">

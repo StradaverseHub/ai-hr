@@ -7,8 +7,23 @@ import {
   detectArrears,
   listBackPayRuns,
   type BackPayReviewReason,
+  type BackPayStatus,
 } from '@/core/back-pay';
-import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorBanner,
+  Field,
+  PageHeader,
+  SectionHeader,
+  inputCls,
+  pageWideCls,
+  tableWrapCls,
+  tbodyCls,
+  theadCls,
+  thCls,
+} from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   approveAndPostBackPayAction,
@@ -34,6 +49,19 @@ import {
  * ⚠️ NOTHING ON THIS SCREEN CHANGES A CLOSED PAYSLIP. Calculate is arithmetic on a read; Approve and
  * Post writes one-off transactions onto the CURRENT month. That is the whole promise of the feature and
  * the reason it exists instead of "reopen the month and run it again".
+ *
+ * ── 6b018920, presentation only ─────────────────────────────────────────────────────────────────────
+ * THE PLAN'S PREMISE WAS WRONG AND THE CORRECTION MATTERS MORE THAN THE CHANGE. The board plan said
+ * this screen "sits in the narrower page frame" and left "a large empty margin on both sides". It did
+ * not. `pageWideCls` is exactly `'w-full space-y-6'` (components/ui.tsx) and this page's root div
+ * already carried that literal string, so it has rendered at the full window width since it shipped.
+ * The plan measured `grep -c pageWideCls`, which counts the IDENTIFIER and not the effective class —
+ * a false negative on any page that inlined the same value. There was no width defect to fix.
+ *
+ * What IS real, and what this change does: adopt the named constant so the width is stated by the same
+ * means as every other wide screen, and bring the filter row into the transaction-view arrangement
+ * (Card → Field → Button) that the rest of Payroll uses. Buttons and status text move to the shared
+ * <Button>/<Badge> primitives. No query param, no reader argument and no server logic is touched.
  */
 
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -51,6 +79,19 @@ const REVIEW_REASONS: readonly BackPayReviewReason[] = [
 ];
 
 const ERROR_CODES = ['nothingToCalculate', 'targetRunNotDraft', 'wrongStatus', 'notFound', 'unknown'] as const;
+
+/**
+ * Run status → the house badge tone (item 6b018920). Payroll renders run/record status as a <Badge>
+ * everywhere else — transaction-view's history and fixed tabs, process/result, the individual
+ * workspace — and this screen was the odd one out with bare text in a cell. Exhaustive BY TYPE over
+ * BackPayStatus, so a new status fails the build rather than rendering an untoned badge.
+ */
+const STATUS_VARIANT: Record<BackPayStatus, 'default' | 'info' | 'success' | 'danger'> = {
+  draft: 'default',
+  verified: 'info',
+  posted: 'success',
+  cancelled: 'danger',
+};
 
 const money = (n: number) => n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** Signed rendering — a backdated REDUCTION is a real, negative figure and is shown as one. */
@@ -83,7 +124,12 @@ export default async function BackPayPage({
   const defaultPeriod = today.slice(0, 7);
 
   return (
-    <div className="w-full space-y-6">
+    // 6b018920 — the SAME named width constant every other wide payroll screen uses. The class string
+    // here was already `w-full space-y-6` (byte-identical to pageWideCls), so this is not a width change
+    // and the screen was never actually narrow — see the note in this file's header. What it fixes is the
+    // drift the constant exists to prevent: two screens going full-width by two different means is how
+    // one of them silently gets a cap put back on it.
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
 
       {err && <ErrorBanner message={t(`errors.${err}`)} />}
@@ -100,22 +146,30 @@ export default async function BackPayPage({
 
       {!detail && (
         <>
+          {/* ── Filters (GET form — pure navigation, no mutation) ──
+              6b018920: the transaction-view arrangement — the row of controls sits in a Card, each
+              control is a shared <Field>, and the submit is the shared <Button variant="secondary">.
+              ⚠️ `name="company"` IS THE URL PARAM, read back as `sp.company` at the top of this file.
+              Renaming it (to `companyId`, say, to match the reader's argument) silently breaks every
+              bookmarked ?company=… link — the filter stops applying and nothing errors. Pinned in
+              test/payroll-backpay-statutory-layout.test.ts. */}
           {companies.length > 1 && (
-            <form method="GET" className="flex flex-wrap items-end gap-3">
-              <label className="text-sm">
-                <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('company')}</span>
-                <select name="company" defaultValue={companyId ?? ''} className={inputCls}>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" className="rounded-lg border border-border px-3 py-1.5 text-sm">
-                {t('apply')}
-              </button>
-            </form>
+            <Card className="p-4">
+              <form method="GET" className="flex flex-wrap items-end gap-3">
+                <Field label={t('company')}>
+                  <select name="company" defaultValue={companyId ?? ''} className={inputCls}>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Button type="submit" variant="secondary">
+                  {t('apply')}
+                </Button>
+              </form>
+            </Card>
           )}
 
           <SectionHeader title={t('detected')} count={candidates.length} />
@@ -167,12 +221,7 @@ export default async function BackPayPage({
                     required
                   />
                 </label>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  {t('calculate')}
-                </button>
+                <Button type="submit">{t('calculate')}</Button>
                 <p className="text-xs text-muted-foreground">{t('targetPeriodHint')}</p>
               </div>
             </form>
@@ -192,9 +241,9 @@ export default async function BackPayPage({
               <span className="text-muted-foreground">{t('targetPeriod')}: </span>
               {detail.run.targetPayPeriod}
             </p>
-            <p>
+            <p className="flex items-center gap-2">
               <span className="text-muted-foreground">{t('statusLabel')}: </span>
-              {t(`status.${detail.run.status}`)}
+              <Badge variant={STATUS_VARIANT[detail.run.status]}>{t(`status.${detail.run.status}`)}</Badge>
             </p>
             <p>
               <span className="text-muted-foreground">{t('calculatedBy')}: </span>
@@ -279,13 +328,9 @@ export default async function BackPayPage({
 
           <div className="flex flex-wrap items-center gap-3">
             {(['csv', 'xlsx', 'pdf'] as const).map((f) => (
-              <Link
-                key={f}
-                href={`/payroll/back-pay/export?run=${detail.run.id}&format=${f}`}
-                className="rounded-lg border border-border px-3 py-1.5 text-sm"
-              >
-                {t(`export.${f}`)}
-              </Link>
+              <Button key={f} asChild variant="outline" size="sm">
+                <Link href={`/payroll/back-pay/export?run=${detail.run.id}&format=${f}`}>{t(`export.${f}`)}</Link>
+              </Button>
             ))}
           </div>
 
@@ -297,28 +342,27 @@ export default async function BackPayPage({
             {detail.run.status === 'draft' && (
               <form action={verifyBackPayAction}>
                 <input type="hidden" name="runId" value={detail.run.id} />
-                <button type="submit" className="rounded-lg border border-border px-3 py-1.5 text-sm">
+                <Button type="submit" variant="outline">
                   {t('markVerified')}
-                </button>
+                </Button>
               </form>
             )}
             {(detail.run.status === 'draft' || detail.run.status === 'verified') && detail.targetWritable && (
               <form action={approveAndPostBackPayAction}>
                 <input type="hidden" name="runId" value={detail.run.id} />
-                <button
-                  type="submit"
-                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  {t('approveAndPost')}
-                </button>
+                <Button type="submit">{t('approveAndPost')}</Button>
               </form>
             )}
             {detail.run.status !== 'cancelled' && (
+              // Deliberately `outline` + destructive TEXT, not the solid `destructive` variant. Cancel
+              // voids a calculated run and belongs in the quiet register the screen already put it in;
+              // promoting it to a filled red button while "normalising variants" would make the most
+              // dangerous control the loudest thing on the page.
               <form action={cancelBackPayAction}>
                 <input type="hidden" name="runId" value={detail.run.id} />
-                <button type="submit" className="rounded-lg border border-border px-3 py-1.5 text-sm text-red-600 dark:text-red-400">
+                <Button type="submit" variant="outline" className="text-destructive">
                   {t('cancel')}
-                </button>
+                </Button>
               </form>
             )}
             <Link href="/payroll/back-pay" className="text-sm underline">
@@ -352,7 +396,9 @@ export default async function BackPayPage({
                 <tr key={r.id}>
                   <td className="px-3 py-2">{r.targetPayPeriod}</td>
                   <td className="px-3 py-2">{r.companyName}</td>
-                  <td className="px-3 py-2">{t(`status.${r.status}`)}</td>
+                  <td className="px-3 py-2">
+                    <Badge variant={STATUS_VARIANT[r.status]}>{t(`status.${r.status}`)}</Badge>
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.employeeCount}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.periodCount}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${amountTone(r.total)}`}>{signed(r.total)}</td>

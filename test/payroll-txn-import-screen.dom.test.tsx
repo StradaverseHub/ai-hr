@@ -287,3 +287,78 @@ describe('5c65367d · what actually happened', () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * 0db616f3 — THE WARNINGS, PROVED BY RENDERING.
+ *
+ * A warning belongs to a row that WILL be written, so nothing on the server can prove the operator ever
+ * saw it. It exists precisely because the January double import was caused by SILENCE: the file landed
+ * behind a run that had already produced payslips, the screen said "12 imported" and nothing else, and
+ * the operator reasonably concluded nothing had happened and uploaded the file again three minutes later.
+ *
+ * These also stand in for the render check a new i18n key needs. `MISSING_MESSAGE` passes tsc, the suite
+ * and `next build` and returns 200; resolving `warning.<key>` against the real en.json here is what
+ * proves the catalogue path is right.
+ */
+describe('0db616f3 · a valid row that is still worth saying something about', () => {
+  const WARNED: TxnImportPreview = {
+    kind: 'individual',
+    total: 1,
+    valid: 1,
+    invalid: 0,
+    warned: 1,
+    rows: [
+      {
+        rowNum: 2,
+        employeeId: 'X000001',
+        employeeName: 'Irwin Law',
+        payItemCode: 'BONUS',
+        payItem: 'Bonus',
+        effectiveFrom: '2026-01-31',
+        amount: '1500.00',
+        ok: true,
+        reason: '',
+        warnings: [
+          { reason: 'runAlreadyProcessed', detail: { period: '2026-01' } },
+          { reason: 'bonusRunExists', detail: { code: 'BONUS' } },
+        ],
+      },
+    ],
+  };
+
+  it('shows Valid AND both warnings, and Confirm stays pressable', async () => {
+    validateMock.mockResolvedValue(WARNED);
+    const user = userEvent.setup();
+    renderButtons('individual');
+    await user.click(screen.getByRole('button', { name: 'Import Excel' }));
+    await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await screen.findByText('1 record');
+
+    // The row is valid — the warning does not demote it.
+    expect(screen.getByText('Valid')).toBeInTheDocument();
+    expect(screen.getByText('1 with a warning')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The 2026-01 pay run has already produced payslips. This row will be added and the run marked for reprocessing — it is not paid until you reprocess it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This month has a bonus run, and BONUS is going to the salary run. Put \u201cbonus\u201d in the Payroll Cycle column to send it to the bonus run instead.',
+      ),
+    ).toBeInTheDocument();
+    // A warning is not an error: the operator can still import.
+    expect(screen.getByRole('button', { name: 'Import 1 valid record' })).toBeEnabled();
+  });
+
+  it('says nothing at all when there is nothing to say', async () => {
+    validateMock.mockResolvedValue({ ...WARNED, warned: 0, rows: [{ ...WARNED.rows[0], warnings: undefined }] });
+    const user = userEvent.setup();
+    renderButtons('individual');
+    await user.click(screen.getByRole('button', { name: 'Import Excel' }));
+    await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await screen.findByText('1 record');
+    expect(screen.queryByText(/with a warning/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/already produced payslips/)).not.toBeInTheDocument();
+  });
+});

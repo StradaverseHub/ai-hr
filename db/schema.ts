@@ -1959,6 +1959,22 @@ export const leaveSharedGroup = pgTable(
     // application. NULL = no cap. Measured in CALENDAR days spanned by the application; the units live in
     // applicationSpanDays() (core/leave.ts), not here.
     maxDaysPerApplication: numeric('max_days_per_application', { precision: 6, scale: 2 }),
+    // Shared Leave Group display (feedback 46afcc48, migration 0438): WHERE this group is drawn on the
+    // employee self-service Leave tab — 'primary' (one balance card at the top), 'secondary' (lower down
+    // with the other-leave section) or 'hidden' (not drawn at all). NOT NULL DEFAULT 'hidden', so every
+    // existing group keeps today's behaviour: the group has never been shown to an employee, and it stays
+    // that way until HR chooses a placement.
+    //
+    // 'hidden' IS STORED HERE, unlike leave_type.ess_placement — and that difference is deliberate, not a
+    // drift. A leave TYPE already owns one hidden switch (visible_to_employee, 7b11f1c1), so 0193 refuses
+    // to store a second spelling of hidden in its placement column. A GROUP has no such twin flag, so this
+    // column IS the single source of truth for a hidden group and the DB CHECK admits all three values.
+    //
+    // DISPLAY ONLY, and in particular NOT enforcement: the shared annual ceiling (total_limit_days) and the
+    // per-application cap (max_days_per_application) are applied by core/leave.ts at apply and at approval
+    // regardless of what this column says. Hiding a group — or every one of its member types — changes what
+    // is DRAWN and never what may be TAKEN.
+    essPlacement: text('ess_placement').notNull().default('hidden'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('leave_shared_group_name_uq').on(t.tenantId, t.name)],
@@ -3537,8 +3553,18 @@ export const attendanceRule = pgTable(
 
 // One overtime time-band row of an attendance_rule (the reporter's "+ Add Row" OT table). fromMinutes..
 // toMinutes bound the OT duration (minutes past normal); ratePattern 'flat' (any numeric multiplier) or
-// 'variable' (a standardized multiplier). `rounding` + `roundToMinutes` round the matched OT minutes.
+// 'variable' (a standardized multiplier). `roundingMode` + `roundToMinutes` round the matched OT minutes.
 export type AttendanceOtRatePattern = 'flat' | 'variable';
+
+// 7c834696 contested (migration 0439) — rounding DIRECTION. It used to be a boolean, and the engine only
+// ever floored, so "round up" was not a setting anyone had failed to find: it did not exist. text + CHECK
+// rather than a pgEnum, for the widening reason recorded at OT_REASON_CATEGORIES above.
+//   none — the exact minutes are used, nothing dropped (the boolean's FALSE)
+//   down — the largest multiple of roundToMinutes not exceeding the overtime (the boolean's TRUE, verbatim)
+//   up   — the smallest multiple of roundToMinutes not below the overtime (NEW)
+// 0439 maps true → 'down' and false → 'none', so no band already saved changes what it does.
+export const ATTENDANCE_OT_ROUNDING_MODES = ['none', 'down', 'up'] as const;
+export type AttendanceOtRoundingMode = (typeof ATTENDANCE_OT_ROUNDING_MODES)[number];
 export const attendanceRuleOtRow = pgTable(
   'attendance_rule_ot_row',
   {
@@ -3556,7 +3582,10 @@ export const attendanceRuleOtRow = pgTable(
     // PUBLIC HOLIDAY. NULL ⇒ fall back to `rate`, which is exactly today's behaviour, so a band only
     // behaves differently on a holiday once someone fills this in.
     phRate: numeric('ph_rate', { precision: 6, scale: 2 }),
-    rounding: boolean('rounding').notNull().default(false),
+    roundingMode: text('rounding_mode').notNull().default('none').$type<AttendanceOtRoundingMode>(),
+    // NULL / ≤ 0 ⇒ no step to round to. `roundingMode <> 'none'` requires a positive step (CHECK in 0439):
+    // 0 would divide by zero in the engine, and until 0439 the `> 0` guard silently skipped rounding
+    // instead — the same outcome as 'none', but by accident rather than by the operator's choice.
     roundToMinutes: integer('round_to_minutes'),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
@@ -5741,6 +5770,21 @@ export const payrollIndividualTxn = pgTable(
     // keyed by hand. Nothing writes it yet — Attendance and Leave do not post into payroll today — and the
     // uniqueness guard below exists so that when they do, a repeated sync UPDATES rather than double-posts.
     sourceRef: text('source_ref'),
+    // 0db616f3 (0437) — WHICH RUN ALREADY PAID THIS LINE. Null means "not yet in any payslip", which is
+    // where every row starts and where every row on production stands today (measured 2026-08-13: no
+    // column on this table said anything about payment at all, so the kernel folded every row attached
+    // to a run on every generation of it, and a row moved to a second run was folded there too).
+    //
+    // KEYED ON THE RUN, NOT A BOOLEAN, and the fold reads `consumed_batch_id IS NULL OR = this batch`.
+    // A boolean would delete a one-off row from a legitimate re-run: `resetProcessedBatch` destroys a
+    // run's payslips so a correction can be re-generated, and a selective reprocess rewrites a subset of
+    // them. Both must still pay these lines. What must NEVER happen is a DIFFERENT run paying a line the
+    // first run already paid — the January 2026 shape, where 24 bonus lines sat on the regular run while
+    // the bonus run showed zero payslips.
+    consumedBatchId: uuid('consumed_batch_id').references(() => payrollBatch.id, { onDelete: 'set null' }),
+    // When those payslips were written. Stamped once and never re-stamped, so it remains the instant of
+    // the FIRST payment rather than of the latest re-generation.
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -5757,6 +5801,12 @@ export const payrollIndividualTxn = pgTable(
     uniqueIndex('payroll_individual_txn_source_ref_uq')
       .on(t.tenantId, t.employmentId, t.txnDate, t.componentId, t.source, t.sourceRef)
       .where(sql`source_ref is not null`),
+    // 0db616f3 (0437) — PARTIAL, so it is empty the day it lands and only ever holds lines that have
+    // actually been paid. Both readers want exactly this key: the fold ("consumed by nobody or by me")
+    // and the reset/teardown clear ("everything this run consumed").
+    index('payroll_individual_txn_consumed_idx')
+      .on(t.consumedBatchId)
+      .where(sql`consumed_batch_id is not null`),
   ],
 );
 

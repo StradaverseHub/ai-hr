@@ -532,6 +532,15 @@ export const SCREENS: readonly ScreenEntry[] = [
       // revoke. Its FOUR siblings under /payroll/cp22 (the [employmentId] pdf and text downloads, batch and
       // blank) are route handlers, not guarded pages, so they are not listed — the check walks page.tsx.
       '/payroll/cp22/[employmentId]/preview',
+      // 8ca344bf: the Borang 8A review step, between the PERKESO shelf's figures screen and the two
+      // downloads. Same scopedAdmin key as the directory that links to it and as the [formId] screen above
+      // — it lists every employee's name, IC and SOCSO contribution for the month, so it is admin-scoped
+      // exactly like them. Registered here because test/function-access.test.ts checks reverse
+      // completeness: a guarded page with no matrix column fails the suite rather than silently becoming a
+      // screen nobody can grant or revoke. Its THREE siblings under /payroll/borang-8a (the pdf and text
+      // downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they are not
+      // listed — the check walks page.tsx.
+      '/payroll/borang-8a/preview',
       // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
       // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
       // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports

@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
+import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
 
 /**
  * Feedback 080de5cf — the spreadsheet grid for Transaction View › History › Grid.
@@ -40,6 +40,9 @@ const COL = {
 
 /** Section order + heading key, matching the pivot's own group ordering. */
 const GROUPS: { group: GridRowGroup; key: string }[] = [
+  // 0253dc7c — the wage bases come FIRST: the reporter reads "EPF Wages 5,100.00" and then checks the
+  // items under it, which is the order they described the check in.
+  { group: 'wagebase', key: 'wagebase' },
   { group: 'earning', key: 'earnings' },
   { group: 'deduction', key: 'deductions' },
   { group: 'employer', key: 'employer' },
@@ -47,12 +50,16 @@ const GROUPS: { group: GridRowGroup; key: string }[] = [
   { group: 'summary', key: 'summary' },
 ];
 
+
 /**
  * Amount tint. The pair is the codebase's existing positive/negative vocabulary (the dashboard and
  * attendance screens use exactly these two classes), not a second palette invented for this screen — and it
  * is what the reporter's reference does with earnings and deductions.
  */
 const GROUP_TINT: Record<GridRowGroup, string> = {
+  // 0253dc7c — a wage base is not money that moved, so it takes neither the earning nor the deduction
+  // tint. Giving it one would invite an operator to read it as a payment or a deduction.
+  wagebase: 'text-foreground',
   earning: 'text-emerald-600 dark:text-emerald-400',
   deduction: 'text-rose-600 dark:text-rose-400',
   employer: 'text-muted-foreground',
@@ -73,6 +80,8 @@ export function HistoryGrid({
   exportParams,
   payslipCount,
   detailNotRecorded,
+  basesNotRecorded,
+  subjectFromCatalogue,
 }: {
   /** The full pivot, unfiltered — the switches below narrow it in the browser. */
   rows: HistoryGridRow[];
@@ -89,6 +98,10 @@ export function HistoryGrid({
   exportParams: Record<string, string>;
   payslipCount: number;
   detailNotRecorded: boolean;
+  /** 0253dc7c — at least one run predates the wage-base stamp, so part of that block is em dashes. */
+  basesNotRecorded: boolean;
+  /** 0253dc7c — at least one Y/N on screen is today's Pay Item setting, not the run's own record. */
+  subjectFromCatalogue: boolean;
 }) {
   const t = useTranslations('payroll.transactions');
   // The reference has both ticked. Ours differs on the second, deliberately: our "system" rows carry the
@@ -96,6 +109,9 @@ export function HistoryGrid({
   // grid if they were hidden by default. So hiding them is opt-in.
   const [hideZero, setHideZero] = useState(true);
   const [hideSystem, setHideSystem] = useState(false);
+  // 0253dc7c — five extra columns is a lot of width for a question an operator asks occasionally, so
+  // this is off by default and the grid looks exactly as it does today until it is turned on.
+  const [showSubject, setShowSubject] = useState(false);
 
   const shown = useMemo(() => filterGridRows(rows, { hideZero, hideSystem }), [rows, hideZero, hideSystem]);
 
@@ -103,9 +119,13 @@ export function HistoryGrid({
     ...exportParams,
     hideZero: hideZero ? '1' : '0',
     hideSystem: hideSystem ? '1' : '0',
+    // The switch rides the link so the file matches the screen it was taken from — the route applies
+    // the SAME `filterGridRows` and projects the same columns. Rebuilding either in the route is how
+    // the file and the screen drift apart.
+    showSubject: showSubject ? '1' : '0',
   }).toString()}`;
 
-  const colCount = 3 + months.length + 1;
+  const colCount = 3 + (showSubject ? SUBJECT_COLUMNS.length : 0) + months.length + 1;
 
   return (
     <div className="space-y-3">
@@ -130,6 +150,18 @@ export function HistoryGrid({
             />
             {t('view.grid.hideSystemCodes')}
           </label>
+          {/* 0253dc7c — the Y/N columns. A SEPARATE switch, deliberately not folded into
+              "Hide system codes": that one is all-or-nothing by design and removing it would break
+              the people who use it. */}
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showSubject}
+              onChange={(e) => setShowSubject(e.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            {t('view.grid.showSubject')}
+          </label>
         </div>
         <a
           href={exportHref}
@@ -143,6 +175,15 @@ export function HistoryGrid({
         {t('view.grid.summary', { payslips: payslipCount, rows: shown.length })}
       </p>
       {detailNotRecorded && <p className="text-xs text-muted-foreground">{t('view.grid.detailNotRecorded')}</p>}
+      {/* 0253dc7c — the two honesty captions. Neither is decorative: without the first, an em dash in
+          the wage-base block reads as a broken screen; without the second, a Y from today's catalogue
+          sitting beside an older figure is exactly the confusion this item was raised about. */}
+      {basesNotRecorded && <p className="text-xs text-muted-foreground">{t('view.grid.basesNotRecorded')}</p>}
+      {showSubject && (
+        <p className="text-xs text-muted-foreground">
+          {subjectFromCatalogue ? t('view.grid.subjectFromCatalogue') : t('view.grid.subjectFromPayslip')}
+        </p>
+      )}
 
       {/* The scroll container. `overflow-x-auto` is on THIS div, never on the page, so the body never
           scrolls sideways however many months are selected. */}
@@ -159,6 +200,16 @@ export function HistoryGrid({
               <th className={`${COL.cycle.th} ${COL.cycle.left} sticky z-10 bg-muted px-3 py-2 font-medium`}>
                 {t('view.grid.colCycle')}
               </th>
+              {/* 0253dc7c — the subject columns sit immediately after Description/Cycle, before the
+                  months, so the setting reads next to the item it belongs to. They are NOT sticky:
+                  the frozen block is three columns wide by design and widening it leaves a phone no
+                  room for a month. */}
+              {showSubject &&
+                SUBJECT_COLUMNS.map((c) => (
+                  <th key={c.key} className="min-w-[4.5rem] px-3 py-2 text-center font-medium">
+                    {t(`view.grid.subject.${c.key}`)}
+                  </th>
+                ))}
               {months.map((m) => (
                 <th key={m} className="min-w-[6.5rem] px-3 py-2 text-right font-medium">
                   {monthLabels[m - 1]}
@@ -207,25 +258,49 @@ export function HistoryGrid({
                       >
                         {cycleLabels[r.runType] ?? r.runType}
                       </td>
+                      {/* 0253dc7c — Y / N, or blank on a row that is not a pay item. Blank, never "N":
+                          a row with no setting to report has not answered "no", and printing one would
+                          be a wrong answer on the screen this whole item is about. */}
+                      {showSubject &&
+                        SUBJECT_COLUMNS.map((c) => (
+                          <td key={c.key} className="px-3 py-2 text-center text-xs">
+                            {r.subject ? (
+                              <span className={r.subject[c.read] ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                                {r.subject[c.read] ? t('view.grid.subject.yes') : t('view.grid.subject.no')}
+                              </span>
+                            ) : (
+                              ''
+                            )}
+                          </td>
+                        ))}
                       {months.map((m) => {
                         const v = r.months[m - 1];
+                        // 0253dc7c — this month's payslip carried no wage-base stamp, so the base is
+                        // UNKNOWN. An em dash, never 0.00 and never a substituted figure.
+                        const unrecorded = r.unrecordedMonths?.[m - 1] === true;
                         return (
                           <td
                             key={m}
                             className={`px-3 py-2 text-right tabular-nums ${
-                              v === 0 ? 'text-muted-foreground/60' : GROUP_TINT[r.group]
+                              v === 0 || unrecorded ? 'text-muted-foreground/60' : GROUP_TINT[r.group]
                             }`}
                           >
                             {/* efece4ce — an unregistered company levies nothing, and a bare 0.00 made that
                                 indistinguishable from a levy that failed to compute. The row says which. */}
-                            {r.notRegistered ? '—' : amount(v)}
+                            {r.notRegistered || unrecorded ? '—' : amount(v)}
                           </td>
                         );
                       })}
                       <td
                         className={`bg-muted/30 px-3 py-2 text-right font-medium tabular-nums ${GROUP_TINT[r.group]}`}
                       >
-                        {r.notRegistered ? t('view.grid.notRegistered') : amount(r.total)}
+                        {/* 0253dc7c — a total of nothing but unknowns is itself unknown. If SOME months
+                            were recorded the total is their sum, which is what is visible on the row. */}
+                        {r.notRegistered
+                          ? t('view.grid.notRegistered')
+                          : months.every((m) => r.unrecordedMonths?.[m - 1])
+                            ? '—'
+                            : amount(r.total)}
                       </td>
                     </tr>
                   ))}

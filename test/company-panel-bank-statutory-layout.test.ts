@@ -19,6 +19,67 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const panel = read('components/company-panel.tsx');
 const en = JSON.parse(read('messages/en.json')) as { admin: { organization: Record<string, string> } };
 
+/**
+ * Item 3c2f55d7 — Organization / Company Setup: an opened company has nothing left to unfold.
+ *
+ * The request said "remove the company-selection dropdown from the opened company page". There is no
+ * such dropdown — Open goes straight to /admin/organization/[companyId] and the sections there were
+ * already tabs. What the reporter was actually hitting is that the panel folded in FOUR places after
+ * the company had already been chosen: the panel itself, each statutory authority, each saved bank
+ * account, and the "add a bank account" form.
+ *
+ * This block pins the flattening at SOURCE level rather than through a render, because that is where
+ * the failure mode lives: a disclosure is re-added by someone tidying a long tab, and every behavioural
+ * test still passes (the content is present in the DOM either way — `<details>` hides it with CSS, not
+ * by unmounting). Only the shape says so.
+ *
+ * NOT pinned here, deliberately: the group-structure fold on the LISTING page, which is a separate and
+ * still-current decision — see test/organization-group-structure-collapse.test.ts.
+ */
+describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
+  it('renders no details/summary disclosure anywhere in the panel', () => {
+    // The explanatory comments in the panel deliberately spell "details/summary" without angle
+    // brackets so that this guard cannot be satisfied — or tripped — by prose about itself.
+    expect(panel).not.toMatch(/<details\b/);
+    expect(panel).not.toMatch(/<summary\b/);
+    expect(panel).not.toContain('group-open:'); // the CSS half of a details/summary toggle
+  });
+
+  it('has no outer expand/collapse either — the panel IS the page body', () => {
+    expect(panel).not.toContain('defaultExpanded');
+    expect(panel).not.toContain('aria-expanded');
+  });
+
+  it('drops the fold-only labels rather than leaving them to rot in six catalogues', () => {
+    // bankAccountEdit / bankAccountCollapse were the "Edit"/"Close" affordance on the two bank folds
+    // and were REMOVED from all six locales with their last caller. i18n-check enforces parity, not
+    // usefulness, so a dead key survives a green build forever unless something says otherwise.
+    expect(panel).not.toContain('bankAccountEdit');
+    expect(panel).not.toContain('bankAccountCollapse');
+    expect(en.admin.organization.bankAccountEdit).toBeUndefined();
+    expect(en.admin.organization.bankAccountCollapse).toBeUndefined();
+  });
+
+  it('KEEPS the tabs — the fix flattens the folds, it does not flatten the screen', () => {
+    // Tabs group a large screen; they do not gate it, and every tab stays mounted (hidden by CSS) so
+    // an in-progress edit survives a tab switch. Collapsing these into one long scroll would be a
+    // different, unrequested change.
+    expect(panel).toContain('role="tablist"');
+    expect(panel).toContain('role="tab"');
+    for (const k of ['tabGeneral', 'tabBankAccount', 'tabStatutory']) {
+      expect(panel, k).toContain(`t('${k}')`);
+    }
+  });
+
+  it('keeps every heading the folds used to carry, so nothing readable became unreadable', () => {
+    // Each summary row was also the section's LABEL. Flattening must not have taken the label with it.
+    expect(panel).toContain("t('authorityConfigured')");
+    expect(panel).toContain("t('authorityNotConfigured')");
+    expect(panel).toContain("t('bankPrimary')");
+    expect(panel).toContain("t('bankAccountAdd')");
+  });
+});
+
 describe('Bank Account tab: one shared Malaysian bank master', () => {
   it('no longer carries its own hardcoded bank label map', () => {
     expect(panel.includes('const BANK_LABEL')).toBe(false);

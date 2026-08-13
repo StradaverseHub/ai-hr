@@ -30,11 +30,21 @@ import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
+import { closeBatch, createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
 import { listEmploymentPayComponents, seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
 import { listIndividualTxnsAcross } from '../core/payroll-view';
 import { commitTxnImport, validateTxnImport, type TxnImportRecord } from '../core/payroll-txn-import';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 describe('5c65367d — payroll transaction Excel import', () => {
   let base: Base;
@@ -431,5 +441,216 @@ describe('5c65367d — payroll transaction Excel import', () => {
     const rows = await listIndividualTxnsAcross(adminCtx(base), { companyIds: [base.companyId], employmentId });
     expect(rows[0].payPeriod).toBe('2026-09');
     expect(rows[0].batchStatus).toBeNull(); // unattached — generatePayslips will stamp it on
+  });
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════════════════
+   * 0db616f3 — THE JANUARY DOUBLE IMPORT
+   * ══════════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * MEASURED ON PRODUCTION 2026-08-13. A bonus file was uploaded at 15:27 and again at 15:30. Both
+   * landed 12 rows on the January REGULAR run, because this importer pinned `runType === 'regular'` and
+   * the file had no way to say otherwise; the BONUS run folded its own batch id, found nothing, and
+   * produced nineteen zero payslips — which is exactly why the operator concluded the first upload had
+   * failed. 24 rows / RM106,073.31 where 13 / RM62,524.51 were owed, 11 of them exact duplicates.
+   *
+   * Every test below pins one of the four things that had to be true for that to happen. None of them
+   * would have passed before this change: there was no duplicate check on this half at all, no
+   * `source_ref`, no acknowledgement that a run had already been paid, and no cycle column.
+   */
+  describe('0db616f3 — a file cannot be imported twice, and it can say which run it is for', () => {
+    it('the SAME file uploaded twice: every row of the second upload is refused, and nothing is written', async () => {
+      const file = [indivRec({ amount: '250' }), indivRec({ amount: '400' })];
+      const first = await commitIndiv(file);
+      expect(first.written).toBe(2);
+
+      // The PREVIEW refuses it, before anything is written — a preview that said "Valid" here and then
+      // wrote a second copy is the whole defect.
+      const p = await validateIndiv(file);
+      expect(p.valid).toBe(0);
+      expect(p.rows.map((r) => r.reason)).toEqual(['duplicateInRun', 'duplicateInRun']);
+
+      const second = await commitIndiv(file);
+      expect(second.written).toBe(0);
+      const rows = await listIndividualTxnsAcross(adminCtx(base), { companyIds: [base.companyId], employmentId });
+      expect(rows).toHaveLength(2);
+    });
+
+    it('two IDENTICAL rows inside ONE file: the second is refused, naming the row it duplicates', async () => {
+      // The case no service can catch for us — each row is individually fine, and by the time the second
+      // is written the first has already committed in its own transaction.
+      const p = await validateIndiv([indivRec(), indivRec()]);
+      expect(p.rows[0].ok).toBe(true);
+      expect(p.rows[1].reason).toBe('duplicateInFile');
+      expect(p.rows[1].detail?.row).toBe(2); // the header is row 1, so the first data row is row 2
+
+      const r = await commitIndiv([indivRec(), indivRec()]);
+      expect(r.written).toBe(1);
+      expect(await listIndividualTxnsAcross(adminCtx(base), { companyIds: [base.companyId], employmentId })).toHaveLength(1);
+    });
+
+    /**
+     * THE CASE THAT DECIDED THE DUPLICATE KEY. January's two waves were NOT the same file: one person
+     * appears only in the first and a different person only in the second, which is why "delete the later
+     * import" would have dropped RM17,325.00 owed to a real employee. So a re-upload of a CORRECTED file
+     * must write the rows that changed and refuse the ones that did not — keyed on the amount, not on the
+     * file's identity, which is why both rules exist.
+     */
+    it('a CORRECTED file re-uploaded writes only what changed', async () => {
+      await commitIndiv([indivRec({ amount: '250' }), indivRec({ amount: '400' })]);
+      const corrected = [indivRec({ amount: '250' }), indivRec({ amount: '450' })];
+      const p = await validateIndiv(corrected);
+      expect(p.rows[0].reason).toBe('duplicateInRun'); // unchanged — already there
+      expect(p.rows[1].ok).toBe(true); // 400 → 450 is a different line
+      const r = await commitIndiv(corrected);
+      expect(r.written).toBe(1);
+      const rows = await listIndividualTxnsAcross(adminCtx(base), { companyIds: [base.companyId], employmentId });
+      expect(rows.map((x) => Number(x.amount)).sort((a, b) => a - b)).toEqual([250, 400, 450]);
+    });
+
+    it('an imported row now carries the upload it came from, which is what the duplicate check could not do before', async () => {
+      await commitIndiv([indivRec()]);
+      const [row] = await owner.db
+        .select({ source: schema.payrollIndividualTxn.source, sourceRef: schema.payrollIndividualTxn.sourceRef })
+        .from(schema.payrollIndividualTxn)
+        .where(eq(schema.payrollIndividualTxn.employmentId, employmentId));
+      expect(row.source).toBe('import');
+      // `xlsx:<digest of the whole file>:<row number>`. On production all 24 January rows had NULL here.
+      expect(row.sourceRef).toMatch(/^xlsx:[0-9a-f]{32}:2$/);
+    });
+
+    it('the same file-row is refused even when its amount was edited afterwards', async () => {
+      // The amount key alone would let this through — the stored row no longer matches the file. The
+      // file-row identity is what says "this upload has already been applied".
+      await commitIndiv([indivRec({ amount: '250' })]);
+      await owner.db
+        .update(schema.payrollIndividualTxn)
+        .set({ amount: '999.00' })
+        .where(eq(schema.payrollIndividualTxn.employmentId, employmentId));
+      const p = await validateIndiv([indivRec({ amount: '250' })]);
+      expect(p.rows[0].reason).toBe('duplicateImported');
+    });
+
+    /** THE SILENCE. The run had already produced payslips and the screen said nothing about it. */
+    it('importing behind a run that has already been paid WARNS, and still writes the row', async () => {
+      const a = adminCtx(base);
+      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+      await generatePayslips(a, { batchId });
+
+      const p = await validateIndiv([indivRec()]);
+      expect(p.rows[0].ok).toBe(true); // a warning is NOT a refusal — 5c65367d's approved behaviour stands
+      expect(p.warned).toBe(1);
+      expect((p.rows[0].warnings ?? []).map((w) => w.reason)).toContain('runAlreadyProcessed');
+
+      const r = await commitIndiv([indivRec()]);
+      expect(r.written).toBe(1);
+      expect(r.recalcBatchIds).toContain(batchId);
+    });
+
+    it('a run that is still a DRAFT raises no warning — there is nothing to be behind', async () => {
+      const a = adminCtx(base);
+      await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+      const p = await validateIndiv([indivRec()]);
+      expect(p.rows[0].warnings).toBeUndefined();
+      expect(p.warned).toBe(0);
+    });
+
+    it('Payroll Cycle "bonus" sends the row to the BONUS run instead of the salary run', async () => {
+      await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+      const multi = await entitledCtx(base);
+      await createBatch(multi, { companyId: base.companyId, payPeriod: '2026-08' });
+      const bonus = await createAdditionalRun(multi, {
+        companyId: base.companyId,
+        payPeriod: '2026-08',
+        runType: 'bonus',
+      });
+
+      const r = await commitTxnImport(multi, {
+        kind: 'individual',
+        scopeIds,
+        records: [indivRec({ payroll_cycle: 'bonus' })],
+      });
+      expect(r.written).toBe(1);
+      const [row] = await owner.db
+        .select({ batchId: schema.payrollIndividualTxn.batchId })
+        .from(schema.payrollIndividualTxn)
+        .where(eq(schema.payrollIndividualTxn.employmentId, employmentId));
+      // THE WHOLE JANUARY DEFECT, INVERTED: the line is on the bonus run, not the salary run.
+      expect(row.batchId).toBe(bonus.batchId);
+    });
+
+    /**
+     * AND IT IS REFUSED RATHER THAN FALLING BACK. A period-keyed row is collected by attach-on-generate,
+     * which is REGULAR-RUN-ONLY — so "bonus, but there is no bonus run" would land on the salary run,
+     * which is precisely what January did. Refusing is the only answer that does not rebuild the defect.
+     */
+    it('Payroll Cycle "bonus" with no bonus run is REFUSED by name, and writes nothing', async () => {
+      const a = adminCtx(base);
+      await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+      const p = await validateIndiv([indivRec({ payroll_cycle: 'bonus' })]);
+      expect(p.rows[0].reason).toBe('runMissingForCycle');
+      expect(p.rows[0].detail?.cycle).toBe('bonus');
+      const r = await commitIndiv([indivRec({ payroll_cycle: 'bonus' })]);
+      expect(r.written).toBe(0);
+      expect(await listIndividualTxnsAcross(a, { companyIds: [base.companyId], employmentId })).toHaveLength(0);
+    });
+
+    it('a blank Payroll Cycle behaves exactly as before — the regular run, then period-keyed', async () => {
+      const a = adminCtx(base);
+      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+      await commitIndiv([indivRec({ payroll_cycle: '' })]);
+      const [row] = await owner.db
+        .select({ batchId: schema.payrollIndividualTxn.batchId })
+        .from(schema.payrollIndividualTxn)
+        .where(eq(schema.payrollIndividualTxn.employmentId, employmentId));
+      expect(row.batchId).toBe(batchId);
+    });
+
+    it('an unknown Payroll Cycle is refused by name rather than silently ignored', async () => {
+      const p = await validateIndiv([indivRec({ payroll_cycle: 'quarterly' })]);
+      expect(p.rows[0].reason).toBe('cycleUnknown');
+    });
+
+    /**
+     * THE MIS-TARGET, MADE VISIBLE. Routing is never INFERRED from the pay item — `display_category` is
+     * presentation metadata and paying a bonus inside the salary run is completely ordinary, so forcing a
+     * separate run on everyone would be worse than the defect. What the operator gets instead is being
+     * told, before they press Confirm, that the month has a bonus run their bonus line is not going to.
+     */
+    it('a bonus-coded item heading for the salary run in a month that HAS a bonus run says so', async () => {
+      const bonusComp = await componentCode('BONUS');
+      await owner.db
+        .update(schema.payComponent)
+        .set({ displayCategory: 'bonus' })
+        .where(eq(schema.payComponent.id, bonusComp.id));
+      await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+      const multi = await entitledCtx(base);
+      await createBatch(multi, { companyId: base.companyId, payPeriod: '2026-08' });
+      await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-08', runType: 'bonus' });
+
+      const p = await validateTxnImport(multi, { kind: 'individual', scopeIds, records: [indivRec()] });
+      expect(p.rows[0].ok).toBe(true); // still written — only the operator knows which they meant
+      expect((p.rows[0].warnings ?? []).map((w) => w.reason)).toContain('bonusRunExists');
+
+      // …and it is silent when the operator HAS said which run they want.
+      const stated = await validateTxnImport(multi, {
+        kind: 'individual',
+        scopeIds,
+        records: [indivRec({ payroll_cycle: 'bonus' })],
+      });
+      expect(stated.rows[0].warnings).toBeUndefined();
+    });
+
+    it('no bonus run in the month ⇒ no warning: a bonus paid inside the salary run is ordinary', async () => {
+      const bonusComp = await componentCode('BONUS');
+      await owner.db
+        .update(schema.payComponent)
+        .set({ displayCategory: 'bonus' })
+        .where(eq(schema.payComponent.id, bonusComp.id));
+      const a = adminCtx(base);
+      await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+      const p = await validateIndiv([indivRec()]);
+      expect(p.rows[0].warnings).toBeUndefined();
+    });
   });
 });

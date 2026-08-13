@@ -17,6 +17,11 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // below (see the note beside that export). Imported here so every use INSIDE this file keeps binding the
 // same function, and so `@/core/leave` stays their public server-side door.
 import { serviceYearsAt, completedYearsAt } from '../lib/completed-years';
+// 46afcc48 — the shared group's CYCLE, stated once. The window below used to be spelled inline here; the
+// Leave tab's new group figure must count over exactly the same one, and two spellings of "the group's
+// year" is how a displayed number and an enforcement verdict start disagreeing. Behaviour is unchanged:
+// the helper returns the same calendar-year pair this function has always built.
+import { sharedGroupCycleWindow } from '../lib/leave-groups';
 import { consumeReplacementLeaveTx } from './toil';
 import {
   holidayDatesFor,
@@ -34,6 +39,7 @@ import {
   buildTemplateEntitlementResolver,
   earliestTemplateYear,
   leaveTypeIdsWithTemplatesAt,
+  templateStartsWithinWindow,
 } from './entitlement-template';
 import {
   applyLeaveTypeRules,
@@ -1608,9 +1614,13 @@ async function enforceSharedLeaveGroupLimit(
   if (memberTypeIds.length === 0) return;
   // Per-cycle usage across all member types = pending + approved requests whose start falls in the same
   // calendar year, minus the request being re-evaluated (avoids double-counting on the approval path).
-  const year = p.startDate.slice(0, 4);
-  const windowStart = `${year}-01-01`;
-  const windowEnd = `${year}-12-31`;
+  // 46afcc48: the window comes from `sharedGroupCycleWindow` so the figure the employee reads on their
+  // Leave tab is summed over the identical cycle. Same dates, one definition.
+  //
+  // NOTE WHAT IS *NOT* HERE, because 46afcc48 is a display request and this is the enforcement: no member
+  // type's visibility, and no group placement, is consulted anywhere in this function. Hiding a member —
+  // or the whole group — cannot move this verdict, and a test pins exactly that.
+  const { start: windowStart, end: windowEnd } = sharedGroupCycleWindow(p.startDate);
   const [used] = await tx
     .select({ total: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
     .from(leaveRequest)
@@ -5901,7 +5911,9 @@ export type LeaveYearGrantOutcome =
   /** bc36c768: the type carries the not-configured marker, so the grant is forced to 0. The marker row is
    *  still written — carry-forward and expiry depend on it. `granted` counts it, exactly as before. */
   | 'unconfigured_method'
-  /** This pair already has an accrual row at 1 January — a re-run, not a duplicate. Counted in `skipped`. */
+  /** This pair already has an accrual row somewhere in this leave year — a re-run, not a duplicate.
+   *  Counted in `skipped`. r193 re-keyed this from "a row dated exactly 1 January"; see
+   *  `yearOpenMarkerCond`. */
   | 'already_open'
   /** ADR-0069: an active frozen encashment snapshot locks the balance. Counted in `skipped`. */
   | 'frozen'
@@ -5937,6 +5949,72 @@ export type OpenLeaveYearResult = {
 };
 
 /**
+ * r193 — THE ONE DEFINITION OF "WHEN DOES THIS LEAVE YEAR START FOR THIS EMPLOYMENT AND THIS TYPE".
+ *
+ * Two faults in `openLeaveYear` have the same shape, so they get one answer rather than two:
+ *
+ *   FAULT 1  the entitlement table itself was not in force on 1 January — it was written in August.
+ *   FAULT 2  the EMPLOYEE was not there on 1 January — they joined in March.
+ *
+ * In both cases 1 January is a date at which the grant has no meaning, and in both cases the honest start
+ * is the LATER date: the year opens for this pair when BOTH the table and the person exist. Hence
+ *
+ *     effectiveGrantStart = max(yearStart, templateStart, hiredOn)
+ *
+ * and everything about the answer is then dated at that one instant — which template version is in force,
+ * which eligibility rule is, which department the employee sat in, and how many completed years of service
+ * they had. That is the same "one date for every part of the answer" discipline `buildTemplateEntitlementResolver`
+ * already documents; r193 only moves the date off a constant.
+ *
+ * `templateStart` is null for a type with no entitlement table (the statutory standing types), which
+ * simply drops out of the max — an employee hired before the year still starts at 1 January, exactly as
+ * they always did. Pure, exported and unit-tested: the date arithmetic is the whole change, and a helper
+ * nobody can call is a helper nobody can pin.
+ */
+export function effectiveGrantStart(
+  yearStart: string,
+  templateStart: string | null | undefined,
+  hiredOn: string,
+): string {
+  let out = yearStart;
+  if (templateStart != null && templateStart > out) out = templateStart;
+  if (hiredOn > out) out = hiredOn;
+  return out;
+}
+
+/**
+ * r193 — THE YEAR-OPEN IDEMPOTENCY MARKER, AS ONE PREDICATE TWO ENGINES SHARE.
+ *
+ * ⚠️ THIS IS THE MOST DANGEROUS LINE IN THE WHOLE CHANGE, so it is stated once and imported, never
+ * re-typed. Until r193 the marker was `entryType = 'accrual' AND effective_on = <year>-01-01`, which was
+ * exact only because the grant was ALWAYS written on 1 January. `effectiveGrantStart` above moves that
+ * date to the table's start or the employee's join date — and a marker still looking for a 1-January row
+ * WOULD NOT MATCH THE ROW THE PREVIOUS RUN WROTE. Pressing Generate Entitlement twice would then grant the
+ * same year twice, with no error and no way to tell from the screen which figure was right.
+ *
+ * So the key is now (employment, leave type, LEAVE YEAR): any accrual-class row dated inside the year.
+ * That is strictly WIDER than the old key, which is the safe direction — the old 1-January rows on
+ * production are inside the year and still match, so nothing already granted is re-granted.
+ *
+ * IT DELIBERATELY ALSO MATCHES THE HIRE GRANT (core/org.ts posts `accrual` at the join date). A March
+ * joiner whose hire grant already ran must NOT be granted a second time by a year-open that now reaches
+ * them — under the old key the hire row was invisible and fault 2's fix would have double-granted every
+ * joiner the moment it shipped. Reading the hire grant AS the year-open marker for that employee's first
+ * year is what makes fault 2 safe, and it is why this predicate does not filter on `reason`.
+ *
+ * TWO CONSUMERS, and they must agree: `openLeaveYear` (do not grant twice) and `expireCarriedLeave` (only
+ * sweep a year that was actually opened — see its own note). If they disagree, carried leave silently
+ * stops expiring in exactly the tenants this change unblocks.
+ */
+function yearOpenMarkerCond(yearStart: string, yearEnd: string) {
+  return and(
+    eq(leaveLedger.entryType, 'accrual'),
+    gte(leaveLedger.effectiveOn, yearStart),
+    lte(leaveLedger.effectiveOn, yearEnd),
+  );
+}
+
+/**
  * Post a leave year's entitlement for every eligible employment: grant, cap the carry-forward and forfeit
  * the excess. Idempotent on its own `openedSet`, which is read from the LEDGER rather than from any
  * configuration table — so a second run grants nothing twice.
@@ -5967,6 +6045,8 @@ export async function openLeaveYear(
   const dryRun = p.dryRun === true;
   return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
     const yearStart = `${p.year}-01-01`;
+    // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
+    const yearEnd = `${p.year}-12-31`;
 
     // WHICH TYPES THIS SWEEP GRANTS — items 783bf55a and baea8e5b.
     //
@@ -5998,7 +6078,15 @@ export async function openLeaveYear(
     const allTypes = await tx
       // 9816a5ad step 2: the type's own rules ride along with the type row that is already being read —
       // no extra round-trip, and the rules are in scope wherever `t` is.
-      .select({ id: leaveType.id, code: leaveType.code, ...leaveTypeRuleColumns })
+      // r193: `yearCycleOverride` rides along too — the sweep now reaches employments hired during the
+      // year and `hireYearGrantDays` needs it to spot an a2c ANNUAL type. It is deliberately NOT added to
+      // `leaveTypeRuleColumns`: that map is the ENGINE RULES contract and the cycle override is not one.
+      .select({
+        id: leaveType.id,
+        code: leaveType.code,
+        yearCycleOverride: leaveType.yearCycleOverride,
+        ...leaveTypeRuleColumns,
+      })
       .from(leaveType)
       .where(isNull(leaveType.archivedAt));
     // 6e9a126e — THE ONLY LIMB LEFT. "Did an administrator configure entitlement days for this type" had
@@ -6007,10 +6095,28 @@ export async function openLeaveYear(
     // them. Without this limb, a type configured through the new layer is never visited by a year-open —
     // HR writes a table, watches it save, and never sees a day of it reach an employee, which is verbatim
     // the defect 783bf55a / baea8e5b were raised for.
-    const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, yearStart);
+    //
+    // ⚠️ r193 FAULT 1 — THIS LINE WAS `leaveTypeIdsWithTemplatesAt(tx, yearStart)`. It asked "which tables
+    // were in force ON 1 JANUARY", so a tenant who built their entitlement tables in August had none of
+    // them counted and every type configured ONLY that way was never visited by a year-open. On the
+    // reporting account that is the eight custom leave types (Compassionate, Marriage, Study, Examination,
+    // …), each with tables dated 2026-08-01 and each granted nothing all year. The question is a WINDOW:
+    // which types have a table in force at any point in this leave year, and from when. See
+    // `templateStartsWithinWindow`.
+    //
+    // BE PRECISE ABOUT WHAT THIS DID *NOT* CAUSE, because the round's plan overstated it and a wrong story
+    // here invites the wrong fix next time. The union with `standing` below means ANNUAL, SICK and
+    // HOSPITALIZATION are ALWAYS in `types` whatever this reader returns — they were visited every run.
+    // They granted nothing for their own reasons: ANNUAL is an earned method (accrueEarnedLeave's
+    // business, not this sweep's), and SICK and HOSPITALIZATION were stopped by the eligibility
+    // short-circuit fault 3 fixes. "The type list filtered to nothing" was never true.
+    const templateStarts = await templateStartsWithinWindow(tx, {
+      windowStart: yearStart,
+      windowEnd: yearEnd,
+    });
     // Filtered in memory rather than as a SQL subquery: leave_type is a small per-tenant table, and
     // an empty configured set is a normal state that several drizzle `inArray` forms handle badly.
-    const configuredIds = new Set(templateConfigured);
+    const configuredIds = new Set(templateStarts.keys());
     const standing = new Set<string>([...STANDING_LEAVE_CODES]);
     // 93249794 — the Leave Type scope is applied HERE, on top of the set above, and never in place of it.
     // A type the sweep would not have granted anyway does not become grantable by being picked on a form;
@@ -6024,6 +6130,9 @@ export async function openLeaveYear(
       .select({
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
+        // r193: a first-year LEAVER's up-front a2c figure is capped at their last day of service
+        // (adcdf215). The sweep never saw a first-year employment before, so it never needed this.
+        terminatedOn: employment.terminatedOn,
         country: company.country,
         gradeId: employment.gradeId,
         companyId: employment.companyId,
@@ -6032,7 +6141,14 @@ export async function openLeaveYear(
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(
         and(
-          lt(employment.hiredOn, yearStart),
+          // ⚠️ r193 FAULT 2 — THIS WAS `lt(employment.hiredOn, yearStart)`, STRICTLY BEFORE THE YEAR.
+          // On the reporting account 18 of 40 active employments joined during 2026 and were skipped
+          // before any entitlement question was asked — verbatim the reporter's "people who joined this
+          // year get nothing". A mid-year joiner is a member of this leave year; `effectiveGrantStart`
+          // below starts their grant at their JOIN DATE rather than pretending they were here in January,
+          // and `yearOpenMarkerCond` reads their hire grant as this year's marker so the two engines
+          // cannot both pay them. Anyone hired after the year ends is still not in it.
+          lte(employment.hiredOn, yearEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
           // 93249794 — the employee scope, already resolved by the caller through
           // resolveOrgCriteriaTargets. A RESTRICTION, never a widening: an employment that is not active
@@ -6048,6 +6164,9 @@ export async function openLeaveYear(
     const empIds = emps.map((e) => e.employmentId);
     const typeIds = types.map((t) => t.id);
 
+    // ⚠️ r193 — THE IDEMPOTENCY KEY. It used to be `effectiveOn = yearStart`; it is now the whole leave
+    // year, because the grant is no longer always written on 1 January. Read `yearOpenMarkerCond`'s header
+    // before touching this: a marker that misses the row the last run wrote double-grants entitlement.
     const already = await tx
       .select({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId })
       .from(leaveLedger)
@@ -6055,8 +6174,7 @@ export async function openLeaveYear(
         and(
           inArray(leaveLedger.employmentId, empIds),
           inArray(leaveLedger.leaveTypeId, typeIds),
-          eq(leaveLedger.entryType, 'accrual'),
-          eq(leaveLedger.effectiveOn, yearStart),
+          yearOpenMarkerCond(yearStart, yearEnd),
         ),
       );
     const openedSet = new Set(already.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
@@ -6066,16 +6184,48 @@ export async function openLeaveYear(
     // here avoids aborting the whole batch on one frozen employee.
     const frozenSet = await frozenSnapshotKeySet(tx, empIds, typeIds);
 
-    // 6e9a126e — the entitlement TEMPLATE layer, resolved AT THE YEAR BOUNDARY. `yearStart` dates every
-    // part of the answer at the same instant: which template version was in force, which eligibility rule
-    // was in force, and which department / position / employment type the employee held THEN. Release three
-    // removed the two reads that used to sit here (the grade `leave_policy` rows for these types as of
-    // Jan 1, and the benefit-scheme resolver), so this is now the only entitlement read the sweep makes.
-    const templates = await buildTemplateEntitlementResolver(tx, {
-      employmentIds: empIds,
-      leaveTypeIds: typeIds,
-      asOf: yearStart,
-    });
+    // 6e9a126e — the entitlement TEMPLATE layer. ONE date dates every part of the answer at the same
+    // instant: which template version was in force, which eligibility rule was in force, and which
+    // department / position / employment type the employee held THEN. Release three removed the two reads
+    // that used to sit here (the grade `leave_policy` rows and the benefit-scheme resolver), so this is
+    // the only entitlement read the sweep makes.
+    //
+    // ⚠️ r193 — THAT DATE IS NO LONGER A CONSTANT. It was `yearStart`, and both faults this round fixes
+    // are consequences of that: a table written in August is not in force on 1 January, and a March joiner
+    // does not exist on 1 January — `resolveOrgCriteriaTargets` excludes anyone with `hired_on > asOf`, so
+    // resolving a joiner at 1 January matches them against no eligibility rule at all and hands them a
+    // template band of null however well configured they are. The date is now `effectiveGrantStart` for
+    // the pair, and the resolvers are MEMOISED BY DATE so the batching this function depends on survives.
+    //
+    // HOW MANY RESOLVERS THAT IS, stated honestly because the batched resolver's own header warns against
+    // per-employee resolution: one per DISTINCT effective start. In a calendar year that is one per
+    // distinct table start date (a handful — the production account has three across eleven leave types)
+    // plus one per employee hired AFTER a table start (joiners before it share the table's date). Each is
+    // built with only the employments that need it, so the per-rule membership queries narrow with it.
+    const resolverByDate = new Map<string, Awaited<ReturnType<typeof buildTemplateEntitlementResolver>>>();
+    const templatesAt = async (asOf: string, forEmploymentIds: string[]) => {
+      const hit = resolverByDate.get(asOf);
+      if (hit) return hit;
+      const built = await buildTemplateEntitlementResolver(tx, {
+        employmentIds: forEmploymentIds,
+        leaveTypeIds: typeIds,
+        asOf,
+      });
+      resolverByDate.set(asOf, built);
+      return built;
+    };
+    // Bucketed up front so each resolver is built ONCE with every employment that shares its date, rather
+    // than once per employment as the loop happens to reach them. `effectiveGrantStart` is pure, so this
+    // pass and the loop below cannot disagree about which date a pair belongs to.
+    const empIdsByDate = new Map<string, Set<string>>();
+    for (const e of emps) {
+      for (const t of types) {
+        const d = effectiveGrantStart(yearStart, templateStarts.get(t.id), e.hiredOn);
+        const set = empIdsByDate.get(d);
+        if (set) set.add(e.employmentId);
+        else empIdsByDate.set(d, new Set([e.employmentId]));
+      }
+    }
 
     const balances = await tx
       .select({
@@ -6102,9 +6252,15 @@ export async function openLeaveYear(
         for (const t of types) rows.push(logRow(e.employmentId, t.id, 'pack_blocked'));
         continue;
       }
-      const years = serviceYearsAt(e.hiredOn, yearStart);
       for (const t of types) {
         const key = `${e.employmentId}|${t.id}`;
+        // r193 — WHEN THIS LEAVE YEAR STARTS FOR THIS PAIR: the later of 1 January, the date this type's
+        // entitlement table starts applying, and the employee's join date. Everything below is dated at
+        // THAT instant — the template version, the eligibility rule, the employee's department, their
+        // completed years of service, and the ledger rows themselves. `years` used to be hoisted out of
+        // this loop against `yearStart`; it cannot be, now that the date varies per type.
+        const effectiveOn = effectiveGrantStart(yearStart, templateStarts.get(t.id), e.hiredOn);
+        const years = serviceYearsAt(e.hiredOn, effectiveOn);
         if (openedSet.has(key)) {
           skipped += 1;
           rows.push(logRow(e.employmentId, t.id, 'already_open'));
@@ -6121,11 +6277,26 @@ export async function openLeaveYear(
         // every rule (earning method / carry forward / rounding / maximum balance).
         // ONE shared composition (composeEntitlement) so this can never drift from the recalc kernel.
         // fa3f4ccb: the statutory floor is passed for the below-minimum SIGNAL only — it no longer clamps.
-        const { days, belowStatutoryFloor, policy: pol } = composeEntitlement({
+        const templates = await templatesAt(effectiveOn, [...(empIdsByDate.get(effectiveOn) ?? [])]);
+        const { days: fullYearDays, belowStatutoryFloor, policy: pol } = composeEntitlement({
           floorDays: pack.leave.entitlement(t.code, years),
           templateBand: templates.bandFor(e.employmentId, t.id, years),
           rules: t,
         });
+        // r193 FAULT 2 — an employment hired DURING this leave year gets the SAME first-year shape the
+        // hire grant gives (ANNUAL pro-rated by whole months remaining, a2c ANNUAL its full part-year up
+        // front, s.60F types in full). One function, shared — see `hireYearGrantDays`. Anyone hired before
+        // the year is untouched by this branch and takes the full-year figure exactly as they always did.
+        const days =
+          e.hiredOn >= yearStart
+            ? hireYearGrantDays({
+                days: fullYearDays,
+                typeCode: t.code,
+                yearCycleOverride: t.yearCycleOverride,
+                hiredOn: e.hiredOn,
+                serviceEnd: e.terminatedOn,
+              })
+            : fullYearDays;
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) {
           rows.push(logRow(e.employmentId, t.id, 'earned_method'));
@@ -6193,7 +6364,10 @@ export async function openLeaveYear(
               leaveTypeId: t.id,
               entryType: 'adjustment',
               days: (-forfeit).toFixed(2),
-              effectiveOn: yearStart,
+              // r193: the cap forfeit is dated with the grant it pairs with, never separately. Dating the
+              // forfeit at 1 January while the grant lands in August would leave the employee stripped of
+              // their carry for seven months before the replacement days arrived.
+              effectiveOn,
               reason: CARRY_FORFEIT_REASON_CAP,
             });
           }
@@ -6208,8 +6382,12 @@ export async function openLeaveYear(
             employmentId: e.employmentId,
             leaveTypeId: t.id,
             entryType: 'accrual',
+            // ⚠️ r193: `effectiveOn`, not `yearStart` — the date this pair's leave year actually starts.
+            // This row is also the idempotency marker AND the expiry sweep's "year was opened" marker,
+            // which is why BOTH of those now match on the year rather than on 1 January
+            // (`yearOpenMarkerCond`). Moving this line without moving those double-grants entitlement.
             days: grantDays.toFixed(2),
-            effectiveOn: yearStart,
+            effectiveOn,
           });
         }
         granted += 1;
@@ -6557,6 +6735,51 @@ export function isA2cFirstYear(
     hiredOn <= asOf &&
     hiredOn.slice(0, 4) === asOf.slice(0, 4)
   );
+}
+
+/**
+ * r193 — HOW A GRANT IS SHAPED IN THE EMPLOYEE'S HIRE YEAR, as ONE function two engines share.
+ *
+ * ⚠️ THIS EXISTS BECAUSE FAULT 2'S FIX WOULD OTHERWISE BREAK THE ONE-COMPOSITION INVARIANT. `openLeaveYear`
+ * now reaches employments hired DURING the leave year (previously it could only ever see people hired
+ * before it, so it never needed a first-year rule). The hire grant has always shaped a joiner's first year
+ * — ANNUAL pro-rated by whole months remaining under s.60E practice, an a2c ANNUAL type granted its full
+ * part-year up front, SICK / HOSPITALIZATION granted IN FULL because s.60F is a per-calendar-year
+ * entitlement that is never day-sliced. Had the year-open handed a March joiner a full twelve months while
+ * the hire grant and `projectExpectedEntitlement` both say ten, the very next profile save would post a
+ * compensating adjustment clawing the difference back, and the employee would watch their balance drop for
+ * no reason they could see. That is exactly the drift core/leave-generation.ts's header calls "the single
+ * worst outcome available here".
+ *
+ * So the shaping was LIFTED out of `hireEmployee` verbatim and is called from both. Everything about it —
+ * the months-remaining formula, the ANNUAL-only guard, the a2c branch — is unchanged; it simply has one
+ * home now instead of one home and a copy waiting to be written.
+ *
+ * ANCHORED ON `hiredOn`, NEVER ON THE GRANT DATE. An employee hired in February whose entitlement table
+ * only starts in August is granted ON 1 August but still shaped as an eleven-month first year, because
+ * that is what the hire grant would have given them and what the recalc kernel projects for them. The
+ * table's start date decides WHEN the days are posted; the join date decides HOW MANY.
+ *
+ * `serviceEnd` caps a first-year LEAVER's a2c figure at their last day of service (adcdf215). The hire
+ * grant passes nothing (a fresh hire has not left); the year-open passes `terminatedOn`.
+ */
+export function hireYearGrantDays(p: {
+  days: number;
+  typeCode: string;
+  yearCycleOverride: string | null | undefined;
+  hiredOn: string;
+  serviceEnd?: string | null;
+}): number {
+  if (isA2cFirstYear(p.yearCycleOverride, p.typeCode, p.hiredOn, p.hiredOn)) {
+    return a2cFirstYearEntitledToDate(p.hiredOn, p.hiredOn, p.days, p.serviceEnd ?? null);
+  }
+  // s.60E practice: whole months remaining in the hire year, INCLUDING the month of hire.
+  if (p.typeCode === 'ANNUAL') {
+    const month = Number(p.hiredOn.slice(5, 7));
+    return Math.round(((p.days * (12 - (month - 1))) / 12) * 100) / 100;
+  }
+  // SICK / HOSPITALIZATION and every custom type: full grant. s.60F is per calendar year.
+  return p.days;
 }
 
 /** Anniversary to Calendar (f3a64d90): reason PREFIX stamped on the ledger rows reprojectA2cEntitlement
@@ -8118,9 +8341,18 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
           const dd = Math.min(expiry.day, lastRealDayOfMonth(y, expiry.month));
           const expiryDate = `${y}-${String(expiry.month).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
           if (expiryDate > p.today) continue; // not yet due
-          // Only sweep a year whose leave-year was actually OPENED: openLeaveYear posts the carry as a
-          // Jan-1 accrual (its own open-marker). Without that marker no carry was ever posted for this year,
-          // so there is nothing to expire (back-compat: a year never run is never retroactively swept).
+          // Only sweep a year whose leave-year was actually OPENED: openLeaveYear posts the year's grant
+          // as an accrual row (its own open-marker). Without that marker no carry was ever posted for this
+          // year, so there is nothing to expire (back-compat: a year never run is never retroactively
+          // swept).
+          //
+          // ⚠️ r193 — THIS WAS `effectiveOn = yearStart` AND IT WAS A SECOND, SILENT LANDMINE. The plan for
+          // this round named the idempotency guard in openLeaveYear and missed this one, which keys on the
+          // SAME row. Once a grant can land on the table's start date or the employee's join date instead
+          // of 1 January, a marker looking for a 1-January row finds nothing — and this sweep would have
+          // stopped expiring carried leave for exactly the tenants the round unblocks, with no error and
+          // no log line (the comment above says so: an early return here means days sit in balances
+          // forever). Shared predicate, so the two engines cannot drift apart again.
           const [openMarker] = await tx
             .select({ n: sql<string>`count(*)` })
             .from(leaveLedger)
@@ -8128,8 +8360,7 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
               and(
                 eq(leaveLedger.employmentId, e.employmentId),
                 eq(leaveLedger.leaveTypeId, t.id),
-                eq(leaveLedger.entryType, 'accrual'),
-                eq(leaveLedger.effectiveOn, yearStart),
+                yearOpenMarkerCond(yearStart, `${y}-12-31`),
               ),
             );
           if (Number(openMarker?.n ?? 0) === 0) continue;

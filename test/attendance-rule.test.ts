@@ -98,13 +98,64 @@ describe('applyOtRuleRows (pure)', () => {
   });
 
   it('rounds OT DOWN to the matching band round-to value (7c834696 rev 3 — never above what was worked)', () => {
-    const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, phRate: null, rounding: true, roundToMinutes: 30 }] });
+    const rule = ruleWith({ otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, phRate: null, roundingMode: 'down' as const, roundToMinutes: 30 }] });
     expect(applyOtRuleRows(70, 0, rule)).toBe(60); // 70 → floor to 30s = 60 (nearest gave 60 too)
     expect(applyOtRuleRows(80, 0, rule)).toBe(60); // 80 → floor to 30s = 60; nearest USED TO give 90
   });
 
+  /**
+   * 7c834696 contested (migration 0439) — rounding now has a DIRECTION the operator picks per band.
+   *
+   * Before 0439 the column was a boolean and this function only ever floored, so "round up" was not a
+   * setting the reporter had failed to find: it did not exist. These three cases are the whole contract,
+   * and they use the plan's own worked example (40 minutes against a 15-minute step) so that a regression
+   * names a number a human can check by hand: 40 → 45 up, 40 → 30 down, 40 → 40 with no rounding.
+   */
+  const step15 = (roundingMode: 'none' | 'down' | 'up') =>
+    ruleWith({
+      otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, roundingMode, roundToMinutes: 15 }],
+    });
+
+  it('rounding UP takes 40 minutes to 45 against a 15-minute step (7c834696 contested — this is new)', () => {
+    expect(applyOtRuleRows(40, 0, step15('up'))).toBe(45);
+    expect(applyOtRuleRows(1, 0, step15('up'))).toBe(15); // the smallest step is still a whole step
+    expect(applyOtRuleRows(45, 0, step15('up'))).toBe(45); // already a multiple — untouched, not bumped
+    expect(applyOtRuleRows(0, 0, step15('up'))).toBe(0); // no overtime is not rounded up into existence
+  });
+
+  it('rounding DOWN takes the same 40 minutes to 30 — the old boolean-true behaviour, unchanged', () => {
+    expect(applyOtRuleRows(40, 0, step15('down'))).toBe(30);
+    expect(applyOtRuleRows(45, 0, step15('down'))).toBe(45);
+    // The cost documented at applyOtRuleRows: shorter than the step floors to ZERO. Still true, still
+    // deliberate, and now avoidable by choosing one of the other two modes instead of a surprise.
+    expect(applyOtRuleRows(14, 0, step15('down'))).toBe(0);
+  });
+
+  it('NO ROUNDING leaves the exact minutes even when a step is stored on the band', () => {
+    // The mode wins over the step, not the other way round: a band that carries a leftover round-to value
+    // and says 'none' must not quietly keep rounding by it.
+    expect(applyOtRuleRows(40, 0, step15('none'))).toBe(40);
+    expect(applyOtRuleRows(14, 0, step15('none'))).toBe(14);
+    expect(applyOtRuleRows(121, 0, step15('none'))).toBe(121);
+  });
+
+  it('a zero or missing step never rounds and never divides by zero, whatever the mode says', () => {
+    // 0439 forbids this pair in the database, but a row written before it (or by anything other than the
+    // service) must not reach `ot / 0`. Both modes fall through to the raw minutes.
+    for (const mode of ['up', 'down'] as const) {
+      const zero = ruleWith({
+        otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, roundingMode: mode, roundToMinutes: 0 }],
+      });
+      const nul = ruleWith({
+        otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, roundingMode: mode, roundToMinutes: null }],
+      });
+      expect(applyOtRuleRows(40, 0, zero)).toBe(40);
+      expect(applyOtRuleRows(40, 0, nul)).toBe(40);
+    }
+  });
+
   it('folds early-OT in only when applyToEarlyOt is set', () => {
-    const band = [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, rounding: false, roundToMinutes: null }];
+    const band = [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat' as const, rate: 1.5, phRate: null, roundingMode: 'none' as const, roundToMinutes: null }];
     expect(applyOtRuleRows(70, 20, ruleWith({ otRows: band, applyToEarlyOt: false }))).toBe(70);
     expect(applyOtRuleRows(70, 20, ruleWith({ otRows: band, applyToEarlyOt: true }))).toBe(90);
   });
@@ -205,7 +256,7 @@ describe('OT rows drive workday OT rounding through checkOut', () => {
       earlyDeductMinutes: 0,
       includeGraceInEarlyOut: false,
       applyToEarlyOt: false,
-      otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }],
+      otRows: [{ fromMinutes: 0, toMinutes: 0, ratePattern: 'flat', rate: 1.5, roundingMode: 'down' as const, roundToMinutes: 30 }],
     });
     // With the rounding rule: 550 worked − 480 normal = 70 OT → floored to a multiple of 30 = 60.
     const withRule = await createShift(a, workdayShift({ ruleId: rounded.id }));
@@ -317,7 +368,7 @@ const vband = (fromMinutes: number, toMinutes: number, rate: number) => ({
   toMinutes,
   ratePattern: 'variable' as const,
   rate,
-  rounding: false,
+  roundingMode: 'none' as const,
   roundToMinutes: null,
 });
 
@@ -364,6 +415,56 @@ describe('7c834696 — the OT band ladder is validated on save', () => {
     expect(() =>
       createAttendanceRule(a, inertRule({ earlyAfterMinutes: 30, earlyDeductMinutes: 10 })),
     ).toThrow(/Early out: .after 30 minutes. cannot be larger than .deduct 10 minutes./);
+  });
+
+  /**
+   * 7c834696 contested (0439) — the two things the SAVE path now refuses, both of which used to be
+   * accepted and then quietly turned into a number nobody chose.
+   */
+  it('refuses a rounding mode with no “Round to”, and names the row', async () => {
+    const a = adminCtx(b);
+    // 0 used to be accepted by the column and then skipped by the engine's `> 0` guard — the same outcome
+    // as "no rounding", but by accident. With a free minutes box replacing the 15/30/60 list, a typed 0 is
+    // reachable in a way it never was, so it is refused rather than silently reinterpreted.
+    for (const bad of [0, null]) {
+      expect(() =>
+        createAttendanceRule(
+          a,
+          inertRule({ otRows: [{ ...vband(0, 0, 1.5), roundingMode: 'up' as const, roundToMinutes: bad }] }),
+        ),
+      ).toThrow(/Overtime row 1: enter a .Round to. of at least 1 minute/);
+    }
+  });
+
+  it('refuses a band with no rate rather than inventing 1.5 or 0 for it', async () => {
+    const a = adminCtx(b);
+    // The reporter's third point: a new band arrived pre-filled with 1.5. The seed is gone, so "not filled
+    // in" is now a state the form can be in — and the honest completion of that is a refusal here, because
+    // substituting the column default (1.5) or `Number('')` (0, a real setting meaning "do not pay") would
+    // be the same defect, only quieter.
+    expect(() =>
+      createAttendanceRule(a, inertRule({ otRows: [{ ...vband(0, 0, 1.5), rate: null }] })),
+    ).toThrow(/Overtime row 1 has no rate/);
+    // 0 typed DELIBERATELY still saves — it is the request's "record the hours but do not pay them".
+    const r = await createAttendanceRule(a, inertRule({ otRows: [vband(0, 0, 0)] }));
+    expect(Number((await getAttendanceRule(a, r.id))!.otRows[0].rate)).toBe(0);
+  });
+
+  it('round-trips all three rounding modes through the database', async () => {
+    const a = adminCtx(b);
+    const r = await createAttendanceRule(
+      a,
+      inertRule({
+        otRows: [
+          { ...vband(0, 60, 1.5), roundingMode: 'none' as const, roundToMinutes: null },
+          { ...vband(61, 120, 1.5), roundingMode: 'down' as const, roundToMinutes: 15 },
+          { ...vband(121, 0, 1.5), roundingMode: 'up' as const, roundToMinutes: 10 },
+        ],
+      }),
+    );
+    const saved = await getAttendanceRule(a, r.id);
+    expect(saved!.otRows.map((x) => x.roundingMode)).toEqual(['none', 'down', 'up']);
+    expect(saved!.otRows.map((x) => x.roundToMinutes)).toEqual([null, 15, 10]);
   });
 
   it('stores the per-band public-holiday rate, and null when none is given', async () => {

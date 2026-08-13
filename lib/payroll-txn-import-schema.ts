@@ -81,6 +81,13 @@ export const INDIVIDUAL_TXN_COLUMNS = [
   'quantity',
   'amount',
   'transaction_date',
+  // 0db616f3 — WHICH RUN OF THE MONTH THIS LINE IS FOR. Optional, and blank means the regular run,
+  // which is what every import did before this column existed — so a file written to the old template
+  // imports unchanged. It is here because there was previously NO way to say it: the importer pinned
+  // `runType === 'regular'`, and that is how a January bonus file came to sit on the salary run while
+  // the bonus run showed nineteen zero payslips. Same vocabulary as the Fixed Transaction template's
+  // own Payroll Cycle column (FIXED_TRANSACTION_CYCLES), so an operator who has used one has used both.
+  'payroll_cycle',
   'notes',
 ] as const;
 export type IndividualTxnColumn = (typeof INDIVIDUAL_TXN_COLUMNS)[number];
@@ -94,12 +101,13 @@ export const INDIVIDUAL_TXN_HEADERS = [
   'Quantity',
   'Amount',
   'Transaction Date',
+  'Payroll Cycle',
   'Notes',
 ] as const;
 
 export const INDIVIDUAL_TXN_SAMPLE_ROWS: readonly (readonly string[])[] = [
-  ['X000001', 'John Tan', 'OT1_5', 'Overtime 1.5', 'overtime', '5', '', '2026-08-05', 'Weekend callout'],
-  ['X000002', 'Mary Lim', 'BONUS', 'Bonus', 'earning', '', '1500', '2026-08-31', 'Q3 incentive'],
+  ['X000001', 'John Tan', 'OT1_5', 'Overtime 1.5', 'overtime', '5', '', '2026-08-05', '', 'Weekend callout'],
+  ['X000002', 'Mary Lim', 'BONUS', 'Bonus', 'earning', '', '1500', '2026-08-31', 'bonus', 'Q3 incentive'],
 ];
 
 // ─────────────────────────────── shared shape ───────────────────────────────
@@ -182,13 +190,32 @@ export type TxnImportRow = {
   reason: string;
   /** ICU values for that key. */
   detail?: Record<string, string | number>;
+  /**
+   * 0db616f3 — things that are TRUE about a row that will still be written. A warning is not a soft
+   * error: `ok` stays true and Confirm Import writes the row. It exists because the January double
+   * import was caused by SILENCE — the file landed behind a run that had already produced payslips, the
+   * screen said "12 imported" and nothing else, and the operator reasonably concluded nothing had
+   * happened and uploaded it again three minutes later.
+   *
+   * A LIST, not a single field, because the two warnings that exist are independent and January's file
+   * would have carried both. Absent (rather than empty) on a row with nothing to say, so the wire shape
+   * of an unremarkable row is unchanged.
+   */
+  warnings?: TxnImportWarning[];
 };
+
+/** i18n key under `payroll.txnImport.warning.*` plus its ICU values — the same key-not-a-sentence rule
+ *  `reason` follows, and for the same reason: this text is read in six languages. */
+export type TxnImportWarning = { reason: string; detail?: Record<string, string | number> };
 
 export type TxnImportPreview = {
   kind: TxnImportKind;
   total: number;
   valid: number;
   invalid: number;
+  /** How many of the VALID rows carry at least one warning. Counted here so the summary line can say so
+   *  without the screen walking every row. Absent on the Fixed Transaction half, which raises none. */
+  warned?: number;
   rows: TxnImportRow[];
   /** A whole-file refusal (wrong headers, empty file). When set, `rows` is empty and nothing may commit. */
   fileError?: string;

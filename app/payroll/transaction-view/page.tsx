@@ -21,7 +21,7 @@ import { IndividualTxnTable } from './individual-table';
 import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 import { HistoryGrid } from './history-grid';
-import { cleanMonths, pivotHistoryGrid } from './history-pivot';
+import { cleanMonths, pivotHistoryGrid, type PayItemSubjectMap } from './history-pivot';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -132,11 +132,18 @@ export default async function TransactionViewPage({
   // saved links keep working; only the no-tab default moves.
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
-  const [employees, companies, components, creators] = await Promise.all([
+  const [employees, companies, components, creators, gridComponents] = await Promise.all([
     listEmployees(s, scopeIds),
     listCompanies(s),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
+    // 0253dc7c — the tenant's live Pay Item settings, for the Grid tab's statutory-subject columns.
+    // Read HERE, on the server, and handed to the pivot as plain data: the pivot is a pure function
+    // that does no I/O, and a function prop crossing the RSC boundary 500s at runtime while tsc, the
+    // suite and `next build` all stay green. `includeArchived` on purpose — an archived pay item can
+    // still be the code on an old payslip, and a blank column there would be a worse answer than the
+    // setting it was archived with.
+    tab === 'grid' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
   ]);
   // Department options for the Individual History filter — distinct current-assignment departments in scope.
   const departmentOptions = (() => {
@@ -232,6 +239,18 @@ export default async function TransactionViewPage({
   // The fold happens on the SERVER: the browser gets finished rows, so the two switches over them cost no
   // round-trip. Everything crossing to the client is plain data — a function prop from a server component
   // to a client one returns a 500 on every request while tsc, the suite and `next build` all stay green.
+  // 0253dc7c — code → the three statutory settings, built once. Keyed by CODE because that is the only
+  // thing a payslip's stored line and a synthetic row have in common with a catalogue row; the id is
+  // meaningless to a line written months ago.
+  const payItemSubjects: PayItemSubjectMap = Object.fromEntries(
+    gridComponents.map((c) => [
+      c.code,
+      // One `socso` answer drives the SOCSO, EIS and SKBBK columns — there is no per-item SKBBK
+      // setting in the schema, and inventing one here would put three independent-looking answers on
+      // screen for a single stored field.
+      { epf: c.includedInEpf, socso: c.includedInSocsoEis, pcb: c.includedInPcb },
+    ]),
+  );
   const grid =
     tab === 'grid'
       ? pivotHistoryGrid({
@@ -239,6 +258,7 @@ export default async function TransactionViewPage({
           year: gridYear,
           months: gridMonths,
           hrdfRegisteredCompanyIds,
+          payItemSubjects,
         })
       : null;
   const locale = await getLocale();
@@ -763,6 +783,8 @@ export default async function TransactionViewPage({
                     exportParams={gridExportParams}
                     payslipCount={grid?.payslipCount ?? 0}
                     detailNotRecorded={grid?.detailNotRecorded ?? false}
+                    basesNotRecorded={grid?.basesNotRecorded ?? false}
+                    subjectFromCatalogue={grid?.subjectFromCatalogue ?? false}
                   />
                 </>
               ) : (

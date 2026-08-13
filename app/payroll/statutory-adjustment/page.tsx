@@ -11,11 +11,15 @@ import {
   type StatutoryAdjustmentLine,
 } from '@/packs/payroll/service';
 import {
+  Badge,
+  Button,
   Card,
   ErrorBanner,
+  Field,
   PageHeader,
   SectionHeader,
   inputCls,
+  pageWideCls,
   tableWrapCls,
   tbodyCls,
   theadCls,
@@ -45,6 +49,27 @@ import { revertAdjustmentAction } from './actions';
  * NINE LINES, NOT THE TEN THE REQUEST LISTS. SKBBK / Lindung 24 Jam has only an EMPLOYEE leg in the
  * engine (localization/my/payroll.ts socso() → { employer, employee, skbbk }), so the screen shows nine
  * rows rather than rendering an always-zero tenth that would imply a figure the system does not compute.
+ *
+ * ── 6b018920, presentation only ─────────────────────────────────────────────────────────────────────
+ * THE PLAN'S PREMISE WAS WRONG. It said this screen "sits in the narrower page frame" with "a large
+ * empty margin on both sides". It does not: `pageWideCls` is exactly `'w-full space-y-6'`
+ * (components/ui.tsx) and all four of this file's root divs already carried that literal string, so
+ * every state has rendered at the full window width since it shipped. The plan measured
+ * `grep -c pageWideCls` — the IDENTIFIER, not the effective class — a false negative on any page that
+ * inlined the same value. There was no width defect to fix on either target screen.
+ *
+ * What this change does is real but small: adopt the named constant so the width is stated by the same
+ * means as every other wide screen, and bring the two GET filter forms into the transaction-view
+ * arrangement (Card → Field → Button) the rest of Payroll uses. Status text becomes a <Badge>.
+ *
+ * ⚠️ THE QUERY PARAMS ARE THE CONTRACT AND NOTHING HERE RENAMES ONE. Five names travel through the URL —
+ * company, year, month, runType (state 1) and batch, employment, q (states 2 and 3) — and they are read
+ * back off `searchParams` at the top of this function. Note that `company` maps to the READER's argument
+ * `companyId` (core/payroll.ts listAdjustableBatches); the two names differ on purpose and neither may be
+ * changed to match the other. A layout move that dropped state 2's hidden `batch` input, or renamed a
+ * select, would silently stop a bookmarked filter from applying with no error anywhere — which is exactly
+ * why the arrangement is pinned across page AND reader in
+ * test/payroll-backpay-statutory-layout.test.ts.
  */
 
 const money = (n: number) => n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -109,7 +134,7 @@ export default async function StatutoryAdjustmentPage({
     }));
     const hasOverride = detail.current != null;
     return (
-      <div className="w-full space-y-6">
+      <div className={pageWideCls}>
         <PageHeader
           title={t('title')}
           description={t('employeeSubtitle', {
@@ -177,9 +202,9 @@ export default async function StatutoryAdjustmentPage({
             <form action={revertAdjustmentAction}>
               <input type="hidden" name="batchId" value={detail.batchId} />
               <input type="hidden" name="employmentId" value={detail.employmentId} />
-              <button type="submit" className="rounded-lg border border-border px-3 py-1.5 text-sm">
+              <Button type="submit" variant="outline">
                 {t('revert')}
-              </button>
+              </Button>
             </form>
           </Card>
         )}
@@ -200,7 +225,7 @@ export default async function StatutoryAdjustmentPage({
     const run = runs.find((r) => r.batchId === sp.batch && scopeIds.includes(r.companyId)) ?? null;
     if (!run) {
       return (
-        <div className="w-full space-y-6">
+        <div className={pageWideCls}>
           <PageHeader title={t('title')} description={t('subtitle')} />
           <ErrorBanner message={t('errors.notFound')} />
           <Link href="/payroll/statutory-adjustment" className="inline-block text-sm underline">
@@ -211,23 +236,30 @@ export default async function StatutoryAdjustmentPage({
     }
     const employees = await listAdjustmentEmployees(s, { batchId: run.batchId, q: sp.q });
     return (
-      <div className="w-full space-y-6">
+      <div className={pageWideCls}>
         <PageHeader
           title={t('title')}
           description={t('runSubtitle', { company: run.companyName, period: run.payPeriod })}
         />
         {err && <ErrorBanner message={t(`errors.${err}`)} />}
 
-        <form method="GET" className="flex flex-wrap items-end gap-3">
-          <input type="hidden" name="batch" value={run.batchId} />
-          <label className="text-sm">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('searchEmployee')}</span>
-            <input name="q" defaultValue={sp.q ?? ''} className={inputCls} placeholder={t('searchPlaceholder')} />
-          </label>
-          <button type="submit" className="rounded-lg border border-border px-3 py-1.5 text-sm">
-            {t('search')}
-          </button>
-        </form>
+        {/* ── Filters (GET form — pure navigation, no mutation) ──
+            ⚠️ THE HIDDEN `batch` INPUT IS LOAD-BEARING AND MUST SURVIVE ANY LAYOUT MOVE. A GET form
+            submits ONLY its own fields, so dropping it would rewrite the URL to `?q=…` with no
+            `?batch=`, and the page would silently fall back to State 1 (pick a run) on every search.
+            No error, no 404 — the search just appears to "go back". Pinned in
+            test/payroll-backpay-statutory-layout.test.ts. */}
+        <Card className="p-4">
+          <form method="GET" className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="batch" value={run.batchId} />
+            <Field label={t('searchEmployee')}>
+              <input name="q" defaultValue={sp.q ?? ''} className={inputCls} placeholder={t('searchPlaceholder')} />
+            </Field>
+            <Button type="submit" variant="secondary">
+              {t('search')}
+            </Button>
+          </form>
+        </Card>
 
         <div className={tableWrapCls}>
           <table className="w-full text-sm">
@@ -253,8 +285,10 @@ export default async function StatutoryAdjustmentPage({
                   <td className="px-3 py-2 font-mono text-xs">{e.employeeCode ?? '—'}</td>
                   <td className="px-3 py-2">{e.name}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{money(Number(e.netPay))}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {e.adjustedAt ? t('statusAdjusted') : t('statusSystemCalculated')}
+                  <td className="px-3 py-2">
+                    <Badge variant={e.adjustedAt ? 'info' : 'default'}>
+                      {e.adjustedAt ? t('statusAdjusted') : t('statusSystemCalculated')}
+                    </Badge>
                   </td>
                   <td className="px-3 py-2 text-right">
                     <Link
@@ -288,7 +322,7 @@ export default async function StatutoryAdjustmentPage({
   const years = [...new Set(runs.map((r) => r.payPeriod.slice(0, 4)))].sort().reverse();
 
   return (
-    <div className="w-full space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       {err && <ErrorBanner message={t(`errors.${err}`)} />}
 
@@ -297,49 +331,55 @@ export default async function StatutoryAdjustmentPage({
         {t('windowNote')}
       </div>
 
-      <form method="GET" className="flex flex-wrap items-end gap-3">
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('company')}</span>
-          <select name="company" defaultValue={sp.company ?? ''} className={inputCls}>
-            <option value="">{t('allCompanies')}</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('year')}</span>
-          <select name="year" defaultValue={sp.year ?? ''} className={inputCls}>
-            <option value="">{t('allYears')}</option>
-            {years.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('month')}</span>
-          <select name="month" defaultValue={sp.month ?? ''} className={inputCls}>
-            <option value="">{t('allMonths')}</option>
-            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </label>
-        {/* "Payroll Cycle" on the request is the run's own RUN TYPE here: payroll_cycle is a per-company
-            catalog with no foreign key from a batch, so run_type is the only cycle fact a run carries. */}
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-muted-foreground">{t('cycle')}</span>
-          <select name="runType" defaultValue={sp.runType ?? ''} className={inputCls}>
-            <option value="">{t('allCycles')}</option>
-            {RUN_TYPES.map((rt) => (
-              <option key={rt} value={rt}>{t(RUN_TYPE_LABEL[rt])}</option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="rounded-lg border border-border px-3 py-1.5 text-sm">
-          {t('search')}
-        </button>
-      </form>
+      {/* ── Filters (GET form — pure navigation, no mutation) ──
+          The transaction-view arrangement: the row of controls in a Card, each control a shared
+          <Field>, the submit a shared <Button variant="secondary">.
+          ⚠️ THE FOUR `name=` VALUES ARE URL PARAMS, read back as sp.company / sp.year / sp.month /
+          sp.runType above and passed into listAdjustableBatches. `company` deliberately does NOT
+          match the reader's `companyId` argument; renaming either to agree with the other breaks
+          every bookmarked filter link with no error. Pinned in
+          test/payroll-backpay-statutory-layout.test.ts. */}
+      <Card className="p-4">
+        <form method="GET" className="flex flex-wrap items-end gap-3">
+          <Field label={t('company')}>
+            <select name="company" defaultValue={sp.company ?? ''} className={inputCls}>
+              <option value="">{t('allCompanies')}</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('year')}>
+            <select name="year" defaultValue={sp.year ?? ''} className={inputCls}>
+              <option value="">{t('allYears')}</option>
+              {years.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('month')}>
+            <select name="month" defaultValue={sp.month ?? ''} className={inputCls}>
+              <option value="">{t('allMonths')}</option>
+              {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </Field>
+          {/* "Payroll Cycle" on the request is the run's own RUN TYPE here: payroll_cycle is a per-company
+              catalog with no foreign key from a batch, so run_type is the only cycle fact a run carries. */}
+          <Field label={t('cycle')}>
+            <select name="runType" defaultValue={sp.runType ?? ''} className={inputCls}>
+              <option value="">{t('allCycles')}</option>
+              {RUN_TYPES.map((rt) => (
+                <option key={rt} value={rt}>{t(RUN_TYPE_LABEL[rt])}</option>
+              ))}
+            </select>
+          </Field>
+          <Button type="submit" variant="secondary">
+            {t('search')}
+          </Button>
+        </form>
+      </Card>
 
       <div className={tableWrapCls}>
         <table className="w-full text-sm">
@@ -368,8 +408,10 @@ export default async function StatutoryAdjustmentPage({
                   {t(RUN_TYPE_LABEL[r.runType])}
                   {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">
-                  {r.needsRecalcAt ? t('runNeedsRecalc') : t('runProcessed')}
+                <td className="px-3 py-2">
+                  <Badge variant={r.needsRecalcAt ? 'warning' : 'success'}>
+                    {r.needsRecalcAt ? t('runNeedsRecalc') : t('runProcessed')}
+                  </Badge>
                 </td>
                 <td className="px-3 py-2 text-right">
                   <Link

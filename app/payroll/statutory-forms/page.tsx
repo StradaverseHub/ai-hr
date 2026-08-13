@@ -86,28 +86,38 @@ const WL_STATUS: Record<string, string> = {
 };
 
 /**
- * 587ee719 — the four statuses, their i18n keys and their colours, in ONE place.
+ * 587ee719 — the statuses, their i18n keys and their colours, in ONE place.
  *
  * `planned` is a status this screen adds, not one the catalog can declare: it is what a `PlannedFormDef`
- * renders as, and no generatable entry can ever carry it (the union in the pack has three members). The
- * legend at the top of the page and the chip on each card read from the same map, so the two cannot drift.
+ * renders as, and no generatable entry can ever carry it. The legend at the top of the page and the chip
+ * on each card read from the same map, so the two cannot drift.
+ *
+ * 8ca344bf ADDS `agency-layout`, BETWEEN `official` AND `figures` — and its POSITION in this order is the
+ * point, not decoration. The legend is read top to bottom as a ladder of how close a form is to the
+ * agency's own document, and Borang 8A sits exactly there: every box where the agency's form puts it, on
+ * our paper, because PERKESO publishes no blank page to print onto. Filing it under `figures` would have
+ * been the false modesty that makes the ladder useless; filing it under `official` is the false claim the
+ * whole vocabulary exists to prevent.
  */
-type FormStatus = 'official' | 'figures' | 'draft-file' | 'planned';
-const STATUS_ORDER: FormStatus[] = ['official', 'figures', 'draft-file', 'planned'];
+type FormStatus = 'official' | 'agency-layout' | 'figures' | 'draft-file' | 'planned';
+const STATUS_ORDER: FormStatus[] = ['official', 'agency-layout', 'figures', 'draft-file', 'planned'];
 const FIDELITY_KEY: Record<FormStatus, string> = {
   official: 'fidelity_official',
+  'agency-layout': 'fidelity_agency_layout',
   figures: 'fidelity_figures',
   'draft-file': 'fidelity_draft_file',
   planned: 'fidelity_planned',
 };
 const FIDELITY_HINT_KEY: Record<FormStatus, string> = {
   official: 'fidelity_official_hint',
+  'agency-layout': 'fidelity_agency_layout_hint',
   figures: 'fidelity_figures_hint',
   'draft-file': 'fidelity_draft_file_hint',
   planned: 'fidelity_planned_hint',
 };
 const FIDELITY_CLS: Record<FormStatus, string> = {
   official: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  'agency-layout': 'bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300',
   figures: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
   'draft-file': 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
   planned: 'bg-muted text-muted-foreground',

@@ -131,9 +131,9 @@ export default async function CompanyMaintenancePage({
         signatories={signatories.filter((sg) => sg.companyId === companyId)}
         stateOptions={stateOpts.map((o) => ({ value: o.value, label: o.label }))}
         activeCycleNames={cycles.map((r) => r.name)}
-        // This IS the maintenance screen — the panel opens rather than making the reader click a
-        // disclosure row that has nothing left to disclose.
-        defaultExpanded
+        // 3c2f55d7 — `defaultExpanded` is gone, not defaulted: the panel no longer folds at all. This
+        // was its only caller and it always passed the prop, so the flag could only ever have one
+        // value; the same reasoning now applies to the three folds that were INSIDE the panel.
         actions={{
           updateCompany: updateCompanyAction,
           archiveCompany: archiveCompanyAction,

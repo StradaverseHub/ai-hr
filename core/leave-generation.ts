@@ -65,9 +65,10 @@
  * invariant, and it is why this release adds a scope and a preview but not a single new formula.
  *
  * PRORATE FOR NEW EMPLOYEES is not a toggle here because it is not a decision this sweep makes.
- * `openLeaveYear` only ever visits employments hired BEFORE the year starts (`hiredOn < yearStart`); a
- * joiner's prorated entitlement is granted at hire by `core/org.ts` and re-projected by the recalc kernel.
- * A checkbox on this screen could therefore only lie. The screen says so instead.
+ * r193 CORRECTED THE REASON WITHOUT CHANGING THE ANSWER: `openLeaveYear` used to skip everyone hired
+ * during the year outright (`hiredOn < yearStart`), which is the fault that round fixed. It now reaches
+ * them and grants from their JOIN DATE, shaped by the same `hireYearGrantDays` the hire grant uses — so
+ * proration is still automatic, still one definition, and still not something a checkbox here decides.
  *
  * A PROGRESS BAR. Production carries 26 employments (measured 2026-08-05). A run is one transaction and
  * finishes before the response does, so a progress bar would be an animation of an already-completed
@@ -90,8 +91,9 @@ import {
   countTemplatesForLeaveType,
   resolveEntitlementForEmployment,
 } from './entitlement-template';
-import { openLeaveYear, type LeaveYearGrantOutcome, type LeaveYearGrantRow } from './leave';
+import { asOfForLeaveYear, openLeaveYear, type LeaveYearGrantOutcome, type LeaveYearGrantRow } from './leave';
 import { resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
+import { todayInKualaLumpur } from '../lib/hr-date';
 
 /** What the screen posts. `criteria` and `employmentIds` are alternatives, chosen by `targetMode`. */
 export type LeaveGenerationRequest = {
@@ -139,7 +141,7 @@ export type LeaveGenerationResult = {
    * tells you which rule won so it is never a guess" — and the moment release two re-points the engines,
    * this column becomes the explanation of the days beside it with no further change here.
    */
-  decidedBy: { employmentId: string; ruleName: string; templateName: string; alsoMatched: number }[];
+  decidedBy: { employmentId: string; ruleName: string | null; templateName: string; alsoMatched: number }[];
   /** Set only by `runLeaveGeneration` — the processing-log row this run wrote. */
   runId?: string;
 };
@@ -160,10 +162,11 @@ export async function previewLeaveGeneration(
 /**
  * ⑤ PROCESS — the real run, then the log.
  *
- * `openLeaveYear` is idempotent on its own `openedSet`, which is read from the LEDGER's existing 1-January
- * accrual rows and never from a configuration table. Pressing Process twice therefore reports the second
- * pass as `already_open` and posts nothing — the same guarantee the plain Generate button carried, kept
- * word for word.
+ * `openLeaveYear` is idempotent on its own `openedSet`, which is read from the LEDGER and never from a
+ * configuration table. r193 re-keyed it from "an accrual row dated 1 January" to "an accrual row anywhere
+ * in the leave year", because the grant is no longer always dated 1 January — see `yearOpenMarkerCond` in
+ * core/leave.ts, which is the single most dangerous line in that change. Pressing Process twice still
+ * reports the second pass as `already_open` and posts nothing, which is the guarantee this screen sells.
  */
 export async function runLeaveGeneration(
   ctx: SessionContext,
@@ -194,14 +197,43 @@ async function generate(
   // Finance NOW for a year they spent somewhere else — and a target set nobody can reproduce is exactly
   // what core/org-criteria.ts's header warns about.
   const asOf = `${year}-01-01`;
-  const targets = await withTenant(ctx, async (tx) =>
-    targetMode === 'individual'
-      ? // Even a typed list goes through the SHARED resolver, with an empty criteria object, so the
-        // individual path inherits the identical active-on-`asOf` rule (hired by then, not already gone)
-        // instead of a second hand-written one. `employmentIds` is a RESTRICTION on that predicate.
-        resolveOrgCriteriaTargets(tx, { criteria: {}, asOf, employmentIds: givenIds })
-      : resolveOrgCriteriaTargets(tx, { criteria, asOf }),
-  );
+  // ⚠️ r193 — A FOURTH GATE, AND IT IS IN THIS FILE, NOT THE ENGINE.
+  //
+  // `resolveOrgCriteriaTargets` excludes any employment with `hired_on > asOf`. Selecting at 1 January
+  // therefore drops every mid-year joiner BEFORE `openLeaveYear` is even called — 18 of the reporting
+  // account's 40 active employments. Fixing the engine's own `hiredOn` filter without fixing this one
+  // would have left the Generate Entitlement screen, which is the reporter's only way in, behaving exactly
+  // as it does today. The round's plan named three faults; this was not one of them.
+  //
+  // ONE asOf CANNOT EXPRESS THE ANSWER, because the sweep now grants each employment from the LATER of
+  // 1 January and their join date — a different date per person. So the selection is the UNION of two
+  // dated resolutions of the SAME criteria through the SAME resolver, which is still no second criteria
+  // engine:
+  //   • 1 JANUARY — everyone employed at the year boundary, INCLUDING people who left during the year.
+  //     This is the pass that already existed and it is kept whole, so nobody who is selected today stops
+  //     being selected.
+  //   • THE YEAR'S LATE EDGE — `asOfForLeaveYear` (core/leave.ts), the one existing definition of "an
+  //     asOf inside this leave year": today for the current year, 31 December for a past or future one.
+  //     This is the pass that sees the joiners, and it reads their department / position as at then.
+  //
+  // The union only ever ADDS people, and every one it adds is re-tested by `openLeaveYear`'s own
+  // year-boundary conditions, so this widens WHO IS CONSIDERED and never what is granted. It is honest
+  // about one gap rather than hiding it: someone who joined AND left inside the year, both before the late
+  // edge, is in neither pass. Their entitlement was granted at hire and is theirs already.
+  const asOfLate = asOfForLeaveYear(year, todayInKualaLumpur());
+  const targets = await withTenant(ctx, async (tx) => {
+    const at = (on: string) =>
+      targetMode === 'individual'
+        ? // Even a typed list goes through the SHARED resolver, with an empty criteria object, so the
+          // individual path inherits the identical active-on-`asOf` rule (hired by then, not already gone)
+          // instead of a second hand-written one. `employmentIds` is a RESTRICTION on that predicate.
+          resolveOrgCriteriaTargets(tx, { criteria: {}, asOf: on, employmentIds: givenIds })
+        : resolveOrgCriteriaTargets(tx, { criteria, asOf: on });
+    const early = await at(asOf);
+    if (asOfLate === asOf) return early;
+    const late = await at(asOfLate);
+    return [...new Set([...early, ...late])];
+  });
 
   // ⚠️⚠️ AN EMPTY TARGET SET MUST NOT MEAN "EVERYONE" — AND THE GUARD MUST SIT *BEFORE* THE ENGINE CALL.
   //

@@ -200,7 +200,7 @@ describe('cf21e554 B — the engine derives workday OT from the shift’s own wi
       earlyDeductMinutes: 0,
       includeGraceInEarlyOut: false,
       applyToEarlyOt: false,
-      otRows: [{ fromMinutes: 1, toMinutes: 600, ratePattern: 'flat', rate: 1.5, rounding: true, roundToMinutes: 30 }],
+      otRows: [{ fromMinutes: 1, toMinutes: 600, ratePattern: 'flat', rate: 1.5, roundingMode: 'down', roundToMinutes: 30 }],
     });
     const s = await mb28('WIN3', { ruleId: rule.id });
     await replaceShiftOtWindows(a, {
