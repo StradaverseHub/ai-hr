@@ -1864,14 +1864,20 @@
           "number": "Number",
           "unit": "Unit",
           "approvalDate": "Approval Date",
-          "expiredDate": "Expired Date"
+          "expiredDate": "Expired Date",
+          "remaining": "Available"
         },
         "unitDay": "Day(s)",
         "unitHour": "Hour(s)",
         "statusTaken": "Used",
         "statusExpired": "Expired",
         "statusConverted": "Paid out",
-        "statusPartlyUsed": "Partly used"
+        "statusPartlyUsed": "Partly used",
+        "pendingLabel": "Replacement Leave in Lieu",
+        "pendingHint": "Waiting for your line manager",
+        "approvedLabel": "Replacement Leave",
+        "approvedHint": "Approved and ready to use",
+        "cardPending": "{days} in lieu"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "Pending",
     "summaryApproved": "Approved",
     "summaryRejected": "Rejected",
-    "summaryCancelled": "Cancelled"
+    "summaryCancelled": "Cancelled",
+    "replacementLeaveTitle": "Replacement leave requests",
+    "noPendingReplacement": "No pending replacement leave requests.",
+    "replacementDatesWorked": "Dates worked",
+    "replacementApproved": "Replacement leave approved",
+    "replacementRejected": "Replacement leave rejected"
   },
   "performance": {
     "list": {
@@ -5974,7 +5985,8 @@
         "number": "Number",
         "unit": "Unit",
         "approvalDate": "Approval Date",
-        "expiredDate": "Expired Date"
+        "expiredDate": "Expired Date",
+        "remaining": "Available"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Day Type Inclusion",

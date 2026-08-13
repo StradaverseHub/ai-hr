@@ -1864,14 +1864,20 @@
           "number": "எண்ணிக்கை",
           "unit": "அலகு",
           "approvalDate": "ஒப்புதல் தேதி",
-          "expiredDate": "காலாவதி தேதி"
+          "expiredDate": "காலாவதி தேதி",
+          "remaining": "மீதம்"
         },
         "unitDay": "நாள்",
         "unitHour": "மணி",
         "statusTaken": "பயன்படுத்தப்பட்டது",
         "statusExpired": "காலாவதியானது",
         "statusConverted": "பணமாக வழங்கப்பட்டது",
-        "statusPartlyUsed": "பகுதியளவு பயன்படுத்தப்பட்டது"
+        "statusPartlyUsed": "பகுதியளவு பயன்படுத்தப்பட்டது",
+        "pendingLabel": "நிலுவையில் உள்ள மாற்று விடுப்பு",
+        "pendingHint": "உங்கள் மேலாளரின் ஒப்புதலுக்குக் காத்திருக்கிறது",
+        "approvedLabel": "மாற்று விடுப்பு",
+        "approvedHint": "அங்கீகரிக்கப்பட்டு பயன்படுத்தத் தயார்",
+        "cardPending": "{days} நிலுவையில்"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "நிலுவையில்",
     "summaryApproved": "அங்கீகரிக்கப்பட்டது",
     "summaryRejected": "நிராகரிக்கப்பட்டது",
-    "summaryCancelled": "ரத்துசெய்யப்பட்டது"
+    "summaryCancelled": "ரத்துசெய்யப்பட்டது",
+    "replacementLeaveTitle": "மாற்று விடுப்பு கோரிக்கைகள்",
+    "noPendingReplacement": "நிலுவையில் உள்ள மாற்று விடுப்பு கோரிக்கைகள் இல்லை.",
+    "replacementDatesWorked": "பணிபுரிந்த தேதிகள்",
+    "replacementApproved": "மாற்று விடுப்பு அங்கீகரிக்கப்பட்டது",
+    "replacementRejected": "மாற்று விடுப்பு நிராகரிக்கப்பட்டது"
   },
   "performance": {
     "list": {
@@ -5974,7 +5985,8 @@
         "number": "எண்ணிக்கை",
         "unit": "அலகு",
         "approvalDate": "ஒப்புதல் தேதி",
-        "expiredDate": "காலாவதி தேதி"
+        "expiredDate": "காலாவதி தேதி",
+        "remaining": "மீதம்"
       },
       "dayTypeInclusion": {
         "sectionTitle": "நாள் வகை சேர்ப்பு",

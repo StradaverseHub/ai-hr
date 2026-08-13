@@ -14,6 +14,12 @@ import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
 import { listResignationRequests } from '@/core/offboarding';
 import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
+// 5ff7daff — the approver's queue for employee replacement-leave claims, reached through the leave-pack
+// facade (a core/ file may not import a pack implementation; this page reads the facade like every other
+// leave surface does). The service and its decide half have existed since 296fc027 with NO caller: the
+// section below is the caller they were missing, and the reason production held zero credits.
+import { listPendingReplacementLeaveRequests } from '@/packs/leave/service';
+import { decideReplacementLeaveRequestAction } from '@/app/leave/actions';
 import { myEmployment } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
@@ -156,12 +162,14 @@ export default async function ApprovalsPage({
     name_desc: t('sortNameDesc'),
   } satisfies { sortBy: string } & Record<ApprovalSort, string>;
 
-  const [leave, leaveCancellations, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
     listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
     listPendingLeaveCancellations(s, scopeIds),
+    // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
+    listPendingReplacementLeaveRequests(s, { companyIds: scopeIds }),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
     // ADR-0069 Travel Request: same inbox, same decide flow.
     listTravelRequests(s, { companyIds: scopeIds, status: 'pending' }),
@@ -243,6 +251,7 @@ export default async function ApprovalsPage({
   const pendingCounts = {
     leave: pendingLeave.length,
     leaveCancellation: pendingCancellations.length,
+    replacementLeave: replacementRequests.length,
     attendance: corrections.filter((c) => !isOvertimeCorrection(c)).length,
     overtime: corrections.filter(isOvertimeCorrection).length,
     claim: claims.length,
@@ -271,6 +280,7 @@ export default async function ApprovalsPage({
   // names its own createdAt / display-name fields.
   const sortedLeave = sortApprovalRows(pendingLeave, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.appliedOn });
   const sortedCancellations = sortApprovalRows(pendingCancellations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedReplacement = sortApprovalRows(replacementRequests, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt.toISOString() });
   const sortedClaims = sortApprovalRows(claims, sort, { id: (r) => r.id, name: (r) => r.claimantName, createdAt: (r) => r.createdAt });
   const sortedCorrections = sortApprovalRows(corrections, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedTravel = sortApprovalRows(pendingTravel, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
@@ -289,6 +299,7 @@ export default async function ApprovalsPage({
   const total =
     (visible('leave') ? pendingLeave.length : 0) +
     (visible('leaveCancellation') ? pendingCancellations.length : 0) +
+    (visible('replacementLeave') ? replacementRequests.length : 0) +
     (visible('claims') ? claims.length : 0) +
     (visible('corrections') ? visibleCorrections.length : 0) +
     (visible('travel') ? pendingTravel.length : 0) +
@@ -636,6 +647,109 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} nav={nav} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+      )}
+
+      {/* 5ff7daff — REPLACEMENT LEAVE REQUESTS. The queue that did not exist: `decideReplacementLeaveRequest`
+          shipped in 296fc027 with no caller anywhere, so an employee's claim was submitted and then sat
+          unseen, and not one credit was ever minted in production. This section is that caller.
+
+          It sits in the Leave group beside the other two leave queues because that is where an approver
+          looks, and it is deliberately NOT bulk-selectable: every other bulk kind is a single fact to accept
+          or refuse, while a replacement claim is a LIST OF WORKED DATES whose whole point is that they are
+          checked line by line. Approving here mints one credit per worked date with the expiry counted from
+          this decision — see core/replacement-request.ts. */}
+      {visible('replacementLeave') && (
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('replacementLeaveTitle')} count={replacementRequests.length} />
+        {replacementRequests.length === 0 ? (
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingReplacement')}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">{t('code')}</th>
+                <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                <th className="px-4 py-2 font-medium">{t('replacementDatesWorked')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('days')}</th>
+                <th className="px-4 py-2 font-medium">{t('reason')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {sortedReplacement.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-2.5">
+                    <EmployeeCode code={r.employeeCode} />
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <LeaveEmployeeCell
+                      name={r.employee}
+                      href={`/personnel/${r.employmentId}`}
+                      linkTitle={t('viewHistory')}
+                    />
+                  </td>
+                  {/* Every worked date, with its own figure — the reporter asked to see the claim line by
+                      line, and a manager approving time already worked has to be able to check each one. */}
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-col gap-0.5">
+                      {r.dates.map((d) => (
+                        <span key={d.workedDate} className="tabular-nums text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground/80">{d.workedDate}</span>
+                          {d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : ''}
+                          {' · '}
+                          {r.unit === 'hour'
+                            ? `${(d.hours ?? 0).toFixed(2)} ${tLeave('breakdown.replacement.unitHour')}`
+                            : `${(d.days ?? 0).toFixed(2)} ${tLeave('breakdown.replacement.unitDay')}`}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  {/* The banked figure is ALWAYS days — an Hour request is converted over the standard day by
+                      the service — so the hour total rides alongside rather than replacing it. */}
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    <div className="font-medium">{r.totalDays.toFixed(2)}</div>
+                    {r.unit === 'hour' && (
+                      <div className="text-xs text-muted-foreground">
+                        {r.totalHours.toFixed(2)} {tLeave('breakdown.replacement.unitHour')}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{r.reason ?? '\u2014'}</td>
+                  <td className="px-4 py-2.5">
+                    {mine(r.personId) ? (
+                      <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>
+                    ) : (
+                      // Posts to decideReplacementLeaveRequestAction — the action that had no caller. It takes
+                      // `requestId` (not the `id` DecideButtons posts), and `returnTo` is read BY VALUE so the
+                      // decision lands back on this filtered inbox rather than on My Leave (AGENTS.md rule 17).
+                      <div className="flex items-center justify-end gap-2">
+                        <form action={decideReplacementLeaveRequestAction}>
+                          <input type="hidden" name="requestId" value={r.id} />
+                          <input type="hidden" name="decision" value="approved" />
+                          <input type="hidden" name="returnTo" value="approvals" />
+                          <NavFields nav={nav} />
+                          <Button type="submit" size="sm">
+                            {decideLabels.approve}
+                          </Button>
+                        </form>
+                        <form action={decideReplacementLeaveRequestAction}>
+                          <input type="hidden" name="requestId" value={r.id} />
+                          <input type="hidden" name="decision" value="rejected" />
+                          <input type="hidden" name="returnTo" value="approvals" />
+                          <NavFields nav={nav} />
+                          <Button type="submit" size="sm" variant="outline">
+                            {decideLabels.reject}
+                          </Button>
+                        </form>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

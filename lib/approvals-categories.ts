@@ -17,6 +17,11 @@ import { BULK_CATEGORY_ORDER, isOvertimeCorrection, type BulkCategory } from './
 export type ApprovalCategory =
   | 'all'
   | BulkCategory
+  // 5ff7daff — replacement leave. NOT a BulkCategory: bulk covers the kinds that today carry a single
+  // one-click approve/reject with nothing an approver must read first, and a replacement claim is a list of
+  // worked dates whose whole point is that they are checked line by line. Same exclusion, same reason, as
+  // profile changes and per-date leave.
+  | 'replacementLeave'
   | 'profileChanges'
   | 'resignations'
   | 'managerReviews'
@@ -63,7 +68,7 @@ export const PANEL_GROUPS: readonly {
   group: ApprovalCategoryGroup;
   categories: readonly Exclude<ApprovalCategory, 'all'>[];
 }[] = [
-  { group: 'leave', categories: ['leave', 'leaveCancellation'] },
+  { group: 'leave', categories: ['leave', 'leaveCancellation', 'replacementLeave'] },
   { group: 'attendance', categories: ['attendance', 'overtime'] },
   { group: 'claims', categories: ['claim'] },
   { group: 'travel', categories: ['travel'] },
@@ -78,6 +83,7 @@ export const PANEL_GROUPS: readonly {
 export type ApprovalSection =
   | 'leave'
   | 'leaveCancellation'
+  | 'replacementLeave'
   | 'claims'
   | 'corrections'
   | 'travel'
@@ -89,6 +95,7 @@ export type ApprovalSection =
 const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSection> = {
   leave: 'leave',
   leaveCancellation: 'leaveCancellation',
+  replacementLeave: 'replacementLeave',
   attendance: 'corrections',
   overtime: 'corrections',
   claim: 'claims',

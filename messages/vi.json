@@ -1864,14 +1864,20 @@
           "number": "Số lượng",
           "unit": "Đơn vị",
           "approvalDate": "Ngày phê duyệt",
-          "expiredDate": "Ngày hết hạn"
+          "expiredDate": "Ngày hết hạn",
+          "remaining": "Còn lại"
         },
         "unitDay": "Ngày",
         "unitHour": "Giờ",
         "statusTaken": "Đã sử dụng",
         "statusExpired": "Đã hết hạn",
         "statusConverted": "Đã quy đổi thành tiền",
-        "statusPartlyUsed": "Đã dùng một phần"
+        "statusPartlyUsed": "Đã dùng một phần",
+        "pendingLabel": "Nghỉ Bù Chờ Duyệt",
+        "pendingHint": "Đang chờ quản lý trực tiếp phê duyệt",
+        "approvedLabel": "Nghỉ Bù",
+        "approvedHint": "Đã duyệt và sẵn sàng sử dụng",
+        "cardPending": "{days} chờ duyệt"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "Đang chờ",
     "summaryApproved": "Đã duyệt",
     "summaryRejected": "Đã từ chối",
-    "summaryCancelled": "Đã hủy"
+    "summaryCancelled": "Đã hủy",
+    "replacementLeaveTitle": "Yêu cầu nghỉ bù",
+    "noPendingReplacement": "Không có yêu cầu nghỉ bù chờ duyệt.",
+    "replacementDatesWorked": "Ngày đã làm việc",
+    "replacementApproved": "Đã phê duyệt nghỉ bù",
+    "replacementRejected": "Đã từ chối nghỉ bù"
   },
   "performance": {
     "list": {
@@ -5974,7 +5985,8 @@
         "number": "Số lượng",
         "unit": "Đơn vị",
         "approvalDate": "Ngày phê duyệt",
-        "expiredDate": "Ngày hết hạn"
+        "expiredDate": "Ngày hết hạn",
+        "remaining": "Còn lại"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Bao gồm loại ngày",

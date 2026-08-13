@@ -50,6 +50,7 @@ import {
   company,
   compensation,
   employment,
+  person,
   replacementLeaveRequest,
   replacementLeaveRequestDate,
   toilAccrual,
@@ -492,6 +493,97 @@ export async function decideReplacementLeaveRequest(
     });
 
     return { status: 'approved' as const, granted, daysCredited, expiresOn };
+  });
+}
+
+/**
+ * 5ff7daff · THE APPROVER'S QUEUE — one pending replacement-leave request per row, with the employee's
+ * name and every worked-date line.
+ *
+ * WHY THIS DID NOT EXIST UNTIL NOW, which is the whole defect this round fixes. `decideReplacementLeaveRequest`
+ * above was written, tested and deployed with NO CALLER: no screen anywhere reached it, so a request could
+ * be submitted and then simply sat, seen by nobody. Production had 0 rows in `toil_accrual`,
+ * `replacement_leave_request` and `replacement_leave_request_date` for exactly that reason — the employee's
+ * half worked, and the manager's half did not exist. A unit test of either half passes throughout; the
+ * missing thing was the EDGE between them (AGENTS.md rule 17), which is why this round also adds a
+ * source-shape guard that /approvals mounts the section and posts to the decide action.
+ *
+ * SCOPED LIKE ITS SIBLINGS. `companyIds` is the same reporting-line scope /approvals already computes for
+ * leave, corrections and travel, and RLS remains the row-visibility authority beneath it. The SELF-GRANT
+ * BAN is NOT applied here: `assertCanDecide` refuses the viewer's own request at decide time, and the
+ * approvals page renders it (like the leave queue does) with the buttons replaced by "Your request" — a row
+ * hidden from its own subject reads as a lost request, which is the failure this whole round is about.
+ */
+export type PendingReplacementRequestRow = {
+  id: string;
+  employmentId: string;
+  personId: string;
+  employee: string;
+  employeeCode: string | null;
+  unit: ReplacementLeaveRequestUnit;
+  totalDays: number;
+  totalHours: number;
+  submittedOn: string;
+  createdAt: Date;
+  reason: string | null;
+  dates: { workedDate: string; days: number | null; fromTime: string | null; toTime: string | null; hours: number | null }[];
+};
+
+export async function listPendingReplacementLeaveRequests(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+): Promise<PendingReplacementRequestRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const heads = await tx
+      .select({
+        id: replacementLeaveRequest.id,
+        employmentId: replacementLeaveRequest.employmentId,
+        personId: employment.personId,
+        employee: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
+        unit: replacementLeaveRequest.unit,
+        totalDays: replacementLeaveRequest.totalDays,
+        totalHours: replacementLeaveRequest.totalHours,
+        submittedOn: replacementLeaveRequest.submittedOn,
+        createdAt: replacementLeaveRequest.createdAt,
+        reason: replacementLeaveRequest.reason,
+      })
+      .from(replacementLeaveRequest)
+      .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(replacementLeaveRequest.status, 'pending'),
+          opts.companyIds && opts.companyIds.length ? inArray(employment.companyId, opts.companyIds) : undefined,
+        ),
+      )
+      .orderBy(desc(replacementLeaveRequest.createdAt))
+      .limit(200);
+    if (heads.length === 0) return [];
+    const lines = await tx
+      .select()
+      .from(replacementLeaveRequestDate)
+      .where(inArray(replacementLeaveRequestDate.requestId, heads.map((h) => h.id)))
+      .orderBy(replacementLeaveRequestDate.workedDate);
+    const byRequest = new Map<string, PendingReplacementRequestRow['dates']>();
+    for (const l of lines) {
+      const arr = byRequest.get(l.requestId) ?? [];
+      arr.push({
+        workedDate: l.workedDate,
+        days: l.days != null ? Number(l.days) : null,
+        fromTime: l.fromTime ?? null,
+        toTime: l.toTime ?? null,
+        hours: l.hours != null ? Number(l.hours) : null,
+      });
+      byRequest.set(l.requestId, arr);
+    }
+    return heads.map((h) => ({
+      ...h,
+      totalDays: Number(h.totalDays),
+      totalHours: Number(h.totalHours),
+      reason: h.reason ?? null,
+      dates: byRequest.get(h.id) ?? [],
+    }));
   });
 }
 

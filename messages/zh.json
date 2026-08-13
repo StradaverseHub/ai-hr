@@ -1864,14 +1864,20 @@
           "number": "数量",
           "unit": "单位",
           "approvalDate": "批准日期",
-          "expiredDate": "到期日期"
+          "expiredDate": "到期日期",
+          "remaining": "可用"
         },
         "unitDay": "天",
         "unitHour": "小时",
         "statusTaken": "已使用",
         "statusExpired": "已过期",
         "statusConverted": "已折现",
-        "statusPartlyUsed": "部分使用"
+        "statusPartlyUsed": "部分使用",
+        "pendingLabel": "待批替代假",
+        "pendingHint": "等待直属经理批准",
+        "approvedLabel": "替代假",
+        "approvedHint": "已批准，可以使用",
+        "cardPending": "{days} 待批"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "待处理",
     "summaryApproved": "已批准",
     "summaryRejected": "已驳回",
-    "summaryCancelled": "已取消"
+    "summaryCancelled": "已取消",
+    "replacementLeaveTitle": "替代假申请",
+    "noPendingReplacement": "无待审替代假申请。",
+    "replacementDatesWorked": "工作日期",
+    "replacementApproved": "替代假已批准",
+    "replacementRejected": "替代假已拒绝"
   },
   "performance": {
     "list": {
@@ -5974,7 +5985,8 @@
         "number": "数量",
         "unit": "单位",
         "approvalDate": "批准日期",
-        "expiredDate": "到期日期"
+        "expiredDate": "到期日期",
+        "remaining": "可用"
       },
       "dayTypeInclusion": {
         "sectionTitle": "日期类型计入",

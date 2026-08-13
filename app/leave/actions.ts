@@ -25,6 +25,9 @@ import { resolveEssView } from '@/core/ess-view';
 // 296fc027 — the employee replacement-leave request path, reached through the leave-pack facade.
 import { decideReplacementLeaveRequest, submitReplacementLeaveRequest } from '@/packs/leave/service';
 import { localizeLeaveError } from '@/app/me/actions';
+// 5ff7daff — the ONE return-URL builder every /approvals decide action redirects through, so a replacement
+// leave decision keeps the approver's chosen category + sort exactly like the other nine queues do.
+import { approvalsReturnUrl } from '@/lib/approvals-categories';
 
 /** Feedback 31474452 (Step 5): read-only pre-submission preview for the Leave-tab form (which can apply
  *  on-behalf-of any employment the caller can see, via the Field label={t('fieldEmployee')} select). Runs
@@ -402,11 +405,26 @@ export async function submitReplacementLeaveRequestAction(formData: FormData) {
 /**
  * 296fc027 · Decide one (line-manager approval only — `assertCanDecide`, never the multi-level chain).
  * Approving here is what MINTS the credits, with the expiry counted from this moment.
+ *
+ * 5ff7daff GAVE IT A CALLER. Until this round it had none — it was written, tested and deployed with no
+ * screen anywhere reaching it, which is why production held zero replacement-leave credits. The approver's
+ * queue on /approvals is that caller, so the action now has to land back where the decision was made.
+ *
+ * `returnTo` IS READ BY VALUE, NOT BY PRESENCE (AGENTS.md rule 17). The approvals forms also post the
+ * `category` and `sort` hidden fields that every decide form on that page carries, and hidden fields are
+ * submitted whatever they contain — so branching on "is category present" would read an unfiltered inbox
+ * (category='') as a My Leave submission. An explicit value is the only reading that cannot be wrong, and
+ * anything else (including the field's absence) keeps the original /leave redirect exactly.
  */
 export async function decideReplacementLeaveRequestAction(formData: FormData) {
   const session = await getSession();
   const requestId = String(formData.get('requestId') ?? '');
   const decision = String(formData.get('decision') ?? '') === 'approved' ? ('approved' as const) : ('rejected' as const);
+  const toApprovals = String(formData.get('returnTo') ?? '') === 'approvals';
+  const nav = {
+    category: String(formData.get('category') || '') || undefined,
+    sort: String(formData.get('sort') || '') || undefined,
+  };
   try {
     await decideReplacementLeaveRequest(session, {
       requestId,
@@ -414,8 +432,19 @@ export async function decideReplacementLeaveRequestAction(formData: FormData) {
       note: String(formData.get('note') ?? '').trim() || undefined,
     });
   } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+    const message = e instanceof Error ? e.message : String(e);
+    if (toApprovals) redirect(approvalsReturnUrl({ ...nav, error: message }));
+    redirect(`/leave?error=${encodeURIComponent(message)}`);
   }
+  // The employee's own My Leave card shows the pending figure, so it goes stale on every decision too.
   revalidatePath('/leave');
+  if (toApprovals) {
+    // Same shell refresh the other decide actions do (836118c4): the nav badge and the bell's Task count
+    // are computed in the ROOT layout, so a page-only revalidate leaves both stale until a hard reload.
+    revalidatePath('/approvals');
+    revalidatePath('/', 'layout');
+    const t = await getTranslations('approvals');
+    redirect(approvalsReturnUrl({ ...nav, toast: t(decision === 'approved' ? 'replacementApproved' : 'replacementRejected') }));
+  }
   redirect('/leave');
 }

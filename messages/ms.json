@@ -1864,14 +1864,20 @@
           "number": "Bilangan",
           "unit": "Unit",
           "approvalDate": "Tarikh Kelulusan",
-          "expiredDate": "Tarikh Luput"
+          "expiredDate": "Tarikh Luput",
+          "remaining": "Baki"
         },
         "unitDay": "Hari",
         "unitHour": "Jam",
         "statusTaken": "Telah digunakan",
         "statusExpired": "Luput",
         "statusConverted": "Dibayar tunai",
-        "statusPartlyUsed": "Sebahagian digunakan"
+        "statusPartlyUsed": "Sebahagian digunakan",
+        "pendingLabel": "Cuti Gantian Dalam Proses",
+        "pendingHint": "Menunggu kelulusan penyelia anda",
+        "approvedLabel": "Cuti Gantian",
+        "approvedHint": "Diluluskan dan boleh digunakan",
+        "cardPending": "{days} dalam proses"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "Menunggu",
     "summaryApproved": "Diluluskan",
     "summaryRejected": "Ditolak",
-    "summaryCancelled": "Dibatalkan"
+    "summaryCancelled": "Dibatalkan",
+    "replacementLeaveTitle": "Permohonan cuti gantian",
+    "noPendingReplacement": "Tiada permohonan cuti gantian tertangguh.",
+    "replacementDatesWorked": "Tarikh bekerja",
+    "replacementApproved": "Cuti gantian diluluskan",
+    "replacementRejected": "Cuti gantian ditolak"
   },
   "performance": {
     "list": {
@@ -5974,7 +5985,8 @@
         "number": "Bilangan",
         "unit": "Unit",
         "approvalDate": "Tarikh Kelulusan",
-        "expiredDate": "Tarikh Luput"
+        "expiredDate": "Tarikh Luput",
+        "remaining": "Baki"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Kemasukan Jenis Hari",
