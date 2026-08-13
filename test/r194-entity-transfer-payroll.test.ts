@@ -666,3 +666,60 @@ describe('the payslip segment reader and its message keys', () => {
     }
   });
 });
+
+// ─────────────────────── 9. the deduction that would have been charged twice ───────────────────────
+
+describe('unpaid leave in a transferred month is charged ONCE', () => {
+  /**
+   * THE TRAP THIS PINS. Unpaid-leave and absence days are queried through the employment's LEAVE cut-off
+   * window, and both are valued at a daily rate off the FULL monthly basic — not off the prorated figure.
+   * So splitting the month without also clipping that window charges a day of unpaid leave on 5 August in
+   * full to the outgoing entity AND in full to the incoming one, and the employee loses two days' pay for
+   * one day of leave. It is the sort of defect that hides behind a correct-looking basic salary.
+   */
+  it('a day before the transfer is deducted by the OUTGOING entity and not by the incoming one', async () => {
+    const hire = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010501');
+    const [lt] = await owner.db
+      .insert(schema.leaveType)
+      .values({
+        tenantId: b.tenantId,
+        code: 'UNPAID_ET',
+        name: 'Unpaid',
+        paid: false,
+        counting: 'calendar_days',
+        allowNegativeBalance: true,
+      })
+      .returning({ id: schema.leaveType.id });
+    // Approved unpaid leave on 5 August — squarely inside the outgoing entity's ten days.
+    await owner.db.insert(schema.leaveRequest).values({
+      tenantId: b.tenantId,
+      employmentId: hire.employmentId,
+      leaveTypeId: lt.id,
+      startDate: '2026-08-05',
+      endDate: '2026-08-05',
+      days: '1.00',
+      status: 'approved',
+    });
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-08-11',
+      companyId: coB,
+      departmentId: deptB2,
+    });
+
+    const a = adminCtx(b);
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    const incoming = await createBatch(a, { companyId: coB, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: incoming.batchId });
+
+    const out = (await payslipsOf(outgoing.batchId)).find((s) => s.employmentId === hire.employmentId)!;
+    const inc = (await payslipsOf(incoming.batchId)).find((s) => s.employmentId === hire.employmentId)!;
+    // One deduction, on the employer whose days it fell in. `other_deductions` carries the unpaid amount.
+    expect(Number(out.otherDeductions)).toBeGreaterThan(0);
+    expect(Number(inc.otherDeductions)).toBe(0);
+    // And it is ONE day's worth, not two: 6600/31 ≈ 212.90.
+    expect(Number(out.otherDeductions)).toBeCloseTo(6600 / 31, 1);
+  });
+});

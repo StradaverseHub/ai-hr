@@ -3070,7 +3070,28 @@ export async function generatePayslips(
       }
       if (opts.divisorDays !== undefined || opts.workingDayBasis || opts.window) prorationOptsByEmp.set(e.employmentId, opts);
       // Gap-fix (per-employment cut-off) — this employment's LEAVE cut-off window (policy → company → calendar).
-      leaveWindowByEmp.set(e.employmentId, cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod));
+      //
+      // ── 3c88d593 — AND IT IS CLIPPED TO THIS EMPLOYER'S ENTITY SEGMENT ────────────────────────────
+      // This one line is what stops a transferred month DOUBLE-DEDUCTING unpaid leave and absence. Both
+      // counts are queried through this window (see the group query below), and both are valued at a
+      // daily rate off the FULL monthly basic — not off the prorated figure. So without the clip, a day
+      // of unpaid leave on 5 August would be charged in full by the outgoing entity AND in full by the
+      // incoming one, and the employee would lose two days' pay for one day of leave. It has to happen
+      // here, on the window, rather than on the counts: the window is the single place both queries and
+      // the time-off subset agree on which days belong to this run.
+      //
+      // Unsegmented ⇒ the window is untouched ⇒ byte-identical.
+      const leaveWindow = cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod);
+      const entitySeg = segmentByEmp.get(e.employmentId);
+      leaveWindowByEmp.set(
+        e.employmentId,
+        entitySeg
+          ? {
+              start: leaveWindow.start > entitySeg.from ? leaveWindow.start : entitySeg.from,
+              end: leaveWindow.end < entitySeg.to ? leaveWindow.end : entitySeg.to,
+            }
+          : leaveWindow,
+      );
       // 2.1.2 daily branch — ADR-0078: keyed off the EMPLOYEE'S pay_mode (compensation.pay_mode), with the
       // rate from compensation.rate_amount. The former policy.payRule source (and its fallback) is gone —
       // it could never express one daily employee among monthly colleagues on the same policy (resolveRule
