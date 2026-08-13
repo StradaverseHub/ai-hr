@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>January bonus — what the file would pay vs what is owed</title>
+<style>
+  :root{--ink:#12161c;--mut:#5b6472;--line:#dfe3e9;--bad:#b3261e;--badbg:#fdeceb;--good:#1b5e20;--goodbg:#eaf3ec;--warnbg:#fff6e5;--warn:#8a5a00;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 40px;background:#fff;color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--mut);margin:0 0 22px;font-size:13px}
+  .cols{display:flex;gap:22px;align-items:flex-start}
+  .card{flex:1;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .hd{padding:11px 14px;font-weight:600;font-size:13px;border-bottom:1px solid var(--line)}
+  .hd.bad{background:var(--badbg);color:var(--bad)} .hd.good{background:var(--goodbg);color:var(--good)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:6px 14px;text-align:left;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+  th{font-weight:600;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  tr.dup td{background:#fdf3f2}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:9px;background:#f1f3f6;color:var(--mut);margin-left:6px}
+  .tag.x2{background:var(--badbg);color:var(--bad);font-weight:600}
+  .tot{font-weight:700}
+  .tot td{border-top:2px solid var(--line);border-bottom:none;padding-top:9px}
+  .note{margin-top:22px;padding:13px 16px;background:var(--warnbg);border-left:3px solid var(--warn);
+        border-radius:0 7px 7px 0;font-size:12.5px;color:#4a3c1c}
+  .note b{color:var(--warn)}
+  .tl{margin-top:20px;font-size:12.5px;color:var(--mut)}
+  .tl b{color:var(--ink)}
+  .tl div{padding:3px 0}
+</style>
+
+<h1>January bonus — twenty-four lines on file, thirteen actually owed</h1>
+<p class="sub">The bonus file was imported twice because the first import appeared to do nothing. Neither import has paid anybody. Measured on production, 13 August 2026.</p>
+
+<div class="cols">
+  <div class="card">
+    <div class="hd bad">ON FILE NOW — what a re-run would pay · RM106,073.31</div>
+    <table>
+      <tr><th>Staff</th><th>Item</th><th class="n">Amount</th><th>Times</th></tr>
+      <tr><td>A0014</td><td>Bonus</td><td class="n">17,325.00</td><td>once</td></tr>
+      <tr class="dup"><td>A0011</td><td>Bonus</td><td class="n">9,030.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0010</td><td>Bonus</td><td class="n">8,400.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0013</td><td>Bonus</td><td class="n">6,249.60</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0012</td><td>Bonus</td><td class="n">6,195.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0008</td><td>Bonus</td><td class="n">5,250.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0007</td><td>Bonus</td><td class="n">3,990.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0006</td><td>Bonus</td><td class="n">1,700.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr><td>A0001</td><td>Bonus</td><td class="n">1,650.71</td><td>once</td></tr>
+      <tr class="dup"><td>A0009</td><td>Bonus</td><td class="n">1,234.20</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0002</td><td>Angpow</td><td class="n">500.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0003</td><td>Angpow</td><td class="n">500.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="dup"><td>A0004</td><td>Angpow</td><td class="n">500.00</td><td><span class="tag x2">twice</span></td></tr>
+      <tr class="tot"><td colspan="2">24 lines on file</td><td class="n">106,073.31</td><td></td></tr>
+      <tr class="tot"><td colspan="2" style="color:#b3261e">of which repeated</td><td class="n" style="color:#b3261e">43,548.80</td><td></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="hd good">WHAT IS OWED — one line per person · RM62,524.51</div>
+    <table>
+      <tr><th>Staff</th><th>Item</th><th class="n">Amount</th><th>Times</th></tr>
+      <tr><td>A0014</td><td>Bonus</td><td class="n">17,325.00</td><td>once</td></tr>
+      <tr><td>A0011</td><td>Bonus</td><td class="n">9,030.00</td><td>once</td></tr>
+      <tr><td>A0010</td><td>Bonus</td><td class="n">8,400.00</td><td>once</td></tr>
+      <tr><td>A0013</td><td>Bonus</td><td class="n">6,249.60</td><td>once</td></tr>
+      <tr><td>A0012</td><td>Bonus</td><td class="n">6,195.00</td><td>once</td></tr>
+      <tr><td>A0008</td><td>Bonus</td><td class="n">5,250.00</td><td>once</td></tr>
+      <tr><td>A0007</td><td>Bonus</td><td class="n">3,990.00</td><td>once</td></tr>
+      <tr><td>A0006</td><td>Bonus</td><td class="n">1,700.00</td><td>once</td></tr>
+      <tr><td>A0001</td><td>Bonus</td><td class="n">1,650.71</td><td>once</td></tr>
+      <tr><td>A0009</td><td>Bonus</td><td class="n">1,234.20</td><td>once</td></tr>
+      <tr><td>A0002</td><td>Angpow</td><td class="n">500.00</td><td>once</td></tr>
+      <tr><td>A0003</td><td>Angpow</td><td class="n">500.00</td><td>once</td></tr>
+      <tr><td>A0004</td><td>Angpow</td><td class="n">500.00</td><td>once</td></tr>
+      <tr class="tot"><td colspan="2">13 lines to pay</td><td class="n">62,524.51</td><td></td></tr>
+      <tr class="tot"><td colspan="2" style="color:#5b6472">difference removed</td><td class="n" style="color:#5b6472">43,548.80</td><td></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="note">
+  <b>Why we cannot simply delete the second import.</b> The two files are not the same. Eleven people appear in both,
+  but <b>A0014 (RM17,325.00) appears only in the second</b> and <b>A0001 (RM1,650.71) only in the first</b>.
+  Deleting either import whole would leave a real person unpaid. The thirteen lines above are the two files combined,
+  with each person counted once.
+</div>
+
+<div class="tl">
+  <div><b>12 August, 15:27</b> — bonus file imported. The lines attach to the January <b>salary</b> run.</div>
+  <div><b>12 August, 15:28</b> — January <b>bonus</b> run created.</div>
+  <div><b>12 August, 15:30</b> — file imported again, because the first appeared to do nothing. Lines attach to the salary run again.</div>
+  <div><b>12 August, 15:35</b> — bonus run produces <b>19 payslips, all zero</b>: it only pays lines attached to itself.</div>
+  <div style="padding-top:8px"><b>Today</b> — nothing paid, RM106,073.31 sitting on the salary run, and nothing stopping a re-run from paying all of it.</div>
+</div>

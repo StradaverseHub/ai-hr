@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Individual Transaction — listing and entry prompt</title>
+<style>
+  :root{--ink:#12161c;--mut:#5b6472;--line:#dfe3e9;--bad:#b3261e;--badbg:#fdeceb;--good:#1b5e20;--goodbg:#eaf3ec;--accent:#1a4fa0;--warn:#8a5a00;--warnbg:#fff6e5}
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 38px;background:#fff;color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--mut);margin:0 0 24px;font-size:13px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 9px;color:var(--mut)}
+  .card{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px}
+  .hd{padding:9px 14px;font-weight:600;font-size:12.5px;border-bottom:1px solid var(--line)}
+  .hd.bad{background:var(--badbg);color:var(--bad)} .hd.good{background:var(--goodbg);color:var(--good)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:7px 13px;text-align:left;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+  th{font-weight:600;color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600}
+  .flag{background:#fdf3f2}
+  .mark{color:var(--bad);font-weight:600}
+  .btn{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-size:11px;color:var(--mut)}
+  .cols{display:flex;gap:22px;align-items:flex-start;margin-top:26px}
+  .col{flex:1}
+  .modal{border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 26px rgba(0,0,0,.13);overflow:hidden}
+  .mtitle{padding:11px 15px;border-bottom:1px solid var(--line);font-weight:600;font-size:13px;display:flex;justify-content:space-between}
+  .mbody{padding:15px}
+  .f{margin-bottom:12px}
+  .f label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin-bottom:3px}
+  .inp{border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12.5px;background:#fff}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg span{padding:5px 13px;font-size:12px}
+  .seg .on{background:var(--accent);color:#fff;font-weight:600}
+  .seg .off{color:#a3a9b3;background:#f6f7f9}
+  .hint{font-size:11px;color:var(--warn);margin-top:4px}
+  .foot{padding:11px 15px;border-top:1px solid var(--line);text-align:right;background:#fafbfc}
+  .pill{display:inline-block;background:var(--accent);color:#fff;border-radius:6px;padding:5px 13px;font-size:12px;font-weight:600}
+  .note{margin-top:22px;padding:12px 16px;background:var(--warnbg);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;font-size:12.5px;color:#4a3c1c}
+</style>
+
+<h1>Individual Transaction — the listing says what the pay item is</h1>
+<p class="sub">Drawn on real pay item codes from the account. The transaction type is the same word on nearly every row, so the column that should identify the item identifies nothing.</p>
+
+<h2>Today</h2>
+<div class="card">
+  <div class="hd bad">The Pay Item column shows the transaction TYPE · Remarks shows the typed note</div>
+  <table>
+    <tr><th>Pay period</th><th>Pay item</th><th>Remarks</th><th>Qty</th><th>Effective</th><th class="n">Amount</th><th>Status</th><th></th></tr>
+    <tr class="flag"><td>2026-08</td><td class="mark">Earning</td><td>—</td><td>10 hours</td><td>2026-08-05</td><td class="n">150.00</td><td>Pending</td><td><span class="btn">View</span> <span class="btn">Edit</span></td></tr>
+    <tr class="flag"><td>2026-08</td><td class="mark">Earning</td><td>lunch claim</td><td>—</td><td>2026-08-05</td><td class="n">100.00</td><td>Pending</td><td><span class="btn">View</span> <span class="btn">Edit</span></td></tr>
+    <tr class="flag"><td>2026-08</td><td class="mark">Deduction</td><td>—</td><td>—</td><td>2026-08-10</td><td class="n">200.00</td><td>Pending</td><td><span class="btn">View</span> <span class="btn">Edit</span></td></tr>
+  </table>
+</div>
+
+<h2 style="margin-top:22px">Proposed</h2>
+<div class="card">
+  <div class="hd good">Pay item CODE and its own description · the typed note moves into the prompt</div>
+  <table>
+    <tr><th>Pay period</th><th>Pay item</th><th>Pay item description</th><th>Qty</th><th>Effective</th><th class="n">Amount</th><th>Pay cycle</th><th></th></tr>
+    <tr><td>2026-08</td><td class="code">OT15</td><td>Overtime 1.5</td><td>10 hours</td><td>2026-08-05</td><td class="n">150.00</td><td>Monthly #1</td><td><span class="btn">View</span> <span class="btn">Edit</span></td></tr>
+    <tr><td>2026-08</td><td class="code">MEAL</td><td>Meal Allowance</td><td>—</td><td>2026-08-05</td><td class="n">100.00</td><td>Monthly #1</td><td><span class="btn">View</span> <span class="btn">Edit</span></td></tr>
+    <tr><td>2026-08</td><td class="code">LOAN</td><td>Staff Loan</td><td>—</td><td>2026-08-10</td><td class="n">200.00</td><td>Monthly #1</td><td><span class="btn">View</span> <span class="btn">Edit</span></td></tr>
+  </table>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h2>Add / Edit opens as a prompt</h2>
+    <div class="modal">
+      <div class="mtitle"><span>Add Individual Transaction</span><span style="color:#a3a9b3">✕</span></div>
+      <div class="mbody">
+        <div class="f"><label>Pay item</label><div class="inp"><span class="code">OT15</span> — Overtime 1.5 &nbsp;▾</div></div>
+        <div class="f"><label>Pay cycle</label><div class="inp">Monthly #1 &nbsp;▾</div>
+          <div class="hint">Always selectable, even when the month has only one run.</div></div>
+        <div class="f"><label>Input method</label>
+          <div class="seg"><span class="on">Total</span><span>Day by day</span></div></div>
+        <div class="f"><label>Input</label><div class="inp">10 &nbsp; hours</div></div>
+        <div class="f"><label>Remarks</label><div class="inp" style="color:#a3a9b3">weekend overtime</div></div>
+      </div>
+      <div class="foot"><span class="btn">Cancel</span> <span class="pill">Save</span></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>Fixed-amount item — day by day is greyed</h2>
+    <div class="modal">
+      <div class="mtitle"><span>Add Individual Transaction</span><span style="color:#a3a9b3">✕</span></div>
+      <div class="mbody">
+        <div class="f"><label>Pay item</label><div class="inp"><span class="code">PARKING</span> — Monthly Parking &nbsp;▾</div></div>
+        <div class="f"><label>Pay cycle</label><div class="inp">Monthly #1 &nbsp;▾</div></div>
+        <div class="f"><label>Input method</label>
+          <div class="seg"><span class="on">Total</span><span class="off">Day by day</span></div>
+          <div class="hint">Day by day is not available for fixed-amount pay items.</div></div>
+        <div class="f"><label>Input</label><div class="inp">100.00</div></div>
+        <div class="f"><label>Remarks</label><div class="inp" style="color:#a3a9b3">&nbsp;</div></div>
+      </div>
+      <div class="foot"><span class="btn">Cancel</span> <span class="pill">Save</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Why Pay cycle feels broken today.</b> It only becomes a dropdown when the month has more than one payroll run;
+  with exactly one it prints the run name as plain text. On this account <b>21 of 22 month-and-company combinations
+  have exactly one run</b>, so the field is almost never selectable. Entering a transaction
+  <b>day by day already works today</b> — only the greying-out for fixed-amount items is new.
+</div>

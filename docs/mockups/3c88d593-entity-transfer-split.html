@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Entity transfer — August split into two payslips</title>
+<style>
+  :root{--ink:#12161c;--mut:#5b6472;--line:#dfe3e9;--bad:#b3261e;--badbg:#fdeceb;--good:#1b5e20;--goodbg:#eaf3ec;--a:#1a4fa0;--b:#7b4397;--warn:#8a5a00;--warnbg:#fff6e5}
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 38px;background:#fff;color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--mut);margin:0 0 22px;font-size:13px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:22px 0 9px;color:var(--mut)}
+  .card{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .hd{padding:10px 14px;font-weight:600;font-size:12.5px;border-bottom:1px solid var(--line)}
+  .hd.bad{background:var(--badbg);color:var(--bad)} .hd.good{background:var(--goodbg);color:var(--good)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:7px 14px;text-align:left;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+  th{font-weight:600;color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{display:flex;height:34px;border-radius:7px;overflow:hidden;margin:10px 0 4px;border:1px solid var(--line)}
+  .seg{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+  .segA{background:var(--a)} .segB{background:var(--b)}
+  .scale{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-bottom:16px}
+  .cols{display:flex;gap:20px}
+  .col{flex:1}
+  .pay{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .ptop{padding:11px 14px;border-bottom:1px solid var(--line);font-weight:600;font-size:12.5px;color:#fff}
+  .ptop.a{background:var(--a)} .ptop.b{background:var(--b)}
+  .prow{display:flex;justify-content:space-between;padding:5px 14px;font-size:12.5px}
+  .prow.tot{border-top:1px solid var(--line);font-weight:700;margin-top:4px;padding-top:8px}
+  .note{margin-top:20px;padding:12px 16px;background:var(--warnbg);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;font-size:12.5px;color:#4a3c1c}
+  .mono{font-variant-numeric:tabular-nums}
+</style>
+
+<h1>Entity transfer mid-month — one payslip today, two after</h1>
+<p class="sub">Employee 100814, transferred from Fiamma (Chin Hin Property) to ISEDECOR BINA SDN BHD effective 11 August 2026. Measured on production, 13 August 2026.</p>
+
+<h2>What August produced</h2>
+<div class="card">
+  <div class="hd bad">One payslip · the whole month attributed to the new company</div>
+  <table>
+    <tr><th>Pay period</th><th>Company on the payslip</th><th>Period covered</th><th class="n">Gross</th></tr>
+    <tr><td>2026-07</td><td>Fiamma (Chin Hin Property)</td><td>full month</td><td class="n">1,596.77</td></tr>
+    <tr style="background:#fdf3f2"><td>2026-08</td><td><b>ISEDECOR BINA SDN BHD</b></td><td><b>1 – 31 Aug (all of it)</b></td><td class="n"><b>6,600.00</b></td></tr>
+  </table>
+</div>
+<p style="font-size:12.5px;color:#b3261e;margin:9px 0 0"><b>Nothing was paid under Fiamma for 1 – 10 August.</b></p>
+
+<h2>The month, as it actually was</h2>
+<div class="bar">
+  <div class="seg segA" style="flex:10">Fiamma · 1 – 10 Aug · 10 days</div>
+  <div class="seg segB" style="flex:21">ISEDECOR BINA · 11 – 31 Aug · 21 days</div>
+</div>
+<div class="scale"><span>1 Aug</span><span>transfer effective 11 Aug</span><span>31 Aug</span></div>
+
+<h2>Proposed — two payslips, each standing on its own</h2>
+<div class="cols">
+  <div class="col">
+    <div class="pay">
+      <div class="ptop a">Payslip 1 · Fiamma (Chin Hin Property)</div>
+      <div style="padding:10px 0 12px">
+        <div class="prow"><span>Employee</span><span class="mono">100814</span></div>
+        <div class="prow"><span>Payment month</span><span>August 2026</span></div>
+        <div class="prow"><span>Period covered</span><span>1 – 10 Aug 2026</span></div>
+        <div class="prow"><span>Basic salary</span><span class="mono">prorated over 10 days</span></div>
+        <div class="prow"><span>Overtime dated 8 Aug</span><span>included here</span></div>
+        <div class="prow"><span>EPF / SOCSO / EIS / tax</span><span>on this portion</span></div>
+        <div class="prow tot"><span>Employer of record</span><span>Fiamma</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="pay">
+      <div class="ptop b">Payslip 2 · ISEDECOR BINA SDN BHD</div>
+      <div style="padding:10px 0 12px">
+        <div class="prow"><span>Employee</span><span class="mono">100814</span></div>
+        <div class="prow"><span>Payment month</span><span>August 2026</span></div>
+        <div class="prow"><span>Period covered</span><span>11 – 31 Aug 2026</span></div>
+        <div class="prow"><span>Basic salary</span><span class="mono">prorated over 21 days</span></div>
+        <div class="prow"><span>Overtime dated 15 Aug</span><span>included here</span></div>
+        <div class="prow"><span>EPF / SOCSO / EIS / tax</span><span>on this portion</span></div>
+        <div class="prow tot"><span>Employer of record</span><span>ISEDECOR BINA</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Why this is bigger than payroll.</b> The system stores a person's company as a single current value, with no history —
+  so payroll is not ignoring the transfer date, it has nothing to look up. It already keeps dated history for position,
+  department, cost centre, location and business unit, and employee 100814 already has two such rows either side of the
+  transfer. <b>Company is the one thing missing from that history</b>, which is why attendance and leave have the same
+  blind spot. Proration follows each company's own configured method — the 10 and 21 day figures above are illustrative,
+  not a hard-coded calendar rule.
+</div>
