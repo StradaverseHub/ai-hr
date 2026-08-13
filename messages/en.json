@@ -4937,6 +4937,7 @@
       "otherRuns": "Payroll runs in this selection",
       "payDateLine": "Payment date: {date}",
       "payPeriodLine": "Payroll period: {period}",
+      "segmentPeriodLine": "Employed by this company {from} to {to}",
       "paymentInfoHeading": "Payment information",
       "paymentMethod_bank_transfer": "Bank transfer",
       "paymentMethod_cash": "Cash",

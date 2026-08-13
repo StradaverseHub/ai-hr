@@ -24,6 +24,8 @@ import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
+// 3c88d593 — the entity segment this slip covers, read off the payslip's own snapshot (pure, db-free).
+import { payslipSegment } from '@/core/payslip-segment';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -53,6 +55,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     runType: p.runType,
     employmentType: p.employmentType,
     paymentMethod: p.paymentMethod,
+    // 3c88d593 — when a mid-month entity transfer split the month, the document says which days it paid.
+    // Null on every other payslip ⇒ the period line is unchanged.
+    segment: payslipSegment(p.statutory),
   });
 
   // `payslipForReview` names the employee `employeeName` (the list-read convention); the PDF builder takes

@@ -39,6 +39,8 @@
  * OUT OF SCOPE, DELIBERATELY (stage two): attendance, leave and reporting reading the resolver. The plan
  * says the resolver must be proven on payroll before a dozen call sites adopt it.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -54,6 +56,7 @@ import {
   mergeCompanySegments,
   segmentForCompany,
 } from '../core/employment-company';
+import { payslipSegment } from '../core/payslip-segment';
 import { withTenant } from '../db/client';
 // The backfill is rehearsed HERE, against a real cluster, because it must NOT be run against production
 // blind and because "idempotent" is a claim only a second run can settle.
@@ -611,5 +614,55 @@ describe('the backfill: history for rows written before migration 0440', () => {
       from: '2026-08-01',
       to: '2026-08-10',
     });
+  });
+});
+
+// ─────────────────────── 8. the reader, and the strings the screens need ───────────────────────
+
+describe('the payslip segment reader and its message keys', () => {
+  it('reads a well-formed stamp and refuses everything else', () => {
+    expect(payslipSegment({ segment: { companyId: 'co', from: '2026-08-01', to: '2026-08-10' } })).toEqual({
+      companyId: 'co',
+      from: '2026-08-01',
+      to: '2026-08-10',
+    });
+    // Absent ⇒ null ⇒ every screen prints the plain pay period, exactly as before this item.
+    expect(payslipSegment({ epfEmployee: 726 })).toBeNull();
+    expect(payslipSegment(null)).toBeNull();
+    // `payslip.statutory` is plain jsonb spanning every payslip ever written, so a reader that trusts the
+    // shape is one bad row away from throwing on a screen. A malformed stamp degrades, it does not throw.
+    expect(payslipSegment({ segment: { companyId: 'co', from: 'August', to: '2026-08-10' } })).toBeNull();
+    expect(payslipSegment({ segment: { companyId: 5, from: '2026-08-01', to: '2026-08-10' } })).toBeNull();
+    expect(payslipSegment({ segment: { companyId: 'co', from: '2026-08-11', to: '2026-08-10' } })).toBeNull();
+  });
+
+  it('segmentPeriodLine exists in ALL SIX catalogues, in the namespace the screen resolves', () => {
+    // The screen calls t('segmentPeriodLine', { from, to }) inside a branch that only renders for a
+    // SEGMENTED payslip — so a key in the wrong namespace, or missing from one locale, would pass tsc,
+    // the suite and `next build` and raise MISSING_MESSAGE on the one screen that matters, only for the
+    // one employee this item exists for. This is the cheap guard for that.
+    for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(
+        fs.readFileSync(path.join(process.cwd(), 'messages', `${locale}.json`), 'utf8'),
+      ) as Record<string, Record<string, Record<string, string>>>;
+      const v = m.payroll?.individualPayslip?.segmentPeriodLine;
+      expect(v, `${locale}: payroll.individualPayslip.segmentPeriodLine`).toBeTruthy();
+      expect(v, `${locale}: {from}`).toContain('{from}');
+      expect(v, `${locale}: {to}`).toContain('{to}');
+    }
+  });
+
+  it('the screen and both PDF routes read the segment through the ONE pure reader', () => {
+    // A second place deriving "which days did this slip pay" is how a screen and a document start
+    // disagreeing about an issued payslip. Source-shape, because the defect would live in the contract
+    // between files and a unit test of either half would pass throughout.
+    for (const f of [
+      'app/payroll/individual-payslip/page.tsx',
+      'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
+      'app/me/payslip/[payslipId]/pdf/route.ts',
+    ]) {
+      const src = fs.readFileSync(path.join(process.cwd(), f), 'utf8');
+      expect(src, f).toContain('payslipSegment');
+    }
   });
 });

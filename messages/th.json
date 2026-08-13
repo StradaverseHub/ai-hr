@@ -4937,6 +4937,7 @@
       "otherRuns": "รอบการคำนวณในตัวเลือกนี้",
       "payDateLine": "วันที่จ่าย: {date}",
       "payPeriodLine": "งวดเงินเดือน: {period}",
+      "segmentPeriodLine": "ทำงานกับบริษัทนี้ {from} ถึง {to}",
       "paymentInfoHeading": "ข้อมูลการชำระเงิน",
       "paymentMethod_bank_transfer": "โอนผ่านธนาคาร",
       "paymentMethod_cash": "เงินสด",

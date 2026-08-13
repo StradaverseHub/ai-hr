@@ -4937,6 +4937,7 @@
       "otherRuns": "Larian gaji dalam pilihan ini",
       "payDateLine": "Tarikh bayaran: {date}",
       "payPeriodLine": "Tempoh gaji: {period}",
+      "segmentPeriodLine": "Bekerja dengan syarikat ini {from} hingga {to}",
       "paymentInfoHeading": "Maklumat pembayaran",
       "paymentMethod_bank_transfer": "Pindahan bank",
       "paymentMethod_cash": "Tunai",

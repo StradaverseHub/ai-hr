@@ -44,6 +44,34 @@ function englishMonthYear(payPeriod: string): string {
   );
 }
 
+/**
+ * 3c88d593 — the same month name, with the SEGMENT the slip actually covers appended when the month was
+ * split by a mid-month entity transfer. "August 2026 (1 Aug - 10 Aug)".
+ *
+ * WHY THE DOCUMENT AND NOT ONLY THE SCREEN. An employee who transfers mid-month receives TWO payslips for
+ * one month, from two different employers. A document headed "August 2026" on both is not a record of
+ * anything — the reader cannot tell which ten days it paid, and neither can an auditor five years later.
+ *
+ * ENGLISH, and short-form dates, for the same reason the month name is English: Helvetica is Latin-1 and
+ * `safe()` in the renderer folds anything outside it to '?'. The en dash is U+2013 (Latin-1 does not carry
+ * it) so a plain hyphen is used — a payslip with a '?' in its period line would be worse than plain.
+ *
+ * No segment ⇒ this returns exactly `englishMonthYear`, so every payslip that is not split prints the
+ * period line it printed before this item existed.
+ */
+function englishPeriodLabel(payPeriod: string, segment: { from: string; to: string } | null): string {
+  const base = englishMonthYear(payPeriod);
+  if (!segment) return base;
+  const short = (iso: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return iso;
+    return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))),
+    );
+  };
+  return `${base} (${short(segment.from)} - ${short(segment.to)})`;
+}
+
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
 const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
@@ -73,6 +101,12 @@ export async function payslipPdfStrings(p: {
   runType: string | null;
   employmentType: string | null;
   paymentMethod: string | null;
+  /**
+   * 3c88d593 — the entity segment this slip covers, when a mid-month transfer split the month
+   * (core/payslip-segment.ts reads it off the payslip's own snapshot). Absent/null ⇒ the period line is
+   * the plain month name, exactly as before.
+   */
+  segment?: { from: string; to: string } | null;
 }): Promise<PayslipPdfStrings> {
   const t = await getTranslations('me.payslip');
   const tIp = await getTranslations('payroll.individualPayslip');
@@ -148,7 +182,7 @@ export async function payslipPdfStrings(p: {
       ytdToDate: tIp('ytdToDate'),
       detailNotRecorded: tIp('earningsDetailNote'),
       earningsContinued: tIp('earningsContinued'),
-      periodLabel: englishMonthYear(p.payPeriod),
+      periodLabel: englishPeriodLabel(p.payPeriod, p.segment ?? null),
       // f35f758a — the Non-payable box. `nonPayableNote` reuses `me.payslip.recordLinesNote`, which already
       // says exactly the right thing ("recorded for your reference only — these do not affect your gross or
       // net pay") and which is only NOW true of everything it labels: the same sentence used to head a

@@ -4937,6 +4937,7 @@
       "otherRuns": "Các lần chạy lương trong lựa chọn này",
       "payDateLine": "Ngày thanh toán: {date}",
       "payPeriodLine": "Kỳ lương: {period}",
+      "segmentPeriodLine": "Làm việc tại công ty này từ {from} đến {to}",
       "paymentInfoHeading": "Thông tin thanh toán",
       "paymentMethod_bank_transfer": "Chuyển khoản ngân hàng",
       "paymentMethod_cash": "Tiền mặt",

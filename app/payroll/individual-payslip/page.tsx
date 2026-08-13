@@ -81,6 +81,9 @@ import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPa
 import { explainPcb } from '@/core/pcb-explain';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
+// 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
+// transfer split it. Null on every other payslip ⇒ this screen renders exactly as it did before.
+import { payslipSegment } from '@/core/payslip-segment';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
@@ -266,6 +269,12 @@ export default async function IndividualPayslipPage({
     : null;
   const pcb = row ? explainPcb(row.statutory, fallbackReliefs) : null;
   const prov = row ? payslipProvenance(row.statutory) : null;
+  // 3c88d593 — the entity segment this slip covers, from the slip's OWN stamp. Null for every payslip
+  // whose month was not split by a transfer.
+  const segment = row ? payslipSegment(row.statutory) : null;
+  // …and whether the runs on offer below span more than one legal entity, which is the case the chips
+  // could not previously tell apart: two August regular runs, same month, same cycle, different employer.
+  const matchesSpanCompanies = new Set(matches.map((m) => m.companyId)).size > 1;
   const cur = row?.currency ?? null;
   const rm = (n: unknown) => formatMoney(n, cur);
   const hrdfRegistered = row
@@ -398,6 +407,13 @@ export default async function IndividualPayslipPage({
               >
                 {monthYear(m.payPeriod, locale)} · {tTxn(`individual.cycle.${m.runType}`)}
                 {m.runSeq > 1 ? ` #${m.runSeq}` : ''}
+                {/* 3c88d593 — NAME THE EMPLOYER when the runs on offer span more than one. A mid-month
+                    entity transfer puts two chips here reading "August 2026 · Regular" and "August 2026 ·
+                    Regular", and the reader has no way to tell which is the ten days under the old
+                    company. Added only when it disambiguates, so a normal month's chips are unchanged. */}
+                {matchesSpanCompanies && (
+                  <span className="block text-xs text-muted-foreground">{m.company}</span>
+                )}
               </Link>
             ))}
           </div>
@@ -431,6 +447,17 @@ export default async function IndividualPayslipPage({
                   {t('payPeriodLine', { period: monthYear(row.payPeriod, locale) })}
                   {row.payDate ? ` · ${t('payDateLine', { date: row.payDate })}` : ''}
                 </p>
+                {/* 3c88d593 — WHAT THIS SLIP ACTUALLY COVERS. "August 2026" is not what a slip for
+                    1–10 August says, and an employee who transferred mid-month holds TWO documents for
+                    one month, each naming a different employer. Without this line the two are
+                    indistinguishable on the page they are read on. Rendered ONLY when the payslip carries
+                    the stamp, so every unsegmented slip — which is all of them until somebody transfers —
+                    is byte-identical to before. */}
+                {segment && (
+                  <p className="text-sm font-medium text-foreground">
+                    {t('segmentPeriodLine', { from: segment.from, to: segment.to })}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYROLL_PUBLICATION_PILL[pubState!]}`}>

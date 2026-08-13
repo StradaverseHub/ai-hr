@@ -4937,6 +4937,7 @@
       "otherRuns": "此选择范围内的薪资批次",
       "payDateLine": "发放日期：{date}",
       "payPeriodLine": "薪资期间：{period}",
+      "segmentPeriodLine": "在本公司任职 {from} 至 {to}",
       "paymentInfoHeading": "付款信息",
       "paymentMethod_bank_transfer": "银行转账",
       "paymentMethod_cash": "现金",

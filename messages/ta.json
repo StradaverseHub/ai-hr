@@ -4937,6 +4937,7 @@
       "otherRuns": "இந்தத் தேர்வில் உள்ள ஊதிய இயக்கங்கள்",
       "payDateLine": "பணம் செலுத்திய தேதி: {date}",
       "payPeriodLine": "ஊதியக் காலம்: {period}",
+      "segmentPeriodLine": "இந்நிறுவனத்தில் பணி {from} முதல் {to} வரை",
       "paymentInfoHeading": "கட்டண விவரம்",
       "paymentMethod_bank_transfer": "வங்கி பரிமாற்றம்",
       "paymentMethod_cash": "ரொக்கம்",
