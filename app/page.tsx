@@ -27,7 +27,14 @@ import {
   resolveDashboardRole,
   upcomingRemindersCount,
 } from '@/lib/dashboard-cards';
-import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
+import {
+  ACTOR_DOT,
+  aggregateHref,
+  aggregateLabel,
+  canOpenAggregate,
+  humanizeEvent,
+  relativeTime,
+} from '@/lib/audit-format';
 import { getDashboardLayout } from '@/core/dashboard-prefs';
 import { listDashboardCards, type EmployeeDashboardCard } from '@/core/dashboard-card-config';
 import { DashboardCustomizer, type CustomizerCard } from '@/components/dashboard-customizer';
@@ -360,7 +367,13 @@ export default async function DashboardPage() {
       ) : (
         <ul className="mt-4 space-y-3">
           {activity.map((a, i) => {
-            const href = aggregateHref(a.aggregateType, a.aggregateId);
+            // 47609f53 — offer the link only when this reader can actually open the destination.
+            // `admin` is isAdmin(s), hoisted above. A non-admin's feed is RLS-limited to rows about
+            // people they can see, so what they lose is the link into the admin-only Personnel screen
+            // that redirected them back here; the performance-review link (which they CAN open) stays.
+            const href = canOpenAggregate(a.aggregateType, admin)
+              ? aggregateHref(a.aggregateType, a.aggregateId)
+              : undefined;
             const who = a.actorName ?? a.actorType;
             return (
               <li key={i} className="flex items-start gap-3 text-sm">
