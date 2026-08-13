@@ -5129,6 +5129,7 @@
       "totalRecords": "{count, plural, other {# bản ghi}}",
       "validRecords": "{count, plural, other {# hợp lệ}}",
       "errorRecords": "{count, plural, other {# có lỗi}}",
+      "warnedRecords": "{count, plural, other {# có cảnh báo}}",
       "downloadErrors": "Tải báo cáo lỗi",
       "confirmImport": "{count, plural, other {Nhập # bản ghi hợp lệ}}",
       "importing": "Đang nhập…",
@@ -5197,7 +5198,15 @@
         "currencyUnsupported": "Chỉ hỗ trợ MYR",
         "derivedAmountUnavailable": "Không thể tính công thức của mục lương cho nhân viên này",
         "unexpected": "Không nhập được: {message}",
-        "employeeNotInScope": "Kỳ lương của tháng đó không bao gồm nhân viên này"
+        "employeeNotInScope": "Kỳ lương của tháng đó không bao gồm nhân viên này",
+        "duplicateInRun": "Kỳ lương này đã có {code} {amount} cho nhân viên này",
+        "duplicateInFile": "Dòng {row} của tệp này đã có {code} cho nhân viên này với cùng số tiền",
+        "duplicateImported": "Dòng này của tệp này đã được nhập trước đó",
+        "runMissingForCycle": "Chưa có kỳ lương {cycle} đang mở cho {period} — hãy tạo trước rồi nhập"
+      },
+      "warning": {
+        "runAlreadyProcessed": "Kỳ lương {period} đã tạo phiếu lương. Dòng này sẽ được thêm vào và kỳ lương được đánh dấu cần xử lý lại — chưa được trả cho đến khi bạn xử lý lại.",
+        "bonusRunExists": "Tháng này có kỳ thưởng, nhưng {code} đang vào kỳ lương thường. Điền “bonus” vào cột Chu kỳ lương để chuyển sang kỳ thưởng."
       }
     }
   },

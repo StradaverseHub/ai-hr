@@ -5129,6 +5129,7 @@
       "totalRecords": "{count, plural, other {# rekod}}",
       "validRecords": "{count, plural, other {# sah}}",
       "errorRecords": "{count, plural, other {# ada ralat}}",
+      "warnedRecords": "{count, plural, other {# ada amaran}}",
       "downloadErrors": "Muat turun laporan ralat",
       "confirmImport": "{count, plural, other {Import # rekod sah}}",
       "importing": "Mengimport…",
@@ -5197,7 +5198,15 @@
         "currencyUnsupported": "Hanya MYR disokong",
         "derivedAmountUnavailable": "Formula item gaji tidak dapat dikira untuk pekerja ini",
         "unexpected": "Tidak dapat diimport: {message}",
-        "employeeNotInScope": "Larian gaji bulan itu tidak meliputi pekerja ini"
+        "employeeNotInScope": "Larian gaji bulan itu tidak meliputi pekerja ini",
+        "duplicateInRun": "Larian gaji ini sudah mempunyai {code} {amount} untuk pekerja ini — ia sudah ada di sana",
+        "duplicateInFile": "Baris {row} fail ini sudah mempunyai {code} untuk pekerja ini pada jumlah yang sama",
+        "duplicateImported": "Baris fail ini telah pun diimport",
+        "runMissingForCycle": "Tiada larian gaji {cycle} yang terbuka bagi {period} — cipta dahulu, kemudian import"
+      },
+      "warning": {
+        "runAlreadyProcessed": "Larian gaji {period} telah pun menghasilkan slip gaji. Baris ini akan ditambah dan larian ditanda untuk diproses semula — ia belum dibayar sehingga anda memprosesnya semula.",
+        "bonusRunExists": "Bulan ini mempunyai larian bonus, dan {code} sedang menuju larian gaji biasa. Isi “bonus” dalam lajur Kitaran Gaji untuk menghantarnya ke larian bonus."
       }
     }
   },

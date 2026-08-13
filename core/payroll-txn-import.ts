@@ -26,6 +26,20 @@
  * the other rows IN THE SAME FILE — an in-file pair is the case the service cannot catch for us, because
  * it only ever sees one row at a time and each one is individually fine.
  *
+ * ── 0db616f3: THE ONE-OFF HALF HAD NO DUPLICATE CHECK AT ALL, AND IT COST RM43,548.80 ────────────────
+ *
+ * Everything above described the FIXED half only. The Individual Transaction half wrote whatever it was
+ * given: `payroll_individual_txn` has no unique constraint by design (many dated lines per person per
+ * month are legal), the service's own `DuplicateTxnRowError` only sees inside ONE submission and this
+ * importer calls it once per row, and `source_ref` was left null so the database could not tell one
+ * upload from another. In January 2026 a bonus file was uploaded, appeared to do nothing (it landed on
+ * the salary run — see the targeting note further down), and was uploaded again three minutes later:
+ * 24 rows worth RM106,073.31 where 13 worth RM62,524.51 were owed, 11 of them exact duplicates.
+ *
+ * So the one-off half now has the same two-sided pre-flight the fixed half has always had — against the
+ * rows already in the run and against the other rows in the same file — plus a `source_ref` that names
+ * the upload, which arms migration 0432's uniqueness index as the database-level backstop.
+ *
  * ── PARTIAL IMPORT IS DELIBERATE ─────────────────────────────────────────────────────────────────────
  *
  * Valid rows are written and failures are reported; a bad row does not sink the file. The approved plan
@@ -38,10 +52,12 @@
  * and sends text. That is r185's shape and it is kept for the reason r185 kept it: no server-side
  * spreadsheet parser means no server-side spreadsheet attack surface.
  */
+import { createHash } from 'node:crypto';
+
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 import { withTenant, type SessionContext } from '../db/client';
-import { employmentPayComponent, payComponent } from '../db/schema';
+import { employmentPayComponent, payComponent, payrollIndividualTxn } from '../db/schema';
 import { listEmployees } from './read';
 // ADR-0080 D9 — payroll is a PACK, and this module is spine, so every payroll service comes through the
 // FACADE rather than reaching into core/pay-components, core/pay-rule, core/payroll-individual-txn or
@@ -140,6 +156,14 @@ export function txnImportReason(e: unknown): { reason: string; detail?: Record<s
   if (typeof (e as { code?: string })?.code === 'string' && (e as { code: string }).code === '23P01') {
     return { reason: 'overlapDatabase' };
   }
+  // 0db616f3 — a 23505 from `payroll_individual_txn_source_ref_uq`, which this import now arms by writing
+  // `source_ref`. Like the 23P01 above it should be unreachable (the pre-flight checks that index's own
+  // key), and like the 23P01 above "unreachable" is not "impossible": two operators uploading the same
+  // file at the same moment both pass the pre-flight and one of them loses the race. A raw driver message
+  // must never reach a downloadable error report, and "already imported" is the truth of it either way.
+  if (typeof (e as { code?: string })?.code === 'string' && (e as { code: string }).code === '23505') {
+    return { reason: 'duplicateImported' };
+  }
   return { reason: 'unexpected', detail: { message: String((e as Error)?.message ?? e).slice(0, 200) } };
 }
 
@@ -154,7 +178,10 @@ type Catalogs = {
   /** employee_code (upper-cased) → employment. A code held by two people in scope is AMBIGUOUS and every
    *  row naming it is refused; silently picking one would post money to the wrong person. */
   employeeByCode: Map<string, ResolvedEmployee | 'ambiguous'>;
-  componentByCode: Map<string, { id: string; code: string; name: string; kind: string; rule: PayRule | null }>;
+  componentByCode: Map<
+    string,
+    { id: string; code: string; name: string; kind: string; rule: PayRule | null; displayCategory: string | null }
+  >;
 };
 
 async function loadCatalogs(ctx: SessionContext, scopeIds: string[]): Promise<Catalogs> {
@@ -183,11 +210,15 @@ async function loadCatalogs(ctx: SessionContext, scopeIds: string[]): Promise<Ca
         kind: payComponent.kind,
         rule: payComponent.rule,
         archivedAt: payComponent.archivedAt,
+        // 0db616f3 — read ONLY to raise the "this looks like a bonus and you are not using the bonus
+        // run" warning below. It is presentation metadata (db/schema.ts says so in as many words) and it
+        // never routes a row; routing is the file's own `Payroll Cycle` column and nothing else.
+        displayCategory: payComponent.displayCategory,
       })
       .from(payComponent)
       .where(eq(payComponent.tenantId, ctx.tenantId)),
   );
-  const componentByCode = new Map<string, { id: string; code: string; name: string; kind: string; rule: PayRule | null }>();
+  const componentByCode: Catalogs['componentByCode'] = new Map();
   // ARCHIVED ITEMS ARE EXCLUDED. The request asks for "Payroll Item is active", and an archived item is
   // one an admin deliberately retired — importing against it would resurrect it through a side door.
   for (const c of components) {
@@ -198,6 +229,7 @@ async function loadCatalogs(ctx: SessionContext, scopeIds: string[]): Promise<Ca
       name: c.name,
       kind: c.kind,
       rule: (c.rule ?? null) as PayRule | null,
+      displayCategory: c.displayCategory ?? null,
     });
   }
   return { employeeByCode, componentByCode };
@@ -260,7 +292,106 @@ type ResolvedIndividual = {
   quantity: number | null;
   unit: string | null;
   notes: string | null;
+  /** 0db616f3 — the run this row was routed to, decided in the PREVIEW so the operator sees it before
+   *  anything is written. Null means period-keyed (no writable regular run for the month yet). */
+  targetBatchId: string | null;
+  /** The cycle that decided the target: the file's own `Payroll Cycle` when it named one, else 'regular'. */
+  targetCycle: FixedTransactionCycle;
+  /** `payroll_individual_txn.source_ref` — this row's identity as a line OF THIS FILE. See `fileRowRef`. */
+  sourceRef: string;
 };
+
+/** The rows already in the ledger for the employments a file names, read ONCE for the whole file. The
+ *  left-hand side of the duplicate test — the January double import's whole defence. */
+type LedgerRow = {
+  batchId: string | null;
+  companyId: string | null;
+  payPeriod: string | null;
+  employmentId: string;
+  componentId: string | null;
+  txnDate: string;
+  amount: string;
+  source: string | null;
+  sourceRef: string | null;
+};
+async function loadLedgerRows(ctx: SessionContext, employmentIds: string[]): Promise<LedgerRow[]> {
+  if (employmentIds.length === 0) return [];
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        batchId: payrollIndividualTxn.batchId,
+        companyId: payrollIndividualTxn.companyId,
+        payPeriod: payrollIndividualTxn.payPeriod,
+        employmentId: payrollIndividualTxn.employmentId,
+        componentId: payrollIndividualTxn.componentId,
+        txnDate: payrollIndividualTxn.txnDate,
+        amount: payrollIndividualTxn.amount,
+        source: payrollIndividualTxn.source,
+        sourceRef: payrollIndividualTxn.sourceRef,
+      })
+      .from(payrollIndividualTxn)
+      .where(
+        and(
+          eq(payrollIndividualTxn.tenantId, ctx.tenantId),
+          inArray(payrollIndividualTxn.employmentId, employmentIds),
+        ),
+      ),
+  );
+}
+
+/**
+ * THE DUPLICATE KEY: which RUN, which PERSON, which PAY ITEM, which AMOUNT.
+ *
+ * Exactly the grouping that found January's eleven duplicated pairs on production (2026-08-13:
+ * `group by (employment_id, component_id, amount)` over one batch returned 11 groups with count 2,
+ * RM43,548.80 duplicated). The run is part of the key rather than the month, because two runs of the
+ * same month are two different payments and a line on each is not a duplicate of the other. An
+ * unattached row's "run" is the (company, month) pair it is keyed to, which is where it will be
+ * collected from.
+ *
+ * NOT KEYED ON THE DATE, deliberately. The two January waves were three minutes apart and carried the
+ * same dates, but an operator who re-uploads a file after nudging one date has still uploaded the same
+ * money twice, and a date is the easiest field in a spreadsheet to change by accident.
+ */
+const dupKey = (p: {
+  batchId: string | null;
+  companyId: string | null;
+  payPeriod: string | null;
+  employmentId: string;
+  componentId: string | null;
+  amount: string;
+}): string =>
+  [p.batchId ?? `period:${p.companyId ?? ''}:${p.payPeriod ?? ''}`, p.employmentId, p.componentId ?? '', p.amount].join('|');
+
+/**
+ * THIS ROW'S IDENTITY AS A LINE OF THIS FILE, and the reason `source_ref` is now populated on an import.
+ *
+ * MEASURED ON PRODUCTION 2026-08-13: `source_ref` was NULL on all 24 of January's imported rows, so the
+ * only thing that could ever have suggested the file had been uploaded before was the amounts agreeing —
+ * and nothing was comparing them. This gives an imported line a name of its own: the digest of the whole
+ * FILE plus the row's position in it.
+ *
+ * THE DIGEST IS OF THE FILE, NOT OF THE ROW, and the difference is the corrected-and-re-uploaded case.
+ * A per-row digest would let a file be re-uploaded unchanged as long as every row differed from what was
+ * already stored, which is the wrong way round. A file digest says "this is upload X of this exact
+ * sheet"; if the operator fixes one cell and re-uploads, every row gets a NEW ref and it is the amount
+ * key above — not this one — that refuses the eleven rows that did not change. The two rules answer
+ * different questions and both are needed.
+ *
+ * It also arms `payroll_individual_txn_source_ref_uq` (migration 0432), which was written for the
+ * Attendance/Leave syncs that do not exist yet and has been an empty partial index ever since. From now
+ * on the database itself refuses a second copy of the same file-row, so the pre-flight and the constraint
+ * agree instead of the preview saying "Valid" and the commit raising 23505.
+ */
+const fileDigest = (records: TxnImportRecord[]): string => {
+  const h = createHash('sha256');
+  for (const rec of records) {
+    for (const k of Object.keys(rec).sort()) h.update(`${k}=${rec[k]}`);
+    h.update('');
+  }
+  return h.digest('hex').slice(0, 32);
+};
+const fileRowRef = (digest: string, rowNum: number): string => `xlsx:${digest}:${rowNum}`;
 
 /**
  * WHICH RUN AN IMPORTED ONE-OFF ROW LANDS ON — and the answer has to be the SAME one the Add form
@@ -271,11 +402,24 @@ type ResolvedIndividual = {
  * month itself when there is none (f1564110 Phase 2's designed pre-run entry flow, which
  * `generatePayslips` later stamps onto the month's regular run).
  *
- * An import has no operator standing there to choose, so it takes the month's REGULAR run — which is the
- * only run that ever collects transactions (core/payroll-view.ts says so, and the stranded-money read is
- * built on it). If there is no writable regular run, the row is keyed by period, exactly as the form
- * would. `createIndividualTxnsBulk` re-checks company match and scope membership authoritatively either
- * way, so this decides WHERE, never WHETHER.
+ * An import used to have no way to express that choice at all: this function's caller pinned
+ * `runType === 'regular'`, so EVERY imported line went to the salary run whatever it was for. That is
+ * how January's bonus file came to sit on the regular run while the bonus run showed nineteen zero
+ * payslips — the operator had done nothing wrong and had nowhere to say so.
+ *
+ * 0db616f3 GIVES THE FILE THE SAME COLUMN THE FIXED-TRANSACTION TEMPLATE ALREADY HAS: `Payroll Cycle`.
+ * Blank still means the month's REGULAR run and then, if there is none, keyed by period — byte-identical
+ * to the behaviour above, so no existing file changes meaning. Naming a cycle sends the row to THAT run,
+ * and when no writable run of that cycle exists for the month the row is REFUSED BY NAME rather than
+ * quietly falling back. The fallback is what would rebuild the defect: a period-keyed row is collected by
+ * `generatePayslips`'s attach-on-generate, which is REGULAR-RUN-ONLY (core/payroll.ts), so "bonus, but
+ * there is no bonus run" would land on the salary run exactly as January did.
+ *
+ * WHAT IS DELIBERATELY NOT DONE: routing inferred from the pay item. `display_category` is presentation
+ * metadata ("which box on the payslip", 3c473773) and paying a bonus inside the salary run is completely
+ * ordinary here — inferring 'bonus' from it would force a separate run on everyone who has never wanted
+ * one. It is used for ONE thing, a warning: a bonus-coded line heading for the regular run in a month
+ * that HAS a writable bonus run is the January shape, and the preview says so.
  *
  * WHY NOT JUST ALWAYS KEY BY PERIOD. Because `resolveTxnTarget` returns `status: null` for a period-keyed
  * write, so `markBatchNeedsRecalc` never fires — and the request's "must not automatically mark newly
@@ -283,7 +427,7 @@ type ResolvedIndividual = {
  * which is the same defect wearing the opposite hat.
  */
 type BatchScopeShape = { departmentIds?: string[]; employmentIds?: string[] } | null;
-function batchScopeIncludes(scope: BatchScopeShape, e: ResolvedIndividual): boolean {
+function batchScopeIncludes(scope: BatchScopeShape, e: { employmentId: string; departmentId: string | null }): boolean {
   const empIds = scope?.employmentIds ?? [];
   const deptIds = scope?.departmentIds ?? [];
   if (empIds.length === 0 && deptIds.length === 0) return true; // whole company
@@ -481,6 +625,25 @@ async function analyzeIndividual(
 ): Promise<{ preview: TxnImportPreview; resolved: Map<number, ResolvedIndividual> }> {
   const rows: TxnImportRow[] = [];
   const resolved = new Map<number, ResolvedIndividual>();
+  // 0db616f3 — STAGE FIRST, DECIDE SECOND, exactly as the Fixed Transaction half above already does.
+  // The duplicate test needs the rows already on file (one read for the whole file) and the OTHER rows in
+  // this file, and neither is knowable while the first row is still being parsed. The in-file half is the
+  // one no service can catch for us: each row is individually fine, and by the time the second is written
+  // the first has already committed — which is precisely how January's file came to be imported twice
+  // three minutes apart with nothing complaining.
+  type Stage = {
+    rowNum: number;
+    base: Omit<TxnImportRow, 'ok' | 'reason'>;
+    /** Set when this row already failed; then `r` is null and the failure is emitted verbatim. */
+    failure: TxnImportRow | null;
+    r: Omit<ResolvedIndividual, 'targetBatchId'> | null;
+    /** The pay item's payslip box, for the "this looks like a bonus" warning only. Never routes. */
+    displayCategory: string | null;
+    /** True when the file NAMED the cycle. A named cycle that has no run is refused, not fallen back. */
+    cycleStated: boolean;
+  };
+  const stage: Stage[] = [];
+  const digest = fileDigest(records);
 
   for (const [i, rec] of records.entries()) {
     const rowNum = i + 2;
@@ -495,19 +658,21 @@ async function analyzeIndividual(
       effectiveFrom: (rec.transaction_date ?? '').trim(),
       amount: rec.amount ?? '',
     };
+    const push = (failure: TxnImportRow) =>
+      stage.push({ rowNum, base, failure, r: null, displayCategory: null, cycleStated: false });
 
     const emp = cat.employeeByCode.get(employeeId.trim().toUpperCase());
     if (!emp) {
-      rows.push(fail(base, 'employeeUnknown', { value: employeeId }));
+      push(fail(base, 'employeeUnknown', { value: employeeId }));
       continue;
     }
     if (emp === 'ambiguous') {
-      rows.push(fail(base, 'employeeAmbiguous', { value: employeeId }));
+      push(fail(base, 'employeeAmbiguous', { value: employeeId }));
       continue;
     }
     const comp = cat.componentByCode.get(payItemCode.trim().toUpperCase());
     if (!comp) {
-      rows.push(fail(base, 'payItemUnknown', { value: payItemCode }));
+      push(fail(base, 'payItemUnknown', { value: payItemCode }));
       continue;
     }
     base.payItem = comp.name;
@@ -515,7 +680,7 @@ async function analyzeIndividual(
 
     const txnDate = (rec.transaction_date ?? '').trim();
     if (!isIsoDate(txnDate)) {
-      rows.push(fail(base, 'txnDateInvalid', { value: txnDate }));
+      push(fail(base, 'txnDateInvalid', { value: txnDate }));
       continue;
     }
     // The month a one-off row belongs to IS its date's month. `assertDateInPeriod` re-checks it against
@@ -523,7 +688,7 @@ async function analyzeIndividual(
     // f1564110 Phase 2's designed pre-run entry flow, not a fault.
     const payPeriod = txnDate.slice(0, 7);
     if (!isPayPeriod(payPeriod)) {
-      rows.push(fail(base, 'txnDateInvalid', { value: txnDate }));
+      push(fail(base, 'txnDateInvalid', { value: txnDate }));
       continue;
     }
 
@@ -533,7 +698,7 @@ async function analyzeIndividual(
     // it would be asking them for something the system already knows.
     const kind = kindRaw !== '' ? kindRaw : comp.kind === 'deduction' ? 'deduction' : 'earning';
     if (!isTxnKind(kind)) {
-      rows.push(fail(base, 'kindUnknown', { value: rec.kind ?? '' }));
+      push(fail(base, 'kindUnknown', { value: rec.kind ?? '' }));
       continue;
     }
 
@@ -543,11 +708,11 @@ async function analyzeIndividual(
     const quantityRaw = (rec.quantity ?? '').trim();
     const quantity = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
     if (quantityRaw !== '' && quantity == null) {
-      rows.push(fail(base, 'quantityInvalid', { value: quantityRaw }));
+      push(fail(base, 'quantityInvalid', { value: quantityRaw }));
       continue;
     }
     if (inputUnit != null && !(Number(quantity) > 0)) {
-      rows.push(fail(base, inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays'));
+      push(fail(base, inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays'));
       continue;
     }
 
@@ -573,33 +738,159 @@ async function analyzeIndividual(
         }
       } catch (e) {
         const { reason, detail } = txnImportReason(e);
-        rows.push(fail(base, reason, detail));
+        push(fail(base, reason, detail));
         continue;
       }
     }
     if (!(amount > 0)) {
-      rows.push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: rec.amount ?? '' }));
+      push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: rec.amount ?? '' }));
       continue;
     }
 
-    rows.push({ ...base, payItem: comp.name, amount: amount.toFixed(2), ok: true, reason: '' });
-    resolved.set(rowNum, {
-      employmentId: emp.employmentId,
-      companyId: emp.companyId,
-      departmentId: emp.departmentId,
-      componentId: comp.id,
-      kind,
-      txnDate,
-      payPeriod,
-      amount,
-      quantity,
-      unit,
-      notes: (rec.notes ?? '').trim() || comp.name,
+    // 0db616f3 — the run this line is FOR, and the file is the only thing allowed to say so. The same
+    // vocabulary as the Fixed Transaction template's `Payroll Cycle` column, so an operator who has used
+    // one has used both. Blank means 'regular', which is byte-identical to what every import did before.
+    const cycleRaw = (rec.payroll_cycle ?? '').trim().toLowerCase();
+    if (cycleRaw !== '' && !(FIXED_TRANSACTION_CYCLES as readonly string[]).includes(cycleRaw)) {
+      push(fail(base, 'cycleUnknown', { value: rec.payroll_cycle ?? '' }));
+      continue;
+    }
+    const targetCycle = (cycleRaw === '' ? 'regular' : cycleRaw) as FixedTransactionCycle;
+
+    stage.push({
+      rowNum,
+      base: { ...base, payItem: comp.name, amount: amount.toFixed(2) },
+      failure: null,
+      displayCategory: comp.displayCategory,
+      cycleStated: cycleRaw !== '',
+      r: {
+        employmentId: emp.employmentId,
+        companyId: emp.companyId,
+        departmentId: emp.departmentId,
+        componentId: comp.id,
+        kind,
+        txnDate,
+        payPeriod,
+        amount,
+        quantity,
+        unit,
+        notes: (rec.notes ?? '').trim() || comp.name,
+        targetCycle,
+        sourceRef: fileRowRef(digest, rowNum),
+      },
     });
   }
 
+  // ── THE TARGETING AND DUPLICATE PASS. Everything below needs the whole file, so none of it could run
+  //    in the loop above. Two reads for the file, not two per row. ──
+  const staged = stage.filter((s) => s.r != null);
+  const periods = [...new Set(staged.map((s) => s.r!.payPeriod))];
+  const companyIds = [...new Set(staged.map((s) => s.r!.companyId))];
+  // `listBatches` is the same read the Add form's page makes, so a file and the form resolve against the
+  // same set of runs. Both projections used below (`runType`, `status`) come from it.
+  const allBatches = periods.length > 0 && companyIds.length > 0 ? await listBatches(ctx, companyIds, periods) : [];
+  const ledger = await loadLedgerRows(ctx, [...new Set(staged.map((s) => s.r!.employmentId))]);
+
+  const onFileKeys = new Set(ledger.map((l) => dupKey({ ...l, amount: Number(l.amount).toFixed(2) })));
+  // (employment, date, component, source_ref) — the exact key of `payroll_individual_txn_source_ref_uq`.
+  // Checking it here rather than letting the index raise 23505 is what keeps the preview honest.
+  const onFileRefs = new Set(
+    ledger
+      .filter((l) => l.sourceRef != null)
+      .map((l) => [l.employmentId, l.txnDate, l.componentId ?? '', l.source ?? '', l.sourceRef].join('|')),
+  );
+  const seenInFile = new Map<string, number>();
+
+  for (const s of stage) {
+    if (s.failure) {
+      rows.push(s.failure);
+      continue;
+    }
+    const r = s.r!;
+    // The run of the resolved cycle, if it is writable and covers this employee — see `batchScopeIncludes`.
+    const target = allBatches.find(
+      (b) =>
+        b.companyId === r.companyId &&
+        b.payPeriod === r.payPeriod &&
+        b.runType === r.targetCycle &&
+        (b.status === 'draft' || b.status === 'processed') &&
+        // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
+        // does not project `scope` today, so this reads undefined and every run is treated as
+        // whole-company — which is precisely how the Add form behaves. `createIndividualTxnsBulk`
+        // re-checks scope membership authoritatively and refuses with EmploymentNotInBatchScopeError,
+        // surfaced as `employeeNotInScope`. If the projection ever grows the column this starts
+        // narrowing correctly with no further change.
+        batchScopeIncludes((b as { scope?: BatchScopeShape }).scope ?? null, r),
+    );
+    // A NAMED CYCLE WITH NO RUN IS A REFUSAL, NOT A FALLBACK. Falling back to period-keyed would rebuild
+    // the exact defect this item is about: attach-on-generate is REGULAR-RUN-ONLY (core/payroll.ts), so a
+    // row saying "bonus" would be collected by the salary run — which is what January did.
+    if (!target && s.cycleStated && r.targetCycle !== 'regular') {
+      rows.push(fail(s.base, 'runMissingForCycle', { cycle: r.targetCycle, period: r.payPeriod }));
+      continue;
+    }
+    const key = dupKey({
+      batchId: target?.id ?? null,
+      companyId: r.companyId,
+      payPeriod: r.payPeriod,
+      employmentId: r.employmentId,
+      componentId: r.componentId,
+      amount: r.amount.toFixed(2),
+    });
+    if (onFileKeys.has(key)) {
+      rows.push(fail(s.base, 'duplicateInRun', { code: s.base.payItemCode, amount: r.amount.toFixed(2) }));
+      continue;
+    }
+    const refKey = [r.employmentId, r.txnDate, r.componentId, 'import', r.sourceRef].join('|');
+    if (onFileRefs.has(refKey)) {
+      rows.push(fail(s.base, 'duplicateImported', { code: s.base.payItemCode, amount: r.amount.toFixed(2) }));
+      continue;
+    }
+    const earlier = seenInFile.get(key);
+    if (earlier != null) {
+      rows.push(fail(s.base, 'duplicateInFile', { row: earlier, code: s.base.payItemCode }));
+      continue;
+    }
+    seenInFile.set(key, s.rowNum);
+
+    // ── WARNINGS. These do NOT stop the write; they break the SILENCE that let January happen twice. ──
+    const warnings: { reason: string; detail?: Record<string, string | number> }[] = [];
+    // The run has already produced payslips. Refusing here was considered and rejected: 5c65367d's
+    // approved behaviour is that an imported row lands exactly as a typed one does and marks the run for
+    // recalculation (the service's own `markBatchNeedsRecalc`), and test/payroll-txn-import.test.ts pins
+    // it. What was missing was any acknowledgement AT ALL — the operator saw a clean "12 imported" over a
+    // run that had already been paid, decided nothing had happened, and uploaded the file again.
+    if (target?.status === 'processed') {
+      warnings.push({ reason: 'runAlreadyProcessed', detail: { period: r.payPeriod } });
+    }
+    // A bonus-coded line heading for the regular run in a month that HAS a writable bonus run. Exactly
+    // January's shape, and the reason it is a warning rather than a refusal is that paying a bonus inside
+    // the salary run is completely ordinary — only the operator knows which they meant.
+    if (
+      !s.cycleStated &&
+      s.displayCategory === 'bonus' &&
+      r.targetCycle === 'regular' &&
+      allBatches.some(
+        (b) =>
+          b.companyId === r.companyId &&
+          b.payPeriod === r.payPeriod &&
+          b.runType === 'bonus' &&
+          (b.status === 'draft' || b.status === 'processed'),
+      )
+    ) {
+      warnings.push({ reason: 'bonusRunExists', detail: { code: s.base.payItemCode } });
+    }
+
+    rows.push({ ...s.base, ok: true, reason: '', ...(warnings.length > 0 ? { warnings } : {}) });
+    resolved.set(s.rowNum, { ...r, targetBatchId: target?.id ?? null });
+  }
+
   const valid = rows.filter((x) => x.ok).length;
-  return { preview: { kind: 'individual', total: rows.length, valid, invalid: rows.length - valid, rows }, resolved };
+  const warned = rows.filter((x) => (x.warnings?.length ?? 0) > 0).length;
+  return {
+    preview: { kind: 'individual', total: rows.length, valid, invalid: rows.length - valid, warned, rows },
+    resolved,
+  };
 }
 
 /** Dry run: the verdicts only. Writes nothing, appends no event — a preview is a read. */
@@ -654,31 +945,17 @@ export async function commitTxnImport(
       }
     }
   } else {
-    // The writable runs for every (company, month) this file touches, read ONCE. `listBatches` is the
-    // same read the Add form's page makes, so the two resolve against the same set.
-    const periods = [...new Set([...analysis.resolved.values()].map((r) => r.payPeriod))];
-    const companyIds = [...new Set([...analysis.resolved.values()].map((r) => r.companyId))];
-    const allBatches = periods.length > 0 && companyIds.length > 0 ? await listBatches(ctx, companyIds, periods) : [];
+    // 0db616f3 — THE TARGET RUN IS THE PREVIEW'S ANSWER, not a second one worked out here. It used to be
+    // re-derived at this point with `runType === 'regular'` hardcoded, which meant the screen could never
+    // show the operator which run their file was about to land on — and it always said 'regular' anyway.
+    // Deciding it once, in `analyzeIndividual`, is what lets the preview refuse a cycle that has no run
+    // and warn about a run that has already been paid.
+    const touchedBatchIds = new Set<string>();
 
     for (const [rowNum, r] of analysis.resolved) {
-      // The month's REGULAR run, if it is writable and covers this employee — see `batchScopeIncludes`.
-      const target = allBatches.find(
-        (b) =>
-          b.companyId === r.companyId &&
-          b.payPeriod === r.payPeriod &&
-          b.runType === 'regular' &&
-          (b.status === 'draft' || b.status === 'processed') &&
-          // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
-          // does not project `scope` today, so this reads undefined and every run is treated as
-          // whole-company — which is precisely how the Add form behaves. `createIndividualTxnsBulk`
-          // re-checks scope membership authoritatively and refuses with EmploymentNotInBatchScopeError,
-          // surfaced below as `employeeNotInScope`. If the projection ever grows the column this starts
-          // narrowing correctly with no further change.
-          batchScopeIncludes((b as { scope?: BatchScopeShape }).scope ?? null, r),
-      );
       try {
         await createIndividualTxnsBulk(ctx, {
-          ...(target ? { batchId: target.id } : { companyId: r.companyId, payPeriod: r.payPeriod }),
+          ...(r.targetBatchId ? { batchId: r.targetBatchId } : { companyId: r.companyId, payPeriod: r.payPeriod }),
           employmentIds: [r.employmentId],
           rows: [
             {
@@ -690,36 +967,34 @@ export async function commitTxnImport(
               unit: r.unit,
               notes: r.notes,
               // 4e403268 — provenance. An imported row is not hand-keyed, and saying so is the whole
-              // reason the column exists. It carries no source_ref: a spreadsheet has no stable record
-              // id, so the uniqueness guard (which is partial on source_ref IS NOT NULL) does not apply
-              // and re-uploading the same file legitimately posts the rows again.
+              // reason the column exists.
               source: 'import',
+              // 0db616f3 — and WHICH upload it came from. This used to be null, with a note saying a
+              // spreadsheet has no stable record id so a re-upload legitimately posts the rows again.
+              // The January double import is what that note cost: `source_ref` was NULL on all 24 rows,
+              // so nothing in the database could tell that the same file had arrived twice. The ref is
+              // the file's digest plus this row's position in it, and it arms the 0432 uniqueness index
+              // (partial on source_ref IS NOT NULL) as the backstop under the pre-flight check.
+              sourceRef: r.sourceRef,
             },
           ],
         });
         written += 1;
+        if (r.targetBatchId) touchedBatchIds.add(r.targetBatchId);
       } catch (e) {
         const { reason, detail } = txnImportReason(e);
         failed.push({ ...(byRow.get(rowNum) as TxnImportRow), ok: false, reason, detail });
       }
     }
-    // Which runs this import made stale, read from the RUNS themselves rather than inferred from what
-    // was written — the service marked them inside its own transaction, so this reports the fact.
-    for (const r of analysis.resolved.values()) {
-      const impact = await batchEditImpactFor(ctx, r.companyId, r.payPeriod);
-      if (impact) recalcBatchIds.add(impact);
+    // Which runs this import made stale, read from the RUNS themselves rather than inferred from what was
+    // written — the service marked them inside its own transaction, so this reports the fact. Only runs
+    // that actually RECEIVED a row are asked, and it is the row's own target run rather than "the
+    // month's regular run", so a bonus-run import reports the bonus run.
+    for (const batchId of touchedBatchIds) {
+      const impact = await batchEditImpact(ctx, { batchId });
+      if (impact?.needsRecalcAt != null) recalcBatchIds.add(batchId);
     }
   }
 
   return { kind: analysis.kind, written, failed, recalcBatchIds: [...recalcBatchIds] };
-}
-
-/** The processed run for (company, month) that now owes a recalculation, or null. Deliberately reads
- *  `batchEditImpact`'s own answer rather than re-deciding which runs are stale. */
-async function batchEditImpactFor(ctx: SessionContext, companyId: string, payPeriod: string): Promise<string | null> {
-  const batches = await listBatches(ctx, [companyId], payPeriod);
-  const batch = batches.find((b) => b.payPeriod === payPeriod && b.runType === 'regular' && b.status === 'processed');
-  if (!batch) return null;
-  const impact = await batchEditImpact(ctx, { batchId: batch.id });
-  return impact?.needsRecalcAt != null ? batch.id : null;
 }

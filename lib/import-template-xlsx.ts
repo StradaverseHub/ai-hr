@@ -304,20 +304,12 @@ export async function buildTxnImportWorkbook(kind: TxnImportKind, ref: TxnTempla
       ],
     },
   ];
-  // Sheet 5 differs by screen because the vocabularies do. Fixed carries a Payroll Cycle tag (the
-  // run_type enum); Individual carries a transaction Kind. Shipping both on both would put a column on
-  // the reference that the contract beside it does not have.
-  if (kind === 'fixed') {
-    extraSheets.push({
-      name: TXN_IMPORT_SHEETS.cycles,
-      rows: [
-        [ref.headings.cycles],
-        [],
-        [ref.headings.cycleCode, ref.headings.cycleLabel],
-        ...ref.cycles.map((c) => [c.code, c.label]),
-      ],
-    });
-  } else {
+  // A REFERENCE SHEET EXISTS FOR EVERY CODED COLUMN THE CONTRACT BESIDE IT HAS, and no more. Fixed has
+  // Payroll Cycle only; Individual has Kind AND — since 0db616f3 gave it somewhere to say which run of
+  // the month a line is for — Payroll Cycle too. Before that it had no cycle column, so shipping the
+  // list would have been offering values the file could not carry; now withholding it would leave the
+  // operator guessing at the one column that decides whether their bonus reaches the bonus run.
+  if (kind === 'individual') {
     extraSheets.push({
       name: TXN_IMPORT_SHEETS.kinds,
       rows: [
@@ -328,6 +320,15 @@ export async function buildTxnImportWorkbook(kind: TxnImportKind, ref: TxnTempla
       ],
     });
   }
+  extraSheets.push({
+    name: TXN_IMPORT_SHEETS.cycles,
+    rows: [
+      [ref.headings.cycles],
+      [],
+      [ref.headings.cycleCode, ref.headings.cycleLabel],
+      ...ref.cycles.map((c) => [c.code, c.label]),
+    ],
+  });
   return buildXlsx(headers, [], {
     sheetName: TXN_IMPORT_SHEETS.data[kind],
     textColumns: [...TXN_IMPORT_TEXT_COLUMN_INDEXES[kind]],

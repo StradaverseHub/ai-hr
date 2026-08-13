@@ -5129,6 +5129,7 @@
       "totalRecords": "{count, plural, other {# 条记录}}",
       "validRecords": "{count, plural, other {# 条有效}}",
       "errorRecords": "{count, plural, other {# 条有错误}}",
+      "warnedRecords": "{count, plural, other {# 条有提醒}}",
       "downloadErrors": "下载错误报告",
       "confirmImport": "{count, plural, other {导入 # 条有效记录}}",
       "importing": "导入中…",
@@ -5197,7 +5198,15 @@
         "currencyUnsupported": "仅支持 MYR",
         "derivedAmountUnavailable": "无法为该员工计算此薪资项目的公式",
         "unexpected": "无法导入：{message}",
-        "employeeNotInScope": "该月份的薪资批次不包含此员工"
+        "employeeNotInScope": "该月份的薪资批次不包含此员工",
+        "duplicateInRun": "该薪资批次中该员工已有 {code} {amount}",
+        "duplicateInFile": "本文件第 {row} 行已有该员工同一金额的 {code}",
+        "duplicateImported": "本文件的这一行已经导入过了",
+        "runMissingForCycle": "{period} 没有处于开启状态的{cycle}薪资批次 — 请先创建再导入"
+      },
+      "warning": {
+        "runAlreadyProcessed": "{period} 的薪资批次已经生成过工资单。此行会被加入，批次将标记为需重新处理 — 在你重新处理之前它不会被发放。",
+        "bonusRunExists": "本月存在奖金批次，而 {code} 正被送往工资批次。在“发薪周期”列填写 “bonus” 可将其送往奖金批次。"
       }
     }
   },

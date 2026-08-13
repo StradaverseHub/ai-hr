@@ -93,6 +93,12 @@ export function TxnImportButtons({
   const reasonText = (r: TxnImportRow): string =>
     r.ok ? t('statusValid') : t(`reason.${r.reason}` as never, (r.detail ?? {}) as never);
 
+  /** 0db616f3 — a warning is resolved exactly as a reason is, from its own catalogue. It belongs to a row
+   *  that WILL be written; it is here because the January double import was caused by the screen saying
+   *  nothing at all about a file landing behind an already-paid run. */
+  const warningText = (w: { reason: string; detail?: Record<string, string | number> }): string =>
+    t(`warning.${w.reason}` as never, (w.detail ?? {}) as never);
+
   const loadFile = async (file: File) => {
     setError(null);
     setResult(null);
@@ -263,6 +269,11 @@ export function TxnImportButtons({
                           {t('validRecords', { count: preview.valid })}
                         </span>
                         <span className="text-destructive">{t('errorRecords', { count: preview.invalid })}</span>
+                        {(preview.warned ?? 0) > 0 && (
+                          <span className="text-amber-700 dark:text-amber-400">
+                            {t('warnedRecords', { count: preview.warned ?? 0 })}
+                          </span>
+                        )}
                         {preview.invalid > 0 && (
                           <Button type="button" size="sm" variant="outline" onClick={() => downloadIssues(failedRows)}>
                             {t('downloadErrors')}
@@ -300,7 +311,19 @@ export function TxnImportButtons({
                                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{r.effectiveFrom || '—'}</td>
                                 <td className="px-3 py-2">
                                   {r.ok ? (
-                                    <Badge variant="success">{t('statusValid')}</Badge>
+                                    <div className="space-y-1">
+                                      <Badge variant="success">{t('statusValid')}</Badge>
+                                      {/* VALID AND WORTH SAYING SOMETHING ABOUT. The row is still
+                                          written — the badge above is the truth — but the operator
+                                          finds out BEFORE pressing Confirm that this file is landing
+                                          behind a run that has already been paid, or that the month has
+                                          a bonus run this bonus line is not going to. */}
+                                      {(r.warnings ?? []).map((w) => (
+                                        <p key={w.reason} className="text-xs text-amber-700 dark:text-amber-400">
+                                          {warningText(w)}
+                                        </p>
+                                      ))}
+                                    </div>
                                   ) : (
                                     <span className="text-xs text-destructive">{reasonText(r)}</span>
                                   )}
