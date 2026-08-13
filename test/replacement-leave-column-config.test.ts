@@ -24,6 +24,7 @@ import {
   isEssViewComponentKey,
   isEssViewComponentKeyForCode,
   isReplacementLeaveCode,
+  isReplacementLeaveType,
   resolveEssViewForCode,
 } from '../core/ess-view';
 import {
@@ -33,9 +34,27 @@ import {
   resolveLeaveFormulaForCode,
 } from '../core/leave-formula';
 
-describe('the five Replacement Leave columns', () => {
+describe('the Replacement Leave columns', () => {
   it('are exactly the reporter’s columns, in the table’s display order', () => {
-    expect([...REPLACEMENT_COLUMN_KEYS]).toEqual(['requestDate', 'number', 'unit', 'approvalDate', 'expiredDate']);
+    // 5ff7daff APPENDED `remaining` — "how much of THIS credit is still unused", the fourth column the
+    // reporter listed and the only one that was missing. The other five keep their names and their order:
+    // this case pins the ORDER, and the order is the table's own left-to-right reading order.
+    expect([...REPLACEMENT_COLUMN_KEYS]).toEqual([
+      'requestDate',
+      'number',
+      'unit',
+      'approvalDate',
+      'expiredDate',
+      'remaining',
+    ]);
+  });
+
+  it('name the unused-amount column `remaining`, NOT `available` — the sets must stay disjoint', () => {
+    // `available` is one of the nine summary keys. Naming the new column that would collide the two sets
+    // and re-open exactly what ed17a4f9 spent an item closing: HR ticking one thing and configuring another.
+    expect((REPLACEMENT_COLUMN_KEYS as readonly string[])).toContain('remaining');
+    expect((REPLACEMENT_COLUMN_KEYS as readonly string[])).not.toContain('available');
+    expect((ESS_VIEW_COMPONENT_KEYS as readonly string[])).toContain('available');
   });
 
   it('do not overlap the nine Leave Summary keys in either direction', () => {
@@ -81,6 +100,36 @@ describe('resolution BY LEAVE TYPE CODE', () => {
     expect([...essViewKeysForCode('ANNUAL')]).toEqual([...ESS_VIEW_COMPONENT_KEYS]);
     // An unconfigured / unknown code gets the nine — the default every type had before this item.
     expect([...essViewKeysForCode(null)]).toEqual([...ESS_VIEW_COMPONENT_KEYS]);
+  });
+
+  // ── 5ff7daff — the ROLE marker, and why the code alone was never enough ──────────────────────────────
+  it('resolves by ROLE first, so a tenant whose replacement type is coded RL still gets its columns', () => {
+    // This is production. The customer's own type is `RL`, marked `role = 'replacement'`; every comparison
+    // in this module was silently false for it, which is how the tenant ended up with TWO Replacement Leave
+    // cards — theirs (matching nothing) and an auto-created one (matching, and holding every credit).
+    const rl = { role: 'replacement', code: 'RL' };
+    expect(isReplacementLeaveType(rl)).toBe(true);
+    expect([...essViewKeysForCode(rl)]).toEqual([...REPLACEMENT_COLUMN_KEYS]);
+    expect(isEssViewComponentKeyForCode(rl, 'expiredDate')).toBe(true);
+    expect(isEssViewComponentKeyForCode(rl, 'ytdEntitled')).toBe(false);
+    expect(Object.keys(resolveEssViewForCode(rl, null)).sort()).toEqual([...REPLACEMENT_COLUMN_KEYS].sort());
+  });
+
+  it('a ROLE that is not replacement wins over a code that looks like one', () => {
+    // Role wins outright when set — the same precedence as leaveTypeIs. A type someone classified as annual
+    // is annual, whatever its code says.
+    expect(isReplacementLeaveType({ role: 'annual', code: 'REPLACEMENT' })).toBe(false);
+    expect([...essViewKeysForCode({ role: 'annual', code: 'REPLACEMENT' })]).toEqual([...ESS_VIEW_COMPONENT_KEYS]);
+  });
+
+  it('an UNCLASSIFIED row falls back to the seeded code — nothing changed for tenants nobody classified', () => {
+    expect(isReplacementLeaveType({ role: null, code: 'REPLACEMENT' })).toBe(true);
+    expect(isReplacementLeaveType({ role: '', code: 'REPLACEMENT' })).toBe(true);
+    expect(isReplacementLeaveType({ role: null, code: 'RL' })).toBe(false);
+    // …and the bare-string form (every pre-5ff7daff caller) is byte-identical to the code-only predicate.
+    expect(isReplacementLeaveType('REPLACEMENT')).toBe(isReplacementLeaveCode('REPLACEMENT'));
+    expect(isReplacementLeaveType('ANNUAL')).toBe(isReplacementLeaveCode('ANNUAL'));
+    expect(isReplacementLeaveType(null)).toBe(false);
   });
 
   it('REFUSES a key from the other type’s set — the anti-leak guard', () => {

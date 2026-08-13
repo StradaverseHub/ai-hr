@@ -147,8 +147,12 @@ describe('00307068 — the Replacement Leave card opens the per-credit table', (
     // 5ff7daff — the balance above the table is STILL leaveBalances' figure (the half of this case that was
     // always the point), but it now reads as the reporter's TWO STAGES rather than one "Available Balance"
     // line: what is waiting on the line manager, and what has been approved and can be spent.
+    // Asserted on the two HINTS rather than the two labels: the approved stage is called "Replacement
+    // Leave" — the reporter's own word for it — which is also the leave type's name on the card and in the
+    // panel header, so the label alone matches three nodes. The hints name the two stages uniquely.
     expect(screen.getByText(messages.leave.breakdown.replacement.pendingLabel)).toBeInTheDocument();
-    expect(screen.getByText(messages.leave.breakdown.replacement.approvedLabel)).toBeInTheDocument();
+    expect(screen.getByText(messages.leave.breakdown.replacement.pendingHint)).toBeInTheDocument();
+    expect(screen.getByText(messages.leave.breakdown.replacement.approvedHint)).toBeInTheDocument();
 
     // …and NOT the nine-line summary. `Eligible` is the summary's first row and appears nowhere else.
     expect(screen.queryByText(messages.leave.breakdown.field.eligible)).not.toBeInTheDocument();

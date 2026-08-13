@@ -30,10 +30,19 @@ export type ApprovalCategory =
 /** Categories beyond the bulk taxonomy — the people matters, in panel order. */
 const PEOPLE_CATEGORIES = ['profileChanges', 'resignations', 'managerReviews', 'hrReviews'] as const;
 
-/** Every category in canonical order: all first, then the bulk taxonomy, then the people categories. */
+/**
+ * Every category in canonical order: all first, then the bulk taxonomy, then replacement leave, then the
+ * people categories.
+ *
+ * A CATEGORY MUST BE HERE OR IT DOES NOT EXIST. `parseApprovalCategory` coerces anything absent from this
+ * list to 'all', so a category added to the union and to PANEL_GROUPS but not to THIS array renders a panel
+ * link that silently lands back on the unfiltered inbox — nothing throws and nothing logs. 5ff7daff shipped
+ * exactly that mistake for one commit and test/replacement-leave-approval-surface.test.ts is what found it.
+ */
 export const APPROVAL_CATEGORIES: readonly ApprovalCategory[] = [
   'all',
   ...BULK_CATEGORY_ORDER,
+  'replacementLeave',
   ...PEOPLE_CATEGORIES,
 ];
 

@@ -92,6 +92,7 @@ describe('sectionVisible', () => {
     'leave',
     'leaveCancellation',
     'claims',
+    'replacementLeave',
     'corrections',
     'travel',
     'profileChanges',
