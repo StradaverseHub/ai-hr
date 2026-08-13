@@ -1494,6 +1494,7 @@
       "locationNoBranch": "雇佣标签页未记录分行，因此无法据此建议工作地点。",
       "payComponentOverlap": "该员工已有一项 {code} 薪资组成，涵盖 {from} 至 {to}。请先结束该记录，或选择不与其重叠的日期。",
       "payComponentBackwards": "该员工已有一项自 {from} 起生效的 {code} 薪资组成。新数值的生效日期必须不早于该日期。",
+      "payComponentMidMonth": "对 {code} 薪资组成的更改必须自每月一日起生效。该员工已有一条覆盖当月部分日期的有效 {code} 记录，因此生效日期落在月中的更改会导致两条记录都按全额支付。请改用 {nextFirst}。",
       "payComponentClosedRun": "薪资批次 {period} 已关账，因此 {code} 薪资组成在该期间不能再更改。",
       "payComponentOpenEnded": "无结束日期"
     },
@@ -4002,6 +4003,7 @@
         "paidOnPayslip": "薪资批次 {period} 已关账，因此该项目在该期间不能再更改或移除。请重新打开该批次，或改为从某个日期起结束该项目——这样可停止今后的发放并保留已发放的部分。",
         "overlap": "该员工已有一条 {code} 记录，涵盖 {from} 至 {to}。请先结束该记录，或选择不与其重叠的日期。",
         "backwards": "该员工已有一条自 {from} 起生效的 {code} 记录。新数值的生效日期必须不早于该日期。",
+        "midMonth": "对 {code} 薪资项目的更改必须自每月一日起生效。该员工已有一条覆盖当月部分日期的有效 {code} 记录，因此生效日期落在月中的更改会导致两条记录都按全额支付。请改用 {nextFirst}。",
         "openEnded": "无结束日期",
         "existingTitle": "该员工此薪资项目已有 {count, plural, other {# 条记录}}",
         "existingClashTag": "与您的日期重叠",
@@ -5159,6 +5161,7 @@
         "overlapInFile": "本文件第 {row} 行的 {code} 日期与此行重叠",
         "overlapDatabase": "日期与同一薪资项目的现有记录重叠",
         "backwards": "此记录早于开始于 {from} 的现有 {code} 记录 — 请先结束那一条",
+        "midMonth": "对 {code} 的更改必须自每月一日起 — 请改用 {nextFirst}",
         "closedRun": "{period} 的薪资批次已关账",
         "runNotWritable": "该月份的薪资批次已无法修改",
         "duplicateRow": "与文件中另一行重复",

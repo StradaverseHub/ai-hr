@@ -19,6 +19,10 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { createIndividualTxn } from '../core/payroll-individual-txn';
 import { listPayComponents, seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
+// a3d485f6 — the fixture clock. The reader under test resolves "today" through todayInKualaLumpur(),
+// so the dates it is fed have to come off the same calendar.
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { addDaysIso } from '../lib/roster-month';
 import {
   listFixedTransactionsAcross,
   listIndividualTxnCreators,
@@ -153,11 +157,12 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     await seedPayComponentCatalog(a);
     const allowId = await codeId(a, 'ALLOWANCE');
     // Dates computed relative to NOW so the split cannot rot with the calendar.
-    const iso = (daysFromToday: number) => {
-      const d = new Date();
-      d.setDate(d.getDate() + daysFromToday);
-      return d.toISOString().slice(0, 10);
-    };
+    //
+    // a3d485f6 — off the MYT CALENDAR DAY, not off a UTC instant. This used to be
+    // `new Date()` + `toISOString().slice(0, 10)`, which names YESTERDAY between 00:00 and 08:00 MYT
+    // while the reader under test resolves its own "today" through todayInKualaLumpur()
+    // (core/payroll-view.ts) — the two clocks disagreed for eight hours a day.
+    const iso = (daysFromToday: number) => addDaysIso(todayInKualaLumpur(), daysFromToday);
     const e = await hire(a, base.companyId, base.deptA, 'Status Case', iso(-400));
     // Ended: validTo in the past. Active: open-ended. (A different-window pair for one component:
     // the first is end-dated, so the second insert does NOT supersede it — both stay visible.)
@@ -172,9 +177,17 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     const all = await listFixedTransactionsAcross(a, { companyIds: [base.companyId] });
     expect(new Set(all.map((r) => r.id))).toEqual(new Set([endedId, activeId]));
 
-    // Superseding the open row closes it at the new effectiveFrom (10 days ago), which is < today —
-    // so it moves from the ACTIVE split to the ENDED split and the new open row becomes the active one.
-    const { id: newId } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: iso(-10) });
+    // Superseding the open row closes it the day before the new effectiveFrom, which is < today — so it
+    // moves from the ACTIVE split to the ENDED split and the new open row becomes the active one.
+    //
+    // a3d485f6 — the restatement date is the FIRST OF THIS MONTH; it used to be `iso(-10)`, which lands
+    // part-way through a month on every day of the month but the 11th. That is now refused at the
+    // writer (FixedTransactionMidMonthError): closing the open row on the 9th and starting the next on
+    // the 10th leaves BOTH rows inside the month, and the kernel pays each its full amount. Nothing
+    // about THIS test's subject changes — the closed row's validTo is the last day of last month, which
+    // is still strictly before today, which is the validTo-vs-today rule being pinned.
+    const firstOfThisMonth = `${todayInKualaLumpur().slice(0, 7)}-01`;
+    const { id: newId } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: firstOfThisMonth });
     const after = await listFixedTransactionsAcross(a, { companyIds: [base.companyId], status: 'active' });
     expect(after.map((r) => r.id)).toEqual([newId]);
     const endedAfter = await listFixedTransactionsAcross(a, { companyIds: [base.companyId], status: 'ended' });

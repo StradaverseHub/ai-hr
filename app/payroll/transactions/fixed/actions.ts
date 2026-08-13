@@ -8,6 +8,7 @@ import {
   FixedTransactionAmountError,
   FixedTransactionBackwardsError,
   FixedTransactionDateError,
+  FixedTransactionMidMonthError,
   FixedTransactionNotFoundError,
   FixedTransactionOverlapError,
   FixedTransactionPaidError,
@@ -91,7 +92,13 @@ function fixedErrorKey(e: unknown): string {
             // and named entirely the wrong field: nothing is wrong with the end date here.
             e instanceof FixedTransactionBackwardsError
             ? 'backwards'
-            : // Removal/edit refused because a CLOSED run covers the row's window (2aed39d4 changed this
+            : // a3d485f6 — the change would take effect part-way through a month while a live record for
+              // the same pay item still covers part of that month, which pays BOTH in full. The message
+              // has to name a date the operator can use instead, so `nextFirstOfMonth` rides along in
+              // `fixedErrorQs` exactly like the clash identity does.
+              e instanceof FixedTransactionMidMonthError
+              ? 'midMonth'
+              : // Removal/edit refused because a CLOSED run covers the row's window (2aed39d4 changed this
               // from "paid on a processed payslip" — see FixedTransactionPaidError). Mapped to a
               // localised key rather than falling through to `(e as Error).message`, which would put the
               // service's raw English into the URL and onto the screen.
@@ -120,6 +127,13 @@ function fixedErrorQs(e: unknown): string {
     if (e.validTo != null) qs.set('clashTo', e.validTo);
   }
   if (e instanceof FixedTransactionPaidError) qs.set('clashPeriod', e.payPeriod);
+  // a3d485f6 — the mid-month refusal names the pay item AND the date to use instead. `clashCode` is
+  // reused for the code (the banner already passes it to every key) and `nextFirst` is its own argument,
+  // an ISO date computed in core from the tenant's MYT calendar day.
+  if (e instanceof FixedTransactionMidMonthError) {
+    qs.set('clashCode', e.code);
+    qs.set('nextFirst', e.nextFirstOfMonth);
+  }
   return qs.toString();
 }
 
