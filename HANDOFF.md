@@ -20,11 +20,14 @@ any of them):**
 
 ## CURRENT STATE — snapshot 2026-08-13 (r185–r192 SHIPPED · NOTHING IN FLIGHT · 6 APPROVED)
 
-**`main` IS WHAT RUNS ON PRODUCTION, BYTE FOR BYTE** — verified by an `rsync -azi --delete --dry-run`
-that reported **completely empty output**, not by `deploy.sh` succeeding, which is not proof. The code
-release ref is **`de887a85`** (what the board's `build_ref` records for all eleven items); the docs
-commit on top of it was rsynced after, so the dry run is clean rather than showing the usual doc lag.
-**Production is on 355 migrations** (watermark `391 @ 1781862536000`). Service active. **All code is live.**
+**`main@cf05fe59` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
+reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. **That one line is
+expected after EVERY deploy and is not a discrepancy**: it is gitignored (`.gitignore:43`) and
+`deploy.sh` rebuilds on the box, which rewrites it. A dry run is "clean" at one line, not zero — it only
+reads empty if you rsync again *after* the deploy, which is churn, not proof of anything more.
+The code release ref for r190+r191's eleven board items is **`de887a85`** (what their `build_ref`
+records); r192 sits on top of it. **Production is on 355 migrations** (watermark `391 @ 1781862536000`;
+r192 added none). Service active, `GET localhost:3000/` → 401. **All code is live.**
 **Next free migration is `0437`** (`0431` allocated and deliberately unused; gaps are fine).
 
 ⚠️ **AI-HR IS NOT PUBLICLY EXPOSED — DO NOT "VERIFY" IT THROUGH A BROWSER.** It listens on
