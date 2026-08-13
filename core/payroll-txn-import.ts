@@ -54,6 +54,7 @@ import {
   FIXED_TRANSACTION_CYCLES,
   FixedTransactionAmountError,
   FixedTransactionBackwardsError,
+  FixedTransactionMidMonthError,
   FixedTransactionDateError,
   FixedTransactionOverlapError,
   FixedTransactionPaidError,
@@ -110,6 +111,12 @@ export function txnImportReason(e: unknown): { reason: string; detail?: Record<s
   }
   if (e instanceof FixedTransactionBackwardsError) {
     return { reason: 'backwards', detail: { code: e.code, from: e.validFrom, to: e.validTo ?? '' } };
+  }
+  // a3d485f6 — a fixed-transaction row whose start date lands part-way through a month a live record
+  // already covers. Reachable from a file exactly as it is from the screen, and a downloadable error
+  // report must never carry the service's raw English (see this function's note).
+  if (e instanceof FixedTransactionMidMonthError) {
+    return { reason: 'midMonth', detail: { code: e.code, nextFirst: e.nextFirstOfMonth } };
   }
   if (e instanceof FixedTransactionPaidError) return { reason: 'closedRun', detail: { period: e.payPeriod } };
   if (e instanceof FixedTransactionDateError) return { reason: 'endBeforeStart' };

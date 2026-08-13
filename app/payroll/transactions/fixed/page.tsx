@@ -54,11 +54,13 @@ export default async function FixedTransactionPage({
     clashFrom?: string;
     clashTo?: string;
     clashPeriod?: string;
+    // a3d485f6 — the first-of-month the mid-month refusal offers instead.
+    nextFirst?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
-  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod } = await searchParams;
+  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(FIXED_PANEL_COOKIE)?.value !== '0';
@@ -131,6 +133,9 @@ export default async function FixedTransactionPage({
     // 2aed39d4 — the two overlap refusals. Both name the clashing record via ICU arguments.
     'overlap',
     'backwards',
+    // a3d485f6 — the change lands part-way through a month a live record already covers, which pays
+    // both in full. Names the pay item and the first-of-month to use instead.
+    'midMonth',
   ]);
   // Clash arguments are passed to every key; next-intl ignores the ones a message does not use.
   const errorMessage =
@@ -140,6 +145,7 @@ export default async function FixedTransactionPage({
           from: clashFrom ?? '—',
           to: clashTo ?? t('fixed.openEnded'),
           period: clashPeriod ?? '—',
+          nextFirst: nextFirst ?? '—',
         })
       : error;
 

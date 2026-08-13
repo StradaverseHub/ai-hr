@@ -1494,6 +1494,7 @@
       "locationNoBranch": "Không có chi nhánh nào được ghi ở thẻ Việc làm, nên không thể đề xuất địa điểm làm việc từ đó.",
       "payComponentOverlap": "Nhân viên này đã có thành phần lương {code} bao gồm từ {from} đến {to}. Hãy kết thúc bản ghi đó trước, hoặc chọn khoảng ngày không chồng lấn với nó.",
       "payComponentBackwards": "Nhân viên này đã có thành phần lương {code} bắt đầu từ {from}. Giá trị mới phải có hiệu lực từ ngày đó trở đi.",
+      "payComponentMidMonth": "Thay đổi đối với thành phần lương {code} phải có hiệu lực từ ngày đầu tháng. Nhân viên này đã có một bản ghi {code} đang hoạt động bao gồm một phần của tháng đó, nên một thay đổi ghi ngày giữa tháng sẽ trả đủ cả hai bản ghi. Hãy dùng {nextFirst}.",
       "payComponentClosedRun": "Kỳ lương {period} đã chốt, nên thành phần lương {code} không thể thay đổi cho kỳ đó nữa.",
       "payComponentOpenEnded": "không có ngày kết thúc"
     },
@@ -4002,6 +4003,7 @@
         "paidOnPayslip": "Kỳ lương {period} đã chốt, nên khoản này không thể thay đổi hay xóa cho kỳ đó nữa. Hãy mở lại kỳ lương, hoặc kết thúc khoản từ một ngày — cách này dừng các khoản chi trả sau này và giữ nguyên những gì đã trả.",
         "overlap": "Nhân viên này đã có bản ghi {code} bao gồm từ {from} đến {to}. Hãy kết thúc bản ghi đó trước, hoặc chọn khoảng ngày không chồng lấn với nó.",
         "backwards": "Nhân viên này đã có bản ghi {code} bắt đầu từ {from}. Giá trị mới phải có hiệu lực từ ngày đó trở đi.",
+        "midMonth": "Thay đổi đối với mục lương {code} phải có hiệu lực từ ngày đầu tháng. Nhân viên này đã có một bản ghi {code} đang hoạt động bao gồm một phần của tháng đó, nên một thay đổi ghi ngày giữa tháng sẽ trả đủ cả hai bản ghi. Hãy dùng {nextFirst}.",
         "openEnded": "không có ngày kết thúc",
         "existingTitle": "Nhân viên này đã có {count, plural, other {# bản ghi}} cho khoản lương này",
         "existingClashTag": "chồng lấn với ngày bạn nhập",
@@ -5154,6 +5156,7 @@
         "overlapInFile": "Dòng {row} trong tệp này đã có {code} với khoảng ngày chồng lấn",
         "overlapDatabase": "Các ngày chồng lấn với bản ghi hiện có của cùng mục lương",
         "backwards": "Bản ghi này bắt đầu trước bản ghi {code} hiện có bắt đầu từ {from} — hãy kết thúc bản ghi đó trước",
+        "midMonth": "Thay đổi đối với {code} phải bắt đầu từ ngày đầu tháng — hãy dùng {nextFirst}",
         "closedRun": "Kỳ lương {period} đã đóng",
         "runNotWritable": "Kỳ lương của tháng đó không thể thay đổi nữa",
         "duplicateRow": "Trùng với một dòng khác trong tệp",
