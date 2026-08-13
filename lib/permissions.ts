@@ -523,6 +523,15 @@ export const SCREENS: readonly ScreenEntry[] = [
       // grant or revoke. Its `export` sibling is a route handler, not a guarded page, so it is not
       // listed (the reverse-completeness check walks page.tsx files).
       '/payroll/statutory-forms/[formId]',
+      // 88076362: the CP22 review step, between the joiner list on the statutory-form directory and the
+      // download. Same scopedAdmin key as the directory that links to it (statutory-forms/page.tsx builds
+      // the href twice, for the due list and the watchlist) — it shows one joiner's full particulars, name,
+      // IC, address and commencement terms, so it is admin-scoped exactly like the [formId] screen above.
+      // Registered here because test/function-access.test.ts checks reverse completeness: a guarded page
+      // with no matrix column fails the suite rather than silently becoming a screen nobody can grant or
+      // revoke. Its FOUR siblings under /payroll/cp22 (the [employmentId] pdf and text downloads, batch and
+      // blank) are route handlers, not guarded pages, so they are not listed — the check walks page.tsx.
+      '/payroll/cp22/[employmentId]/preview',
       // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
       // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
       // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports
