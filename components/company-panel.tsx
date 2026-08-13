@@ -330,28 +330,27 @@ function StatutoryAuthorityCard({
   const configured = !!r;
   const signatoryKnown = !r?.signatoryPersonId || signatories.some((sg) => sg.personId === r.signatoryPersonId);
   return (
+    // 3c2f55d7 — this card was a details/summary disclosure that started closed, so every authority's
+    // configuration was one more click away on a screen the reader had already drilled two levels
+    // into (and the Configured / Not configured badge was the only thing you could see without
+    // opening it). The header row stays as a heading; the form below it is simply always there.
     <li className="rounded-md border border-border/60">
-      <details className="group">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
-          <span className="min-w-0 text-sm">
-            {/* Dynamic message key (`authority_epf`, `authority_socso`, …) — one per entry in
-                STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
-                existing convention for a computed key (the pattern the individual-transaction screen uses). NOTE: the i18n-coverage test
-                cannot see dynamic keys, so adding an authority means adding its label to all six
-                locales by hand. */}
-            <span className="font-medium">{t(`authority_${authority}` as never)}</span>
-            {configured ? (
-              <span className={`ml-2 ${badge.emerald}`}>{t('authorityConfigured')}</span>
-            ) : (
-              <span className={`ml-2 ${badge.muted}`}>{t('authorityNotConfigured')}</span>
-            )}
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            <span className="group-open:hidden">{t('bankAccountEdit')}</span>
-            <span className="hidden group-open:inline">{t('bankAccountCollapse')}</span>
-          </span>
-        </summary>
-        <div className="space-y-2 border-t border-border/60 px-3 py-3">
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <span className="min-w-0 text-sm">
+          {/* Dynamic message key (`authority_epf`, `authority_socso`, …) — one per entry in
+              STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
+              existing convention for a computed key (the pattern the individual-transaction screen uses). NOTE: the i18n-coverage test
+              cannot see dynamic keys, so adding an authority means adding its label to all six
+              locales by hand. */}
+          <span className="font-medium">{t(`authority_${authority}` as never)}</span>
+          {configured ? (
+            <span className={`ml-2 ${badge.emerald}`}>{t('authorityConfigured')}</span>
+          ) : (
+            <span className={`ml-2 ${badge.muted}`}>{t('authorityNotConfigured')}</span>
+          )}
+        </span>
+      </div>
+      <div className="space-y-2 border-t border-border/60 px-3 py-3">
           <form action={setAction} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input type="hidden" name="companyId" value={companyId} />
             <input type="hidden" name="authority" value={authority} />
@@ -443,8 +442,7 @@ function StatutoryAuthorityCard({
               </button>
             </form>
           )}
-        </div>
-      </details>
+      </div>
     </li>
   );
 }
@@ -475,10 +473,32 @@ function CompanyLogo({
   );
 }
 
-/** One legal entity as an expandable panel: company details, group parent, statutory identity, and bank
- *  disbursement profiles — everything "about running the company". The org catalogs (departments /
- *  positions / cost centers / business units) moved to the Settings → System Labels admin page; this
- *  panel is now purely company/legal/bank management. */
+/**
+ * One legal entity, in full: company details, group parent, statutory identity, and bank disbursement
+ * profiles — everything "about running the company". The org catalogs (departments / positions / cost
+ * centers / business units) moved to the Settings → System Labels admin page; this panel is now purely
+ * company/legal/bank management.
+ *
+ * ── NOTHING HERE FOLDS (item 3c2f55d7) ────────────────────────────────────────────────────────────
+ * This panel is the whole body of /admin/organization/[companyId]. You have ALREADY chosen the company
+ * by the time it renders, so no part of it may make you choose again: the sections are grouped by TAB,
+ * and everything on the selected tab is visible on arrival.
+ *
+ * It used to fold in four places. The outer one — a chevron row with an `expanded`/`defaultExpanded`
+ * pair — is a leftover from when the panel was one row of a client-side company LIST, where collapsing
+ * was the point; that listing is now a plain server-rendered table (app/admin/organization/page.tsx)
+ * and this component has exactly ONE caller, which always opened it. Inside it were three more:
+ * per-statutory-authority cards, per-bank-account rows, and the "add a bank account" form. Each hid
+ * information the reader had already navigated two levels to see. All four are gone.
+ *
+ * The tabs are NOT a disclosure and stay: they group a large screen, they do not gate it, and every
+ * tab's content is mounted (hidden by CSS) so an in-progress edit survives a tab switch.
+ *
+ * DO NOT reintroduce a details/summary disclosure here — the source guard in
+ * test/company-panel-bank-statutory-layout.test.ts fails the build if one comes back. The
+ * group-structure fold on the LISTING page is a different decision and is deliberately kept
+ * (test/organization-group-structure-collapse.test.ts).
+ */
 export function CompanyPanel({
   company,
   companies,
@@ -488,7 +508,6 @@ export function CompanyPanel({
   signatories = [],
   stateOptions = [],
   activeCycleNames = [],
-  defaultExpanded = false,
   actions,
 }: {
   company: PanelCompany;
@@ -505,13 +524,6 @@ export function CompanyPanel({
   // Organization Module (361e3b15) — THIS company's ACTIVE payroll cycle names, for the Default Payroll
   // Cycle picker on the General tab.
   activeCycleNames?: string[];
-  /**
-   * Open on mount (item defd4644). The panel was born inside a listing where collapsing was the
-   * point; it is now also the whole body of /admin/organization/[companyId], where making the reader
-   * click a disclosure row that discloses the only thing on the page is pure friction. Additive and
-   * defaulted false, so the collapsed behaviour every existing caller relies on is untouched.
-   */
-  defaultExpanded?: boolean;
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -528,7 +540,6 @@ export function CompanyPanel({
   };
 }) {
   const t = useTranslations('admin.organization');
-  const [expanded, setExpanded] = useState(defaultExpanded);
   const [tab, setTab] = useState<TabKey>('general');
   const c = company;
   const isMY = c.country === 'MY';
@@ -544,29 +555,17 @@ export function CompanyPanel({
   // overflowing the row budget so rows 2..N arrived as lazies. One panel per page cannot do that.
   return (
     <div className={c.archivedAt ? 'opacity-60' : undefined}>
+      {/* Identity strip. It is a plain row, not a toggle: the reader arrived here by opening THIS
+          company, so the one thing this screen must never do is hide it again behind a click. The logo
+          and the statutory-readiness badge live here because the page header above cannot show them. */}
       <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-          aria-expanded={expanded}
-        >
-          <svg
-            viewBox="0 0 20 20"
-            className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            aria-hidden
-          >
-            <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <CompanyLogo hasLogo={c.hasLogo} companyId={c.id} name={c.name} />
           <span className="truncate text-sm font-medium text-foreground">{c.name}</span>
           {c.registrationNo && <span className="text-xs text-muted-foreground">{c.registrationNo}</span>}
           <span className={badge.muted}>{c.country}</span>
           {c.archivedAt && <span className={badge.muted}>{t('archived')}</span>}
-        </button>
+        </div>
         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           {isMY &&
             (statMissing === 0 ? (
@@ -577,8 +576,7 @@ export function CompanyPanel({
         </div>
       </div>
 
-      {expanded && (
-        <div className="border-t border-border/60 bg-muted/20 px-4 py-4">
+      <div className="border-t border-border/60 bg-muted/20 px-4 py-4">
           {/* Tab bar — groups the company detail sections so the panel reads as tabs, not one long scroll. */}
           <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
             <TabButton active={tab === 'general'} onClick={() => setTab('general')}>
@@ -849,43 +847,40 @@ export function CompanyPanel({
               ) : (
                 <ul className="space-y-2">
                   {bankProfiles.map((bp) => (
+                    // 3c2f55d7 — each saved account was a closed disclosure; the masked identity line is
+                    // now a heading over an editor that is simply open.
                     <li key={bp.id} className="rounded-md border border-border/60">
-                      <details className="group">
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
-                          <span className="min-w-0 text-sm">
-                            <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
-                            {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {myBankLabel(bp.bank)} · ••••{bp.debitAccountNo.slice(-4)} · {bp.currency}
-                            </span>
+                      <div className="flex items-center justify-between gap-2 px-3 py-2">
+                        <span className="min-w-0 text-sm">
+                          <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
+                          {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {myBankLabel(bp.bank)} · ••••{bp.debitAccountNo.slice(-4)} · {bp.currency}
                           </span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            <span className="group-open:hidden">{t('bankAccountEdit')}</span>
-                            <span className="hidden group-open:inline">{t('bankAccountCollapse')}</span>
-                          </span>
-                        </summary>
-                        <div className="border-t border-border/60 px-3 py-3">
-                          <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
-                          <form action={actions.removeBankProfile} className="mt-2">
-                            <input type="hidden" name="id" value={bp.id} />
-                            <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-                              {t('bankProfileRemove')}
-                            </button>
-                          </form>
-                        </div>
-                      </details>
+                        </span>
+                      </div>
+                      <div className="border-t border-border/60 px-3 py-3">
+                        <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
+                        <form action={actions.removeBankProfile} className="mt-2">
+                          <input type="hidden" name="id" value={bp.id} />
+                          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                            {t('bankProfileRemove')}
+                          </button>
+                        </form>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
-              <details className="rounded-md border border-dashed border-border">
-                <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
-                  {t('bankAccountAdd')}
-                </summary>
+              {/* 3c2f55d7 — the blank "add an account" form was itself a fold. A company with no bank
+                  account saw an empty list and a closed row, i.e. the one thing it needed to do was
+                  hidden. The dashed border still marks it as the ADD form rather than a saved one. */}
+              <div className="rounded-md border border-dashed border-border">
+                <div className="px-3 py-2 text-sm font-medium text-primary">{t('bankAccountAdd')}</div>
                 <div className="border-t border-border/60 px-3 py-3">
                   <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
                 </div>
-              </details>
+              </div>
               <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
               <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
             </div>
@@ -986,8 +981,7 @@ export function CompanyPanel({
           )}
           </div>
           {/* end Statutory tab */}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
