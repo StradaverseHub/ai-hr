@@ -1550,6 +1550,13 @@
       "breakpoints": true
     },
     {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
+      "breakpoints": true
+    },
+    {
       "idx": 225,
       "version": "7",
       "when": 1781862224000,
@@ -1561,13 +1568,6 @@
       "version": "7",
       "when": 1781862229000,
       "tag": "0230_delegation_scope_reason",
-      "breakpoints": true
-    },
-    {
-      "idx": 240,
-      "version": "7",
-      "when": 1781862219000,
-      "tag": "0240_employment_blacklist",
       "breakpoints": true
     },
     {
@@ -2488,17 +2488,17 @@
       "breakpoints": true
     },
     {
-<<<<<<< HEAD
       "idx": 437,
       "version": "7",
       "when": 1781862537000,
       "tag": "0437_individual_txn_consumed",
-=======
+      "breakpoints": true
+    },
+    {
       "idx": 438,
       "version": "7",
       "when": 1781862538000,
       "tag": "0438_leave_shared_group_ess_placement",
->>>>>>> build/r193-shared
       "breakpoints": true
     }
   ]
