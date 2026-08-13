@@ -1,98 +1,127 @@
 /**
- * CP22 (Pin. 1/2020) — the hand-verified coordinate map for the 33 entry areas on LHDN's official page.
+ * CP22 [Pin.1/2021] — the coordinate map for the 53 entry areas on LHDN's official TWO-PAGE form.
  *
- * THE NUMBERS HERE ARE DATA, NOT A GUESS. Every rect was derived from the DRAWN CELL RECTANGLES in the
- * bundled template's page content stream (`public/forms/cp22-pin-1-2020.pdf`), not from where a label
- * happens to sit: the page draws each table border as a thin filled `re`, so the horizontal and vertical
- * runs were reduced to lines and the enclosing cell read off for each entry area. That is what makes the
- * character-cell rows (income tax no., IC no., passports, the two dates) land ON the printed cells instead
- * of near them. The derivation script was a throwaway — this file is the artefact, and it is reviewed and
- * tested as data (test/cp22-fields.test.ts pins every rect inside the MediaBox and pins that no two
- * overlap, which is the visual QA turned into an assertion).
+ * THIS FILE REPLACED A MAP OF THE 2020 EDITION, AND NOT ONE NUMBER CARRIED OVER. LHDN superseded
+ * CP22 (Pin. 1/2020) with CP22 [Pin.1/2021] — a different document, not a re-issue: two pages instead of
+ * one, lettered sections A–F instead of an unlettered run, monthly pay split across eight numbered lines
+ * instead of one box, postcode/town/state given their own boxes, and NO CHARACTER-CELL COMBS ANYWHERE.
+ * Every rect below was re-derived from the 2021 artwork; nothing was nudged from a 2020 position, because
+ * a nudge from an invalidated coordinate is indistinguishable from a fresh mistake.
  *
- * THE COUNT IS 33 AND IT IS DELIBERATE. Counting by eye gives 32. The difference is the employee's
- * telephone number, which the form draws as TWO groups of character cells flanking a PRINTED DASH at
- * x≈100.9 — a single field spanning the pair would cover the dash, so it is two fields (boxes 12 and 13).
- * 26 of the 33 pre-fill; the other 7 (boxes 1, 11, 18, 25, 28, 29, 30) are rendered as EMPTY, still
- * editable boxes because the answer is not held anywhere in the system. See lib/cp22-pdf.ts.
+ * THE NUMBERS HERE ARE DATA, NOT A GUESS. Each rect is the DRAWN CELL the artwork prints, read off the
+ * page content streams of `public/forms/cp22-pin-1-2021.pdf`: Word paints every table rule as a thin
+ * filled `re`, so the fills were reduced to horizontal and vertical runs, collinear runs merged, the runs
+ * a crossing rule breaks in two bridged back together, and the smallest CLOSED cell containing each entry
+ * area read off by fixpoint (a rule only walls a cell if it spans the cell's whole width). Every probe was
+ * then checked to land in a cell containing NO printed text — a rect that swallowed a label would be a
+ * derivation bug, and that check is what catches it. The derivation script was a throwaway; THIS FILE is
+ * the artefact, and it is reviewed and tested as data (test/cp22-fields.test.ts).
  *
- * WHY THE MULTI-ROW BLOCKS CARRY ODD FONT SIZES (11.35, 11.68, 10.49, 12.11, 10.7). An address block on
- * this form is four RULED ROWS, and a wrapping field lays its lines out at pdf-lib's own pitch —
- * 1.2 × the font's height, which is 1.11 × the point size for Helvetica. At 8pt that is 8.9pt against a
- * printed row pitch of 12.6pt, so by the third line the text is struck through by a rule (observed on the
- * first render). The size is therefore chosen per block as `rowPitch / 1.11`, and the block's height is
- * extended just enough that the FIRST line lands inside the FIRST row; every line after it then falls in
- * its own row because the pitches match. The two blocks with no interior rules (2 and, for the operator's
- * own typing, 1) are sized to fit their content instead.
+ * WHAT THE 2021 EDITION DELETED, AND WHY THE TYPES SHRANK WITH IT:
+ *   - No character cells. The 2020 page printed combs for the tax number, IC, passports, dates and the
+ *     telephone; 2021 prints plain boxes. `Cp22FieldType 'comb'`, `maxLen`, the 14-position tax-number gap
+ *     and the two-part telephone split (which existed ONLY because the 2020 page printed a dash between
+ *     two cell groups) are all gone rather than left unused — dead code on a statutory form map reads as
+ *     an instruction to a later editor.
+ *   - No "Kepada / To" block. The branch you file with has NO box on this form. It is kept on the preview
+ *     screen and in the text export and is documented there as not printing; it is not mapped here.
  *
- * AND WHY EVERY MULTILINE RECT NOW RUNS BELOW ITS LAST ROW (`rows`, and the headroom under it).
- * SILENT DATA LOSS ON A STATUTORY FORM, found by rendering the page rather than by any green test.
+ * WHY MULTI-ROW BLOCKS ARE ONE FIELD PER PRINTED ROW, NOT ONE FIELD OVER THE BLOCK. The 2020 address
+ * block was four RULED ROWS inside a single drawn box, so it was mapped as one wrapping field whose font
+ * size had to be pinned to the row pitch (`rowPitch / 1.11`) to stop lines being struck through by a rule.
+ * The 2021 blocks are not that shape: B12, B13, A1, A2, B1, C1, E1, E2 and F's declarant name are each a
+ * stack of SEPARATE drawn cells. Mapping them as one wrapping field would force an 18pt face (the row
+ * pitch here is ~20.3pt) and re-import pdf-lib's multiline clip-floor failure for nothing. One single-line
+ * field per printed cell instead: each line is centred in its own box at a readable size, and the
+ * clip-floor class of silent loss cannot occur because there is no multiline layout.
  *
- * pdf-lib lays a multiline field out DOWNWARDS from the top of the widget rect — baseline_n =
- * rectTop − 1 − n × pitch — and the appearance it writes is a Form XObject whose /BBox is that rect, with
- * a further clip path 1pt inside it. Anything under the floor is gone, and nothing says so. Sizing a
- * block to "top of row 1 → bottom of row R" puts the R-th baseline ON the floor, so:
- *   - the R-th row loses everything below its baseline. Measured at 900dpi on a four-line address (the
- *     shape LHDN rules this box for): the "Selangor" band was 8.56pt deep, identical to the rows with no
- *     descenders, against 10.80pt once the rect had room — the whole descender of the "g" cut away.
- *   - the R+1-th line lands entirely below the rect and is NEVER DRAWN. No warning, no ellipsis, the box
- *     just looks full: "Selangor Darul Ehsan" absent from a legal declaration, an allowance line absent
- *     from the remuneration declared to LHDN.
- * So each rect keeps its TOP EDGE (which is what fixes where baseline 1 lands, and therefore every
- * baseline) and is extended DOWNWARD until the R-th row's descenders clear even the inner clip, with
- * ~0.5pt to spare. Extending downward moves no text at all: rectTop is unchanged, so every baseline is.
- * `rows` records how many lines the block can then hold, and lib/cp22-pdf.ts fits the value to that count
- * (see `fitMultilineValue`) so no line can ever be laid out past the last row. test/cp22-fields.test.ts
- * asserts rect-vs-`rows` for EVERY multiline block, so a new block cannot be added without the headroom.
+ * THE SILENT-LOSS GUARD MOVED WITH THE SHAPE — IT DID NOT GO AWAY. r175a was a four-line Malaysian
+ * address filed to LHDN without its state, because the renderer dropped every line past the third and the
+ * box still looked full. Per-row fields turn that into two different silent drops, and BOTH are guarded in
+ * lib/cp22-pdf.ts rather than here:
+ *   1. MORE VALUE LINES THAN THE BLOCK HAS ROWS — line 4 of a 3-row block would simply never be assigned
+ *      to a field. `rows` below is a HARD CEILING and the renderer folds the tail into the last row.
+ *   2. A LINE TOO WIDE FOR ITS BOX — pdf-lib's single-line layout neither wraps nor truncates; it draws
+ *      the whole line and the appearance's own clip cuts it off mid-word, with nothing in any log. This
+ *      one the 2020 renderer never guarded at all: a long legal name in a 195pt box was already being
+ *      clipped. The renderer now shrinks any single-line value until it fits, so nothing is ever cut.
  *
- * COORDINATES ARE PDF USER SPACE: origin bottom-left, y increasing upward, MediaBox 0 0 595.44 841.68.
+ * COORDINATES ARE PDF USER SPACE: origin bottom-left, y increasing upward, MediaBox 0 0 595.44 841.68 on
+ * BOTH pages.
  */
 
-/** The bundled template's single page box. Asserted against the real file in test/cp22-pdf.test.ts. */
+/** Both template pages carry this box. Asserted against the real file in test/cp22-pdf.test.ts. */
 export const CP22_MEDIA_BOX = { width: 595.44, height: 841.68 } as const;
 
+/** The 2021 form is two pages: A/B/C on page 1, D/E/F on page 2. */
+export const CP22_PAGE_COUNT = 2;
+
 export type Cp22FieldType =
-  /** One-line text box drawn as a plain rectangle on the form. */
+  /** One-line box drawn as a rectangle on the form. Shrunk to fit rather than clipped. */
   | 'text'
-  /** Text box over a block of ruled rows — wraps across them. */
-  | 'multiline'
-  /** Text box over a row of printed character cells — one glyph per cell (`maxLen` is required). */
-  | 'comb'
-  /** The single tick box on the correspondence-address block. */
+  /** A stack of `rows` separately-drawn one-line boxes sharing an x and a width. */
+  | 'multirow'
+  /** A one-line box positioned on a PRINTED DOTTED RULE rather than inside a drawn cell. */
+  | 'rule'
+  /** The single tick box, on B13's tax-agent question. */
   | 'checkbox';
 
+export type Cp22Rect = { x: number; y: number; width: number; height: number };
+
 export type Cp22Field = {
-  /** 1–33, the number printed on the mockup the reporter approved. Stable; it is how the form is reviewed. */
-  box: number;
+  /**
+   * LHDN's OWN box label — 'A1', 'B12', 'D4', 'F3'. The 2020 map numbered its boxes 1–33 because that
+   * page numbers nothing; this one is lettered and numbered by the agency, so the agency's label is the
+   * identifier. It is how the form is reviewed, how the preview screen groups, and how the text export
+   * is ordered. Suffixed where one label owns several boxes (B12P/B12T/B12S are Poskod/Bandar/Negeri).
+   */
+  code: string;
+  /**
+   * THE FORM'S OWN PRINTED LABEL, bilingual, exactly as LHDN sets it beside the box.
+   *
+   * NOT AN i18n KEY, and deliberately so. This is not UI chrome the app owns the words for — it is what
+   * the government printed on the page the operator is looking at and keying into MyTax. Translating
+   * "Nama majikan / Employer's name" into Thai would make the text export impossible to reconcile against
+   * the PDF next to it. It lives here rather than in six catalogues for the same reason the artwork lives
+   * in public/forms: it is the agency's, not ours. (`node scripts/i18n-check.mjs` is therefore unaffected.)
+   */
+  label: string;
   /** AcroForm field name. Stable — it is what an operator's PDF viewer shows and what the tests address. */
   name: string;
   type: Cp22FieldType;
-  /** PDF user space, origin bottom-left. */
-  rect: { x: number; y: number; width: number; height: number };
-  /** Character-cell count. Required for `comb`; ignored otherwise. */
-  maxLen?: number;
+  /** 0-based page index. A/B/C are page 0; D/E/F are page 1. */
+  page: number;
   /**
-   * REQUIRED for `multiline`, ignored otherwise: how many lines the block holds — the printed ruled rows
-   * where there are rules, and what the height affords where there are none (boxes 1 and 2).
-   *
-   * This is a HARD CEILING, not a hint. The renderer folds and, if it must, shrinks the value so it never
-   * lays out into more lines than this (lib/cp22-pdf.ts → `fitMultilineValue`), because pdf-lib silently
-   * drops any line whose baseline falls below the widget rect. The rect is sized so that `rows` lines
-   * clear the clip floor at the block's own font size; test/cp22-fields.test.ts pins the two against each
-   * other, so `rows` and the rect cannot drift apart.
+   * The drawn cell, in PDF user space. For `multirow` this is the FIRST (topmost) row; the rest are in
+   * `moreRows`. For `rule` it is derived from the printed dots — see `CP22_RULE_BASELINES`.
+   */
+  rect: Cp22Rect;
+  /**
+   * REQUIRED for `multirow`: rows 2..N, top to bottom, each a separately drawn cell. Kept as whole rects
+   * rather than a pitch because the artwork's rows are NOT evenly spaced (19.80 / 19.92 / 19.94 all occur)
+   * and a computed pitch would drift off the printed cell by the third row.
+   */
+  moreRows?: Cp22Rect[];
+  /**
+   * REQUIRED for `multirow`, ignored otherwise: how many printed rows the block has, which is
+   * `1 + moreRows.length`. Declared rather than derived so test/cp22-fields.test.ts can assert the two
+   * against each other — a row added to the geometry without raising the ceiling would silently drop a
+   * line, which is precisely r175a.
    */
   rows?: number;
   /**
-   * How overflow past the last row is joined back into it, for `multiline`. Defaults to `', '`, which is
-   * how an address folds; a LIST (box 27's allowances) reads correctly only with a semicolon. Overflow is
-   * folded, never dropped — this is a legal declaration.
+   * How the overflow past the last row is joined back INTO the last row. Defaults to `', '`, which is how
+   * an address folds; a LIST folds correctly only with a semicolon. Overflow is folded, NEVER dropped —
+   * this is a legal declaration.
    */
   foldWith?: string;
-  /** Point size for the appearance stream. Omitted ⇒ CP22_DEFAULT_FONT_SIZE. */
+  /** Point size. Omitted ⇒ CP22_DEFAULT_FONT_SIZE. The renderer may shrink below it, never above. */
   fontSize?: number;
+  /** Right-align the value. The D-section amount column and its total; nothing else. */
+  alignRight?: boolean;
   /**
-   * FALSE for the seven boxes the system genuinely cannot answer (see lib/cp22-pdf.ts). They are still
-   * created, still editable, and never carry an invented value.
+   * FALSE for the boxes the system genuinely cannot answer. They are still created, still editable, and
+   * never carry an invented value. See `CP22_UNFILLABLE` for the list and the reason for each.
    */
   prefilled: boolean;
 };
@@ -100,76 +129,262 @@ export type Cp22Field = {
 export const CP22_DEFAULT_FONT_SIZE = 9;
 
 /**
- * The 33 entry areas, in the mockup's numbering order (which is reading order down the page).
+ * The four PRINTED DOTTED RULES on page 2 — D4's and D8's "nyatakan / specify" lines.
+ *
+ * These are the only entry areas on the form that are NOT drawn cells: LHDN prints a run of '.' glyphs and
+ * expects you to write on it. The span below is the extent of that dot run (first dot's left edge to the
+ * last dot's right edge, read from the page's own character positions) and `baseline` is the dots' own
+ * baseline, since a period sits on it. The renderer positions the widget so pdf-lib's single-line baseline
+ * lands `RULE_BASELINE_LIFT` above the dots — writing ON the rule, not through it.
+ *
+ * EACH QUESTION HAS TWO RULES BECAUSE THE FORM IS BILINGUAL: LHDN asks it once in Malay and once in
+ * English, on separate lines, and prints a rule for each. Both are filled with the same answer. Filling
+ * only one leaves a printed rule blank, which reads as an unanswered question to whichever reader that
+ * line was for; and neither rule is "the real one".
+ */
+export const CP22_RULE_BASELINES = {
+  d4SpecifyMs: { x0: 46.32, x1: 393.17, baseline: 648.82 },
+  d4SpecifyEn: { x0: 145.1, x1: 472.01, baseline: 625.54 },
+  d8SpecifyMs: { x0: 200.69, x1: 472.05, baseline: 538.51 },
+  d8SpecifyEn: { x0: 171.98, x1: 472.07, baseline: 526.27 },
+} as const;
+
+/** How far above the printed dots the text baseline sits, so glyphs rest on the rule rather than cross it. */
+export const RULE_BASELINE_LIFT = 1.2;
+/** Height of a widget over a dotted rule. Enough for the chosen face; the rule has no ceiling of its own. */
+export const RULE_FIELD_HEIGHT = 11;
+/** Point size on a dotted rule — smaller than a boxed field, because a specify line takes a long list. */
+export const RULE_FONT_SIZE = 7.5;
+
+/**
+ * pdf-lib centres a single line in its bounds: baseline = rect.y + rect.height/2 − ascent(size)/2, with
+ * bounds inset 1pt each side (which cancels). Helvetica's ascent is 0.718 em. Inverting it gives the
+ * rect.y that puts the baseline where we want it — this is the ONLY place a rect is computed rather than
+ * read off the artwork, and it is computed from pdf-lib's own layout rule, not measured by eye.
+ */
+const HELVETICA_ASCENT = 0.718;
+const ruleRect = (r: { x0: number; x1: number; baseline: number }): Cp22Rect => ({
+  x: r.x0,
+  y: r.baseline + RULE_BASELINE_LIFT - RULE_FIELD_HEIGHT / 2 + (HELVETICA_ASCENT * RULE_FONT_SIZE) / 2,
+  width: r.x1 - r.x0,
+  height: RULE_FIELD_HEIGHT,
+});
+
+/**
+ * The 53 entry areas, in the form's own reading order: A1…A5, B1…B17, C1…C4 on page 1; D1…D8 + total,
+ * E1…E2, F on page 2.
  *
  * A rect is `x, y` of the bottom-left corner plus width/height, matching pdf-lib's `addToPage` options.
  */
 export const CP22_FIELDS: Cp22Field[] = [
-  // ── "Kepada / To" block: the LHDN branch you file with. Four printed dotted rules, no drawn cell, so
-  //    the rect is the dotted runs' own extent (x 43.2 → 235.9, baselines 704.38 / 692.50 / 680.62 / 668.62).
-  //    Top edge 716.70; the bottom runs 2.1pt past the fourth rule so the operator's own fourth line is not
-  //    sliced by the clip (it is, at the original 50.1 height — nothing pre-fills here, but they type into it).
-  { box: 1, name: 'lhdnBranchAddress', type: 'multiline', rows: 4, rect: { x: 43.2, y: 664.5, width: 192.7, height: 52.2 }, fontSize: 10.7, prefilled: false },
+  // ── A. MAKLUMAT MAJIKAN / PARTICULARS OF EMPLOYER ────────────────────────────────────────────────
+  { code: 'A1', label: 'Nama majikan / Employer\'s name', name: 'employerName', type: 'multirow', page: 0, rows: 2, prefilled: true,
+    rect: { x: 41.04, y: 630.82, width: 253.85, height: 19.8 },
+    moreRows: [{ x: 41.04, y: 610.42, width: 253.85, height: 19.92 }] },
+  { code: 'A2', label: 'Alamat majikan / Employer\'s address', name: 'employerAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
+    rect: { x: 318.89, y: 630.82, width: 257.45, height: 19.8 },
+    moreRows: [
+      { x: 318.89, y: 610.42, width: 257.45, height: 19.92 },
+      { x: 318.89, y: 589.99, width: 257.45, height: 19.95 },
+    ] },
+  // The form PRINTS the "E" of the employer number to the left of this box, so the box holds the rest.
+  { code: 'A3', label: 'No. majikan / Employer\'s no.', name: 'employerNo', type: 'text', page: 0, prefilled: true,
+    rect: { x: 163.22, y: 589.99, width: 131.67, height: 19.95 } },
+  // NOT PREFILLED — see CP22_UNFILLABLE. There is no employer e-mail column anywhere in the schema.
+  { code: 'A4', label: 'e-Mel / e-Mail', name: 'employerEmail', type: 'text', page: 0, prefilled: false,
+    rect: { x: 99.14, y: 569.71, width: 195.75, height: 19.8 } },
+  { code: 'A5', label: 'No. telefon / Telephone no.', name: 'employerPhone', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 569.71, width: 128.67, height: 19.8 } },
 
-  // ── Employer block (top right). No interior rules: `rows` is what the 42.84pt between the printed rules
-  //    at 731.62 and 688.78 affords at 7pt, and the rect already clears the clip floor on the fifth line.
-  { box: 2, name: 'employerNameAddress', type: 'multiline', rows: 5, rect: { x: 274.73, y: 689.02, width: 265.37, height: 42.84 }, fontSize: 7, prefilled: true },
-  { box: 3, name: 'employerNo', type: 'text', rect: { x: 444.79, y: 670.9, width: 95.19, height: 11.64 }, prefilled: true },
-  { box: 4, name: 'employerPhone', type: 'text', rect: { x: 444.79, y: 652.9, width: 95.19, height: 11.52 }, prefilled: true },
+  // ── B. MAKLUMAT PEKERJA BAHARU / PARTICULARS OF NEW EMPLOYEE ─────────────────────────────────────
+  { code: 'B1', label: 'Nama penuh / Full name', name: 'employeeName', type: 'multirow', page: 0, rows: 2, prefilled: true,
+    rect: { x: 168.38, y: 534.67, width: 407.96, height: 19.92 },
+    moreRows: [{ x: 168.38, y: 514.39, width: 407.96, height: 19.8 }] },
+  { code: 'B2', label: 'No. cukai pendapatan / Income tax no.', name: 'incomeTaxNo', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 493.99, width: 126.51, height: 19.92 } },
+  { code: 'B3', label: 'No. pengenalan / Identification no.', name: 'icNo', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 493.99, width: 128.67, height: 19.92 } },
+  { code: 'B4', label: 'No. pasport semasa / Current passport no.', name: 'currentPassportNo', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 473.23, width: 126.51, height: 20.28 } },
+  { code: 'B5', label: 'No. pasport didaftar dengan LHDNM / Passport no. registered with IRBM', name: 'passportRegisteredWithIrbm', type: 'text', page: 0, prefilled: false,
+    rect: { x: 490.06, y: 473.23, width: 86.28, height: 20.28 } },
+  { code: 'B6', label: 'Warganegara / Citizen', name: 'citizen', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 452.83, width: 126.51, height: 19.92 } },
+  { code: 'B7', label: 'Jantina / Gender', name: 'gender', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 452.83, width: 128.67, height: 19.92 } },
+  { code: 'B8', label: 'Tarikh lahir / Date of birth', name: 'dateOfBirth', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 432.53, width: 126.51, height: 19.82 } },
+  { code: 'B9', label: 'Status perkahwinan / Marital status', name: 'maritalStatus', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 432.53, width: 128.67, height: 19.82 } },
+  { code: 'B10', label: 'No. telefon / Telephone no.', name: 'employeePhone', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 412.13, width: 126.51, height: 19.92 } },
+  { code: 'B11', label: 'e-Mel / e-Mail', name: 'employeeEmail', type: 'text', page: 0, prefilled: true, fontSize: 8,
+    rect: { x: 404.11, y: 412.13, width: 172.23, height: 19.92 } },
 
-  // ── MAKLUMAT PEKERJA BAHARU / Particulars of new employee — left column.
-  { box: 5, name: 'employeeFullName', type: 'text', rect: { x: 112.82, y: 598.87, width: 195.15, height: 19.83 }, prefilled: true },
-  { box: 6, name: 'natureOfEmployment', type: 'text', rect: { x: 138.74, y: 570.67, width: 169.23, height: 21.72 }, prefilled: true },
-  // 8 printed cells, hh/bb/tttt (dd/mm/yyyy) — written as ddmmyyyy with no separators.
-  { box: 7, name: 'commencementDate', type: 'comb', rect: { x: 205.01, y: 552.55, width: 102.96, height: 11.64 }, maxLen: 8, prefilled: true },
-  { box: 8, name: 'expectedDuration', type: 'text', rect: { x: 205.01, y: 523.99, width: 102.96, height: 17.76 }, prefilled: true },
-  // Four ruled rows each (rules at 507.07/494.47/481.87/469.27/456.67 and 439.99/427.01/414.05/401.09/388.13);
-  // one wrapping field over the block. Top edges 508.25 and 441.74 are what put line 1 in row 1 and must not
-  // move; the bottoms sit 3.6–4.0pt under the last rule purely as clip headroom for row 4's descenders.
-  { box: 9, name: 'residentialAddress', type: 'multiline', rows: 4, rect: { x: 52.8, y: 453.1, width: 255.17, height: 55.15 }, fontSize: 11.35, prefilled: true },
-  { box: 10, name: 'correspondenceAddress', type: 'multiline', rows: 4, rect: { x: 52.8, y: 385, width: 254.57, height: 56.74 }, fontSize: 11.68, prefilled: true },
-  { box: 11, name: 'correspondenceIsTaxAgent', type: 'checkbox', rect: { x: 52.8, y: 361.85, width: 13.94, height: 17.4 }, prefilled: false },
-  // THE PRINTED DASH AT x≈100.9 IS WHY THESE ARE TWO FIELDS, NOT ONE. 3 cells then 8 cells.
-  { box: 12, name: 'telephonePrefix', type: 'comb', rect: { x: 53.04, y: 331.49, width: 42.5, height: 12.12 }, maxLen: 3, prefilled: true },
-  { box: 13, name: 'telephoneNumber', type: 'comb', rect: { x: 109.82, y: 331.49, width: 113.55, height: 12.12 }, maxLen: 8, prefilled: true },
-  { box: 14, name: 'email', type: 'text', rect: { x: 52.56, y: 301.97, width: 255.65, height: 12.6 }, fontSize: 8, prefilled: true },
+  // B12/B13 ARE THE r175a SHAPE, RELOCATED. Three free rows for the street, and then Poskod, Bandar and
+  // Negeri each get their OWN printed box. Folding postcode/town/state into a tail line — which is what
+  // the 2020 map needed and what core/reporting.ts used to do — would put the state in a free row and
+  // leave three printed boxes empty. The address is SPLIT at the source instead; see `cp22Particulars`.
+  { code: 'B12', label: 'Alamat kediaman yang terkini / Current residential address', name: 'residentialAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
+    rect: { x: 41.04, y: 371.45, width: 253.85, height: 19.92 },
+    moreRows: [
+      { x: 41.04, y: 351.17, width: 253.85, height: 19.8 },
+      { x: 41.04, y: 330.77, width: 253.85, height: 19.92 },
+    ] },
+  { code: 'B12P', label: 'Poskod / Postcode', name: 'residentialPostcode', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 310.37, width: 126.51, height: 19.92 } },
+  { code: 'B12T', label: 'Bandar / Town', name: 'residentialTown', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 290.09, width: 126.51, height: 19.8 } },
+  { code: 'B12S', label: 'Negeri / State', name: 'residentialState', type: 'text', page: 0, prefilled: true,
+    rect: { x: 168.38, y: 269.54, width: 126.51, height: 20.07 } },
+  { code: 'B13', label: 'Alamat surat-menyurat yang terkini / Current correspondence address', name: 'correspondenceAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
+    rect: { x: 318.89, y: 371.45, width: 257.45, height: 19.92 },
+    moreRows: [
+      { x: 318.89, y: 351.17, width: 257.45, height: 19.8 },
+      { x: 318.89, y: 330.77, width: 257.45, height: 19.92 },
+    ] },
+  { code: 'B13P', label: 'Poskod / Postcode', name: 'correspondencePostcode', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 310.37, width: 128.67, height: 19.92 } },
+  { code: 'B13T', label: 'Bandar / Town', name: 'correspondenceTown', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 290.09, width: 128.67, height: 19.8 } },
+  { code: 'B13S', label: 'Negeri / State', name: 'correspondenceState', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 269.54, width: 128.67, height: 20.07 } },
+  { code: 'B13X', label: 'Tandakan \'X\' jika alamat di B13 adalah alamat ejen cukai / Enter \'X\' if the address in B13 is a tax agent\'s address', name: 'correspondenceIsTaxAgent', type: 'checkbox', page: 0, prefilled: false,
+    rect: { x: 318.89, y: 249.38, width: 21.02, height: 19.68 } },
+  { code: 'B14', label: 'Tarikh permulaan pekerjaan semasa / Commencement date of current employment', name: 'commencementDate', type: 'text', page: 0, prefilled: true, fontSize: 8,
+    rect: { x: 232.13, y: 228.98, width: 62.76, height: 19.92 } },
+  // B15 and B17 are DIFFERENT QUESTIONS and the 2020 form had only one of them. B15 Jawatan is the job
+  // title; B17 Jenis pekerjaan is the KIND of employment (permanent / contract / intern). The 2020 map's
+  // single `natureOfEmployment` box carried the title, so the title moves to B15 and B17 is genuinely new.
+  { code: 'B15', label: 'Jawatan / Designation', name: 'designation', type: 'text', page: 0, prefilled: true,
+    rect: { x: 404.11, y: 228.98, width: 172.23, height: 19.92 } },
+  { code: 'B16', label: 'Tempoh pekerjaan yang dijangkakan / Expected duration of employment', name: 'expectedDuration', type: 'text', page: 0, prefilled: true, fontSize: 8,
+    rect: { x: 232.13, y: 208.22, width: 62.76, height: 20.28 } },
+  { code: 'B17', label: 'Jenis pekerjaan / Nature of employment', name: 'natureOfEmployment', type: 'text', page: 0, prefilled: true,
+    rect: { x: 404.11, y: 208.22, width: 172.23, height: 20.28 } },
 
-  // ── Particulars — right column. The two tax-number rows print 2 cells, a ONE-CELL GAP, then 11 cells:
-  //    14 comb positions, of which the third is the gap. lib/cp22-pdf.ts formats the value around it.
-  { box: 15, name: 'incomeTaxNo', type: 'comb', rect: { x: 327.9, y: 597.67, width: 165.28, height: 11.67 }, maxLen: 14, prefilled: true },
-  { box: 16, name: 'icNo', type: 'comb', rect: { x: 327.9, y: 568.51, width: 141.64, height: 11.52 }, maxLen: 12, prefilled: true },
-  { box: 17, name: 'currentPassportNo', type: 'comb', rect: { x: 327.9, y: 539.23, width: 141.64, height: 11.52 }, maxLen: 12, prefilled: true },
-  { box: 18, name: 'previousPassportNo', type: 'comb', rect: { x: 327.9, y: 501.91, width: 141.64, height: 11.64 }, maxLen: 12, prefilled: false },
-  // The form prints "1 = Lelaki / Male" and "2 = Perempuan / Female" beside a single cell.
-  { box: 19, name: 'gender', type: 'comb', rect: { x: 327.9, y: 472.75, width: 11.77, height: 11.52 }, maxLen: 1, prefilled: true },
-  { box: 20, name: 'citizen', type: 'text', rect: { x: 434.11, y: 472.75, width: 106.23, height: 11.52 }, fontSize: 8, prefilled: true },
-  { box: 21, name: 'dateOfBirth', type: 'comb', rect: { x: 327.9, y: 432.41, width: 94.45, height: 11.54 }, maxLen: 8, prefilled: true },
-  { box: 22, name: 'maritalStatus', type: 'text', rect: { x: 434.11, y: 432.41, width: 106.23, height: 11.54 }, fontSize: 8, prefilled: true },
+  // ── C. MAKLUMAT SUAMI / ISTERI / PARTICULARS OF HUSBAND / WIFE ───────────────────────────────────
+  { code: 'C1', label: 'Nama penuh suami / isteri / Full name of husband / wife', name: 'spouseName', type: 'multirow', page: 0, rows: 2, prefilled: true,
+    rect: { x: 41.04, y: 147.38, width: 253.85, height: 19.92 },
+    moreRows: [{ x: 41.04, y: 126.98, width: 253.85, height: 19.92 }] },
+  { code: 'C2', label: 'No. pengenalan / pasport / Identification / passport no.', name: 'spouseIcOrPassport', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 167.78, width: 128.67, height: 20.28 } },
+  { code: 'C3', label: 'No. cukai pendapatan / Income tax no.', name: 'spouseIncomeTaxNo', type: 'text', page: 0, prefilled: false,
+    rect: { x: 447.67, y: 147.38, width: 128.67, height: 19.92 } },
+  { code: 'C4', label: 'No. telefon / Telephone no.', name: 'spousePhone', type: 'text', page: 0, prefilled: true,
+    rect: { x: 447.67, y: 126.98, width: 128.67, height: 19.92 } },
 
-  // ── "Jika berkahwin, nyatakan / If married, state".
-  { box: 23, name: 'spouseFullName', type: 'text', rect: { x: 336.67, y: 371.93, width: 203.54, height: 11.52 }, fontSize: 8, prefilled: true },
-  { box: 24, name: 'spouseIcOrPassport', type: 'comb', rect: { x: 336.43, y: 331.61, width: 141.63, height: 11.52 }, maxLen: 12, prefilled: true },
-  { box: 25, name: 'spouseIncomeTaxNo', type: 'comb', rect: { x: 336.55, y: 291.41, width: 165.27, height: 11.52 }, maxLen: 14, prefilled: false },
+  // ── D. MAKLUMAT SARAAN BULANAN / PARTICULARS OF MONTHLY REMUNERATION (page 2) ────────────────────
+  // The amount column, right-aligned the way money is read. The form prints "(RM)" in the column head, so
+  // no value carries a currency prefix.
+  { code: 'D1', label: 'Gaji, bayaran, upah dan kerja lebih masa / Salary, fees, wages, and overtime pay', name: 'd1SalaryOvertime', type: 'text', page: 1, prefilled: true, alignRight: true,
+    rect: { x: 480.82, y: 727.66, width: 95.28, height: 22.68 } },
+  { code: 'D2', label: 'Gaji cuti / Leave pay', name: 'd2LeavePay', type: 'text', page: 1, prefilled: false, alignRight: true,
+    rect: { x: 480.82, y: 704.5, width: 95.28, height: 22.68 } },
+  { code: 'D3', label: 'Komisen dan bonus / Commission and bonus', name: 'd3CommissionBonus', type: 'text', page: 1, prefilled: false, alignRight: true,
+    rect: { x: 480.82, y: 681.22, width: 95.28, height: 22.8 } },
+  { code: 'D4', label: 'Elaun tunai termasuk cukai ditanggung oleh majikan / Cash allowances including tax borne by the employer', name: 'd4CashAllowances', type: 'text', page: 1, prefilled: true, alignRight: true,
+    rect: { x: 480.82, y: 620.86, width: 95.28, height: 59.88 } },
+  { code: 'D4ms', label: 'Nyatakan jenis elaun / Specify the type of allowance', name: 'd4SpecifyMs', type: 'rule', page: 1, prefilled: true, fontSize: RULE_FONT_SIZE,
+    foldWith: '; ', rect: ruleRect(CP22_RULE_BASELINES.d4SpecifyMs) },
+  { code: 'D4en', label: 'Nyatakan jenis elaun / Specify the type of allowance (English rule)', name: 'd4SpecifyEn', type: 'rule', page: 1, prefilled: true, fontSize: RULE_FONT_SIZE,
+    foldWith: '; ', rect: ruleRect(CP22_RULE_BASELINES.d4SpecifyEn) },
+  { code: 'D5', label: 'Manfaat berupa barangan yang layak dikenakan cukai / Benefits in kind subject to tax', name: 'd5BenefitsInKind', type: 'text', page: 1, prefilled: false, alignRight: true,
+    rect: { x: 480.82, y: 597.67, width: 95.28, height: 22.71 } },
+  { code: 'D6', label: 'Nilai tempat kediaman yang disediakan majikan / Value of living accommodation provided by the employer', name: 'd6LivingAccommodation', type: 'text', page: 1, prefilled: false, alignRight: true,
+    rect: { x: 480.82, y: 574.51, width: 95.28, height: 22.68 } },
+  { code: 'D7', label: 'Elaun-elaun selain daripada wang / Allowances in kind', name: 'd7AllowancesInKind', type: 'text', page: 1, prefilled: false, alignRight: true,
+    rect: { x: 480.82, y: 549.55, width: 95.28, height: 24.48 } },
+  { code: 'D8', label: 'Bayaran-bayaran lain / Other payments', name: 'd8OtherPayments', type: 'text', page: 1, prefilled: false, alignRight: true,
+    rect: { x: 480.82, y: 521.71, width: 95.28, height: 27.36 } },
+  { code: 'D8ms', label: 'Jika ada, nyatakan / If any, please specify', name: 'd8SpecifyMs', type: 'rule', page: 1, prefilled: false, fontSize: RULE_FONT_SIZE,
+    rect: ruleRect(CP22_RULE_BASELINES.d8SpecifyMs) },
+  { code: 'D8en', label: 'Jika ada, nyatakan / If any, please specify (English rule)', name: 'd8SpecifyEn', type: 'rule', page: 1, prefilled: false, fontSize: RULE_FONT_SIZE,
+    rect: ruleRect(CP22_RULE_BASELINES.d8SpecifyEn) },
+  // JUMLAH / TOTAL — its own heavier-ruled box, which is why the derivation had to bridge the rule the
+  // crossing vertical breaks in two; without that bridge D8's amount cell and this one read as one 51pt box.
+  { code: 'DT', label: 'JUMLAH / TOTAL', name: 'dTotal', type: 'text', page: 1, prefilled: true, alignRight: true,
+    rect: { x: 480.82, y: 497.95, width: 95.28, height: 22.8 } },
 
-  // ── TERMA-TERMA PENGGAJIAN / Terms of employment. "RM" is PRINTED at x≈434.6, so box 26 starts clear of it.
-  { box: 26, name: 'monthlyFixedRemuneration', type: 'text', rect: { x: 450, y: 253.46, width: 101.5, height: 11.28 }, prefilled: true },
-  // THREE ruled rows, not four (rules at 214.22 / 202.70 / 191.06 / 179.54) — an ordinary payroll with four
-  // recurring allowances has more lines than this box has rows, so `foldWith` joins the tail onto row 3
-  // rather than letting the fourth fall off the page and understate the declared remuneration.
-  { box: 27, name: 'monthlyAllowances', type: 'multiline', rows: 3, foldWith: '; ', rect: { x: 71.18, y: 176.5, width: 482, height: 39.57 }, fontSize: 10.49, prefilled: true },
-  { box: 28, name: 'fluctuatingEmoluments', type: 'text', rect: { x: 71.18, y: 145.46, width: 482, height: 11.64 }, fontSize: 9, prefilled: false },
-  // Three ruled rows (114.98 / 101.52 / 88.08 / 74.76). Operator-typed, and clipped at row 3 before the fix.
-  { box: 29, name: 'previousEmployerInMalaysia', type: 'multiline', rows: 3, rect: { x: 247.13, y: 71.4, width: 304.85, height: 45.33 }, fontSize: 12.11, prefilled: false },
+  // ── E. MAKLUMAT MAJIKAN TERDAHULU DI MALAYSIA / PREVIOUS EMPLOYER IN MALAYSIA ────────────────────
+  // NOT PREFILLED, both of them: no employment_history / previous_employer table exists, and
+  // employeeDependent.companyName / employerAddress are the SPOUSE'S employer and are NOT this.
+  { code: 'E1', label: 'Nama majikan / Employer\'s name', name: 'previousEmployerName', type: 'multirow', page: 1, rows: 3, prefilled: false,
+    rect: { x: 41.04, y: 438.67, width: 255.77, height: 19.8 },
+    moreRows: [
+      { x: 41.04, y: 418.25, width: 255.77, height: 19.94 },
+      { x: 41.04, y: 397.97, width: 255.77, height: 19.8 },
+    ] },
+  { code: 'E2', label: 'Alamat majikan / Employer\'s address', name: 'previousEmployerAddress', type: 'multirow', page: 1, rows: 3, prefilled: false,
+    rect: { x: 319.85, y: 438.67, width: 256.25, height: 19.8 },
+    moreRows: [
+      { x: 319.85, y: 418.25, width: 256.25, height: 19.94 },
+      { x: 319.85, y: 397.97, width: 256.25, height: 19.8 },
+    ] },
 
-  // ── Signature block. Four printed dotted rules from x 219.65; the glyphs are one em wide at 8.04pt,
-  //    so 18 of them run to x≈364.
-  { box: 30, name: 'employerSignature', type: 'text', rect: { x: 220, y: 56.5, width: 144, height: 12 }, fontSize: 8, prefilled: false },
-  { box: 31, name: 'signatoryName', type: 'text', rect: { x: 220, y: 44.3, width: 144, height: 11.2 }, fontSize: 8, prefilled: true },
-  { box: 32, name: 'signatoryDesignation', type: 'text', rect: { x: 220, y: 32.1, width: 144, height: 11.2 }, fontSize: 8, prefilled: true },
-  { box: 33, name: 'signatureDate', type: 'text', rect: { x: 220, y: 19.9, width: 144, height: 11.2 }, fontSize: 8, prefilled: true },
+  // ── F. AKUAN PEGAWAI YANG DIBERI KUASA / DECLARATION BY AUTHORISED OFFICER ───────────────────────
+  { code: 'F1', label: 'Saya / I', name: 'declarantName', type: 'multirow', page: 1, rows: 2, prefilled: true,
+    rect: { x: 69.02, y: 355.49, width: 226.35, height: 20.28 },
+    moreRows: [{ x: 69.02, y: 335.21, width: 226.35, height: 19.8 }] },
+  { code: 'F2', label: 'No. pengenalan / pasport / Identification / passport no.', name: 'declarantIcOrPassport', type: 'text', page: 1, prefilled: true,
+    rect: { x: 407.47, y: 355.49, width: 152.67, height: 20.28 } },
+  { code: 'F3', label: 'Jawatan / Designation', name: 'declarantDesignation', type: 'text', page: 1, prefilled: true,
+    rect: { x: 105.14, y: 279.77, width: 190.23, height: 19.92 } },
+  { code: 'F4', label: 'Tandatangan / Signature', name: 'declarantSignature', type: 'text', page: 1, prefilled: false,
+    rect: { x: 388.87, y: 253.94, width: 171.27, height: 45.75 } },
+  { code: 'F5', label: 'Tarikh / Date', name: 'declarationDate', type: 'text', page: 1, prefilled: true,
+    rect: { x: 105.14, y: 253.94, width: 92.31, height: 19.8 } },
 ];
 
-/** The seven boxes the system genuinely cannot answer — rendered empty and editable, never invented. */
-export const CP22_UNFILLABLE_BOXES = CP22_FIELDS.filter((f) => !f.prefilled).map((f) => f.box);
+/**
+ * The fifteen areas the system genuinely cannot answer — rendered empty and editable, never invented.
+ *
+ * The 2020 map had seven. The count grew because the 2021 form ASKS MORE, not because anything regressed:
+ * section D alone adds six income lines nothing in payroll holds at hire, and section E adds two.
+ *
+ *   A4   employer e-Mail        — there is NO company e-mail column in the schema. `company` carries
+ *                                 website, phone and fax and no address for e-mail; `tenant`'s
+ *                                 primary_contact_email is the SaaS billing contact for a tenant that may
+ *                                 own many companies, and is not the employer's registered e-mail.
+ *   B5   passport registered with LHDNM — never collected (employeeStatutoryMy.passportRemark is a free
+ *                                 remark, not this field, and must not be used for it).
+ *   B13X tax-agent tick         — only the operator knows whether the correspondence address is an agent's.
+ *   C3   spouse income tax no.  — employeeDependent has no tax column, and employeeStatutoryMy is
+ *                                 per-EMPLOYEE.
+ *   D2   leave pay              — not held. NOT written as 0.00: a zero asserts "there is none", which we
+ *   D3   commission and bonus     do not know. A blank box asks the question; a zero answers it wrongly.
+ *   D5   benefits in kind
+ *   D6   living accommodation
+ *   D7   allowances in kind
+ *   D8   other payments (+ both of its specify rules)
+ *   E1   previous employer name    — no employment_history / previous_employer table exists.
+ *   E2   previous employer address
+ *   F4   the signature itself.
+ */
+export const CP22_UNFILLABLE = CP22_FIELDS.filter((f) => !f.prefilled).map((f) => f.code);
+
+/**
+ * The six section headings, in the form's own words and order. Same reasoning as `Cp22Field.label`: these
+ * are the agency's headings, printed on the page, and are not translated.
+ */
+export const CP22_SECTIONS = [
+  { letter: 'A', label: 'MAKLUMAT MAJIKAN / PARTICULARS OF EMPLOYER' },
+  { letter: 'B', label: 'MAKLUMAT PEKERJA BAHARU / PARTICULARS OF NEW EMPLOYEE' },
+  { letter: 'C', label: 'MAKLUMAT SUAMI / ISTERI (JIKA BERKAHWIN) / PARTICULARS OF HUSBAND / WIFE (IF MARRIED)' },
+  { letter: 'D', label: 'MAKLUMAT SARAAN BULANAN / PARTICULARS OF MONTHLY REMUNERATION' },
+  { letter: 'E', label: 'MAKLUMAT MAJIKAN TERDAHULU DI MALAYSIA / PARTICULARS OF PREVIOUS EMPLOYER IN MALAYSIA' },
+  { letter: 'F', label: 'AKUAN PEGAWAI YANG DIBERI KUASA / DECLARATION BY AUTHORISED OFFICER' },
+] as const;
+
+/** Which section a field belongs to — the first letter of its code, which is the form's own scheme. */
+export const cp22Section = (f: Cp22Field): string => f.code.charAt(0);
+
+/** Every widget rect on the form, expanded — a `multirow` block contributes one per printed row. */
+export function cp22Widgets(f: Cp22Field): Cp22Rect[] {
+  return f.type === 'multirow' ? [f.rect, ...(f.moreRows ?? [])] : [f.rect];
+}
+
+/** The AcroForm name of row `i` (0-based) of a block. Single-row fields keep the bare name. */
+export const cp22RowName = (name: string, i: number): string => (i === 0 ? name : `${name}_${i + 1}`);
 
 export type Cp22FieldName = (typeof CP22_FIELDS)[number]['name'];

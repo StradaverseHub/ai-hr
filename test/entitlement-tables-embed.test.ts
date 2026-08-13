@@ -40,6 +40,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const BLOCK = '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const CORE = '/core/entitlement-template.ts';
 const STANDALONE = '/app/admin/leave/entitlements/templates/page.tsx';
 const ENTITLEMENTS = '/app/admin/leave/entitlements/page.tsx';
 const PANEL = '/components/leave-type-panel.tsx';
@@ -51,6 +52,7 @@ const stripComments = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
 
 const blockSrc = read(BLOCK);
+const coreCode = stripComments(read(CORE));
 const standaloneCode = stripComments(read(STANDALONE));
 const entitlementsCode = stripComments(read(ENTITLEMENTS));
 const panelCode = stripComments(read(PANEL));
@@ -248,5 +250,60 @@ describe('§5 ee6b7c69 · a save from the embedded form returns to the step it w
     expect(redirects).toMatch(/failEntitlements[\s\S]*?ENTITLEMENTS\}\?error=[\s\S]*?leaveTypeId \? `#type-\$\{leaveTypeId\}` : ''/);
     expect(actionsSrc).toContain('okEntitlements(msg, embedded)');
     expect(actionsSrc).toContain('failEntitlements(e, embedded)');
+  });
+});
+
+describe('§6 3214cb11 / 813fd22a · the table and the select cannot drift out of order', () => {
+  /**
+   * The two items are ONE fix, and this section is why they can stay one. The reporter saw the same
+   * scrambled order twice — once in "Entitlement tables for Annual Leave (16)", once in the "Choose an
+   * entitlement table" select under New eligibility rule. Both are rendered from ONE page-level read,
+   * so ordering was fixed at that read; these cases pin the "one read" part, because the moment either
+   * surface acquires a sort of its own the two screens start disagreeing and nobody notices until a
+   * screenshot arrives. Source-shape assertions across both files — the defect would live in the
+   * CONTRACT between them, where a unit test of either half passes throughout (the r190 rule).
+   */
+  it('the ORDER is decided once, at the read, not in the block', () => {
+    expect(coreCode, 'listEntitlementTemplates must apply the shared comparator').toContain(
+      '.sort(compareEntitlementTables)',
+    );
+    expect(coreCode).toContain("from '../lib/entitlement-table-order'");
+  });
+
+  it('the select is fed from the SAME list the table renders — no second read, no second sort', () => {
+    const code = stripComments(blockSrc);
+    // One scope call; the table maps `templates`, the options map `running`, and `running` is a FILTER
+    // of `templates` — filter preserves order, so both surfaces inherit the read's order unchanged.
+    expect(code.match(/scopeEntitlementTables\(/g)).toHaveLength(1);
+    expect(code).toContain('const running = templates.filter((x) => x.validTo == null)');
+    expect(code).toContain('const templateOptions = running.map(');
+    expect(code).toContain('templates={templateOptions}');
+    // Exactly ONE read for the page, and it is in the loader — not in the component that renders the
+    // two surfaces, which must compose from the bundle it was handed.
+    expect(code.match(/listEntitlementTemplates\(/g)).toHaveLength(1);
+    const component = code.slice(code.indexOf('export async function EntitlementTablesBlock('));
+    expect(component, 'the component must not re-read the templates').not.toContain(
+      'listEntitlementTemplates(',
+    );
+    // …and must not re-sort either surface.
+    for (const forbidden of ['templates.sort(', 'running.sort(', 'templateOptions.sort(']) {
+      expect(code, `the block must not re-sort: ${forbidden}`).not.toContain(forbidden);
+    }
+  });
+
+  it('the scoper preserves the order it is handed — it is a filter, not a re-sort', () => {
+    // If this ever became a sort, the two surfaces would still agree with each other but BOTH would
+    // disagree with the read, silently reinstating A-to-Z on every screen.
+    const templates = [
+      { lineageId: 'l1', leaveTypeId: 'annual', name: 'PERMANENT - GRADE H' },
+      { lineageId: 'l2', leaveTypeId: 'annual', name: 'CONTRACT - GRADE H' },
+      { lineageId: 'l3', leaveTypeId: 'annual', name: 'PART TIMER' },
+    ];
+    const scoped = scopeEntitlementTables({ templates, rules: [] }, 'annual');
+    expect(scoped.templates.map((x) => x.name)).toEqual([
+      'PERMANENT - GRADE H',
+      'CONTRACT - GRADE H',
+      'PART TIMER',
+    ]);
   });
 });

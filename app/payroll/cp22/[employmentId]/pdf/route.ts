@@ -1,5 +1,5 @@
 /**
- * d3a9383c — stream one new joiner's CP22 (Pin. 1/2020) as a FILLABLE PDF over LHDN's official page.
+ * d3a9383c — stream one new joiner's CP22 [Pin.1/2021] as a FILLABLE PDF over LHDN's official two pages.
  *
  * ROUTE SHAPE COPIED FROM THE EA (app/me/ea/[employmentId]/pdf/route.ts) and the statutory-form export
  * beside it: Node runtime because pdf-lib needs it, a UUID guard before any query, an RLS-gated read whose
@@ -19,14 +19,16 @@
 import { scopedAdmin } from '@/lib/scope';
 import { cp22Particulars } from '@/core/reporting';
 import { renderCp22Pdf } from '@/lib/cp22-pdf';
+import { cp22WithReview } from '@/lib/cp22-review';
 import { readCp22Template } from '@/lib/cp22-template';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function GET(_req: Request, { params }: { params: Promise<{ employmentId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ employmentId: string }> }) {
   const { employmentId } = await params;
+  const q = new URL(req.url).searchParams;
   if (!UUID.test(employmentId)) return new Response('Not found', { status: 404 });
 
   const { s, scopeIds } = await scopedAdmin();
@@ -35,13 +37,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ employm
   if (!particulars) return new Response('Not found', { status: 404 });
   if (!scopeIds.includes(particulars.companyId)) return new Response('Not found', { status: 404 });
 
-  const bytes = await renderCp22Pdf(readCp22Template(), particulars);
+  // 88076362 — the review screen's corrections, when the request came from it. A request with none of
+  // its boxes (the worklist's plain link, an old bookmark) produces exactly the document it always did:
+  // `cp22WithReview` returns the record untouched. See lib/cp22-review.ts for why absent and empty are
+  // different answers here.
+  const bytes = await renderCp22Pdf(readCp22Template(), cp22WithReview(particulars, q));
 
+  // `inline` is the review screen's "View" action — the SAME bytes, shown in the browser's own reader
+  // instead of landing in Downloads. It is not a second document and not a second code path.
+  const inline = q.get('inline') === '1';
   const fname = `cp22-${particulars.employee.fullName}`.replace(/[^a-zA-Z0-9._-]+/g, '-');
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fname}.pdf"`,
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${fname}.pdf"`,
       'Cache-Control': 'private, no-store',
     },
   });

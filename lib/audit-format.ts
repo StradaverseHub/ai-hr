@@ -38,10 +38,25 @@ export const ACTOR_LABEL: Record<string, string> = {
   EXTERNAL: 'External',
 };
 
-/** aggregateType → the human label + the route it links to (id appended). null = not linkable. */
-const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }> = {
-  employee: { label: 'Employee', href: (id) => `/admin/personnel/${id}` },
-  employment: { label: 'Employee', href: (id) => `/admin/personnel/${id}` },
+/**
+ * aggregateType → the human label + the route it links to (id appended). No `href` = not linkable.
+ *
+ * 47609f53 — `adminOnly` records WHO MAY OPEN the href, on the SAME record as the href itself so the
+ * two can never drift. It is not a permission: the destination page is the authority (each one is
+ * cited below). This flag only decides whether the reader is OFFERED the link, so a reader who would
+ * be bounced sees the plain label instead of a link back to where they started.
+ *
+ *   /admin/personnel/{id}    → scopedAdmin() (lib/scope.ts) → requireAdmin → redirect('/')   admin-only
+ *   /payroll/{id}            → requireAdmin()                                                admin-only
+ *   /performance/{id}        → requireAdmin()                                                admin-only
+ *   /performance/review/{id} → getSession() + reviewForViewer (RLS: performance_review_rls is
+ *                              USING can_see_employment — the SAME predicate domain_event_read
+ *                              filters this feed by), so anyone who can SEE the row can OPEN it.
+ *                              NOT admin-only, and must stay linked for subject + reviewer.
+ */
+const AGGREGATE: Record<string, { label: string; href?: (id: string) => string; adminOnly?: boolean }> = {
+  employee: { label: 'Employee', href: (id) => `/admin/personnel/${id}`, adminOnly: true },
+  employment: { label: 'Employee', href: (id) => `/admin/personnel/${id}`, adminOnly: true },
   person: { label: 'Person' },
   company: { label: 'Company' },
   department: { label: 'Department' },
@@ -73,7 +88,7 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }
   attendance: { label: 'Attendance' },
   'attendance-correction': { label: 'Attendance correction' },
   'profile-change': { label: 'Profile change' },
-  'payroll-batch': { label: 'Payroll batch', href: (id) => `/payroll/${id}` },
+  'payroll-batch': { label: 'Payroll batch', href: (id) => `/payroll/${id}`, adminOnly: true },
   payslip: { label: 'Payslip' },
   compensation: { label: 'Basic salary' },
   'employee-statutory-my': { label: 'Statutory profile' },
@@ -82,7 +97,7 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }
   'reporting-line': { label: 'Reporting line' },
   'statutory-report': { label: 'Statutory report' },
   'employee-import': { label: 'Employee import' },
-  'review-cycle': { label: 'Review cycle', href: (id) => `/performance/${id}` },
+  'review-cycle': { label: 'Review cycle', href: (id) => `/performance/${id}`, adminOnly: true },
   'performance-review': { label: 'Performance review', href: (id) => `/performance/review/${id}` },
 };
 
@@ -91,6 +106,27 @@ export function aggregateLabel(type: string): string {
 }
 export function aggregateHref(type: string, id: string): string | undefined {
   return AGGREGATE[type]?.href?.(id);
+}
+
+/**
+ * 47609f53 — may THIS reader open the aggregate's destination? False for an unlinkable type (there is
+ * nothing to open) and for an `adminOnly` destination when the reader is not an admin.
+ *
+ * Deliberately takes a plain boolean rather than a SessionContext: this module is pure (no DB, no
+ * server imports, safe in a client component per the header note) and importing lib/authz would drag
+ * next/navigation + core/entitlements in with it. Callers pass `isAdmin(s)`.
+ *
+ * The dashboard's Recent activity card is the reason this exists. Its feed is RLS-confined by
+ * domain_event_read (0037), which for a non-admin admits only rows whose subject they can see — in
+ * practice `employment` rows (whose href is the admin Personnel screen) and `performance-review` rows
+ * (whose href they CAN open). The employment rows were rendered as links to a page that redirects
+ * them straight back to the dashboard; they now render as plain text. Nothing is hidden and nobody
+ * gains access — only whether a row LOOKS clickable changes.
+ */
+export function canOpenAggregate(type: string, viewerIsAdmin: boolean): boolean {
+  const e = AGGREGATE[type];
+  if (e?.href == null) return false;
+  return e.adminOnly !== true || viewerIsAdmin;
 }
 
 /** The module (bounded context) each aggregate belongs to — a stable slug the UI localizes and the CSV

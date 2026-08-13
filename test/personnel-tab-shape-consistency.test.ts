@@ -141,12 +141,26 @@ describe('18719ded — the restyle did not touch a payroll figure or a guard', (
     expect(SALARY_TABLE).toContain('action={supersedeCompensationAction}');
   });
 
-  it('Pay Items deliberately has no per-row Edit, and says why', () => {
-    // Re-stating an effective-dated pay item inside the month it already runs in leaves BOTH rows inside
-    // the kernel's period window (validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)),
-    // so the item is counted twice. The reason is in the source; this pins that the button stays absent.
+  it('Pay Items rows LINK to the item page, and still carry no inline editor', () => {
+    // 2f889bae reversed half of what this case used to assert, on the reporter's approved instruction.
+    //
+    // It used to pin the comment 'NO per-row Edit here, deliberately', whose reason was that the writer
+    // closed the prior row AT effectiveFrom, leaving BOTH rows inside the kernel's period window so the
+    // item paid twice. That reason is retired: r180 (34cc8137) closes the prior row the day BEFORE, and
+    // r185 (2aed39d4) added employment_pay_component_no_overlap, which makes two live rows covering one
+    // day impossible at the database.
+    //
+    // THE OTHER HALF STILL STANDS AND IS THE ONE THAT MATTERS. What shipped is a LINK to the item's own
+    // page — where Edit, Stop and Remove already live behind explicit effective-dating. An INLINE edit
+    // dialog on this tab would post through this page's own actions into the same writer with a default
+    // of the row's own start date, which is the one-click path the original comment feared. A link is not
+    // that, and this case must keep telling the two apart.
     const src = card('payComponentsCard');
-    expect(src).toContain('NO per-row Edit here, deliberately');
+    expect(src).toContain('/payroll/transactions/fixed/');
+    expect(src).toContain("tFixed('viewEdit')");
     expect(src).not.toContain("triggerLabel={t('payComponentEdit')}");
+    // And the retired reasoning must be GONE, not merely contradicted — leaving it is how the link gets
+    // reverted by the next reader who greps for why this table was read-only.
+    expect(PAGE).not.toContain('NO per-row Edit here, deliberately');
   });
 });

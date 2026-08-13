@@ -1,6 +1,6 @@
 /**
- * db46d9a2 — every CP22 (Pin. 1/2020) for ONE company and ONE calendar month, as a single fillable PDF:
- * one page per joiner, in the order the Statutory Forms screen lists them, every box still editable.
+ * db46d9a2 — every CP22 [Pin.1/2021] for ONE company and ONE calendar month, as a single fillable PDF:
+ * TWO pages per joiner, in the order the Statutory Forms screen lists them, every box still editable.
  *
  * WHAT THIS IS NOT. It is not a filing. Since 1 September 2024 a CP22 must go through the e-CP22 service
  * on MyTax; posted and hand-delivered forms are not accepted. The document produced here is what an
@@ -31,10 +31,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const YEAR = /^\d{4}$/;
 const MONTH = /^(0[1-9]|1[0-2])$/;
 /**
- * The branch line is operator-typed and lands in a four-row block on every page. The cap is a request-size
- * guard, not a formatting one: the renderer folds and shrinks anything longer so no line is ever lost.
+ * THE `lhdnBranch` PARAMETER IS GONE, AND SO IS ITS BOX. The 2020 page opened with a "Kepada / To" block
+ * for the branch you file with, and this route stamped the operator's typed branch into it on every page.
+ * CP22 [Pin.1/2021] HAS NO SUCH BLOCK — LHDN removed it, because the form is filed through e-CP22 on MyTax
+ * where the branch is not something you write on the document. An older bookmark still carrying
+ * `?lhdnBranch=...` is simply ignored rather than 400'd; the branch lives on the preview screen and in the
+ * text export, which say plainly that it does not print.
  */
-const BRANCH_MAX = 240;
 
 const notFound = () => new Response('Not found', { status: 404 });
 
@@ -57,7 +60,7 @@ export async function GET(req: Request) {
 
   // ONE field-mapping code path. Calling `cp22Particulars` per row costs N reads, and at the tenant's
   // current size (40 employments across 9 companies) that is nothing next to keeping a second, drifting
-  // copy of the mapping that fills 26 boxes from six tables.
+  // copy of the mapping that fills 38 boxes from seven tables.
   const records: Cp22PdfData[] = [];
   for (const row of cohort.rows) {
     const p = await cp22Particulars(s, { employmentId: row.employmentId });
@@ -67,8 +70,7 @@ export async function GET(req: Request) {
   }
   if (records.length === 0) return notFound();
 
-  const branch = (q.get('lhdnBranch') ?? '').slice(0, BRANCH_MAX).trim();
-  const bytes = await renderCp22Batch(readCp22Template(), records, { lhdnBranch: branch || null });
+  const bytes = await renderCp22Batch(readCp22Template(), records);
 
   // ASCII-only, because Content-Disposition's plain `filename` is Latin-1. A legal name written entirely in
   // a non-Latin script would otherwise leave `cp22--2026-07.pdf`, so it falls back to a word.

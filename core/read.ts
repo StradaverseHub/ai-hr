@@ -2073,6 +2073,37 @@ function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): string {
  * leave_ledger and so cannot produce a row for a type with no ledger entry — does NOT hold. The
  * eligible-but-inactive tail below has existed since R18 (2F-1) and is pinned by
  * test/leave-balances-all-types.test.ts. The hidden-type gate was the whole of the real defect.
+ *
+ * ── 3ddae357: `opts.asOf` — POINT-IN-TIME, AND WHY THIS FUNCTION IS WHERE IT BELONGS ────────────────
+ *
+ * Employee Balances offers an "As at" date and threaded it into ONE of its two reads. The breakdown
+ * (`leaveEntitlementBreakdown`) was date-aware; THIS function had no date argument at all, so it summed the
+ * WHOLE ledger whatever date was typed. Five columns moved with the date and four — Taken, Pending
+ * Approval, Overutilized and BALANCE — silently did not, while the Date column echoed the typed date and
+ * made the screen look like it had responded. Reproduced on production: FARAH's ANNUAL ledger is four rows
+ * (+10.67 on 2025-05-01, −0.67 carry cap on 2026-01-01, +11.00 on 2026-08-01, −1.50 recalc on 2026-08-04),
+ * summing to 19.50 — exactly the Balance the screen showed for every date, where the true point-in-time
+ * figures are 10.67 at 2025-12-31 and 10.00 at 2026-07-31.
+ *
+ * The fix lives here rather than in a second dated resolver for HR, for the same reason `includeHidden`
+ * does: HR's screen and the employee's own screen must keep ONE derivation, or the number HR quotes and
+ * the number the employee reads eventually disagree.
+ *
+ * ABSENT ⇒ BYTE-IDENTICAL. Every other caller (the employee's own /leave page, the dashboard, both
+ * personnel profiles, `subordinateLeaveSummary`) passes no `asOf` and is provably untouched — the `where`
+ * is assembled from the same terms in the same order, with one extra term only when a date is supplied.
+ *
+ * FUTURE DATES need no extra logic and get none: `effective_on <= asOf` counts an accrual already POSTED
+ * with a future effective date once that date is inside the window, and nothing is forecast or projected.
+ * "Already on record" is the whole promise.
+ *
+ * WHAT IS DELIBERATELY *NOT* DATED, so a later reader does not read it as an oversight:
+ *   • the eligible-but-inactive tail still tests eligibility as of TODAY. It decides which leave types
+ *     APPEAR (each at 0.00 with no ledger row), not what any figure is, and re-deriving eligibility at an
+ *     arbitrary date would need the employment's dated profile, not today's — a different question, and
+ *     not one this screen asks.
+ *   • the leave-type NAME, visual and ESS-placement joins are present-tense metadata, not figures. A type
+ *     renamed since `asOf` should read under the name HR uses now.
  */
 export function leaveBalances(
   ctx: SessionContext,
@@ -2082,9 +2113,16 @@ export function leaveBalances(
     /** ADMIN reads only: keep leave types HR has hidden from employee self-service. The employee's own
      *  screens must never pass this — a hidden type is hidden from THEM by design (7b11f1c1). */
     includeHidden?: boolean;
+    /**
+     * 3ddae357 — POINT-IN-TIME cut-off, `YYYY-MM-DD`. Ledger rows count when `effective_on <= asOf`, and a
+     * pending request counts when it STARTS on or before it. OMIT for the running total: absent ⇒ the
+     * whole ledger and every pending request, which is what every caller but Employee Balances wants.
+     */
+    asOf?: string;
   } = {},
 ) {
   return withTenant(ctx, async (tx) => {
+    const asOf = opts.asOf;
     const [rows, pend] = await Promise.all([
       tx
         .select({
@@ -2096,7 +2134,13 @@ export function leaveBalances(
         })
         .from(leaveLedger)
         .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
-        .where(eq(leaveLedger.employmentId, employmentId))
+        // `effective_on` is NOT NULL, so the dated cut needs no schema change and no null branch. With no
+        // `asOf` this is the single-term `where` it always was — see the byte-identical note above.
+        .where(
+          asOf
+            ? and(eq(leaveLedger.employmentId, employmentId), lte(leaveLedger.effectiveOn, asOf))
+            : eq(leaveLedger.employmentId, employmentId),
+        )
         .groupBy(leaveType.id, leaveType.name),
       tx
         .select({
@@ -2106,7 +2150,19 @@ export function leaveBalances(
         })
         .from(leaveRequest)
         .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
-        .where(and(eq(leaveRequest.employmentId, employmentId), eq(leaveRequest.status, 'pending')))
+        // A pending request has no ledger row yet, so it has no `effective_on` to cut on — its LEAVE DATES
+        // are the only date it carries. Bounding on `start_date <= asOf` is "pending approval affecting the
+        // position at this date": a request that has not begun by `asOf` was not yet weighing on it. The
+        // request's whole `days` then counts, not the part before `asOf` — a pending request is an
+        // all-or-nothing claim on the balance until it is decided, and splitting it would report a figure
+        // no approval could ever produce.
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.status, 'pending'),
+            ...(asOf ? [lte(leaveRequest.startDate, asOf)] : []),
+          ),
+        )
         .groupBy(leaveRequest.leaveTypeId, leaveType.name),
     ]);
     const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));

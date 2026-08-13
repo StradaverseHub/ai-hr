@@ -28,7 +28,12 @@ import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '.
 import { parseCsvRecords } from '../lib/csv';
 // 2f889bae — date-only arithmetic, UTC by design (the repo rule: only "what date is this INSTANT" goes
 // through the tenant timezone). core/roster.ts already imports from this module, so no new pack edge.
-import { addDaysIso } from '../lib/roster-month';
+// a3d485f6 adds monthOf/monthRange/addMonths from the same pure module, for the mid-month refusal's
+// "which calendar month does this date land in, and what does that month span" arithmetic.
+import { addDaysIso, addMonths, monthOf, monthRange } from '../lib/roster-month';
+// a3d485f6 — "today" for the refusal's suggested date is a CALENDAR DAY, so it goes through the tenant
+// timezone (the repo rule this file's addDaysIso comment states from the other side).
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   payRuleDependencies as payRuleDependenciesOf,
   payRuleDerivesAmount,
@@ -1331,6 +1336,66 @@ export class FixedTransactionBackwardsError extends Error {
 }
 
 /**
+ * a3d485f6 — thrown when a change to a recurring pay item would take effect PART-WAY THROUGH A MONTH
+ * while a live record for the same pay item still covers part of that same month.
+ *
+ * ── WHY THIS EXISTS (the last double-pay hole) ───────────────────────────────────────────────────────
+ * 2f889bae closed the prior row the day BEFORE the new one starts, which fixed the month-boundary case
+ * (…-04-30 / 05-01: the two windows land in different months). r185's `employment_pay_component_no_overlap`
+ * then made a genuine OVERLAP impossible. Neither touches the case where the two windows are ADJACENT
+ * INSIDE ONE MONTH: end on the 9th, start on the 10th. They do not overlap by a single day, so the
+ * EXCLUDE constraint correctly permits them — but `core/payroll.ts` selects
+ * `validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)` and pays EVERY returned row
+ * its FULL amount, and both of them satisfy that for the month containing the boundary. A 777.00
+ * allowance restated that way paid 1,554.00. The first regression test written for it returned exactly
+ * that, and it sat in test/fixed-transaction.test.ts as a labelled `it.fails` until this class landed.
+ *
+ * ── WHY THE REFUSAL IS HERE AND NOT IN THE KERNEL ────────────────────────────────────────────────────
+ * Flipping the kernel's `gte` to `gt` was considered and REJECTED in r180: it silently changes what
+ * every EXISTING end-dated row pays in its final month. Prorating a partial window by days was
+ * considered and rejected in this item's own approved plan: 24 live rows on production start part-way
+ * through a month (mid-month joiners, earliest 2016-10-04) and every one of them is paid a full month
+ * today, so proration would cut all 24 — real money, and a separate question from the one asked.
+ * Refusing at the writer moves no existing figure at all: it changes only what can be ENTERED.
+ *
+ * ── WHAT IT MUST NOT REFUSE ──────────────────────────────────────────────────────────────────────────
+ *   • A mid-month FIRST line for a pay item the employee does not already hold. That is the new-hire
+ *     case and it is those same 24 production rows. One row in a month pays once; there is nothing to
+ *     refuse. The predicate below therefore keys on a SURVIVING SIBLING, never on the date alone.
+ *   • A mid-month restatement that SUPERSEDES the only live row (same `effectiveFrom`). A superseded row
+ *     is invisible to the kernel (`isNull(supersededAt)` — core/payroll.ts), so one row remains and it
+ *     pays once. Refusing it would leave those 24 mid-month rows permanently uncorrectable, which the
+ *     approved plan's "nothing already saved is touched" rules out.
+ *   • An END date. `endEmploymentPayComponent` is untouched — stopping an item early is a real thing to
+ *     need, and one row ending mid-month cannot pay anyone twice.
+ *
+ * `nextFirstOfMonth` is the date the operator can actually use, computed from the tenant's MYT calendar
+ * day (see the `today` parameter on setEmploymentPayComponent) rather than from a UTC instant, which
+ * names YESTERDAY between 00:00 and 08:00 MYT.
+ */
+export class FixedTransactionMidMonthError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly effectiveFrom: string,
+    public readonly nextFirstOfMonth: string,
+  ) {
+    super(
+      `Pay item "${code}" already has a live record covering part of ${effectiveFrom.slice(0, 7)}. A change to a recurring pay item must take effect on the first of a month, or that month pays both records in full — use ${nextFirstOfMonth}.`,
+    );
+    this.name = 'FixedTransactionMidMonthError';
+  }
+}
+
+/**
+ * a3d485f6 — the first day of the month AFTER `iso`. `2026-05-10` → `2026-06-01`.
+ *
+ * Built from the existing pure `YYYY-MM` helpers rather than from a `Date`, so it never crosses a
+ * timezone on the way through (`addMonths` does its arithmetic in UTC on a month string, which has no
+ * time-of-day to shift).
+ */
+const firstOfNextMonth = (iso: string): string => `${addMonths(monthOf(iso), 1)}-01`;
+
+/**
  * Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation).
  *
  * 1.2.1 Fixed Transaction extends this with an optional effective END date (written to `validTo` of the new
@@ -1376,6 +1441,14 @@ export class FixedTransactionBackwardsError extends Error {
  * Refusals are raised BEFORE any write (both passes run over the scan result first), so a rejected save
  * leaves the table exactly as it found it.
  *
+ * ── AND ONE REFUSAL THAT IS NOT ABOUT A CLASH AT ALL (a3d485f6) ──
+ * A change that takes effect PART-WAY THROUGH A MONTH while a live sibling still covers part of that
+ * same month is refused with FixedTransactionMidMonthError, because the kernel would pay both rows in
+ * full for that month even though their windows never touch. It is scanned over the calendar MONTH
+ * rather than over `clashes` above, because the shape that pays twice without overlapping — stopped on
+ * the 9th, restarted on the 15th — is not a clash by any of the three rules. A mid-month FIRST line, and
+ * a mid-month restatement that supersedes its only sibling, both stay allowed; see that class.
+ *
  * ── CLOSED PAY RUNS ──
  * A write whose window touches a month a CLOSED run already paid is refused (FixedTransactionPaidError).
  * Processed-but-not-closed is deliberately allowed — see archiveEmploymentPayComponent.
@@ -1419,6 +1492,11 @@ export function setEmploymentPayComponent(
     // (core/comp.ts), so nothing a closed run relied on can be changed THROUGH here that was not already
     // allowed to change. ONLY the backfill passes it.
     allowClosedPeriod?: boolean;
+    // a3d485f6 — the tenant's calendar day, used ONLY to word the mid-month refusal's suggested date.
+    // Injectable on the repo's established `p.today ?? todayInKualaLumpur()` idiom (core/leave.ts,
+    // core/roster.ts) so a test can pin the suggestion; every production caller omits it and gets the
+    // MYT day. It is never used in a comparison that decides whether a write is allowed.
+    today?: string;
   },
   outerTx?: Tx,
 ) {
@@ -1493,6 +1571,60 @@ export function setEmploymentPayComponent(
         // ROW THE ADMIN IS NOT LOOKING AT, which is a different act with a different blast radius.
         if (c.id !== p.replacesId && p.effectiveFrom < c.validFrom) {
           throw new FixedTransactionBackwardsError(c.code, c.validFrom, c.validTo);
+        }
+      }
+      // a3d485f6 — MID-MONTH RESTATEMENT. See FixedTransactionMidMonthError for why this is a writer
+      // refusal and not a kernel change.
+      //
+      // THE PREDICATE IS "WOULD A SIBLING STILL BE LIVE IN THIS MONTH AFTER THE WRITE", NOT "IS THE DATE
+      // MID-MONTH". Those are not the same question, and answering the easy one would have refused every
+      // mid-month new-hire line — 24 of them on production. Concretely:
+      //   • no live row covers the month at all  → a first line, nothing to double-pay → ALLOWED;
+      //   • the only covering row is one this write SUPERSEDES (same effectiveFrom) → it vanishes from
+      //     the kernel's view, one row remains → ALLOWED (this is how those 24 rows stay correctable);
+      //   • a covering row will be CLOSED at effectiveFrom-1 → that end date is in the SAME month, so
+      //     both rows pay in full → REFUSED. This is the 777 + 777 case.
+      //
+      // It is deliberately keyed on the MONTH, not on the clash list, because two rows can both pay a
+      // month without ever touching each other and so without ever being a clash: stop an item on the
+      // 9th (endEmploymentPayComponent, untouched) and start the next on the 15th, and the EXCLUDE
+      // constraint, the overlap refusal and the backwards refusal all correctly stay silent while the
+      // month pays twice. Scanning the month catches that shape and the adjacent one with one rule.
+      //
+      // Skipped for the backfill (supersedeOverlaps), like the two refusals above: it re-states
+      // BASIC/ALLOWANCE from each compensation row at THAT ROW'S own validFrom, which is routinely
+      // mid-month on a mid-month joiner, and it supersedes everything it covers rather than closing it.
+      const monthFirst = `${monthOf(p.effectiveFrom)}-01`;
+      if (p.effectiveFrom !== monthFirst) {
+        const monthLast = monthRange(monthOf(p.effectiveFrom)).to;
+        const covering = await tx
+          .select({
+            id: employmentPayComponent.id,
+            code: payComponent.code,
+          })
+          .from(employmentPayComponent)
+          .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+          .where(
+            and(
+              eq(employmentPayComponent.employmentId, p.employmentId),
+              eq(employmentPayComponent.componentId, p.componentId),
+              isNull(employmentPayComponent.supersededAt),
+              lte(employmentPayComponent.validFrom, monthLast),
+              or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, monthFirst)),
+            ),
+          )
+          .orderBy(employmentPayComponent.validFrom);
+        // PASS 2 supersedes exactly the clashes that start on or after the new start date; those rows
+        // leave the kernel's view entirely, so they cannot double-pay and must not block the write.
+        const vanishing = new Set(clashes.filter((c) => p.effectiveFrom <= c.validFrom).map((c) => c.id));
+        const survivor = covering.find((c) => !vanishing.has(c.id));
+        if (survivor) {
+          // The suggestion is anchored on the LATER of the entered date and today so it is never a
+          // first-of-month that has already gone by — a date the operator is being asked to re-enter has
+          // to be one they can still adopt. `today` is the MYT calendar day (see the parameter).
+          const today = p.today ?? todayInKualaLumpur();
+          const anchor = p.effectiveFrom > today ? p.effectiveFrom : today;
+          throw new FixedTransactionMidMonthError(survivor.code, p.effectiveFrom, firstOfNextMonth(anchor));
         }
       }
     }

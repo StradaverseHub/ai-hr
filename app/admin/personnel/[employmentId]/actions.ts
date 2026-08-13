@@ -26,7 +26,7 @@ import {
 } from '@/core/shift-arrangement';
 import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
 import { recordLocationSource } from '@/core/location';
-import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
+import { FixedTransactionAmountError, FixedTransactionBackwardsError, FixedTransactionDateError, FixedTransactionMidMonthError, FixedTransactionOverlapError, FixedTransactionPaidError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
 import {
   addEmployeeDocument,
@@ -287,9 +287,15 @@ export async function setEmploymentComponentAction(formData: FormData) {
               ? t('payComponentOverlap', { code: e.code, from: e.validFrom, to: e.validTo ?? t('payComponentOpenEnded') })
               : e instanceof FixedTransactionBackwardsError
                 ? t('payComponentBackwards', { code: e.code, from: e.validFrom })
-                : e instanceof FixedTransactionPaidError
-                  ? t('payComponentClosedRun', { code: e.code, period: e.payPeriod })
-                  : (e as Error).message;
+                : // a3d485f6 — the mid-month refusal. Same reason this whole ladder exists: this editor
+                  // writes the SAME aggregate as the Fixed Transaction screen but resolves its OWN
+                  // `people.detail.*` messages, so a refusal added in core and threaded only through
+                  // payroll/transactions/fixed puts the service's raw English in the URL here.
+                  e instanceof FixedTransactionMidMonthError
+                  ? t('payComponentMidMonth', { code: e.code, nextFirst: e.nextFirstOfMonth })
+                  : e instanceof FixedTransactionPaidError
+                    ? t('payComponentClosedRun', { code: e.code, period: e.payPeriod })
+                    : (e as Error).message;
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);

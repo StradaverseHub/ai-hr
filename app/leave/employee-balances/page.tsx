@@ -6,6 +6,7 @@ import { todayInKualaLumpur } from '@/core/leave';
 import { Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { EmployeeSearchField } from '@/components/employee-search-field';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
 import { formatDays } from '@/lib/day-format';
@@ -22,8 +23,18 @@ import { employeeBalanceRows } from './rows';
  * blanks figures an HR admin has hidden from SELF-SERVICE, which is not a rule about what HR may see, so
  * the row is derived with an empty essView (missing key ⇒ visible).
  *
- * Changing the as-at date re-runs the breakdown, so YTD Entitled / Taken / Pending / Adjustment /
- * Overutilized / Balance all move with it — no figure on this screen is cached against another date.
+ * THE AS-AT DATE (3ddae357). This comment used to claim that changing the date re-ran the breakdown so
+ * "YTD Entitled / Taken / Pending / Adjustment / Overutilized / Balance all move with it — no figure on
+ * this screen is cached against another date". THAT WAS FALSE for four of them, and stating it is how the
+ * defect survived review: `asOf` reached `leaveEntitlementBreakdown` but NOT `leaveBalances`, which had no
+ * date argument at all, so Taken, Pending Approval, Overutilized and BALANCE were the whole-record running
+ * total at every date — while the last column echoed the typed date and made the screen look responsive.
+ *
+ * It is now true, and true for one reason: `leaveBalances` takes an optional `asOf` and `employeeBalanceRows`
+ * passes it the same date it passes the breakdown. Every figure in a row answers for the same date, and the
+ * CSV/Excel export carries the same dated figures because it renders from the same `employeeBalanceRows`.
+ * If you ever add a column, take its figure from one of those two reads — a third source is how this
+ * happened.
  */
 
 export default async function EmployeeBalancesPage({
@@ -89,6 +100,27 @@ export default async function EmployeeBalancesPage({
   const recordsHref = (leaveTypeId: string) =>
     `/leave/employee-records?emp=${selected?.employmentId ?? ''}&type=${leaveTypeId}`;
 
+  // 38b94df7 — the Employee box is a SEARCH box, not a list of everyone. Captions are resolved HERE and
+  // handed over as plain strings: EmployeeSearchField is a client island and a translator closure crossing
+  // that boundary is a 500 on every request that tsc, the suite and `next build` all stay green through
+  // (r123). They live in `leave.inquiry` rather than reaching into `payroll.individualPayslip` because the
+  // coverage guard reads one namespace per file. NOTE the `empSearch*` prefix: `searchPlaceholder` in this
+  // same namespace is already taken by the leave-CODE box beside it ("Search leave code"), which is a
+  // different control and must keep its own caption — the two boxes are deliberately NOT merged.
+  const empSearchLabels = {
+    placeholder: tInq('empSearchPlaceholder'),
+    ariaLabel: tInq('empSearchAriaLabel'),
+    resultsLabel: tInq('empSearchResultsLabel'),
+    noMatches: tInq('empSearchNoMatches'),
+    clear: tInq('empSearchClear'),
+  };
+  const empSearchOptions = employees.map((e) => ({
+    value: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    secondary: e.company,
+  }));
+
   const filterFields: FilterField[] = [
     {
       kind: 'multi',
@@ -147,17 +179,22 @@ export default async function EmployeeBalancesPage({
               together avoids a round trip that silently resets the other. */}
           <div className="flex flex-wrap items-end gap-2">
             <form method="get" action="/leave/employee-balances" className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              {tInq('employee')}
-              <select name="emp" defaultValue={selected?.employmentId ?? ''} className={`${inputCls} w-72`}>
-                {employees.map((e) => (
-                  <option key={e.employmentId} value={e.employmentId}>
-                    {e.company} · {e.name}
-                    {e.employeeCode ? ` (${e.employeeCode})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* 38b94df7: the plain <select> listing all 40 employments is replaced by the SAME searchable
+                field, posting the SAME `name="emp"` under the same GET form — the hidden input carries the
+                committed employmentId, so the query string, the export links, the chip action and the
+                "clearing filters must not clear the employee" rule are all untouched. `htmlFor`/`id` rather
+                than wrapping, because the control is a div with two inputs, not one labelable element. */}
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              <label htmlFor="balances-emp">{tInq('employee')}</label>
+              <EmployeeSearchField
+                id="balances-emp"
+                name="emp"
+                employees={empSearchOptions}
+                value={selected?.employmentId ?? null}
+                labels={empSearchLabels}
+                className="w-72"
+              />
+            </div>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {tMe('leaveBalanceTable.asAtDate')}
               <input type="date" name="asOf" defaultValue={asOf} className={inputCls} />

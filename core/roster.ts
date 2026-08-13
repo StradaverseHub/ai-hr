@@ -1372,22 +1372,32 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
 /**
  * Remove an assignment → the date falls back to the company policy.
  *
- * 42afb2d2 — THE DELETE ASYMMETRY, MEASURED 2026-08-12. DO NOT ADD A CALLER THAT SKIPS
- * `assertRosterAdmin`. `roster_assignment_rls` (db/migrations/0075_shift_roster.sql:50-53) is a single
- * FOR ALL policy, so its WITH CHECK (`app.can_admin_employment`) governs INSERT and the new row of an
- * UPDATE — but a DELETE is checked against USING ALONE, which is `app.can_see_employment`. A supervisor
- * and the employee themselves both pass that. Measured on a disposable database as `ai_hr_app` in a
+ * 42afb2d2 → 154865f4 — THE DELETE ASYMMETRY, MEASURED 2026-08-12 AND CLOSED 2026-08-13.
+ *
+ * WHAT IT WAS. `roster_assignment_rls` (db/migrations/0075_shift_roster.sql:51-53) is a single FOR ALL
+ * policy, so its WITH CHECK (`app.can_admin_employment`) governs INSERT and the new row of an UPDATE —
+ * but a DELETE is matched against USING ALONE, which is `app.can_see_employment`, and a supervisor and
+ * the employee themselves both pass that. Measured on a disposable database as `ai_hr_app` in a
  * rolled-back transaction, with a real active administrative reporting line: the same manager session
  * that gets 42501 for an INSERT and for a constraint-valid UPDATE on a future-dated row of a direct
- * report gets `DELETE 1` for the delete of that row — future-dated or past-dated, it makes no
- * difference, because the storage layer carries no date rule either. The employee's own roster day
- * likewise deletes under a plain `employee` grant. The negative control holds: the same employee
- * against a row they cannot see gets `DELETE 0`, silently filtered rather than refused, which is what
- * USING does.
+ * report got `DELETE 1` for the delete of that row — future-dated or past-dated, no difference, because
+ * the storage layer carries no date rule either. The employee's own roster day likewise deleted under a
+ * plain `employee` grant. Negative control: the same employee against a row they cannot see got
+ * `DELETE 0`, silently filtered rather than refused, which is what USING does.
  *
- * So for the OTHER two verbs `assertRosterAdmin` is belt over a brace, and for THIS one it is the only
- * thing there is. Closing the gap needs a restrictive DELETE policy or per-command policies, i.e. a
- * centrally numbered migration; it was measured and reported under 42afb2d2, not built.
+ * WHAT IT IS NOW. `0436_roster_assignment_delete_guard.sql` adds a RESTRICTIVE FOR DELETE policy
+ * requiring `app.can_admin_employment`, which ANDs with the permissive FOR ALL one. All three verbs are
+ * now refused underneath for anyone who may not administer the employment, and reads are untouched —
+ * a supervisor and the employee still SEE the roster. test/roster-delete-rls.test.ts holds the matrix,
+ * and its watched-fail (0436 dropped from the journal) puts both non-admin delete legs back to
+ * `rows: 1`.
+ *
+ * ⚠️ THE DELETE REFUSAL IS SILENT, AND STILL DOES NOT MAKE `assertRosterAdmin` OPTIONAL. A restrictive
+ * policy for DELETE is a USING clause, and USING FILTERS rather than raising: a refused delete removes
+ * zero rows and reports no error (the same behaviour recorded for the identical guard on
+ * leave_year_config, 0385_leave_year_config_reset.sql:13-14). So a caller that skipped the application
+ * guard would now leave the roster intact — but it would also tell the operator the removal succeeded.
+ * DO NOT ADD A CALLER THAT SKIPS `assertRosterAdmin`; it is what turns this into a visible refusal.
  */
 export async function clearRoster(ctx: SessionContext, p: { employmentId: string; shiftDate: string }) {
   return withTenant(ctx, async (tx) => {
@@ -1842,10 +1852,12 @@ export async function rosterMonthView(
 /**
  * 23390097 BLOCKER — WHO MAY CHANGE THE ROSTER AT ALL, answered in the SERVER before any SQL runs.
  *
- * INSERTING OR UPDATING roster_assignment requires app.can_admin_employment → app.is_admin_for, so
- * ROW-LEVEL SECURITY already refuses a supervisor those two verbs. READ THE DELETE NOTE ON
- * `clearRoster` BEFORE TREATING THAT AS "the database decides" — it does not decide the third verb,
- * and this guard is the only thing that does. WHAT IT REFUSES WITH was the hole: drizzle wraps 42501 as
+ * WRITING roster_assignment requires app.can_admin_employment → app.is_admin_for, so ROW-LEVEL SECURITY
+ * refuses a supervisor all three verbs — INSERT and UPDATE since 0075, and DELETE since 154865f4 /
+ * 0436_roster_assignment_delete_guard.sql. This guard is therefore belt over a brace throughout, but it
+ * is NOT redundant: read the delete note on `clearRoster`, because the database's delete refusal is
+ * SILENT (zero rows, no error) and this is what turns it into something an operator can see.
+ * WHAT IT REFUSES WITH was the hole: drizzle wraps 42501 as
  * `Failed query: insert into "roster_assignment" … params: <tenant uuid>,<employment uuid>,…`, and the
  * roster actions copy `(e as Error).message` verbatim into a toast (the three cell actions) or into
  * `?error=`, which app/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
@@ -1884,8 +1896,9 @@ export function assertRosterAdmin(ctx: SessionContext): void {
  * path, so every session that reaches it is an admin, `isAdmin(ctx)` is already true, and the left-hand
  * branch never decides anything at the write boundary. A supervisor clicking tomorrow does not get
  * "allowed" — RLS refuses the insert with 42501. The grid is rendered READ-ONLY for a non-admin for
- * exactly that reason (components/roster-grid.tsx). (DELETE is the exception RLS does NOT cover; see the
- * measurement on `clearRoster` above. It changes nothing here, because `assertRosterAdmin` runs first.)
+ * exactly that reason (components/roster-grid.tsx). (DELETE used to be the exception RLS did NOT cover;
+ * 0436_roster_assignment_delete_guard.sql closed it — see the note on `clearRoster` above. It changed
+ * nothing here either way, because `assertRosterAdmin` runs first.)
  *
  * The predicate is kept as belt-and-braces, so that if roster_assignment's RLS is ever widened to
  * supervisors, today-and-earlier stays administrator-only without a second change. It is NOT evidence

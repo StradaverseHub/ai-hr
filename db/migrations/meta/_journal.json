@@ -2479,6 +2479,13 @@
       "when": 1781862535000,
       "tag": "0435_claim_policy_claim_item",
       "breakpoints": true
+    },
+    {
+      "idx": 436,
+      "version": "7",
+      "when": 1781862536000,
+      "tag": "0436_roster_assignment_delete_guard",
+      "breakpoints": true
     }
   ]
 }

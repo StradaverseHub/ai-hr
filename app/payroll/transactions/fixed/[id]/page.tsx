@@ -48,12 +48,14 @@ export default async function FixedTransactionDetailPage({
     clashFrom?: string;
     clashTo?: string;
     clashPeriod?: string;
+    // a3d485f6 — the first-of-month the mid-month refusal offers instead.
+    nextFirst?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const { id } = await params;
-  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod } = await searchParams;
+  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst } = await searchParams;
 
   // Scope-guard the employment exactly as the list does: RLS isolates tenants, company scope does not
   // travel with it, so an out-of-scope (or absent) employmentId is simply not found.
@@ -80,6 +82,8 @@ export default async function FixedTransactionDetailPage({
     // a bare key would render "{code}" on screen.
     'overlap',
     'backwards',
+    // a3d485f6 — the mid-month refusal, same contract: it renders "{code}" and "{nextFirst}".
+    'midMonth',
   ]);
   // The clash arguments are passed to EVERY key rather than only to the ones that use them: next-intl
   // ignores unused arguments, and branching here would mean a second place to update when a message
@@ -91,6 +95,7 @@ export default async function FixedTransactionDetailPage({
           from: clashFrom ?? '—',
           to: clashTo ?? t('fixed.openEnded'),
           period: clashPeriod ?? '—',
+          nextFirst: nextFirst ?? '—',
         })
       : error;
 
