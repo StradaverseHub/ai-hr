@@ -45,7 +45,7 @@ import type {
 import type { ReportData } from '../lib/report-export';
 // TYPE-ONLY, and that matters: lib/cp22-pdf.ts imports pdf-lib, and `import type` is erased at compile
 // time so this read pulls no PDF machinery into every caller of core/reporting.
-import type { Cp22PdfData } from '../lib/cp22-pdf';
+import type { Cp22Address, Cp22PdfData } from '../lib/cp22-pdf';
 import { daysInMonth } from './payroll';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -637,7 +637,7 @@ export function cp22MonthCohort(
 
 // ── CP22 particulars (the new-hire notice itself, d3a9383c) ─────────────────
 /**
- * Everything the CP22 (Pin. 1/2020) form can be filled from, for one employment.
+ * Everything the CP22 [Pin.1/2021] form can be filled from, for one employment.
  *
  * SITS BESIDE complianceWorklist DELIBERATELY: that read says WHO needs a CP22 and by when, this one
  * produces the document for a row of it, and they are gated identically — RLS decides whether the
@@ -646,9 +646,10 @@ export function cp22MonthCohort(
  * an LHDN form; a company no pack owns has no CP22 and gets null, exactly as the worklist gets [].
  *
  * NOTHING IS INVENTED. Every field is nullable end to end and an absent record travels as null all the way
- * to an EMPTY, still-editable box on the page (lib/cp22-pdf.ts documents the seven that can never be
- * filled). In particular: employeeDependent.companyName / employerAddress are the SPOUSE'S employer and are
- * NOT the form's "previous employer in Malaysia", so they are not read here at all.
+ * to an EMPTY, still-editable box on the page (lib/cp22-fields.ts → `CP22_UNFILLABLE` documents the
+ * fifteen that can never be filled). In particular: employeeDependent.companyName / employerAddress are
+ * the SPOUSE'S employer and are NOT the form's "previous employer in Malaysia" (section E), so they are
+ * not read here at all.
  *
  * NO DOMAIN EVENT. Rendering a form is a read; downloading it is not filing. Same deliberate skip the EA
  * and payslip PDF routes make.
@@ -663,8 +664,50 @@ export const CP22_FIXED_ALLOWANCE_LABEL = 'Elaun tetap bulanan / Fixed monthly a
 
 const asMoney = (v: unknown): number => Number(v ?? 0);
 
-/** Address parts → the lines an address block prints, blanks dropped. */
-function addressLines(p: {
+const trimmed = (s: string | null | undefined): string | null => {
+  const t = (s ?? '').trim();
+  return t === '' ? null : t;
+};
+
+/**
+ * Address parts → the shape the 2021 form's B12/B13 blocks ask for: THREE FREE ROWS for the street, and
+ * postcode, town and state each in their OWN PRINTED BOX.
+ *
+ * THIS FUNCTION USED TO FOLD, AND FOLDING HERE IS THE r175a BUG RELOCATED. The 2020 page had one four-row
+ * address block and nothing else, so this returned `[line1, line2, line3, "postcode city, state"]` — the
+ * tail line carried the postcode, the town and the state together because that was the only place they
+ * could go. Reuse that against the 2021 page and every one of those three values lands in a FREE STREET
+ * ROW while the three boxes LHDN prints for them stay empty. The page looks complete. It is a Malaysian
+ * address filed to LHDN with its state written in the wrong box and three blanks where the agency asked
+ * for the same information — the identical class of silent loss as the address that went out without its
+ * state at all, which is why it is called out here rather than quietly rewritten.
+ *
+ * So: street lines stay street lines, and postcode/town/state travel separately, all the way to their own
+ * widgets. Anything past the third street line is folded into the third by the renderer (`foldToRows`),
+ * never dropped.
+ */
+function cp22Address(p: {
+  line1?: string | null;
+  line2?: string | null;
+  line3?: string | null;
+  postcode?: string | null;
+  city?: string | null;
+  state?: string | null;
+}): Cp22Address {
+  return {
+    lines: [p.line1, p.line2, p.line3].map((s) => (s ?? '').trim()).filter(Boolean),
+    postcode: trimmed(p.postcode),
+    town: trimmed(p.city),
+    state: trimmed(p.state),
+  };
+}
+
+/**
+ * The employer's address for A2, which IS still a plain run of lines — the 2021 form gives section A three
+ * free rows and no structured postcode/town/state boxes at all. So the employer address keeps the folded
+ * tail the employee's address had to give up, and that asymmetry is the artwork's, not an oversight.
+ */
+function employerAddressLines(p: {
   line1?: string | null;
   line2?: string | null;
   line3?: string | null;
@@ -761,7 +804,11 @@ export function cp22Particulars(
       .limit(1);
 
     const [spouse] = await tx
-      .select({ fullName: employeeDependent.fullName, icOrPassport: employeeDependent.icOrPassport })
+      .select({
+        fullName: employeeDependent.fullName,
+        icOrPassport: employeeDependent.icOrPassport,
+        phone: employeeDependent.phone,
+      })
       .from(employeeDependent)
       .where(
         and(
@@ -804,13 +851,21 @@ export function cp22Particulars(
       )
       .orderBy(payComponent.name);
 
-    // The signature block's name and designation, ONLY when the session resolves to a person who holds a
-    // current assignment. SessionContext.personId is documented null for an admin not tied to an employee,
-    // and there is no honest fallback — the company name is NOT a person's name. Blank is the right answer.
-    let signatory: { name: string | null; designation: string | null } = { name: null, designation: null };
+    // Section F's declarant — name, designation and identification number — ONLY when the session resolves
+    // to a person who holds a current assignment. SessionContext.personId is documented null for an admin
+    // not tied to an employee, and there is no honest fallback: the company name is NOT a person's name.
+    // Blank is the right answer, and the box stays editable so the real signer can write their own.
+    let declarant: Cp22Particulars['declarant'] = { name: null, designation: null, icOrPassport: null };
     if (ctx.personId) {
       const [me] = await tx
-        .select({ name: person.fullName, title: position.title })
+        .select({
+          name: person.fullName,
+          title: position.title,
+          // F2 asks for the DECLARANT'S own identification or passport number — their record, on a form
+          // they personally sign. Read from the same table the employee's B3/B4 come from.
+          icNumber: employeeStatutoryMy.icNumber,
+          passportNumber: employeeStatutoryMy.passportNumber,
+        })
         .from(person)
         .innerJoin(employment, eq(employment.personId, person.id))
         .innerJoin(
@@ -822,16 +877,27 @@ export function cp22Particulars(
           ),
         )
         .leftJoin(position, eq(position.id, assignment.positionId))
+        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
         .where(eq(person.id, ctx.personId))
         .limit(1);
-      if (me) signatory = { name: me.name, designation: me.title ?? null };
+      if (me) {
+        declarant = {
+          name: me.name,
+          designation: me.title ?? null,
+          // The form prints "No. pengenalan / pasport *" with "delete whichever is not relevant", so
+          // either satisfies it. IC first because a Malaysian declarant almost always has one.
+          icOrPassport: trimmed(me.icNumber) ?? trimmed(me.passportNumber),
+        };
+      }
     }
 
-    const allowances: Cp22Particulars['pay']['allowances'] = [];
+    // D4 — the recurring CASH allowances in force on the commencement date, one entry each. Their total
+    // goes in D4's amount box and their names onto D4's two "nyatakan / specify" rules.
+    const cashAllowances: Cp22Particulars['pay']['cashAllowances'] = [];
     if (comp && asMoney(comp.monthlyAllowance) > 0) {
-      allowances.push({ label: CP22_FIXED_ALLOWANCE_LABEL, amount: asMoney(comp.monthlyAllowance) });
+      cashAllowances.push({ label: CP22_FIXED_ALLOWANCE_LABEL, amount: asMoney(comp.monthlyAllowance) });
     }
-    for (const r of recurring) allowances.push({ label: r.label || r.name, amount: asMoney(r.amount) });
+    for (const r of recurring) cashAllowances.push({ label: r.label || r.name, amount: asMoney(r.amount) });
 
     // Derived, not stored: a contract or internship states its dates, everything else is Permanent. Left
     // editable in the downloaded file either way — this is the one pre-filled box that is a judgement.
@@ -847,7 +913,7 @@ export function cp22Particulars(
       companyId: base.companyId,
       employer: {
         name: base.companyName,
-        addressLines: addressLines({
+        addressLines: employerAddressLines({
           line1: base.companyLine1,
           line2: base.companyLine2,
           line3: base.companyLine3,
@@ -860,10 +926,17 @@ export function cp22Particulars(
       },
       employee: {
         fullName: base.fullName,
-        natureOfEmployment: current?.title ?? null,
+        // B15 Jawatan and B17 Jenis pekerjaan are DIFFERENT QUESTIONS, and the 2020 page asked only one of
+        // them. The job title is the designation; the nature of employment is the KIND of engagement, which
+        // lives on ASSIGNMENT (see the trap noted above the `current` query) and is written back in the
+        // stored vocabulary rather than reworded into LHDN's.
+        designation: current?.title ?? null,
+        natureOfEmployment: current?.employmentType
+          ? current.employmentType.charAt(0).toUpperCase() + current.employmentType.slice(1)
+          : null,
         commencementDate: base.hiredOn,
         expectedDuration,
-        residentialAddressLines: addressLines({
+        residentialAddress: cp22Address({
           line1: base.permLine1,
           line2: base.permLine2,
           line3: base.permLine3,
@@ -871,7 +944,7 @@ export function cp22Particulars(
           city: base.permCity,
           state: base.permState,
         }),
-        correspondenceAddressLines: addressLines({
+        correspondenceAddress: cp22Address({
           line1: base.corrLine1,
           line2: base.corrLine2,
           line3: base.corrLine3,
@@ -889,12 +962,15 @@ export function cp22Particulars(
         dateOfBirth: base.dateOfBirth ?? null,
         maritalStatus: base.maritalStatus ?? null,
       },
-      spouse: spouse ? { fullName: spouse.fullName, icOrPassport: spouse.icOrPassport ?? null } : null,
+      // C4 is new on this edition, and employeeDependent.phone already holds it — no migration needed.
+      spouse: spouse
+        ? { fullName: spouse.fullName, icOrPassport: spouse.icOrPassport ?? null, phone: spouse.phone ?? null }
+        : null,
       pay: {
-        monthlyFixedRemuneration: comp ? asMoney(comp.basicSalary) : null,
-        allowances,
+        salaryAndOvertime: comp ? asMoney(comp.basicSalary) : null,
+        cashAllowances,
       },
-      signatory,
+      declarant,
       today,
     };
   });

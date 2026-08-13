@@ -76,6 +76,16 @@ export type Cp22Field = {
    * is ordered. Suffixed where one label owns several boxes (B12P/B12T/B12S are Poskod/Bandar/Negeri).
    */
   code: string;
+  /**
+   * THE FORM'S OWN PRINTED LABEL, bilingual, exactly as LHDN sets it beside the box.
+   *
+   * NOT AN i18n KEY, and deliberately so. This is not UI chrome the app owns the words for — it is what
+   * the government printed on the page the operator is looking at and keying into MyTax. Translating
+   * "Nama majikan / Employer's name" into Thai would make the text export impossible to reconcile against
+   * the PDF next to it. It lives here rather than in six catalogues for the same reason the artwork lives
+   * in public/forms: it is the agency's, not ours. (`node scripts/i18n-check.mjs` is therefore unaffected.)
+   */
+  label: string;
   /** AcroForm field name. Stable — it is what an operator's PDF viewer shows and what the tests address. */
   name: string;
   type: Cp22FieldType;
@@ -168,144 +178,144 @@ const ruleRect = (r: { x0: number; x1: number; baseline: number }): Cp22Rect => 
  */
 export const CP22_FIELDS: Cp22Field[] = [
   // ── A. MAKLUMAT MAJIKAN / PARTICULARS OF EMPLOYER ────────────────────────────────────────────────
-  { code: 'A1', name: 'employerName', type: 'multirow', page: 0, rows: 2, prefilled: true,
+  { code: 'A1', label: 'Nama majikan / Employer\'s name', name: 'employerName', type: 'multirow', page: 0, rows: 2, prefilled: true,
     rect: { x: 41.04, y: 630.82, width: 253.85, height: 19.8 },
     moreRows: [{ x: 41.04, y: 610.42, width: 253.85, height: 19.92 }] },
-  { code: 'A2', name: 'employerAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
+  { code: 'A2', label: 'Alamat majikan / Employer\'s address', name: 'employerAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
     rect: { x: 318.89, y: 630.82, width: 257.45, height: 19.8 },
     moreRows: [
       { x: 318.89, y: 610.42, width: 257.45, height: 19.92 },
       { x: 318.89, y: 589.99, width: 257.45, height: 19.95 },
     ] },
   // The form PRINTS the "E" of the employer number to the left of this box, so the box holds the rest.
-  { code: 'A3', name: 'employerNo', type: 'text', page: 0, prefilled: true,
+  { code: 'A3', label: 'No. majikan / Employer\'s no.', name: 'employerNo', type: 'text', page: 0, prefilled: true,
     rect: { x: 163.22, y: 589.99, width: 131.67, height: 19.95 } },
   // NOT PREFILLED — see CP22_UNFILLABLE. There is no employer e-mail column anywhere in the schema.
-  { code: 'A4', name: 'employerEmail', type: 'text', page: 0, prefilled: false,
+  { code: 'A4', label: 'e-Mel / e-Mail', name: 'employerEmail', type: 'text', page: 0, prefilled: false,
     rect: { x: 99.14, y: 569.71, width: 195.75, height: 19.8 } },
-  { code: 'A5', name: 'employerPhone', type: 'text', page: 0, prefilled: true,
+  { code: 'A5', label: 'No. telefon / Telephone no.', name: 'employerPhone', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 569.71, width: 128.67, height: 19.8 } },
 
   // ── B. MAKLUMAT PEKERJA BAHARU / PARTICULARS OF NEW EMPLOYEE ─────────────────────────────────────
-  { code: 'B1', name: 'employeeName', type: 'multirow', page: 0, rows: 2, prefilled: true,
+  { code: 'B1', label: 'Nama penuh / Full name', name: 'employeeName', type: 'multirow', page: 0, rows: 2, prefilled: true,
     rect: { x: 168.38, y: 534.67, width: 407.96, height: 19.92 },
     moreRows: [{ x: 168.38, y: 514.39, width: 407.96, height: 19.8 }] },
-  { code: 'B2', name: 'incomeTaxNo', type: 'text', page: 0, prefilled: true,
+  { code: 'B2', label: 'No. cukai pendapatan / Income tax no.', name: 'incomeTaxNo', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 493.99, width: 126.51, height: 19.92 } },
-  { code: 'B3', name: 'icNo', type: 'text', page: 0, prefilled: true,
+  { code: 'B3', label: 'No. pengenalan / Identification no.', name: 'icNo', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 493.99, width: 128.67, height: 19.92 } },
-  { code: 'B4', name: 'currentPassportNo', type: 'text', page: 0, prefilled: true,
+  { code: 'B4', label: 'No. pasport semasa / Current passport no.', name: 'currentPassportNo', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 473.23, width: 126.51, height: 20.28 } },
-  { code: 'B5', name: 'passportRegisteredWithIrbm', type: 'text', page: 0, prefilled: false,
+  { code: 'B5', label: 'No. pasport didaftar dengan LHDNM / Passport no. registered with IRBM', name: 'passportRegisteredWithIrbm', type: 'text', page: 0, prefilled: false,
     rect: { x: 490.06, y: 473.23, width: 86.28, height: 20.28 } },
-  { code: 'B6', name: 'citizen', type: 'text', page: 0, prefilled: true,
+  { code: 'B6', label: 'Warganegara / Citizen', name: 'citizen', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 452.83, width: 126.51, height: 19.92 } },
-  { code: 'B7', name: 'gender', type: 'text', page: 0, prefilled: true,
+  { code: 'B7', label: 'Jantina / Gender', name: 'gender', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 452.83, width: 128.67, height: 19.92 } },
-  { code: 'B8', name: 'dateOfBirth', type: 'text', page: 0, prefilled: true,
+  { code: 'B8', label: 'Tarikh lahir / Date of birth', name: 'dateOfBirth', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 432.53, width: 126.51, height: 19.82 } },
-  { code: 'B9', name: 'maritalStatus', type: 'text', page: 0, prefilled: true,
+  { code: 'B9', label: 'Status perkahwinan / Marital status', name: 'maritalStatus', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 432.53, width: 128.67, height: 19.82 } },
-  { code: 'B10', name: 'employeePhone', type: 'text', page: 0, prefilled: true,
+  { code: 'B10', label: 'No. telefon / Telephone no.', name: 'employeePhone', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 412.13, width: 126.51, height: 19.92 } },
-  { code: 'B11', name: 'employeeEmail', type: 'text', page: 0, prefilled: true, fontSize: 8,
+  { code: 'B11', label: 'e-Mel / e-Mail', name: 'employeeEmail', type: 'text', page: 0, prefilled: true, fontSize: 8,
     rect: { x: 404.11, y: 412.13, width: 172.23, height: 19.92 } },
 
   // B12/B13 ARE THE r175a SHAPE, RELOCATED. Three free rows for the street, and then Poskod, Bandar and
   // Negeri each get their OWN printed box. Folding postcode/town/state into a tail line — which is what
   // the 2020 map needed and what core/reporting.ts used to do — would put the state in a free row and
   // leave three printed boxes empty. The address is SPLIT at the source instead; see `cp22Particulars`.
-  { code: 'B12', name: 'residentialAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
+  { code: 'B12', label: 'Alamat kediaman yang terkini / Current residential address', name: 'residentialAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
     rect: { x: 41.04, y: 371.45, width: 253.85, height: 19.92 },
     moreRows: [
       { x: 41.04, y: 351.17, width: 253.85, height: 19.8 },
       { x: 41.04, y: 330.77, width: 253.85, height: 19.92 },
     ] },
-  { code: 'B12P', name: 'residentialPostcode', type: 'text', page: 0, prefilled: true,
+  { code: 'B12P', label: 'Poskod / Postcode', name: 'residentialPostcode', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 310.37, width: 126.51, height: 19.92 } },
-  { code: 'B12T', name: 'residentialTown', type: 'text', page: 0, prefilled: true,
+  { code: 'B12T', label: 'Bandar / Town', name: 'residentialTown', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 290.09, width: 126.51, height: 19.8 } },
-  { code: 'B12S', name: 'residentialState', type: 'text', page: 0, prefilled: true,
+  { code: 'B12S', label: 'Negeri / State', name: 'residentialState', type: 'text', page: 0, prefilled: true,
     rect: { x: 168.38, y: 269.54, width: 126.51, height: 20.07 } },
-  { code: 'B13', name: 'correspondenceAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
+  { code: 'B13', label: 'Alamat surat-menyurat yang terkini / Current correspondence address', name: 'correspondenceAddress', type: 'multirow', page: 0, rows: 3, prefilled: true,
     rect: { x: 318.89, y: 371.45, width: 257.45, height: 19.92 },
     moreRows: [
       { x: 318.89, y: 351.17, width: 257.45, height: 19.8 },
       { x: 318.89, y: 330.77, width: 257.45, height: 19.92 },
     ] },
-  { code: 'B13P', name: 'correspondencePostcode', type: 'text', page: 0, prefilled: true,
+  { code: 'B13P', label: 'Poskod / Postcode', name: 'correspondencePostcode', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 310.37, width: 128.67, height: 19.92 } },
-  { code: 'B13T', name: 'correspondenceTown', type: 'text', page: 0, prefilled: true,
+  { code: 'B13T', label: 'Bandar / Town', name: 'correspondenceTown', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 290.09, width: 128.67, height: 19.8 } },
-  { code: 'B13S', name: 'correspondenceState', type: 'text', page: 0, prefilled: true,
+  { code: 'B13S', label: 'Negeri / State', name: 'correspondenceState', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 269.54, width: 128.67, height: 20.07 } },
-  { code: 'B13X', name: 'correspondenceIsTaxAgent', type: 'checkbox', page: 0, prefilled: false,
+  { code: 'B13X', label: 'Tandakan \'X\' jika alamat di B13 adalah alamat ejen cukai / Enter \'X\' if the address in B13 is a tax agent\'s address', name: 'correspondenceIsTaxAgent', type: 'checkbox', page: 0, prefilled: false,
     rect: { x: 318.89, y: 249.38, width: 21.02, height: 19.68 } },
-  { code: 'B14', name: 'commencementDate', type: 'text', page: 0, prefilled: true, fontSize: 8,
+  { code: 'B14', label: 'Tarikh permulaan pekerjaan semasa / Commencement date of current employment', name: 'commencementDate', type: 'text', page: 0, prefilled: true, fontSize: 8,
     rect: { x: 232.13, y: 228.98, width: 62.76, height: 19.92 } },
   // B15 and B17 are DIFFERENT QUESTIONS and the 2020 form had only one of them. B15 Jawatan is the job
   // title; B17 Jenis pekerjaan is the KIND of employment (permanent / contract / intern). The 2020 map's
   // single `natureOfEmployment` box carried the title, so the title moves to B15 and B17 is genuinely new.
-  { code: 'B15', name: 'designation', type: 'text', page: 0, prefilled: true,
+  { code: 'B15', label: 'Jawatan / Designation', name: 'designation', type: 'text', page: 0, prefilled: true,
     rect: { x: 404.11, y: 228.98, width: 172.23, height: 19.92 } },
-  { code: 'B16', name: 'expectedDuration', type: 'text', page: 0, prefilled: true, fontSize: 8,
+  { code: 'B16', label: 'Tempoh pekerjaan yang dijangkakan / Expected duration of employment', name: 'expectedDuration', type: 'text', page: 0, prefilled: true, fontSize: 8,
     rect: { x: 232.13, y: 208.22, width: 62.76, height: 20.28 } },
-  { code: 'B17', name: 'natureOfEmployment', type: 'text', page: 0, prefilled: true,
+  { code: 'B17', label: 'Jenis pekerjaan / Nature of employment', name: 'natureOfEmployment', type: 'text', page: 0, prefilled: true,
     rect: { x: 404.11, y: 208.22, width: 172.23, height: 20.28 } },
 
   // ── C. MAKLUMAT SUAMI / ISTERI / PARTICULARS OF HUSBAND / WIFE ───────────────────────────────────
-  { code: 'C1', name: 'spouseName', type: 'multirow', page: 0, rows: 2, prefilled: true,
+  { code: 'C1', label: 'Nama penuh suami / isteri / Full name of husband / wife', name: 'spouseName', type: 'multirow', page: 0, rows: 2, prefilled: true,
     rect: { x: 41.04, y: 147.38, width: 253.85, height: 19.92 },
     moreRows: [{ x: 41.04, y: 126.98, width: 253.85, height: 19.92 }] },
-  { code: 'C2', name: 'spouseIcOrPassport', type: 'text', page: 0, prefilled: true,
+  { code: 'C2', label: 'No. pengenalan / pasport / Identification / passport no.', name: 'spouseIcOrPassport', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 167.78, width: 128.67, height: 20.28 } },
-  { code: 'C3', name: 'spouseIncomeTaxNo', type: 'text', page: 0, prefilled: false,
+  { code: 'C3', label: 'No. cukai pendapatan / Income tax no.', name: 'spouseIncomeTaxNo', type: 'text', page: 0, prefilled: false,
     rect: { x: 447.67, y: 147.38, width: 128.67, height: 19.92 } },
-  { code: 'C4', name: 'spousePhone', type: 'text', page: 0, prefilled: true,
+  { code: 'C4', label: 'No. telefon / Telephone no.', name: 'spousePhone', type: 'text', page: 0, prefilled: true,
     rect: { x: 447.67, y: 126.98, width: 128.67, height: 19.92 } },
 
   // ── D. MAKLUMAT SARAAN BULANAN / PARTICULARS OF MONTHLY REMUNERATION (page 2) ────────────────────
   // The amount column, right-aligned the way money is read. The form prints "(RM)" in the column head, so
   // no value carries a currency prefix.
-  { code: 'D1', name: 'd1SalaryOvertime', type: 'text', page: 1, prefilled: true, alignRight: true,
+  { code: 'D1', label: 'Gaji, bayaran, upah dan kerja lebih masa / Salary, fees, wages, and overtime pay', name: 'd1SalaryOvertime', type: 'text', page: 1, prefilled: true, alignRight: true,
     rect: { x: 480.82, y: 727.66, width: 95.28, height: 22.68 } },
-  { code: 'D2', name: 'd2LeavePay', type: 'text', page: 1, prefilled: false, alignRight: true,
+  { code: 'D2', label: 'Gaji cuti / Leave pay', name: 'd2LeavePay', type: 'text', page: 1, prefilled: false, alignRight: true,
     rect: { x: 480.82, y: 704.5, width: 95.28, height: 22.68 } },
-  { code: 'D3', name: 'd3CommissionBonus', type: 'text', page: 1, prefilled: false, alignRight: true,
+  { code: 'D3', label: 'Komisen dan bonus / Commission and bonus', name: 'd3CommissionBonus', type: 'text', page: 1, prefilled: false, alignRight: true,
     rect: { x: 480.82, y: 681.22, width: 95.28, height: 22.8 } },
-  { code: 'D4', name: 'd4CashAllowances', type: 'text', page: 1, prefilled: true, alignRight: true,
+  { code: 'D4', label: 'Elaun tunai termasuk cukai ditanggung oleh majikan / Cash allowances including tax borne by the employer', name: 'd4CashAllowances', type: 'text', page: 1, prefilled: true, alignRight: true,
     rect: { x: 480.82, y: 620.86, width: 95.28, height: 59.88 } },
-  { code: 'D4ms', name: 'd4SpecifyMs', type: 'rule', page: 1, prefilled: true, fontSize: RULE_FONT_SIZE,
+  { code: 'D4ms', label: 'Nyatakan jenis elaun / Specify the type of allowance', name: 'd4SpecifyMs', type: 'rule', page: 1, prefilled: true, fontSize: RULE_FONT_SIZE,
     foldWith: '; ', rect: ruleRect(CP22_RULE_BASELINES.d4SpecifyMs) },
-  { code: 'D4en', name: 'd4SpecifyEn', type: 'rule', page: 1, prefilled: true, fontSize: RULE_FONT_SIZE,
+  { code: 'D4en', label: 'Nyatakan jenis elaun / Specify the type of allowance (English rule)', name: 'd4SpecifyEn', type: 'rule', page: 1, prefilled: true, fontSize: RULE_FONT_SIZE,
     foldWith: '; ', rect: ruleRect(CP22_RULE_BASELINES.d4SpecifyEn) },
-  { code: 'D5', name: 'd5BenefitsInKind', type: 'text', page: 1, prefilled: false, alignRight: true,
+  { code: 'D5', label: 'Manfaat berupa barangan yang layak dikenakan cukai / Benefits in kind subject to tax', name: 'd5BenefitsInKind', type: 'text', page: 1, prefilled: false, alignRight: true,
     rect: { x: 480.82, y: 597.67, width: 95.28, height: 22.71 } },
-  { code: 'D6', name: 'd6LivingAccommodation', type: 'text', page: 1, prefilled: false, alignRight: true,
+  { code: 'D6', label: 'Nilai tempat kediaman yang disediakan majikan / Value of living accommodation provided by the employer', name: 'd6LivingAccommodation', type: 'text', page: 1, prefilled: false, alignRight: true,
     rect: { x: 480.82, y: 574.51, width: 95.28, height: 22.68 } },
-  { code: 'D7', name: 'd7AllowancesInKind', type: 'text', page: 1, prefilled: false, alignRight: true,
+  { code: 'D7', label: 'Elaun-elaun selain daripada wang / Allowances in kind', name: 'd7AllowancesInKind', type: 'text', page: 1, prefilled: false, alignRight: true,
     rect: { x: 480.82, y: 549.55, width: 95.28, height: 24.48 } },
-  { code: 'D8', name: 'd8OtherPayments', type: 'text', page: 1, prefilled: false, alignRight: true,
+  { code: 'D8', label: 'Bayaran-bayaran lain / Other payments', name: 'd8OtherPayments', type: 'text', page: 1, prefilled: false, alignRight: true,
     rect: { x: 480.82, y: 521.71, width: 95.28, height: 27.36 } },
-  { code: 'D8ms', name: 'd8SpecifyMs', type: 'rule', page: 1, prefilled: false, fontSize: RULE_FONT_SIZE,
+  { code: 'D8ms', label: 'Jika ada, nyatakan / If any, please specify', name: 'd8SpecifyMs', type: 'rule', page: 1, prefilled: false, fontSize: RULE_FONT_SIZE,
     rect: ruleRect(CP22_RULE_BASELINES.d8SpecifyMs) },
-  { code: 'D8en', name: 'd8SpecifyEn', type: 'rule', page: 1, prefilled: false, fontSize: RULE_FONT_SIZE,
+  { code: 'D8en', label: 'Jika ada, nyatakan / If any, please specify (English rule)', name: 'd8SpecifyEn', type: 'rule', page: 1, prefilled: false, fontSize: RULE_FONT_SIZE,
     rect: ruleRect(CP22_RULE_BASELINES.d8SpecifyEn) },
   // JUMLAH / TOTAL — its own heavier-ruled box, which is why the derivation had to bridge the rule the
   // crossing vertical breaks in two; without that bridge D8's amount cell and this one read as one 51pt box.
-  { code: 'DT', name: 'dTotal', type: 'text', page: 1, prefilled: true, alignRight: true,
+  { code: 'DT', label: 'JUMLAH / TOTAL', name: 'dTotal', type: 'text', page: 1, prefilled: true, alignRight: true,
     rect: { x: 480.82, y: 497.95, width: 95.28, height: 22.8 } },
 
   // ── E. MAKLUMAT MAJIKAN TERDAHULU DI MALAYSIA / PREVIOUS EMPLOYER IN MALAYSIA ────────────────────
   // NOT PREFILLED, both of them: no employment_history / previous_employer table exists, and
   // employeeDependent.companyName / employerAddress are the SPOUSE'S employer and are NOT this.
-  { code: 'E1', name: 'previousEmployerName', type: 'multirow', page: 1, rows: 3, prefilled: false,
+  { code: 'E1', label: 'Nama majikan / Employer\'s name', name: 'previousEmployerName', type: 'multirow', page: 1, rows: 3, prefilled: false,
     rect: { x: 41.04, y: 438.67, width: 255.77, height: 19.8 },
     moreRows: [
       { x: 41.04, y: 418.25, width: 255.77, height: 19.94 },
       { x: 41.04, y: 397.97, width: 255.77, height: 19.8 },
     ] },
-  { code: 'E2', name: 'previousEmployerAddress', type: 'multirow', page: 1, rows: 3, prefilled: false,
+  { code: 'E2', label: 'Alamat majikan / Employer\'s address', name: 'previousEmployerAddress', type: 'multirow', page: 1, rows: 3, prefilled: false,
     rect: { x: 319.85, y: 438.67, width: 256.25, height: 19.8 },
     moreRows: [
       { x: 319.85, y: 418.25, width: 256.25, height: 19.94 },
@@ -313,16 +323,16 @@ export const CP22_FIELDS: Cp22Field[] = [
     ] },
 
   // ── F. AKUAN PEGAWAI YANG DIBERI KUASA / DECLARATION BY AUTHORISED OFFICER ───────────────────────
-  { code: 'F1', name: 'declarantName', type: 'multirow', page: 1, rows: 2, prefilled: true,
+  { code: 'F1', label: 'Saya / I', name: 'declarantName', type: 'multirow', page: 1, rows: 2, prefilled: true,
     rect: { x: 69.02, y: 355.49, width: 226.35, height: 20.28 },
     moreRows: [{ x: 69.02, y: 335.21, width: 226.35, height: 19.8 }] },
-  { code: 'F2', name: 'declarantIcOrPassport', type: 'text', page: 1, prefilled: true,
+  { code: 'F2', label: 'No. pengenalan / pasport / Identification / passport no.', name: 'declarantIcOrPassport', type: 'text', page: 1, prefilled: true,
     rect: { x: 407.47, y: 355.49, width: 152.67, height: 20.28 } },
-  { code: 'F3', name: 'declarantDesignation', type: 'text', page: 1, prefilled: true,
+  { code: 'F3', label: 'Jawatan / Designation', name: 'declarantDesignation', type: 'text', page: 1, prefilled: true,
     rect: { x: 105.14, y: 279.77, width: 190.23, height: 19.92 } },
-  { code: 'F4', name: 'declarantSignature', type: 'text', page: 1, prefilled: false,
+  { code: 'F4', label: 'Tandatangan / Signature', name: 'declarantSignature', type: 'text', page: 1, prefilled: false,
     rect: { x: 388.87, y: 253.94, width: 171.27, height: 45.75 } },
-  { code: 'F5', name: 'declarationDate', type: 'text', page: 1, prefilled: true,
+  { code: 'F5', label: 'Tarikh / Date', name: 'declarationDate', type: 'text', page: 1, prefilled: true,
     rect: { x: 105.14, y: 253.94, width: 92.31, height: 19.8 } },
 ];
 
@@ -352,6 +362,22 @@ export const CP22_FIELDS: Cp22Field[] = [
  *   F4   the signature itself.
  */
 export const CP22_UNFILLABLE = CP22_FIELDS.filter((f) => !f.prefilled).map((f) => f.code);
+
+/**
+ * The six section headings, in the form's own words and order. Same reasoning as `Cp22Field.label`: these
+ * are the agency's headings, printed on the page, and are not translated.
+ */
+export const CP22_SECTIONS = [
+  { letter: 'A', label: 'MAKLUMAT MAJIKAN / PARTICULARS OF EMPLOYER' },
+  { letter: 'B', label: 'MAKLUMAT PEKERJA BAHARU / PARTICULARS OF NEW EMPLOYEE' },
+  { letter: 'C', label: 'MAKLUMAT SUAMI / ISTERI (JIKA BERKAHWIN) / PARTICULARS OF HUSBAND / WIFE (IF MARRIED)' },
+  { letter: 'D', label: 'MAKLUMAT SARAAN BULANAN / PARTICULARS OF MONTHLY REMUNERATION' },
+  { letter: 'E', label: 'MAKLUMAT MAJIKAN TERDAHULU DI MALAYSIA / PARTICULARS OF PREVIOUS EMPLOYER IN MALAYSIA' },
+  { letter: 'F', label: 'AKUAN PEGAWAI YANG DIBERI KUASA / DECLARATION BY AUTHORISED OFFICER' },
+] as const;
+
+/** Which section a field belongs to — the first letter of its code, which is the form's own scheme. */
+export const cp22Section = (f: Cp22Field): string => f.code.charAt(0);
 
 /** Every widget rect on the form, expanded — a `multirow` block contributes one per printed row. */
 export function cp22Widgets(f: Cp22Field): Cp22Rect[] {
