@@ -6087,12 +6087,20 @@ export async function openLeaveYear(
     // HR writes a table, watches it save, and never sees a day of it reach an employee, which is verbatim
     // the defect 783bf55a / baea8e5b were raised for.
     //
-    // ⚠️ r193 FAULT 1 — THIS LINE WAS `leaveTypeIdsWithTemplatesAt(tx, yearStart)` AND IT WAS THE PRIMARY
-    // BLOCKER. It asked "which tables were in force ON 1 JANUARY". A tenant who built their entitlement
-    // tables in August has none in force on 1 January, so the set came back EMPTY, `types` filtered to
-    // nothing, and this sweep granted NOBODY ANYTHING for ANY leave type — the eligibility layer that two
-    // earlier diagnoses blamed was never even reached. The question is a WINDOW: which types have a table
-    // in force at any point in this leave year, and from when. See `templateStartsWithinWindow`.
+    // ⚠️ r193 FAULT 1 — THIS LINE WAS `leaveTypeIdsWithTemplatesAt(tx, yearStart)`. It asked "which tables
+    // were in force ON 1 JANUARY", so a tenant who built their entitlement tables in August had none of
+    // them counted and every type configured ONLY that way was never visited by a year-open. On the
+    // reporting account that is the eight custom leave types (Compassionate, Marriage, Study, Examination,
+    // …), each with tables dated 2026-08-01 and each granted nothing all year. The question is a WINDOW:
+    // which types have a table in force at any point in this leave year, and from when. See
+    // `templateStartsWithinWindow`.
+    //
+    // BE PRECISE ABOUT WHAT THIS DID *NOT* CAUSE, because the round's plan overstated it and a wrong story
+    // here invites the wrong fix next time. The union with `standing` below means ANNUAL, SICK and
+    // HOSPITALIZATION are ALWAYS in `types` whatever this reader returns — they were visited every run.
+    // They granted nothing for their own reasons: ANNUAL is an earned method (accrueEarnedLeave's
+    // business, not this sweep's), and SICK and HOSPITALIZATION were stopped by the eligibility
+    // short-circuit fault 3 fixes. "The type list filtered to nothing" was never true.
     const templateStarts = await templateStartsWithinWindow(tx, {
       windowStart: yearStart,
       windowEnd: yearEnd,

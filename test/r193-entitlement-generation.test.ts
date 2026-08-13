@@ -5,13 +5,21 @@
  * rule was missing; both were wrong, and this file exists so no third one is needed. What actually happened
  * is that `openLeaveYear` asked every question AT 1 JANUARY:
  *
- *   FAULT 1  "which entitlement tables were in force on 1 January?" — none, because HR built them all in
- *            August. The leave-type list filtered to EMPTY and the run granted nothing for EVERY type,
- *            never reaching eligibility at all. This is why the earlier advice could not have worked.
+ *   FAULT 1  "which entitlement tables were in force on 1 January?" — 46 of the account's 47 were dated
+ *            2026-08-01 or later, because that is when HR built them, so the eight custom leave types
+ *            configured only through them were never visited by a year-open at all.
  *   FAULT 2  "who was employed on 1 January?" — 22 of 40, because 18 joined during the year. Those 18 were
  *            skipped before any entitlement question was asked.
  *   FAULT 3  a leave type with exactly ONE table still refused to apply it without a rule choosing between
  *            the one option there was.
+ *
+ * ⚠️ THE ROUND'S PLAN OVERSTATED FAULT 1 AND THE CORRECTION IS WORTH KEEPING. It said all 47 tables were
+ * dated August, that the type list therefore filtered to EMPTY, and that this alone explained every leave
+ * type. Measured on production: Hospitalization's single table is dated 2026-01-01, and ANNUAL / SICK /
+ * HOSPITALIZATION are STANDING_LEAVE_CODES that the sweep visits whatever the template reader says. Those
+ * three were reached every run and granted nothing for their OWN reasons — ANNUAL is an earned method
+ * (a different engine's job), SICK and HOSPITALIZATION were stopped by fault 3. The reporter's symptom
+ * was real and identical; the mechanism was two faults, not one.
  *
  * ── WHAT THIS FILE IS REALLY GUARDING ────────────────────────────────────────────────────────────────
  * Not the three fixes. THE IDEMPOTENCY GUARD. Until r193 a year-open grant was always dated 1 January, and

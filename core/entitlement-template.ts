@@ -754,13 +754,18 @@ export async function leaveTypeIdsWithTemplatesAt(tx: Tx, asOf: string): Promise
 /**
  * r193 FAULT 1 — WHEN, INSIDE A WINDOW, EACH LEAVE TYPE'S ENTITLEMENT TABLE STARTS APPLYING.
  *
- * ⚠️ THIS IS THE FIX FOR THE PRIMARY BLOCKER, and it is worth stating the fault plainly because the
- * symptom looked like something else entirely. `leaveTypeIdsWithTemplatesAt` below asks "which tables were
- * in force ON this one date", and `openLeaveYear` asked it at 1 JANUARY. On the reporting account every
- * one of the 47 tables in force carries `valid_from >= 2026-08-01`, because that is the day HR built them.
- * On 1 January 2026 none of them existed, the set came back EMPTY, the sweep's leave-type list filtered to
- * nothing, and Generate Entitlement granted nobody anything for any leave type — never reaching the
- * eligibility layer that two earlier diagnoses blamed.
+ * ⚠️ THIS IS THE FIX FOR ONE OF THE TWO BLOCKERS, and it is worth stating plainly because the symptom
+ * looked like something else entirely. `leaveTypeIdsWithTemplatesAt` below asks "which tables were in
+ * force ON this one date", and `openLeaveYear` asked it at 1 JANUARY. On the reporting account 46 of the
+ * 47 tables in force carry `valid_from >= 2026-08-01`, because that is the day HR built them — so on
+ * 1 January 2026 the answer was a SINGLE leave type (Hospitalization, whose one table is dated
+ * 2026-01-01), and the eight custom types configured in August were never visited by a year-open at all.
+ *
+ * MEASURED, NOT ASSUMED, AND IT CORRECTS THE ROUND'S OWN PLAN: that plan said all 47 carried
+ * `valid_from >= 2026-08-01` and that the set therefore came back EMPTY. It did not — one table predates
+ * the year, and the three statutory standing codes are in the sweep's type list whatever this reader says
+ * (see `openLeaveYear`'s own comment). The net symptom the reporter saw was still "nothing generated",
+ * but for the standing types the cause was the eligibility short-circuit below, not this date.
  *
  * So the question changes from a point to a WINDOW: which types have a table in force at ANY point in the
  * leave year, and FROM WHEN. The value is `max(windowStart, earliest validFrom in force during the
