@@ -25,7 +25,7 @@
  * those structurally and scripts/i18n-check.mjs pins parity.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
@@ -437,5 +437,160 @@ describe('4e403268 · the grouped listing', () => {
     expect(screen.queryAllByRole('button', { name: 'Edit' })).toHaveLength(0);
     await user.click(screen.getByRole('button', { name: 'By transaction' }));
     expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(3);
+  });
+});
+
+/**
+ * r191 — 009c8a37 (panel order) and e1e33ca0 (the payroll month leaves the panel), on the ONE screen that
+ * does not render the shared `EmployeeScopePanel`.
+ *
+ * WHY THESE LIVE HERE AND NOT IN employee-scope-panel.dom.test.tsx. Individual Transaction draws its own
+ * employee list over its own state — `EMPLOYEE_CAP` 50 against the shared panel's 25, a different row
+ * subtitle, and selection held in client state behind `requestSelect`'s unsaved-form guard rather than a
+ * `router.push`. The two were reordered to match BY HAND, so a test of the shared component proves nothing
+ * about this one. This file already renders the whole workspace, which is what these need.
+ *
+ * WHAT e1e33ca0 IS AND IS NOT. It is a JSX MOVE. Requirement 6 of the request ("changing the month must not
+ * make me pick the employee again") already held before this round and still holds — `periodFilter` is part
+ * of `panelKey`, so changing it refires the fetch for the SAME `employmentId` and never touches
+ * `selectedId`. The assertions below pin that it STAYED true across the move, which is the only thing a
+ * move can break.
+ */
+describe('r191 · 009c8a37 + e1e33ca0 — the panel does one job, the toolbar does the other', () => {
+  const PANEL: TxnPanel = {
+    ...EMPTY_PANEL,
+    rows: [panelRow({ id: 'r1', txnDate: '2026-08-01', quantity: '2.00', amount: '77.88' })],
+    totals: { ...EMPTY_PANEL.totals, count: 1, total: '77.88', pendingCount: 1, pendingTotal: '77.88' },
+  };
+
+  it('009c8a37 — search first, the names next, the four narrowers behind a CLOSED More filters', async () => {
+    const { container } = renderWorkspace(PANEL);
+    const row = await screen.findByRole('button', { name: /Irwin Law/ });
+
+    const fold = container.querySelector('details')!;
+    expect(fold, 'the employee filters must sit behind a fold').not.toBeNull();
+    expect(fold.open, 'closed on arrival — the reporter asked for closed every visit').toBe(false);
+    expect(within(fold).getByText('More filters')).toBeInTheDocument();
+
+    // Search employee is above the names; the fold is below them. DOM order is the only way to assert
+    // that here — jsdom applies no CSS and computes no layout.
+    const search = screen.getByLabelText('Search employee');
+    expect(search.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    for (const caption of ['Company', 'Business unit', 'Department', 'Status']) {
+      expect(within(fold).getByLabelText(caption), `${caption} belongs inside More filters`).toBeInTheDocument();
+    }
+    // …and the search box does NOT, because it is what the reorder exists to put first.
+    expect(within(fold).queryByLabelText('Search employee')).toBeNull();
+  });
+
+  it('009c8a37 — this screen finally has a Reset, and it clears the search and the hidden filters', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWorkspace(PANEL);
+    await screen.findByRole('button', { name: /Irwin Law/ });
+    const fold = container.querySelector('details')!;
+
+    await user.type(screen.getByLabelText('Search employee'), 'nobody-by-that-name');
+    await user.selectOptions(screen.getByLabelText('Status'), 'ended');
+    expect(screen.getByText('No matching employees.')).toBeInTheDocument();
+    // A filter narrowing from behind a closed fold has to say so, or a short list looks like a fault.
+    expect(within(fold).getByText('1 on')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(await screen.findByRole('button', { name: /Irwin Law/ })).toBeInTheDocument();
+    expect((screen.getByLabelText('Search employee') as HTMLInputElement).value).toBe('');
+    expect(within(fold).queryByText('1 on')).toBeNull();
+    // Company is a SINGLE-company tenant here. Reset restores the initialiser rather than blanking it —
+    // the dropdown offers no blank option when there is one company, so a blank is unreachable state.
+    expect(screen.getByLabelText('Company')).toHaveValue('c1');
+  });
+
+  it('009c8a37 — a lone pre-set Company on a one-company tenant is NOT counted as a filter', async () => {
+    const { container } = renderWorkspace(PANEL);
+    await screen.findByRole('button', { name: /Irwin Law/ });
+    const fold = container.querySelector('details')!;
+    expect(screen.getByLabelText('Company')).toHaveValue('c1');
+    // A permanent "1 on" nobody can clear would teach the reader to ignore the badge entirely.
+    expect(within(fold).queryByText(/\bon$/)).toBeNull();
+  });
+
+  it('e1e33ca0 — Payroll period sits beside Search transactions, and is NOT an employee filter', async () => {
+    const { container } = renderWorkspace(PANEL);
+    // The toolbar is part of the selected employee's transactions, so somebody has to be picked first.
+    fireEvent.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+
+    const period = await screen.findByLabelText('Payroll period');
+    const txnSearch = screen.getByLabelText('Search transactions');
+    const clear = screen.getByRole('button', { name: 'Clear' });
+
+    // Beside Search transactions, on the toolbar — the two controls that narrow the rows below, together.
+    const toolbar = period.closest('div')!.parentElement!;
+    expect(toolbar).toContainElement(txnSearch);
+    expect(toolbar).toContainElement(clear);
+
+    // NOT hidden inside More filters either: it was never an employee filter, so folding it in with them
+    // would have re-made the exact mistake this item fixes.
+    expect(period.closest('details')).toBeNull();
+    expect(within(container.querySelector('details')!).queryByLabelText('Payroll period')).toBeNull();
+    // It is below the employee list, not above it.
+    const row = screen.getByRole('button', { name: /Irwin Law/ });
+    expect(row.compareDocumentPosition(period) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // The entry form's own month box is still "Month", so neither label is ambiguous.
+    expect(screen.queryAllByLabelText('Payroll period')).toHaveLength(1);
+  });
+
+  it('e1e33ca0 — changing the month refetches the SAME employee, without re-selecting them', async () => {
+    renderWorkspace(PANEL);
+    const row = await screen.findByRole('button', { name: /Irwin Law/ });
+    fireEvent.click(row);
+    await waitFor(() => expect(panelMock).toHaveBeenCalled());
+    panelMock.mockClear();
+
+    fireEvent.change(await screen.findByLabelText('Payroll period'), { target: { value: '2026-07' } });
+
+    await waitFor(() =>
+      expect(panelMock).toHaveBeenCalledWith({ companyId: 'c1', employmentId: 'e1', payPeriod: '2026-07' }),
+    );
+    // THE POINT OF THE REQUIREMENT: the same employment, and the selection marker has not moved.
+    expect(panelMock.mock.calls.every((c) => (c[0] as { employmentId: string }).employmentId === 'e1')).toBe(true);
+    expect(screen.getByRole('button', { name: /Irwin Law/ })).toHaveAttribute('aria-current', 'true');
+    // And the "Showing … only" note stays in the totals strip, where it already was.
+    expect(await screen.findByText('Showing 2026-07 only')).toBeInTheDocument();
+  });
+
+  it('e1e33ca0 — Clear empties the month and the transaction search, and brings back every month', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(PANEL);
+    fireEvent.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+    await waitFor(() => expect(panelMock).toHaveBeenCalled());
+
+    fireEvent.change(await screen.findByLabelText('Payroll period'), { target: { value: '2026-07' } });
+    await user.type(screen.getByLabelText('Search transactions'), 'bonus');
+    expect(await screen.findByText('Showing 2026-07 only')).toBeInTheDocument();
+    panelMock.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+
+    expect((screen.getByLabelText('Payroll period') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Search transactions') as HTMLInputElement).value).toBe('');
+    await waitFor(() =>
+      expect(panelMock).toHaveBeenCalledWith({ companyId: 'c1', employmentId: 'e1', payPeriod: '' }),
+    );
+    expect(screen.queryByText('Showing 2026-07 only')).toBeNull();
+    expect(screen.getByRole('button', { name: /Irwin Law/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('e1e33ca0 — Add still opens on the month set on the toolbar, so it is set once', async () => {
+    const user = userEvent.setup();
+    renderWorkspace(PANEL);
+    fireEvent.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+    fireEvent.change(await screen.findByLabelText('Payroll period'), { target: { value: '2026-07' } });
+
+    await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
+    // `startCreate` seeds the new entry from `periodFilter`. It reads the state, not the control's
+    // position, which is exactly why the move had to keep the state in this component scope.
+    expect(screen.getByLabelText('Month')).toHaveValue('2026-07');
   });
 });
