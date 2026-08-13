@@ -593,17 +593,11 @@ export default async function StatutoryFormsPage({
                 <input type="hidden" name="companyId" value={companyId} />
                 <input type="hidden" name="year" value={year} />
                 <input type="hidden" name="month" value={month} />
-                {/* TYPED, not picked: we hold no list of LHDN branches, and a dropdown built from one we
-                    invented would be worse than a blank box. What they type lands in box 1 of EVERY page. */}
-                <Field label={tCp22('branchLabel')} className="w-full sm:w-72">
-                  <input
-                    type="text"
-                    name="lhdnBranch"
-                    maxLength={240}
-                    placeholder={tCp22('branchPlaceholder')}
-                    className={inputCls}
-                  />
-                </Field>
+                {/* 88076362 — THE BRANCH BOX IS GONE FROM HERE, and removing it is the honest move.
+                    It existed to stamp box 1 of the 2020 page's "Kepada / To" block; CP22 [Pin.1/2021]
+                    has no such block, so anything typed here would be silently discarded — a field that
+                    does nothing is worse than no field. The branch now lives on the per-joiner review
+                    screen and in its text export, which say plainly that it does not print. */}
                 <button className={btnPrimary} title={tCp22('downloadAllTitle')}>
                   {tCp22('downloadAll')}
                 </button>
@@ -672,13 +666,13 @@ export default async function StatutoryFormsPage({
                         <td className="px-4 py-2.5 font-medium">{r.name}</td>
                         <td className="px-4 py-2.5 font-mono text-xs">{r.hiredOn}</td>
                         <td className="px-4 py-2.5 text-right">
-                          {/* The single-person document, unchanged — the same link the worklist offers. */}
+                          {/* The single-person REVIEW screen — the same link the worklist offers. */}
                           <Link
-                            href={`/payroll/cp22/${r.employmentId}/pdf`}
-                            title={tCp22('downloadTitle')}
+                            href={`/payroll/cp22/${r.employmentId}/preview`}
+                            title={tCp22('reviewLinkTitle')}
                             className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
                           >
-                            {tCp22('download')}
+                            {tCp22('reviewLink')}
                           </Link>
                         </td>
                       </tr>
@@ -738,12 +732,16 @@ export default async function StatutoryFormsPage({
                       {/* CP22 ONLY. The CP22A leaver notice is a later round and this row says so plainly
                           rather than offering a button that would download the wrong form. */}
                       {w.form === 'CP22' ? (
+                        /* 88076362 — the REVIEW screen, not the download. The reporter's whole complaint
+                           was that pressing this produced a finished form with nowhere to check it
+                           first; the download is one press further on, from a screen that shows every
+                           box. The `/pdf` route is unchanged and still works on its own. */
                         <Link
-                          href={`/payroll/cp22/${w.employmentId}/pdf`}
-                          title={tCp22('downloadTitle')}
+                          href={`/payroll/cp22/${w.employmentId}/preview`}
+                          title={tCp22('reviewLinkTitle')}
                           className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-accent"
                         >
-                          {tCp22('download')}
+                          {tCp22('reviewLink')}
                         </Link>
                       ) : (
                         <span className="text-muted-foreground" title={tCp22('cp22aNotYet')}>

@@ -118,20 +118,34 @@ export function applyCp22Review<T extends Cp22PdfData>(d: T, r: Cp22Review): T {
 }
 
 /**
- * The record as the routes should use it: defaults, then whatever the review screen sent.
+ * THE ONE PLACE a request becomes a final set of five values: the record's defaults, with each box the
+ * request actually carried replacing its default.
+ *
+ * Both the PDF route and the text route go through here, and that is the point. The merge has three cases
+ * per box — absent (keep the default), present-and-empty (clear it), present-and-filled (take it) — and a
+ * second copy of that three-way rule anywhere would be a contract split across two files, which is the
+ * shape trap 17 describes: each half passes its own unit test while the pair disagrees.
+ */
+export function cp22ReviewFrom(d: Cp22PdfData, q: URLSearchParams): Cp22Review {
+  const defaults = cp22ReviewDefaults(d);
+  if (!isCp22Reviewed(q)) return defaults;
+  const sent = readCp22Review(q);
+  const merged = { ...defaults } as Record<string, string | null>;
+  for (const [field, key] of Object.entries(CP22_REVIEW_PARAMS)) {
+    if (q.has(key)) merged[field] = sent[field as keyof Cp22Review];
+  }
+  return merged as unknown as Cp22Review;
+}
+
+/**
+ * The record as the PDF route should render it.
  *
  * A request with no review boxes at all takes the defaults unchanged, which is byte-for-byte the document
  * the worklist link produced before this screen existed.
  */
 export function cp22WithReview<T extends Cp22PdfData>(d: T, q: URLSearchParams): T {
   if (!isCp22Reviewed(q)) return d;
-  const defaults = cp22ReviewDefaults(d);
-  const sent = readCp22Review(q);
-  const merged = { ...defaults } as Record<string, string | null>;
-  for (const [field, key] of Object.entries(CP22_REVIEW_PARAMS)) {
-    if (q.has(key)) merged[field] = sent[field as keyof Cp22Review];
-  }
-  return applyCp22Review(d, merged as unknown as Cp22Review);
+  return applyCp22Review(d, cp22ReviewFrom(d, q));
 }
 
 // ── The plain-text export ───────────────────────────────────────────────────────────────────────────
