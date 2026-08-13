@@ -5371,8 +5371,6 @@
       "bankNoFileFormatGroup": "ธนาคารอื่น (ยังไม่มีรูปแบบไฟล์เงินเดือน)",
       "bankMasterHint": "รายชื่อธนาคารเป็นข้อมูลหลักธนาคารมาเลเซียที่ดูแลมาพร้อมกับผลิตภัณฑ์ — แต่ละรายการมีรหัสเส้นทาง BNM อย่างเป็นทางการ จึงไม่สามารถแก้ไขแยกตามลูกค้าได้",
       "bankAccountAdd": "+ เพิ่มบัญชีธนาคาร",
-      "bankAccountEdit": "แก้ไข",
-      "bankAccountCollapse": "ปิด",
       "bankAccountLabel": "ป้ายกำกับบัญชี",
       "bankAccountLabelHint": "เช่น เงินเดือน — Maybank",
       "bankAccountName": "ชื่อเจ้าของบัญชี",

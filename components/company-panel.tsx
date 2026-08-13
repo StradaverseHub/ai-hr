@@ -484,9 +484,9 @@ function CompanyLogo({
  * by the time it renders, so no part of it may make you choose again: the sections are grouped by TAB,
  * and everything on the selected tab is visible on arrival.
  *
- * It used to fold in four places. The outer one — a chevron row with an `expanded`/`defaultExpanded`
- * pair — is a leftover from when the panel was one row of a client-side company LIST, where collapsing
- * was the point; that listing is now a plain server-rendered table (app/admin/organization/page.tsx)
+ * It used to fold in four places. The outer one — a chevron row with an open-on-mount flag — is a
+ * leftover from when the panel was one row of a client-side company LIST, where collapsing was the
+ * point; that listing is now a plain server-rendered table (app/admin/organization/page.tsx)
  * and this component has exactly ONE caller, which always opened it. Inside it were three more:
  * per-statutory-authority cards, per-bank-account rows, and the "add a bank account" form. Each hid
  * information the reader had already navigated two levels to see. All four are gone.

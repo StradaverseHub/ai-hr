@@ -5371,8 +5371,6 @@
       "bankNoFileFormatGroup": "Other banks (no salary-file format yet)",
       "bankMasterHint": "The bank list is the shared Malaysian bank master maintained with the product — each entry carries its official BNM routing code, so it cannot be edited per customer.",
       "bankAccountAdd": "+ Add a bank account",
-      "bankAccountEdit": "Edit",
-      "bankAccountCollapse": "Close",
       "bankAccountLabel": "Account label",
       "bankAccountLabelHint": "e.g. Payroll — Maybank",
       "bankAccountName": "Account holder name",

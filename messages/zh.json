@@ -5371,8 +5371,6 @@
       "bankNoFileFormatGroup": "其他银行（尚无薪资文件格式）",
       "bankMasterHint": "银行列表是随产品维护的马来西亚银行主数据——每条记录都带有官方 BNM 路由代码，因此无法按客户自行编辑。",
       "bankAccountAdd": "+ 添加银行账户",
-      "bankAccountEdit": "编辑",
-      "bankAccountCollapse": "收起",
       "bankAccountLabel": "账户标签",
       "bankAccountLabelHint": "例如：薪资 — Maybank",
       "bankAccountName": "账户持有人姓名",
