@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Attendance Settings — six loose rows become three categories</title>
+<style>
+  :root{--ink:#12161c;--mut:#5b6472;--line:#dfe3e9;--bad:#b3261e;--badbg:#fdeceb;--good:#1b5e20;--goodbg:#eaf3ec;--a:#1a4fa0;--warn:#8a5a00;--warnbg:#fff6e5}
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 38px;background:#fff;color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--mut);margin:0 0 22px;font-size:13px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 9px;color:var(--mut)}
+  .cols{display:flex;gap:22px;align-items:flex-start}
+  .col{flex:1}
+  .nav{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px}
+  .navhd{padding:9px 14px;font-weight:600;font-size:12.5px;border-bottom:1px solid var(--line)}
+  .navhd.bad{background:var(--badbg);color:var(--bad)} .navhd.good{background:var(--goodbg);color:var(--good)}
+  .row{padding:6px 14px;border-bottom:1px solid #f3f5f7;display:flex;align-items:center;gap:8px}
+  .row:last-child{border-bottom:none}
+  .row.cfg{background:#fdf3f2}
+  .row.grp{font-weight:600;background:#f6f8fb}
+  .ind{padding-left:34px}
+  .ind2{padding-left:50px;color:var(--mut)}
+  .tag{font-size:10px;padding:1px 6px;border-radius:9px;background:#eef1f5;color:var(--mut)}
+  .tag.new{background:#e7f0fb;color:var(--a);font-weight:600}
+  .tag.have{background:var(--goodbg);color:var(--good);font-weight:600}
+  .steps{display:flex;gap:0;margin:18px 0 6px;align-items:center}
+  .step{flex:1;text-align:center;font-size:12px;padding:9px 4px;border:1px solid var(--line);border-right:none;color:var(--mut)}
+  .step:last-child{border-right:1px solid var(--line);border-radius:0 8px 8px 0}
+  .step:first-child{border-radius:8px 0 0 8px}
+  .step.on{background:var(--a);color:#fff;font-weight:600;border-color:var(--a)}
+  .note{margin-top:20px;padding:12px 16px;background:var(--warnbg);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;font-size:12.5px;color:#4a3c1c}
+  .legend{margin-top:14px;font-size:12px;color:var(--mut)}
+</style>
+
+<h1>Attendance Settings — six loose configuration rows become three categories</h1>
+<p class="sub">Counted on the live menu, 14 August 2026. Most of what sits underneath already exists; it is scattered rather than missing.</p>
+
+<div class="cols">
+  <div class="col">
+    <h2>Today</h2>
+    <div class="nav">
+      <div class="navhd bad">Attendance · six configuration rows side by side</div>
+      <div class="row">Clock In / Out</div>
+      <div class="row">Attendance Records</div>
+      <div class="row">Requests</div>
+      <div class="row">Plan Overtime</div>
+      <div class="row cfg">Holidays <span class="tag">config</span></div>
+      <div class="row cfg">Shift Settings <span class="tag">config</span></div>
+      <div class="row cfg">Attendance Policy <span class="tag">config</span></div>
+      <div class="row cfg">Attendance Allowance <span class="tag">config</span></div>
+      <div class="row cfg">Clocking Location <span class="tag">config</span></div>
+      <div class="row cfg">Time Off In Lieu <span class="tag">config</span></div>
+      <div class="row">Roster</div>
+      <div class="row">Import</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>Proposed</h2>
+    <div class="nav">
+      <div class="navhd good">Attendance · one Settings menu, three categories</div>
+      <div class="row">Dashboard</div>
+      <div class="row">Attendance Records</div>
+      <div class="row">Requests</div>
+      <div class="row">Reports</div>
+      <div class="row grp">Settings</div>
+      <div class="row ind">Shift <span class="tag have">exists</span></div>
+      <div class="row ind">Overtime Pattern <span class="tag have">mostly exists</span></div>
+      <div class="row ind">Work Schedule <span class="tag new">wizard is new</span></div>
+      <div class="row ind2">Holidays · Clocking Location · Time Off In Lieu · Allowance</div>
+      <div class="row">Roster</div>
+      <div class="row">Import</div>
+    </div>
+  </div>
+</div>
+
+<h2 style="margin-top:26px">Work Schedule — the one genuinely new build</h2>
+<div class="steps">
+  <div class="step on">① General</div>
+  <div class="step">② Overtime</div>
+  <div class="step">③ Attendance</div>
+  <div class="step">④ Request</div>
+  <div class="step">⑤ Review &amp; Activate</div>
+</div>
+<p style="font-size:12.5px;color:#5b6472;margin:4px 0 0">Save Draft at every step · a review page before activation · activation refused while anything required is missing or contradictory.</p>
+
+<div class="note">
+  <b>What is already built, and what is not.</b> Shift already supports multiple paid and unpaid break windows,
+  cross-midnight, split shifts, half-day first and second ranges, and flexible shifts. Overtime already has bands
+  with hours-from, hours-to, a rate, a separate public-holiday rate, and the up / down / none rounding with a typed
+  number of minutes that went live this week. <b>Genuinely new:</b> the Settings grouping itself, Duplicate and
+  Activate / Deactivate, refusing to delete something an active Work Schedule still uses, the four-step wizard —
+  and on Overtime Pattern, choosing which shifts it applies to and selecting day types.
+</div>
+
+<p class="legend">Built in four passes, in that order, so the menu tidy-up you asked for is not held up by the wizard.</p>
