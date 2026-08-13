@@ -18,13 +18,52 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-12 (r185–r189 ALL SHIPPED · NOTHING IN FLIGHT)
+## CURRENT STATE — snapshot 2026-08-13 (r185–r189 SHIPPED · r190 BUILT AND UNGATED · 13 APPROVED)
 
-**`main@4518ab8b` IS WHAT RUNS ON PRODUCTION** — verified by a zero-change `rsync -azi --delete
+**`main@2a085bf0` IS WHAT RUNS ON PRODUCTION** — verified by a zero-change `rsync -azi --delete
 --dry-run` (not by `deploy.sh` succeeding, which is not proof; the single line it reports is
-`next-env.d.ts`, which the box regenerates during its own build). **Production is on 354 migrations.**
-Service active, `GET /` 401. **Next free migration is `0436`** (`0431` was allocated and deliberately
-unused; gaps are fine).
+`next-env.d.ts`, which the box regenerates during its own build). **Production is on 354 migrations.** Service active, `GET /` 401. Verified by a dry-run rsync that
+reports ONLY `HANDOFF.md`, `docs/HANDOFF-HISTORY.md`, `docs/mockups/*` and the box-regenerated
+`next-env.d.ts` — i.e. docs committed after the last deploy. **All code is live.**
+**Next free migration is `0436`** (`0431` allocated and deliberately unused; gaps are fine).
+
+## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
+
+**1. `build/r190` IS BUILT, COMMITTED AND NOT GATED.** Two commits, `2f889bae` — a View/Edit link on the
+Personnel Payroll tab rows, plus the shape guard that pinned the decision it reverses. tsc clean, i18n
+clean, render-checked end to end (real click-through to the item page, six locales, zero
+MISSING_MESSAGE), and mutation-checked both ways. **Its last full gate was killed at chunk 4/6 with
+chunks 1-3 all exit=0** — including chunk 1, which held the previously-failing guard. It needs one clean
+`CHUNKS=6 bash scripts/gate-chunked.sh`, then merge → rsync → `deploy.sh` → verify → board. **No
+migration.** The cluster may be DOWN (the gate rebuilds it between chunks and was killed mid-rebuild) —
+`pnpm db:start` or just let the next gate rebuild it.
+
+**2. THE BOARD FLIPPED OVERNIGHT: 13 APPROVED, 0 PLANNED.** The reporter worked through nearly the whole
+planned queue. **The constraint is builds again.** In rough dependency order:
+
+- **`2f889bae`** — built, see above.
+- **`88076362` CP22 · `8ca344bf` Borang 8A · `9c8dad7a` Borang A** — the statutory trio. Recommended
+  order CP22 → 8A → A, **three rounds not one**. Read the dedicated section below BEFORE touching them:
+  the EPF/SOCSO attachments are another payroll system's output rather than agency artwork, the 2021 CP22
+  invalidates all 33 mapped field positions, and **no migration is needed for any of the three**.
+- **`3214cb11` + `813fd22a`** — ONE fix, not two. Both surfaces are fed by a single page-level read.
+- **`38b94df7`** — the control already exists (`components/employee-search-field.tsx`) and is mounted
+  nowhere; it is also on Employee Leave Record, wider than the ticket says.
+- **`3ddae357`** — Large. 5 of 10 columns already respond to the As-at date; 4 never do; the Date column
+  echoes the input, which is what makes the screen LOOK responsive.
+- **`009c8a37` + `e1e33ca0`** — build in ONE pass, NEVER in parallel: they edit the same JSX block.
+  `009c8a37` lands on SEVEN screens, and the panel is not one implementation — Individual Transaction
+  draws its own inline list.
+- **`47609f53` · `154865f4` · `a3d485f6`** — the three we raised ourselves. `a3d485f6` closes the last
+  double-pay hole by refusing a mid-month restatement, and it converts an `it.fails` to passing.
+
+**3. `9a65f808` IS CONTESTED** and the reason is one line: *"what I want is the entire grade selection
+move into eligibility rules"* — i.e. wider than the plan's half-measure. Needs a revision 2.
+
+**4. TWO STANDING DECISIONS NOBODY HAS REVISITED**, both flagged rather than actioned:
+`ALLOW_DEMO_SESSION=true` is live on the box a real customer's payroll runs on; and `fixed_allowance`
+can no longer be CREATED from any screen after r189 (existing ones survive; a rate control belongs on
+Claim Types).
 
 **TWENTY-FIVE ITEMS SHIPPED IN ONE DAY, ACROSS FIVE ROUNDS.** r185 (seven, `0426`+`0427`), r186 (eight,
 `0428`+`0429`), r187 (seven, `0430`/`0432`/`0433`/`0434`), r188 (one defect fix, no migration), r189 (two,
@@ -42,10 +81,12 @@ consultant demo, per the startup warning, but it is a standing decision nobody h
 flip; raise it rather than leave it as a warning line nobody reads.
 
 **r186 SHIPPED 2026-08-12 — `main@bed6c212`, migrations `0428` and `0429`, production on 349.** Full
-entry below. **Next free migration is `0430`**; `0430`-`0434` are handed out to r187's four agents.
+entry below. (That round's `0430`-`0434` are long since applied — **next free is `0436`**, stated once in
+CURRENT STATE above and not repeated.)
 
-**NOTHING IS IN FLIGHT.** All r185/r186/r187 branches are merged and their worktrees pruned. Prove it
-independently before trusting this line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
+**ONE BRANCH IS IN FLIGHT: `build/r190`** — built, committed, NOT gated and NOT merged (see START HERE).
+Everything r185-r189 is merged and pruned. Prove both independently before trusting this line —
+`git for-each-ref refs/heads/build` plus a dry-run rsync.
 
 **⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
 
@@ -385,8 +426,13 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**COUNTS ON THE BOX, 2026-08-13 (RE-COUNT before trusting these — this line has been wrong three
-times):** `deployed = 656` · `planned = 10` · `open = 3` · `approved = 1` · `cancelled = 14`.
+**COUNTS ON THE BOX, 2026-08-13 (RE-COUNT — this line has been wrong three times):**
+`deployed = 656` · `approved = 13` · `contested = 1` · `planned = 0` · `cancelled = 14`.
+
+**THE CONSTRAINT IS BUILDS AGAIN.** It flipped three times in two days: theirs, then ours (19 items
+planned in an afternoon), then theirs, and now back to ours with the planned queue emptied into
+`approved`. **Check which side is short before choosing what to do next** — `improve:pull` for unplanned
+work, `improve:pull-approved` for unbuilt work.
 
 **c8052ae3 IS DONE — the leave reset RAN on 2026-08-12.** It was the longest-open item on the board.
 147 `leave_ledger` rows and 22 `leave_entitlement_recalc_audit` rows archived under capture tag
@@ -1127,10 +1173,10 @@ method or carry-forward is WRONG.**
 
 ---
 
-## NOTHING IS IN FLIGHT — but prove it rather than believing this line
+## ONE BRANCH IS IN FLIGHT — `build/r190`, built and ungated (see START HERE)
 
-`main@4518ab8b` is r185 through r189 and IS deployed (dry-run rsync, 2026-08-12). Every round's branches
-are merged and every `r185-*` … `r189-*` worktree is pruned.
+`main@2a085bf0` is r185 through r189 and IS deployed (dry-run rsync, 2026-08-13). Every r185-r189 branch is merged and every `r185-*` … `r189-*` worktree is pruned. **`build/r190` is NOT
+merged** — two commits, no migration, awaiting one clean gate.
 
 Every remaining unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
 ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route:

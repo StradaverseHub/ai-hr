@@ -24,7 +24,8 @@ read vitest's `RUN` line + file count; a gate in the wrong tree reports green fo
 (this has happened three times). Never let `isolation: 'worktree'` cut an agent's tree from the root
 HEAD — create worktrees from `main` yourself.
 
-**The ten mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps):
+**The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-18
+were all added on 2026-08-12/13, each after it cost a real round:
 
 1. **One vitest at a time.** A second run wipes the first's worker DBs. Parallel agents get their own
    `TEST_DB_NAMESPACE`; otherwise never invent one.
@@ -69,9 +70,42 @@ HEAD — create worktrees from `main` yourself.
     you have pushed work an integrator can see, only ADD commits.
 12. **NEVER run an agent and a gate against the same cluster at once.** Twice in one session that
     bloated WAL to 5GB and produced 32 false failures across files unrelated to the change. Agents
-    run only their own targeted tests; the parent runs the single full gate, alone.
+    run only their own targeted tests; the parent runs the single full gate, alone. **This recurred on
+    2026-08-12 because the PARENT briefed planning agents to render on dev servers mid-gate** — three
+    chunks came back red with ZERO `AssertionError`s and ~187s timeouts. Diagnose with a per-chunk
+    cause tally, and read `/tmp/aihr-gate/chunkN.log` — the summary the gate prints carries counts only,
+    so grepping IT for `AssertionError` finds nothing and invites "it was all environmental".
+13. **`deploy.sh` RUNS MIGRATIONS, NOT SCRIPTS.** r189's live-risk fix was half-armed until a backfill
+    script was run BY HAND after the deploy. If a round's fix depends on a script, the round is not
+    finished when `deploy.sh` returns — run it, and verify the rows it writes.
+14. **CENTRAL MIGRATION ALLOCATION IS NOT ENOUGH — MERGE ORDER CAN STILL SILENTLY SKIP ONE.** Handing
+    each parallel agent a number fixes its `when` BY NUMBER while leaving merge/deploy order free, and
+    drizzle's watermark is the last applied `when`. On 2026-08-12 `0433` went first on a shared cluster
+    and silently skipped `0430` and `0432` — exit 0, no error, no table. **They must reach production in
+    ONE pass or strictly ascending.** `gate:shadow` cannot catch it: it dumps schema only and applies the
+    whole journal in order, so it passes either way — and for the same reason it cannot catch a migration
+    whose precondition is DATA (`0426` would have aborted on one inverted row).
+15. **A NEW `core/` FILE MUST IMPORT `packs/<pack>/service`, NEVER the pack's implementation.** The
+    ratchet fired in THREE consecutive rounds on new `core/` files. The fix is never
+    `test/pack-drift-allowlist.json` — the guard refuses additions in its own failure message because
+    that list is audited debt and only shrinks. Check first for the documented comment false positive:
+    the ratchet does not strip comments, so a quoted `from '…'` inside one reads as a real edge.
+16. **A BACKGROUND `Bash` TASK'S EXIT CODE IS ITS LAST COMMAND'S.** `gate.sh > log; echo "EXIT=$?"; date`
+    reports **`date`'s** status, so the harness said "completed (exit code 0)" over a RED gate. Read the
+    real code out of the output file, never the notification. Same class as the pipe trap in rule 2.
+17. **A FORM FIELD THAT IS ALWAYS SUBMITTED CANNOT BE READ BY PRESENCE.** A hidden input is sent whatever
+    its value, so `fd.get(key) != null` reads an unticked box as TRUE. That shipped a pay-affecting
+    setting nobody could turn off, for as long as the screen existed. It also generalises: when a defect
+    lives in the CONTRACT BETWEEN two files, a unit test of either half passes throughout — pin it with
+    source-shape assertions across both.
+18. **A GUARD MAY PIN THE DECISION YOU ARE REVERSING — UPDATE IT, DO NOT DELETE THE CASE.** r190 reversed
+    "Pay Items deliberately has no per-row Edit" on the reporter's approved instruction, and a shape guard
+    asserted exactly that. Half of it was still right (no INLINE editor) and was kept; only the retired
+    half moved. **Two tests asserting opposite things are invisible to targeted runs — only the full gate
+    sees both.**
 
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
-→ `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → verify → mark deployed.
-`GET /` returning 401 is the healthy password gate. Reply on Telegram when the owner writes from
-Telegram.
+→ `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round
+depends on** → verify → mark deployed. `GET /` returning 401 is the healthy password gate. Proof of
+arrival is a zero-change `rsync -azi --dry-run`, never `deploy.sh` succeeding. Reply on Telegram when the
+owner writes from Telegram.
