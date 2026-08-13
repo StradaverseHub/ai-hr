@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Entity transfer stage two — both halves, each naming its dates</title>
+<style>
+  :root{--ink:#12161c;--mut:#5b6472;--line:#dfe3e9;--bad:#b3261e;--badbg:#fdeceb;--good:#1b5e20;--goodbg:#eaf3ec;--a:#1a4fa0;--b:#7b4397;--warn:#8a5a00;--warnbg:#fff6e5}
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 38px;background:#fff;color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--mut);margin:0 0 22px;font-size:13px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:24px 0 9px;color:var(--mut)}
+  .card{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .hd{padding:10px 14px;font-weight:600;font-size:12.5px;border-bottom:1px solid var(--line)}
+  .hd.bad{background:var(--badbg);color:var(--bad)} .hd.good{background:var(--goodbg);color:var(--good)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:7px 14px;text-align:left;border-bottom:1px solid #f0f2f5;white-space:nowrap}
+  th{font-weight:600;color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{display:flex;height:32px;border-radius:7px;overflow:hidden;margin:10px 0 4px;border:1px solid var(--line)}
+  .seg{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+  .segA{background:var(--a)} .segB{background:var(--b)} .gap{background:repeating-linear-gradient(45deg,#f3d6d4,#f3d6d4 6px,#fbe9e8 6px,#fbe9e8 12px);color:var(--bad)}
+  .scale{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-bottom:6px}
+  .cols{display:flex;gap:20px}
+  .col{flex:1}
+  .pay{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .ptop{padding:10px 14px;border-bottom:1px solid var(--line);font-weight:600;font-size:12.5px;color:#fff}
+  .ptop.a{background:var(--a)} .ptop.b{background:var(--b)}
+  .prow{display:flex;justify-content:space-between;padding:5px 14px;font-size:12.5px}
+  .prow.tot{border-top:1px solid var(--line);font-weight:700;margin-top:4px;padding-top:8px}
+  .mono{font-variant-numeric:tabular-nums}
+  .note{margin-top:20px;padding:12px 16px;background:var(--warnbg);border-left:3px solid var(--warn);border-radius:0 7px 7px 0;font-size:12.5px;color:#4a3c1c}
+  .chk{margin-top:14px;border:1px solid var(--line);border-radius:9px;padding:12px 15px;font-size:12.5px;background:#fafbfc}
+  .chk b{color:var(--good)}
+</style>
+
+<h1>Entity transfer — both halves, each naming its own dates</h1>
+<p class="sub">Employee 100814, Fiamma → ISEDECOR BINA effective 11 August 2026. Figures measured on production 14 August 2026.</p>
+
+<h2>What a re-run produces today</h2>
+<div class="card">
+  <div class="hd bad">One payslip · the old company's ten days produce nothing · employee short RM2,129.03</div>
+  <table>
+    <tr><th>Company</th><th>Period covered</th><th>Days</th><th class="n">Gross</th></tr>
+    <tr style="background:#fdf3f2"><td><b>— none —</b></td><td><b>1 – 10 Aug</b></td><td>10</td><td class="n"><b>nothing produced</b></td></tr>
+    <tr><td>ISEDECOR BINA SDN BHD</td><td>not stated on the payslip</td><td>21</td><td class="n">4,470.97</td></tr>
+    <tr style="font-weight:700"><td colspan="3">Total paid for August</td><td class="n">4,470.97</td></tr>
+    <tr style="font-weight:700;color:#b3261e"><td colspan="3">Should be</td><td class="n">6,600.00</td></tr>
+  </table>
+</div>
+
+<div class="bar">
+  <div class="seg gap" style="flex:10">1 – 10 Aug · no payslip</div>
+  <div class="seg segB" style="flex:21">ISEDECOR BINA · 11 – 31 Aug · paid</div>
+</div>
+<div class="scale"><span>1 Aug</span><span>transfer effective 11 Aug</span><span>31 Aug</span></div>
+
+<h2>Proposed</h2>
+<div class="bar">
+  <div class="seg segA" style="flex:10">Fiamma · 1 – 10 Aug</div>
+  <div class="seg segB" style="flex:21">ISEDECOR BINA · 11 – 31 Aug</div>
+</div>
+<div class="scale"><span>1 Aug</span><span>11 Aug</span><span>31 Aug</span></div>
+
+<div class="cols" style="margin-top:14px">
+  <div class="col">
+    <div class="pay">
+      <div class="ptop a">Payslip 1 · Fiamma (Chin Hin Property)</div>
+      <div style="padding:10px 0 12px">
+        <div class="prow"><span>Employee</span><span class="mono">100814</span></div>
+        <div class="prow"><span>Payment month</span><span>August 2026</span></div>
+        <div class="prow"><span><b>Period covered</b></span><span><b>1 – 10 Aug 2026</b></span></div>
+        <div class="prow"><span>Days</span><span class="mono">10</span></div>
+        <div class="prow"><span>Overtime dated 8 Aug</span><span>here</span></div>
+        <div class="prow"><span>EPF / SOCSO / EIS / tax</span><span>on this portion</span></div>
+        <div class="prow tot"><span>Gross</span><span class="mono">2,129.03</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="pay">
+      <div class="ptop b">Payslip 2 · ISEDECOR BINA SDN BHD</div>
+      <div style="padding:10px 0 12px">
+        <div class="prow"><span>Employee</span><span class="mono">100814</span></div>
+        <div class="prow"><span>Payment month</span><span>August 2026</span></div>
+        <div class="prow"><span><b>Period covered</b></span><span><b>11 – 31 Aug 2026</b></span></div>
+        <div class="prow"><span>Days</span><span class="mono">21</span></div>
+        <div class="prow"><span>Overtime dated 15 Aug</span><span>here</span></div>
+        <div class="prow"><span>EPF / SOCSO / EIS / tax</span><span>on this portion</span></div>
+        <div class="prow tot"><span>Gross</span><span class="mono">4,470.97</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chk">
+  <b>The safeguard, and it matters as much as the feature.</b> Before a month with a transfer is committed, the
+  covered periods must tile the whole month — no gap, no overlap — and the halves must add to the full figure:
+  <span class="mono">2,129.03 + 4,470.97 = 6,600.00</span>. If they do not, the run stops and says so instead of
+  quietly paying less. Today's shortfall was noticed only because the run's total happened to drop by exactly the
+  missing amount.
+</div>
+
+<div class="note">
+  <b>Why this is not just a calculation change.</b> A payroll run belongs to one company and only includes people
+  who belong to that company <b>today</b> — August has eight separate runs, one per company. Employee 100814 is at
+  ISEDECOR now, so Fiamma's run never sees them, however correct the history is. And a payslip has nowhere to
+  record which dates it covers, so neither half can state its own period. Both have to change before two payslips
+  are possible.
+</div>
