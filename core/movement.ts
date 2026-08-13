@@ -1829,11 +1829,27 @@ async function applyComparisonMovementTx(
           locationId: dLoc,
           managerEmploymentId: dManager,
         },
+        // 3c88d593 — the type delta travels with the company leg now, because that leg writes the
+        // assignment version (see below).
+        ...(dType ? { employmentType: dType } : {}),
         movement: tag({ withRemarks: true }),
       });
     }
 
-    if (assignmentChanged) {
+    /**
+     * 3c88d593 — `&& !companyChanged`, and it is not a narrowing: the leg still runs, one call earlier.
+     *
+     * transferEmploymentCompanyTx now writes the assignment version itself, because the legal entity is
+     * an effective-dated dimension OF that version (migration 0440) and there is no way to record a
+     * company move without writing one. It is handed the same deltas as this call — department, position,
+     * business unit, location, and since this item the employment type — so the version it writes is the
+     * version this branch would have written, plus the company.
+     *
+     * Leaving both to run would close the version the transfer just opened and open a second one on the
+     * SAME date, leaving a zero-length row and projecting a movement that moved twice. So on an Entity
+     * Transfer the entity leg owns the assignment, and every other kind is untouched.
+     */
+    if (assignmentChanged && !companyChanged) {
       // ONE assignment writer for every comparison kind, Transfer included. transferEmployee is NOT used
       // here even though Transfer is its historical path: it silently drops business_unit_id on the new
       // version (it predates the column), so a Transfer submitted from a form that also shows Business Unit

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -87,7 +87,8 @@ const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', d
 type ItemInputUnit = 'hours' | 'days' | null;
 
 /** A resolved item-picker option: a generic kind (`k:<kind>`) or a master component (`c:<id>`).
- *  `derives` / `inputUnit` (2da9937a) come from the pay item's rule, resolved server-side. */
+ *  `derives` / `inputUnit` (2da9937a) and `variesByDay` (c11e81aa) come from the pay item's rule, all
+ *  resolved server-side. */
 type ItemOption = {
   value: string;
   label: string;
@@ -95,6 +96,9 @@ type ItemOption = {
   fromMaster: boolean;
   derives: boolean;
   inputUnit: ItemInputUnit;
+  /** c11e81aa — may this item be keyed DAY BY DAY? False for a fixed-amount item, whose figure is one
+   *  figure for the month. See core/pay-rule.ts payRuleAllowsDayByDay for the rule and its reasoning. */
+  variesByDay: boolean;
 };
 const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
 
@@ -148,6 +152,11 @@ export type TxnPayItem = {
   derives: boolean;
   /** Which quantity that rule needs keyed (payRuleInputUnit). null ⇒ none. */
   inputUnit: ItemInputUnit;
+  /** c11e81aa — may a one-off on this item be recorded day by day, or is its figure one figure for the
+   *  month? Resolved on the server (payRuleAllowsDayByDay) from the stored rule, exactly as the two
+   *  above are: a fixed-amount item and an item with no rule at all are indistinguishable from
+   *  `derives`/`inputUnit` alone, and only one of them may be keyed per day. */
+  variesByDay: boolean;
 };
 
 export type TxnCompany = { id: string; name: string; currency: string | null };
@@ -265,6 +274,9 @@ export function TxnWorkspace({
       fromMaster: false,
       derives: false,
       inputUnit: null,
+      // c11e81aa — a generic kind names no pay item, so no configuration says its figure is one figure
+      // for the month. Overtime, Unpaid and Leave are the per-day cases this screen exists for.
+      variesByDay: true,
     }));
     const master: ItemOption[] = payItems
       .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
@@ -275,6 +287,7 @@ export function TxnWorkspace({
         fromMaster: true,
         derives: c.derives,
         inputUnit: c.inputUnit,
+        variesByDay: c.variesByDay,
       }));
     return [...generic, ...master];
   }, [payItems, t, genericKinds]);
@@ -343,6 +356,10 @@ export function TxnWorkspace({
   const [listView, setListView] = useState<'flat' | 'grouped'>('flat');
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(null);
+  /** c11e81aa — the unsaved-changes gate's SECOND question: the operator is dismissing the entry prompt
+   *  with work in it. See `requestCloseForm`. Mutually exclusive with `pendingEmployeeId` in practice —
+   *  the employee list is behind the prompt's backdrop while a form is open. */
+  const [pendingClose, setPendingClose] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   /**
@@ -506,7 +523,14 @@ export function TxnWorkspace({
     const matched = q
       ? panel.rows.filter(
           (r) =>
+            // c11e81aa — THE NOTE IS STILL MATCHED even though it left the listing for the View prompt.
+            // Narrowing the predicate to what a column shows would silently stop finding rows by the
+            // remark somebody typed on them, which is the one thing a free-text search is used for here.
             (r.notes ?? '').toLowerCase().includes(q) ||
+            // …and the two the Pay item and Description columns now show, or a search for "OT1_5"
+            // would match nothing on a screen that prints it.
+            (r.componentCode ?? '').toLowerCase().includes(q) ||
+            (r.componentName ?? '').toLowerCase().includes(q) ||
             r.kind.toLowerCase().includes(q) ||
             r.txnDate.includes(q) ||
             r.payPeriod.includes(q) ||
@@ -519,7 +543,10 @@ export function TxnWorkspace({
         case 'amount':
           return Number(r.amount);
         case 'kind':
-          return r.kind;
+          // c11e81aa — the column is headed Payroll item and now PRINTS the pay item code, so it sorts by
+          // the code. Sorting by the ledger kind while showing the code is the same class of fault as
+          // labelling the column Payroll item and showing the kind, which is what this item is about.
+          return r.componentCode ?? r.kind;
         case 'status':
           return r.status;
         case 'txnDate':
@@ -549,6 +576,14 @@ export function TxnWorkspace({
    * the column sort belongs to the flat list, where a column exists to sort by.
    */
   const groups = useMemo(() => buildTxnGroups(sortedRows), [sortedRows]);
+
+  /**
+   * c11e81aa — the row View is showing, resolved from the panel rather than from the page on screen.
+   *
+   * `panel.rows` and not `pageRows`: the prompt outlives a page change or a search keystroke, and a
+   * lookup that silently returned nothing would close it with no explanation.
+   */
+  const viewRow = expandedId ? (panel.rows.find((r) => r.id === expandedId) ?? null) : null;
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -644,6 +679,15 @@ export function TxnWorkspace({
   const requiredUnit: ItemInputUnit = derives ? pickedItem!.inputUnit : null;
   /** True once the operator has supplied that quantity — the point at which a figure can be asked for. */
   const quantityReady = requiredUnit == null || (form?.unit === requiredUnit && Number(form?.quantity) > 0);
+  /**
+   * c11e81aa — may THIS item be keyed day by day? The answer comes off the pay item (payRuleAllowsDayByDay,
+   * resolved on the server), never off the shape of the form: a fixed-amount item and an item with no rule
+   * at all are identical in `derives`/`inputUnit`, and only the second may be split across dates.
+   *
+   * Nothing picked yet ⇒ allowed, because the default item is a real item and the gate below re-reads this
+   * on every render; refusing while the picker is empty would grey the option out on arrival.
+   */
+  const dailyAllowed = pickedItem == null || pickedItem.variesByDay;
 
   /**
    * The derived figure is FETCHED, never computed here. Re-implementing a per_hour multiply in the browser
@@ -874,6 +918,10 @@ export function TxnWorkspace({
    */
   const changeDailyItem = (value: string) => patchDaily({ item: value });
   const switchToDaily = () => {
+    // c11e81aa — the SECOND half of the fixed-amount gate. The radio that reaches this is already
+    // disabled, and a disabled radio cannot be activated by keyboard either; this is here so the rule
+    // lives with the state machine rather than only in the markup that renders it.
+    if (!dailyAllowed) return;
     const from = form;
     openDaily({
       payPeriod: from?.payPeriod ?? (periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod),
@@ -1166,7 +1214,27 @@ export function TxnWorkspace({
     resetListingView();
     setSelectedId(id);
   };
+  /**
+   * c11e81aa — DISMISSING THE PROMPT IS NOW THE OTHER WAY UNSAVED WORK IS LOST, and it is the likelier
+   * one. With the entry form inside a prompt over the listing, the employee list is behind the backdrop
+   * and cannot be clicked, so the switch-employee gate below could never fire while a form was open — the
+   * guard would have quietly become unreachable at exactly the moment the risk moved somewhere else.
+   * So the same gate now answers both questions, and the two differ only in what happens after: one
+   * switches employee, the other simply closes.
+   */
+  const requestCloseForm = () => {
+    if (dirty) {
+      setPendingClose(true);
+      return;
+    }
+    closeForm();
+  };
   const completeSwitch = () => {
+    if (pendingClose) {
+      setPendingClose(false);
+      closeForm();
+      return;
+    }
     const id = pendingEmployeeId;
     setPendingEmployeeId(null);
     if (!id) return;
@@ -1174,15 +1242,20 @@ export function TxnWorkspace({
     resetListingView();
     setSelectedId(id);
   };
-  /** Save first, then switch — and if the save fails, do NOT switch. Navigating away from a failed save
-   *  is exactly the loss this dialog exists to prevent. */
+  /** Abandon whichever question the gate is asking, and leave the form exactly as it was. */
+  const cancelGate = () => {
+    setPendingEmployeeId(null);
+    setPendingClose(false);
+  };
+  /** Save first, then switch (or close) — and if the save fails, do NEITHER. Navigating away from a
+   *  failed save is exactly the loss this dialog exists to prevent. */
   const saveThenSwitch = () => {
     // 4e403268 — the unsaved-changes dialog protects whichever machine is open. A day grid is unsaved work
     // in exactly the same sense, so Save-then-switch has to be able to save one.
     if (daily) {
       const badDaily = dailyInvalid(daily);
       if (badDaily) {
-        setPendingEmployeeId(null);
+        cancelGate();
         setFormError(t(badDaily as never));
         return;
       }
@@ -1193,7 +1266,7 @@ export function TxnWorkspace({
           toast.success(t('dayGridSaved', { count: res.count ?? d.lines.length }));
           completeSwitch();
         } else {
-          setPendingEmployeeId(null);
+          cancelGate();
           setFormError(t(res.error as never));
         }
       });
@@ -1202,7 +1275,7 @@ export function TxnWorkspace({
     if (!form) return;
     const bad = formInvalid(form);
     if (bad) {
-      setPendingEmployeeId(null);
+      cancelGate();
       setFormError(t(bad as never));
       return;
     }
@@ -1215,7 +1288,7 @@ export function TxnWorkspace({
         // the run's own page (and its History) is where the mark persists. `completeSwitch` clears it.
         completeSwitch();
       } else {
-        setPendingEmployeeId(null);
+        cancelGate();
         setFormError(t(res.error as never));
       }
     });
@@ -1517,22 +1590,36 @@ export function TxnWorkspace({
               </div>
             )}
 
-            {/* ── Create / Edit form ── */}
+            {/* ── Create / Edit form ──
+                c11e81aa — IN A PROMPT OVER THE LISTING, the way Fixed Transaction's Add is. It used to
+                render inline between the banners and the table, which pushed the listing down the page
+                and out of sight exactly when the operator wanted to look at it. Nothing about the form
+                itself moved: this is the same block, wrapped. */}
             {form && (
-              <div className="space-y-3 border-b border-border bg-muted/10 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {form.mode === 'edit' ? t('editTxnTitle') : form.sourceId ? t('duplicateTxnTitle') : t('addTxnTitle')}
-                  </h3>
-                  {form.sourceId && <span className="text-xs text-muted-foreground">{t('duplicateHint')}</span>}
-                </div>
+              <TxnPrompt
+                title={form.mode === 'edit' ? t('editTxnTitle') : form.sourceId ? t('duplicateTxnTitle') : t('addTxnTitle')}
+                onClose={requestCloseForm}
+                closeLabel={t('close')}
+              >
+              <div className="space-y-3">
+                {form.sourceId && <p className="text-xs text-muted-foreground">{t('duplicateHint')}</p>}
 
                 {/* 4e403268 — the request's Input Method selector. Offered on a NEW entry only: an existing
                     row IS one day, and opening five days to edit one of them would be a grid that can
                     delete lines the operator never opened. One total for the month is the default and is
-                    the screen exactly as it was, so nothing anybody already does changes. */}
+                    the screen exactly as it was, so nothing anybody already does changes.
+
+                    c11e81aa — and Day by day is GREYED OUT on a fixed-amount pay item, with the reason
+                    beside it, rather than offered and then refused. */}
                 {form.mode === 'create' && (
-                  <InputMethod mode="lump" onLump={switchToLump} onDaily={switchToDaily} t={t} />
+                  <InputMethod
+                    mode="lump"
+                    onLump={switchToLump}
+                    onDaily={switchToDaily}
+                    dailyDisabled={!dailyAllowed}
+                    dailyDisabledHint={t('inputMethodDailyUnavailable')}
+                    t={t}
+                  />
                 )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1545,10 +1632,18 @@ export function TxnWorkspace({
                       className={inputCls}
                     />
                   </Field>
+                  {/* c11e81aa — THE CONTROL IS ALWAYS THERE WHEN THERE IS A RUN TO NAME. It used to
+                      become a select only above ONE eligible run and print a paragraph otherwise, and on
+                      production 21 of the 22 (company, month) pairs have exactly one run — so the field
+                      was, in practice, never selectable. What did NOT change is where the answer comes
+                      from: `resolvedBatchId` stays DERIVED (see its note above), so this control offers
+                      the runs and the derivation still decides the default. The blank option is offered
+                      only above one run, because with a single eligible run the derivation resolves ''
+                      straight back to it and an option that cannot change anything is worse than none. */}
                   <Field label={t('cycleLabel')}>
-                    {eligibleBatches.length > 1 ? (
+                    {eligibleBatches.length > 0 ? (
                       <select value={resolvedBatchId} onChange={(e) => patchForm({ batchId: e.target.value })} className={inputCls}>
-                        <option value="">—</option>
+                        {eligibleBatches.length > 1 && <option value="">—</option>}
                         {eligibleBatches.map((b) => (
                           <option key={b.id} value={b.id}>
                             {cycleLabel(b)}
@@ -1556,9 +1651,7 @@ export function TxnWorkspace({
                         ))}
                       </select>
                     ) : (
-                      <p className="px-1 py-2 text-sm text-muted-foreground">
-                        {eligibleBatches.length === 1 ? cycleLabel(eligibleBatches[0]) : t('pendingRun')}
-                      </p>
+                      <p className="px-1 py-2 text-sm text-muted-foreground">{t('pendingRun')}</p>
                     )}
                   </Field>
                   <Field label={t('colItem')}>
@@ -1710,11 +1803,12 @@ export function TxnWorkspace({
                       {t('saveAndAnother')}
                     </Button>
                   )}
-                  <Button type="button" size="sm" variant="outline" onClick={closeForm} disabled={isPending}>
+                  <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
                     {t('cancel')}
                   </Button>
                 </div>
               </div>
+              </TxnPrompt>
             )}
 
             {/* ── 4e403268 — DAY-BY-DAY ENTRY ──
@@ -1726,12 +1820,16 @@ export function TxnWorkspace({
                 THE MONTH, THE RUN AND THE PAY ITEM ARE THE HEADER. That is the whole point of the change:
                 today five days means opening the form five times and re-picking the pay item each time. */}
             {daily && (
-              <div className="space-y-3 border-b border-border bg-muted/10 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">{t('dayGridTitle')}</h3>
-                </div>
-
-                <InputMethod mode="daily" onLump={switchToLump} onDaily={switchToDaily} t={t} />
+              <TxnPrompt title={t('dayGridTitle')} onClose={requestCloseForm} closeLabel={t('close')} wide>
+              <div className="space-y-3">
+                <InputMethod
+                  mode="daily"
+                  onLump={switchToLump}
+                  onDaily={switchToDaily}
+                  dailyDisabled={!dailyAllowed}
+                  dailyDisabledHint={t('inputMethodDailyUnavailable')}
+                  t={t}
+                />
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <Field label={t('monthLabel')}>
@@ -1749,10 +1847,13 @@ export function TxnWorkspace({
                       className={inputCls}
                     />
                   </Field>
+                  {/* c11e81aa — the same control as the single-entry form's, for the same reason. The two
+                      machines share `eligibleBatches` and `resolvedBatchId`, so they cannot disagree
+                      about which runs the month has or which one a save will land on. */}
                   <Field label={t('cycleLabel')}>
-                    {eligibleBatches.length > 1 ? (
+                    {eligibleBatches.length > 0 ? (
                       <select value={resolvedBatchId} onChange={(e) => patchDaily({ batchId: e.target.value })} className={inputCls}>
-                        <option value="">—</option>
+                        {eligibleBatches.length > 1 && <option value="">—</option>}
                         {eligibleBatches.map((b) => (
                           <option key={b.id} value={b.id}>
                             {cycleLabel(b)}
@@ -1760,11 +1861,14 @@ export function TxnWorkspace({
                         ))}
                       </select>
                     ) : (
-                      <p className="px-1 py-2 text-sm text-muted-foreground">
-                        {eligibleBatches.length === 1 ? cycleLabel(eligibleBatches[0]) : t('pendingRun')}
-                      </p>
+                      <p className="px-1 py-2 text-sm text-muted-foreground">{t('pendingRun')}</p>
                     )}
                   </Field>
+                  {/* c11e81aa — THE SAME GATE, ON THE OTHER SIDE. A fixed-amount item cannot be keyed day
+                      by day, so inside the grid it is not selectable either — otherwise the operator
+                      could reach, by changing the pay item, exactly the state the greyed-out radio
+                      exists to keep them out of. Greyed rather than removed: the item is real and the
+                      list should not appear to lose entries when the mode changes. */}
                   <Field label={t('colItem')}>
                     <select value={daily.item} onChange={(e) => changeDailyItem(e.target.value)} className={inputCls}>
                       <optgroup label={t('itemGroupGeneral')}>
@@ -1777,7 +1881,7 @@ export function TxnWorkspace({
                       {masterEarnings.length > 0 && (
                         <optgroup label={t('itemGroupEarnings')}>
                           {masterEarnings.map((o) => (
-                            <option key={o.value} value={o.value}>
+                            <option key={o.value} value={o.value} disabled={!o.variesByDay}>
                               {o.label}
                             </option>
                           ))}
@@ -1786,7 +1890,7 @@ export function TxnWorkspace({
                       {masterDeductions.length > 0 && (
                         <optgroup label={t('itemGroupDeductions')}>
                           {masterDeductions.map((o) => (
-                            <option key={o.value} value={o.value}>
+                            <option key={o.value} value={o.value} disabled={!o.variesByDay}>
                               {o.label}
                             </option>
                           ))}
@@ -1982,11 +2086,12 @@ export function TxnWorkspace({
                   <Button type="button" size="sm" onClick={submitDaily} disabled={isPending}>
                     {isPending ? t('saving') : t('dayGridSave')}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={closeForm} disabled={isPending}>
+                  <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
                     {t('cancel')}
                   </Button>
                 </div>
               </div>
+              </TxnPrompt>
             )}
 
             {/* ── Itemised listing ──
@@ -2213,8 +2318,12 @@ export function TxnWorkspace({
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     {sortTh('payPeriod', t('monthLabel'))}
+                    {/* c11e81aa — Payroll item is the PAY ITEM CODE, and the column beside it is that
+                        item's own description. They used to be the ledger KIND (the same word on almost
+                        every row) and the transaction's note; the note now lives in the View prompt,
+                        where a full sentence has room and where Edit puts it too. */}
                     {sortTh('kind', t('colItem'))}
-                    <th className="px-3 py-2 font-medium">{t('colRemarks')}</th>
+                    <th className="px-3 py-2 font-medium">{t('colDescription')}</th>
                     <th className="px-3 py-2 font-medium">{t('quantity')}</th>
                     {sortTh('txnDate', t('colEffectiveDate'))}
                     {sortTh('amount', t('colAmount'), 'text-right')}
@@ -2236,8 +2345,19 @@ export function TxnWorkspace({
                     <Fragment key={r.id}>
                       <tr className={expandedId === r.id ? 'bg-muted/30' : ''}>
                         <td className="px-3 py-2 tabular-nums">{r.payPeriod}</td>
-                        <td className="px-3 py-2">{t(`kindLabel.${r.kind}` as never)}</td>
-                        <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground">{r.notes ?? '—'}</td>
+                        {/* The pay item CODE where the row names one, and the generic kind where it does
+                            not — exactly what the grouped view has always printed, so the two views of
+                            the same rows identify them the same way. */}
+                        <td className="px-3 py-2">
+                          {r.componentCode ? (
+                            <span className="font-mono text-xs">{r.componentCode}</span>
+                          ) : (
+                            t(`kindLabel.${r.kind}` as never)
+                          )}
+                        </td>
+                        <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground">
+                          {r.componentName ?? '—'}
+                        </td>
                         <td className="px-3 py-2 tabular-nums text-muted-foreground">
                           {r.quantity != null ? `${Number(r.quantity)}${r.unit ? ` ${t(`unitLabel.${r.unit}` as never)}` : ''}` : '—'}
                         </td>
@@ -2258,41 +2378,9 @@ export function TxnWorkspace({
                           </div>
                         </td>
                       </tr>
-                      {expandedId === r.id && (
-                        <tr className="bg-muted/30">
-                          <td colSpan={8} className="px-3 pb-3 text-xs text-muted-foreground">
-                            <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
-                              <Detail label={t('cycleLabel')} value={r.runType ? `${t(`cycle.${r.runType}` as never)}${(r.runSeq ?? 1) > 1 ? ` #${r.runSeq}` : ''}` : t('pendingRun')} />
-                              <Detail label={t('colStatus')} value={statusLabel(r)} />
-                              <Detail label={t('createdOn')} value={r.createdOn} />
-                              <Detail label={t('createdBy')} value={r.createdBy ?? '—'} />
-                              <div className="col-span-2 sm:col-span-4">
-                                <Detail label={t('colRemarks')} value={r.notes ?? '—'} />
-                              </div>
-                            </dl>
-                            {/* Two different statements, and they used to be one. `lockedHint` is now the
-                                CLOSED case only — genuinely frozen, in the app and by the 0011 triggers.
-                                A row on a processed run is still editable, and what the operator needs to
-                                know there is the price of editing it, not that they cannot. */}
-                            {!r.editable && <p className="mt-2 text-amber-700 dark:text-amber-400">{t('lockedHint')}</p>}
-                            {/* 510f4bd1 — a THIRD statement, because `paidEditableHint` ("this has already
-                                been paid on a processed run") is simply untrue of a row that is not in the
-                                payslip. Saying it there would be the very confusion the request reports. */}
-                            {r.editable && r.status === 'reprocessRequired' && (
-                              <p className="mt-2 text-red-700 dark:text-red-400">{t('stalePendingHint')}</p>
-                            )}
-                            {r.editable && r.recalcOnEdit && r.status !== 'reprocessRequired' && (
-                              <p className="mt-2 text-amber-700 dark:text-amber-400">{t('paidEditableHint')}</p>
-                            )}
-                            {/* The employee is waiting to be recalculated for a reason that is not THIS row
-                                (attendance recompute, or another line that has since been deleted). Said
-                                here rather than in the badge: the badge is about the row, this is not. */}
-                            {r.status !== 'reprocessRequired' && r.batchNeedsRecalcForEmployment && (
-                              <p className="mt-2 text-amber-700 dark:text-amber-400">{t('employeeReprocessHint')}</p>
-                            )}
-                          </td>
-                        </tr>
-                      )}
+                      {/* c11e81aa — View's detail used to open as a THIRD <tr> underneath this one,
+                          pushing the rest of the listing down. It is now a prompt over the listing (see
+                          `viewRow` below the Card), the same shape Add and Edit open in. */}
                       {confirmDeleteId === r.id && (
                         <tr className="bg-red-50/60 dark:bg-red-500/10">
                           <td colSpan={8} className="px-3 py-2.5 text-xs">
@@ -2339,15 +2427,88 @@ export function TxnWorkspace({
         )}
       </Card>
 
-      {/* Unsaved-changes gate on switching employee. Save is offered only when the form would actually
-          save; otherwise the honest choices are discard and stay. */}
-      {pendingEmployeeId && (
+      {/* ── c11e81aa — VIEW, in the same prompt Add and Edit open in ──
+          Everything the expanded row carried, plus the four facts the listing itself no longer prints:
+          the month, the pay item and its description, and — the point of the move — the REMARK typed on
+          this transaction, which used to occupy the column the pay item's description now has. */}
+      {viewRow && (
+        <TxnPrompt title={t('viewTxnTitle')} onClose={() => setExpandedId(null)} closeLabel={t('close')}>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs text-muted-foreground sm:grid-cols-4">
+            <Detail label={t('monthLabel')} value={viewRow.payPeriod} />
+            <Detail
+              label={t('colItem')}
+              value={viewRow.componentCode ?? t(`kindLabel.${viewRow.kind}` as never)}
+            />
+            <Detail label={t('colDescription')} value={viewRow.componentName ?? '—'} />
+            <Detail label={t('colEffectiveDate')} value={viewRow.txnDate} />
+            <Detail
+              label={t('quantity')}
+              value={
+                viewRow.quantity != null
+                  ? `${Number(viewRow.quantity)}${viewRow.unit ? ` ${t(`unitLabel.${viewRow.unit}` as never)}` : ''}`
+                  : '—'
+              }
+            />
+            <Detail label={t('colAmount')} value={rm(viewRow.amount)} />
+            <Detail
+              label={t('cycleLabel')}
+              value={
+                viewRow.runType
+                  ? `${t(`cycle.${viewRow.runType}` as never)}${(viewRow.runSeq ?? 1) > 1 ? ` #${viewRow.runSeq}` : ''}`
+                  : t('pendingRun')
+              }
+            />
+            <Detail label={t('colStatus')} value={statusLabel(viewRow)} />
+            <Detail label={t('createdOn')} value={viewRow.createdOn} />
+            <Detail label={t('createdBy')} value={viewRow.createdBy ?? '—'} />
+            <div className="col-span-2 sm:col-span-4">
+              <Detail label={t('colRemarks')} value={viewRow.notes ?? '—'} />
+            </div>
+          </dl>
+          {/* Two different statements, and they used to be one. `lockedHint` is now the CLOSED case only
+              — genuinely frozen, in the app and by the 0011 triggers. A row on a processed run is still
+              editable, and what the operator needs to know there is the price of editing it, not that
+              they cannot. */}
+          {!viewRow.editable && (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">{t('lockedHint')}</p>
+          )}
+          {/* 510f4bd1 — a THIRD statement, because `paidEditableHint` ("this has already been paid on a
+              processed run") is simply untrue of a row that is not in the payslip. Saying it there would
+              be the very confusion the request reports. */}
+          {viewRow.editable && viewRow.status === 'reprocessRequired' && (
+            <p className="mt-3 text-xs text-red-700 dark:text-red-400">{t('stalePendingHint')}</p>
+          )}
+          {viewRow.editable && viewRow.recalcOnEdit && viewRow.status !== 'reprocessRequired' && (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">{t('paidEditableHint')}</p>
+          )}
+          {/* The employee is waiting to be recalculated for a reason that is not THIS row (attendance
+              recompute, or another line that has since been deleted). Said here rather than in the
+              badge: the badge is about the row, this is not. */}
+          {viewRow.status !== 'reprocessRequired' && viewRow.batchNeedsRecalcForEmployment && (
+            <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">{t('employeeReprocessHint')}</p>
+          )}
+          <div className="mt-4 flex justify-end">
+            <Button type="button" size="sm" variant="outline" onClick={() => setExpandedId(null)}>
+              {t('close')}
+            </Button>
+          </div>
+        </TxnPrompt>
+      )}
+
+      {/* Unsaved-changes gate — on switching employee, and (c11e81aa) on dismissing the entry prompt with
+          work still in it. Save is offered only when the form would actually save; otherwise the honest
+          choices are discard and stay. It is rendered LAST so it sits over the prompt it is asking about. */}
+      {(pendingEmployeeId != null || pendingClose) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg">
             <h3 className="text-sm font-semibold text-foreground">{t('unsavedTitle')}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{t('unsavedBody')}</p>
+            {/* The same question, asked about the two different things it can be asked about. Reusing the
+                switch-employee wording for a plain Close would name an employee nobody is switching to. */}
+            <p className="mt-1 text-sm text-muted-foreground">
+              {pendingClose ? t('unsavedBodyClose') : t('unsavedBody')}
+            </p>
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={() => setPendingEmployeeId(null)}>
+              <Button type="button" size="sm" variant="outline" onClick={cancelGate}>
                 {t('cancel')}
               </Button>
               <Button type="button" size="sm" variant="secondary" onClick={completeSwitch}>
@@ -2374,6 +2535,77 @@ export function TxnWorkspace({
         </div>
       )}
     </CollapsibleEmployeePanel>
+  );
+}
+
+/**
+ * c11e81aa — THE PROMPT Add, Edit and View open in, so the listing never scrolls away underneath them.
+ *
+ * It is the shape the unsaved-changes gate in this same file has always used — `fixed inset-0 z-50` over
+ * a dimmed backdrop — widened and given a header, rather than a dialog primitive imported for the
+ * occasion. Two reasons. This screen's entry form is a 400-line block of live client state that the file
+ * already owns; wrapping it is a change to where it is drawn and nothing else, which is what makes the
+ * move reviewable. And a portalled primitive would move the form OUT of this component's tree in the
+ * DOM, which is a change to how every existing test reaches it for no gain the operator can see.
+ *
+ * DISMISSAL GOES THROUGH `onClose`, NEVER STRAIGHT TO `closeForm`. The backdrop, the ×, Escape and
+ * Cancel are four ways of asking the same question, and for the entry prompt the answer is
+ * `requestCloseForm`, which stops and asks when there is unsaved work in it.
+ */
+function TxnPrompt({
+  title,
+  onClose,
+  closeLabel,
+  wide,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  closeLabel: string;
+  /** The day grid is a table and needs the room; the single entry and the detail do not. */
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      // MOUSE DOWN, not click: a drag that STARTS inside the panel (selecting the text of a remark) and
+      // ends on the backdrop is a click on the backdrop, and closing the form on it would throw the
+      // operator's typing away for the crime of selecting some of it.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        // Escape from anywhere inside the panel. It is on the panel rather than on `window` so two
+        // stacked prompts cannot both answer one key press — the gate above this one owns its own.
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            onClose();
+          }
+        }}
+        className={`my-8 w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'} rounded-lg border border-border bg-background shadow-lg`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3">
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="-mr-1 rounded-md px-2 py-0.5 text-lg leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            ×
+          </button>
+        </div>
+        {/* The panel scrolls, not the page behind it: a long day grid must not push its own Save button
+            past the bottom of the window. */}
+        <div className="max-h-[75vh] overflow-y-auto p-5">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -2416,11 +2648,19 @@ function InputMethod({
   mode,
   onLump,
   onDaily,
+  dailyDisabled,
+  dailyDisabledHint,
   t,
 }: {
   mode: 'lump' | 'daily';
   onLump: () => void;
   onDaily: () => void;
+  /** c11e81aa — the picked pay item pays ONE figure for the month, so there is nothing to split by date.
+   *  Decided from the item's own rule on the server (payRuleAllowsDayByDay), never from the form's shape. */
+  dailyDisabled?: boolean;
+  /** Why it is greyed out. Shown beside the option, because an option a person cannot use and cannot see
+   *  the reason for reads as a broken screen — which is the complaint this whole item is about. */
+  dailyDisabledHint?: string;
   t: (key: string) => string;
 }) {
   return (
@@ -2437,17 +2677,21 @@ function InputMethod({
           />
           <span>{t('inputMethodLump')}</span>
         </label>
-        <label className="flex items-center gap-2">
+        <label className={`flex items-center gap-2 ${dailyDisabled ? 'text-muted-foreground' : ''}`}>
           <input
             type="radio"
             name="txn-input-method"
             checked={mode === 'daily'}
+            disabled={dailyDisabled}
             onChange={onDaily}
-            className="h-3.5 w-3.5 accent-primary"
+            className="h-3.5 w-3.5 accent-primary disabled:cursor-not-allowed"
           />
           <span>{t('inputMethodDaily')}</span>
         </label>
       </div>
+      {dailyDisabled && dailyDisabledHint && (
+        <p className="mt-1 text-xs text-muted-foreground">{dailyDisabledHint}</p>
+      )}
     </fieldset>
   );
 }

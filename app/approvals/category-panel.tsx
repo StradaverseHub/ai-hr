@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import {
   CalendarDays,
   CalendarRange,
+  CalendarPlus,
   Clock,
   History,
   ListChecks,
@@ -37,6 +38,9 @@ type PanelCategory = Exclude<ApprovalCategory, 'all'>;
 const ICONS: Record<PanelCategory, LucideIcon> = {
   leave: CalendarDays,
   leaveCancellation: CalendarRange,
+  // 5ff7daff — a claim to be CREDITED for time already worked, so a calendar with a plus rather than the
+  // plain one that means "time off requested".
+  replacementLeave: CalendarPlus,
   attendance: Clock,
   overtime: Timer,
   claim: Receipt,
@@ -51,6 +55,7 @@ const ICONS: Record<PanelCategory, LucideIcon> = {
 const LABEL_KEY: Record<PanelCategory, string> = {
   leave: 'leaveRequests',
   leaveCancellation: 'leaveCancellationTitle',
+  replacementLeave: 'replacementLeaveTitle',
   attendance: 'attendanceCorrections',
   overtime: 'categoryOvertime',
   claim: 'claims',

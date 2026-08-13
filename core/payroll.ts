@@ -14,6 +14,10 @@ import {
 // e2632276 — absence days (a scheduled working day with no attendance row, or one marked Absent), counted
 // by the SAME helper the Attendance month roll-up reads so the screens and the deduction cannot drift.
 import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-days';
+// 3c88d593 — "which legal entity did this person belong to on this date?", answered from the effective-dated
+// assignment spine (migration 0440). Payroll is the FIRST reader of it, deliberately: the resolver has to be
+// proven on the money before attendance, leave and reporting adopt it (stage two).
+import { companySegmentsForPeriodBulk, employedByCompanyDuring, segmentForCompany } from './employment-company';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { anomalyEvaluated, evaluateCircuitBreaker, openBlockingVerdicts } from './payroll-anomaly';
@@ -1935,7 +1939,10 @@ export async function prefillTp1FromSelfRelief(
       .innerJoin(person, eq(person.id, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         ),
@@ -2128,7 +2135,10 @@ export async function prefillFixedZakat(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           eq(employeeStatutoryMy.zakatActive, true),
@@ -2223,16 +2233,44 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       .innerJoin(employment, eq(employment.id, attendance.employmentId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the same period-wide entity test the generation query uses (see generatePayslips):
+          // an employee who transferred out mid-month still worked overtime for the outgoing entity, and
+          // reading only today's column meant those hours went to whichever employer they happen to be
+          // with now — or nowhere at all. Inert until the entity history exists.
+          employedByCompanyDuring(batch.companyId, otWindow.start, otWindow.end),
           gte(attendance.attendanceDate, otWindow.start),
           lte(attendance.attendanceDate, otWindow.end),
           gt(attendance.otMinutes, 0),
           excludeToilDays,
         ),
       );
+    // ── 3c88d593 — EACH OVERTIME DAY GOES TO THE ENTITY THAT EMPLOYED THAT DAY ──────────────────────
+    // Overtime on 8 August belongs to the company the employee was in on 8 August, and overtime on the
+    // 15th to the one they moved to — which is exactly the request's own example. The rows are already
+    // fetched per day (the rest-day half/full rule needs per-day granularity), so this is a filter, not a
+    // new query. Resolved once per employment, and only for employments the widened predicate returned.
+    const otEmpIds = [...new Set(otRowsRaw.map((r) => r.employmentId))];
+    const otCurrentCompany = new Map(
+      otEmpIds.length
+        ? (
+            await tx
+              .select({ id: employment.id, companyId: employment.companyId })
+              .from(employment)
+              .where(inArray(employment.id, otEmpIds))
+          ).map((r) => [r.id, r.companyId] as const)
+        : [],
+    );
+    const otSegByEmp = await companySegmentsForPeriodBulk(tx, otEmpIds, otWindow.start, otWindow.end, otCurrentCompany);
+    /** Did THIS company employ this person on this date? Unsegmented ⇒ always yes ⇒ unchanged behaviour. */
+    const ownsDay = (employmentId: string, date: string): boolean => {
+      const segs = otSegByEmp.get(employmentId);
+      if (!segs || segs.length <= 1) return true;
+      return segs.some((s) => s.companyId === batch.companyId && date >= s.from && date <= s.to);
+    };
     // Gap-fix: keep only rows inside each employment's OWN overtime window (no-op when otPerEmployment is false).
     const otRows: typeof otRowsRaw = [];
     for (const r of otRowsRaw) {
+      if (!ownsDay(r.employmentId, r.attendanceDate)) continue;
       if (!otPerEmployment) {
         otRows.push(r);
         continue;
@@ -2585,7 +2623,12 @@ export async function generatePayslips(
         .innerJoin(person, eq(person.id, employment.personId))
         .where(
           and(
-            eq(employment.companyId, batch.companyId),
+            // 3c88d593 — the DATED entity question, and it MUST match the earnings query below. The
+            // comment above promises the two windows are read off the same facts so a row can never be
+            // classified ADDED and then dropped as ineligible; leaving this one on the column while the
+            // kernel asks the history would break that promise in the other direction — an employee the
+            // run will pay could never be ADDED to it.
+            employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
             lte(employment.hiredOn, periodEnd),
             or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
             inArray(employment.id, idFilter),
@@ -2691,6 +2734,9 @@ export async function generatePayslips(
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        // 3c88d593 — TODAY's entity, which is the entity resolver's fallback for any range the dated
+        // history does not cover. Selected here so the resolver needs no second query per employee.
+        currentCompanyId: employment.companyId,
         basic: compensation.basicSalary,
         allowance: compensation.monthlyAllowance,
         // ADR-0078 (642ecc55) — the employee's OWN salary structure: `basic` stays the monthly-equivalent
@@ -2764,7 +2810,34 @@ export async function generatePayslips(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // ── 3c88d593 — WHO BELONGS TO THIS EMPLOYER'S RUN, over the period rather than today ────────
+          //
+          // This used to be `employment.company_id = batch.company_id` and nothing else, which is why an
+          // employee who transferred out on the 11th vanished from their old employer's month entirely:
+          // the column had already been overwritten, so the outgoing entity's run could not see the ten
+          // days it owed. The question a payroll run has to ask is not "who is in this company NOW" but
+          // "who was in this company AT ANY POINT IN THIS PERIOD", and that is exactly the OR below.
+          //
+          //   • the column — everyone currently here, which is everyone who was here all month, plus
+          //     anyone who transferred IN mid-month. Unchanged, and on its own it is the entire answer
+          //     for every employment that never moved;
+          //   • the dated history — anyone whose `assignment` spine says they belonged to this company
+          //     over some part of the period, which picks up whoever transferred OUT.
+          //
+          // BOTH RUNS THEN SEGMENT. The employee appears on the outgoing entity's run for 1–10 and the
+          // incoming entity's run for 11–end (see segmentByEmp below), so nobody is paid twice and nobody
+          // is paid for days their employer did not employ them.
+          //
+          // ⚠️ RLS STILL FENCES IT, and the limitation is real rather than theoretical: `employment_rls`
+          // uses `app.can_see_employment(id)`, which resolves through TODAY's `employment.company_id`. An
+          // operator scoped to the OUTGOING company only cannot see a transferred-out employment at all,
+          // so this widening returns nothing for them. It works for a group-wide operator and for one who
+          // administers both entities — which is who performs a transfer. Widening the RLS predicate to
+          // the dated history is a separate, security-shaped decision and is deliberately NOT taken here.
+          //
+          // ⚠️ Pre-backfill this OR is inert: `assignment.company_id` is NULL on every legacy row, so the
+          // EXISTS matches nothing and the predicate collapses to the column test it replaced.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           // fbcf706d — the batch scope narrows a FULL generation only. On a subset every posted id has
@@ -2784,6 +2857,66 @@ export async function generatePayslips(
             : undefined,
         ),
       );
+
+    // ── 3c88d593 — THE ENTITY SEGMENT: how much of this period does THIS employer actually own? ──────
+    //
+    // For everybody who did not move, the answer is "all of it" and nothing below fires. For an employee
+    // who transferred mid-month it is the part of the month their entity history says belonged to this
+    // company — 1–10 August on the outgoing run, 11–31 on the incoming one — and that narrowed window is
+    // then fed to the SAME proration primitives that already handle a mid-month joiner or leaver. A
+    // transfer is, to the arithmetic, a leaver on one run and a joiner on the other; the primitives have
+    // been right about that shape for years, they were simply never told the entity had changed.
+    //
+    // THE MAP IS DELIBERATELY SPARSE. An entry is written ONLY when the month is genuinely split, so an
+    // employment with a single covering segment reaches the proration call with `undefined` and takes the
+    // identical code path it took before this item — no clamping, no rounding, no re-derivation. That is
+    // the byte-identical guarantee for the ~100% of payslips this item must not touch, and it is enforced
+    // by construction rather than by comparison.
+    //
+    // WHAT IT DOES *NOT* DO: it does not decide the statutory treatment. Two segments in one month are two
+    // INDEPENDENT statutory computations — each employer reports its own EPF/SOCSO/EIS/PCB on its own
+    // portion, each ceiling applying to that employer separately — and that falls out of the architecture
+    // rather than being coded here: a payroll batch belongs to exactly one company, so the two segments
+    // are computed by two different runs, each loading its own company's ruleset, employer registration,
+    // HRDF band and policy, and each seeing only its own wage portion. There is no halving anywhere, and
+    // there is no way for one company's ceiling to be consumed by the other's wages.
+    const currentCompanyById = new Map(emps.map((e) => [e.employmentId, e.currentCompanyId]));
+    const segmentsByEmp = await companySegmentsForPeriodBulk(
+      tx,
+      emps.map((e) => e.employmentId),
+      periodStart,
+      periodEnd,
+      currentCompanyById,
+    );
+    /** employmentId → the sub-window of [periodStart, periodEnd] this employer owns. Absent = the whole period. */
+    const segmentByEmp = new Map<string, { from: string; to: string }>();
+    for (const e of emps) {
+      const segs = segmentsByEmp.get(e.employmentId) ?? [];
+      if (segs.length <= 1) continue; // never moved this month ⇒ no entry ⇒ untouched code path
+      const mine = segmentForCompany(segs, batch.companyId);
+      // Selected by the widened predicate above but owning no part of the period under THIS company —
+      // only reachable if the history changed between the two statements. Skip rather than pay a month
+      // the entity did not own.
+      if (!mine) continue;
+      if (mine.from <= periodStart && mine.to >= periodEnd) continue; // owns the whole month anyway
+      segmentByEmp.set(e.employmentId, { from: mine.from, to: mine.to });
+    }
+    /** The first day of the period this employer pays for: the later of the hire date and the segment start. */
+    const segHiredOn = (e: { employmentId: string; hiredOn: string }): string => {
+      const seg = segmentByEmp.get(e.employmentId);
+      return seg && seg.from > e.hiredOn ? seg.from : e.hiredOn;
+    };
+    /**
+     * The last day of the period this employer pays for, in the shape the proration primitives expect
+     * (`terminatedOn`: a last paid day, or null for "not ended"). A segment that runs to the period end
+     * yields the stored termination date unchanged — including null — so a full-month employee is passed
+     * exactly what they were passed before.
+     */
+    const segTerminatedOn = (e: { employmentId: string; terminatedOn: string | null }): string | null => {
+      const seg = segmentByEmp.get(e.employmentId);
+      if (!seg || seg.to >= periodEnd) return e.terminatedOn;
+      return e.terminatedOn && e.terminatedOn < seg.to ? e.terminatedOn : seg.to;
+    };
 
     // Per-employee inputs: manual overtime (entered on the draft batch) + auto-derived unpaid days.
     const dim = daysInMonth(pYear, pMonth);
@@ -2928,7 +3061,28 @@ export async function generatePayslips(
       }
       if (opts.divisorDays !== undefined || opts.workingDayBasis || opts.window) prorationOptsByEmp.set(e.employmentId, opts);
       // Gap-fix (per-employment cut-off) — this employment's LEAVE cut-off window (policy → company → calendar).
-      leaveWindowByEmp.set(e.employmentId, cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod));
+      //
+      // ── 3c88d593 — AND IT IS CLIPPED TO THIS EMPLOYER'S ENTITY SEGMENT ────────────────────────────
+      // This one line is what stops a transferred month DOUBLE-DEDUCTING unpaid leave and absence. Both
+      // counts are queried through this window (see the group query below), and both are valued at a
+      // daily rate off the FULL monthly basic — not off the prorated figure. So without the clip, a day
+      // of unpaid leave on 5 August would be charged in full by the outgoing entity AND in full by the
+      // incoming one, and the employee would lose two days' pay for one day of leave. It has to happen
+      // here, on the window, rather than on the counts: the window is the single place both queries and
+      // the time-off subset agree on which days belong to this run.
+      //
+      // Unsegmented ⇒ the window is untouched ⇒ byte-identical.
+      const leaveWindow = cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod);
+      const entitySeg = segmentByEmp.get(e.employmentId);
+      leaveWindowByEmp.set(
+        e.employmentId,
+        entitySeg
+          ? {
+              start: leaveWindow.start > entitySeg.from ? leaveWindow.start : entitySeg.from,
+              end: leaveWindow.end < entitySeg.to ? leaveWindow.end : entitySeg.to,
+            }
+          : leaveWindow,
+      );
       // 2.1.2 daily branch — ADR-0078: keyed off the EMPLOYEE'S pay_mode (compensation.pay_mode), with the
       // rate from compensation.rate_amount. The former policy.payRule source (and its fallback) is gone —
       // it could never express one daily employee among monthly colleagues on the same policy (resolveRule
@@ -2938,7 +3092,10 @@ export async function generatePayslips(
       if (e.payMode === 'daily' && e.rateAmount != null) {
         const rate = Number(e.rateAmount);
         const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
-        const eligibleDays = eligibleWorkingDays(payPeriod, e.hiredOn, e.terminatedOn, dailyHolidays);
+        // 3c88d593 — clamped to this employer's entity segment, so a daily-rated employee who transferred
+        // on the 11th is paid by the outgoing entity for the working days up to the 10th and by the
+        // incoming one for the rest. Unsegmented ⇒ the stored dates ⇒ the identical count as before.
+        const eligibleDays = eligibleWorkingDays(payPeriod, segHiredOn(e), segTerminatedOn(e), dailyHolidays);
         dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: round2(rate * eligibleDays) });
       }
     }
@@ -4078,7 +4235,16 @@ export async function generatePayslips(
       // Prorate contractual pay for mid-period joiners/leavers (full month → factor 1).
       // Allowance prorates with basic — EA-1955 incomplete-month treats fixed monthly wages as a whole.
       // 1b — the divisor + working-day basis come from the policy (default ⇒ EA s.18A calendar daysInMonth).
-      const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn, prorationOptsByEmp.get(e.employmentId));
+      // 3c88d593 — the tenure window is narrowed to this employer's entity segment before it reaches the
+      // proration formula, and NOTHING ELSE about the formula changes: the divisor, the working-day basis
+      // and the cut-off window are still whatever the employee's own policy resolved. Two segments of one
+      // calendar month therefore prorate against the SAME denominator and sum to the whole month's pay —
+      // which is what makes "1–10 under Fiamma plus 11–31 under ISEDECOR" add up to one August salary
+      // rather than to one-and-a-bit, and what would NOT have been true had each run prorated against its
+      // own segment length. `prorationSettings` deliberately still reads the REAL hire/termination dates
+      // (isHire / isResign above): a transfer is not a resignation, and it must not silently switch an
+      // employer onto their "Resigned Employee Basic Salary Formula".
+      const factor = prorationFactor(payPeriod, segHiredOn(e), segTerminatedOn(e), prorationOptsByEmp.get(e.employmentId));
       // 2.1.2 — a daily-rated employee is paid rate × eligible days; the monthly proration basis does not apply.
       // Surface the eligible-day count as `daysWorked` (a real day count, not factor×dim) for the daily path.
       const daily = dailyPayByEmp.get(e.employmentId) ?? null;
@@ -4645,6 +4811,26 @@ export async function generatePayslips(
           ...statutoryProvenance,
           ...(slipOvertime > 0 && otSourceByEmp.get(e.employmentId)
             ? { otSource: otSourceByEmp.get(e.employmentId) }
+            : {}),
+          // 3c88d593 — THE ENTITY SEGMENT THIS SLIP COVERS, stamped ONLY when the month was split.
+          //
+          // A payslip has to be able to say what it is: "1–10 August, Fiamma" is not the same document as
+          // "August, Fiamma", and a reader looking at two slips for one month must be able to tell which
+          // days each one paid without reconstructing the transfer from the event log. It goes on the
+          // payslip's own immutable snapshot for the same reason every other stamp here does — a screen
+          // must never re-derive a closed slip's period from today's assignment history, which a later
+          // correction could change underneath it.
+          //
+          // Absent on every unsegmented slip ⇒ every existing payslip and every ordinary run is
+          // byte-identical, and a screen with no stamp prints the pay period exactly as it does today.
+          ...(segmentByEmp.get(e.employmentId)
+            ? {
+                segment: {
+                  companyId: batch.companyId,
+                  from: segmentByEmp.get(e.employmentId)!.from,
+                  to: segmentByEmp.get(e.employmentId)!.to,
+                },
+              }
             : {}),
           // Step 2 carry_forward (f3148da1) — the recovered/deferred amounts + the balance before this cycle.
           // Only stamped when non-zero (byte-identical to today for every other path); the NEXT cycle's balance
@@ -6134,7 +6320,10 @@ async function preProcessChecksTx(
     .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
     .where(
       and(
-        eq(employment.companyId, batch.companyId),
+        // 3c88d593 — the DATED entity question, same as generatePayslips: the readiness gate must cover
+        // exactly the set the kernel will compute, or a gap belonging to a transferred-out employee is
+        // silently not checked on the run that pays them.
+        employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
         lte(employment.hiredOn, periodEnd),
         or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         scopeFilter,
@@ -6346,7 +6535,10 @@ export function listPayslipLessEligible(
       .innerJoin(person, eq(person.id, employment.personId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           // NOT EXISTS a payslip for this employment on this batch. Correlated rather than a NOT IN over a
@@ -6743,7 +6935,10 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       )
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // 3c88d593 — the DATED entity question, same as generatePayslips. Reading only the column here
+          // and the history there is exactly the drift this helper exists to prevent: an employee the
+          // kernel pays on the outgoing entity's run, on a screen that cannot see them.
+          employedByCompanyDuring(batch.companyId, periodStart, periodEnd),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         ),

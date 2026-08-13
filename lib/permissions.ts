@@ -541,6 +541,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       // downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they are not
       // listed — the check walks page.tsx.
       '/payroll/borang-8a/preview',
+      // 9c8dad7a: the Borang A review step, between the EPF shelf's figures screen and the THREE downloads
+      // (the drawn form, its readable text twin and the i-Akaun upload file). Same scopedAdmin key as the
+      // directory that links to it and as the [formId] screen above — it lists every employee's name,
+      // identity card number, EPF member number, EPF-liable wage and contributions, so it is admin-scoped
+      // exactly like them. Registered here because test/function-access.test.ts checks reverse
+      // completeness: a guarded page with no matrix column fails the suite rather than silently becoming a
+      // screen nobody can grant or revoke. Its FOUR siblings under /payroll/borang-a (the pdf, text and
+      // file downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they
+      // are not listed — the check walks page.tsx.
+      '/payroll/borang-a/preview',
       // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
       // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
       // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports

@@ -1043,6 +1043,24 @@ export const assignment = pgTable(
     // (no second bitemporal table). Null ⇒ location-blind = today's behaviour. The location's optional
     // `state` overrides holiday resolution; see location table + core/attendance.ts.
     locationId: uuid('location_id').references((): AnyPgColumn => location.id),
+    // 3c88d593 (migration 0440) — THE LEGAL ENTITY, effective-dated at last.
+    //
+    // `employment.company_id` is a single mutable value with no history: an Entity Transfer overwrote it
+    // and left no record of the company the employee belonged to before, so payroll (and attendance, and
+    // leave, and reporting) had nothing to look up for a date before the move. Every other placement
+    // dimension on this row is already effective-dated; company was the one that was not, and the fault
+    // the reporter raised — a whole August paid under the destination entity for an 11 August transfer —
+    // is that single gap and nothing else.
+    //
+    // NULLABLE, AND THAT IS LOAD-BEARING. Rows written before the backfill hold NULL, and the resolver
+    // (core/employment-company.ts) reads NULL as "no history here — fall back to employment.company_id",
+    // which is exactly today's behaviour. So the column can ship before the backfill runs, and a tenant
+    // whose backfill has not run yet computes byte-identical payroll.
+    //
+    // NOT a same-company constraint against department/position/location: those are validated against
+    // `employment.company_id` by their own writers at write time, and this column records what WAS true
+    // on a past range, which a today-check must never re-litigate.
+    companyId: uuid('company_id').references(() => company.id),
     employmentType: employmentTypeEnum('employment_type').notNull(),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'), // null = open / current
@@ -1050,7 +1068,11 @@ export const assignment = pgTable(
     supersededAt: timestamp('superseded_at', { withTimezone: true }), // null = current record
     createdAt: createdAt(),
   },
-  (t) => [index('assignment_employment_idx').on(t.employmentId, t.validFrom)],
+  (t) => [
+    index('assignment_employment_idx').on(t.employmentId, t.validFrom),
+    // The company-for-date resolver's access path: "which employments were in company X on/over range R".
+    index('assignment_company_idx').on(t.companyId, t.validFrom),
+  ],
 );
 
 // reporting_line = typed, effective-dated graph edge; manager & subordinate may differ in company.

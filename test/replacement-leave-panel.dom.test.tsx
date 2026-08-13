@@ -106,7 +106,7 @@ const REPLACEMENT = card({
   leaveTypeId: 'lt-rl',
   leaveType: 'Replacement Leave',
   code: 'REPLACEMENT',
-  replacement: { rows: CREDITS, leaveUnit: 'day', explanations: {} },
+  replacement: { rows: CREDITS, leaveUnit: 'day', explanations: {}, pendingDays: 0 },
 });
 
 function renderCards(entries: LeaveCardEntry[]) {
@@ -123,12 +123,13 @@ const openCard = async (name: string) => {
 };
 
 describe('00307068 — the Replacement Leave card opens the per-credit table', () => {
-  it('shows one row per banked credit, with the five columns the reporter named', async () => {
+  it('shows one row per banked credit, with every column the reporter named', async () => {
     renderCards([ANNUAL, REPLACEMENT]);
     await openCard('Replacement Leave');
 
-    // The five column headings, by the same keys HR configures them under (REPLACEMENT_COLUMN_KEYS), so a
-    // heading cannot be renamed in one place and not the other.
+    // Every column heading, by the same keys HR configures them under (REPLACEMENT_COLUMN_KEYS), so a
+    // heading cannot be renamed in one place and not the other. 5ff7daff added `remaining` ("Available"),
+    // and this loop picks it up without being told — which is the property the key set exists for.
     const en = messages.leave.breakdown.replacement.col as Record<string, string>;
     for (const key of REPLACEMENT_COLUMN_KEYS) {
       expect(screen.getByRole('columnheader', { name: new RegExp(en[key]) }), `column ${key}`).toBeInTheDocument();
@@ -143,8 +144,15 @@ describe('00307068 — the Replacement Leave card opens the per-credit table', (
     // The used-up credit is MARKED — without this the table looks like it contradicts the balance.
     expect(screen.getByText(messages.leave.breakdown.replacement.statusTaken)).toBeInTheDocument();
 
-    // The balance above the table is leaveBalances' figure, shown under its own label.
-    expect(screen.getByText(messages.leave.breakdown.field.availableBalance)).toBeInTheDocument();
+    // 5ff7daff — the balance above the table is STILL leaveBalances' figure (the half of this case that was
+    // always the point), but it now reads as the reporter's TWO STAGES rather than one "Available Balance"
+    // line: what is waiting on the line manager, and what has been approved and can be spent.
+    // Asserted on the two HINTS rather than the two labels: the approved stage is called "Replacement
+    // Leave" — the reporter's own word for it — which is also the leave type's name on the card and in the
+    // panel header, so the label alone matches three nodes. The hints name the two stages uniquely.
+    expect(screen.getByText(messages.leave.breakdown.replacement.pendingLabel)).toBeInTheDocument();
+    expect(screen.getByText(messages.leave.breakdown.replacement.pendingHint)).toBeInTheDocument();
+    expect(screen.getByText(messages.leave.breakdown.replacement.approvedHint)).toBeInTheDocument();
 
     // …and NOT the nine-line summary. `Eligible` is the summary's first row and appears nowhere else.
     expect(screen.queryByText(messages.leave.breakdown.field.eligible)).not.toBeInTheDocument();
@@ -153,7 +161,7 @@ describe('00307068 — the Replacement Leave card opens the per-credit table', (
 
   it('renders the Number column in the leave type’s configured unit', async () => {
     renderCards([
-      { ...REPLACEMENT, replacement: { rows: CREDITS, leaveUnit: 'hour', explanations: {} } },
+      { ...REPLACEMENT, replacement: { rows: CREDITS, leaveUnit: 'hour', explanations: {}, pendingDays: 0 } },
     ]);
     await openCard('Replacement Leave');
     // 480 OT minutes ⇒ 8.00 hours. Read from the RAW minutes, not re-derived from the rounded day figure.
@@ -168,6 +176,7 @@ describe('00307068 — the Replacement Leave card opens the per-credit table', (
         replacement: {
           rows: CREDITS,
           leaveUnit: 'day',
+          pendingDays: 0,
           explanations: { expiredDate: { description: 'Counted from the day your manager approved it.' } },
         },
       },
@@ -181,7 +190,7 @@ describe('00307068 — the Replacement Leave card opens the per-credit table', (
   });
 
   it('says so plainly when nothing has been banked yet', async () => {
-    renderCards([{ ...REPLACEMENT, replacement: { rows: [], leaveUnit: 'day', explanations: {} } }]);
+    renderCards([{ ...REPLACEMENT, replacement: { rows: [], leaveUnit: 'day', explanations: {}, pendingDays: 0 } }]);
     await openCard('Replacement Leave');
     expect(screen.getByText(messages.leave.breakdown.replacement.empty)).toBeInTheDocument();
   });

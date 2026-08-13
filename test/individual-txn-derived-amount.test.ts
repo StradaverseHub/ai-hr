@@ -53,6 +53,7 @@ import {
 } from '../core/pay-components';
 import {
   DERIVED_AMOUNT_RULE_KINDS,
+  payRuleAllowsDayByDay,
   payRuleDerivesAmount,
   payRuleInputUnit,
   resolvePayComponentSet,
@@ -447,6 +448,41 @@ describe('2da9937a — payRuleDerivesAmount / payRuleInputUnit', () => {
     expect(
       payRuleInputUnit({ kind: 'formula', start: { ref: 'basic' }, terms: [{ op: '*', operand: { ref: 'number', value: 2 } }] }),
     ).toBeNull();
+  });
+
+  /**
+   * c11e81aa — THE THIRD QUESTION, and it is not answerable from the other two.
+   *
+   * A `fixed` monthly allowance and an item with no rule at all are IDENTICAL under
+   * payRuleDerivesAmount / payRuleInputUnit — both false / null — and only one of them may be keyed day
+   * by day. That is the whole reason this predicate exists rather than the screen inferring it, and it
+   * is the case asserted first.
+   */
+  it('says which items may be recorded day by day, and a fixed amount is not one of them', () => {
+    // A day can be worth its own hours or its own days.
+    expect(payRuleAllowsDayByDay({ kind: 'per_hour', rate: 1 })).toBe(true);
+    expect(payRuleAllowsDayByDay({ kind: 'per_day', rate: 1 })).toBe(true);
+    expect(
+      payRuleAllowsDayByDay({ kind: 'formula', start: { ref: 'basic' }, terms: [{ op: '*', operand: { ref: 'hours' } }] }),
+    ).toBe(true);
+    // No rule: nothing has declared this a monthly constant and the amount is keyed per line. ABSENT and
+    // UNPAID LEAVE are this tenant's two, and both are inherently per-day.
+    expect(payRuleAllowsDayByDay(null)).toBe(true);
+
+    // ONE FIGURE FOR THE MONTH — the fixed allowance the request names, and its three relatives.
+    expect(payRuleAllowsDayByDay({ kind: 'fixed' })).toBe(false);
+    expect(payRuleAllowsDayByDay({ kind: 'qty_rate', qty: 2, rate: 3 })).toBe(false);
+    expect(payRuleAllowsDayByDay({ kind: 'percent_of', base: 'basic', pct: 10 })).toBe(false);
+    expect(payRuleAllowsDayByDay({ kind: 'flat_capped', value: 10, cap: 5 })).toBe(false);
+    // A formula reading NEITHER hours nor days yields the whole month's figure for every line it is
+    // asked about, so five dates would pay it five times. This is the dangerous one.
+    expect(
+      payRuleAllowsDayByDay({
+        kind: 'formula',
+        start: { ref: 'basic' },
+        terms: [{ op: '*', operand: { ref: 'number', value: 2 } }],
+      }),
+    ).toBe(false);
   });
 });
 

@@ -1864,14 +1864,20 @@
           "number": "Number",
           "unit": "Unit",
           "approvalDate": "Approval Date",
-          "expiredDate": "Expired Date"
+          "expiredDate": "Expired Date",
+          "remaining": "Available"
         },
         "unitDay": "Day(s)",
         "unitHour": "Hour(s)",
         "statusTaken": "Used",
         "statusExpired": "Expired",
         "statusConverted": "Paid out",
-        "statusPartlyUsed": "Partly used"
+        "statusPartlyUsed": "Partly used",
+        "pendingLabel": "Replacement Leave in Lieu",
+        "pendingHint": "Waiting for your line manager",
+        "approvedLabel": "Replacement Leave",
+        "approvedHint": "Approved and ready to use",
+        "cardPending": "{days} in lieu"
       }
     },
     "preview": {
@@ -2913,7 +2919,12 @@
     "summaryPending": "Pending",
     "summaryApproved": "Approved",
     "summaryRejected": "Rejected",
-    "summaryCancelled": "Cancelled"
+    "summaryCancelled": "Cancelled",
+    "replacementLeaveTitle": "Replacement leave requests",
+    "noPendingReplacement": "No pending replacement leave requests.",
+    "replacementDatesWorked": "Dates worked",
+    "replacementApproved": "Replacement leave approved",
+    "replacementRejected": "Replacement leave rejected"
   },
   "performance": {
     "list": {
@@ -3637,8 +3648,6 @@
       "desc_cp39": "Every employee’s monthly tax deduction for the period, with the e-Data PCB upload file alongside it.",
       "desc_epf": "Every employee’s wages, employee share and employer share for the month.",
       "desc_socso_eis": "One combined monthly return — SOCSO and EIS go up together through PERKESO ASSIST.",
-      "planned_epf_borang_a": "Borang A",
-      "planned_epf_borang_a_hint": "The EPF monthly contribution submission form. Not built — the EPF contributions listing above is not Borang A and is not offered as one.",
       "planned_epf_borang_bbcb": "Borang BBCB",
       "planned_epf_borang_bbcb_hint": "Not built — and the name on its own has not let us identify which EPF form this is, so we will confirm that with you before anyone starts.",
       "planned_perkeso_borang_8b": "Borang 8B",
@@ -3664,8 +3673,11 @@
       "fidelity_agency_layout": "Agency layout",
       "fidelity_agency_layout_hint": "Drawn box for box to match the agency’s own form, but on our page — the agency publishes no blank one to print onto.",
       "desc_borang_8a": "The PERKESO monthly contribution schedule: one SOCSO figure per person, taken from the payroll run and never recalculated, with the contribution month and the payment deadline printed on the form itself.",
+      "desc_borang_a": "KWSP’s monthly contribution form: one line per person with the EPF member number, the EPF-liable wage and both shares, taken from the payroll run and never recalculated, with the contribution month set to the payroll month plus one as the form itself requires. Also produces the fixed-width file for uploading to i-Akaun.",
       "borang8aReview": "Open Borang 8A review",
-      "borang8aReviewTitle": "Check the schedule, type a status against any row, then download the form or the same content as plain text."
+      "borang8aReviewTitle": "Check the schedule, type a status against any row, then download the form or the same content as plain text.",
+      "borangAReview": "Open Borang A review",
+      "borangAReviewTitle": "Check the form, set the contribution month, then download the form, the same content as plain text, or the i-Akaun upload file."
     },
     "ea": {
       "backToReports": "Reports",
@@ -4297,7 +4309,12 @@
           "leave": "Leave",
           "import": "Import",
           "system": "System"
-        }
+        },
+        "colDescription": "Description",
+        "viewTxnTitle": "Transaction details",
+        "close": "Close",
+        "inputMethodDailyUnavailable": "This pay item pays one fixed amount for the month, so it cannot be split across dates.",
+        "unsavedBodyClose": "Do you want to save before closing?"
       },
       "tp1": {
         "title": "TP1 Relief",
@@ -4937,6 +4954,7 @@
       "otherRuns": "Payroll runs in this selection",
       "payDateLine": "Payment date: {date}",
       "payPeriodLine": "Payroll period: {period}",
+      "segmentPeriodLine": "Employed by this company {from} to {to}",
       "paymentInfoHeading": "Payment information",
       "paymentMethod_bank_transfer": "Bank transfer",
       "paymentMethod_cash": "Cash",
@@ -5284,6 +5302,69 @@
       "headerMissingHint": "Set it under Organization → Statutory identity, then come back. Without it every page of the form has a gap in the same box.",
       "headerField_employerCode": "SOCSO employer code (No. Kod Majikan)",
       "headerField_employerName": "Company legal name"
+    },
+    "borangA": {
+      "title": "Borang A — monthly contribution form (KWSP)",
+      "back": "Statutory Forms",
+      "company": "Company",
+      "year": "Year",
+      "month": "Payroll month",
+      "show": "Show",
+      "notArtworkTitle": "Our layout, not KWSP’s page.",
+      "notArtwork": "KWSP publishes no blank Borang A to print onto, so this is drawn box for box to match the agency’s form on a page of ours. Check every figure before you key it in or file it.",
+      "noBatch": "No payroll run found for {company} · {period}. Run payroll for this month first.",
+      "notFound": "That form is not available for the selected company.",
+      "tileMonth": "Contribution month",
+      "tileMonthHint": "The payroll month plus one, which is note 6 on the form itself.",
+      "tileEmployees": "Employees on the form",
+      "tileSheets": "{count, plural, one {# page} other {# pages}}",
+      "tileWage": "Upah — the EPF-liable wage",
+      "tileWageHint": "What EPF was charged on, never gross pay.",
+      "tileTotal": "Amaun Caruman (employer + employee)",
+      "tileRef": "Employer reference {ref}",
+      "reconTitle": "Reconciliation — the run’s own figures beside the form’s",
+      "periodOverridden": "You have set the contribution month to {month}. The rule on the form is the payroll month ({payroll}) plus one. We are not stopping you — some employers file early or late on purpose.",
+      "headerMissingTitle": "This company cannot produce a Borang A yet:",
+      "headerMissingHint": "Set it under Organization → Statutory identity, then come back. Without it every page of the form has a gap in the same box.",
+      "headerField_employerRef": "EPF employer reference number (No. Rujukan Majikan)",
+      "headerField_employerName": "Company legal name",
+      "missingTitle": "{count, plural, one {# employee cannot go on the form yet:} other {# employees cannot go on the form yet:}}",
+      "missingHint": "Add what is missing on the staff record and come back — nothing can be downloaded until every row is complete.",
+      "fileBlockedTitle": "The printed form is ready, but the i-Akaun upload file is not:",
+      "fileBlockedHint": "The upload file’s fields are fixed-width and numeric, so a value the printed page can carry may still be one the file cannot. Fix these and the file becomes available.",
+      "repMissingTitle": "The authorised representative block at the foot of the form is incomplete:",
+      "repMissingHint": "Set it under Organization → Statutory authorities → EPF. This does not stop the download; the form simply prints a blank line to write on, exactly as a blank Borang A does.",
+      "repField_name": "name",
+      "repField_ic": "identity card number",
+      "repField_position": "position",
+      "repField_phone": "telephone",
+      "repField_email": "e-mail",
+      "scheduleTitle": "The form",
+      "epfPeriod": "Contribution month",
+      "shortCode": "Employer short code",
+      "batchNo": "Batch no.",
+      "controlNo": "Control no.",
+      "inputsHint": "The last three are for the i-Akaun upload file only and are never saved. The employer short code has no field anywhere in the system, so it is typed each time. The control number is the one field in KWSP’s format we have not yet confirmed — leave it blank and it is written as zeros.",
+      "apply": "Apply",
+      "colBil": "Bil",
+      "colMember": "No. Ahli",
+      "colIc": "Identity card no.",
+      "colName": "Employee",
+      "colWage": "Upah (RM)",
+      "colEmployer": "Employer share (RM)",
+      "colEmployee": "Employee share (RM)",
+      "wageNotRecorded": "not recorded",
+      "noEmployees": "No employees in this payroll run.",
+      "pageCarry": "Carried forward — page {sheet} of {of}",
+      "grandTotal": "JUMLAH (RM)",
+      "downloadPdf": "Download the form",
+      "downloadPdfTitle": "The drawn Borang A, paginated, with the totals carried forward from page to page.",
+      "downloadText": "Download as text",
+      "downloadTextTitle": "The same content as plain text, for reading while you key into KWSP’s own portal.",
+      "downloadFile": "Download upload file",
+      "downloadFileTitle": "The fixed-width file for uploading to i-Akaun. The totals are checked against the employee lines before it is offered.",
+      "fileBlocked": "The upload file is blocked until the records above are fixed.",
+      "downloadsBlocked": "Downloads are blocked until every row is complete."
     }
   },
   "admin": {
@@ -5974,7 +6055,8 @@
         "number": "Number",
         "unit": "Unit",
         "approvalDate": "Approval Date",
-        "expiredDate": "Expired Date"
+        "expiredDate": "Expired Date",
+        "remaining": "Available"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Day Type Inclusion",

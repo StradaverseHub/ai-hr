@@ -177,13 +177,34 @@ const PREMIUM_MULT: Record<'workday' | 'rest_day' | 'holiday', number> = { workd
  */
 const toilEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'toil');
 
-/** Idempotent: the tenant's REPLACEMENT leave type (created on first need; paid, working-day counted). */
+/**
+ * Idempotent: the tenant's replacement leave type (created on first need; paid, working-day counted).
+ *
+ * 5ff7daff — MATCHES ON `leave_type.role` FIRST, and that is a defect fix, not a tidy-up. This function
+ * used to ask `lower(code) = 'replacement'` only. Production's catalogue was not seeded: the customer's own
+ * replacement type is coded `RL` with `role = 'replacement'`, so the code match found nothing and this
+ * function CREATED A SECOND TYPE — "Replacement Leave (in lieu)" — the instant replacement leave was
+ * switched on. Every approved credit then landed on the auto-created type while the type carrying the
+ * customer's own name read zero forever. Same class as EMERGENCY vs production's `EL`, which is what
+ * `leaveTypeIs` (core/leave.ts) exists for; TOIL had simply never adopted the marker.
+ *
+ * Precedence is `leaveTypeIs`': a row with a role wins, an UNCLASSIFIED row falls back to the seeded code —
+ * so a tenant nobody has classified behaves exactly as before. The ORDER BY makes that precedence explicit
+ * rather than leaving it to the planner when a tenant somehow has both.
+ */
 async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<string> {
   const find = () =>
     tx
       .select({ id: leaveType.id })
       .from(leaveType)
-      .where(and(eq(leaveType.tenantId, tenantId), sql`lower(${leaveType.code}) = 'replacement'`, isNull(leaveType.archivedAt)))
+      .where(
+        and(
+          eq(leaveType.tenantId, tenantId),
+          sql`(${leaveType.role} = 'replacement' or (coalesce(${leaveType.role}, '') = '' and lower(${leaveType.code}) = 'replacement'))`,
+          isNull(leaveType.archivedAt),
+        ),
+      )
+      .orderBy(sql`case when ${leaveType.role} = 'replacement' then 0 else 1 end`)
       .limit(1);
   const [existing] = await find();
   if (existing) return existing.id;

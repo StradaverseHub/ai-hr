@@ -60,10 +60,21 @@ export type LeaveCardEntry = {
    * body of the side-sheet differs.
    */
   replacement?: ReplacementPanelData | null;
+  /**
+   * 5ff7daff — the days still WAITING on a line manager, shown as a second line under the card's balance.
+   * Non-null on the Replacement Leave card only. It is deliberately not added into `remaining`: nothing is
+   * banked until the manager approves, and a card that counted unapproved claims as spendable balance would
+   * disagree with what the apply popup will actually let the employee book. 0 renders nothing at all — a
+   * permanent "0.00 in lieu" on a card is noise for the employees who never claim.
+   */
+  pendingInLieu?: number | null;
 };
 
 export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
   const t = useTranslations('me');
+  // 5ff7daff — the replacement-leave wording lives with the panel's own keys, so the card's "in lieu" line
+  // and the panel it opens can never call the same stage two different things.
+  const tRep = useTranslations('leave.breakdown.replacement');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -106,6 +117,13 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
               <Icon className="size-5 shrink-0" aria-hidden />
               <span className="text-2xl font-semibold tabular-nums">{fmt(e.remaining)}</span>
               <span className="line-clamp-2 text-xs font-medium">{e.leaveType}</span>
+              {/* The awaiting-approval half of the two-stage view — the employee's own acknowledgement that
+                  the request they just submitted exists. Until this round nothing on My Leave said so. */}
+              {e.pendingInLieu != null && e.pendingInLieu > 0 && (
+                <span className="text-[11px] font-medium opacity-75">
+                  {tRep('cardPending', { days: formatDays(e.pendingInLieu) })}
+                </span>
+              )}
             </button>
           );
         })}

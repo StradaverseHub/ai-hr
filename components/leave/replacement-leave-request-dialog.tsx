@@ -71,22 +71,37 @@ export function ReplacementLeaveRequestDialog({
   const patch = (key: number, field: keyof Row, value: string) =>
     setRows((r) => r.map((x) => (x.key === key ? { ...x, [field]: value } : x)));
 
+  // 5ff7daff — PER ROW as well as in aggregate, so a claim covering five worked dates can be checked line
+  // by line. Same arithmetic, computed once per row and then summed: the grand total is now the sum of the
+  // figures the employee can actually see, which is what makes checking a row worth doing. A row the
+  // employee has not finished filling in contributes 0 and prints nothing, rather than a misleading zero.
+  const perRow = useMemo(
+    () =>
+      new Map(
+        rows.map((r) => {
+          let minutes = 0;
+          if (unit === 'hour') {
+            if (r.fromTime && r.toTime) {
+              const [fh, fm] = r.fromTime.split(':').map(Number);
+              const [th, tm] = r.toTime.split(':').map(Number);
+              const d = th * 60 + tm - (fh * 60 + fm);
+              if (Number.isFinite(d) && d > 0) minutes = d;
+            }
+          } else {
+            const d = Number(r.days);
+            if (Number.isFinite(d) && d > 0) minutes = d * STD_DAY_MINUTES;
+          }
+          return [r.key, { minutes, days: round2(minutes / STD_DAY_MINUTES), hours: round2(minutes / 60) }];
+        }),
+      ),
+    [rows, unit],
+  );
+
   const total = useMemo(() => {
     let minutes = 0;
-    for (const r of rows) {
-      if (unit === 'hour') {
-        if (!r.fromTime || !r.toTime) continue;
-        const [fh, fm] = r.fromTime.split(':').map(Number);
-        const [th, tm] = r.toTime.split(':').map(Number);
-        const d = th * 60 + tm - (fh * 60 + fm);
-        if (Number.isFinite(d) && d > 0) minutes += d;
-      } else {
-        const d = Number(r.days);
-        if (Number.isFinite(d) && d > 0) minutes += d * STD_DAY_MINUTES;
-      }
-    }
+    for (const v of perRow.values()) minutes += v.minutes;
     return { days: round2(minutes / STD_DAY_MINUTES), hours: round2(minutes / 60) };
-  }, [rows, unit]);
+  }, [perRow]);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -193,6 +208,16 @@ export function ReplacementLeaveRequestDialog({
                         />
                       </div>
                     )}
+                    {/* This row's own figure, in the same words as the total at the foot — one wording for
+                        one arithmetic. Absent until the row says something, so an untouched row is blank
+                        rather than claiming zero. */}
+                    <div className="min-w-[6rem] pb-2 text-right text-xs tabular-nums text-muted-foreground">
+                      {(perRow.get(r.key)?.minutes ?? 0) > 0
+                        ? unit === 'hour'
+                          ? t('totalHours', { hours: perRow.get(r.key)!.hours })
+                          : t('totalDays', { days: perRow.get(r.key)!.days })
+                        : ''}
+                    </div>
                     <Button
                       type="button"
                       size="sm"
