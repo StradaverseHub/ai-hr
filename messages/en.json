@@ -5150,6 +5150,7 @@
       "totalRecords": "{count, plural, one {# record} other {# records}}",
       "validRecords": "{count, plural, one {# valid} other {# valid}}",
       "errorRecords": "{count, plural, one {# with errors} other {# with errors}}",
+      "warnedRecords": "{count, plural, one {# with a warning} other {# with warnings}}",
       "downloadErrors": "Download error report",
       "confirmImport": "{count, plural, one {Import # valid record} other {Import # valid records}}",
       "importing": "Importing…",
@@ -5218,7 +5219,15 @@
         "currencyUnsupported": "Only MYR is supported",
         "derivedAmountUnavailable": "The pay item’s formula could not be worked out for this employee",
         "unexpected": "Could not import: {message}",
-        "employeeNotInScope": "The pay run for that month does not cover this employee"
+        "employeeNotInScope": "The pay run for that month does not cover this employee",
+        "duplicateInRun": "The pay run already has {code} {amount} for this employee — it is already there",
+        "duplicateInFile": "Row {row} of this file already has {code} for this employee at the same amount",
+        "duplicateImported": "This row of this file has already been imported",
+        "runMissingForCycle": "There is no open {cycle} pay run for {period} — create it first, then import"
+      },
+      "warning": {
+        "runAlreadyProcessed": "The {period} pay run has already produced payslips. This row will be added and the run marked for reprocessing — it is not paid until you reprocess it.",
+        "bonusRunExists": "This month has a bonus run, and {code} is going to the salary run. Put “bonus” in the Payroll Cycle column to send it to the bonus run instead."
       }
     }
   },

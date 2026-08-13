@@ -2486,6 +2486,13 @@
       "when": 1781862536000,
       "tag": "0436_roster_assignment_delete_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 437,
+      "version": "7",
+      "when": 1781862537000,
+      "tag": "0437_individual_txn_consumed",
+      "breakpoints": true
     }
   ]
 }

@@ -86,7 +86,9 @@ describe('5c65367d · the header round-trip', () => {
   it('Individual Transaction headings normalise to the contract keys, in order', () => {
     expect(INDIVIDUAL_TXN_HEADERS.map(normaliseHeader)).toEqual([...INDIVIDUAL_TXN_COLUMNS]);
     const { headers } = parseCsvRecords(
-      `${INDIVIDUAL_TXN_HEADERS.join(',')}\r\nX000001,A,OT1_5,B,overtime,5,,2026-08-05,\r\n`,
+      // 0db616f3 — nine data cells now: Payroll Cycle sits between Transaction Date and Notes. A blank
+      // one means the month's regular run, which is what every file written to the old template says.
+      `${INDIVIDUAL_TXN_HEADERS.join(',')}\r\nX000001,A,OT1_5,B,overtime,5,,2026-08-05,,\r\n`,
     );
     expect(headers).toEqual([...INDIVIDUAL_TXN_COLUMNS]);
   });
@@ -215,7 +217,15 @@ describe('5c65367d · the workbooks', () => {
     expect(cycles.flat().map(String)).toContain('regular');
   });
 
-  it('Individual Transaction: the same shape, with Kinds where Fixed has Cycles', async () => {
+  /**
+   * 0db616f3 UPDATES THIS CASE RATHER THAN REPLACING IT. It used to read "with Kinds WHERE Fixed has
+   * Cycles" and pinned five sheets ending at Kinds. Half of that is still true and is kept: Individual
+   * still carries the Kinds sheet and Fixed still does not. What changed is that Individual now has a
+   * Payroll Cycle COLUMN — without it an import had no way to say which run of the month a line was for,
+   * which is how a January bonus file came to sit on the salary run — so it carries the Cycles reference
+   * sheet too, and a coded column whose vocabulary is not on the reference is a column nobody can fill in.
+   */
+  it('Individual Transaction: the same shape, with Kinds AND Cycles (Fixed has Cycles only)', async () => {
     const XLSX = await import('xlsx');
     const bytes = await buildTxnImportWorkbook('individual', REFERENCE);
     const wb = XLSX.read(bytes, { type: 'array', cellStyles: true });
@@ -225,6 +235,7 @@ describe('5c65367d · the workbooks', () => {
       TXN_IMPORT_SHEETS.employees,
       TXN_IMPORT_SHEETS.payItems,
       TXN_IMPORT_SHEETS.kinds,
+      TXN_IMPORT_SHEETS.cycles,
     ]);
     const data = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[TXN_IMPORT_SHEETS.data.individual], {
       header: 1,
@@ -238,6 +249,12 @@ describe('5c65367d · the workbooks', () => {
       blankrows: false,
     });
     expect(kinds.flat().map(String)).toContain('overtime');
+    const cycles = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[TXN_IMPORT_SHEETS.cycles], {
+      header: 1,
+      raw: true,
+      blankrows: false,
+    });
+    expect(cycles.flat().map(String)).toContain('bonus');
   });
 
   /**
@@ -281,7 +298,7 @@ describe('5c65367d · the workbooks', () => {
     const { workbookToCsvText } = await import('../lib/spreadsheet');
     const sheet = XLSX.utils.aoa_to_sheet([
       [...INDIVIDUAL_TXN_HEADERS],
-      ['X000001', 'Irwin Law', 'OT1_5', 'Overtime 1.5', 'overtime', 5, '', new Date(Date.UTC(2026, 7, 5)), 'weekend'],
+      ['X000001', 'Irwin Law', 'OT1_5', 'Overtime 1.5', 'overtime', 5, '', new Date(Date.UTC(2026, 7, 5)), '', 'weekend'],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, sheet, TXN_IMPORT_SHEETS.data.individual);

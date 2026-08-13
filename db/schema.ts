@@ -5741,6 +5741,21 @@ export const payrollIndividualTxn = pgTable(
     // keyed by hand. Nothing writes it yet — Attendance and Leave do not post into payroll today — and the
     // uniqueness guard below exists so that when they do, a repeated sync UPDATES rather than double-posts.
     sourceRef: text('source_ref'),
+    // 0db616f3 (0437) — WHICH RUN ALREADY PAID THIS LINE. Null means "not yet in any payslip", which is
+    // where every row starts and where every row on production stands today (measured 2026-08-13: no
+    // column on this table said anything about payment at all, so the kernel folded every row attached
+    // to a run on every generation of it, and a row moved to a second run was folded there too).
+    //
+    // KEYED ON THE RUN, NOT A BOOLEAN, and the fold reads `consumed_batch_id IS NULL OR = this batch`.
+    // A boolean would delete a one-off row from a legitimate re-run: `resetProcessedBatch` destroys a
+    // run's payslips so a correction can be re-generated, and a selective reprocess rewrites a subset of
+    // them. Both must still pay these lines. What must NEVER happen is a DIFFERENT run paying a line the
+    // first run already paid — the January 2026 shape, where 24 bonus lines sat on the regular run while
+    // the bonus run showed zero payslips.
+    consumedBatchId: uuid('consumed_batch_id').references(() => payrollBatch.id, { onDelete: 'set null' }),
+    // When those payslips were written. Stamped once and never re-stamped, so it remains the instant of
+    // the FIRST payment rather than of the latest re-generation.
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -5757,6 +5772,12 @@ export const payrollIndividualTxn = pgTable(
     uniqueIndex('payroll_individual_txn_source_ref_uq')
       .on(t.tenantId, t.employmentId, t.txnDate, t.componentId, t.source, t.sourceRef)
       .where(sql`source_ref is not null`),
+    // 0db616f3 (0437) — PARTIAL, so it is empty the day it lands and only ever holds lines that have
+    // actually been paid. Both readers want exactly this key: the fold ("consumed by nobody or by me")
+    // and the reset/teardown clear ("everything this run consumed").
+    index('payroll_individual_txn_consumed_idx')
+      .on(t.consumedBatchId)
+      .where(sql`consumed_batch_id is not null`),
   ],
 );
 

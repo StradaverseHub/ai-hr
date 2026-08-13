@@ -5150,6 +5150,7 @@
       "totalRecords": "{count, plural, other {# รายการ}}",
       "validRecords": "{count, plural, other {ถูกต้อง # รายการ}}",
       "errorRecords": "{count, plural, other {ผิดพลาด # รายการ}}",
+      "warnedRecords": "{count, plural, other {เตือน # รายการ}}",
       "downloadErrors": "ดาวน์โหลดรายงานข้อผิดพลาด",
       "confirmImport": "{count, plural, other {นำเข้า # รายการที่ถูกต้อง}}",
       "importing": "กำลังนำเข้า…",
@@ -5218,7 +5219,15 @@
         "currencyUnsupported": "รองรับเฉพาะ MYR",
         "derivedAmountUnavailable": "ไม่สามารถคำนวณสูตรของรายการจ่ายสำหรับพนักงานคนนี้ได้",
         "unexpected": "นำเข้าไม่ได้: {message}",
-        "employeeNotInScope": "รอบจ่ายของเดือนนั้นไม่ครอบคลุมพนักงานคนนี้"
+        "employeeNotInScope": "รอบจ่ายของเดือนนั้นไม่ครอบคลุมพนักงานคนนี้",
+        "duplicateInRun": "รอบจ่ายนี้มี {code} {amount} ของพนักงานคนนี้อยู่แล้ว",
+        "duplicateInFile": "แถว {row} ของไฟล์นี้มี {code} ของพนักงานคนนี้ในจำนวนเดียวกันอยู่แล้ว",
+        "duplicateImported": "แถวนี้ของไฟล์นี้ถูกนำเข้าไปแล้ว",
+        "runMissingForCycle": "ยังไม่มีรอบจ่าย {cycle} ที่เปิดอยู่สำหรับ {period} — สร้างก่อนแล้วค่อยนำเข้า"
+      },
+      "warning": {
+        "runAlreadyProcessed": "รอบจ่าย {period} ออกสลิปเงินเดือนไปแล้ว แถวนี้จะถูกเพิ่มและรอบจ่ายจะถูกทำเครื่องหมายให้ประมวลผลใหม่ — ยังไม่ถือว่าจ่ายจนกว่าคุณจะประมวลผลใหม่",
+        "bonusRunExists": "เดือนนี้มีรอบโบนัสอยู่ แต่ {code} กำลังจะเข้ารอบเงินเดือน ใส่ “bonus” ในคอลัมน์รอบจ่ายเพื่อส่งเข้ารอบโบนัสแทน"
       }
     }
   },
