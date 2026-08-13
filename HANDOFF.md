@@ -18,16 +18,16 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-13 (r185–r193 SHIPPED · NOTHING IN FLIGHT · 5 APPROVED)
+## CURRENT STATE — snapshot 2026-08-14 (r185–r194 SHIPPED · NOTHING IN FLIGHT · 0 APPROVED)
 
-**`main@970a1f22` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
+**`main@dec4bb73` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
 reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. That one line is
 expected after EVERY deploy and is not a discrepancy: it is gitignored (`.gitignore:43`) and
 `deploy.sh` rebuilds on the box, which rewrites it. A dry run is "clean" at one line, not zero.
-**Production is on 358 migrations** (watermark `394 @ 1781862539000`; r193 added `0437`, `0438`,
-`0439`, all three verified present on the live schema). Service active, `GET localhost:3000/` → 401.
+**Production is on 359 migrations** (watermark `395 @ 1781862540000`; r194 added `0440`
+`assignment.company_id` + `assignment_company_idx`, verified present on the live schema). Service active, `GET localhost:3000/` → 401.
 **All code is live.**
-**Next free migration is `0440`** (`0431` allocated and deliberately unused; gaps are fine).
+**Next free migration is `0441`** (`0431` allocated and deliberately unused; gaps are fine).
 
 ⚠️ **AI-HR IS NOT PUBLICLY EXPOSED — DO NOT "VERIFY" IT THROUGH A BROWSER.** It listens on
 **127.0.0.1:3000 only**, and **nothing in nginx proxies to :3000** (checked r191:
@@ -109,7 +109,7 @@ flip; raise it rather than leave it as a warning line nobody reads.
 entry below. (That round's `0430`-`0435` and r191's `0436` are all applied — **next free is `0437`**,
 stated once in CURRENT STATE above and not repeated.)
 
-**NOTHING IS IN FLIGHT.** Everything r185–r193 is merged. Prove it independently before trusting this
+**NOTHING IS IN FLIGHT.** Everything r185–r194 is merged. Prove it independently before trusting this
 line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
 
 **⚠️ THE GATE NEEDS `CHUNKS=6`.** The default 3 no longer fits the local volume — see "Local Postgres".
@@ -236,6 +236,51 @@ table. Take the figure from the run and show the run's own total beside the form
 ⚠️ **`payslip.statutory.bases` IS ONLY ON 60 OF 121 PAYSLIPS** (stamped from r187 onward), and
 `loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
 silently fall back to gross.
+
+### r194 (2026-08-14) — THE APPROVED QUEUE EMPTIED: FIVE ITEMS, MIGRATION `0440`
+
+`main@dec4bb73`. Four workstreams cut from main. Gate **682 declared / 682 counted / every chunk exit=0 /
+9,133 tests / 0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 358→359. Shipped:
+`c11e81aa` (Individual Transaction) · `3c88d593` STAGE ONE (entity transfer, `0440`) · `5ff7daff`
+(Replacement Leave approval surface) · `9c8dad7a` + `3aae0789` (EPF Borang A printed form + i-Akaun text
+file, built together for shared groundwork).
+
+**TWO DEFECTS THIS ROUND INTRODUCED, BOTH CAUGHT ONLY BY THE FULL GATE:**
+1. `localization/my/borang-a.ts` stamped its printed date from `new Date().toISOString().slice(0,10)`.
+   MYT is UTC+8, so between 00:00 and 08:00 that yields YESTERDAY — a statutory form carrying the wrong
+   Tarikh DiCetak for a third of every day. `test/today-in-myt-drift.test.ts` exists for exactly this.
+   Fixed with `todayInKualaLumpur()` (`lib/hr-date.ts`), which `localization/my/statutory-config.ts`
+   already imports.
+2. `app/leave/actions.ts` declared a SECOND `const t` for the `approvals` namespace while `t` was already
+   bound to `replacementRequest`. `test/leave-i18n-key-resolution.test.ts` maps VARIABLE NAME → namespace,
+   so the rebind made an existing, correct `t('submittedToast')` resolve as the missing
+   `approvals.submittedToast`. **THE KEY WAS NEVER MISSING** — adding it would have silenced a working
+   guard with an entry no call site reads. Renamed to `tApprovals`. Watch for this shape: one file binding
+   two namespaces to the same identifier.
+
+**TWO PLANS OF OURS WERE STALE AND THE BUILDER SAID SO — both worth reading as a caution on plan shelf-life:**
+- `c11e81aa` item 8 (Excel import Pay Cycle) **was already built by r193's `0db616f3`**: `payroll_cycle` is
+  in the import schema, the hardcoded `runType === 'regular'` is gone, five cases pin it. The plan's build
+  note was written against pre-r193 main. Nothing in the import was changed.
+- `c11e81aa` item 5 (grey out Day-by-Day for fixed-amount items) is a **no-op on this tenant**: of 24 active
+  allowance/deduction pay items, 23 have NO rule and one has a formula; **none is configured `fixed`**. The
+  gate was built correctly and engages the moment an item gets a rule, but it greys out nothing today. The
+  builder deliberately did NOT widen it to null-rule items — null-rule is precisely the case the day grid
+  exists for (`ABSENT`, `UNPAID LEAVE`), and widening would have reversed r191's feature.
+
+⚠️ **TWO HAND-RUN SCRIPTS WRITTEN AND NOT RUN** (rule 13 — the round is not finished until they are, and
+both are DATA changes needing the owner's go-ahead):
+  `scripts/backfill-assignment-company.ts` — writes today's company onto open assignment rows and splits
+  the covering row at the movement effective date. For employment aa899123 (employee 100814) the assignment
+  split date (2026-08-10) and the movement effective date (2026-08-11) DISAGREE; the movement date wins.
+  `scripts/archive-duplicate-replacement-leave-type.ts` — archives the duplicate `REPLACEMENT` type created
+  by `core/toil.ts`'s `lower(code)='replacement'` match (now fixed to read `leave_type.role`).
+Remember rule 21: `node --env-file=` cannot run on the server; source `.env.production` instead.
+
+**`3c88d593` IS MARKED DEPLOYED FOR STAGE ONE ONLY.** Stage two — attendance, leave and reporting reading
+the company-for-date resolver — is raised separately as **`1b0943d5`** and is deliberately gated on the
+backfill running and 100814's August being re-checked, that being the only real mid-month transfer on
+production.
 
 ### r193 (2026-08-13) — TEN ITEMS, THREE MIGRATIONS, AND THE JANUARY BONUS REPAIR RUN BY HAND
 
