@@ -61,6 +61,7 @@ import {
   taxNo,
   type Cp22PdfData,
 } from '../lib/cp22-pdf';
+import { applyCp22Review, cp22ContinuedCodes, cp22ReviewFrom } from '../lib/cp22-review';
 
 const ROOT = path.resolve(__dirname, '..');
 const TEMPLATE_PATH = path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2021.pdf');
@@ -983,5 +984,59 @@ describe('CP22 batch — one file, two pages per joiner', () => {
   // silently would be the failure mode this throw exists to make loud.
   it('refuses to produce a document for no records at all', async () => {
     await expect(renderCp22Batch(template(), [])).rejects.toThrow(/no records/);
+  });
+});
+
+/**
+ * THE REVIEW SCREEN AND THE DOCUMENT IT PREVIEWS MUST ANSWER FROM THE SAME RECORD.
+ *
+ * The screen's whole job is "what will the form say". It answers that twice — once as the box values it
+ * lists, once as the "this box will not hold its whole value" warning — and for one round those two
+ * answers came from DIFFERENT objects: the values had the operator's corrections applied, the warning was
+ * computed from the bare record. So typing a long expected duration into the review box (B16's printed box
+ * is 62.76pt) showed the full value on screen while the PDF printed it cut with LHDN's continuation
+ * marker, and nothing anywhere said so — the exact thing the screen exists to prevent, reachable through
+ * the very box the reporter asked to be editable.
+ *
+ * This is trap 17's shape: the defect lived in the CONTRACT between page.tsx and lib/cp22-review.ts, and a
+ * unit test of either half passed throughout. So it is pinned from both ends — the behaviour, and the
+ * source shape that made the behaviour possible.
+ */
+describe('CP22 review screen — one corrected record, not two', () => {
+  const base = (): Cp22PdfData => ({
+    employer: { name: 'Acme Sdn Bhd', addressLines: ['12 Jalan Ampang'], eNumber: 'E 123', phone: '03-2000 1000' },
+    employee: {
+      fullName: 'Lim Wei Jie', designation: 'Clerk', natureOfEmployment: 'Full_time',
+      commencementDate: '2026-06-01', expectedDuration: 'Permanent',
+      residentialAddress: { lines: ['8 Jalan Kenanga'], postcode: '50000', town: 'KL', state: 'WP' },
+      correspondenceAddress: { lines: ['8 Jalan Kenanga'], postcode: '50000', town: 'KL', state: 'WP' },
+      phone: '012-3456789', email: 'a@b.test', incomeTaxNo: 'SG10203040', icNo: '950303-14-5678',
+      passportNo: null, gender: 'male', citizen: 'Malaysian', dateOfBirth: '1995-03-03', maritalStatus: 'single',
+    },
+    spouse: null,
+    pay: { salaryAndOvertime: 4200, cashAllowances: [] },
+    declarant: { name: 'Siti', designation: 'HR', icOrPassport: '800101-10-1111' },
+    today: '2026-08-13',
+  });
+
+  it("a correction that will not fit is reported against the CORRECTED record, not the stored one", async () => {
+    const record = base();
+    const q = new URLSearchParams({ duration: 'Two year fixed-term contract renewable annually by mutual agreement' });
+    const reviewed = applyCp22Review(record, cp22ReviewFrom(record, q));
+
+    // The stored record fits everywhere: asking about IT would report nothing to warn about.
+    expect(await cp22ContinuedCodes(record)).toEqual([]);
+    // The corrected record does not, and that is what the operator is looking at.
+    expect(await cp22ContinuedCodes(reviewed)).toContain('B16');
+  });
+
+  it('derives the listed values and the overflow warning from the same object', () => {
+    const src = code(path.join(ROOT, 'app/payroll/cp22/[employmentId]/preview/page.tsx'));
+    // Both must read the reviewed record. A screen that re-inlines the merge is free to drift from it
+    // again, so the merge helper itself has to be the thing being called.
+    expect(src, 'the corrections must be applied through the shared helper').toContain('applyCp22Review(particulars, review)');
+    expect(src, 'the listed values must come from the corrected record').toContain('cp22FieldValues(reviewed)');
+    expect(src, 'the overflow warning must come from the SAME corrected record').toContain('cp22ContinuedCodes(reviewed)');
+    expect(src, 'the warning must never be computed from the uncorrected record').not.toContain('cp22ContinuedCodes(particulars)');
   });
 });
