@@ -1,0 +1,498 @@
+/**
+ * 9c8dad7a — BORANG A (KWSP/EPF monthly contribution form): the form's own model, its +1 dating rule,
+ * its carry-forward pagination, and its plain-text rendering. PURE — no DB, no pack, no pdf-lib — so
+ * every rule below is unit-testable on its own. That is the same three-way split Borang 8A uses: the
+ * read is `localization/my/borang-a.ts`, the drawing is `lib/borang-a-pdf.ts`, and the i-Akaun upload
+ * file is `lib/kwsp-borang-a-file.ts`.
+ *
+ * ── INDEPENDENT OF BORANG 8A, ON PURPOSE ──────────────────────────────────────────────────────────
+ * This file shares NOT ONE FUNCTION with `lib/borang-8a.ts`, and the duplication of `money`/`splitRmSen`
+ * below is deliberate rather than an oversight. The two forms have OPPOSITE dating rules (see below) and
+ * the failure this whole pair guards against is one module quietly acquiring the other's rule through a
+ * shared helper that grew a parameter. test/borang-a.test.ts asserts neither file imports the other.
+ *
+ * ── THE +1 RULE, AND WHY IT IS A RULE RATHER THAN A DEFAULT ───────────────────────────────────────
+ * A Borang A's CONTRIBUTION MONTH is the payroll month PLUS ONE — note 6 printed on the form itself
+ * ("Bulan caruman bersamaan Bulan Upah + 1"). A Borang 8A for the SAME payroll cycle is stamped the
+ * payroll month itself, with no shift. The reporter's own two attachments prove it: both come off the
+ * July 2026 payroll, the EPF one is stamped 08/2026 and the SOCSO one 07/2026.
+ *
+ * The month arithmetic therefore lives in EXACTLY ONE function, `epfContributionPeriodFor`, and December
+ * rolls the YEAR — a December 2026 payroll files an 01/2027 Borang A. test/borang-a.test.ts pins that
+ * against a table including 2026-12, and test/borang-8a.test.ts now imports this function for the joint
+ * assertion that the two forms' periods for one cycle differ by exactly one month and never agree.
+ *
+ * ── THE PERIOD IS EDITABLE, AND AN OVERRIDE WARNS RATHER THAN BLOCKS ──────────────────────────────
+ * Some employers file late or early on purpose. `contributionPeriodOverridden` reports the divergence;
+ * nothing here refuses it. What is refused is a MALFORMED period, which would otherwise produce a
+ * plausible-looking form stamped with nonsense.
+ *
+ * ── WHY THIS FORM IS NOT `official` ───────────────────────────────────────────────────────────────
+ * The specimen (attachment 2d7d4467, "EPF Borang A.pdf", 93,258 bytes, PDF 1.6, one A4 page, producer
+ * "Developer Express Inc. DXperience v23.2.5") is a FILLED OUTPUT from another payroll vendor's engine.
+ * It is not KWSP artwork, it carries no form fields, and KWSP publishes no blank Borang A to print onto.
+ * So there is nothing to overlay: the page is drawn, and the catalog entry declares `agency-layout` —
+ * never `official`, which in this codebase means the government's own published page and belongs to
+ * `my.cp22` alone. test/statutory-forms-page.test.ts pins that.
+ */
+
+/** One employee's line on the form — the specimen's own columns, in its own order. */
+export type BorangARow = {
+  /** Not printed. The key readiness and any per-row addressing use. */
+  employmentId: string;
+  /** No. Ahli — `employee_statutory_my.epf_number`. */
+  memberNo: string;
+  /** No. Kad Pengenalan — `employee_statutory_my.ic_number`. */
+  ic: string;
+  /** Nama Pekerja. */
+  name: string;
+  /**
+   * Employee/staff number — `employment.employee_code`. NOT on the printed form: it exists because the
+   * i-Akaun upload file's 02 record has a 20-character staff-number field, and both outputs are built
+   * from this one row so they cannot disagree about who is on the return.
+   */
+  staffNo: string;
+  /** Upah (RM) — the wage EPF was actually CHARGED on. Never gross pay. See `wageRecorded`. */
+  wage: number;
+  /** Caruman Majikan (RM), taken from the run. */
+  employer: number;
+  /** Caruman Pekerja (RM), taken from the run. */
+  employee: number;
+  /**
+   * FALSE when the payslip carried no `statutory.bases` stamp (every run before r187), in which case the
+   * EPF-liable wage is UNKNOWN — not zero, and emphatically not gross pay.
+   *
+   * "We do not know what this was charged on" and "it was charged on nothing" are different statements,
+   * and a statutory form must not print the second when it means the first. A row with `wageRecorded:
+   * false` is named on the review screen and blocks the downloads exactly like a missing member number.
+   * MEASURED on production 2026-08-13: 60 of 121 payslips carry the stamp.
+   */
+  wageRecorded: boolean;
+};
+
+/**
+ * One printed sheet.
+ *
+ * CARRY-IN / CARRY-OUT ARE CUMULATIVE RUNNING TOTALS, which is what "Jumlah yang dibawa dari mukasurat
+ * terdahulu" / "…ke mukasurat seterusnya" mean on the form: sheet 1 carries in zero, and the LAST
+ * sheet's carry-out is the whole form's JUMLAH. `page*` are this sheet's own sums. Both are computed
+ * from the rows on the sheet and never apportioned from the form total, which is what makes the
+ * no-double-counting property assertable at 1, 2 and 3 pages.
+ *
+ * The specimen leaves UPAH BLANK on both carry rows — only the two contribution columns carry forward —
+ * so no carry-in/out wage figure exists here to be printed by mistake.
+ */
+export type BorangAPage = {
+  sheet: number;
+  of: number;
+  rows: BorangARow[];
+  /** This sheet's own sums. */
+  pageWage: number;
+  pageEmployer: number;
+  pageEmployee: number;
+  /** Cumulative total BEFORE this sheet. Zero on sheet 1. */
+  carryInEmployer: number;
+  carryInEmployee: number;
+  /** Cumulative total AFTER this sheet. Equals the form total on the last sheet. */
+  carryOutEmployer: number;
+  carryOutEmployee: number;
+};
+
+export type BorangAHeader = {
+  /** No. Rujukan Majikan — `company_statutory_my.epf_employer_no`. */
+  employerRef: string;
+  /** Nama Majikan. */
+  employerName: string;
+  /** Alamat Majikan, one string per printed line. */
+  employerAddress: string[];
+  /** Bulan Caruman as `MM / YYYY`, for a screen. */
+  contributionMonth: string;
+  /** Bulan Caruman as `MMYY` — the specimen's own box shows `0826`. */
+  contributionMonthCode: string;
+  /** The `YYYY-MM` behind the two above. Machine-readable, for the +1 assertions. */
+  contributionPeriodKey: string;
+  /** The payroll `YYYY-MM` this was generated from. One month BEFORE `contributionPeriodKey`, by rule. */
+  payrollPeriodKey: string;
+  /** Tarikh DiCetak — `DD/MM/YYYY`, the generation date. */
+  printedOn: string;
+  /** The authorised representative block at the foot. Operator-owned; see `missingBorangARep`. */
+  repName: string;
+  repIc: string;
+  repPosition: string;
+  repPhone: string;
+  repEmail: string;
+};
+
+export type BorangAForm = BorangAHeader & {
+  pages: BorangAPage[];
+  /** Jumlah (RM) — Caruman Majikan across the whole form. */
+  totalEmployer: number;
+  /** Jumlah (RM) — Caruman Pekerja across the whole form. */
+  totalEmployee: number;
+  /** Amaun Caruman — employer + employee. The specimen's 1,426.00 = 744 + 682. */
+  totalContribution: number;
+  /** Total Upah. Not a box on the printed form; the upload file's header and trailer both carry it. */
+  totalWage: number;
+  /** Bil Pekerja. */
+  employees: number;
+};
+
+/**
+ * The header fields the READ must put on `ReportResult.meta.formHeader` and this file must find there.
+ *
+ * Exported so BOTH halves can be pinned against one list: the defect this exists to stop lives in the
+ * contract BETWEEN two files, where a unit test of either half passes throughout.
+ */
+export const BORANG_A_HEADER_KEYS = [
+  'employerRef',
+  'employerName',
+  'employerAddress',
+  'contributionMonth',
+  'contributionMonthCode',
+  'contributionPeriodKey',
+  'payrollPeriodKey',
+  'printedOn',
+  'repName',
+  'repIc',
+  'repPosition',
+  'repPhone',
+  'repEmail',
+] as const;
+
+/**
+ * Rows per printed sheet. Ours, not the specimen's — the specimen is a ONE-employee form and shows no
+ * page break. 22 leaves room for the repeated employer header, the two carry rows and the JUMLAH line.
+ */
+export const BORANG_A_ROWS_PER_PAGE = 22;
+
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const str = (v: unknown): string => (v == null ? '' : String(v));
+
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * THE +1 RULE. The contribution month of a Borang A is the payroll month PLUS ONE, rolling the year.
+ *
+ * The ONLY month arithmetic in this module, written out as a named exported function rather than left
+ * inline at each call site, so the rule has somewhere to be asserted and somewhere for a reviewer to see
+ * it. Do NOT "simplify" it away: the day it is inlined is the day somebody copies Borang 8A's identity
+ * over it and a whole month's contributions are filed against the wrong period.
+ */
+export function epfContributionPeriodFor(payrollPeriodKey: string): string {
+  if (!PERIOD_RE.test(payrollPeriodKey)) {
+    throw new Error(`Borang A: payroll period must be YYYY-MM, got "${payrollPeriodKey}"`);
+  }
+  const y = Number(payrollPeriodKey.slice(0, 4));
+  const m = Number(payrollPeriodKey.slice(5, 7));
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
+/** True when `periodKey` is a well-formed `YYYY-MM`. Used to validate an operator's override. */
+export function isEpfPeriodKey(periodKey: string): boolean {
+  return PERIOD_RE.test(periodKey);
+}
+
+/**
+ * Did the operator move the contribution month off the rule?
+ *
+ * A WARNING, NEVER A BLOCK — some employers file late or early on purpose, and the request says so in
+ * as many words. The caller shows this; nothing here refuses to produce the form because of it.
+ */
+export function contributionPeriodOverridden(payrollPeriodKey: string, contributionPeriodKey: string): boolean {
+  if (!PERIOD_RE.test(payrollPeriodKey) || !PERIOD_RE.test(contributionPeriodKey)) return false;
+  return epfContributionPeriodFor(payrollPeriodKey) !== contributionPeriodKey;
+}
+
+/** `2026-08` → `08 / 2026`, for a screen. */
+export function contributionMonthLabel(periodKey: string): string {
+  if (!PERIOD_RE.test(periodKey)) throw new Error(`Borang A: contribution period must be YYYY-MM, got "${periodKey}"`);
+  return `${periodKey.slice(5, 7)} / ${periodKey.slice(0, 4)}`;
+}
+
+/** `2026-08` → `0826`. The specimen's own Bulan Caruman box, MMYY with no separator. */
+export function contributionMonthCode(periodKey: string): string {
+  if (!PERIOD_RE.test(periodKey)) throw new Error(`Borang A: contribution period must be YYYY-MM, got "${periodKey}"`);
+  return `${periodKey.slice(5, 7)}${periodKey.slice(2, 4)}`;
+}
+
+/** `2026-08-12` → `12/08/2026`. Tarikh DiCetak's own format on the specimen. */
+export function formDate(iso: string | null | undefined): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '';
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+}
+
+/** RM with two decimals and thousands separators, for the totals lines. */
+export function money(amount: number): string {
+  return (Number(amount) || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Split the form into sheets, each with its own carry-in, page sums and carry-out.
+ *
+ * THE NO-DOUBLE-COUNTING PROPERTY, which is what a KWSP counter reconciles and what the request calls
+ * out by name: `pages.reduce((a, p) => a + p.pageEmployer, 0) === form.totalEmployer`, the carry chain
+ * links (`pages[i].carryIn === pages[i-1].carryOut`), and the LAST sheet's carry-out IS the form total.
+ * All three hold at 1, 2 and 3 pages and are pinned in test/borang-a.test.ts.
+ *
+ * An empty form yields ONE empty sheet rather than zero: "Mukasurat 1/0" is not a thing.
+ */
+export function paginateBorangA(rows: readonly BorangARow[], perPage = BORANG_A_ROWS_PER_PAGE): BorangAPage[] {
+  if (perPage < 1) throw new Error('Borang A: rows per page must be at least 1');
+  const chunks: BorangARow[][] = [];
+  for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
+  if (chunks.length === 0) chunks.push([]);
+
+  let runEmployer = 0;
+  let runEmployee = 0;
+  return chunks.map((chunk, i) => {
+    const carryInEmployer = runEmployer;
+    const carryInEmployee = runEmployee;
+    const pageWage = round2(chunk.reduce((a, r) => a + (Number(r.wage) || 0), 0));
+    const pageEmployer = round2(chunk.reduce((a, r) => a + (Number(r.employer) || 0), 0));
+    const pageEmployee = round2(chunk.reduce((a, r) => a + (Number(r.employee) || 0), 0));
+    runEmployer = round2(carryInEmployer + pageEmployer);
+    runEmployee = round2(carryInEmployee + pageEmployee);
+    return {
+      sheet: i + 1,
+      of: chunks.length,
+      rows: chunk,
+      pageWage,
+      pageEmployer,
+      pageEmployee,
+      carryInEmployer,
+      carryInEmployee,
+      carryOutEmployer: runEmployer,
+      carryOutEmployee: runEmployee,
+    };
+  });
+}
+
+/**
+ * Which header fields a Borang A cannot be FILED without, and does not have.
+ *
+ * ⚠️ A REPORT, NOT A THROW — the same lesson Borang 8A learned the hard way in r193. This is called on a
+ * RENDER path: a company that has simply never filled in its EPF employer reference must get the screen
+ * that TELLS it so, not a 500. Refusing to produce the DOCUMENT is right; refusing to render the page
+ * that explains why is not. So gaps are reported here, `loadBorangA` blocks the downloads on them, and
+ * the screen names them beside the per-employee readiness list.
+ *
+ * THE REPRESENTATIVE BLOCK IS NOT IN HERE, deliberately — see `missingBorangARep`.
+ * `employerAddress` is excluded too: the form prints however many address lines exist.
+ */
+export function missingBorangAHeader(header: Record<string, unknown> | null | undefined): string[] {
+  const h = header ?? {};
+  const required = [
+    'employerRef',
+    'employerName',
+    'contributionMonth',
+    'contributionMonthCode',
+    'contributionPeriodKey',
+    'payrollPeriodKey',
+    'printedOn',
+  ] as const;
+  return required.filter((k) => !str(h[k]).trim());
+}
+
+/**
+ * The authorised-representative gaps — REPORTED, NEVER BLOCKING, and that split is the whole point.
+ *
+ * The block at the foot of the form (Nama, No. K/P, Jawatan, No. Tel, E-mel) is operator-owned and lives
+ * in `company_statutory_authority` for authority `epf`, with its own admin screen under Organization.
+ * MEASURED on production 2026-08-13: ONE row exists across nine companies, and it carries a signatory but
+ * no phone and no e-mail.
+ *
+ * Blocking the download on it would make the feature unusable for eight of nine companies on day one,
+ * to enforce a block the agency does not: the specimen leaves the representative's own Tarikh blank, and
+ * a Borang A is signed by hand at the counter anyway. So these are surfaced as an advisory beside the
+ * blocking list, and the drawn form leaves the box empty rather than inventing a name.
+ */
+export function missingBorangARep(header: Record<string, unknown> | null | undefined): string[] {
+  const h = header ?? {};
+  return (['repName', 'repIc', 'repPosition', 'repPhone', 'repEmail'] as const).filter(
+    (k) => !str(h[k]).trim(),
+  );
+}
+
+/**
+ * Assemble the printable form from what `reportPreview` returned.
+ *
+ * Takes PLAIN SHAPES rather than `ReportResult`, deliberately: importing the pack contract here would put
+ * lib → localization/country-pack → localization/my/reports → localization/my/borang-a → lib in a cycle.
+ * The caller passes `{ header: result.meta.formHeader ?? {}, rows: result.rows }`.
+ *
+ * TOTAL — it never throws. A gap in the header comes back as an empty string on the form and the CALLER
+ * decides what to do about it. This function is on a render path.
+ */
+export function borangAFrom(p: {
+  header: Record<string, unknown> | null | undefined;
+  rows: readonly Record<string, unknown>[];
+  perPage?: number;
+}): BorangAForm {
+  const h = p.header ?? {};
+  const rows: BorangARow[] = p.rows.map((r) => ({
+    employmentId: str(r.employmentId),
+    memberNo: str(r.memberNo),
+    ic: str(r.ic),
+    name: str(r.name),
+    staffNo: str(r.staffNo),
+    wage: round2(Number(r.wage) || 0),
+    employer: round2(Number(r.employer) || 0),
+    employee: round2(Number(r.employee) || 0),
+    // Absent ⇒ NOT recorded. The pessimistic default is deliberate: a row whose provenance was lost in
+    // transit must be named on the review screen, not silently printed as if the wage were known.
+    wageRecorded: r.wageRecorded === true || r.wageRecorded === 1 || r.wageRecorded === 'yes',
+  }));
+  const pages = paginateBorangA(rows, p.perPage);
+  const totalEmployer = round2(pages.reduce((a, pg) => a + pg.pageEmployer, 0));
+  const totalEmployee = round2(pages.reduce((a, pg) => a + pg.pageEmployee, 0));
+  return {
+    employerRef: str(h.employerRef),
+    employerName: str(h.employerName),
+    // One string per line. The read joins with '\n' because ReportResult.meta values are scalars.
+    employerAddress: str(h.employerAddress)
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean),
+    contributionMonth: str(h.contributionMonth),
+    contributionMonthCode: str(h.contributionMonthCode),
+    contributionPeriodKey: str(h.contributionPeriodKey),
+    payrollPeriodKey: str(h.payrollPeriodKey),
+    printedOn: str(h.printedOn),
+    repName: str(h.repName),
+    repIc: str(h.repIc),
+    repPosition: str(h.repPosition),
+    repPhone: str(h.repPhone),
+    repEmail: str(h.repEmail),
+    pages,
+    totalEmployer,
+    totalEmployee,
+    totalContribution: round2(totalEmployer + totalEmployee),
+    totalWage: round2(pages.reduce((a, pg) => a + pg.pageWage, 0)),
+    employees: rows.length,
+  };
+}
+
+/**
+ * Re-stamp a built form with a different contribution month — the operator's editable Bulan Caruman.
+ *
+ * Applied to the FORM rather than passed into the read, so `ReportParams` stays `{companyId, periodKey}`
+ * and the pack never learns about a per-generation input. An invalid key is ignored rather than throwing:
+ * this sits on a render path, and a junk query string must not 500 the review screen.
+ */
+export function withContributionPeriod(form: BorangAForm, periodKey: string): BorangAForm {
+  if (!PERIOD_RE.test(periodKey) || periodKey === form.contributionPeriodKey) return form;
+  return {
+    ...form,
+    contributionPeriodKey: periodKey,
+    contributionMonth: contributionMonthLabel(periodKey),
+    contributionMonthCode: contributionMonthCode(periodKey),
+  };
+}
+
+/** Filename for a download: employer reference + contribution month, safe for a Content-Disposition. */
+export function borangAFilename(form: BorangAForm, ext: 'pdf' | 'txt'): string {
+  const ref = (form.employerRef || 'EMP').replace(/[^A-Za-z0-9]+/g, '');
+  const period = form.contributionPeriodKey.replace('-', '');
+  return `borang-a-${ref}-${period}.${ext}`;
+}
+
+const pad = (s: string, n: number) => (s.length >= n ? s : s + ' '.repeat(n - s.length));
+const padL = (s: string, n: number) => (s.length >= n ? s : ' '.repeat(n - s.length) + s);
+
+/**
+ * The same form as plain text, in the order the boxes appear.
+ *
+ * ⚠️ THIS IS NOT THE i-AKAUN UPLOAD FILE. That is a fixed-width 129-character machine format and lives in
+ * `lib/kwsp-borang-a-file.ts` behind its own route. This is the human-readable twin of the drawn page —
+ * what an operator reads while keying into i-Akaun by hand, and what they can keep, search and diff month
+ * to month. Both this and the PDF come off the SAME `BorangAForm`, so they cannot disagree.
+ */
+export function borangATextExport(form: BorangAForm): string {
+  const L: string[] = [];
+  L.push('BORANG A — CARUMAN BULANAN KWSP (EPF)');
+  L.push('');
+  L.push('NOT KWSP ARTWORK. Our own layout, drawn to match the agency form. KWSP publishes no blank');
+  L.push('Borang A to print onto. Check every figure before you key or file it.');
+  L.push('');
+  L.push(`No. Rujukan Majikan : ${form.employerRef}`);
+  L.push(`Nama Majikan        : ${form.employerName}`);
+  for (const [i, line] of form.employerAddress.entries()) {
+    L.push(`${i === 0 ? 'Alamat              : ' : '                      '}${line}`);
+  }
+  L.push(`Bulan Caruman       : ${form.contributionMonth}  (${form.contributionMonthCode})`);
+  L.push(`Bulan Upah          : ${form.payrollPeriodKey}`);
+  L.push(`Tarikh DiCetak      : ${form.printedOn}`);
+  L.push(`Bil Pekerja         : ${form.employees}`);
+  L.push(`Amaun Caruman       : RM ${money(form.totalContribution)}`);
+  L.push('');
+
+  for (const page of form.pages) {
+    L.push(`Mukasurat ${page.sheet}/${page.of}`);
+    L.push(
+      pad('BIL', 5) +
+        pad('NO. AHLI', 14) +
+        pad('NO. K/P', 15) +
+        pad('NAMA PEKERJA', 42) +
+        padL('UPAH', 13) +
+        padL('MAJIKAN', 13) +
+        padL('PEKERJA', 13),
+    );
+    L.push('-'.repeat(115));
+    if (page.sheet > 1) {
+      // Contribution columns only — the specimen leaves Upah blank on both carry rows.
+      L.push(
+        pad('', 5) +
+          pad('Jumlah yang dibawa dari mukasurat terdahulu', 71) +
+          padL('', 13) +
+          padL(money(page.carryInEmployer), 13) +
+          padL(money(page.carryInEmployee), 13),
+      );
+    }
+    let bil = (page.sheet - 1) * BORANG_A_ROWS_PER_PAGE;
+    for (const r of page.rows) {
+      bil += 1;
+      L.push(
+        pad(String(bil), 5) +
+          pad(r.memberNo, 14) +
+          pad(r.ic, 15) +
+          pad(r.name.slice(0, 41), 42) +
+          padL(r.wageRecorded ? money(r.wage) : 'NOT RECORDED', 13) +
+          padL(money(r.employer), 13) +
+          padL(money(r.employee), 13),
+      );
+    }
+    if (page.rows.length === 0) L.push('(tiada pekerja / no employees)');
+    L.push('-'.repeat(115));
+    if (page.sheet < page.of) {
+      L.push(
+        pad('', 5) +
+          pad('Jumlah yang dibawa ke mukasurat seterusnya', 71) +
+          padL('', 13) +
+          padL(money(page.carryOutEmployer), 13) +
+          padL(money(page.carryOutEmployee), 13),
+      );
+    } else {
+      L.push(
+        pad('', 5) +
+          pad('JUMLAH (RM)', 71) +
+          padL(money(form.totalWage), 13) +
+          padL(money(form.totalEmployer), 13) +
+          padL(money(form.totalEmployee), 13),
+      );
+    }
+    L.push('');
+  }
+
+  L.push(`AMAUN CARUMAN (Majikan + Pekerja) : RM ${money(form.totalContribution)}`);
+  L.push('');
+  L.push('Wakil Yang Diberi Kuasa:');
+  L.push(`  Nama     : ${form.repName || '—'}`);
+  L.push(`  No. K/P  : ${form.repIc || '—'}`);
+  L.push(`  Jawatan  : ${form.repPosition || '—'}`);
+  L.push(`  No. Tel  : ${form.repPhone || '—'}`);
+  L.push(`  E-mel    : ${form.repEmail || '—'}`);
+  L.push('');
+  L.push('Left blank on purpose — these are yours to complete, never payroll-derived:');
+  L.push('  No. Rujukan Borang A · Kaedah Pembayaran · Tandatangan & Tarikh · Cop Agen Kutipan');
+  return L.join('\n') + '\n';
+}

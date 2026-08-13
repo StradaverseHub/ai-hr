@@ -47,12 +47,13 @@ describe('the submission field is what decides the override', () => {
   it('is present on every form actually filed with an agency, and absent on the internal view', () => {
     // Stated absolutely rather than derived from the registry, so this fails if a future edit quietly
     // drops `submission` from a real filing (which would silently withdraw its override).
-    // 8ca344bf added `my.borang-8a` — a PERKESO filing, so it declares `submission` and therefore carries
-    // the suspended-tenant override like every other real filing. It is listed here rather than the list
-    // being loosened: this assertion exists to fail when a future edit quietly drops `submission` from a
-    // real filing, which would silently withdraw its override.
+    // 8ca344bf added `my.borang-8a` and 9c8dad7a added `my.borang-a` — a PERKESO filing and a KWSP one, so
+    // both declare `submission` and therefore carry the suspended-tenant override like every other real
+    // filing. They are LISTED here rather than the list being loosened: this assertion exists to fail when
+    // a future edit quietly drops `submission` from a real filing, which would silently withdraw its
+    // override, and a loosened list could not see that.
     const filed = MY_REPORTS.filter((r) => r.submission).map((r) => r.id).sort();
-    expect(filed).toEqual(['my.borang-8a', 'my.cp39', 'my.cp8d', 'my.epf', 'my.socso-eis']);
+    expect(filed).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.cp8d', 'my.epf', 'my.socso-eis']);
 
     const internal = MY_REPORTS.filter((r) => !r.submission).map((r) => r.id);
     expect(internal).toEqual(['my.contributions']);

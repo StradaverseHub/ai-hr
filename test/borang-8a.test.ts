@@ -33,6 +33,9 @@ import {
   statusOverridesFrom,
   type Borang8ARow,
 } from '../lib/borang-8a';
+// 9c8dad7a — the OTHER form's rule, imported rather than restated. See the note above
+// `kwspContributionPeriodFor` below: the joint assertion is worthless if this file owns both halves.
+import { epfContributionPeriodFor } from '../lib/borang-a';
 import { MY_REPORTS } from '../localization/my/reports';
 import { BORANG_8A_COLUMNS } from '../localization/my/borang-8a';
 import { borang8AFilename, renderBorang8APdf } from '../lib/borang-8a-pdf';
@@ -79,25 +82,18 @@ const row = (p: Partial<Borang8ARow> & { employmentId: string; contribution: num
 });
 
 /**
- * THE KWSP RULE, RESTATED HERE ON PURPOSE — and this local helper is a placeholder with an expiry date.
+ * THE KWSP RULE — NOW THE REAL ONE, IMPORTED, WHICH IS WHAT THIS SEAT WAS HELD FOR.
  *
- * The joint assertion the plan calls for is "the EPF and SOCSO contribution periods for one payroll cycle
- * differ by exactly one month, and a test fails if they ever agree". Half of that pair does not exist yet:
- * the EPF Borang A is a later item (9c8dad7a) and is deliberately not in this round. So the KWSP side is
- * written out here, once, with the fact it encodes stated in full:
+ * r193 could only write a LOCAL copy of the +1 rule here, because the EPF Borang A did not exist yet, and
+ * said in as many words: "WHEN BORANG A IS BUILT, DELETE THIS AND IMPORT ITS OWN EXPORTED RULE. A test
+ * that states both sides itself can only ever prove the two sides of ITSELF differ." r194 built it
+ * (9c8dad7a), so the placeholder is gone and the joint assertion below now compares two rules that two
+ * different modules actually use in production.
  *
- *   The reporter's own two attachments both come off the JULY 2026 payroll. The SOCSO one is stamped
- *   07/2026; the EPF one is stamped 08/2026.
- *
- * WHEN BORANG A IS BUILT, DELETE THIS AND IMPORT ITS OWN EXPORTED RULE. A test that states both sides
- * itself can only ever prove the two sides of ITSELF differ — it pins the SOCSO half honestly (that half
- * is imported), and it holds the seat for the real joint assertion.
+ * The fact both sides encode, unchanged: the reporter's own two attachments both come off the JULY 2026
+ * payroll. The SOCSO one is stamped 07/2026; the EPF one is stamped 08/2026.
  */
-function kwspContributionPeriodFor(payrollPeriodKey: string): string {
-  const y = Number(payrollPeriodKey.slice(0, 4));
-  const m = Number(payrollPeriodKey.slice(5, 7));
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-}
+const kwspContributionPeriodFor = epfContributionPeriodFor;
 
 describe('the no-offset rule', () => {
   /**

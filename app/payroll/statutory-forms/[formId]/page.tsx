@@ -318,6 +318,20 @@ export default async function StatutoryFormPage({
                   {t('borang8aReview')}
                 </a>
               )}
+              {/* 9c8dad7a — same shape, same reasoning as the Borang 8A row above: this screen is the
+                  figures, the review screen is where the contribution month is set and where the drawn
+                  form, its text twin and the i-Akaun upload file are downloaded from. Deliberately NOT
+                  gated on `ready` — the review screen's whole job is to NAME whoever is missing an EPF
+                  member number, which it cannot do if you cannot reach it. */}
+              {formId === 'my.borang-a' && (
+                <a
+                  href={`/payroll/borang-a/preview?companyId=${encodeURIComponent(companyId)}&periodKey=${encodeURIComponent(periodKey)}`}
+                  className={outBtn}
+                  title={t('borangAReviewTitle')}
+                >
+                  {t('borangAReview')}
+                </a>
+              )}
               <a href={exportHref('pdf')} className={outBtn}>
                 {t('downloadPdf')}
               </a>

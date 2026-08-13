@@ -173,8 +173,11 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // 8ca344bf — `perkeso.borang-8a` LEFT this list because it was BUILT, and joined MY_REPORTS at the
     // same shelfOrder 2 it held here. That migration is what `PlannedFormDef`'s doc-comment describes, and
     // this list shrinking by exactly one entry is what proves it happened rather than being duplicated.
+    //
+    // 9c8dad7a — `epf.borang-a` LEFT IT THE SAME WAY one round later, to MY_REPORTS at its own shelfOrder
+    // 2 on the epf shelf. TWO forms have now made that journey, which is what turns the migration path
+    // from a claim in a doc-comment into a thing the catalog demonstrably supports.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
-      'epf.borang-a',
       'epf.borang-bbcb',
       'perkeso.borang-8b',
       'perkeso.sip',
@@ -647,6 +650,15 @@ describe('the four pins', () => {
     // have been drawn onto — which is exactly why it may not claim `official`.
     expect(MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.fidelity).toBe('agency-layout');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /8a/i.test(f))).toEqual([]);
+    // 9c8dad7a — AND BORANG A, WHICH IS THE SECOND MEMBER OF `agency-layout` AND NOT A THIRD STATUS.
+    // Same argument, different agency: the reporter's EPF specimen is the same vendor's DevExpress output
+    // and KWSP publishes no blank Borang A either, so there is no artwork on disk for it to have been
+    // drawn onto. The pair sharing ONE value is what stops the vocabulary growing a status per form.
+    expect(MY_REPORTS.find((r) => r.id === 'my.borang-a')!.fidelity).toBe('agency-layout');
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /borang/i.test(f))).toEqual([]);
+    expect(
+      [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'agency-layout').map((e) => e.id).sort(),
+    ).toEqual(['my.borang-8a', 'my.borang-a']);
   });
 
   /**
