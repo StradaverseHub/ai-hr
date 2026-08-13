@@ -42,21 +42,41 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 **1. NOTHING IS IN FLIGHT AND THE APPROVED QUEUE IS EMPTY.** r185–r194 are all shipped;
 `main@dec4bb73` is deployed and every `build/*` branch through r194 is merged. Prove it independently
 rather than trusting this line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
-The board is **2 open, 2 planned, 0 approved, 0 contested**. The constraint is the reporter, not us.
+The board is **1 open, 3 planned, 0 approved, 0 contested**. The constraint is the reporter, not us.
 
 **2. THE ONE LIVE HAZARD: ENTITY TRANSFER STAGE ONE UNDERPAYS IF A MONTH IS RE-RUN.** Full detail in the
 r194 entry below — read it before touching payroll. In one line: proration is right, but the counterpart
 payslip in the OTHER company's batch is never created, and no single-batch operation can create it.
-**Do not re-run August for employee 100814.** Stage two is board item `1b0943d5`, and cross-batch segment
-creation must be the FIRST thing its plan answers, ahead of attendance and leave.
+**Do not re-run August for employee 100814.**
+
+**`1b0943d5` IS NOW PLANNED (rev 1, with mockup) AND IS READY TO BUILD ONCE APPROVED.** The plan
+DELIBERATELY REORDERS the item as it was raised: attendance/leave/reporting were the headline and are now
+LAST; cross-batch segment creation comes first, because that is what stops someone being underpaid. Two
+blockers it names, both verified in code, and neither is a sums problem:
+  - **Batch membership is by CURRENT company** — `eq(employment.companyId, batch.companyId)` at six sites in
+    `core/payroll.ts` (1388, 2434, 3186, 5873, 6143, plus the scope path). Fiamma's run cannot see an
+    employment whose company is now ISEDECOR. The fix is the MEMBERSHIP PREDICATE, reusing
+    `core/employment-company.ts`, not a second resolver. ⚠️ Treat each of the six as its own decision and
+    record why — some legitimately want today's employer (the leavers sweep keyed on `terminatedOn`). A
+    blanket replace silently rescopes payroll for the whole tenant.
+  - **A payslip cannot state its coverage** — the table has `days_worked` and NO period columns, so neither
+    half can say "1–10 Aug". Needs one migration (next free is `0441`; do NOT pre-allocate — issue centrally
+    and append to the journal, rules 14 and 22). This is the reporter's own requirement: their original
+    layout asks for `Payroll Period: 01 Aug – 10 Aug 2026`.
+  - **The completeness check is a DELIVERABLE, not an extra**: segments must tile the month with no gap or
+    overlap and sum to the un-segmented figure, and the run must REFUSE rather than commit a partial set.
+    Today's shortfall was caught only because the batch total happened to fall by exactly the missing
+    amount. That is luck, not a control.
 
 **3. THE CODE IS ON GITHUB NOW** — `github.com/zenlam/ai-hr`, PRIVATE, `main` only (the `build/*` branches
 are not pushed). Push new branches explicitly if the owner needs to see them from a phone.
 
-**4. OPEN ITEMS (2):** `1b0943d5` (entity transfer stage two, above) and `c11e81aa`'s two stale-plan
-findings worth telling the reporter — its Excel import Pay Cycle was ALREADY delivered by r193, and its
-fixed-amount day-by-day gate is a **no-op on this tenant** because no pay item is configured `fixed`
-(23 of 24 have no rule at all). **PLANNED, awaiting the reporter (2):** `31e39d74` and `9a65f808`.
+**4. PLANNED, AWAITING THE REPORTER (3):** `1b0943d5` (entity transfer stage two — the one that matters,
+see §2), `31e39d74`, `9a65f808`. **OPEN (1):** nothing blocking.
+**Worth telling the reporter unprompted:** `c11e81aa` shipped with two of its seven asks already satisfied
+— its Excel import Pay Cycle was ALREADY delivered by r193, and its fixed-amount day-by-day gate is a
+**no-op on this tenant** because no pay item is configured `fixed` (23 of 24 carry no rule at all). Both
+are correct as built; they simply do nothing visible until a pay item gets a rule.
 
 **5. TWO STANDING DECISIONS NOBODY HAS REVISITED**: `ALLOW_DEMO_SESSION=true` is live on the box a real
 customer's payroll runs on, and `fixed_allowance` can no longer be CREATED from any screen after r189.
@@ -262,7 +282,11 @@ written.
      `pg_restore -t <table> -a -f - <dump>` emits the COPY block and its column header, and you can grep the
      row you want. No database required.
 
-**`3c88d593` IS MARKED DEPLOYED FOR STAGE ONE ONLY**, with `build_ref` saying so. Stage two is `1b0943d5`.
+**`3c88d593` IS MARKED DEPLOYED FOR STAGE ONE ONLY**, with `build_ref` saying so. Stage two is `1b0943d5`,
+now PLANNED with a mockup drawn on 100814's real figures — see START HERE §2 for the two blockers it names
+and why the item's original ordering was reversed. The mockup deliberately states WHY two payslips are
+impossible today rather than just drawing them: stage one's mockup promised two payslips the build could
+not deliver, and repeating that would be the panel round-trip lesson all over again.
 
 ### r193 (2026-08-13) — TEN ITEMS, THREE MIGRATIONS, AND THE JANUARY BONUS REPAIR RUN BY HAND
 
