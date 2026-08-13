@@ -86,18 +86,100 @@ const surfaceOf = (container: HTMLElement) =>
     return caption;
   });
 
+/** Which `<details>` a control is folded inside, or null when it is always on show. `<label>` is the
+ *  handle because `surfaceOf` above already identifies every control by its label. */
+const foldOf = (container: HTMLElement, caption: string) => {
+  const label = [...container.querySelectorAll('label')].find(
+    (l) => l.querySelector('span')?.textContent === caption,
+  );
+  if (!label) throw new Error(`no control labelled "${caption}"`);
+  return label.closest('details');
+};
+
 describe('r168a — the panel every screen now shares', () => {
   it('offers Company, Business Unit, Department and Status filters plus a search, not a plain dropdown', () => {
     const { container } = wrap(<EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/x" />);
-    // The reporter's complaint, restated as an assertion.
+    // The reporter's complaint (r168a), restated as an assertion: all five controls are still here.
+    // 009c8a37 INVERTED THE ORDER — this list used to read Company, Business unit, Department, Status,
+    // Search employee, i.e. the one box used on every visit was the last one reached and the first name
+    // sat five controls down. Search is now FIRST and the four narrowers follow it, folded away. The
+    // CASE IS KEPT, not deleted: what r168a proved (that Zakat's plain dropdown became this control set)
+    // is still true and still worth pinning; only the order it asserts has been reversed.
     expect(surfaceOf(container)).toEqual([
+      'Search employee: <input search ph="Employee ID or name">',
       'Company: [=All companies | co-a=Acme Sdn Bhd | co-b=Beta Sdn Bhd]',
       'Business unit: [=All business units | bu-hq=HQ | bu-plant=Plant]',
       'Department: [=All departments | dept-fin=Finance | dept-ops=Operations]',
       'Status: [=All statuses | active=Active | ended=Ended]',
-      'Search employee: <input search ph="Employee ID or name">',
     ]);
     expect(rowsOf(container)).toHaveLength(4);
+  });
+
+  it('009c8a37 — the four narrowers are folded behind a CLOSED More filters; the search never hides', () => {
+    const { container } = wrap(<EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/x" />);
+
+    const fold = container.querySelector('details');
+    expect(fold, 'the four employee filters must sit behind a fold').not.toBeNull();
+    // "Closed when you arrive" — the reporter asked for closed EVERY visit, so this is state and not a
+    // cookie, and a fresh render is therefore always closed.
+    expect(fold!.open).toBe(false);
+    expect(within(fold!).getByText('More filters')).toBeInTheDocument();
+
+    // The search box is the one control that must never be behind the fold: it is what the whole reorder
+    // exists to put first.
+    expect(foldOf(container, 'Search employee')).toBeNull();
+    for (const caption of ['Company', 'Business unit', 'Department', 'Status']) {
+      expect(foldOf(container, caption), `${caption} belongs inside More filters`).toBe(fold);
+    }
+
+    // Nothing is narrowing yet, so the summary carries no count.
+    expect(within(fold!).queryByText(/\bon$/)).toBeNull();
+
+    // The employee list is rendered BEFORE the fold — the names are the second thing on the panel, which
+    // is the request. Reading DOM order is the only way to assert that; jsdom computes no layout.
+    const firstRow = [...container.querySelectorAll('button[type="button"]')].find((b) =>
+      b.textContent?.includes('Aisha Rahman'),
+    )!;
+    expect(firstRow.compareDocumentPosition(fold!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('009c8a37 — a filter chosen while the fold is CLOSED still narrows, and the summary says how many', async () => {
+    const user = userEvent.setup();
+    const { container } = wrap(<EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/x" />);
+    const fold = container.querySelector('details')!;
+    expect(fold.open).toBe(false);
+
+    // A hidden filter that silently narrowed the list would leave a short list looking like a bug. The
+    // count on the summary is the answer, so it has to be driven by the same state the list is.
+    await user.selectOptions(screen.getByDisplayValue('All companies'), 'co-a');
+    expect(rowsOf(container)).toHaveLength(3);
+    expect(within(fold).getByText('1 on')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByDisplayValue('All statuses'), 'ended');
+    expect(rowsOf(container)).toEqual([expect.stringContaining('Devi Nair')]);
+    expect(within(fold).getByText('2 on')).toBeInTheDocument();
+
+    // The search box is NOT counted — it never hides, so counting it would report a narrowing already
+    // in plain sight.
+    await user.type(screen.getByPlaceholderText('Employee ID or name'), 'Devi');
+    expect(within(fold).getByText('2 on')).toBeInTheDocument();
+  });
+
+  it('009c8a37 — Reset clears the hidden four and the search box in one click', async () => {
+    const user = userEvent.setup();
+    const { container } = wrap(<EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/x" />);
+    const fold = container.querySelector('details')!;
+
+    await user.selectOptions(screen.getByDisplayValue('All companies'), 'co-a');
+    await user.selectOptions(screen.getByDisplayValue('All statuses'), 'ended');
+    await user.type(screen.getByPlaceholderText('Employee ID or name'), 'Devi');
+    expect(rowsOf(container)).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(rowsOf(container)).toHaveLength(4);
+    expect(within(fold).queryByText('1 on')).toBeNull();
+    expect(within(fold).queryByText('2 on')).toBeNull();
+    expect((screen.getByPlaceholderText('Employee ID or name') as HTMLInputElement).value).toBe('');
   });
 
   it('searches by employee ID and by name', async () => {

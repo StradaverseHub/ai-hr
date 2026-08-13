@@ -231,6 +231,19 @@ export function EmployeeScopePanel({
   const [businessUnitId, setBusinessUnitId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [status, setStatus] = useState('');
+  /**
+   * 009c8a37 — the More-filters fold, CONTROLLED and DELIBERATELY NOT PERSISTED.
+   *
+   * `collapsible-card-section.tsx` is the markup convention followed here, but its cookie is not: the
+   * reporter asked for the four narrowers to be closed EVERY time the screen opens, and a cookie would
+   * reopen them tomorrow. Component state gives exactly the asked-for lifetime — it survives typing,
+   * filtering and re-renders while the screen is mounted, and is gone on the next visit.
+   *
+   * Controlled rather than an uncontrolled `open={false}`: React only writes a DOM prop when its value
+   * CHANGES, so an uncontrolled details silently keeps whatever the reader last toggled while React
+   * believes it is still closed. Reading the toggle back into state keeps the two in step.
+   */
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const companyOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -284,58 +297,29 @@ export function EmployeeScopePanel({
     setStatus('');
   };
 
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3">
-        <Field label={t('filterCompany')}>
-          <select
-            value={companyId}
-            onChange={(e) => {
-              setCompanyId(e.target.value);
-              setBusinessUnitId('');
-              setDepartmentId('');
-            }}
-            className={inputCls}
-          >
-            <option value="">{t('allCompanies')}</option>
-            {companyOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label={t('filterBusinessUnit')}>
-            <select value={businessUnitId} onChange={(e) => setBusinessUnitId(e.target.value)} className={inputCls}>
-              <option value="">{t('allBusinessUnits')}</option>
-              {businessUnitOptions.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('filterDepartment')}>
-            <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className={inputCls}>
-              <option value="">{t('allDepartments')}</option>
-              {departmentOptions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <Field label={t('filterStatus')}>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
-            <option value="">{t('allStatuses')}</option>
-            <option value="active">{t('statusActive')}</option>
-            <option value="ended">{t('statusEnded')}</option>
-          </select>
-        </Field>
-      </div>
+  /**
+   * 009c8a37 — how many of the HIDDEN choices are narrowing the list, so a short list is never a mystery
+   * while the fold is closed. The search box is NOT counted: it is the one control that never hides, so
+   * counting it would report a narrowing the reader can already see.
+   */
+  const activeFilterCount = [companyId, businessUnitId, departmentId, status].filter(Boolean).length;
 
+  return (
+    /**
+     * 009c8a37 REVERSES THE ORIGINAL ORDER ON PURPOSE — say so, or the next reader "restores" it.
+     *
+     * This panel used to stack Company / Business unit / Department / Status and put Search employee LAST,
+     * immediately above the names. The reporter's complaint is that the one box used on every visit was the
+     * last one reached and the first name sat five or six controls down. So: search first, the list second,
+     * and the four narrowers behind a fold that starts closed.
+     *
+     * THE ORDER IS NOT A PER-SCREEN CHOICE. Six screens render this component (Fixed Transaction, TP1,
+     * Zakat, Individual Payslip, Loans, Transaction View's grid tab) and all six change together — which is
+     * the point of it being one component, and is what the reporter's consistency request asks for.
+     * Individual Transaction draws its OWN list over client state and was reordered to match by hand.
+     */
+    <div className="space-y-3">
+      {/* ── 1. SEARCH, first — with Reset beside it, which also clears the hidden four. ── */}
       <div className="flex flex-wrap items-end gap-3">
         <Field label={t('searchLabel')} className="flex-1">
           <input
@@ -355,6 +339,7 @@ export function EmployeeScopePanel({
         </button>
       </div>
 
+      {/* ── 2. THE NAMES, directly under the search box. ── */}
       <div className="max-h-[28rem] divide-y divide-border overflow-y-auto rounded-md border border-border">
         {results.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
@@ -392,6 +377,77 @@ export function EmployeeScopePanel({
           {t('showingCapped', { cap: SCOPE_PANEL_CAP, total: filtered.length })}
         </p>
       )}
+
+      {/* ── 3. THE FOUR NARROWERS, folded away and closed on arrival. ── */}
+      <details
+        className="group rounded-md border border-border"
+        open={filtersOpen}
+        onToggle={(e) => setFiltersOpen(e.currentTarget.open)}
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium group-open:border-b group-open:border-border [&::-webkit-details-marker]:hidden">
+          <span>{t('moreFilters')}</span>
+          <span className="flex items-center gap-2">
+            {/* The count exists so a list narrowed by something CLOSED is never a mystery. */}
+            {activeFilterCount > 0 && (
+              <span className="text-xs font-semibold text-primary">
+                {t('moreFiltersActive', { count: activeFilterCount })}
+              </span>
+            )}
+            <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
+              ▾
+            </span>
+          </span>
+        </summary>
+        <div className="grid grid-cols-1 gap-3 p-3">
+          <Field label={t('filterCompany')}>
+            <select
+              value={companyId}
+              onChange={(e) => {
+                setCompanyId(e.target.value);
+                setBusinessUnitId('');
+                setDepartmentId('');
+              }}
+              className={inputCls}
+            >
+              <option value="">{t('allCompanies')}</option>
+              {companyOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('filterBusinessUnit')}>
+              <select value={businessUnitId} onChange={(e) => setBusinessUnitId(e.target.value)} className={inputCls}>
+                <option value="">{t('allBusinessUnits')}</option>
+                {businessUnitOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('filterDepartment')}>
+              <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className={inputCls}>
+                <option value="">{t('allDepartments')}</option>
+                {departmentOptions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label={t('filterStatus')}>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+              <option value="">{t('allStatuses')}</option>
+              <option value="active">{t('statusActive')}</option>
+              <option value="ended">{t('statusEnded')}</option>
+            </select>
+          </Field>
+        </div>
+      </details>
     </div>
   );
 }
