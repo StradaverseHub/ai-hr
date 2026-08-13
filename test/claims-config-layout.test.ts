@@ -46,8 +46,11 @@ const WIDE_SCREENS = [
 
 describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => {
   it.each(WIDE_SCREENS)('%s uses pageWideCls', (file) => {
-    expect(read(file), `${file} must use the named pageWideCls constant, not a hand-written width`).toContain(
-      'pageWideCls',
+    // The APPLICATION, not the import. Checking only for the identifier (which is what the attendance and
+    // leave guards do) passes on a file that imports it and then hand-writes a width anyway — verified by
+    // reverting one page and watching this case stay green while the next one went red.
+    expect(read(file), `${file} must APPLY the named pageWideCls constant, not merely import it`).toContain(
+      '<div className={pageWideCls}>',
     );
   });
 
