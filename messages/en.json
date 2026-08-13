@@ -4297,7 +4297,12 @@
           "leave": "Leave",
           "import": "Import",
           "system": "System"
-        }
+        },
+        "colDescription": "Description",
+        "viewTxnTitle": "Transaction details",
+        "close": "Close",
+        "inputMethodDailyUnavailable": "This pay item pays one fixed amount for the month, so it cannot be split across dates.",
+        "unsavedBodyClose": "Do you want to save before closing?"
       },
       "tp1": {
         "title": "TP1 Relief",

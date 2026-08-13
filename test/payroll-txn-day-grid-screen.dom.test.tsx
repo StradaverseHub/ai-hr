@@ -86,7 +86,17 @@ const BATCH: TxnBatch = {
   recalcEmploymentIds: null,
 };
 const COMPANY: TxnCompany = { id: 'c1', name: 'Demo Group Holdings Bhd', currency: 'MYR' };
-const OT: TxnPayItem = { id: 'ot15', code: 'OT1_5', name: 'Overtime 1.5', kind: 'allowance', derives: true, inputUnit: 'hours' };
+// c11e81aa — `variesByDay` comes off the item's own rule on the server (payRuleAllowsDayByDay).
+// OT1_5 is per_hour: a day is worth its own hours, so day-by-day is offered.
+const OT: TxnPayItem = {
+  id: 'ot15',
+  code: 'OT1_5',
+  name: 'Overtime 1.5',
+  kind: 'allowance',
+  derives: true,
+  inputUnit: 'hours',
+  variesByDay: true,
+};
 
 const EMPTY_PANEL: TxnPanel = {
   rows: [],

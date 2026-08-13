@@ -379,6 +379,38 @@ export function payRuleInputUnit(rule: PayRule | null | undefined): 'hours' | 'd
 }
 
 /**
+ * c11e81aa — may a one-off transaction on this pay item be recorded DAY BY DAY?
+ *
+ * The day grid keeps one dated line per day, and the question it asks of each line is "what is THIS day
+ * worth". That question only has an answer when the item's own configuration lets one day differ from
+ * another, and the pay item — not the entry screen — is the thing that knows:
+ *
+ *   · `per_hour` / `per_day`, and a `formula` that reads `hours` or `days` (payRuleInputUnit names the
+ *     box) — the keyed quantity IS the day's own fact, so the grid is exactly the right shape.
+ *   · NO RULE AT ALL — nothing has declared this item a monthly constant, and the amount is the
+ *     operator's to key per line. ABSENT and UNPAID LEAVE are this tenant's two today; both are
+ *     inherently per-day, and the grid already explains itself there (`dayGridNoRuleHint`).
+ *   · `fixed`, `qty_rate`, `percent_of`, `flat_capped`, and a formula reading NEITHER hours nor days —
+ *     ONE FIGURE FOR THE MONTH. Five lines of a fixed RM100 allowance are not five days of anything, and
+ *     on the derived kinds it is worse than meaningless: a formula reading only `basic` yields the whole
+ *     month's figure for every line it is asked about, so five days would pay it five times.
+ *
+ * Resolved on the SERVER and handed to the screen as a boolean, for the same reason `payRuleDerivesAmount`
+ * is: the rule value never crosses to the client, and a UI guess at "this looks like a fixed item" would
+ * be a second definition of a fact the catalog already holds.
+ *
+ * IT GATES THE OFFER, NOT THE WRITE. `createIndividualTxnsBulk` still accepts many dated lines for any
+ * item — the Excel import writes exactly that shape for fixed-amount items and must keep working — so
+ * this is what the screen offers, deliberately not a new refusal in the service.
+ */
+export function payRuleAllowsDayByDay(rule: PayRule | null | undefined): boolean {
+  if (rule == null) return true;
+  if (rule.kind === 'per_hour' || rule.kind === 'per_day') return true;
+  if (rule.kind === 'formula') return payRuleInputUnit(rule) != null;
+  return false;
+}
+
+/**
  * 2da9937a — is this pay item one of the "fixed allowances" the aggregate operand totals?
  *
  * THE DEFINITION IS DELIBERATELY NARROW, and each clause pays for itself:
