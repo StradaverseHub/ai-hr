@@ -286,13 +286,32 @@ export function TxnWorkspace({
   // ── Left panel: filters + selection ──
   // A single-company admin has their one company chosen for them (an initialiser, not an effect —
   // the effect version rendered an empty dropdown for one frame first).
-  const [companyId, setCompanyId] = useState(() => (companies.length === 1 ? companies[0].id : ''));
+  //
+  // 009c8a37 — NAMED, because Reset now has to restore it. Blanking Company on reset would drop a
+  // one-company tenant onto an empty select that their own dropdown does not even offer a blank for
+  // (`companies.length > 1 && <option value="">`), i.e. a state they cannot get back out of.
+  const defaultCompanyId = companies.length === 1 ? companies[0]!.id : '';
+  const [companyId, setCompanyId] = useState(defaultCompanyId);
   const [businessUnitFilter, setBusinessUnitFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  /**
+   * e1e33ca0 — the PAYROLL MONTH, and it stays in THIS component scope on purpose.
+   *
+   * Its control moved to the transaction toolbar (see the itemised-listing header below), but the state
+   * did not, because three other things read it: `panelKey` refetches the right-hand panel off it,
+   * and `startCreate` / `switchToDaily` seed a new entry's month from it. Pushing it into a toolbar
+   * sub-component with its own state would silently break the "Add opens on the month you set" carry-over.
+   *
+   * It has NEVER filtered the employee list — it narrows the selected person's transactions. That is the
+   * whole complaint the move answers, and it is why it is no longer among the employee filters.
+   */
   const [periodFilter, setPeriodFilter] = useState('');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState('');
+  /** 009c8a37 — the More-filters fold. Closed on arrival, remembered while the screen is open, and
+   *  deliberately not persisted; same reasoning as the shared panel's copy. */
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // ── Right panel: the selected employee's transactions ──
   const [panelState, setPanelState] = useState<{ key: string; panel: TxnPanel }>({ key: '', panel: EMPTY_PANEL });
@@ -342,6 +361,34 @@ export function TxnWorkspace({
     setBusinessUnitFilter(id);
     setDeptFilter('');
   };
+  /**
+   * 009c8a37 — this screen had no Reset; the other six did. It clears the search AND the four hidden
+   * narrowers in one click, which is the consistency the request asks for.
+   *
+   * It does NOT clear the payroll month: that box is no longer on this panel (e1e33ca0) and belongs to
+   * the transaction toolbar's own Clear. A Reset that silently changed which month's transactions were
+   * on screen would be reaching across the very separation these two items exist to draw.
+   */
+  const resetEmployeeFilters = () => {
+    setQuery('');
+    setCompanyId(defaultCompanyId);
+    setBusinessUnitFilter('');
+    setDeptFilter('');
+    setStatusFilter('');
+  };
+  /**
+   * 009c8a37 — how many of the FOLDED-AWAY choices are narrowing the list.
+   *
+   * Company counts only when it differs from `defaultCompanyId`. On a one-company tenant that field is
+   * pre-set and cannot be cleared, so counting it would pin a permanent "1 on" beside More filters and
+   * teach the reader to ignore the badge — the opposite of what a count is for.
+   */
+  const activeFilterCount = [
+    companyId === defaultCompanyId ? '' : companyId,
+    businessUnitFilter,
+    deptFilter,
+    statusFilter,
+  ].filter(Boolean).length;
 
   const byId = useMemo(() => new Map(employees.map((e) => [e.employmentId, e])), [employees]);
   const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
@@ -441,6 +488,17 @@ export function TxnWorkspace({
   const changePeriodFilter = (period: string) => {
     setPeriodFilter(period);
     resetListingView();
+  };
+  /**
+   * e1e33ca0 — the toolbar's Clear: empty the month and the transaction search together and bring back
+   * every month. It goes through `changePeriodFilter` rather than `setPeriodFilter` so it cannot drift
+   * from what typing a month does — `resetListingView` already blanks `rowQuery` and the page, so the
+   * two calls after it are what makes the intent readable rather than a second mechanism.
+   */
+  const clearListingFilters = () => {
+    changePeriodFilter('');
+    setRowQuery('');
+    setPage(0);
   };
 
   const sortedRows = useMemo(() => {
@@ -1254,61 +1312,32 @@ export function TxnWorkspace({
           <h2 className="text-sm font-semibold text-foreground">{t('employeesPanel')}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">{t('employeesPanelHint')}</p>
         </div>
-        <div className="space-y-3 border-b border-border p-3">
-          <Field label={t('company')}>
-            <select value={companyId} onChange={(e) => changeCompany(e.target.value)} className={inputCls}>
-              {companies.length > 1 && <option value="">—</option>}
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('businessUnitFilter')}>
-              <select value={businessUnitFilter} onChange={(e) => changeBusinessUnit(e.target.value)} className={inputCls}>
-                <option value="">{t('allBusinessUnits')}</option>
-                {businessUnitOptions.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+        {/* ── 1. SEARCH, first — with the Reset this screen never had (009c8a37). ──
+            THIS LIST IS NOT EmployeeScopePanel AND IS NOT BEING FOLDED ONTO IT. Selection here is client
+            state guarded by `requestSelect`'s unsaved-form check, not a router.push, and the cap is 50
+            rather than 25. The two are reordered to MATCH, by hand; merging them would take the guard
+            with it. */}
+        <div className="border-b border-border p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label={t('employeeSearch')} className="flex-1">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('searchPlaceholder')}
+                className={inputCls}
+              />
             </Field>
-            <Field label={t('deptFilter')}>
-              <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={inputCls}>
-                <option value="">{t('allDepartments')}</option>
-                {departmentOptions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('statusFilter')}>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputCls}>
-                <option value="">{t('allStatuses')}</option>
-                <option value="active">{t('statusActive')}</option>
-                <option value="ended">{t('statusEnded')}</option>
-              </select>
-            </Field>
-            {/* The period narrows the TRANSACTIONS shown on the right, not which employees are listed —
-                labelled so it cannot be read as an employee filter. */}
-            <Field label={t('periodFilter')}>
-              <input type="month" value={periodFilter} onChange={(e) => changePeriodFilter(e.target.value)} className={inputCls} />
-            </Field>
+            <button
+              type="button"
+              onClick={resetEmployeeFilters}
+              className="h-9 rounded-md border border-border px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              {t('reset')}
+            </button>
           </div>
-          <Field label={t('employeeSearch')}>
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('searchPlaceholder')}
-              className={inputCls}
-            />
-          </Field>
         </div>
+        {/* ── 2. THE NAMES, directly under the search box. ── */}
         <div className="max-h-[32rem] divide-y divide-border overflow-y-auto">
           {visibleEmployees.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
@@ -1338,6 +1367,71 @@ export function TxnWorkspace({
               {t('showingCapped', { cap: EMPLOYEE_CAP, total: filteredEmployees.length })}
             </p>
           )}
+          {/* ── 3. THE NARROWERS, folded away and closed on arrival. ──
+              The Payroll period box that used to sit here beside Status is GONE (e1e33ca0): it narrowed
+              the transactions on the right, never this list, and it now lives on the transaction toolbar
+              beside Search transactions. It is not "hidden in More filters" — it is not an employee
+              filter at all, and putting it in here would have re-made the exact mistake being fixed. */}
+          <details
+            className="group border-t border-border"
+            open={filtersOpen}
+            onToggle={(e) => setFiltersOpen(e.currentTarget.open)}
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium group-open:border-b group-open:border-border [&::-webkit-details-marker]:hidden">
+              <span>{t('moreFilters')}</span>
+              <span className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <span className="text-xs font-semibold text-primary">
+                    {t('moreFiltersActive', { count: activeFilterCount })}
+                  </span>
+                )}
+                <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
+                  ▾
+                </span>
+              </span>
+            </summary>
+            <div className="space-y-3 p-3">
+              <Field label={t('company')}>
+                <select value={companyId} onChange={(e) => changeCompany(e.target.value)} className={inputCls}>
+                  {companies.length > 1 && <option value="">—</option>}
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label={t('businessUnitFilter')}>
+                  <select value={businessUnitFilter} onChange={(e) => changeBusinessUnit(e.target.value)} className={inputCls}>
+                    <option value="">{t('allBusinessUnits')}</option>
+                    {businessUnitOptions.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('deptFilter')}>
+                  <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={inputCls}>
+                    <option value="">{t('allDepartments')}</option>
+                    {departmentOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <Field label={t('statusFilter')}>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputCls}>
+                  <option value="">{t('allStatuses')}</option>
+                  <option value="active">{t('statusActive')}</option>
+                  <option value="ended">{t('statusEnded')}</option>
+                </select>
+              </Field>
+            </div>
+          </details>
         </Card>
       }
     >
@@ -1895,18 +1989,48 @@ export function TxnWorkspace({
               </div>
             )}
 
-            {/* ── Itemised listing ── */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-              <input
-                type="search"
-                value={rowQuery}
-                onChange={(e) => {
-                  setRowQuery(e.target.value);
-                  setPage(0);
-                }}
-                placeholder={t('searchTxnPlaceholder')}
-                className={`${inputCls} max-w-xs`}
-              />
+            {/* ── Itemised listing ──
+                e1e33ca0 — THE PAYROLL MONTH LIVES HERE NOW, beside Search transactions, because the two
+                things that narrow the rows below belong together. It came out of the employee panel,
+                where it read as a fifth way of narrowing the employee list and never was one.
+
+                NOTHING ABOUT WHAT IT DOES CHANGED. Same `periodFilter` state, same `changePeriodFilter`
+                (which already calls `resetListingView`, exactly right for something that changes which
+                rows are on screen), same refetch. Changing the month rebuilds `panelKey` and refires the
+                fetch for the SAME employee — `selectedId` is never touched, so nobody is re-picked. And
+                "Showing {period} only" stays in the totals strip above, where it already was. */}
+            <div className="flex flex-wrap items-end justify-between gap-2 px-4 py-2.5">
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label={t('periodFilter')} className="w-40">
+                  <input
+                    type="month"
+                    value={periodFilter}
+                    onChange={(e) => changePeriodFilter(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('searchTxnLabel')} className="w-56">
+                  <input
+                    type="search"
+                    value={rowQuery}
+                    onChange={(e) => {
+                      setRowQuery(e.target.value);
+                      setPage(0);
+                    }}
+                    placeholder={t('searchTxnPlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+                {/* No Search button on purpose: `rowQuery` filters as you type, so there is nothing to
+                    press. The request rules out behaviour changes, and a submit button would be one. */}
+                <button
+                  type="button"
+                  onClick={clearListingFilters}
+                  className="h-9 rounded-md border border-border px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {t('clearFilters')}
+                </button>
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 {/* 4e403268 — the request's point 16: the daily records do NOT disappear once payroll is
                     processed, they become the audit trail behind the figure. Flat is still the default, so
