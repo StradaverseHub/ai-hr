@@ -1,22 +1,64 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import {
+  BookOpen,
+  ChevronDown,
+  GraduationCap,
+  HandCoins,
+  Landmark,
+  type LucideIcon,
+  Moon,
+  PiggyBank,
+  ShieldPlus,
+  Umbrella,
+  Users,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
 import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
-import { Avatar, Button, Field, inputCls } from './ui';
+import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
+import { CompanyLogo, CompanyLogoEdit } from './company-logo';
+import { EmployeeSearchField, type EmployeeSearchOption } from './employee-search-field';
 // r79a — company.currency is now the salary-form default currency, so it uses the same ISO 4217 picker.
 import { CurrencySelect } from './currency-select';
 
-// 94ae7e1f — the company config panel is reorganised into three tabs: General / Bank Account / Statutory.
-// The old "Payroll" tab is renamed Statutory (it only ever held statutory identity), and the Bank
-// Disbursement Profiles move out of it into a dedicated Bank Account tab (disbursement is a banking concern,
-// not a statutory one). Pure UI/relocation — the underlying statutory + bank-profile data/logic is unchanged.
-type TabKey = 'general' | 'bankAccount' | 'statutory';
+// 3c2f55d7 rev 2 — the company config panel is THREE tabs: General / Statutory / Other.
+//
+// 94ae7e1f had split it into General / Bank Account / Statutory. The reporter's card redesign asks for
+// General | Statutory | Other, so the Bank Account tab becomes a SECTION of "Other" alongside the other
+// company-administration bits that are neither identity nor statutory (default payroll cycle, group
+// parent, archive/delete). Pure relocation — the bank-profile and statutory data/logic are unchanged, and
+// every field stays mounted, so an in-progress edit still survives a tab switch.
+type TabKey = 'general' | 'statutory' | 'other';
+
+/**
+ * The visual mark on each statutory-body card (3c2f55d7 rev 2).
+ *
+ * The request asked for each body's official logo. We deliberately do NOT ship EPF/PERKESO/LHDN
+ * trademarks: this repo bundles no remote assets, and reproducing a government agency's mark inside a
+ * product needs permission we do not have on file. A distinct, recognisable ICON per body does the job
+ * the request actually described — "primarily for visual identification" — with no licensing question,
+ * and swapping in a licensed mark later is a one-line change here.
+ *
+ * Keyed by the same strings as lib/statutory-authorities.ts. A body with no entry falls back to Landmark,
+ * so adding an authority can never render a blank tile.
+ */
+const AUTHORITY_ICON: Record<string, LucideIcon> = {
+  epf: PiggyBank, // retirement savings
+  socso: ShieldPlus, // injury / invalidity cover
+  eis: Umbrella, // retrenchment cover
+  lhdn: Landmark, // the revenue board
+  hrdf: GraduationCap, // training levy
+  zakat: HandCoins, // religious contribution
+  ptptn: BookOpen, // study loan
+  tabung_haji: Moon, // pilgrimage savings
+  koperasi: Users, // co-operative
+};
 
 /** One tab trigger — mirrors the claims-tabs styling (border-b, active = border-primary text-primary). */
 function TabButton({
@@ -136,8 +178,15 @@ export type PanelStatutoryAuthority = {
   email: string | null;
   signatoryPersonId: string | null;
 };
-/** An ACTIVE employee of this company — the authorised-signatory picker is company-scoped. */
-export type PanelSignatory = { personId: string; name: string };
+/**
+ * An ACTIVE employee of this company — the authorised-signatory picker is company-scoped.
+ *
+ * 3c2f55d7 rev 2 — `employeeCode` is carried so the picker can be SEARCHED by Employee ID as well as by
+ * name (the reporter asked for both). The scope rule is unchanged: the service still refuses to newly
+ * appoint anyone who is not an active employee of THIS company, so widening this list would only produce
+ * saves that fail.
+ */
+export type PanelSignatory = { personId: string; name: string; employeeCode: string | null };
 
 const badge = {
   amber:
@@ -298,13 +347,36 @@ function BankAccountForm({
 }
 
 /**
- * One statutory body's payment configuration (R46 orgbank 84719377): which of the company's bank accounts
- * pays it, the employer's payment reference with it, its correspondence address + contact, and the
- * authorised signatory.
+ * One statutory body, as a CARD (item 3c2f55d7 rev 2).
  *
- * The signatory picker is scoped to ACTIVE employees of THIS company. It is legacy-tolerant in the same way
- * the profile-option pickers are: a stored signatory who has since left is still shown as selected, so
- * editing the phone number does not silently clear them. The service refuses to newly APPOINT a leaver.
+ * ── WHAT THE CARD SHOWS AND WHY IT EXPANDS ────────────────────────────────────────────────────────
+ * The request was: icon, body name, a one-line description, the current setup status, and an Open/Edit.
+ * The face of the card is exactly that, so an HR admin can find the right body without reading a wall
+ * of identical forms — nine authorities each with a fourteen-field form was a 700-line scroll in which
+ * every body looked the same.
+ *
+ * The Open/Edit expands the form IN PLACE (the card grows to the full grid width) rather than routing to
+ * a per-authority page. A route would have needed its own entry in the function-access matrix and would
+ * have put a page load between "which body do I mean" and "here are its four fields" — the opposite of
+ * what the redesign is for.
+ *
+ * ⚠️ THIS IS NOT THE FOLD THE PREVIOUS ROUND REMOVED, and the difference is load-bearing. r193 (the same
+ * item, rev 1) flattened four native details/summary disclosures because the reader had already drilled two levels
+ * in and the panel still hid everything behind another click. What is collapsed HERE is one body's
+ * fourteen-field EDITOR, next to a card face that states the body's name, purpose and configured/not
+ * status without any click at all — the information is on screen, only the form is folded away. The
+ * content is also never unmounted: the editor is hidden with CSS, so a rendered page still carries every
+ * field (test/company-panel-no-disclosure-render.test.ts counts them) and an in-progress edit survives a
+ * collapse. Do not "simplify" this back into a details/summary disclosure: the source guard rejects one, and a native
+ * disclosure cannot span the grid.
+ *
+ * ── THE SIGNATORY PICKER ──────────────────────────────────────────────────────────────────────────
+ * Scoped to ACTIVE employees of THIS company, searchable by Employee ID or name (EmployeeSearchField).
+ * It is legacy-tolerant in the same way the profile-option pickers are: a stored signatory who has since
+ * left is injected into the option list as "former employee" so the field still POSTS them, and editing
+ * the phone number does not silently clear the signatory. (EmployeeSearchField drops a value that is not
+ * in its list, which without this would have turned an unrelated save into a wipe.) The service refuses
+ * to newly APPOINT a leaver — that rule is untouched.
  */
 function StatutoryAuthorityCard({
   authority,
@@ -326,31 +398,80 @@ function StatutoryAuthorityCard({
   removeAction: Action;
 }) {
   const t = useTranslations('admin.organization');
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
   const r = row;
   const configured = !!r;
-  const signatoryKnown = !r?.signatoryPersonId || signatories.some((sg) => sg.personId === r.signatoryPersonId);
+  const Icon = AUTHORITY_ICON[authority] ?? Landmark;
+
+  // The searchable option list: this company's active employees, plus — only when the saved signatory is
+  // no longer among them — the stored person, so the hidden input keeps posting the id already on record.
+  const signatoryOptions: EmployeeSearchOption[] = signatories.map((sg) => ({
+    value: sg.personId,
+    name: sg.name,
+    employeeCode: sg.employeeCode,
+  }));
+  if (r?.signatoryPersonId && !signatories.some((sg) => sg.personId === r.signatoryPersonId)) {
+    signatoryOptions.unshift({
+      value: r.signatoryPersonId,
+      name: t('authoritySignatoryFormer'),
+      employeeCode: null,
+    });
+  }
+
   return (
-    // 3c2f55d7 — this card was a details/summary disclosure that started closed, so every authority's
-    // configuration was one more click away on a screen the reader had already drilled two levels
-    // into (and the Configured / Not configured badge was the only thing you could see without
-    // opening it). The header row stays as a heading; the form below it is simply always there.
-    <li className="rounded-md border border-border/60">
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <span className="min-w-0 text-sm">
-          {/* Dynamic message key (`authority_epf`, `authority_socso`, …) — one per entry in
-              STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
-              existing convention for a computed key (the pattern the individual-transaction screen uses). NOTE: the i18n-coverage test
-              cannot see dynamic keys, so adding an authority means adding its label to all six
-              locales by hand. */}
-          <span className="font-medium">{t(`authority_${authority}` as never)}</span>
-          {configured ? (
-            <span className={`ml-2 ${badge.emerald}`}>{t('authorityConfigured')}</span>
-          ) : (
-            <span className={`ml-2 ${badge.muted}`}>{t('authorityNotConfigured')}</span>
-          )}
+    <li
+      className={cn(
+        'flex flex-col rounded-lg border border-border/60 bg-background',
+        // An opened card takes the whole row so its form has the width to lay out in three columns.
+        open && 'sm:col-span-2 xl:col-span-3',
+      )}
+    >
+      {/* The card FACE — icon, name, description, status. Visible without any interaction. */}
+      <div className="flex flex-1 items-start gap-3 p-3">
+        <span
+          className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+          aria-hidden
+        >
+          <Icon className="size-5" />
         </span>
+        <div className="min-w-0 flex-1 space-y-1">
+          {/* Dynamic message keys (`authority_epf` / `authorityDesc_epf`, …) — one pair per entry in
+              STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
+              existing convention for a computed key. NOTE: the i18n-coverage test cannot see dynamic
+              keys, so adding an authority means adding BOTH its label and its description to all six
+              locales by hand (test/company-panel-bank-statutory-layout.test.ts checks that they exist). */}
+          <div className="truncate text-sm font-medium text-foreground">
+            {t(`authority_${authority}` as never)}
+          </div>
+          <p className="text-xs leading-snug text-muted-foreground">
+            {t(`authorityDesc_${authority}` as never)}
+          </p>
+          <span className={configured ? badge.emerald : badge.muted}>
+            {configured ? t('authorityConfigured') : t('authorityNotConfigured')}
+          </span>
+        </div>
       </div>
-      <div className="space-y-2 border-t border-border/60 px-3 py-3">
+
+      <div className="border-t border-border/60 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:underline"
+        >
+          <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
+          {open ? t('authorityClose') : t('authorityOpen')}
+        </button>
+      </div>
+
+      {/* The editor. Always MOUNTED (hidden with CSS, never unmounted) so a half-typed address survives a
+          collapse and a rendered page still carries every field. */}
+      <div
+        id={panelId}
+        className={cn('space-y-2 border-t border-border/60 px-3 py-3', !open && 'hidden')}
+      >
         <form action={setAction} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input type="hidden" name="companyId" value={companyId} />
           <input type="hidden" name="authority" value={authority} />
@@ -367,8 +488,14 @@ function StatutoryAuthorityCard({
               <select name="bankProfileId" defaultValue={r?.bankProfileId ?? ''} className={inputCls}>
                 <option value="">{t('authorityBankAccountNone')}</option>
                 {bankProfiles.map((bp) => (
+                  // 3c2f55d7 rev 2 — the account number is shown IN FULL. It was masked to its last four
+                  // digits, which is an employee-facing habit applied where it does not belong: this
+                  // screen is admin-only (RLS), the number is the company's OWN debit account, and an
+                  // admin routing EPF to the right account needs to read the whole thing. The masks on
+                  // EMPLOYEE bank details elsewhere (app/me, the audit formatter) are a different
+                  // decision and stay.
                   <option key={bp.id} value={bp.id}>
-                    {(bp.accountLabel || myBankLabel(bp.bank)) + ' · ••••' + bp.debitAccountNo.slice(-4)}
+                    {(bp.accountLabel || myBankLabel(bp.bank)) + ' · ' + bp.debitAccountNo}
                   </option>
                 ))}
               </select>
@@ -412,21 +539,28 @@ function StatutoryAuthorityCard({
           <Field label={t('authorityEmail')}>
             <input name="email" type="email" defaultValue={r?.email ?? ''} className={inputCls} />
           </Field>
-          <div className="sm:col-span-3">
-            <Field label={t('authoritySignatory')}>
-              <select name="signatoryPersonId" defaultValue={r?.signatoryPersonId ?? ''} className={inputCls}>
-                <option value="">{t('optionNone')}</option>
-                {/* A signatory who has since left is still shown so an unrelated edit can't clear them. */}
-                {!signatoryKnown && r?.signatoryPersonId ? (
-                  <option value={r.signatoryPersonId}>{t('authoritySignatoryFormer')}</option>
-                ) : null}
-                {signatories.map((sg) => (
-                  <option key={sg.personId} value={sg.personId}>
-                    {sg.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+          {/* Not a <Field>: that WRAPS its children in a <label>, and this control is a div holding two
+              inputs plus a clear button — a wrapping label would attach itself to whichever input came
+              first and every click on the row would re-focus the text box. The caption points at the
+              field's own id instead, the way the Leave Inquiry pickers do. */}
+          <div className="flex flex-col gap-1.5 sm:col-span-3">
+            <label htmlFor={`${panelId}-sig`} className="text-xs font-medium text-muted-foreground">
+              {t('authoritySignatory')}
+            </label>
+            <EmployeeSearchField
+              id={`${panelId}-sig`}
+              name="signatoryPersonId"
+              employees={signatoryOptions}
+              value={r?.signatoryPersonId ?? null}
+              labels={{
+                placeholder: t('signatorySearchPlaceholder'),
+                ariaLabel: t('signatorySearchLabel'),
+                resultsLabel: t('signatorySearchResults'),
+                noMatches: t('signatoryNoMatches'),
+                clear: t('signatoryClear'),
+              }}
+              className="w-full"
+            />
           </div>
           <div className="sm:col-span-3">
             <Button type="submit" size="sm">
@@ -447,57 +581,34 @@ function StatutoryAuthorityCard({
   );
 }
 
-/** The company's logo (served inline by the RLS-scoped logo route) or the initials Avatar placeholder when
- *  none is set. On an <img> load error (e.g. a corrupt-but-sniffed file) it falls back to the Avatar. */
-function CompanyLogo({
-  hasLogo,
-  companyId,
-  name,
-  className,
-}: {
-  hasLogo: boolean;
-  companyId: string;
-  name: string;
-  className?: string;
-}) {
-  const [broken, setBroken] = useState(false);
-  if (!hasLogo || broken) return <Avatar name={name} className={className} />;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- dynamic bytea served by our RLS route; not a static asset
-    <img
-      src={`/admin/organization/logo/${companyId}`}
-      alt=""
-      onError={() => setBroken(true)}
-      className={cn('size-8 shrink-0 rounded-full object-cover ring-1 ring-border', className)}
-    />
-  );
-}
-
 /**
  * One legal entity, in full: company details, group parent, statutory identity, and bank disbursement
  * profiles — everything "about running the company". The org catalogs (departments / positions / cost
  * centers / business units) moved to the Settings → System Labels admin page; this panel is now purely
  * company/legal/bank management.
  *
- * ── NOTHING HERE FOLDS (item 3c2f55d7) ────────────────────────────────────────────────────────────
+ * ── NOTHING ON ARRIVAL IS HIDDEN BEHIND A CLICK (item 3c2f55d7) ────────────────────────────────────
  * This panel is the whole body of /admin/organization/[companyId]. You have ALREADY chosen the company
  * by the time it renders, so no part of it may make you choose again: the sections are grouped by TAB,
  * and everything on the selected tab is visible on arrival.
  *
- * It used to fold in four places. The outer one — a chevron row with an open-on-mount flag — is a
- * leftover from when the panel was one row of a client-side company LIST, where collapsing was the
- * point; that listing is now a plain server-rendered table (app/admin/organization/page.tsx)
- * and this component has exactly ONE caller, which always opened it. Inside it were three more:
- * per-statutory-authority cards, per-bank-account rows, and the "add a bank account" form. Each hid
- * information the reader had already navigated two levels to see. All four are gone.
+ * It used to fold in four places, and all four are gone: the outer chevron row (a leftover from when
+ * this was one row of a client-side company LIST), the per-statutory-authority cards, the per-bank-account
+ * rows and the "add a bank account" form. Each hid information the reader had already navigated two
+ * levels to see.
+ *
+ * The ONE thing that folds now is a statutory body's fourteen-field EDITOR, behind its card's Open/Edit
+ * (rev 2, at the reporter's request) — and the card face still states the body's name, purpose and
+ * configured status with no click at all. That is the opposite trade from the four that were removed:
+ * information visible, form on demand. See StatutoryAuthorityCard for the full reasoning.
+ *
+ * DO NOT reintroduce a details/summary disclosure here — the source guard in
+ * test/company-panel-bank-statutory-layout.test.ts fails the build if one comes back, and it also pins
+ * that the bank sections and the panel itself stay flat. The group-structure fold on the LISTING page is
+ * a different decision and is deliberately kept (test/organization-group-structure-collapse.test.ts).
  *
  * The tabs are NOT a disclosure and stay: they group a large screen, they do not gate it, and every
  * tab's content is mounted (hidden by CSS) so an in-progress edit survives a tab switch.
- *
- * DO NOT reintroduce a details/summary disclosure here — the source guard in
- * test/company-panel-bank-statutory-layout.test.ts fails the build if one comes back. The
- * group-structure fold on the LISTING page is a different decision and is deliberately kept
- * (test/organization-group-structure-collapse.test.ts).
  */
 export function CompanyPanel({
   company,
@@ -582,16 +693,39 @@ export function CompanyPanel({
           <TabButton active={tab === 'general'} onClick={() => setTab('general')}>
             {t('tabGeneral')}
           </TabButton>
-          <TabButton active={tab === 'bankAccount'} onClick={() => setTab('bankAccount')}>
-            {t('tabBankAccount')}
-          </TabButton>
           <TabButton active={tab === 'statutory'} onClick={() => setTab('statutory')}>
             {t('tabStatutory')}
           </TabButton>
+          <TabButton active={tab === 'other'} onClick={() => setTab('other')}>
+            {t('tabOther')}
+          </TabButton>
         </div>
 
-        {/* General: company details, group parent, logo, archive/delete */}
+        {/* General: the company logo, then its master data */}
         <div className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>
+        {/* Company logo — FIRST on the tab, and edited the way the Personnel profile photo is: a pencil
+            trigger over the upload/remove forms, with the picked file previewed before it is saved
+            (3c2f55d7 rev 2). Storage, the PNG/JPG rule and the 2 MB limit are untouched. */}
+        <div className="space-y-2.5 rounded-lg bg-background p-3">
+          <SubHeader>{t('logoSection')}</SubHeader>
+          <CompanyLogoEdit
+            companyId={c.id}
+            name={c.name}
+            hasLogo={c.hasLogo}
+            labels={{
+              edit: t('logoEdit'),
+              hint: t('logoHint'),
+              upload: t('logoUpload'),
+              replace: t('logoReplace'),
+              remove: t('logoRemove'),
+              none: t('logoNone'),
+              previewPending: t('logoPreviewPending'),
+            }}
+            setAction={actions.setCompanyLogo}
+            removeAction={actions.removeCompanyLogo}
+          />
+        </div>
+
         {/* Company master data — Company Information + Contact Information (bc5d4891). One form, one save. */}
         <form action={actions.updateCompany} className="space-y-4 rounded-lg bg-background p-3">
           <input type="hidden" name="id" value={c.id} />
@@ -695,6 +829,160 @@ export function CompanyPanel({
             </Button>
           </div>
         </form>
+        </div>
+        {/* end General tab */}
+
+        {/* Statutory: statutory identity (94ae7e1f — the old "Payroll" tab, renamed; it only ever held
+            statutory configuration). Country-pack section (ADR-0008). */}
+        <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
+        {isMY ? (
+          <>
+          <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
+            <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
+            <input type="hidden" name="companyId" value={c.id} />
+            <input type="hidden" name="country" value="MY" />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Field label={t('epfEmployerNo')}>
+                <input name="epfEmployerNo" defaultValue={statutory?.epfEmployerNo ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('socsoEmployerCode')}>
+                <input
+                  name="socsoEmployerCode"
+                  defaultValue={statutory?.socsoEmployerCode ?? ''}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label={t('lhdnENumber')}>
+                <input name="lhdnEmployerNo" defaultValue={statutory?.lhdnEmployerNo ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('myinvoisTin')}>
+                <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('ssmRegistrationNo')}>
+                <input
+                  name="ssmRegistrationNo"
+                  defaultValue={statutory?.ssmRegistrationNo ?? ''}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label={t('hrdfStatusLabel')}>
+                <select
+                  name="hrdfStatus"
+                  defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
+                  className={inputCls}
+                >
+                  <option value="not_registered">{t('hrdfNotRegistered')}</option>
+                  <option value="mandatory">{t('hrdfMandatory')}</option>
+                  <option value="optional">{t('hrdfOptional')}</option>
+                </select>
+              </Field>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('statutoryFilingsHint')}
+            </p>
+            {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
+                HRDF eligibility is a free company choice, not a headcount rule. */}
+            <Button type="submit" size="sm">
+              {t('saveStatutoryIdentity')}
+            </Button>
+          </form>
+
+          {/* R46 orgbank (84719377) — per-authority PAYMENT setup. The form above holds the employer
+              IDENTITY (one flat row per company); this section holds, per statutory body, which company
+              bank account pays it, its address/contact, and the authorised signatory. Every authority in
+              the controlled set is listed whether configured or not, so nothing is silently missing.
+              3c2f55d7 rev 2 — they are a GRID OF CARDS (icon, name, description, status, Open/Edit)
+              instead of a stack of identical form blocks. */}
+          <div className="space-y-2.5 rounded-lg bg-background p-3">
+            <SubHeader>{t('authoritiesTitle')}</SubHeader>
+            <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
+            {bankProfiles.length === 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
+            )}
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {STATUTORY_AUTHORITIES.map((a) => (
+                <StatutoryAuthorityCard
+                  key={a}
+                  authority={a}
+                  row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
+                  companyId={c.id}
+                  bankProfiles={bankProfiles}
+                  signatories={signatories}
+                  stateOptions={stateOptions}
+                  setAction={actions.setStatutoryAuthority}
+                  removeAction={actions.removeStatutoryAuthority}
+                />
+              ))}
+            </ul>
+          </div>
+          </>
+        ) : (
+          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+            {t('noStatutoryPack', { country: c.country })}
+          </p>
+        )}
+        </div>
+        {/* end Statutory tab */}
+
+        {/* Other: everything about administering the entity that is neither its identity nor its statutory
+            configuration — bank accounts (94ae7e1f moved these out of the old Payroll tab; 3c2f55d7 rev 2
+            moves the tab itself under "Other"), the default payroll cycle, the group parent, and
+            archive/delete. Data/logic (core/bank-profile) unchanged. */}
+        <div className={cn('space-y-4', tab === 'other' ? '' : 'hidden')}>
+        {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
+        {isMY ? (
+          <div className="space-y-3 rounded-lg bg-background p-3">
+            <SubHeader>{t('bankProfilesTitle')}</SubHeader>
+            {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
+                saved account is its own editable form (identity is the row id) rather than one upsert box. */}
+            {bankProfiles.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('noBankProfiles')}</p>
+            ) : (
+              <ul className="space-y-2">
+                {bankProfiles.map((bp) => (
+                  // 3c2f55d7 — each saved account was a closed disclosure; the identity line is now a
+                  // heading over an editor that is simply open. rev 2 — and the account number on that
+                  // heading is no longer masked (see the note on the "Paid from" picker).
+                  <li key={bp.id} className="rounded-md border border-border/60">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      <span className="min-w-0 text-sm">
+                        <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
+                        {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {myBankLabel(bp.bank)} · {bp.debitAccountNo} · {bp.currency}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="border-t border-border/60 px-3 py-3">
+                      <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
+                      <form action={actions.removeBankProfile} className="mt-2">
+                        <input type="hidden" name="id" value={bp.id} />
+                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                          {t('bankProfileRemove')}
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* 3c2f55d7 — the blank "add an account" form was itself a fold. A company with no bank
+                account saw an empty list and a closed row, i.e. the one thing it needed to do was
+                hidden. The dashed border still marks it as the ADD form rather than a saved one. */}
+            <div className="rounded-md border border-dashed border-border">
+              <div className="px-3 py-2 text-sm font-medium text-primary">{t('bankAccountAdd')}</div>
+              <div className="border-t border-border/60 px-3 py-3">
+                <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
+          </div>
+        ) : (
+          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+            {t('bankAccountNonMY', { country: c.country })}
+          </p>
+        )}
 
         {/* Organization Module (361e3b15) — Default Payroll Cycle. Lists THIS company's ACTIVE cycles with
             the saved default pre-selected. Changing it affects FUTURE runs only (batches snapshot their run
@@ -800,187 +1088,8 @@ export function CompanyPanel({
             </div>
           </div>
         </div>
-
-        {/* Company logo — branding (upload PNG/JPG, replace, remove). Admin-only writes (RLS). */}
-        <div className="space-y-2.5 rounded-lg bg-background p-3">
-          <SubHeader>{t('logoSection')}</SubHeader>
-          <div className="flex flex-wrap items-center gap-3">
-            <CompanyLogo hasLogo={c.hasLogo} companyId={c.id} name={c.name} className="size-12" />
-            <form action={actions.setCompanyLogo} className="flex flex-wrap items-center gap-2">
-              <input type="hidden" name="companyId" value={c.id} />
-              <input
-                type="file"
-                name="logo"
-                required
-                accept="image/png,image/jpeg"
-                className="max-w-[16rem] text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:font-medium file:text-foreground hover:file:bg-muted/70"
-              />
-              <Button type="submit" size="sm">
-                {c.hasLogo ? t('logoReplace') : t('logoUpload')}
-              </Button>
-            </form>
-            {c.hasLogo && (
-              <form action={actions.removeCompanyLogo}>
-                <input type="hidden" name="companyId" value={c.id} />
-                <Button type="submit" size="sm" variant="ghost" className="text-destructive hover:text-destructive">
-                  {t('logoRemove')}
-                </Button>
-              </form>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">{c.hasLogo ? t('logoHint') : `${t('logoNone')} · ${t('logoHint')}`}</p>
         </div>
-        </div>
-        {/* end General tab */}
-
-        {/* Bank Account: bank disbursement profiles (94ae7e1f — relocated out of the old Payroll tab, since
-            disbursement is a banking concern, not a statutory one). Data/logic (core/bank-profile) unchanged. */}
-        <div className={cn('space-y-4', tab === 'bankAccount' ? '' : 'hidden')}>
-        {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
-        {isMY ? (
-          <div className="space-y-3 rounded-lg bg-background p-3">
-            <SubHeader>{t('bankProfilesTitle')}</SubHeader>
-            {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
-                saved account is its own editable form (identity is the row id) rather than one upsert box. */}
-            {bankProfiles.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t('noBankProfiles')}</p>
-            ) : (
-              <ul className="space-y-2">
-                {bankProfiles.map((bp) => (
-                  // 3c2f55d7 — each saved account was a closed disclosure; the masked identity line is
-                  // now a heading over an editor that is simply open.
-                  <li key={bp.id} className="rounded-md border border-border/60">
-                    <div className="flex items-center justify-between gap-2 px-3 py-2">
-                      <span className="min-w-0 text-sm">
-                        <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
-                        {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {myBankLabel(bp.bank)} · ••••{bp.debitAccountNo.slice(-4)} · {bp.currency}
-                        </span>
-                      </span>
-                    </div>
-                    <div className="border-t border-border/60 px-3 py-3">
-                      <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
-                      <form action={actions.removeBankProfile} className="mt-2">
-                        <input type="hidden" name="id" value={bp.id} />
-                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-                          {t('bankProfileRemove')}
-                        </button>
-                      </form>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {/* 3c2f55d7 — the blank "add an account" form was itself a fold. A company with no bank
-                account saw an empty list and a closed row, i.e. the one thing it needed to do was
-                hidden. The dashed border still marks it as the ADD form rather than a saved one. */}
-            <div className="rounded-md border border-dashed border-border">
-              <div className="px-3 py-2 text-sm font-medium text-primary">{t('bankAccountAdd')}</div>
-              <div className="border-t border-border/60 px-3 py-3">
-                <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
-            <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
-          </div>
-        ) : (
-          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
-            {t('bankAccountNonMY', { country: c.country })}
-          </p>
-        )}
-        </div>
-        {/* end Bank Account tab */}
-
-        {/* Statutory: statutory identity (94ae7e1f — the old "Payroll" tab, renamed; it only ever held
-            statutory configuration). Country-pack section (ADR-0008). */}
-        <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
-        {isMY ? (
-          <>
-          <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
-            <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
-            <input type="hidden" name="companyId" value={c.id} />
-            <input type="hidden" name="country" value="MY" />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Field label={t('epfEmployerNo')}>
-                <input name="epfEmployerNo" defaultValue={statutory?.epfEmployerNo ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('socsoEmployerCode')}>
-                <input
-                  name="socsoEmployerCode"
-                  defaultValue={statutory?.socsoEmployerCode ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('lhdnENumber')}>
-                <input name="lhdnEmployerNo" defaultValue={statutory?.lhdnEmployerNo ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('myinvoisTin')}>
-                <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('ssmRegistrationNo')}>
-                <input
-                  name="ssmRegistrationNo"
-                  defaultValue={statutory?.ssmRegistrationNo ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('hrdfStatusLabel')}>
-                <select
-                  name="hrdfStatus"
-                  defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
-                  className={inputCls}
-                >
-                  <option value="not_registered">{t('hrdfNotRegistered')}</option>
-                  <option value="mandatory">{t('hrdfMandatory')}</option>
-                  <option value="optional">{t('hrdfOptional')}</option>
-                </select>
-              </Field>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t('statutoryFilingsHint')}
-            </p>
-            {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
-                HRDF eligibility is a free company choice, not a headcount rule. */}
-            <Button type="submit" size="sm">
-              {t('saveStatutoryIdentity')}
-            </Button>
-          </form>
-
-          {/* R46 orgbank (84719377) — per-authority PAYMENT setup. The form above holds the employer
-              IDENTITY (one flat row per company); this section holds, per statutory body, which company
-              bank account pays it, its address/contact, and the authorised signatory. Every authority in
-              the controlled set is listed whether configured or not, so nothing is silently missing. */}
-          <div className="space-y-2.5 rounded-lg bg-background p-3">
-            <SubHeader>{t('authoritiesTitle')}</SubHeader>
-            <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
-            {bankProfiles.length === 0 && (
-              <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
-            )}
-            <ul className="space-y-2">
-              {STATUTORY_AUTHORITIES.map((a) => (
-                <StatutoryAuthorityCard
-                  key={a}
-                  authority={a}
-                  row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
-                  companyId={c.id}
-                  bankProfiles={bankProfiles}
-                  signatories={signatories}
-                  stateOptions={stateOptions}
-                  setAction={actions.setStatutoryAuthority}
-                  removeAction={actions.removeStatutoryAuthority}
-                />
-              ))}
-            </ul>
-          </div>
-          </>
-        ) : (
-          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
-            {t('noStatutoryPack', { country: c.country })}
-          </p>
-        )}
-        </div>
-        {/* end Statutory tab */}
+        {/* end Other tab */}
       </div>
     </div>
   );

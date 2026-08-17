@@ -6,17 +6,19 @@ import { employeeLabel } from '@/lib/employee-code';
 import { EMPLOYEE_SEARCH_RESULT_CAP, matchEmployees } from '@/lib/employee-search';
 
 /**
- * NO APP CONSUMER TODAY — RETAINED DELIBERATELY, NOT ORPHANED BY ACCIDENT.
+ * WHO MOUNTS THIS (the header used to say "nobody", and that stopped being true):
+ *   • the two Leave Inquiry pickers — app/leave/employee-balances + employee-records (38b94df7),
+ *   • the authorised-signatory picker on each statutory card in components/company-panel.tsx (3c2f55d7
+ *     rev 2), which is the first consumer to post a PERSON id rather than an employment id — `value` is
+ *     whatever the caller wants submitted, so that needed no change here.
  *
- * Both screens this was built for reverted to the left-hand panel in r185 (98e69987 rev 2 and f35f758a
- * rev 2) after the reporter reviewed the search-box layout live and asked for the list back. Nothing in
- * `app/` mounts this component now; `test/employee-search-field.dom.test.tsx` still exercises it, and
- * `payroll.individualPayslip.search*` still carries a caption set for it in all six catalogues.
- *
- * It is kept, with its test and its captions, for the restore work that may bring the field back — the
- * alternative is deleting a working, tested control and then re-deriving it, and re-adding deleted i18n
- * keys is the exact MISSING_MESSAGE trap that this round had to clean up. `lib/employee-search.ts` is a
- * separate matter and has live consumers either way (via `app/admin/personnel/employee-search.ts`).
+ * The two screens it was originally built for (98e69987 Transaction Detail, f35f758a Individual Payslip)
+ * both reverted to the left-hand panel in r185 after the reporter reviewed the search-box layout live and
+ * asked for the list back; `payroll.individualPayslip.search*` still carries a caption set for them in all
+ * six catalogues, and test/employee-scope-panel-guard.test.ts asserts those two screens mount this control
+ * ZERO times. Keeping it was the right call rather than deleting a working, tested control and
+ * re-deriving it. `lib/employee-search.ts` is a separate matter and has live consumers either way (via
+ * `app/admin/personnel/employee-search.ts`).
  *
  * ───────────────────────────────────────────────────────────────────────────────────────────────────
  * THE SHARED "search for an employee" FILTER FIELD — built once for 98e69987 (Transaction Detail) and
