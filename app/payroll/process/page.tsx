@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { PageHeader, ErrorBanner } from '@/components/ui';
+import { PageHeader, ErrorBanner, pageWideCls } from '@/components/ui';
 import { batchDetail, listBatches } from '@/core/payroll';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
@@ -105,7 +105,7 @@ export default async function PayrollProcessPage({
   for (const c of companies) if (scopeIds.includes(c.id)) defaultCycleByCompany[c.id] = c.defaultPayrollCycle;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       {/* e440991b point 1 — this was the one screen in the product with no way back. Every other
           multi-step screen passes `back`; the wizard's own in-step Back button only walks between
           steps, so from step 1 the only exit was the browser control. Points at /payroll, the run

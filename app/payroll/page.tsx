@@ -5,7 +5,7 @@ import { requireModule } from '@/lib/authz';
 import { listBatches } from '@/core/payroll';
 import { listBatchProcessedDates } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
@@ -191,7 +191,7 @@ export default async function PayrollPage({
   ];
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-4">
+    <div className={pageWideCls}>
       <div data-tour="payroll-intro">
         <PageHeader
           title={t('title')}

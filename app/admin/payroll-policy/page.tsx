@@ -5,7 +5,7 @@ import { listCompanies } from '@/core/read';
 import { listPolicies, POLICY_TYPES, type PolicyRow } from '@/core/payroll-policy';
 import { listPayComponents } from '@/core/pay-components';
 import { CUT_OFF_PER_TYPES, PAYROLL_FREQUENCIES, cutOffWindowFor, payrollFrequencyOf, payrollScheduleFor } from '@/core/payroll-policy-config';
-import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -74,7 +74,7 @@ export default async function PayrollPolicyPage({
   const schedulePreview = payrollScheduleFor(editing?.config ?? null, null, previewPeriod);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} back={await settingsBack()} />
       {error && <ErrorBanner message={error} />}
 

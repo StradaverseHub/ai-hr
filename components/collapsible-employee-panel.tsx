@@ -125,8 +125,10 @@ export function CollapsibleEmployeePanel({
      *
      * DELETING THE RAIL WAS NOT ENOUGH ON ITS OWN. While collapsed the grid drops to a SINGLE COLUMN and
      * the left cell is not rendered at all. An empty auto column plus `gap-4` still held 16px back from
-     * the detail (40px of rail + 16px of gap against the shared `max-w-[100rem]` cap), which is the "use
-     * the full available width" requirement.
+     * the detail (40px of rail + 16px of gap), which is the "use the full available width" requirement.
+     * That measurement was originally taken against the `max-w-[100rem]` cap the payroll screens carried;
+     * 152fea7f removed the cap (every Payroll screen now uses `pageWideCls`), so collapsed really does
+     * reach the window edge. This shell fills whatever width its parent gives it and is unchanged by that.
      */
     <div
       className={`grid gap-4 lg:items-start ${

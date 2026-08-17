@@ -64,17 +64,19 @@ describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => 
     for (const f of WIDE_SCREENS) expect(classNameLiterals(read(f)).some(capsPage), f).toBe(false);
   });
 
-  it('DOES NOT reach outside the claims module — Fixed Transaction stays as it is', () => {
+  it('DOES NOT reach outside the claims module — the claims tabs are what this round widened', () => {
     // The panel round-trip (HANDOFF): a layout changed adjacent to what was asked gets reversed later.
-    // Fixed Transaction is also narrow, was named in the plan as explicitly OUT of scope, and must not be
-    // swept in by a future "make the config screens wide" pass reading this file as licence. Its cap is
-    // `max-w-[100rem]`, an arbitrary value, so capsPage above does not see it — hence the wider predicate
-    // here. Widening it is a decision for whoever is asked to, not a side effect of this round.
-    const fixed = 'app/payroll/transactions/fixed/page.tsx';
-    const src = read(fixed);
-    const capped = classNameLiterals(src).some((c) => /\bmx-auto\b/.test(c) && /\bmax-w-/.test(c));
-    expect(capped, `${fixed} was NOT in scope for e7eb5d83`).toBe(true);
-    expect(src).not.toContain('pageWideCls');
+    //
+    // 152fea7f UPDATED THIS CASE, it did not delete it. The original wording pinned
+    // app/payroll/transactions/fixed/page.tsx as still capped, because Fixed Transaction was named in
+    // e7eb5d83's plan as explicitly OUT of scope and must not be swept in as a side effect. The reporter
+    // has since ASKED for exactly that follow-on — 152fea7f standardises every Payroll screen onto
+    // `pageWideCls` — so the old assertion now pins a decision that has been deliberately reversed, which
+    // is the "two tests asserting opposite things" trap. What survives is the half that is still true and
+    // still worth defending: this round's edit was confined to the four claims tabs, so those four are the
+    // ONLY files section A names, and the payroll screens' width is owned by
+    // test/payroll-screens-layout.test.ts, not by this file.
+    for (const f of WIDE_SCREENS) expect(f.startsWith('app/admin/claims/'), `${f} is not a claims screen`).toBe(true);
   });
 });
 

@@ -5,7 +5,7 @@ import { requireAdmin } from '@/lib/authz';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listActiveLoans, type LoanRow } from '@/core/loans';
 import { listAppliedLoanRepayments } from '@/core/payroll-view';
-import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
@@ -114,7 +114,7 @@ export default async function LoansPage({
   }));
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={error} />
 

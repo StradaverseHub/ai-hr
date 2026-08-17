@@ -5,7 +5,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listTp1DeclarationsForPerson, type Tp1DeclarationSummary } from '@/core/tax-relief';
 import { listAppliedTp1Deductions, type AppliedTp1ViewRow } from '@/core/payroll-view';
-import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
@@ -167,7 +167,7 @@ export default async function Tp1DeclarationPage({
   const currentDeclared = declarations.some((d) => d.assessmentYear === currentYear);
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('tp1.title')}

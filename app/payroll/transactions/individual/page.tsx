@@ -7,7 +7,7 @@ import { listPayComponents } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { ErrorBanner, PageHeader } from '@/components/ui';
+import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee, type TxnPayrollCycle } from './txn-workspace';
 import { TxnImportButtons } from '../import-excel/txn-import-dialog';
 import { buildTxnTemplateReference } from '../import-excel/reference';
@@ -163,7 +163,7 @@ export default async function IndividualTransactionPage({
   const importReference = await buildTxnTemplateReference(s, scopeIds);
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('individual.title')}
