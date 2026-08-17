@@ -1,3 +1,86 @@
+## r196 (2026-08-18) — SEVEN ITEMS, SIX WORKSTREAMS, MIGRATION `0441`, AND A VERIFY PASS THAT EARNED ITS COST
+
+`main@cd06bcda`. Six worktrees cut from `main`, built by `scripts/improve/build-r196.workflow.js`
+(6 build + 6 verify agents), then `fix-r196.workflow.js` (5 fix + 2 re-verify). Gate **690 declared / 690
+counted / every chunk exit=0 / 9,297 tests / 0 AssertionErrors / 0 timeouts**; tsc 0; `next build` 0;
+`gate:shadow` PASS 359→360; render check 8 routes x 6 locales, all 200, 0 `MISSING_MESSAGE`. Shipped:
+`5ff7daff` (Replacement Leave — role-aware ESS placement default) · `31e39d74` (entitlement status on My
+Leave) · `c11e81aa` (Individual Transaction pay-cycle intent, `0441`) · `6b134681`+`417d4937` (pay item
+identity + the four payslip surfaces reconciled) · `3c2f55d7` (Organization card redesign) · `ad52212d`
+(Attendance Settings rounds 1-2).
+
+**EVERY ONE OF THE SIX BUILDS CAME BACK GREEN — tsc, its own tests and `next build` — AND FIVE OF THE SIX
+STILL NEEDED FIXING.** That is this entry's point. The verify pass found what a targeted test run
+structurally cannot see, and the worst of it was pay-affecting:
+
+1. **`DEFAULT_PAYROLL_CYCLES` SEEDS THREE CYCLES ONTO ONE `run_type`** — 'Off-cycle', 'Advance Salary' and
+   'Mid-Month' are all `off_cycle` (core/payroll-cycle.ts:115-125). The first `c11e81aa` build matched a
+   transaction's intent to a run BY RUN TYPE, so a row saved as Mid-Month was collected and paid by an
+   Advance Salary run. Only `regular` is protected from that, by two independent invariants at once (one
+   active regular cycle per company, one regular batch per period). **Run type is not an identity.** The fix
+   gives the BATCH a `payroll_cycle_id` and matches ID to ID through one shared resolver that both the run
+   and the card read. The same collision existed a second time on the ATTACHED write path, and
+   attach-on-generate never revisits an attached row, so it would have paid there too.
+2. **A `<select>` WITH NO BLANK OPTION STAMPED A CYCLE THE OPERATOR NEVER CHOSE**, and editing only the
+   AMOUNT of a legacy row re-pointed it. Rule 17 in a new costume: the field is always submitted. Fixed with
+   an explicit empty option plus a `cycleTouched` flag, so an untouched field sends nothing at all.
+3. **THE COMMENT IS THE GUARD, AND THERE WERE FIVE COPIES OF IT.** `listUnattachedTxnSummary` documented
+   "attach-on-generate is REGULAR-RUN-ONLY" as a load-bearing invariant and keyed its join on it;
+   `unattachedHoldersOutsideSelection` returned `[]` on the same reasoning, silencing the Payroll Process
+   pre-flight for exactly the rows a regular run now abandons. Fixing those two left THREE more statements
+   of the dead rule, one of them in a file the change had itself edited.
+4. **A FIX INTRODUCED A DOUBLE-COUNT AND ITS OWN AUTHOR CAUGHT IT** — the new join could match two batches
+   in a month holding two runs of one cycle, doubling money in every consumer that sums groups.
+5. **THE `payitem` BRANCH GATED THREE OF FOUR LISTS.** `overtimeLines`/`bonusLines` went through
+   `payItemLinesReconcile`; `allowanceLines` did not, on the reasoning that it agrees by construction —
+   precisely the claim OT/Bonus carried until `display_category` re-routed money between the box and the
+   bucket. The ungated list was the one nobody re-checked.
+
+**WHAT THE AGENTS GOT RIGHT, AND SHOULD BE COPIED:** `ad52212d` REFUSED to rename
+`attendance-allowance-policy.status-changed` because its rows are already on production and that is a
+separate decision about existing history; a build agent REFUSED to widen `test/pack-drift-allowlist.json`
+because the guard's own message says the list only shrinks; `5ff7daff` verified its plan's "NO rebuild"
+verdict against the tree before trusting it. **The loop was stopped after ONE fix round** — r123's lesson is
+that adversarial critique does not converge — and the last two findings were fixed by hand.
+
+⚠️ **A GUARD PINNED THE EXACT LINE THE FIX CHANGED** (`test/payroll-history-landing.test.ts` asserted the
+literal `allowanceLines: [...byBucket.wage, ...byBucket.reimburse]`). Updated to pin BOTH halves — which
+buckets feed the figure, and that they pass the reconcile gate — never deleted. Rule 18, third occurrence.
+
+⚠️ **`scripts/reprocess-one-employment.ts` MADE THE GATE RED AND `git rm --cached` DID NOT FIX IT.** The
+pack-drift ratchet scans the FILESYSTEM (`runImportRatchet`'s scan list includes `scripts`), not the index,
+so an untracked file on disk still trips it — which also means this tree's payroll guard had been red since
+whichever earlier session dropped the file there. It reached `main` via a `git add -A` in the r195 recovery
+commit; removing it from the working TREE is what actually fixed it. **`git add -A` in a repo with a
+tree-scanning guard is a loaded gun.**
+
+## r195 (2026-08-17) — NOT OURS. RELEASED TO PRODUCTION BY SOMETHING OUTSIDE THIS REPO, THEN RECOVERED.
+
+Recorded because it is the only entry here that no session in this repo produced, and because the recovery
+is a procedure that will be needed again if it recurs.
+
+`deploy-r195.log` on the box records a build at ~22:05; `0253dc7c`, `a6da1387` and `46afcc48` were marked
+deployed at 22:09 with `build_ref = 004b098a`, **a commit that exists in no worktree here and in no other
+clone on this machine**. The three build-started → build-completed → deployed triples land 1-2 seconds
+apart, so nothing was built at that moment — they were *marked*. The local peer session confirmed it was not
+them; `CronList` was empty; the launchd agent is notify-only. The WORK is real, and in this repo's idiom:
+its comments cite the item ids they implement.
+
+**RECOVERED INTO MAIN AS `6bd2d99d`** by taking production's copy of the 15 differing files, established by
+a `--delete` dry-run rsync FROM mainwt: 2,668 entries of which 2,355 differ only by mtime, leaving 18
+content differences — the 15, plus `HANDOFF.md` and two build artifacts, which were NOT copied back. All six
+catalogues were verified strict supersets first (`prod-drops=0` for every locale), so nothing on main was
+lost. Gated tsc 0 / `i18n-check` PASS / 36 tests green.
+
+**WHY IT HAD TO HAPPEN BEFORE ANYTHING ELSE SHIPPED:** the deploy rsync carries `--delete`, so the next
+release from main would have overwritten all three items with main's older copies and silently reverted
+fixes the reporter had just received.
+
+⚠️ **RUN THAT DRY RUN FROM `mainwt`, WITH `cd` IN THE SAME COMMAND.** The shell's cwd resets to the repo
+ROOT (`local/root-scratch`, far behind main) between tool calls, and the same command from there reports
+thousands of bogus differences and invents a crisis. It cost a full diagnostic pass here — the fourth time
+the wrong-tree trap has landed.
+
 ## r186 (2026-08-12) — EIGHT APPROVED ITEMS, SHIPPED. Migrations `0428` + `0429`.
 
 `e7eb5d83` · `74d00fd2` · `7c834696` · `af7a8eb4` · `b8aa3466` · `42afb2d2` · `2ec1e3d2`, plus the

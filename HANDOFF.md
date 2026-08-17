@@ -18,12 +18,13 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-17 22:5x (r195 RECOVERED · **r196 IN FLIGHT** · 13 APPROVED UNBUILT)
+## CURRENT STATE — snapshot 2026-08-18 (r195 RECOVERED · **r196 SHIPPED** · NOTHING IN FLIGHT · 9 APPROVED)
 
-**`main@3b7238d5` IS WHAT RUNS ON PRODUCTION, AND ONLY AFTER A RECOVERY COMMIT** — verified by an
-`rsync -azi --delete --dry-run` from **mainwt** reporting no source-file difference at all (the residue is
-`HANDOFF.md`, the gitignored `next-env.d.ts`, `tsconfig.tsbuildinfo`, four new `docs/mockups/*` files, and
-`deploy-r195.log` on the box). A dry run is "clean" at that residue, not at zero.
+**`main@cd06bcda` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run` from
+**mainwt** reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. Service
+active, `GET localhost:3000/` → 401.
+**Board re-counted on the box after r196: `deployed = 684` · `approved = 9` · `planned = 2` ·
+`cancelled = 14` · open = 0.**
 
 ⚠️⚠️ **RUN THE DRY RUN FROM `mainwt`, WITH `cd` IN THE SAME COMMAND.** The shell's cwd resets to the repo
 ROOT (`local/root-scratch`, far behind main) between tool calls, and a dry run from there reports thousands
@@ -41,12 +42,11 @@ differing files — all six catalogues verified strict supersets first, so nothi
 tsc 0 / i18n-check PASS / 36 tests green. **Had a release gone out from main first, `rsync --delete` would
 have reverted all three items silently.** If that actor runs again, expect the same shape.
 
-**Production is on 359 migrations** (watermark `395 @ 1781862540000`; r194 added `0440`
-`assignment.company_id` + `assignment_company_idx`, verified present on the live schema). Service active
-(restarted 22:05:57), `GET localhost:3000/` → 401. r195 carried NO migration.
-**`0441` IS ALLOCATED TO r196's `build/r196-txn`** (`c11e81aa`, `payroll_individual_txn.intended_cycle_id`),
-idx 441, `when 1781862541000`. It is the ONLY migration in r196, so merge order cannot skip it.
-**Next free after that is `0442`** (`0431` allocated and deliberately unused; gaps are fine).
+**Production is on 360 migrations** (watermark `1781862541000` = `0441`, confirmed by reading
+`drizzle.__drizzle_migrations` — NOT `public`, which is why a bare `__drizzle_migrations` query errors).
+r196 added `0441` `payroll_individual_txn.intended_cycle_id` + `payroll_batch.payroll_cycle_id`; both
+columns verified present on the live schema. r195 carried no migration.
+**Next free migration is `0442`** (`0431` allocated and deliberately unused; gaps are fine).
 
 **⚠️ THE LOCAL CLUSTER WAS GONE, NOT WEDGED, ON 2026-08-17** — `/opt/homebrew/var/aihr-pg16` was a BROKEN
 symlink to an unmounted RAM disk (`…-ram/data`), so 5433 refused connections. Uptime showed no reboot, so
@@ -61,56 +61,43 @@ something unmounted it. `./scripts/dev-db-rebuild.sh` restored it in under a min
 it redirects to `/odoo` and lands on an Odoo login (Odoo listens on 8069 on the same host). Neither
 tells you anything about ai-hr; r191 chased both before establishing this.
 
-## ⏳ r196 IS IN FLIGHT — SIX WORKSTREAMS, BRANCHES CUT FROM `main@3b7238d5`
-
-Built by `scripts/improve/build-r196.workflow.js` (6 build agents + 6 adversarial verify agents). **Nothing
-merged, nothing released, no full gate run yet.** If this session died here, that is the state: six branches
-with committed work, `main` untouched by any of it.
-
-| branch | item(s) | `TEST_DB_NAMESPACE` | migration |
-|---|---|---|---|
-| `build/r196-repl` | `5ff7daff` Replacement Leave | `r196repl` | — |
-| `build/r196-entl` | `31e39d74` Medical/Hosp entitlement in My Leave | `r196entl` | — |
-| `build/r196-txn` | `c11e81aa` Individual Transaction | `r196txn` | **`0441`** |
-| `build/r196-payitem` | `6b134681` + `417d4937` (one root cause) | `r196payitem` | — |
-| `build/r196-org` | `3c2f55d7` Organization card redesign | `r196org` | — |
-| `build/r196-attend` | `ad52212d` Attendance Settings, **rounds 1–2 only** | `r196attend` | — |
-
-**WHY A NEW WORKFLOW SCRIPT AND NOT `build-approved.workflow.js`:** that one hardcodes
-`REPO = '/Users/zenlam/Projects/ai-hr'` — the ROOT scratch worktree on `local/root-scratch` — and asks for
-`isolation: 'worktree'`, which cuts every agent's tree from that stale HEAD. AGENTS forbids exactly this.
-`build-r196.workflow.js` has the PARENT create the worktrees from `main` first and hands each agent an
-absolute path. It also drops the `ahr_build_golden` CREATE-DATABASE-TEMPLATE dance for the mechanism the
-harness already documents: `TEST_DB_NAMESPACE` (test/db-names.ts), one per workstream, issued centrally —
-which also makes those databases *ephemeral* instead of leaking. **Fold these two corrections back into
-`build-approved.workflow.js` before it is used again.**
-
-**REMAINING STEPS, IN ORDER:** merge the green branches → ONE full gate, alone, nothing else on the cluster
-→ `next build` → migration rehearsal (`gate:shadow`) → rsync + `deploy.sh` → verify by dry-run rsync →
-`improve:release` / `mark-deployed` per item → move this block to history.
-
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**1. NOTHING IS IN FLIGHT, BUT THE APPROVED QUEUE IS NOW 19 DEEP — THE CONSTRAINT IS US AGAIN.**
-r185–r194 are all shipped; `main@dec4bb73` is deployed and every `build/*` branch through r194 is merged.
+**1. NOTHING IS IN FLIGHT. THE APPROVED QUEUE IS 9 DEEP AND THE CONSTRAINT IS STILL US.**
+r185–r196 are all shipped; `main@cd06bcda` is deployed and every `build/*` branch through r196 is merged.
 Prove it independently rather than trusting this line — `git for-each-ref refs/heads/build` plus a dry-run
-rsync. **Board re-counted on the box 2026-08-17: `deployed = 674` · `approved = 19` · `planned = 2` ·
-`cancelled = 14` · open = 0 · contested = 0.** Every one of the 19 is unbuilt AT ITS CURRENT REVISION —
-verified per item through `domain_event`, not inferred from `build_ref`. They split three ways:
-  - **6 are POST-DEPLOY REFUTES, re-planned on 2026-08-17 by another session (`claude-opus-4-8`) and
-    approved by the reporter within minutes.** They carry the OLD `build_ref` and a NEW plan revision, so
-    a `build_ref` is NOT evidence the current revision shipped: `0253dc7c` (move Wage Base to the bottom of
-    the table) · `c11e81aa` (Individual Transaction Pay Cycle selection) · `3c88d593` (**the reporter hit the
-    entity-transfer underpayment themselves on 08-14 09:32 — see §2**) · `5ff7daff` ("where is my replacement
-    leave in lieu category?") · `46afcc48` (shared leave group into the PRIMARY row, not a separate category)
-    · `3c2f55d7` (Statutory Configuration + Bank Information UI/UX, refuted 08-17 13:40).
-  - **9 are new, approved 2026-08-17:** `6b134681` · `bdf7d248` · `417d4937` · `e0cd4583` (CP39-MTD/PCB) ·
-    `d21e667e` (KWSP/EPF Borang A) · `621c929d` (Socso Borang 8A) · `45df860a` · `a6da1387` · `152fea7f`.
-    ⚠️ The three statutory-form ones are NEW IDs for forms we already shipped (`9c8dad7a`, `8ca344bf`,
-    `88076362`) — establish duplicate-vs-rework before planning a build, and read the statutory-form
-    section below first.
-  - **4 have been waiting since 2026-08-14:** `ad52212d` (Attendance Settings) · `1b0943d5` (entity transfer
-    stage two) · `9a65f808` (rev 3) · `31e39d74` (rev 2).
+rsync FROM mainwt. **The 9 approved, all unbuilt at their current revision:**
+  - **`1b0943d5`** entity transfer stage two — the one that matters, see §2. Needs `0442`.
+  - **`3c88d593`** entity transfer, REFUTED after r194 by the reporter hitting the underpayment themselves.
+    It and `1b0943d5` are one problem; plan them as one round.
+  - **`9a65f808`** (rev 3) · **`31e39d74`** is SHIPPED, do not rebuild · **`bdf7d248`** EPF across cycles ·
+    **`45df860a`** PCB/MTD detail view · **`152fea7f`** payroll full-width layout.
+  - ⚠️ **`621c929d` / `d21e667e` / `e0cd4583`** are NEW IDS FOR STATUTORY FORMS WE ALREADY SHIPPED
+    (`8ca344bf` Borang 8A, `9c8dad7a` Borang A, `88076362` CP22). Establish duplicate-vs-rework BEFORE
+    planning a build, and read the statutory-form section below first.
+
+⚠️ **`build_ref` IS NOT EVIDENCE THAT THE CURRENT REVISION SHIPPED.** A post-deploy refute
+(`feedback.deployment.refuted`) → re-plan → approve leaves the OLD `build_ref` on the row beside a NEW plan
+revision, so `pull-approved` legitimately returns items that look shipped. Six of the nineteen on 2026-08-17
+were exactly that. Read the item's `domain_event` stream and compare the APPROVED revision against the one
+that was built. `feedback.plan.approved` carries `{revision}` — that is the field to compare.
+
+**1b. r196 SHIPPED SEVEN ITEMS AS `cd06bcda`** — `5ff7daff` · `31e39d74` · `c11e81aa` (`0441`) ·
+`6b134681`+`417d4937` · `3c2f55d7` · `ad52212d` (rounds 1–2 only). Full entry in `docs/HANDOFF-HISTORY.md`.
+**THREE FOLLOW-UPS IT DELIBERATELY LEFT, each verified and each cheap to lose:**
+  - **A bonus/off-cycle run can now strand money and its run page will not say so.** `c11e81aa` lets a
+    non-regular run collect rows naming its own cycle; the outstanding indicator on
+    `app/payroll/[batchId]/page.tsx` is still gated to `runType === 'regular'`. Missing warning, not wrong
+    money — the gate's comment now states this explicitly rather than implying the old, false invariant.
+  - **`core/attendance-allowance.ts:337` still emits `…status-changed`**, which `lib/audit-format.ts`
+    `actionOf()` classifies as `other`, so the Audit Trail filter cannot find those flips. `ad52212d` fixed
+    the same shape in `core/attendance-rule.ts` but correctly refused to rename an event whose rows are
+    already on production — that needs its own decision about the existing history.
+  - **A CUSTOM leave type with an `earned_*` method accrues NOTHING, FOREVER.** `openLeaveYear` skips it as
+    `earned_method` and `accrueEarnedLeave` only ever selects codes in `STANDING_LEAVE_CODES`, so neither
+    engine ever visits it. `31e39d74` stopped the screen offering a remedy that cannot fire; the type still
+    never earns. Worth raising as its own board item — nothing else surfaces it.
+
 The `com.aihr.improve-build` launchd agent IS loaded but is **notify-only** (`watch-approved.sh`) — nothing
 auto-builds.
 
