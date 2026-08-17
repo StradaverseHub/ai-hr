@@ -38,6 +38,13 @@
  *      band table has since been overridden. Nor is it zero-filled: a table of RM 0.00 reads as "the
  *      bracket was zero", which is a false statement about someone's tax. The caller renders "not
  *      recorded for this run" and shows the legs it genuinely has.
+ *
+ *   5. A HAND-SET PCB — a working that is complete, correct, and about a DIFFERENT NUMBER. When an
+ *      operator overrides the PCB line (2961a7ae), `statutory.pcb` becomes their figure and `pcbMeta` is
+ *      left exactly as the engine wrote it, because no second calculation ran. So `pcbSystem` (what the
+ *      working explains) and `pcb` (what was deducted) part company, `override` carries the before /
+ *      after / reason, and the screen must say the deduction was set by hand rather than presenting a
+ *      tidy LHDN formula as the explanation of an amount nobody computed.
  */
 
 export type PcbReliefBreakdown = {
@@ -88,6 +95,36 @@ export type PcbTrace = {
    *  §E.5 zakat offset. This is the figure the substituted formula lands on. */
   mtdNormalCalc: number;
   mtdAdditionalCalc: number;
+  /** The same two legs AFTER the §E.3 RM10 rule (A and E in the spec's tables), and the zakat left over
+   *  once the normal leg absorbed what it could. The last line of the working —
+   *  `max(0, A − Z₁) + max(0, E − leftover)` — is not writable without them, and a line that skips them
+   *  prints an expression that does not evaluate to the PCB beside it. */
+  mtdNormalFloored: number;
+  mtdAdditionalFloored: number;
+  zakatLeftover: number;
+};
+
+/**
+ * 2961a7ae × 45df860a — A PCB SET BY HAND.
+ *
+ * `applyStatutoryAdjustment` (core/payroll.ts) overwrites `statutory.pcb` with an operator's figure and
+ * records the before/after under `statutory.adjustment`. It deliberately does NOT rewrite `pcbMeta`:
+ * there is no second calculation to record, because none ran. So every member of the trace describes the
+ * figure the ENGINE produced, while `pcb` is the figure that was actually deducted, and the two are
+ * different numbers.
+ *
+ * A screen that did not notice would present a complete, correct-looking LHDN working as the explanation
+ * of an amount nobody computed — the exact failure this whole item exists to remove, wearing a
+ * respectable formula. So the override is read out and reported, the working is labelled as explaining
+ * `pcbSystem`, and the screen says the deduction was set by hand.
+ */
+export type PcbOverride = {
+  /** What the engine computed (`adjustment.lines.pcb.system`). */
+  system: number;
+  /** What was deducted instead. */
+  applied: number;
+  /** The operator's mandatory reason for the override. */
+  reason: string;
 };
 
 /** 45df860a — the flat-rate working: the remuneration the flat percentage was applied to. */
@@ -97,22 +134,27 @@ export type PcbFlatTrace = {
   rate: number;
 };
 
+/** Present on EVERY shape, because a hand-set PCB is orthogonal to how the figure was computed and a
+ *  screen must never explain one while displaying the other.
+ *   · `pcb`       — what was DEDUCTED (`statutory.pcb`), override included.
+ *   · `pcbSystem` — what the recorded working EXPLAINS. Identical to `pcb` unless overridden.
+ *   · `override`  — NULL unless the PCB line itself was set by hand. */
+type PcbFigures = { pcb: number; pcbSystem: number; override: PcbOverride | null };
+
 export type PcbExplanation =
-  | {
+  | ({
       /** No PCB working was recorded on this payslip (imported history, or a run predating the stamp). */
       kind: 'unavailable';
-      pcb: number;
-    }
-  | {
+    } & PcbFigures)
+  | ({
       kind: 'flat';
       /** 0.30 non-resident, 0.15 REP / Knowledge Worker. */
       rate: number;
       nonResident: boolean;
       /** NULL for a run predating 45df860a — "not recorded", never zero. */
       trace: PcbFlatTrace | null;
-      pcb: number;
-    }
-  | {
+    } & PcbFigures)
+  | ({
       kind: 'mtd';
       /** 'snapshot' = this payslip's own relief working. 'current' = the employee's position TODAY. */
       reliefSource: 'snapshot' | 'current';
@@ -131,14 +173,15 @@ export type PcbExplanation =
       reliefs: PcbReliefBreakdown;
       /** Zakat paid via salary this month. PCB is ALREADY net of it (LHDN §E.5) — never re-subtract. */
       zakat: number;
-      /** The split the engine produced: normal-remuneration MTD and the additional-remuneration leg. */
+      /** The split the engine produced: normal-remuneration MTD and the additional-remuneration leg.
+       *  Both are taken against `pcbSystem`, not against `pcb`: they belong to the calculation, and
+       *  splitting a hand-set figure along the engine's proportions would invent a breakdown. */
       pcbNormal: number;
       pcbAdditional: number;
       /** NULL for a run predating 45df860a. The caller says "not recorded for this run"; it does NOT
        *  back-derive the bracket and it does NOT render the legs as zeroes. */
       trace: PcbTrace | null;
-      pcb: number;
-    };
+    } & PcbFigures);
 
 const n = (v: unknown) => {
   const x = Number(v ?? 0);
@@ -165,13 +208,17 @@ type SnapshotMeta = {
  * THE GATE IS PRESENCE, NOT TRUTHINESS, and that is the whole point of the function. `n()` above turns
  * `undefined` into 0, so a blob carrying `trace: {}` — or a trace half-written by some future change —
  * would otherwise coerce into a complete-looking table of zeroes and RM 0.00 brackets. Those are claims
- * about someone's tax, so the bar to return a trace at all is that the three members no partial write
- * could plausibly supply are present: the bracket rate, its floor, and the MTD the formula landed on.
+ * about someone's tax, so the bar to return a trace at all is that the members no partial write could
+ * plausibly supply are present: the bracket rate, its floor, the MTD the formula landed on, and the
+ * post-RM10 leg the last line of the working is written from. That last one is on the gate rather than
+ * merely read, because a trace missing it produces a printable `max(0, 0.00 − …)` beside a non-zero PCB —
+ * a working that contradicts its own answer, which is worse than an honest "not recorded".
  */
 function readTrace(raw: unknown): PcbTrace | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const t = raw as Record<string, unknown>;
   if (t.M === undefined || t.R === undefined || t.mtdNormalCalc === undefined) return null;
+  if (t.mtdNormalFloored === undefined) return null;
   return {
     M: n(t.M),
     R: n(t.R),
@@ -195,6 +242,30 @@ function readTrace(raw: unknown): PcbTrace | null {
     totalMtdYear: t.totalMtdYear === undefined ? null : n(t.totalMtdYear),
     mtdNormalCalc: n(t.mtdNormalCalc),
     mtdAdditionalCalc: n(t.mtdAdditionalCalc),
+    mtdNormalFloored: n(t.mtdNormalFloored),
+    mtdAdditionalFloored: n(t.mtdAdditionalFloored),
+    zakatLeftover: n(t.zakatLeftover),
+  };
+}
+
+/**
+ * The hand-set-PCB stamp, or NULL. Gated on the `pcb` LINE specifically: an override of EPF or SOCSO
+ * leaves `statutory.pcb` exactly as the engine computed it (`applyStatutoryAdjustment` deliberately does
+ * not cascade), so the tax working still explains the deducted figure and there is nothing to warn about.
+ */
+function readOverride(raw: unknown): PcbOverride | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const stamp = raw as { reason?: unknown; lines?: unknown };
+  const lines = stamp.lines;
+  if (!lines || typeof lines !== 'object' || Array.isArray(lines)) return null;
+  const line = (lines as Record<string, unknown>).pcb;
+  if (!line || typeof line !== 'object' || Array.isArray(line)) return null;
+  const l = line as { system?: unknown; applied?: unknown };
+  if (l.system === undefined || l.applied === undefined) return null;
+  return {
+    system: n(l.system),
+    applied: n(l.applied),
+    reason: typeof stamp.reason === 'string' ? stamp.reason : '',
   };
 }
 
@@ -218,8 +289,12 @@ export function explainPcb(
 ): PcbExplanation {
   const st = (statutory ?? {}) as Record<string, unknown>;
   const pcb = n(st.pcb);
+  // The three figures every shape carries. `pcbSystem` is what the recorded working explains; `pcb` is
+  // what left the employee's pay. They differ only when the PCB line itself was set by hand.
+  const override = readOverride(st.adjustment);
+  const figures = { pcb, pcbSystem: override ? override.system : pcb, override };
   const meta = st.pcbMeta;
-  if (!meta || typeof meta !== 'object') return { kind: 'unavailable', pcb };
+  if (!meta || typeof meta !== 'object') return { kind: 'unavailable', ...figures };
 
   const flat = meta as FlatMeta;
   if (flat.flatRate != null || flat.rate != null) {
@@ -229,12 +304,12 @@ export function explainPcb(
       rate,
       nonResident: flat.nonResident === true,
       trace: readFlatTrace(flat.trace),
-      pcb,
+      ...figures,
     };
   }
 
   const m = meta as SnapshotMeta;
-  if (m.P1 === undefined) return { kind: 'unavailable', pcb };
+  if (m.P1 === undefined) return { kind: 'unavailable', ...figures };
 
   const stored = m.reliefs;
   const reliefSource: 'snapshot' | 'current' = stored ? 'snapshot' : 'current';
@@ -256,8 +331,9 @@ export function explainPcb(
     : (currentReliefs ?? { ...zero, lp: n(st.lp) });
 
   // `pcbBonus` is the additional-remuneration leg the engine reported. The normal leg is the remainder,
-  // derived by subtraction rather than recomputed — the two must sum to the figure on the payslip.
-  const pcbAdditional = Math.min(n(st.pcbBonus), pcb);
+  // derived by subtraction rather than recomputed — the two must sum to the figure the ENGINE produced
+  // (`pcbSystem`), which is the figure this working explains and is `pcb` itself unless it was overridden.
+  const pcbAdditional = Math.min(n(st.pcbBonus), figures.pcbSystem);
   return {
     kind: 'mtd',
     reliefSource,
@@ -271,9 +347,9 @@ export function explainPcb(
     chargeableIncomeWithAdditional: m.P2 === undefined ? null : n(m.P2),
     reliefs,
     zakat: n(st.zakat),
-    pcbNormal: r2(pcb - pcbAdditional),
+    pcbNormal: r2(figures.pcbSystem - pcbAdditional),
     pcbAdditional: r2(pcbAdditional),
     trace: readTrace(m.trace),
-    pcb,
+    ...figures,
   };
 }

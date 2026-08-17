@@ -14,6 +14,24 @@
  * just printed. A screen that evaluated the formula itself could disagree with the payslip, and a screen
  * that disagrees with the payslip about tax is worse than no screen.
  *
+ * WHICH PUTS THE WHOLE BURDEN ON THE EXPRESSION BEING THE RIGHT ONE. Since nothing here evaluates, a
+ * printed term that does not belong is invisible in every test that checks numbers — it can only be
+ * caught by reading the string against the engine. Three rules, each of which this screen got wrong once:
+ *
+ *   · P₁ AND P₂ ARE TWO CALCULATIONS, NOT ONE WITH AN OPTIONAL LIMB. In a bonus month the engine runs
+ *     §D.1 on P₁ and §D.2 on P₂, and P₂ re-estimates the projected EPF leg (K₂ₜ, not K₂) because the
+ *     bonus has eaten into the same annual relief cap. Appending "+ (Yₜ − Kₜ)" to the P₁ line produced an
+ *     expression belonging to neither, overshooting the P printed beside it by the whole bonus.
+ *
+ *   · THE LAST LINE IS §E.3 + §E.5, NOT A SUBTRACTION. Between the two calculated legs and the deducted
+ *     figure sit the RM10 rule on each leg and two zero-clamped subtractions (zakat takes the normal leg
+ *     first, only its remainder reaches the additional leg). "normal + additional − zakat" is a different
+ *     number whenever a leg is under RM10 or the zakat exceeds it.
+ *
+ *   · A HAND-SET PCB IS NOT EXPLAINED BY ANY OF IT. An operator override replaces `statutory.pcb` and
+ *     leaves `pcbMeta` alone, so every figure below still describes the engine's calculation. The screen
+ *     says so at the top and lands the working on `pcbSystem`, never on the overridden deduction.
+ *
  * WHAT AN OLD PAYSLIP GETS. Runs processed before 45df860a carry no `trace`, so `explainPcb` hands back
  * `trace: null` and this screen says "not recorded for this run" in the places the legs would have gone.
  * It does NOT print them as RM 0.00 and it does NOT back-derive them from P: both would be a statement
@@ -129,6 +147,10 @@ export async function PcbDetailView({
   const taxYear = /^\d{4}/.exec(ctx.payPeriod)?.[0] ?? ctx.payPeriod;
 
   const trace = explanation.kind === 'mtd' ? explanation.trace : null;
+  /** The hand-set-PCB stamp, and the figure the working on this screen actually explains. With no
+   *  override `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
+  const override = explanation.override;
+  const sys = explanation.pcbSystem;
 
   return (
     <div className="space-y-6">
@@ -146,6 +168,20 @@ export async function PcbDetailView({
           value={`${cycleKey ? t(cycleKey) : ctx.runType}${ctx.runSeq > 1 ? ` #${ctx.runSeq}` : ''}`}
         />
       </Block>
+
+      {/* ── THE HAND-SET PCB, SAID FIRST. Above every working and outside every `kind` branch, because
+          the sentence a reader needs before reading a single figure is that the figures below explain a
+          calculation whose answer was then replaced. Rendering the working without this would make the
+          screen a competent-looking derivation of an amount nobody deducted. ── */}
+      {override && (
+        <Card className="border-amber-500/40 bg-amber-500/10 p-4">
+          <h2 className="mb-2 text-sm font-semibold">{t('overrideHeading')}</h2>
+          <p className="mb-3 text-sm">{t('overrideBanner')}</p>
+          <Row label={t('overrideSystem')} value={rm(override.system)} />
+          <Row label={t('overrideApplied')} value={rm(override.applied)} />
+          <Row label={t('overrideReason')} value={override.reason || t('notRecordedShort')} />
+        </Card>
+      )}
 
       {/* ── The working was never recorded at all (imported history, or a run predating the stamp). ── */}
       {explanation.kind === 'unavailable' && (
@@ -171,7 +207,8 @@ export async function PcbDetailView({
             label={t('flatAdditional')}
             value={explanation.trace ? rm(explanation.trace.additional) : <NotRecorded />}
           />
-          <Row label={t('netMtd')} value={rm(explanation.pcb)} />
+          <Row label={override ? t('netMtdSystem') : t('netMtd')} value={rm(sys)} />
+          {override && <Row label={t('netMtdDeducted')} value={rm(explanation.pcb)} />}
           <div className="mt-3">
             <Formula
               formulaLabel={t('formulaLabel')}
@@ -185,9 +222,14 @@ export async function PcbDetailView({
                 )
               }
               resultLabel={t('resultLabel')}
-              result={rm(explanation.pcb)}
+              // The ENGINE's figure, not the deduction: a hand-set PCB is not what this multiplication
+              // produced, and printing it here would make the flat rate look like it explained the override.
+              result={rm(sys)}
             />
           </div>
+          {/* The flat leg is truncated, rounded up to 5 sen and RM10-floored exactly as the MTD leg is, so
+              the product above lands within 5 sen of the figure rather than on it. Said, not hidden. */}
+          <p className="pt-2 text-xs text-muted-foreground">{t('flatRoundingNote')}</p>
           <p className="pt-2 text-xs text-muted-foreground">{t('flatNote')}</p>
           {!explanation.trace && <p className="pt-2 text-xs text-muted-foreground">{t('traceNotRecorded')}</p>}
         </Block>
@@ -209,13 +251,24 @@ export async function PcbDetailView({
             <Row label={t('mtdAdditional')} value={trace ? rm(trace.mtdAdditionalCalc) : <NotRecorded />} />
             <Row label={t('currentZakat')} value={rm(explanation.zakat)} muted />
             <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-              <span>{t('netMtd')}</span>
-              <span className="tabular-nums">{rm(explanation.pcb)}</span>
+              <span>{override ? t('netMtdSystem') : t('netMtd')}</span>
+              <span className="tabular-nums">{rm(sys)}</span>
             </div>
+            {override && (
+              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+                <span>{t('netMtdDeducted')}</span>
+                <span className="tabular-nums">{rm(explanation.pcb)}</span>
+              </div>
+            )}
             <p className="pt-2 text-xs text-muted-foreground">{t('netMtdNote')}</p>
           </Block>
 
-          {/* ── The formula, symbolically and substituted (requirements 4, 10, 14) ── */}
+          {/* ── The formula, symbolically and substituted (requirements 4, 10, 14) ──
+              THE TWO max( 0, … ) ARE NOT DECORATION. The inner one is `annualTaxFor`'s floor: B carries
+              the RM400 / RM800 rebate as a NEGATIVE number, so for a small P the bracket line is below
+              zero and the engine takes 0. The outer one is pcbMonth's, for a month whose accumulated
+              Z + X already exceeds the year's tax. Print the bare bracket and a low earner's screen shows
+              a negative expression beside a RM 0.00 answer. ── */}
           <Block title={t('formulaHeading')}>
             <Formula
               formulaLabel={t('formulaLabel')}
@@ -223,7 +276,7 @@ export async function PcbDetailView({
               substitutedLabel={t('substitutedLabel')}
               substituted={
                 trace ? (
-                  `[ ( ${b2(explanation.chargeableIncome)} − ${b2(trace.M)} ) × ${pct(trace.R)} + ${b2(trace.B)} − ( ${b2(trace.Z)} + ${b2(explanation.pcbPaidYtd)} ) ] ÷ ( ${explanation.remainingMonths} + 1 )`
+                  `max( 0, max( 0, ( ${b2(explanation.chargeableIncome)} − ${b2(trace.M)} ) × ${pct(trace.R)} + ${b2(trace.B)} ) − ( ${b2(trace.Z)} + ${b2(explanation.pcbPaidYtd)} ) ) ÷ ( ${explanation.remainingMonths} + 1 )`
                 ) : (
                   <NotRecorded />
                 )
@@ -232,6 +285,18 @@ export async function PcbDetailView({
               result={trace ? rm(trace.mtdNormalCalc) : <NotRecorded />}
             />
             <p className="pt-2 text-xs text-muted-foreground">{t('roundingNote')}</p>
+
+            {/* ── …and the LAST line: §E.3 then §E.5. The two calculated legs above are not the deduction.
+                A is the normal leg after the RM10 rule, E the additional leg after the same rule, and the
+                month's zakat reduces A first — only what it cannot absorb reaches E. Every one of those
+                figures is stored by the engine (`zakatOffsetWorking`), so the expression below is the
+                arithmetic that ran, and it lands on the figure the payslip carries. ── */}
+            <div className="mt-3">
+              <Row label={t('netA')} value={trace ? rm(trace.mtdNormalFloored) : <NotRecorded />} />
+              <Row label={t('netE')} value={trace ? rm(trace.mtdAdditionalFloored) : <NotRecorded />} />
+              <Row label={t('netZ1')} value={trace ? rm(trace.zakatCurrent) : rm(explanation.zakat)} muted />
+              <Row label={t('netLeftover')} value={trace ? rm(trace.zakatLeftover) : <NotRecorded />} muted />
+            </div>
             <div className="mt-3">
               <Formula
                 formulaLabel={t('formulaLabel')}
@@ -239,19 +304,24 @@ export async function PcbDetailView({
                 substitutedLabel={t('substitutedLabel')}
                 substituted={
                   trace ? (
-                    `${b2(trace.mtdNormalCalc)} + ${b2(trace.mtdAdditionalCalc)} − ${b2(trace.zakatCurrent)}`
+                    `max( 0, ${b2(trace.mtdNormalFloored)} − ${b2(trace.zakatCurrent)} ) + max( 0, ${b2(trace.mtdAdditionalFloored)} − max( 0, ${b2(trace.zakatCurrent)} − ${b2(trace.mtdNormalFloored)} ) )`
                   ) : (
                     <NotRecorded />
                   )
                 }
                 resultLabel={t('resultLabel')}
-                result={rm(explanation.pcb)}
+                result={rm(sys)}
               />
             </div>
+            <p className="pt-2 text-xs text-muted-foreground">{t('netFormulaNote')}</p>
             <p className="pt-2 text-xs text-muted-foreground">{t('currencyNote', { currency: cur ?? '—' })}</p>
           </Block>
 
-          {/* ── P and its components (requirement 5) ── */}
+          {/* ── P and its components (requirement 5) ──
+              P₁ HAS NO Yₜ LEG. §D.1 projects the year on normal remuneration alone; the bonus enters
+              only through §D.2's separate P₂, which ALSO re-estimates the projected EPF leg (K₂ₜ rather
+              than K₂, because the bonus has already consumed part of the same annual relief cap). They
+              are two expressions landing on two stored numbers, so they are printed as two. ── */}
           <Block title={t('pHeading')}>
             <Formula
               formulaLabel={t('formulaLabel')}
@@ -259,9 +329,7 @@ export async function PcbDetailView({
               substitutedLabel={t('substitutedLabel')}
               substituted={
                 trace ? (
-                  `${b2(explanation.ytdNetRemuneration)} + ( ${b2(trace.Y1)} − ${b2(trace.K1)} ) + ( ${b2(trace.Y2)} − ${b2(trace.K2)} ) × ${explanation.remainingMonths}${
-                    trace.Yt > 0 ? ` + ( ${b2(trace.Yt)} − ${b2(trace.Kt)} )` : ''
-                  } − ${b2(explanation.reliefs.total)} − ${b2(explanation.reliefs.lp)}`
+                  `${b2(explanation.ytdNetRemuneration)} + ( ${b2(trace.Y1)} − ${b2(trace.K1)} ) + ( ${b2(trace.Y2)} − ${b2(trace.K2)} ) × ${explanation.remainingMonths} − ${b2(explanation.reliefs.total)} − ${b2(explanation.reliefs.lp)}`
                 ) : (
                   <NotRecorded />
                 )
@@ -269,6 +337,19 @@ export async function PcbDetailView({
               resultLabel={t('pResult')}
               result={rm(explanation.chargeableIncome)}
             />
+            {trace && trace.Yt > 0 && explanation.chargeableIncomeWithAdditional != null && (
+              <div className="mt-3">
+                <Formula
+                  formulaLabel={t('formulaLabel')}
+                  formula={t('p2Formula')}
+                  substitutedLabel={t('substitutedLabel')}
+                  substituted={`${b2(explanation.ytdNetRemuneration)} + ( ${b2(trace.Y1)} − ${b2(trace.K1)} ) + ( ${b2(trace.Y2)} − ${b2(trace.K2t)} ) × ${explanation.remainingMonths} + ( ${b2(trace.Yt)} − ${b2(trace.Kt)} ) − ${b2(explanation.reliefs.total)} − ${b2(explanation.reliefs.lp)}`}
+                  resultLabel={t('p2Result')}
+                  result={rm(explanation.chargeableIncomeWithAdditional)}
+                />
+                <p className="pt-2 text-xs text-muted-foreground">{t('p2Note')}</p>
+              </div>
+            )}
             <div className="mt-3">
               <Row label={t('compAccNet')} value={rm(explanation.ytdNetRemuneration)} />
               <Row label={t('compEpfClaimed')} value={rm(explanation.epfClaimedYtd)} />
@@ -276,6 +357,7 @@ export async function PcbDetailView({
               <Row label={t('compK1')} value={trace ? rm(trace.K1) : rm(explanation.epfThisMonth)} />
               <Row label={t('compY2')} value={trace ? rm(trace.Y2) : <NotRecorded />} />
               <Row label={t('compK2')} value={trace ? rm(trace.K2) : <NotRecorded />} />
+              {trace && trace.Yt > 0 && <Row label={t('compK2t')} value={rm(trace.K2t)} muted />}
               <Row label={t('compN')} value={explanation.remainingMonths} />
               {explanation.chargeableIncomeWithAdditional != null && (
                 <Row label={t('pWithAdditional')} value={rm(explanation.chargeableIncomeWithAdditional)} />
@@ -367,7 +449,10 @@ export async function PcbDetailView({
             </div>
           </Block>
 
-          {/* ── The step-by-step trace (requirement 13) ── */}
+          {/* ── The step-by-step trace (requirement 13) ──
+              IT HAS TO REACH THE FINAL FIGURE. A chain that stopped at the normal leg and then printed
+              the deducted PCB underneath was skipping the bonus leg, the RM10 rule and the zakat offset —
+              three steps that between them can move the answer by the whole amount. ── */}
           <Block title={t('stepsHeading')}>
             <ol className="space-y-0">
               {(
@@ -382,9 +467,12 @@ export async function PcbDetailView({
                   ['step8', trace ? rm(trace.taxOnP1) : null],
                   ['step9', trace ? `${rm(trace.Z)} + ${rm(explanation.pcbPaidYtd)}` : null],
                   ['step10', trace ? rm(trace.mtdNormalCalc) : null],
-                  ['step11', rm(explanation.zakat)],
+                  ['step11', trace ? rm(trace.mtdAdditionalCalc) : null],
+                  ['step12', trace ? `${rm(trace.mtdNormalFloored)} · ${rm(trace.mtdAdditionalFloored)}` : null],
+                  ['step13', trace ? rm(trace.zakatCurrent) : rm(explanation.zakat)],
                 ] as [
-                  'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8' | 'step9' | 'step10' | 'step11',
+                  | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7'
+                  | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13',
                   string | null,
                 ][]
               ).map(([key, value], i) => (
@@ -401,9 +489,19 @@ export async function PcbDetailView({
               ))}
             </ol>
             <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3 text-base font-semibold">
-              <span>{t('finalPcb')}</span>
-              <span className="tabular-nums">{rm(explanation.pcb)}</span>
+              <span>{override ? t('finalPcbSystem') : t('finalPcb')}</span>
+              <span className="tabular-nums">{rm(sys)}</span>
             </div>
+            {/* The chain above ends at the ENGINE's figure. When the PCB was set by hand the deduction is
+                a separate line with its own label — never the quiet answer to a working that did not
+                produce it. */}
+            {override && (
+              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-base font-semibold">
+                <span>{t('finalPcbDeducted')}</span>
+                <span className="tabular-nums">{rm(explanation.pcb)}</span>
+              </div>
+            )}
+            {override && <p className="pt-2 text-xs text-muted-foreground">{t('overrideNote')}</p>}
           </Block>
         </>
       )}

@@ -320,18 +320,47 @@ const rm10Floor = (n: number) => (n < 10 ? 0 : n);
  * Spec §E.5 (verbatim tables): the month's zakat offsets the NORMAL MTD first (floor 0); any
  * remainder offsets the additional-remuneration MTD; the FULL zakat amount still accrues to Z.
  * The RM10 floor applies to each component BEFORE offsetting (table (ii) rows a–b).
+ *
+ * 45df860a — THE WORKING, not just the two answers. Between `mtdNormalCalc` and the figure on the
+ * payslip sit FOUR steps that a reader cannot see and cannot infer: the §E.3 RM10 rule on each leg, and
+ * then two zero-clamped subtractions. A screen that printed "normal + additional − zakat" would be
+ * stating an expression that does not evaluate to the number beside it whenever either leg falls under
+ * RM10 or the zakat exceeds the normal leg — so the intermediate legs are returned and recorded, and the
+ * screen substitutes THESE.
+ *
+ * `applyZakatOffset` below keeps its exact two-member shape: the golden suite asserts it with `toEqual`,
+ * and widening a return type to serve a screen is how a contract quietly acquires members nobody checks.
  */
-export function applyZakatOffset(
+export function zakatOffsetWorking(
   normalCalc: number,
   additionalCalc: number,
   zakatCurrent: number,
-): { normal: number; additional: number } {
+): {
+  /** A — the normal leg after the §E.3 RM10 rule (below RM10 is not deducted at all). */
+  flooredNormal: number;
+  /** E — the additional leg after the same rule. */
+  flooredAdditional: number;
+  /** What is left of this month's zakat once the normal leg has absorbed all it can; it reduces E. */
+  zakatLeftover: number;
+  normal: number;
+  additional: number;
+} {
   const A = rm10Floor(normalCalc);
   const E = rm10Floor(additionalCalc);
   const z = Math.max(0, zakatCurrent);
   const normal = Math.max(0, round2(A - z));
   const leftover = Math.max(0, round2(z - A));
   const additional = Math.max(0, round2(E - leftover));
+  return { flooredNormal: A, flooredAdditional: E, zakatLeftover: leftover, normal, additional };
+}
+
+/** The two answers alone — the shape the kernel and the golden tests have always seen. */
+export function applyZakatOffset(
+  normalCalc: number,
+  additionalCalc: number,
+  zakatCurrent: number,
+): { normal: number; additional: number } {
+  const { normal, additional } = zakatOffsetWorking(normalCalc, additionalCalc, zakatCurrent);
   return { normal, additional };
 }
 
@@ -436,6 +465,13 @@ export type PcbMonthResult = {
        *  the same figures after both. */
       mtdNormalCalc: number;
       mtdAdditionalCalc: number;
+      /** …and the SAME two legs after the §E.3 RM10 rule (A and E in the spec's own tables), plus the
+       *  zakat left over once the normal leg absorbed what it could. Without these three the last line
+       *  of the working — legs → RM10 rule → zakat offset → the deducted figure — cannot be written as
+       *  an expression that evaluates to the deducted figure, which is the only kind worth printing. */
+      mtdNormalFloored: number;
+      mtdAdditionalFloored: number;
+      zakatLeftover: number;
     };
   };
 };
@@ -564,8 +600,11 @@ export function pcbMonth(p: {
     additionalCalc = ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z))); // Step 4
   }
 
-  // §E.5: current-month zakat offsets normal first, remainder offsets additional.
-  const { normal, additional } = applyZakatOffset(mtdNormalCalc, additionalCalc, p.zakatCurrent ?? 0);
+  // §E.5: current-month zakat offsets normal first, remainder offsets additional. The WORKING form is
+  // called (identical arithmetic — `applyZakatOffset` is now a two-member view of it) so the RM10-floored
+  // legs and the zakat remainder can be recorded instead of thrown away with everything else.
+  const offset = zakatOffsetWorking(mtdNormalCalc, additionalCalc, p.zakatCurrent ?? 0);
+  const { normal, additional } = offset;
   return {
     normal,
     additional,
@@ -617,6 +656,9 @@ export function pcbMonth(p: {
         ...(totalMtdYear !== undefined ? { totalMtdYear: round2(totalMtdYear) } : {}),
         mtdNormalCalc,
         mtdAdditionalCalc: additionalCalc,
+        mtdNormalFloored: offset.flooredNormal,
+        mtdAdditionalFloored: offset.flooredAdditional,
+        zakatLeftover: offset.zakatLeftover,
       },
     },
   };

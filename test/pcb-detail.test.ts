@@ -23,6 +23,14 @@
  * test of either half alone passes while the two disagree. The reconciliation case therefore closes the
  * loop: it takes what was STORED, re-applies the LHDN steps to it, and requires the result to be the MTD
  * the engine deducted, to the sen.
+ *
+ * WHAT THE FIRST PASS PROVED, AND WHAT IT DID NOT. The reconciliation above was written against the
+ * NORMAL leg of a month with no bonus and no zakat, and it passed while three printed expressions on the
+ * screen did not evaluate to the number beside them: P₁'s line grew a bonus leg it does not have, the net
+ * line skipped the RM10 rule and the zakat cascade entirely, and a hand-set PCB was explained by a
+ * working that described the figure it replaced. None of the three is visible to an assertion about
+ * numbers, because the screen computes nothing — so this file now reconciles P₂ and the deduction on
+ * their own terms, and reads the assembled expressions as strings.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,6 +61,9 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
  *  itself). §E.1 truncate to 2dp; §E.2 round UP to the next 5 sen. */
 const trunc2 = (n: number) => Math.trunc(n * 100 + (n >= 0 ? 1e-7 : -1e-7)) / 100;
 const ceil5sen = (n: number) => Math.ceil(n * 20 - 1e-7) / 20;
+/** §E.3 — an MTD below RM10 is not deducted. Restated here for the same reason as the two above. */
+const rm10Floor = (n: number) => (n < 10 ? 0 : n);
+const r2 = (n: number) => Math.round(n * 100) / 100;
 
 type Trace = NonNullable<ReturnType<typeof pcbMonth>['snapshot']['trace']>;
 
@@ -127,6 +138,100 @@ describe('45df860a — pcbMonth records the steps it used to discard', () => {
       if (tr.mtdNormalCalc >= 10 && tr.zakatCurrent === 0 && tr.mtdAdditionalCalc === 0) {
         expect(r.total).toBeCloseTo(tr.mtdNormalCalc, 2);
       }
+    }
+  });
+
+  it('RECONCILES P₁ AND P₂ SEPARATELY — the bonus leg belongs to P₂ only, and P₂ re-estimates K₂', () => {
+    // THE BLOCKER THIS FILE MISSED FIRST TIME. §D.1 projects the year on normal remuneration alone;
+    // §D.2 repeats the projection with the bonus AND with a re-estimated EPF leg (K₂ₜ), because the EPF
+    // on the bonus has already eaten into the same annual cap. They are two expressions landing on two
+    // different stored numbers, so a screen that appends "+ (Yₜ − Kₜ)" to the P₁ line and prints P₁
+    // beside it is stating an expression that belongs to neither. This is the reported case, to the sen.
+    const r = pcbMonth({
+      monthlyWage: 12000,
+      epfMonthly: 1320,
+      month: 6,
+      additional: 20000,
+      epfOnAdditional: 2200,
+      profile: { category: 1 },
+    });
+    const tr = r.snapshot.trace as Trace;
+    const s = r.snapshot;
+    const reliefs = s.reliefs.total;
+    const lp = s.reliefs.lp;
+    const n = s.n;
+
+    // P₁ — NO Yₜ leg, and the plain K₂.
+    expect(trunc2(s.ytdNet + (tr.Y1 - tr.K1) + (tr.Y2 - tr.K2) * n - reliefs - lp)).toBeCloseTo(s.P1, 2);
+    // P₂ — the Yₜ leg, and K₂ₜ in place of K₂.
+    expect(s.P2, 'a bonus month records P₂').toBeTypeOf('number');
+    expect(
+      trunc2(s.ytdNet + (tr.Y1 - tr.K1) + (tr.Y2 - tr.K2t) * n + (tr.Yt - tr.Kt) - reliefs - lp),
+    ).toBeCloseTo(s.P2 as number, 2);
+
+    // …and the hybrid the screen used to print — P₁'s K₂ with P₂'s bonus leg — is neither of them, by
+    // the whole bonus. Pinned so nobody reintroduces it as a "simplification".
+    const hybrid = trunc2(s.ytdNet + (tr.Y1 - tr.K1) + (tr.Y2 - tr.K2) * n + (tr.Yt - tr.Kt) - reliefs - lp);
+    expect(hybrid).not.toBeCloseTo(s.P1, 2);
+    expect(hybrid).not.toBeCloseTo(s.P2 as number, 2);
+    expect(hybrid - s.P1, 'it overshoots P by the net bonus').toBeGreaterThan(17000);
+  });
+
+  it('RECONCILES THE DEDUCTION: §E.3 then §E.5 over the stored legs give the PCB on the payslip', () => {
+    // The last line of the working is NOT "normal + additional − zakat". The RM10 rule runs on each leg
+    // first, then the zakat takes the normal leg down (never below zero) and only its remainder reaches
+    // the additional leg. Each case below is one where the naive subtraction gives a different answer.
+    // A normal leg that is positive but UNDER RM10 — §E.3 zeroes it, and nothing else on the screen
+    // says so. Built by probing the year's tax and then paying all but RM5 of it in prior months, since
+    // the figure that has to land in that window is the engine's, not one this test can guess.
+    const probe = pcbMonth({ monthlyWage: 12000, epfMonthly: 1320, month: 12, profile: { category: 1 } });
+    const underTen = {
+      monthlyWage: 12000,
+      epfMonthly: 1320,
+      month: 12,
+      profile: { category: 1 as const },
+      acc: { netRemuneration: 0, epfClaimed: 0, pcbPaid: r2((probe.snapshot.trace as Trace).taxOnP1 - 5) },
+    };
+
+    const cases = [
+      // Plain month, nothing to offset — the naive line happens to agree here, which is why the defect
+      // survived the first pass.
+      { monthlyWage: 12000, epfMonthly: 1320, month: 3, profile: { category: 1 as const } },
+      // Zakat larger than the normal leg: the naive line goes NEGATIVE, the engine clamps at 0.
+      { monthlyWage: 12000, epfMonthly: 1320, month: 3, zakatCurrent: 100000, profile: { category: 1 as const } },
+      underTen,
+      // Bonus month with zakat: the leftover has to reach the additional leg.
+      { monthlyWage: 12000, epfMonthly: 1320, month: 6, additional: 20000, epfOnAdditional: 2200,
+        zakatCurrent: 800, profile: { category: 1 as const } },
+    ];
+    // The §E.3 case really is in the window it claims to be in — otherwise it silently degrades into a
+    // fourth copy of the plain month.
+    const small = pcbMonth(underTen).snapshot.trace as Trace;
+    expect(small.mtdNormalCalc, 'the RM10 case must have a positive leg').toBeGreaterThan(0);
+    expect(small.mtdNormalCalc).toBeLessThan(10);
+    expect(small.mtdNormalFloored, 'which §E.3 then zeroes').toBe(0);
+
+    for (const c of cases) {
+      const r = pcbMonth(c);
+      const tr = r.snapshot.trace as Trace;
+      const label = JSON.stringify(c);
+      // The two floored legs are RECORDED, not re-derived by the screen — assert the recorded values ARE
+      // §E.3 applied to the recorded calculated legs, which is the contract the screen relies on.
+      expect(tr.mtdNormalFloored, `A for ${label}`).toBeCloseTo(rm10Floor(tr.mtdNormalCalc), 2);
+      expect(tr.mtdAdditionalFloored, `E for ${label}`).toBeCloseTo(rm10Floor(tr.mtdAdditionalCalc), 2);
+      expect(tr.zakatLeftover, `leftover for ${label}`).toBeCloseTo(
+        Math.max(0, r2(Math.max(0, tr.zakatCurrent) - tr.mtdNormalFloored)),
+        2,
+      );
+      // …and the expression the screen prints, evaluated, IS the deduction.
+      const substituted = r2(
+        Math.max(0, r2(tr.mtdNormalFloored - tr.zakatCurrent)) +
+          Math.max(0, r2(tr.mtdAdditionalFloored - Math.max(0, r2(tr.zakatCurrent - tr.mtdNormalFloored)))),
+      );
+      expect(substituted, `the substituted net line must land on the deduction for ${label}`).toBeCloseTo(
+        r.total,
+        2,
+      );
     }
   });
 
@@ -231,6 +336,7 @@ const STORED_TRACE = {
   Yt: 0, Kt: 0, K2t: 0,
   Z: 0, lpAccumulated: 0, lpCurrent: 0, zakatCurrent: 0,
   mtdNormalCalc: 402.65, mtdAdditionalCalc: 0,
+  mtdNormalFloored: 402.65, mtdAdditionalFloored: 0, zakatLeftover: 0,
 };
 
 describe('45df860a — explainPcb reports a missing working as MISSING', () => {
@@ -278,6 +384,28 @@ describe('45df860a — explainPcb reports a missing working as MISSING', () => {
     }
   });
 
+  it('a trace WITHOUT the post-RM10 legs is no trace either — the last line cannot be written from it', () => {
+    // `Number(undefined)` is 0, so a trace stamped before the §E.3/§E.5 legs were recorded would print
+    // `max( 0, 0.00 − 0.00 ) + …` beside a PCB of RM 402.65: a working that contradicts its own answer,
+    // which is the one failure worse than "not recorded". The gate refuses it outright.
+    const { mtdNormalFloored: _a, mtdAdditionalFloored: _b, zakatLeftover: _c, ...preFloor } = STORED_TRACE;
+    const r = explainPcb(mtdBlob(preFloor), CURRENT);
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.trace).toBeNull();
+    expect(r.pcb, 'and everything genuinely recorded still reads').toBe(402.65);
+  });
+
+  it('reads the post-RM10 legs and the zakat remainder whole', () => {
+    const r = explainPcb(
+      mtdBlob({ ...STORED_TRACE, zakatCurrent: 500, mtdNormalFloored: 402.65, mtdAdditionalFloored: 0, zakatLeftover: 97.35 }),
+      CURRENT,
+    );
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.trace!.mtdNormalFloored).toBe(402.65);
+    expect(r.trace!.mtdAdditionalFloored).toBe(0);
+    expect(r.trace!.zakatLeftover).toBe(97.35);
+  });
+
   it('a flat-rate payslip predating the change reports its missing remuneration too', () => {
     const old = explainPcb({ pcb: 1500, pcbMeta: { nonResident: true, flatRate: 0.3, rate: 0.3 } }, CURRENT);
     if (old.kind !== 'flat') throw new Error('unreachable');
@@ -289,6 +417,77 @@ describe('45df860a — explainPcb reports a missing working as MISSING', () => {
     );
     if (fresh.kind !== 'flat') throw new Error('unreachable');
     expect(fresh.trace!.remuneration).toBe(5000);
+  });
+});
+
+// ───────────────────────── A PCB set by hand explains nothing on this screen ─────────────────────────
+
+describe('45df860a — a manually adjusted PCB is declared, not quietly explained', () => {
+  const overridden = (adjustment: unknown) => ({
+    pcb: 120,
+    pcbBonus: 0,
+    epfEmployee: 0,
+    pcbMeta: {
+      month: 1, n: 11, ytdNet: 0, epfClaimed: 0, pcbPaid: 0, P1: 75956.07,
+      reliefs: { individual: 9000, spouse: 0, children: 0, disabledIndividual: 0, disabledSpouse: 0, lp: 0, total: 9000 },
+      trace: STORED_TRACE,
+    },
+    ...(adjustment !== undefined ? { adjustment } : {}),
+  });
+
+  it('separates what was DEDUCTED from what the recorded working explains', () => {
+    // 2961a7ae overwrites statutory.pcb and leaves pcbMeta exactly as the engine wrote it — no second
+    // calculation ran, so there is none to record. Every figure in the trace therefore describes 402.65
+    // while 120.00 is what left the employee's pay. A screen that read only `pcb` would present a
+    // complete, correct LHDN working as the derivation of an amount nobody computed.
+    const r = explainPcb(
+      overridden({ reason: 'LHDN instalment letter', lines: { pcb: { system: 402.65, applied: 120 } } }),
+      CURRENT,
+    );
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.pcb, 'what was deducted').toBe(120);
+    expect(r.pcbSystem, 'what the working below explains').toBe(402.65);
+    expect(r.override).toEqual({ system: 402.65, applied: 120, reason: 'LHDN instalment letter' });
+    // The normal/additional split belongs to the CALCULATION, so it sums to the system figure. Splitting
+    // a hand-set amount along the engine's proportions would invent a breakdown nobody produced.
+    expect(r.pcbNormal + r.pcbAdditional).toBeCloseTo(r.pcbSystem, 2);
+  });
+
+  it('an override on a DIFFERENT statutory line leaves the tax working intact', () => {
+    // applyStatutoryAdjustment deliberately does not cascade: overriding EPF does not re-derive PCB, so
+    // statutory.pcb is still the engine's own figure and there is nothing to warn about. Warning anyway
+    // would train readers to ignore the banner on the payslips where it matters.
+    const r = explainPcb(
+      { ...overridden({ reason: 'EPF correction', lines: { epfEmployee: { system: 550, applied: 500 } } }), pcb: 402.65 },
+      CURRENT,
+    );
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.override).toBeNull();
+    expect(r.pcbSystem).toBe(402.65);
+  });
+
+  it('no adjustment at all ⇒ the two figures are the same number and no banner exists', () => {
+    for (const stamp of [undefined, null as unknown, {}, { reason: 'x' }, { reason: 'x', lines: {} }, [] as unknown]) {
+      const r = explainPcb({ ...overridden(stamp), pcb: 402.65 }, CURRENT);
+      if (r.kind !== 'mtd') throw new Error('unreachable');
+      expect(r.override, `${JSON.stringify(stamp)} is not an override`).toBeNull();
+      expect(r.pcbSystem).toBe(r.pcb);
+    }
+  });
+
+  it('a flat-rate payslip carries the same two figures', () => {
+    const r = explainPcb(
+      {
+        pcb: 900,
+        pcbMeta: { nonResident: true, flatRate: 0.3, rate: 0.3, trace: { remuneration: 5000, additional: 0, rate: 0.3 } },
+        adjustment: { reason: 'agreed with LHDN', lines: { pcb: { system: 1500, applied: 900 } } },
+      },
+      CURRENT,
+    );
+    if (r.kind !== 'flat') throw new Error('unreachable');
+    expect(r.pcbSystem).toBe(1500);
+    expect(r.pcb).toBe(900);
+    expect(r.override!.reason).toBe('agreed with LHDN');
   });
 });
 
@@ -374,7 +573,9 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     const computed = [
       'cycleRegular', 'cycleOffCycle', 'cycleBonus', 'cycleAdjustment',
       'category1', 'category2', 'category3',
-      ...Array.from({ length: 11 }, (_, i) => `step${i + 1}`),
+      // THIRTEEN, not eleven. The chain used to stop at the normal leg and then print the deducted PCB
+      // underneath it, silently skipping the bonus leg, the RM10 rule and the zakat offset.
+      ...Array.from({ length: 13 }, (_, i) => `step${i + 1}`),
     ];
     const keysOf = (loc: string) =>
       Object.keys(
@@ -419,6 +620,64 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     }
     expect(en.pFormula).toContain('Σ(Y − K)');
     expect(en.pFormula).toContain('LP₁');
+  });
+
+  it('each substituted expression is built from the terms the engine actually used', () => {
+    // NOTHING ON THIS SCREEN EVALUATES — every "= RM x" is a stored engine figure — so a term that does
+    // not belong in an expression cannot be caught by any assertion about numbers. It can only be caught
+    // by reading the string that gets assembled. These three slices are the three places the screen got
+    // it wrong: a bonus leg glued onto P₁, a net line that skipped §E.3/§E.5, and a zero floor dropped
+    // from a bracket line whose B is negative for every employee claiming the RM400 rebate.
+    const view = code(VIEW);
+    const between = (from: string, to: string) => {
+      const a = view.indexOf(from);
+      const b = view.indexOf(to, a);
+      expect(a, `marker not found: ${from}`).toBeGreaterThan(-1);
+      expect(b, `marker not found after ${from}: ${to}`).toBeGreaterThan(a);
+      return view.slice(a, b);
+    };
+
+    // P₁ — §D.1 projects normal remuneration ONLY. No Yₜ, no Kₜ, and the plain K₂.
+    const p1 = between("formula={t('pFormula')}", "resultLabel={t('pResult')}");
+    expect(p1, 'the bonus leg belongs to P₂, not to P₁').not.toContain('trace.Yt');
+    expect(p1).not.toContain('trace.Kt');
+    expect(p1).not.toContain('trace.K2t');
+    expect(p1).toContain('trace.K2');
+
+    // P₂ — §D.2, with the bonus leg AND the re-estimated EPF leg. K₂ₜ was stored and never rendered.
+    const p2 = between("formula={t('p2Formula')}", "resultLabel={t('p2Result')}");
+    expect(p2).toContain('trace.Yt');
+    expect(p2).toContain('trace.Kt');
+    expect(p2, 'P₂ re-estimates the projected EPF because the bonus ate into the same cap').toContain('trace.K2t');
+    expect(view, 'and it lands on the stored P₂, never on P₁').toMatch(
+      /resultLabel=\{t\('p2Result'\)\}\s*\n\s*result=\{rm\(explanation\.chargeableIncomeWithAdditional\)\}/,
+    );
+
+    // The bracket line — both zero floors, because B carries the rebate as a negative number.
+    const mtd = between("formula={t('formulaMtd')}", "resultLabel={t('resultLabel')}");
+    expect((mtd.match(/max\( 0,/g) ?? []).length, 'annualTaxFor floors, and pcbMonth floors again').toBe(2);
+
+    // The last line — §E.3 legs, not the calculated ones, and the zakat cascade with its clamps.
+    const net = between("formula={t('formulaNet')}", "resultLabel={t('resultLabel')}");
+    expect(net, 'A is the leg AFTER the RM10 rule').toContain('mtdNormalFloored');
+    expect(net, 'and so is E').toContain('mtdAdditionalFloored');
+    expect((net.match(/max\( 0,/g) ?? []).length, 'zero-clamped twice, plus the leftover').toBe(3);
+  });
+
+  it('a hand-set PCB is announced, and the working lands on the figure it actually explains', () => {
+    // The screen reads `pcbSystem` wherever a working ends, and `pcb` only where the DEDUCTION is meant.
+    // Both must be present, and the banner must exist, or a manual override turns the whole screen into
+    // a derivation of a number nobody deducted.
+    const view = code(VIEW);
+    expect(view).toContain('explanation.override');
+    expect(view).toContain('explanation.pcbSystem');
+    for (const k of ['overrideHeading', 'overrideBanner', 'overrideSystem', 'overrideApplied', 'overrideReason', 'finalPcbDeducted']) {
+      expect(view, `the screen must render ${k}`).toContain(k);
+    }
+    const en = (JSON.parse(read('messages/en.json')) as { payroll: { pcbDetail: Record<string, string> } })
+      .payroll.pcbDetail;
+    expect(en.overrideBanner.toLowerCase(), 'and it must say the working does not explain the deduction')
+      .toContain('not an explanation');
   });
 
   it('the missing-working sentence is on the screen, and it does not say zero', () => {
