@@ -1878,7 +1878,12 @@
         "approvedLabel": "Replacement Leave",
         "approvedHint": "Approved and ready to use",
         "cardPending": "{days} in lieu"
-      }
+      },
+      "statusNotGeneratedTitle": "Configured, but not yet generated",
+      "statusNotGeneratedBody": "An entitlement table applies to this leave type for this leave year. The entitlement has not been generated yet, so the figures below are not the amount you are entitled to.",
+      "statusEarningMethodMissingTitle": "Earning method not set",
+      "statusEarningMethodMissingBody": "An entitlement table applies to this leave type, but no earning method has been chosen for it, so generating entitlement will grant 0.00 days until one is set.",
+      "statusEntitlementTable": "Entitlement table: {name}"
     },
     "preview": {
       "loading": "Calculating…"
@@ -2004,7 +2009,8 @@
       "empSearchAriaLabel": "Search employee",
       "empSearchResultsLabel": "Employee search results",
       "empSearchNoMatches": "No matching employee",
-      "empSearchClear": "Clear employee"
+      "empSearchClear": "Clear employee",
+      "colEntitlementStatus": "Entitlement Status"
     },
     "override": {
       "title": "Before you submit",
@@ -2421,7 +2427,13 @@
         "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
         "overutilized": "How far your balance has gone below zero, if at all.",
         "balance": "Your remaining balance: total entitlement, including any brought forward and adjustments, minus leave taken."
-      }
+      },
+      "statusGenerated": "Generated",
+      "statusNotGenerated": "Not yet generated",
+      "statusEarningMethodMissing": "Earning method not set",
+      "statusNotConfigured": "No entitlement table",
+      "statusNotGeneratedTip": "An entitlement table applies to this leave type for this leave year, but the entitlement has not been generated yet. Run Generate Entitlement to grant it.",
+      "statusEarningMethodMissingTip": "An entitlement table applies, but this leave type has no earning method chosen, so it grants 0.00 days until one is set."
     },
     "typeLabel": "Type",
     "fromLabel": "From",

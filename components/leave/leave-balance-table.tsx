@@ -27,6 +27,13 @@ import { DAY_DASH, formatDays } from '@/lib/day-format';
 // page can call deriveBalanceRow() without the "called from the server but it's on the client" crash
 // (b7d84266). This client table only needs the sort + types.
 import { sortBalanceRows, type LeaveBalanceRow, type NumCol, type SortKey } from './leave-balance-row';
+// 31e39d74: the label/tooltip mapping lives beside the union it describes, so the table, the admin grid and
+// the export cannot label the same status three ways.
+import {
+  ENTITLEMENT_STATUS_LABEL_KEY,
+  ENTITLEMENT_STATUS_TIP_KEY,
+  entitlementStatusNeedsNotice,
+} from '@/lib/entitlement-status';
 
 // Standardize Leave Balance Table (776cd1b5): the trimmed, consistently-named column set —
 // Leave Type | YTD Entitled | Accrued | Carried Forward | Taken | Adjustment | Overutilized | Balance.
@@ -121,7 +128,22 @@ export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
                   {r.detail}
                 </th>
                 {/* Column order matches NUM_COLS: YTD Entitled | Accrued | Carried Forward | Taken | Adjustment | Overutilized | Balance. */}
-                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.ytdEntitled)}</td>
+                {/* 31e39d74 — the figure KEEPS its place and gains a caption beneath it. Replacing the number
+                    with the caption was the obvious move and is wrong: YTD Entitled is
+                    currentYearEntitlement + carriedForward, so an ungenerated type with a carry-in has a REAL
+                    non-zero figure here, and hiding it to announce the status would trade one wrong reading
+                    for another. The reporter's objection is to the SILENCE, not to the number. */}
+                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">
+                  <div>{fmt(r.ytdEntitled)}</div>
+                  {entitlementStatusNeedsNotice(r.entitlementStatus) && (
+                    <div
+                      className="mt-0.5 whitespace-nowrap text-[11px] font-normal normal-case text-amber-700 dark:text-amber-500"
+                      title={tt(ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]!)}
+                    >
+                      {tt(ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus])}
+                    </div>
+                  )}
+                </td>
                 <td className="py-2.5 pl-3 text-right tabular-nums">
                   <span className={r.available != null && r.available < 0 ? 'font-medium text-destructive' : ''}>{fmt(r.available)}</span>
                 </td>

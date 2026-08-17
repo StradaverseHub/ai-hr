@@ -10,6 +10,12 @@ import { EmployeeSearchField } from '@/components/employee-search-field';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
 import { formatDays } from '@/lib/day-format';
+// 31e39d74: HR's grid captions a 0.00 exactly as the employee's own grid does — one mapping, one wording.
+import {
+  ENTITLEMENT_STATUS_LABEL_KEY,
+  ENTITLEMENT_STATUS_TIP_KEY,
+  entitlementStatusNeedsNotice,
+} from '@/lib/entitlement-status';
 import { employeeBalanceRows } from './rows';
 
 /**
@@ -301,7 +307,21 @@ export default async function EmployeeBalancesPage({
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">
                         {r.entitlementYear ?? '—'}
                       </td>
-                      <td className={tdNum}>{num(r.ytdEntitled)}</td>
+                      {/* 31e39d74 — the caption sits UNDER the figure, in the existing column. No new
+                          column: eleven columns already overflow this table on a laptop (026e16b9 measured
+                          the last 23px out of the header), and the status belongs to YTD Entitled rather
+                          than standing on its own. The figure itself is untouched. */}
+                      <td className={tdNum}>
+                        <div>{num(r.ytdEntitled)}</div>
+                        {entitlementStatusNeedsNotice(r.entitlementStatus) && (
+                          <div
+                            className="mt-0.5 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-500"
+                            title={tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]!}`)}
+                          >
+                            {tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]}`)}
+                          </div>
+                        )}
+                      </td>
                       <td className={tdNum}>{num(r.broughtForward)}</td>
                       <td className={tdNum}>{num(r.taken)}</td>
                       <td className={tdNum}>{num(r.pending)}</td>

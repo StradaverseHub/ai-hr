@@ -32,6 +32,7 @@ import { leaveVisual } from '@/lib/leave-visual';
 // balance grid behind it cannot print the same number two ways.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
+import { entitlementStatusNeedsNotice, type EntitlementStatus } from '@/lib/entitlement-status';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
   type PanelData,
@@ -43,6 +44,19 @@ import {
 // The em dash this panel has always used for "no figure" — now the shared constant, so a row whose
 // mapping is deferred and a null balance elsewhere are visibly the same kind of nothing.
 const PLACEHOLDER = DAY_DASH;
+
+// 31e39d74 — the two states that need saying out loud, and their copy under `leave.breakdown`.
+//
+// WHY THIS IS A BANNER AND NOT A DESCRIPTOR FIELD. ENTITLEMENT_PANEL_SECTIONS is a list of FIGURES that
+// add up to Available Balance (see entitlement-panel-config.ts); every entry is a signed addend of the
+// reconciliation identity. This is not a figure — it is the reason a figure is 0.00 — so declaring it
+// there would put a non-addend in a column whose whole property is that it closes. The 584edf44 mandate
+// ("a future breakdown LINE is one config entry, never a JSX change") is about lines of the calculation
+// and is untouched: no formula is computed here and nothing is hardcoded but the copy key.
+const PANEL_STATUS_COPY: Partial<Record<EntitlementStatus, { title: string; body: string }>> = {
+  not_generated: { title: 'statusNotGeneratedTitle', body: 'statusNotGeneratedBody' },
+  earning_method_missing: { title: 'statusEarningMethodMissingTitle', body: 'statusEarningMethodMissingBody' },
+};
 
 export function LeaveDetailsPanel({
   data,
@@ -325,6 +339,25 @@ export function LeaveDetailsPanel({
                 {t('apply')}
               </button>
             </form>
+
+            {/* 31e39d74 — "configured but not yet generated", said before the column of figures rather than
+                left to be inferred from a 0.00 inside it. Named alongside the entitlement TABLE that is
+                waiting, so HR knows which one. Deliberately NOT ESS-gated: an employee whose entitlement has
+                not been generated is exactly the person this sentence is for. */}
+            {entitlementStatusNeedsNotice(data.entitlementStatus) && (
+              <div
+                role="status"
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                <p className="font-medium">{t(PANEL_STATUS_COPY[data.entitlementStatus]!.title)}</p>
+                <p className="mt-0.5">{t(PANEL_STATUS_COPY[data.entitlementStatus]!.body)}</p>
+                {data.entitlementTemplateName && (
+                  <p className="mt-0.5 opacity-80">
+                    {t('statusEntitlementTable', { name: data.entitlementTemplateName })}
+                  </p>
+                )}
+              </div>
+            )}
 
             {sections.map((section) => {
               if (!show(section.essKey)) return null;

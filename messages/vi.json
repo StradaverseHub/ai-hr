@@ -1878,7 +1878,12 @@
         "approvedLabel": "Nghỉ Bù",
         "approvedHint": "Đã duyệt và sẵn sàng sử dụng",
         "cardPending": "{days} chờ duyệt"
-      }
+      },
+      "statusNotGeneratedTitle": "Đã cấu hình, nhưng chưa được tạo",
+      "statusNotGeneratedBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này. Định mức chưa được tạo, nên các con số bên dưới không phải là số ngày bạn được hưởng.",
+      "statusEarningMethodMissingTitle": "Chưa đặt phương thức tích lũy",
+      "statusEarningMethodMissingBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng chưa chọn phương thức tích lũy, nên việc tạo định mức sẽ cấp 0,00 ngày cho đến khi được đặt.",
+      "statusEntitlementTable": "Bảng định mức: {name}"
     },
     "preview": {
       "loading": "Đang tính toán…"
@@ -2004,7 +2009,8 @@
       "empSearchAriaLabel": "Tìm nhân viên",
       "empSearchResultsLabel": "Kết quả tìm nhân viên",
       "empSearchNoMatches": "Không có nhân viên phù hợp",
-      "empSearchClear": "Xóa nhân viên"
+      "empSearchClear": "Xóa nhân viên",
+      "colEntitlementStatus": "Trạng thái định mức"
     },
     "override": {
       "title": "Before you submit",
@@ -2421,7 +2427,13 @@
         "adjustment": "Thay đổi thủ công hoặc một lần đối với số dư, chẳng hạn ngày nghỉ lễ.",
         "overutilized": "Mức số dư của bạn xuống dưới 0, nếu có.",
         "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng."
-      }
+      },
+      "statusGenerated": "Đã tạo",
+      "statusNotGenerated": "Chưa được tạo",
+      "statusEarningMethodMissing": "Chưa đặt phương thức tích lũy",
+      "statusNotConfigured": "Không có bảng định mức",
+      "statusNotGeneratedTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này, nhưng định mức chưa được tạo. Hãy chạy Tạo định mức để cấp.",
+      "statusEarningMethodMissingTip": "Có một bảng định mức áp dụng, nhưng loại nghỉ phép này chưa chọn phương thức tích lũy, nên sẽ cấp 0,00 ngày cho đến khi được đặt."
     },
     "typeLabel": "Loại",
     "fromLabel": "Từ",

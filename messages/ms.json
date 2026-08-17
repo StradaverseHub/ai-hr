@@ -1878,7 +1878,12 @@
         "approvedLabel": "Cuti Gantian",
         "approvedHint": "Diluluskan dan boleh digunakan",
         "cardPending": "{days} dalam proses"
-      }
+      },
+      "statusNotGeneratedTitle": "Telah dikonfigurasi, tetapi belum dijana",
+      "statusNotGeneratedBody": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini. Kelayakan belum dijana, jadi angka di bawah bukan jumlah kelayakan anda.",
+      "statusEarningMethodMissingTitle": "Kaedah perolehan belum ditetapkan",
+      "statusEarningMethodMissingBody": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi tiada kaedah perolehan dipilih, jadi penjanaan kelayakan akan memberikan 0.00 hari sehingga satu ditetapkan.",
+      "statusEntitlementTable": "Jadual kelayakan: {name}"
     },
     "preview": {
       "loading": "Mengira…"
@@ -2004,7 +2009,8 @@
       "empSearchAriaLabel": "Cari pekerja",
       "empSearchResultsLabel": "Hasil carian pekerja",
       "empSearchNoMatches": "Tiada pekerja yang sepadan",
-      "empSearchClear": "Kosongkan pekerja"
+      "empSearchClear": "Kosongkan pekerja",
+      "colEntitlementStatus": "Status Kelayakan"
     },
     "override": {
       "title": "Before you submit",
@@ -2421,7 +2427,13 @@
         "adjustment": "Perubahan manual atau sekali sahaja pada baki anda, seperti pemberian perayaan.",
         "overutilized": "Sejauh mana baki anda telah menjadi negatif, jika ada.",
         "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil."
-      }
+      },
+      "statusGenerated": "Telah dijana",
+      "statusNotGenerated": "Belum dijana",
+      "statusEarningMethodMissing": "Kaedah perolehan belum ditetapkan",
+      "statusNotConfigured": "Tiada jadual kelayakan",
+      "statusNotGeneratedTip": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini, tetapi kelayakan belum dijana. Jalankan Jana Kelayakan untuk memberikannya.",
+      "statusEarningMethodMissingTip": "Jadual kelayakan terpakai, tetapi jenis cuti ini tiada kaedah perolehan yang dipilih, jadi ia memberikan 0.00 hari sehingga satu ditetapkan."
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",

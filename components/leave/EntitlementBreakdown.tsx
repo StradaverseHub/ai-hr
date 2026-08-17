@@ -16,6 +16,7 @@
  */
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import type { PanelSummary } from './entitlement-panel-config';
+import type { EntitlementStatus } from '@/lib/entitlement-status';
 
 /** Mirror of core/read.ts LeaveEntitlementBreakdown — kept structural so this stays db-free. */
 export type EntitlementBreakdownData = {
@@ -26,6 +27,12 @@ export type EntitlementBreakdownData = {
   /** 1f6fd6d8 — "Eligible (Full Year Entitlement)": the winning policy's whole-year days. The one summary
    *  line that is not ledger-derived, and the top of the reporter's column. */
   eligibleDays: number;
+  /** 31e39d74 — why the figures below are what they are: generated, configured-but-not-yet-generated,
+   *  blocked on a missing earning method, or not configured at all. The panel renders a notice for the two
+   *  middle states so a 0.00 is never silent. Mirrors core/read.ts. */
+  entitlementStatus: EntitlementStatus;
+  /** The entitlement table in force for this pair, by name (null ⇒ none). Display-only. */
+  entitlementTemplateName: string | null;
   currentYearEntitlement: number;
   monthlyAccruedToDate: number | null;
   carriedForward: number;

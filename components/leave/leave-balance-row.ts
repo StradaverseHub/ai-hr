@@ -10,6 +10,7 @@
  * Substrate: pure presentation math, no DomainEvent. // substrate: read-only, no event
  */
 import type { ReactNode } from 'react';
+import type { EntitlementStatus } from '@/lib/entitlement-status';
 
 export type LeaveBalanceRow = {
   leaveTypeId: string;
@@ -25,6 +26,11 @@ export type LeaveBalanceRow = {
   overutilized: number | null;
   /** Derived currentYearEntitlement + carriedForward. */
   ytdEntitled: number | null;
+  /** 31e39d74 — the caption the YTD Entitled cell needs when the figure is 0.00 for a reason. Carried on
+   *  the ROW (not re-derived per screen) so My Leave, Employee Balances and its export cannot disagree
+   *  about whether an entitlement is merely ungenerated. `not_configured` when no breakdown loaded — the
+   *  honest read of "we know nothing about a table here". */
+  entitlementStatus: EntitlementStatus;
   /** Standardize Leave Balance Table (776cd1b5): the authoritative ledger remaining balance (b.balance = sum
    *  of ledger days, shown GROSS of pending), surfaced directly — NOT re-derived (6574c6b4). null ⇒ Accrued/Taken
    *  ESS-hidden. */
@@ -72,6 +78,9 @@ export type BreakdownInput = {
   /** 0315dac7: the CONFIG-only adjustment total (festive / one-off / manual grants, both signs) — what the
    *  Adjustment column shows, so this table and the breakdown panel name the same number. */
   configAdjustments: number;
+  /** 31e39d74: computed server-side (core/read.ts) and PICKED here — never re-derived from the figures,
+   *  because two of the four states are indistinguishable from the numbers alone. */
+  entitlementStatus: EntitlementStatus;
 } | null;
 
 /**
@@ -107,6 +116,10 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     // balance can't leak.
     overutilized,
     ytdEntitled: bd ? bd.currentYearEntitlement + bd.carriedForward : null,
+    // 31e39d74 — deliberately NOT gated by essView. It is not a figure: it is the reason a figure reads
+    // 0.00, and hiding the reason while showing the zero is precisely the silence the reporter raised.
+    // No breakdown loaded ⇒ 'not_configured' (we cannot claim a table exists), which shows no caption.
+    entitlementStatus: bd ? bd.entitlementStatus : 'not_configured',
     balance,
   };
 }

@@ -13,6 +13,7 @@ import { todayInKualaLumpur } from '@/core/leave';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { formatDays } from '@/lib/day-format';
+import { ENTITLEMENT_STATUS_LABEL_KEY } from '@/lib/entitlement-status';
 import { employeeBalanceRows } from '../rows';
 
 export async function GET(req: Request) {
@@ -63,6 +64,12 @@ export async function GET(req: Request) {
       tMe('colOverutilized'),
       tInq('colForfeitedBf'),
       tMe('colBalance'),
+      // 31e39d74 — the screen captions an ungenerated 0.00 and the export must too, or the file and the
+      // screen disagree about the one thing the reporter asked to be told (this route's own header states
+      // that invariant). It is a COLUMN here rather than a note under a cell because a spreadsheet has no
+      // sub-cell, and unlike the screen it costs no horizontal room. All four states print — a downloaded
+      // report is read away from the screen, so "generated" is worth saying rather than leaving blank.
+      tInq('colEntitlementStatus'),
       tInq('colDate'),
     ],
     rows: rows.map((r) => [
@@ -78,6 +85,7 @@ export async function GET(req: Request) {
       cell(r.overutilized),
       cell(r.forfeitedBf),
       cell(r.balance),
+      tMe(ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]),
       asOf,
     ]),
   };

@@ -34,6 +34,9 @@ import {
   PROFILE_RECALC_REASON_PREFIX,
   earnedCycleStart,
   isEarnedMethod,
+  // 31e39d74 — the bc36c768 not-configured marker, read (never written) so the breakdown can SAY that a
+  // type grants nothing because no earning method was chosen, instead of showing the 0.00 that causes.
+  isAccrualUnconfigured,
   resolveLeaveYearCycle,
   isLeaveEligible,
   resolveCarryBreakdown,
@@ -47,6 +50,9 @@ import {
   type LeaveEligibility,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
+// 31e39d74 — "configured but not yet generated" as a value, not as a silence. Pure + DB-free, so the
+// server read and the two presentation layers that show it share ONE definition (lib/entitlement-status.ts).
+import { resolveEntitlementStatus, type EntitlementStatus } from '../lib/entitlement-status';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
 // predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
 // drifted into the bug both items describe.
@@ -2472,6 +2478,16 @@ export type LeaveEntitlementBreakdown = {
    *  ledger-derived: the ledger records what has been granted, never what a full year would grant. 0 when no
    *  policy resolves for this (type, grade, company) — i.e. the employee holds the type but earns nothing on it. */
   eligibleDays: number;
+  // ── 31e39d74: why this figure is what it is ────────────────────────────────────────────────────────
+  /** Whether the entitlement behind these figures has been GENERATED, is configured-but-not-yet-generated,
+   *  is blocked on a missing earning method, or is simply not configured. Derived from three facts, none of
+   *  which the ledger can supply on its own — see lib/entitlement-status.ts for why, and for why
+   *  `earning_method_missing` outranks `not_generated`. The reporter's requirement is that a
+   *  configured-but-ungenerated type reads as such rather than as a silent 0.00. */
+  entitlementStatus: EntitlementStatus;
+  /** The winning entitlement table's name when one is in force for this pair at `asOf`, else null. Shown
+   *  beside the status so HR can see WHICH table is waiting to be generated. Display-only. */
+  entitlementTemplateName: string | null;
   /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. */
   currentYearEntitlement: number;
   /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open. */
@@ -2650,6 +2666,12 @@ export function leaveEntitlementBreakdown(
       ),
       type,
     );
+    // 31e39d74 — the WINNER, not just its band. `bandFor` above returns null both when nothing is
+    // configured and when the employee's service length falls outside every band of a table that DOES
+    // apply to them; only `winnerFor` separates "no table" from "a table with no band for you", and the
+    // first of those is the one that legitimately means 0.00. It is the SAME resolver instance already
+    // built for `policy`, so this costs no query.
+    const entitlementWinner = templates.winnerFor(employmentId, leaveTypeId);
     const earned = isEarnedMethod(policy?.method);
     // 7cd914b1: these used to be forced to 0/null for anything but ANNUAL, matching the engine's own
     // Annual-only gate. Both gates are gone — a non-annual type that is configured to carry DOES carry, and
@@ -2818,6 +2840,20 @@ export function leaveEntitlementBreakdown(
     const adjustments = r2(configAdjustments + systemAdjustments);
     const totalEntitlement = r2(priorBalance + cycleAccrual + adjustments);
 
+    // 31e39d74 — the ROW test, not the SUM test. `cycleAccrual === 0` is NOT "never generated": the
+    // `accrual_unconfigured` path writes a real 0.00 accrual row on purpose (it is openLeaveYear's own
+    // idempotency marker), and so does the max-balance clamp when the cap is already reached. Counting
+    // ROWS is what separates "the year was opened and it came to nothing" from "the year was never
+    // opened". `rows` is already exactly the [cycleStart, asOf] window, so this needs no extra query.
+    const hasAccrualRowInCycle = rows.some(
+      (r) => r.entryType === 'accrual' || r.entryType === 'in_lieu_accrual',
+    );
+    const entitlementStatus = resolveEntitlementStatus({
+      hasTemplateInForce: entitlementWinner != null,
+      accrualUnconfigured: isAccrualUnconfigured(type),
+      hasAccrualRowInCycle,
+    });
+
     const i18n = type.i18n as Record<string, { name: string }> | null;
     return {
       leaveTypeId: type.id,
@@ -2828,6 +2864,10 @@ export function leaveEntitlementBreakdown(
       // against (`policy`), so Eligible and the accrual that lands in the ledger can never describe
       // different policies.
       eligibleDays: r2(policy?.days ?? 0),
+      // 31e39d74: the state behind the figure, and the table it came from. Both DESCRIBE the tenant's own
+      // configuration — nothing here changes it (the plan is explicit: surface, do not fix silently).
+      entitlementStatus,
+      entitlementTemplateName: entitlementWinner?.templateName ?? null,
       currentYearEntitlement: cycleAccrual,
       monthlyAccruedToDate: earned ? cycleAccrual : null,
       carriedForward: carried,

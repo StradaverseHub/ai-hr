@@ -25,6 +25,11 @@ import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHea
 import { hasPersonPhoto } from '@/core/person-photo';
 import { listEntitlementRecalcAudit } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import {
+  ENTITLEMENT_STATUS_LABEL_KEY,
+  ENTITLEMENT_STATUS_TIP_KEY,
+  entitlementStatusNeedsNotice,
+} from '@/lib/entitlement-status';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
@@ -208,6 +213,9 @@ export default async function EmployeePage({
   const tp = await getTranslations('payrollPolicy');
   const tc = await getTranslations('people.detail.clocking');
   const tStatus = await getTranslations('people.employeeStatus');
+  // 31e39d74 — the leave-balance card captions a not-yet-generated entitlement with the SAME words the two
+  // balance grids use, rather than a third phrasing of the same fact.
+  const tBal = await getTranslations('me.leaveBalanceTable');
   const admin = isAdmin(s);
   const { employmentId } = await params;
   // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
@@ -2339,6 +2347,21 @@ export default async function EmployeePage({
                   ? t('usedWithPending', { taken: b.taken, pending: b.pending })
                   : t('used', { taken: b.taken })}
               </div>
+              {/* 31e39d74 — "configured but not yet generated" on the HR-side record too. This card shows
+                  an em dash rather than 0.00 for an inactive type, which is not a silent zero but is also
+                  not an ANSWER: it cannot distinguish a type nobody configured from one whose table is
+                  written and waiting for Generate Entitlement. The caption is that distinction. */}
+              {(() => {
+                const st = breakdownByType.get(b.leaveTypeId)?.entitlementStatus;
+                return st && entitlementStatusNeedsNotice(st) ? (
+                  <div
+                    className="mt-1 text-xs text-amber-700 dark:text-amber-500"
+                    title={tBal(ENTITLEMENT_STATUS_TIP_KEY[st]!)}
+                  >
+                    {tBal(ENTITLEMENT_STATUS_LABEL_KEY[st])}
+                  </div>
+                ) : null;
+              })()}
               {breakdownByType.get(b.leaveTypeId) && (
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
