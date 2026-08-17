@@ -5598,7 +5598,7 @@
       "signatoryNoMatches": "Tiada pekerja sepadan",
       "signatoryClear": "Kosongkan penandatangan",
       "logoEdit": "Sunting logo",
-      "logoPreviewPending": "Pratonton — tekan Simpan untuk mengesahkan",
+      "logoPreviewPending": "Pratonton — tekan {action} untuk mengesahkan",
       "colActions": "Tindakan",
       "actionView": "Lihat",
       "actionEdit": "Sunting",

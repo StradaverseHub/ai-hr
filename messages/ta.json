@@ -5598,7 +5598,7 @@
       "signatoryNoMatches": "பொருந்தும் பணியாளர் இல்லை",
       "signatoryClear": "கையொப்பமிடுபவரை நீக்கு",
       "logoEdit": "சின்னத்தைத் திருத்து",
-      "logoPreviewPending": "முன்னோட்டம் — பயன்படுத்த சேமி என்பதை அழுத்தவும்",
+      "logoPreviewPending": "முன்னோட்டம் — பயன்படுத்த {action} என்பதை அழுத்தவும்",
       "colActions": "செயல்கள்",
       "actionView": "காண்க",
       "actionEdit": "திருத்து",

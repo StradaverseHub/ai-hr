@@ -17,6 +17,13 @@
  * THE UPLOAD CONTRACT IS UNCHANGED. The same `<form action={setAction}>` posts the same `companyId` +
  * `logo` file field to the same server action (PNG/JPG, 2 MB, sniffed server-side — app/admin/actions.ts).
  * The preview is a local object URL and is never submitted; picking a file and walking away saves nothing.
+ *
+ * THE PREVIEW MUST NOT OUTLIVE THE FORM. PhotoEditMenu renders its children behind `{open && …}` and its
+ * backdrop is `fixed inset-0`, so ANY click outside the popover unmounts the file input — the picked file
+ * is gone at that instant. Keeping the preview on screen after that left the reader looking at an unsaved
+ * image captioned "press <submit> to apply" next to a submit button that no longer existed. So the preview
+ * is torn down (and its object URL revoked) on the menu's `onClose`, which fires on every close path.
+ * Pinned by test/company-logo-edit.dom.test.tsx.
  */
 
 import { useRef, useState } from 'react';
@@ -66,7 +73,8 @@ export type CompanyLogoLabels = {
   remove: string;
   /** Shown under the placeholder when nothing is stored, e.g. "No logo set". */
   none: string;
-  /** Shown while an unsaved file is being previewed, e.g. "Preview — press Save to apply". */
+  /** Shown while an unsaved file is being previewed. MUST name the submit button that is actually on
+   *  screen, e.g. "Not saved yet — press Replace logo to apply". The caller interpolates it. */
   previewPending: string;
 };
 
@@ -89,16 +97,19 @@ export function CompanyLogoEdit({
   // The live object URL, kept out of state so revoking the previous one never depends on a re-render.
   const urlRef = useRef<string | null>(null);
 
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
+  /** Drop the preview and release its object URL. Idempotent — safe on every close, picked or not. */
+  const clearPreview = () => {
     if (urlRef.current) {
       URL.revokeObjectURL(urlRef.current);
       urlRef.current = null;
     }
-    if (!file) {
-      setPreview(null);
-      return;
-    }
+    setPreview(null);
+  };
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    clearPreview();
+    if (!file) return;
     const url = URL.createObjectURL(file);
     urlRef.current = url;
     setPreview(url);
@@ -118,7 +129,7 @@ export function CompanyLogoEdit({
         <CompanyLogo hasLogo={hasLogo} companyId={companyId} name={name} className="size-24 text-2xl" />
       )}
 
-      <PhotoEditMenu label={labels.edit} hint={labels.hint}>
+      <PhotoEditMenu label={labels.edit} hint={labels.hint} onClose={clearPreview}>
         <form action={setAction} className="flex w-full flex-col items-stretch gap-1.5">
           <input type="hidden" name="companyId" value={companyId} />
           <input

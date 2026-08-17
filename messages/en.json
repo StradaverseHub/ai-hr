@@ -5598,7 +5598,7 @@
       "signatoryNoMatches": "No matching employee",
       "signatoryClear": "Clear signatory",
       "logoEdit": "Edit logo",
-      "logoPreviewPending": "Preview — press Save to apply",
+      "logoPreviewPending": "Preview — press {action} to apply",
       "colActions": "Actions",
       "actionView": "View",
       "actionEdit": "Edit",

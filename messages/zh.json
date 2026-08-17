@@ -5598,7 +5598,7 @@
       "signatoryNoMatches": "没有匹配的员工",
       "signatoryClear": "清除签署人",
       "logoEdit": "编辑标志",
-      "logoPreviewPending": "预览 — 按保存以套用",
+      "logoPreviewPending": "预览 — 按{action}以套用",
       "colActions": "操作",
       "actionView": "查看",
       "actionEdit": "编辑",

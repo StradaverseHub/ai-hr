@@ -387,11 +387,42 @@ describe('General tab: the company logo', () => {
     expect(island).toContain('accept="image/png,image/jpeg"');
   });
 
+  /**
+   * The popover renders its children behind `{open && …}` and its backdrop is `fixed inset-0`, so closing
+   * it — including by clicking anywhere outside — unmounts the file input and discards the pick. A preview
+   * that survived that left the reader looking at an unsaved image told to press a button that was no
+   * longer on screen. The BEHAVIOUR is pinned by test/company-logo-edit.dom.test.tsx; this only keeps the
+   * wiring from being quietly dropped.
+   */
+  it('drops the preview when the edit popover closes', () => {
+    expect(island, 'the island tears the preview down').toContain('clearPreview');
+    expect(island, 'and hands that teardown to the popover').toContain('onClose={clearPreview}');
+    expect(read('components/photo-edit-menu.tsx'), 'the popover fires onClose on every close path').toMatch(
+      /onClose\?\.\(\)/,
+    );
+  });
+
   it('takes every caption pre-translated, so the i18n key check still sees them on the panel', () => {
     expect(island).not.toContain('useTranslations');
     for (const k of ['logoEdit', 'logoHint', 'logoUpload', 'logoReplace', 'logoRemove', 'logoNone', 'logoPreviewPending']) {
-      expect(panel, k).toContain(`t('${k}')`);
+      // logoPreviewPending takes an argument, so match the lookup, not a bare `t('key')`.
+      expect(panel, k).toContain(`t('${k}'`);
       for (const loc of LOCALES) expect(orgOf(loc)[k], `${loc}: ${k}`).toBeTruthy();
+    }
+  });
+
+  /**
+   * The preview caption used to read "press Save to apply" — but the form's submit is captioned Upload
+   * logo / Replace logo, and the only "Save" on the General tab belongs to the company-details form, which
+   * does not touch the logo. The caption now interpolates whichever submit caption is actually rendered.
+   */
+  it('the preview caption names the submit button that is really on screen', () => {
+    expect(panel).toMatch(
+      /t\('logoPreviewPending',\s*\{\s*action:\s*c\.hasLogo \? t\('logoReplace'\) : t\('logoUpload'\),?\s*\}\)/,
+    );
+    for (const loc of LOCALES) {
+      expect(orgOf(loc).logoPreviewPending, `${loc}: names the control`).toContain('{action}');
+      expect(orgOf(loc).logoPreviewPending, `${loc}: no phantom Save`).not.toMatch(/\bSave\b/);
     }
   });
 });

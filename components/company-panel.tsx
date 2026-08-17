@@ -719,7 +719,11 @@ export function CompanyPanel({
               replace: t('logoReplace'),
               remove: t('logoRemove'),
               none: t('logoNone'),
-              previewPending: t('logoPreviewPending'),
+              // The caption must name the submit button the reader can actually see, and that caption
+              // flips with hasLogo — so it is interpolated here rather than hard-coded per locale.
+              previewPending: t('logoPreviewPending', {
+                action: c.hasLogo ? t('logoReplace') : t('logoUpload'),
+              }),
             }}
             setAction={actions.setCompanyLogo}
             removeAction={actions.removeCompanyLogo}

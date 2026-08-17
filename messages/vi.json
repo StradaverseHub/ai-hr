@@ -5598,7 +5598,7 @@
       "signatoryNoMatches": "Không có nhân viên phù hợp",
       "signatoryClear": "Xóa người ký",
       "logoEdit": "Sửa logo",
-      "logoPreviewPending": "Xem trước — nhấn Lưu để áp dụng",
+      "logoPreviewPending": "Xem trước — nhấn {action} để áp dụng",
       "colActions": "Thao tác",
       "actionView": "Xem",
       "actionEdit": "Sửa",

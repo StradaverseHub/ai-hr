@@ -5598,7 +5598,7 @@
       "signatoryNoMatches": "ไม่พบพนักงานที่ตรงกัน",
       "signatoryClear": "ล้างผู้มีอำนาจลงนาม",
       "logoEdit": "แก้ไขโลโก้",
-      "logoPreviewPending": "ตัวอย่าง — กดบันทึกเพื่อใช้งาน",
+      "logoPreviewPending": "ตัวอย่าง — กด {action} เพื่อใช้งาน",
       "colActions": "การดำเนินการ",
       "actionView": "ดู",
       "actionEdit": "แก้ไข",
