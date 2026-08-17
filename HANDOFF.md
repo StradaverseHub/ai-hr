@@ -18,16 +18,40 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-17 (r185–r194 SHIPPED · NOTHING IN FLIGHT · **19 APPROVED, ALL UNBUILT**)
+## CURRENT STATE — snapshot 2026-08-17 22:5x (r195 RECOVERED · **r196 IN FLIGHT** · 13 APPROVED UNBUILT)
 
-**`main@dec4bb73` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
-reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. That one line is
-expected after EVERY deploy and is not a discrepancy: it is gitignored (`.gitignore:43`) and
-`deploy.sh` rebuilds on the box, which rewrites it. A dry run is "clean" at one line, not zero.
+**`main@3b7238d5` IS WHAT RUNS ON PRODUCTION, AND ONLY AFTER A RECOVERY COMMIT** — verified by an
+`rsync -azi --delete --dry-run` from **mainwt** reporting no source-file difference at all (the residue is
+`HANDOFF.md`, the gitignored `next-env.d.ts`, `tsconfig.tsbuildinfo`, four new `docs/mockups/*` files, and
+`deploy-r195.log` on the box). A dry run is "clean" at that residue, not at zero.
+
+⚠️⚠️ **RUN THE DRY RUN FROM `mainwt`, WITH `cd` IN THE SAME COMMAND.** The shell's cwd resets to the repo
+ROOT (`local/root-scratch`, far behind main) between tool calls, and a dry run from there reports thousands
+of bogus differences and invents a crisis. This cost a full diagnostic pass on 2026-08-17 — the fourth time
+the wrong-tree trap has landed.
+
+**⚠️ SOMETHING OUTSIDE THIS REPO RELEASED r195 TO PRODUCTION ON 2026-08-17 ~22:05 AND IT IS STILL
+UNIDENTIFIED.** `deploy-r195.log` on the box records the build; `0253dc7c`, `a6da1387` and `46afcc48` were
+marked deployed at 22:09 with `build_ref = 004b098a`, **a commit that exists in no worktree here and in no
+other clone on this machine**; the three build-started→completed→deployed triples land 1–2 seconds apart, so
+nothing was built at that moment — they were *marked*. The local peer session confirmed it was not them;
+there are no scheduled jobs. The WORK is real and in this repo's idiom (its comments cite the item ids).
+**It has been recovered into main as `6bd2d99d` (merge `3b7238d5`)** by taking production's copy of the 15
+differing files — all six catalogues verified strict supersets first, so nothing on main was lost — gated
+tsc 0 / i18n-check PASS / 36 tests green. **Had a release gone out from main first, `rsync --delete` would
+have reverted all three items silently.** If that actor runs again, expect the same shape.
+
 **Production is on 359 migrations** (watermark `395 @ 1781862540000`; r194 added `0440`
-`assignment.company_id` + `assignment_company_idx`, verified present on the live schema). Service active, `GET localhost:3000/` → 401.
-**All code is live.**
-**Next free migration is `0441`** (`0431` allocated and deliberately unused; gaps are fine).
+`assignment.company_id` + `assignment_company_idx`, verified present on the live schema). Service active
+(restarted 22:05:57), `GET localhost:3000/` → 401. r195 carried NO migration.
+**`0441` IS ALLOCATED TO r196's `build/r196-txn`** (`c11e81aa`, `payroll_individual_txn.intended_cycle_id`),
+idx 441, `when 1781862541000`. It is the ONLY migration in r196, so merge order cannot skip it.
+**Next free after that is `0442`** (`0431` allocated and deliberately unused; gaps are fine).
+
+**⚠️ THE LOCAL CLUSTER WAS GONE, NOT WEDGED, ON 2026-08-17** — `/opt/homebrew/var/aihr-pg16` was a BROKEN
+symlink to an unmounted RAM disk (`…-ram/data`), so 5433 refused connections. Uptime showed no reboot, so
+something unmounted it. `./scripts/dev-db-rebuild.sh` restored it in under a minute (8GB RAM disk,
+`fsync=off`, `ai_hr_app` NOBYPASSRLS confirmed). Check for the broken symlink before theorising.
 
 ⚠️ **AI-HR IS NOT PUBLICLY EXPOSED — DO NOT "VERIFY" IT THROUGH A BROWSER.** It listens on
 **127.0.0.1:3000 only**, and **nothing in nginx proxies to :3000** (checked r191:
@@ -36,6 +60,34 @@ expected after EVERY deploy and is not a discrepancy: it is gitignored (`.gitign
 `https://203.142.6.241/` returns **403** and `sfm.stradaprop.com` is a **DIFFERENT APPLICATION** —
 it redirects to `/odoo` and lands on an Odoo login (Odoo listens on 8069 on the same host). Neither
 tells you anything about ai-hr; r191 chased both before establishing this.
+
+## ⏳ r196 IS IN FLIGHT — SIX WORKSTREAMS, BRANCHES CUT FROM `main@3b7238d5`
+
+Built by `scripts/improve/build-r196.workflow.js` (6 build agents + 6 adversarial verify agents). **Nothing
+merged, nothing released, no full gate run yet.** If this session died here, that is the state: six branches
+with committed work, `main` untouched by any of it.
+
+| branch | item(s) | `TEST_DB_NAMESPACE` | migration |
+|---|---|---|---|
+| `build/r196-repl` | `5ff7daff` Replacement Leave | `r196repl` | — |
+| `build/r196-entl` | `31e39d74` Medical/Hosp entitlement in My Leave | `r196entl` | — |
+| `build/r196-txn` | `c11e81aa` Individual Transaction | `r196txn` | **`0441`** |
+| `build/r196-payitem` | `6b134681` + `417d4937` (one root cause) | `r196payitem` | — |
+| `build/r196-org` | `3c2f55d7` Organization card redesign | `r196org` | — |
+| `build/r196-attend` | `ad52212d` Attendance Settings, **rounds 1–2 only** | `r196attend` | — |
+
+**WHY A NEW WORKFLOW SCRIPT AND NOT `build-approved.workflow.js`:** that one hardcodes
+`REPO = '/Users/zenlam/Projects/ai-hr'` — the ROOT scratch worktree on `local/root-scratch` — and asks for
+`isolation: 'worktree'`, which cuts every agent's tree from that stale HEAD. AGENTS forbids exactly this.
+`build-r196.workflow.js` has the PARENT create the worktrees from `main` first and hands each agent an
+absolute path. It also drops the `ahr_build_golden` CREATE-DATABASE-TEMPLATE dance for the mechanism the
+harness already documents: `TEST_DB_NAMESPACE` (test/db-names.ts), one per workstream, issued centrally —
+which also makes those databases *ephemeral* instead of leaking. **Fold these two corrections back into
+`build-approved.workflow.js` before it is used again.**
+
+**REMAINING STEPS, IN ORDER:** merge the green branches → ONE full gate, alone, nothing else on the cluster
+→ `next build` → migration rehearsal (`gate:shadow`) → rsync + `deploy.sh` → verify by dry-run rsync →
+`improve:release` / `mark-deployed` per item → move this block to history.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
