@@ -5203,7 +5203,24 @@ export const payslip = pgTable(
     version: integer('version').notNull().default(1),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId)],
+  (t) => [
+    uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId),
+    // 1b0943d5 (migration 0442) — the completeness control's access path, and a NEW index rather than a
+    // reuse of the unique one above: that is keyed (batch_id, employment_id) and serves "this run's slip
+    // for this person", which is every payslip read this system had before this round. The tiling check
+    // asks the orthogonal question — "every slip this person holds for this MONTH, across every
+    // employer's batch" — which starts from the employment and cannot use a batch-leading key at all.
+    index('payslip_employment_idx').on(t.employmentId),
+    // …and the invariant the tiling relies on, declared HERE as well as in the migration because this
+    // file is what `drizzle-kit` diffs against: a constraint that exists only in the .sql is a constraint
+    // the next generated migration proposes DROPPING. Both ends set or neither (a half-set pair makes
+    // "does this tile the month" unanswerable), and never backwards (a reversed pair makes a gap look
+    // like an overlap).
+    check(
+      'payslip_coverage_ordered',
+      sql`(${t.coverageFrom} IS NULL AND ${t.coverageTo} IS NULL) OR (${t.coverageFrom} IS NOT NULL AND ${t.coverageTo} IS NOT NULL AND ${t.coverageFrom} <= ${t.coverageTo})`,
+    ),
+  ],
 );
 
 // ─────────────── Payroll status control + selective reprocessing (feedback 9bc442bc) ───────────────

@@ -12,9 +12,14 @@
  *
  * IT WAS CAUGHT ONLY BECAUSE THE BATCH TOTAL FELL BY EXACTLY THE MISSING AMOUNT and somebody was looking.
  * That is luck. This module is what turns it into something the system says out loud: the entity segments
- * of a split month must TILE the period — start on the first day, end on the last, each one beginning the
- * calendar day after the previous ends — with no gap (someone is underpaid) and no overlap (someone is
- * paid twice, or two employers each claim the same day).
+ * of a split month must TILE the days the person was employed for — start on the first such day, end on
+ * the last, each one beginning the calendar day after the previous ends — with no gap (someone is
+ * underpaid) and no overlap (someone is paid twice, or two employers each claim the same day).
+ *
+ * "The days the person was employed for" is the pay period intersected with the employment's own tenure,
+ * and for ~every employment that IS the pay period. It matters for the one who was hired or terminated
+ * inside the month it split: demanding that their payslips tile all of August would report the fortnight
+ * before they were hired as an unpaid stretch. See `EmploymentCoverage.window`.
  *
  * ════════════════════════════════════════════════════════════════════════════════════════════════════
  * WHY IT IS A TILING CHECK AND NOT A SUM
@@ -44,7 +49,7 @@
  * additive guarantee, and it is by construction rather than by comparison.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { payrollBatch, payslip } from '../db/schema';
+import { employment, payrollBatch, payslip } from '../db/schema';
 import type { Tx } from '../db/client';
 import { companySegmentsForPeriodBulk, dayAfter, dayBefore, type CompanySegment } from './employment-company';
 import { payslipCoverage } from './payslip-segment';
@@ -72,9 +77,13 @@ const minDate = (a: string, b: string) => (a < b ? a : b);
  * already been counted; one that starts exactly on it tiles cleanly and moves the cursor to the day after
  * it ends. Anything left when the claims run out is a trailing gap.
  *
- * Claims are CLAMPED to the period first: a payslip's coverage is always inside its own pay period, but
+ * Claims are CLAMPED to `period` first: a payslip's coverage is always inside its own pay period, but
  * clamping means a legacy row read as "the whole period" and a future off-by-one can never make the walk
- * step outside the month it is checking.
+ * step outside the range it is checking.
+ *
+ * `period` is the range that must be tiled — the pay period for a whole-month employment, the employment's
+ * own tenure inside it for someone hired or terminated mid-month (`EmploymentCoverage.window`). Clamping
+ * is what lets a whole-month slip satisfy a mid-month joiner's shorter window without a special case.
  */
 export function coverageDefects(
   period: { from: string; to: string },
@@ -100,18 +109,32 @@ export function coverageDefects(
 /** Everything the control knows about one employment's split month. */
 export type EmploymentCoverage = {
   employmentId: string;
-  /** What the entity history says the month is made of. Tiles the period by construction (the resolver). */
+  /**
+   * The days of the period this employment must be paid for by SOMEBODY: the pay period intersected with
+   * the employment's own tenure (`hired_on` … `terminated_on`). For ~every employment that is the whole
+   * period; for one hired or terminated inside it, it is the part they were employed for. The tiling is
+   * tested over THIS, not over the bare calendar month — otherwise somebody hired on the 15th and
+   * transferred on the 25th would be reported as unpaid for the first fortnight, which is not a defect,
+   * it is a fortnight they did not work here.
+   */
+  window: { from: string; to: string };
+  /** What the entity history says the month is made of. Tiles `window` by construction (the resolver). */
   expected: CompanySegment[];
   /** What has actually been issued, across every company's REGULAR batch for this period. */
   claims: CoverageClaim[];
-  /** Where the issued set fails to tile the period. Empty ⇒ the month adds up. */
+  /** Where the issued set fails to tile `window`. Empty ⇒ every day of it is claimed exactly once. */
   defects: CoverageDefect[];
   /** Segment companies with NO regular batch at all for this period — nothing exists that could pay them. */
   missingCompanyIds: string[];
   /**
    * Counterpart regular batches — another employer's run for the same period that owes, or has issued,
-   * part of this month. `stale` means it is PROCESSED and its coverage no longer agrees with the entity
-   * history, so it must be reprocessed before the month can be closed.
+   * part of this month, plus this run's own entry so the control can check the batch in front of it by
+   * the same rule.
+   *
+   * `stale` means "this employer's run has NOT issued exactly the days the entity history says it owes" —
+   * either no payslip for this person on it at all, or one whose window has moved since. It is
+   * deliberately INDEPENDENT of the batch's status; what makes a segment paid is a payslip, never a
+   * batch's existence. See `segmentedCoverage` for why a DRAFT counterpart is stale rather than excused.
    */
   counterparts: { batchId: string; companyId: string; status: string; stale: boolean }[];
 };
@@ -154,9 +177,36 @@ export async function segmentedCoverage(
   const splitIds = ids.filter((id) => (segmentsByEmp.get(id)?.length ?? 0) > 1);
   if (splitIds.length === 0) return [];
 
+  // The employment's own tenure inside the period — see `EmploymentCoverage.window`. Read for the SPLIT
+  // employments only, which is a handful on the rare run that has any.
+  const tenureRows = await tx
+    .select({ id: employment.id, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+    .from(employment)
+    .where(inArray(employment.id, splitIds));
+  const tenureById = new Map(tenureRows.map((r) => [r.id, r] as const));
+
   // Every REGULAR batch of this period, whatever company it belongs to. RLS fences the tenant; the
   // period string is the join key because `pay_period` rows are per company and a cross-company read
   // cannot go through one of them.
+  //
+  // ── NO STATUS FILTER, AND A DRAFT COUNTERPART SATISFIES NOTHING. Those two statements go together and
+  // both are deliberate.
+  //
+  // The read is unfiltered because a batch's status is not what makes a segment paid — a PAYSLIP is —
+  // and because `generatePayslips` calls this from INSIDE its own transaction, where its slips are
+  // already written and its own batch is still `draft` for a few more statements. A status filter here
+  // would blind the control to the very run it is checking.
+  //
+  // What must NOT happen is the opposite error, and it is the one that shipped: treating the mere
+  // EXISTENCE of a counterpart batch as covering the days it names. A draft run has issued nothing, can
+  // still be deleted, and may never be generated at all — so an August where Fiamma's slip was written
+  // before the transfer was recorded, and ISEDECOR's run sits in draft, would close with the whole month
+  // claimed by the wrong employer and the right one never paid. That is why `stale` below asks about the
+  // PAYSLIP and not about the status: a draft counterpart is stale exactly like a missing one, and close
+  // refuses on it. Generation still does not refuse on a draft counterpart (that would deadlock the pair
+  // — whichever company ran first would be blocked by the one that had not run yet); close is where every
+  // excuse has expired, and there is no deadlock there because closing A only needs B to have PROCESSED,
+  // not to have closed.
   const batches = await tx
     .select({
       id: payrollBatch.id,
@@ -203,6 +253,11 @@ export async function segmentedCoverage(
     const expected = segmentsByEmp.get(employmentId) ?? [];
     const claims = claimsByEmp.get(employmentId) ?? [];
     const claimByCompany = new Map(claims.map((c) => [c.companyId, c]));
+    const tenure = tenureById.get(employmentId);
+    const window = {
+      from: tenure?.hiredOn ? maxDate(p.periodStart, tenure.hiredOn) : p.periodStart,
+      to: tenure?.terminatedOn ? minDate(p.periodEnd, tenure.terminatedOn) : p.periodEnd,
+    };
     const missingCompanyIds: string[] = [];
     const counterparts: EmploymentCoverage['counterparts'] = [];
     for (const seg of expected) {
@@ -212,17 +267,21 @@ export async function segmentedCoverage(
         continue;
       }
       const claim = claimByCompany.get(seg.companyId);
-      // Stale means "processed, and what it issued is not what the history now says it owes" — either no
-      // payslip for this person at all, or one whose window has moved. A DRAFT run owes nothing yet: it
-      // recalculates by being generated, and marking it would be noise on a run with no figures in it.
-      const stale = batch.status === 'processed' && (!claim || claim.from !== seg.from || claim.to !== seg.to);
+      // "This employer's run has not issued exactly the days the history says it owes." No payslip for
+      // this person on it, or one whose window has moved — and the batch's STATUS is deliberately not
+      // part of the test, because a run that has not paid somebody has not paid them whatever colour its
+      // status is. A caller that needs to treat the statuses differently reads `status` beside this (as
+      // `generatePayslips` does: it REFUSES on a closed counterpart, MARKS a processed one, and leaves a
+      // draft one alone until close).
+      const stale = !claim || claim.from !== seg.from || claim.to !== seg.to;
       counterparts.push({ batchId: batch.id, companyId: seg.companyId, status: batch.status, stale });
     }
     return {
       employmentId,
+      window,
       expected,
       claims,
-      defects: coverageDefects({ from: p.periodStart, to: p.periodEnd }, claims),
+      defects: coverageDefects(window, claims),
       missingCompanyIds,
       counterparts,
     };
@@ -241,10 +300,16 @@ export class PayrollCoverageIncompleteError extends Error {
   constructor(public readonly problems: EmploymentCoverage[]) {
     const gaps = problems.reduce((n, e) => n + e.defects.filter((d) => d.kind === 'gap').length, 0);
     const overlaps = problems.reduce((n, e) => n + e.defects.filter((d) => d.kind === 'overlap').length, 0);
+    // The third count is NOT a third kind of defect — it is the same month failing to add up, seen from
+    // the run that owes rather than from the calendar. A counterpart whose slip still claims the whole
+    // month leaves no gap at all (its days ARE claimed, by the wrong employer), so a message that only
+    // counted gaps and overlaps would read "0 unpaid stretches, 0 paid twice" on a refusal.
+    const owed = problems.reduce((n, e) => n + e.counterparts.filter((c) => c.stale).length, 0);
     super(
       `This payroll run cannot be closed: ${problems.length} employee${problems.length === 1 ? '' : 's'} ` +
         `changed company inside this period and their payslips do not cover the month exactly ` +
-        `(${gaps} unpaid stretch${gaps === 1 ? '' : 'es'}, ${overlaps} paid twice). ` +
+        `(${gaps} unpaid stretch${gaps === 1 ? '' : 'es'}, ${overlaps} paid twice, ` +
+        `${owed} run${owed === 1 ? '' : 's'} that has not issued the days it owes). ` +
         `Process or reprocess the other company's run for the same period first.`,
     );
     this.name = 'PayrollCoverageIncompleteError';
@@ -268,7 +333,10 @@ export class PayrollCoverageIncompleteError extends Error {
  *   • counterpart batch is PROCESSED but owes a segment — recoverable, and it is MARKED (needsRecalc) so
  *     the operator is told, and Close on that run is already refused until it is dealt with;
  *   • counterpart batch does not EXIST — recoverable by creating it, and Close refuses meanwhile.
- * All three are caught by `PayrollCoverageIncompleteError` at close, which is where the money is final.
+ * All three are caught by `PayrollCoverageIncompleteError` at close, which is where the money is final:
+ * the draft and the processed-but-owing counterpart both report `stale` (they have issued no payslip for
+ * these days), and the absent one reports `missingCompanyIds`. Creating an empty draft run for the other
+ * company therefore does NOT unblock a close — only issuing the payslip does.
  */
 export class PayrollCounterpartClosedError extends Error {
   constructor(public readonly details: { employmentId: string; companyId: string; from: string; to: string }[]) {

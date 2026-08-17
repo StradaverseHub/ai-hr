@@ -137,6 +137,16 @@ export function dayAfter(d: string): string {
  * `currentCompanyId` is `employment.company_id`: what fills a gap, and what the answer is when there is no
  * history at all. A zero-length row (valid_from === valid_to, which a movement dated on the day a previous
  * version started can produce) contributes nothing and is skipped.
+ *
+ * ⚠️ [from, to] IS THE EMPLOYMENT'S OWN WINDOW, NOT THE BARE CALENDAR ONE, and the caller owes that
+ * clamp. The gap-fill below covers every uncovered day with the CURRENT company, which is right for a day
+ * the person was employed and had no dated row, and wrong for a day they were not employed at all. Handed
+ * a whole month for somebody hired on the 15th and transferred on the 25th, it answers
+ * B[01–14], A[15–24], B[25–31] — B twice, non-adjacent so the merge cannot join them, and claiming days
+ * before the hire. `segmentForCompany` then hands B's run the FIRST of its two ranges (01–14), which is
+ * a window the employee had not been hired for, and B pays nothing for the days it actually owns.
+ * `companySegmentsForPeriodBulk` narrows the window to `hired_on` / `terminated_on` before calling this,
+ * which is why it is the only DB-backed producer of segments.
  */
 export function mergeCompanySegments(
   rows: { companyId: string; from: string; to: string | null }[],
@@ -187,6 +197,19 @@ export function mergeCompanySegments(
  * batch resolves this for every employee on the run and a per-employee round trip would be a query per
  * head. `currentCompanyById` supplies the fallback; an employment absent from it is skipped rather than
  * guessed at.
+ *
+ * ── THE WINDOW IS CLAMPED TO THE EMPLOYMENT'S OWN TENURE, and that is a correctness fix rather than a
+ * tidy-up. A MID-MONTH HIRE PLUS A SAME-MONTH TRANSFER is the shape that breaks without it: hired into A
+ * on 15 August, A → B on the 25th. Over the bare month the resolver's gap-fill answers
+ * B[01–14], A[15–24], B[25–31] — the same entity twice, non-adjacent, so the merge cannot join them —
+ * and `segmentForCompany` hands B's payroll run the FIRST B range, 01–14, eleven days before the person
+ * was hired. B then prorates against a window that ends before its own segment begins and pays for none
+ * of the days it actually owns, while A pays 15–24; the employee is short a week. Clamped, the same
+ * history answers A[15–24], B[25–31]: adjacent, each employer owning exactly its own days, and the
+ * completeness control tiles the TENURE inside the period rather than the whole calendar month.
+ *
+ * Nothing moves for an employment hired before the period and not terminated in it, which is ~every
+ * employment on ~every run: the clamp is then the identity.
  */
 export async function companySegmentsForPeriodBulk(
   tx: Tx,
@@ -196,14 +219,61 @@ export async function companySegmentsForPeriodBulk(
   currentCompanyById: Map<string, string>,
 ): Promise<Map<string, CompanySegment[]>> {
   const ids = [...new Set(employmentIds)];
+  if (ids.length === 0) return new Map();
   const rowsByEmp = await entityRowsFor(tx, ids, from, to);
+  const tenureRows = await tx
+    .select({ id: employment.id, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+    .from(employment)
+    .where(inArray(employment.id, ids));
+  const tenureById = new Map(tenureRows.map((r) => [r.id, r] as const));
   const out = new Map<string, CompanySegment[]>();
   for (const id of ids) {
     const current = currentCompanyById.get(id);
     if (!current) continue;
-    out.set(id, mergeCompanySegments(rowsByEmp.get(id) ?? [], current, from, to));
+    // An employment RLS hides (or that has been deleted between the two statements) keeps the caller's
+    // window: narrowing on a tenure we cannot read would invent a gap out of a missing row.
+    const t = tenureById.get(id);
+    const winFrom = t?.hiredOn ? maxDate(from, t.hiredOn) : from;
+    const winTo = t?.terminatedOn ? minDate(to, t.terminatedOn) : to;
+    out.set(id, mergeCompanySegments(rowsByEmp.get(id) ?? [], current, winFrom, winTo));
   }
   return out;
+}
+
+/**
+ * "Does this employment's entity history name an entity OTHER than the one it sits in today, at any point
+ * in [from, to]?" — a SQL predicate over `employment`, and the cheapest exact answer to "could this
+ * person's month be SPLIT?".
+ *
+ * WHY IT EXISTS AT ALL. The completeness control has to examine everybody the period's history says this
+ * employer owns part of — NOT merely everybody the run happened to pay, which is the hole that let a
+ * scoped run drop the one person it owed and close clean. Asking the resolver about every employment of
+ * every company on every close would be honest and wasteful; this predicate reduces that to the handful
+ * who actually moved, in the WHERE clause, before a single segment is resolved.
+ *
+ * IT IS EXACT, not a heuristic, and the reason is `mergeCompanySegments`: every day the history does not
+ * cover is filled with `employment.company_id`, and adjacent ranges naming the same entity are merged. So
+ * if every dated row overlapping the window names today's company, every segment names today's company
+ * and they collapse into ONE — not split. More than one segment therefore REQUIRES a row naming a
+ * different entity, which is exactly what this asks. (The converse does not hold — a single row naming a
+ * different entity across the whole window is one segment — so this is a superset, and the caller still
+ * filters on the resolved segment count. A superset is the safe direction: it can cost a resolver query,
+ * never a missed employee.)
+ *
+ * INERT BEFORE THE BACKFILL, like `employedByCompanyDuring`: pre-0440 rows hold a NULL company, so this
+ * matches nothing and the control examines exactly the population it examined before — and the resolver
+ * agrees, because a NULL-history employment resolves to one segment and is not split either.
+ */
+export function entityChangedDuring(from: string, to: string): SQL {
+  return sql`exists (
+    select 1 from assignment a
+    where a.employment_id = ${employment.id}
+      and a.superseded_at is null
+      and a.company_id is not null
+      and a.company_id <> ${employment.companyId}
+      and a.valid_from <= ${to}
+      and (a.valid_to is null or a.valid_to > ${from})
+  )`;
 }
 
 /**

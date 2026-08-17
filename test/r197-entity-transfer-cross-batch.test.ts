@@ -45,6 +45,14 @@
  *      caught up yet is MARKED so it cannot be closed either. Today's shortfall would have been caught
  *      by case 3's first assertion; these are what make it impossible to finalise.
  *
+ *   6. AND IT REFUSES IN THE TWO SHAPES THAT LOOK FINE FROM THE CALENDAR, each of which let a month
+ *      close with somebody underpaid while every earlier assertion in this file still passed:
+ *      a DRAFT counterpart run (a batch that exists is not a payment), and an employment with NO PAYSLIP
+ *      on the closing run (the examined population is the employer's obligation, not the run's output —
+ *      an employee dropped from both scopes was paid nothing and refused by nothing). Plus the resolver
+ *      shape underneath them: a mid-month hire that also transfers must resolve to two ADJACENT segments
+ *      inside its own tenure, not three spanning a month the person was not employed for.
+ *
  * WHAT IS DELIBERATELY NOT ASSERTED HERE: that the two halves' statutory contributions sum to anything.
  * They must not. Two segments are two independent computations under two employers, each with its own
  * ceilings — see the r194 suite, which pins exactly that. The control is the CALENDAR, not the money.
@@ -199,6 +207,21 @@ describe('migration 0442', () => {
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS "coverage_from" date');
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS "coverage_to" date');
     expect(sql).not.toMatch(/coverage_(from|to)"?\s+date\s+not null/i);
+  });
+
+  it('declares its index AND its CHECK in db/schema.ts too, not only in the .sql', () => {
+    // Source-shape, because the defect lives in the gap between two files and neither one is wrong on its
+    // own. `db/schema.ts` is what drizzle-kit DIFFS the database against: an object that exists only in a
+    // hand-written migration reads as drift, and the next generated migration proposes DROPPING it. This
+    // repo already declares both kinds in the ORM schema (`check()` appears a dozen times), so the rule is
+    // the repo's own, not a new one — 0442 simply had to follow it.
+    const src = fs.readFileSync(path.join(process.cwd(), 'db/schema.ts'), 'utf8');
+    expect(src, 'payslip_employment_idx must be declared in the ORM schema').toMatch(
+      /index\('payslip_employment_idx'\)/,
+    );
+    expect(src, 'payslip_coverage_ordered must be declared in the ORM schema').toMatch(
+      /check\(\s*'payslip_coverage_ordered'/,
+    );
   });
 });
 
@@ -466,5 +489,152 @@ describe('a transferred month, across the two batches that own it', () => {
     await closeBatch(a, { batchId: two.batchId });
     expect((await batchRow(one.batchId)).status).toBe('closed');
     expect((await batchRow(two.batchId)).status).toBe('closed');
+  });
+
+  // ── 7. the two holes the control had, each of which let a month close with somebody underpaid ──────
+
+  it('A DRAFT COUNTERPART IS NOT PAYMENT: a run that merely EXISTS does not let the month close', async () => {
+    // THE ORDINARY SEQUENCE THAT CLOSED CLEAN. Fiamma's August is processed BEFORE anybody records the
+    // transfer, so it holds a WHOLE-MONTH slip. The transfer to ISEDECOR effective 11 August is then
+    // recorded, and ISEDECOR's run is opened — and left in DRAFT, which is where a run sits for most of
+    // its life. Now look at what the calendar test sees: every day of August IS claimed (by Fiamma, for
+    // twenty-one days it does not own), so there is no gap and no overlap; and ISEDECOR is not a
+    // "missing company" because a batch for it exists. Both of those arms pass. The employee is owed
+    // 11–31 August by an employer that has issued nothing, and the close was allowed.
+    const moved = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010709');
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    expect([
+      (await slipOf(outgoing.batchId, moved.employmentId))!.coverageFrom,
+      (await slipOf(outgoing.batchId, moved.employmentId))!.coverageTo,
+    ]).toEqual(['2026-08-01', '2026-08-31']);
+
+    await transferOn(moved.employmentId, '2026-08-11');
+    const incoming = await createBatch(a, { companyId: coB, payPeriod: '2026-08' });
+    expect((await batchRow(incoming.batchId)).status).toBe('draft');
+    expect(await slipOf(incoming.batchId, moved.employmentId)).toBeNull();
+
+    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
+    await closeBatch(a, { batchId: outgoing.batchId }).catch((e) => {
+      const problem = (e as PayrollCoverageIncompleteError).problems[0];
+      // …and this is the point of the case: NEITHER of the arms that existed before fires. The refusal
+      // comes from the third question — "has each segment's employer issued exactly the days it owes?"
+      expect(problem.defects, 'the calendar test alone is satisfied').toEqual([]);
+      expect(problem.missingCompanyIds, 'and so is the missing-run test').toEqual([]);
+      expect(problem.counterparts.map((c) => [c.companyId, c.status, c.stale])).toEqual([
+        [b.companyId, 'processed', true], // issued 01–31 where it owes 01–10
+        [coB, 'draft', true], // owes 11–31 and has issued nothing
+      ]);
+    });
+    expect((await batchRow(outgoing.batchId)).status).toBe('processed');
+
+    // The way OUT is issuing the payslip, never opening a run. Generate ISEDECOR's half, reprocess the
+    // Fiamma slip the transfer invalidated, and the same close is allowed.
+    await generatePayslips(a, { batchId: incoming.batchId });
+    await reprocessSelectedEmployees(a, {
+      batchId: outgoing.batchId,
+      employmentIds: [moved.employmentId],
+      reason: 'entity transfer counterpart',
+    });
+    await closeBatch(a, { batchId: outgoing.batchId });
+    expect((await batchRow(outgoing.batchId)).status).toBe('closed');
+  });
+
+  it('EXAMINES WHO THE MONTH SAYS IT OWES, not whom the run happened to pay', async () => {
+    // THE SECOND HOLE, and it is the operator's natural escape route from the first. The population the
+    // control examined came from the CLOSING RUN'S OWN PAYSLIPS — so an employment with no slip on the
+    // run was never examined, which is precisely the employment being underpaid.
+    //
+    //   the outgoing run is scoped and the mover is left out → it closed with no refusal at all;
+    //   the incoming run is then refused (its counterpart is frozen) → and dropping the mover from the
+    //   incoming scope too closed BOTH runs clean, with the employee paid nothing whatever for August.
+    //
+    // The question has to be the employer's OBLIGATION — who does the entity history say this company
+    // employed during this period — not the run's output.
+    const stayer = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010710');
+    const there = await hireInto(coB, deptB2, '2026-01-01', '900101010711');
+    const moved = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010712');
+    await transferOn(moved.employmentId, '2026-08-11');
+
+    const outgoing = await createBatch(a, {
+      companyId: b.companyId,
+      payPeriod: '2026-08',
+      scope: { employmentIds: [stayer.employmentId] },
+    });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    const incoming = await createBatch(a, {
+      companyId: coB,
+      payPeriod: '2026-08',
+      scope: { employmentIds: [there.employmentId] },
+    });
+    await generatePayslips(a, { batchId: incoming.batchId });
+
+    // Nobody has paid the mover a cent, and neither run holds a slip that could be inspected for them.
+    expect(await slipOf(outgoing.batchId, moved.employmentId)).toBeNull();
+    expect(await slipOf(incoming.batchId, moved.employmentId)).toBeNull();
+
+    // Both runs are refused, and both name the same person — the one neither of them paid.
+    for (const batchId of [outgoing.batchId, incoming.batchId]) {
+      await expect(closeBatch(a, { batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
+      await closeBatch(a, { batchId }).catch((e) => {
+        expect((e as PayrollCoverageIncompleteError).employmentIds).toEqual([moved.employmentId]);
+        expect((e as PayrollCoverageIncompleteError).problems[0].defects).toEqual([
+          { kind: 'gap', from: '2026-08-01', to: '2026-08-31' },
+        ]);
+      });
+      expect((await batchRow(batchId)).status).toBe('processed');
+    }
+  });
+
+  it('A MID-MONTH HIRE THAT TRANSFERS THE SAME MONTH IS TWO ADJACENT SEGMENTS, NOT THREE', async () => {
+    // Hired into Fiamma on 3 August, moved to ISEDECOR on the 11th. The resolver used to fill every
+    // uncovered day of the window with the employment's CURRENT company, so this month resolved as
+    // ISEDECOR[01–02], Fiamma[03–10], ISEDECOR[11–31] — the same entity twice, non-adjacent so the merge
+    // could not join them, and claiming days before the person was hired. `segmentForCompany` then handed
+    // ISEDECOR's run the FIRST of its two ranges, 01–02, whose end falls before the hire date: ISEDECOR
+    // prorated an empty window and paid for none of the twenty-one days it actually owned, while Fiamma
+    // paid its eight. The window has to be the employment's own dates.
+    const moved = await hireInto(b.companyId, b.deptA, '2026-08-03', '900101010713');
+    // …and an identical colleague hired the same day who never moved, as the control the halves sum to.
+    const control = await hireInto(b.companyId, b.deptA, '2026-08-03', '900101010714');
+    await transferOn(moved.employmentId, '2026-08-11');
+
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    const incoming = await createBatch(a, { companyId: coB, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: incoming.batchId });
+
+    const out = (await slipOf(outgoing.batchId, moved.employmentId))!;
+    const inc = (await slipOf(incoming.batchId, moved.employmentId))!;
+    expect([out.coverageFrom, out.coverageTo]).toEqual(['2026-08-03', '2026-08-10']);
+    expect([inc.coverageFrom, inc.coverageTo]).toEqual(['2026-08-11', '2026-08-31']);
+
+    // The tiling is over the days the person was EMPLOYED for — 03–31 — not over the calendar month.
+    // Demanding they tile all of August would report the days before the hire as an unpaid stretch.
+    expect(
+      coverageDefects({ from: '2026-08-03', to: '2026-08-31' }, [
+        { from: out.coverageFrom!, to: out.coverageTo! },
+        { from: inc.coverageFrom!, to: inc.coverageTo! },
+      ]),
+    ).toEqual([]);
+
+    // And the money follows the calendar: twenty-nine days between two employers, measured against the
+    // colleague hired on the same day whose month was never split.
+    const ctrl = (await slipOf(outgoing.batchId, control.employmentId))!;
+    expect(Number(out.grossPay), 'Fiamma owes 3–10 August: 6600 ÷ 31 × 8').toBeCloseTo(1703.23, 2);
+    expect(Number(inc.grossPay), 'ISEDECOR owes 11–31 August: 6600 ÷ 31 × 21').toBeCloseTo(4470.97, 2);
+    // …and the two halves reconstruct the control's twenty-nine days TO THE CENT. Not to the exact
+    // figure: the halves are two independent computations under two employers, each rounded to a cent, so
+    // one rounding step of difference is arithmetic rather than a defect. A lost week is not.
+    // (compared in whole cents — the difference of three floats is not itself a money figure)
+    const centsApart = Math.round(
+      Math.abs(Number(out.grossPay) + Number(inc.grossPay) - Number(ctrl.grossPay)) * 100,
+    );
+    expect(centsApart).toBeLessThanOrEqual(1);
+    // …so the month adds up and both employers may finalise.
+    await closeBatch(a, { batchId: outgoing.batchId });
+    await closeBatch(a, { batchId: incoming.batchId });
+    expect((await batchRow(outgoing.batchId)).status).toBe('closed');
+    expect((await batchRow(incoming.batchId)).status).toBe('closed');
   });
 });

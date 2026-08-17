@@ -18,7 +18,12 @@ import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-
 // assignment spine (migration 0440). Payroll is the FIRST and, as of r197, still the ONLY reader of it:
 // the resolver has to be proven on the money before attendance, leave and reporting adopt it, and that
 // adoption is deliberately still outstanding (see core/employment-company.ts's header for where it stands).
-import { companySegmentsForPeriodBulk, employedByCompanyDuring, segmentForCompany } from './employment-company';
+import {
+  companySegmentsForPeriodBulk,
+  employedByCompanyDuring,
+  entityChangedDuring,
+  segmentForCompany,
+} from './employment-company';
 // 1b0943d5 — stage two's control: do a transferred month's payslips TILE the period, across every
 // employer's batch for it? Nothing here fires for an employment whose month is not split.
 import {
@@ -1446,10 +1451,11 @@ export async function createAdditionalRun(
  * cannot both pass a stale "still draft" read before either write lands.
  *
  * `employmentIds` is the resolved explicit selection the wizard posts when the admin narrowed the set
- * (any filter use or manual deselect). It is intersected against the batch company's employees — the SAME
- * cross-company membership guard createRunAction applies — so a stale/cross-company id can never widen or
- * silently under-set the run. An empty/absent selection normalises to null scope (whole company), exactly
- * as a fresh run's no-filter default.
+ * (any filter use or manual deselect). It is intersected against the people this batch's company employed
+ * DURING ITS PAY PERIOD (`employedByCompanyDuring`) — see the guard below for why this one is dated and
+ * `createRunAction`'s is not — so a stale/cross-company id can never widen or silently under-set the run.
+ * An empty/absent selection normalises to null scope (whole company), exactly as a fresh run's no-filter
+ * default.
  *
  * Cleanup (orphan-data safeguard): any employment present in the PREVIOUS scope but absent from the NEW
  * scope has its payroll_input row deleted, and any loan instalment RESERVED to this batch for them is
@@ -1475,18 +1481,28 @@ export async function updateBatchScope(
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
 
-    // Cross-company membership guard (same intersection createRunAction applies): keep only submitted ids
-    // that belong to this batch's company, so a stale/cross-company id can never reach the persisted scope.
+    // Cross-company membership guard: keep only submitted ids that belong to this batch's company, so a
+    // stale/cross-company id can never reach the persisted scope.
     //
-    // ── 1b0943d5, SITE 1 OF 5 — DATED. ────────────────────────────────────────────────────────────────
-    // This guard decides which employments a run is ALLOWED to be set up for, and it must agree with the
-    // kernel that will pay them. `batchInputRows` and `listPayslipLessEligible` already offer a
+    // ── 1b0943d5, SITE 1 OF 5 — DATED, AND NO LONGER THE SAME GUARD AS createRunAction'S. ─────────────
+    // This guard decides which employments an EXISTING run is allowed to be set up for, and it must agree
+    // with the kernel that will pay them. `batchInputRows` and `listPayslipLessEligible` already offer a
     // transferred-out employee on this run (stage one widened them), and `generatePayslips` already pays
     // their pre-transfer days here. On the column, this filter would silently DROP that id on save: the
-    // wizard offers the person, the operator ticks them, the scope quietly loses them, and the run then
+    // screens offer the person, the operator ticks them, the scope quietly loses them, and the run then
     // computes nothing for them — the "silently no-op'd addition" failure fbcf706d exists to remove,
     // reintroduced through a different door. The scope is a chosen list, and it must be able to name
     // everybody the run can pay.
+    //
+    // ⚠️ AND createRunAction (app/payroll/process/actions.ts) STAYS ON THE COLUMN, deliberately, so the
+    // two are no longer "the same intersection" and this file should not claim they are. Its filter
+    // validates against `listEmployees`, and the Step-2 list it validates is `listEmployeesForPayrollRun`
+    // — column-scoped (`employment.company_id in (…)`). Creation therefore never OFFERS a transferred-out
+    // employee, so its filter cannot drop one it offered, and dating only the filter would let a
+    // hand-posted id name somebody no screen on that path has ever shown. The asymmetry is real and it is
+    // where the adoption stopped: widening the wizard's own creation-time population is a separate change
+    // to a separate read, and it is not made here. This site had to move because its screens had already
+    // moved; that one has not.
     const [uy, um] = batch.payPeriod.split('-').map(Number);
     const scopePeriodStart = `${batch.payPeriod}-01`;
     const scopePeriodEnd = `${batch.payPeriod}-${String(daysInMonth(uy, um)).padStart(2, '0')}`;
@@ -5249,10 +5265,17 @@ export async function generatePayslips(
       if (frozen.length > 0) throw new PayrollCounterpartClosedError(frozen);
 
       // 2. The fixable case, marked so the counterpart run cannot be closed until it is dealt with.
+      //    PROCESSED counterparts only. `stale` deliberately does not look at the batch's status (a run
+      //    that has not paid somebody has not paid them, draft or not), so the status test lives here,
+      //    where it decides what to DO about it: a processed run has figures that are now wrong and needs
+      //    recalculating; a draft run has no figures to invalidate and marking it would put "needs
+      //    recalculation" on a run nobody has generated yet. The draft is not let off — it simply waits
+      //    for close, which refuses on `stale` whatever the status (see closeBatch). A closed counterpart
+      //    never reaches here: it was refused above.
       const markBy = new Map<string, Set<string>>();
       for (const c of coverage) {
         for (const cp of c.counterparts) {
-          if (cp.batchId === p.batchId || !cp.stale) continue;
+          if (cp.batchId === p.batchId || cp.status !== 'processed' || !cp.stale) continue;
           const s = markBy.get(cp.batchId) ?? new Set<string>();
           s.add(c.employmentId);
           markBy.set(cp.batchId, s);
@@ -5265,7 +5288,13 @@ export async function generatePayslips(
       // 3. The record. One event for the whole run, carrying every split employment's expected segments,
       //    what is issued against them and where the month still does not tile — so the state is
       //    inspectable after the fact rather than reconstructable only by re-deriving it.
-      const incomplete = coverage.filter((c) => c.defects.length > 0 || c.missingCompanyIds.length > 0);
+      //    "Incomplete" is ONE notion, and it is the same one closeBatch refuses on — including the
+      //    counterpart that has issued nothing, or the wrong days, which leaves no gap on the calendar.
+      //    An event that recorded a narrower notion than the refusal would describe a month as fine and
+      //    then refuse to close it.
+      const incomplete = coverage.filter(
+        (c) => c.defects.length > 0 || c.missingCompanyIds.length > 0 || c.counterparts.some((cp) => cp.stale),
+      );
       if (incomplete.length > 0) {
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
@@ -5279,10 +5308,14 @@ export async function generatePayslips(
             payPeriod: batch.payPeriod,
             employments: incomplete.map((c) => ({
               employmentId: c.employmentId,
+              // The days somebody owed this person in this period (the period ∩ their tenure) — without it
+              // a reader cannot tell a genuine hole from a fortnight before the person was hired.
+              window: c.window,
               expected: c.expected,
               claims: c.claims.map((s) => ({ companyId: s.companyId, from: s.from, to: s.to })),
               defects: c.defects,
               missingCompanyIds: c.missingCompanyIds,
+              counterparts: c.counterparts,
             })),
           },
         });
@@ -5712,15 +5745,49 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // that every day of August belongs to exactly one employer. See core/payroll-coverage.ts.
     //
     // ADDITIVE BY CONSTRUCTION: only employments whose entity history SPLITS this period are examined, so
-    // a run with no mid-period transfer on it does one cheap resolver query and finds nothing to check —
+    // a run with no mid-period transfer on it does one cheap indexed predicate and finds nobody to check —
     // which is every payroll run in this system to date.
+    //
+    // ── THE POPULATION IS WHAT THE PERIOD'S HISTORY SAYS THIS EMPLOYER OWNS, NOT WHAT THE RUN PAID ─────
+    //
+    // Deriving it from `payslip where batch_id = …` — this run's own slips — is the hole that made the
+    // control unable to control. An employment with NO slip on the closing run is exactly the employment
+    // that is being underpaid, and it would never have been examined:
+    //
+    //   the outgoing run is scoped and the mover is left out of it → it closes with no refusal at all;
+    //   the incoming run is then refused by PayrollCounterpartClosedError, because the outgoing run is
+    //   now frozen; and the operator's natural escape — drop the mover from the incoming scope too —
+    //   leaves BOTH runs closed clean with the employee paid NOTHING for August. That state is REACHABLE
+    //   today and the control never fires once.
+    //
+    // So the question asked here is the employer's obligation, not the run's output: who does the
+    // `assignment` spine say this company employed during this period? `entityChangedDuring` narrows that
+    // to the only people whose month can be split — the ones whose history names some entity other than
+    // the one they sit in today — so on an ordinary company this WHERE returns zero rows and nothing
+    // further happens. The run's own payslips are unioned in rather than replaced, because an employment
+    // the run paid is one this close is finalising whatever the history now says about it.
+    const closePeriodStart = `${batch.payPeriod}-01`;
+    const [cy, cm] = batch.payPeriod.split('-').map(Number);
+    const closePeriodEnd = `${batch.payPeriod}-${String(daysInMonth(cy, cm)).padStart(2, '0')}`;
     const closeSlips = await tx
       .select({ employmentId: payslip.employmentId })
       .from(payslip)
       .where(eq(payslip.batchId, p.batchId));
-    if (closeSlips.length > 0) {
-      const [cy, cm] = batch.payPeriod.split('-').map(Number);
-      const closeIds = [...new Set(closeSlips.map((s) => s.employmentId))];
+    const closeOwed = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(
+        and(
+          employedByCompanyDuring(batch.companyId, closePeriodStart, closePeriodEnd),
+          entityChangedDuring(closePeriodStart, closePeriodEnd),
+          // The same tenure predicate generatePayslips selects on, so somebody whose employment did not
+          // overlap this period at all cannot refuse a close over days nobody owed them.
+          lte(employment.hiredOn, closePeriodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, closePeriodStart)),
+        ),
+      );
+    const closeIds = [...new Set([...closeSlips.map((s) => s.employmentId), ...closeOwed.map((e) => e.id)])];
+    if (closeIds.length > 0) {
       const closeCurrentCompany = new Map(
         (
           await tx
@@ -5731,17 +5798,32 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
       );
       const closeCoverage = await segmentedCoverage(tx, {
         payPeriod: batch.payPeriod,
-        periodStart: `${batch.payPeriod}-01`,
-        periodEnd: `${batch.payPeriod}-${String(daysInMonth(cy, cm)).padStart(2, '0')}`,
+        periodStart: closePeriodStart,
+        periodEnd: closePeriodEnd,
         employmentIds: closeIds,
         currentCompanyById: closeCurrentCompany,
       });
-      // A company named by a segment with no regular run for the period is reported as an unpaid stretch
-      // in its own right — `coverageDefects` already renders it as a gap, because a company with no run
-      // has issued no claim. The `missingCompanyIds` arm catches the one case that would otherwise slip
-      // through: a segment whose days ARE claimed by someone else's slip (an overlap), where the gap test
-      // alone would be satisfied.
-      const bad = closeCoverage.filter((c) => c.defects.length > 0 || c.missingCompanyIds.length > 0);
+      // THREE ARMS, BECAUSE THE MONTH CAN FAIL TO ADD UP IN THREE DIFFERENT SHAPES and the calendar test
+      // alone sees only two of them:
+      //
+      //   `defects`            — the days themselves: an unpaid stretch, or one claimed twice.
+      //   `missingCompanyIds`  — a segment whose employer has no regular run for the period at all. Its
+      //                          days usually show as a gap too, but not when somebody ELSE's slip claims
+      //                          them, which is an overlap the gap test alone would be satisfied by.
+      //   `counterparts[].stale` — AND THIS IS THE ONE THAT WAS COMPUTED AND NEVER READ. It asks each
+      //                          segment's employer "have you issued exactly these days?", which is a
+      //                          different question from "is every day of the month claimed by someone".
+      //                          The ordinary sequence that closed clean without it: Fiamma's August is
+      //                          processed BEFORE the transfer is recorded, so it holds a whole-month
+      //                          slip; the transfer to ISEDECOR effective 11 August is then recorded;
+      //                          ISEDECOR's run exists as a DRAFT. Every day of August is claimed — by
+      //                          Fiamma, for days it does not own — so there is no gap and no overlap,
+      //                          and a draft batch is not a missing company. Both surviving arms pass.
+      //                          `stale` says what is actually wrong: Fiamma has issued 01–31 where it
+      //                          owes 01–10, and ISEDECOR has issued nothing at all.
+      const bad = closeCoverage.filter(
+        (c) => c.defects.length > 0 || c.missingCompanyIds.length > 0 || c.counterparts.some((cp) => cp.stale),
+      );
       if (bad.length > 0) throw new PayrollCoverageIncompleteError(bad);
     }
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
