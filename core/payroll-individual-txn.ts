@@ -23,7 +23,16 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, employment, payComponent, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
+import {
+  company,
+  employment,
+  payComponent,
+  payrollBatch,
+  payrollCycle,
+  payrollIndividualTxn,
+  person,
+  type PayrollTxnKind,
+} from '../db/schema';
 import {
   BatchNotDraftError,
   daysInMonth,
@@ -228,6 +237,67 @@ export class InvalidTxnComponentError extends Error {
   }
 }
 
+/**
+ * c11e81aa — thrown when the Pay Cycle named on a write cannot be honoured.
+ *
+ * Four reasons, and every one of them is a REFUSAL rather than a silent fallback, because the fallback is
+ * what the whole change exists to remove: a row that names a cycle nobody can pay it under must not be
+ * quietly written as "no cycle" and then collected by the regular run.
+ *
+ *  - `not_found`      — no such cycle row (or RLS hides it).
+ *  - `archived`       — the cycle has been retired from the catalogue, so no run of it will be opened.
+ *  - `company_mismatch` — the cycle belongs to another company; cycle ids are per company.
+ *  - `run_mismatch`   — the write targets an EXISTING run whose type is not this cycle's. This is the
+ *                       "validate any change to the Pay Cycle before saving" case: moving a row between
+ *                       runs is not something this ledger's edit path does, so naming a cycle that
+ *                       disagrees with the run the row is on is refused rather than half-applied.
+ */
+export class InvalidTxnCycleError extends Error {
+  constructor(public readonly reason: 'not_found' | 'archived' | 'company_mismatch' | 'run_mismatch') {
+    super(`Invalid pay cycle for this transaction (${reason}).`);
+    this.name = 'InvalidTxnCycleError';
+  }
+}
+
+/**
+ * c11e81aa — validate an intended Pay Cycle against the write's own target, and return the id to store.
+ *
+ * `undefined` means "the caller said nothing about the cycle" and leaves the stored value alone; `null`
+ * means "no cycle", which is what every row on production carries today and what attach-on-generate reads
+ * as "the regular run may collect me".
+ *
+ * The company is taken from the RESOLVED TARGET, never from the client: a cycle id from a company the
+ * caller can see but this row does not belong to is exactly the cross-company write the scope fence
+ * exists to stop, and it would otherwise route somebody else's money.
+ */
+async function resolveIntendedCycleId(
+  tx: Tx,
+  p: {
+    intendedCycleId: string | null | undefined;
+    companyId: string;
+    /** The run the row is (or is becoming) attached to, when there is one — null for a period-keyed row. */
+    batchRunType: string | null;
+  },
+): Promise<string | null | undefined> {
+  if (p.intendedCycleId === undefined) return undefined;
+  if (p.intendedCycleId === null || p.intendedCycleId === '') return null;
+  const [row] = await tx
+    .select({
+      id: payrollCycle.id,
+      companyId: payrollCycle.companyId,
+      runType: payrollCycle.runType,
+      archivedAt: payrollCycle.archivedAt,
+    })
+    .from(payrollCycle)
+    .where(eq(payrollCycle.id, p.intendedCycleId))
+    .limit(1);
+  if (!row) throw new InvalidTxnCycleError('not_found');
+  if (row.companyId !== p.companyId) throw new InvalidTxnCycleError('company_mismatch');
+  if (row.archivedAt != null) throw new InvalidTxnCycleError('archived');
+  if (p.batchRunType != null && row.runType !== p.batchRunType) throw new InvalidTxnCycleError('run_mismatch');
+  return row.id;
+}
+
 /** Map a Payroll Item Master catalog kind onto the ledger txn kind it may attach to. 'non_payable' (BIK)
  *  components ride an earning row — the kernel folds them into an informational record line, never cash. */
 const COMPONENT_KIND_TO_TXN_KIND: Record<string, TxnKind | undefined> = {
@@ -289,17 +359,19 @@ async function resolveTxnTarget(
   scope: BatchScope | null;
   /** null for the unattached case — there is no run to be stale. */
   status: WritableBatchStatus | null;
+  /** c11e81aa — the target run's type, null when the row is period-keyed (no run to disagree with). */
+  runType: string | null;
 }> {
   if (p.batchId) {
-    const { payPeriod, companyId, scope, status } = await loadWritableBatch(tx, p.batchId);
-    return { batchId: p.batchId, companyId, payPeriod, scope, status };
+    const { payPeriod, companyId, scope, status, runType } = await loadWritableBatch(tx, p.batchId);
+    return { batchId: p.batchId, companyId, payPeriod, scope, status, runType };
   }
   if (!p.companyId || !p.payPeriod) throw new MissingTxnTargetError();
   if (!isPayPeriod(p.payPeriod)) throw new InvalidPayPeriodError(p.payPeriod);
   // The company must exist in-tenant (RLS also scopes it); fail loudly rather than insert a dangling FK.
   const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
   if (!co) throw new MissingTxnTargetError();
-  return { batchId: null, companyId: p.companyId, payPeriod: p.payPeriod, scope: null, status: null };
+  return { batchId: null, companyId: p.companyId, payPeriod: p.payPeriod, scope: null, status: null, runType: null };
 }
 
 export type IndividualTxnRow = {
@@ -354,13 +426,22 @@ export type WritableBatchStatus = (typeof WRITABLE_BATCH_STATUSES)[number];
 export async function loadWritableBatch(
   tx: Tx,
   batchId: string,
-): Promise<{ payPeriod: string; companyId: string; scope: BatchScope | null; status: WritableBatchStatus }> {
+): Promise<{
+  payPeriod: string;
+  companyId: string;
+  scope: BatchScope | null;
+  status: WritableBatchStatus;
+  /** c11e81aa — the run's own type, the only thing a batch records about which cycle opened it (a
+   *  payroll_batch stores no cycle id). It is what an intended cycle is checked against. */
+  runType: string;
+}> {
   const [batch] = await tx
     .select({
       status: payrollBatch.status,
       payPeriod: payrollBatch.payPeriod,
       companyId: payrollBatch.companyId,
       scope: payrollBatch.scope,
+      runType: payrollBatch.runType,
     })
     .from(payrollBatch)
     .where(eq(payrollBatch.id, batchId))
@@ -372,6 +453,7 @@ export async function loadWritableBatch(
     companyId: batch.companyId,
     scope: (batch.scope as BatchScope | null) ?? null,
     status: batch.status as WritableBatchStatus,
+    runType: batch.runType as string,
   };
 }
 
@@ -425,6 +507,9 @@ export type IndividualTxnDetail = {
   quantity: string | null;
   unit: string | null;
   notes: string | null;
+  /** c11e81aa — the configured Pay Cycle this row was saved against, or null when it named none. The
+   *  Edit form prefills its Pay Cycle from this; attach-on-generate routes the row by it. */
+  intendedCycleId: string | null;
   /** True while `updateIndividualTxn` / `deleteIndividualTxn` would accept this row. */
   editable: boolean;
   /** 49e7e0a2 — the row sits on a run that is already PROCESSED, so changing it makes that run's payslips,
@@ -466,6 +551,7 @@ export function getIndividualTxn(ctx: SessionContext, p: { id: string }): Promis
         quantity: payrollIndividualTxn.quantity,
         unit: payrollIndividualTxn.unit,
         notes: payrollIndividualTxn.notes,
+        intendedCycleId: payrollIndividualTxn.intendedCycleId,
         batchStatus: payrollBatch.status,
       })
       .from(payrollIndividualTxn)
@@ -617,7 +703,22 @@ export type BulkTxnRow = {
  */
 export function createIndividualTxnsBulk(
   ctx: SessionContext,
-  p: { batchId?: string; companyId?: string; payPeriod?: string; employmentIds: string[]; rows: BulkTxnRow[] },
+  p: {
+    batchId?: string;
+    companyId?: string;
+    payPeriod?: string;
+    employmentIds: string[];
+    rows: BulkTxnRow[];
+    /**
+     * c11e81aa — the configured Pay Cycle the operator chose, for the WHOLE submission. On the target
+     * rather than on each row because it is a property of where this money is being paid, not of a line:
+     * a day-by-day grid is one entry keyed across five dates and cannot land on two different runs.
+     *
+     * Omitted / null ⇒ no cycle named, which is every row on production today and which the month's
+     * REGULAR run collects exactly as it does now.
+     */
+    intendedCycleId?: string | null;
+  },
 ): Promise<{ ids: string[] }> {
   return withTenant(ctx, async (tx) => {
     // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
@@ -628,6 +729,14 @@ export function createIndividualTxnsBulk(
     // C5/C8) or, since f1564110 Phase 2, an unattached (company, pay month) pair when no run exists yet.
     const target = await resolveTxnTarget(tx, p);
     const { payPeriod, companyId: targetCompanyId, scope } = target;
+    // c11e81aa — validated against the RESOLVED target's company (never the client's), and against the
+    // target run's type when there is one. Resolved before any insert so a bad cycle costs nothing.
+    const intendedCycleId =
+      (await resolveIntendedCycleId(tx, {
+        intendedCycleId: p.intendedCycleId,
+        companyId: targetCompanyId,
+        batchRunType: target.runType,
+      })) ?? null;
 
     // C3 (per employee) — every chosen employment must belong to the target company. One `inArray` query
     // fetches them all; a missing / mismatched employment fails the whole transaction (nothing persists).
@@ -699,6 +808,7 @@ export function createIndividualTxnsBulk(
             notes: r.notes ?? null,
             source: r.source ?? null,
             sourceRef: r.sourceRef ?? null,
+            intendedCycleId,
           })
           .returning({ id: payrollIndividualTxn.id });
         // C7 — one event PER row, byte-identical in shape to the single-row create event.
@@ -718,6 +828,9 @@ export function createIndividualTxnsBulk(
             kind: r.kind,
             componentId: r.componentId ?? null,
             txnDate: r.txnDate,
+            // c11e81aa — WHICH RUN THIS ROW IS WAITING FOR, recorded at the moment the operator chose it.
+            // A reference id, so it stays inside ADR-0030 Layer 0 exactly as componentId does.
+            intendedCycleId,
           },
         });
         ids.push(row.id);
@@ -838,17 +951,23 @@ export function updateIndividualTxn(
     unit?: string | null;
     notes?: string | null;
     componentId?: string | null;
+    /** c11e81aa — the configured Pay Cycle. OMITTED leaves the stored choice alone; null clears it (the
+     *  row falls back to "the regular run may collect me"). On a row already attached to a run, the named
+     *  cycle must agree with that run's type — see InvalidTxnCycleError('run_mismatch'). */
+    intendedCycleId?: string | null;
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
       .select({
         batchId: payrollIndividualTxn.batchId,
+        companyId: payrollIndividualTxn.companyId,
         payPeriod: payrollIndividualTxn.payPeriod,
         employmentId: payrollIndividualTxn.employmentId,
         kind: payrollIndividualTxn.kind,
         componentId: payrollIndividualTxn.componentId,
         txnDate: payrollIndividualTxn.txnDate,
+        intendedCycleId: payrollIndividualTxn.intendedCycleId,
       })
       .from(payrollIndividualTxn)
       .where(eq(payrollIndividualTxn.id, p.id))
@@ -878,6 +997,13 @@ export function updateIndividualTxn(
           ? existing.componentId
           : null;
     await assertTxnComponents(tx, [{ kind: nextKind, componentId: nextComponentId }], false);
+    // c11e81aa — the company comes from the ROW (attached rows get it from their batch either way), so a
+    // cycle from another company is refused here rather than stored and acted on at generate time.
+    const nextIntendedCycleId = await resolveIntendedCycleId(tx, {
+      intendedCycleId: p.intendedCycleId,
+      companyId: batch != null ? batch.companyId : existing.companyId!,
+      batchRunType: batch != null ? batch.runType : null,
+    });
 
     const patch: Record<string, unknown> = {};
     if (p.kind !== undefined) patch.kind = p.kind;
@@ -887,6 +1013,11 @@ export function updateIndividualTxn(
     if (p.quantity !== undefined) patch.quantity = p.quantity != null ? money(p.quantity) : null;
     if (p.unit !== undefined) patch.unit = p.unit ?? null;
     if (p.notes !== undefined) patch.notes = p.notes ?? null;
+    // Written only when it actually MOVES — an edit that leaves the cycle alone must not stamp
+    // `updated_at` (see the note below on why that timestamp has to stay meaningful).
+    if (nextIntendedCycleId !== undefined && nextIntendedCycleId !== existing.intendedCycleId) {
+      patch.intendedCycleId = nextIntendedCycleId;
+    }
     if (Object.keys(patch).length > 0) {
       // 49e7e0a2 — stamp WHEN this row changed. Written only alongside a real field change, so a no-op
       // patch stays a no-op and an untouched row keeps a NULL updated_at, which is what makes
@@ -907,8 +1038,19 @@ export function updateIndividualTxn(
       subjectEmploymentId: existing.employmentId,
       // References only (no cleartext amount) — ADR-0030 Layer 0.
       payload: {
-        before: { kind: existing.kind, txnDate: existing.txnDate, componentId: existing.componentId },
-        after: { kind: nextKind, txnDate: nextDate, componentId: nextComponentId },
+        before: {
+          kind: existing.kind,
+          txnDate: existing.txnDate,
+          componentId: existing.componentId,
+          intendedCycleId: existing.intendedCycleId,
+        },
+        after: {
+          kind: nextKind,
+          txnDate: nextDate,
+          componentId: nextComponentId,
+          // `undefined` means the caller said nothing about the cycle, so the stored one stands.
+          intendedCycleId: nextIntendedCycleId === undefined ? existing.intendedCycleId : nextIntendedCycleId,
+        },
       },
     });
     return { id: p.id };

@@ -49,6 +49,7 @@ import {
   leaveType,
   payPeriod,
   payrollBatch,
+  payrollCycle,
   payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollInput,
@@ -2677,8 +2678,10 @@ export async function generatePayslips(
     // f1564110 Phase 2 — attach-on-generate (amends ADR-0056). One-off individual transactions keyed in
     // BEFORE this run existed (batch_id NULL, matching company + pay month) are stamped onto this batch now,
     // inside the same transaction, so the ledger they belong to is the run that pays the month. REGULAR run
-    // only: in multi-cycle months the off-cycle/bonus/adjustment runs keep explicit-batch targeting via the
-    // wizard, so an unattached row can never be double-collected by a sibling run. Full draft→processed
+    // only — AMENDED BY c11e81aa BELOW, which routes a row that NAMED a cycle to that cycle's run instead;
+    // a row that named none is still the regular run's and nobody else's. In multi-cycle months the
+    // off-cycle/bonus/adjustment runs otherwise keep explicit-batch targeting via the wizard, so an
+    // unattached row can never be double-collected by a sibling run. Full draft→processed
     // generation only (a subset reprocess recomputes a processed run whose ledger is already attached).
     // Scope-constrained runs collect only in-scope employees' rows; the rest stay unattached for a later
     // (re)generation or a widened scope. Kernel consumption of the attached rows is Phase 3 (flag-gated);
@@ -2689,8 +2692,43 @@ export async function generatePayslips(
     // belongs to this run exactly as it would have at the original processing. The narrowing to the added
     // ids is what keeps that true — an employment being RECALCULATED still collects nothing, because its
     // ledger was attached when it was first paid and re-attaching would pay a later month's row here.
+    //
+    // c11e81aa AMENDS THE "REGULAR RUN ONLY" RULE — BY THE ROW'S OWN INTENT, NOT BY WIDENING THE RUN.
+    // The entry form now offers the CONFIGURED Pay Cycles (Payroll → Settings → Payroll Cycles) rather
+    // than the runs that happen to exist, so a row keyed for a future month can name "Bonus". That choice
+    // is stored on the row (`intended_cycle_id`, 0441) and this is where it is honoured:
+    //
+    //   • a row that named NO cycle — every row on production today — is collected by the REGULAR run,
+    //     exactly as before, and by nothing else;
+    //   • a row that named a cycle is collected ONLY by a run whose type is that cycle's type. So the
+    //     regular run stops collecting a row the operator marked "Bonus" (the silent pay-affecting
+    //     surprise this change exists to prevent), and the bonus run — which collects nothing today —
+    //     collects it instead.
+    //
+    // The double-collection guard the old rule bought by refusing every non-regular run therefore
+    // survives: each unattached row is claimable by exactly one run TYPE in the month, and the batch's
+    // own `batch_id IS NULL` predicate makes the first run to generate the only one that can take it.
+    //
+    // Matching is by RUN TYPE within the batch's company because a payroll_batch stores no cycle id
+    // (core/admin.ts, setCompanyDefaultPayrollCycle: "batches snapshot their run type at creation").
+    // ARCHIVED cycles are included: retiring a cycle from the catalogue must not strand money already
+    // keyed against it.
     const attachForAdded = subset !== null && addedEmploymentIds.length > 0;
-    if ((!subset || attachForAdded) && batch.runType === 'regular') {
+    const intentCycleIds = (
+      await tx
+        .select({ id: payrollCycle.id })
+        .from(payrollCycle)
+        .where(and(eq(payrollCycle.companyId, batch.companyId), eq(payrollCycle.runType, batch.runType)))
+    ).map((c) => c.id);
+    // A non-regular run with no cycle of its type in the company can claim nothing, and `inArray` with an
+    // empty list is not a query worth issuing — skip the whole statement, which is today's behaviour.
+    const collectsUnintended = batch.runType === 'regular';
+    if ((!subset || attachForAdded) && (collectsUnintended || intentCycleIds.length > 0)) {
+      const intentFilter = collectsUnintended
+        ? intentCycleIds.length > 0
+          ? or(isNull(payrollIndividualTxn.intendedCycleId), inArray(payrollIndividualTxn.intendedCycleId, intentCycleIds))
+          : isNull(payrollIndividualTxn.intendedCycleId)
+        : inArray(payrollIndividualTxn.intendedCycleId, intentCycleIds);
       const attachedTxns = await tx
         .update(payrollIndividualTxn)
         .set({ batchId: p.batchId })
@@ -2699,6 +2737,7 @@ export async function generatePayslips(
             isNull(payrollIndividualTxn.batchId),
             eq(payrollIndividualTxn.companyId, batch.companyId),
             eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+            intentFilter,
             subset
               ? inArray(payrollIndividualTxn.employmentId, addedEmploymentIds)
               : scopeConstrained

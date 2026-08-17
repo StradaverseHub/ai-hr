@@ -66,6 +66,7 @@ import {
   payComponent,
   payrollBatch,
   payrollBatchComponent,
+  payrollCycle,
   payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollInput,
@@ -1912,8 +1913,13 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * month's run existed carries `batch_id = NULL` + (company, pay_period); `generatePayslips` stamps it onto
  * the month's REGULAR run at generate time (attach-on-generate, 0175). So for a regular run those rows WILL
  * be paid by this run even though nothing links them to it yet — omitting them would under-report the very
- * figure the operator is checking. They are marked `note: 'unattached'` so the screen can say so. An
- * ADDITIONAL/off-cycle run does not attach them, so it does not count them.
+ * figure the operator is checking. They are marked `note: 'unattached'` so the screen can say so.
+ *
+ * c11e81aa AMENDS THE SECOND HALF OF THAT SENTENCE (it read "an ADDITIONAL/off-cycle run does not attach
+ * them, so it does not count them"). A period-keyed row may now NAME the Pay Cycle it is waiting for, and
+ * the run that collects it is the run of that cycle's type. So the regular run stops counting a row marked
+ * "Bonus" — which it will not pay — and a bonus run counts the rows that named a bonus cycle. A row that
+ * named no cycle is still the regular run's and nobody else's, which is every row on production today.
  *
  * THE FLAGS ARE MIRRORED, NOT IGNORED — this is the difference between a useful card and a lying one.
  * Three doors only reach a payslip when a flag is on: the typed-component doors (fixed transactions and
@@ -2023,9 +2029,30 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       push({ employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode }, 'batchComponent', signed, r.itemName);
     }
 
-    // ── payroll_individual_txn (door 3): attached to this batch, plus — for a REGULAR run only — the
-    // period-keyed rows attach-on-generate will stamp onto it. See the docstring. ──
-    const attachesUnattached = batch.runType === 'regular';
+    // ── payroll_individual_txn (door 3): attached to this batch, plus the period-keyed rows
+    // attach-on-generate will stamp onto it. See the docstring. ──
+    //
+    // c11e81aa — MIRRORS THE AMENDED COLLECTION RULE, because this card's whole contract is that "what
+    // this run will pay" and "what this card reports" cannot disagree. A period-keyed row now names the
+    // Pay Cycle it is waiting for (`intended_cycle_id`, 0441), so:
+    //   • the REGULAR run collects rows that named no cycle, plus rows naming a regular cycle — and it
+    //     must STOP promising a row somebody marked "Bonus", which it will not pay;
+    //   • a non-regular run collects rows naming a cycle of ITS type — money this card used to report as
+    //     belonging to nobody.
+    // Resolved from the same catalogue and by the same run-type match generatePayslips uses.
+    const runCycleIds = (
+      await tx
+        .select({ id: payrollCycle.id })
+        .from(payrollCycle)
+        .where(and(eq(payrollCycle.companyId, batch.companyId), eq(payrollCycle.runType, batch.runType)))
+    ).map((c) => c.id);
+    const collectsUnintended = batch.runType === 'regular';
+    const attachesUnattached = collectsUnintended || runCycleIds.length > 0;
+    const intentFilter = collectsUnintended
+      ? runCycleIds.length > 0
+        ? or(isNull(payrollIndividualTxn.intendedCycleId), inArray(payrollIndividualTxn.intendedCycleId, runCycleIds))
+        : isNull(payrollIndividualTxn.intendedCycleId)
+      : inArray(payrollIndividualTxn.intendedCycleId, runCycleIds);
     const txnRows = await tx
       .select({
         employmentId: payrollIndividualTxn.employmentId,
@@ -2048,6 +2075,7 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
                 isNull(payrollIndividualTxn.batchId),
                 eq(payrollIndividualTxn.companyId, batch.companyId),
                 eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+                intentFilter,
               ),
             )
           : eq(payrollIndividualTxn.batchId, p.batchId),

@@ -2514,6 +2514,13 @@
       "when": 1781862540000,
       "tag": "0440_assignment_company",
       "breakpoints": true
+    },
+    {
+      "idx": 441,
+      "version": "7",
+      "when": 1781862541000,
+      "tag": "0441_individual_txn_intended_cycle",
+      "breakpoints": true
     }
   ]
 }

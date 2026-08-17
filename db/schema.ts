@@ -5807,6 +5807,16 @@ export const payrollIndividualTxn = pgTable(
     // When those payslips were written. Stamped once and never re-stamped, so it remains the instant of
     // the FIRST payment rather than of the latest re-generation.
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    // c11e81aa (0441) — WHICH CONFIGURED PAY CYCLE THE OPERATOR CHOSE for a row keyed before any run
+    // existed. NULL on every legacy row and on every row saved without naming one, and NULL is exactly
+    // today's behaviour: attach-on-generate collects a NULL-intent row onto the month's REGULAR run.
+    //
+    // A cycle, not a run: the run may not exist yet (that is the point of entering early), and the
+    // catalogue is per company (core/payroll-cycle.ts), so the app re-validates company membership on
+    // every write. `generatePayslips` matches a run to an intent by RUN TYPE within the batch's company,
+    // because a payroll_batch stores no cycle id (see core/admin.ts setCompanyDefaultPayrollCycle:
+    // "batches snapshot their run type at creation and store no cycle id").
+    intendedCycleId: uuid('intended_cycle_id').references(() => payrollCycle.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -5829,6 +5839,12 @@ export const payrollIndividualTxn = pgTable(
     index('payroll_individual_txn_consumed_idx')
       .on(t.consumedBatchId)
       .where(sql`consumed_batch_id is not null`),
+    // c11e81aa (0441) — PARTIAL for the same reason as the two above: it is empty the day it lands and
+    // only ever holds rows whose operator named a cycle. Attach-on-generate's added predicate is
+    // "intent is null OR intent is one of this run's cycles", and this is the half of it that has rows.
+    index('payroll_individual_txn_intended_cycle_idx')
+      .on(t.intendedCycleId)
+      .where(sql`intended_cycle_id is not null`),
   ],
 );
 

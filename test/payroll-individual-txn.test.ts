@@ -867,7 +867,14 @@ describe('1.2.2 Individual Transaction', () => {
     expect(un.map((r) => r.id)).toEqual(jun.ids);
   });
 
-  it('attach-on-generate targets the REGULAR run only: an off-cycle generation leaves rows unattached', async () => {
+  it('attach-on-generate: a row that named NO pay cycle is the REGULAR run’s — an off-cycle generation leaves it unattached', async () => {
+    // c11e81aa NARROWED THE RULE THIS CASE PINS, AND THE CASE SURVIVES BECAUSE THE NARROWING KEPT IT.
+    // The rule used to be "regular run, full stop"; it is now "the regular run collects a row that named
+    // no cycle (or named a regular one), and nobody else does". This row names none — which is every row
+    // on production — so the off-cycle run must still leave it alone and the regular run must still take
+    // it. That is the invariant that stops one month's money being paid twice, and it is asserted below
+    // unchanged; only the title moved.
+    //
     // Same conversion as the C1 test above: the `multi_cycle_payroll` entitlement row is what lets the
     // off-cycle run exist, and `multi` (resolved after the grant) is the context that can see it.
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');

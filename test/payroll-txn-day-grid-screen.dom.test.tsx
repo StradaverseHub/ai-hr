@@ -155,6 +155,7 @@ function renderWorkspace(
         batches={opts.batches ?? [BATCH]}
         companies={[COMPANY]}
         payItems={opts.payItems ?? [OT]}
+        payrollCycles={[]}
         processHref="/payroll"
         requireComponent={false}
         currentPeriod="2026-08"

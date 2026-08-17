@@ -205,6 +205,7 @@ describe.each(LOCALES)('r191 · %s — every new caption resolves against the re
         batches={[BATCH]}
         companies={[COMPANY]}
         payItems={[OT]}
+        payrollCycles={[]}
         processHref="/payroll"
         requireComponent={false}
         currentPeriod="2026-08"
