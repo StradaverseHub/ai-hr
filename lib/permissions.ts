@@ -389,9 +389,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     // a324a4b3 renamed the nav KEY to match the string it already resolved to (nav.attendancePolicy →
     // nav.shiftSettings). screenKey stays 'attendancePolicy' — it may key stored role configs, the same
     // label-only split test/my-absence-nav.test.ts pins for the /leave column.
+    // ad52212d round 1: the row is now simply "Shift" under the Attendance settings menu (nav.shiftSettings
+    // → nav.shift). The matrix FOLLOWS the nav label and KEEPS its screenKey, as above.
     screenKey: 'attendancePolicy',
     href: '/admin/attendance',
-    labelKey: 'nav.shiftSettings',
+    labelKey: 'nav.shift',
     guard: 'requireAdmin',
     // '/roster/import' (23390097) and '/attendance/recompute' (1c1b321a) BOTH call requireAdmin, so both
     // are guarded pages and test/function-access.test.ts asserts reverse completeness over every one on
@@ -418,12 +420,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     // to its own screen. requireAdmin (same guard the settings had when they lived on /admin/attendance).
     // a324a4b3: nav.attendancePolicyConfig → nav.attendancePolicy, the string it already resolved to.
     // screenKey stays 'attendancePolicyConfig' (label-only, as above).
+    // ad52212d round 1: the row now reads "Overtime Pattern" (nav.attendancePolicy → nav.overtimePattern) —
+    // the rule library IS an overtime pattern in substance. Label-only again; screenKey untouched.
     screenKey: 'attendancePolicyConfig',
     href: '/admin/attendance-policy',
-    labelKey: 'nav.attendancePolicy',
+    labelKey: 'nav.overtimePattern',
     guard: 'requireAdmin',
     // af7a8eb4 (r186): the working-hours schedule block moved off the policy page onto its own route.
     // requireAdmin, same guard as its parent, so it rides this screen rather than getting a column.
+    // ad52212d round 1 gave '/admin/attendance-policy/schedule' its own nav row ("Work Schedule"). It keeps
+    // riding THIS column: same guard, same admin surface, and the reverse-completeness case only asks that
+    // every guarded route on disk be covered — a second nav row does not make it a second screen.
     routes: [
       '/admin/attendance-policy',
       '/admin/attendance-policy/schedule',

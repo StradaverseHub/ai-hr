@@ -291,9 +291,27 @@ export class StandardRuleUndeletableError extends Error {
     this.name = 'StandardRuleUndeletableError';
   }
 }
+/**
+ * ad52212d ROUND 2 — the refusal NAMES what is using the pattern.
+ *
+ * It used to say "assigned to one or more shifts", which is the house shape (cf. deleteGradeGroup's "used
+ * by one or more leave approval rules") but leaves the administrator to open every shift in the library to
+ * find out which. The shifts are already read to decide the refusal, so naming them costs one column and
+ * turns the message into the instruction it was pretending to be.
+ *
+ * At most three are listed with "+N more" after them: an overtime pattern assigned to twenty shifts would
+ * otherwise produce an error banner longer than the table it interrupts. The no-argument form is kept and
+ * still produces the original sentence, so any caller constructing this without a list is unchanged.
+ */
 export class AttendanceRuleInUseError extends Error {
-  constructor() {
-    super('This rule is assigned to one or more shifts. Reassign those shifts before deleting it.');
+  constructor(shiftNames: readonly string[] = []) {
+    const shown = shiftNames.slice(0, 3);
+    const rest = shiftNames.length - shown.length;
+    super(
+      shown.length === 0
+        ? 'This rule is assigned to one or more shifts. Reassign those shifts before deleting it.'
+        : `This overtime pattern is used by ${shown.join(', ')}${rest > 0 ? ` and ${rest} more shift${rest === 1 ? '' : 's'}` : ''}. Reassign ${shiftNames.length === 1 ? 'that shift' : 'those shifts'} before deleting it.`,
+    );
     this.name = 'AttendanceRuleInUseError';
   }
 }
@@ -604,6 +622,151 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
   });
 }
 
+/**
+ * ad52212d ROUND 2 — DUPLICATE an overtime pattern (the reporter's "Duplicate" action on the list).
+ *
+ * The whole point of the request is that a second pattern usually differs from an existing one by a rate or
+ * a band boundary, not by all fourteen boxes. Modelled on core/roster.ts copyShift, which solved the same
+ * problem for the shift library, and it shares that function's two decisions:
+ *
+ *  - NAMING probes until a free name is found, so duplicating twice gives "X (copy)" then "X (copy 2)"
+ *    rather than a dead end on the second click. `attendance_rule_tenant_name_uq` is case-insensitive and
+ *    tenant-wide and — unlike the shift indexes — is NOT partial, so every row counts as taken.
+ *  - The copy lands ACTIVE even from an inactive source: you duplicate a pattern in order to use it.
+ *
+ * TWO THINGS DELIBERATELY DO NOT TRAVEL WITH THE COPY:
+ *  - `isDefault`. There is exactly one Standard rule per tenant (a partial unique index enforces it), and
+ *    duplicating Standard must produce an ordinary pattern, not a second undeletable one.
+ *  - `deductionsEffectiveFrom`. Carrying the source's date would hand a brand-new pattern a start date in
+ *    the past, i.e. deductions reaching a closed payroll period — the exact thing 7c834696 built
+ *    resolveDeductionStart to make unrepresentable. The copy starts deducting today, if at all.
+ *
+ * Returns the NEW rule's id; the caller lands the operator on its edit form, which is where they change the
+ * bands that made them duplicate in the first place.
+ */
+export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): Promise<{ id: string }> {
+  return withTenant(ctx, async (tx) => {
+    const [src] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1);
+    if (!src) throw new Error('Rule not found.');
+
+    const taken = new Set(
+      (await tx.select({ name: attendanceRule.name }).from(attendanceRule)).map((r) => r.name.trim().toLowerCase()),
+    );
+    const base = src.name.trim();
+    let name = '';
+    for (let n = 1; n <= 99; n++) {
+      const candidate = n === 1 ? `${base} (copy)` : `${base} (copy ${n})`;
+      if (taken.has(candidate.toLowerCase())) continue;
+      name = candidate;
+      break;
+    }
+    if (!name) throw new Error(`A rule named “${base} (copy)” already exists.`);
+
+    let ruleId: string;
+    try {
+      const [row] = await tx
+        .insert(attendanceRule)
+        .values({
+          tenantId: ctx.tenantId,
+          name,
+          description: src.description,
+          isDefault: false,
+          status: 'active',
+          lateGracePeriodMinutes: src.lateGracePeriodMinutes,
+          lateAfterMinutes: src.lateAfterMinutes,
+          lateDeductMinutes: src.lateDeductMinutes,
+          includeGraceInLateness: src.includeGraceInLateness,
+          earlyGracePeriodMinutes: src.earlyGracePeriodMinutes,
+          earlyAfterMinutes: src.earlyAfterMinutes,
+          earlyDeductMinutes: src.earlyDeductMinutes,
+          includeGraceInEarlyOut: src.includeGraceInEarlyOut,
+          applyToEarlyOt: src.applyToEarlyOt,
+          applyDeductions: src.applyDeductions,
+          deductionsEffectiveFrom: resolveDeductionStart(src.applyDeductions, null),
+        })
+        .returning({ id: attendanceRule.id });
+      ruleId = row.id;
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new Error(`A rule named “${name}” already exists.`);
+      throw e;
+    }
+
+    // The OT bands ARE the pattern — a copy that lost them would be worse than no copy at all.
+    const rows = await tx
+      .select()
+      .from(attendanceRuleOtRow)
+      .where(eq(attendanceRuleOtRow.ruleId, p.ruleId))
+      .orderBy(asc(attendanceRuleOtRow.sortOrder));
+    if (rows.length > 0) {
+      await tx.insert(attendanceRuleOtRow).values(
+        rows.map((r) => ({
+          tenantId: ctx.tenantId,
+          ruleId,
+          fromMinutes: r.fromMinutes,
+          toMinutes: r.toMinutes,
+          ratePattern: r.ratePattern,
+          rate: r.rate,
+          phRate: r.phRate,
+          roundingMode: r.roundingMode,
+          roundToMinutes: r.roundToMinutes,
+          sortOrder: r.sortOrder,
+        })),
+      );
+    }
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-rule',
+      aggregateId: ruleId,
+      eventType: 'attendance-rule.copied',
+      actor: actorOf(ctx),
+      payload: { name, copiedFromRuleId: p.ruleId, otRowCount: rows.length, applyDeductions: src.applyDeductions },
+    });
+    return { id: ruleId };
+  });
+}
+
+/**
+ * ad52212d ROUND 2 — ACTIVATE / DEACTIVATE an overtime pattern from the list.
+ *
+ * The `status` column has existed since migration 0203 and was already editable, but only by opening the
+ * pattern's edit form and saving the whole record back — which also re-validates and rewrites every band.
+ * This is the one-field write the reporter asked for, and it is deliberately NOT routed through
+ * updateAttendanceRule: a status flip must not be able to fail on an OT ladder that a rule saved before
+ * 7c834696 stage 1 would now be refused for.
+ *
+ * Deactivating does NOT stop a rule calculating. Per db/schema.ts an inactive rule stays assigned and keeps
+ * working; it is hidden from the new-shift picker. Nothing here changes that meaning — a flag that quietly
+ * stopped shifts from being calculated would be a money change hidden in a menu item.
+ */
+export function setAttendanceRuleStatus(
+  ctx: SessionContext,
+  p: { ruleId: string; status: 'active' | 'inactive' },
+): Promise<{ id: string }> {
+  const status = p.status === 'inactive' ? 'inactive' : 'active';
+  return withTenant(ctx, async (tx) => {
+    const [rule] = await tx
+      .select({ id: attendanceRule.id, name: attendanceRule.name })
+      .from(attendanceRule)
+      .where(eq(attendanceRule.id, p.ruleId))
+      .limit(1);
+    if (!rule) throw new Error('Rule not found.');
+    await tx
+      .update(attendanceRule)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(attendanceRule.id, p.ruleId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-rule',
+      aggregateId: p.ruleId,
+      eventType: 'attendance-rule.status-changed',
+      actor: actorOf(ctx),
+      payload: { name: rule.name, status },
+    });
+    return { id: p.ruleId };
+  });
+}
+
 /** Delete a rule. Refuses the Standard (is_default) rule and any rule still assigned to a shift. Appends
  *  attendance-rule.deleted. OT rows cascade via the FK. */
 export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string }): Promise<{ id: string }> {
@@ -615,8 +778,16 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
       .limit(1);
     if (!rule) throw new Error('Rule not found.');
     if (rule.isDefault) throw new StandardRuleUndeletableError();
-    const [inUse] = await tx.select({ id: shift.id }).from(shift).where(eq(shift.ruleId, p.ruleId)).limit(1);
-    if (inUse) throw new AttendanceRuleInUseError();
+    // ad52212d round 2 — the NAMES, not just "is there one". Deliberately UNCAPPED: the message quotes
+    // three and counts the rest, and it can only count the rest honestly if the query returned them. The
+    // shift library is an admin-authored, tenant-wide template set (tens of rows), and this runs once on a
+    // refused delete — the alternative, a `limit(4)`, would report "and 1 more" over any number of shifts.
+    const inUse = await tx
+      .select({ name: shift.name })
+      .from(shift)
+      .where(eq(shift.ruleId, p.ruleId))
+      .orderBy(asc(shift.name));
+    if (inUse.length > 0) throw new AttendanceRuleInUseError(inUse.map((r) => r.name));
     await tx.delete(attendanceRule).where(eq(attendanceRule.id, p.ruleId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

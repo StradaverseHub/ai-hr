@@ -35,7 +35,7 @@ const PACK = fs.readFileSync(path.resolve(__dirname, '../packs/attendance/index.
 /** The rail's combined nav sources: hardcoded groups + the registry-mounted attendance node. */
 const SRC = SIDEBAR + PACK;
 
-/** The ticket's five relocated screens, in its required relative order. */
+/** The ticket's five relocated screens. */
 const TICKET_HREFS = [
   '/admin/holidays',
   '/admin/attendance',
@@ -43,6 +43,16 @@ const TICKET_HREFS = [
   '/admin/locations',
   '/admin/toil',
 ] as const;
+
+/**
+ * ad52212d ROUND 1 — the four that still hold the ticket's relative order among themselves.
+ *
+ * /admin/attendance left the sequence deliberately: it is "Shift", the FIRST of the reporter's three
+ * settings categories, so it now leads the node. That is the change the item asked for, so it is asserted
+ * positively below rather than left to a sequence that would have to be false to accommodate it. The other
+ * four never moved relative to each other and are still checked exactly as the ticket required.
+ */
+const TICKET_TAIL_HREFS = ['/admin/holidays', '/admin/attendance-allowance', '/admin/locations', '/admin/toil'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -61,18 +71,42 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   // The five config screens moved WHOLESALE into the merged node — that is the node this guard follows.
   const node = nodeBlock('ATTENDANCE_NAV');
 
-  it('keeps the parent labelled with the existing nav.attendance key', () => {
-    expect(node).toMatch(/labelKey:\s*'attendance'/);
+  it('keeps the parent labelled with the nav.attendanceSettings key', () => {
+    // Was nav.attendance until ad52212d round 1. The node is the reporter's "Attendance › Settings"
+    // sub-menu now, and it sits in Administration beside "Leave config" and "Claims config", so a third
+    // row reading plain "Attendance" was the duplication they raised the item about. nav.attendance is
+    // NOT deleted — it still labels the /attendance Records column in lib/permissions.ts.
+    expect(node).toMatch(/labelKey:\s*'attendanceSettings'/);
   });
 
-  it('contains all five ticket screens as children, in the ticket order', () => {
-    const positions = TICKET_HREFS.map((href) => {
-      const idx = node.indexOf(`'${href}'`);
-      expect(idx, `${href} is a child of the Attendance node`).toBeGreaterThan(-1);
-      return idx;
-    });
+  it('contains all five ticket screens as children, with the four unmoved ones in the ticket order', () => {
+    for (const href of TICKET_HREFS) {
+      expect(node.indexOf(`'${href}'`), `${href} is a child of the Attendance settings node`).toBeGreaterThan(-1);
+    }
+    const positions = TICKET_TAIL_HREFS.map((href) => node.indexOf(`'${href}'`));
     const sorted = [...positions].sort((a, b) => a - b);
-    expect(positions, 'children follow the ticket order (Holidays → Policy → Allowance → Locations → TOIL)').toEqual(sorted);
+    expect(positions, 'the four keep the ticket order (Holidays → Allowance → Locations → TOIL)').toEqual(sorted);
+  });
+
+  it('ad52212d: the three settings categories lead the node, Shift first', () => {
+    // The item's actual deliverable, stated positively. Shift / Overtime Pattern / Work Schedule are the
+    // three categories the reporter named; everything else follows them.
+    const shift = node.indexOf(`'/admin/attendance'`);
+    const otPattern = node.indexOf(`'/admin/attendance-policy'`);
+    const workSchedule = node.indexOf(`'/admin/attendance-policy/schedule'`);
+    expect(shift, 'Shift is a child').toBeGreaterThan(-1);
+    expect(otPattern, 'Overtime Pattern is a child').toBeGreaterThan(-1);
+    expect(workSchedule, 'Work Schedule is a child').toBeGreaterThan(-1);
+    expect(shift, 'Shift leads').toBeLessThan(otPattern);
+    expect(otPattern, 'Overtime Pattern second').toBeLessThan(workSchedule);
+    for (const href of TICKET_TAIL_HREFS) {
+      expect(workSchedule, `the three categories precede ${href}`).toBeLessThan(node.indexOf(`'${href}'`));
+    }
+    // …and Work Schedule is admin-gated like every other row in this group-gated node.
+    const line = node.split('\n').find((l) => l.includes(`'/admin/attendance-policy/schedule'`));
+    expect(line, 'Work Schedule row exists').toBeDefined();
+    expect(line, 'Work Schedule keeps adminOnly visibility').toMatch(/adminOnly:\s*true/);
+    expect(countQuoted(SRC, '/admin/attendance-policy/schedule'), 'listed exactly once across the rail').toBe(1);
   });
 
   it('admin-gates each of the five children (permissions unchanged by the move)', () => {

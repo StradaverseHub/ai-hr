@@ -103,9 +103,12 @@ const MY_ATTENDANCE_NODE = node('myAttendance');
 const ATTENDANCE_MANAGE_ROWS: ChildItem[] = (modulePackById('attendance')!.navLinks ?? []).filter(
   (l) => l.group === 'manage',
 );
-// The merged menu: Records, the six admin config screens, Roster, Import. It sits in the ungated
-// day-to-day group precisely so each child keeps its OWN gate — see packs/attendance/index.ts.
-const ATTENDANCE_NODE = node('attendance');
+// The Attendance CONFIG menu, in the Administration group. ad52212d round 1 renamed its label key
+// `attendance` → `attendanceSettings` ("Attendance settings"), because it is the reporter's
+// Attendance › Settings sub-menu and now opens on the three categories they named (Shift, Overtime
+// Pattern, Work Schedule). The const name is unchanged — its MOUNT POSITION between Leave config and
+// Claims config is pinned by test/attendance-menu-relocation.test.ts through this identifier.
+const ATTENDANCE_NODE = node('attendanceSettings');
 
 // Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes
 // (packs/claims/index.ts, CLAIMS_NAV_LINKS — provenance comments moved with them), placed at
