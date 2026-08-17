@@ -1880,7 +1880,11 @@
         "cardPending": "{days} chờ duyệt"
       },
       "statusNotGeneratedTitle": "Đã cấu hình, nhưng chưa được tạo",
-      "statusNotGeneratedBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này. Định mức chưa được tạo, nên các con số bên dưới không phải là số ngày bạn được hưởng.",
+      "statusNotGeneratedBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này. Định mức chưa được tạo, nên các con số bên dưới không phải là số ngày bạn được hưởng. Hãy chạy Tạo định mức để cấp. Nếu sau đó các con số vẫn không thay đổi, số dư này có thể đang bị đóng băng để quy đổi thành tiền, hoặc gói quốc gia của công ty này có thể chưa được kích hoạt.",
+      "statusEarnedAccrualTitle": "Tích lũy trong suốt năm, chưa tích lũy được ngày nào",
+      "statusEarnedAccrualBody": "Loại nghỉ phép này được tích lũy dần trong năm nghỉ phép, nên Tạo định mức không cấp nó. Số ngày sẽ xuất hiện khi mỗi lần chạy tích lũy ghi nhận, và chưa có lần nào được ghi nhận cho năm nghỉ phép này.",
+      "statusZeroEntitlementTitle": "Bảng định mức cấp 0 ngày",
+      "statusZeroEntitlementBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng nó cấp 0 ngày cho thâm niên này. Việc tạo định mức sẽ không thay đổi các con số bên dưới cho đến khi các mốc thâm niên trong bảng được thay đổi.",
       "statusEarningMethodMissingTitle": "Chưa đặt phương thức tích lũy",
       "statusEarningMethodMissingBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng chưa chọn phương thức tích lũy, nên việc tạo định mức sẽ cấp 0,00 ngày cho đến khi được đặt.",
       "statusEntitlementTable": "Bảng định mức: {name}"
@@ -2430,9 +2434,13 @@
       },
       "statusGenerated": "Đã tạo",
       "statusNotGenerated": "Chưa được tạo",
+      "statusEarnedAccrual": "Tích lũy trong suốt năm",
+      "statusZeroEntitlement": "Bảng cấp 0 ngày",
       "statusEarningMethodMissing": "Chưa đặt phương thức tích lũy",
       "statusNotConfigured": "Không có bảng định mức",
-      "statusNotGeneratedTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này, nhưng định mức chưa được tạo. Hãy chạy Tạo định mức để cấp.",
+      "statusNotGeneratedTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này, nhưng định mức chưa được tạo. Hãy chạy Tạo định mức để cấp. Nếu sau đó con số vẫn không thay đổi, số dư này có thể đang bị đóng băng để quy đổi thành tiền, hoặc gói quốc gia của công ty này có thể chưa được kích hoạt.",
+      "statusEarnedAccrualTip": "Loại nghỉ phép này được tích lũy dần trong năm nghỉ phép, nên Tạo định mức không cấp nó. Số ngày sẽ xuất hiện khi mỗi lần chạy tích lũy ghi nhận, và chưa có lần nào được ghi nhận cho năm nghỉ phép này.",
+      "statusZeroEntitlementTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng nó cấp 0 ngày cho thâm niên này. Việc tạo định mức sẽ không thay đổi con số này cho đến khi các mốc thâm niên trong bảng được thay đổi.",
       "statusEarningMethodMissingTip": "Có một bảng định mức áp dụng, nhưng loại nghỉ phép này chưa chọn phương thức tích lũy, nên sẽ cấp 0,00 ngày cho đến khi được đặt."
     },
     "typeLabel": "Loại",

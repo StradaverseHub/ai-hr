@@ -1880,7 +1880,11 @@
         "cardPending": "{days} dalam proses"
       },
       "statusNotGeneratedTitle": "Telah dikonfigurasi, tetapi belum dijana",
-      "statusNotGeneratedBody": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini. Kelayakan belum dijana, jadi angka di bawah bukan jumlah kelayakan anda.",
+      "statusNotGeneratedBody": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini. Kelayakan belum dijana, jadi angka di bawah bukan jumlah kelayakan anda. Jalankan Jana Kelayakan untuk memberikannya. Jika angka tidak berubah selepas itu, baki ini mungkin dibekukan untuk penunaian, atau pakej negara bagi syarikat ini mungkin tidak aktif.",
+      "statusEarnedAccrualTitle": "Diperoleh sepanjang tahun, belum ada yang terkumpul",
+      "statusEarnedAccrualBody": "Jenis cuti ini diperoleh secara berperingkat sepanjang tahun cuti, jadi Jana Kelayakan tidak memberikannya. Hari akan muncul apabila setiap larian perolehan mencatatkannya, dan belum ada yang dicatatkan bagi tahun cuti ini.",
+      "statusZeroEntitlementTitle": "Jadual kelayakan memberikan 0 hari",
+      "statusZeroEntitlementBody": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi ia memberikan 0 hari bagi tempoh perkhidmatan ini. Menjana kelayakan tidak akan mengubah angka di bawah sehingga jalur perkhidmatan dalam jadual itu diubah.",
       "statusEarningMethodMissingTitle": "Kaedah perolehan belum ditetapkan",
       "statusEarningMethodMissingBody": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi tiada kaedah perolehan dipilih, jadi penjanaan kelayakan akan memberikan 0.00 hari sehingga satu ditetapkan.",
       "statusEntitlementTable": "Jadual kelayakan: {name}"
@@ -2430,9 +2434,13 @@
       },
       "statusGenerated": "Telah dijana",
       "statusNotGenerated": "Belum dijana",
+      "statusEarnedAccrual": "Terkumpul sepanjang tahun",
+      "statusZeroEntitlement": "Jadual memberikan 0 hari",
       "statusEarningMethodMissing": "Kaedah perolehan belum ditetapkan",
       "statusNotConfigured": "Tiada jadual kelayakan",
-      "statusNotGeneratedTip": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini, tetapi kelayakan belum dijana. Jalankan Jana Kelayakan untuk memberikannya.",
+      "statusNotGeneratedTip": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini, tetapi kelayakan belum dijana. Jalankan Jana Kelayakan untuk memberikannya. Jika angka tidak berubah selepas itu, baki ini mungkin dibekukan untuk penunaian, atau pakej negara bagi syarikat ini mungkin tidak aktif.",
+      "statusEarnedAccrualTip": "Jenis cuti ini diperoleh secara berperingkat sepanjang tahun cuti, jadi Jana Kelayakan tidak memberikannya. Hari akan muncul apabila setiap larian perolehan mencatatkannya, dan belum ada yang dicatatkan bagi tahun cuti ini.",
+      "statusZeroEntitlementTip": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi ia memberikan 0 hari bagi tempoh perkhidmatan ini. Menjana kelayakan tidak akan mengubah angka itu sehingga jalur perkhidmatan dalam jadual itu diubah.",
       "statusEarningMethodMissingTip": "Jadual kelayakan terpakai, tetapi jenis cuti ini tiada kaedah perolehan yang dipilih, jadi ia memberikan 0.00 hari sehingga satu ditetapkan."
     },
     "typeLabel": "Jenis",

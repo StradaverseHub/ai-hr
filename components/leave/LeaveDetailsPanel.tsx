@@ -45,7 +45,7 @@ import {
 // mapping is deferred and a null balance elsewhere are visibly the same kind of nothing.
 const PLACEHOLDER = DAY_DASH;
 
-// 31e39d74 — the two states that need saying out loud, and their copy under `leave.breakdown`.
+// 31e39d74 — the states that need saying out loud, and their copy under `leave.breakdown`.
 //
 // WHY THIS IS A BANNER AND NOT A DESCRIPTOR FIELD. ENTITLEMENT_PANEL_SECTIONS is a list of FIGURES that
 // add up to Available Balance (see entitlement-panel-config.ts); every entry is a signed addend of the
@@ -53,8 +53,16 @@ const PLACEHOLDER = DAY_DASH;
 // there would put a non-addend in a column whose whole property is that it closes. The 584edf44 mandate
 // ("a future breakdown LINE is one config entry, never a JSX change") is about lines of the calculation
 // and is untouched: no formula is computed here and nothing is hardcoded but the copy key.
+//
+// FOUR ENTRIES, NOT TWO, AND THE TWO ADDED ARE THE POINT: `earned_accrual` and `zero_entitlement` are
+// states where pressing Generate Entitlement does NOTHING (core/leave.ts logs `earned_method` /
+// `no_entitlement` and writes no row), so they must never borrow `not_generated`'s copy — that copy names
+// a remedy. See lib/entitlement-status.ts for the full branch table. The map is exhaustive over
+// `entitlementStatusNeedsNotice`, and the test file pins that so a sixth status cannot land captionless.
 const PANEL_STATUS_COPY: Partial<Record<EntitlementStatus, { title: string; body: string }>> = {
   not_generated: { title: 'statusNotGeneratedTitle', body: 'statusNotGeneratedBody' },
+  earned_accrual: { title: 'statusEarnedAccrualTitle', body: 'statusEarnedAccrualBody' },
+  zero_entitlement: { title: 'statusZeroEntitlementTitle', body: 'statusZeroEntitlementBody' },
   earning_method_missing: { title: 'statusEarningMethodMissingTitle', body: 'statusEarningMethodMissingBody' },
 };
 

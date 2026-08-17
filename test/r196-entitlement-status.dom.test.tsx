@@ -33,7 +33,25 @@ import { LeaveDetailsPanel } from '../components/leave/LeaveDetailsPanel';
 import { LeaveBalanceTable } from '../components/leave/leave-balance-table';
 import type { EntitlementBreakdownData } from '../components/leave/EntitlementBreakdown';
 import type { LeaveBalanceRow } from '../components/leave/leave-balance-row';
-import type { EntitlementStatus } from '../lib/entitlement-status';
+import {
+  ENTITLEMENT_STATUS_LABEL_KEY,
+  entitlementStatusNeedsNotice,
+  type EntitlementStatus,
+} from '../lib/entitlement-status';
+
+/** Every status the union can hold, and the subset that paints a caption. Derived from the predicate
+ *  rather than listed, so a status added to the union without copy fails HERE — the render — instead of
+ *  reaching a browser as `MISSING_MESSAGE` or a crash on a `Partial<Record<…>>` lookup. */
+const ALL_STATUSES: EntitlementStatus[] = [
+  'granted',
+  'not_generated',
+  'earned_accrual',
+  'zero_entitlement',
+  'earning_method_missing',
+  'not_configured',
+];
+const ANNOUNCED = ALL_STATUSES.filter(entitlementStatusNeedsNotice);
+const SILENT = ALL_STATUSES.filter((s) => !entitlementStatusNeedsNotice(s));
 
 const CATALOGUES = { en, ms, ta, th, vi, zh } as const;
 type Locale = keyof typeof CATALOGUES;
@@ -114,12 +132,12 @@ const looksUnresolved = (text: string) =>
   /MISSING_MESSAGE/.test(text) ||
   /leave\.breakdown\./.test(text) ||
   /me\.leaveBalanceTable\./.test(text) ||
-  /\bstatus(NotGenerated|EarningMethodMissing|Generated|NotConfigured)/.test(text);
+  /\bstatus(NotGenerated|EarnedAccrual|ZeroEntitlement|EarningMethodMissing|Generated|NotConfigured)/.test(text);
 
 describe('31e39d74: the not-yet-generated notice resolves in every locale', () => {
   for (const locale of LOCALES) {
-    it(`[${locale}] the breakdown panel renders both notice states, and names the table`, () => {
-      for (const status of ['not_generated', 'earning_method_missing'] as const) {
+    it(`[${locale}] the breakdown panel renders every notice state, and names the table`, () => {
+      for (const status of ANNOUNCED) {
         const { unmount, container } = renderPanel(locale, status);
         const notice = screen.getByRole('status');
         expect(notice.textContent ?? '', `${locale}/${status} title+body`).not.toBe('');
@@ -133,31 +151,54 @@ describe('31e39d74: the not-yet-generated notice resolves in every locale', () =
     });
 
     it(`[${locale}] the balance grid captions the YTD Entitled cell without losing the figure`, () => {
-      const { unmount, container } = renderTable(locale, 'not_generated');
-      const text = container.textContent ?? '';
-      expect(looksUnresolved(text), `${locale} unresolved key`).toBe(false);
-      // The caption is ADDED, not substituted: the figure keeps its cell (YTD Entitled can be non-zero for
-      // an ungenerated type that has a carry-in, so replacing it would be a second wrong reading).
-      expect(text).toContain('0.00');
-      // And it is a real translated string, not the English one leaking into five other catalogues.
-      const label = (CATALOGUES[locale] as unknown as {
-        me: { leaveBalanceTable: Record<string, string> };
-      }).me.leaveBalanceTable.statusNotGenerated;
-      expect(text, `${locale} label`).toContain(label);
-      unmount();
+      for (const status of ANNOUNCED) {
+        const { unmount, container } = renderTable(locale, status);
+        const text = container.textContent ?? '';
+        expect(looksUnresolved(text), `${locale}/${status} unresolved key`).toBe(false);
+        // The caption is ADDED, not substituted: the figure keeps its cell (YTD Entitled can be non-zero
+        // for an ungenerated type that has a carry-in, so replacing it would be a second wrong reading).
+        expect(text).toContain('0.00');
+        // And it is a real translated string, not the English one leaking into five other catalogues.
+        const label = (CATALOGUES[locale] as unknown as {
+          me: { leaveBalanceTable: Record<string, string> };
+        }).me.leaveBalanceTable[ENTITLEMENT_STATUS_LABEL_KEY[status]];
+        expect(text, `${locale}/${status} label`).toContain(label);
+        unmount();
+      }
     });
   }
 
+  it('an earned type is never captioned with the Generate Entitlement instruction', () => {
+    // THE FINDING, AT THE RENDER. `earned_accrual` is the branch a year-open logs `earned_method` and
+    // skips; borrowing `not_generated`'s copy here would put "Run Generate Entitlement" in front of every
+    // employee whose Annual Leave accrues monthly, from cycle rollover until the first accrual lands.
+    const panel = renderPanel('en', 'earned_accrual');
+    const notice = screen.getByRole('status').textContent ?? '';
+    expect(notice).toContain(en.leave.breakdown.statusEarnedAccrualTitle);
+    expect(notice).not.toContain(en.leave.breakdown.statusNotGeneratedTitle);
+    panel.unmount();
+
+    const table = renderTable('en', 'earned_accrual');
+    const text = table.container.textContent ?? '';
+    expect(text).toContain(en.me.leaveBalanceTable.statusEarnedAccrual);
+    expect(text.includes(en.me.leaveBalanceTable.statusNotGenerated)).toBe(false);
+    table.unmount();
+  });
+
   it('says NOTHING for the two states that need no announcement', () => {
-    for (const status of ['granted', 'not_configured'] as const) {
+    for (const status of SILENT) {
       const panel = renderPanel('en', status);
       expect(screen.queryByRole('status'), `panel/${status}`).toBeNull();
       panel.unmount();
 
       const table = renderTable('en', status);
       const text = table.container.textContent ?? '';
-      expect(text.includes(en.me.leaveBalanceTable.statusNotGenerated), `table/${status}`).toBe(false);
-      expect(text.includes(en.me.leaveBalanceTable.statusEarningMethodMissing), `table/${status}`).toBe(false);
+      for (const announced of ANNOUNCED) {
+        const label = en.me.leaveBalanceTable[
+          ENTITLEMENT_STATUS_LABEL_KEY[announced] as keyof typeof en.me.leaveBalanceTable
+        ] as string;
+        expect(text.includes(label), `table/${status} must not show ${announced}`).toBe(false);
+      }
       // The figure is still there — suppressing the caption must not suppress the row.
       expect(text).toContain('0.00');
       table.unmount();

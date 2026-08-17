@@ -2851,6 +2851,17 @@ export function leaveEntitlementBreakdown(
     const entitlementStatus = resolveEntitlementStatus({
       hasTemplateInForce: entitlementWinner != null,
       accrualUnconfigured: isAccrualUnconfigured(type),
+      // ⚠️ THE TWO INPUTS THE FIRST CUT OF THIS LACKED, AND WHY IT WAS WRONG WITHOUT THEM. "A table is in
+      // force and no accrual row exists" was read as "generation has not run", but `openLeaveYear` has
+      // FIVE no-row branches and only one of them is answered by pressing Generate Entitlement. An EARNED
+      // method (the ordinary Annual Leave shape) is logged `earned_method` and skipped by every year-open
+      // there will ever be — its days come from `accrueEarnedLeave` — so the old derivation captioned
+      // every earned type "Not yet generated" from cycle rollover until the first accrual, and offered a
+      // remedy that would skip it. `days <= 0` (a band that covers nobody at this length of service) is
+      // the same shape of mistake. Both are decided HERE off the policy this function already resolved,
+      // which is the same policy the engine composes — no second definition, no extra query.
+      earnedMethod: earned,
+      entitlementDays: policy?.days ?? 0,
       hasAccrualRowInCycle,
     });
 
