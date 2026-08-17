@@ -39,10 +39,16 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     .map((c) => c.href);
 
   it('covers every row that landed in the Admin node', () => {
+    // ad52212d ROUND 1 — SEVEN rows now, in the reporter's grouping: their three named settings categories
+    // (Shift → Overtime Pattern → Work Schedule) ahead of the four remaining configuration screens. The
+    // Work Schedule row is new; its SCREEN is not (af7a8eb4 gave /admin/attendance-policy/schedule its own
+    // route), which is exactly why it belongs in this file: a screen that gains a menu row must be proved
+    // to guard itself, because the row is not what protects it.
     expect(adminRoutes).toEqual([
-      '/admin/holidays',
       '/admin/attendance',
       '/admin/attendance-policy',
+      '/admin/attendance-policy/schedule',
+      '/admin/holidays',
       '/admin/attendance-allowance',
       '/admin/locations',
       '/admin/toil',
@@ -53,6 +59,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/admin/holidays',
     '/admin/attendance',
     '/admin/attendance-policy',
+    '/admin/attendance-policy/schedule',
     '/admin/attendance-allowance',
     '/admin/locations',
     '/admin/toil',
@@ -100,7 +107,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // filters group-first, so any row left inside the moved node would become admin-only regardless of its
     // own flag. Records is self-service and Roster/Import are managerUp; all three had to leave the node.
     // If a future edit puts one back, this fails instead of silently removing it from people's rails.
-    const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendance')!;
+    const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
     expect(merged.group, 'the config menu lives in the admin group').toBe('admin');
     expect(
       merged.children.every((c) => c.adminOnly === true),
@@ -131,7 +138,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
   });
 
   it('every one of the six config screens is still admin-gated at the row', () => {
-    const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendance')!;
+    const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
     for (const route of adminRoutes) {
       expect(merged.children.find((c) => c.href === route)?.adminOnly, `${route} adminOnly`).toBe(true);
     }

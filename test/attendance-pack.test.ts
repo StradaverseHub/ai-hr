@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  CalendarCheck,
   CalendarClock,
   CalendarDays,
   CalendarRange,
@@ -76,8 +77,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // unchanged (they were already right — R17 c9f7211), so this stays a parity oracle: only the key
     // spelling moved. attendancePolicy → shiftSettings, attendancePolicyConfig → attendancePolicy,
     // toilPolicy → timeOffInLieu. The strings themselves are pinned in the describe block below.
-    { href: '/admin/attendance', labelKey: 'shiftSettings', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'attendancePolicy', icon: SlidersHorizontal, adminOnly: true },
+    //
+    // ad52212d round 1 renamed two of them AGAIN, and this time the STRINGS moved too: the rows are the
+    // reporter's settings categories now, so "Shift settings" → "Shift" (the word "settings" is the node
+    // above them) and "Attendance policy" → "Overtime Pattern". Parity is still about the ROW — same href,
+    // same icon ref, same gate, still exactly once — which is what the assertions below read.
+    { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
+    { href: '/admin/attendance-policy', labelKey: 'overtimePattern', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
@@ -97,6 +103,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // the same reason as its three siblings (it is the caller's own request), and carrying Hourglass
     // rather than a third Clock or a second FilePen, because the collapsed rail renders glyphs only.
     { href: '/attendance/plan-ot', labelKey: 'planOvertime', icon: Hourglass },
+    // ad52212d round 1 — Work Schedule. The SCREEN is not new (af7a8eb4 moved the company work schedule,
+    // overtime rates, backup-shift coverage and registered devices onto this route); what was new is that
+    // it had no menu row at all and was reachable only from a button on the rule list, which is why the
+    // reporter read the whole category as missing. adminOnly like every other row in this node.
+    { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
   ] as const;
 
   // 0bb0e303 split the node three ways and a324a4b3 rev2 merged two of the three back, so parity is
@@ -112,7 +123,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   const flattened = [...NODES.flatMap((n) => n.children), ...MANAGE_LINKS];
 
   it('declares TWO nodes — self-service in main, config in admin (a324a4b3 rev3)', () => {
-    expect(NODES.map((n) => n.labelKey)).toEqual(['myAttendance', 'attendance']);
+    // ad52212d round 1 renamed the config node's label key `attendance` → `attendanceSettings`: it is the
+    // reporter's "Attendance › Settings" sub-menu, and calling it "Attendance" a third time beside "Leave
+    // config" and "Claims config" is what they objected to. Two nodes, same groups, same rows.
+    expect(NODES.map((n) => n.labelKey)).toEqual(['myAttendance', 'attendanceSettings']);
     // rev2 had both in 'main' because the merged node mixed three gates. rev3 is the reporter's own
     // correction — the CONFIG menu belongs in Administration between Leave config and Claims config — and
     // it is only safe there because the mixed rows moved out first. See the regression guard below.
@@ -122,12 +136,16 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('orders the Attendance CONFIG menu as the reporter listed the settings', () => {
-    const merged = NODES.find((n) => n.labelKey === 'attendance')!;
-    // Six rows, all config, all adminOnly. Records / Roster / Import are no longer here — see rev3.
+    const merged = NODES.find((n) => n.labelKey === 'attendanceSettings')!;
+    // ad52212d ROUND 1 — the order the reporter asked for: their THREE named settings categories first
+    // (Shift → Overtime Pattern → Work Schedule), then the four remaining configuration screens in the
+    // 5cb199b3 ticket order they have always held among themselves. Seven rows, all config, all adminOnly.
+    // Records / Roster / Import are still not here — see rev3.
     expect(merged.children.map((c) => c.href)).toEqual([
+      '/admin/attendance', // Shift
+      '/admin/attendance-policy', // Overtime Pattern
+      '/admin/attendance-policy/schedule', // Work Schedule
       '/admin/holidays',
-      '/admin/attendance', // Shift settings
-      '/admin/attendance-policy',
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
       '/admin/toil', // Time off in lieu
@@ -167,9 +185,24 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // excluded from the sequence rather than compared against one — but they still have to be DECLARED:
     // the unknown-row assertion below is what keeps this from becoming "any new href is fine".
     const added: string[] = ADDED_SINCE.map((r) => r.href);
-    for (const container of [...NODES.map((n) => ({ name: n.group, rows: n.children })), { name: 'navLinks', rows: MANAGE_LINKS }]) {
+    // ad52212d ROUND 1 — THE CONFIG NODE IS EXEMPT FROM THE SEQUENCE, AND ONLY FROM THE SEQUENCE.
+    //
+    // Re-ordering those rows is the change the reporter asked for by name: their three settings categories
+    // lead, the other four follow. So the pre-retrofit SEQUENCE cannot hold there any more, and pretending
+    // it does would mean either not shipping the item or writing an assertion that is false. What the
+    // guard exists to catch — a row silently vanishing, or a row nobody declared appearing — is unaffected
+    // and is still checked below for every container including this one. The exact new order is pinned in
+    // its own case above ("orders the Attendance CONFIG menu as the reporter listed the settings"), so the
+    // arrangement is still written down; it just moved to the assertion that states it positively.
+    const REORDERED = 'attendanceSettings';
+    for (const container of [
+      ...NODES.map((n) => ({ name: n.group, labelKey: n.labelKey, rows: n.children })),
+      { name: 'navLinks', labelKey: 'navLinks', rows: MANAGE_LINKS },
+    ]) {
       const positions = container.rows.filter((c) => !added.includes(c.href)).map((c) => wantOrder.indexOf(c.href));
-      expect(positions, `${container.name} keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));
+      if (container.labelKey !== REORDERED) {
+        expect(positions, `${container.name} keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));
+      }
       expect(positions.every((i) => i >= 0), `${container.name} has no unknown row`).toBe(true);
     }
   });
@@ -205,7 +238,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('THE OTHER HALF: the merged node keeps each row’s own gate, and Records keeps none', () => {
-    const merged = NODES.find((n) => n.labelKey === 'attendance')!;
+    const merged = NODES.find((n) => n.labelKey === 'attendanceSettings')!;
     const gate = (href: string) => {
       const c = merged.children.find((x) => x.href === href)!;
       return { adminOnly: c.adminOnly, managerUp: c.managerUp };
@@ -230,6 +263,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       '/admin/holidays',
       '/admin/attendance',
       '/admin/attendance-policy',
+      // ad52212d round 1 — the new Work Schedule row. Declared here rather than tolerated: it lives in a
+      // group-gated node, so a row that arrived without adminOnly would still render for administrators
+      // only today and would silently widen the moment the node ever moved out of Administration.
+      '/admin/attendance-policy/schedule',
       '/admin/attendance-allowance',
       '/admin/locations',
       '/admin/toil',
@@ -312,7 +349,7 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
   // The six admin config rows. Derived by their own adminOnly FLAG since a324a4b3 rev2 merged them
   // into the day-to-day node — there is no longer an 'admin'-group node to look them up by.
   const adminRows = attendancePack
-    .navNodes!.find((n) => n.labelKey === 'attendance')!
+    .navNodes!.find((n) => n.labelKey === 'attendanceSettings')!
     .children.filter((c) => c.adminOnly === true);
   const allRows = attendancePack.navNodes!.flatMap((n) => n.children);
 
@@ -332,8 +369,14 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       '/admin/holidays': 'Holidays',
       // The shared shift library (R33). This row is the reporter's "Shift Setting" — it exists, and it
       // has said so since R17; only its key still said "attendancePolicy".
-      '/admin/attendance': 'Shift settings',
-      '/admin/attendance-policy': 'Attendance policy',
+      // ad52212d round 1 — plain "Shift": it is a category under a node already called "Attendance
+      // settings", and repeating the word inside it is the sprawl the reporter is complaining about.
+      '/admin/attendance': 'Shift',
+      // ad52212d round 1 — "Overtime Pattern", the reporter's own name for what this screen already is:
+      // a reusable library of hour-banded overtime rates (attendance_rule + attendance_rule_ot_row).
+      '/admin/attendance-policy': 'Overtime Pattern',
+      // ad52212d round 1 — the third category. The screen is af7a8eb4's; the ROW is new.
+      '/admin/attendance-policy/schedule': 'Work Schedule',
       '/admin/attendance-allowance': 'Attendance allowance',
       '/admin/locations': 'Clocking location',
       // Plain words, not the TOIL abbreviation — and the same words the screen's own title uses.
@@ -363,6 +406,12 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       ) as { nav: Record<string, unknown>; admin: Record<string, unknown> };
       expect(cat.nav.attendancePolicyConfig, `${loc}: dead nav.attendancePolicyConfig`).toBeUndefined();
       expect(cat.nav.toilPolicy, `${loc}: dead nav.toilPolicy`).toBeUndefined();
+      // ad52212d round 1 retired two more, the same way: renamed in place, not left behind as a second
+      // spelling of a live row. nav.attendance SURVIVES — it labels the /attendance Records column in
+      // lib/permissions.ts, which is a different screen from this node.
+      expect(cat.nav.shiftSettings, `${loc}: dead nav.shiftSettings`).toBeUndefined();
+      expect(cat.nav.attendancePolicy, `${loc}: dead nav.attendancePolicy`).toBeUndefined();
+      expect(typeof cat.nav.attendance, `${loc}: nav.attendance is still used by the matrix`).toBe('string');
       // admin.attendancePolicy / admin.toilPolicy are the SCREENS' own namespaces and share the old
       // names by coincidence. Renaming them would blank two pages; this proves they were left alone.
       expect(typeof cat.admin.attendancePolicy, `${loc}: admin.attendancePolicy`).toBe('object');
