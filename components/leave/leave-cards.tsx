@@ -24,11 +24,13 @@
  */
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Layers } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
 // 4a1abc4a: the card's figure is the same number the panel behind it shows, so it must print identically.
 import { formatDays } from '@/lib/day-format';
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import { ReplacementLeavePanel, type ReplacementPanelData } from './ReplacementLeavePanel';
+import type { SharedLeaveGroupEntry } from './shared-leave-group-cards';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import type { PanelSummary } from './entitlement-panel-config';
 
@@ -70,7 +72,18 @@ export type LeaveCardEntry = {
   pendingInLieu?: number | null;
 };
 
-export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
+export function LeaveCards({
+  entries,
+  // 46afcc48 — shared leave groups placed PRIMARY render as NON-clickable tiles appended to this same grid,
+  // so a pooled balance shows INSIDE the "My Leave Balance" row instead of a separate "Shared leave
+  // balances" category. Presentation only: the figures arrive pre-computed (sharedGroupAvailableDays) and
+  // are the same numbers SharedLeaveGroupCards prints at the secondary site. A group is a pooled ceiling,
+  // not a ledger, so it has nothing to open — hence a static tile, never a button.
+  sharedGroups,
+}: {
+  entries: LeaveCardEntry[];
+  sharedGroups?: SharedLeaveGroupEntry[];
+}) {
   const t = useTranslations('me');
   // 5ff7daff — the replacement-leave wording lives with the panel's own keys, so the card's "in lieu" line
   // and the panel it opens can never call the same stage two different things.
@@ -78,7 +91,7 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
-  if (entries.length === 0) return null;
+  if (entries.length === 0 && (sharedGroups == null || sharedGroups.length === 0)) return null;
 
   // null ⇒ the Available figure is ESS-hidden ⇒ em dash, never a leaked (or invented) number.
   const fmt = (n: number | null) => formatDays(n);
@@ -127,6 +140,24 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
             </button>
           );
         })}
+        {/* 46afcc48 — PRIMARY shared leave groups, appended to the same grid as static (non-clickable)
+            tiles. Same visual as SharedLeaveGroupCards' tile: Layers icon, the drawable pooled figure,
+            the "of N shared" ceiling as context BESIDE it (never in place of it), the group name, its
+            member list and the per-application cap when set. Nothing to open — a group is a pooled
+            ceiling, not a ledger — so it is a plain div, not a button. */}
+        {sharedGroups?.map((g) => (
+          <div
+            key={g.id}
+            className="flex flex-col items-start gap-2 rounded-xl bg-muted/50 p-4 text-foreground"
+          >
+            <Layers className="size-5 shrink-0" aria-hidden />
+            <span className="text-2xl font-semibold tabular-nums">{formatDays(g.available)}</span>
+            <span className="text-xs text-muted-foreground">{g.limitLabel}</span>
+            <span className="line-clamp-2 text-xs font-medium">{g.name}</span>
+            <span className="line-clamp-2 text-xs text-muted-foreground">{g.membersLabel}</span>
+            {g.capLabel && <span className="text-xs text-muted-foreground">{g.capLabel}</span>}
+          </div>
+        ))}
       </div>
 
       {/* 00307068: Replacement Leave opens the per-credit table instead of the summary panel. The branch is

@@ -55,7 +55,7 @@ import { deriveHistoryBreakdown } from './history-breakdown';
  * it appears nowhere on screen, so the only way to check a figure is to redo the arithmetic by hand."
  * Three additions, all of them DISCLOSURE — not one figure is recomputed anywhere in this file:
  *
- *   1. A WAGE BASE block, rendered FIRST, straight out of `statutory.bases` (r187's stamp). Every one
+ *   1. A WAGE BASE block, rendered LAST, straight out of `statutory.bases` (r187's stamp). Every one
  *      of its rows is `reconciling: false`, so the two reconciliation invariants below are untouched.
  *      A run with no stamp renders an em dash and sets `basesNotRecorded`; it NEVER borrows grossPay.
  *   2. STATUTORY SUBJECT columns (EPF / SOCSO / EIS / SKBBK / Tax, Y or N) behind a new switch,
@@ -69,14 +69,14 @@ import { deriveHistoryBreakdown } from './history-breakdown';
 export type GridRowGroup = 'wagebase' | 'earning' | 'deduction' | 'employer' | 'item' | 'summary';
 
 const GROUP_ORDER: Record<GridRowGroup, number> = {
-  // 0253dc7c — FIRST. The reporter reads the wage base and then checks the items against it; putting
-  // the answer above the working is the order they described.
-  wagebase: 0,
-  earning: 1,
-  deduction: 2,
-  employer: 3,
-  item: 4,
-  summary: 5,
+  // 0253dc7c — the wage base block sorts LAST (highest rank), sitting at the bottom of the Transaction
+  // Detail table below the earnings, deductions, employer cost and roll-ups.
+  earning: 0,
+  deduction: 1,
+  employer: 2,
+  item: 3,
+  summary: 4,
+  wagebase: 5,
 };
 
 /**
