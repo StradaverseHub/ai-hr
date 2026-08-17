@@ -23,6 +23,15 @@ import { formatMoney } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
+// 6b134681 / 417d4937 — the ONE derivation of "which named pay items explain this figure, and how is a
+// line labelled". Shared with the ESS payslip screen and Transaction View → History so the printed
+// document cannot itemise a total differently from the screen it was printed from.
+import {
+  payItemLinesForBuckets,
+  payItemLinesReconcile,
+  storedComponentLines,
+  type StoredComponentLine,
+} from '../core/payslip-earning-lines';
 
 const n = (v: unknown) => Number(v ?? 0);
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -128,6 +137,20 @@ export type PayslipPdfData = {
   /** The pay items behind the Allowances figure, by name. Empty for a run calculated before 862ed0ad
    *  stamped them — that detail was never written down and cannot be recovered. */
   earningLines?: PayslipEarningLine[];
+  /**
+   * 6b134681 — the pay items behind the BONUS and OVERTIME figures, by name.
+   *
+   * The reporter keyed a one-off "B0001 — ANGPOW RM500", and the document printed "Bonus RM500.00":
+   * because ANGPOW is additional remuneration for EPF/PCB it lands in the bonus bucket, and the bonus
+   * bucket was the one earnings figure that was never itemised. The amounts are unchanged — this is the
+   * same stored stamp the allowance rows already come from, read for two more buckets.
+   *
+   * SEPARATE FIELDS, not a widened `earningLines`: each list reconciles against ITS OWN stored total
+   * (`bonus`, `overtime`), and merging them would let a bonus line be printed under Allowances the
+   * moment one of the three figures failed to reconcile.
+   */
+  bonusLines?: PayslipEarningLine[];
+  overtimeLines?: PayslipEarningLine[];
   /** This run predates the per-item stamp, so the grouped rows are all there is. The document SAYS so —
    *  an itemless earnings box under a non-zero allowance reads as a defect. */
   detailNotRecorded?: boolean;
@@ -258,12 +281,14 @@ export function buildPayslipPdfData(
     net: unknown; employerCost: unknown; daysWorked: unknown;
   },
   borneLabels: Record<EmployerBorneKey, string>,
-  extra: Partial<Omit<PayslipPdfData, 'earningLines' | 'detailNotRecorded' | 'hrdf'>> = {},
+  extra: Partial<
+    Omit<PayslipPdfData, 'earningLines' | 'bonusLines' | 'overtimeLines' | 'detailNotRecorded' | 'hrdf'>
+  > = {},
 ): PayslipPdfData {
   const st = (p.statutory ?? {}) as Record<string, unknown>;
   const disp = payslipDisplayEarnings(p);
   const eb = payslipEmployerBorne(p.statutory);
-  const componentLines = Array.isArray(st.componentLines) ? (st.componentLines as StoredComponentLine[]) : [];
+  const componentLines = storedComponentLines(p.statutory);
   return {
     employee: p.employee,
     employeeCode: p.employeeCode,
@@ -297,6 +322,11 @@ export function buildPayslipPdfData(
     // efece4ce stored the HRD Corp levy on every payslip and showed it nowhere in the download.
     hrdf: n(st.hrdf),
     earningLines: allowanceLinesOf(componentLines, st.otConvert),
+    // 6b134681 — the same stamp, read for the two buckets that kept their own totals. `earningsRowsOf`
+    // decides whether they may replace the grouped row; deriving them here keeps every "which lines
+    // explain which figure" answer in one function.
+    bonusLines: payItemLinesForBuckets(componentLines, ['bonus']),
+    overtimeLines: payItemLinesForBuckets(componentLines, ['ot']),
     detailNotRecorded: componentLines.length === 0,
     nonPayableLines: nonPayableLinesOf(st.recordLines),
     ...extra,
@@ -329,37 +359,25 @@ function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
     .map((l) => ({ code: l.code ?? null, name: l.name ?? '', amount: round2(n(l.amount)) }));
 }
 
-/** The shape `statutory.componentLines` is stored in (core/payroll.ts `earningsOf`). */
-type StoredComponentLine = {
-  code?: string | null;
-  name?: string | null;
-  buckets?: { bucket?: string; amount?: unknown }[];
-};
-
 /**
  * The named pay items behind the ALLOWANCES figure.
  *
- * Re-shaped here rather than imported from `app/payroll/transaction-view/history-breakdown.ts`: that
- * module is the SCREEN's derivation and lives in the app layer, and `lib/` must not depend on `app/`.
- * Both read the same stored stamp, and neither computes an amount — a bucket's stored contributions are
- * copied across, nothing more.
+ * The bucket→lines derivation now lives in `core/payslip-earning-lines.ts` rather than here, because
+ * three surfaces answer the same question and were free to answer it differently (6b134681/417d4937).
+ * `lib/` still must not depend on `app/`, and does not: the shared module is dependency-free core.
+ * Nothing computes an amount — a bucket's stored contributions are copied across, nothing more.
  *
  * WHY `wage` + `reimburse` (and not `ot` / `bonus`): the kernel folds exactly those two buckets, plus a
  * converted OT excess, into the payslip's allowance column
  * (`allowance = allowanceApplied + reimburse + otConvert`, core/payroll.ts). Overtime and bonus keep
- * their own rows and their own stored totals.
+ * their own rows and their own stored totals — and, from 6b134681, their own named lines.
+ *
+ * 417d4937 — `reimburse` was ALREADY in this filter and stays: a PCB-exempt allowance (Meal Allowance,
+ * exemption PCB_NON-TAXABLE) is paid, is inside the allowance column, and is itemised here. The
+ * reporter's "missing" Meal Allowance was a NAMING fault, never an omission.
  */
 function allowanceLinesOf(lines: StoredComponentLine[], otConvert: unknown): PayslipEarningLine[] {
-  const out: PayslipEarningLine[] = [];
-  for (const l of lines) {
-    const amount = round2(
-      (l.buckets ?? [])
-        .filter((b) => b.bucket === 'wage' || b.bucket === 'reimburse')
-        .reduce((s, b) => s + n(b.amount), 0),
-    );
-    if (amount === 0) continue; // a line that contributed nothing to this figure is not a row about it
-    out.push({ code: l.code ?? null, name: l.name ?? '', amount });
-  }
+  const out: PayslipEarningLine[] = payItemLinesForBuckets(lines, ['wage', 'reimburse']);
   // f3148da1 Step 4 — the OT excess redirected to a pay item is paid through the allowance column, so it
   // is one of the lines that figure is made of. Omitting it would make the named rows fall short of the
   // total and silently drop the itemisation (the reconciliation guard below would catch it, but the
@@ -1016,16 +1034,28 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
  * lines. Printing the lines there would put rows on the page that do not add up to the total beside them —
  * on a document that carries money. So the named lines replace the lumped row only when they reconcile to
  * the stored figure; otherwise the grouped row stands, exactly as it did before this redesign.
+ *
+ * 6b134681 extends the SAME rule, unchanged, to Overtime and Bonus. Those two were the earnings figures
+ * that still printed as bare category words: a one-off keyed as "B0001 — ANGPOW" is additional
+ * remuneration, so it lands in the bonus bucket, and the document said "Bonus RM500.00" — the pay item's
+ * own code and description were stored on the payslip and printed nowhere. Each figure reconciles against
+ * its OWN total, so bonus itemising while overtime does not (an attendance-derived OT figure has no
+ * component line to explain it) is a normal outcome, not a special case.
  */
 function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels): Row[] {
   const rows: Row[] = [{ label: t.basicSalary, amount: d.basic }];
-  const named = d.earningLines ?? [];
-  const reconciles =
-    named.length > 0 && Math.abs(round2(named.reduce((s, l) => s + l.amount, 0)) - round2(d.allowance)) < 0.005;
-  if (reconciles) for (const l of named) rows.push({ label: l.name, sub: l.code, amount: l.amount });
-  else rows.push({ label: t.allowances, amount: d.allowance });
-  rows.push({ label: t.overtime, amount: d.overtime });
-  rows.push({ label: t.bonus, amount: d.bonus });
+  /** Named rows for a figure when they add up to it, otherwise the one grouped row, exactly as before. */
+  const push = (lines: PayslipEarningLine[] | undefined, total: number, grouped: string) => {
+    const named = lines ?? [];
+    if (payItemLinesReconcile(named, total)) {
+      for (const l of named) rows.push({ label: l.name, sub: l.code, amount: l.amount });
+    } else {
+      rows.push({ label: grouped, amount: total });
+    }
+  };
+  push(d.earningLines, d.allowance, t.allowances);
+  push(d.overtimeLines, d.overtime, t.overtime);
+  push(d.bonusLines, d.bonus, t.bonus);
   if (d.claim > 0) rows.push({ label: t.claim, amount: d.claim });
   return rows;
 }

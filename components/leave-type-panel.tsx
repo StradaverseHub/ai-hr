@@ -1528,6 +1528,7 @@ export function LeaveTypePanel({
   visibleToEmployee,
   employeeCanApply,
   essPlacement,
+  role,
   counting,
   perDateApproval,
   duplicateApplicationPolicy,
@@ -1637,6 +1638,11 @@ export function LeaveTypePanel({
    *  with visibleToEmployee (false ⇒ Hidden) and the type code, the panel resolves the current 3-way choice
    *  shown in the placement select. null ⇒ the code-keyed default. */
   essPlacement: string | null;
+  /** 5ff7daff: the type's `role` marker ('replacement' | 'emergency' | …), threaded so the placement select
+   *  shows the SAME default the employee's Leave tab resolves. Without it a tenant whose replacement type is
+   *  coded `RL` reads "Secondary" here while the card is drawn Primary there. null ⇒ unclassified ⇒ the
+   *  code-keyed default, exactly as before. Display-only: nothing on this screen writes the role. */
+  role: string | null;
   /** ADR-0068 / Partial Leave Approval: the type's counting mode ('working_days' | 'calendar_days'), threaded
    *  so the per-date-approval sub-form can grey out its toggle for calendar-counted types (the feature can
    *  never fire there — see the gate in core/leave.ts perDateEligible). */
@@ -3057,7 +3063,7 @@ export function LeaveTypePanel({
               <Field label={t('placement.label')}>
                 <select
                   name="placementValue"
-                  defaultValue={resolvePlacement(code, essPlacement, visibleToEmployee)}
+                  defaultValue={resolvePlacement(code, essPlacement, visibleToEmployee, role)}
                   className={`${inputCls} w-40`}
                 >
                   {ESS_PLACEMENTS.map((pl) => (

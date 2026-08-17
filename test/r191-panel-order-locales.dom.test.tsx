@@ -120,6 +120,7 @@ const BATCH: TxnBatch = {
   status: 'draft',
   needsRecalcAt: null,
   recalcEmploymentIds: null,
+  payrollCycleId: null,
 };
 const COMPANY: TxnCompany = { id: 'c1', name: 'Demo Group Holdings Bhd', currency: 'MYR' };
 const OT: TxnPayItem = {
@@ -205,6 +206,7 @@ describe.each(LOCALES)('r191 · %s — every new caption resolves against the re
         batches={[BATCH]}
         companies={[COMPANY]}
         payItems={[OT]}
+        payrollCycles={[]}
         processHref="/payroll"
         requireComponent={false}
         currentPeriod="2026-08"

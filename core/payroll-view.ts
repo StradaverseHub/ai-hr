@@ -35,7 +35,9 @@ import { employmentStatusSql } from './employment-status-sql';
 // warning and the attach guard can never disagree about what a departments-only scope means.
 // (core/payroll is a pack boundary and core/payroll-view.ts is ALWAYS_ALLOWED — implementation files
 // import each other freely under ADR-0080 D9. No cycle: core/payroll does not import this module.)
-import { resolveBatchScopeFilter, type BatchScope } from './payroll';
+// c11e81aa — and the ONE rule that says which period-keyed transactions a run may collect, so this
+// module's "what will this run pay?" card cannot drift from what attach-on-generate actually does.
+import { collectableCycleIds, intendedCycleFilter, resolveBatchScopeFilter, type BatchScope } from './payroll';
 // 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
 import { payslipDisplayEarnings } from './pay-display-category';
 // 169e3c24 — the PCB drill-down's relief fallback (pure type; the explainer itself lives beside it).
@@ -66,6 +68,7 @@ import {
   payComponent,
   payrollBatch,
   payrollBatchComponent,
+  payrollCycle,
   payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollInput,
@@ -482,10 +485,24 @@ export type UnattachedGroupRow = {
   count: number;
   totalAmount: string;
   oldestTxnDate: string;
-  /** The month's REGULAR run, which is the only run that ever collects transactions. */
+  /**
+   * The run that WILL COLLECT these rows, which since c11e81aa is no longer always the regular one: a row
+   * that names a Pay Cycle is collected by the run opened under that cycle. 'none' ⇒ that run does not
+   * exist for the month yet, which is the designed pre-run entry flow rather than a fault.
+   */
   runState: 'none' | 'draft' | 'processed' | 'closed';
   /** The row was keyed in AFTER that run was processed — one of the two ways money strands. */
   arrivedAfterProcessing: boolean;
+  /**
+   * c11e81aa — the Pay Cycle these rows named, null when they named none. Groups SPLIT on it (see the
+   * read's doc comment): rows in one employee-month that are waiting for different runs are different
+   * facts and must not be reported under one run state.
+   */
+  intendedCycleId: string | null;
+  /** The named cycle's own name ("Mid-Month"), null when no cycle was named. For the operator's copy. */
+  intendedCycleName: string | null;
+  /** The named cycle's run type, null when no cycle was named. Drives the "this run abandons it" test. */
+  intendedRunType: string | null;
 };
 
 /**
@@ -505,11 +522,32 @@ export type UnattachedGroupRow = {
  * would hide the pipeline; showing both undifferentiated is what let RM23,170 go invisible. So the
  * distinction is a column, and there is deliberately NO default filter on it.
  *
- * THE JOIN PREDICATE IS THE INVARIANT. The batch LEFT JOIN is keyed on run_type = 'regular' because
- * `generatePayslips` only ever attaches on `!subset && batch.runType === 'regular'` (core/payroll.ts).
- * An off_cycle / bonus / adjustment run for the same month never collects, so joining without that
- * predicate would report a month as "processed" on the strength of a sibling run that was never
- * going to attach anything.
+ * THE JOIN PREDICATE IS THE INVARIANT, AND c11e81aa CHANGED THE INVARIANT. It used to be keyed on
+ * run_type = 'regular' outright, because `generatePayslips` only ever attached on `!subset &&
+ * batch.runType === 'regular'`: an off_cycle / bonus / adjustment run for the same month never collected,
+ * so joining without that predicate would report a month as "processed" on the strength of a sibling run
+ * that was never going to attach anything.
+ *
+ * THAT SENTENCE IS NOW FALSE AND THE JOIN HAS MOVED WITH IT. A period-keyed row may NAME a Pay Cycle
+ * (`intended_cycle_id`, 0441) and is then collected by the run opened under that very cycle
+ * (`payroll_batch.payroll_cycle_id`) — so the run whose state answers "has this money been gone past?"
+ * is that run, not the regular one. The join therefore mirrors `collectableCycleIds` (core/payroll.ts)
+ * exactly, in SQL:
+ *
+ *   • a row naming NO cycle          → the month's regular run (unchanged; every row on production);
+ *   • a row naming a REGULAR cycle   → the month's regular run (one active regular cycle per company and
+ *                                      one regular batch per period, so no sibling can compete);
+ *   • a row naming any other cycle   → the batch whose `payroll_cycle_id` IS that cycle, if one exists.
+ *
+ * Leaving the old predicate in place would have reported a Bonus-marked row as sitting behind a
+ * "processed" regular run that was never going to touch it — inventing a fault — while hiding the real
+ * one, a bonus run that has already gone past it.
+ *
+ * GROUPS SPLIT BY COLLECTING RUN, and that is a consequence rather than a decision: `payroll_batch.id` has
+ * always been in the GROUP BY, so one (employee, month) holding both a no-cycle row and a Bonus row now
+ * yields TWO rows with two honest run states instead of one row with a state that fits neither. The
+ * intent columns are grouped alongside so a group is never a blend of different intents. Both consumers
+ * fold by (employee) or (period) into their own maps, so a split changes their totals not at all.
  *
  * `arrivedAfterProcessing` derives from the payroll-batch.processed DOMAIN EVENT, not from a column:
  * there is no payroll_batch.processed_at, and payroll_batch.created_at is the wrong instant (the
@@ -555,16 +593,40 @@ export function listUnattachedTxnSummary(
         // processedAt is constant within the group. NULL (no processed event, or an event this role
         // cannot read) coalesces to false — "cause unknown", never "not outstanding".
         arrivedAfterProcessing: sql<boolean>`coalesce(max(${payrollIndividualTxn.createdAt}) > ${processedAt}, false)`,
+        // c11e81aa — the named cycle, carried out so a consumer can say WHICH run this money is waiting
+        // for, and so the wizard pre-flight can test whether the run it is about to start will take it.
+        intendedCycleId: payrollIndividualTxn.intendedCycleId,
+        intendedCycleName: payrollCycle.name,
+        intendedRunType: payrollCycle.runType,
       })
       .from(payrollIndividualTxn)
-      // Only the month's REGULAR run ever attaches — see the doc comment. Joined on the row's own
+      // c11e81aa — the row's NAMED cycle, when it named one. LEFT because naming none is the norm.
+      .leftJoin(payrollCycle, eq(payrollCycle.id, payrollIndividualTxn.intendedCycleId))
+      // The run that will actually collect this row — see the doc comment. Correlated on the row's own
       // (company, period) columns, which are authoritative since 0175.
+      //
+      // ONE BATCH, ENFORCED BY THE SUBQUERY, and that is not a stylistic preference. Written as a plain
+      // ON-clause disjunction, a month holding TWO runs of the same cycle (run_seq 2 and 3, which is
+      // exactly the case the entry screen's run picker exists for) would match a row twice, split it into
+      // two groups, and every consumer that sums groups — the wizard pre-flight, the batch page's
+      // outstanding total, the employee panel's stranded figure — would report the money DOUBLE. So the
+      // candidate set is resolved to its earliest run and joined by id.
       .leftJoin(
         payrollBatch,
-        and(
-          eq(payrollBatch.companyId, payrollIndividualTxn.companyId),
-          eq(payrollBatch.payPeriod, payrollIndividualTxn.payPeriod),
-          eq(payrollBatch.runType, 'regular'),
+        eq(
+          payrollBatch.id,
+          sql`(
+            select b2.id from payroll_batch b2
+            where b2.company_id = ${payrollIndividualTxn.companyId}
+              and b2.pay_period = ${payrollIndividualTxn.payPeriod}
+              and (
+                (b2.run_type = 'regular'
+                  and (${payrollIndividualTxn.intendedCycleId} is null or ${payrollCycle.runType} = 'regular'))
+                or b2.payroll_cycle_id = ${payrollIndividualTxn.intendedCycleId}
+              )
+            order by b2.run_seq
+            limit 1
+          )`,
         ),
       )
       .innerJoin(company, eq(company.id, payrollIndividualTxn.companyId))
@@ -588,34 +650,72 @@ export function listUnattachedTxnSummary(
         company.currency,
         payrollBatch.id,
         payrollBatch.status,
+        // c11e81aa — so a group is never a blend of rows waiting for different runs. `payrollBatch.id`
+        // already splits most of them; these keep the split honest for the case where two different
+        // named cycles both have no run yet and would otherwise merge under one NULL batch.
+        payrollIndividualTxn.intendedCycleId,
+        payrollCycle.name,
+        payrollCycle.runType,
       )
       .orderBy(desc(sql`${payrollIndividualTxn.payPeriod}`), asc(person.fullName));
     return rows as UnattachedGroupRow[];
   });
 }
 
-/** One employee a narrowed run is about to leave out, with what they are holding for that month. */
+/** One employee a run is about to leave out, with what they are holding for that month. */
 export type UnattachedHolderRow = { employmentId: string; name: string; count: number; amount: string };
 
 /**
- * The employees a NARROWED run will leave out who are holding transactions for that month
- * (feedback d0d2c9d1). Backs the Payroll Process wizard's Validation-step pre-flight and the same
- * warning on a scoped draft's own page.
+ * The employees a run will leave out who are holding transactions for that month (feedback d0d2c9d1).
+ * Backs the Payroll Process wizard's Validation-step pre-flight and the same warning on a scoped draft's
+ * own page.
  *
- * Returns [] for an UNSCOPED run: a full regular run collects every outstanding row for the month, so
- * there is nothing to warn about. Lives here rather than in the server action so it is reachable by a
- * test without a session — the action is a thin `getSession()` wrapper over it.
+ * TWO WAYS A RUN LEAVES MONEY BEHIND, AND IT USED TO KNOW ONLY ONE.
  *
- * Read-only, no domain event (pure SELECT via listUnattachedTxnSummary).
+ *  1. WHO IS IN IT. A run narrowed to some employees strands everyone else's rows for that month. That is
+ *     the original d0d2c9d1 case and is unchanged: with no selection at all the run takes every employee,
+ *     so this half warns about nobody.
+ *
+ *  2. c11e81aa — WHICH CYCLE IT IS. A row may now NAME a Pay Cycle, and a run collects only the rows that
+ *     named its own cycle (plus, for the regular run, the rows that named none). So a FULL, UNSCOPED
+ *     REGULAR RUN now legitimately walks past every row somebody marked "Bonus" or "Mid-Month" — and the
+ *     old "returns [] for an unscoped run: a full regular run collects everything" reasoning became FALSE
+ *     the moment that was true. Leaving it would make this pre-flight go silent on exactly the rows the
+ *     change teaches the run to abandon, which is the same silence d0d2c9d1 exists to end.
+ *
+ * `intendedRunType` is what switches the second half on, and it is OPTIONAL so that every caller which
+ * cannot name the run it is about to start (wizard resume mode) keeps today's behaviour exactly. When it
+ * IS 'regular', a group whose named cycle is not regular-mapped is reported however the selection reads —
+ * a full run included — because that run will not pay it whoever is selected.
+ *
+ * A NON-REGULAR RUN IS DELIBERATELY NOT WIDENED HERE. It collects strictly MORE than it did before this
+ * change (it used to collect nothing period-keyed at all), never less, so it opens no new silence; and a
+ * per-cycle "this bonus run leaves the other bonus cycle's rows behind" warning would need the run's own
+ * cycle id resolved per company, which this call cannot know for the secondary companies of a
+ * multi-company run. Warning wrongly is not better than the honest scope-only warning it already gives.
+ *
+ * Lives here rather than in the server action so it is reachable by a test without a session — the action
+ * is a thin `getSession()` wrapper over it. Read-only, no domain event (pure SELECT via
+ * listUnattachedTxnSummary).
  */
 export async function unattachedHoldersOutsideSelection(
   ctx: SessionContext,
-  p: { companyIds: string[]; payPeriod: string; employmentIds?: string[] },
+  p: {
+    companyIds: string[];
+    payPeriod: string;
+    employmentIds?: string[];
+    /** c11e81aa — the run type this run will have. Omitted ⇒ only the selection half applies (today's
+     *  behaviour verbatim). See the doc comment for why only 'regular' widens the answer. */
+    intendedRunType?: string;
+  },
 ): Promise<UnattachedHolderRow[]> {
   const companyIds = (p.companyIds ?? []).filter(Boolean);
   if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(p.payPeriod)) return [];
   const selected = (p.employmentIds ?? []).filter(Boolean);
-  if (selected.length === 0) return []; // unscoped run — it collects everything
+  // c11e81aa — a REGULAR run can now abandon money without narrowing anything, so an unscoped run is no
+  // longer automatically silent. Every other case keeps the original early return.
+  const abandonsByCycle = p.intendedRunType === 'regular';
+  if (selected.length === 0 && !abandonsByCycle) return []; // unscoped run — it collects everything
   const [year, month] = p.payPeriod.split('-').map(Number);
 
   const groups = await listUnattachedTxnSummary(ctx, { companyIds, year, month });
@@ -624,7 +724,10 @@ export async function unattachedHoldersOutsideSelection(
   // four-figure bonuses this feature exists to surface.
   const byEmployment = new Map<string, { employmentId: string; name: string; count: number; cents: number }>();
   for (const g of groups) {
-    if (inScope.has(g.employmentId)) continue;
+    // A named cycle this run cannot pay is abandoned whoever is selected; the selection test only decides
+    // the FIRST cause. `intendedRunType` absent ⇒ this is always false and the old rule stands alone.
+    const wrongCycle = abandonsByCycle && g.intendedRunType != null && g.intendedRunType !== 'regular';
+    if (!wrongCycle && (selected.length === 0 || inScope.has(g.employmentId))) continue;
     const acc = byEmployment.get(g.employmentId) ?? { employmentId: g.employmentId, name: g.employeeName, count: 0, cents: 0 };
     acc.count += g.count;
     acc.cents += Math.round(Number(g.totalAmount) * 100);
@@ -649,15 +752,25 @@ export async function unattachedHoldersOutsideSelection(
  */
 export async function unattachedHoldersOutsideBatchScope(
   ctx: SessionContext,
-  p: { companyId: string; payPeriod: string; scope: BatchScope | null },
+  p: {
+    companyId: string;
+    payPeriod: string;
+    scope: BatchScope | null;
+    /** c11e81aa — the draft's own run type, so the warning also names money this run walks past because
+     *  the operator marked it for another Pay Cycle. See unattachedHoldersOutsideSelection. */
+    runType?: string;
+  },
 ): Promise<UnattachedHolderRow[]> {
   const resolved = await withTenant(ctx, (tx) => resolveBatchScopeFilter(tx, p.scope));
-  // `employmentIds: null` ⇒ no scope ⇒ whole company ⇒ the run collects everything: nothing to warn about.
+  // `employmentIds: null` ⇒ no scope ⇒ whole company. The caller only reaches here for a SCOPED draft
+  // (app/payroll/[batchId]/page.tsx gates on `isScoped`), so this stays the plain early return it was —
+  // the cycle-abandonment half is carried through `runType` for the scoped case it is asked about.
   if (resolved.employmentIds == null || resolved.employmentIds.length === 0) return [];
   return unattachedHoldersOutsideSelection(ctx, {
     companyIds: [p.companyId],
     payPeriod: p.payPeriod,
     employmentIds: resolved.employmentIds,
+    intendedRunType: p.runType,
   });
 }
 
@@ -1912,8 +2025,15 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * month's run existed carries `batch_id = NULL` + (company, pay_period); `generatePayslips` stamps it onto
  * the month's REGULAR run at generate time (attach-on-generate, 0175). So for a regular run those rows WILL
  * be paid by this run even though nothing links them to it yet — omitting them would under-report the very
- * figure the operator is checking. They are marked `note: 'unattached'` so the screen can say so. An
- * ADDITIONAL/off-cycle run does not attach them, so it does not count them.
+ * figure the operator is checking. They are marked `note: 'unattached'` so the screen can say so.
+ *
+ * c11e81aa AMENDS THE SECOND HALF OF THAT SENTENCE (it read "an ADDITIONAL/off-cycle run does not attach
+ * them, so it does not count them"). A period-keyed row may now NAME the Pay Cycle it is waiting for, and
+ * the run that collects it is the run OPENED UNDER THAT VERY CYCLE (`payroll_batch.payroll_cycle_id`) —
+ * not merely a run of the same type, which would let an "Advance Salary" run count a "Mid-Month" row. So
+ * the regular run stops counting a row marked "Bonus" — which it will not pay — and the bonus run counts
+ * the rows that named it. A row that named no cycle is still the regular run's and nobody else's, which
+ * is every row on production today.
  *
  * THE FLAGS ARE MIRRORED, NOT IGNORED — this is the difference between a useful card and a lying one.
  * Three doors only reach a payslip when a flag is on: the typed-component doors (fixed transactions and
@@ -1941,6 +2061,10 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         scope: payrollBatch.scope,
+        // c11e81aa — the cycle this run was opened under; `collectableCycleIds` needs it to answer which
+        // period-keyed rows the run will claim, and it is the only thing separating an "Advance Salary"
+        // run from a "Mid-Month" one.
+        payrollCycleId: payrollBatch.payrollCycleId,
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
@@ -2023,9 +2147,22 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       push({ employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode }, 'batchComponent', signed, r.itemName);
     }
 
-    // ── payroll_individual_txn (door 3): attached to this batch, plus — for a REGULAR run only — the
-    // period-keyed rows attach-on-generate will stamp onto it. See the docstring. ──
-    const attachesUnattached = batch.runType === 'regular';
+    // ── payroll_individual_txn (door 3): attached to this batch, plus the period-keyed rows
+    // attach-on-generate will stamp onto it. See the docstring. ──
+    //
+    // c11e81aa — MIRRORS THE AMENDED COLLECTION RULE, because this card's whole contract is that "what
+    // this run will pay" and "what this card reports" cannot disagree. A period-keyed row now names the
+    // Pay Cycle it is waiting for (`intended_cycle_id`, 0441), so:
+    //   • the REGULAR run counts rows that named no cycle, plus rows naming any regular-mapped cycle of
+    //     the company — and it must STOP promising a row somebody marked "Bonus", which it will not pay;
+    //   • a non-regular run counts the rows that named ITS OWN cycle (`payroll_batch.payroll_cycle_id`) —
+    //     money this card used to report as belonging to nobody — and nothing else. Not "a cycle of its
+    //     TYPE": three default cycles share run_type 'off_cycle', so a type match would have this card
+    //     promise a Mid-Month row on an Advance Salary run, and generatePayslips then not pay it.
+    // Resolved by the SAME `collectableCycleIds` generatePayslips calls — one rule, imported, not copied.
+    const collectable = await collectableCycleIds(tx, batch);
+    const attachesUnattached = !collectable.collectsNothing;
+    const intentFilter = attachesUnattached ? intendedCycleFilter(collectable) : undefined;
     const txnRows = await tx
       .select({
         employmentId: payrollIndividualTxn.employmentId,
@@ -2048,6 +2185,7 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
                 isNull(payrollIndividualTxn.batchId),
                 eq(payrollIndividualTxn.companyId, batch.companyId),
                 eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+                intentFilter,
               ),
             )
           : eq(payrollIndividualTxn.batchId, p.batchId),

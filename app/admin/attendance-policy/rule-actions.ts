@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
+  copyAttendanceRule,
   createAttendanceRule,
   deleteAttendanceRule,
+  setAttendanceRuleStatus,
   updateAttendanceRule,
   type AttendanceRuleInput,
   type OtRowInput,
@@ -103,6 +105,46 @@ export async function updateAttendanceRuleAction(fd: FormData) {
     await updateAttendanceRule(s, { ruleId, ...ruleFields(fd) });
   } catch (e) {
     redirect(`${LIST}/rules/${ruleId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(LIST);
+  redirect(LIST);
+}
+
+/**
+ * ad52212d round 2 — DUPLICATE. Lands the operator on the copy's own edit form, not back on the list: the
+ * reason to duplicate a pattern is to change the two or three bands that differ, and dropping them on the
+ * list would make them hunt for the row they just created. Same choice, and the same reasoning, as
+ * copyShiftAction next door.
+ */
+export async function copyAttendanceRuleAction(fd: FormData) {
+  const s = await getSession();
+  let copied: { id: string };
+  try {
+    copied = await copyAttendanceRule(s, { ruleId: String(fd.get('ruleId') ?? '') });
+  } catch (e) {
+    redirect(`${LIST}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(LIST);
+  redirect(`${LIST}/rules/${copied.id}`);
+}
+
+/**
+ * ad52212d round 2 — ACTIVATE / DEACTIVATE from the list.
+ *
+ * The target status rides a hidden field because the two buttons are the same control in two states, and a
+ * hidden input is ALWAYS submitted. That is exactly the trap 7c834696 hit on this form (see `bool` above),
+ * so the field is read as a VALUE — 'inactive', or anything else meaning 'active'. A presence test would
+ * be true on every submission and would turn every one of these buttons into a deactivate button.
+ */
+export async function setAttendanceRuleStatusAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await setAttendanceRuleStatus(s, {
+      ruleId: String(fd.get('ruleId') ?? ''),
+      status: fd.get('status') === 'inactive' ? 'inactive' : 'active',
+    });
+  } catch (e) {
+    redirect(`${LIST}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(LIST);
   redirect(LIST);

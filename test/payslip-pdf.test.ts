@@ -574,10 +574,31 @@ describe('5c198931 — buildPayslipPdfData reads the payslip’s OWN stamp', () 
     expect(d.earningLines!.reduce((s, l) => s + l.amount, 0)).toBeCloseTo(d.allowance, 2);
   });
 
+  /**
+   * 6b134681 — THE SIBLING ASSERT for the two figures that were never itemised.
+   *
+   * The case above pins that an OT line must NOT be counted among the allowance lines. That guard is
+   * necessary and stays exactly as it is; on its own it also described a document on which OT and Bonus
+   * had no named lines AT ALL. This says where those lines go instead: their own fields, each reconciling
+   * against its own stored total, so nothing can leak between the three earnings figures.
+   */
+  it('routes ot / bonus component lines to their OWN fields, never into the allowance lines', () => {
+    const d = buildPayslipPdfData(row, borne);
+    expect(d.overtimeLines).toEqual([{ code: 'OT15', name: 'OVERTIME 1.5', amount: 40 }]);
+    expect(d.bonusLines).toEqual([]); // this fixture has no bonus-bucket item
+    // The OT line is real, but this payslip's stored overtime column is 0 (the fixture's OT was folded
+    // elsewhere), so the named row must NOT replace the grouped one — the rows on a money document may
+    // never fail to add up to the total beside them.
+    expect(d.overtime).toBe(0);
+    expect(d.earningLines).toEqual([{ code: 'A0027', name: 'HANDPHONE ALLOWANCE', amount: 100 }]);
+  });
+
   it('reports detailNotRecorded for a run that predates the per-item stamp', () => {
     const { componentLines: _drop, ...st } = row.statutory;
     const d = buildPayslipPdfData({ ...row, statutory: st }, borne);
     expect(d.earningLines).toEqual([]);
+    expect(d.bonusLines).toEqual([]);
+    expect(d.overtimeLines).toEqual([]);
     expect(d.detailNotRecorded).toBe(true);
   });
 
@@ -829,5 +850,70 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     // The pair partner finished on sheet one and was NOT redrawn beside the continuation.
     const p = drawnPlacements(bytes);
     expect(p.filter((r) => r.text === 'DEDUCTIONS')).toHaveLength(1);
+  });
+});
+
+/**
+ * 6b134681 — THE DOCUMENT NAMES THE PAY ITEM, READ BACK OFF THE ARTEFACT.
+ *
+ * A0002's January one-off was keyed as "B0001 — ANGPOW RM500.00" and the downloaded payslip printed
+ * "Bonus RM500.00". The code and the description were stamped on the payslip the whole time; the bonus
+ * bucket was simply the one earnings figure the document never itemised, so the statutory classification
+ * (additional remuneration ⇒ the Bonus box) was all the employee ever saw.
+ */
+describe('6b134681 — bonus and overtime print by pay item, not by category', () => {
+  it('prints B0001 · ANGPOW in place of the lumped Bonus row', async () => {
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          bonus: 500,
+          gross: 7620,
+          bonusLines: [{ code: 'B0001', name: 'ANGPOW', amount: 500 }],
+          detailNotRecorded: false,
+        },
+        labels,
+      ),
+    );
+    expect(text, 'the pay item description reaches the page').toContain('ANGPOW');
+    expect(text, 'and so does its code').toContain('B0001');
+    // The grouped word is GONE from the earnings box: it was never the item's name.
+    expect(text, 'a bare "Bonus" row must not stand where a named item exists').not.toContain('Bonus');
+  });
+
+  it('keeps the grouped Bonus row when the named lines do NOT add up to the stored figure', async () => {
+    // 3c473773 `displayEarnings` can move money between boxes after the fact. Printing rows that fall
+    // short of the total beside them is the one failure this document may never commit.
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          bonus: 500,
+          gross: 7620,
+          bonusLines: [{ code: 'B0001', name: 'ANGPOW', amount: 450 }],
+          detailNotRecorded: false,
+        },
+        labels,
+      ),
+    );
+    expect(text).toContain('Bonus');
+    expect(text, 'a row that does not reconcile is not printed at all').not.toContain('ANGPOW');
+  });
+
+  it('itemises overtime the same way, against its OWN total', async () => {
+    const text = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          overtime: 120,
+          overtimeLines: [{ code: 'OT15', name: 'OVERTIME 1.5', amount: 120 }],
+          detailNotRecorded: false,
+        },
+        labels,
+      ),
+    );
+    expect(text).toContain('OVERTIME 1.5');
+    expect(text).toContain('OT15');
+    expect(text, 'the category word gives way to the item').not.toContain('Overtime');
   });
 });

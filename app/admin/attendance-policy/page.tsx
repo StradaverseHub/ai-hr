@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
 import { Badge, Card, ErrorBanner, PageHeader, btnPrimary, btnGhost, pageWideCls } from '@/components/ui';
-import { deleteAttendanceRuleAction } from './rule-actions';
+import { copyAttendanceRuleAction, deleteAttendanceRuleAction, setAttendanceRuleStatusAction } from './rule-actions';
 
 /**
  * Lateness, Early Out & Overtime Settings — the tenant-wide library of attendance calculation rules.
@@ -83,10 +83,34 @@ export default async function AttendancePolicyPage({
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                    <div className="flex items-center justify-end gap-2">
+                    {/* ad52212d round 2 — the housekeeping actions the reporter listed, in the same shape the
+                        shift library next door already uses: Edit · Duplicate · Activate/Deactivate · Delete.
+                        Delete stays hidden on the Standard rule (it is un-deletable by service too); Duplicate
+                        and the status toggle are offered on EVERY row, Standard included — duplicating it is
+                        the natural way to start a new pattern from the tenant's baseline. */}
+                    <div className="flex items-center justify-end gap-3">
                       <Link href={`/admin/attendance-policy/rules/${r.id}`} className="text-primary hover:underline">
                         {tr('edit')}
                       </Link>
+                      <form action={copyAttendanceRuleAction}>
+                        <input type="hidden" name="ruleId" value={r.id} />
+                        <button className="text-primary hover:underline">{tr('duplicate')}</button>
+                      </form>
+                      <form action={setAttendanceRuleStatusAction}>
+                        <input type="hidden" name="ruleId" value={r.id} />
+                        {/* The target status, not the current one — and read as a VALUE by the action, because
+                            a hidden field is submitted whatever it says (trap 17). */}
+                        <input type="hidden" name="status" value={r.status === 'active' ? 'inactive' : 'active'} />
+                        <button
+                          className={
+                            r.status === 'active'
+                              ? 'text-rose-600 hover:underline dark:text-rose-400'
+                              : 'text-emerald-700 hover:underline dark:text-emerald-400'
+                          }
+                        >
+                          {r.status === 'active' ? tr('deactivate') : tr('activate')}
+                        </button>
+                      </form>
                       {!r.isDefault && (
                         <form action={deleteAttendanceRuleAction}>
                           <input type="hidden" name="ruleId" value={r.id} />

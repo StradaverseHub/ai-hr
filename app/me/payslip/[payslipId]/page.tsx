@@ -8,6 +8,15 @@ import { payslipDetail } from '@/core/payroll';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
+// 6b134681 — the pay items behind the Overtime and Bonus figures, named from the payslip's own stamp.
+// The SAME derivation the printed PDF and Transaction View → History use, so the three cannot disagree
+// about which items make up a figure or how one is labelled.
+import {
+  payItemLabel,
+  payItemLinesForBuckets,
+  payItemLinesReconcile,
+  storedComponentLines,
+} from '@/core/payslip-earning-lines';
 
 /** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
 const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' | 'eis' | 'pcb'> = {
@@ -42,6 +51,32 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
       <span className={muted ? 'text-muted-foreground' : ''}>{label}</span>
       <span className={`tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium'}`}>{value}</span>
     </div>
+  );
+}
+
+/**
+ * 6b134681 — the pay items that make up the figure above, indented under it.
+ *
+ * The reporter keyed "B0001 — ANGPOW RM500" and this page answered "Bonus RM500.00". The code and the
+ * description were on the payslip all along (`statutory.componentLines`); the bonus figure was simply the
+ * one earnings box that was never broken out. Rendered ONLY from what the payslip stored — never
+ * re-derived from today's pay-item setup, which is how a breakdown ends up contradicting the total it
+ * sits under. No new message keys: a pay item's own label is data, not chrome.
+ */
+function SubLines({ lines }: { lines: { code: string | null; name: string; amount: number }[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <ul className="mb-1 ms-3 border-s border-border/60 ps-3">
+      {lines.map((l, i) => (
+        <li
+          key={`${l.code ?? ''}-${i}`}
+          className="flex items-baseline justify-between gap-4 py-0.5 text-xs text-muted-foreground"
+        >
+          <span>{payItemLabel(l)}</span>
+          <span className="tabular-nums">{rm(l.amount)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -81,6 +116,15 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   // e2632276 — the unpaid-leave / absence halves of "Other deductions", named and day-counted. Read from
   // THIS payslip's own stamp; a slip issued before this shipped has none and renders exactly as before.
   const absence = payslipAbsenceLines(p.statutory, p.otherDeductions);
+  // 6b134681 — the named items behind Overtime and Bonus, from this payslip's OWN per-item stamp. Each
+  // list is shown only when it adds up to the figure it explains (a payslip whose display categories
+  // moved money between boxes, or one issued before the stamp existed, keeps the bare figure) — the same
+  // reconciliation rule the printed document applies, from the same function.
+  const stored = storedComponentLines(p.statutory);
+  const otLines = payItemLinesForBuckets(stored, ['ot']);
+  const bonusLines = payItemLinesForBuckets(stored, ['bonus']);
+  const showOtLines = payItemLinesReconcile(otLines, disp.overtime);
+  const showBonusLines = payItemLinesReconcile(bonusLines, disp.bonus);
   const t = await getTranslations('me.payslip');
   const locale = await getLocale();
 
@@ -128,10 +172,15 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
               of it, then a dedicated line for the pay item, so gross still reconciles. */}
           <Row label={t('allowances')} value={rm(disp.allowance - Number(st.otConvert?.amount ?? 0))} />
           <Row label={t('overtime')} value={rm(disp.overtime)} />
+          {showOtLines && <SubLines lines={otLines} />}
           {Number(st.otConvert?.amount) > 0 && (
             <Row label={t('otConverted', { item: st.otConvert!.name })} value={rm(st.otConvert!.amount)} />
           )}
           <Row label={t('bonus')} value={rm(disp.bonus)} />
+          {/* 6b134681 — "B0001 · ANGPOW  RM500.00" under the Bonus figure, instead of the figure alone.
+              The classification (additional remuneration ⇒ the bonus box) decides the BOX; it never gets
+              to stand in for the pay item's own code and description. */}
+          {showBonusLines && <SubLines lines={bonusLines} />}
           {/* 3c473773 — the Claim box, shown only when a pay item was deliberately categorised into it. */}
           {disp.claim > 0 && <Row label={t('claim')} value={rm(disp.claim)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">

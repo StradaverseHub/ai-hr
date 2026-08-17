@@ -140,6 +140,15 @@ export type TxnBatch = {
    *  employee-level fact: it is what `closeBatch` refuses on and what the Reprocess screen pre-ticks, and
    *  it is the only signal that survives deleting the last transaction on the run (request case 4). */
   recalcEmploymentIds: string[] | null;
+  /**
+   * c11e81aa — the CONFIGURED cycle this run was opened under (`payroll_batch.payroll_cycle_id`), null on
+   * every run created before that column and on any run whose caller named no cycle.
+   *
+   * It is what lets the form tell an "Advance Salary" run from a "Mid-Month" one — both are run_type
+   * 'off_cycle', so `runType` cannot, and attaching a Mid-Month entry to the Advance Salary run would pay
+   * it there. The server applies the identical rule at generate time (`collectableCycleIds`).
+   */
+  payrollCycleId: string | null;
 };
 
 export type TxnPayItem = {
@@ -161,6 +170,26 @@ export type TxnPayItem = {
 
 export type TxnCompany = { id: string; name: string; currency: string | null };
 
+/**
+ * c11e81aa — ONE CONFIGURED PAY CYCLE, from Payroll → Settings → Payroll Cycles.
+ *
+ * This is what the entry form's "Pay cycle" field offers, and it is a different thing from `TxnBatch`:
+ * a cycle is a CONFIGURATION that exists whether or not anybody has run payroll, a batch is a RUN that
+ * happened. The screen used to offer the second and call it the first, which is why an entry for a future
+ * month could not name a cycle at all.
+ *
+ * `runType` is the only thing that ties the two together: a payroll_batch stores no cycle id, so a run
+ * belongs to a cycle exactly when their run types match within the company (the same rule the process
+ * wizard resolves a company's cycle by, and the same one attach-on-generate applies server-side).
+ */
+export type TxnPayrollCycle = {
+  id: string;
+  companyId: string;
+  /** The operator's own name for it ("Monthly Salary", "Mid-Month", "Bonus Run") — never `cycle.<runType>`. */
+  name: string;
+  runType: TxnBatch['runType'];
+};
+
 /** True when a batch's scope includes this employment (empty/null scope ⇒ whole company). Mirrors the
  *  server's resolveBatchScopeFilter membership rule; the service re-checks it authoritatively. */
 function batchIncludesEmployee(b: TxnBatch, emp: TxnEmployee): boolean {
@@ -180,6 +209,21 @@ type FormState = {
   sourceId: string | null;
   payPeriod: string;
   batchId: string;
+  /** c11e81aa — the CONFIGURED Pay Cycle the operator picked (payroll_cycle.id). '' means "no cycle
+   *  named", which is a real answer and the one a form opens on. Distinct from `batchId`, a RUN. */
+  cycleId: string;
+  /**
+   * c11e81aa — HAS THE OPERATOR TOUCHED THE PAY CYCLE FIELD ON THIS FORM?
+   *
+   * An EDIT submits `intended_cycle_id` only when this is true. The select is always rendered and always
+   * has a value, so its value alone cannot say whether anybody chose it — and reading it as a choice
+   * would let "change the amount on a 2025 row" silently stamp a cycle that row never had. The flag is
+   * set by the field's own onChange and by nothing else, so it means exactly what it says.
+   */
+  cycleTouched: boolean;
+  /** c11e81aa — on an EDIT, the run this row is already attached to (null while it is period-keyed).
+   *  A row that is already on a run has its cycle decided; the field shows it and refuses to move it. */
+  attachedBatchId: string | null;
   item: string;
   txnDate: string;
   amount: string;
@@ -209,6 +253,9 @@ type FormState = {
 type DailyState = {
   payPeriod: string;
   batchId: string;
+  /** c11e81aa — the same pick as FormState.cycleId, carried across the mode switch with the rest of the
+   *  header. A grid is ONE entry keyed across dates, so it has one cycle, not one per line. */
+  cycleId: string;
   item: string;
   lines: DayLine[];
 };
@@ -238,6 +285,7 @@ export function TxnWorkspace({
   batches,
   companies,
   payItems,
+  payrollCycles,
   processHref,
   requireComponent,
   currentPeriod,
@@ -248,6 +296,10 @@ export function TxnWorkspace({
   batches: TxnBatch[];
   companies: TxnCompany[];
   payItems: TxnPayItem[];
+  /** c11e81aa — the ACTIVE configured Pay Cycles of every company in scope, resolved on the server from
+   *  the same catalogue the process wizard runs against. Empty for a company that has configured none, in
+   *  which case the Pay cycle field falls back to naming the month's existing runs exactly as before. */
+  payrollCycles: TxnPayrollCycle[];
   processHref: string;
   /** f1564110 Phase 3 — with the kernel paying these rows, a NEW payable row must name a master item. */
   requireComponent: boolean;
@@ -611,24 +663,126 @@ export function TxnWorkspace({
       .filter((b) => b.companyId === selected.companyId && b.payPeriod === formPeriod && batchIncludesEmployee(b, selected))
       .sort((a, b) => (a.runType === b.runType ? a.runSeq - b.runSeq : a.runType < b.runType ? -1 : 1));
   }, [batches, selected, formPeriod]);
-  const periodKeyed = isPeriod(formPeriod) && eligibleBatches.length === 0;
   const cycleLabel = (b: TxnBatch) => `${t(`cycle.${b.runType}`)}${b.runSeq > 1 ? ` #${b.runSeq}` : ''}`;
 
   /**
-   * The run a save will land on, DERIVED rather than stored: the operator's pick while it is still
-   * one of the eligible runs, otherwise the sole eligible run, otherwise none (period-keyed).
+   * c11e81aa — THE CYCLES THIS EMPLOYEE'S ENTRY MAY NAME: the configured catalogue of their company.
+   *
+   * Not filtered by month and not filtered by whether a run exists, because neither is a fact about a
+   * cycle — that is precisely the conflation the old field made. An empty list means the company has no
+   * configured cycles at all, and the field falls back to naming existing runs (see the select below).
+   */
+  const companyCycles = useMemo(
+    () => (selected ? payrollCycles.filter((c) => c.companyId === selected.companyId) : []),
+    [payrollCycles, selected],
+  );
+
+  /**
+   * c11e81aa — the run an EDIT's row is already attached to, when it is on one.
+   *
+   * An attached row's cycle is a fact, not a choice: it is on that run, and this ledger's edit path has
+   * never moved a row between runs (it cannot even move it between months). So the field shows the run's
+   * own cycle and is disabled, rather than offering a change the service would refuse.
+   */
+  const editingRun = useMemo(
+    () =>
+      form?.mode === 'edit' && form.attachedBatchId
+        ? (batches.find((b) => b.id === form.attachedBatchId) ?? null)
+        : null,
+    [form, batches],
+  );
+  const cycleLocked = editingRun != null;
+
+  /**
+   * c11e81aa — THE CYCLE THIS SAVE NAMES. THE OPERATOR'S PICK, AND NOTHING ELSE.
+   *
+   * THERE IS DELIBERATELY NO DEFAULT. An earlier draft of this control defaulted to the sole existing
+   * run's cycle, else the company's regular cycle, else the first configured one — which meant the field
+   * could never read empty and every save stamped an intent onto the row whether or not anybody had
+   * chosen it. On an EDIT that is a pay-affecting lie about what the operator did: changing an amount on
+   * a row keyed before this feature existed would have written a cycle nobody picked.
+   *
+   * '' IS A REAL, REACHABLE ANSWER and it means "name no cycle" — precisely what every row on production
+   * carries, and precisely what the month's regular run collects. The select below offers it as its first
+   * option, so choosing it is one click and it is where a new form starts.
+   */
+  const resolvedCycleId = useMemo(() => {
+    if (!form && !daily) return '';
+    // An attached row's cycle is a FACT: show the run's own, and refuse to move it (the control is
+    // disabled and nothing is submitted for it). Fall back to the run's type only for a legacy batch that
+    // predates `payroll_cycle_id` — there is no other way to name its cycle, and it is display only.
+    if (editingRun) {
+      return (
+        (editingRun.payrollCycleId && companyCycles.find((c) => c.id === editingRun.payrollCycleId)?.id) ||
+        companyCycles.find((c) => c.runType === editingRun.runType)?.id ||
+        ''
+      );
+    }
+    const picked = form?.cycleId ?? daily?.cycleId ?? '';
+    return picked && companyCycles.some((c) => c.id === picked) ? picked : '';
+  }, [form, daily, companyCycles, editingRun]);
+  const resolvedCycle = useMemo(
+    () => (resolvedCycleId ? (companyCycles.find((c) => c.id === resolvedCycleId) ?? null) : null),
+    [resolvedCycleId, companyCycles],
+  );
+
+  /**
+   * The run a save will land on, DERIVED rather than stored.
    *
    * This was an effect that wrote the resolved id back into form state, and deriving it is not a
    * tidy-up — a stored batchId is a second copy of something the month and the employee already
    * determine, and the window where the two disagree is a window where the row is written against a
    * run that no longer covers this employee. There is no such window if it is never stored.
+   *
+   * c11e81aa — THREE ANSWERS, IN ORDER, AND THE MIDDLE ONE IS WHY THE RUN PICKER IS STILL HERE:
+   *
+   *   1. the operator's EXPLICIT run pick, while it is still an eligible run. A month can hold two runs
+   *      of one cycle (run_seq 2 and 3), which no cycle choice can tell apart — so the picker that has
+   *      always resolved that ambiguity stays, offered whenever the month has more than one run;
+   *   2. else, with a cycle chosen, the run OPENED UNDER THAT CYCLE. By id, never by run type: three
+   *      default cycles are run_type 'off_cycle', so a type match would attach a "Mid-Month" entry to an
+   *      "Advance Salary" run and pay it there. A legacy run with no cycle id can still claim a chosen
+   *      REGULAR cycle, because a period holds at most one regular run and it collects those rows anyway
+   *      (`collectableCycleIds`, core/payroll.ts) — mirroring the server keeps the two from disagreeing;
+   *   3. else the pre-cycle derivation VERBATIM: the sole eligible run, or none.
+   *
+   * Resolving to none is no longer a dead end: the row carries the chosen cycle and the eventual run of
+   * that cycle collects it (0441).
    */
   const resolvedBatchId = useMemo(() => {
-    const picked = form?.batchId ?? daily?.batchId ?? '';
     if (!form && !daily) return '';
+    const picked = form?.batchId ?? daily?.batchId ?? '';
     if (picked && eligibleBatches.some((b) => b.id === picked)) return picked;
+    if (resolvedCycle) {
+      return (
+        eligibleBatches.find((b) => b.payrollCycleId === resolvedCycle.id)?.id ??
+        (resolvedCycle.runType === 'regular'
+          ? (eligibleBatches.find((b) => b.runType === 'regular' && b.payrollCycleId == null)?.id ?? '')
+          : '')
+      );
+    }
     return eligibleBatches.length === 1 ? eligibleBatches[0].id : '';
-  }, [form, daily, eligibleBatches]);
+  }, [form, daily, eligibleBatches, resolvedCycle]);
+
+  /**
+   * WHEN THE "THIS IS WAITING FOR A RUN" NOTICE IS TRUE — two conditions, because there are now two ways
+   * to be waiting and one message fits neither on its own.
+   *
+   *  • `periodKeyed` is the ORIGINAL, VERBATIM: the month has no run at all, and the money will ride the
+   *    month's regular run whenever it is created. That copy is still exactly right for a row that names
+   *    no cycle, which is what a form starts on.
+   *  • `awaitingCycleRun` is c11e81aa's: a cycle IS named and no run has been opened under it. A month
+   *    with a regular run but no Bonus run leaves an entry marked Bonus waiting exactly as a runless
+   *    month does, and telling that operator the regular run will pay it would be false.
+   *
+   * Neither is "resolvedBatchId is empty", which would also fire when the month has several runs and the
+   * operator has picked none — there the row is genuinely period-keyed, but "no draft run yet for this
+   * month" is a false statement about a month that visibly has runs, so that case stays silent as it
+   * always has.
+   */
+  const periodKeyed = isPeriod(formPeriod) && eligibleBatches.length === 0;
+  const awaitingCycleRun = isPeriod(formPeriod) && resolvedCycle != null && resolvedBatchId === '';
+  const showWaitingNotice = awaitingCycleRun || (periodKeyed && resolvedCycle == null);
 
   /** The run a save would land on, as a batch record (not just its id) — the form needs its status. */
   const targetBatch = useMemo(
@@ -890,6 +1044,12 @@ export function TxnWorkspace({
     sourceId: null,
     payPeriod: period,
     batchId: '',
+    // c11e81aa — '' IS "no cycle named", the answer every row on production carries and the one the
+    // month's regular run collects. A new form starts there rather than on a guessed default, so nothing
+    // is ever stamped onto a row that the operator did not choose.
+    cycleId: '',
+    cycleTouched: false,
+    attachedBatchId: null,
     item: defaultItemValue,
     txnDate: '',
     amount: '',
@@ -900,9 +1060,25 @@ export function TxnWorkspace({
 
   /** Changing the pay item can change WHICH box is the operator's to fill, so the two that belong to the
    *  old item are reset with it: the Input Type follows the new item's rule, and a typed amount does not
-   *  survive onto an item that works its own amount out (nor a derived figure onto one that does not). */
-  const changeItem = (value: string) =>
-    patchForm({ item: value, unit: unitFor(value, form?.unit ?? ''), amount: '' });
+   *  survive onto an item that works its own amount out (nor a derived figure onto one that does not).
+   *
+   *  417d4937 — AND THE AUTO-FILLED REMARK, which is the third thing that belonged to the old item.
+   *  `resolveItem` below defaults a blank Remarks box to the picked item's label, so a transaction keyed
+   *  as A0020 — DIRECTOR FEE and then switched to A0040 — MEAL ALLOWANCE was persisted with the Director
+   *  Fee remark still on it (production: A0004, 2026-01). A remark the operator actually TYPED is theirs
+   *  and survives the switch untouched — only the outgoing item's own auto-label is cleared, and clearing
+   *  it lets the new item's label take its place on save. */
+  const changeItem = (value: string) => {
+    const outgoing = itemByValue.get(form?.item ?? '');
+    const autoLabel = outgoing?.fromMaster ? outgoing.label : '';
+    const staleAutoNote = autoLabel !== '' && (form?.notes ?? '').trim() === autoLabel;
+    patchForm({
+      item: value,
+      unit: unitFor(value, form?.unit ?? ''),
+      amount: '',
+      ...(staleAutoNote ? { notes: '' } : {}),
+    });
+  };
 
   const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
 
@@ -926,6 +1102,7 @@ export function TxnWorkspace({
     openDaily({
       payPeriod: from?.payPeriod ?? (periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod),
       batchId: from?.batchId ?? '',
+      cycleId: from?.cycleId ?? '',
       item: from?.item ?? defaultItemValue,
       lines: [
         from
@@ -941,6 +1118,10 @@ export function TxnWorkspace({
     openForm({
       ...blankForm(from?.payPeriod ?? currentPeriod),
       batchId: from?.batchId ?? '',
+      // c11e81aa — a pick made in the grid is still the operator's pick after the mode switch, so it
+      // rides across WITH its touched flag rather than arriving as an untouched default.
+      cycleId: from?.cycleId ?? '',
+      cycleTouched: (from?.cycleId ?? '') !== '',
       item,
       unit: unitFor(item, ''),
       txnDate: first?.txnDate ?? '',
@@ -969,6 +1150,18 @@ export function TxnWorkspace({
         sourceId: mode === 'duplicate' ? detail.id : null,
         payPeriod: detail.payPeriod,
         batchId: '',
+        // c11e81aa — the cycle this row was SAVED against, so Edit opens on the operator's own choice
+        // rather than re-deriving one. A Duplicate carries it too: a copy of a Bonus entry is a Bonus
+        // entry, and silently re-defaulting it to the regular cycle is the pay-affecting surprise this
+        // whole item exists to remove.
+        cycleId: detail.intendedCycleId ?? '',
+        // …but opening a form is not TOUCHING the field. An edit that changes only the amount must leave
+        // `intended_cycle_id` exactly as it was — including leaving it NULL on a row keyed before 0441 —
+        // so the submit reads this flag, never the select's value.
+        cycleTouched: false,
+        // The run this row is already ON, for an edit. Null on a Duplicate: a copy is a NEW row and is
+        // free to name any cycle, whatever run the row it was copied from happens to sit on.
+        attachedBatchId: mode === 'edit' ? detail.batchId : null,
         // A component that is archived (or hidden by requireComponent) is no longer an offered option;
         // fall back to the generic kind rather than a select stuck on a value that does not exist.
         item: resolvedItem,
@@ -1096,12 +1289,27 @@ export function TxnWorkspace({
       notes: r.notes || null,
     };
     return f.mode === 'edit' && f.id
-      ? updateIndividualTxnAction({ id: f.id, companyId: selected.companyId, ...common })
+      ? updateIndividualTxnAction({
+          id: f.id,
+          companyId: selected.companyId,
+          // c11e81aa — THE FIELD IS OMITTED UNLESS THE OPERATOR ACTUALLY MOVED IT. The select is always
+          // rendered and always carries a value, so its value cannot be read as a choice (house rule: a
+          // field that is always submitted cannot be read by presence). Sending it regardless would let
+          // an amount-only edit of a pre-0441 row stamp an intent that row never had — and would write a
+          // column on a save that changed nothing, stamping `updated_at` and, on a processed run,
+          // marking it for recalculation over a value that moves no money. Also omitted when the row is
+          // already ON a run: there the control is disabled and shows a fact, not an offer.
+          ...(f.cycleTouched && !cycleLocked ? { intendedCycleId: resolvedCycleId || null } : {}),
+          ...common,
+        })
       : createIndividualTxnAction({
           employmentId: selected.employmentId,
           companyId: selected.companyId,
           payPeriod: f.payPeriod,
           batchId: resolvedBatchId,
+          // The chosen cycle rides ALONGSIDE the run: where a run of that cycle already exists the row
+          // attaches to it, and where none does this is what routes it when one is generated.
+          intendedCycleId: resolvedCycleId || null,
           ...common,
         });
   };
@@ -1126,6 +1334,7 @@ export function TxnWorkspace({
       companyId: selected.companyId,
       payPeriod: d.payPeriod,
       batchId: resolvedBatchId,
+      intendedCycleId: resolvedCycleId || null,
       kind: opt.kind,
       componentId,
       unit: requiredUnit ?? null,
@@ -1632,16 +1841,31 @@ export function TxnWorkspace({
                       className={inputCls}
                     />
                   </Field>
-                  {/* c11e81aa — THE CONTROL IS ALWAYS THERE WHEN THERE IS A RUN TO NAME. It used to
-                      become a select only above ONE eligible run and print a paragraph otherwise, and on
-                      production 21 of the 22 (company, month) pairs have exactly one run — so the field
-                      was, in practice, never selectable. What did NOT change is where the answer comes
-                      from: `resolvedBatchId` stays DERIVED (see its note above), so this control offers
-                      the runs and the derivation still decides the default. The blank option is offered
-                      only above one run, because with a single eligible run the derivation resolves ''
-                      straight back to it and an option that cannot change anything is worse than none. */}
+                  {/* c11e81aa — THE PAY CYCLE FIELD NAMES A CONFIGURED CYCLE, and it opens EMPTY.
+                      The empty option is not decoration: it is the answer every row on production
+                      carries, and without it the control could never read "the operator chose nothing"
+                      — so an edit that touched only the amount would have written a cycle onto a row
+                      that never had one. Selecting it says "name no cycle"; the month's regular run
+                      collects such a row exactly as it always has.
+
+                      A company with NO configured cycles keeps the pre-cycle control verbatim: the runs
+                      that exist, or the "awaiting payroll run" line. */}
                   <Field label={t('cycleLabel')}>
-                    {eligibleBatches.length > 0 ? (
+                    {companyCycles.length > 0 ? (
+                      <select
+                        value={resolvedCycleId}
+                        disabled={cycleLocked}
+                        onChange={(e) => patchForm({ cycleId: e.target.value, cycleTouched: true })}
+                        className={inputCls}
+                      >
+                        <option value="">{t('cycleNone')}</option>
+                        {companyCycles.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : eligibleBatches.length > 0 ? (
                       <select value={resolvedBatchId} onChange={(e) => patchForm({ batchId: e.target.value })} className={inputCls}>
                         {eligibleBatches.length > 1 && <option value="">—</option>}
                         {eligibleBatches.map((b) => (
@@ -1653,7 +1877,31 @@ export function TxnWorkspace({
                     ) : (
                       <p className="px-1 py-2 text-sm text-muted-foreground">{t('pendingRun')}</p>
                     )}
+                    {cycleLocked && <p className="mt-1 text-xs text-muted-foreground">{t('cycleLockedHint')}</p>}
                   </Field>
+                  {/* c11e81aa — THE RUN PICKER SURVIVES THE CYCLE FIELD, and it has to. A month can hold
+                      two runs of the SAME cycle (run_seq 2 and 3), which no cycle choice can tell apart,
+                      and this is the only control that can target the second one. It is offered exactly
+                      when it can change something — more than one eligible run — which is also why it was
+                      only ever a select above one run. Blank means "let the cycle decide", so the two
+                      fields compose instead of fighting (see `resolvedBatchId`). */}
+                  {companyCycles.length > 0 && eligibleBatches.length > 1 && (
+                    <Field label={t('runLabel')}>
+                      <select
+                        value={resolvedBatchId}
+                        disabled={cycleLocked}
+                        onChange={(e) => patchForm({ batchId: e.target.value })}
+                        className={inputCls}
+                      >
+                        <option value="">{t('runAuto')}</option>
+                        {eligibleBatches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {cycleLabel(b)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
                   <Field label={t('colItem')}>
                     <select value={form.item} onChange={(e) => changeItem(e.target.value)} className={inputCls}>
                       <optgroup label={t('itemGroupGeneral')}>
@@ -1762,9 +2010,17 @@ export function TxnWorkspace({
                 )}
                 {derivedError && <p className="text-xs text-destructive">{t(derivedError as never)}</p>}
                 {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
-                {periodKeyed && isPeriod(form.payPeriod) && (
+                {/* c11e81aa — THE BANNER NOW ALSO FIRES WHEN THE NAMED CYCLE HAS NO RUN YET, AND NAMES IT.
+                    It used to fire only when the month had no run at all and promise "the regular run";
+                    with the cycle chosen up front, a month with a regular run but no Bonus run is exactly
+                    the same situation for an entry marked Bonus, and telling that operator their money
+                    rides the regular run would be false. See `showWaitingNotice` for why "no target run"
+                    on its own is NOT the condition. */}
+                {showWaitingNotice && isPeriod(form.payPeriod) && (
                   <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                    {t('noDraftYetNotice', { period: form.payPeriod })}{' '}
+                    {resolvedCycle
+                      ? t('cycleAwaitingRun', { cycle: resolvedCycle.name, period: form.payPeriod })
+                      : t('noDraftYetNotice', { period: form.payPeriod })}{' '}
                     <Link href={processHref} className="font-medium underline underline-offset-2">
                       {t('noDraftForSelectionLink')}
                     </Link>
@@ -1847,11 +2103,26 @@ export function TxnWorkspace({
                       className={inputCls}
                     />
                   </Field>
-                  {/* c11e81aa — the same control as the single-entry form's, for the same reason. The two
-                      machines share `eligibleBatches` and `resolvedBatchId`, so they cannot disagree
-                      about which runs the month has or which one a save will land on. */}
+                  {/* c11e81aa — the same two controls as the single-entry form's, for the same reasons.
+                      Both machines share `companyCycles`, `resolvedCycleId` and `resolvedBatchId`, so
+                      they cannot disagree about which cycles exist or where a save will land — including
+                      the empty option, which is where a fresh grid starts. A grid is ONE entry keyed
+                      across dates, so it has one cycle and one run, not one per line. */}
                   <Field label={t('cycleLabel')}>
-                    {eligibleBatches.length > 0 ? (
+                    {companyCycles.length > 0 ? (
+                      <select
+                        value={resolvedCycleId}
+                        onChange={(e) => patchDaily({ cycleId: e.target.value })}
+                        className={inputCls}
+                      >
+                        <option value="">{t('cycleNone')}</option>
+                        {companyCycles.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : eligibleBatches.length > 0 ? (
                       <select value={resolvedBatchId} onChange={(e) => patchDaily({ batchId: e.target.value })} className={inputCls}>
                         {eligibleBatches.length > 1 && <option value="">—</option>}
                         {eligibleBatches.map((b) => (
@@ -1864,6 +2135,18 @@ export function TxnWorkspace({
                       <p className="px-1 py-2 text-sm text-muted-foreground">{t('pendingRun')}</p>
                     )}
                   </Field>
+                  {companyCycles.length > 0 && eligibleBatches.length > 1 && (
+                    <Field label={t('runLabel')}>
+                      <select value={resolvedBatchId} onChange={(e) => patchDaily({ batchId: e.target.value })} className={inputCls}>
+                        <option value="">{t('runAuto')}</option>
+                        {eligibleBatches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {cycleLabel(b)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
                   {/* c11e81aa — THE SAME GATE, ON THE OTHER SIDE. A fixed-amount item cannot be keyed day
                       by day, so inside the grid it is not selectable either — otherwise the operator
                       could reach, by changing the pay item, exactly the state the greyed-out radio
@@ -2058,9 +2341,11 @@ export function TxnWorkspace({
                   <p className="text-xs text-muted-foreground">{t('dayGridNoRuleHint')}</p>
                 )}
                 {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
-                {periodKeyed && isPeriod(daily.payPeriod) && (
+                {showWaitingNotice && isPeriod(daily.payPeriod) && (
                   <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                    {t('noDraftYetNotice', { period: daily.payPeriod })}{' '}
+                    {resolvedCycle
+                      ? t('cycleAwaitingRun', { cycle: resolvedCycle.name, period: daily.payPeriod })
+                      : t('noDraftYetNotice', { period: daily.payPeriod })}{' '}
                     <Link href={processHref} className="font-medium underline underline-offset-2">
                       {t('noDraftForSelectionLink')}
                     </Link>

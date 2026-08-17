@@ -53,6 +53,7 @@
  * built here by design.
  */
 import {
+  CalendarCheck,
   CalendarClock,
   CalendarDays,
   CalendarRange,
@@ -142,9 +143,13 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
 };
 
 /**
- * The ONE Attendance menu (a324a4b3 rev2), in the reporter's screenshot order:
- * Records, Holidays, Shift settings, Attendance policy, Attendance allowance, Clocking location,
- * Time off in lieu, Roster, Import.
+ * The ONE Attendance configuration menu — "Attendance settings" since ad52212d round 1, carrying the
+ * reporter's three categories (Shift, Overtime Pattern, Work Schedule) followed by the four remaining
+ * configuration screens (Holidays, Attendance allowance, Clocking location, Time off in lieu).
+ *
+ * It began (a324a4b3 rev2) as the reporter's screenshot order — Records, Holidays, Shift settings,
+ * Attendance policy, Attendance allowance, Clocking location, Time off in lieu, Roster, Import — and
+ * rev3 moved the three non-admin rows out (see below). Round 1 re-grouped what was left.
  *
  * This merges the former ATTENDANCE_MANAGE_NAV (roster + import, managerUp) and ATTENDANCE_ADMIN_NAV
  * (the six adminOnly config screens) and pulls attendanceRecords up from MY_ATTENDANCE_NAV to the top.
@@ -155,7 +160,11 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
  * parent does not render the same glyph as My Attendance directly above it in the collapsed rail.
  */
 const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
-  labelKey: 'attendance',
+  // ad52212d ROUND 1 — the node is the reporter's "Attendance > Settings" sub-menu, so it is labelled for
+  // what it holds ("Attendance settings") beside its Administration siblings "Leave config" and "Claims
+  // config", instead of repeating the module name a third time. `nav.attendance` is NOT removed: it still
+  // labels the /attendance Records column in lib/permissions.ts.
+  labelKey: 'attendanceSettings',
   icon: CalendarRange,
   // a324a4b3 rev3 — 'admin', so the menu lands in Administration between Leave config and Claims config,
   // which is exactly what the reporter asked for: "just relocate the Attendance button below My Attendance
@@ -169,9 +178,29 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   // manager rows became flat Manage rows (navLinks below); only the six adminOnly config screens travel.
   group: 'admin',
   children: [
-    { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
-    // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
-    // working-hours + overtime-rates config moved to its own "Attendance policy" screen.
+    /**
+     * ad52212d ROUND 1 — THE THREE CATEGORIES THE REPORTER NAMED, FIRST: Shift, Overtime Pattern, Work
+     * Schedule. Then the four remaining configuration screens, in the 5cb199b3 ticket order they have
+     * always had among themselves (Holidays → Attendance allowance → Clocking location → Time off in lieu).
+     *
+     * WHY THIS IS THE WHOLE OF ROUND 1, AND WHY THERE IS NO NEW LANDING PAGE. The sidebar fly-out is
+     * deliberately ONE level deep (components/nav-flyout.tsx; NavChildDescriptor has no `children`) — the
+     * same constraint payroll hit at 1459e116 — so "Attendance › Settings › Shift" cannot be three tiers of
+     * rail. It is expressed as it is here: an Administration node named for the settings it holds, whose
+     * first three rows ARE the reporter's categories. No screen moved, no screen was created, and no
+     * screen's behaviour changed; only where you find them did.
+     *
+     * WHAT DID CHANGE BESIDES THE ORDER: three labels. `/admin/attendance` reads "Shift" (was "Shift
+     * settings" — the word "settings" is now the node above it), `/admin/attendance-policy` reads "Overtime
+     * Pattern" (it IS one in substance: attendance_rule + attendance_rule_ot_row are hour-banded overtime
+     * rates), and `/admin/attendance-policy/schedule` gets a row of its OWN as "Work Schedule" — the screen
+     * existed but was reachable only from a button on the rule list, which is why the reporter read it as
+     * absent. lib/permissions.ts follows the labels (its `labelKey: 'nav.…'` entries) and KEEPS its
+     * screenKeys, exactly as a324a4b3 established; the schedule route already rides the
+     * `attendancePolicyConfig` column, so no matrix column is created or moved.
+     */
+    // R33 f21d6eee: "Shift" (/admin/attendance) is the shared shift library; the per-company
+    // working-hours + overtime-rates config lives on its own "Work Schedule" screen.
     //
     // a324a4b3 — THE LABEL KEYS NAME THEIR SCREENS AGAIN. R33 moved the screens and R17 (c9f7211) moved
     // the STRINGS with them, but the KEYS were left behind: `attendancePolicy` resolved to "Shift
@@ -183,8 +212,13 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     //
     // lib/permissions.ts follows the labels (its `labelKey: 'nav.…'` entries) but KEEPS its screenKeys —
     // those may key stored role configs, the same split test/my-absence-nav.test.ts pinned for /leave.
-    { href: '/admin/attendance', labelKey: 'shiftSettings', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'attendancePolicy', icon: SlidersHorizontal, adminOnly: true },
+    { href: '/admin/attendance', labelKey: 'shift', icon: CalendarClock, adminOnly: true },
+    { href: '/admin/attendance-policy', labelKey: 'overtimePattern', icon: SlidersHorizontal, adminOnly: true },
+    // ad52212d — the Work Schedule screen (af7a8eb4 gave it this route) finally has a menu row. CalendarCheck
+    // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
+    // row sharing its parent's or a sibling's icon is indistinguishable there.
+    { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
+    { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Roster).

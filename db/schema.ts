@@ -5134,6 +5134,18 @@ export const payrollBatch = pgTable(
     // transaction that already holds that row. Cleared per employment as each is reprocessed; when the
     // set empties, `needs_recalc_at` goes back to NULL with it (the two are always written together).
     recalcEmploymentIds: jsonb('recalc_employment_ids').$type<string[]>(),
+    // c11e81aa (0441) — WHICH CONFIGURED CYCLE OPENED THIS RUN. Until now a batch snapshotted only its
+    // run_type (+ an off_cycle preset's `remarks` label), which was enough while run_type was the only
+    // thing the kernel gated on. It stopped being enough the moment a transaction could NAME a cycle:
+    // the default catalogue maps THREE cycles to run_type 'off_cycle' ('Off-cycle', 'Advance Salary',
+    // 'Mid-Month'), so "same run type" would have let an Advance Salary run collect and pay a row the
+    // operator saved as Mid-Month. Identity, not type, is what routes that money.
+    //
+    // NULLABLE, and null is not a defect: every batch created before this column, and every batch created
+    // by a caller that does not name a cycle (tests, the legacy single-company create form), carries null.
+    // A null-cycle REGULAR run behaves exactly as it does today; a null-cycle NON-regular run can name no
+    // cycle, so it collects no period-keyed rows at all — which is also exactly today's behaviour.
+    payrollCycleId: uuid('payroll_cycle_id').references(() => payrollCycle.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -5807,6 +5819,17 @@ export const payrollIndividualTxn = pgTable(
     // When those payslips were written. Stamped once and never re-stamped, so it remains the instant of
     // the FIRST payment rather than of the latest re-generation.
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    // c11e81aa (0441) — WHICH CONFIGURED PAY CYCLE THE OPERATOR CHOSE for a row keyed before any run
+    // existed. NULL on every legacy row and on every row saved without naming one, and NULL is exactly
+    // today's behaviour: attach-on-generate collects a NULL-intent row onto the month's REGULAR run.
+    //
+    // A cycle, not a run: the run may not exist yet (that is the point of entering early), and the
+    // catalogue is per company (core/payroll-cycle.ts), so the app re-validates company membership on
+    // every write. `generatePayslips` matches a run to an intent BY CYCLE ID — `payroll_batch
+    // .payroll_cycle_id`, added by the same migration — and never by run type: the default catalogue maps
+    // three cycles onto run_type 'off_cycle', so a type match would let an "Advance Salary" run pay a row
+    // saved as "Mid-Month". See `collectableCycleIds` (core/payroll.ts) for the one rule both readers use.
+    intendedCycleId: uuid('intended_cycle_id').references(() => payrollCycle.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -5829,6 +5852,12 @@ export const payrollIndividualTxn = pgTable(
     index('payroll_individual_txn_consumed_idx')
       .on(t.consumedBatchId)
       .where(sql`consumed_batch_id is not null`),
+    // c11e81aa (0441) — PARTIAL for the same reason as the two above: it is empty the day it lands and
+    // only ever holds rows whose operator named a cycle. Attach-on-generate's added predicate is
+    // "intent is null OR intent is one of this run's cycles", and this is the half of it that has rows.
+    index('payroll_individual_txn_intended_cycle_idx')
+      .on(t.intendedCycleId)
+      .where(sql`intended_cycle_id is not null`),
   ],
 );
 

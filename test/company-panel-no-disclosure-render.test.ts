@@ -133,7 +133,8 @@ const richProps = {
       signatoryPersonId: 'gone-person',
     },
   ],
-  signatories: [{ personId: 'p1', name: 'Aminah binti Ali' }],
+  // 3c2f55d7 rev 2 — the picker searches by Employee ID as well as by name, so a candidate carries its code.
+  signatories: [{ personId: 'p1', name: 'Aminah binti Ali', employeeCode: 'EMP-0001' }],
   stateOptions: [{ value: 'Selangor', label: 'Selangor' }],
   activeCycleNames: ['Monthly', 'Fortnightly'],
   actions,
@@ -211,7 +212,38 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     // The blank add-an-account form (was fold #3) — a second Corporate ID box, empty.
     expect(html.match(/name="corporateId"/g) ?? []).toHaveLength(3); // 2 saved + 1 blank
     // Statutory-authority payment setup (was fold #1) — one form per authority in the controlled set.
+    // 3c2f55d7 rev 2 — this is now the assertion that keeps the card's Open/Edit HONEST. The editor is
+    // collapsed on arrival, but it is collapsed with CSS: every one of the nine forms is still rendered,
+    // so a half-typed address survives a collapse and this count cannot be satisfied by unmounting.
     expect(html.match(/name="signatoryPersonId"/g) ?? []).toHaveLength(STATUTORY_AUTHORITIES.length);
     expect(html).toContain('value="ACC-1"');
+  });
+
+  /**
+   * 3c2f55d7 rev 2 — the card FACE, rendered. The description strings are dynamic keys
+   * (`authorityDesc_epf`, …) which no static check can see; the six-locale loop above would catch a
+   * MISSING_MESSAGE, and this catches the other failure: a card that renders no description at all.
+   */
+  it('every statutory body shows its name and its description on the card face', () => {
+    const en = messagesFor('en').admin.organization as Record<string, string>;
+    const html = render('en', richProps);
+    for (const a of STATUTORY_AUTHORITIES) {
+      expect(html, `authority_${a}`).toContain(en[`authority_${a}`]);
+      expect(html, `authorityDesc_${a}`).toContain(en[`authorityDesc_${a}`]);
+    }
+    // One Open/Edit per body, and nothing native about it.
+    const opens = html.split(en.authorityOpen).length - 1;
+    expect(opens, 'one Open-settings control per statutory body').toBe(STATUTORY_AUTHORITIES.length);
+  });
+
+  /**
+   * The signatory picker is legacy-tolerant: richProps pins a signatory (`gone-person`) who is NOT among
+   * the candidates. The searchable field drops a value it cannot find in its own list, which would have
+   * turned "edit the phone number" into "clear the authorised signatory" — so the former employee is
+   * injected as an option and the hidden input keeps posting the stored id.
+   */
+  it('keeps a departed signatory posted rather than silently clearing them', () => {
+    const html = render('en', richProps);
+    expect(html).toContain('name="signatoryPersonId" value="gone-person"');
   });
 });

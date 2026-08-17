@@ -147,7 +147,10 @@ describe('a1d82340 step 5 — pendingBatchMoney', () => {
     expect(pending.lines[0].note).toBe('unattached');
   });
 
-  it('does NOT count period-keyed rows for an additional run, because attach-on-generate does not stamp them', async () => {
+  // c11e81aa — STILL TRUE, AND NOW FOR A SHARPER REASON. Attach-on-generate no longer refuses every
+  // additional run outright; it refuses to give one a row that did not NAME its cycle. This row names
+  // none, so the bonus run must still report nothing — the regular run is going to pay it.
+  it('does NOT count period-keyed rows that named no pay cycle for an additional run — the regular run will pay them', async () => {
     const a = adminCtx(b);
     await seedPayComponentCatalog(a);
     const { employmentId } = await hire(a, 'Cy Offcycle');

@@ -53,6 +53,10 @@ const DATA: PanelData = {
     asOf: '2026-02-15',
     cycleStart: '2026-01-01',
     eligibleDays: 20,
+    // 31e39d74: this fixture's type has 12 granted days, so its state is `granted` and the panel shows no
+    // notice — which keeps every existing case below asserting the SUMMARY COLUMN and nothing else.
+    entitlementStatus: 'granted',
+    entitlementTemplateName: 'Executive Annual Leave',
     currentYearEntitlement: 12,
     monthlyAccruedToDate: 2,
     carriedForward: 4,

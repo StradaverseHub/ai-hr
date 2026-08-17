@@ -8,6 +8,9 @@ import { useTranslations } from 'next-intl';
 import { Badge, EmployeeName } from '@/components/ui';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { deriveHistoryBreakdown } from './history-breakdown';
+// 6b134681 / 417d4937 — one label format for a pay item, shared with the ESS payslip and the printed
+// document: the item's own code and description, never the category it was classified into.
+import { payItemLabel } from '@/core/payslip-earning-lines';
 import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
 
 /**
@@ -28,14 +31,19 @@ const rm = (n: unknown) =>
 /** Itemized row inside an expanded breakdown — mirrors the payslip-detail Row primitive. */
 /** The pay items behind a summarised figure (862ed0ad). Indented under the figure they explain, and
  *  rendered ONLY from what the payslip stored — never re-derived from today's pay-item assignments, which
- *  is how a breakdown ends up disagreeing with the total printed above it. */
+ *  is how a breakdown ends up disagreeing with the total printed above it.
+ *
+ *  6b134681 — the line now carries its CODE as well as its description ("B0001 · ANGPOW"), matching the
+ *  Recorded items rows below and the printed payslip. A description alone is not an identification: two
+ *  pay items may legitimately share a name, and the reporter's whole complaint is that the result screen
+ *  stopped naming the item that was keyed. */
 function SubLines({ lines, fmt }: { lines: { code: string; name: string; amount: number }[]; fmt: (n: number) => string }) {
   if (lines.length === 0) return null;
   return (
     <ul className="mb-1 ms-3 border-s border-border/60 ps-3">
       {lines.map((l, i) => (
         <li key={`${l.code}-${i}`} className="flex items-baseline justify-between gap-4 py-0.5 text-xs text-muted-foreground">
-          <span>{l.name}</span>
+          <span>{payItemLabel(l)}</span>
           <span className="tabular-nums">{fmt(l.amount)}</span>
         </li>
       ))}
@@ -179,17 +187,30 @@ export function HistoryTable({
                               so they say so instead — re-deriving from today's pay-item assignments could
                               print a breakdown that disagrees with the figure above it, which the plan
                               ruled out. */}
-                          <SubLines lines={b.componentsByBucket.wage} fmt={rm} />
+                          {/* 417d4937 — wage AND reimburse. A PCB-exempt allowance (Meal Allowance,
+                              exemption PCB_NON-TAXABLE) is stamped into the reimburse bucket, is paid,
+                              and is inside this very figure; itemising `wage` alone made it the one
+                              allowance that appeared to have no name here while Transaction Detail
+                              showed it correctly. */}
+                          <SubLines lines={b.allowanceLines} fmt={rm} />
                           {b.detailNotRecorded && b.allowanceNet > 0 && (
                             <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.detailNotRecorded')}</p>
                           )}
                           <Row label={tSlip('overtime')} value={rm(b.overtime)} />
-                          <SubLines lines={b.componentsByBucket.ot} fmt={rm} />
+                          {/* 6b134681 — RECONCILED lists, not the raw buckets. The figure beside the label
+                              is the DISPLAY box (3c473773) while `componentsByBucket` is the KERNEL's
+                              statutory routing, and core/pay-display-category.ts exists because the two
+                              diverge: an item declared into the Overtime box but bucketed as `bonus` used
+                              to print an itemised row under a zero Bonus total here. The derivation now
+                              hands out the lines only when they add up to the figure they explain — the
+                              same rule the printed payslip and the ESS payslip apply, so all four payroll
+                              result surfaces read one payslip the same way. */}
+                          <SubLines lines={b.overtimeLines} fmt={rm} />
                           {b.otConvertAmount > 0 && (
                             <Row label={tSlip('otConverted', { item: st.otConvert!.name })} value={rm(b.otConvertAmount)} />
                           )}
                           <Row label={tSlip('bonus')} value={rm(b.bonus)} />
-                          <SubLines lines={b.componentsByBucket.bonus} fmt={rm} />
+                          <SubLines lines={b.bonusLines} fmt={rm} />
                           {/* 3c473773 — the Claim box. Present ONLY when a pay item was deliberately
                               categorised into it; the 0393 backfill never produces one, so no existing
                               payslip grows a line and nothing moves off Allowances on release day. */}

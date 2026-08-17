@@ -95,6 +95,9 @@ import {
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
+// 6b134681 / 417d4937 — one label format for a pay item across every payroll result surface: the item's
+// own code and description, never the category it was classified into.
+import { payItemLabel } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -538,13 +541,29 @@ export default async function IndividualPayslipPage({
           <Block title={tSlip('earnings')}>
             <Row label={tSlip('basicSalary')} value={rm(b.basic)} />
             <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
-            {b.componentsByBucket.wage.map((l, i) => (
+            {/* 417d4937 — wage AND reimburse (a PCB-exempt allowance is stamped into `reimburse`, is
+                paid, and is inside this figure), and 6b134681 — labelled by CODE · DESCRIPTION, the same
+                identification the Recorded items rows and the printed payslip use. This screen reads the
+                identical derivation the History grid does, so the two cannot name one item differently. */}
+            {b.allowanceLines.map((l, i) => (
               <p key={`w${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
-                <span>{l.name}</span>
+                <span>{payItemLabel(l)}</span>
                 <span className="tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
             <Row label={tSlip('overtime')} value={rm(b.overtime)} />
+            {/* 6b134681 — `overtimeLines` / `bonusLines`, not `componentsByBucket.*`: the derivation has
+                already checked that these rows add up to the figure above them, the same reconciliation
+                the printed payslip and the ESS payslip apply. The two lists are NOT interchangeable —
+                the figure is the DISPLAY box (3c473773) while the bucket is the KERNEL's statutory
+                routing, and an item declared into the Overtime box but bucketed as `bonus` would
+                otherwise print an itemised row under a zero Bonus total. */}
+            {b.overtimeLines.map((l, i) => (
+              <p key={`o${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
+                <span>{payItemLabel(l)}</span>
+                <span className="tabular-nums">{rm(l.amount)}</span>
+              </p>
+            ))}
             {b.otConvertAmount > 0 && (
               <Row
                 label={tSlip('otConverted', { item: (b.st.otConvert?.name ?? '') })}
@@ -552,6 +571,15 @@ export default async function IndividualPayslipPage({
               />
             )}
             <Row label={tSlip('bonus')} value={rm(b.bonus)} />
+            {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
+                (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
+                Reconciled in the derivation, as above. */}
+            {b.bonusLines.map((l, i) => (
+              <p key={`b${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
+                <span>{payItemLabel(l)}</span>
+                <span className="tabular-nums">{rm(l.amount)}</span>
+              </p>
+            ))}
             {b.claim > 0 && <Row label={tSlip('claim')} value={rm(b.claim)} />}
             {b.detailNotRecorded && (
               <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>

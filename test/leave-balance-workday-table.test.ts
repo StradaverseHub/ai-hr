@@ -48,6 +48,10 @@ const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): Breakdo
   // reads. Kept DISTINCT here (2 vs 6) so a regression back to the commingled figure fails loudly.
   otherAdjustments: 6,
   configAdjustments: 2,
+  // 31e39d74: the default fixture describes a type whose entitlement HAS been generated (it has 12 days
+  // of it), so `granted` is the only consistent value here. The other three states are exercised in
+  // test/r196-entitlement-not-generated.test.ts.
+  entitlementStatus: 'granted',
   ...over,
 });
 

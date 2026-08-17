@@ -208,15 +208,33 @@ export async function listAllCompanyStatutoryAuthorities(ctx: SessionContext) {
  * signatory signs for the entity that employs them) and this is also the set the service validates a NEWLY
  * chosen signatory against. Distinct people only — a person holding two concurrent employments in the same
  * company must not appear twice.
+ *
+ * 3c2f55d7 rev 2 — `employeeCode` rides along so the picker can be SEARCHED by Employee ID as well as by
+ * name. That is what forces the JavaScript de-duplication below: employee_code is unique per EMPLOYMENT
+ * (db/schema.ts employment_employee_code_uq), so adding it to a `selectDistinct` would make two concurrent
+ * employments of the same person in the same company two distinct rows again — the exact duplicate this
+ * function has always been careful to avoid. The first row wins, which under the existing ORDER BY is a
+ * stable choice rather than an arbitrary one.
  */
 export async function listSignatoryCandidates(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .selectDistinct({ companyId: employment.companyId, personId: person.id, name: person.fullName })
+      .selectDistinct({
+        companyId: employment.companyId,
+        personId: person.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+      })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .where(isNull(employment.terminatedOn))
-      .orderBy(employment.companyId, person.fullName);
-    return rows;
+      .orderBy(employment.companyId, person.fullName, employment.employeeCode);
+    const seen = new Set<string>();
+    return rows.filter((r) => {
+      const key = `${r.companyId}:${r.personId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   });
 }

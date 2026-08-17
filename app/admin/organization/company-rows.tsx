@@ -124,14 +124,41 @@ export function selectCompanyRows(
 /**
  * The table body. Every row's name links to that company's own maintenance page — the redesign's
  * whole point is that editing opens a page, not an accordion.
+ *
+ * ── THE ACTIONS COLUMN (item 3c2f55d7 rev 2) ──────────────────────────────────────────────────────
+ * The single "Open" link became View · Edit · Archive, which is what the reporter asked for and what
+ * every other admin listing in the product offers.
+ *
+ * View and Edit deliberately go to the SAME address. /admin/organization/[companyId] is both the
+ * company's record and its editor — there is no read-only rendering of it, and inventing one would be a
+ * new screen with its own permissions rather than the UI change this item is. Two captions over one
+ * route is the honest version of that: whichever word the reader reaches for, they land where the work
+ * is done. If a genuine read-only view is ever built, only the `view` href changes.
+ *
+ * Archive is a FORM, not a link: it is a write, and it posts to the same `archiveCompanyAction` the
+ * company's own page uses. `archived` is posted as an explicit "true"/"false" string rather than by the
+ * field's presence — a hidden input is submitted whatever its value, so a presence check would read
+ * every row as "archive me" (AGENTS.md rule 17). An archived row offers Unarchive instead, so the
+ * column is never a dead end.
  */
 export function CompanyRows({
   rows,
   labels,
+  archiveAction,
   basePath = '/admin/organization',
 }: {
   rows: readonly CompanyRow[];
-  labels: { active: string; archived: string; empty: string; open: string };
+  labels: {
+    active: string;
+    archived: string;
+    empty: string;
+    view: string;
+    edit: string;
+    archive: string;
+    unarchive: string;
+  };
+  /** The server action behind the Archive / Unarchive button. Bound by the page that owns the route. */
+  archiveAction: (fd: FormData) => void | Promise<void>;
   basePath?: string;
 }) {
   if (rows.length === 0) {
@@ -167,12 +194,27 @@ export function CompanyRows({
             </span>
           </td>
           <td className="px-3 py-2">
-            <Link
-              href={`${basePath}/${r.id}`}
-              className="text-primary underline underline-offset-2"
-            >
-              {labels.open}
-            </Link>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
+                {labels.view}
+              </Link>
+              <span aria-hidden className="text-border">
+                |
+              </span>
+              <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
+                {labels.edit}
+              </Link>
+              <span aria-hidden className="text-border">
+                |
+              </span>
+              <form action={archiveAction} className="inline">
+                <input type="hidden" name="id" value={r.id} />
+                <input type="hidden" name="archived" value={r.archived ? 'false' : 'true'} />
+                <button type="submit" className="text-primary underline underline-offset-2">
+                  {r.archived ? labels.unarchive : labels.archive}
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
       ))}

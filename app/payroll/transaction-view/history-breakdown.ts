@@ -1,5 +1,8 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
+// 6b134681 — the ONE answer to "may these named rows replace the figure they sit under?", shared with the
+// printed document and the ESS payslip so the four payroll-result surfaces cannot disagree about one slip.
+import { payItemLinesReconcile } from '@/core/payslip-earning-lines';
 import { payslipEmployerBorne, type EmployerBorneView } from '@/core/payslip-employer-borne';
 import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recompute';
 
@@ -90,6 +93,36 @@ export type HistoryBreakdown = {
    *  bucket's stored total, because both come from the same stamp rather than being recomputed here.
    *  Recomputing from today's pay setup is what would let a breakdown disagree with the figure beside it. */
   componentsByBucket: Record<ComponentBucket, RecordLine[]>;
+  /**
+   * 417d4937 — the named items behind the ALLOWANCES figure: `wage` AND `reimburse`.
+   *
+   * The reporter's Meal Allowance (A0040, exemption PCB_NON-TAXABLE) was paid, was inside Allowances and
+   * was inside gross — but a PCB-exempt amount is stamped into the `reimburse` bucket, and this screen
+   * itemised `wage` only. So the one allowance whose treatment differs was the one that appeared to be
+   * missing by name, which reads exactly like a lost transaction.
+   *
+   * Both buckets belong here because both are inside the same figure: the kernel's allowance column is
+   * `allowanceApplied + reimburse + otConvert` (core/payroll.ts), and `allowanceNet` above takes the
+   * otConvert back out and gives it its own row. Nothing is recomputed — the stored per-bucket
+   * contributions are concatenated.
+   */
+  allowanceLines: RecordLine[];
+  /**
+   * 6b134681 — the named items behind OVERTIME and BONUS, **already reconciled**: each list is the pay
+   * items that explain its figure, or EMPTY when they do not add up to it.
+   *
+   * WHY THE GATE LIVES HERE AND NOT IN THE RENDERER. `overtime` / `bonus` above are the DISPLAY boxes
+   * (3c473773 `payslipDisplayEarnings`); `componentsByBucket` is grouped by the KERNEL bucket. Those two
+   * answer different questions and core/pay-display-category.ts exists precisely because they diverge —
+   * an Overtime 1.5 item declared `display_category='overtime'` is still routed to the `bonus` bucket for
+   * EPF/PCB, so its money shows in the Overtime BOX while its stored line says `bonus`. A screen that
+   * itemises `componentsByBucket.bonus` under the Bonus figure would then print an RM500 row beneath an
+   * RM0.00 total. The printed payslip (lib/payslip-pdf.ts `earningsRowsOf`) and the ESS payslip both
+   * refuse that; putting the same refusal in the derivation is what stops a fourth surface from
+   * forgetting to ask. Same rule, same function — `payItemLinesReconcile`.
+   */
+  overtimeLines: RecordLine[];
+  bonusLines: RecordLine[];
   /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
    *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
   detailNotRecorded: boolean;
@@ -126,6 +159,12 @@ function groupByBucket(lines: ComponentLine[]): Record<ComponentBucket, RecordLi
   return out;
 }
 
+/** The named lines for a figure, or nothing at all when they do not add up to it (6b134681). Rows that
+ *  fall short of the total printed above them are the one failure a money screen may never commit. */
+function reconciled(lines: RecordLine[], total: number): RecordLine[] {
+  return payItemLinesReconcile(lines, total) ? lines : [];
+}
+
 export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBreakdown {
   const st = (row.statutory ?? {}) as BreakdownStat;
   const otConvertAmount = num(st.otConvert?.amount);
@@ -142,10 +181,14 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // rewrite what January's payslip said. `allowance` still carries otConvert inside it, so `allowanceNet`
   // below is the identical expression it always was.
   const disp = payslipDisplayEarnings(row);
+  const byBucket = groupByBucket(componentLines);
+  // Hoisted so the reconciliation gate below can compare against the SAME expression the field carries —
+  // computing it twice is how the figure and the guard on the figure start to disagree.
+  const allowanceNet = disp.allowance - otConvertAmount;
   return {
     st,
     basic: disp.basic,
-    allowanceNet: disp.allowance - otConvertAmount,
+    allowanceNet,
     otConvertAmount,
     overtime: disp.overtime,
     bonus: disp.bonus,
@@ -159,7 +202,24 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     employerBorne: payslipEmployerBorne(row.statutory),
     recordLines: st.recordLines ?? [],
     componentLines,
-    componentsByBucket: groupByBucket(componentLines),
+    componentsByBucket: byBucket,
+    // 417d4937 — wage FIRST, then the PCB-exempt reimburse lines, so the order on screen matches the
+    // order the kernel folded them into the column.
+    //
+    // RECONCILED FOR THE SAME REASON THE TWO BELOW ARE, even though this pair is expected to agree by
+    // construction (allowanceNet is the kernel's own column with otConvert taken back out, and these are
+    // the stored contributions to it — test/history-breakdown.test.ts asserts they sum). "Expected to
+    // agree" is precisely the claim the OT/Bonus pair also carried until display_category re-routed money
+    // between the box and the bucket. The gate costs one comparison and its failure mode is the bare total
+    // this screen rendered before the itemisation existed; leaving it off means the ONE list still able to
+    // print rows that do not add up is the one nobody re-checked.
+    allowanceLines: reconciled([...byBucket.wage, ...byBucket.reimburse], allowanceNet),
+    // 6b134681 — RECONCILE BEFORE REPLACING. The stored bucket and the displayed box are not the same
+    // question (see the field docs above), so the named rows are handed out only when they add up to the
+    // figure they explain; otherwise the caller gets an empty list and renders the bare total it always
+    // did. An unstamped run yields [] here too, which is exactly the pre-862ed0ad rendering.
+    overtimeLines: reconciled(byBucket.ot, disp.overtime),
+    bonusLines: reconciled(byBucket.bonus, disp.bonus),
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.
