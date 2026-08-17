@@ -881,6 +881,10 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // Medical). NULL/absent config ⇒ primary|secondary (kept), so every ordinary type is unaffected.
           visibleToEmployee: leaveType.visibleToEmployee,
           essPlacement: leaveType.essPlacement,
+          // 5ff7daff: the role marker, so the hidden gate below resolves placement the same way the ESS
+          // cards do. Stripped from the returned rows (below) — this projection is the apply dropdown's
+          // shape and no consumer of it asks the role.
+          role: leaveType.role,
         })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
@@ -901,8 +905,8 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
       // visible_to_employee=false OR the code-keyed default-hidden set — must not appear in the Request Leave
       // dropdown (reporter §3). Ordinary types resolve to 'primary'|'secondary' and are kept. This is the ESS
       // apply source only (admin uses listLeaveTypes); requestLeave stays the server-side authority.
-      .filter((t) => resolvePlacement(t.code, t.essPlacement, t.visibleToEmployee) !== 'hidden')
-      .map(({ i18n, eligibility, employeeCanApply, visibleToEmployee, essPlacement, ...r }) => ({
+      .filter((t) => resolvePlacement(t.code, t.essPlacement, t.visibleToEmployee, t.role) !== 'hidden')
+      .map(({ i18n, eligibility, employeeCanApply, visibleToEmployee, essPlacement, role, ...r }) => ({
         ...r,
         name: pickName(r.name, i18n, locale),
       }));
@@ -2300,7 +2304,16 @@ export function leaveBalances(
       // ess_placement ('primary'|'secondary') wins; else the code-keyed default (lib/leave-groups.ts). This
       // is PRESENTATION metadata only — it does not filter `out` here (7b11f1c1's flag gate below owns the
       // ESS drop); the planned 6d78f373 cards-and-groups renderer consumes r.placement.
-      r.placement = resolvePlacement(v?.code ?? r.code, v?.essPlacement ?? null, v?.visibleToEmployee ?? null);
+      // 5ff7daff: the ROLE goes in too. `PRIMARY_CODES` holds the codes the seed writes, and this tenant's
+      // replacement type is coded `RL` — so a role-classified type with an unseeded code used to fall out
+      // of the Primary cards and into an "Other" group. Role is a DEFAULT only: an explicit ess_placement
+      // and the visibility flag still win, above.
+      r.placement = resolvePlacement(
+        v?.code ?? r.code,
+        v?.essPlacement ?? null,
+        v?.visibleToEmployee ?? null,
+        v?.role ?? r.role ?? null,
+      );
     }
     // Leave Type Employee Visibility (7b11f1c1) — visibility gate. HR can hide a whole leave type from the
     // /me Leave tab (visible_to_employee=false) — its balance, its pending request, and its no-activity menu

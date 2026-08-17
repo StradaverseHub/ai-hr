@@ -24,9 +24,12 @@ import { updateLeaveType } from '../core/admin';
 import { leaveBalances, listLeaveTypes } from '../core/read';
 import {
   defaultPlacementForCode,
+  defaultPlacementForRole,
   resolvePlacement,
   isDefaultHiddenCode,
+  PRIMARY_ROLES,
 } from '../lib/leave-groups';
+import { LEAVE_TYPE_ROLES } from '../core/leave';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -39,7 +42,12 @@ function uniqCode(prefix = 'PLC'): string {
  *  statutory codes like ANNUAL/SICK, so insert-only would collide on the tenant+code uniqueness index). */
 async function leaveType(
   code: string,
-  opts: { essPlacement?: string | null; visibleToEmployee?: boolean | null } = {},
+  opts: {
+    essPlacement?: string | null;
+    visibleToEmployee?: boolean | null;
+    /** 5ff7daff: `leave_type.role` — what the type IS, independent of the tenant's own code. */
+    role?: schema.LeaveTypeRoleValue | null;
+  } = {},
 ): Promise<string> {
   const existing = await owner.db
     .select({ id: schema.leaveType.id })
@@ -48,7 +56,11 @@ async function leaveType(
   if (existing[0]) {
     await owner.db
       .update(schema.leaveType)
-      .set({ essPlacement: opts.essPlacement ?? null, visibleToEmployee: opts.visibleToEmployee ?? null })
+      .set({
+        essPlacement: opts.essPlacement ?? null,
+        visibleToEmployee: opts.visibleToEmployee ?? null,
+        role: opts.role ?? null,
+      })
       .where(eq(schema.leaveType.id, existing[0].id));
     return existing[0].id;
   }
@@ -63,6 +75,7 @@ async function leaveType(
       counting: 'calendar_days',
       essPlacement: opts.essPlacement ?? null,
       visibleToEmployee: opts.visibleToEmployee ?? null,
+      role: opts.role ?? null,
     })
     .returning({ id: schema.leaveType.id });
   return row.id;
@@ -118,6 +131,49 @@ describe('resolvePlacement precedence + code-keyed defaults', () => {
     expect(resolvePlacement('ANNUAL', 'secondary', null)).toBe('secondary'); // card code tucked into a group
     expect(resolvePlacement('ANNUAL', null, null)).toBe('primary'); // null ⇒ default
     expect(resolvePlacement('UNRECORDED', null, null)).toBe('hidden'); // null ⇒ default-hidden
+  });
+});
+
+// ── 5ff7daff: the DEFAULT is role-aware, because PRIMARY_CODES holds the codes the SEED writes ──────
+//
+// This tenant's catalogue was not seeded: its replacement type is coded `RL` and its emergency type `EL`,
+// neither of which is in PRIMARY_CODES. A tenant that had classified those rows (leave_type.role) but never
+// opened the placement control therefore had them resolve 'secondary' — off the Primary cards and into an
+// "Other" group. Role now answers first; it is still only a DEFAULT.
+describe('resolvePlacement — role-keyed defaults (5ff7daff)', () => {
+  it('a role-marked type defaults to Primary whatever the tenant coded it', () => {
+    expect(defaultPlacementForRole('replacement')).toBe('primary');
+    expect(defaultPlacementForRole('emergency')).toBe('primary');
+    expect(resolvePlacement('RL', null, null, 'replacement')).toBe('primary');
+    expect(resolvePlacement('EL', null, null, 'emergency')).toBe('primary');
+    // …and case/whitespace in the stored marker does not change the answer.
+    expect(resolvePlacement('RL', null, null, ' Replacement ')).toBe('primary');
+  });
+
+  it('an unclassified or non-primary role falls THROUGH to the code map (unchanged behaviour)', () => {
+    // null/blank role ⇒ exactly the pre-5ff7daff answer for every existing tenant.
+    expect(defaultPlacementForRole(null)).toBeNull();
+    expect(defaultPlacementForRole('')).toBeNull();
+    expect(resolvePlacement('RL', null, null, null)).toBe('secondary'); // RL is not in PRIMARY_CODES
+    expect(resolvePlacement('RL', null, null)).toBe('secondary'); // 3-arg call site: identical
+    expect(resolvePlacement('ANNUAL', null, null, null)).toBe('primary'); // code map still decides
+    // a role deliberately NOT promoted: the code map answers, so nothing moves on tenants that never asked.
+    expect(defaultPlacementForRole('annual')).toBeNull();
+    expect(resolvePlacement('AL', null, null, 'annual')).toBe('secondary');
+  });
+
+  it('role is only a DEFAULT — HR’s explicit choice and the hidden switch still win', () => {
+    // HR tucked the replacement card into a group: their choice stands.
+    expect(resolvePlacement('RL', 'secondary', null, 'replacement')).toBe('secondary');
+    // HR hid the type via the single visibility switch: it stays hidden (this is how EL sits today).
+    expect(resolvePlacement('EL', null, false, 'emergency')).toBe('hidden');
+    expect(resolvePlacement('RL', 'primary', false, 'replacement')).toBe('hidden');
+  });
+
+  it('PRIMARY_ROLES cannot drift from the closed role set (mirror pin)', () => {
+    // lib/leave-groups.ts spells the role strings as literals because it is imported by a client component
+    // and core/leave.ts drags in postgres. Same remedy as db/schema.ts's LeaveTypeRoleValue: pin the mirror.
+    for (const r of PRIMARY_ROLES) expect(LEAVE_TYPE_ROLES as readonly string[]).toContain(r);
   });
 });
 
@@ -218,6 +274,42 @@ describe('leaveBalances — resolved placement', () => {
     const row = rows.find((r) => r.leaveTypeId === id);
     expect(row).toBeTruthy();
     expect(row?.placement).toBe('primary'); // SICK is a primary code
+  });
+
+  // 5ff7daff — THE CONTRACT, not just the pure function. The reported symptom ("where is my replacement
+  // leave") is produced by leaveBalances, and app/leave/page.tsx picks the Replacement card with
+  // `b.placement === 'primary' && isReplacementLeaveType(b)`. A unit test of resolvePlacement alone would
+  // have stayed green while leaveBalances went on passing only the code — so the assertion is made HERE,
+  // on the row the screen actually reads.
+  it('a role-marked replacement type coded RL is returned as placement=primary', async () => {
+    const { employmentId } = await hire();
+    const id = await leaveType('RL', { role: 'replacement' }); // unseeded code, no explicit placement
+    const rows = await leaveBalances(adminCtx(b), employmentId);
+    const row = rows.find((r) => r.leaveTypeId === id);
+    expect(row).toBeTruthy();
+    expect(row?.role).toBe('replacement');
+    expect(row?.placement).toBe('primary');
+  });
+
+  it('a role-marked emergency type coded EL is returned as placement=primary', async () => {
+    const { employmentId } = await hire();
+    const id = await leaveType('EL', { role: 'emergency' });
+    const rows = await leaveBalances(adminCtx(b), employmentId);
+    expect(rows.find((r) => r.leaveTypeId === id)?.placement).toBe('primary');
+  });
+
+  it('an UNCLASSIFIED type coded RL still resolves to its code default (no behaviour change)', async () => {
+    const { employmentId } = await hire();
+    const id = await leaveType('RL', { role: null });
+    const rows = await leaveBalances(adminCtx(b), employmentId);
+    expect(rows.find((r) => r.leaveTypeId === id)?.placement).toBe('secondary');
+  });
+
+  it("HR's explicit Secondary still beats the role default", async () => {
+    const { employmentId } = await hire();
+    const id = await leaveType('RL', { role: 'replacement', essPlacement: 'secondary' });
+    const rows = await leaveBalances(adminCtx(b), employmentId);
+    expect(rows.find((r) => r.leaveTypeId === id)?.placement).toBe('secondary');
   });
 });
 
