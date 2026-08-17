@@ -21,6 +21,9 @@ import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery, paginateRows } from '@/lib/pagination';
 import { CompanyRows, COMPANY_STATUS_FILTERS, selectCompanyRows } from './company-rows';
 import { resolveGroupTree, type TreeNode } from './group-tree';
+// 3c2f55d7 rev 2 — the listing's Archive action. Reuses the EXISTING company archive action (the same one
+// the company's own maintenance page posts to); no new service, no new permission surface.
+import { archiveCompanyAction } from '../actions';
 
 /**
  * Admin → Organization, THE LISTING (item defd4644).
@@ -256,18 +259,25 @@ export default async function OrganizationPage({
                 <th className={thCls}>
                   <Link href={sortHref('status')}>{t('colStatus')}</Link>
                 </th>
-                <th className={thCls}>{t('open')}</th>
+                <th className={thCls}>{t('colActions')}</th>
               </tr>
             </thead>
             <tbody className={tbodyCls}>
+              {/* 3c2f55d7 rev 2 — View · Edit · Archive replaces the single Open link. Archive is a
+                  write, so the row posts to the SAME server action the company's own page uses; nothing
+                  new was added to core for it. */}
               <CompanyRows
                 rows={pageRows}
                 labels={{
                   active: t('statusActive'),
                   archived: t('statusArchived'),
                   empty: companies.length === 0 ? t('noCompaniesYet') : t('noMatches'),
-                  open: t('open'),
+                  view: t('actionView'),
+                  edit: t('actionEdit'),
+                  archive: t('actionArchive'),
+                  unarchive: t('actionUnarchive'),
                 }}
+                archiveAction={archiveCompanyAction}
               />
             </tbody>
           </table>

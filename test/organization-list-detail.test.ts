@@ -341,6 +341,10 @@ describe('/admin/organization/new — the create form has its own screen', () =>
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
 describe('i18n — every new Organization string in all six locales', () => {
   const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+  // 3c2f55d7 rev 2 — `open` LEAVES this list and the six catalogues with the single Open link it
+  // captioned: the listing's last column is now View · Edit · Archive (see company-rows.tsx). The case is
+  // updated rather than dropped (AGENTS.md rule 18) — the four captions that replaced it are asserted in
+  // exactly the same two ways, present AND actually translated.
   const NEW_KEYS = [
     'colCode',
     'colStatus',
@@ -350,7 +354,11 @@ describe('i18n — every new Organization string in all six locales', () => {
     'searchLabel',
     'searchPlaceholder',
     'applyFilter',
-    'open',
+    'colActions',
+    'actionView',
+    'actionEdit',
+    'actionArchive',
+    'actionUnarchive',
     'backToCompanies',
     'createDescription',
   ] as const;
@@ -390,5 +398,58 @@ describe('i18n — every new Organization string in all six locales', () => {
         expect(org[l][k], `messages/${l}.json admin.organization.${k}`).toBeTruthy();
       }
     }
+  });
+
+  it('drops `open` rather than leaving it to rot in six catalogues', () => {
+    // Its one consumer — the listing's Open column — became View · Edit · Archive. i18n-check enforces
+    // parity, not usefulness, so a retired key survives a green build forever unless something says so.
+    for (const l of LOCALES) {
+      expect(org[l], `messages/${l}.json admin.organization.open`).not.toHaveProperty('open');
+    }
+    expect(
+      fs.readFileSync(path.resolve(__dirname, '../app/admin/organization/page.tsx'), 'utf8'),
+    ).not.toContain("t('open')");
+  });
+});
+
+/**
+ * Item 3c2f55d7 rev 2 — the listing's actions column.
+ *
+ * A static-source guard, because the interesting parts are shape, not behaviour: that Archive is a WRITE
+ * posting to the EXISTING company archive action (no new service, no new permission surface), that it
+ * states archived=true/false EXPLICITLY rather than relying on a hidden field's presence (AGENTS.md rule
+ * 17 — a hidden input is submitted whatever its value, so a presence check reads every row as "archive
+ * me"), and that an archived row is offered Unarchive instead of a dead Archive.
+ */
+describe('Organization listing — View · Edit · Archive (3c2f55d7 rev 2)', () => {
+  const ROWS = fs.readFileSync(
+    path.resolve(__dirname, '../app/admin/organization/company-rows.tsx'),
+    'utf8',
+  );
+  const LIST = fs.readFileSync(path.resolve(__dirname, '../app/admin/organization/page.tsx'), 'utf8');
+
+  it('offers all three actions on every row', () => {
+    for (const l of ['labels.view', 'labels.edit', 'labels.archive', 'labels.unarchive']) {
+      expect(ROWS, l).toContain(l);
+    }
+  });
+
+  it('archives through the EXISTING server action, bound by the page', () => {
+    expect(ROWS).toContain('action={archiveAction}');
+    expect(LIST).toContain("import { archiveCompanyAction } from '../actions'");
+    expect(LIST).toContain('archiveAction={archiveCompanyAction}');
+  });
+
+  it('posts archived as an explicit true/false, never by field presence', () => {
+    expect(ROWS).toContain(`value={r.archived ? 'false' : 'true'}`);
+    // …and the caption flips with it, so an archived company is never offered Archive again.
+    expect(ROWS).toContain('{r.archived ? labels.unarchive : labels.archive}');
+  });
+
+  it('View and Edit both open the company page — there is no read-only rendering of it', () => {
+    const viewAt = ROWS.indexOf('{labels.view}');
+    const cell = ROWS.slice(ROWS.lastIndexOf('<td', viewAt), ROWS.indexOf('</td>', viewAt));
+    expect(cell.match(/href=\{`\$\{basePath\}\/\$\{r\.id\}`\}/g) ?? []).toHaveLength(2);
+    expect(cell).toContain('{labels.edit}');
   });
 });
