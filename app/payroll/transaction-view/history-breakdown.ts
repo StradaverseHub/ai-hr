@@ -182,10 +182,13 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // below is the identical expression it always was.
   const disp = payslipDisplayEarnings(row);
   const byBucket = groupByBucket(componentLines);
+  // Hoisted so the reconciliation gate below can compare against the SAME expression the field carries —
+  // computing it twice is how the figure and the guard on the figure start to disagree.
+  const allowanceNet = disp.allowance - otConvertAmount;
   return {
     st,
     basic: disp.basic,
-    allowanceNet: disp.allowance - otConvertAmount,
+    allowanceNet,
     otConvertAmount,
     overtime: disp.overtime,
     bonus: disp.bonus,
@@ -202,7 +205,15 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     componentsByBucket: byBucket,
     // 417d4937 — wage FIRST, then the PCB-exempt reimburse lines, so the order on screen matches the
     // order the kernel folded them into the column.
-    allowanceLines: [...byBucket.wage, ...byBucket.reimburse],
+    //
+    // RECONCILED FOR THE SAME REASON THE TWO BELOW ARE, even though this pair is expected to agree by
+    // construction (allowanceNet is the kernel's own column with otConvert taken back out, and these are
+    // the stored contributions to it — test/history-breakdown.test.ts asserts they sum). "Expected to
+    // agree" is precisely the claim the OT/Bonus pair also carried until display_category re-routed money
+    // between the box and the bucket. The gate costs one comparison and its failure mode is the bare total
+    // this screen rendered before the itemisation existed; leaving it off means the ONE list still able to
+    // print rows that do not add up is the one nobody re-checked.
+    allowanceLines: reconciled([...byBucket.wage, ...byBucket.reimburse], allowanceNet),
     // 6b134681 — RECONCILE BEFORE REPLACING. The stored bucket and the displayed box are not the same
     // question (see the field docs above), so the named rows are handed out only when they add up to the
     // figure they explain; otherwise the caller gets an empty list and renders the bare total it always

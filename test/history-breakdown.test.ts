@@ -223,6 +223,16 @@ describe('deriveHistoryBreakdown — the pay item, not the box it landed in', ()
     expect(b.allowanceLines.reduce((t, l) => t + l.amount, 0)).toBeCloseTo(b.allowanceNet, 2);
   });
 
+  it('withholds the allowance lines when they do NOT add up to the Allowances figure', () => {
+    // The same stamp under a payslip whose Allowances column is smaller than the stored contributions —
+    // the shape a re-routed display_category produces, and the one that made OT/Bonus need this gate.
+    // Printing 650.00 of named rows beneath a 400.00 total is the "lost transaction" reading this pair of
+    // items exists to remove, so the bare total stands instead.
+    const b = deriveHistoryBreakdown(row({ allowance: '400.00', statutory: { componentLines: stamped } }));
+    expect(b.allowanceNet).toBeCloseTo(400, 2);
+    expect(b.allowanceLines).toEqual([]);
+  });
+
   it('keeps the bonus item’s own code and description under the Bonus figure', () => {
     const b = deriveHistoryBreakdown(row({ bonus: '500.00', statutory: { componentLines: stamped } }));
     expect(b.componentsByBucket.bonus).toEqual([{ code: 'B0001', name: 'ANGPOW', amount: 500 }]);

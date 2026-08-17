@@ -105,8 +105,16 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     // only which buckets feed it moved, into `allowanceLines` so both consumers of the derivation get the
     // same list. The `ot` and `bonus` pins below are untouched.
     expect(TABLE).toContain('<SubLines lines={b.allowanceLines}');
+    // UPDATED AGAIN, NOT DELETED — and for the third time the claim is unchanged in kind. Which buckets
+    // feed the figure is still pinned below; what moved is that the list now goes through the SAME
+    // reconciliation gate as Overtime and Bonus, so the one remaining list able to print rows that do not
+    // add up to the total above them no longer can. Both halves are asserted: drop either and the guard
+    // stops describing the code.
     expect(BREAKDOWN, 'the allowance lines are wage + the PCB-exempt reimburse bucket').toContain(
-      'allowanceLines: [...byBucket.wage, ...byBucket.reimburse]',
+      '[...byBucket.wage, ...byBucket.reimburse]',
+    );
+    expect(BREAKDOWN, 'and they are reconciled against the Allowances figure before being handed out').toContain(
+      'allowanceLines: reconciled([...byBucket.wage, ...byBucket.reimburse], allowanceNet)',
     );
     // 6b134681 — UPDATED, NOT DELETED, for the same reason as the allowance pin above. The claim is
     // unchanged in kind — Overtime and Bonus ARE itemised from the stamp — but the source moved from the
