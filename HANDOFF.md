@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-14 (r185–r194 SHIPPED · NOTHING IN FLIGHT · 0 APPROVED)
+## CURRENT STATE — snapshot 2026-08-17 (r185–r194 SHIPPED · NOTHING IN FLIGHT · **19 APPROVED, ALL UNBUILT**)
 
 **`main@dec4bb73` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run`
 reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. That one line is
@@ -39,15 +39,36 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**1. NOTHING IS IN FLIGHT AND THE APPROVED QUEUE IS EMPTY.** r185–r194 are all shipped;
-`main@dec4bb73` is deployed and every `build/*` branch through r194 is merged. Prove it independently
-rather than trusting this line — `git for-each-ref refs/heads/build` plus a dry-run rsync.
-The board is **1 open, 3 planned, 0 approved, 0 contested**. The constraint is the reporter, not us.
+**1. NOTHING IS IN FLIGHT, BUT THE APPROVED QUEUE IS NOW 19 DEEP — THE CONSTRAINT IS US AGAIN.**
+r185–r194 are all shipped; `main@dec4bb73` is deployed and every `build/*` branch through r194 is merged.
+Prove it independently rather than trusting this line — `git for-each-ref refs/heads/build` plus a dry-run
+rsync. **Board re-counted on the box 2026-08-17: `deployed = 674` · `approved = 19` · `planned = 2` ·
+`cancelled = 14` · open = 0 · contested = 0.** Every one of the 19 is unbuilt AT ITS CURRENT REVISION —
+verified per item through `domain_event`, not inferred from `build_ref`. They split three ways:
+  - **6 are POST-DEPLOY REFUTES, re-planned on 2026-08-17 by another session (`claude-opus-4-8`) and
+    approved by the reporter within minutes.** They carry the OLD `build_ref` and a NEW plan revision, so
+    a `build_ref` is NOT evidence the current revision shipped: `0253dc7c` (move Wage Base to the bottom of
+    the table) · `c11e81aa` (Individual Transaction Pay Cycle selection) · `3c88d593` (**the reporter hit the
+    entity-transfer underpayment themselves on 08-14 09:32 — see §2**) · `5ff7daff` ("where is my replacement
+    leave in lieu category?") · `46afcc48` (shared leave group into the PRIMARY row, not a separate category)
+    · `3c2f55d7` (Statutory Configuration + Bank Information UI/UX, refuted 08-17 13:40).
+  - **9 are new, approved 2026-08-17:** `6b134681` · `bdf7d248` · `417d4937` · `e0cd4583` (CP39-MTD/PCB) ·
+    `d21e667e` (KWSP/EPF Borang A) · `621c929d` (Socso Borang 8A) · `45df860a` · `a6da1387` · `152fea7f`.
+    ⚠️ The three statutory-form ones are NEW IDs for forms we already shipped (`9c8dad7a`, `8ca344bf`,
+    `88076362`) — establish duplicate-vs-rework before planning a build, and read the statutory-form
+    section below first.
+  - **4 have been waiting since 2026-08-14:** `ad52212d` (Attendance Settings) · `1b0943d5` (entity transfer
+    stage two) · `9a65f808` (rev 3) · `31e39d74` (rev 2).
+The `com.aihr.improve-build` launchd agent IS loaded but is **notify-only** (`watch-approved.sh`) — nothing
+auto-builds.
 
-**2. THE ONE LIVE HAZARD: ENTITY TRANSFER STAGE ONE UNDERPAYS IF A MONTH IS RE-RUN.** Full detail in the
-r194 entry below — read it before touching payroll. In one line: proration is right, but the counterpart
-payslip in the OTHER company's batch is never created, and no single-batch operation can create it.
-**Do not re-run August for employee 100814.**
+**2. THE ENTITY-TRANSFER HAZARD IS OVERTAKEN — THE RUN IT PROTECTED NO LONGER HAS PAYSLIPS.** The r194 entry
+below still describes the DEFECT correctly (proration right, counterpart payslip in the other company's batch
+never created, no single-batch operation can create it). What changed: **batch `3b62dc57` (ISEDECOR BINA
+2026-08) was RESET to draft on 2026-08-14 14:12** — `status = draft`, `employee_count = 0`, `totals = null` —
+and employee 100814 now holds exactly ONE payslip in total, for 2026-07 (v5, gross 1,596.77, 9 days). So
+"do not re-run August for 100814" is moot; there is nothing left to preserve. The reporter refuted
+`3c88d593` over this on 08-14 09:32 and its stage-two successor `1b0943d5` is approved and waiting.
 
 **`1b0943d5` IS NOW PLANNED (rev 1, with mockup) AND IS READY TO BUILD ONCE APPROVED.** The plan
 DELIBERATELY REORDERS the item as it was raised: attendance/leave/reporting were the headline and are now
@@ -71,8 +92,23 @@ blockers it names, both verified in code, and neither is a sums problem:
 **3. THE CODE IS ON GITHUB NOW** — `github.com/zenlam/ai-hr`, PRIVATE, `main` only (the `build/*` branches
 are not pushed). Push new branches explicitly if the owner needs to see them from a phone.
 
-**4. PLANNED, AWAITING THE REPORTER (3):** `1b0943d5` (entity transfer stage two — the one that matters,
-see §2), `31e39d74`, `9a65f808`. **OPEN (1):** nothing blocking.
+**4. PLANNED, AWAITING THE REPORTER (2) — both pushed 2026-08-17 with mockups drawn on production data.**
+`9066bd6c` (Payroll Process: Back navigation + **Remove Employee Payroll**) and `4ea70bb7` (rename to
+Personnel Management + service duration to the day). Nothing is open/unplanned. Two findings from planning
+them that outlive the plans:
+  - **RESET IS BEING USED AS A PER-EMPLOYEE CORRECTION TOOL, BECAUSE IT IS THE ONLY ONE.**
+    `payroll_status_history` holds 10 `rollback` rows; four on 2026-08-14 between 14:11 and 14:29 cleared
+    23 + 23 + 22 + 19 employee results with the reasons "test", "test", "test", "ok", and 12 `reprocess`
+    rows follow on ISEDECOR 2026-01 in the next 50 minutes. `payroll_reprocess_job` = **87 completed jobs
+    across 10 batches**. Selective reprocess is heavily used and is not what is broken; there is no removal.
+  - ⚠️ **SIX EMPLOYMENTS CARRY MORE THAN ONE NON-SUPERSEDED `assignment` ROW.** On batch `368c67fc`,
+    `T100502` has THREE and `IDB-240009` / `T100507` have two each, so a naive
+    `left join assignment … and superseded_at is null` turns 19 payslips into 23 rows. Any new screen that
+    joins for Department/BU must pick ONE row (latest effective) and pin the row count in a test. This is
+    also worth raising as its own item — nothing surfaces it today.
+  - Service dates, measured: **40 employments, 18 carry `join_date`, exactly ONE has `join_date <> hired_on`**
+    (100814: group 2026-07-23, ISEDECOR 2026-08-11). `serviceYearsMonthsDaysAt` (core/leave.ts:5790) already
+    does day-precise Y/M/D and is already live as "Year of Service" on the profile summary card.
 **Worth telling the reporter unprompted:** `c11e81aa` shipped with two of its seven asks already satisfied
 — its Excel import Pay Cycle was ALREADY delivered by r193, and its fixed-amount day-by-day gate is a
 **no-op on this tenant** because no pay item is configured `fixed` (23 of 24 carry no rule at all). Both
@@ -461,13 +497,17 @@ unconfigured type, that guard has broken and it is the first thing to check.
 **Counts live in CURRENT STATE and are not repeated here. Always RE-COUNT** — the line said
 `approved = 0` on 2026-08-08 and eight items were approved the next morning.
 
-**COUNTS ON THE BOX, 2026-08-13 (RE-COUNT — this line has been wrong three times):**
-`deployed = 656` · `approved = 13` · `contested = 1` · `planned = 0` · `cancelled = 14`.
+**COUNTS LIVE IN CURRENT STATE ONLY — re-count on the box before acting on any of them** (this line has
+been wrong four times). As of 2026-08-17: `deployed = 674` · `approved = 19` · `planned = 2` ·
+`cancelled = 14`.
 
-**THE CONSTRAINT IS BUILDS AGAIN.** It flipped three times in two days: theirs, then ours (19 items
-planned in an afternoon), then theirs, and now back to ours with the planned queue emptied into
-`approved`. **Check which side is short before choosing what to do next** — `improve:pull` for unplanned
-work, `improve:pull-approved` for unbuilt work.
+**THE CONSTRAINT IS BUILDS.** It has flipped five times in a week. **Check which side is short before
+choosing what to do next** — `improve:pull` for unplanned work, `improve:pull-approved` for unbuilt work.
+⚠️ **`pull-approved` RETURNS ITEMS THAT ALREADY CARRY A `build_ref`, AND THAT IS NOT A BUG.** A post-deploy
+refute (`feedback.deployment.refuted`) → re-plan → approve leaves the OLD `build_ref` on the row beside a
+NEW plan revision. Six of the 19 approved on 2026-08-17 are exactly that shape, so **never decide "already
+shipped" from `build_ref`** — read the item's `domain_event` stream and compare the approved revision with
+the one that was built.
 
 **c8052ae3 IS DONE — the leave reset RAN on 2026-08-12.** It was the longest-open item on the board.
 147 `leave_ledger` rows and 22 `leave_entitlement_recalc_audit` rows archived under capture tag
@@ -1208,10 +1248,10 @@ method or carry-forward is WRONG.**
 
 ---
 
-## NOTHING IS IN FLIGHT — r190+r191 shipped as `de887a85`, r192 as the follow-up that caught what they missed
+## NOTHING IS IN FLIGHT — `main@dec4bb73` is r185 through r194 and IS deployed
 
-`main@de887a85` is r185 through r191 and IS deployed (dry-run rsync, 2026-08-13, reporting only the
-box-regenerated gitignored `next-env.d.ts`). Every r185–r192 branch is merged.
+Verified by dry-run rsync (2026-08-14, reporting only the box-regenerated gitignored `next-env.d.ts`).
+Every `build/*` branch through r194 is merged. Re-verify rather than trusting this line.
 
 Every remaining unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
 ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route:

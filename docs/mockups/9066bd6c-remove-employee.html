@@ -1,0 +1,178 @@
+<meta charset="utf-8"><title>9066bd6c — Remove Employee Payroll, and Back that remembers where you were</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .num{text-align:right;font-variant-numeric:tabular-nums}
+ .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700}
+ .ok{background:#d1fae5;color:#065f46}.warn{background:#fef3c7;color:#92400e}.blk{background:#fee2e2;color:#991b1b}
+ .new{background:#e0e7ff;color:#3730a3}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+ .keep{border:1px solid #fcd34d;background:#fffbeb;border-radius:12px;padding:13px}
+ .back{font-size:12px;color:var(--mf);margin-bottom:8px}
+ .crumbs{font-size:11.5px;color:var(--mf);margin-bottom:10px}
+ .btn{display:inline-block;padding:5px 11px;border-radius:8px;font-size:11.5px;font-weight:600;border:1px solid var(--border);background:#fff}
+ .btn.p{background:var(--primary);color:#fff;border-color:var(--primary)}
+ .btn.d{background:#dc2626;color:#fff;border-color:#dc2626}
+ .btn.g{color:var(--mf)}
+ .link{color:var(--primary);font-weight:600;font-size:11.5px}
+ .newmark{background:color-mix(in srgb,var(--primary) 9%,white);box-shadow:inset 3px 0 0 var(--primary)}
+ .search{border:1px solid var(--border);border-radius:9px;padding:7px 10px;font-size:12px;color:var(--mf);background:#fcfcfe;width:340px;display:inline-block}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ .box{border:1px solid var(--border);border-radius:10px;padding:12px}
+ .reason{border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12px;background:#fcfcfe;color:var(--fg)}
+ .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+ .sk{font-size:11px;color:var(--mf);font-style:italic}
+ .strike{text-decoration:line-through;color:#b91c1c}
+</style>
+
+<div class="card">
+ <h2>Why this is being asked for — from your own payroll history</h2>
+ <p class="sub">Every whole-run reset recorded on the system. Reset is the only correction tool there is today,
+  so it is the one that gets used, and it clears every employee on the run.</p>
+ <table>
+  <thead><tr><th>When</th><th>Company · month</th><th class="num">Employees cleared</th><th>Reason recorded</th></tr></thead>
+  <tbody>
+   <tr><td>14 Aug 2026, 2:11 pm</td><td>ISEDECOR BINA · Aug 2026</td><td class="num">23</td><td>“test”</td></tr>
+   <tr><td>14 Aug 2026, 2:12 pm</td><td>ISEDECOR BINA · Aug 2026</td><td class="num">23</td><td>“test”</td></tr>
+   <tr><td>14 Aug 2026, 2:13 pm</td><td>ISEDECOR BINA · Jul 2026</td><td class="num">22</td><td>“test”</td></tr>
+   <tr><td>14 Aug 2026, 2:29 pm</td><td>ISEDECOR BINA · Jan 2026</td><td class="num">19</td><td>“ok”</td></tr>
+   <tr><td>10 Aug 2026, 2:29 pm</td><td>ISEDECOR BINA · Jan 2026</td><td class="num">19</td><td>“tested”</td></tr>
+  </tbody>
+ </table>
+ <p class="note">Four resets in eighteen minutes on 14 August, 87 employee results cleared, then the January run was
+  recalculated twelve times that same afternoon. The Aug 2026 ISEDECOR run is still sitting in Draft.</p>
+</div>
+
+<div class="card">
+ <h2>1 · Payroll Process list — one new action per processed run</h2>
+ <p class="sub">Remove Employee sits between Reprocess and Reset, because Reset is the different, whole-run action.
+  Nothing else on this row changes.</p>
+ <table>
+  <thead><tr><th>Company</th><th>Month · cycle</th><th>Status</th><th class="num">Employees</th><th class="num">Net pay</th><th style="text-align:right">Actions</th></tr></thead>
+  <tbody>
+   <tr><td>ISEDECOR BINA SDN BHD</td><td>Jan 2026 · Regular</td><td><span class="pill ok">Processed</span></td><td class="num">19</td><td class="num">96,410.78</td>
+    <td style="text-align:right"><span class="link">View</span> &nbsp;<span class="link">Reprocess</span>
+     &nbsp;<span class="link newmark" style="padding:3px 7px;border-radius:7px">Remove Employee</span> &nbsp;<span class="link">Reset Payroll</span></td></tr>
+   <tr><td>Fiamma (Chin Hin Property)</td><td>Aug 2026 · Regular</td><td><span class="pill ok">Processed</span></td><td class="num">2</td><td class="num">20,448.33</td>
+    <td style="text-align:right"><span class="link">View</span> &nbsp;<span class="link">Reprocess</span>
+     &nbsp;<span class="link newmark" style="padding:3px 7px;border-radius:7px">Remove Employee</span> &nbsp;<span class="link">Reset Payroll</span></td></tr>
+   <tr><td>ISEDECOR BINA SDN BHD</td><td>Aug 2026 · Regular</td><td><span class="pill warn">Draft</span></td><td class="num">0</td><td class="num">—</td>
+    <td style="text-align:right"><span class="link">View</span> &nbsp;<span class="link">Continue</span> &nbsp;<span class="link">Delete draft</span></td></tr>
+  </tbody>
+ </table>
+ <p class="note">A Draft run has no results to remove, and a Closed month is frozen — the action only appears on Processed runs,
+  exactly like Reprocess does today.</p>
+</div>
+
+<div class="card">
+ <h2>2 · Remove Employee Payroll — its own screen</h2>
+ <div class="back">← Back to Payroll Process <span class="sk">(returns to 2026 · January · ISEDECOR BINA · Regular — the filters you arrived with)</span></div>
+ <div style="font-size:16px;font-weight:600;margin-bottom:2px">Remove employee payroll</div>
+ <p class="sub">ISEDECOR BINA SDN BHD · January 2026 · Regular · 19 employees processed · net 96,410.78</p>
+ <p style="font-size:12px;margin:0 0 12px">Tick the employees whose result should be removed from this run. Only the ticked
+  employees are removed — everyone else’s payslips stay exactly as they are, and the run stays Processed.</p>
+ <div style="margin-bottom:10px"><span class="search">🔍&nbsp; Search employee ID or name…</span>
+  &nbsp;<span class="btn g">Select all</span> <span class="btn g">Clear</span>
+  &nbsp;<span class="sk">2 of 19 selected</span></div>
+ <table>
+  <thead><tr><th style="width:30px"></th><th>Employee ID</th><th>Name</th><th>Department</th><th>Status</th><th class="num">Net pay</th></tr></thead>
+  <tbody>
+   <tr><td>☐</td><td>A0002</td><td>TEST0002</td><td>ANDALAN</td><td><span class="pill ok">Processed</span></td><td class="num">4,604.81</td></tr>
+   <tr class="newmark"><td>☑</td><td>A0003</td><td>TEST0003</td><td>ANDALAN</td><td><span class="pill ok">Processed</span></td><td class="num">4,781.65</td></tr>
+   <tr><td>☐</td><td>A0004</td><td>TEST0004</td><td>ANDALAN</td><td><span class="pill ok">Processed</span></td><td class="num">4,925.25</td></tr>
+   <tr><td>☐</td><td>A0005</td><td>TEST0005</td><td>ANDALAN</td><td><span class="pill ok">Processed</span></td><td class="num">2,384.45</td></tr>
+   <tr class="newmark"><td>☑</td><td>A0006</td><td>TEST0006</td><td>TECHNICAL</td><td><span class="pill ok">Processed</span></td><td class="num">4,141.52</td></tr>
+   <tr><td>☐</td><td>A0007</td><td>TEST0007</td><td>ANDALAN</td><td><span class="pill ok">Processed</span></td><td class="num">5,893.22</td></tr>
+   <tr><td>☐</td><td>A0008</td><td>TEST0008</td><td>ANDALAN</td><td><span class="pill ok">Processed</span></td><td class="num">5,013.55</td></tr>
+   <tr><td colspan="6" class="sk" style="border-top:1px solid var(--border)">…and 12 more on this run</td></tr>
+  </tbody>
+ </table>
+</div>
+
+<div class="card">
+ <h2>3 · Review, then confirm with a reason</h2>
+ <div class="two">
+  <div class="box">
+   <div class="lbl">Before you submit</div>
+   <p style="font-size:12.5px;margin:6px 0 8px"><b>You are about to remove the payroll result for 2 of 19 employees.</b></p>
+   <table>
+    <thead><tr><th>Employee</th><th class="num">Net pay removed</th></tr></thead>
+    <tbody>
+     <tr><td>A0003 — TEST0003</td><td class="num strike">4,781.65</td></tr>
+     <tr><td>A0006 — TEST0006</td><td class="num strike">4,141.52</td></tr>
+    </tbody>
+   </table>
+   <p class="note">The other 17 payslips are not touched. The run’s totals and headcount are reduced by these two only.
+    Their loan instalment, claims marked paid and one-off transaction lines for this month are released, so a corrected
+    re-run pays them properly.</p>
+  </div>
+  <div class="box">
+   <div class="lbl">Reason for removal — required</div>
+   <div class="reason" style="margin:6px 0 10px">Incorrect allowance transaction — need to reprocess</div>
+   <p class="note">Required, unlike today’s optional reprocess reason. Several resets on record carry only “test”
+    or “ok”, which makes the history impossible to read months later.</p>
+   <div style="margin-top:12px"><span class="btn">Cancel</span> &nbsp;<span class="btn d">Remove 2 employees</span></div>
+   <p class="note" style="margin-top:12px"><b>It will refuse</b> if you tick every employee on the run — that is a Reset,
+    and it says so rather than quietly emptying the run. It also refuses on a closed month.</p>
+  </div>
+ </div>
+</div>
+
+<div class="card">
+ <h2>4 · After removal — the way back already exists</h2>
+ <p class="sub">The two removed employees appear on the Reprocess screen in the group it already has for people with no
+  payslip on the run. Correct the transaction, tick them, process. This part of the screen is live today.</p>
+ <table>
+  <thead><tr><th style="width:30px"></th><th>Employee ID</th><th>Name</th><th>Status</th><th>Why</th></tr></thead>
+  <tbody>
+   <tr><td colspan="5" style="background:var(--muted);font-size:11.5px;font-weight:600">New / Pending — 2 employee(s) eligible for this month with no payslip on this run</td></tr>
+   <tr><td>☑</td><td>A0003</td><td>TEST0003</td><td><span class="pill new">New / Pending</span></td><td class="sk">Eligible for this month and has no payslip on this run.</td></tr>
+   <tr><td>☑</td><td>A0006</td><td>TEST0006</td><td><span class="pill new">New / Pending</span></td><td class="sk">Eligible for this month and has no payslip on this run.</td></tr>
+   <tr><td colspan="5" style="background:var(--muted);font-size:11.5px;font-weight:600">On this run — 17 employee(s)</td></tr>
+   <tr><td>☐</td><td>A0002</td><td>TEST0002</td><td><span class="pill ok">Processed</span></td><td class="sk">—</td></tr>
+  </tbody>
+ </table>
+ <p class="note">The removal itself is recorded on the run’s own history card — who, when, the reason, and a full copy of the
+  figures that were removed — beside the reprocessing entries already listed there.</p>
+</div>
+
+<div class="card">
+ <h2>5 · Back, on every payroll screen, remembering your filters</h2>
+ <div class="two">
+  <div>
+   <p class="sub">Today</p>
+   <div class="box">
+    <div class="crumbs">Payroll Process · 2026 · August · ISEDECOR BINA · Regular</div>
+    <div class="back">(no Back link on 18 of the 35 payroll screens)</div>
+    <p style="font-size:12px;margin:6px 0 0">Where Back does exist it goes to the top of Payroll Process —
+     <span class="strike">2026 · August · ISEDECOR BINA · Regular</span> — and you re-pick the year, month,
+     company and cycle every time.</p>
+   </div>
+  </div>
+  <div>
+   <p class="sub">Proposed</p>
+   <div class="box">
+    <div class="crumbs">Payroll Process · 2026 · August · ISEDECOR BINA · Regular</div>
+    <div class="back">← Back to Payroll Process</div>
+    <p style="font-size:12px;margin:6px 0 0">Back on every screen below Payroll Process, and it returns the list
+     <b>exactly as you left it</b> — same year, month, company, cycle and status filters.</p>
+   </div>
+  </div>
+ </div>
+ <p class="note">The filter state is already carried in the page address, so this is a matter of passing it through the
+  links and back again — not new machinery.</p>
+</div>
+
+<div class="card keep">
+ <b>In short:</b> a Remove Employee Payroll action on processed runs — dedicated screen, search, multi-select, required
+ reason, audited, refuses to empty a run — plus a consistent Back that keeps your place. Removing someone puts them back
+ into the “New / Pending” group the Reprocess screen already has, so correcting one person no longer means clearing the
+ whole company’s month. No change to how anything is calculated.
+</div>

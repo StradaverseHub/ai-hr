@@ -1,0 +1,113 @@
+<meta charset="utf-8"><title>4ea70bb7 — Personnel Management, and service duration to the day</title>
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+ h2{font-size:14px;margin:0 0 4px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ .nav{border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:12.5px}
+ .nav div{padding:7px 11px;border-bottom:1px solid var(--border)}.nav div:last-child{border-bottom:0}
+ .gone{text-decoration:line-through;color:#b91c1c;background:#fef2f2}
+ .land{background:color-mix(in srgb,var(--primary) 9%,white);font-weight:600;box-shadow:inset 3px 0 0 var(--primary)}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px}
+ .keep{border:1px solid #fcd34d;background:#fffbeb;border-radius:12px;padding:13px}
+ .box{border:1px solid var(--border);border-radius:10px;padding:13px}
+ .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+ .val{font-size:13px;font-weight:600;margin-top:1px}
+ .old{color:#b91c1c}
+ .new{color:#065f46}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-top:4px}
+ .sk{font-size:11px;color:var(--mf);font-style:italic}
+ .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;background:#e0e7ff;color:#3730a3}
+</style>
+
+<div class="card">
+ <h2>1 · The module name</h2>
+ <div class="two">
+  <div><p class="sub">Today</p><div class="nav">
+   <div>Organisation</div><div class="gone">Personnel (admin)</div><div>Attendance</div><div>Leave</div><div>Payroll</div></div></div>
+  <div><p class="sub">Proposed</p><div class="nav">
+   <div>Organisation</div><div class="land">Personnel Management</div><div>Attendance</div><div>Leave</div><div>Payroll</div></div></div>
+ </div>
+ <p class="note">Renamed in the menu, on the page heading, and in the security &amp; permissions list that names the same
+  screen — in all six languages. Nothing about how the module works changes.</p>
+</div>
+
+<div class="card">
+ <h2>2 · Employment tab — the two service figures, to the day</h2>
+ <p class="sub">Your own employees, calculated as at 17 August 2026.</p>
+ <div class="two">
+  <div class="box">
+   <p class="sub">Today</p>
+   <div class="lbl">Group Join Date</div><div class="val">04 Oct 2016</div>
+   <div class="lbl" style="margin-top:9px">Group Service</div><div class="val old">9 Years 10 Months</div>
+   <div class="lbl" style="margin-top:12px">Join Date</div><div class="val">04 Oct 2016</div>
+   <div class="lbl" style="margin-top:9px">Current Company Service</div><div class="val old">9 Years 10 Months</div>
+  </div>
+  <div class="box">
+   <p class="sub">Proposed</p>
+   <div class="lbl">Group Join Date</div><div class="val">04 Oct 2016</div>
+   <div class="lbl" style="margin-top:9px">Group Service</div><div class="val new">9 Years 10 Months 13 Days</div>
+   <div class="lbl" style="margin-top:12px">Join Date</div><div class="val">04 Oct 2016</div>
+   <div class="lbl" style="margin-top:9px">Current Company Service</div><div class="val new">9 Years 10 Months 13 Days</div>
+  </div>
+ </div>
+ <p class="note">A0014 · TEST0014 · ISEDECOR BINA SDN BHD. Each figure is worked out from its own date, independently —
+  the same employee’s two dates happen to match here, which is the case for 39 of your 40 employees today.</p>
+</div>
+
+<div class="card">
+ <h2>3 · The one employee whose two dates differ — and why the change matters most there</h2>
+ <p class="sub">Eee Lee Yong · 100814 · joined the group 23 July 2026, moved to ISEDECOR BINA on 11 August 2026.</p>
+ <table>
+  <thead><tr><th>Figure</th><th>Date it counts from</th><th>Shown today</th><th>Shown after the change</th></tr></thead>
+  <tbody>
+   <tr><td>Group Service</td><td>23 Jul 2026</td><td class="old">0 Years 0 Months</td><td class="new">25 Days</td></tr>
+   <tr><td>Current Company Service</td><td>11 Aug 2026</td><td class="old">0 Years 0 Months</td><td class="new">6 Days</td></tr>
+  </tbody>
+ </table>
+ <p class="note">Today both read “0 Years 0 Months”, which looks like no service at all for someone who has been with the
+  group nearly a month — and it cannot show that their service with ISEDECOR is shorter than their service with the group.</p>
+</div>
+
+<div class="card">
+ <h2>4 · Three more of your employees, so you can see the shape of it</h2>
+ <table>
+  <thead><tr><th>Employee</th><th>Group Join Date</th><th>Shown today</th><th>Shown after the change</th></tr></thead>
+  <tbody>
+   <tr><td>A0014 — TEST0014</td><td>04 Oct 2016</td><td class="old">9 Years 10 Months</td><td class="new">9 Years 10 Months 13 Days</td></tr>
+   <tr><td>A0006 — TEST0006</td><td>02 May 2019</td><td class="old">7 Years 3 Months</td><td class="new">7 Years 3 Months 15 Days</td></tr>
+   <tr><td>A0007 — TEST0007</td><td>02 Sep 2024</td><td class="old">1 Years 11 Months</td><td class="new">1 Year 11 Months 15 Days</td></tr>
+  </tbody>
+ </table>
+ <p class="note">Note the last row: today it reads “1 <b>Years</b>”. The day-precise wording gets the singular right —
+  1 Year, 1 Month, 1 Day — in every language.</p>
+</div>
+
+<div class="card">
+ <h2>5 · What already works today</h2>
+ <p class="sub">The top of every employee’s profile already carries a day-precise figure.</p>
+ <div class="box" style="max-width:460px">
+  <div class="pair">
+   <div><div class="lbl">Company</div><div class="val">ISEDECOR BINA SDN BHD</div></div>
+   <div><div class="lbl">Join Date</div><div class="val">04 Oct 2016</div></div>
+   <div><div class="lbl">Year of Service <span class="badge">live today</span></div><div class="val new">9 Years 10 Months 13 Days</div></div>
+  </div>
+ </div>
+ <p class="note">It is calculated from the Group Join Date, recalculated every time the profile is opened, and it already
+  handles leap years, 28/29-day February, 30 and 31-day months and month-end joiners. This request is satisfied by using
+  that same calculation for the Join Date figure as well, and showing both on the Employment tab — not by building a new one.
+  The date field labelled “Join Date” on this card is the group date; it will be labelled Group Join Date so the two screens agree.</p>
+</div>
+
+<div class="card keep">
+ <b>In short:</b> the module becomes Personnel Management, and both service figures on the Employment tab show
+ Years / Months / Days worked out independently from their own dates, recalculated whenever the profile is opened.
+ Nothing is stored, no existing record changes, and no leave entitlement or pay calculation is affected —
+ this only changes what is shown on screen.
+</div>
