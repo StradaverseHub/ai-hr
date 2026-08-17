@@ -11,7 +11,22 @@
  *    computation; the regular run is normal remuneration Y1, later runs are additional remuneration);
  *  - SOCSO/EIS are charged ONCE for the month (Act 4 s.6(7)/6(9)) — a bonus run adds nothing to the
  *    SOCSO/EIS base, so its delta is 0 (a salary-split run tops up to the monthly band);
- *  - EPF uses the combined-month round-up (the cumulative call rounds the combined base once).
+ *  - EPF: each run's figure is the increment of the cumulative month, so the runs SUM to the exact
+ *    one-batch month and a bonus is never charged twice.
+ *
+ * ⚠️ EPF — what "cumulative month" does and does NOT mean here (corrected r197, item bdf7d248).
+ * This block used to claim the cumulative call "rounds the combined base once". IT DOES NOT, and the
+ * distinction is real money. `epf()` charges the Third Schedule BAND on the normal wage and adds a FLAT
+ * percentage on the additional-remuneration stream, each rounded up to RM1 separately (employer rate
+ * anchored by the NORMAL wage). It does not look the combined wage+bonus base up in the Third Schedule.
+ * Worked example (item bdf7d248, A0001 Jan-2026): normal RM7,413 + bonus RM1,650.71
+ *   engine            → band(7,413) 825/900 + ceil(1,650.71 × 11%/12%) 182/199 = month 1,007/1,099
+ *   schedule-on-total → band(9,063.71) = 1,001/1,092, i.e. bonus run 176/192
+ * The two disagree by RM6/RM7 a side, and 1,007/1,099 is not a Third Schedule amount for any band.
+ * WHICH ONE KWSP REQUIRES IS NOT SETTLED IN THIS REPO: the accountant sign-off checkbox for exactly
+ * this rule ("Bonus/additional combination rule (band on the base wage + percentage on the excess)
+ * matches KWSP guidance") is still UNTICKED — docs/architecture/STATUTORY-SOURCES.md §2. Do not
+ * "correct" either side from memory; close that checkbox first.
  *
  * v1 requires runs[0] to be the regular run (it supplies Y1); later runs are additional remuneration.
  * Reversals/negative deltas are out of scope (clamped ≥ 0) — see ADR-0024 §6.

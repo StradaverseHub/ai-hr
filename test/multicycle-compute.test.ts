@@ -4,7 +4,15 @@
  * same-month runs statutorily correct:
  *   - the per-run figures SUM to the exact one-batch monthly figures (LHDN MTD: month = one computation);
  *   - SOCSO/EIS are charged ONCE for the month (Act 4 s.6(7)/6(9)) — a bonus run adds 0;
- *   - EPF uses the combined-month round-up; the employer rate is anchored to the normal monthly wage.
+ *   - EPF increments sum to the one-batch month; the employer rate is anchored to the normal monthly wage.
+ *
+ * ⚠️ Corrected r197 (item bdf7d248): this header said "EPF uses the combined-month round-up". The engine
+ * does NOT round a combined wage+bonus base once — it takes the Third Schedule band on the NORMAL wage
+ * and adds a flat percentage on the additional stream, each rounded up to RM1 separately. The figures
+ * below still hold (they are the engine's, and the sum-to-one-batch invariant is real), but they hold at
+ * a wage where the two readings happen to agree — see #1. Whether KWSP requires the band on the combined
+ * base is an OPEN accountant sign-off: STATUTORY-SOURCES.md §2, "Bonus/additional combination rule",
+ * still unticked. Worked divergence: localization/my/multicycle.ts header.
  * Pure computation only (no DB) — the kernel wiring is gated and lands in a later slice.
  */
 import { describe, expect, it } from 'vitest';
@@ -46,7 +54,13 @@ describe('Wave 2C — computeMonthlyRuns (ADR-0024 sign-off figures)', () => {
   // The single-batch reference for the same month (RM5,000 normal + RM10,000 bonus).
   const oneBatch = statutory(5000, profile, 10000, 0, { month: 5, acc: priorAcc });
 
-  it('#1 EPF employee combined = ceil(15,000 × 11%) = RM1,650 (round once)', () => {
+  // #1 — RM1,650 is the engine's figure: band(5,000).employee 550 + ceil(10,000 × 11%) 1,100.
+  // It is NOT evidence of a "round the combined base once" rule. RM5,000 and RM15,000 are both exact
+  // Third Schedule band uppers whose 11% is a whole ringgit, so band-on-normal + flat-on-bonus,
+  // band-on-combined and ceil(15,000 × 11%) all coincide at RM1,650 here. At a wage that is not a band
+  // upper they diverge (bdf7d248: normal 7,413 + bonus 1,650.71 → engine 1,007, band-on-combined 1,001).
+  // The assertion pins the ENGINE, which is what this sign-off worksheet reports.
+  it('#1 EPF employee for the month = band(5,000) 550 + ceil(10,000 × 11%) 1,100 = RM1,650', () => {
     expect(monthly.epfEmployee).toBe(1650);
     expect(sum([r1.epfEmployee, r2.epfEmployee])).toBe(1650);
   });

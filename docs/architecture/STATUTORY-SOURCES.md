@@ -45,7 +45,11 @@ to these tables is traceable to the exact runs it affects.
   annual tax **including** (Yₜ−Kₜ) with K₂ re-projected; Step 4's difference is the bonus MTD;
   Step 5 sums. The bonus carries its own 11% EPF relief, pooled under the cumulative RM4,000 cap.
   - **EPF:** bonus **is** subject; KWSP fixes the employer rate by the *normal* wage (a ≤RM5,000
-    earner stays 13% even if the bonus pushes the month over RM5,000), applied to wage+bonus.
+    earner stays 13% even if the bonus pushes the month over RM5,000). Precisely (r197): the Third
+    Schedule BAND is taken on the normal wage and a FLAT percentage is added on the bonus, each rounded
+    up to RM1 **separately** — the combined wage+bonus base is never itself looked up in the schedule.
+    Whether that is what KWSP requires is an **open sign-off** — see §2, "Bonus/additional combination
+    rule" (unticked, and now disputed by a customer on real figures).
   - **SOCSO + EIS:** annual bonus is **excluded** (not "wages" for PERKESO).
 - **✅ Verified against the spec's own Exhibit 5 worked example** (golden tests): Jan RM110.00 →
   Feb RM110.00 (accumulated) → Mar RM108.20 (TP1 RM300) → Apr bonus RM8,250: normal 106.20 +
@@ -160,6 +164,24 @@ to these tables is traceable to the exact runs it affects.
         the age-75 cutoff; PR 60+ is treated as non-citizen 2%/2% pending the Parts C/D variants.
   - [ ] Bonus/additional combination rule (band on the base wage + percentage on the excess) matches KWSP
         guidance; >RM20,000 percentage tail confirmed; round-up direction (up to RM1) confirmed.
+        **🔴 NOW A LIVE DISPUTE, NOT A THEORETICAL GAP (item `bdf7d248`, r197).** A customer has
+        challenged this exact rule on real January-2026 figures, and the two readings give different
+        money. Employee A0001, normal wage **RM7,413.00** + bonus **RM1,650.71**:
+        | Reading | Employee | Employer | Month total |
+        |---|---|---|---|
+        | **Engine today** — band on the normal wage + flat % on the bonus, rounded separately | 825 + **182** | 900 + **199** | **1,007 / 1,099** |
+        | **Band on the combined base** — `band(9,063.71)` less already paid | 1,001 − 825 = **176** | 1,092 − 900 = **192** | **1,001 / 1,092** |
+        Both columns come from `MY_EPF_THIRD_SCHEDULE_PART_A` as encoded here — the customer's figures
+        are **not** invented, they are this table read on wage+bonus. Note the engine's monthly total
+        (1,007 / 1,099) is **not a band amount for any wage**, because it adds two independently
+        rounded-up numbers. The engine's rule is deliberate and tested (`test/epf-third-schedule.test.ts`,
+        "adds the bonus as percentage on top of the schedule wage-amount"), but it has never been signed
+        off, which is why this box is still open.
+        **Resolve this box before answering the customer or changing any figure.** What the reviewer must
+        confirm against KWSP: when a bonus is paid in a SEPARATE run in the same month, is the monthly
+        contribution the Third Schedule amount for (wage + bonus), or the schedule amount for the wage
+        plus a flat 11%/12% on the bonus? Blast radius if the engine is wrong: every same-month bonus /
+        commission / off-cycle run for every employee, on both sides, plus the KWSP filing totals.
   - Reviewer: __________________  Date: __________  KWSP doc version verified: __________
 
 ## 3. SOCSO / PERKESO (Act 4) — ✅ Verified to RM6,000 + SKBBK / Lindung 24 Jam (2026.3, #155)

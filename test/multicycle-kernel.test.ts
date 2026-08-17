@@ -4,7 +4,12 @@
  * figures through the real DB kernel, and that the per-run deltas sum to the single-batch month:
  *   - the regular run is normal remuneration; the bonus run is additional remuneration (Steps 1–5);
  *   - SOCSO/EIS are charged ONCE (only the regular run); the bonus run adds RM0 (Act 4 s.6(7)/6(9));
- *   - EPF is the combined-month round-up, employer rate anchored to the normal wage.
+ *   - EPF increments sum to the one-batch month, employer rate anchored to the normal wage. NOTE
+ *     (corrected r197, item bdf7d248): this said "the combined-month round-up", which the engine does
+ *     NOT do — the Third Schedule band is taken on the NORMAL wage and a flat percentage is added on
+ *     the additional stream, rounded separately. Whether KWSP instead wants the band on the combined
+ *     wage+bonus base is an OPEN sign-off (STATUTORY-SOURCES.md §2, checkbox still unticked); see the
+ *     header of localization/my/multicycle.ts for the worked divergence.
  * Gated behind the `multi_cycle_payroll` MODULE ENTITLEMENT (ADR-0077 slice 3 — it was the
  * MULTI_CYCLE_PAYROLL_ENABLED deployment flag until the gate moved into `tenant_module`), so it never
  * runs for real payroll until the §7 sign-off.
