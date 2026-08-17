@@ -69,9 +69,11 @@ export function StepValidation({
       setMissingCycle([]);
     }
     // d0d2c9d1 — fired in the SAME effect, off the same `key` (which already includes the sorted
-    // employmentIds), so it re-runs whenever the operator changes who is in the run. Returns [] for an
-    // unscoped run, which collects everything and has nothing to warn about.
-    checkUnattachedForSelection({ companyIds, payPeriod, employmentIds })
+    // employmentIds AND the intended run type), so it re-runs whenever the operator changes who is in the
+    // run or which cycle it runs under. c11e81aa — the run type goes with it: a full unscoped REGULAR run
+    // no longer collects everything, because a transaction may be marked for another Pay Cycle, and this
+    // check would otherwise stay silent on exactly that money.
+    checkUnattachedForSelection({ companyIds, payPeriod, employmentIds, intendedRunType })
       .then((rows) => {
         if (live) setUnattached(rows);
       })

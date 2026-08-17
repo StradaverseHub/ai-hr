@@ -211,10 +211,19 @@ export default async function BatchPage({
   const isScoped = !!(scope?.departmentIds?.length || scope?.employmentIds?.length);
 
   // ── Feedback d0d2c9d1 — money entered for this month that has never reached a payslip. ──
-  // GATED TO runType === 'regular' on purpose: off_cycle / bonus / adjustment runs NEVER collect
-  // transactions by design (the attach guard in generatePayslips), so an indicator on them would be a
-  // permanent, un-actionable alert about behaviour that is working correctly. Reuses the `isRegular`
-  // declared above for the loan summary — same expression, one binding.
+  // STILL GATED TO runType === 'regular', but the REASON changed under it in c11e81aa and the old one is
+  // now false. It used to read "off_cycle / bonus / adjustment runs NEVER collect transactions by design",
+  // and that sentence is what this gate rested on. It no longer holds: a non-regular run that names a pay
+  // cycle now collects the rows that name that same cycle (core/payroll.ts collectableCycleIds).
+  //
+  // The gate is kept deliberately, on a narrower claim: the REGULAR run is the one that sweeps up
+  // everything unclaimed for the month, so it is the only run for which "money left behind" is both
+  // complete and actionable. A bonus run collects exactly what named it and leaves the rest to the regular
+  // run by design, so an outstanding indicator there would still be the permanent un-actionable alert this
+  // gate was added to prevent — EXCEPT for rows naming that bonus run's own cycle, which it really can
+  // strand. That last case is NOT surfaced here yet; it is a known follow-up, recorded in HANDOFF, and it
+  // is a missing warning rather than wrong money. Reuses the `isRegular` declared above for the loan
+  // summary — same expression, one binding.
   const [txnYear, txnMonth] = batch.payPeriod.split('-').map(Number);
   // Before Generate on a SCOPED draft: who this run is about to leave out, and what they are holding.
   const scopeHolders =
@@ -223,6 +232,9 @@ export default async function BatchPage({
           companyId: batch.companyId,
           payPeriod: batch.payPeriod,
           scope,
+          // c11e81aa — so the warning also names money marked for another Pay Cycle, which this run
+          // walks past no matter who is in scope.
+          runType: batch.runType,
         })
       : [];
   // After Generate: whatever is still outstanding for the month. For a processed run EVERY unattached

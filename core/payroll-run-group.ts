@@ -230,9 +230,17 @@ export async function runMultiCompanyPayroll(
       // never apply the primary company's id here). A company with no active cycle of that type is an
       // INVALID_CYCLE failure for that company, not a run abort. At most one active regular cycle exists per
       // company (enforced at the app level, plan item 2), so the first match is deterministic.
-      const cycle = (await listPayrollCycles(ctx, companyId, { activeOnly: true })).find(
-        (c) => c.runType === intendedRunType,
-      );
+      //
+      // c11e81aa — THE OPERATOR'S OWN PICK WINS FOR THE COMPANY IT BELONGS TO. `getActivePayrollCycle`
+      // re-validates the id against THIS company and returns null for any other, so the chosen row is used
+      // where it is legitimate and the type-based resolution below still covers every other company. This
+      // was a latent wart while only `runType`/`remarks` were read off the result — picking "Mid-Month"
+      // resolved to whichever off_cycle cycle sorted first, losing both the identity AND the remarks label.
+      // It stopped being latent the moment a transaction could name a cycle: the run has to record the
+      // cycle the operator actually chose, or a row saved as "Mid-Month" is collected by nobody.
+      const chosen = input.payrollCycleId ? await getActivePayrollCycle(ctx, input.payrollCycleId, companyId) : null;
+      const cycle =
+        chosen ?? (await listPayrollCycles(ctx, companyId, { activeOnly: true })).find((c) => c.runType === intendedRunType);
       if (!cycle) {
         perCompany.push({
           companyId,
@@ -249,7 +257,13 @@ export async function runMultiCompanyPayroll(
 
       const created =
         cycle.runType === 'regular'
-          ? await createBatch(ctx, { companyId, payPeriod: input.payPeriod, scope, paymentDate: input.paymentDate || undefined })
+          ? await createBatch(ctx, {
+              companyId,
+              payPeriod: input.payPeriod,
+              scope,
+              paymentDate: input.paymentDate || undefined,
+              payrollCycleId: cycle.id,
+            })
           : await createAdditionalRun(ctx, {
               companyId,
               payPeriod: input.payPeriod,
@@ -257,6 +271,9 @@ export async function runMultiCompanyPayroll(
               remarks: cycle.remarks ?? undefined,
               scope,
               paymentDate: input.paymentDate || undefined,
+              // c11e81aa — the run's identity, not just its behaviour. Without it a non-regular run
+              // cannot be told from its same-typed siblings and collects no named transaction at all.
+              payrollCycleId: cycle.id,
             });
 
       // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present;

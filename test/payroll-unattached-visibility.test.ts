@@ -18,17 +18,20 @@ import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
-import { createIndividualTxn } from '../core/payroll-individual-txn';
+import { createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
+import { upsertPayrollCycle } from '../core/payroll-cycle';
+import { createIndividualTxn, createIndividualTxnsBulk } from '../core/payroll-individual-txn';
 import { listUnattachedTxnSummary, unattachedHoldersOutsideSelection } from '../core/payroll-view';
 import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -223,5 +226,107 @@ describe('d0d2c9d1 — unattachedHoldersOutsideSelection (pre-flight, informatio
     const calls = [...src.matchAll(/onStatusChange\(([^)]*)\)/g)].map((m) => m[1]);
     expect(calls.length).toBeGreaterThan(0);
     for (const args of calls) expect(args).not.toContain('unattached');
+  });
+});
+
+
+/**
+ * c11e81aa — THE TWO READERS OF THE OLD "REGULAR RUN ONLY" INVARIANT, AFTER THE INVARIANT MOVED.
+ *
+ * `listUnattachedTxnSummary` keyed its batch join on run_type='regular' and `unattachedHoldersOutside
+ * Selection` returned [] for an unscoped run, both on the same reasoning: only the regular run ever
+ * collected, and a full regular run collected everything. A transaction can now NAME a Pay Cycle, and the
+ * run that collects it is the run opened under that cycle — so a full regular run walks past everything
+ * marked for another cycle. Left alone, the first reader would have invented a fault (reporting a bonus
+ * row as sitting behind a "processed" regular run that was never going to touch it) and the second would
+ * have gone silent on exactly the money the change teaches the run to abandon.
+ */
+describe('c11e81aa — the unattached readers follow the run that will actually collect', () => {
+  async function cycles() {
+    const a = adminCtx(base);
+    const regular = await upsertPayrollCycle(a, { companyId: base.companyId, name: 'Monthly Salary', runType: 'regular' });
+    const bonus = await upsertPayrollCycle(a, { companyId: base.companyId, name: 'Bonus Run', runType: 'bonus' });
+    return { regular: regular.id, bonus: bonus.id };
+  }
+
+  /** The same write the entry screen makes: unattached, against a month, NAMING a configured cycle. */
+  const markedTxn = (employmentId: string, payPeriod: string, day: string, amount: number, intendedCycleId: string) =>
+    createIndividualTxnsBulk(adminCtx(base), {
+      companyId: base.companyId,
+      payPeriod,
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: `${payPeriod}-${day}`, amount }],
+      intendedCycleId,
+    });
+
+  it('runState reports the BONUS run’s state for a bonus-marked row, not the regular run’s', async () => {
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const e = await hire('Cycle Reader');
+    const { bonus } = await cycles();
+    await markedTxn(e.employmentId, '2026-07', '05', 900, bonus);
+    await txn(e.employmentId, '2026-07', '06', 50); // names nothing — still the regular run's
+
+    // Only the REGULAR run exists, and it is processed. It never had any claim on the bonus row.
+    const { batchId } = await createBatch(adminCtx(base), { companyId: base.companyId, payPeriod: '2026-07' });
+    await generatePayslips(adminCtx(base), { batchId });
+
+    const rows = await listUnattachedTxnSummary(adminCtx(base), { companyIds: [base.companyId], year: 2026, month: 7 });
+    // The unmarked row was collected by that run, so only the bonus row is still outstanding — and its
+    // run state is 'none', because no bonus run exists. Joining on run_type='regular' would have called
+    // it 'processed' and invented a fault.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ payPeriod: '2026-07', count: 1, runState: 'none', intendedCycleId: bonus, intendedRunType: 'bonus' });
+
+    // Open the bonus run: NOW the row has a run, and the state it reports is that run's.
+    const multi = await entitledCtx(base);
+    await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-07',
+      runType: 'bonus',
+      payrollCycleId: bonus,
+    });
+    const after = await listUnattachedTxnSummary(adminCtx(base), { companyIds: [base.companyId], year: 2026, month: 7 });
+    expect(after).toHaveLength(1);
+    expect(after[0].runState).toBe('draft');
+  });
+
+  it('the pre-flight reports what a FULL regular run abandons — the silence this change would have caused', async () => {
+    const e = await hire('Preflight Cycle');
+    const { regular, bonus } = await cycles();
+    await markedTxn(e.employmentId, '2026-07', '05', 1200, bonus);
+    await markedTxn(e.employmentId, '2026-07', '06', 40, regular);
+    await txn(e.employmentId, '2026-07', '07', 10);
+
+    // WITHOUT the run type this is the old call, and the old answer: an unscoped run warns about nobody.
+    // Kept, because every caller that cannot name its run (wizard resume) still takes that path.
+    expect(
+      await unattachedHoldersOutsideSelection(adminCtx(base), { companyIds: [base.companyId], payPeriod: '2026-07' }),
+    ).toEqual([]);
+
+    // WITH it, the RM1,200 the regular run will not pay is named — even though nobody was excluded.
+    const warned = await unattachedHoldersOutsideSelection(adminCtx(base), {
+      companyIds: [base.companyId],
+      payPeriod: '2026-07',
+      intendedRunType: 'regular',
+    });
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toMatchObject({ employmentId: e.employmentId, count: 1, amount: '1200.00' });
+  });
+
+  it('a bonus-marked row is reported even for an employee who IS in a narrowed regular run', async () => {
+    const e = await hire('Preflight Both');
+    const { bonus } = await cycles();
+    await markedTxn(e.employmentId, '2026-07', '05', 300, bonus);
+
+    const warned = await unattachedHoldersOutsideSelection(adminCtx(base), {
+      companyIds: [base.companyId],
+      payPeriod: '2026-07',
+      employmentIds: [e.employmentId],
+      intendedRunType: 'regular',
+    });
+    // In scope, and still abandoned — the two causes are independent, and reading only the scope one
+    // would hide this entirely.
+    expect(warned).toHaveLength(1);
+    expect(warned[0].amount).toBe('300.00');
   });
 });

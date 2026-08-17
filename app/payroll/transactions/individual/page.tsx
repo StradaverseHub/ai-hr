@@ -4,10 +4,11 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
+import { listPayrollCycles } from '@/core/payroll-cycle';
 import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ErrorBanner, PageHeader } from '@/components/ui';
-import { TxnWorkspace, type TxnBatch, type TxnEmployee } from './txn-workspace';
+import { TxnWorkspace, type TxnBatch, type TxnEmployee, type TxnPayrollCycle } from './txn-workspace';
 import { TxnImportButtons } from '../import-excel/txn-import-dialog';
 import { buildTxnTemplateReference } from '../import-excel/reference';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
@@ -85,6 +86,25 @@ export default async function IndividualTransactionPage({
     .filter((c) => scopeIds.includes(c.id))
     .map((c) => ({ id: c.id, name: c.name, currency: c.currency ?? null }));
 
+  /**
+   * c11e81aa — THE CONFIGURED PAY CYCLES (Payroll → Settings → Payroll Cycles), per company.
+   *
+   * The entry form's "Pay cycle" field used to list the payroll RUNS that already existed for the month
+   * and print "Awaiting payroll run" when there were none, so an entry keyed ahead of a run could name no
+   * cycle at all. These are the catalogue rows it names instead — ACTIVE ones only, because an archived
+   * cycle will never have a run opened for it and offering one would be offering a dead end.
+   *
+   * Read here, on the server, per company the admin is scoped to, and by the SAME `listPayrollCycles` the
+   * process wizard and the payroll-readiness check use — one catalogue, not a second view of it. RLS
+   * fences the tenant; `scopedCompanies` is the already-authorised set, so this cannot widen it.
+   */
+  const cyclesByCompany = await Promise.all(
+    scopedCompanies.map(async (c) => ({ companyId: c.id, cycles: await listPayrollCycles(s, c.id, { activeOnly: true }) })),
+  );
+  const payrollCycles: TxnPayrollCycle[] = cyclesByCompany.flatMap(({ companyId, cycles }) =>
+    cycles.map((c) => ({ id: c.id, companyId, name: c.name, runType: c.runType })),
+  );
+
   const txnEmployees: TxnEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
     name: e.name,
@@ -114,6 +134,9 @@ export default async function IndividualTransactionPage({
     recalcEmploymentIds: Array.isArray(b.recalcEmploymentIds)
       ? b.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
       : null,
+    // c11e81aa — which configured cycle opened this run. Null for every run created before 0441; the
+    // workspace treats that as "cannot be told from its siblings by anything but its type".
+    payrollCycleId: b.payrollCycleId ?? null,
   }));
 
   const errorKeys = new Set([
@@ -165,6 +188,7 @@ export default async function IndividualTransactionPage({
         batches={txnBatches}
         companies={scopedCompanies}
         payItems={payItems}
+        payrollCycles={payrollCycles}
         processHref="/payroll/process"
         requireComponent={individualTxnPayOn}
         panelDefaultOpen={panelDefaultOpen}

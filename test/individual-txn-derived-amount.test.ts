@@ -139,6 +139,9 @@ function post(employmentId: string, over: Partial<Parameters<typeof createIndivi
     companyId: base.companyId,
     payPeriod: PERIOD,
     batchId: '',
+    // c11e81aa — no configured Pay Cycle named, which is what this screen sent before the cycle picker
+    // existed and what every row on production carries: the month's regular run still collects it.
+    intendedCycleId: null,
     kind: 'earning',
     componentId: null,
     txnDate: TXN_DATE,

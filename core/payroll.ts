@@ -49,6 +49,7 @@ import {
   leaveType,
   payPeriod,
   payrollBatch,
+  payrollCycle,
   payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollInput,
@@ -1147,6 +1148,64 @@ export async function resolveBatchScopeFilter(
   };
 }
 
+/**
+ * c11e81aa — WHICH PERIOD-KEYED TRANSACTIONS THIS RUN MAY COLLECT, as cycle identities.
+ *
+ * ONE RULE, TWO READERS. `generatePayslips` uses it to decide what attach-on-generate stamps onto the
+ * batch, and `pendingBatchMoney` (core/payroll-view.ts) uses it to decide what the "what will this run
+ * pay?" card promises. Those two must never disagree — a card that promises money the run will not pay is
+ * the exact failure the card exists to prevent — so the rule lives once, here, and is imported there.
+ *
+ * IT MATCHES CYCLE IDS, NOT RUN TYPES, AND THAT IS THE WHOLE POINT. The default catalogue maps THREE
+ * cycles onto run_type 'off_cycle' — 'Off-cycle', 'Advance Salary', 'Mid-Month' (DEFAULT_PAYROLL_CYCLES,
+ * core/payroll-cycle.ts). Matching on run type would let an "Advance Salary" run collect and pay a row the
+ * operator deliberately saved as "Mid-Month": pay-affecting, silent, and indistinguishable on screen from
+ * working correctly. So a non-regular run collects the rows that named ITS OWN cycle row and nothing else.
+ *
+ * REGULAR IS THE ONE CASE WHERE THE TYPE *IS* AN IDENTITY, and it is protected twice over: a company may
+ * have at most one ACTIVE regular-mapped cycle (PayrollCycleRegularConflictError) and a pay period may
+ * hold at most one regular BATCH (payroll_batch_one_regular_uq). No two runs can therefore compete for a
+ * regular-cycle row, so the regular run takes every one of them — including rows naming an ARCHIVED
+ * regular cycle, because replacing the company's monthly cycle must not strand money already keyed under
+ * the old one. It also takes rows that named NO cycle, which is every row on production today.
+ *
+ * A NON-REGULAR RUN THAT NAMES NO CYCLE COLLECTS NOTHING, which is precisely today's behaviour (before
+ * this change attach-on-generate refused every non-regular run outright). That covers legacy batches and
+ * every caller that creates a run without naming its cycle.
+ */
+export type CollectingRun = { companyId: string; runType: string; payrollCycleId: string | null };
+
+export async function collectableCycleIds(
+  tx: Tx,
+  batch: CollectingRun,
+): Promise<{
+  /** Intended-cycle ids this run may claim. Empty for a non-regular run with no cycle of its own. */
+  cycleIds: string[];
+  /** Does it also claim rows that named NO cycle? True only for the regular run. */
+  collectsUnnamed: boolean;
+  /** Nothing period-keyed is claimable at all — callers skip the statement rather than issue a false one. */
+  collectsNothing: boolean;
+}> {
+  if (batch.runType !== 'regular') {
+    const cycleIds = batch.payrollCycleId ? [batch.payrollCycleId] : [];
+    return { cycleIds, collectsUnnamed: false, collectsNothing: cycleIds.length === 0 };
+  }
+  const regularCycles = await tx
+    .select({ id: payrollCycle.id })
+    .from(payrollCycle)
+    .where(and(eq(payrollCycle.companyId, batch.companyId), eq(payrollCycle.runType, 'regular')));
+  return { cycleIds: regularCycles.map((c) => c.id), collectsUnnamed: true, collectsNothing: false };
+}
+
+/** The `payroll_individual_txn.intended_cycle_id` predicate for a resolved `collectableCycleIds`. Never
+ *  called when `collectsNothing` — there is no honest predicate for "claims nothing", only a skip. */
+export function intendedCycleFilter(c: { cycleIds: string[]; collectsUnnamed: boolean }) {
+  if (!c.collectsUnnamed) return inArray(payrollIndividualTxn.intendedCycleId, c.cycleIds);
+  return c.cycleIds.length > 0
+    ? or(isNull(payrollIndividualTxn.intendedCycleId), inArray(payrollIndividualTxn.intendedCycleId, c.cycleIds))
+    : isNull(payrollIndividualTxn.intendedCycleId);
+}
+
 /** Payroll Process wizard (Step 1) — validate a user-supplied payment date (ISO 'YYYY-MM-DD'). Returns
  *  the date unchanged when valid, else null (caller falls back to the period default). */
 function validPaymentDate(paymentDate?: string | null): string | null {
@@ -1158,7 +1217,17 @@ function validPaymentDate(paymentDate?: string | null): string | null {
 
 export async function createBatch(
   ctx: SessionContext,
-  p: { companyId: string; payPeriod: string; scope?: BatchScope; paymentDate?: string },
+  p: {
+    companyId: string;
+    payPeriod: string;
+    scope?: BatchScope;
+    paymentDate?: string;
+    /** c11e81aa — the CONFIGURED cycle this run is opened under (payroll_cycle.id). Optional, and null is
+     *  not a defect: a regular run resolves its collectable rows from the company's regular-mapped cycles
+     *  either way (see `collectableCycleIds`). Recorded so the run's identity is a fact on the row rather
+     *  than an inference from its type. */
+    payrollCycleId?: string | null;
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month). Reject a second one exactly
@@ -1213,6 +1282,7 @@ export async function createBatch(
         batchDate,
         status: 'draft',
         scope: normalizeScope(p.scope),
+        payrollCycleId: p.payrollCycleId || null,
       })
       .returning({ id: payrollBatch.id });
     await appendEvent(tx, {
@@ -1229,6 +1299,9 @@ export async function createBatch(
         runType: 'regular',
         scope: normalizeScope(p.scope),
         paymentDate: batchDate,
+        // c11e81aa — a reference id, so the audit record says which cycle opened the run without carrying
+        // any figure (ADR-0030 Layer 0), exactly as `componentId` does on the ledger's own events.
+        payrollCycleId: p.payrollCycleId || null,
       },
     });
 
@@ -1286,6 +1359,14 @@ export async function createAdditionalRun(
     /** Payroll Process wizard (1b): optional subset — generatePayslips already resolves batch.scope for
      *  every runType, so an additional run can legitimately be scoped the same way the regular run is. */
     scope?: BatchScope;
+    /**
+     * c11e81aa — the CONFIGURED cycle this run is opened under (payroll_cycle.id). On a NON-regular run
+     * this is load-bearing rather than informational: it is the ONLY thing that tells an "Advance Salary"
+     * run apart from a "Mid-Month" one, both of which are run_type 'off_cycle', and it is what decides
+     * which period-keyed transactions the run collects. Omitted ⇒ the run names no cycle and collects no
+     * period-keyed rows at all, which is exactly what every non-regular run did before this change.
+     */
+    payrollCycleId?: string | null;
   },
 ) {
   if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
@@ -1324,6 +1405,7 @@ export async function createAdditionalRun(
         status: 'draft',
         scope,
         remarks: p.remarks || null,
+        payrollCycleId: p.payrollCycleId || null,
       })
       .returning({ id: payrollBatch.id });
     await appendEvent(tx, {
@@ -1341,6 +1423,8 @@ export async function createAdditionalRun(
         paymentDate: batchDate,
         remarks: p.remarks || null,
         scope,
+        // c11e81aa — which cycle opened this run; on a non-regular run it is what routes the money.
+        payrollCycleId: p.payrollCycleId || null,
       },
     });
     return { batchId: row.id };
@@ -2677,8 +2761,10 @@ export async function generatePayslips(
     // f1564110 Phase 2 — attach-on-generate (amends ADR-0056). One-off individual transactions keyed in
     // BEFORE this run existed (batch_id NULL, matching company + pay month) are stamped onto this batch now,
     // inside the same transaction, so the ledger they belong to is the run that pays the month. REGULAR run
-    // only: in multi-cycle months the off-cycle/bonus/adjustment runs keep explicit-batch targeting via the
-    // wizard, so an unattached row can never be double-collected by a sibling run. Full draft→processed
+    // only — AMENDED BY c11e81aa BELOW, which routes a row that NAMED a cycle to that cycle's run instead;
+    // a row that named none is still the regular run's and nobody else's. In multi-cycle months the
+    // off-cycle/bonus/adjustment runs otherwise keep explicit-batch targeting via the wizard, so an
+    // unattached row can never be double-collected by a sibling run. Full draft→processed
     // generation only (a subset reprocess recomputes a processed run whose ledger is already attached).
     // Scope-constrained runs collect only in-scope employees' rows; the rest stay unattached for a later
     // (re)generation or a widened scope. Kernel consumption of the attached rows is Phase 3 (flag-gated);
@@ -2689,8 +2775,34 @@ export async function generatePayslips(
     // belongs to this run exactly as it would have at the original processing. The narrowing to the added
     // ids is what keeps that true — an employment being RECALCULATED still collects nothing, because its
     // ledger was attached when it was first paid and re-attaching would pay a later month's row here.
+    //
+    // c11e81aa AMENDS THE "REGULAR RUN ONLY" RULE — BY THE ROW'S OWN INTENT, NOT BY WIDENING THE RUN.
+    // The entry form now offers the CONFIGURED Pay Cycles (Payroll → Settings → Payroll Cycles) rather
+    // than the runs that happen to exist, so a row keyed for a future month can name "Bonus". That choice
+    // is stored on the row (`intended_cycle_id`, 0441) and this is where it is honoured:
+    //
+    //   • a row that named NO cycle — every row on production today — is collected by the REGULAR run,
+    //     exactly as before, and by nothing else;
+    //   • a row that named a cycle is collected ONLY by the run OPENED UNDER THAT VERY CYCLE
+    //     (`payroll_batch.payroll_cycle_id`, same migration). So the regular run stops collecting a row
+    //     the operator marked "Bonus" (the silent pay-affecting surprise this change exists to prevent),
+    //     and the bonus run — which collects nothing today — collects it instead.
+    //
+    // IDENTITY, NOT RUN TYPE. Three default cycles share run_type 'off_cycle', so a type match would let
+    // an "Advance Salary" run pay a row saved as "Mid-Month". `collectableCycleIds` above is the single
+    // rule, shared with the pending-money card so the two can never disagree; read its comment for why
+    // 'regular' is the one case where the type IS the identity, and why archived cycles still resolve.
+    //
+    // The double-collection guard the old rule bought by refusing every non-regular run therefore
+    // survives: each unattached row is claimable by exactly one CYCLE in the month, at most one run is
+    // opened under a given cycle in a period in practice, and the `batch_id IS NULL` predicate makes the
+    // first run to generate the only one that can take it in any case.
     const attachForAdded = subset !== null && addedEmploymentIds.length > 0;
-    if ((!subset || attachForAdded) && batch.runType === 'regular') {
+    const collectable = await collectableCycleIds(tx, batch);
+    // A non-regular run that names no cycle can claim nothing, and `inArray` with an empty list is not a
+    // query worth issuing — skip the whole statement, which is exactly today's behaviour.
+    if ((!subset || attachForAdded) && !collectable.collectsNothing) {
+      const intentFilter = intendedCycleFilter(collectable);
       const attachedTxns = await tx
         .update(payrollIndividualTxn)
         .set({ batchId: p.batchId })
@@ -2699,6 +2811,7 @@ export async function generatePayslips(
             isNull(payrollIndividualTxn.batchId),
             eq(payrollIndividualTxn.companyId, batch.companyId),
             eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+            intentFilter,
             subset
               ? inArray(payrollIndividualTxn.employmentId, addedEmploymentIds)
               : scopeConstrained
@@ -6095,6 +6208,11 @@ export function listBatches(
         // which is the one case that leaves no row to label (request case 4).
         needsRecalcAt: payrollBatch.needsRecalcAt,
         recalcEmploymentIds: payrollBatch.recalcEmploymentIds,
+        // c11e81aa — the CONFIGURED cycle this run was opened under. Additive for the same reason the
+        // three fields above were. The Individual Transaction workspace needs it to decide whether the run
+        // that exists is the one the operator's chosen cycle will be paid by: `remarks` above answers that
+        // only for the two off_cycle presets that happen to carry a label, and by string comparison.
+        payrollCycleId: payrollBatch.payrollCycleId,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))

@@ -22,6 +22,7 @@ import {
   EmptyEmployeeSelectionError,
   DuplicateTxnRowError,
   InvalidTxnComponentError,
+  InvalidTxnCycleError,
   InvalidTxnKindError,
   InvalidTxnUnitError,
   InvalidPayPeriodError,
@@ -75,7 +76,12 @@ const txnErrorKey = (e: unknown): string =>
                 ? 'componentRequired'
                 : e instanceof InvalidTxnComponentError
                   ? 'componentInvalid'
-                  : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
+                  : // c11e81aa — the chosen Pay Cycle is unknown, archived, another company's, or
+                    // disagrees with the run the row is already on. One key: what the operator has to do
+                    // is the same in all four cases — pick a cycle this entry can actually be paid under.
+                    e instanceof InvalidTxnCycleError
+                    ? 'cycleInvalid'
+                    : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
                     ? 'rowIncomplete'
                     : e instanceof InvalidPayPeriodError || e instanceof MissingTxnTargetError
                       ? 'periodInvalid'
@@ -149,6 +155,13 @@ export type TxnFormInput = {
   payPeriod: string;
   /** A resolved draft run for that (company, month), or '' to key the row against the month itself. */
   batchId: string;
+  /**
+   * c11e81aa — the CONFIGURED Pay Cycle the operator chose (payroll_cycle.id), or null when the company
+   * has no cycle catalogue to choose from. Independent of `batchId`: when a run of that cycle's type
+   * already exists the row attaches to it directly, and when none does the row is period-keyed and this
+   * is what tells the eventual run it is theirs.
+   */
+  intendedCycleId: string | null;
   kind: string;
   componentId: string | null;
   txnDate: string;
@@ -468,6 +481,8 @@ export async function createIndividualTxnDayGridAction(input: {
   kind: string;
   componentId: string | null;
   unit: string | null;
+  /** c11e81aa — the chosen Pay Cycle for the WHOLE grid; see TxnFormInput.intendedCycleId. */
+  intendedCycleId: string | null;
   lines: DayByDayLineInput[];
 }): Promise<TxnActionResult & { count?: number }> {
   const { s, scopeIds } = await scopedAdmin();
@@ -508,6 +523,7 @@ export async function createIndividualTxnDayGridAction(input: {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
       employmentIds: [input.employmentId],
       rows,
+      intendedCycleId: input.intendedCycleId,
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -570,6 +586,7 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
           componentId: input.componentId,
         },
       ],
+      intendedCycleId: input.intendedCycleId,
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -588,7 +605,15 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
  * out-of-scope id must not even reach the service, or the failure would leak that the row exists.
  */
 export async function updateIndividualTxnAction(
-  input: Omit<TxnFormInput, 'employmentId' | 'batchId' | 'payPeriod'> & { id: string },
+  input: Omit<TxnFormInput, 'employmentId' | 'batchId' | 'payPeriod' | 'intendedCycleId'> & {
+    id: string;
+    /**
+     * c11e81aa — OPTIONAL here where it is required on create, and the difference is meaningful. An edit
+     * form that has no cycle catalogue to offer (a company with no configured Payroll Cycles) must leave
+     * the stored choice ALONE rather than send null and clear it; omitting the field is how it says so.
+     */
+    intendedCycleId?: string | null;
+  },
 ): Promise<TxnActionResult> {
   const { s, scopeIds } = await scopedAdmin();
   const existing = input.id ? await getIndividualTxn(s, { id: input.id }) : null;
@@ -617,6 +642,7 @@ export async function updateIndividualTxnAction(
       unit: input.unit,
       notes: input.notes,
       componentId: input.componentId,
+      ...(input.intendedCycleId !== undefined ? { intendedCycleId: input.intendedCycleId } : {}),
     });
     revalidatePath('/payroll/transactions/individual');
     // `recalcOnEdit` is the SERVICE's own answer, read on the row that was about to be edited — not a

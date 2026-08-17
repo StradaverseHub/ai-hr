@@ -413,9 +413,12 @@ const fileRowRef = (digest: string, rowNum: number): string => `xlsx:${digest}:$
  * Blank still means the month's REGULAR run and then, if there is none, keyed by period — byte-identical
  * to the behaviour above, so no existing file changes meaning. Naming a cycle sends the row to THAT run,
  * and when no writable run of that cycle exists for the month the row is REFUSED BY NAME rather than
- * quietly falling back. The fallback is what would rebuild the defect: a period-keyed row is collected by
- * `generatePayslips`'s attach-on-generate, which is REGULAR-RUN-ONLY (core/payroll.ts), so "bonus, but
- * there is no bonus run" would land on the salary run exactly as January did.
+ * quietly falling back. The fallback is what would rebuild the defect: a period-keyed row naming no cycle
+ * is collected by `generatePayslips`'s attach-on-generate on the month's REGULAR run (core/payroll.ts), so
+ * "bonus, but there is no bonus run" would land on the salary run exactly as January did. (Since c11e81aa
+ * a NON-regular run also collects — but only rows naming its own cycle, which is precisely why the refusal
+ * above must stay: a row naming a cycle that has no run is collected by nothing, and saying so is the
+ * point.)
  *
  * WHAT IS DELIBERATELY NOT DONE: routing inferred from the pay item. `display_category` is presentation
  * metadata ("which box on the payslip", 3c473773) and paying a bonus inside the salary run is completely
@@ -825,8 +828,10 @@ async function analyzeIndividual(
         batchScopeIncludes((b as { scope?: BatchScopeShape }).scope ?? null, r),
     );
     // A NAMED CYCLE WITH NO RUN IS A REFUSAL, NOT A FALLBACK. Falling back to period-keyed would rebuild
-    // the exact defect this item is about: attach-on-generate is REGULAR-RUN-ONLY (core/payroll.ts), so a
-    // row saying "bonus" would be collected by the salary run — which is what January did.
+    // the exact defect this item is about: a row that names no cycle is collected by the month's REGULAR
+    // run at attach-on-generate (core/payroll.ts), so a row saying "bonus" would be paid by the salary run
+    // — which is what January did. c11e81aa lets a non-regular run collect rows naming ITS OWN cycle, which
+    // does not soften this: with no such run there is nothing to collect the row at all.
     if (!target && s.cycleStated && r.targetCycle !== 'regular') {
       rows.push(fail(s.base, 'runMissingForCycle', { cycle: r.targetCycle, period: r.payPeriod }));
       continue;
