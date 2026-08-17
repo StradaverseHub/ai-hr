@@ -237,7 +237,28 @@ export function HistoryTable({
                           <Row label={tSlip('socso')} value={rm(b.employerBorne.employee.socso)} />
                           {Number(st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(b.employerBorne.employee.skbbk)} />}
                           <Row label={tSlip('eis')} value={rm(b.employerBorne.employee.eis)} />
-                          <Row label={tSlip('pcb')} value={rm(b.employerBorne.employee.pcb)} />
+                          {/* 45df860a — THE PCB AMOUNT IS THE LINK. The reporter's complaint was that
+                              this figure is the one nobody can check and the only one with no way in:
+                              "the amount shall be clickable". It opens the SHARED calculation screen in
+                              a new tab (`rel="noopener noreferrer"`, because target=_blank otherwise
+                              hands the new document a live window.opener handle back to this one),
+                              carrying this payslip's id — so the working shown is this employee, this
+                              company, this month, this cycle and this run, never a re-selection. */}
+                          <Row
+                            label={tSlip('pcb')}
+                            value={
+                              <a
+                                href={`/payroll/pcb-detail?payslipId=${encodeURIComponent(r.id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title={t('view.history.viewPcbCalculation')}
+                                className="text-primary underline underline-offset-2 hover:no-underline"
+                              >
+                                {rm(b.employerBorne.employee.pcb)}
+                              </a>
+                            }
+                          />
                           {Number(st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(st.cp38)} />}
                           {/* Zakat — informational only: PCB is ALREADY net of this (LHDN §E.5 offset). Muted. */}
                           {Number(st.zakat) > 0 && (

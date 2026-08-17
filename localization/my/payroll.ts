@@ -265,13 +265,24 @@ export function eis(wage: number, cfg: StatutoryRuleset['eis'] = DEFAULT_MY_STAT
 }
 
 /** Annual tax on chargeable income P: the (M, R, B) band that contains P; category selects B.
- *  Negative B encodes the RM400/RM800 rebate; tax floors at 0 (spec: P ≤ 5,000 → no tax). */
-function annualTaxFor(P: number, category: TaxCategory, bands: PcbBand[]): number {
-  if (P <= 5000) return 0;
+ *  Negative B encodes the RM400/RM800 rebate; tax floors at 0 (spec: P ≤ 5,000 → no tax).
+ *
+ *  45df860a — IT NOW RETURNS THE BAND IT USED, not just the tax. M, R and B are the three figures a
+ *  reader needs to check the MTD formula by hand ("which bracket was I in, and at what rate?"), and this
+ *  function was computing all three and returning only their product. The arithmetic is UNCHANGED — the
+ *  `tax` member is byte-for-byte the number this used to return, including the P ≤ 5,000 short-circuit
+ *  that deliberately runs BEFORE the empty-table check. For that short-circuit the band is Table 1's own
+ *  first row (M = 0, R = 0, B = 0), which is what the spec says applies there — not "unknown". */
+function annualTaxFor(
+  P: number,
+  category: TaxCategory,
+  bands: PcbBand[],
+): { tax: number; M: number; R: number; B: number } {
+  if (P <= 5000) return { tax: 0, M: 0, R: 0, B: 0 };
   if (!bands || bands.length === 0) throw new StatutoryRulesetMalformedError('Statutory PCB band table is empty');
   const band = bands.find((b) => P <= b.upTo) ?? bands[bands.length - 1];
   const B = category === 2 ? band.bCat2 : band.bCat13;
-  return Math.max(0, (P - band.M) * band.R + B);
+  return { tax: Math.max(0, (P - band.M) * band.R + B), M: band.M, R: band.R, B };
 }
 
 // ── PCB / MTD — LHDN 2026 computerised method WITH prior-month accumulators ──
@@ -367,6 +378,64 @@ export type PcbMonthResult = {
       total: number;
       /** The optional-deduction / TP1 total (Σ LP) already netted off P beside the reliefs. */
       lp: number;
+    };
+    /**
+     * 45df860a — THE REST OF THE WORKING. Same posture and the same reasons as `reliefs` above: purely
+     * ADDITIVE keys inside a snapshot that is already stored on every payslip, so no DDL, no existing
+     * payslip rewritten, and no equality assertion over the other keys disturbed.
+     *
+     * Every figure below was an in-scope local of `pcbMonth` that the function then threw away. Recording
+     * them is what lets a screen restate the LHDN formula with THIS run's numbers substituted rather than
+     * an approximation of them — the reader's complaint was that the stored working stopped short of the
+     * bracket and the EPF legs, so the formula could not be closed.
+     *
+     * FORWARD-ONLY, AND THE ABSENCE MUST BE SAID OUT LOUD. A payslip processed before this shipped has a
+     * snapshot with no `trace`, and there is no honest way to reconstruct one: back-deriving M/R/B from a
+     * stored P would be a SECOND calculation, and the whole point of the snapshot is that there is only
+     * ever one. `core/pcb-explain.ts` therefore reports a missing trace as "not recorded for this run"
+     * and the screen prints that sentence — it never renders the missing legs as zeroes.
+     */
+    trace?: {
+      /** LHDN Table 1 row that P₁ fell into, and the annual tax it yields. `B` is already the
+       *  category-selected column (negative B encodes the RM400/RM800 rebate). */
+      M: number;
+      R: number;
+      B: number;
+      taxOnP1: number;
+      /** The s.48 category the B column was read from, and the child COUNT behind the child relief —
+       *  the relief AMOUNT is `reliefs.children` above; the count is what the screen shows as "× C". */
+      category: TaxCategory;
+      childCount: number;
+      /** The remuneration legs exactly as they entered P₁. Y₂ IS Y₁ by construction — the projection
+       *  assumes each remaining month repeats the current one — and is stored rather than left implied,
+       *  because a reader checking `(Y₂−K₂)·n` cannot otherwise tell which figure was projected. */
+      Y1: number;
+      K1: number;
+      Y2: number;
+      K2: number;
+      /** The additional-remuneration legs (Yₜ, Kₜ) and the estimated-EPF leg recomputed alongside them.
+       *  All three are 0 for a month that paid no additional remuneration — which is the answer, not a
+       *  gap: LHDN §D.2 does not run at all in that month. */
+      Yt: number;
+      Kt: number;
+      K2t: number;
+      /** Accumulators the snapshot did not already carry: Z (zakat paid via salary in PRIOR months),
+       *  Σ LP and LP₁ split out of the combined `reliefs.lp`, and this month's own zakat (the §E.5
+       *  offset). ∑(Y−K) is `ytdNet`, K is `epfClaimed` and X is `pcbPaid`, all above. */
+      Z: number;
+      lpAccumulated: number;
+      lpCurrent: number;
+      zakatCurrent: number;
+      /** §D.2 Step 3 and Step 1[E]. Present ONLY when additional remuneration was paid, because those
+       *  two steps only run then — an absent key means "this month had no additional remuneration",
+       *  which is a different statement from "zero". */
+      totalTaxYear?: number;
+      totalMtdYear?: number;
+      /** The two MTD legs as the formula produced them: post §E.1 truncation and §E.2 5-sen round-up,
+       *  BEFORE the §E.3 RM10 floor and the §E.5 zakat offset. `normal`/`additional` on the result are
+       *  the same figures after both. */
+      mtdNormalCalc: number;
+      mtdAdditionalCalc: number;
     };
   };
 };
@@ -471,18 +540,27 @@ export function pcbMonth(p: {
   // Step 1 — MTD on net NORMAL remuneration (additional remuneration excluded).
   const K2n = n > 0 ? trunc2(Math.min((cap - K - K1) / n, K1)) : 0;
   const P1 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2n) * n - reliefs - lp);
-  const mtdNormalCalc = ceil5sen(trunc2(Math.max(0, (annualTaxFor(P1, category, pcb.bands) - (Z + X)) / (n + 1))));
+  // 45df860a — the bracket is now KEPT rather than consumed inline. `bracket.tax` is the exact number
+  // `annualTaxFor` used to return, so this line is arithmetically identical to the one it replaces.
+  const bracket = annualTaxFor(P1, category, pcb.bands);
+  const mtdNormalCalc = ceil5sen(trunc2(Math.max(0, (bracket.tax - (Z + X)) / (n + 1))));
 
   // Steps 2–4 — additional remuneration via the year-total difference.
   const Yt = Math.max(0, p.additional ?? 0);
   let additionalCalc = 0;
   let P2: number | undefined;
+  // 45df860a — hoisted out of the branch so the snapshot can record them. They stay 0/undefined for a
+  // month with no additional remuneration, which is exactly what the branch not running means.
+  let Kt = 0;
+  let K2a = 0;
+  let totalTaxYear: number | undefined;
+  let totalMtdYear: number | undefined;
   if (Yt > 0) {
-    const Kt = Math.min(p.epfOnAdditional ?? 0, Math.max(0, cap - K - K1));
-    const K2a = n > 0 ? trunc2(Math.min((cap - K - K1 - Kt) / n, K1)) : 0;
+    Kt = Math.min(p.epfOnAdditional ?? 0, Math.max(0, cap - K - K1));
+    K2a = n > 0 ? trunc2(Math.min((cap - K - K1 - Kt) / n, K1)) : 0;
     P2 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2a) * n + (Yt - Kt) - reliefs - lp);
-    const totalTaxYear = annualTaxFor(P2, category, pcb.bands); // Step 3
-    const totalMtdYear = X + mtdNormalCalc * (n + 1); // Step 1[E]
+    totalTaxYear = annualTaxFor(P2, category, pcb.bands).tax; // Step 3
+    totalMtdYear = X + mtdNormalCalc * (n + 1); // Step 1[E]
     additionalCalc = ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z))); // Step 4
   }
 
@@ -513,6 +591,32 @@ export function pcbMonth(p: {
         disabledSpouse: disabledSpouseRelief,
         total: round2(reliefs),
         lp: round2(lp),
+      },
+      // 45df860a — the rest of the working. Every member was already computed above; none of them is
+      // derived here, and none of them is rounded differently from the value that entered the formula.
+      trace: {
+        M: bracket.M,
+        R: bracket.R,
+        B: bracket.B,
+        taxOnP1: round2(bracket.tax),
+        category,
+        childCount: children,
+        Y1,
+        K1: round2(K1),
+        // Y₂ = Y₁: the projection repeats the current month across the balance of the year.
+        Y2: Y1,
+        K2: K2n,
+        Yt,
+        Kt: round2(Kt),
+        K2t: K2a,
+        Z: round2(Z),
+        lpAccumulated: round2(acc.lpAccumulated ?? 0),
+        lpCurrent: round2(p.lpCurrent ?? 0),
+        zakatCurrent: round2(Math.max(0, p.zakatCurrent ?? 0)),
+        ...(totalTaxYear !== undefined ? { totalTaxYear: round2(totalTaxYear) } : {}),
+        ...(totalMtdYear !== undefined ? { totalMtdYear: round2(totalMtdYear) } : {}),
+        mtdNormalCalc,
+        mtdAdditionalCalc: additionalCalc,
       },
     },
   };
@@ -581,7 +685,17 @@ export function coordinatedPcbForPerson(
     zakatCurrent?: number;
   }[],
   shared: { month: number; profile?: TaxProfile; pcb?: StatutoryRuleset['pcb'] },
-): { combinedMtd: number; combinedAdditional: number; byEmployment: Map<string, { pcb: number; pcbBonus: number }> } {
+): {
+  combinedMtd: number;
+  combinedAdditional: number;
+  byEmployment: Map<string, { pcb: number; pcbBonus: number }>;
+  /** 45df860a — the PRE-SPLIT person-level working. The coordinator taxes the month ONCE on the combined
+   *  remuneration, so the formula, the bracket and every leg belong to the PERSON, not to any one
+   *  employment: a trace per slice would restate a calculation that never ran. Returned rather than
+   *  discarded so the kernel slice that wires coordination has one snapshot to stamp on the slips it
+   *  splits. Additive — the three existing members are unchanged. */
+  snapshot: PcbMonthResult['snapshot'];
+} {
   const sum = (f: (e: (typeof employments)[number]) => number | undefined) =>
     employments.reduce((a, e) => a + (f(e) ?? 0), 0);
   const combinedAcc: PcbAccumulators = {
@@ -612,6 +726,7 @@ export function coordinatedPcbForPerson(
     combinedMtd: m.total,
     combinedAdditional: m.additional,
     byEmployment: allocatePcb(m.total, m.additional, shares),
+    snapshot: m.snapshot,
   };
 }
 
@@ -773,7 +888,16 @@ export function statutory(
       // 1.2.4 Zakat — undefined for flat-rate payees (zakat-via-salary % is undefined here): the
       // percent_of_pcb election yields 0 for them by construction.
       pcbNormalPreZakat: 0,
-      pcbMeta: { nonResident: flatRate === 0.3, flatRate, rate: flatRate },
+      // 45df860a — the flat working, which is two multiplications and no reliefs at all. It is recorded
+      // for the same reason the MTD trace is: the detail screen must be able to say WHICH remuneration
+      // the flat rate was applied to, and RM x % is not checkable without the x. Additive; the three
+      // keys that were here are untouched.
+      pcbMeta: {
+        nonResident: flatRate === 0.3,
+        flatRate,
+        rate: flatRate,
+        trace: { remuneration: pcbWage, additional, rate: flatRate },
+      },
       version: rules.version,
     };
   }

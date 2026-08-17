@@ -34,7 +34,9 @@
  *     grow with the years.
  *   - Earnings / Deductions / employer contributions / YTD are already separate sections.
  *   - the PCB drill-down already reads the payslip's OWN persisted `pcbMeta`, so an old slip explains
- *     itself with the numbers that were true when it ran.
+ *     itself with the numbers that were true when it ran. (r197 / 45df860a: that drill-down now LIVES at
+ *     app/payroll/pcb-detail — same principle, whole working, one display shared with Transaction
+ *     Detail. This screen links to it and no longer reads `pcbMeta` at all.)
  *   - Print and Download PDF are already wired.
  *
  * THE LOGO — AND A CORRECTION. The comment that used to sit on the letterhead below stated "There is NO
@@ -77,8 +79,10 @@ import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
-import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
-import { explainPcb } from '@/core/pcb-explain';
+// 45df860a — `currentPcbReliefs` / `explainPcb` moved WITH the PCB working to app/payroll/pcb-detail.
+// This screen links to that screen; it no longer reads the tax working itself, which is the point (one
+// display, not two).
+import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 // 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
@@ -260,17 +264,8 @@ export default async function IndividualPayslipPage({
   // Derived from the PAYSLIP'S OWN stamp, never from today's policy: a slip run before this shipped has no
   // stamp and renders the single lumped row exactly as it always has.
   const absence = payslipAbsenceLines(row?.statutory, row?.otherDeductions);
-  // The PCB working. The relief FALLBACK is only consulted for a payslip calculated before the working
-  // was recorded on the slip itself, and `explainPcb` reports which of the two it used so the panel can
-  // say so on screen.
-  const fallbackReliefs = row
-    ? await currentPcbReliefs(s, {
-        companyIds,
-        employmentId: row.employmentId,
-        asOf: `${row.payPeriod}-28`,
-      })
-    : null;
-  const pcb = row ? explainPcb(row.statutory, fallbackReliefs) : null;
+  // 45df860a — the PCB working (and the relief fallback it needs) is read by app/payroll/pcb-detail, the
+  // ONE screen that shows it. This screen links there.
   const prov = row ? payslipProvenance(row.statutory) : null;
   // 3c88d593 — the entity segment this slip covers, from the slip's OWN stamp. Null for every payslip
   // whose month was not split by a transfer.
@@ -423,7 +418,7 @@ export default async function IndividualPayslipPage({
         </Card>
       )}
 
-      {row && b && eb && pcb && (
+      {row && b && eb && (
         <>
           {/* ── Letterhead ──
               The logo is the company's OWN uploaded file, served by the existing
@@ -596,7 +591,22 @@ export default async function IndividualPayslipPage({
             <Row label={tSlip('socso')} value={rm(eb.employee.socso)} />
             {Number(b.st.socsoSkbbk) > 0 && <Row label={tSlip('skbbk')} value={rm(eb.employee.skbbk)} />}
             <Row label={tSlip('eis')} value={rm(eb.employee.eis)} />
-            <Row label={tSlip('pcb')} value={rm(eb.employee.pcb)} />
+            {/* 45df860a — the PCB amount is a LINK to the shared calculation screen, exactly as it now is
+                on Transaction Detail. Same href, same screen, so the two entry points cannot show one
+                employee two different workings. */}
+            <Row
+              label={tSlip('pcb')}
+              value={
+                <a
+                  href={`/payroll/pcb-detail?payslipId=${encodeURIComponent(row.id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline underline-offset-2 hover:no-underline print:no-underline"
+                >
+                  {rm(eb.employee.pcb)}
+                </a>
+              }
+            />
             {Number(b.st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(b.st.cp38)} />}
             {Number(b.st.zakat) > 0 && (
               <Row label={tSlip('zakat')} value={`${rm(b.st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
@@ -623,65 +633,29 @@ export default async function IndividualPayslipPage({
               <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
             </div>
 
-            {/* ── PCB drill-down (169e3c24) ──
-                Every figure here was already recorded on the payslip when it ran (`pcbMeta`) and had never
-                been shown anywhere. Nothing is recomputed: a panel that re-derived the tax could disagree
-                with the figure it claims to explain. Rendered as a native disclosure so it needs no client
-                JavaScript and prints open on request. */}
-            <details className="mt-4 rounded-lg border border-border p-3">
-              <summary className="cursor-pointer text-sm font-medium">{t('pcbHeading')}</summary>
-              <div className="pt-3">
-                {pcb.kind === 'unavailable' && <p className="text-sm text-muted-foreground">{t('pcbUnavailable')}</p>}
-                {pcb.kind === 'flat' && (
-                  <>
-                    <Row
-                      label={pcb.nonResident ? t('pcbFlatNonResident') : t('pcbFlatIncentive')}
-                      value={`${(pcb.rate * 100).toFixed(0)}%`}
-                    />
-                    <Row label={tSlip('pcb')} value={rm(pcb.pcb)} />
-                    <p className="pt-2 text-xs text-muted-foreground">{t('pcbFlatNote')}</p>
-                  </>
-                )}
-                {pcb.kind === 'mtd' && (
-                  <>
-                    <Row label={t('pcbMonthOfYear')} value={`${pcb.month} / 12`} />
-                    <Row label={t('pcbYtdNet')} value={rm(pcb.ytdNetRemuneration)} />
-                    <Row label={t('pcbEpfThisMonth')} value={rm(pcb.epfThisMonth)} />
-                    <Row label={t('pcbEpfClaimedYtd')} value={rm(pcb.epfClaimedYtd)} />
-                    <Row label={t('pcbPaidYtd')} value={rm(pcb.pcbPaidYtd)} />
-                    <Row label={t('pcbChargeable')} value={rm(pcb.chargeableIncome)} />
-                    {pcb.chargeableIncomeWithAdditional != null && (
-                      <Row label={t('pcbChargeableWithAdditional')} value={rm(pcb.chargeableIncomeWithAdditional)} />
-                    )}
-                    <h3 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t('pcbReliefsHeading')}
-                    </h3>
-                    <Row label={t('reliefIndividual')} value={rm(pcb.reliefs.individual)} muted />
-                    <Row label={t('reliefSpouse')} value={rm(pcb.reliefs.spouse)} muted />
-                    <Row label={t('reliefChildren')} value={rm(pcb.reliefs.children)} muted />
-                    <Row label={t('reliefDisabledIndividual')} value={rm(pcb.reliefs.disabledIndividual)} muted />
-                    <Row label={t('reliefDisabledSpouse')} value={rm(pcb.reliefs.disabledSpouse)} muted />
-                    <Row label={t('reliefLp')} value={rm(pcb.reliefs.lp)} muted />
-                    <Row label={t('reliefTotal')} value={rm(pcb.reliefs.total)} />
-                    {Number(pcb.zakat) > 0 && <Row label={tSlip('zakat')} value={rm(pcb.zakat)} muted />}
-                    <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-                      <span>{tSlip('pcb')}</span>
-                      <span className="tabular-nums">{rm(pcb.pcb)}</span>
-                    </div>
-                    {pcb.pcbAdditional > 0 && (
-                      <p className="pt-1 text-xs text-muted-foreground">
-                        {t('pcbSplit', { normal: rm(pcb.pcbNormal), additional: rm(pcb.pcbAdditional) })}
-                      </p>
-                    )}
-                    {/* WHICH relief position is on screen. A silent fallback would explain a closed month
-                        with a position that did not exist when it was calculated. */}
-                    <p className="pt-2 text-xs text-muted-foreground">
-                      {pcb.reliefSource === 'snapshot' ? t('pcbReliefFromSnapshot') : t('pcbReliefFromCurrent')}
-                    </p>
-                  </>
-                )}
-              </div>
-            </details>
+            {/* ── PCB working: ONE screen, not a second copy of it (45df860a) ──
+                169e3c24 put a short drill-down here, reading this payslip's own `pcbMeta`. It was right
+                about the principle — never recompute — and short of what a payroll checker needs: it
+                stopped before the tax bracket, the EPF legs and the formula itself, so the working could
+                not be closed. The reporter asked for the full working AND for Transaction Detail to reach
+                it, and said why in one line: "This avoids having two different PCB calculation engines or
+                two different calculation displays."
+                So the disclosure is REPLACED by a link rather than joined by one. Growing this panel to
+                the full working would have produced exactly the second display the request rules out —
+                two screens, one calculation, free to drift. The keys the disclosure used are deliberately
+                LEFT in all six catalogs: re-adding a deleted key later is the MISSING_MESSAGE trap. */}
+            <div className="mt-4 rounded-lg border border-border p-3">
+              <p className="text-sm font-medium">{t('pcbHeading')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('pcbDetailHint')}</p>
+              <a
+                href={`/payroll/pcb-detail?payslipId=${encodeURIComponent(row.id)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted print:hidden"
+              >
+                {t('pcbViewCalculation')}
+              </a>
+            </div>
           </Block>
 
           {/* ── Employer contributions, with the employer-borne disclosure folded in (3c473773) ── */}

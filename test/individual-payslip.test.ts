@@ -47,13 +47,18 @@ describe('169e3c24 — explaining the PCB figure from what the payslip recorded'
   it('reports the FLAT rate for a non-resident instead of an empty relief table', () => {
     // A flat-rate employee has no reliefs at all. Rendering an empty relief working would read as a gap;
     // it is the correct answer.
+    //
+    // 45df860a EXTENDED the shape rather than changing it: the flat blob now also carries the
+    // remuneration the percentage was applied to, and a run that predates that carries `trace: null`.
+    // These two `toEqual`s are updated rather than loosened to `toMatchObject` — an exact shape is the
+    // point of asserting it this way, and a silently-grown explanation is what the update catches.
     const r = explainPcb({ pcb: 1500, pcbMeta: { nonResident: true, flatRate: 0.3, rate: 0.3 } }, CURRENT);
-    expect(r).toEqual({ kind: 'flat', rate: 0.3, nonResident: true, pcb: 1500 });
+    expect(r).toEqual({ kind: 'flat', rate: 0.3, nonResident: true, trace: null, pcb: 1500 });
   });
 
   it('reports the REP / knowledge-worker incentive rate as flat but NOT non-resident', () => {
     const r = explainPcb({ pcb: 750, pcbMeta: { nonResident: false, flatRate: 0.15, rate: 0.15 } }, CURRENT);
-    expect(r).toEqual({ kind: 'flat', rate: 0.15, nonResident: false, pcb: 750 });
+    expect(r).toEqual({ kind: 'flat', rate: 0.15, nonResident: false, trace: null, pcb: 750 });
   });
 
   it('reads the payslip’s OWN relief working when it has one', () => {
