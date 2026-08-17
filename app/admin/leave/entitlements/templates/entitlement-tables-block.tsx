@@ -12,10 +12,14 @@ import {
   eligibilityRuleCountsByTemplate,
   listEligibilityRules,
   listEntitlementTemplates,
+  listGradeGroups,
   MAX_SERVICE_BANDS,
   type EligibilityRuleRow,
   type EntitlementTemplateRow,
 } from '@/packs/leave/service';
+// The grade-group ⇄ job-grade arithmetic, shared with the client rule form so "whole group" cannot come to
+// mean two different things on the two halves of this screen.
+import { partiallyCoveredGradeGroups, type GradeGroupOption } from '@/lib/grade-group-coverage';
 import { Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
@@ -77,11 +81,17 @@ export type EntitlementTablesData = {
   rules: EligibilityRuleRow[];
   ruleCounts: Map<string, number>;
   criteriaSections: CriteriaSection[];
+  /** ARCHIVED GROUPS INCLUDED, deliberately — `listGradeGroups` returns them with an `archived` flag and
+   *  this list is used for two different jobs. The rule form OFFERS them (a saved rule may well have been
+   *  built from a group that was archived afterwards, and hiding it would make the rule's own coverage
+   *  unexplainable), and the drift check reads their membership. Nothing here creates or edits a group —
+   *  that lives on Settings → System Labels → Organisation, beside Job Grades. */
+  gradeGroups: GradeGroupOption[];
   today: string;
 };
 
 /**
- * The eleven reads behind both mounts, plus the criteria vocabulary the rule form renders.
+ * The twelve reads behind both mounts, plus the criteria vocabulary the rule form renders.
  *
  * Called ONCE per page render. The three label namespaces are read where they already live rather than
  * re-minted: r127 shipped a screen whose chips all rendered through MISSING_MESSAGE behind a green 200 by
@@ -107,6 +117,7 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     businessUnits,
     locations,
     profileOptions,
+    gradeGroups,
   ] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listEntitlementTemplates(s),
@@ -119,6 +130,10 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     listBusinessUnits(s),
     companyIds.length ? listLocations(s, companyIds) : Promise.resolve([]),
     listAllProfileOptions(s),
+    // The Grade Group axis of Employee Eligibility. ⚠️ A NAME ADDED TO THE DESTRUCTURE ABOVE MUST BE
+    // ADDED HERE IN THE SAME POSITION — a mismatch shifts every later variable by one slot and every
+    // side of it is an array, so nothing type-errors and every catalogue silently becomes another one.
+    listGradeGroups(s),
   ]);
 
   const criteriaSections = buildOrgCriteriaSections(
@@ -132,6 +147,9 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     rules,
     ruleCounts,
     criteriaSections,
+    // Only the three fields the two consumers need — a `GradeGroupOption` is plain serialisable data, and
+    // the rule form is a CLIENT component, so nothing beyond id / name / membership may cross to it.
+    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds })),
     today,
   };
 }
@@ -166,7 +184,7 @@ export async function EntitlementTablesBlock({
   editRule?: string;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
-  const { leaveTypes, ruleCounts, criteriaSections, today } = data;
+  const { leaveTypes, ruleCounts, criteriaSections, gradeGroups, today } = data;
 
   const scoped = leaveTypeId != null;
   const typeNameById = new Map(leaveTypes.map((x) => [x.id, x.name]));
@@ -405,6 +423,26 @@ export async function EntitlementTablesBlock({
                 const axes = Object.entries(x.criteria as Record<string, unknown>).filter(
                   ([, v]) => (Array.isArray(v) ? v.length > 0 : v != null && v !== ''),
                 );
+                /**
+                 * THE DRIFT CHECK THE APPROVED PLAN REQUIRES, AS A LIST OF THE RULES IT HAPPENED TO.
+                 *
+                 * A rule built from a Grade Group stores that group's grades, not the group — see
+                 * lib/grade-group-coverage.ts. If a grade joins the group afterwards the rule keeps
+                 * covering the old set, and nothing about the rule says so: it saves, resolves and
+                 * matches employees exactly as before, just fewer of them than its author would expect.
+                 * The same shape also arises from picking grades one at a time across a group boundary.
+                 *
+                 * Named here, on every rule it applies to, rather than left to be discovered on the
+                 * Approval Template screen as an unexplained greyed-out row — that refusal
+                 * (core/leave-approval-template.ts) is computed from this exact condition, so the two
+                 * screens are describing one fact in two places rather than two rules that can disagree.
+                 */
+                const drifted = partiallyCoveredGradeGroups(
+                  Array.isArray((x.criteria as Record<string, unknown>).gradeIds)
+                    ? ((x.criteria as Record<string, unknown>).gradeIds as string[])
+                    : [],
+                  gradeGroups,
+                );
                 return (
                   <tr key={x.id} className="border-t align-top">
                     <td className="px-3 py-2 font-medium">{x.name}</td>
@@ -418,6 +456,11 @@ export async function EntitlementTablesBlock({
                               {k}: {Array.isArray(v) ? v.length : String(v)}
                             </span>
                           ))}
+                      {drifted.length > 0 ? (
+                        <span className="mt-1 block font-medium text-foreground">
+                          {t('ruleGradeGroupPartial', { groups: drifted.map((g) => g.name).join(', ') })}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {x.validFrom}
@@ -449,6 +492,7 @@ export async function EntitlementTablesBlock({
                 countAction={countEligibilityTargetsAction}
                 templates={templateOptions}
                 criteriaSections={criteriaSections}
+                gradeGroups={gradeGroups}
                 today={today}
                 embeddedLeaveTypeId={leaveTypeId}
                 submitLabel={editingRule ? t('saveNewVersion') : t('createRule')}

@@ -7273,7 +7273,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",
-      "groupsHelp": "Group several grades so an approval rule can cover them at once (e.g. \"Grade 12–15\"). A grade belongs to one group.",
+      "groupsHelp": "Group several grades so one rule can cover them at once (e.g. \"Grade 12–15\"). Approval rules and employee eligibility both name grade groups. A grade belongs to one group.",
       "noGroups": "No grade groups yet.",
       "archived": "Archived",
       "memberCount": "{count} grades",
@@ -7507,7 +7507,11 @@
       "chipSelectAll": "Select all",
       "chipDeselectAll": "Deselect all",
       "chipSearchPlaceholder": "Search…",
-      "chipAllSelected": "All selected"
+      "chipAllSelected": "All selected",
+      "ruleGradeGroup": "Grade group",
+      "ruleGradeGroupApplied": "{count} job grades are selected.",
+      "ruleGradeGroupNote": "Picking a grade group fills in the job grades it holds today. If a grade joins that group later, this rule keeps the grades it was saved with until you pick the group again.",
+      "ruleGradeGroupPartial": "This rule covers only part of {groups}. Pick the group again to take in every grade it holds — until then it cannot be assigned to an approval template."
     }
   },
   "topbar": {

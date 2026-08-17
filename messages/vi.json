@@ -7273,7 +7273,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "Nhóm bậc",
-      "groupsHelp": "Nhóm nhiều bậc để một quy tắc phê duyệt có thể bao gồm chúng cùng lúc (ví dụ \"Bậc 12–15\"). Một bậc thuộc về một nhóm.",
+      "groupsHelp": "Nhóm nhiều bậc để một quy tắc có thể bao gồm chúng cùng lúc (ví dụ \"Bậc 12–15\"). Cả quy tắc phê duyệt lẫn điều kiện của nhân viên đều dùng nhóm bậc. Một bậc thuộc về một nhóm.",
       "noGroups": "Chưa có nhóm bậc nào.",
       "archived": "Đã lưu trữ",
       "memberCount": "{count} bậc",
@@ -7507,7 +7507,11 @@
       "chipSelectAll": "Chọn tất cả",
       "chipDeselectAll": "Bỏ chọn tất cả",
       "chipSearchPlaceholder": "Tìm kiếm…",
-      "chipAllSelected": "Đã chọn tất cả"
+      "chipAllSelected": "Đã chọn tất cả",
+      "ruleGradeGroup": "Nhóm bậc",
+      "ruleGradeGroupApplied": "Đã chọn {count} bậc công việc.",
+      "ruleGradeGroupNote": "Chọn một nhóm bậc sẽ điền vào các bậc công việc mà nhóm đó đang có hôm nay. Nếu sau này có bậc gia nhập nhóm, quy tắc này vẫn giữ các bậc đã lưu cho đến khi bạn chọn lại nhóm đó.",
+      "ruleGradeGroupPartial": "Quy tắc này chỉ bao gồm một phần của {groups}. Hãy chọn lại nhóm để lấy tất cả các bậc trong đó — cho đến lúc đó, quy tắc không thể được gán cho mẫu phê duyệt."
     }
   },
   "topbar": {

@@ -7273,7 +7273,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",
-      "groupsHelp": "Kumpulkan beberapa gred supaya satu peraturan kelulusan boleh meliputi kesemuanya sekali gus (cth. \"Gred 12–15\"). Satu gred tergolong dalam satu kumpulan.",
+      "groupsHelp": "Kumpulkan beberapa gred supaya satu peraturan boleh meliputi kesemuanya sekali gus (cth. \"Gred 12–15\"). Peraturan kelulusan dan kelayakan pekerja kedua-duanya menggunakan kumpulan gred. Satu gred tergolong dalam satu kumpulan.",
       "noGroups": "Tiada kumpulan gred lagi.",
       "archived": "Diarkib",
       "memberCount": "{count} gred",
@@ -7507,7 +7507,11 @@
       "chipSelectAll": "Pilih semua",
       "chipDeselectAll": "Nyahpilih semua",
       "chipSearchPlaceholder": "Cari…",
-      "chipAllSelected": "Semua dipilih"
+      "chipAllSelected": "Semua dipilih",
+      "ruleGradeGroup": "Kumpulan gred",
+      "ruleGradeGroupApplied": "{count} gred pekerjaan dipilih.",
+      "ruleGradeGroupNote": "Memilih kumpulan gred akan mengisi gred pekerjaan yang ada dalam kumpulan itu hari ini. Jika satu gred menyertai kumpulan itu kemudian, peraturan ini kekal dengan gred yang disimpan sehingga anda memilih kumpulan itu semula.",
+      "ruleGradeGroupPartial": "Peraturan ini hanya meliputi sebahagian daripada {groups}. Pilih kumpulan itu semula untuk mengambil setiap gred di dalamnya — sehingga itu, ia tidak boleh ditetapkan kepada templat kelulusan."
     }
   },
   "topbar": {

@@ -275,8 +275,25 @@ function withFallback(base: Dict, over: Dict): Dict {
   return out;
 }
 
-/** One multi field and one range field — both branches of the section renderer. */
+/**
+ * One multi field and one range field — both branches of the section renderer.
+ *
+ * 9a65f808 added `gradeIds`: the Grade Group picker EXPANDS into it, so a fixture without it would render
+ * the group control against nothing to fill in and the locale sweep below would never walk the branch that
+ * matters.
+ */
 const SECTIONS: CriteriaSection[] = [
+  {
+    key: 'employment',
+    title: 'Employment Information',
+    fields: [
+      { name: 'gradeIds', label: 'Job grade', kind: 'multi', options: [
+        { value: 'g12', label: 'Grade 12' },
+        { value: 'g13', label: 'Grade 13' },
+        { value: 'g19', label: 'Grade 19' },
+      ] },
+    ],
+  },
   {
     key: 'employee',
     title: 'Employee Information',
@@ -286,6 +303,12 @@ const SECTIONS: CriteriaSection[] = [
     ],
     note: 'Job title, employee group and employee class are not held in this system.',
   },
+];
+
+/** 9a65f808 — two groups over the three grades above; the second is deliberately a single-grade group. */
+const GRADE_GROUPS = [
+  { id: 'gg-contract', name: 'GRADE 12-18 (CONTRACT)', gradeIds: ['g12', 'g13'] },
+  { id: 'gg-senior', name: 'GRADE >= 19 (CONTRACT)', gradeIds: ['g19'] },
 ];
 
 describe('74d00fd2 · the eligibility form renders in all six catalogues without an IntlError', () => {
@@ -302,6 +325,7 @@ describe('74d00fd2 · the eligibility form renders in all six catalogues without
             countAction={async () => 0}
             templates={[{ value: 't1', label: 'Standard annual leave' }]}
             criteriaSections={SECTIONS}
+            gradeGroups={GRADE_GROUPS}
             today="2026-08-11"
             submitLabel="Create"
           />
@@ -324,6 +348,27 @@ describe('74d00fd2 · the eligibility form renders in all six catalogues without
       // Deselect all, still with no filter typed, must empty the field on every locale's copy too.
       await user.click(screen.getByRole('button', { name: et.chipDeselectAll }));
       expect(screen.getByRole('button', { name: 'Nationality' })).toHaveTextContent(et.chipAddPlaceholder);
+
+      /**
+       * 9a65f808 — THE GRADE GROUP CONTROL, in this locale, including the one string that is not eager.
+       *
+       * `ruleGradeGroup` / `ruleGradeGroupApplied` / `ruleGradeGroupNote` render with the form, so they are
+       * already exercised by the mount above. `ruleGradeGroupPartial` renders only when the rule covers
+       * PART of a group, which is a state no prop can be handed in — so it is produced: tick a group (its
+       * two grades expand into the Job grade picker), then untick one of them by hand.
+       */
+      await user.click(screen.getByRole('button', { name: et.ruleGradeGroup }));
+      await user.click(screen.getByRole('checkbox', { name: 'GRADE 12-18 (CONTRACT)' }));
+      // The expansion is visible WITHOUT opening the picker it filled in — that is what the summary on the
+      // trigger is for, and the Job grade picker sits inside a collapsed section on the real screen.
+      expect(screen.getByRole('button', { name: 'Job grade' })).not.toHaveTextContent(et.chipAddPlaceholder);
+
+      await user.click(screen.getByRole('button', { name: 'Job grade' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Grade 13' }));
+      // Half a group left: the warning names the group, formatted through this locale's own {groups}.
+      expect(document.body.textContent, `[${loc}] the partial-coverage warning must name the group`).toContain(
+        'GRADE 12-18 (CONTRACT)',
+      );
 
       // MISSING_MESSAGE and FORMATTING_ERROR arrive here rather than throwing — which is exactly how a
       // broken key hides behind a 200 in production.

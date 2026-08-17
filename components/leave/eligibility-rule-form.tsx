@@ -6,6 +6,13 @@ import { useTranslations } from 'next-intl';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import type { CriteriaOption, CriteriaSection } from '@/core/org-criteria-form';
+import {
+  applyGradeGroupSelection,
+  memberGradeIds,
+  partiallyCoveredGradeGroups,
+  wholeGradeGroupIds,
+  type GradeGroupOption,
+} from '@/lib/grade-group-coverage';
 
 /**
  * 6e9a126e RELEASE TWO — EMPLOYEE ELIGIBILITY (the reporter's Step 2): who gets which entitlement table.
@@ -27,6 +34,24 @@ import type { CriteriaOption, CriteriaSection } from '@/core/org-criteria-form';
  * `ORG_CRITERIA_RANGE_FIELDS`. That is precisely why this component does not define the field list — it
  * renders whatever the shared builder handed it, so the picker and the resolver cannot drift apart. A
  * control whose name is not a real axis renders, posts, and narrows NOBODY, silently.
+ *
+ * ── THE ONE CONTROL THAT IS THIS SCREEN'S OWN: GRADE GROUP ────────────────────────────────────────────
+ * The Grade Group picker is deliberately NOT a field of the shared builder, and `gradeGroupIds` is
+ * deliberately NOT a criteria axis. It is an APPLICATOR over the `gradeIds` axis: ticking a group fills in
+ * that group's member grades, unticking it takes them back, and what the form posts and the rule stores is
+ * `gradeIds` exactly as before. Two consequences, both intended:
+ *
+ *   - the builder is untouched, so Leave Adjustments and Generate Entitlement — which share it — gain no
+ *     control and change no shape. The reporter asked for this on Employee Eligibility, and this is the
+ *     only screen that gets it.
+ *   - `gradeGroupIds` DOES ride along in the FormData (a `ChipMultiSelect` posts hidden inputs under its
+ *     `name`), and the eligibility action ignores it: `criteriaFrom` asks `orgCriteriaFromFields` for the
+ *     axes it knows BY NAME rather than sweeping the FormData, so a field that is not an axis cannot
+ *     become one. That is the same property that already keeps `embeddedLeaveTypeId` out of the criteria.
+ *
+ * Reopening a saved rule needs nothing stored: which groups are ticked is DERIVED from the grades the rule
+ * already names (`wholeGradeGroupIds`). The other side of that derivation is the drift warning below — see
+ * lib/grade-group-coverage.ts for why expansion snapshots the membership and what that costs.
  */
 export type EligibilityRuleInitial = {
   lineageId?: string;
@@ -41,6 +66,7 @@ export function EligibilityRuleForm({
   countAction,
   templates,
   criteriaSections,
+  gradeGroups,
   initial,
   today,
   submitLabel,
@@ -50,6 +76,11 @@ export function EligibilityRuleForm({
   countAction: (p: { criteria: Record<string, string[] | string>; asOf: string }) => Promise<number>;
   templates: { value: string; label: string }[];
   criteriaSections: CriteriaSection[];
+  /** The tenant's grade groups with their membership — plain data, read on the server. REQUIRED rather
+   *  than optional: a mount that forgot it would render a screen missing the control the reporter asked
+   *  for, and would do it silently. An empty list is a legitimate value (a tenant with no groups yet) and
+   *  hides the picker rather than offering an empty one. */
+  gradeGroups: GradeGroupOption[];
   initial?: EligibilityRuleInitial;
   today: string;
   submitLabel: string;
@@ -91,6 +122,43 @@ export function EligibilityRuleForm({
     });
 
   /**
+   * ── GRADE GROUP ⇄ JOB GRADE, and the two remounts that keep them honest ─────────────────────────────
+   *
+   * `ChipMultiSelect` is UNCONTROLLED: it seeds its selection from `defaultSelected` on mount and owns it
+   * thereafter. So one control cannot change what the other one SHOWS by re-rendering — it has to remount.
+   * Each direction gets its own nonce, and they cannot chase each other because each is bumped by the
+   * OTHER control's change handler only:
+   *
+   *   groups changed → recompute `criteria.gradeIds` → bump `gradeNonce` → the Job Grade picker remounts
+   *                    holding the expanded grades (the operator can then see and edit exactly what the
+   *                    group filled in, which is the whole point of expanding rather than storing a group).
+   *   grades changed → bump `groupNonce` → the Grade Group picker remounts, re-deriving its ticks from the
+   *                    new grade set. Unticking one member of a group must untick the GROUP, not leave a
+   *                    control claiming a coverage the rule no longer has.
+   *
+   * The group selection is never stored in state: it is `wholeGradeGroupIds(criteria.gradeIds)` on every
+   * render, so "what is ticked" and "what the rule covers" are the same fact, computed once.
+   */
+  const gradeIds = Array.isArray(criteria.gradeIds) ? (criteria.gradeIds as string[]) : [];
+  const selectedGroupIds = wholeGradeGroupIds(gradeIds, gradeGroups);
+  const partialGroups = partiallyCoveredGradeGroups(gradeIds, gradeGroups);
+  const [gradeNonce, setGradeNonce] = useState(0);
+  const [groupNonce, setGroupNonce] = useState(0);
+
+  const setGroups = (nextGroupIds: string[]) => {
+    setMulti(
+      'gradeIds',
+      applyGradeGroupSelection({
+        gradeIds,
+        previousGroupIds: selectedGroupIds,
+        nextGroupIds,
+        groups: gradeGroups,
+      }),
+    );
+    setGradeNonce((n) => n + 1);
+  };
+
+  /**
    * 74d00fd2 — WHAT WAS STORED STAYS OFFERABLE. `ChipMultiSelect` drops any `defaultSelected` value absent
    * from its `options`, and `buildOrgCriteriaSections` offers ACTIVE catalogue rows only. So reopening a
    * saved rule after a nationality (or division, section, team…) was deactivated would silently drop that
@@ -111,6 +179,25 @@ export function EligibilityRuleForm({
     ...options,
     ...stored.filter((v) => !options.some((o) => o.value === v)).map((v) => ({ value: v, label: v })),
   ];
+  /**
+   * …AND EVERY GRADE ANY GROUP HOLDS, for the Job Grade picker only.
+   *
+   * The same `ChipMultiSelect` rule that motivates `withStored` bites the expansion harder: the control
+   * DROPS any `defaultSelected` value it cannot find in `options`, and the offered grades are the ACTIVE
+   * ones. A group holding an archived grade would therefore expand to seven grades and post six — silently
+   * covering fewer people than the group the operator picked, with nothing on screen to say so. Unioning
+   * the groups' membership into the option list keeps the expansion whole; an id with no active label left
+   * renders as its raw value, exactly as `withStored` already degrades, and stays removable.
+   */
+  const allGroupMemberGradeIds = memberGradeIds(
+    gradeGroups.map((g) => g.id),
+    gradeGroups,
+  );
+  const optionsFor = (f: { name: string; options?: CriteriaOption[] }): CriteriaOption[] =>
+    withStored(
+      f.options ?? [],
+      f.name === 'gradeIds' ? [...storedFor(f.name), ...allGroupMemberGradeIds] : storedFor(f.name),
+    );
 
   const unrestricted = Object.keys(criteria).length === 0;
 
@@ -150,6 +237,51 @@ export function EligibilityRuleForm({
         </Field>
       </div>
 
+      {/* ── GRADE GROUP — this screen's own control, and the reason it stands OUTSIDE the section list ──
+          It is not a field of the shared builder (see the header), so it cannot be rendered by the loop
+          below. Rendering it beside the Job Grade picker INSIDE the loop was the alternative and it is
+          worse in two ways: it would key the control's existence on a field name the builder owns — drop
+          `gradeIds` there one day and this control disappears with no error — and it would bury the thing
+          the reporter reaches for first inside a collapsed <details>. So it leads the criteria, always
+          open, which is also what the approved plan asks for ("the group list comes first because it is
+          what you will use"). The individual Job Grade picker is untouched and still offered below.
+          Hidden entirely when the tenant has no groups: an empty picker teaches nobody anything. */}
+      {gradeGroups.length > 0 ? (
+        <div className="space-y-2 rounded-md border border-border p-3">
+          <ChipMultiSelect
+            /* Remounted when the GRADE picker changes, so the ticks re-derive — see the nonce note above. */
+            key={`gradeGroupIds-${groupNonce}`}
+            name="gradeGroupIds"
+            label={t('ruleGradeGroup')}
+            options={gradeGroups.map((g) => ({ value: g.id, label: g.name }))}
+            defaultSelected={selectedGroupIds}
+            addPlaceholder={t('chipAddPlaceholder')}
+            removeLabelFor={(label) => t('chipRemoveLabel', { value: label })}
+            searchPlaceholder={t('chipSearchPlaceholder')}
+            selectAllLabel={t('chipSelectAll')}
+            clearAllLabel={t('chipDeselectAll')}
+            triggerSummaryFor={(n, allSelected) =>
+              allSelected ? t('chipAllSelected') : t('chipCountLabel', { count: n })
+            }
+            onSelectionChange={setGroups}
+          />
+          {/* What the group actually did, in job grades — the control it fills in lives inside a collapsed
+              section, so without this line the expansion would be invisible until someone opened it. */}
+          <p className="text-xs text-muted-foreground">
+            {t('ruleGradeGroupApplied', { count: gradeIds.length })}
+          </p>
+          {/* The snapshot trade-off, on the rule that carries it (lib/grade-group-coverage.ts's header). */}
+          <p className="text-xs text-muted-foreground">{t('ruleGradeGroupNote')}</p>
+          {/* …and the drift itself, whenever this rule is actually in it. Same condition the approval
+              template refuses on, so the two screens never disagree about which rules are affected. */}
+          {partialGroups.length > 0 ? (
+            <p className="text-xs font-medium text-foreground">
+              {t('ruleGradeGroupPartial', { groups: partialGroups.map((g) => g.name).join(', ') })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* The criteria the SHARED builder produced. Rendered, never enumerated here. */}
       {criteriaSections.map((section) => (
         <details key={section.key} className="rounded-md border border-border">
@@ -167,10 +299,12 @@ export function EligibilityRuleForm({
                    pressing it unticks Indonesian and leaves the other six picks alone. That is deliberate
                    and stated in the approved plan. */
                 <ChipMultiSelect
-                  key={f.name}
+                  /* The Job Grade picker REMOUNTS when the Grade Group picker fills it in — see the nonce
+                     note above. Every other field keys on its name and mounts once, exactly as before. */
+                  key={f.name === 'gradeIds' ? `gradeIds-${gradeNonce}` : f.name}
                   name={f.name}
                   label={f.label}
-                  options={withStored(f.options ?? [], storedFor(f.name))}
+                  options={optionsFor(f)}
                   defaultSelected={Array.isArray(criteria[f.name]) ? (criteria[f.name] as string[]) : []}
                   addPlaceholder={t('chipAddPlaceholder')}
                   removeLabelFor={(label) => t('chipRemoveLabel', { value: label })}
@@ -184,7 +318,13 @@ export function EligibilityRuleForm({
                   triggerSummaryFor={(n, allSelected) =>
                     allSelected ? t('chipAllSelected') : t('chipCountLabel', { count: n })
                   }
-                  onSelectionChange={(values) => setMulti(f.name, values)}
+                  onSelectionChange={(values) => {
+                    setMulti(f.name, values);
+                    // Editing grades BY HAND must re-derive the group ticks: unticking one member of a
+                    // group leaves the rule covering part of it, and a Grade Group control still showing
+                    // that group ticked would be claiming a coverage the rule no longer has.
+                    if (f.name === 'gradeIds') setGroupNonce((n) => n + 1);
+                  }}
                 />
               ) : (
                 <Field key={f.name} label={f.label}>
