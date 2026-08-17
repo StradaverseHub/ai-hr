@@ -29,6 +29,8 @@ const code = (rel: string) =>
 
 const PAGE = code('app/payroll/transaction-view/page.tsx');
 const TABLE = code('app/payroll/transaction-view/history-table.tsx');
+/** 417d4937 — the derivation behind the table: which buckets make up the Allowances itemisation. */
+const BREAKDOWN = code('app/payroll/transaction-view/history-breakdown.ts');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 describe('862ed0ad — History is the tab that opens', () => {
@@ -95,9 +97,44 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
    * has outgrown.
    */
   it('itemises the figures, and keeps the honest note only for runs that predate the stamp', () => {
-    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.wage}');
-    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.ot}');
-    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.bonus}');
+    // 417d4937 — UPDATED, NOT DELETED. The Allowances sub-lines were pinned to `componentsByBucket.wage`
+    // ALONE, and that is precisely the decision this item reverses: a PCB-exempt allowance (A0040 MEAL
+    // ALLOWANCE) is stamped into the `reimburse` bucket, is paid, and is inside the very figure these
+    // lines sit under — so itemising `wage` only made it the one allowance with no name on this screen.
+    // The claim being pinned is unchanged in kind (the Allowances figure IS itemised from the stamp);
+    // only which buckets feed it moved, into `allowanceLines` so both consumers of the derivation get the
+    // same list. The `ot` and `bonus` pins below are untouched.
+    expect(TABLE).toContain('<SubLines lines={b.allowanceLines}');
+    // UPDATED AGAIN, NOT DELETED — and for the third time the claim is unchanged in kind. Which buckets
+    // feed the figure is still pinned below; what moved is that the list now goes through the SAME
+    // reconciliation gate as Overtime and Bonus, so the one remaining list able to print rows that do not
+    // add up to the total above them no longer can. Both halves are asserted: drop either and the guard
+    // stops describing the code.
+    expect(BREAKDOWN, 'the allowance lines are wage + the PCB-exempt reimburse bucket').toContain(
+      '[...byBucket.wage, ...byBucket.reimburse]',
+    );
+    expect(BREAKDOWN, 'and they are reconciled against the Allowances figure before being handed out').toContain(
+      'allowanceLines: reconciled([...byBucket.wage, ...byBucket.reimburse], allowanceNet)',
+    );
+    // 6b134681 — UPDATED, NOT DELETED, for the same reason as the allowance pin above. The claim is
+    // unchanged in kind — Overtime and Bonus ARE itemised from the stamp — but the source moved from the
+    // raw kernel bucket to the RECONCILED list, because the figure beside the label is the DISPLAY box
+    // (3c473773) and the bucket is the statutory routing. An item declared into the Overtime box but
+    // routed to `bonus` printed an itemised row under a zero Bonus total; pinning the raw bucket would
+    // pin that. All four payroll result surfaces (this grid, Individual Payslip, the ESS payslip and the
+    // printed PDF) now apply the same `payItemLinesReconcile` rule.
+    expect(TABLE).toContain('<SubLines lines={b.overtimeLines}');
+    expect(TABLE).toContain('<SubLines lines={b.bonusLines}');
+    expect(BREAKDOWN, 'the ot/bonus lines are handed out only when they reconcile').toContain(
+      'overtimeLines: reconciled(byBucket.ot, disp.overtime)',
+    );
+    expect(BREAKDOWN).toContain('bonusLines: reconciled(byBucket.bonus, disp.bonus)');
+    expect(BREAKDOWN, 'and “reconciled” is the shared predicate, not a local re-implementation').toContain(
+      'payItemLinesReconcile(lines, total) ? lines : []',
+    );
+    // 6b134681 — and every one of those lines is labelled by the PAY ITEM (code + description), not by
+    // the box it landed in. The reporter's "B0001 — ANGPOW" read as "Bonus" for exactly this reason.
+    expect(TABLE).toContain('payItemLabel(l)');
     // The note is CONDITIONAL on there being nothing stored — not shown beside a breakdown that exists.
     expect(TABLE).toContain("b.detailNotRecorded && b.allowanceNet > 0");
     expect(TABLE).toContain("t('view.history.detailNotRecorded')");
