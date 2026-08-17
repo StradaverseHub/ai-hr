@@ -14,11 +14,16 @@ import { formatMoney, totalsByCurrency } from '@/lib/money';
  * on the Individual tab (?txnStatus=unattached), but nothing anywhere added them up, so RM23,170
  * accumulated across several months without ever being a number anyone could see.
  *
- * THE RUN-STATE COLUMN CARRIES THE MEANING. A month with no regular run yet legitimately holds
- * unattached rows — that is the designed pre-run entry flow (f1564110 Phase 2), not a fault. A month
- * whose regular run is already processed or closed has gone past these rows, and that IS the fault.
- * Both are shown, visually distinguished, with no default filter: showing only the fault class would
- * hide the pipeline, and showing everything undifferentiated is what made the money invisible.
+ * THE RUN-STATE COLUMN CARRIES THE MEANING. A month with no run yet legitimately holds unattached rows
+ * — that is the designed pre-run entry flow (f1564110 Phase 2), not a fault. A month whose run is already
+ * processed or closed has gone past these rows, and that IS the fault. Both are shown, visually
+ * distinguished, with no default filter: showing only the fault class would hide the pipeline, and
+ * showing everything undifferentiated is what made the money invisible.
+ *
+ * c11e81aa — "the month's run" is no longer always the REGULAR one. A transaction may name a Pay Cycle,
+ * and the run whose state is reported is the run opened under that cycle, so a bonus-marked row reads
+ * 'none' until a bonus run exists rather than borrowing the regular run's state. That also means one
+ * employee-month can appear as more than one row, one per cycle it is waiting on — see the row key.
  *
  * Client component purely so the columns sort (mirroring individual-table.tsx). The rows arrive already
  * RBAC- and RLS-fenced from the server page; sorting is a pure client reorder of that set.
@@ -136,8 +141,11 @@ export function OutstandingTable({ rows }: { rows: UnattachedGroupRow[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
+          {/* c11e81aa — the intent is part of the key. A group is now (employee, month, PAY CYCLE): one
+              employee-month holding a row marked "Bonus" and a row marked nothing is two rows here, with
+              two different run states, and keying on (employee, month) alone would collide them. */}
           {sorted.map((r) => (
-            <tr key={`${r.employmentId}-${r.payPeriod}`}>
+            <tr key={`${r.employmentId}-${r.payPeriod}-${r.intendedCycleId ?? ''}`}>
               <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
               {/* 1372d169 — identity columns on one line. */}
               <td className="whitespace-nowrap px-4 py-2.5 font-medium">

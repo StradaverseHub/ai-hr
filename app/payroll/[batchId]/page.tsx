@@ -223,6 +223,9 @@ export default async function BatchPage({
           companyId: batch.companyId,
           payPeriod: batch.payPeriod,
           scope,
+          // c11e81aa — so the warning also names money marked for another Pay Cycle, which this run
+          // walks past no matter who is in scope.
+          runType: batch.runType,
         })
       : [];
   // After Generate: whatever is still outstanding for the month. For a processed run EVERY unattached

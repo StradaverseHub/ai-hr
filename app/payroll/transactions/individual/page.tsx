@@ -134,6 +134,9 @@ export default async function IndividualTransactionPage({
     recalcEmploymentIds: Array.isArray(b.recalcEmploymentIds)
       ? b.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
       : null,
+    // c11e81aa — which configured cycle opened this run. Null for every run created before 0441; the
+    // workspace treats that as "cannot be told from its siblings by anything but its type".
+    payrollCycleId: b.payrollCycleId ?? null,
   }));
 
   const errorKeys = new Set([

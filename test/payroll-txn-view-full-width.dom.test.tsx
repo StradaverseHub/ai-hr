@@ -160,6 +160,10 @@ const outstandingRow: UnattachedGroupRow = {
   oldestTxnDate: '2026-08-01',
   runState: 'processed',
   arrivedAfterProcessing: true,
+  // c11e81aa — this group named no Pay Cycle, which is every row on production today.
+  intendedCycleId: null,
+  intendedCycleName: null,
+  intendedRunType: null,
 };
 
 const historyRow: ProcessedPayslipViewRow = {

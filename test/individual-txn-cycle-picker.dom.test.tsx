@@ -88,7 +88,11 @@ const REGULAR_RUN: TxnBatch = {
   status: 'draft',
   needsRecalcAt: null,
   recalcEmploymentIds: null,
+  payrollCycleId: 'cy-reg',
 };
+/** Two runs of the SAME cycle in one month — the case no cycle choice can disambiguate. */
+const MID_RUN_2: TxnBatch = { ...REGULAR_RUN, id: 'b2', runType: 'off_cycle', runSeq: 2, payrollCycleId: 'cy-mid' };
+const MID_RUN_3: TxnBatch = { ...REGULAR_RUN, id: 'b3', runType: 'off_cycle', runSeq: 3, payrollCycleId: 'cy-mid' };
 /** The company's configured catalogue — the thing the field never used to show. */
 const CYCLES: TxnPayrollCycle[] = [
   { id: 'cy-reg', companyId: 'c1', name: 'Monthly Salary', runType: 'regular' },
@@ -157,7 +161,15 @@ describe('c11e81aa · the field lists CONFIGURED cycles, not the runs that happe
     await openAddForm(user);
 
     const select = screen.getByLabelText('Pay cycle') as HTMLSelectElement;
-    expect([...select.options].map((o) => o.textContent)).toEqual(['Monthly Salary', 'Bonus Run', 'Mid-Month']);
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      // The EXPLICIT empty choice comes first and is where the form opens. Without it the control could
+      // never read "the operator chose nothing" — and every save would stamp a cycle nobody picked.
+      'Not specified — regular run',
+      'Monthly Salary',
+      'Bonus Run',
+      'Mid-Month',
+    ]);
+    expect(select.value).toBe('');
     // "Awaiting payroll run" was the whole of the old field in this state. It is not a control.
     expect(screen.queryByText('Awaiting payroll run')).not.toBeInTheDocument();
   });
@@ -189,15 +201,26 @@ describe('c11e81aa · the field lists CONFIGURED cycles, not the runs that happe
     });
   });
 
-  it('still targets the EXISTING run when the chosen cycle is the one that run belongs to', async () => {
+  it('with NO pick it targets the month’s sole run and names no cycle — nothing is invented', async () => {
     const user = userEvent.setup();
     renderWorkspace({ batches: [REGULAR_RUN] });
     await openAddForm(user);
     await fillRow(user);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    // No pick made: the derivation follows the month's sole run, which is what the screen has always
-    // done. The row attaches to it AND records the cycle it was saved under.
+    // The pre-cycle derivation, verbatim: the month's sole run. And `intendedCycleId` is NULL, because
+    // nobody chose one — the earlier draft of this control defaulted to the regular cycle here, which
+    // stamped an intent onto rows the operator never marked.
+    expect(createMock.mock.calls[0][0]).toMatchObject({ batchId: 'b1', intendedCycleId: null });
+  });
+
+  it('picking the cycle that run belongs to still targets THAT run, matched by cycle id', async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ batches: [REGULAR_RUN] });
+    await openAddForm(user);
+    await user.selectOptions(screen.getByLabelText('Pay cycle'), 'cy-reg');
+    await fillRow(user);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(createMock.mock.calls[0][0]).toMatchObject({ batchId: 'b1', intendedCycleId: 'cy-reg' });
   });
 
@@ -210,6 +233,136 @@ describe('c11e81aa · the field lists CONFIGURED cycles, not the runs that happe
 
     // The header carries across the mode switch, so the pick survives it.
     expect((screen.getByLabelText('Pay cycle') as HTMLSelectElement).value).toBe('cy-mid');
+  });
+});
+
+/**
+ * THE TWO WAYS THIS CONTROL COULD STILL STAMP OR LOSE A CYCLE NOBODY CHOSE. Both are contract defects
+ * between the screen and the action rather than logic errors in either, which is why they are asserted on
+ * what the SAVE IS CALLED WITH.
+ */
+describe('c11e81aa · an edit writes the cycle only when the operator moved it', () => {
+  const LEGACY_ROW = {
+    id: 'r1',
+    employmentId: 'e1',
+    companyId: 'c1',
+    batchId: null,
+    payPeriod: '2026-08',
+    kind: 'earning',
+    componentId: 'meal',
+    txnDate: '2026-08-12',
+    amount: '150.00',
+    quantity: null,
+    unit: null,
+    notes: null,
+    // A row keyed long before 0441: it named no cycle, and an amount edit must not give it one.
+    intendedCycleId: null,
+    editable: true,
+    recalcOnEdit: false,
+  };
+
+  async function openEdit(user: ReturnType<typeof userEvent.setup>) {
+    detailMock.mockResolvedValue(LEGACY_ROW);
+    panelMock.mockResolvedValue({
+      ...EMPTY_PANEL,
+      rows: [
+        {
+          id: 'r1',
+          employmentId: 'e1',
+          batchId: null,
+          batchStatus: null,
+          payPeriod: '2026-08',
+          kind: 'earning',
+          componentId: 'meal',
+          componentCode: 'MEAL',
+          componentName: 'Meal Allowance',
+          txnDate: '2026-08-12',
+          amount: '150.00',
+          quantity: null,
+          unit: null,
+          notes: null,
+          source: 'manual',
+          createdOn: '2026-08-12',
+          createdBy: null,
+          changedAt: '2026-08-12T00:00:00.000Z',
+          payslipCalculatedAt: null,
+          batchNeedsRecalcForEmployment: false,
+          status: 'pending',
+          editable: true,
+          attached: false,
+          recalcOnEdit: false,
+        },
+      ],
+      totals: { ...EMPTY_PANEL.totals, count: 1, total: '150.00', pendingCount: 1, pendingTotal: '150.00' },
+    });
+    await user.click(await screen.findByRole('button', { name: /Irwin Law/ }));
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+  }
+
+  it('changing ONLY the amount on a pre-0441 row does not submit intendedCycleId at all', async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ batches: [] });
+    await openEdit(user);
+    const amount = await screen.findByLabelText('Amount');
+    await user.clear(amount);
+    await user.type(amount, '175');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    // ABSENT, not null. Null would CLEAR a stored choice; absent is the only value that means "the
+    // operator said nothing about the cycle", and the service leaves the column alone on absence.
+    expect(updateMock.mock.calls[0][0]).not.toHaveProperty('intendedCycleId');
+  });
+
+  it('moving the Pay Cycle field submits the new choice', async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ batches: [] });
+    await openEdit(user);
+    await user.selectOptions(await screen.findByLabelText('Pay cycle'), 'cy-bonus');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(updateMock.mock.calls[0][0]).toMatchObject({ intendedCycleId: 'cy-bonus' });
+  });
+
+  it('moving it back to the empty choice submits an explicit null, which clears the stored cycle', async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ batches: [] });
+    await openEdit(user);
+    const select = await screen.findByLabelText('Pay cycle');
+    await user.selectOptions(select, 'cy-bonus');
+    await user.selectOptions(select, '');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(updateMock.mock.calls[0][0]).toMatchObject({ intendedCycleId: null });
+  });
+});
+
+/**
+ * The multi-run picker. A cycle choice cannot separate two runs of the SAME cycle in one month, and the
+ * control that always could must not disappear behind the new one.
+ */
+describe('c11e81aa · the run picker survives, for the month that has two runs of one cycle', () => {
+  it('offers both runs and targets the second when it is chosen', async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ batches: [MID_RUN_2, MID_RUN_3] });
+    await openAddForm(user);
+
+    const runSelect = screen.getByLabelText('Payroll run') as HTMLSelectElement;
+    expect([...runSelect.options].map((o) => o.textContent)).toEqual([
+      'Automatic — follow the pay cycle',
+      'Off-cycle #2',
+      'Off-cycle #3',
+    ]);
+
+    await user.selectOptions(runSelect, 'b3');
+    await fillRow(user);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(createMock.mock.calls[0][0]).toMatchObject({ batchId: 'b3' });
+  });
+
+  it('is not offered when the month has one run — an option that cannot change anything is worse than none', async () => {
+    const user = userEvent.setup();
+    renderWorkspace({ batches: [REGULAR_RUN] });
+    await openAddForm(user);
+    expect(screen.queryByLabelText('Payroll run')).not.toBeInTheDocument();
   });
 });
 

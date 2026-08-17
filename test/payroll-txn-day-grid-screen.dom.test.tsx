@@ -84,6 +84,8 @@ const BATCH: TxnBatch = {
   status: 'draft',
   needsRecalcAt: null,
   recalcEmploymentIds: null,
+  // c11e81aa — this run predates the configured-cycle catalogue, which is what a legacy batch looks like.
+  payrollCycleId: null,
 };
 const COMPANY: TxnCompany = { id: 'c1', name: 'Demo Group Holdings Bhd', currency: 'MYR' };
 // c11e81aa — `variesByDay` comes off the item's own rule on the server (payRuleAllowsDayByDay).

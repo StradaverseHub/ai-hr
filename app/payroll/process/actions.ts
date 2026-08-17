@@ -91,13 +91,18 @@ export async function checkPayrollCycleReadiness(input: {
  * informational. It is modelled on checkPayrollCycleReadiness above, which is informational for the
  * same reason: a narrowed run can be exactly what the operator intends.
  *
- * Returns [] for an UNSCOPED run: a full regular run collects every outstanding row for the month, so
- * there is nothing to warn about. Read-only — no state mutation, no event.
+ * c11e81aa AMENDS THE OLD "[] FOR AN UNSCOPED RUN" NOTE, which read: a full regular run collects every
+ * outstanding row for the month, so there is nothing to warn about. That stopped being true when a
+ * transaction gained the right to NAME a Pay Cycle — a full regular run now walks past every row marked
+ * "Bonus" or "Mid-Month", whoever is selected. So the run type travels with the selection, and the
+ * pre-flight reports that money too rather than going silent on it. Read-only — no state, no event.
  */
 export async function checkUnattachedForSelection(input: {
   companyIds: string[];
   payPeriod: string;
   employmentIds?: string[];
+  /** The run type Step 1's chosen cycle maps to. Absent in resume mode, where it is already fixed. */
+  intendedRunType?: IntendedRunType;
 }): Promise<UnattachedHolderRow[]> {
   const s = await getSession();
   return unattachedHoldersOutsideSelection(s, input);
@@ -142,7 +147,8 @@ export async function createRunAction(formData: FormData) {
   let holidayWarnings: unknown[] = [];
   try {
     if (cycle.runType === 'regular') {
-      const r = await createBatch(s, { companyId, payPeriod, scope, paymentDate: paymentDate || undefined });
+      // c11e81aa — the run records the cycle it was opened under, not merely its behaviour.
+      const r = await createBatch(s, { companyId, payPeriod, scope, paymentDate: paymentDate || undefined, payrollCycleId: cycle.id });
       batchId = r.batchId;
       holidayWarnings = r.holidayWarnings ?? [];
     } else {
@@ -155,6 +161,9 @@ export async function createRunAction(formData: FormData) {
         remarks: cycle.remarks ?? undefined,
         scope,
         paymentDate: paymentDate || undefined,
+        // c11e81aa — three default cycles are run_type 'off_cycle'; only this id tells them apart, and
+        // only this id lets the run collect the transactions the operator named it on.
+        payrollCycleId: cycle.id,
       });
       batchId = r.batchId;
     }

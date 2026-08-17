@@ -247,10 +247,15 @@ export class InvalidTxnComponentError extends Error {
  *  - `not_found`      — no such cycle row (or RLS hides it).
  *  - `archived`       — the cycle has been retired from the catalogue, so no run of it will be opened.
  *  - `company_mismatch` — the cycle belongs to another company; cycle ids are per company.
- *  - `run_mismatch`   — the write targets an EXISTING run whose type is not this cycle's. This is the
+ *  - `run_mismatch`   — the write targets an EXISTING run that is not this cycle's run. This is the
  *                       "validate any change to the Pay Cycle before saving" case: moving a row between
  *                       runs is not something this ledger's edit path does, so naming a cycle that
  *                       disagrees with the run the row is on is refused rather than half-applied.
+ *                       Compared by CYCLE ID against `payroll_batch.payroll_cycle_id` where the run has
+ *                       one — three default cycles share run_type 'off_cycle', so a type comparison
+ *                       would happily attach a "Mid-Month" row to the "Advance Salary" run and pay it
+ *                       there, which is the very collision `intended_cycle_id` exists to prevent. A run
+ *                       created before 0441 names no cycle, and there the run TYPE is all there is.
  */
 export class InvalidTxnCycleError extends Error {
   constructor(public readonly reason: 'not_found' | 'archived' | 'company_mismatch' | 'run_mismatch') {
@@ -277,6 +282,8 @@ async function resolveIntendedCycleId(
     companyId: string;
     /** The run the row is (or is becoming) attached to, when there is one — null for a period-keyed row. */
     batchRunType: string | null;
+    /** That run's OWN cycle (`payroll_batch.payroll_cycle_id`), null on a run created before 0441. */
+    batchCycleId: string | null;
   },
 ): Promise<string | null | undefined> {
   if (p.intendedCycleId === undefined) return undefined;
@@ -294,7 +301,15 @@ async function resolveIntendedCycleId(
   if (!row) throw new InvalidTxnCycleError('not_found');
   if (row.companyId !== p.companyId) throw new InvalidTxnCycleError('company_mismatch');
   if (row.archivedAt != null) throw new InvalidTxnCycleError('archived');
-  if (p.batchRunType != null && row.runType !== p.batchRunType) throw new InvalidTxnCycleError('run_mismatch');
+  // IDENTITY FIRST, TYPE ONLY AS THE LEGACY FALLBACK. A row written straight onto an existing run is
+  // never seen by attach-on-generate again, so the ONLY moment its cycle can be checked against the run
+  // that will pay it is here. Comparing run types would let a "Mid-Month" row be keyed onto the "Advance
+  // Salary" run and paid there — the same collision, reached through the attached path instead.
+  if (p.batchCycleId != null) {
+    if (row.id !== p.batchCycleId) throw new InvalidTxnCycleError('run_mismatch');
+  } else if (p.batchRunType != null && row.runType !== p.batchRunType) {
+    throw new InvalidTxnCycleError('run_mismatch');
+  }
   return row.id;
 }
 
@@ -361,17 +376,27 @@ async function resolveTxnTarget(
   status: WritableBatchStatus | null;
   /** c11e81aa — the target run's type, null when the row is period-keyed (no run to disagree with). */
   runType: string | null;
+  /** c11e81aa — the target run's own cycle; null when period-keyed OR when the run predates 0441. */
+  payrollCycleId: string | null;
 }> {
   if (p.batchId) {
-    const { payPeriod, companyId, scope, status, runType } = await loadWritableBatch(tx, p.batchId);
-    return { batchId: p.batchId, companyId, payPeriod, scope, status, runType };
+    const { payPeriod, companyId, scope, status, runType, payrollCycleId } = await loadWritableBatch(tx, p.batchId);
+    return { batchId: p.batchId, companyId, payPeriod, scope, status, runType, payrollCycleId };
   }
   if (!p.companyId || !p.payPeriod) throw new MissingTxnTargetError();
   if (!isPayPeriod(p.payPeriod)) throw new InvalidPayPeriodError(p.payPeriod);
   // The company must exist in-tenant (RLS also scopes it); fail loudly rather than insert a dangling FK.
   const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
   if (!co) throw new MissingTxnTargetError();
-  return { batchId: null, companyId: p.companyId, payPeriod: p.payPeriod, scope: null, status: null, runType: null };
+  return {
+    batchId: null,
+    companyId: p.companyId,
+    payPeriod: p.payPeriod,
+    scope: null,
+    status: null,
+    runType: null,
+    payrollCycleId: null,
+  };
 }
 
 export type IndividualTxnRow = {
@@ -431,9 +456,11 @@ export async function loadWritableBatch(
   companyId: string;
   scope: BatchScope | null;
   status: WritableBatchStatus;
-  /** c11e81aa — the run's own type, the only thing a batch records about which cycle opened it (a
-   *  payroll_batch stores no cycle id). It is what an intended cycle is checked against. */
+  /** c11e81aa — the run's own type. Still needed: it is all a run created before 0441 records about the
+   *  cycle that opened it, and it is what an intended cycle falls back to being checked against. */
   runType: string;
+  /** c11e81aa — the run's own CONFIGURED cycle (`payroll_batch.payroll_cycle_id`); null before 0441. */
+  payrollCycleId: string | null;
 }> {
   const [batch] = await tx
     .select({
@@ -442,6 +469,7 @@ export async function loadWritableBatch(
       companyId: payrollBatch.companyId,
       scope: payrollBatch.scope,
       runType: payrollBatch.runType,
+      payrollCycleId: payrollBatch.payrollCycleId,
     })
     .from(payrollBatch)
     .where(eq(payrollBatch.id, batchId))
@@ -454,6 +482,7 @@ export async function loadWritableBatch(
     scope: (batch.scope as BatchScope | null) ?? null,
     status: batch.status as WritableBatchStatus,
     runType: batch.runType as string,
+    payrollCycleId: batch.payrollCycleId ?? null,
   };
 }
 
@@ -736,6 +765,7 @@ export function createIndividualTxnsBulk(
         intendedCycleId: p.intendedCycleId,
         companyId: targetCompanyId,
         batchRunType: target.runType,
+        batchCycleId: target.payrollCycleId,
       })) ?? null;
 
     // C3 (per employee) — every chosen employment must belong to the target company. One `inArray` query
@@ -1003,6 +1033,7 @@ export function updateIndividualTxn(
       intendedCycleId: p.intendedCycleId,
       companyId: batch != null ? batch.companyId : existing.companyId!,
       batchRunType: batch != null ? batch.runType : null,
+      batchCycleId: batch != null ? batch.payrollCycleId : null,
     });
 
     const patch: Record<string, unknown> = {};

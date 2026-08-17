@@ -120,6 +120,7 @@ const BATCH: TxnBatch = {
   status: 'draft',
   needsRecalcAt: null,
   recalcEmploymentIds: null,
+  payrollCycleId: null,
 };
 const COMPANY: TxnCompany = { id: 'c1', name: 'Demo Group Holdings Bhd', currency: 'MYR' };
 const OT: TxnPayItem = {

@@ -15,7 +15,10 @@
  *      the run the row is already on are all REFUSALS, never silent fallbacks);
  *   2. a NULL intent — every row on production today — still belongs to the regular run and to nobody
  *      else, which is the double-collection guard the old "regular run only" rule bought outright;
- *   3. a named non-regular cycle is collected by THAT cycle's run and NOT by the regular one;
+ *   3. a named non-regular cycle is collected by THAT CYCLE'S OWN run — identified by
+ *      `payroll_batch.payroll_cycle_id`, never by run type, because three default cycles share run_type
+ *      'off_cycle' and a type match would let an Advance Salary run pay a Mid-Month row — and NOT by the
+ *      regular one;
  *   4. `pendingBatchMoney` (the "what will this run pay" card) reports exactly what the run will collect,
  *      in both directions — its contract is that it cannot disagree with generatePayslips.
  */
@@ -76,12 +79,18 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
     return { a, employmentId: e.employmentId };
   }
 
-  /** The company's configured catalogue: one regular cycle and one bonus cycle, as a real tenant has. */
+  /**
+   * The company's configured catalogue. It mirrors the shape of the DEFAULT one (core/payroll-cycle.ts):
+   * a regular cycle, a bonus cycle, and TWO cycles that both map to run_type 'off_cycle' — which is the
+   * case that makes run-type matching unsafe and is pinned below.
+   */
   async function seedCycles(companyId = base.companyId) {
     const a = adminCtx(base);
     const regular = await upsertPayrollCycle(a, { companyId, name: 'Monthly Salary', runType: 'regular', sortOrder: 1 });
     const bonus = await upsertPayrollCycle(a, { companyId, name: 'Bonus Run', runType: 'bonus', sortOrder: 2 });
-    return { regular: regular.id, bonus: bonus.id };
+    const advance = await upsertPayrollCycle(a, { companyId, name: 'Advance Salary', runType: 'off_cycle', sortOrder: 3 });
+    const midMonth = await upsertPayrollCycle(a, { companyId, name: 'Mid-Month', runType: 'off_cycle', sortOrder: 4 });
+    return { regular: regular.id, bonus: bonus.id, advance: advance.id, midMonth: midMonth.id };
   }
 
   /** The stored row, straight from the table — the column is the whole point, so it is read directly. */
@@ -257,7 +266,14 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
 
     // Then the bonus run is opened and calculated: THAT is the run the marked row belongs to.
     const multi = await entitledCtx(base);
-    const bonusRun = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    const bonusRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'bonus',
+      // The run NAMES the cycle it was opened under, exactly as the Payroll Process wizard now does.
+      // Without it the run has no identity and collects nothing — see the last case in this file.
+      payrollCycleId: bonusCycle,
+    });
     await generatePayslips(multi, { batchId: bonusRun.batchId });
     expect((await storedRow(marked.ids[0])).batchId).toBe(bonusRun.batchId);
     expect(await eventTypesFor(base.tenantId, marked.ids[0])).toContain('payroll.individual-txn.attached');
@@ -269,7 +285,7 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
   it('a row that named no cycle is still the regular run’s, even when a bonus run generates first', async () => {
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     const { a, employmentId } = await hire();
-    await seedCycles(); // the catalogue exists — the row simply did not name anything
+    const { bonus: bonusCycle } = await seedCycles(); // the catalogue exists — the row named nothing
     const { ids } = await createIndividualTxnsBulk(a, {
       companyId: base.companyId,
       payPeriod: '2026-05',
@@ -279,7 +295,14 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
 
     const { batchId: regularBatch } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     const multi = await entitledCtx(base);
-    const bonusRun = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    const bonusRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'bonus',
+      // The run NAMES the cycle it was opened under, exactly as the Payroll Process wizard now does.
+      // Without it the run has no identity and collects nothing — see the last case in this file.
+      payrollCycleId: bonusCycle,
+    });
     await generatePayslips(multi, { batchId: bonusRun.batchId });
     expect((await storedRow(ids[0])).batchId).toBeNull(); // the bonus run leaves it alone
 
@@ -290,23 +313,144 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
   it('an archived cycle still routes the money it was chosen for — retiring a cycle must not strand a row', async () => {
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     const { a, employmentId } = await hire();
-    const { bonus } = await seedCycles();
+    const { bonus: bonusCycle } = await seedCycles();
     const { ids } = await createIndividualTxnsBulk(a, {
       companyId: base.companyId,
       payPeriod: '2026-05',
       employmentIds: [employmentId],
       rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 300 }],
-      intendedCycleId: bonus,
+      intendedCycleId: bonusCycle,
     });
     // The cycle is retired AFTER the entry was keyed. The catalogue no longer offers it; the money is
     // still owed on a bonus run.
-    await setPayrollCycleActive(a, { id: bonus, active: false });
+    await setPayrollCycleActive(a, { id: bonusCycle, active: false });
 
     await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     const multi = await entitledCtx(base);
-    const bonusRun = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    const bonusRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'bonus',
+      // The run NAMES the cycle it was opened under, exactly as the Payroll Process wizard now does.
+      // Without it the run has no identity and collects nothing — see the last case in this file.
+      payrollCycleId: bonusCycle,
+    });
     await generatePayslips(multi, { batchId: bonusRun.batchId });
     expect((await storedRow(ids[0])).batchId).toBe(bonusRun.batchId);
+  });
+
+  it('keying straight ONTO the Advance Salary run while naming Mid-Month is refused, not stored', async () => {
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const { a, employmentId } = await hire();
+    const { advance, midMonth } = await seedCycles();
+    await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const multi = await entitledCtx(base);
+    const advanceRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'off_cycle',
+      remarks: 'Advance Salary',
+      payrollCycleId: advance,
+    });
+
+    // The ATTACHED path is the one attach-on-generate never revisits: a row written straight onto a run
+    // is paid by that run, so this is the only moment the contradiction can be caught. Both cycles are
+    // run_type 'off_cycle', so a type check would have let it through.
+    await expect(
+      createIndividualTxnsBulk(multi, {
+        batchId: advanceRun.batchId,
+        employmentIds: [employmentId],
+        rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 100 }],
+        intendedCycleId: midMonth,
+      }),
+    ).rejects.toBeInstanceOf(InvalidTxnCycleError);
+
+    // The run's OWN cycle is accepted on the same target.
+    const { ids } = await createIndividualTxnsBulk(multi, {
+      batchId: advanceRun.batchId,
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 100 }],
+      intendedCycleId: advance,
+    });
+    expect((await storedRow(ids[0])).intendedCycleId).toBe(advance);
+  });
+
+  // ───────────────────── run TYPE is not an identity: the three-off_cycle collision ─────────────────────
+
+  /**
+   * THE CASE THAT KILLED RUN-TYPE MATCHING. The default catalogue every company is seeded with maps THREE
+   * cycles onto run_type 'off_cycle' — 'Off-cycle', 'Advance Salary' and 'Mid-Month'. Only 'regular' is
+   * protected from ambiguity (one active regular cycle per company AND one regular batch per period);
+   * bonus / off_cycle / adjustment have no such rule. So a run that claimed every row of its own RUN TYPE
+   * would collect and pay a row the operator deliberately saved for a different cycle — silently, and
+   * indistinguishably on screen from working correctly. Matching is on the CYCLE ID, and this pins it.
+   */
+  it('an Advance Salary run does NOT collect a row marked Mid-Month — both are run_type off_cycle', async () => {
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const { a, employmentId } = await hire();
+    const { advance, midMonth } = await seedCycles();
+
+    const mid = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 400 }],
+      intendedCycleId: midMonth,
+    });
+
+    await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const multi = await entitledCtx(base);
+    const advanceRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'off_cycle',
+      remarks: 'Advance Salary',
+      payrollCycleId: advance,
+    });
+    await generatePayslips(multi, { batchId: advanceRun.batchId });
+    // The Advance Salary run pays advances. It does not pay the mid-month entry, however alike the two
+    // runs look to `run_type`.
+    expect((await storedRow(mid.ids[0])).batchId).toBeNull();
+    const onAdvance = await pendingBatchMoney(multi, { batchId: advanceRun.batchId });
+    expect(onAdvance.lines.filter((l) => l.door === 'individualTxn')).toEqual([]);
+
+    // The Mid-Month run, when it is opened, takes it.
+    const midRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'off_cycle',
+      remarks: 'Mid-Month',
+      payrollCycleId: midMonth,
+    });
+    await generatePayslips(multi, { batchId: midRun.batchId });
+    expect((await storedRow(mid.ids[0])).batchId).toBe(midRun.batchId);
+  });
+
+  it('a non-regular run that names NO cycle collects nothing — today’s behaviour, kept exactly', async () => {
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const { a, employmentId } = await hire();
+    const { bonus: bonusCycle } = await seedCycles();
+    const marked = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 250 }],
+      intendedCycleId: bonusCycle,
+    });
+    const unmarked = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-11', amount: 25 }],
+    });
+
+    await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const multi = await entitledCtx(base);
+    // A run opened by a caller that names no cycle — every legacy batch, and every test/script path.
+    const anonymous = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    await generatePayslips(multi, { batchId: anonymous.batchId });
+    expect((await storedRow(marked.ids[0])).batchId).toBeNull();
+    expect((await storedRow(unmarked.ids[0])).batchId).toBeNull();
   });
 
   // ───────────────────── the pre-run card cannot disagree with the run ─────────────────────
@@ -314,7 +458,7 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
   it('pendingBatchMoney reports the marked row against the BONUS run and not against the regular one', async () => {
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     const { a, employmentId } = await hire();
-    const { bonus } = await seedCycles();
+    const { bonus: bonusCycle } = await seedCycles();
     await createIndividualTxnsBulk(a, {
       companyId: base.companyId,
       payPeriod: '2026-05',
@@ -322,12 +466,19 @@ describe('c11e81aa — the Pay Cycle chosen on an Individual Transaction', () =>
       // 'overtime' folds regardless of the payable-fold setting, so this case is about the ROUTING rule
       // and not about which entitlement flags happen to be on in this harness.
       rows: [{ kind: 'overtime', txnDate: '2026-05-10', amount: 900 }],
-      intendedCycleId: bonus,
+      intendedCycleId: bonusCycle,
     });
 
     const { batchId: regularBatch } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     const multi = await entitledCtx(base);
-    const bonusRun = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    const bonusRun = await createAdditionalRun(multi, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      runType: 'bonus',
+      // The run NAMES the cycle it was opened under, exactly as the Payroll Process wizard now does.
+      // Without it the run has no identity and collects nothing — see the last case in this file.
+      payrollCycleId: bonusCycle,
+    });
 
     // Telling the operator the regular run will pay it would be the on-screen half of the same lie the
     // storage change exists to remove.
