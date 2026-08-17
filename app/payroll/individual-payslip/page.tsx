@@ -552,7 +552,13 @@ export default async function IndividualPayslipPage({
               </p>
             ))}
             <Row label={tSlip('overtime')} value={rm(b.overtime)} />
-            {b.componentsByBucket.ot.map((l, i) => (
+            {/* 6b134681 — `overtimeLines` / `bonusLines`, not `componentsByBucket.*`: the derivation has
+                already checked that these rows add up to the figure above them, the same reconciliation
+                the printed payslip and the ESS payslip apply. The two lists are NOT interchangeable —
+                the figure is the DISPLAY box (3c473773) while the bucket is the KERNEL's statutory
+                routing, and an item declared into the Overtime box but bucketed as `bonus` would
+                otherwise print an itemised row under a zero Bonus total. */}
+            {b.overtimeLines.map((l, i) => (
               <p key={`o${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
                 <span>{payItemLabel(l)}</span>
                 <span className="tabular-nums">{rm(l.amount)}</span>
@@ -566,8 +572,9 @@ export default async function IndividualPayslipPage({
             )}
             <Row label={tSlip('bonus')} value={rm(b.bonus)} />
             {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
-                (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name. */}
-            {b.componentsByBucket.bonus.map((l, i) => (
+                (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
+                Reconciled in the derivation, as above. */}
+            {b.bonusLines.map((l, i) => (
               <p key={`b${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
                 <span>{payItemLabel(l)}</span>
                 <span className="tabular-nums">{rm(l.amount)}</span>

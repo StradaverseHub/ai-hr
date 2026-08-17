@@ -197,12 +197,20 @@ export function HistoryTable({
                             <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.detailNotRecorded')}</p>
                           )}
                           <Row label={tSlip('overtime')} value={rm(b.overtime)} />
-                          <SubLines lines={b.componentsByBucket.ot} fmt={rm} />
+                          {/* 6b134681 — RECONCILED lists, not the raw buckets. The figure beside the label
+                              is the DISPLAY box (3c473773) while `componentsByBucket` is the KERNEL's
+                              statutory routing, and core/pay-display-category.ts exists because the two
+                              diverge: an item declared into the Overtime box but bucketed as `bonus` used
+                              to print an itemised row under a zero Bonus total here. The derivation now
+                              hands out the lines only when they add up to the figure they explain — the
+                              same rule the printed payslip and the ESS payslip apply, so all four payroll
+                              result surfaces read one payslip the same way. */}
+                          <SubLines lines={b.overtimeLines} fmt={rm} />
                           {b.otConvertAmount > 0 && (
                             <Row label={tSlip('otConverted', { item: st.otConvert!.name })} value={rm(b.otConvertAmount)} />
                           )}
                           <Row label={tSlip('bonus')} value={rm(b.bonus)} />
-                          <SubLines lines={b.componentsByBucket.bonus} fmt={rm} />
+                          <SubLines lines={b.bonusLines} fmt={rm} />
                           {/* 3c473773 — the Claim box. Present ONLY when a pay item was deliberately
                               categorised into it; the 0393 backfill never produces one, so no existing
                               payslip grows a line and nothing moves off Allowances on release day. */}

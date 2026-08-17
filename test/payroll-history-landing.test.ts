@@ -108,8 +108,22 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     expect(BREAKDOWN, 'the allowance lines are wage + the PCB-exempt reimburse bucket').toContain(
       'allowanceLines: [...byBucket.wage, ...byBucket.reimburse]',
     );
-    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.ot}');
-    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.bonus}');
+    // 6b134681 — UPDATED, NOT DELETED, for the same reason as the allowance pin above. The claim is
+    // unchanged in kind — Overtime and Bonus ARE itemised from the stamp — but the source moved from the
+    // raw kernel bucket to the RECONCILED list, because the figure beside the label is the DISPLAY box
+    // (3c473773) and the bucket is the statutory routing. An item declared into the Overtime box but
+    // routed to `bonus` printed an itemised row under a zero Bonus total; pinning the raw bucket would
+    // pin that. All four payroll result surfaces (this grid, Individual Payslip, the ESS payslip and the
+    // printed PDF) now apply the same `payItemLinesReconcile` rule.
+    expect(TABLE).toContain('<SubLines lines={b.overtimeLines}');
+    expect(TABLE).toContain('<SubLines lines={b.bonusLines}');
+    expect(BREAKDOWN, 'the ot/bonus lines are handed out only when they reconcile').toContain(
+      'overtimeLines: reconciled(byBucket.ot, disp.overtime)',
+    );
+    expect(BREAKDOWN).toContain('bonusLines: reconciled(byBucket.bonus, disp.bonus)');
+    expect(BREAKDOWN, 'and “reconciled” is the shared predicate, not a local re-implementation').toContain(
+      'payItemLinesReconcile(lines, total) ? lines : []',
+    );
     // 6b134681 — and every one of those lines is labelled by the PAY ITEM (code + description), not by
     // the box it landed in. The reporter's "B0001 — ANGPOW" read as "Bonus" for exactly this reason.
     expect(TABLE).toContain('payItemLabel(l)');

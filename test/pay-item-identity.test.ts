@@ -17,7 +17,13 @@
  * is the exact derivation it calls (`storedComponentLines` → `payItemLinesForBuckets` →
  * `payItemLinesReconcile` → `payItemLabel`), which is the same call chain the PDF builder uses. The
  * History grid is rendered for real in test/history-table-pay-item.dom.test.tsx.
+ *
+ * FOUR SURFACES, NOT THREE. Payroll → Individual Payslip (app/payroll/individual-payslip/page.tsx) is the
+ * admin preview of the same slip, and it reads `deriveHistoryBreakdown` — so its itemisation is pinned
+ * here through that derivation, including the reconciliation gate the last describe below is about.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   payItemLabel,
@@ -163,6 +169,14 @@ describe('the same payslip, through all three renderers (rule 17)', () => {
     expect(b.allowanceLines.reduce((t, l) => t + l.amount, 0)).toBeCloseTo(b.allowanceNet, 2);
   });
 
+  it('Individual Payslip — the admin preview itemises from the SAME gated lists, not the raw buckets', () => {
+    const b = deriveHistoryBreakdown(historyRow());
+    // What app/payroll/individual-payslip/page.tsx renders under Bonus and under Overtime.
+    expect(b.bonusLines.map(payItemLabel)).toEqual(['B0001 · ANGPOW']);
+    expect(b.bonusLines[0].amount).toBe(500);
+    expect(b.overtimeLines).toEqual([]); // no OT component on this run ⇒ the bare Overtime figure stands
+  });
+
   it('the three agree LINE FOR LINE — this is the drift the plan was written to prevent', () => {
     const pdf = buildPayslipPdfData(stored, borne);
     const hist = deriveHistoryBreakdown(historyRow());
@@ -197,5 +211,129 @@ describe('the same payslip, through all three renderers (rule 17)', () => {
     expect(hist.net).toBe(3815.15);
     expect(hist.bonus).toBe(500);
     expect(hist.allowanceNet).toBe(650);
+  });
+});
+
+/**
+ * 6b134681 — THE DISPLAY BOX IS NOT THE KERNEL BUCKET, AND THE FOURTH SURFACE MUST KNOW IT.
+ *
+ * THE CASE THAT WOULD HAVE CAUGHT THE MISS. Three of the four surfaces gated their new Overtime/Bonus
+ * sub-lines behind `payItemLinesReconcile`; Payroll → Individual Payslip mapped the raw
+ * `componentsByBucket` instead, which is a DIFFERENT list from the figure printed above it:
+ *
+ *   · the figure comes from `payslipDisplayEarnings` — the DISPLAY box the operator declared;
+ *   · `componentsByBucket` is grouped by the KERNEL bucket, the statutory routing.
+ *
+ * core/pay-display-category.ts exists precisely because those two diverge. The reporter's own Overtime 1.5
+ * code is `pcb_remuneration_type = 'additional'` (correct — arrears overtime IS additional remuneration
+ * for LHDN), so the kernel routes its cash to `bonus` while the declared box is `overtime`. On the
+ * ungated screen that printed "OT15 · OVERTIME 1.5  RM500.00" underneath a "Bonus RM0.00" row, and left
+ * the RM500.00 Overtime figure — the box the money is actually in — with nothing under it.
+ *
+ * Every surface must reach the SAME verdict on this payslip: keep the grouped rows.
+ */
+describe('display box vs kernel bucket — all four surfaces keep the lump (6b134681)', () => {
+  const divergent = {
+    epfEmployee: 550, epfEmployer: 600, socsoEmployee: 24.75, eisEmployee: 9.9, pcb: 320,
+    componentLines: [
+      { code: 'OT15', name: 'OVERTIME 1.5', amount: 500, buckets: [{ bucket: 'bonus', amount: 500 }] },
+    ],
+    // 3c473773 stamps the overlay ONLY when a declared box differs from the bucket default — as here.
+    displayEarnings: { basic: 5000, allowance: 0, overtime: 500, bonus: 0, claim: 0 },
+  };
+  const divergentStored = {
+    ...stored, allowance: '0', overtime: '0', bonus: '500.00', gross: '5500.00', statutory: divergent,
+  };
+
+  it('PDF — neither figure may be itemised, so both grouped rows stand', () => {
+    const d = buildPayslipPdfData(divergentStored, borne);
+    expect(d.overtime).toBe(500); // the DISPLAY box…
+    expect(d.bonus).toBe(0);
+    expect(d.bonusLines).toEqual([{ code: 'OT15', name: 'OVERTIME 1.5', amount: 500 }]); // …vs the BUCKET
+    expect(d.overtimeLines).toEqual([]);
+    // The predicate `earningsRowsOf` applies before it may replace a grouped row, on both figures.
+    expect(payItemLinesReconcile(d.bonusLines!, d.bonus)).toBe(false);
+    expect(payItemLinesReconcile(d.overtimeLines!, d.overtime)).toBe(false);
+  });
+
+  it('ESS payslip — the page’s own chain reaches the same verdict', () => {
+    const lines = storedComponentLines(divergentStored.statutory);
+    expect(payItemLinesReconcile(payItemLinesForBuckets(lines, ['bonus']), 0)).toBe(false);
+    expect(payItemLinesReconcile(payItemLinesForBuckets(lines, ['ot']), 500)).toBe(false);
+  });
+
+  it('History and Individual Payslip — the gated lists are EMPTY where the raw buckets are not', () => {
+    const b = deriveHistoryBreakdown({ ...historyRow(), overtime: '0.00', bonus: '500.00', statutory: divergent });
+    expect(b.overtime).toBe(500);
+    expect(b.bonus).toBe(0);
+    // The raw stamp is still readable — this is what the screen used to render, ungated…
+    expect(b.componentsByBucket.bonus.map(payItemLabel)).toEqual(['OT15 · OVERTIME 1.5']);
+    // …and this is what it renders now: nothing, because RM500 of rows under an RM0.00 total is the one
+    // thing a money screen may never print.
+    expect(b.bonusLines).toEqual([]);
+    expect(b.overtimeLines).toEqual([]);
+  });
+
+  it('and not one figure moves — the gate withholds rows, never ringgit', () => {
+    const d = buildPayslipPdfData(divergentStored, borne);
+    const b = deriveHistoryBreakdown({ ...historyRow(), overtime: '0.00', bonus: '500.00', statutory: divergent });
+    expect(d.basic).toBe(5000);
+    expect(d.overtime + d.bonus).toBe(500); // the money is in one box or the other, and stays whole
+    expect(b.overtime + b.bonus).toBe(500);
+  });
+});
+
+/**
+ * 6b134681 — THE GATE IS ON ALL FOUR RENDERERS, PROVED IN THE SOURCE.
+ *
+ * The behavioural cases above prove what the DERIVATIONS decide. They cannot prove that a renderer asked:
+ * three of the four surfaces gated their Overtime/Bonus sub-lines behind `payItemLinesReconcile` while the
+ * fourth mapped the raw kernel bucket, and every unit test still passed, because the defect lives in the
+ * CONTRACT BETWEEN the derivation and the JSX rather than inside either. That is the shape rule 17 names,
+ * and the answer is a source-shape assertion across both halves.
+ *
+ * Two of the four are async server components and one is a PDF builder, so none can be rendered here;
+ * `app/payroll/transaction-view/history-table.tsx` IS rendered, in test/history-table-pay-item.dom.test.tsx.
+ * Comments are stripped first — prose describing the rule must never be what satisfies the guard.
+ */
+describe('every payroll-result surface asks before it itemises (6b134681)', () => {
+  const ROOT = path.resolve(__dirname, '..');
+  const code = (rel: string) =>
+    fs
+      .readFileSync(path.join(ROOT, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('the printed payslip reconciles each earnings figure before replacing its grouped row', () => {
+    const pdf = code('lib/payslip-pdf.ts');
+    expect(pdf).toContain('payItemLinesReconcile(named, total)');
+    for (const call of ['push(d.earningLines, d.allowance', 'push(d.overtimeLines, d.overtime', 'push(d.bonusLines, d.bonus']) {
+      expect(pdf, `${call} …) — each list against its OWN total`).toContain(call);
+    }
+  });
+
+  it('the ESS payslip gates its two sub-line lists', () => {
+    const ess = code('app/me/payslip/[payslipId]/page.tsx');
+    expect(ess).toContain('payItemLinesReconcile(otLines, disp.overtime)');
+    expect(ess).toContain('payItemLinesReconcile(bonusLines, disp.bonus)');
+    expect(ess).toContain('{showOtLines && <SubLines lines={otLines} />}');
+    expect(ess).toContain('{showBonusLines && <SubLines lines={bonusLines} />}');
+  });
+
+  it('the History grid and Individual Payslip read the RECONCILED lists, never the raw buckets', () => {
+    const breakdown = code('app/payroll/transaction-view/history-breakdown.ts');
+    expect(breakdown).toContain('payItemLinesReconcile(lines, total) ? lines : []');
+    expect(breakdown).toContain('overtimeLines: reconciled(byBucket.ot, disp.overtime)');
+    expect(breakdown).toContain('bonusLines: reconciled(byBucket.bonus, disp.bonus)');
+
+    // THE MISS ITSELF: mapping `componentsByBucket.ot` / `.bonus` beside a figure that comes from
+    // `payslipDisplayEarnings` prints rows that need not add up to the total above them.
+    for (const rel of ['app/payroll/individual-payslip/page.tsx', 'app/payroll/transaction-view/history-table.tsx']) {
+      const src = code(rel);
+      expect(src, `${rel} still itemises the raw ot bucket`).not.toContain('componentsByBucket.ot');
+      expect(src, `${rel} still itemises the raw bonus bucket`).not.toContain('componentsByBucket.bonus');
+      expect(src, `${rel} must read the gated overtime lines`).toMatch(/b\.overtimeLines/);
+      expect(src, `${rel} must read the gated bonus lines`).toMatch(/b\.bonusLines/);
+    }
   });
 });

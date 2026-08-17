@@ -226,8 +226,21 @@ describe('deriveHistoryBreakdown — the pay item, not the box it landed in', ()
   it('keeps the bonus item’s own code and description under the Bonus figure', () => {
     const b = deriveHistoryBreakdown(row({ bonus: '500.00', statutory: { componentLines: stamped } }));
     expect(b.componentsByBucket.bonus).toEqual([{ code: 'B0001', name: 'ANGPOW', amount: 500 }]);
+    // …and because it adds up to the Bonus figure, it is handed to the renderers as a printable list.
+    expect(b.bonusLines).toEqual([{ code: 'B0001', name: 'ANGPOW', amount: 500 }]);
     // The bonus item must NOT leak into the allowance lines — it explains a different figure.
     expect(b.allowanceLines.some((l) => l.code === 'B0001')).toBe(false);
+  });
+
+  it('hands out overtime lines only when they add up to the Overtime figure', () => {
+    const ot = [{ code: 'OT15', name: 'OVERTIME 1.5', amount: 120, buckets: [{ bucket: 'ot' as const, amount: 120 }] }];
+    expect(deriveHistoryBreakdown(row({ overtime: '120.00', statutory: { componentLines: ot } })).overtimeLines)
+      .toEqual([{ code: 'OT15', name: 'OVERTIME 1.5', amount: 120 }]);
+    // The same stamp under a payslip whose Overtime column is 0 (the OT was folded elsewhere): the named
+    // row would sit under a figure it does not explain, so the bare total stands.
+    const short = deriveHistoryBreakdown(row({ overtime: '0.00', statutory: { componentLines: ot } }));
+    expect(short.componentsByBucket.ot).toHaveLength(1); // the stored line is still there to read…
+    expect(short.overtimeLines).toEqual([]); // …but it is not licensed to replace the figure
   });
 
   it('moves no money: every figure is byte-identical to the same run with the stamp stripped', () => {
@@ -237,5 +250,57 @@ describe('deriveHistoryBreakdown — the pay item, not the box it landed in', ()
       expect(withStamp[k], k).toBe(without[k]);
     }
     expect(withStamp.st.pcb).toBe(without.st.pcb);
+  });
+});
+
+/**
+ * 6b134681 — THE DISPLAY BOX AND THE KERNEL BUCKET ARE NOT THE SAME QUESTION.
+ *
+ * This is the case that would have caught the third surface rendering its sub-lines ungated.
+ * core/pay-display-category.ts exists precisely because the two diverge: the reporter's Overtime 1.5 pay
+ * code is `pcb_remuneration_type = 'additional'` — correct, overtime paid in arrears IS additional
+ * remuneration for LHDN — so the kernel routes its cash to the `bonus` BUCKET, while the operator
+ * declared `display_category = 'overtime'` so the money shows in the Overtime BOX.
+ *
+ * A screen that itemises `componentsByBucket.bonus` beneath the Bonus figure then prints an RM500 row
+ * under an RM0.00 total, and shows nothing under the RM500 Overtime figure that the money is actually in.
+ * The printed payslip and the ESS payslip both refuse to print rows that do not add up; the derivation now
+ * refuses on behalf of every renderer, so a fourth surface cannot forget to ask.
+ */
+describe('deriveHistoryBreakdown — reconcile before replacing (6b134681)', () => {
+  /** Declared into the Overtime box, routed by the kernel to the bonus bucket. */
+  const reCategorised = {
+    componentLines: [
+      { code: 'OT15', name: 'OVERTIME 1.5', amount: 500, buckets: [{ bucket: 'bonus' as const, amount: 500 }] },
+    ],
+    // 3c473773 stamps the overlay ONLY when a declared box differs from the bucket default — as here.
+    displayEarnings: { basic: 3000, allowance: 500, overtime: 500, bonus: 0, claim: 0 },
+  };
+
+  it('shows NO sub-lines under either figure when the box and the bucket disagree', () => {
+    const b = deriveHistoryBreakdown(row({ overtime: '0.00', bonus: '500.00', statutory: reCategorised }));
+    // The boxes are the display overlay's, not the stored columns'.
+    expect(b.overtime).toBe(500);
+    expect(b.bonus).toBe(0);
+    // The stored line is still readable — nothing is hidden from a caller that wants the raw stamp…
+    expect(b.componentsByBucket.bonus).toEqual([{ code: 'OT15', name: 'OVERTIME 1.5', amount: 500 }]);
+    // …but neither figure may be itemised: RM500 of rows under an RM0.00 Bonus total is the one thing a
+    // money screen may never print, and the Overtime box has no component line of its own to explain it.
+    expect(b.bonusLines).toEqual([]);
+    expect(b.overtimeLines).toEqual([]);
+  });
+
+  it('never “explains” a figure with an empty list — an unstamped run keeps its bare totals', () => {
+    const b = deriveHistoryBreakdown(row({ overtime: '0.00', bonus: '0.00', statutory: { pcb: 73.45 } }));
+    expect(b.overtimeLines).toEqual([]);
+    expect(b.bonusLines).toEqual([]);
+    expect(b.detailNotRecorded).toBe(true);
+  });
+
+  it('moves no money: the display overlay decides the boxes, and the sub-lines decide nothing', () => {
+    const b = deriveHistoryBreakdown(row({ overtime: '0.00', bonus: '500.00', statutory: reCategorised }));
+    expect(b.gross).toBe(3620); // straight from the row, untouched by any of this
+    expect(b.net).toBe(3190);
+    expect(b.allowanceNet).toBe(500);
   });
 });

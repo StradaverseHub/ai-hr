@@ -1,5 +1,8 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
+// 6b134681 — the ONE answer to "may these named rows replace the figure they sit under?", shared with the
+// printed document and the ESS payslip so the four payroll-result surfaces cannot disagree about one slip.
+import { payItemLinesReconcile } from '@/core/payslip-earning-lines';
 import { payslipEmployerBorne, type EmployerBorneView } from '@/core/payslip-employer-borne';
 import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recompute';
 
@@ -104,6 +107,22 @@ export type HistoryBreakdown = {
    * contributions are concatenated.
    */
   allowanceLines: RecordLine[];
+  /**
+   * 6b134681 — the named items behind OVERTIME and BONUS, **already reconciled**: each list is the pay
+   * items that explain its figure, or EMPTY when they do not add up to it.
+   *
+   * WHY THE GATE LIVES HERE AND NOT IN THE RENDERER. `overtime` / `bonus` above are the DISPLAY boxes
+   * (3c473773 `payslipDisplayEarnings`); `componentsByBucket` is grouped by the KERNEL bucket. Those two
+   * answer different questions and core/pay-display-category.ts exists precisely because they diverge —
+   * an Overtime 1.5 item declared `display_category='overtime'` is still routed to the `bonus` bucket for
+   * EPF/PCB, so its money shows in the Overtime BOX while its stored line says `bonus`. A screen that
+   * itemises `componentsByBucket.bonus` under the Bonus figure would then print an RM500 row beneath an
+   * RM0.00 total. The printed payslip (lib/payslip-pdf.ts `earningsRowsOf`) and the ESS payslip both
+   * refuse that; putting the same refusal in the derivation is what stops a fourth surface from
+   * forgetting to ask. Same rule, same function — `payItemLinesReconcile`.
+   */
+  overtimeLines: RecordLine[];
+  bonusLines: RecordLine[];
   /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
    *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
   detailNotRecorded: boolean;
@@ -138,6 +157,12 @@ function groupByBucket(lines: ComponentLine[]): Record<ComponentBucket, RecordLi
     }
   }
   return out;
+}
+
+/** The named lines for a figure, or nothing at all when they do not add up to it (6b134681). Rows that
+ *  fall short of the total printed above them are the one failure a money screen may never commit. */
+function reconciled(lines: RecordLine[], total: number): RecordLine[] {
+  return payItemLinesReconcile(lines, total) ? lines : [];
 }
 
 export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBreakdown {
@@ -178,6 +203,12 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     // 417d4937 — wage FIRST, then the PCB-exempt reimburse lines, so the order on screen matches the
     // order the kernel folded them into the column.
     allowanceLines: [...byBucket.wage, ...byBucket.reimburse],
+    // 6b134681 — RECONCILE BEFORE REPLACING. The stored bucket and the displayed box are not the same
+    // question (see the field docs above), so the named rows are handed out only when they add up to the
+    // figure they explain; otherwise the caller gets an empty list and renders the bare total it always
+    // did. An unstamped run yields [] here too, which is exactly the pre-862ed0ad rendering.
+    overtimeLines: reconciled(byBucket.ot, disp.overtime),
+    bonusLines: reconciled(byBucket.bonus, disp.bonus),
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.
