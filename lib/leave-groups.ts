@@ -37,6 +37,33 @@ export type SecondaryGroup = (typeof SECONDARY_GROUPS)[number];
 /** Common, high-traffic leave types that default to a Primary card at the top of the tab. */
 export const PRIMARY_CODES = ['ANNUAL', 'SICK', 'HOSPITALIZATION', 'EMERGENCY', 'REPLACEMENT'] as const;
 
+/**
+ * 5ff7daff — THE SAME ROLE MARKER, one layer further out, and why the code map alone was not enough.
+ *
+ * `PRIMARY_CODES` holds the codes the PACK SEEDS. Production's catalogue was not seeded: its replacement
+ * type is coded `RL` and its emergency type `EL`, neither of which is in that list — so a tenant that has
+ * classified those types (`leave_type.role`) but never opened the placement control would have them fall
+ * out of the Primary cards and into an "Other" group, which is exactly the "where is my replacement leave"
+ * the reporter raised. `leave_type.role` is the tenant-independent answer to "what IS this type", and the
+ * rest of replacement leave was moved onto it in r194 (`leaveTypeIs`, `isReplacementLeaveType`); the
+ * placement rule was the last code-only reader left.
+ *
+ * ROLE WINS OVER THE CODE MAP, and nothing else: it is a DEFAULT, so HR's explicit `ess_placement` still
+ * overrides it and `visible_to_employee=false` still hides. An UNCLASSIFIED row (role null/empty) falls
+ * back to the code map, so a tenant nobody has classified behaves exactly as before.
+ *
+ * Only the two roles whose types are the reporter's subject are listed. The other roles (annual / sick /
+ * hospitalization / maternity / paternity) are deliberately NOT here — promoting them by role would move
+ * cards on tenants that never asked for it, and their seeded codes already sit in `PRIMARY_CODES`.
+ *
+ * The role strings are LITERALS rather than an import: this module is pulled into a client component
+ * (`components/leave-type-panel.tsx`) and `core/leave.ts` imports `db/client` → postgres. Same reason, and
+ * the same remedy, as `db/schema.ts`'s `LeaveTypeRoleValue`: the mirror is pinned against the real
+ * `LEAVE_TYPE_ROLES` by test/leave-grouping-visibility.test.ts so it cannot drift silently.
+ */
+export const PRIMARY_ROLES = ['replacement', 'emergency'] as const;
+export type PrimaryRole = (typeof PRIMARY_ROLES)[number];
+
 /** Codes (exact) that default to Hidden — sensitive or rarely-used types the employee should not normally
  *  see on their dashboard. Prefix families (PROLONGED_ILLNESS_*, SUSPENSION_*) are matched separately. */
 export const DEFAULT_HIDDEN_CODES = ['UNRECORDED', 'UNPAID_MEDICAL'] as const;
@@ -82,29 +109,57 @@ export function defaultPlacementForCode(code: string | null | undefined): EssPla
 }
 
 /**
+ * The ROLE-keyed DEFAULT placement, or null when the role has no opinion (5ff7daff).
+ *
+ * null — not 'secondary' — is the "no opinion" answer, and the distinction is the whole point: an
+ * unclassified row, or a role outside `PRIMARY_ROLES`, must fall THROUGH to the code map rather than be
+ * given an answer here. Case/whitespace-tolerant because `role` is written by seeds, migrations and the
+ * admin screen alike.
+ */
+export function defaultPlacementForRole(role: string | null | undefined): EssPlacement | null {
+  const r = (role ?? '').trim().toLowerCase();
+  if (r === '') return null;
+  return (PRIMARY_ROLES as readonly string[]).includes(r) ? 'primary' : null;
+}
+
+/** The DEFAULT placement for a type HR has not configured — role first, the code map as the fallback.
+ *  This is the single place the two default maps are combined; `resolvePlacement` is its only caller. */
+export function defaultPlacementFor(
+  code: string | null | undefined,
+  role?: string | null,
+): EssPlacement {
+  return defaultPlacementForRole(role) ?? defaultPlacementForCode(code);
+}
+
+/**
  * Resolve the effective placement of a leave type on the employee Leave tab.
  *
  * Precedence (single source of truth for hidden is the visible_to_employee flag):
  *   1. visibleToEmployee === false ⇒ 'hidden' (HR hid it via the shared switch; 7b11f1c1 also drops the row
  *      from leaveBalances, but we still resolve 'hidden' for any consumer that receives the flag directly).
  *   2. an explicit stored ess_placement ('primary' | 'secondary') ⇒ that value (HR's grouping choice wins).
- *   3. otherwise ⇒ the code-keyed default.
+ *   3. otherwise ⇒ the DEFAULT: the role map first (5ff7daff), then the code map.
+ *
+ * `role` is LAST and OPTIONAL so every existing three-argument call site keeps compiling and keeps its
+ * exact answer — a caller that does not know the role gets the code-keyed default it always got.
  *
  * @param code               the leave type's immutable code (e.g. 'ANNUAL')
  * @param essPlacement       leave_type.ess_placement ('primary' | 'secondary' | null); 'hidden' is never
  *                           stored but is tolerated defensively (treated as hidden).
  * @param visibleToEmployee  leave_type.visible_to_employee (null ⇒ visible; false ⇒ hidden)
+ * @param role               leave_type.role (null/unknown ⇒ the code map decides, as before)
  */
 export function resolvePlacement(
   code: string | null | undefined,
   essPlacement: string | null | undefined,
   visibleToEmployee: boolean | null | undefined,
+  role?: string | null,
 ): EssPlacement {
   if (visibleToEmployee === false) return 'hidden';
   if (essPlacement === 'primary' || essPlacement === 'secondary') return essPlacement;
   // Defensive: a legacy/foreign 'hidden' string is honoured as hidden even though we never store it.
   if (essPlacement === 'hidden') return 'hidden';
-  return defaultPlacementForCode(code);
+  return defaultPlacementFor(code, role);
 }
 
 /** The labelled Secondary group a type belongs to (only meaningful when its placement is 'secondary'). */

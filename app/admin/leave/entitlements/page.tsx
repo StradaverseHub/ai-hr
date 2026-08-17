@@ -510,6 +510,9 @@ export default async function LeaveEntitlementsPage({
               visibleToEmployee={lt.visibleToEmployee ?? null}
               employeeCanApply={lt.employeeCanApply ?? null}
               essPlacement={lt.essPlacement ?? null}
+              // 5ff7daff: the role marker (already on listLeaveTypes since 65f466e2) so the placement select
+              // resolves its default the same way the employee's Leave tab does.
+              role={lt.role ?? null}
               counting={lt.counting ?? 'working_days'}
               perDateApproval={lt.perDateApproval ?? false}
               duplicateApplicationPolicy={lt.duplicateApplicationPolicy ?? null}
