@@ -9,10 +9,19 @@
  * carries `company_id` too, and this module is the ONE place that reads it.
  *
  * ── WHY A MODULE AND NOT A LINE IN core/payroll.ts ──────────────────────────────────────────────────
- * Stage two of this item puts attendance, leave and reporting on the same question. Twelve call sites each
- * writing their own "look at the assignment rows, mind the NULLs, mind the gaps" is how two screens end up
- * disagreeing about which entity paid a day. The resolver is proven on payroll FIRST (stage one, this
- * round) precisely so that when the other readers adopt it there is nothing left to discover about it.
+ * Attendance, leave and reporting are meant to ask the same question. Twelve call sites each writing their
+ * own "look at the assignment rows, mind the NULLs, mind the gaps" is how two screens end up disagreeing
+ * about which entity paid a day. The resolver is proven on PAYROLL FIRST precisely so that when the other
+ * readers adopt it there is nothing left to discover about it.
+ *
+ * ⚠️ WHERE THAT ADOPTION ACTUALLY STANDS, because a stale plan reference here would send the next reader
+ * looking for work that was done and past work that was not. Stage one (r194) added the column, the
+ * resolver and the within-run month split. STAGE TWO (r197, item 1b0943d5) did the CROSS-BATCH half: the
+ * membership predicate on every payroll site that needed it, payslip coverage dates (migration 0442) and
+ * the completeness control in core/payroll-coverage.ts. Attendance, leave and reporting still read
+ * `employment.company_id` at their dated call sites and are NOT adopted — deliberately, and last, because
+ * the plan gates that pass on the payroll half being exercised against real data first (the production
+ * backfill has not been run).
  *
  * ── THE FALLBACK IS THE WHOLE COMPATIBILITY STORY ───────────────────────────────────────────────────
  * `assignment.company_id` is nullable and every row that existed before 0440 holds NULL. A NULL is read
@@ -102,13 +111,20 @@ async function entityRowsFor(
   return byEmp;
 }
 
-/** The calendar day before `d` ('YYYY-MM-DD'). Used to turn an exclusive valid_to inclusive. */
-function dayBefore(d: string): string {
+/**
+ * The calendar day before `d` ('YYYY-MM-DD'). Used to turn an exclusive valid_to inclusive.
+ *
+ * EXPORTED for core/payroll-coverage.ts, which decides whether two payslips are ADJACENT or leave a gap —
+ * the same one-day step, asked of the same date format. A second copy of this arithmetic is how a tiling
+ * check and the resolver that produced the ranges start disagreeing about whether 10 August and 11 August
+ * touch, so there is exactly one.
+ */
+export function dayBefore(d: string): string {
   return new Date(Date.parse(`${d}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 }
 
-/** The calendar day after `d` ('YYYY-MM-DD'). */
-function dayAfter(d: string): string {
+/** The calendar day after `d` ('YYYY-MM-DD'). Exported for the same reason as `dayBefore`. */
+export function dayAfter(d: string): string {
   return new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 }
 

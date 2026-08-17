@@ -15,9 +15,17 @@ import {
 // by the SAME helper the Attendance month roll-up reads so the screens and the deduction cannot drift.
 import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-days';
 // 3c88d593 — "which legal entity did this person belong to on this date?", answered from the effective-dated
-// assignment spine (migration 0440). Payroll is the FIRST reader of it, deliberately: the resolver has to be
-// proven on the money before attendance, leave and reporting adopt it (stage two).
+// assignment spine (migration 0440). Payroll is the FIRST and, as of r197, still the ONLY reader of it:
+// the resolver has to be proven on the money before attendance, leave and reporting adopt it, and that
+// adoption is deliberately still outstanding (see core/employment-company.ts's header for where it stands).
 import { companySegmentsForPeriodBulk, employedByCompanyDuring, segmentForCompany } from './employment-company';
+// 1b0943d5 — stage two's control: do a transferred month's payslips TILE the period, across every
+// employer's batch for it? Nothing here fires for an employment whose month is not split.
+import {
+  PayrollCounterpartClosedError,
+  PayrollCoverageIncompleteError,
+  segmentedCoverage,
+} from './payroll-coverage';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { anomalyEvaluated, evaluateCircuitBreaker, openBlockingVerdicts } from './payroll-anomaly';
@@ -1454,7 +1462,13 @@ export async function updateBatchScope(
 ) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, scope: payrollBatch.scope })
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        scope: payrollBatch.scope,
+        // 1b0943d5 — read so the membership guard below can ask the DATED question, which needs a window.
+        payPeriod: payrollBatch.payPeriod,
+      })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
@@ -1463,13 +1477,31 @@ export async function updateBatchScope(
 
     // Cross-company membership guard (same intersection createRunAction applies): keep only submitted ids
     // that belong to this batch's company, so a stale/cross-company id can never reach the persisted scope.
+    //
+    // ── 1b0943d5, SITE 1 OF 5 — DATED. ────────────────────────────────────────────────────────────────
+    // This guard decides which employments a run is ALLOWED to be set up for, and it must agree with the
+    // kernel that will pay them. `batchInputRows` and `listPayslipLessEligible` already offer a
+    // transferred-out employee on this run (stage one widened them), and `generatePayslips` already pays
+    // their pre-transfer days here. On the column, this filter would silently DROP that id on save: the
+    // wizard offers the person, the operator ticks them, the scope quietly loses them, and the run then
+    // computes nothing for them — the "silently no-op'd addition" failure fbcf706d exists to remove,
+    // reintroduced through a different door. The scope is a chosen list, and it must be able to name
+    // everybody the run can pay.
+    const [uy, um] = batch.payPeriod.split('-').map(Number);
+    const scopePeriodStart = `${batch.payPeriod}-01`;
+    const scopePeriodEnd = `${batch.payPeriod}-${String(daysInMonth(uy, um)).padStart(2, '0')}`;
     const submittedEmploymentIds = (p.scope?.employmentIds ?? []).filter(Boolean);
     let validEmploymentIds = submittedEmploymentIds;
     if (submittedEmploymentIds.length) {
       const companyEmps = await tx
         .select({ id: employment.id })
         .from(employment)
-        .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, submittedEmploymentIds)));
+        .where(
+          and(
+            employedByCompanyDuring(batch.companyId, scopePeriodStart, scopePeriodEnd),
+            inArray(employment.id, submittedEmploymentIds),
+          ),
+        );
       const valid = new Set(companyEmps.map((e) => e.id));
       validEmploymentIds = submittedEmploymentIds.filter((id) => valid.has(id));
     }
@@ -2515,16 +2547,51 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
       .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
       .where(
         and(
-          eq(employment.companyId, batch.companyId),
+          // ── 1b0943d5, SITE 2 OF 5 — DATED, AND CLIPPED PER DAY. ──────────────────────────────────
+          // This is the THIRD attendance-derived pay component in this file, and the other two already
+          // ask the dated question (the OT prefill, and the per-cycle OT bucketing below). A shift worked
+          // on 8 August was worked for the employer of 8 August; on the column, the outgoing entity's run
+          // could not see the shift at all AND the incoming entity's run would pay a differential for a
+          // night shift worked before it employed the person. Same shape, same fix, same two steps as the
+          // OT prefill: widen the fetch to the period's employers, then keep only the days THIS employer
+          // owns. Inert until an entity history exists ⇒ byte-identical for every company today.
+          employedByCompanyDuring(batch.companyId, attWindow.start, attWindow.end),
           gte(attendance.attendanceDate, attWindow.start),
           lte(attendance.attendanceDate, attWindow.end),
           gt(attendance.workedMinutes, 0),
           isNotNull(shift.differential),
         ),
       );
+    // Resolved once per employment, over the SAME window the rows were fetched for — see the OT prefill's
+    // note for why this is a filter over already-per-day rows rather than a second query per row.
+    const diffEmpIds = [...new Set(rowsRaw.map((r) => r.employmentId))];
+    const diffCurrentCompany = new Map(
+      diffEmpIds.length
+        ? (
+            await tx
+              .select({ id: employment.id, companyId: employment.companyId })
+              .from(employment)
+              .where(inArray(employment.id, diffEmpIds))
+          ).map((r) => [r.id, r.companyId] as const)
+        : [],
+    );
+    const diffSegByEmp = await companySegmentsForPeriodBulk(
+      tx,
+      diffEmpIds,
+      attWindow.start,
+      attWindow.end,
+      diffCurrentCompany,
+    );
+    /** Did THIS company employ this person on this date? Unsegmented ⇒ always yes ⇒ unchanged behaviour. */
+    const diffOwnsDay = (employmentId: string, date: string): boolean => {
+      const segs = diffSegByEmp.get(employmentId);
+      if (!segs || segs.length <= 1) return true;
+      return segs.some((s) => s.companyId === batch.companyId && date >= s.from && date <= s.to);
+    };
     // Gap-fix: keep only rows inside each employment's OWN attendance window (no-op when attPerEmployment false).
     const rows: typeof rowsRaw = [];
     for (const r of rowsRaw) {
+      if (!diffOwnsDay(r.employmentId, r.attendanceDate)) continue;
       if (!attPerEmployment) {
         rows.push(r);
         continue;
@@ -3292,12 +3359,41 @@ export async function generatePayslips(
       // the employee's net toward a cycle on the strength of minutes that were never paid as cash. It
       // only ever bit weekly/bi-weekly runs, which is why one read carried the clause and the other did
       // not — monthly skips this block entirely.
+      // ── 1b0943d5, SITE 3 OF 5 — DATED, AND CLIPPED PER DAY. ────────────────────────────────────
+      // The comment directly above promises that the two reads of `attendance.otMinutes` in this file
+      // "must agree about which days count". Stage one moved the OTHER one onto the dated entity test and
+      // left this one on the column, so the promise was true about TOIL and false about the employer. On
+      // a weekly run for a transferred employee that means the disbursement weighting is computed from
+      // hours the run never pays — pulling somebody's net toward a cycle on the strength of overtime
+      // worked for a different company. Widened and clipped exactly like the OT prefill. Monthly runs skip
+      // this whole block, and an unsegmented employment takes the identical path either way.
       const otCycleRows = await tx
         .select({ employmentId: attendance.employmentId, d: attendance.attendanceDate, m: attendance.otMinutes })
         .from(attendance)
         .innerJoin(employment, eq(employment.id, attendance.employmentId))
-        .where(and(eq(employment.companyId, batch.companyId), gte(attendance.attendanceDate, wStart), lte(attendance.attendanceDate, wEnd), gt(attendance.otMinutes, 0), EXCLUDE_TOIL_BANKED_DAYS));
+        .where(and(employedByCompanyDuring(batch.companyId, wStart, wEnd), gte(attendance.attendanceDate, wStart), lte(attendance.attendanceDate, wEnd), gt(attendance.otMinutes, 0), EXCLUDE_TOIL_BANKED_DAYS));
+      // Resolved over the CYCLE window, which can reach outside [periodStart, periodEnd] when a cut-off
+      // shifts it — so `segmentByEmp` (clamped to the period) cannot answer for those days and is not used.
+      const cycleEmpIds = [...new Set(otCycleRows.map((r) => r.employmentId))];
+      const cycleCurrentCompany = new Map(
+        cycleEmpIds.length
+          ? (
+              await tx
+                .select({ id: employment.id, companyId: employment.companyId })
+                .from(employment)
+                .where(inArray(employment.id, cycleEmpIds))
+            ).map((r) => [r.id, r.companyId] as const)
+          : [],
+      );
+      const cycleSegByEmp = await companySegmentsForPeriodBulk(tx, cycleEmpIds, wStart, wEnd, cycleCurrentCompany);
+      /** Did THIS company employ this person on this date? Unsegmented ⇒ always yes ⇒ unchanged behaviour. */
+      const cycleOwnsDay = (employmentId: string, date: string): boolean => {
+        const segs = cycleSegByEmp.get(employmentId);
+        if (!segs || segs.length <= 1) return true;
+        return segs.some((s) => s.companyId === batch.companyId && date >= s.from && date <= s.to);
+      };
       for (const r of otCycleRows) {
+        if (!cycleOwnsDay(r.employmentId, r.d)) continue;
         const ci = cycleIndexOf(r.d);
         if (ci < 0) continue;
         const arr = cycleOtMinutesByEmp.get(r.employmentId) ?? runSchedule.periods.map(() => 0);
@@ -4935,6 +5031,27 @@ export async function generatePayslips(
         overtimePay: slipOvertime.toFixed(2),
         bonus: bonus.toFixed(2),
         daysWorked: isAdditionalRun ? null : String(daysWorked),
+        // ── 1b0943d5 (migration 0442) — WHICH DAYS THIS SLIP COVERS, AS COLUMNS. ────────────────────
+        //
+        // Stamped on EVERY payslip this kernel writes, split month or not, and that is the point rather
+        // than an over-reach: the completeness control has to ask "do this person's payslips tile the
+        // month?" across several employers' batches, and a question asked of a column set on only SOME
+        // rows cannot be answered — the unstamped ones would read as gaps. So the rule is total and
+        // simple: the whole period unless the entity history says this employer owns only part of it.
+        //
+        // `days_worked` is untouched and still means what it meant: how many days were PAID. These two
+        // say which days were OWNED. A mid-month joiner owns the whole period and works part of it; a
+        // transferred employee owns part of it. Conflating the two is how a joiner would look like half a
+        // transfer to the tiling check.
+        //
+        // AN ADDITIONAL / OFF-CYCLE RUN STAMPS THE SAME WINDOW ITS REGULAR COUNTERPART WOULD — the whole
+        // period for anybody unsegmented, this employer's segment for a transferred employee — because an
+        // extra payment covers the same days the regular run does and is made by the same employer. It
+        // cannot double-count against the regular run's claim: the tiling check reads REGULAR runs only
+        // (at most one per company per period, `payroll_batch_one_regular_uq`). Every payslip written
+        // before this migration keeps NULL, which reads as the whole period.
+        coverageFrom: segmentByEmp.get(e.employmentId)?.from ?? periodStart,
+        coverageTo: segmentByEmp.get(e.employmentId)?.to ?? periodEnd,
         grossPay: roundedGross.toFixed(2),
         // Fix-5 (M#17): carry the OT provenance onto the immutable statutory snapshot so an auditor reading a
         // closed payslip can tell whether the overtime was attendance-derived or manually keyed. Only stamped
@@ -4956,7 +5073,15 @@ export async function generatePayslips(
           // correction could change underneath it.
           //
           // Absent on every unsegmented slip ⇒ every existing payslip and every ordinary run is
-          // byte-identical, and a screen with no stamp prints the pay period exactly as it does today.
+          // byte-identical.
+          //
+          // 1b0943d5 — THIS STAMP IS NO LONGER WHAT THE SCREENS READ, and it is kept anyway. The coverage
+          // COLUMNS beside it (migration 0442) are now the queryable record, and `payslipSegmentOf` reads
+          // those first; a screen decides "is this segmented" by whether the window is narrower than the
+          // period, not by whether this key exists. The stamp stays because it is part of the IMMUTABLE
+          // SNAPSHOT — the audited record of what the run believed when it computed the slip, alongside the
+          // ruleset version, the pack provenance and everything else here — and because it is the only
+          // coverage a payslip written by r194 has. Deleting it would silently rewrite those slips' period.
           ...(segmentByEmp.get(e.employmentId)
             ? {
                 segment: {
@@ -5065,6 +5190,104 @@ export async function generatePayslips(
     (Object.keys(totals) as (keyof typeof totals)[]).forEach((k) => {
       totals[k] = round2(totals[k]);
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // 1b0943d5 — CROSS-BATCH SEGMENT CREATION: THE OTHER HALF OF A TRANSFERRED MONTH
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // THE FAILURE THIS ANSWERS, exactly as it happened on production on 2026-08-14. Employee 100814
+    // transferred Fiamma → ISEDECOR BINA on 11 August. Reprocessing their August on the ISEDECOR run
+    // produced the 21-day segment correctly — and the Fiamma 1–10 August counterpart, 2,129.03, was never
+    // created, because a payroll_batch belongs to ONE company and this function writes into ONE batch.
+    // The month lost a third of itself and the only thing that noticed was a human comparing batch totals.
+    //
+    // A run therefore CANNOT complete a split month by itself, and pretending otherwise is what underpays.
+    // What it can do — and now does — is refuse to leave the month in a state that cannot be completed,
+    // and make the other half's absence loud instead of silent:
+    //
+    //   REFUSE, before anything commits, when a counterpart employer's regular run for this period is
+    //   already CLOSED without the segment it owes. A closed run is frozen (migration 0011's trigger is
+    //   the DB backstop), so those days could never be added to it: the shortfall would be permanent. The
+    //   whole transaction rolls back, which is the "refuse rather than commit a partial set" the plan
+    //   asks for, applied at the one point where the alternative is unrecoverable.
+    //
+    //   MARK the counterpart run when it is PROCESSED but owes a segment. That is not a refusal because
+    //   it is fixable — and the mark is what makes it get fixed: `payroll_batch.needs_recalc_at` is
+    //   rendered on the run screen and `closeBatch` already refuses while it is set. So the other
+    //   employer's run cannot be finalised until it has produced its half.
+    //
+    //   SAY SO otherwise — a counterpart still in draft, or a company with no run for the period at all.
+    //   Both are ordinary and neither is refused (refusing a draft counterpart would deadlock the pair:
+    //   whichever company ran first would be blocked by the one that had not run yet). They are recorded
+    //   as a domain event, and `closeBatch`'s tiling check is the backstop that will not let the month be
+    //   finalised while they stand.
+    //
+    // NOTHING BELOW EXECUTES for a run with no split month on it — `segmentByEmp` is empty for every
+    // employment that did not change entity inside this period, which is every payroll run this system
+    // has ever performed. No query, no event, no behaviour change.
+    if (segmentByEmp.size > 0) {
+      const coverage = await segmentedCoverage(tx, {
+        payPeriod: batch.payPeriod,
+        periodStart,
+        periodEnd,
+        employmentIds: [...segmentByEmp.keys()],
+        currentCompanyById,
+      });
+
+      // 1. The unrecoverable case, refused before commit.
+      const frozen: { employmentId: string; companyId: string; from: string; to: string }[] = [];
+      for (const c of coverage) {
+        for (const cp of c.counterparts) {
+          if (cp.batchId === p.batchId || cp.status !== 'closed') continue;
+          const seg = c.expected.find((s) => s.companyId === cp.companyId);
+          const claim = c.claims.find((s) => s.companyId === cp.companyId);
+          if (!seg) continue;
+          if (claim && claim.from === seg.from && claim.to === seg.to) continue; // already pays exactly it
+          frozen.push({ employmentId: c.employmentId, companyId: cp.companyId, from: seg.from, to: seg.to });
+        }
+      }
+      if (frozen.length > 0) throw new PayrollCounterpartClosedError(frozen);
+
+      // 2. The fixable case, marked so the counterpart run cannot be closed until it is dealt with.
+      const markBy = new Map<string, Set<string>>();
+      for (const c of coverage) {
+        for (const cp of c.counterparts) {
+          if (cp.batchId === p.batchId || !cp.stale) continue;
+          const s = markBy.get(cp.batchId) ?? new Set<string>();
+          s.add(c.employmentId);
+          markBy.set(cp.batchId, s);
+        }
+      }
+      for (const [batchId, empSet] of markBy) {
+        await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds: [...empSet] });
+      }
+
+      // 3. The record. One event for the whole run, carrying every split employment's expected segments,
+      //    what is issued against them and where the month still does not tile — so the state is
+      //    inspectable after the fact rather than reconstructable only by re-deriving it.
+      const incomplete = coverage.filter((c) => c.defects.length > 0 || c.missingCompanyIds.length > 0);
+      if (incomplete.length > 0) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'payroll-batch',
+          aggregateId: p.batchId,
+          eventType: 'payroll-batch.segment-coverage-incomplete',
+          actor: subset?.actorId ? { type: 'user' as const, id: subset.actorId } : actorOf(ctx),
+          payload: {
+            batchId: p.batchId,
+            companyId: batch.companyId,
+            payPeriod: batch.payPeriod,
+            employments: incomplete.map((c) => ({
+              employmentId: c.employmentId,
+              expected: c.expected,
+              claims: c.claims.map((s) => ({ companyId: s.companyId, from: s.from, to: s.to })),
+              defects: c.defects,
+              missingCompanyIds: c.missingCompanyIds,
+            })),
+          },
+        });
+      }
+    }
 
     // ── Selective reprocess (9bc442bc, reporter #8): delta-update batch totals/GL, keep status
     //    processed, record OCC + before/after per-employee history + status history, and DO NOT re-run
@@ -5467,6 +5690,59 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     if (await anomalyEvaluated(tx, p.batchId)) {
       const swing = await evaluateCircuitBreaker(tx, ctx.tenantId, p.batchId);
       if (swing.tripped) throw new BatchSwingTooLargeError(swing.movementPct ?? 0, swing.thresholdPct);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // 1b0943d5 — THE COMPLETENESS CONTROL, AT THE POINT THE MONEY BECOMES FINAL
+    // ═══════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // "Refuse to finish with only one." Close is what finishing means: it releases payslips to employees
+    // and cascades the pay period shut. So this is where a transferred month has to add up — every day of
+    // the period claimed by exactly one employer's payslip, no gap and no overlap, across every company's
+    // regular run for that period.
+    //
+    // WHY HERE AND NOT AT GENERATION. Two companies' runs for one month are two separate operations, and
+    // one of them necessarily happens first. Refusing the first one because the second has not happened
+    // yet would deadlock the pair. Generation therefore marks and records (see generatePayslips); close is
+    // the moment by which every excuse has expired.
+    //
+    // THE CHECK IS THE CALENDAR, NOT THE MONEY, and that distinction is deliberate: two segments are two
+    // independent statutory computations under two employers with their own allowances, transactions and
+    // ceilings, so their gross figures are under no obligation to sum to anything. What is invariant is
+    // that every day of August belongs to exactly one employer. See core/payroll-coverage.ts.
+    //
+    // ADDITIVE BY CONSTRUCTION: only employments whose entity history SPLITS this period are examined, so
+    // a run with no mid-period transfer on it does one cheap resolver query and finds nothing to check —
+    // which is every payroll run in this system to date.
+    const closeSlips = await tx
+      .select({ employmentId: payslip.employmentId })
+      .from(payslip)
+      .where(eq(payslip.batchId, p.batchId));
+    if (closeSlips.length > 0) {
+      const [cy, cm] = batch.payPeriod.split('-').map(Number);
+      const closeIds = [...new Set(closeSlips.map((s) => s.employmentId))];
+      const closeCurrentCompany = new Map(
+        (
+          await tx
+            .select({ id: employment.id, companyId: employment.companyId })
+            .from(employment)
+            .where(inArray(employment.id, closeIds))
+        ).map((r) => [r.id, r.companyId] as const),
+      );
+      const closeCoverage = await segmentedCoverage(tx, {
+        payPeriod: batch.payPeriod,
+        periodStart: `${batch.payPeriod}-01`,
+        periodEnd: `${batch.payPeriod}-${String(daysInMonth(cy, cm)).padStart(2, '0')}`,
+        employmentIds: closeIds,
+        currentCompanyById: closeCurrentCompany,
+      });
+      // A company named by a segment with no regular run for the period is reported as an unpaid stretch
+      // in its own right — `coverageDefects` already renders it as a gap, because a company with no run
+      // has issued no claim. The `missingCompanyIds` arm catches the one case that would otherwise slip
+      // through: a segment whose days ARE claimed by someone else's slip (an overlap), where the gap test
+      // alone would be satisfied.
+      const bad = closeCoverage.filter((c) => c.defects.length > 0 || c.missingCompanyIds.length > 0);
+      if (bad.length > 0) throw new PayrollCoverageIncompleteError(bad);
     }
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at
@@ -5986,7 +6262,7 @@ export async function reprocessSelectedEmployees(
   // recompute runs (so a poll can observe 'running', and a crash mid-recompute leaves a re-runnable job).
   const enq = await withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId, employeeCount: payrollBatch.employeeCount })
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, payPeriodId: payrollBatch.payPeriodId, employeeCount: payrollBatch.employeeCount })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
@@ -6001,10 +6277,30 @@ export async function reprocessSelectedEmployees(
     if (period?.status === 'closed') throw new Error('This pay period is closed.');
 
     // Cross-company membership intersection (a stale/cross-company id can never widen the run).
+    //
+    // ── 1b0943d5, SITE 4 OF 5 — DATED, AND THIS ONE IS THE REPORTED BUG. ─────────────────────────────
+    // "None of the selected employees belong to this run." is the error the reporter hit trying to
+    // reprocess August for employee 100814 on the FIAMMA run — thrown from exactly here, on exactly this
+    // predicate. 100814's `employment.company_id` had already moved to ISEDECOR, so the outgoing
+    // employer's own run refused to recompute the ten days it owes, which is the run that has to produce
+    // the missing counterpart payslip. Every other read on this path was widened in stage one; this one
+    // is the gate in front of them, so leaving it on the column made the rest unreachable.
+    //
+    // It still only NARROWS: the id must have belonged to this company during this period, so a stale or
+    // cross-company id cannot widen the run any more than it could before. What changes is that "belonged
+    // to" is now a fact about the period rather than about today.
+    const [ry, rm] = batch.payPeriod.split('-').map(Number);
+    const reprocessPeriodStart = `${batch.payPeriod}-01`;
+    const reprocessPeriodEnd = `${batch.payPeriod}-${String(daysInMonth(ry, rm)).padStart(2, '0')}`;
     const companyEmps = await tx
       .select({ id: employment.id })
       .from(employment)
-      .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, requested)));
+      .where(
+        and(
+          employedByCompanyDuring(batch.companyId, reprocessPeriodStart, reprocessPeriodEnd),
+          inArray(employment.id, requested),
+        ),
+      );
     const employmentIds = requested.filter((id) => companyEmps.some((e) => e.id === id));
     if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
 
@@ -6279,6 +6575,21 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       )
       .where(
         and(
+          // ── 1b0943d5, SITE 5 OF 5 — STAYS ON THE COLUMN, DELIBERATELY. ─────────────────────────────
+          // The other four company predicates in this file became dated. This one must not, and it is the
+          // reason the plan insisted each of the six be decided on its own rather than replaced together.
+          //
+          // This is the LEAVERS SWEEP: who is being terminated inside this period, and therefore what
+          // final settlement (notice, leave encashment) their employer owes them. It is keyed on
+          // `terminated_on`, an event that happens ONCE, to the employment as it stands at that moment,
+          // under the entity that holds it then — which is `employment.company_id` by definition.
+          //
+          // Widening it to the dated history would put a leaver on the advisory of an entity they had
+          // ALREADY LEFT before they were terminated: transfer out of Fiamma on 11 August, resign from
+          // ISEDECOR on the 20th, and Fiamma's August run would show a final-settlement obligation for
+          // somebody who was not its employee on the day they left. Fiamma owes them ten days of salary
+          // (which the segmented run pays) and no termination settlement at all. The dated question is
+          // the wrong question here; the column is the right answer.
           eq(employment.companyId, batch.companyId),
           gte(employment.terminatedOn, start),
           lte(employment.terminatedOn, end),
@@ -6953,6 +7264,10 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         overtime: payslip.overtimePay,
         bonus: payslip.bonus,
         daysWorked: payslip.daysWorked,
+        // 1b0943d5 (0442) — the coverage window this slip claims, read through `payslipSegmentOf` so the
+        // document and the completeness control cannot disagree about which days it paid.
+        coverageFrom: payslip.coverageFrom,
+        coverageTo: payslip.coverageTo,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
         otherDeductions: payslip.otherDeductions,

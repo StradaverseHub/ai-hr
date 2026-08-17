@@ -25,7 +25,7 @@ import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
 // 3c88d593 — the entity segment this slip covers, read off the payslip's own snapshot (pure, db-free).
-import { payslipSegment } from '@/core/payslip-segment';
+import { payslipSegmentOf } from '@/core/payslip-segment';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -57,7 +57,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     paymentMethod: p.paymentMethod,
     // 3c88d593 — when a mid-month entity transfer split the month, the document says which days it paid.
     // Null on every other payslip ⇒ the period line is unchanged.
-    segment: payslipSegment(p.statutory),
+    // 1b0943d5 — now derived from the slip's COVERAGE (columns since 0442, the r194 stamp before them):
+    // "segmented" means the window is narrower than the pay period, so the document and the completeness
+    // control read one fact rather than two that could disagree.
+    segment: payslipSegmentOf(p, p.payPeriod),
   });
 
   // `payslipForReview` names the employee `employeeName` (the list-read convention); the PDF builder takes

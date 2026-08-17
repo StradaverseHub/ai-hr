@@ -3932,6 +3932,8 @@
       },
       "recalcBannerTitle": "Proses ini perlu dikira semula untuk {n} pekerja.",
       "recalcBannerBody": "Transaksi sekali sahaja telah ditambah, diubah atau dibuang selepas proses ini diproses, jadi slip gaji, angka berkanun dan jumlah di bawah adalah nombor terdahulu. Proses semula pekerja yang terlibat untuk mengemas kininya; proses ini tidak boleh ditutup sehingga selesai.",
+      "closeBlockedByCoverage": "Larian ini tidak boleh ditutup: {n} pekerja bertukar syarikat dalam tempoh ini, dan slip gaji mereka tidak meliputi bulan tersebut dengan tepat — ada hari yang tidak dibayar atau dibayar dua kali. Proses atau proses semula larian syarikat satu lagi bagi tempoh yang sama dahulu.",
+      "generateBlockedByCounterpartClosed": "Gaji tidak boleh diproses: {n} pekerja bertukar syarikat dalam tempoh ini, dan larian syarikat satu lagi bagi tempoh yang sama telah pun ditutup, jadi hari yang terhutang tidak lagi boleh dibayar di situ. Buka kunci larian tersebut dahulu.",
       "closeBlockedRecalc": "Proses ini tidak boleh ditutup sehingga pekerja yang transaksinya berubah selepas pemprosesan dikira semula.",
       "reprocessGroupNewTitle": "Baharu / Belum Selesai — {n} pekerja layak untuk bulan ini tanpa slip gaji dalam larian ini",
       "reprocessColStatus": "Status",

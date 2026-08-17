@@ -29,6 +29,9 @@ import {
   setPayrollInput,
   unlockClosedBatch,
 } from '@/core/payroll';
+// 1b0943d5 — the two refusals a transferred month can produce: the month does not tile (close), and
+// the counterpart employer's run is already closed so the days it owes can never be added (generate).
+import { PayrollCounterpartClosedError, PayrollCoverageIncompleteError } from '@/core/payroll-coverage';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
 // ADR-0080 rung 3 (D9): the claims payout path rides the PayrollInputContributor kernel contract
 // instead of a direct core/claims import. The side-effect import evaluates the claims pack's
@@ -94,7 +97,15 @@ export async function generateAction(formData: FormData) {
       await generatePayslips(s, { batchId });
     }
   } catch (e) {
-    errMsg = e instanceof PreProcessBlockedError ? t('preChecksBlockedError', { n: e.count }) : (e as Error).message;
+    errMsg =
+      e instanceof PreProcessBlockedError
+        ? t('preChecksBlockedError', { n: e.count })
+        : // 1b0943d5 — a transferred employee whose OTHER employer's run for this period is already
+          // closed. Refused in the kernel before anything commits; the operator gets the real reason,
+          // in their own language, rather than the service's raw English.
+          e instanceof PayrollCounterpartClosedError
+          ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
+          : (e as Error).message;
   }
   if (errMsg) redirect(`/payroll/${batchId}?error=${encodeURIComponent(errMsg)}`);
   revalidatePath(`/payroll/${batchId}`);
@@ -404,7 +415,11 @@ export async function reprocessSelectedAction(formData: FormData) {
         ? t('reprocessAdminOnly')
         : e instanceof BatchNotResettableError
           ? t('reprocessNotProcessed')
-          : (e as Error).message;
+          : // 1b0943d5 — same refusal as generation: recomputing this run would leave a transferred
+            // employee short on a counterpart run that is already closed and can no longer take the days.
+            e instanceof PayrollCounterpartClosedError
+            ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
+            : (e as Error).message;
     redirect(`${back}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath('/payroll');
@@ -469,7 +484,12 @@ export async function closeAction(formData: FormData) {
     const msg =
       e instanceof BatchNotCloseableError
         ? t('closeNotProcessed')
-        : // 49e7e0a2 — the run's transactions changed after it was processed. The BUTTON is already
+        : // 1b0943d5 — a mid-period entity transfer whose two halves do not cover the month exactly. Close
+          // is where the money becomes final, so it is where the tiling has to hold; the operator is told
+          // how many people are affected and sent to the other company's run for the same period.
+          e instanceof PayrollCoverageIncompleteError
+          ? t('closeBlockedByCoverage', { n: e.employmentIds.length })
+          : // 49e7e0a2 — the run's transactions changed after it was processed. The BUTTON is already
           // hidden while that is true, so reaching here means a direct post or a mark that landed
           // between the render and the submit; either way the operator gets the real reason, in their
           // own language, rather than the service's raw English.

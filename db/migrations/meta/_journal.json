@@ -2521,6 +2521,13 @@
       "when": 1781862541000,
       "tag": "0441_individual_txn_intended_cycle",
       "breakpoints": true
+    },
+    {
+      "idx": 442,
+      "version": "7",
+      "when": 1781862542000,
+      "tag": "0442_payslip_coverage_dates",
+      "breakpoints": true
     }
   ]
 }

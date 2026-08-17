@@ -1151,6 +1151,9 @@ export function payslipForReview(
         net: payslip.netPay,
         employerCost: payslip.employerCost,
         daysWorked: payslip.daysWorked,
+        // 1b0943d5 (0442) — the coverage window this slip claims, read through `payslipSegmentOf`.
+        coverageFrom: payslip.coverageFrom,
+        coverageTo: payslip.coverageTo,
         payDate: payrollBatch.batchDate,
         department: department.name,
         position: position.title,
