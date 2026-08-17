@@ -187,5 +187,55 @@ describe('deriveHistoryBreakdown — per-item component detail (862ed0ad)', () =
     const b = deriveHistoryBreakdown(row({ statutory: null as never }));
     expect(b.detailNotRecorded).toBe(true);
     expect(b.componentsByBucket).toEqual({ wage: [], ot: [], bonus: [], reimburse: [], deduct: [] });
+    expect(b.allowanceLines).toEqual([]);
+  });
+});
+
+/**
+ * 417d4937 + 6b134681 — THE ALLOWANCE FIGURE IS `wage` PLUS `reimburse`, and a bonus item keeps its name.
+ *
+ * Two board items, one root cause: a payroll result screen that named money by the box it landed in
+ * rather than by the pay item that produced it.
+ *
+ *  · A0004's Meal Allowance (A0040, PCB_NON-TAXABLE) is paid and is inside the Allowances figure, but a
+ *    PCB-exempt amount is stamped into the `reimburse` bucket — which this screen did not itemise. The
+ *    money was never missing; the NAME was, and only for the one allowance whose PCB treatment differs.
+ *  · A0002's one-off "B0001 — ANGPOW" is additional remuneration, so it lands in the `bonus` bucket and
+ *    the screen showed the category word instead of the item.
+ */
+describe('deriveHistoryBreakdown — the pay item, not the box it landed in', () => {
+  const stamped = [
+    { code: 'A0027', name: 'HANDPHONE', amount: 100, buckets: [{ bucket: 'wage' as const, amount: 100 }] },
+    { code: 'S0008', name: 'REPLACEMENT', amount: 150, buckets: [{ bucket: 'wage' as const, amount: 150 }] },
+    // The reporter's own item: PCB non-taxable, so the kernel stamps it into `reimburse`.
+    { code: 'A0040', name: 'MEAL ALLOWANCE', amount: 400, buckets: [{ bucket: 'reimburse' as const, amount: 400 }] },
+    { code: 'B0001', name: 'ANGPOW', amount: 500, buckets: [{ bucket: 'bonus' as const, amount: 500 }] },
+  ];
+
+  it('itemises the PCB-exempt allowance alongside the taxable ones, in fold order', () => {
+    const b = deriveHistoryBreakdown(row({ allowance: '650.00', statutory: { componentLines: stamped } }));
+    expect(b.allowanceLines).toEqual([
+      { code: 'A0027', name: 'HANDPHONE', amount: 100 },
+      { code: 'S0008', name: 'REPLACEMENT', amount: 150 },
+      { code: 'A0040', name: 'MEAL ALLOWANCE', amount: 400 },
+    ]);
+    // …and they add up to the figure they sit under, which is the whole licence to print them.
+    expect(b.allowanceLines.reduce((t, l) => t + l.amount, 0)).toBeCloseTo(b.allowanceNet, 2);
+  });
+
+  it('keeps the bonus item’s own code and description under the Bonus figure', () => {
+    const b = deriveHistoryBreakdown(row({ bonus: '500.00', statutory: { componentLines: stamped } }));
+    expect(b.componentsByBucket.bonus).toEqual([{ code: 'B0001', name: 'ANGPOW', amount: 500 }]);
+    // The bonus item must NOT leak into the allowance lines — it explains a different figure.
+    expect(b.allowanceLines.some((l) => l.code === 'B0001')).toBe(false);
+  });
+
+  it('moves no money: every figure is byte-identical to the same run with the stamp stripped', () => {
+    const withStamp = deriveHistoryBreakdown(row({ statutory: { componentLines: stamped, pcb: 73.45 } }));
+    const without = deriveHistoryBreakdown(row({ statutory: { pcb: 73.45 } }));
+    for (const k of ['basic', 'allowanceNet', 'overtime', 'bonus', 'claim', 'gross', 'totalDeductions', 'net'] as const) {
+      expect(withStamp[k], k).toBe(without[k]);
+    }
+    expect(withStamp.st.pcb).toBe(without.st.pcb);
   });
 });

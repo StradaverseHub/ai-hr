@@ -900,9 +900,25 @@ export function TxnWorkspace({
 
   /** Changing the pay item can change WHICH box is the operator's to fill, so the two that belong to the
    *  old item are reset with it: the Input Type follows the new item's rule, and a typed amount does not
-   *  survive onto an item that works its own amount out (nor a derived figure onto one that does not). */
-  const changeItem = (value: string) =>
-    patchForm({ item: value, unit: unitFor(value, form?.unit ?? ''), amount: '' });
+   *  survive onto an item that works its own amount out (nor a derived figure onto one that does not).
+   *
+   *  417d4937 — AND THE AUTO-FILLED REMARK, which is the third thing that belonged to the old item.
+   *  `resolveItem` below defaults a blank Remarks box to the picked item's label, so a transaction keyed
+   *  as A0020 — DIRECTOR FEE and then switched to A0040 — MEAL ALLOWANCE was persisted with the Director
+   *  Fee remark still on it (production: A0004, 2026-01). A remark the operator actually TYPED is theirs
+   *  and survives the switch untouched — only the outgoing item's own auto-label is cleared, and clearing
+   *  it lets the new item's label take its place on save. */
+  const changeItem = (value: string) => {
+    const outgoing = itemByValue.get(form?.item ?? '');
+    const autoLabel = outgoing?.fromMaster ? outgoing.label : '';
+    const staleAutoNote = autoLabel !== '' && (form?.notes ?? '').trim() === autoLabel;
+    patchForm({
+      item: value,
+      unit: unitFor(value, form?.unit ?? ''),
+      amount: '',
+      ...(staleAutoNote ? { notes: '' } : {}),
+    });
+  };
 
   const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
 

@@ -8,6 +8,9 @@ import { useTranslations } from 'next-intl';
 import { Badge, EmployeeName } from '@/components/ui';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { deriveHistoryBreakdown } from './history-breakdown';
+// 6b134681 / 417d4937 — one label format for a pay item, shared with the ESS payslip and the printed
+// document: the item's own code and description, never the category it was classified into.
+import { payItemLabel } from '@/core/payslip-earning-lines';
 import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
 
 /**
@@ -28,14 +31,19 @@ const rm = (n: unknown) =>
 /** Itemized row inside an expanded breakdown — mirrors the payslip-detail Row primitive. */
 /** The pay items behind a summarised figure (862ed0ad). Indented under the figure they explain, and
  *  rendered ONLY from what the payslip stored — never re-derived from today's pay-item assignments, which
- *  is how a breakdown ends up disagreeing with the total printed above it. */
+ *  is how a breakdown ends up disagreeing with the total printed above it.
+ *
+ *  6b134681 — the line now carries its CODE as well as its description ("B0001 · ANGPOW"), matching the
+ *  Recorded items rows below and the printed payslip. A description alone is not an identification: two
+ *  pay items may legitimately share a name, and the reporter's whole complaint is that the result screen
+ *  stopped naming the item that was keyed. */
 function SubLines({ lines, fmt }: { lines: { code: string; name: string; amount: number }[]; fmt: (n: number) => string }) {
   if (lines.length === 0) return null;
   return (
     <ul className="mb-1 ms-3 border-s border-border/60 ps-3">
       {lines.map((l, i) => (
         <li key={`${l.code}-${i}`} className="flex items-baseline justify-between gap-4 py-0.5 text-xs text-muted-foreground">
-          <span>{l.name}</span>
+          <span>{payItemLabel(l)}</span>
           <span className="tabular-nums">{fmt(l.amount)}</span>
         </li>
       ))}
@@ -179,7 +187,12 @@ export function HistoryTable({
                               so they say so instead — re-deriving from today's pay-item assignments could
                               print a breakdown that disagrees with the figure above it, which the plan
                               ruled out. */}
-                          <SubLines lines={b.componentsByBucket.wage} fmt={rm} />
+                          {/* 417d4937 — wage AND reimburse. A PCB-exempt allowance (Meal Allowance,
+                              exemption PCB_NON-TAXABLE) is stamped into the reimburse bucket, is paid,
+                              and is inside this very figure; itemising `wage` alone made it the one
+                              allowance that appeared to have no name here while Transaction Detail
+                              showed it correctly. */}
+                          <SubLines lines={b.allowanceLines} fmt={rm} />
                           {b.detailNotRecorded && b.allowanceNet > 0 && (
                             <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.detailNotRecorded')}</p>
                           )}

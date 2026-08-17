@@ -90,6 +90,20 @@ export type HistoryBreakdown = {
    *  bucket's stored total, because both come from the same stamp rather than being recomputed here.
    *  Recomputing from today's pay setup is what would let a breakdown disagree with the figure beside it. */
   componentsByBucket: Record<ComponentBucket, RecordLine[]>;
+  /**
+   * 417d4937 — the named items behind the ALLOWANCES figure: `wage` AND `reimburse`.
+   *
+   * The reporter's Meal Allowance (A0040, exemption PCB_NON-TAXABLE) was paid, was inside Allowances and
+   * was inside gross — but a PCB-exempt amount is stamped into the `reimburse` bucket, and this screen
+   * itemised `wage` only. So the one allowance whose treatment differs was the one that appeared to be
+   * missing by name, which reads exactly like a lost transaction.
+   *
+   * Both buckets belong here because both are inside the same figure: the kernel's allowance column is
+   * `allowanceApplied + reimburse + otConvert` (core/payroll.ts), and `allowanceNet` above takes the
+   * otConvert back out and gives it its own row. Nothing is recomputed — the stored per-bucket
+   * contributions are concatenated.
+   */
+  allowanceLines: RecordLine[];
   /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
    *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
   detailNotRecorded: boolean;
@@ -142,6 +156,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // rewrite what January's payslip said. `allowance` still carries otConvert inside it, so `allowanceNet`
   // below is the identical expression it always was.
   const disp = payslipDisplayEarnings(row);
+  const byBucket = groupByBucket(componentLines);
   return {
     st,
     basic: disp.basic,
@@ -159,7 +174,10 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     employerBorne: payslipEmployerBorne(row.statutory),
     recordLines: st.recordLines ?? [],
     componentLines,
-    componentsByBucket: groupByBucket(componentLines),
+    componentsByBucket: byBucket,
+    // 417d4937 — wage FIRST, then the PCB-exempt reimburse lines, so the order on screen matches the
+    // order the kernel folded them into the column.
+    allowanceLines: [...byBucket.wage, ...byBucket.reimburse],
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.

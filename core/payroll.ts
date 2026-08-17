@@ -3691,7 +3691,28 @@ export async function generatePayslips(
         // Provenance: a non-payable (BIK) component row already surfaces via the fold's own record line —
         // skip the duplicate. Every cash row gets a named line (deductions negative).
         if (!row.nonPayable) {
-          pushTxnLine(t.employmentId, { code: row.code, name: t.notes ?? row.name, amount: row.kind === 'deduction' ? -amt : amt });
+          // Feedback 417d4937 — THE RECORD LINE IS NAMED BY THE PAY ITEM, NOT BY THE REMARK.
+          //
+          // This read `t.notes ?? row.name`, and the remark won whenever there was one. The entry screen
+          // DEFAULTS the remark to the picked item's label (txn-workspace.tsx `resolveItem`), so changing
+          // the pay item on a half-typed transaction left the previous item's label behind in a field
+          // nobody re-reads — and the payslip then printed that. Measured on production: A0004's 2026-01
+          // Meal Allowance (component A0040) carried notes "A0020 — DIRECTOR FEE" and was recorded under
+          // that name, which read as a phantom Director Fee transaction the employee never had. The money
+          // was always right; only this string was wrong.
+          //
+          // `row.name` IS the right answer for BOTH populations, which is why this is one expression and
+          // not a branch: a componented row was built above with `name: t.compName ?? t.compCode` (the pay
+          // item's own description — the same source the Transaction Detail grid reads, which is why that
+          // screen was correct all along), and a genuinely UNCOMPONENTED one-off was built with
+          // `name: t.notes ?? 'One-off earning' | 'One-off deduction'`, so a free-text remark is still the
+          // only name such a line can have. The kind-based OT / UNPAID / LEAVE lines above keep their own
+          // `t.notes ?? …` for exactly that reason: they have no pay item to be named from.
+          //
+          // Forward-only. Payslips already written keep the string they stored; nothing re-derives a
+          // historical line from today's catalogue, which would answer with today's naming about a month
+          // already paid.
+          pushTxnLine(t.employmentId, { code: row.code, name: row.name, amount: row.kind === 'deduction' ? -amt : amt });
         }
       }
       // OT provenance (feedback plan: otSource='individual-txn'): a slip whose OT includes one-off ledger

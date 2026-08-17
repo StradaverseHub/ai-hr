@@ -1155,7 +1155,83 @@ describe('1.2.2 Individual Transaction', () => {
       expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay) + 1000, 2);
       expect(ws.epfEmployee).toBeGreaterThan(bs.epfEmployee); // EPF-liable per the catalog flag
       expect(ws.socsoEmployee).toBeCloseTo(bs.socsoEmployee, 2); // SOCSO excludes bonus per the catalog flag
-      expect((ws.recordLines ?? []).some((l) => l.code === 'BONUS' && l.name === 'Ad-hoc bonus' && l.amount === 1000)).toBe(true);
+      // 417d4937 — UPDATED, NOT DELETED. This line used to expect 'Ad-hoc bonus', the transaction's
+      // free-text remark, and that expectation was the defect written down: the record line is now named
+      // from the PAY ITEM ('Bonus', the BONUS catalog row's own description). The remark is a note about
+      // the transaction, not the identity of the pay item, and letting it win is how A0004's Meal
+      // Allowance came to be recorded as a Director Fee. Nothing about the money moved — every delta
+      // above is unchanged.
+      expect((ws.recordLines ?? []).some((l) => l.code === 'BONUS' && l.name === 'Bonus' && l.amount === 1000)).toBe(true);
+      expect((ws.recordLines ?? []).some((l) => l.name === 'Ad-hoc bonus')).toBe(false);
+    });
+
+    /**
+     * 417d4937 — THE REPORTER'S OWN SHAPE, reproduced: a componented transaction wearing a PREVIOUS
+     * item's label in its remark.
+     *
+     * Measured on production (A0004, 2026-01): componentId resolved to A0040 MEAL ALLOWANCE, RM400 paid
+     * and inside gross, and `recordLines` named it "A0020 — DIRECTOR FEE" — the label the entry screen
+     * auto-filled for the item that was picked FIRST and never cleared when the item was changed. The
+     * reporter read that as a phantom Director Fee transaction and a missing Meal Allowance; it was one
+     * transaction with the wrong name on it.
+     *
+     * The BASELINE half is the important half: the same transaction without the stale remark must produce
+     * the same money AND the same name, which is what says the remark can no longer reach the display.
+     */
+    it('417d4937 — a componented txn is named by its PAY ITEM, never by a stale remark, and the money is unmoved', async () => {
+      const clean = await setupEmployee();
+      const stale = await setupEmployee();
+      // The reporter's pay item: PCB non-taxable, EPF/SOCSO liable (production A0040's exact flags).
+      const [meal] = await owner.db
+        .insert(schema.payComponent)
+        .values({
+          tenantId: base.tenantId,
+          code: 'A0040',
+          name: 'MEAL ALLOWANCE',
+          kind: 'allowance',
+          includedInEpf: true,
+          includedInSocsoEis: true,
+          includedInPcb: false,
+          prorates: false,
+        })
+        .returning({ id: schema.payComponent.id });
+      await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', true);
+      const on = await entitledCtx(base);
+      for (const [w, notes] of [
+        [clean, null],
+        // The label of a DIFFERENT pay item, left behind by the entry screen's auto-fill.
+        [stale, 'A0020 — DIRECTOR FEE'],
+      ] as const) {
+        await createIndividualTxn(on, {
+          batchId: w.batchId,
+          employmentId: w.employmentId,
+          kind: 'earning',
+          componentId: meal.id,
+          txnDate: '2026-05-18',
+          amount: 400,
+          ...(notes != null ? { notes } : {}),
+        });
+      }
+      const { ps: cp, st: cs } = await generateAndRead(clean.batchId);
+      const { ps: sp, st: ss } = await generateAndRead(stale.batchId);
+
+      // 1. THE NAME comes from the pay item on BOTH, and the phantom Director Fee is nowhere.
+      for (const st of [cs, ss]) {
+        expect((st.recordLines ?? []).some((l) => l.code === 'A0040' && l.name === 'MEAL ALLOWANCE' && l.amount === 400)).toBe(true);
+        expect((st.recordLines ?? []).some((l) => /DIRECTOR FEE/i.test(l.name))).toBe(false);
+      }
+      // 2. The Transaction Detail grid's own stamp agrees with the record line — one item, one name.
+      const compLines = (ss.componentLines as unknown as { code: string; name: string }[] | undefined) ?? [];
+      expect(compLines.some((l) => l.code === 'A0040' && l.name === 'MEAL ALLOWANCE')).toBe(true);
+      // 3. THE MONEY IS UNMOVED. A PCB-exempt pay item is paid, is inside gross and inside the allowance
+      //    column — the reporter's "it disappears" concern — and the stale remark changed none of it.
+      expect(Number(sp.grossPay)).toBeCloseTo(Number(cp.grossPay), 2);
+      expect(Number(sp.allowance)).toBeCloseTo(Number(cp.allowance), 2);
+      expect(Number(sp.netPay)).toBeCloseTo(Number(cp.netPay), 2);
+      expect(Number(sp.allowance)).toBeCloseTo(400, 2); // the fixture's own allowance is 0
+      for (const k of ['epfEmployee', 'socsoEmployee', 'eisEmployee', 'pcb'] as const) {
+        expect(ss[k], k).toBeCloseTo(cs[k], 2);
+      }
     });
 
     it("overtime kind adds to the OT figure with otSource='individual-txn' provenance", async () => {
