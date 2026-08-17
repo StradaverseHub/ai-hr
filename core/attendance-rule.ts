@@ -759,7 +759,14 @@ export function setAttendanceRuleStatus(
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-rule',
       aggregateId: p.ruleId,
-      eventType: 'attendance-rule.status-changed',
+      // The PAIR, not one `.status-changed`. lib/audit-format.ts actionOf() classifies on the last
+      // dot-segment: `activated` → unarchived, `deactivated` → archived, and anything it does not know
+      // falls through to `other`. A single `status-changed` would therefore be invisible to an
+      // administrator filtering the Audit Trail for Activate/Deactivate — and domain_event is
+      // append-only, so rows written under the wrong name stay wrong forever. Six of the seven status
+      // flips in core/ already emit the pair (payroll-policy, employee-id-config,
+      // leave-approval-template, profile-options, dashboard-card-config, payroll-cycle).
+      eventType: status === 'active' ? 'attendance-rule.activated' : 'attendance-rule.deactivated',
       actor: actorOf(ctx),
       payload: { name: rule.name, status },
     });

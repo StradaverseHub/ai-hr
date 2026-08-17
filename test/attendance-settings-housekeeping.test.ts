@@ -27,6 +27,7 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { createShift } from '../core/roster';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { actionOf } from '../lib/audit-format';
 import {
   AttendanceRuleInUseError,
   copyAttendanceRule,
@@ -182,14 +183,24 @@ describe('ad52212d round 2 — Duplicate an overtime pattern', () => {
 });
 
 describe('ad52212d round 2 — Activate / Deactivate an overtime pattern', () => {
-  it('flips the status from the list and appends an event', async () => {
+  it('flips the status from the list and appends the activated/deactivated PAIR', async () => {
     const a = adminCtx(b);
     const rule = await createAttendanceRule(a, ruleInput({ name: 'Toggle me' }));
     await setAttendanceRuleStatus(a, { ruleId: rule.id, status: 'inactive' });
     expect((await getAttendanceRule(a, rule.id))!.status).toBe('inactive');
     await setAttendanceRuleStatus(a, { ruleId: rule.id, status: 'active' });
     expect((await getAttendanceRule(a, rule.id))!.status).toBe('active');
-    expect(await eventTypesFor(b.tenantId, rule.id)).toContain('attendance-rule.status-changed');
+    const types = await eventTypesFor(b.tenantId, rule.id);
+    expect(types).toEqual(expect.arrayContaining(['attendance-rule.deactivated', 'attendance-rule.activated']));
+  });
+
+  it('and those two names are the ones the Audit Trail’s Activate / Deactivate filter can find', async () => {
+    // domain_event is APPEND-ONLY: a name that actionOf() cannot classify is a row that stays filed under
+    // "Other" for the life of the tenant. This case is the reason the service does not emit one
+    // `status-changed` — it pins the classification, not just the string.
+    expect(actionOf('attendance-rule.activated')).toBe('unarchived');
+    expect(actionOf('attendance-rule.deactivated')).toBe('archived');
+    expect(actionOf('attendance-rule.status-changed'), 'the shape that was rejected').toBe('other');
   });
 
   it('touches ONLY the status — the bands and settings are not rewritten', async () => {
