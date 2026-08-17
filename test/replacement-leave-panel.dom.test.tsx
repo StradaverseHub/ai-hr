@@ -37,6 +37,10 @@ const breakdown = (leaveTypeId: string, leaveType: string): EntitlementBreakdown
   asOf: '2026-08-03',
   cycleStart: '2026-01-01',
   eligibleDays: 20,
+  // 31e39d74: a generated entitlement ⇒ no not-yet-generated banner, so these cases keep asserting the
+  // replacement-leave panel and nothing else.
+  entitlementStatus: 'granted',
+  entitlementTemplateName: null,
   currentYearEntitlement: 12,
   monthlyAccruedToDate: 2,
   carriedForward: 4,

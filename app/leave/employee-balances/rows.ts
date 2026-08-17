@@ -1,6 +1,7 @@
 import type { SessionContext } from '@/db/client';
 import { leaveBalances, leaveEntitlementBreakdown } from '@/core/read';
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
+import type { EntitlementStatus } from '@/lib/entitlement-status';
 
 /**
  * The Employee Balances table body (feedback 20c699f8), shared by the screen and its export so a
@@ -18,6 +19,9 @@ export type EmployeeBalanceRow = {
   /** Leave-year/cycle the breakdown reconstructed against; null when no breakdown resolved. */
   entitlementYear: string | null;
   ytdEntitled: number | null;
+  /** 31e39d74 — why YTD Entitled reads what it reads. Same value the employee's own screen shows, through
+   *  the same `deriveBalanceRow`, so HR and the employee are never told two different stories about a 0.00. */
+  entitlementStatus: EntitlementStatus;
   broughtForward: number | null;
   taken: number | null;
   pending: number;
@@ -64,6 +68,7 @@ export async function employeeBalanceRows(
         code: b.code ?? '',
         entitlementYear: bd ? bd.cycleStart.slice(0, 4) : null,
         ytdEntitled: row.ytdEntitled,
+        entitlementStatus: row.entitlementStatus,
         broughtForward: row.broughtForward,
         taken: row.taken,
         pending: b.pending,

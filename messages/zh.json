@@ -1878,7 +1878,16 @@
         "approvedLabel": "替代假",
         "approvedHint": "已批准，可以使用",
         "cardPending": "{days} 待批"
-      }
+      },
+      "statusNotGeneratedTitle": "已配置，但尚未生成",
+      "statusNotGeneratedBody": "本休假年度此假期类型已有适用的额度表。额度尚未生成，因此下方数字并非您应得的额度。请运行“生成额度”以发放。若之后数字仍无变化，此余额可能因套现而被冻结，或此公司所属的国家配套未启用。",
+      "statusEarnedAccrualTitle": "按年度逐步累积，尚未累积任何天数",
+      "statusEarnedAccrualBody": "此假期类型在休假年度内逐步累积，因此“生成额度”不会发放它。天数会随每次累积运行入账而出现，本休假年度尚未有任何入账。",
+      "statusZeroEntitlementTitle": "额度表发放 0 天",
+      "statusZeroEntitlementBody": "此假期类型已有适用的额度表，但按此服务年资只发放 0 天。除非修改该表的服务年资分级，否则生成额度不会改变下方数字。",
+      "statusEarningMethodMissingTitle": "未设置累积方式",
+      "statusEarningMethodMissingBody": "此假期类型已有适用的额度表，但尚未选择累积方式，因此生成额度只会发放 0.00 天，直到设置为止。",
+      "statusEntitlementTable": "额度表：{name}"
     },
     "preview": {
       "loading": "计算中…"
@@ -2004,7 +2013,8 @@
       "empSearchAriaLabel": "搜索员工",
       "empSearchResultsLabel": "员工搜索结果",
       "empSearchNoMatches": "没有匹配的员工",
-      "empSearchClear": "清除员工"
+      "empSearchClear": "清除员工",
+      "colEntitlementStatus": "额度状态"
     },
     "override": {
       "title": "Before you submit",
@@ -2421,7 +2431,17 @@
         "adjustment": "对余额的手动或一次性变更，例如节日额度。",
         "overutilized": "您的余额低于零的程度（如有）。",
         "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。"
-      }
+      },
+      "statusGenerated": "已生成",
+      "statusNotGenerated": "尚未生成",
+      "statusEarnedAccrual": "按年度逐步累积",
+      "statusZeroEntitlement": "额度表发放 0 天",
+      "statusEarningMethodMissing": "未设置累积方式",
+      "statusNotConfigured": "无假期额度表",
+      "statusNotGeneratedTip": "本休假年度此假期类型已有适用的额度表，但尚未生成额度。请运行“生成额度”以发放。若之后数字仍无变化，此余额可能因套现而被冻结，或此公司所属的国家配套未启用。",
+      "statusEarnedAccrualTip": "此假期类型在休假年度内逐步累积，因此“生成额度”不会发放它。天数会随每次累积运行入账而出现，本休假年度尚未有任何入账。",
+      "statusZeroEntitlementTip": "此假期类型已有适用的额度表，但按此服务年资只发放 0 天。除非修改该表的服务年资分级，否则生成额度不会改变此数字。",
+      "statusEarningMethodMissingTip": "已有适用的额度表，但此假期类型尚未选择累积方式，因此在设置之前只会发放 0.00 天。"
     },
     "typeLabel": "类型",
     "fromLabel": "从",

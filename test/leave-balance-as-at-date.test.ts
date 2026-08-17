@@ -257,7 +257,13 @@ describe('3ddae357: the four columns the ticket is about now move with the date'
     expect(page).toContain("/^\\d{4}-\\d{2}-\\d{2}$/.test(sp.asOf) ? sp.asOf : todayInKualaLumpur()");
     // The same date reaches the rows AND the Date column in the file.
     expect(route).toContain('employeeBalanceRows(session, selected.employmentId, asOf, locale, {');
-    expect(route).toContain('cell(r.balance),\n      asOf,');
+    // 31e39d74 UPDATED THIS ASSERTION, IT DID NOT RETIRE IT. The claim — "the Date column is fed the same
+    // `asOf` the rows were read at" — is unchanged and still worth pinning. What changed is that the Date
+    // column is no longer immediately after Balance: an Entitlement Status column now sits between them
+    // (a 0.00 that is merely ungenerated must say so in the file as well as on the screen). The assertion
+    // was written as "…balance, then asOf", which pinned the neighbour rather than the claim; it now pins
+    // `asOf` as the LAST cell of the row tuple, which is the claim and survives the next column too.
+    expect(route).toContain('      asOf,\n    ]),');
   });
 });
 
