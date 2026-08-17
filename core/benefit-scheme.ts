@@ -1,5 +1,6 @@
 /**
- * Grade groups — the leave APPROVAL-ROUTING scope.
+ * Grade groups — the tenant's grade-banding vocabulary, read by leave APPROVAL ROUTING and, since
+ * 9a65f808, by ENTITLEMENT ELIGIBILITY too.
  *
  * ⚠️ THE FILENAME IS NOW A LIE, AND THAT IS DELIBERATE FOR ONE ROUND. This module was the benefit-scheme
  * entitlement layer. 6e9a126e release three dropped that layer entirely — benefit_scheme,
@@ -9,8 +10,19 @@
  *
  * WHY GRADE GROUPS SURVIVED A RELEASE THAT DELETED EVERYTHING AROUND THEM: 205 live leave_approval_policy
  * rows scope by them. Dropping them would have silently unscoped every one of those approval rules and
- * forced HR to rebuild each by hand. They are plain organisation grade banding now — they no longer select
- * an entitlement. Entitlement targeting is entitlement_eligibility_rule's job.
+ * forced HR to rebuild each by hand.
+ *
+ * ⚠️ "THEY NO LONGER SELECT AN ENTITLEMENT" WAS TRUE FROM 6e9a126e UNTIL 9a65f808, AND IS NOT ANY MORE.
+ * Employee Eligibility now offers a Grade Group picker (components/leave/eligibility-rule-form.tsx), so a
+ * group's MEMBERSHIP is an input to who gets which entitlement table as well as to who approves their
+ * leave. What is unchanged is the STORAGE, and the distinction matters here because this module is where
+ * someone would be tempted to add a link: the picker EXPANDS a group to its member grades and writes
+ * `entitlement_eligibility_rule.criteria.gradeIds`, exactly the axis that already existed. There is no
+ * `gradeGroupIds` criteria axis and no foreign key from a rule to a group — lib/grade-group-coverage.ts
+ * holds that decision and its cost. So entitlement TARGETING is still entitlement_eligibility_rule's job,
+ * no read in this file selects an entitlement, and a rule cannot be orphaned by a group being deleted.
+ * What a write here does change is whether a saved rule still covers a WHOLE group; that drift is derived
+ * and shown on the eligibility screen rather than repaired behind the operator's back.
  */
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';

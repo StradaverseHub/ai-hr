@@ -87,6 +87,15 @@ export type EntitlementTablesData = {
    *  unexplainable), and the drift check reads their membership. Nothing here creates or edits a group —
    *  that lives on Settings → System Labels → Organisation, beside Job Grades. */
   gradeGroups: GradeGroupOption[];
+  /** THE GROUP MEMBERS THE ACTIVE GRADE CATALOGUE NO LONGER OFFERS — name and id, for LABELLING only.
+   *
+   *  Archiving a job grade does not remove it from the groups that hold it (`grade_group_member` survives;
+   *  only a DELETE cascades, and the delete guard refuses while a group holds it). So a group can expand to
+   *  a grade `listJobGrades` will not return, and the rule form has to put that id in the Job Grade picker's
+   *  options or `ChipMultiSelect` would drop it from the expansion silently — see the form's own note.
+   *  Without these names it went in NAKED: the picker showed a bare UUID an operator could tick. This list
+   *  adds no option; it only gives the ones already there a name to render. */
+  archivedMemberGrades: { id: string; name: string }[];
   today: string;
 };
 
@@ -124,7 +133,10 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     listEligibilityRules(s),
     eligibilityRuleCountsByTemplate(s, { asOf: today }),
     listDepartments(s),
-    listJobGrades(s),
+    // ARCHIVED GRADES INCLUDED — and the two uses are split apart after the await, exactly as `leaveTypes`
+    // splits offering from naming. What the criteria builder OFFERS must stay active-only; what a grade
+    // group's expansion can be NAMED from cannot, because a group may hold an archived grade.
+    listJobGrades(s, { includeArchived: true }),
     listPositions(s),
     listCostCenters(s),
     listBusinessUnits(s),
@@ -136,10 +148,21 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     listGradeGroups(s),
   ]);
 
+  // The OFFER is unchanged: the Job Grade criteria field lists the ACTIVE catalogue and nothing else, so
+  // no archived grade becomes newly pickable anywhere the shared builder renders.
+  const activeGrades = grades.filter((g) => g.archivedAt == null);
   const criteriaSections = buildOrgCriteriaSections(
-    { companies, departments, grades, positions, costCenters, businessUnits, locations, profileOptions },
+    { companies, departments, grades: activeGrades, positions, costCenters, businessUnits, locations, profileOptions },
     { crit: tCrit, org: tOrg, employmentType: tEmploymentType },
   );
+
+  // …and the NAMING is what the archived rows are for. Narrowed to grades some group actually holds: those
+  // are the only ids the rule form adds to the picker on their behalf, and a name for anything else would
+  // be data crossing to a client component for no reader.
+  const heldByAGroup = new Set(gradeGroups.flatMap((g) => g.gradeIds));
+  const archivedMemberGrades = grades
+    .filter((g) => g.archivedAt != null && heldByAGroup.has(g.id))
+    .map((g) => ({ id: g.id, name: g.name }));
 
   return {
     leaveTypes: leaveTypes.map((x) => ({ id: x.id, name: x.name, archived: !!x.archivedAt })),
@@ -150,6 +173,7 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     // Only the three fields the two consumers need — a `GradeGroupOption` is plain serialisable data, and
     // the rule form is a CLIENT component, so nothing beyond id / name / membership may cross to it.
     gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds })),
+    archivedMemberGrades,
     today,
   };
 }
@@ -184,7 +208,7 @@ export async function EntitlementTablesBlock({
   editRule?: string;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
-  const { leaveTypes, ruleCounts, criteriaSections, gradeGroups, today } = data;
+  const { leaveTypes, ruleCounts, criteriaSections, gradeGroups, archivedMemberGrades, today } = data;
 
   const scoped = leaveTypeId != null;
   const typeNameById = new Map(leaveTypes.map((x) => [x.id, x.name]));
@@ -493,6 +517,7 @@ export async function EntitlementTablesBlock({
                 templates={templateOptions}
                 criteriaSections={criteriaSections}
                 gradeGroups={gradeGroups}
+                archivedMemberGrades={archivedMemberGrades}
                 today={today}
                 embeddedLeaveTypeId={leaveTypeId}
                 submitLabel={editingRule ? t('saveNewVersion') : t('createRule')}

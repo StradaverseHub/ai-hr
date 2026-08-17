@@ -214,6 +214,20 @@ describe('9a65f808 · B. the storage decision, pinned across both files that dep
     expect(blockSrc).toContain("from '@/packs/leave/service'");
   });
 
+  it('a group member the ACTIVE catalogue dropped is nameable, without becoming newly offered', () => {
+    // Both halves of one read, and taking either without the other is a defect:
+    //   - includeArchived is what makes an archived group member NAMEABLE. Archiving a grade leaves it in
+    //     every group that holds it, and the form has to keep offering the id or the group's expansion
+    //     silently loses it — so the id is on screen either way, and without a name it was a bare UUID.
+    //   - `activeGrades` is what stops it becoming OFFERED: the shared builder feeds Leave Adjustments and
+    //     Generate Entitlement too, and an archived grade in its catalogue would appear on all three.
+    expect(blockSrc).toContain('listJobGrades(s, { includeArchived: true })');
+    expect(blockSrc).toMatch(/grades: activeGrades/);
+    expect(blockSrc).toMatch(/archivedAt == null/);
+    expect(blockSrc).toContain('archivedMemberGrades');
+    expect(formSrc).toContain("t('ruleGradeArchived'");
+  });
+
   it('the rules TABLE lists the drift, not just the form', () => {
     // "Add a check that lists rules whose stored grades no longer equal their group" — the approved plan's
     // words. A warning only on the edit form is a warning nobody meets until they were already editing.
@@ -222,20 +236,31 @@ describe('9a65f808 · B. the storage decision, pinned across both files that dep
   });
 });
 
-describe('9a65f808 · C. the four new strings exist in all six locales', () => {
+describe('9a65f808 · C. the five new strings exist in all six locales', () => {
   it('every admin.entitlementTemplates key the Grade Group control reads resolves everywhere', () => {
     // A screen reading a namespace that never got its keys renders MISSING_MESSAGE on every line and
     // still returns 200. The form reads ONE namespace, which is why these belong in it.
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const) {
       const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
       const ns = dict?.admin?.entitlementTemplates ?? {};
-      for (const key of ['ruleGradeGroup', 'ruleGradeGroupApplied', 'ruleGradeGroupNote', 'ruleGradeGroupPartial']) {
+      for (const key of [
+        'ruleGradeGroup',
+        'ruleGradeGroupApplied',
+        'ruleGradeGroupNote',
+        'ruleGradeGroupPartial',
+        // The label for a group member the active grade catalogue no longer offers. Missing it does not
+        // blank a line — it puts a raw UUID on a picker, which is the defect it was added to close.
+        'ruleGradeArchived',
+      ]) {
         expect(typeof ns[key], `messages/${loc}.json → admin.entitlementTemplates.${key}`).toBe('string');
       }
       // The placeholders the call sites pass, present in every locale's copy — a translation that dropped
       // one formats to a sentence missing the group's name, which is the sentence's whole content.
       expect(ns.ruleGradeGroupApplied, `[${loc}] ruleGradeGroupApplied {count}`).toContain('{count}');
       expect(ns.ruleGradeGroupPartial, `[${loc}] ruleGradeGroupPartial {groups}`).toContain('{groups}');
+      // …and this one degrades WORSE than a blank: drop {name} and the option reads "(archived)" with no
+      // grade in it, which is less use than the id it replaced.
+      expect(ns.ruleGradeArchived, `[${loc}] ruleGradeArchived {name}`).toContain('{name}');
     }
   });
 });

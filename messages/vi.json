@@ -7511,7 +7511,8 @@
       "ruleGradeGroup": "Nhóm bậc",
       "ruleGradeGroupApplied": "Đã chọn {count} bậc công việc.",
       "ruleGradeGroupNote": "Chọn một nhóm bậc sẽ điền vào các bậc công việc mà nhóm đó đang có hôm nay. Nếu sau này có bậc gia nhập nhóm, quy tắc này vẫn giữ các bậc đã lưu cho đến khi bạn chọn lại nhóm đó.",
-      "ruleGradeGroupPartial": "Quy tắc này chỉ bao gồm một phần của {groups}. Hãy chọn lại nhóm để lấy tất cả các bậc trong đó — cho đến lúc đó, quy tắc không thể được gán cho mẫu phê duyệt."
+      "ruleGradeGroupPartial": "Quy tắc này chỉ bao gồm một phần của {groups}. Hãy chọn lại nhóm để lấy tất cả các bậc trong đó — cho đến lúc đó, quy tắc không thể được gán cho mẫu phê duyệt.",
+      "ruleGradeArchived": "{name} (đã lưu trữ)"
     }
   },
   "topbar": {

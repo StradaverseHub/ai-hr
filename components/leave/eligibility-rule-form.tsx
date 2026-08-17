@@ -67,6 +67,7 @@ export function EligibilityRuleForm({
   templates,
   criteriaSections,
   gradeGroups,
+  archivedMemberGrades = [],
   initial,
   today,
   submitLabel,
@@ -81,6 +82,10 @@ export function EligibilityRuleForm({
    *  for, and would do it silently. An empty list is a legitimate value (a tenant with no groups yet) and
    *  hides the picker rather than offering an empty one. */
   gradeGroups: GradeGroupOption[];
+  /** Names for the group members the ACTIVE grade catalogue no longer offers — see `gradeLabelFor` below.
+   *  Optional with an empty default, unlike `gradeGroups`: forgetting it degrades a label, where forgetting
+   *  the groups would delete a control. A tenant that has archived no grade held by a group passes none. */
+  archivedMemberGrades?: { id: string; name: string }[];
   initial?: EligibilityRuleInitial;
   today: string;
   submitLabel: string;
@@ -175,29 +180,60 @@ export function EligibilityRuleForm({
     const v = initial?.criteria?.[name];
     return Array.isArray(v) ? v : [];
   };
-  const withStored = (options: CriteriaOption[], stored: string[]): CriteriaOption[] => [
-    ...options,
-    ...stored.filter((v) => !options.some((o) => o.value === v)).map((v) => ({ value: v, label: v })),
-  ];
+  const withStored = (
+    options: CriteriaOption[],
+    stored: string[],
+    /** How an id with no option of its own is rendered. Defaults to the raw value, as described above —
+     *  the Job Grade picker overrides it because for THAT axis a name is recoverable (see below). */
+    labelFor: (v: string) => string = (v) => v,
+  ): CriteriaOption[] => {
+    // DE-DUPLICATED against the offered options AND against the rest of `stored`. The Job Grade call below
+    // concatenates two lists that legitimately overlap — a rule that stores an archived grade a group also
+    // holds names it in both — and two options sharing a `value` give ChipMultiSelect two rows with the
+    // same React key and an option count its "all selected" summary can never reach.
+    const seen = new Set(options.map((o) => o.value));
+    const extra: CriteriaOption[] = [];
+    for (const v of stored) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      extra.push({ value: v, label: labelFor(v) });
+    }
+    return [...options, ...extra];
+  };
   /**
-   * …AND EVERY GRADE ANY GROUP HOLDS, for the Job Grade picker only.
+   * …AND EVERY GRADE ANY GROUP HOLDS, for the Job Grade picker only — WITH A NAME ON IT.
    *
    * The same `ChipMultiSelect` rule that motivates `withStored` bites the expansion harder: the control
    * DROPS any `defaultSelected` value it cannot find in `options`, and the offered grades are the ACTIVE
    * ones. A group holding an archived grade would therefore expand to seven grades and post six — silently
    * covering fewer people than the group the operator picked, with nothing on screen to say so. Unioning
-   * the groups' membership into the option list keeps the expansion whole; an id with no active label left
-   * renders as its raw value, exactly as `withStored` already degrades, and stays removable.
+   * the groups' membership into the option list keeps the expansion whole, and stays removable.
+   *
+   * WHAT THE UNION MUST NOT DO IS PUT A BARE UUID ON SCREEN. `withStored`'s raw-value fallback is a
+   * last resort for a value whose catalogue row is simply gone; here the row is not gone, it is ARCHIVED,
+   * and the server hands us its name for exactly this (`archivedMemberGrades`, prepared beside the
+   * groups). So the id renders as "Grade 19 (archived)" — a thing an operator can recognise, judge and
+   * untick — and the "(archived)" is not decoration: an archived grade is not on offer anywhere else on
+   * this form, and it is here only because a group still holds it.
+   *
+   * The union stays over EVERY group, not just the ticked ones, and stays computed off props rather than
+   * live state, for the reason `storedFor` reads `initial`: an option list that moved with the selection
+   * would make a value un-re-selectable the moment it was unticked, and would slide the "all selected"
+   * line under the operator mid-edit.
    */
   const allGroupMemberGradeIds = memberGradeIds(
     gradeGroups.map((g) => g.id),
     gradeGroups,
   );
+  const archivedGradeNameById = new Map(archivedMemberGrades.map((g) => [g.id, g.name]));
+  const gradeLabelFor = (v: string): string => {
+    const name = archivedGradeNameById.get(v);
+    return name == null ? v : t('ruleGradeArchived', { name });
+  };
   const optionsFor = (f: { name: string; options?: CriteriaOption[] }): CriteriaOption[] =>
-    withStored(
-      f.options ?? [],
-      f.name === 'gradeIds' ? [...storedFor(f.name), ...allGroupMemberGradeIds] : storedFor(f.name),
-    );
+    f.name === 'gradeIds'
+      ? withStored(f.options ?? [], [...storedFor(f.name), ...allGroupMemberGradeIds], gradeLabelFor)
+      : withStored(f.options ?? [], storedFor(f.name));
 
   const unrestricted = Object.keys(criteria).length === 0;
 

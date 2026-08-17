@@ -2041,10 +2041,16 @@ export async function updateGradeGroupAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
-    // 6e9a126e release three — the scheme-cohort true-up is GONE with benefit schemes. Grade groups
-    // survive (205 approval rules point at them) but they no longer select an entitlement, so moving a
-    // grade between groups changes approval routing only and has no balance to reproject. `gradeIds` is
-    // still returned by the writer and still used by its own event payload.
+    // 6e9a126e release three — the scheme-cohort true-up is GONE with benefit schemes, and NOTHING here
+    // reprojects a balance. That conclusion SURVIVES 9a65f808, but its old reason does not, so do not read
+    // the old one back in: a grade group is now an Employee Eligibility axis as well as an approval-routing
+    // scope. The reason there is still nothing to reproject is the STORAGE, not the absence of a consumer —
+    // an eligibility rule stores the group's member grades, expanded at pick time
+    // (lib/grade-group-coverage.ts), never the group. So moving a grade between groups changes approval
+    // routing immediately and changes no saved rule's criteria at all: there is no cohort to true up.
+    // What it does change is whether a saved rule still covers a WHOLE group, and that is surfaced as
+    // drift on the eligibility screen rather than silently rewritten from here. `gradeIds` is still
+    // returned by the writer and still used by its own event payload.
   } catch (e) {
     fail(SYSTEM_LABELS, e);
   }

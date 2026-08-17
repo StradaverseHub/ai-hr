@@ -7511,7 +7511,8 @@
       "ruleGradeGroup": "Grade group",
       "ruleGradeGroupApplied": "{count} job grades are selected.",
       "ruleGradeGroupNote": "Picking a grade group fills in the job grades it holds today. If a grade joins that group later, this rule keeps the grades it was saved with until you pick the group again.",
-      "ruleGradeGroupPartial": "This rule covers only part of {groups}. Pick the group again to take in every grade it holds — until then it cannot be assigned to an approval template."
+      "ruleGradeGroupPartial": "This rule covers only part of {groups}. Pick the group again to take in every grade it holds — until then it cannot be assigned to an approval template.",
+      "ruleGradeArchived": "{name} (archived)"
     }
   },
   "topbar": {
