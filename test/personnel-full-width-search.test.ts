@@ -15,7 +15,8 @@
  *     directly rather than inferred from rendered HTML.
  *
  *  3. THE LAYOUT + WIRING, as a static-source guard: both Personnel screens use the SAME container
- *     (`max-w-[100rem]`, the cap this codebase already uses for its wide screens) and both mount the
+ *     (`max-w-[100rem]` — the cap Personnel and Leave use; NOT the whole codebase any more, since
+ *     152fea7f moved the Payroll module onto `pageWideCls`) and both mount the
  *     switcher; the island stays a client island taking plain data only. That last one is not style
  *     policing — a function prop crossing from these server components returns a 500 on every request
  *     while tsc, this suite and `next build` all stay green (r123).
@@ -193,7 +194,13 @@ describe('c002b3c3 · the module is full width, once, in one place', () => {
 
   it('the value is the one the codebase already uses for wide screens (not a fourth number)', () => {
     // If this ever fails, the fix is to converge — not to add another cap.
-    expect(read('app/payroll/transactions/fixed/page.tsx')).toContain('mx-auto max-w-[100rem]');
+    //
+    // 152fea7f REPOINTED THIS WITNESS. It used to name app/payroll/transactions/fixed/page.tsx, but the
+    // whole Payroll module has since moved OFF `mx-auto max-w-[100rem]` and onto `pageWideCls` (true
+    // full-browser width) — so that file is no longer evidence of anything about this cap. Leave Inquiry
+    // is the witness now: it still carries the cap and test/leave-inquiry-layout.test.ts pins it there,
+    // so the two guards fail together rather than one drifting silently past the other.
+    expect(read('app/leave/page.tsx')).toContain('mx-auto max-w-[100rem]');
   });
 });
 

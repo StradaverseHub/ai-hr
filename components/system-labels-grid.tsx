@@ -166,6 +166,9 @@ export function SystemLabelsGrid({
   actions,
   gradesSlot,
   gradesActiveCount = 0,
+  gradeGroupsSlot,
+  gradeGroupsLabel,
+  gradeGroupsCount = 0,
   optionSlots = [],
 }: {
   data: Record<GridKind, GridRecord[]>;
@@ -182,6 +185,21 @@ export function SystemLabelsGrid({
   gradesSlot?: ReactNode;
   /** Live count beside the rail's Grades entry (active, i.e. non-archived grades). */
   gradesActiveCount?: number;
+  /** 9a65f808 — the Grade Groups BODY (components/leave/grade-group-config.tsx), rendered in place of the
+   *  company-scoped toolbar + table when the rail's Grade Groups entry is selected. It sits DIRECTLY after
+   *  Grades because a grade group is a named set of job grades and the two are maintained together — that
+   *  adjacency is the point of the move, not a layout preference.
+   *
+   *  Its own rail entry rather than a thirteenth `optionSlot`, for the reason `gradesSlot` is not one
+   *  either: the option slots are all the same flat profile_option editor, and folding a different editor
+   *  into that list would make their shared prop shape a lie the first time one of them is changed as a
+   *  group. Absent ⇒ the rail is exactly what it was. */
+  gradeGroupsSlot?: ReactNode;
+  /** Translated rail label for Grade Groups — supplied by the page, which owns the namespace the editor
+   *  itself reads (`admin.benefitScheme`), so the move mints no new string in six locales. */
+  gradeGroupsLabel?: string;
+  /** Live count beside the rail's Grade Groups entry. */
+  gradeGroupsCount?: number;
   /** c9986927 — the eight organisation categories relocated here from Profile Options (Division, Branch,
    *  Region, Line, Section, Team, Base, Category). Each is a further rail entry whose body is supplied by
    *  the page, exactly as Grades is. They are a SEPARATE mechanism from gradesSlot on purpose: their body
@@ -194,8 +212,11 @@ export function SystemLabelsGrid({
   // b1b81a08 — which BODY the rail is showing. `kind` keeps its last company-scoped value throughout, so
   // switching to Grades and back restores the category the admin was on.
   const [showGrades, setShowGrades] = useState(false);
+  // 9a65f808 — …and whether it is on Grade Groups. c9986927's note below still holds with one more
+  // selection in it: the FOUR selections (kind / Grades / Grade Groups / option category) are mutually
+  // exclusive, and every rail button clears the other three.
+  const [showGradeGroups, setShowGradeGroups] = useState(false);
   // c9986927 — the selected relocated-option category, or null when the rail is on a kind / on Grades.
-  // The three selections are mutually exclusive; every rail button clears the other two.
   const [optionKey, setOptionKey] = useState<string | null>(null);
   const [rowsByKind, setRowsByKind] = useState<Record<GridKind, RowState[]>>(() => {
     const seed = {} as Record<GridKind, RowState[]>;
@@ -497,6 +518,7 @@ export function SystemLabelsGrid({
                   type="button"
                   onClick={() => {
                     setShowGrades(false);
+                    setShowGradeGroups(false);
                     setOptionKey(null);
                     setKind(k);
                     setSelected(new Set());
@@ -504,7 +526,7 @@ export function SystemLabelsGrid({
                     setError(null);
                   }}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                    !showGrades && optionKey === null && kind === k
+                    !showGrades && !showGradeGroups && optionKey === null && kind === k
                       ? 'bg-primary/10 font-medium text-primary'
                       : 'text-foreground hover:bg-muted'
                   }`}
@@ -522,6 +544,7 @@ export function SystemLabelsGrid({
                   type="button"
                   onClick={() => {
                     setShowGrades(true);
+                    setShowGradeGroups(false);
                     setOptionKey(null);
                     setSelected(new Set());
                     setRowErrors({});
@@ -536,6 +559,31 @@ export function SystemLabelsGrid({
                 </button>
               </li>
             )}
+            {/* 9a65f808 — Grade Groups, DIRECTLY under Grades: a group is a named set of grades, and the
+                whole point of moving this editor here is that the two are maintained side by side. Its
+                label comes from the page for the reason the option slots' do — the editor keeps its own
+                `admin.benefitScheme` strings, so nothing is re-translated for the move. */}
+            {gradeGroupsSlot !== undefined && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGrades(false);
+                    setShowGradeGroups(true);
+                    setOptionKey(null);
+                    setSelected(new Set());
+                    setRowErrors({});
+                    setError(null);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                    showGradeGroups ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <span>{gradeGroupsLabel}</span>
+                  <span className="tabular-nums text-xs text-muted-foreground">{gradeGroupsCount}</span>
+                </button>
+              </li>
+            )}
             {/* c9986927 — the relocated organisation categories, same rail treatment and live count. Their
                 labels come from the page (they keep their existing admin.profileOptions.category.* strings,
                 so nothing is re-translated for the move). */}
@@ -545,6 +593,7 @@ export function SystemLabelsGrid({
                   type="button"
                   onClick={() => {
                     setShowGrades(false);
+                    setShowGradeGroups(false);
                     setOptionKey(slot.key);
                     setSelected(new Set());
                     setRowErrors({});
@@ -596,6 +645,11 @@ export function SystemLabelsGrid({
           have no meaning for tenant-global grade rows, so the grade body is its own component. */}
       {showGrades && gradesSlot !== undefined ? (
         gradesSlot
+      ) : showGradeGroups && gradeGroupsSlot !== undefined ? (
+        // 9a65f808 — the Grade Groups editor, supplied by the page. Same swap as Grades and for the same
+        // reason: a grade group is TENANT-level (it names a band of job grades and carries no company), so
+        // the company toolbar and the Criteria column have nothing to say about it.
+        gradeGroupsSlot
       ) : optionKey !== null ? (
         // c9986927 — the relocated organisation category's own editor, supplied by the page. Same swap as
         // Grades: the company toolbar and Criteria column have no meaning for a flat tenant-wide catalog.

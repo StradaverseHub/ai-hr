@@ -309,7 +309,12 @@ describe('the landing page is a directory, not a second generator', () => {
   });
 
   it('uses the full screen width the reporter asked for', () => {
-    expect(PAGE).toContain('max-w-[100rem]');
+    // 152fea7f UPDATED THIS CASE rather than deleting it. The requirement is unchanged — this screen must
+    // use the width the reporter asked for — but the MEANS changed: the module-wide standard is now
+    // `pageWideCls` ('w-full space-y-6'), which is WIDER than the `mx-auto max-w-[100rem]` cap this line
+    // used to pin. Asserting the old cap here would fail the very screen it was written to protect.
+    expect(PAGE).toContain('pageWideCls');
+    expect(PAGE).not.toContain('mx-auto max-w-[100rem]');
   });
 
   /**

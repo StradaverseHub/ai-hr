@@ -5,7 +5,7 @@ import { listCompanies } from '@/core/read';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { packFor } from '@/localization/registry';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { savePayrollConfigAction } from './actions';
 
@@ -50,7 +50,7 @@ export default async function PayrollConfigPage({
   );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} back={await settingsBack()} />
       {error && <ErrorBanner message={error} />}
 

@@ -116,11 +116,46 @@ describe('74d00fd2 · eligibility pickers get Select all / Deselect all / search
   });
 
   it('a stored value that has since been deactivated stays offered, so a plain Save cannot widen the rule', () => {
-    expect(form).toMatch(/options=\{withStored\(f\.options \?\? \[\], storedFor\(f\.name\)\)\}/);
-    expect(form).toMatch(/const withStored = \(options: CriteriaOption\[\], stored: string\[\]\): CriteriaOption\[\]/);
-    expect(form).toMatch(/stored\.filter\(\(v\) => !options\.some\(\(o\) => o\.value === v\)\)\.map\(\(v\) => \(\{ value: v, label: v \}\)\)/);
+    // 9a65f808 — the call site now reads `optionsFor(f)`, which is `withStored` plus one more union for
+    // the grade axis (below). UPDATED rather than loosened: the property is that every picker's option
+    // list still passes through `withStored` with this rule's own stored values, and it does.
+    expect(form).toMatch(/options=\{optionsFor\(f\)\}/);
+    expect(form).toMatch(/const optionsFor = \(f: \{ name: string; options\?: CriteriaOption\[\] \}\): CriteriaOption\[\] =>/);
+    // EVERY branch of optionsFor goes through withStored with this rule's own stored values — the grade
+    // axis adds a third argument (below), and the other twenty-odd axes are the plain two-argument call.
+    expect(form).toMatch(/: withStored\(f\.options \?\? \[\], storedFor\(f\.name\)\)/);
+    expect(form).toMatch(/const withStored = \(\s*\n\s*options: CriteriaOption\[\],\s*\n\s*stored: string\[\],/);
+    // The label of a stored value with no option of its own DEFAULTS to the raw value, exactly as it did
+    // when that was the only possibility; only the grade axis passes something better.
+    expect(form).toMatch(/labelFor: \(v: string\) => string = \(v\) => v,/);
+    expect(form).toMatch(/extra\.push\(\{ value: v, label: labelFor\(v\) \}\);/);
     // Read from `initial`, not from live state — a live-derived option list would move under the operator.
     expect(form).toMatch(/const v = initial\?\.criteria\?\.\[name\];/);
+  });
+
+  it('…and 9a65f808 extends the SAME rule to every grade a group holds, WITH a name on it', () => {
+    // The Grade Group picker expands to member grades, and `ChipMultiSelect` drops any defaultSelected
+    // value it cannot find in `options`. A group holding an archived grade would therefore expand to seven
+    // and post six — the identical silent widening the case above exists to prevent, arriving by a new
+    // route. Pinned here, beside it, because the two are one rule.
+    //
+    // The union is unchanged; what the fix pass added is `gradeLabelFor`. Without it the archived member
+    // went into the picker under the raw-value fallback — a bare UUID offered to an operator — so the two
+    // are asserted together: keeping the union without the label is the defect, and dropping the union to
+    // avoid the label is the silent widening.
+    expect(form).toMatch(
+      /f\.name === 'gradeIds'\s*\n\s*\? withStored\(f\.options \?\? \[\], \[\.\.\.storedFor\(f\.name\), \.\.\.allGroupMemberGradeIds\], gradeLabelFor\)/,
+    );
+    expect(form).toMatch(/const gradeLabelFor = \(v: string\): string =>/);
+    expect(form).toMatch(/return name == null \? v : t\('ruleGradeArchived', \{ name \}\);/);
+  });
+
+  it('no option list can hold the same value twice — the two unions legitimately overlap', () => {
+    // A rule that stores an archived grade a group also holds names it in `storedFor` AND in
+    // `allGroupMemberGradeIds`. Two options sharing a `value` give ChipMultiSelect two popover rows with
+    // the same React key, and an option count its "All selected" summary can never reach.
+    expect(form).toMatch(/const seen = new Set\(options\.map\(\(o\) => o\.value\)\);/);
+    expect(form).toMatch(/if \(seen\.has\(v\)\) continue;\s*\n\s*seen\.add\(v\);/);
   });
 
   it('the FORM CONTRACT is untouched: one hidden input per value, outside the open guard', () => {

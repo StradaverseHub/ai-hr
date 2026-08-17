@@ -70,6 +70,7 @@ import { createBatch, generatePayslips, setPayrollDeductionInput } from '../core
 import { listTp1DeclarationsForPerson } from '../core/tax-relief';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { CollapsibleEmployeePanel, EmployeeScopePanel } from '../components/collapsible-employee-panel';
+import { pageWideCls } from '../components/ui';
 import { AppliedInPayrollList } from '../components/applied-in-payroll-list';
 import { Tp1DeclarationsList } from '../components/tp1-declarations-list';
 import { Tp1DeclarationForm } from '../components/tp1-declaration-form';
@@ -289,8 +290,13 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
     expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
     expect(panels[0].props.basePath).toBe('/payroll/transactions/tp1');
 
-    // The reporter asked for the full-width layout every sibling screen has.
-    expect(walk(tree).some((e) => typeof e.props?.className === 'string' && e.props.className.includes('max-w-[100rem]'))).toBe(true);
+    // The reporter asked for the full-width layout every sibling screen has. 152fea7f UPDATED this
+    // assertion rather than deleting it: the sibling screens moved from the `mx-auto max-w-[100rem]` cap
+    // to `pageWideCls` ('w-full space-y-6'), so the rule still reads "same width as its siblings" — it is
+    // the siblings' width that changed. Asserted on the RENDERED tree, so it survives however the class
+    // is composed.
+    expect(walk(tree).some((e) => e.props?.className === pageWideCls)).toBe(true);
+    expect(walk(tree).some((e) => typeof e.props?.className === 'string' && e.props.className.includes('max-w-[100rem]'))).toBe(false);
   });
 
   it('the collapse state is resolved on the SERVER from that cookie (no open-then-collapse flash)', async () => {

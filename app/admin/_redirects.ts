@@ -22,12 +22,24 @@ export const GENERATE = '/admin/leave/generate';
  *  and 2). Its saves return here rather than to ENTITLEMENTS: the two steps are one screen and an operator
  *  writing a table then assigning it must not be bounced back into the Leave Type workspace between them. */
 export const ENTITLEMENT_TEMPLATES = '/admin/leave/entitlements/templates';
-/** f12d77e5 — the Leave Approval Workflow screen, and the home of the relocated Grade Groups card.
- *  The three grade-group writes return HERE, not to ENTITLEMENTS: moving a card without moving its
- *  redirect would save the group and then throw the admin onto the exact screen this item takes grade
- *  groups off — and send a failure's `?error=` to a page with no grade-group form to explain it.
- *  app/admin/leave-approval/actions.ts holds the same literal as its own private `PAGE`. */
-export const LEAVE_APPROVAL = '/admin/leave/approval';
+/**
+ * 9a65f808 — System Labels → Organisation, and the home of the Grade Groups editor.
+ *
+ * THE THIRD ADDRESS THIS CARD HAS HAD, so the reasoning is worth keeping rather than re-deriving. It sat on
+ * Settings → Leave → Entitlements (only because 6e9a126e deleted the workbench it lived in), moved to
+ * Settings → Leave → Approval with f12d77e5 when grade groups were purely an approval-routing scope, and
+ * now sits beside Job Grades on System Labels because it is neither: 9a65f808 made a grade group an
+ * ENTITLEMENT-ELIGIBILITY vocabulary as well as an approval one, and a shared vocabulary maintained inside
+ * one of its two consumers is a shared vocabulary the other consumer's admins cannot find.
+ *
+ * `LEAVE_APPROVAL` STOOD HERE AND IS GONE, deliberately: these three writes were its only callers, and an
+ * exported redirect nobody redirects to is a statement about where a screen lives that has stopped being
+ * true. The redirect has to move WITH the card every time — a save that worked and then dropped the admin
+ * on a page with no grade-group form to show the result is bad; a failure doing it is worse, because
+ * `fail()` carries the message in `?error=` and the refusal would surface on a screen that cannot explain
+ * it. app/admin/leave-approval/actions.ts keeps its own private `PAGE` literal and is unaffected.
+ */
+export const SYSTEM_LABELS = '/admin/settings/system-labels';
 
 export function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);

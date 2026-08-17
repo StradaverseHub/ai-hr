@@ -275,8 +275,25 @@ function withFallback(base: Dict, over: Dict): Dict {
   return out;
 }
 
-/** One multi field and one range field — both branches of the section renderer. */
+/**
+ * One multi field and one range field — both branches of the section renderer.
+ *
+ * 9a65f808 added `gradeIds`: the Grade Group picker EXPANDS into it, so a fixture without it would render
+ * the group control against nothing to fill in and the locale sweep below would never walk the branch that
+ * matters.
+ */
 const SECTIONS: CriteriaSection[] = [
+  {
+    key: 'employment',
+    title: 'Employment Information',
+    fields: [
+      { name: 'gradeIds', label: 'Job grade', kind: 'multi', options: [
+        { value: 'g12', label: 'Grade 12' },
+        { value: 'g13', label: 'Grade 13' },
+        { value: 'g19', label: 'Grade 19' },
+      ] },
+    ],
+  },
   {
     key: 'employee',
     title: 'Employee Information',
@@ -286,6 +303,12 @@ const SECTIONS: CriteriaSection[] = [
     ],
     note: 'Job title, employee group and employee class are not held in this system.',
   },
+];
+
+/** 9a65f808 — two groups over the three grades above; the second is deliberately a single-grade group. */
+const GRADE_GROUPS = [
+  { id: 'gg-contract', name: 'GRADE 12-18 (CONTRACT)', gradeIds: ['g12', 'g13'] },
+  { id: 'gg-senior', name: 'GRADE >= 19 (CONTRACT)', gradeIds: ['g19'] },
 ];
 
 describe('74d00fd2 · the eligibility form renders in all six catalogues without an IntlError', () => {
@@ -302,6 +325,7 @@ describe('74d00fd2 · the eligibility form renders in all six catalogues without
             countAction={async () => 0}
             templates={[{ value: 't1', label: 'Standard annual leave' }]}
             criteriaSections={SECTIONS}
+            gradeGroups={GRADE_GROUPS}
             today="2026-08-11"
             submitLabel="Create"
           />
@@ -325,10 +349,121 @@ describe('74d00fd2 · the eligibility form renders in all six catalogues without
       await user.click(screen.getByRole('button', { name: et.chipDeselectAll }));
       expect(screen.getByRole('button', { name: 'Nationality' })).toHaveTextContent(et.chipAddPlaceholder);
 
+      /**
+       * 9a65f808 — THE GRADE GROUP CONTROL, in this locale, including the one string that is not eager.
+       *
+       * `ruleGradeGroup` / `ruleGradeGroupApplied` / `ruleGradeGroupNote` render with the form, so they are
+       * already exercised by the mount above. `ruleGradeGroupPartial` renders only when the rule covers
+       * PART of a group, which is a state no prop can be handed in — so it is produced: tick a group (its
+       * two grades expand into the Job grade picker), then untick one of them by hand.
+       */
+      await user.click(screen.getByRole('button', { name: et.ruleGradeGroup }));
+      await user.click(screen.getByRole('checkbox', { name: 'GRADE 12-18 (CONTRACT)' }));
+      // The expansion is visible WITHOUT opening the picker it filled in — that is what the summary on the
+      // trigger is for, and the Job grade picker sits inside a collapsed section on the real screen.
+      expect(screen.getByRole('button', { name: 'Job grade' })).not.toHaveTextContent(et.chipAddPlaceholder);
+
+      await user.click(screen.getByRole('button', { name: 'Job grade' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Grade 13' }));
+      // Half a group left: the warning names the group, formatted through this locale's own {groups}.
+      expect(document.body.textContent, `[${loc}] the partial-coverage warning must name the group`).toContain(
+        'GRADE 12-18 (CONTRACT)',
+      );
+
       // MISSING_MESSAGE and FORMATTING_ERROR arrive here rather than throwing — which is exactly how a
       // broken key hides behind a 200 in production.
       expect(errors, `[${loc}] next-intl reported: ${errors.join(' | ')}`).toEqual([]);
       cleanup();
     });
   }
+});
+
+/**
+ * 9a65f808 (fix pass) — AN ARCHIVED GRADE A GROUP STILL HOLDS IS NAMED, NEVER A BARE UUID.
+ *
+ * Archiving a job grade does not take it out of the grade groups that hold it, and the Job Grade picker
+ * has to keep offering it or `ChipMultiSelect` drops it out of the group's expansion silently — the rule
+ * would then cover fewer people than the group the operator picked. That union is right; what was wrong is
+ * that the id went in with no label, so the picker listed a raw UUID an operator could tick.
+ *
+ * Rendered rather than reasoned about, because the whole defect is what a human sees on a control: the
+ * option's text, and whether there is one of it.
+ */
+describe('9a65f808 · an archived member of a grade group in the Job Grade picker', () => {
+  /** A real-shaped id, so a fallback that printed the value would be unmistakable in the assertion. */
+  const ARCHIVED_ID = '8f2b6c14-3d5a-4f7e-9c10-2a4b6d8e0f13';
+  const GROUPS: { id: string; name: string; gradeIds: string[] }[] = [
+    { id: 'gg-contract', name: 'GRADE 12-18 (CONTRACT)', gradeIds: ['g12', 'g13', ARCHIVED_ID] },
+  ];
+  const ARCHIVED_NAMES = [{ id: ARCHIVED_ID, name: 'Grade 18' }];
+  const en = CATALOGUES.en;
+  const et = (en.admin as Dict).entitlementTemplates as Record<string, string>;
+
+  const renderForm = (p: {
+    archivedMemberGrades?: { id: string; name: string }[];
+    criteria?: Record<string, string[] | string>;
+  }) => {
+    const view = render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <EligibilityRuleForm
+          action={async () => {}}
+          countAction={async () => 0}
+          templates={[{ value: 't1', label: 'Standard annual leave' }]}
+          criteriaSections={SECTIONS}
+          gradeGroups={GROUPS}
+          archivedMemberGrades={p.archivedMemberGrades}
+          initial={
+            p.criteria
+              ? { name: 'Existing', templateLineageId: 't1', validFrom: '2026-08-11', criteria: p.criteria }
+              : undefined
+          }
+          today="2026-08-11"
+          submitLabel="Create"
+        />
+      </NextIntlClientProvider>,
+    );
+    const form = view.container.querySelector('form') as HTMLFormElement;
+    return { ...view, posted: () => new FormData(form).getAll('gradeIds').map(String) };
+  };
+
+  it('shows the grade’s NAME marked archived, and the group still expands whole', async () => {
+    const user = userEvent.setup();
+    const { posted } = renderForm({ archivedMemberGrades: ARCHIVED_NAMES });
+
+    await user.click(screen.getByRole('button', { name: et.ruleGradeGroup }));
+    await user.click(screen.getByRole('checkbox', { name: 'GRADE 12-18 (CONTRACT)' }));
+    // All three members are posted — the archived one included. This is the reason the union exists.
+    expect(posted().sort()).toEqual([ARCHIVED_ID, 'g12', 'g13'].sort());
+
+    await user.click(screen.getByRole('button', { name: 'Job grade' }));
+    const row = screen.getByRole('checkbox', { name: 'Grade 18 (archived)' });
+    expect(row).toHaveAttribute('aria-checked', 'true');
+    // THE DEFECT, stated as the thing that must not be on screen anywhere.
+    expect(document.body.textContent, 'no raw id may reach the operator').not.toContain(ARCHIVED_ID);
+
+    // Still removable by hand, exactly like any other grade — a label is all that changed.
+    await user.click(row);
+    expect(posted().sort()).toEqual(['g12', 'g13']);
+  });
+
+  it('offers it ONCE when the saved rule names it too — two options cannot share a value', async () => {
+    // The stored list and the group membership legitimately overlap. Before the de-duplication that pushed
+    // the same id twice: two popover rows with the same React key, and an option count "All selected" could
+    // never reach, on a control whose whole job is to say what is picked.
+    const user = userEvent.setup();
+    renderForm({ archivedMemberGrades: ARCHIVED_NAMES, criteria: { gradeIds: [ARCHIVED_ID] } });
+
+    await user.click(screen.getByRole('button', { name: 'Job grade' }));
+    expect(screen.getAllByRole('checkbox', { name: 'Grade 18 (archived)' })).toHaveLength(1);
+  });
+
+  it('degrades to the raw id only when no name was supplied — the prop is what fixes it', async () => {
+    // Pins WHERE the fix lives: the option is unioned in either way (the expansion must stay whole), so a
+    // mount that forgot `archivedMemberGrades` is the one case that still shows an id. That is a missing
+    // label, not a missing option — which is why the prop is optional and the groups are not.
+    const user = userEvent.setup();
+    renderForm({});
+    await user.click(screen.getByRole('button', { name: 'Job grade' }));
+    expect(screen.getByRole('checkbox', { name: ARCHIVED_ID })).toBeInTheDocument();
+  });
 });

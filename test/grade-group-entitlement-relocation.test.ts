@@ -1,5 +1,27 @@
 /**
  * f12d77e5 — Remove Grade Groups from the Leave Entitlement framework.
+ * 9a65f808 (r197) — …and move the editor on again, to System Labels → Organisation.
+ *
+ * ⚠️ READ THIS BEFORE THE ORIGINAL HEADER BELOW: HALF OF IT IS HISTORY NOW, AND WHICH HALF MATTERS.
+ *
+ * f12d77e5's reasoning rested on one fact — "a grade group no longer selects an entitlement; it is purely
+ * an approval-routing scope" — and that fact is what put the editor on the Leave Approval screen. 9a65f808
+ * ended it: Employee Eligibility now offers a Grade Group picker, which expands to the group's member
+ * grades, so a grade group is the vocabulary of BOTH the approval side and the entitlement side. Shared
+ * master data maintained inside one of its two consumers is master data the other consumer's admins cannot
+ * find, so the editor sits beside Job Grades on Settings → System Labels → Organisation.
+ *
+ * THE CASES BELOW WERE UPDATED, NOT DELETED, and the split is deliberate:
+ *   - "off the Entitlement screen" (the first block) is UNTOUCHED and still exactly right. The reporter of
+ *     f12d77e5 asked for that and nothing since has reversed it — the Entitlements screen gained a grade
+ *     group PICKER on its eligibility rules, which is a consumer, not an editor.
+ *   - "…and reachable from the Leave Approval screen" (the second block) is the half 9a65f808 reversed. It
+ *     now asserts the mount is ABSENT there and PRESENT on System Labels, with the same structural rigour
+ *     and the same reasons attached — a mount is not something a behaviour test can see, and "absent" is
+ *     the half a careless re-add would undo.
+ *   - the delete-refusal behaviour block is untouched and is MORE load-bearing than before: a grade group
+ *     now scopes entitlement eligibility as well, so deleting one that rules point at was already unsafe
+ *     and has gained a second way to hurt.
  *
  * THE DEFECT THIS PINS IS A MISREADING, NOT A BUG: "remove grade groups from entitlement" reads like
  * "delete grade groups", and deleting them is silently destructive. 205 of the tenant's 261
@@ -41,10 +63,13 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 const ROOT = path.resolve(__dirname, '..');
 const ENTITLEMENTS = path.join(ROOT, 'app/admin/leave/entitlements/page.tsx');
 const APPROVAL = path.join(ROOT, 'app/admin/leave/approval/page.tsx');
+/** 9a65f808 — the editor's third and current home: beside Job Grades on the Organisation tab. */
+const SYSTEM_LABELS = path.join(ROOT, 'app/admin/settings/system-labels/page.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 const entitlementsSrc = fs.readFileSync(ENTITLEMENTS, 'utf8');
 const approvalSrc = fs.readFileSync(APPROVAL, 'utf8');
+const systemLabelsSrc = fs.readFileSync(SYSTEM_LABELS, 'utf8');
 
 /**
  * COMMENTS ARE NOT CODE (the r134 rule). A removal has to be able to explain itself, and an honest
@@ -56,6 +81,7 @@ const stripComments = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
 const entitlementsCode = stripComments(entitlementsSrc);
 const approvalCode = stripComments(approvalSrc);
+const systemLabelsCode = stripComments(systemLabelsSrc);
 
 /**
  * The top-level elements of the first `[...]` at or after `from`, split on depth-1 commas. Used on
@@ -140,40 +166,90 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
   });
 });
 
-describe('f12d77e5 · …and reachable from the Leave Approval screen, which is where it is used', () => {
-  it('the Approval page imports the editor and mounts it', () => {
-    expect(approvalSrc).toMatch(/^import \{ GradeGroupConfig \} from '@\/components\/leave\/grade-group-config';$/m);
-    expect(approvalCode).toContain('<GradeGroupConfig');
+describe('9a65f808 · …off the Leave Approval screen too, now that BOTH sides use grade groups', () => {
+  it('the Approval page no longer imports or mounts the editor', () => {
+    // f12d77e5 asserted the OPPOSITE here, and it was right while a grade group was only an approval
+    // scope. The case is inverted rather than deleted: the mount having a single home is the property
+    // worth guarding, and "it came back to a second screen" is exactly how two editors over one table
+    // start drifting.
+    expect(approvalCode).not.toContain('<GradeGroupConfig');
+    expect(approvalSrc).not.toMatch(/^import .*grade-group-config'/m);
+  });
+
+  it('and stopped READING and GATING for it — the query and the isAdmin gate went with the card', () => {
+    // The e4238594 precedent again: an unmounted card's data prep left behind is a query per render for a
+    // surface nobody sees. `canEditGradeGroups` is the other half — a gate with nothing to gate reads as
+    // a card that is merely hidden, which is the opposite of what happened.
+    for (const gone of ['listGradeGroups', 'canEditGradeGroups', 'createGradeGroupAction']) {
+      expect(approvalCode, `${gone} must be gone from the approval page's CODE`).not.toContain(gone);
+    }
+  });
+
+  it('the destructure and the Promise.all still have the SAME arity, in the same order', () => {
+    // The f12d77e5 trap, in the opposite direction: this removal drops the LAST name, and dropping the
+    // element without the name (or the reverse) silently hands `eligibilityRulesAll` the grade groups.
+    const { names, calls } = destructuredAwaitAll(approvalCode, 'const [leaveTypesAll,');
+    expect(names).toEqual(['leaveTypesAll', 'gradesAll', 'eligibilityRulesAll']);
+    expect(calls).toHaveLength(names.length);
+    expect(calls[names.indexOf('gradesAll')]).toMatch(/^listJobGrades\(/);
+    expect(calls[names.indexOf('eligibilityRulesAll')]).toMatch(/^listEligibilityRuleScopes\(/);
+  });
+
+  it('KEEPS the approval surfaces the item does not touch', () => {
+    // Stated positively so an over-eager follow-up cleanup fails here rather than in production: the item
+    // removed one card, and approval routing is untouched by design.
+    expect(approvalCode).toContain('<ApprovalTemplateManager');
+    expect(approvalCode).toContain('<ApprovalAssignmentManager');
+    expect(approvalCode).toContain('<LeaveEscalationEditor');
+  });
+});
+
+describe('9a65f808 · …and maintained on System Labels → Organisation, beside Job Grades', () => {
+  it('the System Labels page imports the editor and mounts it', () => {
+    expect(systemLabelsSrc).toMatch(/^import \{ GradeGroupConfig \} from '@\/components\/leave\/grade-group-config';$/m);
+    expect(systemLabelsCode).toContain('<GradeGroupConfig');
     // The component file itself must still exist — a mount pointing at a deleted file is a build error,
     // but the deletion is the mistake this item exists to prevent, so it is named.
     expect(fs.existsSync(path.join(ROOT, 'components/leave/grade-group-config.tsx'))).toBe(true);
+    // …and it is reachable: a body with no rail entry is a component that is mounted and unreachable.
+    expect(systemLabelsCode).toContain('gradeGroupsSlot={gradeGroupsSlot}');
+    expect(systemLabelsCode).toContain('gradeGroupsLabel=');
   });
 
   it('it reads the groups and wires all three writes — a read-only card would be a dead end', () => {
-    const { names, calls } = destructuredAwaitAll(approvalCode, 'const [leaveTypesAll,');
+    const { names, calls } = destructuredAwaitAll(systemLabelsCode, 'const [companies,');
     expect(names).toContain('gradeGroups');
     expect(calls).toHaveLength(names.length);
     expect(calls[names.indexOf('gradeGroups')]).toContain('listGradeGroups(s)');
     for (const action of ['createGradeGroupAction', 'updateGradeGroupAction', 'deleteGradeGroupAction']) {
-      expect(approvalCode, `${action} must be wired on the approval page`).toContain(action);
+      expect(systemLabelsCode, `${action} must be wired on the System Labels page`).toContain(action);
     }
   });
 
-  it('the card is gated on isAdmin — the move must not widen who can see it', () => {
-    // lib/permissions.ts registers this route with guard `scopedSession`, which all seven roles satisfy;
-    // the page the card came from was `requireAdmin`. Without this gate, relocating the mount would hand
-    // every employee a tenant-wide grade-group listing they could not previously reach.
-    expect(approvalCode).toContain('isAdmin(s)');
-    expect(approvalCode).toMatch(/canEditGradeGroups\s*&&/);
-    // …and a non-admin must not even pay for the read.
-    expect(approvalCode).toMatch(/canEditGradeGroups\s*\?\s*listGradeGroups\(s\)/);
+  it('the read goes through the leave pack FACADE, not core/benefit-scheme', () => {
+    // `listGradeGroups` lives in a guarded leave-pack boundary module (test/leave-pack-drift.test.ts), and
+    // this page is not one of the pack's own routes. Importing the facade is the sanctioned path; the
+    // alternative is an entry on an audited debt list documented to only ever shrink. Pinned here as well
+    // as by the ratchet because the ratchet's message is about a list, not about this decision.
+    expect(systemLabelsSrc).toMatch(/^import \{ listGradeGroups \} from '@\/packs\/leave\/service';$/m);
+    expect(systemLabelsSrc).not.toMatch(/^import .*core\/benefit-scheme'/m);
   });
 
-  it('the three writes RETURN to the approval screen — a redirect left behind is a bug, not a detail', () => {
-    // A save that worked and then dropped the admin on /admin/leave/entitlements would land them on the
-    // one screen this item exists to take grade groups off, with no card there to show the result. Worse
-    // on failure: `fail()` carries the message in `?error=`, so deleteGradeGroup's refusal would have
-    // been rendered on a page with no grade-group form while the Approval screen reloaded unchanged.
+  it('the page guard is scopedAdmin — the move must not widen who can maintain a grade group', () => {
+    // The card's previous home was `scopedSession` (all seven roles reach it by URL) and it carried its
+    // own `isAdmin(s)` gate for exactly that reason. This page needs no such gate because its OWN guard is
+    // admin-only, and lib/permissions.ts must agree — the registry is what drives the users/roles matrix,
+    // so a page whose guard and registration disagree misreports who can reach a screen.
+    expect(systemLabelsCode).toContain('scopedAdmin()');
+    const permissions = fs.readFileSync(path.join(ROOT, 'lib/permissions.ts'), 'utf8');
+    const entry = permissions.slice(permissions.indexOf("screenKey: 'systemLabels'"));
+    expect(entry.slice(0, entry.indexOf('}'))).toContain("guard: 'scopedAdmin'");
+  });
+
+  it('the three writes RETURN to the System Labels screen — a redirect left behind is a bug', () => {
+    // A save that worked and then dropped the admin on another screen would show no result. Worse on
+    // failure: `fail()` carries the message in `?error=`, so deleteGradeGroup's refusal would be rendered
+    // on a page with no grade-group form while the screen the admin is looking at reloads unchanged.
     const actionsSrc = fs.readFileSync(path.join(ROOT, 'app/admin/actions.ts'), 'utf8');
     const block = actionsSrc.slice(
       actionsSrc.indexOf('export async function createGradeGroupAction'),
@@ -182,25 +258,32 @@ describe('f12d77e5 · …and reachable from the Leave Approval screen, which is 
     expect(block, 'the three grade-group actions must be findable as one block').not.toBe('');
     expect(stripComments(block)).not.toContain('ENTITLEMENTS');
     // ok() on the happy path and fail() on the error path, for each of the three.
-    expect(stripComments(block).match(/ok\(LEAVE_APPROVAL\)/g) ?? []).toHaveLength(3);
-    expect(stripComments(block).match(/fail\(LEAVE_APPROVAL, e\)/g) ?? []).toHaveLength(3);
-    // …and the constant is the route this page actually lives at.
-    expect(fs.readFileSync(path.join(ROOT, 'app/admin/_redirects.ts'), 'utf8')).toContain(
-      "export const LEAVE_APPROVAL = '/admin/leave/approval';",
-    );
+    expect(stripComments(block).match(/ok\(SYSTEM_LABELS\)/g) ?? []).toHaveLength(3);
+    expect(stripComments(block).match(/fail\(SYSTEM_LABELS, e\)/g) ?? []).toHaveLength(3);
+    // …and the constant is the route this page actually lives at. `LEAVE_APPROVAL` was removed with the
+    // card: these three were its only callers, and an exported redirect nobody redirects to is a stale
+    // statement about where a screen lives.
+    const redirects = fs.readFileSync(path.join(ROOT, 'app/admin/_redirects.ts'), 'utf8');
+    expect(redirects).toContain("export const SYSTEM_LABELS = '/admin/settings/system-labels';");
+    expect(redirects).not.toContain('export const LEAVE_APPROVAL');
   });
 
   it('the grades offered as members are the ACTIVE list', () => {
-    // `listJobGrades` excludes archived unless asked — and it must not be asked here. The membership form
-    // posts only the boxes it renders, so an archived grade shown nowhere is dropped from the group on the
-    // next save. The Entitlements page filtered by hand for the same reason.
-    expect(approvalCode).toContain('listJobGrades(s)');
-    expect(approvalCode).not.toContain('listJobGrades(s, { includeArchived: true })');
+    // The membership form posts only the boxes it renders, so an archived grade shown nowhere is dropped
+    // from the group on the next save. Both previous homes filtered for this reason — and here the filter
+    // MUST be explicit, because this page loads grades with includeArchived for the Grades GRID beside it
+    // (that grid has to be able to show and restore an archived row). Inheriting that list would be the
+    // silent data loss the two earlier screens avoided by accident of their own narrower read.
+    expect(systemLabelsCode).toContain('listJobGrades(s, { includeArchived: true })');
+    expect(systemLabelsCode).toMatch(/grades\.filter\(\(g\) => g\.archivedAt == null\)\.map/);
   });
 });
 
 describe('f12d77e5 · the moved card still has its strings, in all six locales', () => {
   it('every admin.benefitScheme key the editor reads resolves everywhere', () => {
+    // 9a65f808 — unchanged by the second move for the same reason it survived the first: the card reads
+    // its OWN namespace, and the page reads only `groupsTitle` from it for the rail entry. A move that
+    // minted a fresh copy of these twelve strings would be twelve strings to keep in step in six files.
     // A moved mount that orphaned these would pass tsc, the suite and `next build`, then throw
     // MISSING_MESSAGE at render — the exact class of defect a 200 does not catch.
     const used = [

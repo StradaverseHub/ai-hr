@@ -120,7 +120,7 @@ import { packFor } from '@/localization/registry';
 // 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
 // app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
 // async functions, so these helpers could never be exported from here).
-import { ENTITLEMENTS, GENERATE, LEAVE_APPROVAL, fail, ok, okToast, okEntitlements } from './_redirects';
+import { ENTITLEMENTS, GENERATE, SYSTEM_LABELS, fail, ok, okToast, okEntitlements } from './_redirects';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
@@ -2010,15 +2010,16 @@ function parseBands(fd: FormData): import('@/core/leave-compute').ServiceBand[] 
   }
 }
 
-/* f12d77e5 — ALL THREE GRADE-GROUP WRITES NOW RETURN TO LEAVE_APPROVAL, NOT ENTITLEMENTS.
+/* 9a65f808 — ALL THREE GRADE-GROUP WRITES NOW RETURN TO SYSTEM_LABELS.
  *
- * The editor moved to /admin/leave/approval, and a redirect left behind is not a cosmetic mismatch: the
- * save would have worked and then thrown the admin onto the Entitlement screen — the one screen this item
- * exists to take grade groups OFF — with no card there to show the result. A failure was worse: `fail()`
- * carries the message in `?error=`, so "this grade group is used by one or more leave approval rules"
- * would have surfaced on a page with no grade-group form to attach it to, while the Approval screen the
- * admin was actually looking at silently reloaded unchanged. The services and the FormData contract are
- * untouched; only where the redirect lands moved, with the card. */
+ * The editor is on Settings → System Labels → Organisation, beside Job Grades (it was on
+ * /admin/leave/approval under f12d77e5, and on the Entitlements screen before that). A redirect left
+ * behind is not a cosmetic mismatch: the save would have worked and then thrown the admin onto a screen
+ * with no grade-group card to show the result. A failure is worse — `fail()` carries the message in
+ * `?error=`, so "this grade group is used by one or more leave approval rules" would surface on a page
+ * with no grade-group form to attach it to, while the screen the admin was actually looking at silently
+ * reloaded unchanged. The services and the FormData contract are untouched; only where the redirect lands
+ * moved, with the card. */
 export async function createGradeGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
@@ -2027,9 +2028,9 @@ export async function createGradeGroupAction(fd: FormData) {
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
-    fail(LEAVE_APPROVAL, e);
+    fail(SYSTEM_LABELS, e);
   }
-  ok(LEAVE_APPROVAL);
+  ok(SYSTEM_LABELS);
 }
 
 export async function updateGradeGroupAction(fd: FormData) {
@@ -2040,14 +2041,20 @@ export async function updateGradeGroupAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
-    // 6e9a126e release three — the scheme-cohort true-up is GONE with benefit schemes. Grade groups
-    // survive (205 approval rules point at them) but they no longer select an entitlement, so moving a
-    // grade between groups changes approval routing only and has no balance to reproject. `gradeIds` is
-    // still returned by the writer and still used by its own event payload.
+    // 6e9a126e release three — the scheme-cohort true-up is GONE with benefit schemes, and NOTHING here
+    // reprojects a balance. That conclusion SURVIVES 9a65f808, but its old reason does not, so do not read
+    // the old one back in: a grade group is now an Employee Eligibility axis as well as an approval-routing
+    // scope. The reason there is still nothing to reproject is the STORAGE, not the absence of a consumer —
+    // an eligibility rule stores the group's member grades, expanded at pick time
+    // (lib/grade-group-coverage.ts), never the group. So moving a grade between groups changes approval
+    // routing immediately and changes no saved rule's criteria at all: there is no cohort to true up.
+    // What it does change is whether a saved rule still covers a WHOLE group, and that is surfaced as
+    // drift on the eligibility screen rather than silently rewritten from here. `gradeIds` is still
+    // returned by the writer and still used by its own event payload.
   } catch (e) {
-    fail(LEAVE_APPROVAL, e);
+    fail(SYSTEM_LABELS, e);
   }
-  ok(LEAVE_APPROVAL);
+  ok(SYSTEM_LABELS);
 }
 
 export async function deleteGradeGroupAction(fd: FormData) {
@@ -2055,11 +2062,13 @@ export async function deleteGradeGroupAction(fd: FormData) {
   try {
     await deleteGradeGroup(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
-    // The refusal an admin is most likely to meet here ("used by one or more leave approval rules") is
-    // now shown on the screen that lists those rules, which is the whole reason the card moved.
-    fail(LEAVE_APPROVAL, e);
+    // The refusal an admin is most likely to meet here — "used by one or more leave approval rules" — is
+    // shown on the screen the card now lives on. It names a consequence on ANOTHER screen deliberately:
+    // a grade group is shared vocabulary (approval routing AND entitlement eligibility since 9a65f808),
+    // so its delete guard cannot be explained without naming a consumer.
+    fail(SYSTEM_LABELS, e);
   }
-  ok(LEAVE_APPROVAL);
+  ok(SYSTEM_LABELS);
 }
 
 

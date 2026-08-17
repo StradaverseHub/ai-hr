@@ -5,7 +5,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listZakatElections, listZakatTxnsAcross } from '@/core/payroll-view';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
-import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
@@ -217,7 +217,7 @@ export default async function ZakatTransactionPage({
   }).toString();
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('zakat.title')}

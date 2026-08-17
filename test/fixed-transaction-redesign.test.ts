@@ -197,8 +197,10 @@ describe('009c8a37 — one header line, in both panel states, on every screen wi
 
   it('the collapsed rail is gone AND the collapsed grid drops to a single column', () => {
     // Deleting the rail is not sufficient on its own: an empty auto column plus gap-4 still held 16px
-    // back from the detail. The rail's lg:w-10 (40px) plus that gap, against the shared max-w-[100rem]
-    // cap, is the "use the full available width" requirement.
+    // back from the detail. The rail's lg:w-10 (40px) plus that gap is the "use the full available
+    // width" requirement. (The cap this was originally measured against, `max-w-[100rem]`, is gone —
+    // 152fea7f put every Payroll screen on `pageWideCls`, so collapsing now reaches the window edge.
+    // That makes the rule below matter MORE, not less: there is no cap left to hide the 56px.)
     expect(panelSrc, 'no vertical rail caption').not.toContain('writing-mode:vertical-rl');
     expect(panelSrc, 'no 40px strip').not.toContain('lg:w-10');
     expect(panelSrc, 'no empty auto column while collapsed').not.toContain('lg:grid-cols-[auto_');

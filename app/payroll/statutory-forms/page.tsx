@@ -11,7 +11,7 @@ import {
   submissionDueFor,
 } from '@/core/reporting';
 import type { FormOutput, StatutoryBodyKey } from '@/localization/country-pack';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 
 /**
@@ -351,9 +351,10 @@ export default async function StatutoryFormsPage({
   });
 
   return (
-    // c002b3c3 — the house full-width value, the same one Personnel, Leave and the Payroll dashboard use.
-    // The reporter's "the page layout does not fully utilize the available screen width", answered.
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    // c002b3c3 — the reporter's "the page layout does not fully utilize the available screen width",
+    // answered. 152fea7f then moved the whole Payroll module off the old centred `max-w-[100rem]` cap
+    // onto `pageWideCls`, the true full-browser-width container, so this screen follows it.
+    <div className={pageWideCls}>
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={sp.error} />
 
