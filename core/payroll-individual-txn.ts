@@ -5,8 +5,11 @@
  * Per-employee, non-recurring transactions of five kinds (earning / deduction / overtime / unpaid / leave),
  * each tied to a transaction date and belonging to exactly one (company, pay month). A row is EITHER
  * attached to a month+cycle batch (batchId set — the original shape) OR unattached (batchId NULL,
- * companyId + payPeriod set): keyed in BEFORE any payroll run exists for the month, then stamped onto the
- * month's REGULAR run automatically inside generatePayslips (attach-on-generate, core/payroll.ts). Deleting
+ * companyId + payPeriod set): keyed in BEFORE any payroll run exists for the month, then stamped onto a run
+ * automatically inside generatePayslips (attach-on-generate, core/payroll.ts) — the month's REGULAR run for
+ * a row that names no cycle, and since c11e81aa the run whose OWN cycle the row names when it names one
+ * (`collectableCycleIds`). "The regular run collects everything" is no longer true and code that still
+ * assumes it is stale, not merely imprecise. Deleting
  * a draft run DETACHES its rows back to unattached instead of destroying them (teardownDraftChildren).
  *
  * Scope: the LEDGER lives here; kernel consumption (f1564110 Phase 3) lives in core/payroll.ts behind
