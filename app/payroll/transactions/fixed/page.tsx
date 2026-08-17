@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
-import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { EmployeePicker, type PickerEmployee } from './employee-picker';
 import { FixedToolbar } from './add-fixed-dialog';
@@ -150,7 +150,7 @@ export default async function FixedTransactionPage({
       : error;
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: '/payroll/transactions', label: t('title') }}
         title={t('fixed.title')}

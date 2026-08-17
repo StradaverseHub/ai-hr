@@ -329,10 +329,22 @@ export default async function PeoplePage({
 
   return (
     // c002b3c3 — the Personnel module goes FULL WIDTH. `max-w-[100rem]` is not a new number: it is the
-    // container this codebase already settled on for wide screens (payroll, the transaction screens, the
-    // leave inquiries), chosen there after measuring — capped rather than full-bleed, because an
-    // uncapped table on an ultrawide display is unreadable in the other direction. Reusing that exact
-    // value is the point: the listing and the profile must not become a third and fourth width.
+    // container this codebase already settled on for wide screens, chosen there after measuring —
+    // capped rather than full-bleed, because an uncapped table on an ultrawide display is unreadable in
+    // the other direction. Reusing that exact value is the point: the listing and the profile must not
+    // become a third and fourth width.
+    //
+    // 152fea7f — THIS SENTENCE USED TO CITE PAYROLL as part of that evidence and no longer can. The
+    // reporter asked for the whole Payroll module to fill the browser; the approved item moved every
+    // Payroll screen off this cap and onto `pageWideCls` (`w-full`, uncapped). That is an override for
+    // Payroll SPECIFICALLY — a reporter who wants the extra columns on their own screens and accepts the
+    // line lengths that come with them — not a finding that the measurement above was wrong. The screens
+    // that still share this exact value, and are therefore what "already settled on" now means, are the
+    // profile next door (app/admin/personnel/[employmentId]/page.tsx) and the leave inquiries
+    // (app/leave/{page,tracker,employee-records,employee-balances}); test/leave-inquiry-layout.test.ts
+    // and test/personnel-full-width-search.test.ts pin the two ends of it together. If Payroll's users
+    // later report the ultrawide readability problem this cap exists to prevent, that is an argument to
+    // re-cap Payroll — not to uncap this page to match it.
     <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         title={t('title')}

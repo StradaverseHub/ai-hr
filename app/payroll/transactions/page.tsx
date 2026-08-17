@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /**
@@ -21,7 +21,7 @@ export default async function PayrollTransactionsPage() {
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
 
       {!typedComponentsOn && (

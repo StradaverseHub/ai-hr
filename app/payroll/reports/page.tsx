@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listReports, recentReports, reportPreview } from '@/core/reporting';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { DownloadCsv } from '@/components/download-csv';
 import { StatutoryReportPanel } from '@/components/statutory-report-panel';
 import { recordReportAction } from './actions';
@@ -41,7 +41,7 @@ export default async function ReportsPage({
   const annual = periodKind === 'year';
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={pageWideCls}>
       <div data-tour="payroll-reports">
         <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       </div>

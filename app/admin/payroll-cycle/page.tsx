@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listPayrollCycles, PAYROLL_CYCLE_RUN_TYPES } from '@/core/payroll-cycle';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { copyCycleAction, deleteCycleAction, seedCatalogAction, setActiveAction, upsertCycleAction } from './actions';
@@ -36,7 +36,7 @@ export default async function PayrollCyclePage({
   const otherCompanies = companies.filter((c) => c.id !== companyId);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} />
       {error && <ErrorBanner message={error} />}
 

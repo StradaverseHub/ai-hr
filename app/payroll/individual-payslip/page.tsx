@@ -88,7 +88,7 @@ import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
-import { Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
@@ -293,7 +293,10 @@ export default async function IndividualPayslipPage({
   const pdfHref = row ? `/payroll/individual-payslip/${row.id}/pdf` : '';
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6 print:max-w-4xl">
+    // 152fea7f — the SCREEN is full width like every other Payroll screen; PRINT keeps the centred 4xl
+    // measure it has always had. `pageWideCls` drops the `mx-auto` the old cap carried, so the print
+    // variant has to restate it or a printed payslip would sit hard against the left edge.
+    <div className={`${pageWideCls} print:mx-auto print:max-w-4xl`}>
       <div className="print:hidden">
         <PageHeader title={t('title')} description={t('subtitle')} />
       </div>

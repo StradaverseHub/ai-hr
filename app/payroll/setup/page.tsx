@@ -9,7 +9,7 @@ import {
   type ReadinessCheck,
 } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
-import { Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader, pageWideCls } from '@/components/ui';
 
 /**
  * Feature 2.0 — Payroll Configuration landing (information architecture over existing config surfaces).
@@ -145,7 +145,7 @@ export default async function PayrollSetupPage({
   ] as const;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
 
       {problems.length > 0 && (

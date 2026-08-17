@@ -35,12 +35,14 @@
  *      two names differ deliberately and neither may be tidied to match the other.
  *
  * DELIBERATELY NOT ASSERTED: that app/payroll/transactions/fixed/page.tsx stays narrow. The request cited
- * it as the screen to copy and it is capped at `mx-auto max-w-[100rem]`, so "match Fixed Transaction" and
- * "full width" are two different looks; the approved plan resolves that by following transaction-view and
- * explicitly leaving Fixed Transaction alone as a possible follow-on the reporter has to ask for. Pinning
- * it narrow here would have to be deleted the day that follow-on lands, and a guard that must be deleted
- * to make progress is the "two tests asserting opposite things" trap. The decision is recorded, not
- * enforced.
+ * it as the screen to copy and it was capped at `mx-auto max-w-[100rem]`, so "match Fixed Transaction" and
+ * "full width" were two different looks; the approved plan resolved that by following transaction-view and
+ * explicitly leaving Fixed Transaction alone as a possible follow-on the reporter had to ask for. Pinning
+ * it narrow here would have had to be deleted the day that follow-on landed, and a guard that must be
+ * deleted to make progress is the "two tests asserting opposite things" trap. The decision was recorded,
+ * not enforced — AND THE FOLLOW-ON LANDED: 152fea7f standardised every Payroll screen, Fixed Transaction
+ * included, onto `pageWideCls`. These two screens were already there and did not move; the note is kept
+ * because it is the reason this file has no such assertion to update.
  */
 import fs from 'node:fs';
 import path from 'node:path';
