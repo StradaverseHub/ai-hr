@@ -204,9 +204,16 @@ export default async function LeaveEntitlementsPage({
    *     by every panel.
    * The three tables they read are dropped in this release. Their replacement is not another page-level
    * prep here: it is the Entitlement Tables screen, which loads its own templates and eligibility rules.
-   * The grade-group half of `schemeConfigProps` survived release three as `gradeGroupProps` — and f12d77e5
-   * has now taken THAT to /admin/leave/approval, where a grade group is actually used. A grade group is an
-   * approval-routing scope, not an entitlement axis, and 205 live approval rules depend on it. */
+   * The grade-group half of `schemeConfigProps` survived release three as `gradeGroupProps`, and the
+   * EDITOR has moved twice since: f12d77e5 took it to /admin/leave/approval, and 9a65f808 took it on to
+   * Settings → System Labels → Organisation, beside Job Grades. The second move is because the premise of
+   * the first stopped holding — a grade group is no longer an approval-routing scope ONLY. This screen's
+   * Employee Eligibility rules pick grade groups now, so the two consumers wanted one home between them
+   * rather than the editor sitting on either one's screen.
+   * None of that brings page-level grade-group data back HERE, which is why nothing was restored above:
+   * the rules that pick a group live in the Entitlement Tables block, and that block loads the groups it
+   * offers with its own reads, once per page. What a rule stores is still `criteria.gradeIds` — the picker
+   * expands the group and no group id is saved (lib/grade-group-coverage.ts). */
 
   // e4238594 removed the Approval Workflow sub-step data block that stood here (e1a51aea). It prepared
   // the WorkflowMatrix rows, the wildcard list, the per-company default chain and the label bag for a

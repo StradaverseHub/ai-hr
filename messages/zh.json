@@ -7273,7 +7273,7 @@
     },
     "benefitScheme": {
       "groupsTitle": "职级组",
-      "groupsHelp": "将多个职级分组，使一条审批规则可一次覆盖它们（例如\"职级12–15\"）。一个职级只属于一个组。",
+      "groupsHelp": "将多个职级分组，使一条规则可一次覆盖它们（例如“职级12–15”）。审批规则与员工资格条件都以职级组为准。一个职级只属于一个组。",
       "noGroups": "尚无职级组。",
       "archived": "已归档",
       "memberCount": "{count} 个职级",
@@ -7507,7 +7507,12 @@
       "chipSelectAll": "全选",
       "chipDeselectAll": "取消全选",
       "chipSearchPlaceholder": "搜索…",
-      "chipAllSelected": "已全选"
+      "chipAllSelected": "已全选",
+      "ruleGradeGroup": "职级组",
+      "ruleGradeGroupApplied": "已选择 {count} 个职级。",
+      "ruleGradeGroupNote": "选择职级组会填入该组当前包含的职级。若日后有职级加入该组，本规则仍保留保存时的职级，直到您重新选择该组。",
+      "ruleGradeGroupPartial": "本规则仅覆盖 {groups} 的一部分。请重新选择该组以纳入其全部职级——在此之前，它无法分配到审批模板。",
+      "ruleGradeArchived": "{name}（已归档）"
     }
   },
   "topbar": {

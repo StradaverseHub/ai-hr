@@ -115,8 +115,12 @@ describe('c9986927 · the destination — a rail entry per relocated category on
     expect(gridSrc).toContain('optionSlots?: { key: string; label: string; count: number; body: ReactNode }[]');
     expect(gridSrc).toContain('setOptionKey(slot.key)');
     expect(gridSrc).toContain('optionSlots.find((s) => s.key === optionKey)?.body');
-    // The three rail selections are mutually exclusive — a kind or Grades click clears the option body.
-    expect(gridSrc).toContain('!showGrades && optionKey === null && kind === k');
+    // The rail selections are mutually exclusive — a kind, Grades or Grade Groups click clears the option
+    // body. 9a65f808 added the FOURTH selection (Grade Groups) and this expression grew with it rather
+    // than being loosened: the property being guarded is that a kind click clears EVERY other selection,
+    // and a substring check that stopped naming them all would pass on a rail showing two bodies at once.
+    expect(gridSrc).toContain('!showGrades && !showGradeGroups && optionKey === null && kind === k');
+    expect(gridSrc).toContain('setShowGradeGroups(false)');
   });
 
   it('the Grades slot beside it is untouched (over-deletion guard on b1b81a08)', () => {

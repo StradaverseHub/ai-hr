@@ -13,17 +13,29 @@ import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
  * kept by the release-three migration for exactly that reason. Deleting the workbench without lifting
  * this out would have left those 205 rules pointing at groups nobody could create, rename or re-staff.
  *
- * WHAT DID CHANGE is what a group is FOR. It used to be one axis of a benefit scheme
- * (company × employment type × grade group ⇒ a set of entitlement days), so it selected an entitlement.
- * It no longer does: who receives which entitlement table is decided by `entitlement_eligibility_rule` on
- * Settings → Leave → Entitlements → Entitlement Tables. A grade group is now purely an approval-routing
- * scope. The panel's help text says so rather than leaving the old meaning implied.
+ * WHAT A GROUP IS FOR, IN THREE STAGES — the middle one is why this header used to say something else.
+ *   1. It was one axis of a benefit scheme (company × employment type × grade group ⇒ a set of entitlement
+ *      days), so it SELECTED an entitlement.
+ *   2. 6e9a126e release three deleted that layer, and who receives which entitlement table became
+ *      `entitlement_eligibility_rule`'s job — whose criteria carried individual `gradeIds`, never a GROUP.
+ *      A grade group was then purely an approval-routing scope, and this header said exactly that.
+ *   3. 9a65f808 (r197) put a Grade Group picker on Employee Eligibility. Picking a group there fills in its
+ *      member grades, so the STORED axis is still `gradeIds` and stage 2's sentence about storage is still
+ *      true — but "a grade group has nothing to do with entitlement" is NOT, and the panel's help text and
+ *      this header both stop saying it. A group is now the shared vocabulary of BOTH sides: approval
+ *      routing scopes by it, and entitlement eligibility is written in it.
  *
- * Nothing about STORAGE moved: same three server actions (create / update / delete), same FormData
- * contract — `name` plus a repeated `gradeIds` checkbox per member, and `id` on the two that need one —
- * and the same `admin.benefitScheme` message keys the workbench used, so no locale gains or loses a
+ * That third stage is why the editor lives on Settings → System Labels → Organisation now, beside Job
+ * Grades, rather than on either consumer's own screen (it was on Settings → Leave → Entitlements, then on
+ * Settings → Leave → Approval under f12d77e5). Master data maintained inside one of its two consumers is
+ * master data the other consumer's admins cannot find.
+ *
+ * Nothing about STORAGE has moved at any stage: same three server actions (create / update / delete), same
+ * FormData contract — `name` plus a repeated `gradeIds` checkbox per member, and `id` on the two that need
+ * one — and the same `admin.benefitScheme` message keys the workbench used, so no locale gains or loses a
  * string. The tick-box membership editor is the assignment path (b1b81a08 removed the grade-card drag
- * shortcut when grade MASTER data moved to Settings → System Labels → Organisation Labels).
+ * shortcut when grade MASTER data moved to Settings → System Labels → Organisation Labels — which is the
+ * screen this editor has now followed it onto).
  */
 export type GradeGroupRow = { id: string; name: string; gradeIds: string[]; archived: boolean };
 export type GradeGroupGradeOption = { id: string; name: string };

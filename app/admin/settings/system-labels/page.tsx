@@ -10,9 +10,16 @@ import {
 } from '@/core/admin';
 import { listLabelAssignments } from '@/core/system-labels';
 import { EMPLOYMENT_PROFILE_CATEGORIES, listAllProfileOptions } from '@/core/profile-options';
+// 9a65f808 — grade groups, through the leave PACK FACADE. `listGradeGroups` lives in core/benefit-scheme
+// (a filename that is a leftover — see its header), which is a guarded leave-pack boundary module: the
+// pages that may reach into it directly are the pack's own routes, and this is not one of them. Importing
+// the facade is the sanctioned path and costs nothing; the alternative would have been a new entry on
+// test/pack-drift-allowlist.json, a list documented to only ever shrink.
+import { listGradeGroups } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { SystemLabelsGrid, type GridKind, type GridRecord } from '@/components/system-labels-grid';
 import { GradeLabelsGrid } from '@/components/grade-labels-grid';
+import { GradeGroupConfig } from '@/components/leave/grade-group-config';
 import { ProfileOptionsGrid } from '@/components/profile-options-grid';
 import { SystemLabelsTabs } from '@/components/system-labels-tabs';
 import { removeProfileOptionAction, saveProfileOptionsAction } from './profile-options/actions';
@@ -26,6 +33,15 @@ import {
   setLabelGlobalAction,
   unassignLabelCompaniesAction,
 } from '../actions';
+// 9a65f808 — the three grade-group writes, unchanged, from app/admin/actions.ts (NOT the settings actions
+// file above — the grade-group actions never moved, only their mount and their redirect did). Each calls
+// `requireAdmin()` itself, which is the same predicate this page's own `scopedAdmin()` guard applies, so
+// the move changes who can edit a grade group by nothing at all.
+import {
+  createGradeGroupAction,
+  deleteGradeGroupAction,
+  updateGradeGroupAction,
+} from '../../actions';
 
 export default async function SystemLabelsPage({
   searchParams,
@@ -38,8 +54,16 @@ export default async function SystemLabelsPage({
   // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
   // maintenance surface moved, not their wording.
   const tp = await getTranslations('admin.profileOptions');
+  // 9a65f808 — same discipline for the relocated Grade Groups editor: it reads `admin.benefitScheme` for
+  // itself (the module name is a leftover — see components/leave/grade-group-config.tsx), and the page
+  // reads the one string the RAIL needs from that same namespace. So the move orphans no key and mints
+  // none: every string the card renders is already shipped in all six locales.
+  const tGroups = await getTranslations('admin.benefitScheme');
 
-  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions] =
+  // ⚠️ A NAME ADDED TO THIS DESTRUCTURE MUST BE ADDED TO THE ARRAY BELOW IN THE SAME POSITION. Every
+  // element is an array, so a mismatch shifts each later variable by one slot and NOTHING type-errors —
+  // each catalogue silently becomes a different one.
+  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions, gradeGroups] =
     await Promise.all([
       listCompanies(s, { includeArchived: true }),
       listDepartmentsForLabels(s),
@@ -57,6 +81,11 @@ export default async function SystemLabelsPage({
       // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
       // here now. Like grades they are TENANT-WIDE, so they must NOT pass through inScope(...) below.
       listAllProfileOptions(s, { activeOnly: false }),
+      // 9a65f808 — grade groups, maintained here now for the same reason grades are: they are the
+      // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
+      // through inScope(...) below. Archived groups arrive too — the editor badges them and the editor is
+      // the only surface that can un-archive one.
+      listGradeGroups(s),
     ]);
 
   const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
@@ -154,6 +183,43 @@ export default async function SystemLabelsPage({
     />
   );
 
+  /**
+   * 9a65f808 — the Grade Groups body, the rail entry directly after Grades.
+   *
+   * WHY IT IS HERE AND NOT ON A LEAVE SCREEN. The editor has had three addresses: Settings → Leave →
+   * Entitlements (parked there when 6e9a126e deleted the workbench it lived inside), Settings → Leave →
+   * Approval (f12d77e5, when a grade group was purely an approval-routing scope), and now here. What
+   * changed is that 9a65f808 made a grade group the vocabulary of ENTITLEMENT ELIGIBILITY as well —
+   * picking a group on Employee Eligibility fills in its member grades — so it is shared master data with
+   * two consumers, and master data maintained inside one of its consumers is master data the other one's
+   * admins cannot find. Beside Job Grades is where a named set of job grades belongs.
+   *
+   * The MEMBERSHIP tick-boxes are offered the ACTIVE grades only, deliberately, and this is the same
+   * filter the two previous homes applied by hand: the form posts only the boxes it renders, so a group
+   * member that is not shown would be dropped from the group on the next save. `grades` above is loaded
+   * with `includeArchived: true` for the Grades GRID (which must be able to show and restore an archived
+   * row), so the filter has to happen here rather than being inherited from the read.
+   */
+  const gradeGroupsSlot = (
+    // `min-w-0 flex-1` because the rail and the body are one flex row and every other body carries it —
+    // without it this card renders at its content width beside a column of empty space. The rail entry
+    // already prints the title and the count, so the SectionHeader the two previous homes wrapped this in
+    // is deliberately not repeated here.
+    <div className="min-w-0 flex-1">
+      <Card>
+        <GradeGroupConfig
+          gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
+          grades={grades.filter((g) => g.archivedAt == null).map((g) => ({ id: g.id, name: g.name }))}
+          actions={{
+            createGradeGroup: createGradeGroupAction,
+            updateGradeGroup: updateGradeGroupAction,
+            deleteGradeGroup: deleteGradeGroupAction,
+          }}
+        />
+      </Card>
+    </div>
+  );
+
   // c9986927 — one rail entry per relocated organisation category, each with the SAME editor Profile
   // Options used (create / edit / delete / activate / deactivate, value immutability, the in-use delete
   // guard) pointed at a single category. Nothing about the catalog itself changes — the same core
@@ -195,6 +261,9 @@ export default async function SystemLabelsPage({
         actions={actions}
         gradesSlot={gradesSlot}
         gradesActiveCount={grades.filter((g) => g.archivedAt == null).length}
+        gradeGroupsSlot={gradeGroupsSlot}
+        gradeGroupsLabel={tGroups('groupsTitle')}
+        gradeGroupsCount={gradeGroups.filter((g) => !g.archived).length}
         optionSlots={optionSlots}
       />
     </div>
