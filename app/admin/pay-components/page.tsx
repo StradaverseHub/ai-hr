@@ -222,6 +222,14 @@ export default async function PayComponentsPage({
                       <Link href={`${PAGE}/${encodeURIComponent(c.code)}`} className="text-xs font-medium text-primary hover:underline">
                         {t('edit')}
                       </Link>
+                      {/* a6da1387 — Copy Pay Code: open a blank CREATE form pre-filled from this item (the
+                          copy flag makes the code field editable + blank; uniqueness is enforced on save). */}
+                      <Link
+                        href={`${PAGE}/new?from=${encodeURIComponent(c.code)}`}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        {t('copy')}
+                      </Link>
                       {c.archivedAt ? (
                         <form action={archiveComponentAction}>
                           <input type="hidden" name="id" value={c.id} />

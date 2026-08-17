@@ -667,19 +667,14 @@ export default async function LeavePage({
           Clicking a card opens THAT type's details in the right-side slide-out panel, exactly as on /me.
           The `me-leave` tour anchor moves with the cards so the My Profile walkthrough still lands on them
           (its step now routes here — see lib/module-tours.json). Empty ⇒ row omitted (e.g. not linked). */}
-      {/* Shared leave groups placed PRIMARY (46afcc48): the pooled balance sits at the TOP of My Leave,
-          above the per-type cards, because that is what "Primary" means on this screen and it is what the
-          reporter asked to see — "Special Leave appears as one balance at the top". Empty ⇒ omitted, which
-          is every tenant on the day this ships (the placement column defaults to Hidden). */}
-      {ess && sharedGroupsPrimary.length > 0 && (
-        <Card className="p-5">
-          <SharedLeaveGroupCards heading={tMe('sharedLeaveGroups.heading')} entries={sharedGroupsPrimary} />
-        </Card>
-      )}
-
+      {/* Shared leave groups placed PRIMARY (46afcc48): the pooled balance now sits INSIDE the "My Leave
+          Balance" row as a non-clickable tile (passed as sharedGroups into <LeaveCards>), not in its own
+          "Shared leave balances" category — that is what "Primary" placement means on this screen and what
+          the reporter asked to see. Empty ⇒ omitted, which is every tenant on the day this ships (the
+          placement column defaults to Hidden). */}
       {ess && primaryCards.length > 0 && (
         <Card className="p-5" data-tour="me-leave">
-          <LeaveCards entries={primaryCards} />
+          <LeaveCards entries={primaryCards} sharedGroups={sharedGroupsPrimary} />
         </Card>
       )}
 

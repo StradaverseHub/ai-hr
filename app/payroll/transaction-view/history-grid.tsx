@@ -40,14 +40,15 @@ const COL = {
 
 /** Section order + heading key, matching the pivot's own group ordering. */
 const GROUPS: { group: GridRowGroup; key: string }[] = [
-  // 0253dc7c — the wage bases come FIRST: the reporter reads "EPF Wages 5,100.00" and then checks the
-  // items under it, which is the order they described the check in.
-  { group: 'wagebase', key: 'wagebase' },
   { group: 'earning', key: 'earnings' },
   { group: 'deduction', key: 'deductions' },
   { group: 'employer', key: 'employer' },
   { group: 'item', key: 'items' },
   { group: 'summary', key: 'summary' },
+  // 0253dc7c — the wage bases come LAST: after the earnings, deductions and roll-ups an operator reads
+  // first, the wage base block sits at the bottom of the Transaction Detail table as the reference for
+  // checking the figures above it.
+  { group: 'wagebase', key: 'wagebase' },
 ];
 
 

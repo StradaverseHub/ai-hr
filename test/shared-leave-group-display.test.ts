@@ -422,9 +422,14 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     expect(leavePage).toContain("import { sharedLeaveGroupBalances } from '@/core/leave-shared-group'");
     expect(leavePage).toContain('sharedGroupsPrimary');
     expect(leavePage).toContain('sharedGroupsSecondary');
-    // Two render sites, one per placement — a group placed Secondary that only ever drew Primary would be
-    // a setting the admin can choose and the screen ignores.
-    expect(leavePage.match(/<SharedLeaveGroupCards/g) ?? []).toHaveLength(2);
+    // 46afcc48: PRIMARY groups no longer render in their own <SharedLeaveGroupCards> Card — they are passed
+    // INTO <LeaveCards> as static tiles inside the "My Leave Balance" row. So only the SECONDARY site still
+    // uses <SharedLeaveGroupCards> — one render site, not two. A group placed Secondary that only ever drew
+    // Primary would be a setting the admin can choose and the screen ignores; the primary path is pinned by
+    // the assertion below.
+    expect(leavePage.match(/<SharedLeaveGroupCards/g) ?? []).toHaveLength(1);
+    // PRIMARY placement flows into the per-type card row (46afcc48), not a separate category.
+    expect(leavePage).toMatch(/<LeaveCards[^>]*sharedGroups={sharedGroupsPrimary}/);
   });
 
   it('it is SELF-SERVICE only — the read is suppressed for an HR admin, not merely the markup', () => {

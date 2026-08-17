@@ -38,13 +38,18 @@ export async function ComponentForm({
   component,
   aiEnabled,
   error,
+  copy = false,
 }: {
   component: PayComponentRow | null;
   aiEnabled: boolean;
   error?: string;
+  // a6da1387 — Copy Pay Code: `component` is the SOURCE to pre-fill from, but this is a CREATE, not an edit.
+  // `copy` keeps `editing` false (CREATE action, editable + blank Pay Code) while every other field defaults
+  // from the source below.
+  copy?: boolean;
 }) {
   const t = await getTranslations('payComponents');
-  const editing = !!component;
+  const editing = !!component && !copy;
 
   // 61bf109d — the two lists the Input Type / Formula editor needs, resolved server-side so the client
   // island never queries. Referenceable pay items exclude THIS item (a rule cannot read itself — the server
@@ -53,13 +58,16 @@ export async function ComponentForm({
   const s = await requireAdmin();
   const [allItems, previewEmployees] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s)]);
   const payItems = allItems
-    .filter((c) => c.code !== component?.code && !isStatutoryComponent(c.code, c.kind))
+    // In copy mode the source's own code is offered too: the new item is a distinct code and may legitimately
+    // reference the one it was copied from (self-exclusion only applies to a rule reading ITSELF, which the
+    // blank new code cannot yet do).
+    .filter((c) => (copy || c.code !== component?.code) && !isStatutoryComponent(c.code, c.kind))
     .map((c) => ({ code: c.code, name: c.label ?? c.name }));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        title={editing ? t('editTitle', { code: component!.code }) : t('createTitle')}
+        title={editing ? t('editTitle', { code: component!.code }) : copy ? t('copyTitle') : t('createTitle')}
         back={{ href: LIST, label: t('backToList') }}
       />
       <ErrorBanner message={error} />
@@ -77,7 +85,7 @@ export async function ComponentForm({
                 name="code"
                 required
                 readOnly={editing}
-                defaultValue={component?.code ?? ''}
+                defaultValue={copy ? '' : (component?.code ?? '')}
                 placeholder="HOUSING"
                 pattern="[A-Za-z0-9_]+"
                 className={`${inputCls} font-mono uppercase ${editing ? 'opacity-60' : ''}`}
@@ -113,7 +121,7 @@ export async function ComponentForm({
             <Field label={t('colStatus')}>
               <input
                 readOnly
-                value={component?.archivedAt ? t('statusInactive') : t('statusActive')}
+                value={!copy && component?.archivedAt ? t('statusInactive') : t('statusActive')}
                 className={`${inputCls} opacity-60`}
               />
             </Field>
@@ -140,7 +148,7 @@ export async function ComponentForm({
             {/* Payroll Setup — configurable pay-rule + AI assist. The Prorates checkbox lives inside this island
                 (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}
             <PayRuleEditor
-              code={component?.code ?? ''}
+              code={copy ? '' : (component?.code ?? '')}
               kind={component?.kind ?? 'allowance'}
               prorates={component?.prorates ?? true}
               rule={(component?.rule ?? null) as PayRule | null}

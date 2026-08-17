@@ -127,7 +127,9 @@ describe('My Absence: /me is purely profile — Leave tab removed, deep-links fo
 
 describe('My Absence: everything the /me Leave tab had now lives on /leave', () => {
   it('hosts the primary "My Leave" summary cards (with the relocated me-leave tour anchor)', () => {
-    expect(leavePage.includes('<LeaveCards entries={primaryCards} />')).toBe(true);
+    // 46afcc48: LeaveCards now also takes a sharedGroups prop (primary-placed shared groups render inside
+    // this row), so match the tag prefix rather than the exact self-closing form.
+    expect(leavePage.includes('<LeaveCards entries={primaryCards}')).toBe(true);
     expect(leavePage.includes('data-tour="me-leave"')).toBe(true);
     // The me-tour step follows the cards to /leave.
     const tours = JSON.parse(read('lib/module-tours.json')) as {
