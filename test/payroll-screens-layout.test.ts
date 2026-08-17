@@ -16,6 +16,10 @@
  * A width is a string; tsc, the suite and `next build` are all indifferent to it, so the only thing
  * that can hold sixteen files to one decision is an assertion that reads them. That is this file.
  *
+ * One case in section A deliberately does NOT read the round's edit list: it walks app/payroll from
+ * disk. A guard whose input is the set of files just changed can only ever confirm that the change
+ * happened, and the drift this file exists to catch is in the screens NOBODY thought about.
+ *
  * Modelled on test/attendance-screens-layout.test.ts and test/claims-config-layout.test.ts, deliberately
  * — a fourth guard invented from scratch is a fourth thing to keep in sync.
  *
@@ -112,6 +116,48 @@ const ALREADY_WIDE = [
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE];
 
+/**
+ * THE MODULE AS IT IS ON DISK, not as this round edited it. Every `.tsx` under app/payroll is walked,
+ * so a screen that exists today and was never touched — and, more to the point, a screen added
+ * tomorrow — is inside the enumeration without anyone remembering to list it here.
+ *
+ * Known limit, stated rather than hidden: the five Payroll-owned screens under /admin cannot be
+ * discovered the same way (app/admin also holds Personnel and the org screens, which keep the old cap
+ * legitimately), so they come from STANDARDISED. A SIXTH Payroll screen filed under /admin would
+ * therefore escape this walk until it is added there.
+ */
+const tsxUnder = (rel: string): string[] =>
+  fs
+    .readdirSync(path.join(ROOT, rel), { withFileTypes: true })
+    .flatMap((e) =>
+      e.isDirectory()
+        ? tsxUnder(`${rel}/${e.name}`)
+        : e.name.endsWith('.tsx')
+          ? [`${rel}/${e.name}`]
+          : [],
+    );
+
+const PAYROLL_MODULE_ON_DISK = [
+  ...tsxUnder('app/payroll'),
+  ...STANDARDISED.filter((f) => f.startsWith('app/admin/')),
+].sort();
+
+/**
+ * The Payroll files that STILL carry `mx-auto max-w-[100rem]`, deliberately and by name. All three are
+ * printed statutory DOCUMENTS, not screens: the Borang A and Borang 8A previews and one rendered
+ * statutory form. They are Section C's category — a single record laid out to be read and filed, whose
+ * on-screen measure mirrors the sheet — reached FROM the widened Statutory Forms screen rather than
+ * sub-menus of their own, and the approved scope kept that class of page at a reading width.
+ *
+ * This list is the point of the assertion below, not a nuisance beside it: to move one of these you
+ * must delete its line here and say why, which is the review this width has failed to get four times.
+ */
+const CAP_SURVIVORS = [
+  'app/payroll/borang-8a/preview/page.tsx',
+  'app/payroll/borang-a/preview/page.tsx',
+  'app/payroll/statutory-forms/[formId]/page.tsx',
+] as const;
+
 describe('152fea7f · A — every Payroll screen uses the one full-width container', () => {
   it.each(ALL_WIDE)('%s APPLIES pageWideCls', (file) => {
     // The APPLICATION, not the import — the lesson e7eb5d83 rev 6 learned by reverting one page and
@@ -129,13 +175,23 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     expect(offending, `${file} re-introduces a page-level width cap: ${offending.join(' | ')}`).toEqual([]);
   });
 
-  it('the old max-w-[100rem] cap is gone from the module, not merely from most of it', () => {
-    // Stated separately so that fifteen of sixteen reads as a failure rather than as progress. A tab
-    // strip or a sub-menu whose content changes width as you click through it is the defect the
-    // reporter raised, and it survives any partial sweep.
-    for (const f of ALL_WIDE) {
-      expect(read(f), `${f} still carries the superseded cap`).not.toContain('mx-auto max-w-[100rem]');
-    }
+  it('the superseded max-w-[100rem] cap survives on the printed documents ONLY — the module read from disk', () => {
+    // THIS CASE IS THE ONLY ONE HERE THAT LOOKS OUTSIDE THIS ROUND'S EDIT LIST, and that is the whole
+    // reason it exists. An earlier version of it iterated ALL_WIDE — the nineteen files the round had
+    // just changed — under the name "gone from the module, not merely from most of it". It could not
+    // fail: those files are asserted to APPLY pageWideCls two cases above, and `capsPage` (which
+    // matches the bracket form) already refuses any page-level cap on them one case above. It read as
+    // coverage of the module while checking only the diff, which is worse than not being there.
+    //
+    // So the module is enumerated from disk instead, and the survivors are pinned by name. It fails
+    // when a NEW Payroll screen is born carrying the old cap, when a swept screen regresses to it, and
+    // when one of the three documents below is widened without this list being updated to say so. It
+    // also fails if the walk itself breaks, because the expected list is not empty.
+    const carriers = PAYROLL_MODULE_ON_DISK.filter((f) => read(f).includes('mx-auto max-w-[100rem]'));
+    expect(
+      carriers,
+      'the Payroll module carries the superseded cap somewhere other than the three printed documents',
+    ).toEqual([...CAP_SURVIVORS]);
   });
 
   it('pageWideCls is still the full-width container and not quietly re-capped at source', () => {
