@@ -17,6 +17,10 @@ import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { applyLeaveFormulaTemplate, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
+// 464b58e6 — the statutory right to APPLY, asked once and client-safe (see the module header). The panel
+// used to keep its own copy of the five seeded codes and disagreed with the service on any tenant whose
+// statutory types are coded differently.
+import { isStatutoryApplyLeaveType, STATUTORY_APPLY_SEEDED_CODES } from '@/lib/leave-statutory';
 // 35b7af0a — the shared person master lists, in a client-safe module so this client component can use the
 // real one instead of the hand-synced copy it used to carry.
 import { MARITAL_STATUSES } from '@/lib/person-vocabulary';
@@ -1712,17 +1716,27 @@ export function LeaveTypePanel({
   // Sync Employee Leave View Configuration (11876072): the view-config group headings reuse the employee
   // panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of the
   // panel — same words, same order. That translator now lives inside ViewConfigSection (2bc2f2a3).
-  // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement codes can never have employee
+  // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement types can never have employee
   // applications blocked (an employee must be able to exercise a lawful entitlement — EA 1955 s.60E/s.60F/
-  // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
-  // component never pulls server-only code. The service enforces the same rule as the authority.
-  const isStatutoryApply = ['ANNUAL', 'SICK', 'HOSPITALIZATION', 'MATERNITY', 'PATERNITY'].includes(code);
+  // s.37/s.60FA). 464b58e6 — THE QUESTION IS NOW ASKED ONCE, in lib/leave-statutory.ts, which mirrors
+  // core/leave.ts's `isStatutoryApplyType` precedence exactly: ROLE FIRST, seeded codes as the fallback.
+  // It used to be a local list of the five SEEDED codes, so on a tenant whose statutory types are coded
+  // MTL / PTL / EL the switch looked editable here and the service refused only after Save — the reported
+  // failed save. The service is still the authority; this is the screen telling the truth in advance.
+  const isStatutoryApply = isStatutoryApplyLeaveType({ role, code });
   // Edit Leave Type Code (a7194511): the Code field is editable ONLY for custom (non-statutory) types. The
-  // statutory codes above — plus EMERGENCY — are the semantic keys the leave/payroll engine matches on for
-  // EA-1955 statutory entitlement, carry-forward and encashment; renaming one would silently switch those
+  // five seeded statutory codes — plus EMERGENCY — are the semantic keys the leave/payroll engine matches on
+  // for EA-1955 statutory entitlement, carry-forward and encashment; renaming one would silently switch those
   // rules off, so they stay LOCKED (read-only). Mirrors the service guard (STATUTORY_APPLY_CODES +
   // EMERGENCY_LEAVE_CODE in core/leave.ts) as a local literal so this client component never imports server code.
-  const codeLocked = isStatutoryApply || code === 'EMERGENCY';
+  //
+  // THIS LOCK IS STILL CODE-ONLY ON PURPOSE, and no longer rides on isStatutoryApply above (464b58e6). It
+  // covers a WIDER set (Emergency too) and answers a different question, and making it role-first here would
+  // newly freeze the Code field on production's classified types — a behaviour change nobody asked for in
+  // this round. core/admin.ts's `isLockedType` is already role-first, so the two deliberately disagree until
+  // that change is asked for; do not "tidy" them together without a plan that says so.
+  const codeLocked =
+    (STATUTORY_APPLY_SEEDED_CODES as readonly string[]).includes(code) || code === 'EMERGENCY';
   const [editingName, setEditingName] = useState(false);
   // Day Type Inclusion (ef6d7146): its own edit-mode toggle (a sub-form inside Eligibility Rules).
   const [editingDayTypes, setEditingDayTypes] = useState(false);
@@ -3001,31 +3015,37 @@ export function LeaveTypePanel({
             formulaTemplate={formulaTemplate}
             updateTypeAction={updateTypeAction}
           />
-          {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
-              `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their
-              self-service Leave tab, and whether they may apply for it. Both switches are independent: a
-              visible-but-not-can-apply type still shows (and its balance) but is dropped from the apply menu
-              and rejected server-side in requestLeave. A statutory-entitlement code (ANNUAL / SICK /
-              HOSPITALIZATION / MATERNITY / PATERNITY) cannot have applications blocked — the checkbox is
-              disabled + forced on there, and the service rejects it too. null/default ⇒ visible + can-apply
-              (backward compatible). */}
+          {/* Leave Type Employee Visibility (7b11f1c1, simplified by 464b58e6). Its own self-contained
+              sub-form (own tri-state) posts `visibility=1` — now ONE checkbox: may an employee apply for this
+              leave type? Ticked ⇒ the type is offered on the employee's Request Leave screen and can be
+              applied for; unticked ⇒ it is not offered and requestLeave rejects it server-side.
+
+              THE "VISIBLE TO EMPLOYEE" CHECKBOX THAT STOOD HERE IS GONE, and its column is NOT. Hiding a
+              leave type from the employee's Leave tab is still `visible_to_employee`, and it is still fully
+              available — through the Employee Tab Placement control immediately below, whose "Hidden" option
+              writes that very flag (resolvePlacement reads it first). The two controls were the SAME decision
+              offered twice on one screen, which is what the reporter asked us to remove; the placement select
+              is the survivor and is now the ONLY writer of the flag from this panel. Nothing already hidden
+              changes. Do NOT re-add a second hidden control here, and do NOT reroute hidden through
+              employee_can_apply — that would recreate the overlap in a new place.
+
+              A statutory-entitlement type (role annual / sick / hospitalization / maternity / paternity, or
+              the seeded code for an unclassified row) can never have applications blocked, so the checkbox is
+              shown disabled + on with the reason beside it. A DISABLED CHECKBOX POSTS NOTHING, which is why
+              the hidden twin below rides with it: without it the sub-form posted no `employeeCanApply` at all
+              on exactly those types, the action read that absence as FALSE, and the service's statutory guard
+              refused a save in which HR had changed nothing. null/default ⇒ can-apply (backward compatible). */}
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('visibility.sectionTitle')}</span>
             <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
               <input type="hidden" name="id" value={id} />
               {/* preserve the name — this form does not edit it */}
               <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the two visibility columns (tri-state guard) */}
+              {/* marker: tells the action to touch employee_can_apply (tri-state guard). It no longer carries
+                  visible_to_employee — the placement sub-form below is that column's single writer. */}
               <input type="hidden" name="visibility" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="visibleToEmployee"
-                  defaultChecked={visibleToEmployee !== false}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('visibility.visibleToEmployee')}
-              </label>
+              {/* The disabled control's stand-in: a locked switch must still POST its value (see above). */}
+              {isStatutoryApply ? <input type="hidden" name="employeeCanApply" value="on" /> : null}
               <label className="flex items-center gap-2 text-xs text-foreground">
                 <input
                   type="checkbox"
@@ -3048,8 +3068,10 @@ export function LeaveTypePanel({
           {/* Leave grouping visibility (b653ac1b). Its own self-contained sub-form (own tri-state) posts
               `placement=1` — a single Primary / Secondary / Hidden select deciding WHERE this leave type sits
               on the employee's My Profile → Leave tab: a Primary card at the top, tucked into a Secondary
-              group, or Hidden entirely. HIDDEN REUSES THE SINGLE VISIBILITY SWITCH (7b11f1c1): choosing Hidden
-              sets visible_to_employee=false — there is no second hidden control. The current selection is
+              group, or Hidden entirely. HIDDEN IS THE SINGLE VISIBILITY SWITCH (7b11f1c1): choosing Hidden
+              sets visible_to_employee=false — there is no second hidden control, and since 464b58e6 this
+              sub-form is that column's ONLY writer on the screen (the Employee Visibility sub-form above
+              stopped posting it when its duplicate checkbox went). The current selection is
               resolved from the stored value, the visibility flag, and the code-keyed default so an unconfigured
               type shows its sensible starting point. Presentation only — no balances/entitlement change. */}
           <div className="space-y-1.5">

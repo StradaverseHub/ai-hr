@@ -1529,19 +1529,21 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const yearCycleFields = touchYearCycle
     ? { yearCycleOverride: yearCycleRaw === '' ? null : yearCycleRaw }
     : {};
-  // Leave Type Employee Visibility (7b11f1c1): its own sub-form posts `visibility=1` (marker) plus two
-  // checkboxes — `visibleToEmployee` (whether the type shows on the /me Leave tab) and `employeeCanApply`
-  // (whether employees may apply for it). A checked box posts 'on', an unchecked box does not post, so with
-  // the marker present we forward a concrete boolean for each: checked ⇒ true, absent ⇒ false. Any other
-  // sub-form save omits the marker ⇒ both columns stay untouched (same tri-state guard as essView/leaveUnit).
-  // The service rejects employeeCanApply=false on a statutory-entitlement code.
+  // Leave Type Employee Visibility (7b11f1c1, simplified by 464b58e6): its own sub-form posts `visibility=1`
+  // (marker) plus ONE checkbox — `employeeCanApply`, whether employees may apply for this type. A checked box
+  // posts 'on', an unchecked box does not post, so with the marker present we forward a concrete boolean:
+  // checked ⇒ true, absent ⇒ false. Any other sub-form save omits the marker ⇒ the column stays untouched
+  // (same tri-state guard as essView/leaveUnit). The service rejects employeeCanApply=false on a
+  // statutory-entitlement type, and the form now shows that switch locked rather than refusing after Save.
+  //
+  // `visibleToEmployee` IS DELIBERATELY NOT FORWARDED HERE, and re-adding it would be a silent data change,
+  // not a tidy-up. Its checkbox is gone from that sub-form, so `fd.get('visibleToEmployee')` is absent on
+  // every visibility save — reading it would evaluate to FALSE and HIDE every leave type HR touched from the
+  // employee's Leave tab. The column keeps its single writer: the placement sub-form (`placement=1`), whose
+  // Hidden option maps onto it in core/admin.ts. core/admin.ts still accepts p.visibleToEmployee — the
+  // placement mapping and the service tests use it — only this form stops posting it.
   const touchVisibility = fd.get('visibility') === '1';
-  const visibilityFields = touchVisibility
-    ? {
-        visibleToEmployee: fd.get('visibleToEmployee') === 'on',
-        employeeCanApply: fd.get('employeeCanApply') === 'on',
-      }
-    : {};
+  const visibilityFields = touchVisibility ? { employeeCanApply: fd.get('employeeCanApply') === 'on' } : {};
   // Leave grouping visibility (b653ac1b): its own sub-form posts `placement=1` (marker) plus a
   // `placementValue` of primary | secondary | hidden. With the marker present we forward the chosen value so
   // the service maps it onto ess_placement + the shared visible_to_employee switch (hidden ⇒ flag false). Any
@@ -1619,6 +1621,21 @@ export async function updateLeaveTypeAction(fd: FormData) {
     // sub-form save — not just identity/rename — must return there on failure with the error banner + toast,
     // rather than bouncing HR to /admin/leave. (No #type anchor here: fail() appends ?error=, and a fragment
     // before the query string would swallow it.)
+    //
+    // 464b58e6 — A DRIVER ERROR IS NOT A MESSAGE FOR HR. fail() puts (e as Error).message straight into
+    // ?error=, and drizzle wraps a failed statement as `Failed query: <the entire SQL>\nparams: …`
+    // (node_modules/drizzle-orm/errors.js) — which is the "Failed to query" banner the reporter photographed.
+    // There is nothing in it HR can act on, and a SQL statement has no business in a URL or on a screen.
+    // Domain refusals are UNTOUCHED and still surface verbatim: the statutory-apply guard, the duplicate
+    // name/code messages and the closed-set validations are all written for HR to read. Only a driver-shaped
+    // message is swapped, and it is logged in full server-side first, so nothing is lost — least of all the
+    // failure itself, which still stops the save and still says so.
+    const raw = e instanceof Error ? e.message : String(e);
+    if (raw.startsWith('Failed query:')) {
+      console.error('updateLeaveTypeAction — database error while saving a leave type:', e);
+      const tErr = await getTranslations('admin.leave');
+      fail(ENTITLEMENTS, new Error(tErr('saveDatabaseError')));
+    }
     fail(ENTITLEMENTS, e);
   }
   // Stay-on-page keystone (b9dac2d1): on ANY successful sub-form save, stay on the Entitlements config panel,
