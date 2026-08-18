@@ -4601,6 +4601,12 @@
             "yes": "Y",
             "no": "N"
           }
+        },
+        "panel": {
+          "heading": "选择员工",
+          "hint": "按员工编号或姓名搜索，可将本标签页缩小到一位员工；或选择“全部员工”查看所有人。",
+          "change": "更换员工",
+          "select": "选择员工"
         }
       },
       "draftPicker": {
@@ -10094,6 +10100,8 @@
     "moreFiltersActive": "已启用 {count} 项",
     "noEmployees": "没有符合筛选条件的员工。",
     "selectedTag": "已选择",
+    "allEmployees": "全部员工",
+    "allEmployeesHint": "清除选择并显示全部员工。",
     "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
   },
   "appliedInPayroll": {

@@ -26,6 +26,8 @@
  * the refactor had widened the panel's source to `allEmployees` to make the Status filter look useful, that
  * is the assertion that catches it.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -428,16 +430,131 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     expect(findByType(tree, HistoryGrid), 'no employee, no figures').toHaveLength(0);
   });
 
-  it('the other four tabs are untouched — the redesign is one tab wide', async () => {
-    // 98e69987's own plan flags that the reporter previously asked for the OPPOSITE on two other screens.
-    // This change is scoped to one tab, and the four beside it must still offer the control they always had.
-    for (const tab of ['fixed', 'individual', 'history', 'outstanding']) {
-      const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
+  // ───────── bd14b7e2 — the OTHER four tabs now pick an employee the same way ─────────
+  //
+  // THIS EDITS 98e69987's "the redesign is one tab wide" CASE RATHER THAN DELETING IT, because the
+  // reporter has since asked for the opposite and only HALF of what that case asserted is being reversed:
+  //
+  //   · REVERSED, on the approved plan: "the four beside it must still offer the control they always had"
+  //     — the long `<select name="employmentId">` listing every employee in scope. That is the control the
+  //     request is about; it is gone from all four, replaced by the same panel Transaction Detail uses.
+  //   · KEPT, unchanged and still the point: no tab may carry TWO employee controls. Two controls that can
+  //     disagree on one screen is the failure both halves of this guard have always existed to prevent, in
+  //     whichever direction the screen is moving.
+  //
+  // The fence is asserted the same way it is everywhere else in this file — off `selectedId`, the guard's
+  // verdict, rather than off source text — because widening the panel's source or dropping the coercion
+  // still renders, still 200s, and still passes every grep.
+
+  const PANEL_TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
+
+  it('bd14b7e2 — the four inquiry tabs pick an employee with the shared PANEL, and the dropdown is gone', async () => {
+    for (const tab of PANEL_TABS) {
+      const tree = await TransactionViewPage({
+        searchParams: Promise.resolve({ tab, employmentId: mine.employmentId }),
+      });
+
       expect(
         findByType(tree, EmployeeSearchField),
         `${tab} must not have grown a second employee control`,
       ).toHaveLength(0);
-      expect(controlsNamed(tree, 'select', 'employmentId'), `${tab} lost its employee filter`).toHaveLength(1);
+      expect(
+        controlsNamed(tree, 'select', 'employmentId'),
+        `${tab}: the long dropdown is REPLACED by the panel, never joined by it`,
+      ).toHaveLength(0);
+
+      expect(
+        findByType(tree, CollapsibleEmployeePanel),
+        `${tab} must mount the same collapsible rail Transaction Detail uses`,
+      ).toHaveLength(1);
+      expect(panelSelection(tree), `${tab} must hand the guard's verdict to the panel`).toBe(mine.employmentId);
+
+      // The selection rides through Apply as a hidden field. Without it, changing any filter would
+      // silently widen the tab back to everybody while the rail still showed the person as selected —
+      // the two-controls-disagreeing failure in its quietest form.
+      const carried = controlsNamed(tree, 'input', 'employmentId');
+      expect(carried, `${tab}: an Apply must not drop the panel's selection`).toHaveLength(1);
+      expect(carried[0].props.type).toBe('hidden');
+      expect(carried[0].props.value).toBe(mine.employmentId);
+    }
+  });
+
+  it('bd14b7e2 — an out-of-scope ?employmentId= selects NOTHING on all four, and Apply carries nothing', async () => {
+    for (const tab of PANEL_TABS) {
+      const tree = await TransactionViewPage({
+        searchParams: Promise.resolve({ tab, employmentId: foreign.employmentId }),
+      });
+      expect(panelSelection(tree), `${tab}: a company outside scope must coerce to no selection`).toBeNull();
+
+      // A FIELD THAT IS ALWAYS SUBMITTED CANNOT BE READ BY PRESENCE — so the hidden input exists only when
+      // a selection survived the guard. That is also what makes "All employees" expressible at all: no
+      // field, no employee, and the tab shows what it shows today.
+      expect(
+        controlsNamed(tree, 'input', 'employmentId'),
+        `${tab}: there is no surviving selection to carry`,
+      ).toHaveLength(0);
+
+      const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+        (e: { employmentId: string }) => e.employmentId,
+      );
+      expect(offered).toContain(mine.employmentId);
+      expect(offered, `${tab}: the panel must not reach past the company fence`).not.toContain(
+        foreign.employmentId,
+      );
+    }
+  });
+
+  it('bd14b7e2 — the "All employees" row is OPT-IN, and stays OFF wherever a person is required', async () => {
+    // The row clears the selection. On the four inquiry tabs that is a real destination — it is the view
+    // each of them opens on today. On every screen that shows ONE person's record it is a row leading
+    // nowhere, so the prop must default off and no existing consumer may quietly acquire it.
+    for (const tab of PANEL_TABS) {
+      const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
+      expect(
+        findByType(tree, EmployeeScopePanel)[0].props.allowAll,
+        `${tab}: clearing the selection is this tab's default view and must be offered`,
+      ).toBe(true);
+    }
+
+    const requiresAPerson: [string, unknown][] = [
+      ['Transaction Detail', await TransactionViewPage({ searchParams: Promise.resolve({ tab: 'grid' }) })],
+      ['Zakat', await ZakatTransactionPage({ searchParams: Promise.resolve({}) })],
+      ['Individual Payslip', await IndividualPayslipPage({ searchParams: Promise.resolve({}) })],
+      ['Loans', await LoansPage({ searchParams: Promise.resolve({}) })],
+    ];
+    for (const [name, tree] of requiresAPerson) {
+      expect(
+        findByType(tree, EmployeeScopePanel)[0].props.allowAll ?? false,
+        `${name} must not have acquired the All-employees row`,
+      ).toBe(false);
+    }
+
+    // …and the component's own default, read at source: the two screens NOT rendered above (Fixed
+    // Transaction, TP1) inherit it, and a default flipped to `true` would arm the row on all six at once
+    // while every assertion above still passed.
+    const shell = fs.readFileSync(
+      path.resolve(__dirname, '..', 'components/collapsible-employee-panel.tsx'),
+      'utf8',
+    );
+    expect(shell, 'the All-employees row must be opt-in at the component').toContain('allowAll = false');
+  });
+
+  it('bd14b7e2 — every caption the panel adds exists in all six catalogues', () => {
+    // Transaction View reads TWO namespaces, so i18n-coverage's check C skips the whole file: a key that
+    // exists nowhere would pass tsc, this suite and `next build`, and paint MISSING_MESSAGE on all four
+    // tabs. These six are looked up on every visit — four by the page (header row and panel heading) and
+    // two by the shared component for the All-employees row.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const msgs = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', `messages/${loc}.json`), 'utf8'));
+      for (const key of ['heading', 'hint', 'change', 'select']) {
+        expect(
+          msgs.payroll?.transactions?.view?.panel?.[key],
+          `payroll.transactions.view.panel.${key} missing from ${loc}.json`,
+        ).toBeTruthy();
+      }
+      for (const key of ['allEmployees', 'allEmployeesHint']) {
+        expect(msgs.employeePanel?.[key], `employeePanel.${key} missing from ${loc}.json`).toBeTruthy();
+      }
     }
   });
 });
