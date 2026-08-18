@@ -17,6 +17,12 @@
 // NOT store 'hidden' in ess_placement and there is no second hidden column — resolvePlacement reads the flag
 // first. This keeps HR from ever facing two competing controls for the same concept.
 //
+// 464b58e6 finished that job on the SCREEN. One mechanism was still being offered through two controls: the
+// Employee Visibility sub-form carried a "Visible to employee" checkbox writing this very flag, directly
+// above the placement select whose "Hidden" option writes it too. The checkbox is gone and the placement
+// control is the single writer; app/admin/actions.ts no longer forwards visibleToEmployee from that form.
+// Nothing here changed, and nothing here should: hidden is still this flag, resolved in this function.
+//
 // GUARDRAIL: nothing here is ever consulted for entitlement / eligibility / accrual / workflow / payroll. It
 // only decides how leave types are arranged and shown on screen (the reporter's stated scope). The planned
 // cards-and-groups /me renderer (6d78f373) consumes the resolved placement; b653ac1b owns the config layer.

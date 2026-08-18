@@ -210,10 +210,21 @@ export default async function LeavePage({
   // compute inline — mapped here in the RSC (t() runs server-side) and handed to the client dialog.
   const requestLeaveTypeOptions = leaveTypes.map((lt) => ({
     id: lt.id,
-    // Supporting-document config: suffix a "· document required" badge so the applicant knows a file is
-    // expected before submitting (mirrors /me). NOT leave.documentRequired — that key is a full error
-    // sentence; this badge has its own leave.documentRequiredBadge key.
-    label: lt.requiresDocument ? `${lt.name} · ${t('documentRequiredBadge')}` : lt.name,
+    // 5570c6a2 — AN OPTION IS THE LEAVE TYPE'S NAME AND NOTHING ELSE.
+    //
+    // This used to append "· document required" (leave.documentRequiredBadge) for a type carrying
+    // requiresDocument. Sitting inside the option it read as part of the type's NAME ("Caregiver Leave -
+    // document required"), it made the list harder to scan, and it put an internal HR setting in front of
+    // the employee. One line covers BOTH dropdowns: this array is handed to RequestLeaveDialog and to
+    // ReplacementLeaveRequestDialog, and each renders `label` verbatim.
+    //
+    // NOTHING ABOUT ENFORCEMENT MOVES. core/leave.ts still refuses a submission whose required document is
+    // missing, app/me/actions.ts still raises that sentence (leave.documentRequired / documentRequiredAfter —
+    // NOT this key, they are different strings), the general "required for some leave types" hint under the
+    // attach-a-file box still stands, and HR still sets and sees the requirement on the admin leave-type
+    // screen. leave.documentRequiredBadge stays in all six catalogs: nothing checks for unused keys, parity
+    // is what is checked, and deleting one string from six files is churn that buys nothing.
+    label: lt.name,
     durations: lt.durations ?? null,
     code: lt.code,
     // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).

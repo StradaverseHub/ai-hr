@@ -400,3 +400,67 @@ describe('i18n: the new apply-popup keys in all six locales', () => {
     expect(en.leave.applyDetails.total).toContain('{days}');
   });
 });
+
+/**
+ * 5570c6a2 — the Leave Type option is the leave type's NAME, and nothing else.
+ *
+ * The option used to carry a "· document required" badge for any type HR had marked as needing a
+ * supporting file. It read as part of the type's name ("Caregiver Leave - document required"), and it put
+ * an internal HR setting in front of the employee. This lives here because one expression feeds BOTH
+ * employee dropdowns — Request Leave and Replacement Leave Request read the same `requestLeaveTypeOptions`
+ * array — so a single silent re-add would put the badge back on both.
+ *
+ * The other half of the pin is what must NOT move: the submit-time refusal, its two error sentences and
+ * the general attach-a-file hint all stay, or an employee whose request is refused has no way to know why.
+ */
+describe('5570c6a2: no document-required badge in the employee leave-type dropdown', () => {
+  const optionsBlock = (): string => {
+    const at = page.indexOf('const requestLeaveTypeOptions =');
+    expect(at, 'requestLeaveTypeOptions still builds the shared option list').toBeGreaterThan(-1);
+    return page.slice(at, page.indexOf('}));', at));
+  };
+
+  it('the option label is a bare lt.name', () => {
+    expect(optionsBlock()).toContain('label: lt.name,');
+  });
+
+  it('the label expression names neither the badge key nor the document flag', () => {
+    // Comments are prose and may name either; the CODE may not. Strip line + block comments first.
+    const code = optionsBlock().replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toContain('documentRequiredBadge');
+    expect(code).not.toContain('requiresDocument');
+  });
+
+  it('EditLeaveDialog’s own options were already bare names and are unchanged', () => {
+    // app/leave/page.tsx builds a second, separate option list for the edit dialog; both now agree.
+    const at = page.indexOf('types={leaveTypes.map((lt) => ({');
+    expect(at).toBeGreaterThan(-1);
+    expect(page.slice(at, page.indexOf('}))}', at))).toContain('label: lt.name,');
+  });
+
+  it('the badge key survives in all six catalogs (parity, and nothing checks for unused keys)', () => {
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as { leave: Record<string, string> };
+      expect(m.leave.documentRequiredBadge, `${loc}.leave.documentRequiredBadge`).toBeTruthy();
+    }
+  });
+
+  it('ENFORCEMENT IS UNTOUCHED: the submit-time refusal and its two sentences stay', () => {
+    // The badge was presentation. A request that genuinely needs a document is still refused on submit,
+    // and the employee is still told which type needs one — remove these and the removal above becomes a
+    // silent failure instead of a tidier list.
+    const core = read('core/leave.ts');
+    expect(core.includes('requiresDocument')).toBe(true);
+    const en = JSON.parse(read('messages/en.json')) as {
+      leave: { documentHint: string; errors: Record<string, string> };
+    };
+    // The two SENTENCES (leave.errors.*) are raised from app/me/actions.ts on a refused submission — they
+    // are not the badge, and they name the leave type on purpose.
+    expect(en.leave.errors.documentRequired).toBeTruthy();
+    expect(en.leave.errors.documentRequiredAfter).toBeTruthy();
+    expect(meActions.includes("t('documentRequired'")).toBe(true);
+    // …and the general "you may need to attach something" hint under the upload box, which names no type.
+    expect(en.leave.documentHint).toBeTruthy();
+    expect(fields.includes('documentHint')).toBe(true);
+  });
+});

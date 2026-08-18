@@ -1322,11 +1322,18 @@ export const leaveType = pgTable('leave_type', {
   //   employeeCanApply — false ⇒ the type still shows (subject to visibleToEmployee) but is dropped from the
   //     apply dropdown AND rejected server-side in requestLeave (LeaveApplyNotAllowedError; isAdmin bypasses via
   //     the existing override path). NULL/missing ⇒ CAN APPLY (today's behaviour). STATUTORY SAFETY:
-  //     updateLeaveType refuses employee_can_apply=false on a statutory-entitlement code (ANNUAL / SICK /
-  //     HOSPITALIZATION / MATERNITY / PATERNITY) so a configuration can never deny a lawful entitlement.
-  // The two switches are INDEPENDENT: a visible-but-not-can-apply type stays in the balance list but not the
-  // apply menu. NEVER read for admin/HR reads, entitlement math, accrual, workflow or payroll — purely an ESS
-  // presentation + apply gate.
+  //     updateLeaveType refuses employee_can_apply=false on a statutory-entitlement TYPE so a configuration can
+  //     never deny a lawful entitlement. Since 65f466e2 that is decided ROLE FIRST (isStatutoryApplyType in
+  //     core/leave.ts: role annual / sick / hospitalization / maternity / paternity), with the seeded codes
+  //     (ANNUAL / SICK / …) only as the fallback for an unclassified row — production's statutory types are
+  //     coded MTL / PTL / EL, so the code list alone protected none of them. The admin screen mirrors the same
+  //     precedence client-side through lib/leave-statutory.ts (464b58e6).
+  // The two switches are INDEPENDENT AS COLUMNS: a visible-but-not-can-apply type stays in the balance list but
+  // not the apply menu. WHO WRITES THEM changed with 464b58e6 — the admin panel's Employee Visibility sub-form
+  // posts employeeCanApply ALONE, and visibleToEmployee is written only by the Employee Tab Placement control
+  // ("Hidden" ⇒ false), because offering the same hide decision in two places on one screen was the confusion
+  // that item was raised to remove. NEVER read for admin/HR reads, entitlement math, accrual, workflow or
+  // payroll — purely an ESS presentation + apply gate.
   visibleToEmployee: boolean('visible_to_employee'),
   employeeCanApply: boolean('employee_can_apply'),
   // Leave grouping visibility (feedback b653ac1b): the HR-editable placement of this leave type on the
