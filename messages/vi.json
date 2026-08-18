@@ -3989,6 +3989,8 @@
       "removePeriodClosed": "Kỳ lương này đã đóng. Hãy mở lại trước khi gỡ bảng lương nhân viên.",
       "removeAdminOnly": "Bạn không có quyền gỡ bảng lương nhân viên trong đợt này.",
       "removeNotProcessed": "Chỉ đợt lương đã xử lý mới có thể gỡ bảng lương nhân viên.",
+      "removeDisabled": "Chức năng gỡ bảng lương nhân viên đang tắt cho môi trường này. Nó dùng chung cài đặt với Đặt lại bảng lương, vì vậy hãy đề nghị quản trị viên bật đặt lại bảng lương trước.",
+      "removeModuleOff": "Các chu kỳ lương bổ sung đang tắt, nên nhân viên bị gỡ sẽ không thể được xử lý lại trong đợt này. Chức năng gỡ bảng lương nhân viên chưa dùng được cho đến khi chúng được bật.",
       "removeNoneSelected": "Hãy chọn ít nhất một nhân viên để gỡ.",
       "removeNotOnRun": "Không nhân viên nào đã chọn có kết quả lương trong đợt này.",
       "removeResultTitle": "Đã gỡ bảng lương {n} nhân viên. Còn {total} người trong đợt này.",

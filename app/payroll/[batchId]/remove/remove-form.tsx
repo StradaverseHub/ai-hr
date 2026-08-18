@@ -74,6 +74,24 @@ export function RemoveForm({
   const picked = employees.filter((e) => selected.has(e.employmentId));
   const wholeRun = total > 0 && picked.length === total;
   const laterPeriods = [...new Set(picked.flatMap((e) => e.laterPeriods))].sort();
+  /**
+   * THE TICKED PEOPLE THE SEARCH IS CURRENTLY HIDING — and the reason the hidden inputs below exist.
+   *
+   * The table body renders `visible`, so a row that stops matching the search box is UNMOUNTED and its
+   * `<input type="checkbox" name="employmentIds">` leaves the DOM with it. Every other thing on this
+   * screen — the count, the review list, the button label, the confirmation body, the whole-run refusal
+   * — is computed from `selected` over the UNFILTERED `employees`, so without this the operator would be
+   * told "Remove 3 employee payroll", shown three names in the review, and have ONE employment id
+   * posted. On a destructive payroll action, the set that is confirmed and the set that is submitted
+   * must be the same set.
+   *
+   * HIDDEN INPUTS RATHER THAN CLEARING THE SELECTION ON SEARCH, because the review panel below already
+   * NAMES every ticked person with their net figure regardless of the search — so the full selection is
+   * on screen and honoured — whereas dropping ticks when the operator types would silently throw away
+   * work they can see listed.
+   */
+  const visibleIds = useMemo(() => new Set(visible.map((e) => e.employmentId)), [visible]);
+  const pickedOffscreen = picked.filter((e) => !visibleIds.has(e.employmentId));
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -97,6 +115,11 @@ export function RemoveForm({
           className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
         />
         <span className="text-sm font-medium">{t('removeSummary', { n: selected.size, total })}</span>
+        {/* SELECT ALL REPLACES THE SELECTION WITH WHAT IS ON SCREEN, and under a search that is narrower
+            than the word "all" — deliberately. It is the safe direction for a destructive action (it can
+            only ever shrink the set), and unlike the search filter it does not diverge from what the
+            operator is told: the count, the review list, the button label and the confirmation all move
+            with it, and every id it leaves selected is still submitted (see `pickedOffscreen`). */}
         <button
           type="button"
           onClick={() => setSelected(new Set(visible.map((e) => e.employmentId)))}
@@ -112,6 +135,13 @@ export function RemoveForm({
           {t('removeClear')}
         </button>
       </div>
+
+      {/* See `pickedOffscreen`: the checkbox of a ticked row the search has filtered away is no longer in
+          the DOM, so it carries its id here instead. Disjoint from the mounted checkboxes by construction
+          (these are exactly the picked ids NOT in `visible`), so nothing is posted twice. */}
+      {pickedOffscreen.map((e) => (
+        <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
+      ))}
 
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[46rem] text-sm">

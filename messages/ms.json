@@ -3989,6 +3989,8 @@
       "removePeriodClosed": "Tempoh gaji ini telah ditutup. Buka semula sebelum membuang gaji pekerja.",
       "removeAdminOnly": "Anda tiada kebenaran untuk membuang gaji pekerja pada proses ini.",
       "removeNotProcessed": "Hanya proses gaji yang telah diproses boleh dibuang gaji pekerjanya.",
+      "removeDisabled": "Pembuangan gaji pekerja dimatikan untuk persekitaran ini. Ia menggunakan tetapan yang sama dengan Set Semula Gaji, jadi minta pentadbir anda mengaktifkan set semula gaji terlebih dahulu.",
+      "removeModuleOff": "Kitaran gaji tambahan dimatikan, jadi pekerja yang dibuang tidak boleh diproses semula pada proses ini. Pembuangan gaji pekerja tidak tersedia sehingga ia diaktifkan.",
       "removeNoneSelected": "Pilih sekurang-kurangnya seorang pekerja untuk dibuang.",
       "removeNotOnRun": "Tiada pekerja yang dipilih mempunyai hasil gaji pada proses ini.",
       "removeResultTitle": "Gaji {n} pekerja telah dibuang. {total} kekal pada proses ini.",

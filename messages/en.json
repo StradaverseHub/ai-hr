@@ -3575,6 +3575,8 @@
       "removePeriodClosed": "This pay period is closed. Reopen it before removing an employee payroll.",
       "removeAdminOnly": "You do not have permission to remove an employee's payroll on this run.",
       "removeNotProcessed": "Only a processed payroll run can have an employee payroll removed.",
+      "removeDisabled": "Removing an employee payroll is switched off for this environment. It uses the same setting as Reset Payroll, so ask your administrator to enable payroll reset first.",
+      "removeModuleOff": "Additional payroll cycles are switched off, so a removed employee could not be processed again on this run. Removing an employee payroll is unavailable until they are enabled.",
       "removeNoneSelected": "Select at least one employee to remove.",
       "removeNotOnRun": "None of the selected employees have a payroll result on this run.",
       "removeResultTitle": "{n} employee payroll removed. {total} remain on this run.",

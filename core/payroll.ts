@@ -20,7 +20,12 @@ import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-
 import { companySegmentsForPeriodBulk, employedByCompanyDuring, segmentForCompany } from './employment-company';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
-import { anomalyEvaluated, evaluateCircuitBreaker, openBlockingVerdicts } from './payroll-anomaly';
+import {
+  anomalyEvaluated,
+  evaluateCircuitBreaker,
+  openBlockingVerdicts,
+  supersedeVerdictsForEmployments,
+} from './payroll-anomaly';
 import { assertStatutory } from './company-tier';
 import { toCsv } from '../lib/csv';
 import {
@@ -95,7 +100,13 @@ import {
   workingDayRoster,
 } from './payroll-policy-config';
 import type { CutOffType } from '../db/schema';
-import { ModuleNotEnabledError, SettingNotEnabledError, isModuleEnabled, settingEnabled } from './entitlements';
+import {
+  ModuleNotEnabledError,
+  SettingNotEnabledError,
+  isModuleEnabled,
+  settingEnabled,
+  settingEnabledOrDefault,
+} from './entitlements';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -6272,16 +6283,35 @@ export class RemoveNoEmployeesError extends Error {
   }
 }
 
-/** Eligibility for the Remove screen — the same three facts `reprocessEligibility` reports, read the
- *  same way, so the screen can state WHY the door is shut instead of 404-ing a run the operator can
- *  plainly see on the list. Every one of them is re-asserted inside `removeEmployeePayroll`'s own
- *  transaction on submit, which is where a race with a concurrent close is actually decided. */
-export type RemoveEligibility = { permitted: boolean; processed: boolean; periodClosed: boolean };
+/**
+ * Eligibility for the Remove screen — the three facts `reprocessEligibility` reports, read the same way,
+ * so the screen can state WHY the door is shut instead of 404-ing a run the operator can plainly see on
+ * the list. Every one of them is re-asserted inside `removeEmployeePayroll`'s own transaction on submit,
+ * which is where a race with a concurrent close is actually decided.
+ *
+ * PLUS A FOURTH THAT `reprocessEligibility` HAS NO EQUIVALENT FOR, and it is the reason this type diverges
+ * from its sibling: removal rides the `payroll.reset_enabled` risk switch, and `removeEmployeePayroll`
+ * throws SettingNotEnabledError for it BEFORE anything else. Both entry points hide their link while it is
+ * off, so the only way in is a direct visit — which, without this, rendered the whole selection form and
+ * let the operator find out by pressing the button. That is the exact failure the screen's own header
+ * promises not to have.
+ *
+ * `settingEnabledOrDefault`, not `settingEnabled`: this is a READ that decides what a page renders, so an
+ * entitlements-resolution failure must degrade to the catalog default (the app/ idiom) rather than 500 a
+ * route with no error boundary. The MUTATION keeps the strict form.
+ */
+export type RemoveEligibility = {
+  enabled: boolean;
+  permitted: boolean;
+  processed: boolean;
+  periodClosed: boolean;
+};
 
 export async function removeEligibility(
   ctx: SessionContext,
   p: { batchId: string },
 ): Promise<RemoveEligibility | null> {
+  const enabled = settingEnabledOrDefault(ctx, 'payroll.reset_enabled');
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId })
@@ -6295,6 +6325,7 @@ export async function removeEligibility(
       .where(eq(payPeriod.id, batch.payPeriodId))
       .limit(1);
     return {
+      enabled,
       permitted: await resolvePayrollPermission(tx, ctx, 'payroll.remove.employee', batch.companyId),
       processed: batch.status === 'processed',
       periodClosed: period?.status === 'closed',
@@ -6460,7 +6491,8 @@ export function listRemovableEmployees(ctx: SessionContext, p: { batchId: string
  *   2. intersect the request with payslips that actually exist on this run; refuse empty, refuse ALL
  *   3. snapshot each payslip IN FULL — see the note on `before` below
  *   4. unwind, for the selected employments ONLY: loan instalment, claims this run paid, the one-off
- *      transaction consumed markers, the statutory adjustment
+ *      transaction consumed markers, the statutory adjustment, and the live anomaly verdicts (an open
+ *      BLOCK verdict for a removed employee would otherwise keep refusing the run's Close)
  *   5. delete the payslips; move totals BY DELTA and RECOUNT the headcount
  *   6. clear the recalculation mark for those employments; write the audit rows and the domain event
  *
@@ -6585,6 +6617,19 @@ export async function removeEmployeePayroll(
       .returning();
     const adjustmentByEmp = new Map(adjustments.map((a) => [a.employmentId, a]));
 
+    // The anomaly verdicts standing against these people describe a payslip that is about to stop
+    // existing, so they go with it. NOT cosmetic: `openBlockingVerdicts` is keyed on batchId and joins
+    // no payslip, so one unresolved BLOCK among them would keep refusing `closeBatch` for an employee
+    // who is no longer on the run — and Close is the operator's very next action after a removal. The
+    // regeneration paths (reset → draft → process again) never hit this because `evaluateBatchAnomalies`
+    // supersedes the whole batch's verdicts before writing the next generation; removal deliberately
+    // leaves the run PROCESSED and regenerates nothing. Superseded, never deleted — same idiom, same
+    // reason, as a re-evaluation (core/payroll-anomaly.ts).
+    const anomalyVerdictsSuperseded = await supersedeVerdictsForEmployments(tx, {
+      batchId: p.batchId,
+      employmentIds: removedIds,
+    });
+
     // ── 5a. Delete the payslips. ──
     await tx
       .delete(payslip)
@@ -6696,6 +6741,7 @@ export async function removeEmployeePayroll(
         loansReopened,
         claimsReverted: revertedClaims.length,
         statutoryAdjustmentsRemoved: adjustments.length,
+        anomalyVerdictsSuperseded,
         paymentDisbursed: downstream.paymentDisbursed,
         statutoryFiled: downstream.statutoryFiled,
         laterProcessedPeriods,
@@ -6721,6 +6767,7 @@ export async function removeEmployeePayroll(
         loansReopened,
         claimsReverted: revertedClaims.length,
         statutoryAdjustmentsRemoved: adjustments.length,
+        anomalyVerdictsSuperseded,
         headcountAfter: Number(payslipCount),
         paymentDisbursed: downstream.paymentDisbursed,
         statutoryFiled: downstream.statutoryFiled,
@@ -6736,6 +6783,7 @@ export async function removeEmployeePayroll(
       loansReopened,
       claimsReverted: revertedClaims.length,
       statutoryAdjustmentsRemoved: adjustments.length,
+      anomalyVerdictsSuperseded,
       headcountAfter: Number(payslipCount),
       paymentDisbursed: downstream.paymentDisbursed,
       statutoryFiled: downstream.statutoryFiled,

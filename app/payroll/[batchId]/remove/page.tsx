@@ -31,6 +31,15 @@ import { RemoveForm, type RemoveCandidate } from './remove-form';
  * payroll.remove.employee, processed-only, period-open, the cross-run intersection and the whole-run
  * refusal inside its own transaction. The refusals rendered below are a SECOND surface — the operator is
  * told why the door is shut instead of finding out by pressing the button.
+ *
+ * WHICH MEANS THE SECOND SURFACE HAS TO COVER EVERY DOOR, and the promise above is only worth what is
+ * actually checked below. Every gate the engine can throw for is answered before the operator can press
+ * anything: the module gate 404s (the route does not exist without it, matching the absent entry points);
+ * `payroll.reset_enabled`, the permission, processed-only and period-open each render their own reason;
+ * and the three that depend on what is on the form — no reason, nothing ticked, everybody ticked — are
+ * stated by the form itself. A gate the engine throws for and this page does not render is the failure
+ * this header exists to forbid: the operator presses a destructive button on payroll money and gets an
+ * untranslated core string back.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -99,16 +108,25 @@ export default async function RemoveEmployeePayrollPage({
     />
   );
 
-  // ── The three refusals, each with its reason on screen ──────────────────────────────────────────
+  // ── The four refusals, each with its reason on screen ───────────────────────────────────────────
   // Rendered rather than 404'd: the run exists and the operator can see it on the list, so "not found"
   // would be a lie and a dead end.
-  const refusal = !eligibility.permitted
-    ? t('removeAdminOnly')
-    : !eligibility.processed
-      ? t('removeNotProcessed')
-      : eligibility.periodClosed
-        ? t('removePeriodClosed')
-        : null;
+  //
+  // `enabled` IS THE ONE THAT WAS MISSING, and it is the one the header's promise most depended on: both
+  // entry points hide their link while `payroll.reset_enabled` is off, so the only way onto this route is
+  // a direct visit — and this page used to answer that visit with the full selection form, letting the
+  // operator discover the refusal by pressing the button on a destructive payroll action. Ordered FIRST
+  // because that is the order `removeEmployeePayroll` asserts them in, so the two surfaces agree about
+  // which reason comes back when more than one applies.
+  const refusal = !eligibility.enabled
+    ? t('removeDisabled')
+    : !eligibility.permitted
+      ? t('removeAdminOnly')
+      : !eligibility.processed
+        ? t('removeNotProcessed')
+        : eligibility.periodClosed
+          ? t('removePeriodClosed')
+          : null;
   if (refusal) {
     return (
       <div className="mx-auto max-w-5xl space-y-4">

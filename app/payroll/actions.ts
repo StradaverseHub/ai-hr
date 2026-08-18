@@ -35,6 +35,11 @@ import {
   unlockClosedBatch,
 } from '@/core/payroll';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
+// 9066bd6c — the two ENTITLEMENT refusals removeEmployeePayroll throws BEFORE its reason check. Both are
+// reachable by a direct post (the entry points hide their links while the setting is off, and the route
+// 404s without the module), and without them the catch below pushed the service's raw English into the
+// error banner for all six locales.
+import { ModuleNotEnabledError, SettingNotEnabledError } from '@/core/entitlements';
 // ADR-0080 rung 3 (D9): the claims payout path rides the PayrollInputContributor kernel contract
 // instead of a direct core/claims import. The side-effect import evaluates the claims pack's
 // contributor wiring (static registration at module load — the D8 convention), so the by-id
@@ -454,20 +459,27 @@ export async function removeEmployeePayrollAction(formData: FormData) {
     const r = await removeEmployeePayroll(s, { batchId, employmentIds, reason: reason || undefined });
     removed = r.payslipsRemoved;
   } catch (e) {
+    // ORDERED AS THE SERVICE THROWS THEM: the two entitlement gates come first, before the reason check,
+    // and each of the eight has its own translated line. `(e as Error).message` is the floor, not a
+    // fallback anyone should land on — every refusal this service can raise is named above it.
     const msg =
-      e instanceof PayrollPermissionDeniedError
-        ? t('removeAdminOnly')
-        : e instanceof RemoveReasonRequiredError
-          ? t('removeReasonMissing')
-          : e instanceof RemoveWholeRunError
-            ? t('removeWholeRunRefused')
-            : e instanceof RemovePeriodClosedError
-              ? t('removePeriodClosed')
-              : e instanceof RemoveNoEmployeesError
-                ? t('removeNotOnRun')
-                : e instanceof BatchNotResettableError
-                  ? t('removeNotProcessed')
-                  : (e as Error).message;
+      e instanceof SettingNotEnabledError
+        ? t('removeDisabled')
+        : e instanceof ModuleNotEnabledError
+          ? t('removeModuleOff')
+          : e instanceof PayrollPermissionDeniedError
+            ? t('removeAdminOnly')
+            : e instanceof RemoveReasonRequiredError
+              ? t('removeReasonMissing')
+              : e instanceof RemoveWholeRunError
+                ? t('removeWholeRunRefused')
+                : e instanceof RemovePeriodClosedError
+                  ? t('removePeriodClosed')
+                  : e instanceof RemoveNoEmployeesError
+                    ? t('removeNotOnRun')
+                    : e instanceof BatchNotResettableError
+                      ? t('removeNotProcessed')
+                      : (e as Error).message;
     redirect(to({ error: msg }));
   }
   revalidatePath('/payroll');

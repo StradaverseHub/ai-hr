@@ -70,6 +70,12 @@ const FILES = [
  */
 const ACTION_KEYS = [
   'payroll.batch.removeNoneSelected',
+  // The two ENTITLEMENT refusals, thrown before the reason check and therefore before every other line
+  // below. They were the hole this list was meant to make impossible: unmapped, the catch fell through to
+  // `(e as Error).message` and painted the service's raw English ("Payroll reset is not enabled.") into
+  // the error banner in all six locales.
+  'payroll.batch.removeDisabled',
+  'payroll.batch.removeModuleOff',
   'payroll.batch.removeAdminOnly',
   'payroll.batch.removeReasonMissing',
   'payroll.batch.removeWholeRunRefused',
@@ -151,6 +157,66 @@ describe('Remove Employee Payroll — i18n resolution', () => {
         const d = resolve(dicts[loc], 'payroll.batch') as Record<string, string>;
         expect(d[removeKey], `[${loc}] ${removeKey} must not read as ${resetKey}`).not.toBe(d[resetKey]);
       }
+    }
+  });
+});
+
+
+/**
+ * THE GATE → REFUSAL CONTRACT, asserted across the three files that hold it.
+ *
+ * It lives in this file rather than in test/payroll-remove-employee.test.ts because it is the same shape
+ * as the ACTION_KEYS check above and fails for the same reason: a defect that lives BETWEEN two files is
+ * invisible to a unit test of either half. `removeEmployeePayroll` can be perfect and every DB case green
+ * while the screen still renders a selection form for a door that is shut, and the action still paints the
+ * service’s raw English into the error banner for all six locales — which is exactly what shipped for
+ * `payroll.reset_enabled` until this guard existed.
+ */
+describe('Remove Employee Payroll — every refusal the engine can raise has a translated surface', () => {
+  const SRC = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  /** The body of one exported function, up to the next top-level `export`. */
+  const bodyOf = (src: string, decl: string) => {
+    const from = src.indexOf(decl);
+    expect(from, `${decl} not found — has it been renamed?`).toBeGreaterThan(-1);
+    const rest = src.slice(from);
+    const end = rest.indexOf('\nexport ', 1);
+    return end === -1 ? rest : rest.slice(0, end);
+  };
+
+  it('every named error removeEmployeePayroll throws is mapped by removeEmployeePayrollAction', () => {
+    // Derived from the SERVICE's own source, so a refusal added there without a translated line here
+    // fails immediately rather than reaching an operator as untranslated English. A bare `Error` is
+    // excluded on purpose: it is the "batch not found" impossible-state throw, which has no operator copy
+    // because it is not an operator-facing outcome.
+    const service = bodyOf(SRC('core/payroll.ts'), 'export async function removeEmployeePayroll(');
+    const thrown = [...new Set([...service.matchAll(/throw new ([A-Z]\w*)\(/g)].map((m) => m[1]))]
+      .filter((n) => n !== 'Error')
+      .sort();
+    // A floor, so a refactor that stops matching cannot make this pass vacuously.
+    expect(thrown.length).toBeGreaterThanOrEqual(6);
+
+    const action = bodyOf(SRC('app/payroll/actions.ts'), 'export async function removeEmployeePayrollAction(');
+    const unmapped = thrown.filter((n) => !action.includes(`instanceof ${n}`));
+    expect(unmapped, `unmapped in removeEmployeePayrollAction: ${unmapped.join(', ')}`).toEqual([]);
+
+    // The permission refusal is thrown THROUGH assertPayrollPermission rather than by a literal `throw`
+    // in the body, so the regex above cannot see it. Named here so it is still covered.
+    expect(action).toContain('instanceof PayrollPermissionDeniedError');
+  });
+
+  it('the Remove page renders a reason for every field removeEligibility reports', () => {
+    // The SECOND surface the page header promises. `enabled` is the one that was missing: both entry
+    // points hide their link while `payroll.reset_enabled` is off, so the only way in is a direct visit,
+    // and the page answered it with the full selection form.
+    const page = SRC('app/payroll/[batchId]/remove/page.tsx');
+    const eligibility = bodyOf(SRC('core/payroll.ts'), 'export type RemoveEligibility = {');
+    const fields = [...eligibility.matchAll(/^\s{2}(\w+): boolean;/gm)].map((m) => m[1]).sort();
+    expect(fields).toEqual(['enabled', 'periodClosed', 'permitted', 'processed']);
+    const missing = fields.filter((f) => !page.includes(`eligibility.${f}`));
+    expect(missing, `RemoveEligibility fields the page never reads: ${missing.join(', ')}`).toEqual([]);
+    // …and each one resolves to copy, not to a bare boolean the page swallows.
+    for (const key of ['removeDisabled', 'removeAdminOnly', 'removeNotProcessed', 'removePeriodClosed']) {
+      expect(page, `the refusal chain no longer renders ${key}`).toContain(`t('${key}')`);
     }
   });
 });

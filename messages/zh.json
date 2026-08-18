@@ -3989,6 +3989,8 @@
       "removePeriodClosed": "该薪资期间已关闭。请先重新开启，再移除员工薪资。",
       "removeAdminOnly": "您没有权限在本批次移除员工薪资。",
       "removeNotProcessed": "只有已处理的薪资批次才能移除员工薪资。",
+      "removeDisabled": "本环境已关闭\"移除员工薪资\"功能。该功能与\"重置薪资\"共用同一项设置，请先请管理员启用薪资重置。",
+      "removeModuleOff": "附加薪资周期已关闭，被移除的员工将无法在本批次重新处理。在启用之前无法移除员工薪资。",
       "removeNoneSelected": "请至少选择一名要移除的员工。",
       "removeNotOnRun": "所选员工在本批次均没有薪资结果。",
       "removeResultTitle": "已移除 {n} 名员工薪资。本批次还剩 {total} 名。",

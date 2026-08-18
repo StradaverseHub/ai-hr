@@ -25,6 +25,16 @@
  *   f. The selection list returns ONE ROW PER PAYSLIP even when an employment carries several
  *      non-superseded assignment rows — the verified production hazard on batch 368c67fc, where a naive
  *      department join turns 19 payslips into 23 tickable rows.
+ *   h. The unwind reaches the ANOMALY VERDICTS too. `openBlockingVerdicts` is keyed on batchId and joins
+ *      no payslip, so an unresolved BLOCK verdict outlives the payslip it describes and refuses the run's
+ *      Close — naming somebody who is not on the run, on the operator's very next action. Superseded per
+ *      removed employment, and the survivor's verdict is left alone.
+ *
+ * WHAT THESE TESTS CANNOT SEE, stated so it is not mistaken for covered: they call the SERVICE with a list
+ * of employment ids, so nothing here can prove WHICH ids the screen submits. That contract — a ticked row
+ * the search box has since hidden is unmounted, and its checkbox with it, while the count, review list,
+ * button label and confirmation body still name the person — is pinned in
+ * test/payroll-remove-form.dom.test.tsx against the real FormData.
  *
  * ADR-0077 CONTEXTS. `removeEmployeePayroll` reads TWO gates — the `payroll.reset_enabled` SETTING (the
  * same risk switch Reset rides) and the `multi_cycle_payroll` MODULE (the Reprocess screen is the way
@@ -39,6 +49,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import {
+  BatchHasBlockingAnomaliesError,
   BatchNotResettableError,
   PayrollPermissionDeniedError,
   RemoveNoEmployeesError,
@@ -483,6 +494,14 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
       removeEmployeePayroll(g, { batchId, employmentIds: [e1.employmentId], reason: 'x' }),
     ).rejects.toThrow(/not enabled/);
     expect(await slipsOf(batchId)).toHaveLength(2);
+
+    // …AND THE SCREEN KNOWS IT BEFORE THE BUTTON IS PRESSED. Both entry points hide their link while the
+    // setting is off, so the only way onto the Remove route is a direct visit — which rendered the whole
+    // selection form until `enabled` joined this reader. Without it the operator learns the answer by
+    // pressing a destructive button and gets the service's raw English back, untranslated, in six locales.
+    expect((await removeEligibility(g, { batchId }))!.enabled).toBe(false);
+    await setSetting(base.tenantId, 'payroll.reset_enabled', true);
+    expect((await removeEligibility(await entitledCtx(base), { batchId }))!.enabled).toBe(true);
   });
 
   it('e. round trip: remove → the employee is on the Reprocess New/Pending list → reprocess adds them back at the same gross and net', async () => {
@@ -572,5 +591,56 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
       reason: 'May was wrong',
     });
     expect(res.laterProcessedPeriods).toEqual(['2026-06']);
+  });
+
+  it('h. the removed employee’s anomaly verdicts are superseded, so Close is no longer blocked by somebody who is not on the run', async () => {
+    // THE FAILURE MODE THIS PINS. `openBlockingVerdicts` is keyed on batchId alone and joins no payslip
+    // (core/payroll-anomaly.ts), so an unresolved BLOCK verdict survives the deletion of the payslip it
+    // describes and keeps refusing `closeBatch` — naming an employee the run no longer contains, on the
+    // operator’s very next action after a removal. Reset never hit it because it drops the run to draft
+    // and a regeneration supersedes every verdict on the batch; removal deliberately leaves the run
+    // PROCESSED and regenerates nothing.
+    const a = adminCtx(base);
+    const gone = await hire('Verdict Gone', 5000);
+    const stays = await hire('Verdict Stays', 4000);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+
+    // Written directly rather than through `evaluateBatchAnomalies`: what is under test is what removal
+    // does to a STANDING verdict, and a detector that happens to fire is not a dependable way to get one.
+    const [blocking] = await owner.db
+      .insert(schema.payrollAnomalyVerdict)
+      .values({ tenantId: base.tenantId, batchId, employmentId: gone.employmentId, disposition: 'block' })
+      .returning({ id: schema.payrollAnomalyVerdict.id });
+    const [review] = await owner.db
+      .insert(schema.payrollAnomalyVerdict)
+      .values({ tenantId: base.tenantId, batchId, employmentId: stays.employmentId, disposition: 'review' })
+      .returning({ id: schema.payrollAnomalyVerdict.id });
+
+    // The guard is live: Close refuses while the BLOCK stands.
+    await expect(closeBatch(a, { batchId })).rejects.toBeInstanceOf(BatchHasBlockingAnomaliesError);
+
+    const g = await entitledCtx(base);
+    const res = await removeEmployeePayroll(g, {
+      batchId,
+      employmentIds: [gone.employmentId],
+      reason: 'wrong basic salary',
+    });
+    expect(res.anomalyVerdictsSuperseded).toBe(1);
+
+    const verdictRow = async (id: string) =>
+      (await owner.db
+        .select()
+        .from(schema.payrollAnomalyVerdict)
+        .where(eq(schema.payrollAnomalyVerdict.id, id)))[0];
+    // SUPERSEDED, NOT DELETED — the row is the record of what the system believed when a human looked at
+    // it, and after a removal there is nothing left to recompute it from.
+    expect((await verdictRow(blocking.id)).supersededAt).not.toBeNull();
+    // …and narrowed to the removed employment, exactly like the loan/claim unwind in case b.
+    expect((await verdictRow(review.id)).supersededAt).toBeNull();
+
+    // The point of all of it: the very next thing the operator does now works.
+    await closeBatch(a, { batchId });
+    expect((await batchRow(batchId)).status).toBe('closed');
   });
 });
