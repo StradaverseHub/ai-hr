@@ -316,7 +316,10 @@ describe('89ea527b — a legacy row with a NULL join_date still reads correctly'
     const d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.joinDate).toBeNull();
     // The UI computes current-company service from join_date ?? hired_on — with null it equals group service,
-    // which is why leaving existing rows untouched changes nothing anyone can see.
+    // which is why leaving existing rows untouched changes nothing anyone can see. What is asserted here is
+    // that FALLBACK, not the format: since 4ea70bb7 the Employment tab renders the day-precise
+    // serviceYearsMonthsDaysAt instead of the whole-month function used below, and the fallback survived the
+    // change unaltered (test/personnel-year-of-service.test.ts pins the rendered strings).
     const asOf = '2026-07-01';
     const group = serviceYearsMonthsAt(d!.hiredOn, asOf);
     const current = serviceYearsMonthsAt(d!.joinDate ?? d!.hiredOn, asOf);

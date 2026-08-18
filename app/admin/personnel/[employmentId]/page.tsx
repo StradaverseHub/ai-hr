@@ -93,7 +93,7 @@ import { TERMINATION_REASONS } from '@/core/termination-reason';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
 import { MovementNewEvent } from './movement-new-event';
-import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
+import { serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
 // moved both the derivation and the two Fields into components/birth-date-fields.tsx, which reads the same
 // counter from the client-safe lib/completed-years.ts so the wizard can render it too.
@@ -238,12 +238,18 @@ export default async function EmployeePage({
     companyChange,
     showCorrected: spShowCorrected,
   } = rawSearchParams;
-  // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
-  // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
+  // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the admin
+  // list. Keeps the `from` param flowing through so nested navigation stays consistent.
+  // 4ea70bb7 — `backToPersonnelAdmin`, NOT `backToPeople`. people.detail is a SHARED namespace: the
+  // employee-facing profile (app/personnel/[employmentId]/page.tsx) renders backToPeople for its own link
+  // to /personnel, the directory that is still called Personnel. Renaming that key in place would have
+  // renamed a screen this item never mentioned — the same trap as people.list.title. This link lands on
+  // /admin/personnel, so it has to carry that module's name: a back link labelled "People" arriving at a
+  // page headed "Personnel Management" is the inconsistency the item exists to remove.
   const back =
     from === 'org'
       ? { href: '/org', label: t('backToOrg') }
-      : { href: '/admin/personnel', label: t('backToPeople') };
+      : { href: '/admin/personnel', label: t('backToPersonnelAdmin') };
 
   // c002b3c3 — reproduced while asserting the scope guard, and PRE-EXISTING (unchanged from main): a
   // route segment that is not a uuid reached the query verbatim, so `/admin/personnel/not-a-uuid` came
@@ -3512,33 +3518,46 @@ export default async function EmployeePage({
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
   // 955c7de4 — period unit dropdown options for the redesigned Employment Dates card.
   const PERIOD_UNIT_OPTIONS: readonly string[] = ['month', 'week', 'day'];
-  // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date (hiredOn);
-  // current-company service reads the Join Date, falling back to the group date until a transfer sets it. Both
-  // are read-only "XX Years XX Months" against today — display-only, they drive no entitlement.
-  const fmtService = (from: string | null | undefined): string | null => {
+  // ONE day-precise length-of-service formatter for every service figure this page shows (4ea70bb7).
+  //
+  // cc681bd5 — the smart format: zero LEADING units drop ("8 Months 15 Days" under a year, "25 Days" for a
+  // new joiner) while inner zeros stay ("10 Years 0 Months 5 Days"); days ALWAYS render, so a same-day hire
+  // reads "0 Days" rather than blank. Each unit is its own ICU-plural key, which is what gets the singular
+  // right ("1 Year 1 Month 1 Day") in every locale.
+  //
+  // It reuses core/leave's serviceYearsMonthsDaysAt (UTC calendar math, month borrowing, month-end clamp,
+  // clamps to zero for a future date) rather than a second piece of date arithmetic. That is the point: the
+  // leave service bands read the sibling serviceYearsAt, which this function's .years is contracted to equal,
+  // and two calculations meant to agree eventually stop agreeing. Read-only and display-only — nothing here
+  // is stored and no entitlement reads it.
+  //
+  // 4ea70bb7 replaced the whole-years-and-months `employmentInfo.serviceLength` the Employment tab used to
+  // render through: it showed a July joiner "0 Years 0 Months" — which reads as no service at all — and said
+  // "1 Years 11 Months". That key is DELETED from all six catalogues, so there is no second format left here
+  // to drift from this one.
+  const fmtServiceYmd = (from: string | null | undefined): string | null => {
     if (!from) return null;
-    const s = serviceYearsMonthsAt(from, today);
-    return t('employmentInfo.serviceLength', { years: s.years, months: s.months });
-  };
-  const groupServiceLabel = fmtService(emp.hiredOn);
-  const currentServiceLabel = fmtService(emp.joinDate ?? emp.hiredOn);
-  // cc681bd5 — Year of Service: day-precise duration from the Group Join Date (hiredOn — fixed through
-  // internal transfers; joinDate is deliberately ignored) to today, recomputed on every render so each
-  // profile open shows that day's exact figure with no manual refresh. Smart format drops zero LEADING
-  // units only ("8 Months 15 Days" under a year, "25 Days" for a new joiner) while inner zeros stay
-  // ("10 Years 0 Months 5 Days"); days always render (a same-day hire shows "0 Days"). Read-only,
-  // display-only — leave bands keep reading serviceYearsAt / serviceYearsMonthsAt.
-  // b75b2a23 — the figure now renders on the TOP summary card (after Join Date), not on the Employment
-  // Information card; the computation stays here beside the other service figures it shares inputs with.
-  const yearOfServiceLabel = ((): string | null => {
-    if (!emp.hiredOn) return null;
-    const s = serviceYearsMonthsDaysAt(emp.hiredOn, today);
+    const s = serviceYearsMonthsDaysAt(from, today);
     const parts: string[] = [];
     if (s.years > 0) parts.push(t('employmentInfo.yearsUnit', { count: s.years }));
     if (s.years > 0 || s.months > 0) parts.push(t('employmentInfo.monthsUnit', { count: s.months }));
     parts.push(t('employmentInfo.daysUnit', { count: s.days }));
     return parts.join(' ');
-  })();
+  };
+  // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date
+  // (hiredOn); current-company service reads the Join Date, falling back to the group date until a transfer
+  // sets it — 22 of 40 rows carry no join_date and must not read as empty. The two are computed
+  // INDEPENDENTLY from their own dates: neither replaces the other, and on the one employment where the
+  // dates differ they are meant to show different figures.
+  const groupServiceLabel = fmtServiceYmd(emp.hiredOn);
+  const currentServiceLabel = fmtServiceYmd(emp.joinDate ?? emp.hiredOn);
+  // cc681bd5 — Year of Service: the same figure as Group Service, from the Group Join Date (hiredOn — fixed
+  // through internal transfers; joinDate is deliberately ignored), recomputed on every render so each profile
+  // open shows that day's exact figure with no manual refresh. It goes through the SAME formatter as the two
+  // above, which is why the summary card and the Employment tab cannot disagree.
+  // b75b2a23 — the figure renders on the TOP summary card (after the Group Join Date), not on the Employment
+  // Information card; the computation stays here beside the other service figures it shares inputs with.
+  const yearOfServiceLabel = fmtServiceYmd(emp.hiredOn);
   const yearOfServiceTooltip = emp.hiredOn
     ? t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: emp.hiredOn, asOf: today })
     : null;
@@ -3837,9 +3856,17 @@ export default async function EmployeePage({
             </Link>
           </p>
 
-          {/* b75b2a23 — the cc681bd5 Year of Service row moved from here onto the top summary card so the
-              figure is visible the moment a profile opens and lives in exactly one place. The label +
-              tooltip are still computed above (beside the other service figures) — only the render moved. */}
+          {/* b75b2a23 — the cc681bd5 Year of Service ROW moved from here onto the top summary card so the
+              figure is visible the moment a profile opens. The label + tooltip are still computed above
+              (beside the other service figures) — only the render moved.
+
+              4ea70bb7 — b75b2a23 also said the figure "lives in exactly one place". That stopped being
+              true HERE, on this very card: the Group Service caption in the Joining pair at the top of
+              this fieldset now prints the SAME string — fmtServiceYmd(emp.hiredOn), character for
+              character what the summary card shows as Year of Service. Deliberate, and the same reading as the twin note on the summary
+              card: one figure, two captions, ONE calculation. What must stay unique is the calculation,
+              not the display — if this page ever needs another service figure, call fmtServiceYmd; never
+              add a second piece of date arithmetic. */}
 
           {/* Probation Information */}
           <div className="space-y-3">
@@ -4517,15 +4544,22 @@ export default async function EmployeePage({
               <dd className="font-medium text-foreground">{emp.company}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">{t('headerJoinDate')}</dt>
+              {/* 4ea70bb7 — this pair has always rendered emp.hiredOn, which is the GROUP join date; the
+                  label said "Join date", the name the Employment tab gives the OTHER column (emp.joinDate).
+                  Labelled Group Join Date so the summary card and the Employment tab name the same date the
+                  same way. The value is unchanged and neither date moved. */}
+              <dt className="text-xs text-muted-foreground">{t('headerGroupJoinDate')}</dt>
               <dd className="font-medium text-foreground">{emp.hiredOn}</dd>
             </div>
             {/* b75b2a23 — Year of Service, moved here from the Employment tab so service length is visible
                 the moment a profile opens. Same read-only Y/M/D figure from the Group Join Date (computed
                 above with the other service figures), same i-badge tooltip carrying the underlying dates,
-                same "Not Available" fallback. Placed after Join Date — the two read together — and as the
-                8th pair it keeps the 2-column grid even. This is the figure's ONLY display; the Employment
-                Information card row was removed. */}
+                same "Not Available" fallback. Placed after the Group Join Date — the two read together —
+                and as the 8th pair it keeps the 2-column grid even. This is the row's ONLY display; the
+                Employment Information card row was removed.
+                4ea70bb7 — the Employment tab's Group Service caption now prints the SAME string from the
+                SAME formatter (fmtServiceYmd on the same emp.hiredOn). That is deliberate: one figure, two
+                captions, one calculation — it is a second caption, not a second answer. */}
             <div>
               <dt className="text-xs text-muted-foreground">{t('employmentInfo.yearOfService')}</dt>
               <dd className="font-medium text-foreground">
