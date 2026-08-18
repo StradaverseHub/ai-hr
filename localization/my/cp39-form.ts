@@ -125,6 +125,14 @@ export type Cp39FormExtras = {
  * `params.periodKey` IS THE DEDUCTION MONTH, unshifted — `cp39DeductionPeriodFor` says so and validates
  * it, so `2026-13` throws here rather than producing a plausible-looking empty statement stamped with
  * nonsense.
+ *
+ * ⚠️ THAT THROW IS A BACKSTOP, NOT A SCREEN'S ERROR PATH, AND `cp39()` MUST KEEP CALLING IT AFTER ITS
+ * `hasBatch` CHECK. Two screens hand `reportPreview` an unvalidated period with no try/catch around it —
+ * `/payroll/reports` (a free-text period box that still holds "2026" when the report dropdown is switched
+ * from an annual form) and `/payroll/statutory-forms/my.cp39` (which accepts `?periodKey=2026-13`). Both
+ * have always degraded to the "No payroll run" card, because a period that cannot name a month cannot
+ * name a batch; calling this before that branch turns both of them into a 500. See the ordering note in
+ * `cp39()` (localization/my/reports.ts).
  */
 export function cp39FormExtras(
   ctx: SessionContext,

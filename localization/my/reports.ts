@@ -457,18 +457,31 @@ const CP39_COLS: ReportColumn[] = [
  */
 async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
   const b = await loadBatchRows(ctx, params);
+  // ⚠️ THE NO-BATCH ANSWER COMES FIRST, AND THE ORDER OF THESE TWO STATEMENTS IS THE WHOLE POINT.
+  //
+  // `cp39FormExtras` VALIDATES the period and THROWS on anything that is not YYYY-MM (it has to: a
+  // statement stamped "2026-13" would look completely normal). But this generator is not only the printed
+  // form's read — it also backs `/payroll/reports`, whose period box is FREE TEXT and still holds "2026"
+  // when you switch the report dropdown from an annual form to CP39, and `/payroll/statutory-forms/my.cp39`,
+  // which will build a periodKey out of a `?periodKey=2026-13` in the URL. Both of those call
+  // `reportPreview` with NO try/catch, so calling the validating read before this branch turned a screen
+  // that had always degraded to the "No payroll run" card into a 500. `my.cp39` has been total since
+  // slice 0 and it stays total: a period that cannot name a month cannot name a batch either, so it lands
+  // here and the card renders exactly as it always did.
+  //
+  // Nothing is lost by returning before the extras: `loadCp39Form` answers 'no-batch' (app/payroll/cp39/
+  // shared.ts) before it ever looks at `meta.formHeader`, and `meta.notes` are rendered only inside
+  // `StatutoryReportPanel`, which the no-batch branch of both screens does not reach. The four queries
+  // this used to run on the empty path were discarded work.
+  if (!b.hasBatch) return empty(CP39_COLS, b);
   // Second, narrow query rather than a wider `loadBatchRows`: that loader is shared by six reports and
-  // only this one needs a passport number. Throws on a malformed period (cp39DeductionPeriodFor), which
-  // is what stops "2026-13" producing a plausible-looking empty statement stamped with nonsense.
+  // only this one needs a passport number. Reached only with a period that produced a real batch, which
+  // is why its validation is now a backstop rather than the screen's error path.
   const extras = await cp39FormExtras(ctx, {
     companyId: params.companyId,
     periodKey: params.periodKey,
     employmentIds: b.rows.map((r) => r.employmentId),
   });
-  if (!b.hasBatch) {
-    const e = empty(CP39_COLS, b);
-    return { ...e, meta: { ...e.meta, formHeader: extras.header, notes: CP39_FORM_NOTES } };
-  }
   const rows: ReportRow[] = b.rows.map((r) => {
     const x = extras.byEmployment.get(r.employmentId);
     return {
