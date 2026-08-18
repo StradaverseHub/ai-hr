@@ -45,7 +45,14 @@ export default async function PcbDetailPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  const payslipId = typeof sp.payslipId === 'string' && sp.payslipId.length > 0 ? sp.payslipId : undefined;
+  // SHAPE-CHECK BEFORE THE QUERY, the same guard the run screens carry (app/payroll/[batchId]/*). `payslip.id`
+  // is a uuid column, so a mangled id out of a shared link — `?payslipId=abc`, a stray space, a truncated
+  // copy-paste — reaches Postgres as `invalid input syntax for type uuid` and, with no try/catch here and no
+  // app/error.tsx anywhere in the tree, becomes an HTTP 500 rather than the "not found" card this page's own
+  // header promises. Treating an unparseable id as absent is both truthful and what the reader expects: there
+  // is no such payslip.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const payslipId = typeof sp.payslipId === 'string' && UUID_RE.test(sp.payslipId) ? sp.payslipId : undefined;
   const row = payslipId ? await payslipForReview(s, { companyIds: scopeIds, payslipId }) : null;
 
   // The relief FALLBACK, consulted ONLY for a payslip calculated before the relief working was recorded

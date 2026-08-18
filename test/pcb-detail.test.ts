@@ -1069,3 +1069,30 @@ describe('45df860a — a payroll run processed today closes its own formula', ()
     );
   });
 });
+
+/**
+ * 45df860a — A MANGLED ID IN THE ADDRESS BAR IS A "NOT FOUND", NOT A 500.
+ *
+ * `payslip.id` is a uuid column, so `?payslipId=abc` reaches Postgres as `invalid input syntax for type
+ * uuid` (SQLSTATE 22P02). This server component has no try/catch and the tree has no app/error.tsx or
+ * global-error.tsx, so an unguarded read is an HTTP 500 — on a screen whose own header promises the
+ * not-found card. Reachable by an authenticated admin from any truncated or re-typed shared link.
+ *
+ * Source-shape because the defect lives between the query string and the query: a unit test of the read
+ * passes a real uuid and never sees it, and rendering the page needs a running server.
+ */
+describe('45df860a — an unparseable payslip id degrades', () => {
+  it('shape-checks the id before it reaches the uuid column', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '..', 'app/payroll/pcb-detail/page.tsx'),
+      'utf8',
+    );
+    expect(src, 'the page must test the id shape').toMatch(/UUID_RE\s*=\s*\/\^\[0-9a-f\]\{8\}/);
+    expect(src, 'and gate the read on it, not merely on length').toMatch(
+      /UUID_RE\.test\(sp\.payslipId\)\s*\?\s*sp\.payslipId\s*:\s*undefined/,
+    );
+    expect(src, 'a bare length check would let "abc" through').not.toMatch(
+      /sp\.payslipId\.length\s*>\s*0\s*\?\s*sp\.payslipId/,
+    );
+  });
+});
