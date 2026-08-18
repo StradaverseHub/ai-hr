@@ -18,8 +18,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import zlib from 'node:zlib';
 import {
+  BORANG_A_CATATAN,
+  BORANG_A_CITATION,
   BORANG_A_HEADER_KEYS,
+  BORANG_A_PAYMENT_INSTRUCTION,
+  BORANG_A_PAYMENT_METHODS,
+  BORANG_A_PAYMENT_REF_LABEL,
+  BORANG_A_PERINGATAN_EN,
+  BORANG_A_PERINGATAN_MS,
   BORANG_A_ROWS_PER_PAGE,
   borangAFilename,
   borangAFrom,
@@ -41,7 +49,8 @@ import {
 import { contributionPeriodFor as socsoContributionPeriodFor } from '../lib/borang-8a';
 import { MY_PLANNED_FORMS, MY_REPORTS } from '../localization/my/reports';
 import { BORANG_A_COLUMNS } from '../localization/my/borang-a';
-import { renderBorangAPdf } from '../lib/borang-a-pdf';
+import { BORANG_A_SHEET_GEOMETRY, borangASheetRowCapacity, renderBorangAPdf } from '../lib/borang-a-pdf';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import en from '../messages/en.json';
 
@@ -343,9 +352,12 @@ describe('the plain-text export', () => {
   it('says on its face that it is not KWSP artwork', () => {
     const text = borangATextExport(borangAFrom({ header: header(), rows: [row({ employmentId: 'a' })] }));
     expect(text).toContain('NOT KWSP ARTWORK');
-    expect(text).toContain('No. Rujukan Majikan : 019632261');
-    expect(text).toContain('Bulan Caruman       : 08 / 2026  (0826)');
-    expect(text).toContain('Bulan Upah          : 2026-07');
+    // UPDATED DELIBERATELY in cc9f9420, not incidentally: the label column widened from 19 to 20 because
+    // "No. Rujukan Borang A" — the reporter's point 1 — is exactly 20 characters and had to fit beside it.
+    expect(text).toContain('No. Rujukan Majikan  : 019632261');
+    expect(text).toContain('No. Rujukan Borang A : (kosong - untuk diisi oleh tuan)');
+    expect(text).toContain('Bulan Caruman        : 08 / 2026  (0826)');
+    expect(text).toContain('Bulan Upah           : 2026-07');
   });
 
   it('marks an unrecorded wage rather than printing 0.00 for it', () => {
@@ -511,7 +523,7 @@ describe('the module stands alone from Borang 8A', () => {
 describe('the drawn page', () => {
   it('renders a real PDF, at one page and at three', async () => {
     for (const [count, perPage, pages] of [
-      [1, 22, 1],
+      [1, BORANG_A_ROWS_PER_PAGE, 1],
       [7, 3, 3],
     ] as const) {
       const rows = Array.from({ length: count }, (_, i) => row({ employmentId: `e${i}`, name: `PERSON ${i}` }));
@@ -575,5 +587,319 @@ describe('the review screen’s messages', () => {
     const braced = Object.entries(ns).filter(([k, v]) => !INTERPOLATED.has(k) && /[{}]/.test(v));
     expect(braced.map(([k]) => k), 'these are rendered with no arguments').toEqual([]);
     for (const k of INTERPOLATED) expect(ns[k], k).toMatch(/\{/);
+  });
+});
+
+/**
+ * cc9f9420 — THE KWSP 6 PAGE FURNITURE.
+ *
+ * ⚠️ THESE TESTS READ THE FINISHED PDF, not the source that produced it. Two of the three layout defects
+ * in this file's history were invisible to tsc, to the suite, to `next build` and to a 200 — a PDF that
+ * prints one string through another is still a valid PDF, and `renderBorangAPdf` returning bytes proves
+ * nothing about what is on the page. `drawnPages` below inflates the content stream and reads back every
+ * string the renderer actually drew, with the point it drew it at, so a collision is an assertion failure
+ * instead of a thing somebody notices at a KWSP counter.
+ *
+ * BOTH of cc9f9420's own layout defects were found this way and are now pinned: "JUMLAH (RM)" printed
+ * straight through the total Upah figure on a two-sheet form, and the representative's Jawatan printed
+ * through the Cop Rasmi Majikan box.
+ */
+type Drawn = { x: number; y: number; size: number; bold: boolean; text: string };
+
+/**
+ * Every string the renderer DREW, per sheet, with its baseline origin.
+ *
+ * pdf-lib Flate-compresses each page's content stream and emits text as
+ * `/<font>-<id> <size> Tf … 1 0 0 1 <x> <y> Tm <hex> Tj`. Hex is WinAnsi, which is Latin-1, so a raw
+ * latin1 decode is exact — and a character the renderer could not encode arrives here as the '?' it will
+ * print, which is the point of the fold assertion below.
+ */
+async function drawnPages(form: ReturnType<typeof borangAFrom>): Promise<Drawn[][]> {
+  const buf = Buffer.from(await renderBorangAPdf(form));
+  const pages: Drawn[][] = [];
+  const OP =
+    /\/(Helvetica(?:-Bold)?)-\d+ ([\d.]+) Tf[\s\S]{0,60}?1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm\s*<([0-9A-Fa-f]*)> Tj/g;
+  for (const m of buf.toString('latin1').matchAll(/stream\r?\n/g)) {
+    const start = m.index! + m[0].length;
+    const end = buf.indexOf('endstream', start, 'latin1');
+    let body: string;
+    try {
+      body = zlib.inflateSync(buf.subarray(start, end)).toString('latin1');
+    } catch {
+      continue;
+    }
+    if (!body.includes(' Tj')) continue;
+    const drawn: Drawn[] = [];
+    for (const t of body.matchAll(OP)) {
+      drawn.push({
+        bold: t[1] === 'Helvetica-Bold',
+        size: Number(t[2]),
+        x: Number(t[3]),
+        y: Number(t[4]),
+        text: Buffer.from(t[5], 'hex').toString('latin1'),
+      });
+    }
+    pages.push(drawn);
+  }
+  // One content stream per sheet, in order. If pdf-lib ever stops emitting them that way the assertions
+  // below would silently test the wrong sheet, so it is checked rather than assumed.
+  expect(pages, 'one content stream per sheet').toHaveLength(form.pages.length);
+  return pages;
+}
+
+/** Joining with a single space reconstructs every WRAPPED paragraph, because `wrap` splits on /\s+/. */
+const flatten = (page: Drawn[]) => page.map((d) => d.text).join(' ');
+
+describe('the KWSP 6 page furniture', () => {
+  const longName = 'MUHAMMAD SYAFIQ BIN ABDUL RAHMAN MOHAMED ZULKIFLI';
+  const built = (n: number, perPage?: number) =>
+    borangAFrom({
+      header: header(),
+      rows: Array.from({ length: n }, (_, i) => row({ employmentId: `e${i}`, name: longName })),
+      perPage,
+    });
+
+  it('draws every one of the nine blocks the request named, on the page rather than in a comment', async () => {
+    const [sheet] = await drawnPages(built(1));
+    const flat = flatten(sheet);
+    for (const s of [
+      // 1 — masthead and the regulation citation, plus the empty No. Rujukan Borang A slot
+      'KWSP 6',
+      BORANG_A_CITATION,
+      'No. Rujukan Borang A',
+      // 2 — payment method
+      BORANG_A_PAYMENT_INSTRUCTION,
+      ...BORANG_A_PAYMENT_METHODS,
+      BORANG_A_PAYMENT_REF_LABEL,
+      // 3 — collection agent's stamp
+      'Cop Agen Kutipan',
+      // 4 — form label and page number together, top right
+      'Borang A',
+      'Mukasurat: 1/1',
+      // 5 — the column order, N K included
+      'BIL',
+      'NO. AHLI',
+      'N K',
+      'NO. KAD PENGENALAN',
+      'NAMA PEKERJA / AHLI',
+      'UPAH (RM)',
+      'CARUMAN (RM)',
+      'MAJIKAN',
+      'PEKERJA',
+      // 7 — the signature block, completed
+      'Tandatangan Wakil Majikan',
+      'No. Tel / Bimbit',
+      'Tarikh',
+      'Cop Rasmi Majikan',
+      // 8 and 9
+      'CATATAN',
+      BORANG_A_PERINGATAN_MS,
+      BORANG_A_PERINGATAN_EN,
+    ]) {
+      expect(flat, `the drawn page is missing "${s}"`).toContain(s);
+    }
+    for (const [i, note] of BORANG_A_CATATAN.entries()) expect(flat, note).toContain(`${i + 1}. ${note}`);
+  });
+
+  it('carries "(jika ada)" on BOTH carry-forward lines and nowhere near the JUMLAH', async () => {
+    // Point 6. The subtotals themselves were already built and proven; only the suffix was missing.
+    const sheets = await drawnPages(built(3, 2));
+    expect(flatten(sheets[0])).toContain('Jumlah yang dibawa ke mukasurat seterusnya (jika ada)');
+    expect(flatten(sheets[1])).toContain('Jumlah yang dibawa dari mukasurat terdahulu (jika ada)');
+    // The whole-form total is not a "if any" line and must not acquire the suffix.
+    expect(flatten(sheets[1])).toContain('JUMLAH (RM)');
+    expect(flatten(sheets[1])).not.toContain('JUMLAH (RM) (jika ada)');
+  });
+
+  /**
+   * THE N K COLUMN IS PRINTED AND PERMANENTLY EMPTY — catatan 5, "Ruang ketiga (N K) hanya diisi oleh
+   * KWSP sahaja". Asserted at the two places it could be broken: the drawn page, and the row type.
+   */
+  it('never writes anything but the heading into the N K column', async () => {
+    const NK_X = 34 + 100;
+    const IC_X = 34 + 120;
+    const { tableFloor, firstRowTop } = BORANG_A_SHEET_GEOMETRY;
+    for (const sheet of await drawnPages(built(BORANG_A_ROWS_PER_PAGE * 2 + 1))) {
+      const inColumn = sheet.filter(
+        (d) => d.x >= NK_X && d.x < IC_X && d.y >= tableFloor && d.y <= firstRowTop + 40,
+      );
+      expect(inColumn.map((d) => d.text), 'only the N K heading may print in the N K column').toEqual(['N K']);
+    }
+  });
+
+  it('gave BorangARow no field for the reserved column, so there is nothing to populate', () => {
+    const r = borangAFrom({ header: header(), rows: [row({ employmentId: 'a' })] }).pages[0].rows[0];
+    expect(Object.keys(r).sort()).toEqual([
+      'employee',
+      'employer',
+      'employmentId',
+      'ic',
+      'memberNo',
+      'name',
+      'staffNo',
+      'wage',
+      'wageRecorded',
+    ]);
+  });
+
+  /**
+   * THE GENERAL OVERPRINT GUARD. Two strings on the same baseline whose boxes overlap print through each
+   * other, and the page still renders, still validates and still returns 200. This is the check that
+   * catches the next one.
+   */
+  it('draws no two strings through each other, on any sheet', async () => {
+    const doc = await PDFDocument.create();
+    const fonts = {
+      false: await doc.embedFont(StandardFonts.Helvetica),
+      true: await doc.embedFont(StandardFonts.HelveticaBold),
+    } as const;
+    const width = (d: Drawn) => fonts[String(d.bold) as 'true' | 'false'].widthOfTextAtSize(d.text, d.size);
+    for (const [n, sheet] of (await drawnPages(built(BORANG_A_ROWS_PER_PAGE * 2 + 1))).entries()) {
+      const byBaseline = new Map<string, Drawn[]>();
+      for (const d of sheet) {
+        const k = d.y.toFixed(1);
+        byBaseline.set(k, [...(byBaseline.get(k) ?? []), d]);
+      }
+      for (const line of byBaseline.values()) {
+        const sorted = [...line].sort((a, b) => a.x - b.x);
+        for (let i = 1; i < sorted.length; i += 1) {
+          const prev = sorted[i - 1];
+          const end = prev.x + width(prev);
+          expect(
+            sorted[i].x,
+            `sheet ${n + 1}: "${prev.text}" (ends at ${end.toFixed(2)}) prints through "${sorted[i].text}"`,
+          ).toBeGreaterThanOrEqual(end - 0.5);
+        }
+      }
+    }
+  });
+
+  it('keeps every table row above the foot furniture at the shipped page size', async () => {
+    // A middle sheet is the worst case: it carries in AND carries out. Overprinting the CATATAN block is
+    // exactly what a rows-per-page chosen by eye rather than measured produces.
+    const form = built(BORANG_A_ROWS_PER_PAGE * 2 + 1);
+    expect(form.pages).toHaveLength(3);
+    for (const [n, sheet] of (await drawnPages(form)).entries()) {
+      // Matched on the FIXTURE's own values, not on "looks like a number": the representative's identity
+      // card number is drawn in the foot band on purpose and a `\d+` pattern swept it up.
+      const table = sheet.filter((d) =>
+        /^(17955667|860208105128|MUHAMMAD|6,200\.00|Jumlah yang dibawa|JUMLAH \(RM\))/.test(d.text),
+      );
+      expect(table.length, `sheet ${n + 1} drew no table text`).toBeGreaterThan(5);
+      for (const d of table) {
+        expect(d.y, `sheet ${n + 1}: "${d.text}" is drawn into the foot band`).toBeGreaterThanOrEqual(
+          BORANG_A_SHEET_GEOMETRY.tableFloor,
+        );
+      }
+    }
+  });
+
+  it('never ships more rows per sheet than the drawn page can hold', () => {
+    const capacity = borangASheetRowCapacity();
+    expect(BORANG_A_ROWS_PER_PAGE).toBeLessThanOrEqual(capacity);
+    // …and not wastefully fewer either: one row of headroom is the deliberate margin, a sheet's worth is
+    // a mistake. Measured 2026-08-18: capacity 21, shipped 20.
+    expect(capacity - BORANG_A_ROWS_PER_PAGE).toBeLessThanOrEqual(3);
+  });
+
+  it('clears every column heading of its neighbour, measured on the drawn page', async () => {
+    // The r193 lesson: a heading is not clipped, so one wider than its column prints into the next. The
+    // positions come from the FINISHED PDF and the widths from the same font, so this cannot drift from
+    // the renderer the way a restated copy of COL would.
+    const doc = await PDFDocument.create();
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const plain = await doc.embedFont(StandardFonts.Helvetica);
+    const [sheet] = await drawnPages(built(1));
+    const bil = sheet.find((d) => d.text === 'BIL')!;
+    const sub = sheet.find((d) => d.text.startsWith('(Seperti'))!;
+    for (const baseline of [bil.y, sub.y]) {
+      const line = sheet.filter((d) => d.y === baseline).sort((a, b) => a.x - b.x);
+      expect(line.length).toBeGreaterThan(2);
+      for (let i = 1; i < line.length; i += 1) {
+        const prev = line[i - 1];
+        const gap = line[i].x - prev.x - (prev.bold ? bold : plain).widthOfTextAtSize(prev.text, prev.size);
+        expect(gap, `"${prev.text}" clears "${line[i].text}" by ${gap.toFixed(2)}pt`).toBeGreaterThan(4);
+      }
+    }
+  });
+
+  it('keeps every new caption inside Latin-1, so none of it prints as "?"', async () => {
+    // Helvetica is WinAnsi. A curly apostrophe or an en dash pasted into this copy prints as '?' — r193
+    // shipped "the agency?s own page" on the sibling form's footer before the fold existed.
+    for (const s of [
+      ...BORANG_A_CATATAN,
+      BORANG_A_PERINGATAN_MS,
+      BORANG_A_PERINGATAN_EN,
+      BORANG_A_CITATION,
+      BORANG_A_PAYMENT_INSTRUCTION,
+      BORANG_A_PAYMENT_REF_LABEL,
+      ...BORANG_A_PAYMENT_METHODS,
+    ]) {
+      expect(s, `"${s}" leaves Latin-1`).toMatch(/^[\x20-\x7E]+$/);
+    }
+    // …and nothing the renderer drew degraded, including the folded typography in the provenance band.
+    for (const sheet of await drawnPages(built(1))) {
+      expect(flatten(sheet), 'the drawn page prints a "?"').not.toContain('?');
+    }
+  });
+
+  it('has exactly eight notes, and both outputs read them from the one array', () => {
+    expect(BORANG_A_CATATAN).toHaveLength(8);
+    // The renderer may not restate a sentence: the whole point of the array is that a supplied KWSP 6
+    // page can be dropped in without touching lib/borang-a-pdf.ts.
+    const pdfCode = code('lib/borang-a-pdf.ts');
+    expect(pdfCode).toContain('BORANG_A_CATATAN');
+    for (const note of BORANG_A_CATATAN) expect(pdfCode, `the renderer restates "${note}"`).not.toContain(note);
+    const text = borangATextExport(borangAFrom({ header: header(), rows: [row({ employmentId: 'a' })] }));
+    for (const [i, note] of BORANG_A_CATATAN.entries()) expect(text).toContain(`${i + 1}. ${note}`);
+  });
+
+  it('mirrors every new block in the plain-text twin', () => {
+    const text = borangATextExport(borangAFrom({ header: header(), rows: [row({ employmentId: 'a' })] }));
+    expect(text).toContain('CARA BAYARAN');
+    for (const m of BORANG_A_PAYMENT_METHODS) expect(text).toContain(`[ ] ${m}`);
+    expect(text).toContain(BORANG_A_PAYMENT_REF_LABEL);
+    expect(text).toContain('No. Tel / Bimbit  :');
+    expect(text).toContain('Tarikh            : ____________________');
+    expect(text).toContain('Cop Rasmi Majikan');
+    expect(text).toContain('Cop Agen Kutipan');
+    expect(text).toContain(BORANG_A_PERINGATAN_MS);
+    // The text twin's N K column is blank on every row, for the same reason the drawn one is: the field
+    // is KWSP's. Columns 20-23 are the N K slot (BIL 5 + NO. AHLI 14).
+    const header0 = text.split('\n').find((l) => l.startsWith('BIL  '))!;
+    expect(header0.slice(19, 23)).toBe('N K ');
+    const rowLine = text.split('\n').find((l) => /^1 {4}17955667/.test(l))!;
+    expect(rowLine.slice(19, 23), 'the N K column must be blank on a data row').toBe('    ');
+  });
+
+  it('numbers rows across the whole form even when the caller picks its own page size', () => {
+    // The text twin used to multiply out BORANG_A_ROWS_PER_PAGE, so a caller-supplied `perPage` renumbered
+    // every sheet but the first — and the drawn page, which counts the sheets, disagreed with it silently.
+    const rows = Array.from({ length: 5 }, (_, i) => row({ employmentId: `e${i}` }));
+    const text = borangATextExport(borangAFrom({ header: header(), rows, perPage: 2 }));
+    for (const n of [1, 2, 3, 4, 5]) expect(text, `row ${n}`).toMatch(new RegExp(`^${n} {4}17955667`, 'm'));
+  });
+
+  it.each([1, 2, 3])('holds the no-double-counting property at %s sheet(s) of the SHIPPED page size', (pages) => {
+    const rows = Array.from({ length: BORANG_A_ROWS_PER_PAGE * pages }, (_, i) =>
+      row({ employmentId: `e${i}`, employer: 100 + i, employee: 50 + i, wage: 1000 + i }),
+    );
+    const form = borangAFrom({ header: header(), rows });
+    expect(form.pages).toHaveLength(pages);
+    const summed = form.pages.reduce((a, p) => a + p.pageEmployer, 0);
+    expect(Math.round(summed * 100) / 100).toBe(form.totalEmployer);
+    for (let i = 1; i < form.pages.length; i += 1) {
+      expect(form.pages[i].carryInEmployer).toBe(form.pages[i - 1].carryOutEmployer);
+    }
+    expect(form.pages[form.pages.length - 1].carryOutEmployer).toBe(form.totalEmployer);
+  });
+
+  it('still says on its own face that it is not the agency’s page', async () => {
+    // FIDELITY STAYS `agency-layout`. Adding the agency's furniture does not make this KWSP's artwork, and
+    // the CATATAN wording is transcribed from another vendor's output — the page has to say so.
+    const flat = flatten((await drawnPages(built(1)))[0]);
+    expect(flat).toContain('bukan borang rasmi KWSP');
+    expect(flat).toContain('TRANSCRIBED from a filled Borang A produced by another payroll system');
+    expect(flat).toContain('the English line under PERINGATAN is our own translation');
   });
 });
