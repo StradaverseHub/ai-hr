@@ -2570,6 +2570,7 @@
       "proratedNote": "Diprorata pada {days, plural, one {# hari} other {# hari}} bekerja dalam tempoh ini.",
       "recordLinesHeading": "Butiran item gaji",
       "recordLinesNote": "Direkodkan untuk rujukan anda sahaja — ini tidak menjejaskan gaji kasar atau bersih anda.",
+      "recordLineRemark": "Dimasukkan sebagai “{remark}”",
       "nonPayableHeading": "Item tidak dibayar",
       "nonPayableTotal": "Jumlah tidak dibayar",
       "pdfTitle": "Slip Gaji",
@@ -4548,6 +4549,12 @@
           "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
           "itemsHeading": "Butiran item gaji",
           "itemsNote": "Direkodkan secara berasingan pada slip gaji ini. Item sekali sahaja sudah termasuk dalam jumlah di atas; item rekod sahaja (seperti manfaat berbentuk barangan) tidak menjejaskan kasar mahupun bersih.",
+          "itemRemark": "Dimasukkan sebagai “{remark}”",
+          "sourceHeading": "Dari mana ia datang",
+          "sourceNote": "Transaksi individu yang direkodkan terhadap pekerja ini pada larian gaji ini. Ia disenaraikan di sebelah item yang direkodkan dan bukan dipadankan dengannya: dua entri boleh berkongsi item gaji dan amaun yang sama, jadi hanya orang yang memasukkannya boleh menyatakan yang mana satu.",
+          "sourcePaidByThisRun": "Dibayar oleh larian ini",
+          "sourcePaidByOtherRun": "Dibayar oleh larian lain",
+          "sourceNotMarkedPaid": "Belum ditanda sebagai dibayar",
           "detailNotRecorded": "Direkodkan sebelum sistem menyimpan butiran setiap item, jadi item individu di sebalik angka ini tidak pernah disimpan dan tidak boleh dipaparkan untuk larian ini.",
           "hrdfNotRegistered": "Tidak berdaftar",
           "export": "Eksport ke Excel",
@@ -4556,7 +4563,7 @@
           "exportAll": "Semua gaji yang telah diproses",
           "exportAllHint": "Setiap slip gaji diproses yang anda dibenarkan lihat, tanpa mengambil kira tapisan di atas.",
           "exportTitle": "Sejarah Transaksi Gaji",
-          "exportDetailNote": "Sesetengah larian gaji tidak menyimpan butiran setiap item — larian bonus, luar kitaran dan pelarasan tidak pernah merekodkannya, begitu juga larian yang dikira sebelum sistem gaji ini mula menyimpannya. Pada baris tersebut angka ringkasan dan jumlah Elaun masih tepat, dan lajur item bernama hanyalah kosong."
+          "exportDetailNote": "Sesetengah larian gaji tidak menyimpan butiran setiap item, kerana ia dikira sebelum sistem gaji ini mula menyimpannya dan butiran itu tidak boleh dibina semula kemudian. Pada baris tersebut angka ringkasan dan jumlah Elaun masih tepat, dan lajur item bernama hanyalah kosong."
         },
         "exportCsv": "Eksport CSV",
         "outstanding": {
@@ -4586,7 +4593,7 @@
           "hideSystemCodes": "Sembunyikan kod sistem",
           "showSubject": "Tunjukkan tertakluk statutori",
           "summary": "{payslips} slip gaji · {rows} baris",
-          "detailNotRecorded": "Sebahagian proses gaji pada tahun ini tidak menyimpan butiran setiap item — sama ada ia dikira sebelum sistem mula merekodkannya, atau ia proses tambahan yang memang tidak mengulang item berulang. Baris ringkasan tetap lengkap.",
+          "detailNotRecorded": "Sesetengah larian pada tahun ini tidak menyimpan butiran setiap item, kerana ia dikira sebelum sistem mula merekodkannya dan butiran itu tidak boleh dibina semula kemudian. Baris ringkasan tetap lengkap.",
           "basesNotRecorded": "Sebahagian proses gaji pada tahun ini tidak merekodkan upah yang dikenakan bagi setiap caruman, jadi bulan tersebut memaparkan sengkang. Tiada angka gantian digunakan — asas upah hanya dipaparkan apabila proses gaji itu sendiri merekodkannya.",
           "subjectFromPayslip": "Y / N ialah tetapan yang direkodkan oleh setiap proses gaji pada masa ia dikira. PERKESO, SIP dan SKBBK ialah satu tetapan bagi setiap item gaji, jadi ketiga-tiga lajur itu sentiasa sama.",
           "subjectFromCatalogue": "Y / N diambil daripada tetapan Item Gaji semasa jika sesuatu proses gaji tidak merekodkan tetapannya sendiri. Jika tetapan diubah selepas sesuatu proses, angka di atasnya mungkin masih mengikut tetapan lama. PERKESO, SIP dan SKBBK ialah satu tetapan bagi setiap item gaji, jadi ketiga-tiga lajur itu sentiasa sama.",

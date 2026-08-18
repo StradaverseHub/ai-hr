@@ -1,0 +1,483 @@
+<title>Payroll Settings Redesign</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#14171c; --muted:#6b7280; --line:#e3e6ea;
+    --primary:#1f5fd6; --primary-ink:#ffffff; --soft:#f2f5fb; --amber:#b45309; --amberbg:#fff7e6;
+    --green:#166534; --greenbg:#e8f5ec; --grey:#4b5563; --greybg:#eef0f3; --red:#b42318; --redbg:#fdeceb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;line-height:1.5;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 72px;}
+  h1{font-size:24px;margin:0 0 6px;letter-spacing:-.01em}
+  .lede{color:var(--muted);margin:0 0 4px;max-width:78ch}
+  .note{background:var(--amberbg);border:1px solid #f0d9a8;color:#7a4a06;
+    border-radius:10px;padding:10px 14px;margin:18px 0 0;font-size:13px;max-width:90ch}
+  h2{font-size:18px;margin:44px 0 2px;padding-top:22px;border-top:1px solid var(--line)}
+  .sub{color:var(--muted);margin:0 0 16px;font-size:13px;max-width:86ch}
+  h3{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+  .cols{display:grid;grid-template-columns:1fr;gap:18px}
+  @media(min-width:900px){.cols{grid-template-columns:1fr 1fr}}
+  .stack{display:grid;gap:14px}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 9px;border-radius:999px;margin-bottom:8px}
+  .tag.before{background:var(--redbg);color:var(--red)}
+  .tag.after{background:var(--greenbg);color:var(--green)}
+  .screen{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .screen.dim{opacity:.97}
+  .chrome{background:#eef1f5;border-bottom:1px solid var(--line);padding:7px 12px;
+    font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .body{padding:14px}
+  .ptitle{font-size:16px;font-weight:650;margin:0 0 2px}
+  .pdesc{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+  .back{display:inline-block;font-size:12.5px;color:var(--primary);font-weight:600;margin:0 0 10px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+  .btn{display:inline-block;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:600;
+    border:1px solid var(--primary);background:var(--primary);color:var(--primary-ink)}
+  .btn.ghost{background:transparent;color:var(--grey);border-color:var(--line)}
+  .in{border:1px solid #cfd4da;border-radius:8px;padding:6px 10px;font-size:12.5px;background:#fff;color:var(--muted)}
+  .in.w{min-width:230px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;background:#f4f6f8;color:var(--muted);font-size:10.5px;letter-spacing:.06em;
+    text-transform:uppercase;padding:7px 10px;border-bottom:1px solid var(--line);font-weight:700}
+  td{padding:8px 10px;border-bottom:1px solid #eff1f4;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td.num{font-variant-numeric:tabular-nums}
+  .name{font-weight:620}
+  .act{color:var(--primary);font-weight:650;white-space:nowrap}
+  .act .sep{color:#c9cfd6;font-weight:400;padding:0 5px}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .pill.ok{background:var(--greenbg);color:var(--green)}
+  .pill.warn{background:var(--amberbg);color:var(--amber)}
+  .pill.off{background:var(--greybg);color:var(--grey)}
+  .card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}
+  .card h4{margin:0 0 8px;font-size:13px}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:3px}
+  .val{font-size:13px;margin-bottom:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .field{margin-bottom:10px}
+  .fake{border:1px solid #cfd4da;border-radius:8px;padding:6px 9px;font-size:12.5px;background:#fff;min-height:30px}
+  .fake.ro{background:#f7f8fa;color:var(--muted)}
+  .inset{background:var(--soft);border:1px dashed #b9c6de;border-radius:10px;padding:12px;margin-top:8px}
+  .inset .k{font-size:11px;font-weight:700;color:#2c4a86;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .callout{font-size:12px;color:var(--red);background:var(--redbg);border:1px solid #f5c9c4;
+    border-radius:8px;padding:8px 10px;margin-top:10px}
+  .caption{font-size:12px;color:var(--muted);margin:8px 2px 0}
+  .flow{font-size:12.5px;color:var(--grey);background:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;margin:10px 0 0}
+  .flow b{color:var(--ink)}
+  .arrow{color:#9aa3ae;padding:0 6px}
+  .steps{display:grid;gap:10px}
+  .placeholder{color:#9aa3ae}
+  .legend{font-size:12px;color:var(--muted);margin-top:6px}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1216;--panel:#161a20;--ink:#e8eaed;--muted:#9aa3ae;--line:#272d35;--primary:#5b8dee;
+      --soft:#182131;--amberbg:#2a2110;--amber:#e0a94a;--greenbg:#12271a;--green:#67c48c;
+      --greybg:#232830;--grey:#aeb6c0;--redbg:#2a1614;--red:#e58a80;
+    }
+    :root:not([data-theme="light"]) .chrome{background:#1b2027}
+    :root:not([data-theme="light"]) th{background:#1b2027}
+    :root:not([data-theme="light"]) td{border-bottom-color:#222831}
+    :root:not([data-theme="light"]) .in,
+    :root:not([data-theme="light"]) .fake,
+    :root:not([data-theme="light"]) .card,
+    :root:not([data-theme="light"]) .flow{background:#161a20;border-color:#2b323b;color:var(--ink)}
+    :root:not([data-theme="light"]) .fake.ro{background:#1b2027}
+    :root:not([data-theme="light"]) .note{background:#2a2110;border-color:#4a3a17;color:#e2b969}
+  }
+</style>
+
+<div class="wrap">
+
+  <h1>Payroll Settings — Payroll Cycles, Pay Schedule, Payroll Policies</h1>
+  <p class="lede">Today's screens, and the proposed company-first redesign. Nothing that is calculated
+  changes — this is navigation and layout only.</p>
+
+  <div class="note">
+    Company names below are the ones you used in your request. The cycle names shown
+    (Monthly, Bonus, Off-cycle, Adjustment, Advance Salary, Mid-Month) are the real default set every
+    company starts with. Saved numbers such as cut-off day and pay day are shown as a dash, because the
+    real screen fills them from each company's own saved settings — we have not made figures up.
+  </div>
+
+  <!-- ============================== PAYROLL CYCLES ============================== -->
+  <h2>1. Payroll Cycles</h2>
+  <p class="sub">Each company keeps a list of payroll cycle names. Today they are all managed on one page
+  with a dropdown at the top and an add/edit form underneath the table.</p>
+
+  <div class="cols">
+
+    <div>
+      <span class="tag before">Today</span>
+      <div class="screen dim">
+        <div class="chrome">Payroll &rsaquo; Settings &rsaquo; Payroll Cycles</div>
+        <div class="body">
+          <p class="ptitle">Payroll Cycle Setup</p>
+          <p class="pdesc">Company-scoped list of the cycle names the payroll run offers.</p>
+          <div class="bar">
+            <span class="in w">Company: Fiamma Sdn Bhd &#9662;</span>
+            <span class="btn">View</span>
+          </div>
+          <table>
+            <tr><th>Name</th><th>Run type</th><th>Sort</th><th>Status</th><th></th></tr>
+            <tr><td class="name">Monthly</td><td>Regular</td><td class="num">0</td><td><span class="pill ok">Active</span></td><td class="act">Edit<span class="sep">|</span>Copy<span class="sep">|</span>Deactivate<span class="sep">|</span>Delete</td></tr>
+            <tr><td class="name">Bonus</td><td>Bonus</td><td class="num">1</td><td><span class="pill ok">Active</span></td><td class="act">Edit<span class="sep">|</span>Copy<span class="sep">|</span>Deactivate<span class="sep">|</span>Delete</td></tr>
+            <tr><td class="name">Off-cycle</td><td>Off cycle</td><td class="num">2</td><td><span class="pill ok">Active</span></td><td class="act">Edit<span class="sep">|</span>Copy<span class="sep">|</span>Deactivate<span class="sep">|</span>Delete</td></tr>
+          </table>
+          <div class="inset">
+            <div class="k">Add / Edit form sits here, on the same page</div>
+            <div class="grid3">
+              <div><div class="lbl">Name</div><div class="fake">&nbsp;</div></div>
+              <div><div class="lbl">Run type</div><div class="fake">&nbsp;</div></div>
+              <div><div class="lbl">Sort</div><div class="fake">&nbsp;</div></div>
+            </div>
+            <div style="margin-top:10px"><span class="btn">Add cycle</span></div>
+          </div>
+          <div class="callout">No back link on this screen at all — once you are here there is no marked
+          way back to Payroll Settings.</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <span class="tag after">Proposed</span>
+      <div class="steps">
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Payroll Cycles</div>
+          <div class="body">
+            <a class="back">&larr; Payroll Settings</a>
+            <p class="ptitle">Payroll Cycles</p>
+            <p class="pdesc">Choose a company to view or change its payroll cycles.</p>
+            <div class="bar">
+              <span class="in w">Search company</span>
+              <span class="btn ghost">Search</span>
+            </div>
+            <table>
+              <tr><th>Company</th><th>Cycles</th><th>Default cycle</th><th>Status</th><th>Last updated</th><th></th></tr>
+              <tr><td class="name">ABC Sdn Bhd</td><td class="num placeholder">&mdash;</td><td>Monthly</td><td><span class="pill ok">Ready</span></td><td class="num placeholder">&mdash;</td><td class="act">View</td></tr>
+              <tr><td class="name">Fiamma Sdn Bhd</td><td class="num placeholder">&mdash;</td><td>Monthly</td><td><span class="pill ok">Ready</span></td><td class="num placeholder">&mdash;</td><td class="act">View</td></tr>
+              <tr><td class="name">ISEDECOR BINA SDN BHD</td><td class="num placeholder">&mdash;</td><td class="placeholder">Not set</td><td><span class="pill warn">Needs setup</span></td><td class="num placeholder">&mdash;</td><td class="act">View</td></tr>
+            </table>
+            <p class="caption">Status reuses the payroll readiness check already running on the Payroll
+            Settings page, so a company that cannot run payroll is flagged here too.</p>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Payroll Cycles &rsaquo; Fiamma Sdn Bhd</div>
+          <div class="body">
+            <a class="back">&larr; Payroll Cycles</a>
+            <div class="bar" style="justify-content:space-between">
+              <div>
+                <p class="ptitle">Fiamma Sdn Bhd</p>
+                <p class="pdesc" style="margin:0">Payroll cycles</p>
+              </div>
+              <span class="btn">+ Add New Cycle</span>
+            </div>
+            <table>
+              <tr><th>Name</th><th>Run type</th><th>Remarks</th><th>Sort</th><th>Status</th><th></th></tr>
+              <tr><td class="name">Monthly</td><td>Regular</td><td class="placeholder">&mdash;</td><td class="num">0</td><td><span class="pill ok">Active</span></td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">Bonus</td><td>Bonus</td><td class="placeholder">&mdash;</td><td class="num">1</td><td><span class="pill ok">Active</span></td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">Off-cycle</td><td>Off cycle</td><td class="placeholder">&mdash;</td><td class="num">2</td><td><span class="pill ok">Active</span></td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">Adjustment</td><td>Adjustment</td><td class="placeholder">&mdash;</td><td class="num">3</td><td><span class="pill ok">Active</span></td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">Advance Salary</td><td>Off cycle</td><td>Advance Salary</td><td class="num">4</td><td><span class="pill ok">Active</span></td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">Mid-Month</td><td>Off cycle</td><td>Mid-Month</td><td class="num">5</td><td><span class="pill off">Inactive</span></td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+            </table>
+            <p class="caption">Copy to another company, Activate / Deactivate and Delete stay exactly as they
+            are today — they move onto the cycle's own screen.</p>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Payroll Cycles &rsaquo; Fiamma Sdn Bhd &rsaquo; Edit</div>
+          <div class="body">
+            <a class="back">&larr; Fiamma Sdn Bhd</a>
+            <p class="ptitle">Edit Payroll Cycle</p>
+            <div class="field"><div class="lbl">Company</div><div class="fake ro">Fiamma Sdn Bhd</div></div>
+            <div class="grid3">
+              <div class="field"><div class="lbl">Cycle name</div><div class="fake">Monthly</div></div>
+              <div class="field"><div class="lbl">Run type</div><div class="fake">Regular &#9662;</div></div>
+              <div class="field"><div class="lbl">Sort order</div><div class="fake">0</div></div>
+            </div>
+            <div class="field"><div class="lbl">Remarks</div><div class="fake">&nbsp;</div></div>
+            <div class="field"><div class="lbl">Processing behaviour</div><div class="fake" style="min-height:52px">&nbsp;</div></div>
+            <div class="bar"><span class="btn">Save Changes</span><span class="btn ghost">Cancel</span></div>
+            <p class="caption">Same fields, same rules, same validation as today — on their own screen
+            instead of underneath the table.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="flow"><b>Navigation:</b> Payroll Settings <span class="arrow">&rarr;</span> Payroll Cycles
+  (company list) <span class="arrow">&rarr;</span> one company's cycles <span class="arrow">&rarr;</span>
+  view or edit one cycle <span class="arrow">&rarr;</span> Back returns you one step, with your search
+  still in place.</div>
+
+  <!-- ============================== PAY SCHEDULE ============================== -->
+  <h2>2. Pay Schedule</h2>
+  <p class="sub">This is the only one of the three where a company has a single set of settings. Today every
+  company you manage is drawn as a full open edit form, one under another, on one long page.</p>
+
+  <div class="cols">
+
+    <div>
+      <span class="tag before">Today</span>
+      <div class="screen dim">
+        <div class="chrome">Payroll &rsaquo; Settings &rsaquo; Pay Schedule</div>
+        <div class="body">
+          <a class="back">&larr; Payroll Settings</a>
+          <p class="ptitle">Payroll Schedule</p>
+          <div class="card">
+            <h4>ABC Sdn Bhd</h4>
+            <div class="grid2">
+              <div><div class="lbl">Cut-off day</div><div class="fake placeholder">&mdash;</div></div>
+              <div><div class="lbl">Pay day</div><div class="fake placeholder">&mdash;</div></div>
+            </div>
+            <div style="margin-top:10px" class="grid2">
+              <div><div class="lbl">Default policy</div><div class="fake">&nbsp;</div></div>
+              <div><div class="lbl">Payslip release</div><div class="fake">&nbsp;</div></div>
+            </div>
+            <div style="margin-top:10px"><span class="btn">Save</span></div>
+          </div>
+          <div class="card">
+            <h4>Fiamma Sdn Bhd</h4>
+            <div class="grid2">
+              <div><div class="lbl">Cut-off day</div><div class="fake placeholder">&mdash;</div></div>
+              <div><div class="lbl">Pay day</div><div class="fake placeholder">&mdash;</div></div>
+            </div>
+            <div style="margin-top:10px"><span class="btn">Save</span></div>
+          </div>
+          <div class="card">
+            <h4>ISEDECOR BINA SDN BHD</h4>
+            <div class="grid2">
+              <div><div class="lbl">Cut-off day</div><div class="fake placeholder">&mdash;</div></div>
+              <div><div class="lbl">Pay day</div><div class="fake placeholder">&mdash;</div></div>
+            </div>
+            <div style="margin-top:10px"><span class="btn">Save</span></div>
+          </div>
+          <div class="callout">Every company is open and editable at once, with a separate Save button each.
+          There is no list, no search, and the page is narrow.</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <span class="tag after">Proposed</span>
+      <div class="steps">
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Pay Schedule</div>
+          <div class="body">
+            <a class="back">&larr; Payroll Settings</a>
+            <p class="ptitle">Pay Schedule</p>
+            <p class="pdesc">Choose a company to view or change its payroll timing.</p>
+            <div class="bar">
+              <span class="in w">Search company</span>
+              <span class="btn ghost">Search</span>
+            </div>
+            <table>
+              <tr><th>Company</th><th>Cut-off</th><th>Pay day</th><th>Payslip release</th><th>Status</th><th>Last updated</th><th></th></tr>
+              <tr><td class="name">ABC Sdn Bhd</td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td><span class="pill ok">Set</span></td><td class="num placeholder">&mdash;</td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">Fiamma Sdn Bhd</td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td><span class="pill ok">Set</span></td><td class="num placeholder">&mdash;</td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name">ISEDECOR BINA SDN BHD</td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td><span class="pill warn">Not set</span></td><td class="num placeholder">&mdash;</td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Pay Schedule &rsaquo; Fiamma Sdn Bhd</div>
+          <div class="body">
+            <a class="back">&larr; Pay Schedule</a>
+            <div class="bar" style="justify-content:space-between">
+              <div>
+                <p class="ptitle">Fiamma Sdn Bhd</p>
+                <p class="pdesc" style="margin:0">Pay schedule settings</p>
+              </div>
+              <span class="btn">Edit</span>
+            </div>
+            <div class="card">
+              <h4>Schedule</h4>
+              <div class="grid2">
+                <div><div class="lbl">Cut-off day</div><div class="val placeholder">&mdash;</div></div>
+                <div><div class="lbl">Pay day</div><div class="val placeholder">&mdash;</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <h4>Default policy &amp; payslip release</h4>
+              <div class="grid3">
+                <div><div class="lbl">Default payroll policy</div><div class="val placeholder">&mdash;</div></div>
+                <div><div class="lbl">Release mode</div><div class="val placeholder">&mdash;</div></div>
+                <div><div class="lbl">Release value</div><div class="val placeholder">&mdash;</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <h4>Cut-offs by transaction type</h4>
+              <div class="grid2">
+                <div><div class="lbl">Overtime</div><div class="val placeholder">&mdash;</div></div>
+                <div><div class="lbl">Claims</div><div class="val placeholder">&mdash;</div></div>
+                <div><div class="lbl">Unpaid leave</div><div class="val placeholder">&mdash;</div></div>
+                <div><div class="lbl">Attendance</div><div class="val placeholder">&mdash;</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <h4>Statutory registration <span class="pill off" style="margin-left:6px">View only</span></h4>
+              <p class="caption" style="margin:0">Unchanged: still shown here for reference and still edited
+              in Organization, exactly as today.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Pay Schedule &rsaquo; Fiamma Sdn Bhd &rsaquo; Edit</div>
+          <div class="body">
+            <a class="back">&larr; Fiamma Sdn Bhd</a>
+            <p class="ptitle">Edit Pay Schedule</p>
+            <div class="field"><div class="lbl">Company</div><div class="fake ro">Fiamma Sdn Bhd</div></div>
+            <div class="grid2">
+              <div class="field"><div class="lbl">Cut-off day</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Pay day</div><div class="fake">&nbsp;</div></div>
+            </div>
+            <div class="grid3">
+              <div class="field"><div class="lbl">Default policy</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Release mode</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Release value</div><div class="fake">&nbsp;</div></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><div class="lbl">Overtime cut-off</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Claim cut-off</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Unpaid leave cut-off</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Attendance cut-off</div><div class="fake">&nbsp;</div></div>
+            </div>
+            <div class="bar"><span class="btn">Save Changes</span><span class="btn ghost">Cancel</span></div>
+            <p class="caption">One company at a time, one Save button. Same fields and same rules as today.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== PAYROLL POLICIES ============================== -->
+  <h2>3. Payroll Policies</h2>
+  <p class="sub">Today every company's policies are mixed into one list, and the nine-step setup wizard opens
+  underneath that list on the same page.</p>
+
+  <div class="cols">
+
+    <div>
+      <span class="tag before">Today</span>
+      <div class="screen dim">
+        <div class="chrome">Payroll &rsaquo; Settings &rsaquo; Payroll Policies</div>
+        <div class="body">
+          <a class="back">&larr; Payroll Settings</a>
+          <p class="ptitle">Payroll Policies</p>
+          <div class="bar">
+            <span class="in">Search</span><span class="in">Type</span><span class="in">Status</span>
+            <span class="in">Sort</span><span class="btn ghost">Apply</span>
+            <span class="btn">Create New Policy</span>
+          </div>
+          <table>
+            <tr><th>Policy</th><th>Company</th><th>Type</th><th>Status</th><th>Assigned</th><th></th></tr>
+            <tr><td class="name">Standard Monthly</td><td>ABC Sdn Bhd</td><td>Monthly</td><td><span class="pill ok">Active</span></td><td class="num placeholder">&mdash;</td><td class="act">Edit<span class="sep">|</span>Copy<span class="sep">|</span>Delete</td></tr>
+            <tr><td class="name">Standard Monthly</td><td>Fiamma Sdn Bhd</td><td>Monthly</td><td><span class="pill ok">Active</span></td><td class="num placeholder">&mdash;</td><td class="act">Edit<span class="sep">|</span>Copy<span class="sep">|</span>Delete</td></tr>
+            <tr><td class="name">Site Daily</td><td>ISEDECOR BINA SDN BHD</td><td>Daily</td><td><span class="pill warn">Draft</span></td><td class="num placeholder">&mdash;</td><td class="act">Edit<span class="sep">|</span>Copy<span class="sep">|</span>Delete</td></tr>
+          </table>
+          <div class="inset">
+            <div class="k">The 9-step setup wizard opens here, below the list</div>
+            <div class="grid3">
+              <div><div class="lbl">Policy name</div><div class="fake">&nbsp;</div></div>
+              <div><div class="lbl">Company</div><div class="fake">&nbsp;</div></div>
+              <div><div class="lbl">Type</div><div class="fake">&nbsp;</div></div>
+            </div>
+            <div style="margin-top:10px"><span class="btn ghost">Previous</span> <span class="btn">Next</span></div>
+          </div>
+          <div class="callout">Policy names repeat across companies, so the list has to be read
+          company-column-first. The wizard pushes the list off screen.</div>
+        </div>
+      </div>
+      <p class="caption">Policy names above are examples of the shape of the list; the real screen shows your
+      own saved policies.</p>
+    </div>
+
+    <div>
+      <span class="tag after">Proposed</span>
+      <div class="steps">
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Payroll Policies</div>
+          <div class="body">
+            <a class="back">&larr; Payroll Settings</a>
+            <p class="ptitle">Payroll Policies</p>
+            <p class="pdesc">Choose a company to view or change its payroll policies.</p>
+            <div class="bar">
+              <span class="in w">Search company</span>
+              <span class="btn ghost">Search</span>
+            </div>
+            <table>
+              <tr><th>Company</th><th>Policies</th><th>Active</th><th>Default policy</th><th>Last updated</th><th></th></tr>
+              <tr><td class="name">ABC Sdn Bhd</td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="act">View</td></tr>
+              <tr><td class="name">Fiamma Sdn Bhd</td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="act">View</td></tr>
+              <tr><td class="name">ISEDECOR BINA SDN BHD</td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="act">View</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Payroll Policies &rsaquo; Fiamma Sdn Bhd</div>
+          <div class="body">
+            <a class="back">&larr; Payroll Policies</a>
+            <div class="bar" style="justify-content:space-between">
+              <div>
+                <p class="ptitle">Fiamma Sdn Bhd</p>
+                <p class="pdesc" style="margin:0">Payroll policies</p>
+              </div>
+              <span class="btn">+ Add New Policy</span>
+            </div>
+            <div class="bar">
+              <span class="in">Search policy</span><span class="in">Type</span><span class="in">Status</span>
+              <span class="in">Sort</span><span class="btn ghost">Apply</span>
+            </div>
+            <table>
+              <tr><th>Policy</th><th>Type</th><th>Status</th><th>Assigned</th><th>Last updated</th><th></th></tr>
+              <tr><td class="name">Standard Monthly</td><td>Monthly</td><td><span class="pill ok">Active</span></td><td class="num placeholder">&mdash;</td><td class="num placeholder">&mdash;</td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+              <tr><td class="name placeholder">&hellip; your other policies for this company</td><td class="placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td class="placeholder">&mdash;</td><td class="act">View<span class="sep">|</span>Edit</td></tr>
+            </table>
+            <p class="caption">The existing search, type filter, status filter and sort stay — they now search
+            within the company you opened, and the Company column is no longer needed.</p>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="chrome">Payroll Settings &rsaquo; Payroll Policies &rsaquo; Fiamma Sdn Bhd &rsaquo; Edit</div>
+          <div class="body">
+            <a class="back">&larr; Fiamma Sdn Bhd</a>
+            <p class="ptitle">Edit Payroll Policy</p>
+            <p class="pdesc">Step 1 of 9 &middot; Policy Information</p>
+            <div class="field"><div class="lbl">Company</div><div class="fake ro">Fiamma Sdn Bhd</div></div>
+            <div class="grid3">
+              <div class="field"><div class="lbl">Policy name</div><div class="fake">Standard Monthly</div></div>
+              <div class="field"><div class="lbl">Policy code</div><div class="fake">&nbsp;</div></div>
+              <div class="field"><div class="lbl">Type</div><div class="fake">Monthly &#9662;</div></div>
+            </div>
+            <div class="bar"><span class="btn ghost">Previous</span><span class="btn">Next</span><span class="btn ghost">Cancel</span></div>
+            <p class="caption">The same 9-step wizard, unchanged, now on its own full screen instead of
+            appearing below the list.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <p class="legend">All three screens end up with the same shape: company list first, then that company's
+  settings, then a dedicated add or edit screen, with a Back link at every level that returns you one step
+  and keeps your search.</p>
+
+</div>

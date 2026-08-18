@@ -479,7 +479,10 @@ export async function markBatchNeedsRecalc(
  * WHO IS AFFECTED — three signals, unioned, because no single one is complete:
  *   1. the payslip itemises the code in `statutory.componentLines` (the r-862ed0ad provenance). This is
  *      the strongest signal and covers the reporter's case, but it is absent on every payslip written
- *      before that item shipped, and on any run where the component resolved to zero;
+ *      before that item shipped, and on any run where the component resolved to zero. 6b134681 WIDENS
+ *      this signal, deliberately: an additional/off-cycle run now carries a bonus-only stamp, so editing
+ *      a pay item marks stale bonus runs it previously missed. Signals (2) and (3) already reached most
+ *      of those; the widening only makes the answer complete, and it moves no money;
  *   2. the employment holds a live (non-superseded) `employment_pay_component` row for the component —
  *      covers a recurring item on a run whose slips predate componentLines;
  *   3. a one-off ledger row (`payroll_individual_txn`) on the batch names the component.
@@ -3851,9 +3854,25 @@ export async function generatePayslips(
           // only name such a line can have. The kind-based OT / UNPAID / LEAVE lines above keep their own
           // `t.notes ?? …` for exactly that reason: they have no pay item to be named from.
           //
-          // Forward-only. Payslips already written keep the string they stored; nothing re-derives a
-          // historical line from today's catalogue, which would answer with today's naming about a month
-          // already paid.
+          // THE KERNEL IS FORWARD-ONLY, AND THAT IS NO LONGER THE WHOLE STORY — 417d4937 (r199).
+          //
+          // This write still is what it always was: a payslip keeps the string stamped here, and NOTHING in
+          // this kernel ever re-derives a historical line from today's catalogue. That is the rule below
+          // (`recordLines` is stored provenance) and it stands.
+          //
+          // What changed is the READ side, and the sentence that used to sit here said the opposite of what
+          // the system now does. Being forward-only meant every payroll already calculated kept the WRONG
+          // name forever — the reporter's "A0020 - DIRECTOR FEE" against pay item A0040 — so 417d4937 added
+          // `recordLineIdentity` (core/payslip-earning-lines.ts), a READ-TIME repair that shows the
+          // catalogue's current description against the stored CODE and keeps the stored words beside it as
+          // a remark. Four surfaces apply it: Transaction View History (history-table.tsx), its grid
+          // (history-pivot.ts) and Excel file (history-export.ts), Individual Payslip and the ESS payslip.
+          //
+          // IT IS THE ONE DELIBERATE EXCEPTION TO RULE (a) OF core/payslip-earning-lines.ts, and it is
+          // confined to `recordLines` whose `nonPayable` is not `true` — i.e. to the lines THIS call site
+          // pushes. The BIK lines pushed by `earningsOf` carry the pay item's own description as genuine
+          // provenance and are excluded there by that flag; `componentLines` are never repaired at all.
+          // Read `recordLineIdentity`'s docblock before widening any of that.
           pushTxnLine(t.employmentId, { code: row.code, name: row.name, amount: row.kind === 'deduction' ? -amt : amt });
         }
       }
@@ -4198,6 +4217,10 @@ export async function generatePayslips(
           // ABSENT / UPL / DB018 all declare 'normal' and fall through to the branch below — so this is
           // a guard against a future setting, not a live case.)
           if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
+          // `name: c.name` is the pay item's OWN description as this run folded it — provenance, not a
+          // remark — and `nonPayable: true` is what tells the read side so: `recordLineIdentity`
+          // (core/payslip-earning-lines.ts) repairs a txn-derived record line's label from today's
+          // catalogue and must never touch this one. Drop the flag and it would.
           if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
           reimburse = round2(reimburse + applied);
           contributes('reimburse', applied);
@@ -4245,6 +4268,8 @@ export async function generatePayslips(
         }
         // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
+        // As above: the stored `name` is the item's own description (provenance), and `nonPayable: true` is
+        // the flag that keeps 417d4937's read-time label repair off it.
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
@@ -4311,6 +4336,41 @@ export async function generatePayslips(
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
       return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
+    };
+
+    /**
+     * Feedback 6b134681 — THE BONUS-ONLY SUBSET OF A RUN'S COMPONENT LINES.
+     *
+     * An additional/off-cycle run pays ONLY its additional remuneration: `slipBasic`/`slipAllowance`/
+     * `slipOvertime` are forced to 0 and `grossPay` is `round2(bonus)` (see the payslip amounts below).
+     * But `earningsOf` folds the SAME recurring components on that run as on the regular one, so
+     * `componentLines` describes a whole month of pay — which is exactly why stamping the full list on an
+     * additional run would list a month's allowances a second time under a payslip that paid none of them.
+     *
+     * The fix the reporter needs is narrower than that objection: keep only the lines that contributed to
+     * the `bonus` bucket, and only their bonus contributions. What survives is precisely the money this run
+     * paid, so:
+     *
+     *   Σ (retained bucket amounts) = `en.bonus` = the payslip's bonus column = its gross.
+     *
+     * That identity is why the itemised rows can never disagree with the figure above them (the display
+     * overlay is regular-run only, so `payslipDisplayEarnings` falls back to the stored column here and
+     * `payItemLinesReconcile` passes on all three renderers by construction, not by luck).
+     *
+     * THE `amount` IS RE-SUMMED, NOT COPIED. A stored line's `amount` is the whole resolved figure BEFORE
+     * it was split across buckets, and Transaction View's grid renders `l.amount` rather than the bucket
+     * sum (history-pivot.ts item rows). Copying it through would print a split item's FULL month value on
+     * a run that paid only its bonus leg — a bigger number than the payslip, on the screen that exists to
+     * reconcile them.
+     */
+    const bonusOnlyComponentLines = (lines: PayComponentLine[]): PayComponentLine[] => {
+      const out: PayComponentLine[] = [];
+      for (const l of lines) {
+        const buckets = l.buckets.filter((b) => b.bucket === 'bonus');
+        if (buckets.length === 0) continue;
+        out.push({ ...l, amount: round2(buckets.reduce((s, b) => s + b.amount, 0)), buckets });
+      }
+      return out;
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -4712,6 +4772,11 @@ export async function generatePayslips(
         pcb: round2(Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction)) + statAdditional),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
       };
+      // Feedback 6b134681 — the per-item stamp this run writes. A regular run stamps every line it folded;
+      // an additional run stamps the bonus-bucket subset, which is the only money it actually pays (see
+      // `bonusOnlyComponentLines`). Computed here rather than inline in the object below so the stamp and
+      // the reconciliation test read the identical expression.
+      const stampComponentLines = isAdditionalRun ? bonusOnlyComponentLines(en.componentLines) : en.componentLines;
       const stComputed = {
         ...stCore,
         bases: statBases,
@@ -4750,9 +4815,15 @@ export async function generatePayslips(
         // rendering an empty breakdown. Key absent when there is nothing to say, which keeps payslips from
         // the flag-off path (and every historical slip) byte-identical.
         //
-        // Regular run only, for the same reason recordLines is: an additional/off-cycle run re-folds the
-        // same recurring components, so stamping there would list them twice for one month.
-        ...(!isAdditionalRun && en.componentLines.length ? { componentLines: en.componentLines } : {}),
+        // 6b134681 — AND ON AN ADDITIONAL RUN TOO, restricted to what that run pays. This was regular-run
+        // only, on the same ground recordLines still is (an additional run re-folds the same recurring
+        // components and would list a month's allowances twice). That objection is answered by
+        // `bonusOnlyComponentLines` rather than by stamping nothing: a bonus run now stamps its bonus-bucket
+        // lines and only those, so the payslip that pays RM500 of ANGPOW says ANGPOW instead of leaving every
+        // screen to fall back on the name of the box, which reads "Bonus". Measured before the fix: 19 of 19
+        // production bonus payslips carried no stamp at all, which is why 6b134681's read-side work was
+        // structurally inert there.
+        ...(stampComponentLines.length ? { componentLines: stampComponentLines } : {}),
         // Feedback 09b554e9 — per-code exemption/LP usage this month, replayed by future months' YTD
         // accumulator (like st.lp) and summed into the EA exempt-allowances figure. Regular run only
         // (an additional run re-folds the same recurring components; stamping again would double-count
@@ -4938,11 +5009,14 @@ export async function generatePayslips(
       //   overtime   is the stored (capped) figure, plus what moved in, less what moved out.
       //
       // NOT stamped when: nothing was re-categorised (⇒ every existing payslip and every ordinary run is
-      // byte-identical); an additional/off-cycle run (which pays only its additional remuneration and
-      // re-folds the same recurring components — the same reason componentLines is regular-run only); or an
-      // OT cap clipped an amount that also moved OUT of the overtime box, where subtracting a pre-cap
-      // figure from a post-cap one is not well defined. In every one of those cases the screens fall back
-      // to the stored columns, which is the correct answer and not a degraded one.
+      // byte-identical); an additional/off-cycle run (whose basic/allowance/OT columns are all forced to 0,
+      // so there are no boxes left to move money between — note this is NO LONGER "the same reason
+      // componentLines is regular-run only", because 6b134681 gave the additional run its own bonus-only
+      // stamp; and it is that ABSENCE of an overlay here that makes the bonus stamp reconcile against the
+      // stored column by construction); or an OT cap clipped an amount that also moved OUT of the overtime
+      // box, where subtracting a pre-cap figure from a post-cap one is not well defined. In every one of
+      // those cases the screens fall back to the stored columns, which is the correct answer and not a
+      // degraded one.
       const otOutbound = Math.min(en.displayOtOutbound, slipOvertime);
       const displayEarnings =
         !isAdditionalRun && en.displayMoved && otOutbound === en.displayOtOutbound

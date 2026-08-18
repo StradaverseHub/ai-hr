@@ -320,8 +320,10 @@ describe('080de5cf — the History grid pivot', () => {
   });
 
   it('reports a run whose per-item detail was never stored, instead of showing a grid with a hole in it', () => {
-    // 862ed0ad — runs calculated before the per-item stamp (and every additional run, which never stamps
-    // one) have no item rows to contribute. Silence there reads as missing data.
+    // 862ed0ad — runs calculated before the per-item stamp have no item rows to contribute, and silence
+    // there reads as missing data. The clause that used to sit here ("and every additional run, which
+    // never stamps one") is DEAD: 6b134681 gave the additional run its own bonus-only stamp, and the
+    // caption this drives was reworded in all six catalogues to stop claiming otherwise.
     expect(pivotHistoryGrid({ rows: [slip()], year: 2026 }).detailNotRecorded).toBe(true);
     const stamped = pivotHistoryGrid({
       rows: [
@@ -755,8 +757,9 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
 
   it('a zero month cannot block suppression, and a bonus run cannot suppress the regular run’s row', () => {
     // Zero needs no explanation, so a month with no allowance at all still reconciles. And the lump
-    // decision is per RUN TYPE because the rows are: a bonus run stamps no item detail at all, and
-    // letting it veto the regular run's suppression (or be suppressed by it) would be the wrong row.
+    // decision is per RUN TYPE because the rows are: the bonus slip in this fixture carries no stamp
+    // (a run calculated before 6b134681 gave the additional run its own bonus-only stamp), and letting
+    // it veto the regular run's suppression (or be suppressed by it) would be the wrong row.
     const grid = pivotHistoryGrid({
       rows: [
         accounted({ payPeriod: '2026-01' }),
@@ -767,6 +770,50 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
     });
     expect(rowFor(grid.rows, 'ALLOW', 'regular')!.itemised).toBe(true);
     expect(rowFor(grid.rows, 'ALLOW', 'bonus')!.itemised).toBeUndefined();
+  });
+
+  /**
+   * 6b134681 — A BONUS RUN NOW CARRIES ITS OWN ITEM ROWS.
+   *
+   * The kernel stamps an additional run's BONUS-BUCKET lines and only those, so this grid finally has
+   * something to name on a bonus month. Two things have to be true at once and neither implies the
+   * other: the item row appears with the operator's own code, AND the lump-sum decision is unmoved —
+   * a bonus run's allowance box is 0.00, so `lumpAccounted.allowance` was already true by the
+   * zero test and must not start depending on a bucket sum that will always be 0 there.
+   */
+  it('a bonus run WITH a bonus-only stamp produces item rows, and the lump decision is unmoved', () => {
+    const bonusSlip = slip({
+      payPeriod: '2026-03',
+      runType: 'bonus',
+      basic: '0.00',
+      allowance: '0.00',
+      overtime: '0.00',
+      bonus: '500.00',
+      gross: '500.00',
+      statutory: {
+        epfEmployee: 55,
+        componentLines: [{ code: 'BOOO1', name: 'ANGPOW', amount: 500, buckets: [{ bucket: 'bonus', amount: 500 }] }],
+      },
+      totalDeductions: '55.00',
+      net: '445.00',
+    });
+    const grid = pivotHistoryGrid({ rows: [bonusSlip], year: 2026 });
+
+    const item = grid.rows.find((r) => r.code === 'BOOO1' && r.runType === 'bonus' && r.kind === 'item')!;
+    expect(item.group).toBe('earning');
+    expect(item.name).toBe('ANGPOW');
+    expect(item.months[2]).toBe(500);
+    // An item row RESTATES money already counted by the synthetic BONUS row, so it must never be added in.
+    expect(item.reconciling).toBe(false);
+    expect(rowFor(grid.rows, 'BONUS', 'bonus')!.months[2]).toBe(500);
+    // The stamp exists now, so the screen stops telling the reader the detail was never recorded.
+    expect(grid.detailNotRecorded).toBe(false);
+    // Allowances is 0.00 on an additional run, so it is accounted for by the ZERO test and stays
+    // suppressible — the answer it gave before the stamp existed. The new bonus-only lines contribute
+    // nothing to the wage/reimburse buckets, so they cannot move this decision in either direction.
+    const allow = rowFor(grid.rows, 'ALLOW', 'bonus')!;
+    expect(allow.itemised).toBe(true);
+    expect(allow.months.every((m) => m === 0)).toBe(true);
   });
 });
 
@@ -785,6 +832,33 @@ describe('0253dc7c — the export file and the screen are ONE projection', () =>
     resolve(__dirname, '..', 'app/payroll/transaction-view/grid-export/route.ts'),
     'utf8',
   );
+
+  /**
+   * 417d4937 — AND EVERY INPUT THE PROJECTION TAKES, not only the switches. The label repair was wired
+   * into the page's pivotHistoryGrid call and not the route's, so the Grid tab showed the repaired
+   * description while the Excel file downloaded from that same screen, with the same filters, still
+   * showed the stored one. The export is where a label leaves the building. Source-shape for the same
+   * reason as the switches above: the defect lives in the gap between two call sites, and a unit test of
+   * either one passes throughout.
+   */
+  it('every map the screen feeds pivotHistoryGrid is also fed by the export route', () => {
+    const page = readFileSync(resolve(__dirname, '..', 'app/payroll/transaction-view/page.tsx'), 'utf8');
+    // THE ARGUMENT LIST, NOT THE FILE. Asserting the file merely CONTAINS the name is satisfied by the
+    // `const payItemNames = …` that builds it, so the guard passes with the argument removed from the
+    // call — which is precisely how it read as coverage while the export drifted. (Written weak first;
+    // it passed with the fix reverted, which is the only reason this comment exists.)
+    const callArgs = (src: string) => {
+      const at = src.indexOf('pivotHistoryGrid({');
+      expect(at, 'pivotHistoryGrid call not found').toBeGreaterThan(-1);
+      return src.slice(at, src.indexOf('})', at));
+    };
+    const pageCall = callArgs(page);
+    const routeCall = callArgs(route);
+    for (const arg of ['payItemSubjects', 'payItemNames']) {
+      expect(pageCall, `the screen must pass ${arg} into pivotHistoryGrid`).toContain(arg);
+      expect(routeCall, `the export route must pass ${arg} too, or the file drifts from the screen`).toContain(arg);
+    }
+  });
 
   it('every switch the screen writes onto the href is read by the route', () => {
     for (const k of ['hideZero', 'hideSystem', 'showSubject']) {

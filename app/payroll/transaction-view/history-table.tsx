@@ -10,8 +10,15 @@ import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { deriveHistoryBreakdown } from './history-breakdown';
 // 6b134681 / 417d4937 — one label format for a pay item, shared with the ESS payslip and the printed
 // document: the item's own code and description, never the category it was classified into.
-import { payItemLabel } from '@/core/payslip-earning-lines';
+// 417d4937 — and the ONE answer to "what is this recorded line actually called?", which is a different
+// question from the one above: a record line's stored name was a free-text remark until r196, so it is
+// repaired from the catalogue at READ time with the words that were typed kept beside it as the remark.
+import { payItemLabel, recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
 import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
+// 417d4937 request 10 — the one-off transactions behind this run's recorded items, listed BESIDE them
+// (never matched to them: see the component's own note on why a (code, amount) join would be worse).
+import type { PayslipSourceTxnRow } from '@/core/payroll-view';
+import { SourceTxnBlock } from './source-txn-block';
 
 /**
  * Transaction History grid (feedback 5f8d8395 — R24 5db3ae48's deferred Phase C) — a client component so each
@@ -72,11 +79,20 @@ const COL_COUNT = 13; // toggle + 12 summary columns
 export function HistoryTable({
   rows,
   hrdfRegisteredCompanyIds,
+  payItemNames,
+  sourceTxnsByPayslip,
 }: {
   rows: ProcessedPayslipViewRow[];
   /** Feedback efece4ce — companies whose HRDF Contribution Rate is set (0.5% / 1.0%). Everything else is
    *  unregistered and levies nothing, which the breakdown must SAY rather than leave blank. */
   hrdfRegisteredCompanyIds: string[];
+  /** 417d4937 — code → today's pay item description, read on the SERVER and handed over as plain data.
+   *  Optional so a caller with no catalogue to hand degrades to the stored words rather than to nothing. */
+  payItemNames?: PayItemNames;
+  /** 417d4937 request 10 — the run's one-off ledger rows, keyed `${batchId}:${employmentId}` (the pair a
+   *  payslip IS). Grouped on the server so this component does no folding. Absent ⇒ no provenance block,
+   *  which is exactly what a caller that did not read them should render. */
+  sourceTxnsByPayslip?: Record<string, PayslipSourceTxnRow[]>;
 }) {
   const hrdfRegistered = new Set(hrdfRegisteredCompanyIds);
   const t = useTranslations('payroll.transactions');
@@ -314,19 +330,49 @@ export function HistoryTable({
                             touched here: same defect, different screen, and it is reported rather than
                             fixed in passing.
 
-                            The lines are rendered exactly as stored — no re-derivation — so a line can
-                            never disagree with the figure above it. */}
+                            The AMOUNTS are rendered exactly as stored — no re-derivation — so a line can
+                            never disagree with the figure above it.
+
+                            417d4937 — the NAME is the one thing that is repaired at read time. Until r196
+                            the kernel named a consumed one-off's record line from the transaction's
+                            free-text remark, and that fix only takes effect when a run is CALCULATED, so
+                            every payroll already run kept the old wording ("A0020 - DIRECTOR FEE" against
+                            pay item A0040). `recordLineIdentity` shows the catalogue's description against
+                            the stored code and keeps the words that were typed beside it as the remark —
+                            nothing is rewritten and nothing is hidden. The amount and the code never move.
+                            A code the catalogue does not hold (every TXN_* synthetic line) is unchanged. */}
                         {b.recordLines.length > 0 && (
                           <section className="sm:col-span-2">
                             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {t('view.history.itemsHeading')}
                             </h3>
-                            {b.recordLines.map((l, i) => (
-                              <Row key={`${l.code}-${i}`} label={`${l.code} · ${l.name}`} value={rm(l.amount)} muted />
-                            ))}
+                            {b.recordLines.map((l, i) => {
+                              const id = recordLineIdentity(l, payItemNames);
+                              return (
+                                <div
+                                  key={`${l.code}-${i}`}
+                                  className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0"
+                                >
+                                  <span className="text-muted-foreground">
+                                    {id.label}
+                                    {id.remark && (
+                                      <span className="ms-2 text-xs italic">
+                                        {t('view.history.itemRemark', { remark: id.remark })}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="tabular-nums text-muted-foreground">{rm(l.amount)}</span>
+                                </div>
+                              );
+                            })}
                             <p className="mt-2 text-xs text-muted-foreground">{t('view.history.itemsNote')}</p>
                           </section>
                         )}
+
+                        {/* ── Where the recorded items came from (417d4937 request 10) ──
+                            A SECOND population beside Recorded items, never a join onto it. Renders
+                            nothing when the run has no one-off ledger rows. */}
+                        <SourceTxnBlock rows={sourceTxnsByPayslip?.[`${r.batchId}:${r.employmentId}`] ?? []} />
 
                         {/* ── Net pay ── */}
                         <div className="flex items-baseline justify-between rounded-lg bg-primary/5 px-4 py-3 sm:col-span-2">

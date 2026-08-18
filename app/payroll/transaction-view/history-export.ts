@@ -1,5 +1,9 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import type { ColAlign, ReportData } from '@/lib/report-export';
+// 417d4937 — the shared read-time repair for RECORD-line labels. Pure and dependency-free, so this pure
+// builder stays pure; it is the SAME rule history-table.tsx and history-pivot.ts apply, which is what
+// stops the file and the screen naming one item two ways.
+import { recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
 import { deriveHistoryBreakdown } from './history-breakdown';
 
 /**
@@ -18,6 +22,15 @@ import { deriveHistoryBreakdown } from './history-breakdown';
  * A REGROUP, NEVER A RECOMPUTATION. Every money figure comes out of `deriveHistoryBreakdown` — the same
  * derivation the screen's expanded panel runs, i.e. what the payslip STORED. The file and the panel
  * therefore cannot disagree, which is the whole point of an export used for reconciliation.
+ *
+ * 417d4937 — THE ONE STRING THAT IS NOT COPIED STRAIGHT THROUGH, and it is here precisely so that rule
+ * keeps holding. A "Recorded:" column is headed by the record line's name, and until r196 the kernel took
+ * that name from the transaction's free-text remark, so an already-calculated payroll carries
+ * "A0020 - DIRECTOR FEE" against pay item A0040. The panel repairs it at read time through
+ * `recordLineIdentity`; if this file did not, the sheet downloaded FROM that panel, under the same
+ * filters, would head the same column with the words the panel no longer shows. Not one FIGURE moves —
+ * amounts and codes are still copied, and a code the catalogue does not hold (every TXN_* line) keeps its
+ * stored name by construction. Omit `payItemNames` and the file is byte-identical to before.
  *
  * THE EMPLOYEE-SHARE TRAP. The EPF / SOCSO / SKBBK / EIS / PCB columns are
  * `employerBorne.employee.*` — what actually came off take-home — exactly as history-table.tsx prints in
@@ -131,6 +144,13 @@ export type HistoryExportInput = {
   /** The "named columns are blank where no per-item detail was saved" sentence, already translated.
    *  Printed ONLY when at least one row in the file actually lacks per-item detail. */
   detailNote?: string | null;
+  /**
+   * 417d4937 — code → the pay item's CURRENT description, read by the route from the same catalogue the
+   * screen reads. Used ONLY to head a "Recorded:" column with the label the panel shows (see the header
+   * note); the `componentLines` columns keep the payslip's own stamped name, which was never wrong.
+   * Omitted ⇒ stored names stand and the file is exactly what it was.
+   */
+  payItemNames?: PayItemNames;
 };
 
 /** One dynamic column: the pay-item code it belongs to and the header it prints. */
@@ -185,15 +205,25 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
   const recordedNames = new Map<string, string>();
   let anyDetailNotRecorded = false;
   for (const b of breakdowns) {
-    // 862ed0ad — a run calculated before the per-item stamp existed, and every bonus / off-cycle /
-    // adjustment run (which never stamps one), carries no component lines. Its summary figures and its
-    // Allowances TOTAL are still exact; only the named columns are blank. The sheet SAYS so at the top
-    // rather than leaving the reader to guess why a column is empty.
+    // 862ed0ad — a run calculated before the per-item stamp existed carries no component lines. Its
+    // summary figures and its Allowances TOTAL are still exact; only the named columns are blank. The
+    // sheet SAYS so at the top rather than leaving the reader to guess why a column is empty.
+    // 6b134681 — a bonus / off-cycle run calculated from that item onward DOES carry lines (its
+    // bonus-bucket subset), so it names its items here like any other run; only the ones calculated
+    // before it still fall in this branch.
     if (b.detailNotRecorded) anyDetailNotRecorded = true;
     // Keep the first NON-EMPTY name seen for a code: a later run may name an item an earlier one did not,
     // and a column headed with a bare code when a name exists somewhere in the file is needless.
     for (const l of b.componentLines) if (!namedNames.get(l.code)) namedNames.set(l.code, l.name || '');
-    for (const l of b.recordLines) if (!recordedNames.get(l.code)) recordedNames.set(l.code, l.name || '');
+    // 417d4937 — the REPAIRED name, which is what the panel prints. `.name` (the description alone), not
+    // `.label`: `dynamicColumns` below already appends the code itself when two items share a description,
+    // and heading a column "Recorded: A0040 · MEAL ALLOWANCE" would state the code twice. A stamped BIK
+    // line is returned untouched by the rule — its stored name is the item's own description, not a remark.
+    for (const l of b.recordLines) {
+      if (!recordedNames.get(l.code)) {
+        recordedNames.set(l.code, recordLineIdentity(l, input.payItemNames).name || '');
+      }
+    }
   }
   const namedCols = dynamicColumns(namedNames, '');
   const recordedCols = dynamicColumns(recordedNames, RECORDED_ITEM_PREFIX);

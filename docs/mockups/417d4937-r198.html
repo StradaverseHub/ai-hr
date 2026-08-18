@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>417d4937 — Recorded items: before and after</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#16191d; --muted:#6b7280; --line:#e4e7ec;
+    --bad:#b42318; --badbg:#fef3f2; --badline:#fda29b;
+    --good:#067647; --goodbg:#ecfdf3; --goodline:#a6f4c5;
+    --accent:#1f4ed8; --chip:#eef2ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 4px}
+  .prov{color:var(--muted);font-size:12px;margin:0 0 26px}
+  .grid{display:grid;grid-template-columns:1fr;gap:18px}
+  @media(min-width:860px){.grid{grid-template-columns:1fr 1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;
+        box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+       padding:3px 8px;border-radius:999px;margin-bottom:10px}
+  .tag.before{background:var(--badbg);color:var(--bad);border:1px solid var(--badline)}
+  .tag.after{background:var(--goodbg);color:var(--good);border:1px solid var(--goodline)}
+  .tag.new{background:var(--chip);color:var(--accent);border:1px solid #c7d2fe}
+  .screen{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px}
+  .sect{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+        margin:14px 0 6px}
+  .scroll{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;min-width:420px;font-size:13px}
+  th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;
+     letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  .wrongtxt{color:var(--bad);font-weight:600}
+  .righttxt{color:var(--good);font-weight:600}
+  .remark{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .note{margin-top:12px;padding:10px 12px;border-radius:8px;background:#f9fafb;border:1px solid var(--line);
+        color:var(--muted);font-size:12.5px}
+  .note.warn{background:var(--badbg);border-color:var(--badline);color:#7a271a}
+  .full{margin-top:22px}
+  .words{margin-top:18px;padding:14px 16px;border:1px dashed #cbd5e1;border-radius:12px;background:#fbfcfd}
+  .words h2{font-size:13px;margin:0 0 8px;letter-spacing:.02em}
+  .words p{margin:0 0 8px;color:#475467;font-size:13px}
+  .words p:last-child{margin-bottom:0}
+  ul{margin:6px 0 0;padding-left:18px;color:#475467;font-size:13px}
+  li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Recorded items — what the screen says today, and what it will say</h1>
+  <p class="sub">Payroll &rsaquo; Transaction View &rsaquo; Transaction Detail — employee A0004, January 2026, Regular run.</p>
+  <p class="prov">Every code, description and figure below is from this employee&rsquo;s own January payroll as measured on the live system. Nothing here is invented.</p>
+
+  <div class="grid">
+
+    <div class="card">
+      <span class="tag before">Today</span>
+      <p class="screen">Recorded items</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Payment item code</th>
+              <th>Payment item description</th>
+              <th class="num">Jan</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="code">A0040</td>
+              <td class="wrongtxt">A0020 &mdash; DIRECTOR FEE</td>
+              <td class="num">400.00</td>
+              <td class="num">400.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        The code is right and the amount is right. Only the description is wrong &mdash; it is the remark that was
+        left behind when the pay item was changed during entry. The fix we shipped on 17 August stops this
+        happening on new payroll runs, but it does not go back and correct a run that was already calculated.
+        That is why you still see this.
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="tag after">After this change</span>
+      <p class="screen">Recorded items</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Payment item code</th>
+              <th>Payment item description</th>
+              <th class="num">Jan</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="code">A0040</td>
+              <td>
+                <span class="righttxt">MEAL ALLOWANCE</span>
+                <span class="remark">Remark as keyed: &ldquo;A0020 &mdash; DIRECTOR FEE&rdquo;</span>
+              </td>
+              <td class="num">400.00</td>
+              <td class="num">400.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        The description now comes from pay item A0040 itself. The words that were stored are kept and shown
+        underneath, so nothing about the record is erased. No figure moves: allowances stay RM650.00,
+        gross stays RM5,650.00 and net stays RM4,925.25 &mdash; exactly as they are today.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card full">
+    <span class="tag new">New on this screen</span>
+    <p class="screen">Where these items came from</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Pay item</th>
+            <th class="num">Amount</th>
+            <th>Type</th>
+            <th>How it was entered</th>
+            <th>Paid by</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Jan 2026</td>
+            <td><span class="code">A0040</span> &middot; MEAL ALLOWANCE
+              <span class="remark">Remark: &ldquo;A0020 &mdash; DIRECTOR FEE&rdquo;</span></td>
+            <td class="num">400.00</td>
+            <td>Earning</td>
+            <td>Keyed by hand</td>
+            <td>January 2026 &middot; Regular</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      Every individual transaction recorded against this employee on this payroll run is listed here, so the
+      source of each recorded item can be checked on the screen rather than guessed at. This is the
+      traceability point in your report.
+    </div>
+  </div>
+
+  <div class="words">
+    <h2>Two things deliberately drawn in words, not pictures</h2>
+    <p>
+      1. The SpaceX August 2026 Director Fee. We checked that run on 18 August: there is a real Director Fee
+      transaction recorded against that employee on that run, so on that run the description is not a
+      leftover label. The panel above is what will let you see that for yourself. We are not drawing that
+      screen here because we would have to invent figures we have not measured.
+    </p>
+    <p>
+      2. The paid marker. That same transaction is not marked as paid in the transaction ledger even though
+      the payslip prints it. That is a separate repair, done in the data rather than on a screen, so there is
+      nothing to draw &mdash; but it is what stops a later payroll run paying the same amount a second time.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
