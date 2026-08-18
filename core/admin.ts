@@ -2903,14 +2903,23 @@ export async function updateLeaveType(
     /** f3a64d90: tenant-local (MYT) "today" anchoring the a2c day-by-day correction fired on an override
      *  change. The action layer passes it; tests pass a fixed date. Defaults to todayInKualaLumpur(). */
     asOf?: string;
-    // Leave Type Employee Visibility (feedback 7b11f1c1): two INDEPENDENT tri-state booleans controlling, per
-    // leave type, whether an employee sees it on the /me Leave surface and whether they may apply for it. Each
-    // is its OWN tri-state (undefined = column untouched), mirroring perDateApproval — the visibility sub-form
-    // posts `visibility=1` so an unrelated save never resets them. null ⇒ clear (revert to the visible /
-    // can-apply default). STATUTORY SAFETY: employeeCanApply=false is REJECTED when the type's code is a
-    // statutory-entitlement code (ANNUAL / SICK / HOSPITALIZATION / MATERNITY / PATERNITY) — an employee must
-    // always be able to exercise a lawful entitlement. Gating applies ONLY to /me reads + requestLeave;
-    // admin/HR reads are never gated.
+    // Leave Type Employee Visibility (feedback 7b11f1c1; contract narrowed by 464b58e6). Both remain
+    // tri-state (undefined = column untouched, null = clear), but they are no longer BOTH posted from one
+    // sub-form and the old wording here described a form that no longer exists:
+    //   · `employeeCanApply` is what the Employee Visibility sub-form posts, and now the ONLY thing it
+    //     posts — its `visibility=1` marker still stops an unrelated save resetting it.
+    //   · `visibleToEmployee` is written from the Employee Tab Placement select alone. It stayed the one
+    //     hidden mechanism (resolvePlacement reads it); 464b58e6 removed the second control that also
+    //     wrote it, which is the duplication that item exists to remove. A caller may still set it
+    //     directly — this is the service contract, not the form's.
+    // STATUTORY SAFETY: employeeCanApply=false is REJECTED for a statutory-entitlement type, because an
+    // employee must always be able to exercise a lawful entitlement. THAT TEST IS ROLE-FIRST, NOT
+    // CODE-FIRST — it has been since 65f466e2, and saying "when the type's code is ANNUAL / SICK / …" was
+    // the stale sentence behind this whole item: production's types are coded MTL, PTL and EL while
+    // carrying role maternity / paternity / emergency, so a code-only reading called them ordinary, left
+    // the box editable, and refused only after Save. lib/leave-statutory.ts now mirrors this precedence
+    // client-side so the screen locks the box for the same set the service refuses.
+    // Gating applies ONLY to /me reads + requestLeave; admin/HR reads are never gated.
     visibleToEmployee?: boolean | null;
     employeeCanApply?: boolean | null;
     // Leave grouping visibility (feedback b653ac1b): the HR-chosen placement of this leave type on the

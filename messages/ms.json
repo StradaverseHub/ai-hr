@@ -5933,6 +5933,7 @@
       "discardChanges": "Buang perubahan",
       "codeSavedToast": "Jenis cuti disimpan.",
       "savedToast": "Perubahan disimpan.",
+      "saveDatabaseError": "Perubahan ini tidak dapat disimpan kerana masalah sistem yang tidak dijangka. Tiada apa-apa yang diubah. Sila cuba lagi, dan beritahu pentadbir sistem anda jika ia berterusan.",
       "codePlaceholder": "SICK",
       "nameLabel": "Nama",
       "namePlaceholder": "Cuti Sakit",
@@ -6275,10 +6276,9 @@
       "gradeInUseCannotDelete": "Gred ini digunakan oleh pekerja atau polisi cuti dan tidak boleh dipadam. Arkibkannya sebaliknya.",
       "visibility": {
         "sectionTitle": "Keterlihatan Pekerja",
-        "visibleToEmployee": "Boleh dilihat oleh pekerja",
         "employeeCanApply": "Pekerja boleh memohon",
         "statutoryLocked": "Ini ialah cuti berkanun — pekerja mesti sentiasa boleh memohonnya.",
-        "help": "Kawal sama ada pekerja melihat jenis cuti ini pada tab Cuti mereka dan sama ada mereka boleh memohonnya. Jenis yang disembunyikan akan hilang sepenuhnya dari tab Cuti pekerja; mematikan “boleh memohon” mengekalkan jenis itu kelihatan tetapi menyekat permohonan baharu."
+        "help": "Tandakan untuk menawarkan jenis cuti ini pada skrin Mohon Cuti pekerja — mereka boleh melihatnya di sana dan memohonnya. Nyahtandakan dan jenis cuti ini tidak ditawarkan dan tidak boleh dimohon. Untuk turut menyembunyikan jenis cuti ini daripada tab Cuti pekerja, gunakan Penempatan Tab Pekerja di bawah."
       },
       "placement": {
         "sectionTitle": "Penempatan Tab Pekerja",
@@ -6288,7 +6288,7 @@
           "secondary": "Kumpulan sekunder",
           "hidden": "Tersembunyi"
         },
-        "help": "Pilih di mana jenis cuti ini dipaparkan pada tab Cuti pekerja: kad Utama di atas, dimasukkan ke dalam kumpulan Sekunder di bawah, atau Tersembunyi sepenuhnya daripada pekerja. Tersembunyi menggunakan suis keterlihatan yang sama di atas. Sehingga anda memilih, setiap jenis menggunakan tetapan lalai yang munasabah."
+        "help": "Pilih di mana jenis cuti ini dipaparkan pada tab Cuti pekerja: kad Utama di atas, dimasukkan ke dalam kumpulan Sekunder di bawah, atau Tersembunyi sepenuhnya daripada pekerja. Tersembunyi ialah cara anda mengeluarkan jenis cuti daripada tab Cuti pekerja. Sehingga anda memilih, setiap jenis menggunakan tetapan lalai yang munasabah."
       },
       "duplicatePolicySectionTitle": "Permohonan cuti berganda",
       "duplicatePolicyAllow": "Benarkan berbilang permohonan cuti pada tarikh yang sama",

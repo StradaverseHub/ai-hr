@@ -5933,6 +5933,7 @@
       "discardChanges": "Hủy thay đổi",
       "codeSavedToast": "Đã lưu loại nghỉ phép.",
       "savedToast": "Đã lưu thay đổi.",
+      "saveDatabaseError": "Không thể lưu thay đổi này do sự cố hệ thống ngoài dự kiến. Không có gì bị thay đổi. Vui lòng thử lại, và báo cho quản trị viên hệ thống nếu sự cố tiếp diễn.",
       "codePlaceholder": "SICK",
       "nameLabel": "Tên",
       "namePlaceholder": "Nghỉ ốm",
@@ -6275,10 +6276,9 @@
       "gradeInUseCannotDelete": "Cấp bậc này đang được nhân viên hoặc chính sách nghỉ phép sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
       "visibility": {
         "sectionTitle": "Khả năng hiển thị với nhân viên",
-        "visibleToEmployee": "Hiển thị cho nhân viên",
         "employeeCanApply": "Nhân viên có thể đăng ký",
         "statutoryLocked": "Đây là loại nghỉ phép theo luật định — nhân viên phải luôn có thể đăng ký.",
-        "help": "Kiểm soát việc nhân viên có nhìn thấy loại nghỉ phép này trong tab Nghỉ phép của họ hay không và có thể đăng ký hay không. Loại bị ẩn sẽ biến mất hoàn toàn khỏi tab Nghỉ phép của nhân viên; tắt “có thể đăng ký” vẫn giữ loại này hiển thị nhưng chặn các đơn đăng ký mới."
+        "help": "Đánh dấu để cung cấp loại nghỉ phép này trên màn hình Đăng ký nghỉ phép của nhân viên — họ nhìn thấy ở đó và có thể đăng ký. Bỏ đánh dấu thì loại này không được cung cấp và không thể đăng ký. Để ẩn loại nghỉ phép này khỏi tab Nghỉ phép của nhân viên, hãy dùng Vị trí trên tab Nhân viên bên dưới."
       },
       "placement": {
         "sectionTitle": "Vị trí trên tab Nhân viên",
@@ -6288,7 +6288,7 @@
           "secondary": "Nhóm phụ",
           "hidden": "Ẩn"
         },
-        "help": "Chọn nơi loại nghỉ phép này xuất hiện trên tab Nghỉ phép của nhân viên: thẻ Chính ở trên cùng, nằm trong nhóm Phụ bên dưới, hoặc Ẩn hoàn toàn khỏi nhân viên. Ẩn sử dụng cùng công tắc hiển thị ở trên. Cho đến khi bạn chọn, mỗi loại sử dụng giá trị mặc định hợp lý."
+        "help": "Chọn nơi loại nghỉ phép này xuất hiện trên tab Nghỉ phép của nhân viên: thẻ Chính ở trên cùng, nằm trong nhóm Phụ bên dưới, hoặc Ẩn hoàn toàn khỏi nhân viên. Ẩn là cách bạn gỡ một loại nghỉ phép khỏi tab Nghỉ phép của nhân viên. Cho đến khi bạn chọn, mỗi loại sử dụng giá trị mặc định hợp lý."
       },
       "duplicatePolicySectionTitle": "Đơn xin nghỉ trùng lặp",
       "duplicatePolicyAllow": "Cho phép nhiều đơn xin nghỉ trong cùng một ngày",
