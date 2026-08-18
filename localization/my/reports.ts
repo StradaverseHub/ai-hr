@@ -25,6 +25,10 @@ import { borang8AReport } from './borang-8a';
 // this shelf reads) and registers here like every other form. The two files share NO code: their
 // contribution-month rules are opposites, and a shared helper is how one acquires the other's.
 import { borangAReport } from './borang-a';
+// e0cd4583 — the CP39 PRINTED form's extra header and per-employee fields. NOT a second generator and
+// NOT a second catalogue entry: `cp39()` below merges these into the rows and meta it already returns,
+// so the LHDN shelf keeps ONE CP39 card with ONE readiness gate.
+import { cp39FormExtras, CP39_FORM_NOTES } from './cp39-form';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
 export type ReportRow = Record<string, string | number | null>;
@@ -437,22 +441,63 @@ const CP39_COLS: ReportColumn[] = [
   { key: 'pcb', label: 'MTD / PCB', numeric: true },
 ];
 
-/** CP39 — LHDN monthly tax deduction (MTD/PCB) statement. */
+/**
+ * CP39 — LHDN monthly tax deduction (MTD/PCB) statement.
+ *
+ * e0cd4583 ENRICHED THIS RATHER THAN ADDING A SECOND CATALOGUE ENTRY, and the columns above are
+ * deliberately UNCHANGED. The figures screen keeps its four columns and the CSV/XLSX export keeps its
+ * four headings — both map `result.columns`, never `Object.keys(row)` — while the rows grow the extra
+ * fields the PRINTED form needs (`cp38`, `employeeNo`, `passport`, and the two blanks) and `meta` grows
+ * the employer header. A second card would give the LHDN shelf two CP39s with two readiness gates that
+ * could disagree about who is ready.
+ *
+ * `totals.cp38` is new alongside the `totals.pcb` that was always there; the screen's tile row is driven
+ * off the NUMERIC COLUMNS, so nothing new appears on it. `test/slice0.test.ts` pins `cp39.totals.pcb`
+ * against the overview and is untouched by the addition.
+ */
 async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
   const b = await loadBatchRows(ctx, params);
-  if (!b.hasBatch) return empty(CP39_COLS, b);
-  const rows: ReportRow[] = b.rows.map((r) => ({
-    name: r.name,
-    taxNo: r.taxNo,
-    ic: r.ic,
-    pcb: num(r.st.pcb),
-  }));
+  // Second, narrow query rather than a wider `loadBatchRows`: that loader is shared by six reports and
+  // only this one needs a passport number. Throws on a malformed period (cp39DeductionPeriodFor), which
+  // is what stops "2026-13" producing a plausible-looking empty statement stamped with nonsense.
+  const extras = await cp39FormExtras(ctx, {
+    companyId: params.companyId,
+    periodKey: params.periodKey,
+    employmentIds: b.rows.map((r) => r.employmentId),
+  });
+  if (!b.hasBatch) {
+    const e = empty(CP39_COLS, b);
+    return { ...e, meta: { ...e.meta, formHeader: extras.header, notes: CP39_FORM_NOTES } };
+  }
+  const rows: ReportRow[] = b.rows.map((r) => {
+    const x = extras.byEmployment.get(r.employmentId);
+    return {
+      // The figures table's own four columns, exactly as before.
+      name: r.name,
+      taxNo: r.taxNo,
+      ic: r.ic,
+      pcb: num(r.st.pcb),
+      // ADDITIVE — no column declares these, so no existing surface renders them. `employmentId` also
+      // lets the shared panel link a name to that person's EA statement, as it already does for the
+      // Borang A figures table.
+      employmentId: r.employmentId,
+      // 1.2.3 CP38 — the LHDN/court instalment, DISTINCT from MTD. Stamped non-zero on the regular run
+      // only, so summing across the period's runs single-counts the month's one instalment; that is the
+      // same rule `cp39FileForBatch` applies to the upload file (localization/my/cp39-file.ts:204).
+      cp38: num(r.st.cp38),
+      employeeNo: x?.employeeNo ?? '',
+      passport: x?.passport ?? '',
+      // Blank because no column exists, not because a lookup came back empty. See localization/my/cp39-form.ts.
+      countryCode: '',
+      oldIc: '',
+    };
+  });
   return {
     columns: CP39_COLS,
     rows,
-    totals: sumTotals(rows, ['pcb']),
+    totals: sumTotals(rows, ['pcb', 'cp38']),
     readiness: readinessFor(b.rows, [{ field: 'taxNo', label: 'Tax no' }]),
-    meta: meta(b),
+    meta: { ...meta(b), formHeader: extras.header, notes: CP39_FORM_NOTES },
   };
 }
 
@@ -1034,6 +1079,20 @@ export const MY_REPORTS: ReportDef[] = [
   // out on the agency's own page. `outputs` includes `file` for the two that also emit a prescribed
   // agency upload file — those files carry their own draft chip, because neither has yet been accepted
   // by the portal it is built for (localization/my/cp39-file.ts, localization/my/socso-eis-file.ts).
+  //
+  // e0cd4583 — THIS ENTRY NOW ALSO HAS A PRINTED FORM (app/payroll/cp39/preview), AND IT KEEPS
+  // `fidelity: 'figures'` ANYWAY. THAT IS THE DECISION, NOT AN OVERSIGHT.
+  //
+  // `agency-layout` is a claim that every box, column and heading is where the AGENCY's form puts it.
+  // Borang A and Borang 8A can make it because we were at least given completed specimens of those
+  // pages. For CP39 there is nothing: `public/forms/` holds one file and it is the CP22, the ticket's
+  // reference is a filled sample from another payroll system, and the two earlier "agency reference"
+  // attachments in this repo turned out to be exactly that (HANDOFF, statutory forms). Every box on the
+  // drawn CP39 is placed from the ticket's PROSE list of fields — which is the definition of `figures`:
+  // every number the form needs, complete, in OUR layout rather than the agency's page. The drawn page
+  // and its text twin both say so on their face, and LHDN's own printed A/B/C notes are NOT reproduced
+  // because we have never read them. Upgrade this the day the real artwork lands in public/forms/ —
+  // understating is safe, and overstating is the single failure this vocabulary exists to prevent.
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
     descriptionKey: 'desc_cp39', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },

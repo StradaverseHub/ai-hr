@@ -558,6 +558,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       // file downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they
       // are not listed — the check walks page.tsx.
       '/payroll/borang-a/preview',
+      // e0cd4583: the CP39 review step, between the LHDN shelf's figures screen and the two downloads
+      // (the drawn monthly PCB statement and its readable text twin). Same scopedAdmin key as the
+      // directory that links to it and as the [formId] screen above — it lists every employee's name,
+      // identity card number, income tax reference number, employee number, passport number and monthly
+      // PCB/CP38 deduction, so it is admin-scoped exactly like them. Registered here because
+      // test/function-access.test.ts checks reverse completeness: a guarded page with no matrix column
+      // fails the suite rather than silently becoming a screen nobody can grant or revoke. Its THREE
+      // siblings under /payroll/cp39 (the pdf and text downloads, and shared.ts) are route handlers and a
+      // plain module, not guarded pages, so they are not listed — the check walks page.tsx.
+      '/payroll/cp39/preview',
       // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
       // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
       // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports
