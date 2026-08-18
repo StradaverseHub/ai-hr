@@ -18,9 +18,13 @@
  *     be reproduced "as-is", and reproducing statutory instruction text we have never read would be
  *     fabricating the content of a government document. The page says the notes are not reproduced and
  *     where to read them instead, which is the honest version of the same box.
- *   • The payment instrument (cheque / bank draft / postal order number and branch) and the signature.
- *     Those are manual and never payroll-derived; the request says to leave them blank. They are drawn
- *     as ruled boxes to write on.
+ *   • The signature. Manual by definition — the request says to leave it blank for physical signing, so
+ *     it is drawn as a box to sign in.
+ *
+ * The payment instrument (cheque / bank draft / postal order number and branch) is manual in the same
+ * sense — never payroll-derived — but it IS typeable on the review screen, because this page doubles as
+ * the payment cover document and the operator normally has the instrument in front of them when they
+ * print it. Typed, it prints; untyped, it prints the same ruled line it always did.
  *
  * ── PAGINATION IS THE PART THAT GOES WRONG SILENTLY ───────────────────────────────────────────────
  * Page 1 is the cover — employer, period, payment summary and preparer. The employee table starts on
@@ -215,11 +219,17 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     textR(money(form.totalAmount), RIGHT - 10, 10, bold);
     y = summaryTop - 74 - 18;
 
-    // The payment instrument. Blank by design — the request lists these as manual fields.
+    // The payment instrument — TYPED ON THE REVIEW SCREEN when the operator has it, a ruled line to
+    // write on when they do not. This page is a payment cover document, so the cheque, bank draft or
+    // postal order number is usually known at the moment it is printed; the request lists these as
+    // manual fields, which is a statement about where the value comes from, not a ban on typing it.
+    // Same rule as the preparer block below: a value prints, an empty one prints a rule.
     text('No. Cek / Draf Bank / Wang Pos', M, 7.5, font, muted);
-    blank(M + 160, 150);
+    if (form.paymentRef) text(form.paymentRef, M + 160, 9, bold);
+    else blank(M + 160, 150);
     text('Cawangan', M + 330, 7.5, font, muted);
-    blank(M + 385, RIGHT - (M + 385));
+    if (form.paymentBranch) text(form.paymentBranch, M + 385, 9, bold);
+    else blank(M + 385, RIGHT - (M + 385));
     y -= 22;
     line(y, 0.9);
     y -= 18;

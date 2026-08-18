@@ -323,9 +323,26 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                 className={inputCls}
               />
             </Field>
+            {/* BUTIR-BUTIR PEMBAYARAN — the payment instrument, which the approved plan lists as editable
+                on this screen. `defaultValue` off the FORM rather than off `sp`, so these behave like
+                every other box here: what you see is what the PDF will carry. Unlike the preparer boxes
+                they have no company default, so clearing one really does clear it and the statement goes
+                back to printing a ruled line. */}
+            <Field label={t('payRef')}>
+              <input type="text" name="payRef" defaultValue={form.paymentRef} className={`${inputCls} w-52`} />
+            </Field>
+            <Field label={t('payBranch')}>
+              <input
+                type="text"
+                name="payBranch"
+                defaultValue={form.paymentBranch}
+                className={`${inputCls} w-44`}
+              />
+            </Field>
             <button className={btnGhost}>{t('apply')}</button>
           </div>
           <p className="px-4 pt-2 text-xs text-muted-foreground">{t('inputsHint')}</p>
+          <p className="px-4 pt-1 text-xs text-muted-foreground">{t('paymentHint')}</p>
 
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">

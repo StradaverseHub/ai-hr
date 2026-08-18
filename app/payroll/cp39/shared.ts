@@ -26,13 +26,17 @@
  *               — see `withPreparer`, and note that these boxes are submitted on every request whether
  *               or not they were touched, so presence can never be read as intent (AGENTS rule 17).
  * `date`      — Tarikh. Defaults to today in Malaysian time; an ISO `YYYY-MM-DD` overrides it.
+ * `payRef` / `payBranch` — BUTIR-BUTIR PEMBAYARAN, the payment instrument: the cheque / bank draft /
+ *               postal order number and the branch it was drawn on. The plan lists these as MANUAL
+ *               fields and as editable on the preview, and both halves are true: nothing in the database
+ *               can produce either, and this page doubles as the payment cover document, so the operator
+ *               usually has the instrument in front of them when they print it. UNLIKE the preparer
+ *               boxes these have no default, so an empty one means BLANK — the form prints the ruled
+ *               line it always did. See `withPaymentInstrument` for why that is a separate helper.
  * None of them is persisted, and none reaches the pack: `ReportParams` stays {companyId, periodKey}.
  *
- * ⚠️ THE PAYMENT INSTRUMENT FIELDS HAVE NO INPUT, DELIBERATELY. The request lists the cheque / bank
- * draft / postal order number and its branch among the MANUAL fields — written on the printed page at
- * the counter, alongside the signature, which is also left blank. A typed box that only ever lands on a
- * document nobody has signed yet would be a control that does nothing useful, so the form draws ruled
- * lines to write on instead.
+ * THE SIGNATURE IS THE ONE FIELD WITH NO INPUT, and that is not an omission: the request says to leave
+ * it blank for physical signing, so the form draws a box to sign in.
  */
 import { reportPreview } from '@/core/reporting';
 import { scopedAdmin } from '@/lib/scope';
@@ -40,6 +44,7 @@ import {
   cp39FormFrom,
   missingCp39FormHeader,
   missingCp39Preparer,
+  withPaymentInstrument,
   withPreparer,
   type Cp39Form,
   type Cp39FormRow,
@@ -138,13 +143,21 @@ export async function loadCp39Form(p: {
   // so `ReportParams` stays {companyId, periodKey} and the pack never learns about a per-generation
   // input. An invalid date is ignored rather than throwing: this is a render path and a junk query
   // string must not 500 the review screen.
-  const form = withPreparer(base, {
-    preparerName: p.query.get('prepName') ?? undefined,
-    preparerIc: p.query.get('prepIc') ?? undefined,
-    preparerPosition: p.query.get('prepPosition') ?? undefined,
-    preparerPhone: p.query.get('prepPhone') ?? undefined,
-    printedOnIso: p.query.get('date') ?? undefined,
-  });
+  const form = withPaymentInstrument(
+    withPreparer(base, {
+      preparerName: p.query.get('prepName') ?? undefined,
+      preparerIc: p.query.get('prepIc') ?? undefined,
+      preparerPosition: p.query.get('prepPosition') ?? undefined,
+      preparerPhone: p.query.get('prepPhone') ?? undefined,
+      printedOnIso: p.query.get('date') ?? undefined,
+    }),
+    // Applied HERE and nowhere else, which is what stops the reviewed statement and the downloaded one
+    // carrying different cheque numbers: the screen and both routes reach the form through this call.
+    {
+      paymentRef: p.query.get('payRef') ?? undefined,
+      paymentBranch: p.query.get('payBranch') ?? undefined,
+    },
+  );
 
   return {
     ok: true,

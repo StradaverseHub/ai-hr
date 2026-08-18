@@ -128,6 +128,18 @@ export type Cp39FormHeader = {
 };
 
 export type Cp39Form = Cp39FormHeader & {
+  /**
+   * BUTIR-BUTIR PEMBAYARAN — the payment instrument: `No. Cek / Draf Bank / Wang Pos` and `Cawangan`.
+   *
+   * NOT PART OF `Cp39FormHeader` AND NOT ON `CP39_FORM_HEADER_KEYS`, deliberately: nothing in the
+   * database can produce either of them, so a read that "must set every header key" must not be asked to
+   * set these. They are OPERATOR-TYPED on the review screen, arrive through `withPaymentInstrument`, and
+   * default to '' — a blank prints the ruled line the request asks for, exactly as before they were
+   * typeable. Never persisted: like the preparer overrides they belong to ONE generation of ONE
+   * statement, and a cheque number kept on a company record would be wrong the following month.
+   */
+  paymentRef: string;
+  paymentBranch: string;
   pages: Cp39FormPage[];
   /** Jumlah Potongan PCB across the whole statement. */
   totalPcb: number;
@@ -374,6 +386,10 @@ export function cp39FormFrom(p: {
     preparerIc: str(h.preparerIc),
     preparerPosition: str(h.preparerPosition),
     preparerPhone: str(h.preparerPhone),
+    // Always blank HERE. The read cannot know a cheque number; `withPaymentInstrument` is where the
+    // operator's typed value lands, and a statement nobody typed one into keeps the ruled line.
+    paymentRef: '',
+    paymentBranch: '',
     pages,
     totalPcb,
     totalCp38,
@@ -417,6 +433,31 @@ export function withPreparer(
     preparerPosition: pick(patch.preparerPosition, form.preparerPosition),
     preparerPhone: pick(patch.preparerPhone, form.preparerPhone),
     printedOn: printed || form.printedOn,
+  };
+}
+
+/**
+ * Stamp a built statement with the payment instrument the operator typed on the review screen.
+ *
+ * ── WHY THIS IS A SECOND FUNCTION AND NOT TWO MORE KEYS ON `withPreparer` ─────────────────────────
+ * THE BLANK RULE IS THE OPPOSITE ONE. Every preparer box is PRE-FILLED from the company's LHDN
+ * authority record, so an empty submitted box there has to mean "keep the default" or a page load would
+ * wipe a correct name (AGENTS rule 17). These two have NO default and never can — nothing in the
+ * database knows a cheque number — so an empty box here means exactly what it says: leave the ruled
+ * line blank and write on it at the counter. Folding them into `withPreparer` would put two opposite
+ * readings of "" inside one helper, which is how the wrong one gets applied to the wrong field.
+ *
+ * TRIMMED, NEVER PERSISTED, AND NEVER DERIVED. The value belongs to one generation of one statement:
+ * the PDF, the text twin and the review screen all take it from here, so the three cannot disagree.
+ */
+export function withPaymentInstrument(
+  form: Cp39Form,
+  patch: { paymentRef?: string; paymentBranch?: string },
+): Cp39Form {
+  return {
+    ...form,
+    paymentRef: (patch.paymentRef ?? '').trim(),
+    paymentBranch: (patch.paymentBranch ?? '').trim(),
   };
 }
 
@@ -464,7 +505,12 @@ export function cp39FormTextExport(form: Cp39Form): string {
   L.push(`  Jumlah Potongan PCB          : ${padL(String(form.pcbEmployees), 4)} pekerja   RM ${money(form.totalPcb)}`);
   L.push(`  Jumlah Potongan CP38         : ${padL(String(form.cp38Employees), 4)} pekerja   RM ${money(form.totalCp38)}`);
   L.push(`  AMAUN                        :                  RM ${money(form.totalAmount)}`);
-  L.push('  No. Cek / Draf Bank / Wang Pos : ______________________  Cawangan : ______________________');
+  // Typed on the review screen when the operator has the instrument in front of them, a ruled blank to
+  // write on when they do not. The rule is the SAME on the drawn page — one value, two renderings.
+  const written = (v: string) => (v ? pad(v, 22) : '______________________');
+  L.push(
+    `  No. Cek / Draf Bank / Wang Pos : ${written(form.paymentRef)}  Cawangan : ${written(form.paymentBranch)}`,
+  );
   L.push('');
 
   for (const page of form.pages) {
@@ -522,8 +568,16 @@ export function cp39FormTextExport(form: Cp39Form): string {
   L.push(`  Jawatan        : ${form.preparerPosition || '—'}`);
   L.push(`  No. Telefon    : ${form.preparerPhone || '—'}`);
   L.push('');
-  L.push('Left blank on purpose — these are yours to complete, never payroll-derived:');
-  L.push('  No. Cek / Draf Bank / Wang Pos · Cawangan · Tandatangan');
+  // NAMES WHAT IS STILL BLANK, not what is blank by category. The payment instrument moved above the
+  // line when it was made typeable, so listing it here unconditionally would tell an operator who had
+  // just typed a cheque number that it was left out.
+  const stillBlank = [
+    form.paymentRef ? null : 'No. Cek / Draf Bank / Wang Pos',
+    form.paymentBranch ? null : 'Cawangan',
+    'Tandatangan',
+  ].filter(Boolean);
+  L.push('Left blank on purpose — these are yours to complete by hand, never payroll-derived:');
+  L.push(`  ${stillBlank.join(' · ')}`);
   L.push('');
   L.push('Columns we cannot fill and do not guess:');
   L.push('  No. K/P Lama — no old-identity-card field exists on the staff record.');

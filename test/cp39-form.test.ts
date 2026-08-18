@@ -31,6 +31,7 @@ import {
   missingCp39Preparer,
   money,
   paginateCp39,
+  withPaymentInstrument,
   withPreparer,
   type Cp39FormRow,
 } from '../lib/cp39-form';
@@ -362,6 +363,96 @@ describe('the header, the preparer block and the gates', () => {
     const form = cp39FormFrom({ header: header(), rows: [] });
     expect(form.employerAddress).toEqual(['Level 12, Menara Satu', '50450 Kuala Lumpur, Wilayah Persekutuan']);
     expect(cp39FormFrom({ header: header({ employerAddress: '' }), rows: [] }).employerAddress).toEqual([]);
+  });
+});
+
+/**
+ * BUTIR-BUTIR PEMBAYARAN — the payment instrument, which the approved plan lists TWICE: once in the
+ * workflow ("the preparer block and payment-instrument fields editable") and once under MANUAL FIELDS
+ * ("cheque/bank draft/postal order no. and branch … leave blank/editable on preview"). Both halves are
+ * true at once: nothing in payroll can derive either value, AND the operator can type it, because this
+ * page doubles as the payment cover document and the instrument is normally in front of them.
+ *
+ * THE BLANK RULE HERE IS THE OPPOSITE OF THE PREPARER BLOCK'S, which is why it is a separate helper. A
+ * preparer box is pre-filled from the company record, so "" must mean "keep the default" (AGENTS rule
+ * 17). These have no default and never can, so "" means blank — and the page goes back to printing the
+ * ruled line it printed before they were typeable.
+ */
+describe('the payment instrument', () => {
+  const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a' })] });
+
+  it('starts empty, because no read can know a cheque number', () => {
+    expect(form.paymentRef).toBe('');
+    expect(form.paymentBranch).toBe('');
+    // …and it is NOT part of the read↔renderer header contract, so no read is asked to produce it.
+    expect([...CP39_FORM_HEADER_KEYS]).not.toContain('paymentRef');
+    expect([...CP39_FORM_HEADER_KEYS]).not.toContain('paymentBranch');
+  });
+
+  it('carries what the operator typed, trimmed, and treats a blank box as BLANK not "keep"', () => {
+    const typed = withPaymentInstrument(form, { paymentRef: '  123456  ', paymentBranch: ' MAYBANK KLCC ' });
+    expect(typed.paymentRef).toBe('123456');
+    expect(typed.paymentBranch).toBe('MAYBANK KLCC');
+    // Clearing the box really clears it — the opposite of `withPreparer`, and deliberately so.
+    const cleared = withPaymentInstrument(typed, { paymentRef: '', paymentBranch: '   ' });
+    expect([cleared.paymentRef, cleared.paymentBranch]).toEqual(['', '']);
+    const untouched = withPaymentInstrument(typed, {});
+    expect([untouched.paymentRef, untouched.paymentBranch]).toEqual(['', '']);
+    // Nothing else on the statement moved.
+    expect(typed.preparerName).toBe(form.preparerName);
+    expect(typed.totalAmount).toBe(form.totalAmount);
+  });
+
+  it('prints the typed value in the text export, and a rule to write on when there is none', () => {
+    expect(cp39FormTextExport(form)).toContain('No. Cek / Draf Bank / Wang Pos : ____');
+    const typed = withPaymentInstrument(form, { paymentRef: 'CHQ 004417', paymentBranch: 'CIMB IPOH' });
+    const txt = cp39FormTextExport(typed);
+    expect(txt).toContain('CHQ 004417');
+    expect(txt).toContain('CIMB IPOH');
+    // The "left blank on purpose" footer names what is STILL blank. Telling somebody who has just typed
+    // a cheque number that it was left out is how a correct document gets re-done by hand.
+    const footer = txt.slice(txt.indexOf('Left blank on purpose'));
+    expect(footer).toContain('Tandatangan');
+    expect(footer).not.toContain('No. Cek');
+    expect(footer).not.toContain('Cawangan');
+    const blankFooter = cp39FormTextExport(form);
+    expect(blankFooter.slice(blankFooter.indexOf('Left blank on purpose'))).toContain('No. Cek');
+  });
+
+  it('draws the typed value on the page rather than always a ruled line', async () => {
+    // Source-shape on the renderer, because a PDF's own bytes will not tell us which branch ran…
+    expect(PDF_CODE).toContain('if (form.paymentRef)');
+    expect(PDF_CODE).toContain('if (form.paymentBranch)');
+    // …and a real render, because a drawing call with a wrong argument count throws at run time only.
+    const typed = withPaymentInstrument(form, { paymentRef: 'CHQ 004417', paymentBranch: 'CIMB IPOH' });
+    const bytes = await renderCp39FormPdf(typed);
+    expect(bytes.byteLength).toBeGreaterThan(1000);
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(2);
+  });
+
+  /**
+   * THE CONTRACT BETWEEN THE SCREEN AND THE LOADER, which is where this would break invisibly: an input
+   * whose `name` nobody reads is submitted on every request and silently ignored, and a loader reading a
+   * name no input carries is dead code. A unit test of either half passes throughout (AGENTS rule 17).
+   */
+  it('is typed on the review screen and read by the ONE loader the routes share', () => {
+    expect(PREVIEW).toContain('name="payRef"');
+    expect(PREVIEW).toContain('name="payBranch"');
+    expect(PREVIEW_CODE).toContain("t('payRef')");
+    expect(PREVIEW_CODE).toContain("t('payBranch')");
+    expect(SHARED_CODE).toContain("p.query.get('payRef')");
+    expect(SHARED_CODE).toContain("p.query.get('payBranch')");
+    expect(SHARED_CODE).toContain('withPaymentInstrument');
+    // The two download routes inherit it because they hand the SAME query to `loadCp39Form` — the
+    // property that stops the reviewed statement and the downloaded one carrying different numbers.
+    for (const src of [PDF_ROUTE_CODE, TEXT_ROUTE_CODE]) expect(src).toContain('query: q');
+  });
+
+  it('is never persisted and never reaches the pack', () => {
+    // One generation of one statement. A cheque number stored on a company record is wrong next month.
+    expect(SHARED_CODE).not.toMatch(/insert|update|upsert/i);
+    expect(READ_CODE).not.toContain('paymentRef');
+    expect(REPORTS_CODE).not.toContain('paymentRef');
   });
 });
 
