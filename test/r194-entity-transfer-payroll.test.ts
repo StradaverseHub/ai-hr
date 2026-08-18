@@ -662,7 +662,7 @@ describe('the payslip segment reader and its message keys', () => {
     // between files and a unit test of either half would pass throughout.
     //
     // 1b0943d5 UPDATED THE READER, NOT THE RULE. Stage two gave the payslip real coverage columns
-    // (migration 0442), so "is this slip segmented" is no longer "does the jsonb stamp exist" but "is the
+    // (migration 0446), so "is this slip segmented" is no longer "does the jsonb stamp exist" but "is the
     // coverage window narrower than the pay period" — `payslipSegmentOf`, which reads the columns, falls
     // back to the r194 stamp, and then to the whole period. The rule this case exists for is unchanged and
     // is now stricter: the three render paths AND the completeness control read one fact.

@@ -57,7 +57,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     paymentMethod: p.paymentMethod,
     // 3c88d593 — when a mid-month entity transfer split the month, the document says which days it paid.
     // Null on every other payslip ⇒ the period line is unchanged.
-    // 1b0943d5 — now derived from the slip's COVERAGE (columns since 0442, the r194 stamp before them):
+    // 1b0943d5 — now derived from the slip's COVERAGE (columns since 0446, the r194 stamp before them):
     // "segmented" means the window is narrower than the pay period, so the document and the completeness
     // control read one fact rather than two that could disagree.
     segment: payslipSegmentOf(p, p.payPeriod),

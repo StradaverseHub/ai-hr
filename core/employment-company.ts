@@ -17,7 +17,7 @@
  * ⚠️ WHERE THAT ADOPTION ACTUALLY STANDS, because a stale plan reference here would send the next reader
  * looking for work that was done and past work that was not. Stage one (r194) added the column, the
  * resolver and the within-run month split. STAGE TWO (r197, item 1b0943d5) did the CROSS-BATCH half: the
- * membership predicate on every payroll site that needed it, payslip coverage dates (migration 0442) and
+ * membership predicate on every payroll site that needed it, payslip coverage dates (migration 0446) and
  * the completeness control in core/payroll-coverage.ts. Attendance, leave and reporting still read
  * `employment.company_id` at their dated call sites and are NOT adopted — deliberately, and last, because
  * the plan gates that pass on the payroll half being exercised against real data first (the production

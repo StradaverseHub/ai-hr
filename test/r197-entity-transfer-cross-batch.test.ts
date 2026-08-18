@@ -28,7 +28,7 @@
  *   1. THE TILING ARITHMETIC, pure and DB-free. Gap, overlap, exact fit, leading and trailing holes. It
  *      is the whole control, so it is pinned by a table of dates before any payroll runs at all.
  *
- *   2. THE PAYSLIP CAN STATE ITS COVERAGE (migration 0442). Columns, not a jsonb key — because the check
+ *   2. THE PAYSLIP CAN STATE ITS COVERAGE (migration 0446). Columns, not a jsonb key — because the check
  *      asks the question across several employers' batches at once, and because "01 Aug – 10 Aug 2026"
  *      on the document is the reporter's own requirement. NULL still reads as the whole period, so every
  *      payslip issued before this round is unchanged.
@@ -148,7 +148,7 @@ describe('coverageDefects: does a set of payslips tile the month?', () => {
 // ─────────────────────── 2. the payslip's own coverage, and what NULL means ───────────────────────
 
 describe('payslipCoverage / payslipSegmentOf: three homes, one answer', () => {
-  it('the 0442 columns win when they are set', () => {
+  it('the 0446 columns win when they are set', () => {
     expect(
       payslipCoverage({ coverageFrom: '2026-08-01', coverageTo: '2026-08-10', statutory: {} }, AUG),
     ).toEqual({ from: '2026-08-01', to: '2026-08-10' });
@@ -192,22 +192,22 @@ describe('payslipCoverage / payslipSegmentOf: three homes, one answer', () => {
 
 // ─────────────────────── 3. the migration is a journal entry, not a file ───────────────────────
 
-describe('migration 0442', () => {
+describe('migration 0446', () => {
   it('is on disk AND in the journal, with a `when` above every entry before it', () => {
     const root = process.cwd();
     const journal = JSON.parse(
       fs.readFileSync(path.join(root, 'db/migrations/meta/_journal.json'), 'utf8'),
     ) as { entries: { idx: number; when: number; tag: string }[] };
-    const e = journal.entries.find((x) => x.tag === '0442_payslip_coverage_dates');
-    expect(e, 'journal entry for 0442').toBeTruthy();
-    expect(fs.existsSync(path.join(root, 'db/migrations/0442_payslip_coverage_dates.sql'))).toBe(true);
+    const e = journal.entries.find((x) => x.tag === '0446_payslip_coverage_dates');
+    expect(e, 'journal entry for 0446').toBeTruthy();
+    expect(fs.existsSync(path.join(root, 'db/migrations/0446_payslip_coverage_dates.sql'))).toBe(true);
     const maxBefore = Math.max(...journal.entries.filter((x) => x.idx < e!.idx).map((x) => x.when));
     expect(e!.when).toBeGreaterThan(maxBefore);
   });
 
   it('adds the columns NULLABLE, so no existing payslip can be invalidated by it', () => {
     const sql = fs.readFileSync(
-      path.join(process.cwd(), 'db/migrations/0442_payslip_coverage_dates.sql'),
+      path.join(process.cwd(), 'db/migrations/0446_payslip_coverage_dates.sql'),
       'utf8',
     );
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS "coverage_from" date');
@@ -220,7 +220,7 @@ describe('migration 0442', () => {
     // own. `db/schema.ts` is what drizzle-kit DIFFS the database against: an object that exists only in a
     // hand-written migration reads as drift, and the next generated migration proposes DROPPING it. This
     // repo already declares both kinds in the ORM schema (`check()` appears a dozen times), so the rule is
-    // the repo's own, not a new one — 0442 simply had to follow it.
+    // the repo's own, not a new one — 0446 simply had to follow it.
     const src = fs.readFileSync(path.join(process.cwd(), 'db/schema.ts'), 'utf8');
     expect(src, 'payslip_employment_idx must be declared in the ORM schema').toMatch(
       /index\('payslip_employment_idx'\)/,
@@ -326,7 +326,7 @@ describe('a transferred month, across the two batches that own it', () => {
     expect(out, 'the OUTGOING employer must have a payslip — this is the half r194 never created').toBeTruthy();
     expect(inc).toBeTruthy();
 
-    // (a) each names its own days, in COLUMNS a query can read across batches (migration 0442).
+    // (a) each names its own days, in COLUMNS a query can read across batches (migration 0446).
     expect([out.coverageFrom, out.coverageTo]).toEqual(['2026-08-01', '2026-08-10']);
     expect([inc.coverageFrom, inc.coverageTo]).toEqual(['2026-08-11', '2026-08-31']);
     // …and the unsegmented colleague's slip records the whole month rather than nothing, so the tiling

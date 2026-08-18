@@ -274,7 +274,7 @@ export default async function IndividualPayslipPage({
   const prov = row ? payslipProvenance(row.statutory) : null;
   // 3c88d593 — the entity segment this slip covers, from the slip's OWN record. Null for every payslip
   // whose month was not split by a transfer.
-  // 1b0943d5 — "its own record" is now the coverage window: the 0442 columns, falling back to the r194
+  // 1b0943d5 — "its own record" is now the coverage window: the 0446 columns, falling back to the r194
   // jsonb stamp and then to the whole period. Segmented means narrower than the period, so this screen,
   // both PDF routes and the completeness control all read ONE fact.
   const segment = row ? payslipSegmentOf(row, row.payPeriod) : null;

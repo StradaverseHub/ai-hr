@@ -5047,7 +5047,7 @@ export async function generatePayslips(
         overtimePay: slipOvertime.toFixed(2),
         bonus: bonus.toFixed(2),
         daysWorked: isAdditionalRun ? null : String(daysWorked),
-        // ── 1b0943d5 (migration 0442) — WHICH DAYS THIS SLIP COVERS, AS COLUMNS. ────────────────────
+        // ── 1b0943d5 (migration 0446) — WHICH DAYS THIS SLIP COVERS, AS COLUMNS. ────────────────────
         //
         // Stamped on EVERY payslip this kernel writes, split month or not, and that is the point rather
         // than an over-reach: the completeness control has to ask "do this person's payslips tile the
@@ -5092,7 +5092,7 @@ export async function generatePayslips(
           // byte-identical.
           //
           // 1b0943d5 — THIS STAMP IS NO LONGER WHAT THE SCREENS READ, and it is kept anyway. The coverage
-          // COLUMNS beside it (migration 0442) are now the queryable record, and `payslipSegmentOf` reads
+          // COLUMNS beside it (migration 0446) are now the queryable record, and `payslipSegmentOf` reads
           // those first; a screen decides "is this segmented" by whether the window is narrower than the
           // period, not by whether this key exists. The stamp stays because it is part of the IMMUTABLE
           // SNAPSHOT — the audited record of what the run believed when it computed the slip, alongside the
@@ -5825,7 +5825,7 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
       //
       // The predicate is one indexed read of THIS run's own payslips and needs no entity history at all.
       // `statutory -> 'segment'` is the same question asked of a slip written between r194 and migration
-      // 0442, whose coverage lives in the jsonb stamp — `payslipCoverage` reads both homes, and a
+      // 0446, whose coverage lives in the jsonb stamp — `payslipCoverage` reads both homes, and a
       // population that read only the columns would drop exactly the slips r194 issued. Every ordinary
       // slip covers its whole period, so on any run without a split month this returns nobody.
       const closeSlips = await tx
@@ -7415,7 +7415,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         overtime: payslip.overtimePay,
         bonus: payslip.bonus,
         daysWorked: payslip.daysWorked,
-        // 1b0943d5 (0442) — the coverage window this slip claims, read through `payslipSegmentOf` so the
+        // 1b0943d5 (0446) — the coverage window this slip claims, read through `payslipSegmentOf` so the
         // document and the completeness control cannot disagree about which days it paid.
         coverageFrom: payslip.coverageFrom,
         coverageTo: payslip.coverageTo,

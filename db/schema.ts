@@ -5176,18 +5176,18 @@ export const payslip = pgTable(
     bonus: numeric('bonus', { precision: 12, scale: 2 }).notNull().default('0'),
     // Days the employee was active/paid in the period (proration basis). Null = legacy / full month.
     daysWorked: numeric('days_worked', { precision: 5, scale: 2 }),
-    // 1b0943d5 (migration 0442) — WHICH DAYS OF THE PAY PERIOD THIS EMPLOYER OWNS. Inclusive on both ends.
+    // 1b0943d5 (migration 0446) — WHICH DAYS OF THE PAY PERIOD THIS EMPLOYER OWNS. Inclusive on both ends.
     //
     // `days_worked` counts days; these two say WHICH days, which is the difference between "21 days" and
     // "11–31 August, ISEDECOR BINA". They exist because the completeness control has to ask, across every
     // company's batch for one period, whether an employment's payslips tile the month with no gap and no
     // overlap — a question no jsonb key can be asked at the shape it is asked here.
     //
-    // NULL ON BOTH ⇒ THE WHOLE PAY PERIOD, which is what every payslip written before 0442 means and what
+    // NULL ON BOTH ⇒ THE WHOLE PAY PERIOD, which is what every payslip written before 0446 means and what
     // the absent `statutory.segment` stamp already meant. Read them through `payslipCoverage`
     // (core/payslip-segment.ts), never directly: that reader applies the NULL rule, falls back to the
     // stage-one jsonb stamp for a slip written between r194 and this round, and is the ONE place the rule
-    // lives. `payslip_coverage_ordered` (0442) guarantees both are set or neither, and never backwards.
+    // lives. `payslip_coverage_ordered` (0446) guarantees both are set or neither, and never backwards.
     coverageFrom: date('coverage_from'),
     coverageTo: date('coverage_to'),
     grossPay: numeric('gross_pay', { precision: 12, scale: 2 }).notNull(),
@@ -5205,7 +5205,7 @@ export const payslip = pgTable(
   },
   (t) => [
     uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId),
-    // 1b0943d5 (migration 0442) — the completeness control's access path, and a NEW index rather than a
+    // 1b0943d5 (migration 0446) — the completeness control's access path, and a NEW index rather than a
     // reuse of the unique one above: that is keyed (batch_id, employment_id) and serves "this run's slip
     // for this person", which is every payslip read this system had before this round. The tiling check
     // asks the orthogonal question — "every slip this person holds for this MONTH, across every

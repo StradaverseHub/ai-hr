@@ -43,7 +43,7 @@ export type PayslipCoverage = { from: string; to: string };
  * depending on WHEN it was written, and a completeness check that disagreed with the screen about which
  * home to read would be a control that passes while the document says otherwise.
  *
- *   1. THE COLUMNS (`coverage_from` / `coverage_to`, migration 0442) — every slip written from stage two
+ *   1. THE COLUMNS (`coverage_from` / `coverage_to`, migration 0446) — every slip written from stage two
  *      onward, split month or not. Authoritative when present.
  *   2. THE STAGE-ONE STAMP (`statutory.segment`) — a slip written by r194 for a split month, before the
  *      columns existed. Its range is the same fact, recorded in the only place there was to record it.
