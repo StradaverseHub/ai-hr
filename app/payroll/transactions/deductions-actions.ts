@@ -5,8 +5,14 @@ import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { setPayrollDeductionInput } from '@/core/payroll';
 import { employmentSubject } from '@/core/read';
-import { saveTp1DraftForPerson, submitTp1ForPerson } from '@/core/tax-relief';
-import { TP1_CATEGORY_KEYS } from '@/db/schema';
+import {
+  approveTp1ForPerson,
+  cancelTp1ForPerson,
+  rejectTp1ForPerson,
+  saveTp1DraftForPerson,
+  submitTp1ForPerson,
+} from '@/core/tax-relief';
+import { readTp1FormInput } from '@/lib/tp1-form-input';
 
 /**
  * TP1 Relief transaction screen (approved plan, ADR-0050 §0.4). The dedicated screen edits ONE deduction
@@ -61,16 +67,6 @@ export async function saveTp1Action(formData: FormData) {
 // employment via employmentSubject (RLS-scoped) — never a raw personId form field — and the write is
 // admin-gated in core (requireAdminTarget) with the tp1_relief RLS as the DB backstop.
 
-/** Read the structured per-category breakdown from the HR form (identical shape to the ESS reader). */
-function readAdminTp1Input(formData: FormData): { assessmentYear: number; categories: Record<string, unknown> } {
-  const assessmentYear = Number(formData.get('assessmentYear'));
-  const categories: Record<string, unknown> = {};
-  for (const k of TP1_CATEGORY_KEYS) categories[k] = Number(formData.get(`cat_${k}`) ?? 0);
-  const remarks = formData.get('remarks');
-  if (remarks != null) categories.remarks = String(remarks);
-  return { assessmentYear, categories };
-}
-
 /** Resolve the selected employment → trusted personId (RLS-scoped), or redirect with an error. */
 async function resolveTarget(
   s: Parameters<typeof employmentSubject>[0],
@@ -90,27 +86,88 @@ const backToTp1 = (employmentId: string, year: number, qs: string): never =>
 export async function adminSaveTp1Draft(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const { assessmentYear, categories } = readAdminTp1Input(formData);
-  const personId = await resolveTarget(s, employmentId, assessmentYear);
+  // ONE reader, shared with mySaveTp1Draft / mySubmitTp1 (lib/tp1-form-input.ts). See its header for why
+  // two copies of seventeen items' field names is not a plan.
+  const input = readTp1FormInput(formData);
+  const personId = await resolveTarget(s, employmentId, input.assessmentYear);
   try {
-    await saveTp1DraftForPerson(s, { personId, assessmentYear, categories });
+    await saveTp1DraftForPerson(s, { personId, ...input });
   } catch (e) {
-    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/payroll/transactions/tp1');
-  backToTp1(employmentId, assessmentYear, 'toast=Draft+saved');
+  backToTp1(employmentId, input.assessmentYear, 'toast=Draft+saved');
 }
 
 export async function adminSubmitTp1(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const { assessmentYear, categories } = readAdminTp1Input(formData);
-  const personId = await resolveTarget(s, employmentId, assessmentYear);
+  const input = readTp1FormInput(formData);
+  const personId = await resolveTarget(s, employmentId, input.assessmentYear);
   try {
-    await submitTp1ForPerson(s, { personId, assessmentYear, categories });
+    await submitTp1ForPerson(s, { personId, ...input });
+  } catch (e) {
+    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll/transactions/tp1');
+  backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted');
+}
+
+// ── Section F — employer consent (7ad37961) ────────────────────────────────────────────────────────
+// Admin-only by construction: `requireAdmin()` here, `requireAdminTarget` in core, and the tp1_relief
+// RLS policy underneath both. The declaration id arrives as a form field and is resolved AGAINST the
+// trusted personId in core, so an id belonging to another person is simply not found.
+
+/** The decision fields the consent form carries, plus the resolved target. */
+async function readTp1Decision(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const id = String(formData.get('tp1ReliefId') ?? '');
+  const assessmentYear = Number(formData.get('assessmentYear'));
+  const personId = await resolveTarget(s, employmentId, assessmentYear);
+  return {
+    s,
+    employmentId,
+    assessmentYear,
+    input: {
+      personId,
+      id,
+      approvedMonth: formData.get('approvedMonth') as string | null,
+      approvedYear: formData.get('approvedYear') as string | null,
+      approverPosition: formData.get('approverPosition') as string | null,
+    },
+  };
+}
+
+export async function adminApproveTp1(formData: FormData) {
+  const { s, employmentId, assessmentYear, input } = await readTp1Decision(formData);
+  try {
+    await approveTp1ForPerson(s, input);
   } catch (e) {
     backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/payroll/transactions/tp1');
-  backToTp1(employmentId, assessmentYear, 'toast=TP1+submitted');
+  backToTp1(employmentId, assessmentYear, 'toast=TP1+approved');
+}
+
+export async function adminRejectTp1(formData: FormData) {
+  const { s, employmentId, assessmentYear, input } = await readTp1Decision(formData);
+  try {
+    await rejectTp1ForPerson(s, input);
+  } catch (e) {
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll/transactions/tp1');
+  backToTp1(employmentId, assessmentYear, 'toast=TP1+rejected');
+}
+
+export async function adminCancelTp1(formData: FormData) {
+  const { s, employmentId, assessmentYear, input } = await readTp1Decision(formData);
+  try {
+    await cancelTp1ForPerson(s, input);
+  } catch (e) {
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll/transactions/tp1');
+  backToTp1(employmentId, assessmentYear, 'toast=TP1+cancelled');
 }

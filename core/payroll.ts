@@ -2002,7 +2002,8 @@ export async function setPayrollDeductionInput(
 /**
  * Prefill a draft batch's TP1 personal-relief deduction from the employee's yearly self-service
  * declaration (ADR-0050, #1.1.3). The employee declares ONE annual TP1 amount per assessment year on
- * /me; the latest SUBMITTED row feeds monthly PCB here.
+ * /me; the latest APPROVED row — effective from its approved deduction month — feeds monthly PCB here.
+ * (7ad37961 moved that gate from 'submitted'; see the query below and migration 0445's backfill.)
  *
  * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated` and PCB consumes `∑LP + LP₁`, so feeding
  * the full annual every month over-relieves. Per ADR-0050 §0.1 (delta method) the feed is
@@ -2084,7 +2085,19 @@ export async function prefillTp1FromSelfRelief(
     }
     if (targetByPerson.size === 0) return { applied: 0, skipped: 0 };
 
-    // Latest SUBMITTED annual declaration per person for this assessment year (§0.6: payPeriod's year).
+    // Latest APPROVED annual declaration per person for this assessment year (§0.6: payPeriod's year),
+    // effective from its APPROVED DEDUCTION MONTH.
+    //
+    // ⚠️ THE GATE MOVED FROM 'submitted' TO 'approved' IN 7ad37961 (ADR-0081). The official LHDN TP1 has
+    // a Section F employer consent block, and consent is what turns an employee's claim into an
+    // instruction to payroll. Migration 0445 stamps every declaration that existed before that round
+    // approved, with approved_month = 1 — WITHOUT THAT BACKFILL THIS QUERY RETURNS NOTHING and every
+    // existing employee's relief stops silently, because "no approved declaration" and "nobody declared
+    // anything" are the same empty set. If relief has gone missing on a run, check the backfill first.
+    //
+    // approved_month <= this batch's month is the form's own effective-from box: a relief approved from
+    // June must not reduce March's tax. An IS NULL arm keeps a hand-inserted row (one that never went
+    // through the approve action) effective all year rather than invisible.
     const personIds = [...targetByPerson.keys()];
     const declarations = await tx
       .select({
@@ -2097,7 +2110,8 @@ export async function prefillTp1FromSelfRelief(
         and(
           inArray(tp1Relief.personId, personIds),
           eq(tp1Relief.assessmentYear, pYear),
-          eq(tp1Relief.status, 'submitted'),
+          eq(tp1Relief.status, 'approved'),
+          or(isNull(tp1Relief.approvedMonth), lte(tp1Relief.approvedMonth, pMonth)),
         ),
       )
       .orderBy(desc(tp1Relief.createdAt));

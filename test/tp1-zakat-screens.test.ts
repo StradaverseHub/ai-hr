@@ -66,13 +66,22 @@ describe('Separated TP1/Zakat screens — provenance + single-field semantics', 
 
   it('(a) zakat-only save preserves a tp1_self relief value AND its provenance (self-relief still refreshes)', async () => {
     const { a, personId, employmentId, batchId } = await hireWithBatch();
-    // A submitted annual TP1 declaration for this person for the batch's assessment year (2026).
+    // An APPROVED annual TP1 declaration for this person for the batch's assessment year (2026).
+    //
+    // 7ad37961 — this fixture said 'submitted' until the employer-consent workflow landed. Section F of
+    // the official TP1 is what turns a claim into an instruction to payroll, so the prefill now reads
+    // approved rows only, effective from their approved month. The claim THIS case makes — that a
+    // zakat-only save preserves the relief and its provenance — is untouched; only the state the
+    // declaration starts in moved, and it starts in the state migration 0445 leaves every existing row.
     await owner.db.insert(schema.tp1Relief).values({
       tenantId: base.tenantId,
       personId,
       assessmentYear: 2026,
       tp1Amount: '3000',
-      status: 'submitted',
+      status: 'approved',
+      approvedAt: new Date(),
+      approvedMonth: 1,
+      approvedYear: 2026,
     });
     // Prefill sets tp1_deduction from the declaration and stamps tp1_source='tp1_self'.
     const first = await prefillTp1FromSelfRelief(a, { batchId });
@@ -97,12 +106,16 @@ describe('Separated TP1/Zakat screens — provenance + single-field semantics', 
 
   it('(b) a TP1 edit still resets provenance to manual (null) — did not over-preserve', async () => {
     const { a, personId, employmentId, batchId } = await hireWithBatch();
+    // APPROVED, not merely submitted — see case (a) above for why that changed in 7ad37961.
     await owner.db.insert(schema.tp1Relief).values({
       tenantId: base.tenantId,
       personId,
       assessmentYear: 2026,
       tp1Amount: '3000',
-      status: 'submitted',
+      status: 'approved',
+      approvedAt: new Date(),
+      approvedMonth: 1,
+      approvedYear: 2026,
     });
     await prefillTp1FromSelfRelief(a, { batchId });
     expect((await readRow(batchId, employmentId)).tp1Source).toBe('tp1_self');

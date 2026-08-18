@@ -31,6 +31,7 @@ import {
   bigserial,
   bigint,
   integer,
+  smallint,
   index,
   uniqueIndex,
   primaryKey,
@@ -4779,7 +4780,22 @@ export const employeeDocument = pgTable(
 // the PCB kernel consumes (LP). Append-only request-row shape (profile_change_request pattern): the latest
 // row per (person, year) wins; the editable draft is UPDATEd in place; a submitted row is immutable and a
 // correction is a NEW submitted row. RLS scopes to app.can_see_person (self + admin) for read AND write.
-export const tp1StatusEnum = pgEnum('tp1_status', ['draft', 'submitted']);
+// 7ad37961 (migration 0444) — the LHDN TP1 record gains a real lifecycle: Draft → Submitted →
+// Approved / Rejected → Cancelled. `approved` is what GATES THE PAYROLL FEED from this round on
+// (core/payroll.ts prefillTp1FromSelfRelief), which is why 0445 backfills every already-submitted row to
+// approved: without it every existing employee's relief would silently stop the day this ships.
+// ⚠️ 0444 REPLACES THE TYPE RATHER THAN ADDING VALUES TO IT, and the reason matters: drizzle replays
+// EVERY pending migration inside ONE transaction (pg-core/dialect.js), so a value ADDED to a
+// pre-existing enum cannot be USED by any migration in the same run — 0445's backfill hit exactly that
+// (55P04). A type CREATED in the transaction has no such restriction. 0444's header carries the full
+// account, including which older notes in this repo state the mechanism incorrectly.
+export const tp1StatusEnum = pgEnum('tp1_status', [
+  'draft',
+  'submitted',
+  'approved',
+  'rejected',
+  'cancelled',
+]);
 
 // Per-category TP1 breakdown (a2f1fa24), mirroring the LHDN paper TP1 sections. Every category is an
 // OPTIONAL non-negative RM amount (empty = 0); `remarks` is optional free text. The canonical starter set
@@ -4796,7 +4812,44 @@ export const TP1_CATEGORY_KEYS = [
   'other',
 ] as const;
 export type Tp1CategoryKey = (typeof TP1_CATEGORY_KEYS)[number];
-export type Tp1Categories = Partial<Record<Tp1CategoryKey, number>> & { remarks?: string | null };
+
+/** The LEGACY eight-key payload. Rows written before 7ad37961 carry exactly this and MUST stay readable. */
+export type Tp1LegacyCategories = Partial<Record<Tp1CategoryKey, number>> & { remarks?: string | null };
+
+/**
+ * One numbered item of the LHDN TP1 (1/2026) form as stored (7ad37961, ADR-0081). `amount` is the item's
+ * CURRENT deduction figure; for an item the form gives lettered boxes to, it is the round2 sum of
+ * `subItems` and the server always recomputes it — the client's own total is never trusted, at any level.
+ */
+export type Tp1ItemAmounts = {
+  amount: number;
+  /** Lettered sub-line amounts, keyed by the pack catalogue's sub-item code ('a', 'b', …). */
+  subItems?: Record<string, number>;
+};
+
+/**
+ * The TP1 (1/2026) payload: `items` keyed c1…c17 and `rebates` keyed d1, matching the pack catalogue
+ * (localization/my/statutory-tables MY_TP1_2026). `form` is the DISCRIMINATOR — a row without it is a
+ * legacy eight-key row and is read as one (core/tax-relief.ts resolveInput branches on exactly this).
+ *
+ * REBATES ARE NOT DEDUCTIONS and are deliberately outside the `tp1_amount` roll-up: a Section D rebate
+ * reduces the tax, not the chargeable income the PCB kernel projects. Storing them here keeps the form
+ * complete and printable without moving a single cent of the monthly MTD arithmetic.
+ */
+export type Tp1Categories2026 = {
+  form: 'tp1-2026';
+  items: Record<string, Tp1ItemAmounts>;
+  rebates?: Record<string, Tp1ItemAmounts>;
+  remarks?: string | null;
+};
+
+/** Either payload shape. Both carry `remarks`, so a reader that only wants the note need not branch. */
+export type Tp1Categories = Tp1LegacyCategories | Tp1Categories2026;
+
+/** Narrow a stored payload to the 2026 catalogue shape (the discriminator, in one place). */
+export function isTp1Categories2026(c: Tp1Categories | null | undefined): c is Tp1Categories2026 {
+  return !!c && (c as Tp1Categories2026).form === 'tp1-2026';
+}
 
 export const tp1Relief = pgTable(
   'tp1_relief',
@@ -4818,6 +4871,26 @@ export const tp1Relief = pgTable(
     // the amounts live ONLY on this RLS-protected row, never copied into the tp1.* event payloads.
     categories: jsonb('categories').$type<Tp1Categories | null>(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    // ── 7ad37961 / migration 0445 — the deduction month and the Section E / F workflow ──────────────
+    // The official form's own "DEDUCTION MONTH" box (1–12). NULL on every row written before this
+    // round: those rows are a whole-year declaration with no month, and the list renders them as such
+    // rather than inventing a January they were never keyed against.
+    deductionMonth: smallint('deduction_month'),
+    // Section E — the employee declaration. A TIMESTAMP, not a boolean: "who confirmed it and when" is
+    // the fact the paper form's Date/Signature pair records, and a bare tick cannot answer it. Stamped
+    // by the SERVER at submit; the tick itself is an explicit on/off form value, never read by presence
+    // (RULE 17 — a hidden input is always submitted).
+    declaredAt: timestamp('declared_at', { withTimezone: true }),
+    // ── Section F — employer consent ────────────────────────────────────────────────────────────────
+    // Who approved, when, and the month/year the approval is FOR — the form's own four boxes. The
+    // approver's name is not duplicated here: it is read through `approved_by`, so a renamed user is
+    // never two different names on two different screens. `approver_position` IS stored, because a
+    // position is a fact about the moment of approval and changes under the person.
+    approvedBy: uuid('approved_by').references((): AnyPgColumn => appUser.id),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    approvedMonth: smallint('approved_month'),
+    approvedYear: integer('approved_year'),
+    approverPosition: text('approver_position'),
     createdAt: createdAt(),
   },
   (t) => [

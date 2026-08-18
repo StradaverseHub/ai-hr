@@ -718,3 +718,198 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
   hrdf: MY_HRDF,
   pcbExemptions: { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// LHDN TP1 (1/2026) — the deduction/rebate CATALOGUE (item 7ad37961, ADR-0081)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// The seventeen numbered deduction items (C1–C17) and the Section D rebate lines of PCB FORM /TP1
+// (1/2026) — "Individual Tax Deduction and Rebate Claim Form for Monthly Tax Deduction Purposes (PCB)",
+// prescribed under s.152 ITA 1967, Income Tax (Deductions from Remuneration) Regulations 1994.
+//
+// WHY THE CATALOGUE LIVES HERE AND NOT IN THE FORM. Every ringgit figure below is a STATUTORY number and
+// belongs to the country pack (ADR-0080 D6), the same place `MY_RELIEFS` lives. The screen renders these
+// limits, it does not restate them — `messages/*.json` embedding "RM 9,000" in prose (as the legacy
+// taxRelief.categories help strings do) is exactly the second source this replaces. One figure moves,
+// one file changes, six locales stay correct.
+//
+// ── WHAT "LIMIT" MEANS, AND WHAT NULL MEANS (ADR-0008: no unsourced statutory number) ───────────────
+// `limit` is the ANNUAL LIMIT (RM) the form itself prints in its own "ANNUAL LIMIT (RM)" column against
+// that item. `null` means the form prints NO figure there — the item is still captured, still summed
+// into `tp1_amount` and still printed on the generated form, but nothing blocks on a cap we cannot cite.
+// A guessed cap on a live payroll is a wrong-figure defect; a null is a missing check. We take the null.
+//
+// `frequency` is a restriction the form states IN WORDS ("Limited to once every 2 years of assessment").
+// It is CAPTURED AND PRINTED, never enforced: enforcing it needs a claim history this system does not
+// hold (the employee's assessment-year record at LHDN, not ours), and a wrong refusal on a valid claim is
+// worse than no check. It is surfaced to the employee as the note the paper form carries.
+//
+// ── SUB-ITEMS ──────────────────────────────────────────────────────────────────────────────────────
+// An item with `subItems` has a separate amount box PER SUB-ITEM on the paper form and ONE shared
+// Current/Accumulated pair; the item's amount is the sum of its sub-items and the group `limit` caps
+// that sum. A sub-item `limit` is the "(Limited RM…)" the form prints against that line, and it caps the
+// sub-item on its own, INSIDE the group limit.
+//
+// C16 IS THE ONE EXCEPTION (`perSubLimit`): the form gives its two house-price bands their OWN annual
+// limit AND their own Current/Accumulated row, so they are two independent claims, not a group.
+//
+// SOURCE: the LHDN TP1 (1/2026) document attached to item 7ad37961, transcribed field by field.
+// Recorded in docs/architecture/STATUTORY-SOURCES.md §9.
+
+/** One lettered sub-line of a TP1 item — a box on the paper form. */
+export type Tp1CatalogueSubItem = {
+  /** The letter the form prints ('a', 'b', …). Stable: it is the persisted JSONB key. */
+  readonly code: string;
+  /** The "(Limited RM…)" figure the form prints against this line, or null when it prints none. */
+  readonly limit: number | null;
+  /** A frequency restriction stated in words on the form. Captured and printed, never enforced. */
+  readonly frequency?: string;
+};
+
+/** One numbered TP1 deduction item (C1–C17) or Section D rebate line. */
+export type Tp1CatalogueItem = {
+  /** 'c1'…'c17' / 'd1'. Stable: it is the persisted JSONB key and the i18n key. */
+  readonly code: string;
+  /** The ANNUAL LIMIT (RM) column on the form; null when the form prints no figure (ADR-0008). */
+  readonly limit: number | null;
+  /** Lettered sub-lines with their own box. Empty when the item is a single line on the form. */
+  readonly subItems: readonly Tp1CatalogueSubItem[];
+  /** C16 only: each sub-item is its OWN claim with its own limit and its own Current/Accumulated row. */
+  readonly perSubLimit?: boolean;
+  /** A frequency restriction stated in words on the form. Captured and printed, never enforced. */
+  readonly frequency?: string;
+};
+
+/** The C1–C17 deduction items of TP1 (1/2026), in the form's own order. */
+export const MY_TP1_2026_ITEMS: readonly Tp1CatalogueItem[] = [
+  // C1 — expenditure for parents/grandparents. Group limit 8,000; (c) carries its own RM1,000.
+  {
+    code: 'c1',
+    limit: 8000,
+    subItems: [
+      { code: 'a', limit: null }, // medical treatment, special needs and caregivers
+      { code: 'b', limit: null }, // dental treatment
+      { code: 'c', limit: 1000 }, // full medical check-up including vaccinations
+    ],
+  },
+  // C2 — basic support equipment for oneself / spouse / child / parents with disabilities.
+  { code: 'c2', limit: 6000, subItems: [] },
+  // C3 — study fees (oneself). Group 7,000; (c) skills/personal development carries RM2,000.
+  {
+    code: 'c3',
+    limit: 7000,
+    subItems: [
+      { code: 'a', limit: null }, // levels other than Master's/PhD in the listed fields
+      { code: 'b', limit: null }, // Master's or Doctorate in any field
+      { code: 'c', limit: 2000 }, // skills enhancement / personal development courses
+    ],
+  },
+  // C4 — medical expenses. Group 10,000; four of the six sub-lines carry their own printed sub-limit.
+  {
+    code: 'c4',
+    limit: 10000,
+    subItems: [
+      { code: 'a', limit: null }, // serious illness — self / spouse / child
+      { code: 'b', limit: null }, // fertility treatment — self / spouse
+      { code: 'c', limit: 1000 }, // vaccination — self / spouse / child
+      { code: 'd', limit: 1000 }, // dental check-up or treatment
+      { code: 'e', limit: 1000 }, // full medical checkup, mental health, screening, self-monitoring
+      { code: 'f', limit: 10000 }, // diagnostic / early intervention / rehabilitation, ≤18 learning disabilities
+    ],
+  },
+  // C5 — lifestyle. Group 2,500, no printed sub-limits.
+  {
+    code: 'c5',
+    limit: 2500,
+    subItems: [
+      { code: 'a', limit: null }, // books, journals, magazines, newspapers, other publications
+      { code: 'b', limit: null }, // personal computers / smartphones / tablets (not for business use)
+      { code: 'c', limit: null }, // monthly internet subscription (in your own name)
+      { code: 'd', limit: null }, // skill improvement or self-development course
+    ],
+  },
+  // C6 — lifestyle, sport-related, for self / spouse / children / parents. Group 1,000.
+  {
+    code: 'c6',
+    limit: 1000,
+    subItems: [
+      { code: 'a', limit: null }, // sports equipment (Sports Development Act 1997)
+      { code: 'b', limit: null }, // rental or entry fees for sports facilities
+      { code: 'c', limit: null }, // sports competition registration fees
+      { code: 'd', limit: null }, // gym membership or sports training fees
+    ],
+  },
+  // C7 — breastfeeding equipment, child aged 2 and below. The frequency rule IS printed on the form.
+  { code: 'c7', limit: 1000, subItems: [], frequency: 'onceEveryTwoYears' },
+  // C8 — childcare / kindergarten / day-care / transit centre fees, children aged 12 and below.
+  { code: 'c8', limit: 3000, subItems: [] },
+  // C9 — net savings in the National Education Savings Scheme (SSPN).
+  { code: 'c9', limit: 8000, subItems: [] },
+  // C10 — alimony payment to the ex-wife.
+  { code: 'c10', limit: 4000, subItems: [] },
+  // C11 — voluntary EPF / life insurance. THE GROUP LIMIT IS 7,000 — printed against the brace joining
+  // the two lines — with (a) limited to RM4,000 INCLUDING mandatory EPF contributions and (b) to
+  // RM3,000. The item description on the board recorded only the two sub-limits; the form's own annual
+  // limit column says 7,000, so the group cap is carried too.
+  {
+    code: 'c11',
+    limit: 7000,
+    subItems: [
+      { code: 'a', limit: 4000 }, // voluntary EPF (limited RM4,000 including mandatory EPF contributions)
+      { code: 'b', limit: 3000 }, // life insurance / voluntary EPF
+    ],
+  },
+  // C12 — private retirement schemes and deferred annuities.
+  { code: 'c12', limit: 3000, subItems: [] },
+  // C13 — education and medical insurance.
+  { code: 'c13', limit: 4000, subItems: [] },
+  // C14 — PERKESO contributions (Employees' Social Security Act 1969 / Employment Insurance System
+  // Act 2017).
+  { code: 'c14', limit: 350, subItems: [] },
+  // C15 — EV charging facilities / food-waste composting machine / food-waste shredder / CCTV. ONE line
+  // with ONE amount box on the form (not four), annual limit 2,500, and TWO different frequency rules
+  // inside the same sentence — hence the compound key, rendered as the note the form prints.
+  { code: 'c15', limit: 2500, subItems: [], frequency: 'compostingThreeYearsShredderCctvTwoYears' },
+  // C16 — first home loan interest. TWO INDEPENDENT CLAIMS: the form gives each house-price band its own
+  // annual limit AND its own Current/Accumulated row, so this is `perSubLimit`, not a group.
+  {
+    code: 'c16',
+    limit: null,
+    perSubLimit: true,
+    subItems: [
+      { code: 'a', limit: 7000 }, // house price up to RM500,000
+      { code: 'b', limit: 5000 }, // house price above RM500,000 up to RM750,000
+    ],
+  },
+  // C17 — entrance fees to tourist centres and cultural/arts programmes for domestic tourism.
+  { code: 'c17', limit: 1000, subItems: [] },
+] as const;
+
+/**
+ * Section D — REBATE. Not a deduction: a rebate reduces the tax, it does not reduce chargeable income,
+ * so these amounts are NOT part of the `tp1_amount` roll-up the PCB kernel consumes. They are captured,
+ * stored and printed on the form. The paper form prints NO annual-limit figure against either line.
+ *
+ * D1(a) is zakat OTHER THAN that paid through monthly salary deductions — the exclusion is the whole
+ * point of the line, and it is what stops the same zakat being counted twice against a person who also
+ * has a payroll zakat deduction (core/tax-relief.ts states the rule; test/tp1-zakat-screens.test.ts and
+ * the new case in test/tp1-relief-redesign.test.ts hold it).
+ */
+export const MY_TP1_2026_REBATES: readonly Tp1CatalogueItem[] = [
+  {
+    code: 'd1',
+    limit: null,
+    subItems: [
+      { code: 'a', limit: null }, // zakat other than that paid through monthly salary deductions
+      { code: 'b', limit: null, frequency: 'twoClaimsLifetime' }, // Umrah / religious travel exemption levy
+    ],
+  },
+] as const;
+
+/** The whole TP1 (1/2026) catalogue as the pack exposes it. */
+export const MY_TP1_2026 = {
+  /** The form revision this catalogue transcribes — printed on the generated form. */
+  formCode: 'PCB FORM /TP1 (1/2026)',
+  items: MY_TP1_2026_ITEMS,
+  rebates: MY_TP1_2026_REBATES,
+} as const;

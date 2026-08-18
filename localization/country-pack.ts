@@ -51,6 +51,7 @@ import type {
   SocsoBand,
   StatutoryBody,
   StatutoryRuleset,
+  Tp1CatalogueItem,
 } from './my/statutory-tables';
 import type {
   ActiveResolution,
@@ -359,6 +360,22 @@ export interface CountryPack {
      * design, ADR-0008 "no unsourced statutory number").
      */
     taxReliefCategoryCaps: Readonly<Partial<Record<Tp1CategoryKey, number>>>;
+    /**
+     * The FULL TP1 deduction/rebate catalogue the declaration form is built from (item 7ad37961,
+     * ADR-0081): the agency's own numbered items, their lettered sub-lines, and the annual limit the
+     * agency's form prints against each. MY supplies LHDN TP1 (1/2026).
+     *
+     * THIS IS THE GENERALISATION OF `taxReliefCategoryCaps` ABOVE, NOT ITS REPLACEMENT. The old slot
+     * still exists and still carries the two legacy eight-key caps, because rows written before this
+     * catalogue existed are still read through the legacy key list (db/schema TP1_CATEGORY_KEYS) and
+     * must keep validating exactly as they did. New declarations validate against `taxReliefCatalogue`.
+     * ADR-0008 holds on both: an item whose `limit` is null is captured and printed, never blocked.
+     */
+    taxReliefCatalogue: {
+      readonly formCode: string;
+      readonly items: readonly Tp1CatalogueItem[];
+      readonly rebates: readonly Tp1CatalogueItem[];
+    };
     /** Active-ruleset loader (ADR-0019): DB override or the verified default, as of a date. */
     loadRuleset: (tx: Tx, p: { asOf: string }) => Promise<StatutoryRuleset>;
     /** Same resolution + pack provenance (ADR-0020 §7) for payslip snapshotting. */

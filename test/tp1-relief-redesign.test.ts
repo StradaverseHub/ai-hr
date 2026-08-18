@@ -58,7 +58,13 @@ vi.mock('next/headers', () => ({
     get: (name: string) => (cookieJar.value === undefined ? undefined : { name, value: cookieJar.value }),
   })),
 }));
-vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (k: string) => k) }));
+// `getLocale` joins `getTranslations` here because the TP1 list resolves its MONTH NAMES through
+// Intl in the request's locale (7ad37961) rather than from a message catalogue — twelve month
+// names in six catalogues would be six copies of the calendar.
+vi.mock('next-intl/server', () => ({
+  getTranslations: vi.fn(async () => (k: string) => k),
+  getLocale: vi.fn(async () => 'en'),
+}));
 
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -69,6 +75,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, setPayrollDeductionInput } from '../core/payroll';
 import { listTp1DeclarationsForPerson } from '../core/tax-relief';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { redirect } from 'next/navigation';
 import { CollapsibleEmployeePanel, EmployeeScopePanel } from '../components/collapsible-employee-panel';
 import { pageWideCls } from '../components/ui';
 import { AppliedInPayrollList } from '../components/applied-in-payroll-list';
@@ -76,6 +83,7 @@ import { Tp1DeclarationsList } from '../components/tp1-declarations-list';
 import { Tp1DeclarationForm } from '../components/tp1-declaration-form';
 import Tp1TransactionPage, { TP1_PANEL_COOKIE } from '../app/payroll/transactions/tp1/page';
 import Tp1DeclarationYearPage from '../app/payroll/transactions/tp1/[year]/page';
+import Tp1DeclarationMonthPage from '../app/payroll/transactions/tp1/[year]/[month]/page';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -195,14 +203,21 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
       hiredOn: `${LAST_YEAR}-01-01`,
     });
 
-    // ── Declarations. The current year gets TWO rows for Aisha: the original and a correction. Written
-    // directly because what is under test is the READ that collapses them, not the write path (which has
-    // its own tests) — and because created_at has to be controlled to make "newest wins" falsifiable.
+    // ── Declarations. 7ad37961 — the current year now gets THREE rows for Aisha: a JANUARY declaration
+    // and its correction (which must collapse to ONE January line), plus a separate FEBRUARY declaration
+    // (which must NOT be collapsed into it). That pair is the whole point: the visible-row rule moved
+    // from one-per-YEAR to one-per-MONTH, but the half that was never about years — a correction does
+    // not produce two competing lines for the same month — is unchanged and still falsifiable here.
+    //
+    // Written directly because what is under test is the READ that collapses them, not the write path
+    // (which has its own tests) — and because created_at has to be controlled to make "newest wins"
+    // falsifiable.
     await owner.db.insert(schema.tp1Relief).values([
       {
         tenantId: base.tenantId,
         personId: aisha.personId,
         assessmentYear: CURRENT_YEAR,
+        deductionMonth: 1,
         status: 'submitted',
         tp1Amount: '3000.00',
         submittedAt: new Date(`${CURRENT_YEAR}-02-01T02:00:00Z`),
@@ -212,10 +227,24 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
         tenantId: base.tenantId,
         personId: aisha.personId,
         assessmentYear: CURRENT_YEAR,
+        deductionMonth: 1,
         status: 'submitted',
         tp1Amount: '4000.00',
         submittedAt: new Date(`${CURRENT_YEAR}-03-01T02:00:00Z`),
         createdAt: new Date(`${CURRENT_YEAR}-03-01T02:00:00Z`),
+      },
+      {
+        tenantId: base.tenantId,
+        personId: aisha.personId,
+        assessmentYear: CURRENT_YEAR,
+        deductionMonth: 2,
+        status: 'approved',
+        tp1Amount: '1500.00',
+        submittedAt: new Date(`${CURRENT_YEAR}-03-05T02:00:00Z`),
+        createdAt: new Date(`${CURRENT_YEAR}-03-05T02:00:00Z`),
+        approvedAt: new Date(`${CURRENT_YEAR}-03-06T02:00:00Z`),
+        approvedMonth: 2,
+        approvedYear: CURRENT_YEAR,
       },
       {
         tenantId: base.tenantId,
@@ -325,38 +354,73 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
     const tree = await render({ employmentId: aisha.employmentId });
     expect(byType(tree, Tp1DeclarationForm), 'the form lives on its own page now').toEqual([]);
     expect(writingForms(tree), 'nothing on this screen writes').toEqual([]);
+    // 7ad37961 — the destination gained a MONTH segment: a declaration is now per deduction month, so
+    // "+ Add New TP1" opens the current month of the selected year. The claim is unchanged — one button,
+    // and it LEAVES this screen rather than unfolding a form on it.
     const toDeclaration = hrefsIn(tree).filter((h) => h.startsWith('/payroll/transactions/tp1/'));
-    expect(toDeclaration).toContain(
-      `/payroll/transactions/tp1/${CURRENT_YEAR}?employmentId=${aisha.employmentId}`,
-    );
+    expect(toDeclaration.length, 'exactly one route off this screen per listed record, plus Add').toBeGreaterThan(0);
+    for (const h of toDeclaration) {
+      expect(h).toMatch(
+        new RegExp(`^/payroll/transactions/tp1/${CURRENT_YEAR}/\\d{1,2}\\?employmentId=${aisha.employmentId}$`),
+      );
+    }
     // The selected employee is named at the top of the workspace, as on Fixed Transaction.
     expect(textIn(tree)).toContain('Aisha Rahman');
   });
 
   // ───────────────────── Transaction history ─────────────────────
 
-  it('the history is ONE ROW PER ASSESSMENT YEAR, carrying the NEWEST row within each year', async () => {
+  // 7ad37961 REVERSED HALF OF THIS CASE ON PURPOSE, AND THE OTHER HALF IS UNTOUCHED.
+  //
+  // It used to read "ONE ROW PER ASSESSMENT YEAR". The official LHDN TP1 (1/2026) has a DEDUCTION MONTH
+  // box, so a year holds up to twelve declarations and a per-year collapse would hide eleven of them.
+  // The visible grain is now the MONTH — which is exactly what the reporter sketched (January, February,
+  // March). What did NOT change, and is still asserted below, is that a CORRECTION does not produce two
+  // competing lines for the same month: January's two rows collapse to one, carrying the newer amount
+  // and counting the superseded one.
+  it('the list is ONE ROW PER DEDUCTION MONTH, carrying the NEWEST row within each month', async () => {
     const tree = await render({ employmentId: aisha.employmentId });
     const rows = lists(tree).declarations[0].props.rows as {
       assessmentYear: number;
+      deductionMonth: number | null;
       amount: string;
       status: string;
       versions: number;
       href: string;
       readOnly: boolean;
     }[];
-    expect(rows.map((r) => r.assessmentYear)).toEqual([CURRENT_YEAR, LAST_YEAR]);
-    const current = rows[0];
-    expect(current.amount, 'the correction wins, not the original').toBe('4000.00');
-    expect(current.status).toBe('submitted');
-    expect(current.versions, 'the superseded row is counted, never listed').toBe(2);
-    expect(current.readOnly).toBe(false);
-    expect(current.href).toBe(`/payroll/transactions/tp1/${CURRENT_YEAR}?employmentId=${aisha.employmentId}`);
-    const past = rows[1];
-    expect(past.amount).toBe('500.00');
-    expect(past.status).toBe('draft');
-    expect(past.versions).toBe(1);
-    expect(past.readOnly, 'a closed assessment year opens read-only').toBe(true);
+    // January and February of the SELECTED year — and last year's draft is NOT here, because the list is
+    // now scoped to one year by the selector rather than spanning every year at once.
+    expect(rows.map((r) => r.deductionMonth)).toEqual([1, 2]);
+    expect(rows.every((r) => r.assessmentYear === CURRENT_YEAR)).toBe(true);
+    const jan = rows[0];
+    expect(jan.amount, 'the correction wins, not the original').toBe('4000.00');
+    expect(jan.status).toBe('submitted');
+    expect(jan.versions, 'the superseded row is counted, never listed').toBe(2);
+    expect(jan.readOnly).toBe(false);
+    expect(jan.href).toBe(`/payroll/transactions/tp1/${CURRENT_YEAR}/1?employmentId=${aisha.employmentId}`);
+    const feb = rows[1];
+    expect(feb.amount, 'February is its own record, never folded into January').toBe('1500.00');
+    expect(feb.status).toBe('approved');
+    expect(feb.versions).toBe(1);
+  });
+
+  // The year the reader picked is SERVER-OWNED, in the URL beside employmentId — so last year's draft is
+  // reachable, and it still opens read-only.
+  it('the year selector narrows the list, and a closed year is still read-only', async () => {
+    const tree = await render({ employmentId: aisha.employmentId, year: String(LAST_YEAR) });
+    const rows = lists(tree).declarations[0].props.rows as {
+      deductionMonth: number | null;
+      amount: string;
+      status: string;
+      readOnly: boolean;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe('500.00');
+    expect(rows[0].status).toBe('draft');
+    // Written before the form had a month box, so it has none — and is not given one.
+    expect(rows[0].deductionMonth, 'a pre-7ad37961 declaration is month-less, not January').toBeNull();
+    expect(rows[0].readOnly, 'a closed assessment year opens read-only').toBe(true);
   });
 
   it('the history is narrowed to the selected employee — in the QUERY, not over rows already read', async () => {
@@ -368,11 +432,15 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
     ]);
   });
 
-  it('core: listTp1DeclarationsForPerson collapses the append-only chain the same way the form reads it', async () => {
+  // The PER-YEAR rollup is KEPT, unchanged and still tested — the screen no longer drives its table from
+  // it, but the year selector needs to know which years exist and /me still reads a year at a time. With
+  // three current-year rows it reports the newest (February's 1500) and counts the other two behind it,
+  // which is the same latest-wins rule it always had, seen at year grain instead of month grain.
+  it('core: listTp1DeclarationsForPerson still collapses per YEAR (the selector reads it)', async () => {
     const rows = await listTp1DeclarationsForPerson(a, { personId: aisha.personId });
     expect(rows.map((r) => r.assessmentYear)).toEqual([CURRENT_YEAR, LAST_YEAR]);
-    expect(rows[0].tp1Amount).toBe(4000);
-    expect(rows[0].versions).toBe(2);
+    expect(rows[0].tp1Amount, 'newest created_at in the year wins, whatever month it is for').toBe(1500);
+    expect(rows[0].versions).toBe(3);
     expect(rows[1].tp1Amount).toBe(500);
     // A person with nothing declared is an empty list, never a fabricated current-year row.
     const [chenPerson] = await owner.db
@@ -441,49 +509,95 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
 
   // ───────────────────── The dedicated declaration page ─────────────────────
 
-  const renderYear = (year: string, searchParams: Record<string, string> = {}) =>
-    Tp1DeclarationYearPage({
-      params: Promise.resolve({ year }),
+  // 7ad37961 — the page moved from `tp1/[year]` to `tp1/[year]/[month]`, because the record's grain did.
+  // `[year]` is kept as a REDIRECT so shipped links and bookmarks keep working; its own case is below.
+  const renderMonth = (year: string, month: string, searchParams: Record<string, string> = {}) =>
+    Tp1DeclarationMonthPage({
+      params: Promise.resolve({ year, month }),
       searchParams: Promise.resolve(searchParams),
     } as any);
 
-  it('the declaration page renders the SHARED form for the picked employee and year', async () => {
-    const tree = await renderYear(String(CURRENT_YEAR), { employmentId: aisha.employmentId });
+  it('the declaration page renders the SHARED form for the picked employee, year and month', async () => {
+    const tree = await renderMonth(String(CURRENT_YEAR), '1', { employmentId: aisha.employmentId });
     const forms = byType(tree, Tp1DeclarationForm);
     expect(forms, 'the ESS screen and this one render the SAME component').toHaveLength(1);
     expect(forms[0].props.selectedYear).toBe(CURRENT_YEAR);
+    expect(forms[0].props.deductionMonth).toBe(1);
     expect(forms[0].props.readOnly).toBe(false);
-    expect(forms[0].props.latest.tp1Amount, 'the latest row for the year, corrections included').toBe(4000);
+    expect(forms[0].props.latest.tp1Amount, 'the latest row for the month, corrections included').toBe(4000);
+    // February is a DIFFERENT record on a different URL — one page cannot show two months' figures.
+    const feb = await renderMonth(String(CURRENT_YEAR), '2', { employmentId: aisha.employmentId });
+    expect(byType(feb, Tp1DeclarationForm)[0].props.latest.tp1Amount).toBe(1500);
     // The employee is carried as a hidden field, not chosen: the page cannot retarget the save.
     expect(forms[0].props.hiddenFields).toEqual({ employmentId: aisha.employmentId });
     // Save and Submit are the shared form's own buttons; Cancel returns to the record it belonged to.
-    expect(hrefsIn(tree)).toContain(`/payroll/transactions/tp1?employmentId=${aisha.employmentId}`);
+    expect(hrefsIn(tree)).toContain(
+      `/payroll/transactions/tp1?employmentId=${aisha.employmentId}&year=${CURRENT_YEAR}`,
+    );
+  });
+
+  // SECTION F IS ADMIN-ONLY, AND THIS IS THE ASSERTION THAT KEEPS IT THAT WAY. The employer-consent
+  // controls exist only where the page passes `consent`; the employee's own screen never does, so an
+  // employee cannot approve their own claim even before the service refuses it.
+  it('the HR page passes employer-consent actions; they are a prop, not something the form assumes', async () => {
+    const tree = await renderMonth(String(CURRENT_YEAR), '1', { employmentId: aisha.employmentId });
+    const consent = byType(tree, Tp1DeclarationForm)[0].props.consent;
+    expect(consent, 'Section F is offered on the HR screen').toBeTruthy();
+    expect(typeof consent.approveAction).toBe('function');
+    expect(typeof consent.rejectAction).toBe('function');
+    expect(typeof consent.cancelAction).toBe('function');
+    // The decision has to name WHICH declaration it is about, or an approval would target "the latest",
+    // which is a different row the moment anyone corrects it.
+    expect(consent.hiddenFields.tp1ReliefId).toBeTruthy();
+    expect(consent.hiddenFields.employmentId).toBe(aisha.employmentId);
   });
 
   it('a PAST assessment year opens read-only, exactly as the old screen did', async () => {
-    const tree = await renderYear(String(LAST_YEAR), { employmentId: aisha.employmentId });
+    // Last year's declaration is month-less (written before the form had a month box) and the list links
+    // such a row at month 1, so that is where it opens — as itself, not as a new January record.
+    const tree = await renderMonth(String(LAST_YEAR), '1', { employmentId: aisha.employmentId });
     const form = byType(tree, Tp1DeclarationForm)[0];
     expect(form.props.readOnly).toBe(true);
     expect(form.props.latest.tp1Amount).toBe(500);
   });
 
-  it('a year with nothing declared opens EMPTY rather than borrowing another year’s figures', async () => {
-    const tree = await renderYear(String(CURRENT_YEAR), { employmentId: bala.employmentId });
+  it('a month with nothing declared opens EMPTY rather than borrowing another month’s figures', async () => {
+    const tree = await renderMonth(String(CURRENT_YEAR), '1', { employmentId: bala.employmentId });
     expect(byType(tree, Tp1DeclarationForm)[0].props.latest.tp1Amount).toBe(9999);
-    const empty = await renderYear(String(CURRENT_YEAR - 5), { employmentId: bala.employmentId });
+    // Aisha declared January and February and nothing else: March must open blank, not carry February.
+    const empty = await renderMonth(String(CURRENT_YEAR), '3', { employmentId: aisha.employmentId });
     expect(byType(empty, Tp1DeclarationForm)[0].props.latest).toBeNull();
   });
 
-  it('the declaration page refuses an employment this admin cannot see, and a year that is not one', async () => {
-    await expect(renderYear(String(CURRENT_YEAR), { employmentId: foreign.employmentId })).rejects.toThrow(
+  it('the declaration page refuses an employment this admin cannot see, a bad year, and a bad month', async () => {
+    await expect(renderMonth(String(CURRENT_YEAR), '1', { employmentId: foreign.employmentId })).rejects.toThrow(
       'NEXT_NOT_FOUND',
     );
-    await expect(renderYear(String(CURRENT_YEAR), { employmentId: randomUUID() })).rejects.toThrow(
+    await expect(renderMonth(String(CURRENT_YEAR), '1', { employmentId: randomUUID() })).rejects.toThrow(
       'NEXT_NOT_FOUND',
     );
-    await expect(renderYear(String(CURRENT_YEAR), {})).rejects.toThrow('NEXT_NOT_FOUND');
+    await expect(renderMonth(String(CURRENT_YEAR), '1', {})).rejects.toThrow('NEXT_NOT_FOUND');
     for (const bad of ['abcd', '20260', '1999', '2101', '../etc']) {
-      await expect(renderYear(bad, { employmentId: aisha.employmentId })).rejects.toThrow('NEXT_NOT_FOUND');
+      await expect(renderMonth(bad, '1', { employmentId: aisha.employmentId })).rejects.toThrow('NEXT_NOT_FOUND');
     }
+    for (const bad of ['0', '13', 'jan', '-1', '1.5', '../etc']) {
+      await expect(
+        renderMonth(String(CURRENT_YEAR), bad, { employmentId: aisha.employmentId }),
+      ).rejects.toThrow('NEXT_NOT_FOUND');
+    }
+  });
+
+  // A SHIPPED URL MUST NOT 404. `tp1/[year]` was the declaration page for two rounds; the save actions
+  // still redirect through `?year=` and HR has it bookmarked. It forwards, carrying the employee with it
+  // — dropping employmentId would land the reader on a page that 404s for want of a selection.
+  it('the old tp1/[year] URL redirects to the month page instead of disappearing', async () => {
+    await Tp1DeclarationYearPage({
+      params: Promise.resolve({ year: String(CURRENT_YEAR) }),
+      searchParams: Promise.resolve({ employmentId: aisha.employmentId }),
+    } as any);
+    const to = vi.mocked(redirect).mock.calls.at(-1)?.[0];
+    expect(to).toMatch(
+      new RegExp(`^/payroll/transactions/tp1/${CURRENT_YEAR}/\\d{1,2}\\?employmentId=${aisha.employmentId}$`),
+    );
   });
 });
