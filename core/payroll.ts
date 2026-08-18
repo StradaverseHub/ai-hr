@@ -6302,6 +6302,66 @@ export async function removeEligibility(
   });
 }
 
+/** One recorded removal: who, when, why, and the figures that went. */
+export type RemovalHistoryRow = {
+  id: string;
+  employmentId: string;
+  employeeCode: string | null;
+  employeeName: string;
+  at: Date;
+  reason: string | null;
+  /** The removed payslip's own figures, off the snapshot — never re-derived. There is nothing to
+   *  re-derive them from: the payslip row this describes no longer exists. */
+  gross: string | null;
+  net: string | null;
+  versionBefore: number | null;
+};
+
+/**
+ * Every removal recorded on a run, newest first.
+ *
+ * A SEPARATE READER FROM `listRecomputeDisclosure` on purpose. That one diffs two payslip snapshots and
+ * reports what moved; a removal has no `after` and its `before` is the whole payslip row. Sharing the
+ * reader would mean teaching a diff to describe a deletion, which is how a history card starts printing
+ * "gross 4,000.00 → 0.00" for something that was not a pay cut.
+ */
+export function listRemovalHistory(ctx: SessionContext, p: { batchId: string }): Promise<RemovalHistoryRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: payrollEmployeeResultHistory.id,
+        employmentId: payrollEmployeeResultHistory.employmentId,
+        employeeCode: employment.employeeCode,
+        employeeName: person.fullName,
+        at: payrollEmployeeResultHistory.createdAt,
+        reason: payrollEmployeeResultHistory.reason,
+        before: payrollEmployeeResultHistory.before,
+        versionBefore: payrollEmployeeResultHistory.versionBefore,
+      })
+      .from(payrollEmployeeResultHistory)
+      .innerJoin(employment, eq(employment.id, payrollEmployeeResultHistory.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(eq(payrollEmployeeResultHistory.batchId, p.batchId), eq(payrollEmployeeResultHistory.action, 'remove')),
+      )
+      .orderBy(desc(payrollEmployeeResultHistory.createdAt));
+    return rows.map((r) => {
+      const snap = ((r.before ?? {}) as { payslip?: Record<string, unknown> }).payslip ?? {};
+      return {
+        id: r.id,
+        employmentId: r.employmentId,
+        employeeCode: r.employeeCode,
+        employeeName: r.employeeName,
+        at: r.at,
+        reason: r.reason,
+        gross: snap.grossPay == null ? null : String(snap.grossPay),
+        net: snap.netPay == null ? null : String(snap.netPay),
+        versionBefore: r.versionBefore,
+      };
+    });
+  });
+}
+
 /** One row per payslip on the run — the selection list the Remove screen renders. */
 export type RemovableEmployee = {
   employmentId: string;

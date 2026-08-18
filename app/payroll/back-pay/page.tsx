@@ -25,6 +25,7 @@ import {
   thCls,
 } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { payrollProcessBack } from '../back';
 import {
   approveAndPostBackPayAction,
   calculateBackPayAction,
@@ -101,7 +102,7 @@ const amountTone = (n: number) => (n < 0 ? 'text-red-600 dark:text-red-400' : n 
 export default async function BackPayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ company?: string; run?: string; err?: string; ok?: string }>;
+  searchParams: Promise<{ company?: string; run?: string; err?: string; ok?: string; from?: string }>;
 }) {
   const sp = await searchParams;
   const { s, scopeIds } = await scopedAdmin();
@@ -130,7 +131,7 @@ export default async function BackPayPage({
     // drift the constant exists to prevent: two screens going full-width by two different means is how
     // one of them silently gets a cap put back on it.
     <div className={pageWideCls}>
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      <PageHeader back={await payrollProcessBack(sp.from)} title={t('title')} description={t('subtitle')} />
 
       {err && <ErrorBanner message={t(`errors.${err}`)} />}
       {sp.ok && (

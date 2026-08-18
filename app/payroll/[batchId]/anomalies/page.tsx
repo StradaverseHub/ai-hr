@@ -85,15 +85,15 @@ export default async function AnomaliesPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <Link
-          href={`/payroll/${batchId}`}
-          className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-        >
-          ← {t('backToBatch')}
-        </Link>
-      </div>
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      {/* 9066bd6c — the back link MOVED INTO PageHeader rather than being added: this screen already had
+          one, hand-rolled above the header in its own smaller type. Same destination and the same
+          (already translated) label; what changes is that it now renders in the one place every other
+          screen puts it, so "does this screen have Back?" is answerable by looking at the header. */}
+      <PageHeader
+        back={{ href: `/payroll/${batchId}`, label: t('backToBatch') }}
+        title={t('title')}
+        description={t('subtitle')}
+      />
 
       <ErrorBanner message={sp.error} />
       {sp.toast ? (

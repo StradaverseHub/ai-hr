@@ -16,6 +16,7 @@ import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
 import { employeeLabel } from '@/lib/employee-code';
+import { payrollProcessBack } from '../back';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
 import { OutstandingTable } from './outstanding-table';
@@ -119,6 +120,7 @@ export default async function TransactionViewPage({
     createdBy?: string;
     createdFrom?: string;
     createdTo?: string;
+    from?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -394,7 +396,7 @@ export default async function TransactionViewPage({
     // was already full width — so it is untouched by this change and must stay that way. r179 → 98e69987
     // was one round-trip already; a second removal would be the third reversal.
     <div className={pageWideCls}>
-      <PageHeader title={t('view.title')} description={t('view.subtitle')} />
+      <PageHeader back={await payrollProcessBack(sp.from)} title={t('view.title')} description={t('view.subtitle')} />
 
       {/* Sub-tab strip (Fixed | Individual | History | Transaction Detail | Outstanding). Switching tabs
           resets the filters on purpose — each view has its own filter set. The captions come off the

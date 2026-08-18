@@ -7,6 +7,10 @@ import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } fro
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
+// 9066bd6c — Back returns the Payroll Process list EXACTLY as it was left. The list hands each row link
+// its own filter query as `?from=…`; without this the Back here went to a bare `/payroll` and the year,
+// months, company, cycle and status selection was thrown away. Whitelisted by shape, never echoed raw.
+import { payrollListReturnTo } from '@/lib/return-to';
 import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } from './reprocess-form';
 
 /**
@@ -62,7 +66,7 @@ export default async function ReprocessPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string }>;
+  searchParams: Promise<{ error?: string; job?: string; from?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -117,7 +121,7 @@ export default async function ReprocessPage({
 
   const header = (
     <PageHeader
-      back={{ href: '/payroll', label: t('reprocessBack') }}
+      back={{ href: payrollListReturnTo(sp.from), label: t('reprocessBack') }}
       title={t('reprocessTitle')}
       description={`${batch.payPeriod} · ${listed?.company ?? ''}`}
     />

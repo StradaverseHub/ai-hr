@@ -14,6 +14,10 @@ import {
   BatchNotUnlockableError,
   PayrollPermissionDeniedError,
   PreProcessBlockedError,
+  RemoveNoEmployeesError,
+  RemovePeriodClosedError,
+  RemoveReasonRequiredError,
+  RemoveWholeRunError,
   ResetReasonRequiredError,
   UnlockReasonRequiredError,
   closeBatch,
@@ -24,6 +28,7 @@ import {
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
+  removeEmployeePayroll,
   reprocessSelectedEmployees,
   resetProcessedBatch,
   setPayrollInput,
@@ -42,7 +47,7 @@ import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 // Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
 // lib/return-to.ts.
-import { adjustmentReturnTo, withQueryParam } from '@/lib/return-to';
+import { adjustmentReturnTo, payrollListReturnTo, withQueryParam } from '@/lib/return-to';
 // resumeHref is the ONE declaration of "where does a draft run resume?" (app/payroll/process/
 // selection-logic.ts). resetAction sends the operator there instead of hard-coding the wizard path, so the
 // two can never drift apart.
@@ -411,6 +416,65 @@ export async function reprocessSelectedAction(formData: FormData) {
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath(back);
   redirect(`${back}?job=${encodeURIComponent(jobId)}`);
+}
+
+/**
+ * 9066bd6c — REMOVE ONE EMPLOYEE'S PAYROLL from a processed run.
+ *
+ * The counterpart to `resetAction`, and deliberately NOT a variant of it: Reset clears every employee
+ * on the run and drops it to Draft; this deletes only the ticked employees' results, unwinds only their
+ * loan instalment / paid claims / one-off markers, and leaves the run Processed with its totals reduced
+ * by exactly what went. All authority (the reset setting gate, the multi-cycle module gate,
+ * payroll.remove.employee, processed-only, period-open, the whole-run refusal and the audit) lives in
+ * `removeEmployeePayroll`; this maps its refusals onto translated copy and returns to the same screen so
+ * the selection is still in front of the operator.
+ *
+ * `from` carries the Payroll Process list's filters through the round trip (see lib/return-to.ts) so
+ * the Back link on the screen the operator lands on still returns the list as they left it.
+ */
+export async function removeEmployeePayrollAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+  const reason = String(formData.get('reason') ?? '').trim();
+  const from = payrollListReturnTo(formData.get('from'));
+  const t = await getTranslations('payroll.batch');
+  const back = `/payroll/${batchId}/remove`;
+  const to = (params: Record<string, string>) => {
+    const sp = new URLSearchParams(params);
+    // Only carried when it is not the default, so an unfiltered visit keeps a clean URL.
+    if (from !== '/payroll') sp.set('from', from);
+    return `${back}?${sp.toString()}`;
+  };
+  if (employmentIds.length === 0) {
+    redirect(to({ error: t('removeNoneSelected') }));
+  }
+  let removed = 0;
+  try {
+    const r = await removeEmployeePayroll(s, { batchId, employmentIds, reason: reason || undefined });
+    removed = r.payslipsRemoved;
+  } catch (e) {
+    const msg =
+      e instanceof PayrollPermissionDeniedError
+        ? t('removeAdminOnly')
+        : e instanceof RemoveReasonRequiredError
+          ? t('removeReasonMissing')
+          : e instanceof RemoveWholeRunError
+            ? t('removeWholeRunRefused')
+            : e instanceof RemovePeriodClosedError
+              ? t('removePeriodClosed')
+              : e instanceof RemoveNoEmployeesError
+                ? t('removeNotOnRun')
+                : e instanceof BatchNotResettableError
+                  ? t('removeNotProcessed')
+                  : (e as Error).message;
+    redirect(to({ error: msg }));
+  }
+  revalidatePath('/payroll');
+  revalidatePath(`/payroll/${batchId}`);
+  revalidatePath(`/payroll/${batchId}/reprocess`);
+  revalidatePath(back);
+  redirect(to({ removed: String(removed) }));
 }
 
 /**
