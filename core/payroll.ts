@@ -3825,9 +3825,25 @@ export async function generatePayslips(
           // only name such a line can have. The kind-based OT / UNPAID / LEAVE lines above keep their own
           // `t.notes ?? …` for exactly that reason: they have no pay item to be named from.
           //
-          // Forward-only. Payslips already written keep the string they stored; nothing re-derives a
-          // historical line from today's catalogue, which would answer with today's naming about a month
-          // already paid.
+          // THE KERNEL IS FORWARD-ONLY, AND THAT IS NO LONGER THE WHOLE STORY — 417d4937 (r199).
+          //
+          // This write still is what it always was: a payslip keeps the string stamped here, and NOTHING in
+          // this kernel ever re-derives a historical line from today's catalogue. That is the rule below
+          // (`recordLines` is stored provenance) and it stands.
+          //
+          // What changed is the READ side, and the sentence that used to sit here said the opposite of what
+          // the system now does. Being forward-only meant every payroll already calculated kept the WRONG
+          // name forever — the reporter's "A0020 - DIRECTOR FEE" against pay item A0040 — so 417d4937 added
+          // `recordLineIdentity` (core/payslip-earning-lines.ts), a READ-TIME repair that shows the
+          // catalogue's current description against the stored CODE and keeps the stored words beside it as
+          // a remark. Four surfaces apply it: Transaction View History (history-table.tsx), its grid
+          // (history-pivot.ts) and Excel file (history-export.ts), Individual Payslip and the ESS payslip.
+          //
+          // IT IS THE ONE DELIBERATE EXCEPTION TO RULE (a) OF core/payslip-earning-lines.ts, and it is
+          // confined to `recordLines` whose `nonPayable` is not `true` — i.e. to the lines THIS call site
+          // pushes. The BIK lines pushed by `earningsOf` carry the pay item's own description as genuine
+          // provenance and are excluded there by that flag; `componentLines` are never repaired at all.
+          // Read `recordLineIdentity`'s docblock before widening any of that.
           pushTxnLine(t.employmentId, { code: row.code, name: row.name, amount: row.kind === 'deduction' ? -amt : amt });
         }
       }
@@ -4172,6 +4188,10 @@ export async function generatePayslips(
           // ABSENT / UPL / DB018 all declare 'normal' and fall through to the branch below — so this is
           // a guard against a future setting, not a live case.)
           if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
+          // `name: c.name` is the pay item's OWN description as this run folded it — provenance, not a
+          // remark — and `nonPayable: true` is what tells the read side so: `recordLineIdentity`
+          // (core/payslip-earning-lines.ts) repairs a txn-derived record line's label from today's
+          // catalogue and must never touch this one. Drop the flag and it would.
           if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
           reimburse = round2(reimburse + applied);
           contributes('reimburse', applied);
@@ -4219,6 +4239,8 @@ export async function generatePayslips(
         }
         // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
+        // As above: the stored `name` is the item's own description (provenance), and `nonPayable: true` is
+        // the flag that keeps 417d4937's read-time label repair off it.
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,

@@ -247,9 +247,18 @@ export default async function TransactionViewPage({
   const historyBatchIds = [
     ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
   ];
+  // …and the EMPLOYMENTS on screen. Batch + company alone would return every employee's ledger rows on
+  // every shown run and serialise them all into the flight payload for a table that can only look up
+  // `${batchId}:${employmentId}` — invisible on screen, and a whole company's ledger on a tab filtered to
+  // one person. The read requires this list for that reason.
+  const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];
   const sourceTxnRows =
     tab === 'history' && historyBatchIds.length > 0
-      ? await listPayslipSourceTxns(s, { companyIds, batchIds: historyBatchIds })
+      ? await listPayslipSourceTxns(s, {
+          companyIds,
+          batchIds: historyBatchIds,
+          employmentIds: historyEmploymentIds,
+        })
       : [];
   // Keyed by (run, employee) — the pair a payslip IS. Built here so the client table does no grouping.
   const sourceTxnsByPayslip: Record<string, PayslipSourceTxnRow[]> = {};

@@ -441,6 +441,90 @@ describe('0fcb2557 — layout the reporter was shown', () => {
   });
 });
 
+/**
+ * 417d4937 — THE SHEET AND THE PANEL NAME AN ITEM THE SAME WAY, OR THE FILE IS NOT A RECONCILIATION.
+ *
+ * The panel repairs a record line's label at read time (`recordLineIdentity`) because the r196 kernel fix
+ * is forward-only and every already-calculated payroll kept the remark-derived name. This file is
+ * downloaded FROM that panel, under the same filters, so a "Recorded:" column headed with the stored name
+ * while the panel prints the repaired one is the drift the file's own header forbids. Same class as the
+ * Grid export drift pinned in test/history-pivot.test.ts — a defect in the CONTRACT between the route and
+ * the builder, which a unit test of either half passes throughout.
+ */
+describe('417d4937 — the Recorded: columns carry the same repaired label the panel prints', () => {
+  const catalogue = { A0040: 'MEAL ALLOWANCE', HANDPHONE: 'Handphone Allowance' };
+  const stale = () =>
+    slip({
+      statutory: {
+        recordLines: [{ code: 'A0040', name: 'A0020 - DIRECTOR FEE', amount: 300, nonPayable: false }],
+      },
+    });
+
+  it('heads the column with the pay item’s CURRENT description, not the remark the run stored', () => {
+    const data = build([stale()], { payItemNames: catalogue });
+    expect(data.columns).toContain(`${RECORDED_ITEM_PREFIX}MEAL ALLOWANCE`);
+    expect(data.columns).not.toContain(`${RECORDED_ITEM_PREFIX}A0020 - DIRECTOR FEE`);
+    // The FIGURE is untouched — this file recomputes nothing, and the repair is one string.
+    expect(data.rows[0][col(data, `${RECORDED_ITEM_PREFIX}MEAL ALLOWANCE`)]).toBe('300.00');
+  });
+
+  it('a stamped BIK line keeps its stored name — that name is the item’s own description, not a remark', () => {
+    // core/payroll.ts pushes a record-only benefit in kind as { code, name: c.name, nonPayable: true }, so
+    // its stored name IS provenance of exactly the kind rule (a) protects. Repairing it would print
+    // today's naming about a month already paid.
+    const data = build(
+      [
+        slip({
+          statutory: {
+            recordLines: [{ code: 'A0040', name: 'MEDICAL BIK', amount: 120, nonPayable: true }],
+          },
+        }),
+      ],
+      { payItemNames: catalogue },
+    );
+    expect(data.columns).toContain(`${RECORDED_ITEM_PREFIX}MEDICAL BIK`);
+    expect(data.columns).not.toContain(`${RECORDED_ITEM_PREFIX}MEAL ALLOWANCE`);
+  });
+
+  it('a synthetic TXN_ line is untouched, and so is a code the catalogue no longer holds', () => {
+    const data = build(
+      [
+        slip({
+          statutory: {
+            recordLines: [
+              { code: 'TXN_OVERTIME', name: 'Sunday callout', amount: 90, nonPayable: false },
+              { code: 'Z9999', name: 'RETIRED ITEM', amount: 10, nonPayable: false },
+            ],
+          },
+        }),
+      ],
+      { payItemNames: catalogue },
+    );
+    expect(data.columns).toContain(`${RECORDED_ITEM_PREFIX}Sunday callout`);
+    expect(data.columns).toContain(`${RECORDED_ITEM_PREFIX}RETIRED ITEM`);
+  });
+
+  it('omitting the catalogue leaves the file byte-identical to what it was', () => {
+    expect(build([stale()])).toEqual(build([stale()], { payItemNames: undefined }));
+    expect(build([stale()]).columns).toContain(`${RECORDED_ITEM_PREFIX}A0020 - DIRECTOR FEE`);
+  });
+
+  it('the ROUTE reads the catalogue and passes it — the builder alone is inert', () => {
+    const route = readFileSync(
+      resolve(__dirname, '..', 'app/payroll/transaction-view/history-export/route.ts'),
+      'utf8',
+    );
+    // Archived included, exactly as the screen and the Grid export read it: a retired code must still head
+    // its column with words.
+    expect(route).toContain("listPayComponents(s, { includeArchived: true })");
+    // THE ARGUMENT LIST, NOT THE FILE — asserting the file merely contains the name is satisfied by the
+    // `const payItemNames = …` that builds it, which is how the Grid export drifted while looking covered.
+    const at = route.indexOf('buildHistoryExport({');
+    expect(at, 'buildHistoryExport call not found').toBeGreaterThan(-1);
+    expect(route.slice(at, route.indexOf('});', at))).toContain('payItemNames');
+  });
+});
+
 describe('0fcb2557 — the download can never contain a company the caller may not see', () => {
   // Source-level, the house convention test/back-pay-company-scope.test.ts set for export routes: the
   // hole these guard against is an omission in the route, and an omission is exactly what a happy-path

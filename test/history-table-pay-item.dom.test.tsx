@@ -135,11 +135,15 @@ describe('417d4937 — a record line written before r196 is repaired at read tim
         { code: 'TXN_OVERTIME', name: 'Sunday callout', amount: 120, nonPayable: false },
         // A code the catalogue no longer holds — the stored words are all there is, and they stand.
         { code: 'Z9999', name: 'RETIRED ITEM', amount: 50, nonPayable: false },
+        // The OTHER half of this mixed array: a record-only benefit in kind, whose stored name IS the pay
+        // item's own description as the run folded it. Its code DOES match the catalogue, so only the
+        // stored flag keeps the repair off it.
+        { code: 'A0055', name: 'MEDICAL BIK', amount: 80, nonPayable: true },
       ],
     },
   } as ProcessedPayslipViewRow;
 
-  const payItemNames = { A0040: 'MEAL ALLOWANCE', A0020: 'DIRECTOR FEE' };
+  const payItemNames = { A0040: 'MEAL ALLOWANCE', A0020: 'DIRECTOR FEE', A0055: 'MEDICAL BENEFIT' };
 
   async function renderStale(names?: Record<string, string>) {
     render(
@@ -173,6 +177,16 @@ describe('417d4937 — a record line written before r196 is repaired at read tim
     expect(screen.queryByText(/Entered as/)).toBeNull();
   });
 
+  it('a record-only BIK keeps the name the run stored — its name was never a remark', async () => {
+    // The tenant renamed A0055 to MEDICAL BENEFIT in March. Relabelling January's BIK line would print
+    // today's naming about a month already paid, and the caption would say an operator "entered" words the
+    // system generated. `nonPayable: true` (stamped by the kernel, never re-derived) is what stops it.
+    await renderStale(payItemNames);
+    expect(screen.getByText('A0055 · MEDICAL BIK')).toBeInTheDocument();
+    expect(screen.queryByText(/MEDICAL BENEFIT/)).toBeNull();
+    expect(screen.queryByText(/Entered as “MEDICAL BIK”/)).toBeNull();
+  });
+
   it('not one figure moves — the repair is words only', async () => {
     await renderStale(payItemNames);
     expect(screen.getAllByText('RM 6,150.00').length).toBeGreaterThan(0); // gross
@@ -180,5 +194,6 @@ describe('417d4937 — a record line written before r196 is repaired at read tim
     expect(screen.getAllByText('RM 400.00').length).toBeGreaterThan(0); // the repaired line's amount
     expect(screen.getAllByText('RM 120.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('RM 50.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('RM 80.00').length).toBeGreaterThan(0);
   });
 });

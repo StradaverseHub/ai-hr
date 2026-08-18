@@ -507,6 +507,48 @@ describe('recordLineIdentity — repairing a stale record-line label (417d4937)'
       .toEqual({ label: 'One-off earning', name: 'One-off earning', remark: null });
   });
 
+  it('a stamped BIK line is NOT repaired — its stored name is the item’s own description', () => {
+    // `statutory.recordLines` is an explicitly MIXED array (core/payroll.ts `PayslipRecordLine`). The
+    // txn-derived half may carry a stale free-text remark, which is what this rule repairs; the BIK half
+    // is pushed as { code: c.code, name: c.name, nonPayable: true } — the pay item's OWN description as
+    // the run folded it, i.e. genuine provenance. Repairing it would print today's naming about a month
+    // already paid AND caption it "Entered as …", asserting an operator typed words the system generated.
+    const bik = recordLineIdentity({ code: 'A0040', name: 'MEDICAL BIK', nonPayable: true }, catalogue);
+    expect(bik.label).toBe('A0040 · MEDICAL BIK');
+    expect(bik.name).toBe('MEDICAL BIK');
+    expect(bik.remark).toBeNull();
+    // The very same line without the flag is the population the rule DOES serve.
+    expect(recordLineIdentity({ code: 'A0040', name: 'MEDICAL BIK', nonPayable: false }, catalogue).name)
+      .toBe('MEAL ALLOWANCE');
+  });
+
+  it('an UNFLAGGED line is repaired — one list, exactly as nonPayableLinesOf reads one', () => {
+    // `nonPayable` is stamped at write time from f35f758a (r185) onward, so every payslip calculated
+    // before it carries no flag on any line. The kernel's rule for that population is that it stays ONE
+    // list, and lib/payslip-pdf.ts `nonPayableLinesOf` implements exactly that by taking `=== true` and
+    // leaving everything else in the ordinary population. Withholding the repair here would instead
+    // strand the reporter's own case, whose payslips predate r185.
+    expect(recordLineIdentity({ code: 'A0040', name: 'A0020 - DIRECTOR FEE' }, catalogue).name)
+      .toBe('MEAL ALLOWANCE');
+    const pdf = readSrc('lib/payslip-pdf.ts');
+    expect(pdf, 'the flag is read as === true here too, or the two readers disagree').toContain(
+      '.filter((l) => l?.nonPayable === true)',
+    );
+  });
+
+  it('the kernel stamps the flag this rule branches on — both BIK sites and the txn helper', () => {
+    // The discriminator is only trustworthy while the kernel keeps writing it. Source-shape because the
+    // defect would live in the contract between the kernel's write and this read, and a unit test of
+    // either half passes throughout.
+    const kernel = readSrc('core/payroll.ts');
+    expect(kernel).toContain('list.push({ ...line, nonPayable: false });');
+    expect(
+      kernel.match(/recordLines\.push\(\{ code: c\.code, name: c\.name, amount: applied, nonPayable: true \}\)/g)
+        ?.length,
+      'both BIK push sites must stamp nonPayable: true',
+    ).toBe(2);
+  });
+
   it('componentLines are NOT repaired — rule (a) still holds for the per-item stamp', () => {
     // A description edited in March must not rewrite what January's payslip said about January's money.
     // The stamped line is provenance; a record line's pre-r196 name never was.

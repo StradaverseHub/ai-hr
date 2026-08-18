@@ -489,6 +489,15 @@ export function listIndividualTxnCreators(
  * SCOPE: fenced on `companyIds` through the batch, exactly like every other read on those pages, and
  * fail-closed on an empty scope. Read-only; no event.
  *
+ * AND NARROWED TO THE EMPLOYMENTS THE CALLER IS ACTUALLY SHOWING. `employmentIds` is REQUIRED, not
+ * optional, and that is the point: batch + company alone returns every employee's ledger rows on every run
+ * on screen. Nothing extra RENDERS — the lookup is keyed `${batchId}:${employmentId}` — so the surplus is
+ * invisible to any DOM test while still being SERIALISED into the RSC flight payload: a History tab
+ * filtered to one employee over twelve months would ship a 500-head company's whole ledger (amount, notes,
+ * pay item, employment id) to the browser. Not a permission break, since the same rows are listable on the
+ * Individual tab under the same `scopedAdmin()` fence, but a read must not fetch what its screen cannot
+ * show. Making it a required parameter is what stops the next caller re-acquiring the surplus by omission.
+ *
  * `consumedByThisRun` IS THE MARKER 417d4937 IS NAMED AFTER. `consumed_batch_id` (migration 0437) is what
  * stops a later run paying the same money twice. It is stamped at CALCULATION time only, so every row
  * that reached a payslip before 0437 shipped still reads NULL — the ledger and the payslip disagree about
@@ -516,9 +525,12 @@ export type PayslipSourceTxnRow = {
 
 export function listPayslipSourceTxns(
   ctx: SessionContext,
-  p: { companyIds: string[]; batchIds: string[] },
+  p: { companyIds: string[]; batchIds: string[]; employmentIds: string[] },
 ): Promise<PayslipSourceTxnRow[]> {
-  if (p.companyIds.length === 0 || p.batchIds.length === 0) return Promise.resolve([]); // fail closed
+  // Fail closed on all three: no scope, no runs, or no employments ⇒ nothing this caller can render.
+  if (p.companyIds.length === 0 || p.batchIds.length === 0 || p.employmentIds.length === 0) {
+    return Promise.resolve([]);
+  }
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -541,6 +553,9 @@ export function listPayslipSourceTxns(
         and(
           inArray(payrollIndividualTxn.batchId, p.batchIds),
           inArray(payrollBatch.companyId, p.companyIds),
+          // The employments on screen. Third leg of the fence and the one that keeps the payload the size
+          // of what is rendered — see the note above.
+          inArray(payrollIndividualTxn.employmentId, p.employmentIds),
         ),
       )
       .orderBy(asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.createdAt));

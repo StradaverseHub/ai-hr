@@ -146,24 +146,37 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-  it('Transaction View → History passes the scoped company ids and the runs on screen', () => {
+  // The employment list is the third leg of the fence, not a nicety: batch + company alone returns every
+  // employee's ledger rows on every shown run, and the client table can only ever look up
+  // `${batchId}:${employmentId}` — so the surplus renders nothing and ships anyway. No DOM assertion can
+  // see that, which is exactly why it is pinned on the source of both callers and of the read.
+  it('Transaction View → History passes the scoped company ids, the runs AND the employees on screen', () => {
     const page = src('app/payroll/transaction-view/page.tsx');
-    expect(page).toContain('listPayslipSourceTxns(s, { companyIds, batchIds: historyBatchIds })');
+    expect(page).toContain('const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];');
+    expect(page).toMatch(
+      /listPayslipSourceTxns\(s, \{\s*companyIds,\s*batchIds: historyBatchIds,\s*employmentIds: historyEmploymentIds,\s*\}\)/,
+    );
     expect(page).toContain('sourceTxnsByPayslip={sourceTxnsByPayslip}');
   });
 
-  it('Individual Payslip passes the scoped company ids and its own run', () => {
+  it('Individual Payslip passes the scoped company ids, its own run and its own employee', () => {
     const page = src('app/payroll/individual-payslip/page.tsx');
-    expect(page).toContain('listPayslipSourceTxns(s, { companyIds, batchIds: [row.batchId] })');
+    expect(page).toMatch(
+      /listPayslipSourceTxns\(s, \{\s*companyIds,\s*batchIds: \[row\.batchId\],\s*employmentIds: \[row\.employmentId\],\s*\}\)/,
+    );
+    // The narrowing is in the QUERY. A post-hoc filter on the result reads identically on screen while
+    // still fetching and serialising the whole run.
+    expect(page).not.toContain('(r) => r.employmentId === row.employmentId');
     expect(page).toContain('<SourceTxnBlock rows={sourceTxns} />');
   });
 
-  it('the read itself fails closed on an empty scope and on no runs', () => {
+  it('the read itself fails closed on an empty scope, on no runs and on no employees', () => {
     const read = src('core/payroll-view.ts');
-    expect(read).toContain(
-      'if (p.companyIds.length === 0 || p.batchIds.length === 0) return Promise.resolve([]);',
+    expect(read).toMatch(
+      /if \(p\.companyIds\.length === 0 \|\| p\.batchIds\.length === 0 \|\| p\.employmentIds\.length === 0\)/,
     );
     // The company fence is on the BATCH, which is where a payslip's company actually lives.
     expect(read).toContain('inArray(payrollBatch.companyId, p.companyIds),');
+    expect(read).toContain('inArray(payrollIndividualTxn.employmentId, p.employmentIds),');
   });
 });

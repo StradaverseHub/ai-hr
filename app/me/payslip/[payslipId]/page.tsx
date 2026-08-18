@@ -35,7 +35,10 @@ import { PrintButton } from '@/components/print-button';
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-type RecordLine = { code: string; name: string; amount: number };
+/** `nonPayable` is read only by `recordLineIdentity`, and it is what stops a record-only BIK — whose
+ *  stored name IS the pay item's own description — being relabelled from today's catalogue and captioned
+ *  "Entered as …". Absent ⇒ written before the stamp (core/payroll.ts `PayslipRecordLine`). */
+type RecordLine = { code: string; name: string; amount: number; nonPayable?: boolean };
 type Stat = {
   epfEmployee?: number;
   epfEmployer?: number;

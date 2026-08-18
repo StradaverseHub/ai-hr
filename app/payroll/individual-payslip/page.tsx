@@ -258,9 +258,14 @@ export default async function IndividualPayslipPage({
   // fenced on the same `companyIds` as the payslip itself, and only once a payslip has been chosen.
   const sourceTxns =
     row?.batchId != null
-      ? (await listPayslipSourceTxns(s, { companyIds, batchIds: [row.batchId] })).filter(
-          (r) => r.employmentId === row.employmentId,
-        )
+      ? await listPayslipSourceTxns(s, {
+          companyIds,
+          batchIds: [row.batchId],
+          // Narrowed IN THE QUERY rather than by a `.filter` on the result: this screen shows one payslip,
+          // so fetching the whole run's ledger and discarding all but one employee's rows was work and
+          // payload nobody could see.
+          employmentIds: [row.employmentId],
+        })
       : [];
 
   // Year-to-date: the same read for the whole year, no month. No new query shape is needed — the totals

@@ -96,12 +96,34 @@ export type PayItemNames = Record<string, string>;
  * Nothing on the plan said the fix could not reach an already-calculated run.
  *
  * WHY REVERSING RULE (a) IS RIGHT **HERE** AND WRONG EVERYWHERE ELSE. Rule (a) protects a figure's
- * PROVENANCE: what January's payslip said about January's money. A record line's `name` is not
+ * PROVENANCE: what January's payslip said about January's money. A TXN-DERIVED record line's `name` is not
  * provenance — before r196 it was a free-text remark that had no defined relationship to the item at all,
  * which is the whole defect. Showing the catalogue's description against the stored CODE is strictly more
  * truthful than showing words that were never that item's. The stated trade-off, which the reporter
  * approved in as many words: an item whose description has since been EDITED will show its current
  * description on an older payroll. The code and the amount are untouched either way.
+ *
+ * ...AND WHY THAT ARGUMENT DOES NOT REACH THE **BIK** HALF OF THE SAME ARRAY, WHICH IS WHY THERE IS A
+ * BRANCH. `statutory.recordLines` is an explicitly MIXED population (core/payroll.ts `PayslipRecordLine`
+ * says so): the txn-derived lines `pushTxnLine` writes, and the record-only benefits in kind `earningsOf`
+ * writes as `{ code: c.code, name: c.name, …, nonPayable: true }`. A BIK line's `name` IS the pay item's
+ * own description as it stood when the run folded it — genuine provenance, of exactly the kind rule (a)
+ * exists to protect, and never a remark anyone typed. Repairing it would do two wrong things at once:
+ * print today's naming about a month already paid, and caption it "Entered as …", asserting that an
+ * operator typed words the SYSTEM generated. So a line stamped `nonPayable: true` is returned untouched.
+ *
+ * THE DISCRIMINATOR IS THE STORED FLAG, NEVER A RE-DERIVATION. `nonPayable` is stamped at write time
+ * (f35f758a, r185) — `false` by `pushTxnLine`, `true` by both BIK push sites — and matching a code back to
+ * today's `pay_component.is_non_payable` would answer with today's configuration about last month's pay,
+ * which is the same mistake in a different place.
+ *
+ * AN UNFLAGGED LINE (a payslip calculated before r185) IS REPAIRED, and that is the treatment the kernel
+ * already prescribes, not an exception to it: an unflagged list must be read as ONE list, exactly as it is
+ * read today, and the only other reader of this flag — `nonPayableLinesOf` in lib/payslip-pdf.ts — takes
+ * `=== true` for the same reason, leaving everything else in the ordinary population. Withholding the
+ * repair from unflagged lines would instead strand the reporter's own case, whose payslips predate r185.
+ * It costs nothing today: the production catalogue has ZERO non-payable pay items (verified 2026-08-10),
+ * so no unflagged BIK line exists to mislabel.
  *
  * NOTHING IS REWRITTEN OR HIDDEN. When the stored words differ from the catalogue they are returned as
  * `remark`, for the caller to print underneath. Both are on screen, which is what an audit needs.
@@ -124,12 +146,15 @@ export type PayItemNames = Record<string, string>;
  * and would risk the two documents drifting apart if only one were wired.
  */
 export function recordLineIdentity(
-  l: { code?: string | null; name?: string | null },
+  l: { code?: string | null; name?: string | null; nonPayable?: boolean | null },
   names?: PayItemNames,
 ): { label: string; name: string; remark: string | null } {
   const code = (l.code ?? '').trim();
   const stored = (l.name ?? '').trim();
-  const current = code ? (names?.[code] ?? '').trim() : '';
+  // A stamped BIK keeps its stored name: that name is the pay item's own description as the run folded it,
+  // i.e. provenance rule (a) protects, not a remark. See the docblock. `=== true` on purpose — an unflagged
+  // line (pre-r185) is read as the ordinary population, exactly as `nonPayableLinesOf` reads it.
+  const current = code && l.nonPayable !== true ? (names?.[code] ?? '').trim() : '';
   if (!current || current === stored) return { label: payItemLabel(l), name: stored, remark: null };
   return { label: payItemLabel({ code, name: current }), name: current, remark: stored || null };
 }

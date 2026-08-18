@@ -260,9 +260,12 @@ export type HistoryGrid = {
   months: number[];
   /** How many payslips were folded — what the screen reports as its count. */
   payslipCount: number;
-  /** At least one folded run predates the per-item stamp (862ed0ad) or is an additional run, which never
-   *  stamps one. Its pay items were never written down and cannot be reconstructed, so the screen SAYS so
-   *  rather than presenting a grid whose item rows are silently missing a month. */
+  /** At least one folded run predates the per-item stamp it needed — 862ed0ad for a regular run, and
+   *  6b134681 for an additional one, which until then stamped nothing at all and now stamps its
+   *  bonus-bucket lines. Its pay items were never written down and cannot be reconstructed, so the screen
+   *  SAYS so rather than presenting a grid whose item rows are silently missing a month. It is ONLY ever
+   *  "calculated too early" now; "this run type deliberately keeps no detail" is a dead rule, and
+   *  `payroll.transactions.view.grid.detailNotRecorded` was reworded in all six catalogues to match. */
   detailNotRecorded: boolean;
   /** 0253dc7c — at least one folded run predates r187's `statutory.bases` stamp, so part of the wage
    *  base block is em dashes. Drives a caption; the alternative (a plausible-looking substitute) is

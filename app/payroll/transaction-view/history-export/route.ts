@@ -23,6 +23,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
+import { listPayComponents } from '@/core/pay-components';
 import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
 import { toXlsxReport } from '@/lib/report-export';
@@ -93,6 +94,14 @@ export async function GET(req: Request) {
     .filter((r) => r.hrdfStatus !== 'not_registered')
     .map((r) => r.companyId);
 
+  // 417d4937 — code → the pay item's CURRENT description, the SAME catalogue read the screen does (and the
+  // Grid export beside it), including archived items so a retired code still heads its column with words.
+  // The export is where a label leaves the building: without this the sheet downloaded from the History
+  // panel would name an item differently from the panel it came from.
+  const payItemNames: Record<string, string> = Object.fromEntries(
+    (await listPayComponents(s, { includeArchived: true })).map((c) => [c.code, c.name]),
+  );
+
   // Dynamic lookups resolved HERE so the pure builder stays i18n-free and single-namespace.
   const cycleLabels: Record<string, string> = {
     regular: t('individual.cycle.regular'),
@@ -156,6 +165,7 @@ export async function GET(req: Request) {
     filterCaption: captionParts.join(' — '),
     filterDescription,
     detailNote: t('view.history.exportDetailNote'),
+    payItemNames,
   });
 
   const file = toXlsxReport(data);

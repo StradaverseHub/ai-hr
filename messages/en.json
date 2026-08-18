@@ -4521,7 +4521,7 @@
           "exportAll": "All processed payroll",
           "exportAllHint": "Every processed payslip you are allowed to see, ignoring the filters above.",
           "exportTitle": "Payroll Transaction History",
-          "exportDetailNote": "Some runs have no per-item detail saved — bonus, off-cycle and adjustment runs never recorded it, and neither did runs calculated before this payroll began keeping it. On those rows the summary figures and the Allowances total are still exact, and the named item columns are simply blank."
+          "exportDetailNote": "Some runs have no per-item detail saved, because they were calculated before this payroll began keeping it and it cannot be reconstructed afterwards. On those rows the summary figures and the Allowances total are still exact, and the named item columns are simply blank."
         },
         "exportCsv": "Export CSV",
         "outstanding": {

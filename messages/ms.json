@@ -4521,7 +4521,7 @@
           "exportAll": "Semua gaji yang telah diproses",
           "exportAllHint": "Setiap slip gaji diproses yang anda dibenarkan lihat, tanpa mengambil kira tapisan di atas.",
           "exportTitle": "Sejarah Transaksi Gaji",
-          "exportDetailNote": "Sesetengah larian gaji tidak menyimpan butiran setiap item — larian bonus, luar kitaran dan pelarasan tidak pernah merekodkannya, begitu juga larian yang dikira sebelum sistem gaji ini mula menyimpannya. Pada baris tersebut angka ringkasan dan jumlah Elaun masih tepat, dan lajur item bernama hanyalah kosong."
+          "exportDetailNote": "Sesetengah larian gaji tidak menyimpan butiran setiap item, kerana ia dikira sebelum sistem gaji ini mula menyimpannya dan butiran itu tidak boleh dibina semula kemudian. Pada baris tersebut angka ringkasan dan jumlah Elaun masih tepat, dan lajur item bernama hanyalah kosong."
         },
         "exportCsv": "Eksport CSV",
         "outstanding": {

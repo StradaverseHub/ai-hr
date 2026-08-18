@@ -320,8 +320,10 @@ describe('080de5cf — the History grid pivot', () => {
   });
 
   it('reports a run whose per-item detail was never stored, instead of showing a grid with a hole in it', () => {
-    // 862ed0ad — runs calculated before the per-item stamp (and every additional run, which never stamps
-    // one) have no item rows to contribute. Silence there reads as missing data.
+    // 862ed0ad — runs calculated before the per-item stamp have no item rows to contribute, and silence
+    // there reads as missing data. The clause that used to sit here ("and every additional run, which
+    // never stamps one") is DEAD: 6b134681 gave the additional run its own bonus-only stamp, and the
+    // caption this drives was reworded in all six catalogues to stop claiming otherwise.
     expect(pivotHistoryGrid({ rows: [slip()], year: 2026 }).detailNotRecorded).toBe(true);
     const stamped = pivotHistoryGrid({
       rows: [
