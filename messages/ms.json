@@ -4643,6 +4643,12 @@
             "yes": "Y",
             "no": "N"
           }
+        },
+        "panel": {
+          "heading": "Pilih pekerja",
+          "hint": "Cari mengikut ID Pekerja atau nama untuk menyempitkan tab ini kepada seorang pekerja, atau pilih Semua pekerja untuk melihat semua orang.",
+          "change": "Tukar pekerja",
+          "select": "Pilih pekerja"
         }
       },
       "draftPicker": {
@@ -10199,6 +10205,8 @@
     "moreFiltersActive": "{count} aktif",
     "noEmployees": "Tiada pekerja sepadan dengan penapis anda.",
     "selectedTag": "Dipilih",
+    "allEmployees": "Semua pekerja",
+    "allEmployeesHint": "Kosongkan pilihan dan tunjukkan semua pekerja.",
     "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda."
   },
   "appliedInPayroll": {

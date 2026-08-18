@@ -57,7 +57,14 @@ export function CollapsibleEmployeePanel({
   children: ReactNode;
   /** SSR-resolved initial state, read from the cookie by the server page. */
   defaultOpen: boolean;
-  /** Cookie persisting the choice. One per screen, so the two do not share a state. */
+  /**
+   * Cookie persisting the choice. ONE KEY PER COLLAPSE STATE A READER EXPECTS TO SET SEPARATELY — which
+   * was one per SCREEN while every consumer showed one person, and is one per TAB on Transaction View
+   * (bd14b7e2), whose five tabs are five different tables: History is thirteen columns and is read with
+   * the panel folded away, Fixed is read with it open. Two mounts sharing a key means every move between
+   * them undoes the last answer, so the first thing each switch does is fight the previous one. Give a new
+   * mount its own key unless you positively want it to move in lockstep with an existing one.
+   */
   cookieKey: string;
   /** Pre-translated label for the control while the panel is OPEN (e.g. "Hide employee list"). */
   hideLabel?: string;
@@ -212,6 +219,7 @@ export function EmployeeScopePanel({
   basePath,
   selectParam = 'employmentId',
   preserve,
+  allowAll = false,
 }: {
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
   employees: ScopeEmployee[];
@@ -223,6 +231,19 @@ export function EmployeeScopePanel({
   selectParam?: string;
   /** Other query params to carry across the switch (the screen's own filters), already scope-guarded. */
   preserve?: Record<string, string>;
+  /**
+   * bd14b7e2 — an "All employees" row at the HEAD of the list that CLEARS the selection (navigates with
+   * `preserve` and no `selectParam`).
+   *
+   * OPT-IN, AND DEFAULT OFF ON PURPOSE. Six screens mounted this panel before Transaction View's four
+   * inquiry tabs did, and every one of them is one person's screen — a TP1 relief form, a Zakat election,
+   * an employee's payslip, that employee's loans, their fixed transactions, their payroll year. On those,
+   * "no employee" is not a view; it is the prompt to choose one, and a row offering it would be a row that
+   * leads nowhere. Transaction View's Fixed / Individual / History / Outstanding tabs are the opposite:
+   * they are cross-employee lists that the employee merely NARROWS, so clearing is a real destination and
+   * removing it would take away the view those tabs open on today.
+   */
+  allowAll?: boolean;
 }) {
   const t = useTranslations('employeePanel');
   const router = useRouter();
@@ -291,6 +312,16 @@ export function EmployeeScopePanel({
     const qs = new URLSearchParams({ ...(preserve ?? {}), [selectParam]: id });
     startTransition(() => router.push(`${basePath}?${qs.toString()}`));
   };
+  /**
+   * bd14b7e2 — the same navigation with the selection DROPPED. Expressed as an absent param rather than an
+   * empty one: the server reads `?employmentId=` through a scope guard that treats anything it does not
+   * recognise as "no selection", and an empty string would take the same path — but only by accident. The
+   * URL a reader can bookmark should say what it means.
+   */
+  const clearSelection = () => {
+    const qs = new URLSearchParams({ ...(preserve ?? {}) }).toString();
+    startTransition(() => router.push(qs ? `${basePath}?${qs}` : basePath));
+  };
   const resetFilters = () => {
     setQuery('');
     setCompanyId('');
@@ -316,8 +347,9 @@ export function EmployeeScopePanel({
      * and the four narrowers behind a fold that starts closed.
      *
      * THE ORDER IS NOT A PER-SCREEN CHOICE. Six screens render this component (Fixed Transaction, TP1,
-     * Zakat, Individual Payslip, Loans, Transaction View's grid tab) and all six change together — which is
-     * the point of it being one component, and is what the reporter's consistency request asks for.
+     * Zakat, Individual Payslip, Loans, Transaction View — where bd14b7e2 took it from the Transaction
+     * Detail tab alone to all five tabs) and all six change together — which is the point of it being one
+     * component, and is what the reporter's consistency request asks for.
      * Individual Transaction draws its OWN list over client state and was reordered to match by hand.
      */
     <div className="space-y-3">
@@ -343,6 +375,29 @@ export function EmployeeScopePanel({
 
       {/* ── 2. THE NAMES, directly under the search box. ── */}
       <div className="max-h-[28rem] divide-y divide-border overflow-y-auto rounded-md border border-border">
+        {/* bd14b7e2 — the opt-in "All employees" row, FIRST and inside the same list box, so clearing the
+            selection is the same gesture as making one. It is deliberately NOT filtered out by the search
+            box: a reader who has typed a name and changed their mind must not have to clear the search to
+            find their way back to the whole list. */}
+        {allowAll && (
+          <button
+            type="button"
+            aria-current={selectedId == null ? 'true' : undefined}
+            onClick={clearSelection}
+            disabled={isPending}
+            className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted disabled:opacity-60 ${
+              selectedId == null ? 'bg-primary/10' : ''
+            }`}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-foreground">{t('allEmployees')}</span>
+              <span className="block truncate text-xs text-muted-foreground">{t('allEmployeesHint')}</span>
+            </span>
+            {selectedId == null && (
+              <span className="shrink-0 text-xs font-medium text-primary">{t('selectedTag')}</span>
+            )}
+          </button>
+        )}
         {results.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
         )}

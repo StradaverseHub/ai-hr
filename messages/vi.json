@@ -4643,6 +4643,12 @@
             "yes": "Y",
             "no": "N"
           }
+        },
+        "panel": {
+          "heading": "Chọn nhân viên",
+          "hint": "Tìm theo Mã nhân viên hoặc tên để thu hẹp tab này về một người, hoặc chọn Tất cả nhân viên để xem mọi người.",
+          "change": "Đổi nhân viên",
+          "select": "Chọn nhân viên"
         }
       },
       "draftPicker": {
@@ -10199,6 +10205,8 @@
     "moreFiltersActive": "{count} đang bật",
     "noEmployees": "Không có nhân viên nào khớp với bộ lọc.",
     "selectedTag": "Đã chọn",
+    "allEmployees": "Tất cả nhân viên",
+    "allEmployeesHint": "Xóa lựa chọn và hiển thị tất cả nhân viên.",
     "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm."
   },
   "appliedInPayroll": {

@@ -4643,6 +4643,12 @@
             "yes": "Y",
             "no": "N"
           }
+        },
+        "panel": {
+          "heading": "Select an employee",
+          "hint": "Search by Employee ID or name to narrow this tab to one person, or choose All employees to see everyone.",
+          "change": "Change employee",
+          "select": "Select employee"
         }
       },
       "draftPicker": {
@@ -10199,6 +10205,8 @@
     "moreFiltersActive": "{count} on",
     "noEmployees": "No employees match your filters.",
     "selectedTag": "Selected",
+    "allEmployees": "All employees",
+    "allEmployeesHint": "Clear the selection and show every employee.",
     "showingCapped": "Showing first {cap} of {total} matches — refine your search."
   },
   "appliedInPayroll": {
