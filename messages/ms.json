@@ -8326,7 +8326,14 @@
     "edit": "Sunting",
     "editTitle": "Sunting Jadual Gaji",
     "cancel": "Batal",
-    "companiesTitle": "Syarikat"
+    "companiesTitle": "Syarikat",
+    "emptyCompanies": "Tiada syarikat sepadan dengan carian anda.",
+    "toast": {
+      "saved": "Jadual gaji disimpan"
+    },
+    "errors": {
+      "invalidDefaultPolicy": "Dasar gaji lalai yang dipilih mestilah dasar aktif dalam syarikat ini."
+    }
   },
   "employeeIdConfig": {
     "title": "Persediaan Nombor Berjalan Automatik ID Pekerja",
@@ -9284,7 +9291,8 @@
     "defaultCycleMissing": "Kitaran lalai yang dinamakan pada syarikat ini tidak sepadan dengan mana-mana kitaran aktif.",
     "addNewCycle": "Tambah Kitaran Baharu",
     "manageTitle": "Urus kitaran ini",
-    "companiesTitle": "Syarikat"
+    "companiesTitle": "Syarikat",
+    "emptyScope": "Tiada syarikat dalam skop semasa. Guna penukar syarikat di atas."
   },
   "auth": {
     "logout": "Log keluar",

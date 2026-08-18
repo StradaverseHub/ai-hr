@@ -2,8 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { setPayrollConfig } from '@/core/payroll-config';
+import { InvalidDefaultPolicyError, setPayrollConfig } from '@/core/payroll-config';
 import { configCompanyHref, configEditHref } from './nav';
 
 const PAGE = '/admin/payroll-config';
@@ -23,6 +24,30 @@ const PAGE = '/admin/payroll-config';
  */
 const withParam = (href: string, kind: 'toast' | 'error', value: string) =>
   `${href}${href.includes('?') ? '&' : '?'}${kind}=${encodeURIComponent(value)}`;
+
+/**
+ * Both halves of that redirect carry TEXT, not a code: `?toast=` / `?error=` are rendered raw by
+ * ToastFromQuery (app/layout.tsx) and ErrorBanner, so whatever is put in the URL is what the admin reads
+ * — in ms/ta/th/vi/zh as well as en. Adopting the sibling's ok/err shape without these two helpers would
+ * have shipped a hardcoded English toast and a raw English service message to five other locales, which
+ * no gate can see: i18n-coverage checks catalogues, not string literals handed to a redirect.
+ *
+ * Same rule and same shape as app/admin/payroll-cycle/actions.ts (localise / toastMsg), and the rule is
+ * written down at app/admin/_redirects.ts.
+ */
+async function localise(e: unknown): Promise<string> {
+  const t = await getTranslations('payrollConfig');
+  if (e instanceof InvalidDefaultPolicyError) return t('errors.invalidDefaultPolicy');
+  // Anything else (an RLS refusal, a driver error) has no user-facing text of its own; the sibling falls
+  // back the same way rather than inventing a message for a fault we have not classified.
+  return (e as Error).message;
+}
+
+/** ToastFromQuery renders the raw string, so pass already-localised toast text (not a code). */
+async function toastMsg(key: 'saved'): Promise<string> {
+  const t = await getTranslations('payrollConfig');
+  return t(`toast.${key}`);
+}
 
 const str = (fd: FormData, k: string): string | undefined => {
   const v = String(fd.get(k) ?? '').trim();
@@ -75,7 +100,7 @@ export async function savePayrollConfigAction(formData: FormData) {
     });
     ok = true;
   } catch (e) {
-    err = (e as Error).message;
+    err = await localise(e);
   }
   // The subtree, not just the listing: the saved values appear on three routes, two of them behind a
   // dynamic segment — hence the route PATTERN plus 'layout', the form Next 16 requires for one.
@@ -88,7 +113,7 @@ export async function savePayrollConfigAction(formData: FormData) {
   // ok/err shape; this one had not.
   redirect(
     ok
-      ? withParam(configCompanyHref(companyId, q), 'toast', 'Payroll config saved')
+      ? withParam(configCompanyHref(companyId, q), 'toast', await toastMsg('saved'))
       : withParam(configEditHref(companyId, q), 'error', err),
   );
 }

@@ -8326,7 +8326,14 @@
     "edit": "Sửa",
     "editTitle": "Sửa lịch trả lương",
     "cancel": "Hủy",
-    "companiesTitle": "Công ty"
+    "companiesTitle": "Công ty",
+    "emptyCompanies": "Không có công ty nào khớp với tìm kiếm của bạn.",
+    "toast": {
+      "saved": "Đã lưu lịch trả lương"
+    },
+    "errors": {
+      "invalidDefaultPolicy": "Chính sách lương mặc định đã chọn phải là chính sách đang hoạt động trong công ty này."
+    }
   },
   "employeeIdConfig": {
     "title": "Thiết lập số chạy tự động cho Mã nhân viên",
@@ -9284,7 +9291,8 @@
     "defaultCycleMissing": "Chu kỳ mặc định được đặt tên trên công ty này không khớp với bất kỳ chu kỳ đang hoạt động nào.",
     "addNewCycle": "Thêm chu kỳ mới",
     "manageTitle": "Quản lý chu kỳ này",
-    "companiesTitle": "Công ty"
+    "companiesTitle": "Công ty",
+    "emptyScope": "Không có công ty nào trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên."
   },
   "auth": {
     "logout": "Đăng xuất",

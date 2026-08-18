@@ -8326,7 +8326,14 @@
     "edit": "Edit",
     "editTitle": "Edit Pay Schedule",
     "cancel": "Cancel",
-    "companiesTitle": "Companies"
+    "companiesTitle": "Companies",
+    "emptyCompanies": "No companies match your search.",
+    "toast": {
+      "saved": "Pay schedule saved"
+    },
+    "errors": {
+      "invalidDefaultPolicy": "The chosen default payroll policy must be an active policy in this company."
+    }
   },
   "employeeIdConfig": {
     "title": "Employee ID Auto Running Number Setup",
@@ -9284,7 +9291,8 @@
     "defaultCycleMissing": "The default cycle named on this company does not match any active cycle.",
     "addNewCycle": "Add New Cycle",
     "manageTitle": "Manage this cycle",
-    "companiesTitle": "Companies"
+    "companiesTitle": "Companies",
+    "emptyScope": "No companies in the current scope. Use the company switcher above."
   },
   "auth": {
     "logout": "Log out",

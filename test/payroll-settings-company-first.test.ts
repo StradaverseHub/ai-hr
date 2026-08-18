@@ -90,6 +90,54 @@ describe('no listing page opens an editing form underneath itself', () => {
   });
 });
 
+/**
+ * The two faults below are invisible to every other gate: a hardcoded string resolves, so tsc, the suite,
+ * i18n-coverage (which checks CATALOGUES, not literals) and `next build` all pass, and the page returns
+ * 200 with plausible-looking English. They are pinned here because only a source-level check can see them.
+ */
+type Ns = {
+  emptyScope?: string;
+  emptyCompanies?: string;
+  toast?: { saved?: string };
+  errors?: { invalidDefaultPolicy?: string };
+};
+const enJson = JSON.parse(read('messages/en.json')) as Record<string, Ns>;
+
+describe('what a redirect puts in the URL is TEXT the admin reads', () => {
+  it('the Pay Schedule save action pushes no hardcoded English into ?toast= / ?error=', () => {
+    const src = readSource('app/admin/payroll-config/actions.ts');
+    // ToastFromQuery (app/layout.tsx) and ErrorBanner render the query string RAW, so a literal here is
+    // English for the ms/ta/th/vi/zh reader too. The rule is written at app/admin/_redirects.ts.
+    expect(src).toContain("await toastMsg('saved')");
+    expect(src).toContain('await localise(e)');
+    expect(src, 'a literal was passed as the toast/error value').not.toMatch(/'(?:toast|error)',\s*'[^']*'/);
+  });
+
+  it('both messages the action can emit have catalogue entries', () => {
+    expect(enJson.payrollConfig.toast?.saved).toBeTruthy();
+    expect(enJson.payrollConfig.errors?.invalidDefaultPolicy).toBeTruthy();
+  });
+});
+
+describe('the empty row says WHICH nothing it is', () => {
+  // One string for both states tells an admin whose search matched nothing that their scope is empty and
+  // points them at the company switcher — advice for a problem they do not have. The fix is the box above.
+  for (const file of ['app/admin/payroll-config/page.tsx', 'app/admin/payroll-cycle/page.tsx']) {
+    it(`${file} tells an empty scope apart from a search that matched nothing`, () => {
+      expect(readSource(file)).toContain("q ? t('emptyCompanies') : t('emptyScope')");
+    });
+  }
+
+  it('both namespaces carry both sentences, and they are not the same sentence', () => {
+    for (const ns of ['payrollConfig', 'payrollCycleConfig'] as const) {
+      const n = enJson[ns];
+      expect(n.emptyScope, `${ns}.emptyScope`).toBeTruthy();
+      expect(n.emptyCompanies, `${ns}.emptyCompanies`).toBeTruthy();
+      expect(n.emptyCompanies).not.toBe(n.emptyScope);
+    }
+  });
+});
+
 describe('migration 0443 — payroll_cycle.updated_at', () => {
   let b: Base;
 

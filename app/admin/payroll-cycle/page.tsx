@@ -145,7 +145,10 @@ export default async function PayrollCycleCompaniesPage({
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('emptyCompanies')}
+                    {/* Two different nothings: an empty SCOPE is fixed with the company switcher in the
+                        header, a search that matched nothing by clearing the box directly above. One
+                        string for both would send half the admins who see it to the wrong control. */}
+                    {q ? t('emptyCompanies') : t('emptyScope')}
                   </td>
                 </tr>
               )}

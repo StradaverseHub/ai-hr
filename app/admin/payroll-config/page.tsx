@@ -133,7 +133,11 @@ export default async function PayrollConfigCompaniesPage({
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('emptyScope')}
+                    {/* Two different nothings, and telling them apart is the whole point of the row. An
+                        empty SCOPE is fixed with the company switcher; a search that matched nothing is
+                        fixed by clearing the box directly above, and sending that admin to the switcher
+                        would be advice for a problem they do not have. */}
+                    {q ? t('emptyCompanies') : t('emptyScope')}
                   </td>
                 </tr>
               )}
