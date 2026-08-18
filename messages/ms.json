@@ -543,6 +543,7 @@
     },
     "detail": {
       "backToPeople": "Kakitangan",
+      "backToPersonnelAdmin": "Pengurusan Kakitangan",
       "backToOrg": "Carta organisasi",
       "headerDescription": "{code} · {email} · {company} · diambil {hiredOn}",
       "personalDetails": "Butiran peribadi",
@@ -1503,7 +1504,7 @@
     "import": {
       "title": "Import pekerja",
       "description": "Muat pukal pekerja, profil berkanun dan gaji daripada fail Excel (.xlsx). Muat turun templat, isikannya, muat naik — tiada apa-apa dicipta sehingga anda melihat semakan.",
-      "backLabel": "Kakitangan",
+      "backLabel": "Pengurusan Kakitangan",
       "noCompanies": "Cipta syarikat sebelum mengimport pekerja.",
       "targetCompany": "Syarikat sasaran",
       "uploadFile": "Muat naik fail",

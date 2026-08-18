@@ -543,6 +543,7 @@
     },
     "detail": {
       "backToPeople": "员工",
+      "backToPersonnelAdmin": "员工管理",
       "backToOrg": "组织架构图",
       "headerDescription": "{code} · {email} · {company} · 入职于 {hiredOn}",
       "personalDetails": "个人信息",
@@ -1503,7 +1504,7 @@
     "import": {
       "title": "导入员工",
       "description": "通过 Excel (.xlsx) 文件批量加载员工、法定资料及薪酬。下载模板、填写并上传 — 在您查看校验结果之前不会创建任何记录。",
-      "backLabel": "员工",
+      "backLabel": "员工管理",
       "noCompanies": "导入员工前请先创建一家公司。",
       "targetCompany": "目标公司",
       "uploadFile": "上传文件",

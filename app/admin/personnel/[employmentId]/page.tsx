@@ -238,12 +238,18 @@ export default async function EmployeePage({
     companyChange,
     showCorrected: spShowCorrected,
   } = rawSearchParams;
-  // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
-  // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
+  // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the admin
+  // list. Keeps the `from` param flowing through so nested navigation stays consistent.
+  // 4ea70bb7 — `backToPersonnelAdmin`, NOT `backToPeople`. people.detail is a SHARED namespace: the
+  // employee-facing profile (app/personnel/[employmentId]/page.tsx) renders backToPeople for its own link
+  // to /personnel, the directory that is still called Personnel. Renaming that key in place would have
+  // renamed a screen this item never mentioned — the same trap as people.list.title. This link lands on
+  // /admin/personnel, so it has to carry that module's name: a back link labelled "People" arriving at a
+  // page headed "Personnel Management" is the inconsistency the item exists to remove.
   const back =
     from === 'org'
       ? { href: '/org', label: t('backToOrg') }
-      : { href: '/admin/personnel', label: t('backToPeople') };
+      : { href: '/admin/personnel', label: t('backToPersonnelAdmin') };
 
   // c002b3c3 — reproduced while asserting the scope guard, and PRE-EXISTING (unchanged from main): a
   // route segment that is not a uuid reached the query verbatim, so `/admin/personnel/not-a-uuid` came
@@ -3850,9 +3856,17 @@ export default async function EmployeePage({
             </Link>
           </p>
 
-          {/* b75b2a23 — the cc681bd5 Year of Service row moved from here onto the top summary card so the
-              figure is visible the moment a profile opens and lives in exactly one place. The label +
-              tooltip are still computed above (beside the other service figures) — only the render moved. */}
+          {/* b75b2a23 — the cc681bd5 Year of Service ROW moved from here onto the top summary card so the
+              figure is visible the moment a profile opens. The label + tooltip are still computed above
+              (beside the other service figures) — only the render moved.
+
+              4ea70bb7 — b75b2a23 also said the figure "lives in exactly one place". That stopped being
+              true HERE, on this very card: the Group Service caption in the Joining pair at the top of
+              this fieldset now prints the SAME string — fmtServiceYmd(emp.hiredOn), character for
+              character what the summary card shows as Year of Service. Deliberate, and the same reading as the twin note on the summary
+              card: one figure, two captions, ONE calculation. What must stay unique is the calculation,
+              not the display — if this page ever needs another service figure, call fmtServiceYmd; never
+              add a second piece of date arithmetic. */}
 
           {/* Probation Information */}
           <div className="space-y-3">

@@ -543,6 +543,7 @@
     },
     "detail": {
       "backToPeople": "People",
+      "backToPersonnelAdmin": "Personnel Management",
       "backToOrg": "Org chart",
       "headerDescription": "{code} · {email} · {company} · hired {hiredOn}",
       "personalDetails": "Personal details",
@@ -1503,7 +1504,7 @@
     "import": {
       "title": "Import employees",
       "description": "Bulk-load employees, statutory profiles and pay from an Excel (.xlsx) file. Download the template, fill it in, upload it — nothing is created until you have seen the check.",
-      "backLabel": "People",
+      "backLabel": "Personnel Management",
       "noCompanies": "Create a company before importing employees.",
       "targetCompany": "Target company",
       "uploadFile": "Upload file",

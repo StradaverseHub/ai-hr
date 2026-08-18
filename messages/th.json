@@ -543,6 +543,7 @@
     },
     "detail": {
       "backToPeople": "พนักงาน",
+      "backToPersonnelAdmin": "การจัดการบุคลากร",
       "backToOrg": "ผังองค์กร",
       "headerDescription": "{code} · {email} · {company} · จ้างเมื่อ {hiredOn}",
       "personalDetails": "ข้อมูลส่วนตัว",
@@ -1503,7 +1504,7 @@
     "import": {
       "title": "นำเข้าพนักงาน",
       "description": "นำเข้าพนักงาน โปรไฟล์ตามกฎหมาย และค่าจ้างจำนวนมากจากไฟล์ Excel (.xlsx) ดาวน์โหลดเทมเพลต กรอกข้อมูล แล้วอัปโหลด — จะยังไม่มีการสร้างข้อมูลจนกว่าคุณจะเห็นผลการตรวจสอบ",
-      "backLabel": "พนักงาน",
+      "backLabel": "การจัดการบุคลากร",
       "noCompanies": "สร้างบริษัทก่อนนำเข้าพนักงาน",
       "targetCompany": "บริษัทปลายทาง",
       "uploadFile": "อัปโหลดไฟล์",

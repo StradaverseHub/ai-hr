@@ -543,6 +543,7 @@
     },
     "detail": {
       "backToPeople": "Nhân sự",
+      "backToPersonnelAdmin": "Quản lý Nhân sự",
       "backToOrg": "Sơ đồ tổ chức",
       "headerDescription": "{code} · {email} · {company} · tuyển ngày {hiredOn}",
       "personalDetails": "Thông tin cá nhân",
@@ -1503,7 +1504,7 @@
     "import": {
       "title": "Nhập nhân viên",
       "description": "Nạp hàng loạt nhân viên, hồ sơ pháp lý và lương từ tệp Excel (.xlsx). Tải mẫu, điền thông tin rồi tải lên — không có gì được tạo cho đến khi bạn xem kết quả kiểm tra.",
-      "backLabel": "Nhân sự",
+      "backLabel": "Quản lý Nhân sự",
       "noCompanies": "Hãy tạo công ty trước khi nhập nhân viên.",
       "targetCompany": "Công ty đích",
       "uploadFile": "Tải tệp lên",

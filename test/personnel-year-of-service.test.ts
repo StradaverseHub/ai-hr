@@ -4,7 +4,15 @@
  * cc681bd5 introduced the figure on the Employment Information card inside the Employment tab;
  * b75b2a23 moved it onto the TOP summary card (photo / Employee ID / Status / Department / Position /
  * Direct Superior / Company / Group Join Date) so it is visible the moment any profile opens, and removed
- * the Employment-tab row so the figure has exactly one authoritative display.
+ * the Employment-tab ROW that used to carry it.
+ *
+ * READ THIS BEFORE ADDING A DISPLAY: b75b2a23's "exactly one authoritative display" no longer holds, and
+ * 4ea70bb7 is what ended it. The Employment tab's Group Service caption is now the same figure, from the
+ * same date, through the same formatter, so the page shows it twice on purpose — one figure, two
+ * captions. The invariant that DOES still hold, and that these tests pin, is one CALCULATION: every
+ * service string on the page comes from the single fmtServiceYmd over core/leave's
+ * serviceYearsMonthsDaysAt (see the "ONE formatter serves all three figures" case below). A third
+ * caption is a product question; a second piece of date arithmetic is a defect.
  *
  * The card shows a read-only, day-precise service duration computed from the Group Join Date (hired_on —
  * the date that stays fixed through internal transfers; join_date is deliberately ignored) to today,
@@ -19,8 +27,9 @@
  *      the label with exactly the drop-rule conditions mirrored in check 2, falls back to Not Available
  *      on a missing Group Join Date, wires the i-badge tooltip (native title + aria-label) with the
  *      Group Join Date and as-of date, renders the row as a dt/dd pair on the top summary-card grid
- *      immediately after the Group Join Date, and no longer duplicates it on the Employment Information
- *      card.
+ *      immediately after the Group Join Date, and no longer renders the row it used to occupy on the
+ *      Employment Information card. (Not a no-duplication guard: as of 4ea70bb7 the Employment DATES
+ *      card's Group Service caption prints the identical string — see the note above.)
  *
  * 4ea70bb7 widened the file to the WHOLE of the Employment tab's length-of-service story, because that is
  * now one story: the tab's Group Service and Current Company Service went from whole years-and-months
@@ -314,6 +323,8 @@ describe('Personnel Management rename (4ea70bb7)', () => {
       'nav.personnelAdmin', // sidebar AND the security-and-permissions list (lib/permissions labelKey)
       'people.list.adminTitle', // the admin list heading — NOT people.list.title
       'people.wizard.backLabel', // Create New Employee → Back link
+      'people.detail.backToPersonnelAdmin', // admin profile → Back link (NOT the shared backToPeople)
+      'people.import.backLabel', // Import employees → Back link
       'people.detail.headerGroupJoinDate', // summary card, relabelled over the same emp.hiredOn value
     ]) {
       const v = at(catalogues[loc], key);
@@ -332,10 +343,42 @@ describe('Personnel Management rename (4ea70bb7)', () => {
     expect(at(catalogues[loc], 'nav.personnelAdmin')).toBe(adminTitle);
   });
 
+  it.each(LOCALES)('locale %s gives ONE name to every back link into /admin/personnel', (loc) => {
+    // Three links land on /admin/personnel: the admin profile's, the import screen's and the wizard's.
+    // Before this item they read People / People / Back to Personnel while the page they arrive at was
+    // headed Personnel — renaming the module without them would have left a link labelled "People"
+    // arriving at "Personnel Management". All three now carry the admin module's name.
+    const adminTitle = at(catalogues[loc], 'people.list.adminTitle') as string;
+    expect(at(catalogues[loc], 'people.detail.backToPersonnelAdmin')).toBe(adminTitle);
+    expect(at(catalogues[loc], 'people.import.backLabel')).toBe(adminTitle);
+    expect(String(at(catalogues[loc], 'people.wizard.backLabel'))).toContain(adminTitle);
+    // …and the shared key keeps naming the EMPLOYEE-facing directory, which was not renamed.
+    expect(at(catalogues[loc], 'people.detail.backToPeople')).not.toBe(adminTitle);
+  });
+
+  it('the two profiles read DIFFERENT back-link keys for their two different destinations', () => {
+    // people.detail is shared by the admin record and the employee-facing profile. The admin one goes to
+    // /admin/personnel (Personnel Management); the employee one goes to /personnel (Personnel). A rename
+    // in place would have moved both — the people.list.title trap, one namespace down.
+    const adminDetail = read('app/admin/personnel/[employmentId]/page.tsx');
+    const employeeDetail = read('app/personnel/[employmentId]/page.tsx');
+    expect(adminDetail).toContain("{ href: '/admin/personnel', label: t('backToPersonnelAdmin') }");
+    expect(adminDetail).not.toContain("t('backToPeople')");
+    expect(employeeDetail).toContain("{ href: '/personnel', label: t('backToPeople') }");
+    expect(employeeDetail).not.toContain("t('backToPersonnelAdmin')");
+    // people.import is admin-only, so its backLabel was renamed in place — no second key.
+    expect(read('app/admin/personnel/import/page.tsx')).toContain(
+      "back={{ href: '/admin/personnel', label: t('backLabel') }}",
+    );
+  });
+
   it('English reads exactly as approved', () => {
     expect(at(catalogues.en, 'nav.personnelAdmin')).toBe('Personnel Management');
     expect(at(catalogues.en, 'people.list.adminTitle')).toBe('Personnel Management');
     expect(at(catalogues.en, 'people.wizard.backLabel')).toBe('Back to Personnel Management');
+    expect(at(catalogues.en, 'people.detail.backToPersonnelAdmin')).toBe('Personnel Management');
+    expect(at(catalogues.en, 'people.import.backLabel')).toBe('Personnel Management');
+    expect(at(catalogues.en, 'people.detail.backToPeople')).toBe('People'); // employee-facing, unchanged
     expect(at(catalogues.en, 'people.detail.headerGroupJoinDate')).toBe('Group Join Date');
     expect(at(catalogues.en, 'people.list.title')).toBe('Personnel');
     expect(at(catalogues.en, 'nav.people')).toBe('Personnel');
