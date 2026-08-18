@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { countQuoted, nodeBlock } from './helpers/sidebar-source';
+import { isHrefActive, isParentActive } from '../components/nav-flyout';
 import { attendancePack } from '../packs/attendance';
 import { MODULE_CATALOG } from '../packs/catalog';
 import { SCREENS } from '../lib/permissions';
@@ -36,6 +37,13 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const HREF = '/admin/holidays';
 const SIDEBAR = read('components/sidebar.tsx');
 const PACK = read('packs/attendance/index.ts');
+
+/** Child hrefs of a module-private rail node, in declaration order. */
+const childHrefs = (src: string, constName: string): string[] => {
+  const block = nodeBlock(src, constName);
+  if (block === null) return [];
+  return [...block.matchAll(/href:\s*'([^']+)'/g)].map((m) => m[1]!);
+};
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
@@ -195,6 +203,74 @@ describe('4509d2b8 — i18n: the label moved with the row, in all six locales', 
   it('nav.holidays is actually translated in the five non-English locales', () => {
     for (const l of LOCALES.filter((x) => x !== 'en')) {
       expect(nav[l].holidays, `${l}: nav.holidays differs from the en value`).not.toBe(nav.en.holidays);
+    }
+  });
+});
+
+describe('4509d2b8 — the highlighting moved with the row', () => {
+  /**
+   * The rest of this file proves the row is DECLARED in the right node. That is not the same thing as
+   * proving the rail READS right, and the two predicates that decide it were only ever covered as
+   * source-text presence checks (test/payroll-flyout-nav.test.ts:187-194, test/sidebar-flyout.test.ts:59)
+   * — nothing drove either one over real hrefs. Moving the row silently moved BOTH:
+   *
+   *   - `isParentActive` gets each node's child hrefs, so ownership of /admin/holidays transferred from
+   *     the Attendance settings parent to the System Settings parent. A copy left behind (the failure
+   *     mode the "exactly once" case above guards) would light TWO parents at once.
+   *   - the panel's longest-href-wins ranking now resolves /admin/holidays/groups inside a DIFFERENT
+   *     node's child set, next to five /admin/settings/* siblings it never sat beside before.
+   *
+   * Both are pure functions of the pathname and the node's hrefs, so they are checkable here. The real
+   * exports are imported rather than reimplemented; the ranking is inline in the `'use client'` sidebar,
+   * so its expression is pinned against the source below so this copy cannot drift away from it.
+   */
+  const SYSTEM_CHILDREN = childHrefs(SIDEBAR, 'SYSTEM_SETTINGS_NODE');
+  const ATTENDANCE_CHILDREN = childHrefs(PACK, 'ATTENDANCE_NAV');
+
+  // components/sidebar.tsx `activeChildHref` — inside a panel the LONGEST matching path wins, so exactly
+  // one row ever reads as the current page (1459e116 requirement 3).
+  const activeChildHref = (hrefs: string[], pathname: string, search = '') =>
+    hrefs
+      .filter((h) => isHrefActive(pathname, search, h))
+      .sort((a, b) => b.split('?')[0].length - a.split('?')[0].length)[0];
+
+  it('reads the two nodes for real (guards the extraction itself)', () => {
+    expect(SYSTEM_CHILDREN, 'System Settings children').toContain(HREF);
+    expect(ATTENDANCE_CHILDREN.length, 'Attendance settings children').toBeGreaterThan(0);
+    expect(ATTENDANCE_CHILDREN, 'Attendance settings no longer carries it').not.toContain(HREF);
+    // The ranking above is a copy of an expression that lives inline in a 'use client' component. Pin it.
+    expect(SIDEBAR, 'the panel still ranks by longest path').toMatch(
+      /\.sort\(\(a, b\) => b\.href\.split\('\?'\)\[0\]\.length - a\.href\.split\('\?'\)\[0\]\.length\)/,
+    );
+  });
+
+  it.each(['/admin/holidays', '/admin/holidays/groups'])(
+    'on %s the System Settings parent lights and Attendance settings does not',
+    (pathname) => {
+      expect(isParentActive(pathname, SYSTEM_CHILDREN), 'System Settings parent').toBe(true);
+      expect(isParentActive(pathname, ATTENDANCE_CHILDREN), 'Attendance settings parent').toBe(false);
+    },
+  );
+
+  it.each(['/admin/holidays', '/admin/holidays/groups'])(
+    'on %s exactly one System Settings row is current, and it is Holidays',
+    (pathname) => {
+      // The Holiday Group tab is the case worth stating: isHrefActive is a segment-prefix match, so the
+      // /admin/holidays row deliberately stays lit on /admin/holidays/groups (there is no row of its own
+      // for the tab). What must NOT happen is a second row lighting beside it.
+      const lit = SYSTEM_CHILDREN.filter((h) => isHrefActive(pathname, '', h));
+      expect(lit, `rows matching ${pathname}`).toEqual([HREF]);
+      expect(activeChildHref(SYSTEM_CHILDREN, pathname)).toBe(HREF);
+    },
+  );
+
+  it('the attendance screens still light their own parent and their own row', () => {
+    // The other half of the move: taking a child out of a node must not disturb the six that remain.
+    for (const href of ATTENDANCE_CHILDREN) {
+      const pathname = href.split('?')[0];
+      expect(isParentActive(pathname, ATTENDANCE_CHILDREN), `${pathname}: Attendance parent`).toBe(true);
+      expect(isParentActive(pathname, SYSTEM_CHILDREN), `${pathname}: System Settings parent`).toBe(false);
+      expect(activeChildHref(ATTENDANCE_CHILDREN, pathname), `${pathname}: current row`).toBe(href);
     }
   });
 });
