@@ -40,10 +40,13 @@ import { MY_REPORTS } from '../localization/my/reports';
 import { BORANG_8A_COLUMNS } from '../localization/my/borang-8a';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import {
+  BORANG_8A_AMOUNT_HEAD,
   BORANG_8A_HEADINGS,
   BORANG_8A_HEAD_PAD,
   BORANG_8A_HEAD_SIZE,
+  BORANG_8A_NAME_CELL,
   borang8AFilename,
+  borang8ANameLines,
   renderBorang8APdf,
   wrapTo,
 } from '../lib/borang-8a-pdf';
@@ -477,6 +480,104 @@ describe('the plain-text twin', () => {
         }
       }
     }
+  });
+
+  /**
+   * THE ONE HEADING THE WRAP TEST ABOVE STRUCTURALLY CANNOT SEE.
+   *
+   * "CARUMAN (5)" is not in BORANG_8A_HEADINGS because it does not belong to a column — it SPANS the RM and
+   * SEN columns — and the test above only ever measures a line against its own column's width, never
+   * against where a vertical rule actually falls. So the first draft of this round ruled COL.sen.x through
+   * the full height of the heading band in the same loop as every other column edge, and printed the
+   * divider straight through the word, between its 'A' and its 'N': 33.4pt of CARUMAN centred at 521.14
+   * spans 504.4..537.9, and the divider stands at 533. It printed on EVERY sheet and was found by
+   * rasterising the page — exactly the defect class this round claims to have eliminated.
+   *
+   * A spanned heading needs a spanned cell. This measures that, at the real font metrics.
+   */
+  it('never rules the RM/SEN divider through the heading that spans them', async () => {
+    const doc = await PDFDocument.create();
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const A = BORANG_8A_AMOUNT_HEAD;
+    // Helvetica's cap height is 0.717em; 0.75 is the conservative rounding for a clearance check.
+    const capH = BORANG_8A_HEAD_SIZE * 0.75;
+
+    for (const s of A.spanning) {
+      const w = bold.widthOfTextAtSize(s.text, BORANG_8A_HEAD_SIZE);
+      const lo = A.span.x + A.span.w / 2 - w / 2;
+      expect(lo, `${s.text}: starts inside the spanned cell`).toBeGreaterThanOrEqual(A.span.x);
+      expect(lo + w, `${s.text}: ends inside the spanned cell`).toBeLessThanOrEqual(A.span.x + A.span.w);
+      // It MAY straddle the divider — that is what "spanned" means. What it may never do is straddle a
+      // divider that is RULED across its baseline, so anything crossing must sit above the split rule.
+      if (lo < A.divider && lo + w > A.divider) {
+        expect(s.dy, `${s.text}: straddles the divider, so it must sit above the split rule`).toBeGreaterThan(
+          A.splitDy,
+        );
+      }
+    }
+    // 'CARUMAN' is the case that fires: if a future edit stops it straddling, the branch above goes untaken
+    // and quietly stops testing anything. Pin that it is still the real case.
+    const caruman = A.spanning.find((s) => s.text === 'CARUMAN')!;
+    const cw = bold.widthOfTextAtSize(caruman.text, BORANG_8A_HEAD_SIZE);
+    expect(A.span.x + A.span.w / 2 - cw / 2).toBeLessThan(A.divider);
+    expect(A.span.x + A.span.w / 2 + cw / 2).toBeGreaterThan(A.divider);
+
+    // The sub-heads under the split rule get a column each, and must stay inside it and clear of the rule.
+    for (const u of A.under) {
+      const w = bold.widthOfTextAtSize(u.text, BORANG_8A_HEAD_SIZE);
+      const lo = u.col.x + u.col.w / 2 - w / 2;
+      expect(lo, `${u.text}: starts inside its own column`).toBeGreaterThanOrEqual(u.col.x);
+      expect(lo + w, `${u.text}: ends inside its own column`).toBeLessThanOrEqual(u.col.x + u.col.w);
+      expect(u.dy + capH, `${u.text}: sits clear below the split rule`).toBeLessThan(A.splitDy);
+    }
+    // The spanning lines clear the split rule from above, and each other.
+    const bottom = Math.min(...A.spanning.map((s) => s.dy));
+    expect(bottom, 'the lowest spanning line clears the split rule').toBeGreaterThan(A.splitDy + 1);
+    // …and the whole block fits the shortest heading band the layout can produce (one row per line, 8pt
+    // apiece, plus 5pt of padding), so a column that needs fewer lines cannot crop CARUMAN off the top.
+    const shortestBand = (A.spanning.length + 1) * 8 + 5;
+    expect(Math.max(...A.spanning.map((s) => s.dy)) + capH).toBeLessThanOrEqual(shortestBand);
+
+    // The geometry above is only true of the drawn page if the draw reads it. Both rules do.
+    expect(PDF_SRC).toContain('hline(headBot + A.splitDy, A.span.x, RIGHT)');
+    expect(PDF_SRC).toContain('x === BORANG_8A_AMOUNT_HEAD.divider ? headBot + BORANG_8A_AMOUNT_HEAD.splitDy : ey');
+  });
+
+  /**
+   * THE EMPLOYER'S LEGAL NAME IS BOUNDED, like every other payroll-derived string on the page.
+   *
+   * It was the one that was not: drawn with a bare `T` while the address lines directly beneath it in the
+   * same cell were clipped — and correction 4 is what gave it something to collide with, by moving
+   * Lembaran and Bil. Pekerja UP onto its row. `co.legalName` is unbounded, and the cell is 320pt wide, so
+   * "PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SEMBILAN SDN BHD" (357.3pt at 10pt bold) crossed the `d1`
+   * rule and put 'BHD' beside the sheet number. Seen only by rasterising the page with a real registered
+   * name on it; the reporter's own specimen is 27 characters and fits with room to spare.
+   */
+  it('holds the employer’s legal name inside its own cell, however long the name is', async () => {
+    const doc = await PDFDocument.create();
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const { w, size } = BORANG_8A_NAME_CELL;
+    const names = [
+      'ENGENIOUS SOLUTIONS SDN BHD',
+      'MALAYSIAN TECHNOLOGY DEVELOPMENT CORPORATION SDN BHD',
+      'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SEMBILAN SDN BHD',
+      // The pathological pair: one unbreakable word, and a name too long for even two lines.
+      'X'.repeat(120),
+      `${'PERBADANAN PEMBANGUNAN '.repeat(6)}SDN BHD`,
+      '',
+    ];
+    for (const n of names) {
+      const lines = borang8ANameLines(n, bold);
+      expect(lines.length, `"${n.slice(0, 24)}…": at most two lines, so the address still fits`).toBeLessThanOrEqual(2);
+      for (const l of lines) {
+        expect(bold.widthOfTextAtSize(l, size), `"${l}"`).toBeLessThanOrEqual(w);
+      }
+    }
+    // A name that DOES fit is never broken or truncated: the reporter's own specimen prints whole.
+    expect(borang8ANameLines('ENGENIOUS SOLUTIONS SDN BHD', bold)).toEqual(['ENGENIOUS SOLUTIONS SDN BHD']);
+    // …and the draw goes through the clip rather than round it, which is what the defect was.
+    expect(PDF_SRC).toContain('TClip(l, nx, ay, nw, nsize, bold)');
+    expect(PDF_SRC).not.toContain('T(form.employerName');
   });
 
   it('paginates like the drawn form, sheet totals and all', () => {

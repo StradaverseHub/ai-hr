@@ -65,6 +65,27 @@ const COL = {
 
 const ROW_H = 15;
 
+/**
+ * The header table's own vertical rules. MODULE-LEVEL so what goes in each cell can be measured rather
+ * than eyeballed: `d1` is what closes the employer's name-and-address cell, and therefore what bounds the
+ * legal name (see `BORANG_8A_NAME_CELL`). `c1`/`c2` split the Kod Majikan · MyCoID · Amaun row;
+ * `d1`/`d2` split Lembaran · Bil. Pekerja beside the employer block.
+ */
+const HDR = { c1: M + 170, c2: M + 390, d1: M + 330, d2: M + 430 } as const;
+
+/**
+ * Where the employer's registered name is drawn, and the width it must be held inside.
+ *
+ * ⚠️ THE LEGAL NAME IS THE ONE PAYROLL-DERIVED STRING THAT WAS NOT BOUNDED. It was drawn with a bare `T`
+ * while the address lines directly under it in the same cell were clipped — and correction 4 is what gave
+ * it a neighbour to collide with: Lembaran and Bil. Pekerja moved UP onto this row, so a name wider than
+ * the cell now crosses the `d1` rule and prints into their value boxes. `co.legalName` is unbounded, and
+ * at 10pt bold this cell holds about fifty characters: "PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SEMBILAN
+ * SDN BHD" measures 357pt against 320pt of cell and landed 'BHD' next to the sheet number. Seen only by
+ * rasterising the page with a real registered name on it. Same width as the address lines under it.
+ */
+export const BORANG_8A_NAME_CELL = { x: M + 4, w: HDR.d1 - M - 10, size: 10 } as const;
+
 /** The point size every column heading is drawn at. Exported so the fit can be measured, not eyeballed. */
 export const BORANG_8A_HEAD_SIZE = 6.5;
 /** Horizontal padding inside a heading cell — the heading gets `col.w - PAD` to live in. */
@@ -84,6 +105,39 @@ export const BORANG_8A_HEADINGS: { key: string; col: { x: number; w: number }; p
   { key: 'ic', col: COL.ic, parts: ['NO. KAD PENGENALAN', '(3)'] },
   { key: 'name', col: COL.name, parts: ['NAMA PEKERJA (MENGIKUT KAD PENGENALAN)', '(4)'] },
 ];
+
+/**
+ * The amount heading — the ONE heading that spans two columns, and therefore the one the wrap test above
+ * structurally cannot see. It is not in `BORANG_8A_HEADINGS` because it does not belong to a column:
+ * "CARUMAN (5)" sits over RM and SEN together and only the sub-heads RM and SEN get a column each.
+ *
+ * ⚠️ THE RM/SEN DIVIDER MUST STOP AT `splitDy`. Ruling it the full height of the heading band — which is
+ * what the first draft did, by putting COL.sen.x in the same EDGES loop as every other column edge — put
+ * a vertical rule straight through the word CARUMAN, between its 'A' and its 'N': at 6.5pt bold the word
+ * is 33.4pt wide, centred at 521.14, so it spans 504.4..537.9 and the divider stands at 533. That is the
+ * same defect as the three rules struck through the empty-sheet sentence further down, and it printed on
+ * every single sheet. A spanned heading needs a spanned cell: the divider starts at the split rule.
+ *
+ * The `dy` values are baselines measured UP from the foot of the heading band, on the same 8pt grid the
+ * column headings use, opened out to leave the split rule clear air above the RM/SEN caps (top ≈ dy+4.7)
+ * and below the '(5)' parentheses (bottom ≈ dy-1.4). EXPORTED SO ALL OF THAT CAN BE MEASURED.
+ */
+export const BORANG_8A_AMOUNT_HEAD = {
+  /** The cell CARUMAN and (5) are centred in: both money columns, as one. */
+  span: { x: COL.rm.x, w: RIGHT - COL.rm.x },
+  /** Where the RM/SEN rule stands — and where it must NOT be drawn above. */
+  divider: COL.sen.x,
+  /** The rule that closes the spanned cell; the divider runs from here DOWN to the foot of the band. */
+  splitDy: 12,
+  spanning: [
+    { text: 'CARUMAN', dy: 23 },
+    { text: '(5)', dy: 15 },
+  ],
+  under: [
+    { text: 'RM', col: COL.rm, dy: 4 },
+    { text: 'SEN', col: COL.sen, dy: 4 },
+  ],
+} as const;
 
 /**
  * Helvetica is WinAnsi (Latin-1). Two different things fall outside it and they need different answers.
@@ -132,6 +186,31 @@ export function wrapTo(
   }
   if (cur) out.push(cur);
   return out.length ? out : [''];
+}
+
+/**
+ * The employer's legal name, broken to AT MOST TWO lines that each fit `BORANG_8A_NAME_CELL`.
+ *
+ * WRAPPED RATHER THAN TRUNCATED, because the name is the identity of the filing: half a company name on a
+ * statutory form is worse than two lines of a whole one, and the cell has the room (the address under it
+ * starts one line lower and the cell foot is 96pt below its top). A name that still will not fit — one
+ * unbreakable word, or a third line's worth — is clipped as a last resort, which is what the address
+ * lines beside it already do, so nothing can ever cross the `d1` rule.
+ *
+ * EXPORTED SO THE FIT CAN BE MEASURED, the same way the column headings are.
+ */
+export function borang8ANameLines(
+  name: string,
+  f: { widthOfTextAtSize(t: string, size: number): number },
+): string[] {
+  const { w, size } = BORANG_8A_NAME_CELL;
+  const wrapped = wrapTo(name, w, size, f);
+  const lines = wrapped.length <= 2 ? wrapped : [wrapped[0], wrapped.slice(1).join(' ')];
+  return lines.map((l) => {
+    let v = l;
+    while (v.length > 1 && f.widthOfTextAtSize(v, size) > w) v = v.slice(0, -1);
+    return v;
+  });
 }
 
 /**
@@ -236,10 +315,7 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
     const y4v = y4 - 16; // under the Lembaran / Bil. Pekerja values
     const y4a = y4v - 13; // under the "Kegunaan Ejen Pemungut" heading
     const y5 = y4 - 96; // foot of the whole header table
-    const c1 = M + 170;
-    const c2 = M + 390;
-    const d1 = M + 330;
-    const d2 = M + 430;
+    const { c1, c2, d1, d2 } = HDR;
 
     for (const yy of [y0, y1, y2, y3, y4]) hline(yy);
     hline(y5);
@@ -281,11 +357,17 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
     TC(`${pageData.sheet}/${pageData.of}`, (d1 + d2) / 2, y4 - 11.5, 9, bold);
     TC(String(form.employees), (d2 + RIGHT) / 2, y4 - 11.5, 9, bold);
 
-    T(form.employerName, M + 4, y4 - 14, 10, bold);
+    // The name is BOUNDED like the address under it — see BORANG_8A_NAME_CELL. It is the same cell, so it
+    // gets the same width, and the address simply starts under however many lines the name took.
     {
-      let ay = y4 - 25;
+      const { x: nx, w: nw, size: nsize } = BORANG_8A_NAME_CELL;
+      let ay = y4 - 14;
+      for (const l of borang8ANameLines(form.employerName, bold)) {
+        TClip(l, nx, ay, nw, nsize, bold);
+        ay -= 11;
+      }
       for (const l of form.employerAddress) {
-        TClip(l, M + 4, ay, d1 - M - 10, 8.5, font, muted);
+        TClip(l, nx, ay, nw, 8.5, font, muted);
         ay -= 10;
       }
     }
@@ -305,8 +387,9 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
       col: h.col,
       lines: h.parts.flatMap((p) => wrapTo(p, h.col.w - BORANG_8A_HEAD_PAD, BORANG_8A_HEAD_SIZE, bold)),
     }));
-    const amountLines = ['CARUMAN', '(5)', 'RM / SEN'];
-    const headLines = Math.max(...laid.map((h) => h.lines.length), amountLines.length);
+    // The amount block needs one row per spanning line plus the RM | SEN row under the split rule.
+    const amountRows = BORANG_8A_AMOUNT_HEAD.spanning.length + 1;
+    const headLines = Math.max(...laid.map((h) => h.lines.length), amountRows);
     const headH = headLines * 8 + 5;
     const headBot = ey - headH;
 
@@ -317,16 +400,24 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
       for (const [i, l] of h.lines.entries()) TC(l, h.col.x + h.col.w / 2, startY - i * 8, BORANG_8A_HEAD_SIZE, bold);
     }
     {
-      const cx = (COL.rm.x + RIGHT) / 2;
-      TC('CARUMAN', cx, headBot + 21, 6.5, bold);
-      TC('(5)', cx, headBot + 13, 6.5, bold);
-      TC('RM', COL.rm.x + COL.rm.w / 2, headBot + 5, 6.5, bold);
-      TC('SEN', COL.sen.x + COL.sen.w / 2, headBot + 5, 6.5, bold);
+      // CARUMAN (5) is a SPANNED heading: centred over both money columns, with the split rule under it
+      // and the RM/SEN divider running only from that rule down. See BORANG_8A_AMOUNT_HEAD — drawing the
+      // divider the full height of the band put it through the middle of the word.
+      const A = BORANG_8A_AMOUNT_HEAD;
+      const cx = A.span.x + A.span.w / 2;
+      for (const s of A.spanning) TC(s.text, cx, headBot + s.dy, BORANG_8A_HEAD_SIZE, bold);
+      for (const u of A.under) TC(u.text, u.col.x + u.col.w / 2, headBot + u.dy, BORANG_8A_HEAD_SIZE, bold);
+      hline(headBot + A.splitDy, A.span.x, RIGHT);
     }
     hline(ey);
     hline(headBot);
     const EDGES = [M, COL.status.x, COL.ic.x, COL.name.x, COL.rm.x, COL.sen.x, RIGHT];
-    for (const x of EDGES) vline(x, ey, headBot);
+    for (const x of EDGES) {
+      // The RM/SEN divider starts at the split rule and runs DOWN. Every other edge rules the whole band.
+      // Ruling this one from `ey` like the rest is what printed a line through the middle of CARUMAN.
+      const top = x === BORANG_8A_AMOUNT_HEAD.divider ? headBot + BORANG_8A_AMOUNT_HEAD.splitDy : ey;
+      vline(x, top, headBot);
+    }
 
     // ── Rows ────────────────────────────────────────────────────────────────────────────────────
     let ry = headBot;
