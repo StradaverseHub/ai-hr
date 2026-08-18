@@ -9,8 +9,10 @@ import {
   listFixedTransactionsAcross,
   listIndividualTxnCreators,
   listIndividualTxnsAcross,
+  listPayslipSourceTxns,
   listProcessedPayslipsAcross,
   listUnattachedTxnSummary,
+  type PayslipSourceTxnRow,
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
@@ -143,7 +145,10 @@ export default async function TransactionViewPage({
     // suite and `next build` all stay green. `includeArchived` on purpose — an archived pay item can
     // still be the code on an old payslip, and a blank column there would be a worse answer than the
     // setting it was archived with.
-    tab === 'grid' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
+    // 417d4937 — the SAME read now also serves the History tab, because the read-time label repair for
+    // record lines needs the catalogue's descriptions on both tabs. It was `tab === 'grid'` only, which
+    // is why the repair would have been silently inert on the tab the reporter actually opened.
+    tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
   ]);
   // Department options for the Individual History filter — distinct current-assignment departments in scope.
   const departmentOptions = (() => {
@@ -235,6 +240,24 @@ export default async function TransactionViewPage({
   const historyTruncated = historyRows.length > HISTORY_ROW_CAP;
   const shownHistoryRows = historyTruncated ? historyRows.slice(0, HISTORY_ROW_CAP) : historyRows;
 
+  // 417d4937 (request 10) — the one-off transactions behind each shown payslip's Recorded items, so the
+  // screen can answer "where did this line come from?" instead of sending the reader to a report. ONE
+  // indexed query for every run on screen, issued only for the History tab and only when there are rows;
+  // it is fenced on the same `companyIds` as the payslips themselves.
+  const historyBatchIds = [
+    ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
+  ];
+  const sourceTxnRows =
+    tab === 'history' && historyBatchIds.length > 0
+      ? await listPayslipSourceTxns(s, { companyIds, batchIds: historyBatchIds })
+      : [];
+  // Keyed by (run, employee) — the pair a payslip IS. Built here so the client table does no grouping.
+  const sourceTxnsByPayslip: Record<string, PayslipSourceTxnRow[]> = {};
+  for (const r of sourceTxnRows) {
+    const key = `${r.batchId}:${r.employmentId}`;
+    (sourceTxnsByPayslip[key] ??= []).push(r);
+  }
+
   // ── 080de5cf — the Grid tab's pivot + the plain data its client component needs ──
   // The fold happens on the SERVER: the browser gets finished rows, so the two switches over them cost no
   // round-trip. Everything crossing to the client is plain data — a function prop from a server component
@@ -251,6 +274,11 @@ export default async function TransactionViewPage({
       { epf: c.includedInEpf, socso: c.includedInSocsoEis, pcb: c.includedInPcb },
     ]),
   );
+  // 417d4937 — code → the pay item's CURRENT description, for the read-time repair of record-line labels
+  // on runs that were already calculated. Same read, same key, same plain-data crossing as the map above;
+  // see core/payslip-earning-lines.ts `recordLineIdentity` for why this one map is allowed to override
+  // what the payslip stored, and only for record lines.
+  const payItemNames: Record<string, string> = Object.fromEntries(gridComponents.map((c) => [c.code, c.name]));
   const grid =
     tab === 'grid'
       ? pivotHistoryGrid({
@@ -259,6 +287,7 @@ export default async function TransactionViewPage({
           months: gridMonths,
           hrdfRegisteredCompanyIds,
           payItemSubjects,
+          payItemNames,
         })
       : null;
   const locale = await getLocale();
@@ -662,7 +691,12 @@ export default async function TransactionViewPage({
           {/* The rounding the Card used to do for the whole box, applied to the table alone — matching
               Card's own `rounded-[1.25rem]` so the bottom corners look exactly as they did. */}
           <div className="overflow-hidden rounded-b-[1.25rem]">
-            <HistoryTable rows={shownHistoryRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
+            <HistoryTable
+              rows={shownHistoryRows}
+              hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds}
+              payItemNames={payItemNames}
+              sourceTxnsByPayslip={sourceTxnsByPayslip}
+            />
           </div>
         </Card>
       )}

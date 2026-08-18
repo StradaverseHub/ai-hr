@@ -11,12 +11,19 @@ import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-empl
 // 6b134681 — the pay items behind the Overtime and Bonus figures, named from the payslip's own stamp.
 // The SAME derivation the printed PDF and Transaction View → History use, so the three cannot disagree
 // about which items make up a figure or how one is labelled.
+// 417d4937 — and `recordLineIdentity`, the read-time repair for RECORD lines: until r196 the kernel
+// named a consumed one-off from the transaction's free-text remark, and that fix reaches only runs
+// calculated after it, so an already-issued payslip keeps the old wording unless the screen repairs it.
 import {
   payItemLabel,
   payItemLinesForBuckets,
   payItemLinesReconcile,
+  recordLineIdentity,
   storedComponentLines,
 } from '@/core/payslip-earning-lines';
+// The tenant catalogue is readable by every tenant member (migration 0065 `pay_component_rls`), so the
+// employee's own payslip can name its items correctly without any widening of what they may see.
+import { listPayComponents } from '@/core/pay-components';
 
 /** The label key for each employer-borne component, exhaustive over EmployerBorneKey. */
 const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' | 'eis' | 'pcb'> = {
@@ -125,6 +132,12 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   const bonusLines = payItemLinesForBuckets(stored, ['bonus']);
   const showOtLines = payItemLinesReconcile(otLines, disp.overtime);
   const showBonusLines = payItemLinesReconcile(bonusLines, disp.bonus);
+  // 417d4937 — code → today's pay item description, for the record-line label repair. Read only when
+  // this payslip actually carries record lines, so the ordinary payslip costs no extra query.
+  const payItemNames: Record<string, string> =
+    st.recordLines && st.recordLines.length > 0
+      ? Object.fromEntries((await listPayComponents(s, { includeArchived: true })).map((c) => [c.code, c.name]))
+      : {};
   const t = await getTranslations('me.payslip');
   const locale = await getLocale();
 
@@ -270,9 +283,21 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t('recordLinesHeading')}
             </h2>
-            {st.recordLines.map((l) => (
-              <Row key={l.code} label={l.name} value={rm(l.amount)} muted />
-            ))}
+            {/* 417d4937 — the pay item's own DESCRIPTION (not its code: this is the employee's copy and
+                it has always read as words, and an internal TXN_* code would be a worse answer than the
+                remark it replaces), with the words that were typed kept beside it. Nothing is rewritten
+                and nothing is hidden; the amount is exactly as stored. */}
+            {st.recordLines.map((l) => {
+              const id = recordLineIdentity(l, payItemNames);
+              return (
+                <Row
+                  key={l.code}
+                  label={id.remark ? `${id.name} — ${t('recordLineRemark', { remark: id.remark })}` : id.name}
+                  value={rm(l.amount)}
+                  muted
+                />
+              );
+            })}
             <p className="mt-2 text-xs text-muted-foreground">{t('recordLinesNote')}</p>
           </section>
         )}

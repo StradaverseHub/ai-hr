@@ -107,3 +107,78 @@ describe('History breakdown — the pay item, not the category', () => {
     expect(screen.getAllByText('RM 650.00').length).toBeGreaterThan(0); // allowances
   });
 });
+
+/**
+ * 417d4937 — THE REPAIR OF AN ALREADY-CALCULATED RUN, PROVED BY RENDERING.
+ *
+ * r196 (d8d34a1f) taught the kernel to name a consumed one-off's record line from the PAY ITEM instead of
+ * from the transaction's free-text remark. It is FORWARD-ONLY — it acts when a run is CALCULATED — and no
+ * screen re-derived it, so every payroll already run kept "A0020 - DIRECTOR FEE" against pay item A0040
+ * and the reporter saw exactly what they had reported. That is not a regression and not an unshipped fix:
+ * it is a fix with no retroactive reach, and nothing on the plan said so.
+ *
+ * The repair reads the CODE the line stored and prints the catalogue's description against it, keeping the
+ * words that were typed beside it as the remark. Rendered here rather than asserted on the derivation,
+ * because the last three attempts at this pair were all correct derivations feeding a renderer that
+ * printed a different field.
+ */
+describe('417d4937 — a record line written before r196 is repaired at read time', () => {
+  /** The reporter's own row: pay item A0040, stored under a PREVIOUS item's remark. */
+  const staleRow = {
+    ...row,
+    id: '00000000-0000-0000-0000-000000000002',
+    statutory: {
+      ...(row.statutory as Record<string, unknown>),
+      recordLines: [
+        { code: 'A0040', name: 'A0020 - DIRECTOR FEE', amount: 400, nonPayable: false },
+        // A synthetic one-off line: its code can never match a pay_component, so it must be untouched.
+        { code: 'TXN_OVERTIME', name: 'Sunday callout', amount: 120, nonPayable: false },
+        // A code the catalogue no longer holds — the stored words are all there is, and they stand.
+        { code: 'Z9999', name: 'RETIRED ITEM', amount: 50, nonPayable: false },
+      ],
+    },
+  } as ProcessedPayslipViewRow;
+
+  const payItemNames = { A0040: 'MEAL ALLOWANCE', A0020: 'DIRECTOR FEE' };
+
+  async function renderStale(names?: Record<string, string>) {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <HistoryTable rows={[staleRow]} hrdfRegisteredCompanyIds={[row.companyId]} payItemNames={names} />
+      </NextIntlClientProvider>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /show/i }));
+  }
+
+  it('prints the pay item’s own description, and keeps the words that were typed as the remark', async () => {
+    await renderStale(payItemNames);
+    expect(screen.getAllByText('A0040 · MEAL ALLOWANCE').length).toBeGreaterThan(0);
+    // NOTHING IS DELETED. The original wording is still on screen, as the remark — which is what an audit
+    // needs and what "never rewrite the record" means in practice.
+    expect(screen.getByText('Entered as “A0020 - DIRECTOR FEE”')).toBeInTheDocument();
+  });
+
+  it('leaves a synthetic TXN_ line and an unknown code exactly as stored', async () => {
+    await renderStale(payItemNames);
+    expect(screen.getByText('TXN_OVERTIME · Sunday callout')).toBeInTheDocument();
+    expect(screen.getByText('Z9999 · RETIRED ITEM')).toBeInTheDocument();
+    // Neither carries a remark, because neither was repaired — there is nothing to disclose.
+    expect(screen.queryByText(/Entered as “Sunday callout”/)).toBeNull();
+    expect(screen.queryByText(/Entered as “RETIRED ITEM”/)).toBeNull();
+  });
+
+  it('with NO catalogue to hand it degrades to the stored words, never to a blank', async () => {
+    await renderStale(undefined);
+    expect(screen.getByText('A0040 · A0020 - DIRECTOR FEE')).toBeInTheDocument();
+    expect(screen.queryByText(/Entered as/)).toBeNull();
+  });
+
+  it('not one figure moves — the repair is words only', async () => {
+    await renderStale(payItemNames);
+    expect(screen.getAllByText('RM 6,150.00').length).toBeGreaterThan(0); // gross
+    expect(screen.getAllByText('RM 3,815.15').length).toBeGreaterThan(0); // net
+    expect(screen.getAllByText('RM 400.00').length).toBeGreaterThan(0); // the repaired line's amount
+    expect(screen.getAllByText('RM 120.00').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('RM 50.00').length).toBeGreaterThan(0);
+  });
+});

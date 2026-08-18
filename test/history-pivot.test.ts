@@ -755,8 +755,9 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
 
   it('a zero month cannot block suppression, and a bonus run cannot suppress the regular run’s row', () => {
     // Zero needs no explanation, so a month with no allowance at all still reconciles. And the lump
-    // decision is per RUN TYPE because the rows are: a bonus run stamps no item detail at all, and
-    // letting it veto the regular run's suppression (or be suppressed by it) would be the wrong row.
+    // decision is per RUN TYPE because the rows are: the bonus slip in this fixture carries no stamp
+    // (a run calculated before 6b134681 gave the additional run its own bonus-only stamp), and letting
+    // it veto the regular run's suppression (or be suppressed by it) would be the wrong row.
     const grid = pivotHistoryGrid({
       rows: [
         accounted({ payPeriod: '2026-01' }),
@@ -767,6 +768,50 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
     });
     expect(rowFor(grid.rows, 'ALLOW', 'regular')!.itemised).toBe(true);
     expect(rowFor(grid.rows, 'ALLOW', 'bonus')!.itemised).toBeUndefined();
+  });
+
+  /**
+   * 6b134681 — A BONUS RUN NOW CARRIES ITS OWN ITEM ROWS.
+   *
+   * The kernel stamps an additional run's BONUS-BUCKET lines and only those, so this grid finally has
+   * something to name on a bonus month. Two things have to be true at once and neither implies the
+   * other: the item row appears with the operator's own code, AND the lump-sum decision is unmoved —
+   * a bonus run's allowance box is 0.00, so `lumpAccounted.allowance` was already true by the
+   * zero test and must not start depending on a bucket sum that will always be 0 there.
+   */
+  it('a bonus run WITH a bonus-only stamp produces item rows, and the lump decision is unmoved', () => {
+    const bonusSlip = slip({
+      payPeriod: '2026-03',
+      runType: 'bonus',
+      basic: '0.00',
+      allowance: '0.00',
+      overtime: '0.00',
+      bonus: '500.00',
+      gross: '500.00',
+      statutory: {
+        epfEmployee: 55,
+        componentLines: [{ code: 'BOOO1', name: 'ANGPOW', amount: 500, buckets: [{ bucket: 'bonus', amount: 500 }] }],
+      },
+      totalDeductions: '55.00',
+      net: '445.00',
+    });
+    const grid = pivotHistoryGrid({ rows: [bonusSlip], year: 2026 });
+
+    const item = grid.rows.find((r) => r.code === 'BOOO1' && r.runType === 'bonus' && r.kind === 'item')!;
+    expect(item.group).toBe('earning');
+    expect(item.name).toBe('ANGPOW');
+    expect(item.months[2]).toBe(500);
+    // An item row RESTATES money already counted by the synthetic BONUS row, so it must never be added in.
+    expect(item.reconciling).toBe(false);
+    expect(rowFor(grid.rows, 'BONUS', 'bonus')!.months[2]).toBe(500);
+    // The stamp exists now, so the screen stops telling the reader the detail was never recorded.
+    expect(grid.detailNotRecorded).toBe(false);
+    // Allowances is 0.00 on an additional run, so it is accounted for by the ZERO test and stays
+    // suppressible — the answer it gave before the stamp existed. The new bonus-only lines contribute
+    // nothing to the wage/reimburse buckets, so they cannot move this decision in either direction.
+    const allow = rowFor(grid.rows, 'ALLOW', 'bonus')!;
+    expect(allow.itemised).toBe(true);
+    expect(allow.months.every((m) => m === 0)).toBe(true);
   });
 });
 

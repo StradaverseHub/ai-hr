@@ -29,6 +29,7 @@ import {
   payItemLabel,
   payItemLinesForBuckets,
   payItemLinesReconcile,
+  recordLineIdentity,
   storedComponentLines,
 } from '../core/payslip-earning-lines';
 import { buildPayslipPdfData } from '../lib/payslip-pdf';
@@ -64,6 +65,15 @@ const stored = {
   employerCost: '6986.25', daysWorked: '31', statutory,
 };
 const borne = { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' } as const;
+
+/** A source file with its comments stripped — prose describing a rule must never be what satisfies a
+ *  source-shape guard. Module-level because three describes below assert across the same files. */
+const SRC_ROOT = path.resolve(__dirname, '..');
+const readSrc = (rel: string) =>
+  fs
+    .readFileSync(path.join(SRC_ROOT, rel), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 function historyRow(): ProcessedPayslipViewRow {
   return {
@@ -335,5 +345,211 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
       expect(src, `${rel} must read the gated overtime lines`).toMatch(/b\.overtimeLines/);
       expect(src, `${rel} must read the gated bonus lines`).toMatch(/b\.bonusLines/);
     }
+  });
+});
+
+/**
+ * 6b134681 rev 2 — THE BONUS RUN, WHICH IS WHERE THE REPORTER ACTUALLY LIVES.
+ *
+ * Everything above this point exercises a REGULAR run, and that is why r196 shipped green and reached
+ * nobody. Measured on production 2026-08-18: regular runs, 62 payslips of which 24 carry a stamp; bonus
+ * runs, 19 payslips of which ZERO did. On a bonus payslip there was no `componentLines` for any of these
+ * four surfaces to read, so every one of them fell back to the box label — "Bonus" — and the reporter's
+ * BOOO1 · ANGPOW (the letter O three times, not zeros) appeared nowhere at all.
+ *
+ * The kernel half of the fix is pinned in test/bonus-run-item-stamp-6b134681.test.ts, against real
+ * generated payslips. THIS is the other half: given the stamp a bonus run now writes, do the renderers
+ * actually print it, and does the money stay exactly where it was? Rule 17 — the defect lived in the
+ * contract between the kernel and the renderers, so the stamp and the figures are asserted together.
+ */
+describe('a BONUS run payslip, through every renderer (6b134681 rev 2)', () => {
+  /** What the kernel now stamps on an additional run: the bonus-bucket lines, and only those. */
+  const bonusStatutory = {
+    epfEmployee: 55, epfEmployer: 65, socsoEmployee: 0, socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0,
+    pcb: 60, hrdf: 0,
+    componentLines: [
+      { code: 'BOOO1', name: 'ANGPOW', amount: 500, buckets: [{ bucket: 'bonus', amount: 500 }] },
+    ],
+  };
+  /** An additional run pays only its additional remuneration: basic/allowance/OT are 0, gross IS the bonus. */
+  const bonusStored = {
+    ...stored,
+    basic: '0.00', allowance: '0.00', overtime: '0.00', bonus: '500.00', gross: '500.00',
+    otherDeductions: '0', totalDeductions: '115.00', net: '385.00', employerCost: '565.00',
+    statutory: bonusStatutory,
+  };
+  const bonusHistoryRow = (): ProcessedPayslipViewRow => ({
+    ...historyRow(),
+    runType: 'bonus',
+    runSeq: 2,
+    basic: '0.00', allowance: '0.00', overtime: '0.00', bonus: '500.00', gross: '500.00',
+    statutory: bonusStatutory,
+    totalDeductions: '115.00',
+    net: '385.00',
+  });
+
+  it('PDF — the printed payslip reads BOOO1 · ANGPOW instead of the box label', () => {
+    const d = buildPayslipPdfData(bonusStored, borne);
+    expect(d.bonusLines).toEqual([{ code: 'BOOO1', name: 'ANGPOW', amount: 500 }]);
+    expect(d.bonusLines!.map(payItemLabel)).toEqual(['BOOO1 · ANGPOW']);
+    // Nothing leaks into the allowance rows: the recurring items this run did NOT pay were never stamped.
+    expect(d.earningLines).toEqual([]);
+    expect(payItemLinesReconcile(d.bonusLines!, d.bonus)).toBe(true);
+    // On an additional run the bonus IS the gross, so the same rows explain both.
+    expect(payItemLinesReconcile(d.bonusLines!, d.gross)).toBe(true);
+  });
+
+  it('ESS payslip — the page’s own chain names the item the employee was paid', () => {
+    const lines = storedComponentLines(bonusStored.statutory);
+    const bonusLines = payItemLinesForBuckets(lines, ['bonus']);
+    expect(payItemLinesReconcile(bonusLines, 500)).toBe(true);
+    expect(bonusLines.map(payItemLabel)).toEqual(['BOOO1 · ANGPOW']);
+    expect(bonusLines[0].amount).toBe(500);
+  });
+
+  it('History and Individual Payslip — the gated list is populated, and the caption stops firing', () => {
+    const b = deriveHistoryBreakdown(bonusHistoryRow());
+    expect(b.bonusLines.map(payItemLabel)).toEqual(['BOOO1 · ANGPOW']);
+    expect(b.componentsByBucket.bonus.map(payItemLabel)).toEqual(['BOOO1 · ANGPOW']);
+    // The screen no longer tells the reader the detail was never recorded, because now it was.
+    expect(b.detailNotRecorded).toBe(false);
+    // No allowance was paid by this run and none is claimed: an empty list never "reconciles" to 0.
+    expect(b.allowanceLines).toEqual([]);
+    expect(b.allowanceNet).toBe(0);
+  });
+
+  it('the surfaces agree LINE FOR LINE on the bonus run too', () => {
+    const pdf = buildPayslipPdfData(bonusStored, borne);
+    const hist = deriveHistoryBreakdown(bonusHistoryRow());
+    const ess = payItemLinesForBuckets(storedComponentLines(bonusStored.statutory), ['bonus']);
+    const shape = (ls: { code: string | null; name: string; amount: number }[]) =>
+      ls.map((l) => `${payItemLabel(l)} ${l.amount.toFixed(2)}`);
+    expect(shape(pdf.bonusLines!)).toEqual(['BOOO1 · ANGPOW 500.00']);
+    expect(shape(ess)).toEqual(shape(pdf.bonusLines!));
+    expect(shape(hist.bonusLines)).toEqual(shape(pdf.bonusLines!));
+  });
+
+  it('NOT ONE FIGURE MOVES — the same bonus payslip with and without its stamp', () => {
+    const withStamp = buildPayslipPdfData(bonusStored, borne);
+    const { componentLines: _drop, ...bare } = bonusStatutory;
+    const without = buildPayslipPdfData({ ...bonusStored, statutory: bare }, borne);
+    for (const k of [
+      'basic', 'allowance', 'overtime', 'bonus', 'claim', 'gross', 'epfEmployee', 'socsoEmployee',
+      'eisEmployee', 'pcb', 'cp38', 'otherDeductions', 'totalDeductions', 'net', 'epfEmployer',
+      'socsoEmployer', 'eisEmployer', 'employerCost', 'hrdf',
+    ] as const) {
+      expect(withStamp[k], k).toBe(without[k]);
+    }
+    // The unstamped one is exactly what every bonus payslip issued before this item looks like.
+    expect(without.bonusLines).toEqual([]);
+    expect(without.detailNotRecorded).toBe(true);
+
+    const hist = deriveHistoryBreakdown(bonusHistoryRow());
+    expect(hist.gross).toBe(500);
+    expect(hist.bonus).toBe(500);
+    expect(hist.net).toBe(385);
+    expect(hist.totalDeductions).toBe(115);
+  });
+});
+
+/**
+ * 417d4937 FIX D — THE READ-TIME REPAIR, AND THE ONE PLACE RULE (a) IS DELIBERATELY REVERSED.
+ *
+ * r196 named a consumed one-off's record line from the pay item rather than from the transaction's
+ * free-text remark, and said in its own commit message that it was forward-only. Nothing re-derives a
+ * payslip after it is calculated and there is no button that would, so "A0020 - DIRECTOR FEE" against
+ * pay item A0040 survives on every run that was already calculated — which is precisely what the
+ * reporter re-opened Transaction View and saw.
+ *
+ * THE REVERSAL IS SCOPED TO `recordLines` AND NOTHING ELSE. `componentLines` keep the stamped-name rule:
+ * they were never wrong, and the grid rows built from them were correct all along.
+ */
+describe('recordLineIdentity — repairing a stale record-line label (417d4937)', () => {
+  const catalogue = { A0040: 'MEAL ALLOWANCE', A0020: 'DIRECTOR FEE', B0001: 'ANGPOW' };
+
+  it('shows the pay item’s own description against the stored code, with the typed words as the remark', () => {
+    const id = recordLineIdentity({ code: 'A0040', name: 'A0020 - DIRECTOR FEE' }, catalogue);
+    expect(id.label).toBe('A0040 · MEAL ALLOWANCE');
+    expect(id.name).toBe('MEAL ALLOWANCE');
+    // NOTHING IS DELETED — the original wording is handed back to be printed, not discarded.
+    expect(id.remark).toBe('A0020 - DIRECTOR FEE');
+  });
+
+  it('says nothing extra when the stored words already match the catalogue', () => {
+    const id = recordLineIdentity({ code: 'A0040', name: 'MEAL ALLOWANCE' }, catalogue);
+    expect(id.label).toBe('A0040 · MEAL ALLOWANCE');
+    expect(id.remark).toBeNull();
+  });
+
+  it('leaves a synthetic TXN_ line alone BY CONSTRUCTION — no branch, nothing to remember', () => {
+    // TXN_OVERTIME / TXN_UNPAID / TXN_LEAVE / TXN_EARNING / TXN_DEDUCTION can never match a
+    // pay_component code, so their remark-derived names survive without a special case.
+    for (const code of ['TXN_OVERTIME', 'TXN_UNPAID', 'TXN_LEAVE', 'TXN_EARNING', 'TXN_DEDUCTION']) {
+      const id = recordLineIdentity({ code, name: 'Sunday callout' }, catalogue);
+      expect(id.label, code).toBe(`${code} · Sunday callout`);
+      expect(id.remark, code).toBeNull();
+    }
+  });
+
+  it('falls back to the stored words for a code the catalogue does not hold, and with no catalogue at all', () => {
+    expect(recordLineIdentity({ code: 'Z9999', name: 'RETIRED ITEM' }, catalogue).label)
+      .toBe('Z9999 · RETIRED ITEM');
+    expect(recordLineIdentity({ code: 'A0040', name: 'A0020 - DIRECTOR FEE' }).label)
+      .toBe('A0040 · A0020 - DIRECTOR FEE');
+    expect(recordLineIdentity({ code: 'A0040', name: 'A0020 - DIRECTOR FEE' }, {}).remark).toBeNull();
+    // A blank catalogue entry is not an instruction to blank the row.
+    expect(recordLineIdentity({ code: 'A0040', name: 'KEEP ME' }, { A0040: '   ' }).label)
+      .toBe('A0040 · KEEP ME');
+  });
+
+  it('a line with no code at all is never repaired — there is nothing to match on', () => {
+    expect(recordLineIdentity({ code: null, name: 'One-off earning' }, catalogue))
+      .toEqual({ label: 'One-off earning', name: 'One-off earning', remark: null });
+  });
+
+  it('componentLines are NOT repaired — rule (a) still holds for the per-item stamp', () => {
+    // A description edited in March must not rewrite what January's payslip said about January's money.
+    // The stamped line is provenance; a record line's pre-r196 name never was.
+    const src = readSrc('core/payslip-earning-lines.ts');
+    expect(src).toContain('export function payItemLinesForBuckets');
+    expect(src.split('export function payItemLinesForBuckets')[1]).not.toContain('names');
+  });
+});
+
+/**
+ * 417d4937 — THE WIRING IS THE FIX. A correct helper that no screen is handed a catalogue for is inert,
+ * which is the shape of failure this pair has already produced twice (r196's kernel fix could not reach
+ * an old run; r196's display fix could not reach a bonus run). Source-shape guards, because the defect
+ * lives in the CONTRACT between the server page and the renderer and a unit test of either half passes.
+ */
+describe('417d4937 — every record-line surface is actually handed the catalogue', () => {
+  it('Transaction View reads the catalogue for the HISTORY tab, not only for the grid', () => {
+    const page = readSrc('app/payroll/transaction-view/page.tsx');
+    // The read used to be `tab === 'grid'` alone, which would have left the repair inert on the tab the
+    // reporter opens.
+    expect(page).toContain("tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true })");
+    expect(page).toContain('const payItemNames: Record<string, string> = Object.fromEntries(');
+    // Plain data across the RSC boundary — a function prop 500s at runtime while tsc and next build pass.
+    expect(page).toContain('payItemNames={payItemNames}');
+    expect(page).toContain('payItemNames,\n        })'); // …and into the pure pivot for Transaction Detail
+  });
+
+  it('the History table, the pivot, Individual Payslip and the ESS payslip all call the shared rule', () => {
+    for (const rel of [
+      'app/payroll/transaction-view/history-table.tsx',
+      'app/payroll/transaction-view/history-pivot.ts',
+      'app/payroll/individual-payslip/page.tsx',
+      'app/me/payslip/[payslipId]/page.tsx',
+    ]) {
+      expect(readSrc(rel), `${rel} must repair record lines through the shared rule`).toContain('recordLineIdentity(');
+    }
+  });
+
+  it('the ESS payslip prints the DESCRIPTION, not an internal code, to the employee', () => {
+    // The employee's copy has always read as words. "TXN_OVERTIME · Overtime (one-off)" would be a worse
+    // answer than the remark it replaces, so that surface takes `name` while the admin screens take `label`.
+    const ess = readSrc('app/me/payslip/[payslipId]/page.tsx');
+    expect(ess).toContain('id.name');
+    expect(ess).not.toContain('label={id.label}');
   });
 });

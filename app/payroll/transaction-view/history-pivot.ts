@@ -1,4 +1,7 @@
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
+// 417d4937 — the shared read-time repair for RECORD-line labels (and the shared code+description format).
+// Pure and dependency-free, so this pure pivot stays pure.
+import { recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
 import { deriveHistoryBreakdown } from './history-breakdown';
 
 /**
@@ -28,8 +31,9 @@ import { deriveHistoryBreakdown } from './history-breakdown';
  * TWO POPULATIONS OF ROW, and the difference is what the "hide system codes" switch acts on:
  *   • SYNTHETIC rows are derived from the payslip's stored aggregates and its statutory blob. They exist on
  *     every payslip ever generated, which is what keeps the grid useful for months that predate the
- *     per-item stamp (862ed0ad) and for additional runs, which never stamp one at all (core/payroll.ts
- *     writes componentLines on the REGULAR run only, so a bonus run has aggregates and nothing else).
+ *     per-item stamp (862ed0ad) and for additional runs calculated before 6b134681, which stamped nothing
+ *     at all. From 6b134681 an additional run DOES stamp — its bonus-bucket lines, and only those, so the
+ *     item rows on a bonus run sum to the bonus figure rather than restating a whole month of allowances.
  *   • ITEM rows are the pay items the payslip actually recorded — `componentLines` (the detail behind the
  *     summarised earnings/deductions) and `recordLines` (one-off provenance + record-only items). They
  *     carry the operator's own codes, which is what "each payroll item shall occupy its own row" asks for.
@@ -317,7 +321,7 @@ type Cell = {
  * `lumpAccounted` reports, for THIS payslip, whether the ALLOW and OTHER_DED lump sums are fully
  * explained by the item rows it stamped. Computed here because this is where both halves are in scope.
  */
-function cellsFor(row: ProcessedPayslipViewRow): {
+function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
   cells: Cell[];
   detailNotRecorded: boolean;
   basesNotRecorded: boolean;
@@ -418,12 +422,25 @@ function cellsFor(row: ProcessedPayslipViewRow): {
         : {}),
     });
   }
+  // 417d4937 — the RECORD lines, repaired at read time. Until r196 the kernel named a consumed one-off's
+  // record line from the transaction's free-text remark, and that fix reaches only runs calculated AFTER
+  // it — so an already-calculated payroll keeps "A0020 - DIRECTOR FEE" against pay item A0040 on this
+  // grid forever unless the screen reads the catalogue. `recordLineIdentity` is the shared rule (and the
+  // one place rule (a) of core/payslip-earning-lines.ts is deliberately reversed, for record lines only).
+  // The CODE and the AMOUNT are untouched, and a code the catalogue does not hold — every TXN_* synthetic
+  // line — keeps its stored name by construction.
+  //
+  // THE REMARK IS DELIBERATELY NOT SHOWN HERE, and this is the one surface where that is right. A grid row
+  // is a PIVOT: one line spans twelve months and therefore several payslips, each of which may carry a
+  // different remark against the same code. Printing one of them would attribute a month's typed words to
+  // the whole year. The per-payslip surfaces (History's Recorded items, Individual Payslip, the ESS
+  // payslip) each show a single slip and do print it.
   for (const l of b.recordLines) {
     cells.push({
       kind: 'item',
       code: l.code,
       labelKey: null,
-      name: l.name || l.code,
+      name: recordLineIdentity(l, payItemNames).label || l.code,
       group: 'item',
       reconciling: false,
       amount: num(l.amount),
@@ -455,8 +472,9 @@ function cellsFor(row: ProcessedPayslipViewRow): {
       otherDeductions === 0 || (hasDetail && Math.abs(bucketSum('deduct') - otherDeductions) < 0.005),
   };
 
-  // 862ed0ad — a run stamped before the per-item detail existed, or an additional run (which never stamps
-  // one), contributes no item rows at all. Reported rather than left to look like a gap in the data.
+  // 862ed0ad — a run stamped before the per-item detail existed (including an additional run calculated
+  // before 6b134681 gave it its own bonus-only stamp) contributes no item rows at all. Reported rather
+  // than left to look like a gap in the data.
   return { cells, detailNotRecorded: b.detailNotRecorded, basesNotRecorded: bases == null, lumpAccounted };
 }
 
@@ -482,6 +500,12 @@ export function pivotHistoryGrid(p: {
    * setting clearly labelled as today's setting. Omitted ⇒ only stamped answers are shown.
    */
   payItemSubjects?: PayItemSubjectMap;
+  /**
+   * 417d4937 — code → the pay item's CURRENT description, read on the server beside `payItemSubjects`.
+   * Used ONLY to repair a RECORD line's label (see `recordLineIdentity`); `componentLines` keep the
+   * payslip's own stamped name, which was never the thing that was wrong. Omitted ⇒ stored names stand.
+   */
+  payItemNames?: PayItemNames;
 }): HistoryGrid {
   const months = p.months && p.months.length > 0 ? [...new Set(p.months)].sort((a, b) => a - b) : [...ALL_MONTHS];
   const shown = new Set(months);
@@ -500,8 +524,9 @@ export function pivotHistoryGrid(p: {
   // two companies if the employee moved mid-year.
   let anyHrdfRegistered = false;
   // Per (runType), whether EVERY contributing payslip's lump-sum row was fully explained by its items.
-  // Keyed by run type because the rows are: a bonus run stamps no item detail at all, and it must not
-  // be able to suppress the regular run's Allowances line (or be suppressed by it).
+  // Keyed by run type because the rows are: an additional run's item detail describes only the bonus it
+  // pays (6b134681 — and a bonus run calculated before that stamps nothing at all), so its answer about
+  // Allowances must not be able to suppress the regular run's line, or be suppressed by it.
   const lumpAccounted = new Map<string, { allowance: boolean; otherDeductions: boolean }>();
 
   for (const row of p.rows) {
@@ -511,7 +536,7 @@ export function pivotHistoryGrid(p: {
     payslipCount += 1;
     if (hrdfRegistered.has(row.companyId)) anyHrdfRegistered = true;
 
-    const slip = cellsFor(row);
+    const slip = cellsFor(row, p.payItemNames);
     if (slip.detailNotRecorded) detailNotRecorded = true;
     if (slip.basesNotRecorded) basesNotRecorded = true;
     const lump = lumpAccounted.get(row.runType) ?? { allowance: true, otherDeductions: true };

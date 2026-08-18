@@ -185,10 +185,12 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
   const recordedNames = new Map<string, string>();
   let anyDetailNotRecorded = false;
   for (const b of breakdowns) {
-    // 862ed0ad — a run calculated before the per-item stamp existed, and every bonus / off-cycle /
-    // adjustment run (which never stamps one), carries no component lines. Its summary figures and its
-    // Allowances TOTAL are still exact; only the named columns are blank. The sheet SAYS so at the top
-    // rather than leaving the reader to guess why a column is empty.
+    // 862ed0ad — a run calculated before the per-item stamp existed carries no component lines. Its
+    // summary figures and its Allowances TOTAL are still exact; only the named columns are blank. The
+    // sheet SAYS so at the top rather than leaving the reader to guess why a column is empty.
+    // 6b134681 — a bonus / off-cycle run calculated from that item onward DOES carry lines (its
+    // bonus-bucket subset), so it names its items here like any other run; only the ones calculated
+    // before it still fall in this branch.
     if (b.detailNotRecorded) anyDetailNotRecorded = true;
     // Keep the first NON-EMPTY name seen for a code: a later run may name an item an earlier one did not,
     // and a column headed with a bare code when a name exists somewhere in the file is needless.

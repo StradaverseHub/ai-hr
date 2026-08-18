@@ -22,6 +22,10 @@
  *     detail to recover — it yields an empty list, which every caller renders as the grouped row it
  *     always showed (plus the `detailNotRecorded` caption where one exists).
  *
+ *     417d4937 CARVES ONE NARROW, DELIBERATE EXCEPTION OUT OF RULE (a), AND ONLY ONE: `recordLines`.
+ *     See `recordLineIdentity` below for the whole argument. `componentLines` keep rule (a) untouched —
+ *     they were never wrong, which is why Transaction Detail's grid rows were correct all along.
+ *
  *  b. NO ARITHMETIC BEYOND COPYING. A bucket's stored contribution is summed and rounded, nothing is
  *     re-derived. That is what makes the itemised rows incapable of disagreeing with the total printed
  *     beside them.
@@ -69,6 +73,65 @@ export function payItemLabel(l: { code?: string | null; name?: string | null }):
   if (!code) return name;
   if (!name) return code;
   return `${code} · ${name}`;
+}
+
+/**
+ * Today's pay-item catalogue, as a renderer needs it: CODE → the item's current description.
+ *
+ * Keyed by code because that is the only thing a line written months ago and a catalogue row have in
+ * common — the id is meaningless to a stored line, and the description is the thing being repaired.
+ * Plain data on purpose: it crosses the RSC boundary to the client History table, and a function prop
+ * there returns a 500 on every request while tsc, the suite and `next build` all stay green.
+ */
+export type PayItemNames = Record<string, string>;
+
+/**
+ * 417d4937 — HOW A **RECORD LINE** IS LABELLED, AND THE ONE PLACE RULE (a) IS REVERSED.
+ *
+ * THE DEFECT. r196 taught the kernel to name a consumed one-off's record line from the PAY ITEM
+ * (`row.name`) instead of from the transaction's free-text remark (`t.notes`). That fix is FORWARD-ONLY:
+ * it takes effect when a run is CALCULATED, and no screen re-derives it afterwards. So a payslip written
+ * before that deploy carries "A0020 - DIRECTOR FEE" against pay item A0040 forever, on every surface that
+ * prints `statutory.recordLines` — which is exactly what the reporter re-opened Transaction View and saw.
+ * Nothing on the plan said the fix could not reach an already-calculated run.
+ *
+ * WHY REVERSING RULE (a) IS RIGHT **HERE** AND WRONG EVERYWHERE ELSE. Rule (a) protects a figure's
+ * PROVENANCE: what January's payslip said about January's money. A record line's `name` is not
+ * provenance — before r196 it was a free-text remark that had no defined relationship to the item at all,
+ * which is the whole defect. Showing the catalogue's description against the stored CODE is strictly more
+ * truthful than showing words that were never that item's. The stated trade-off, which the reporter
+ * approved in as many words: an item whose description has since been EDITED will show its current
+ * description on an older payroll. The code and the amount are untouched either way.
+ *
+ * NOTHING IS REWRITTEN OR HIDDEN. When the stored words differ from the catalogue they are returned as
+ * `remark`, for the caller to print underneath. Both are on screen, which is what an audit needs.
+ *
+ * THE SYNTHETIC CODES NEED NO BRANCH. `TXN_OVERTIME` / `TXN_UNPAID` / `TXN_LEAVE` / `TXN_EARNING` /
+ * `TXN_DEDUCTION` (core/payroll.ts `pushTxnLine`) can never match a `pay_component.code`, so their
+ * remark-derived names survive by construction rather than by a rule someone has to remember. Same for a
+ * code that has been deleted from the catalogue, and for a caller that has no catalogue to hand.
+ *
+ * `label` IS CODE + DESCRIPTION; `name` IS THE DESCRIPTION ALONE. Both are returned because the surfaces
+ * legitimately differ and neither should re-derive the other: the admin screens print the code (an
+ * operator reconciles by code), while the EMPLOYEE's own payslip has always printed the description alone
+ * and must keep doing so — "TXN_OVERTIME · Overtime (one-off)" is a worse answer for an employee than the
+ * words they were shown before, and this item is not licence to change that.
+ *
+ * NOT APPLIED TO THE PRINTED PDF, deliberately (417d4937 scope). The document's only record-line surface
+ * is `nonPayableLines` — the subset the KERNEL stamped `nonPayable: true`, which is empty on every
+ * payslip in production and cannot contain the reporter's line (a paid one-off is never non-payable).
+ * Wiring a catalogue read into both PDF routes to repair a list that is always empty would buy nothing
+ * and would risk the two documents drifting apart if only one were wired.
+ */
+export function recordLineIdentity(
+  l: { code?: string | null; name?: string | null },
+  names?: PayItemNames,
+): { label: string; name: string; remark: string | null } {
+  const code = (l.code ?? '').trim();
+  const stored = (l.name ?? '').trim();
+  const current = code ? (names?.[code] ?? '').trim() : '';
+  if (!current || current === stored) return { label: payItemLabel(l), name: stored, remark: null };
+  return { label: payItemLabel({ code, name: current }), name: current, remark: stored || null };
 }
 
 /** The stored per-item stamp on a payslip's statutory blob, or an empty list where the run predates it. */
