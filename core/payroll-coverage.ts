@@ -365,6 +365,16 @@ export class PayrollCoverageIncompleteError extends Error {
  * the draft and the processed-but-owing counterpart both report `stale` (they have issued no payslip for
  * these days), and the absent one reports `missingCompanyIds`. Creating an empty draft run for the other
  * company therefore does NOT unblock a close — only issuing the payslip does.
+ *
+ * ⚠️ THE BLAST RADIUS IS THE RUN, NOT THE EMPLOYEE. `generatePayslips` throws this from inside its own
+ * transaction, so ONE mover with a frozen counterpart aborts the generation for every other person on the
+ * batch — a 500-head payroll produces nothing until that one employment is dealt with. That is the
+ * deliberate trade ("refuse rather than commit a partial set"): the alternative is committing 499 slips
+ * and leaving the 500th permanently unpayable on a run that can no longer be written to. The one way
+ * forward is the one the message names — unlock the counterpart run — and it is deliberately the only
+ * one: dropping the mover from this run's scope would let generation proceed, but the close is then
+ * refused anyway, because the population `closeBatch` examines is what the period's history says this
+ * employer owes and not whom the run happened to pay.
  */
 export class PayrollCounterpartClosedError extends Error {
   constructor(public readonly details: { employmentId: string; companyId: string; from: string; to: string }[]) {

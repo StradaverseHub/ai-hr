@@ -5778,6 +5778,7 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // operator can see the employment — and the intended user of a transfer is an operator scoped to both
     // entities, which is the same population core/payroll-coverage.ts documents for the sibling-batch
     // read. Closing that hole means dating the RLS predicate itself, which is stage two's adoption pass.
+    //
     // ── REGULAR RUNS ONLY, AND THIS IS A DECISION RATHER THAN AN INHERITANCE ────────────────────────
     //
     // A period may also hold off-cycle, bonus and adjustment runs (ADR-0024). They pay EXTRA money over
