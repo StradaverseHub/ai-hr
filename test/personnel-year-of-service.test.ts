@@ -3,8 +3,8 @@
  *
  * cc681bd5 introduced the figure on the Employment Information card inside the Employment tab;
  * b75b2a23 moved it onto the TOP summary card (photo / Employee ID / Status / Department / Position /
- * Direct Superior / Company / Join Date) so it is visible the moment any profile opens, and removed the
- * Employment-tab row so the figure has exactly one authoritative display.
+ * Direct Superior / Company / Group Join Date) so it is visible the moment any profile opens, and removed
+ * the Employment-tab row so the figure has exactly one authoritative display.
  *
  * The card shows a read-only, day-precise service duration computed from the Group Join Date (hired_on —
  * the date that stays fixed through internal transfers; join_date is deliberately ignored) to today,
@@ -19,7 +19,23 @@
  *      the label with exactly the drop-rule conditions mirrored in check 2, falls back to Not Available
  *      on a missing Group Join Date, wires the i-badge tooltip (native title + aria-label) with the
  *      Group Join Date and as-of date, renders the row as a dt/dd pair on the top summary-card grid
- *      immediately after Join Date, and no longer duplicates it on the Employment Information card.
+ *      immediately after the Group Join Date, and no longer duplicates it on the Employment Information
+ *      card.
+ *
+ * 4ea70bb7 widened the file to the WHOLE of the Employment tab's length-of-service story, because that is
+ * now one story: the tab's Group Service and Current Company Service went from whole years-and-months
+ * ("0 Years 0 Months" for a July joiner; "1 Years 11 Months") to the same day-precise figure through the
+ * same formatter. Added here rather than in a parallel file so the format has exactly one set of
+ * expectations:
+ *   4. The four production vectors as of 2026-08-17, and the two figures' INDEPENDENCE — an employment
+ *      whose Join Date differs from its Group Join Date must render two DIFFERENT strings. Today's shipped
+ *      code cannot fail that case: both sides rounded to "0 Years 0 Months".
+ *   5. The rename: nav.personnelAdmin / people.list.adminTitle / people.wizard.backLabel /
+ *      people.detail.headerGroupJoinDate in all six locales, AND the trap — people.list.title is shared
+ *      with the employee-facing /personnel directory, so it must still read the directory's own name and
+ *      the admin page must resolve adminTitle instead.
+ *   6. employmentInfo.serviceLength is GONE from all six catalogues, not merely unused (the r191 class of
+ *      debt: a key nothing resolves is a stale value waiting to be picked up again).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -138,8 +154,15 @@ describe('drift guards (source assertions)', () => {
   const src = read('app/admin/personnel/[employmentId]/page.tsx');
 
   it('the page computes the figure from the Group Join Date via serviceYearsMonthsDaysAt', () => {
-    expect(src).toContain("import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';");
-    expect(src).toContain('const s = serviceYearsMonthsDaysAt(emp.hiredOn, today);');
+    // 4ea70bb7 UPDATED this case. The figure is no longer computed by an IIFE of its own: the same
+    // day-precise arithmetic now serves all three service figures on the page through one local
+    // fmtServiceYmd(from), so the call reads `from` rather than `emp.hiredOn` and Year of Service is the
+    // formatter applied to emp.hiredOn. serviceYearsMonthsAt is no longer imported here — the Employment
+    // tab's whole-months formatter was the only caller — but core/leave still exports it for the leave
+    // service bands, and the .years/.months equality contract above is what keeps the two agreeing.
+    expect(src).toContain("import { serviceYearsMonthsDaysAt } from '@/core/leave';");
+    expect(src).toContain('const s = serviceYearsMonthsDaysAt(from, today);');
+    expect(src).toContain('const yearOfServiceLabel = fmtServiceYmd(emp.hiredOn);');
   });
 
   it('the page applies exactly the drop-rule conditions composeLabel mirrors', () => {
@@ -161,12 +184,13 @@ describe('drift guards (source assertions)', () => {
     expect(src).toContain('aria-label={yearOfServiceTooltip}');
   });
 
-  it('renders as a dt/dd pair on the top summary card, immediately after Join Date (b75b2a23)', () => {
-    // The summary-card <dl> lists Employee ID … Company, then Join Date, then Year of Service. Pin the
-    // label into a <dt> (the grid's term/definition pattern), positioned after the Join Date pair and
-    // before that grid's closing </dl>.
+  it('renders as a dt/dd pair on the top summary card, immediately after the Group Join Date (b75b2a23)', () => {
+    // The summary-card <dl> lists Employee ID … Company, then the Group Join Date, then Year of Service.
+    // Pin the label into a <dt> (the grid's term/definition pattern), positioned after that date pair and
+    // before the grid's closing </dl>. 4ea70bb7 renamed the anchoring label from headerJoinDate to
+    // headerGroupJoinDate — the <dd> beside it has always been emp.hiredOn, the GROUP date.
     expect(src).toContain('<dt className="text-xs text-muted-foreground">{t(\'employmentInfo.yearOfService\')}</dt>');
-    const joinDateAt = src.indexOf("t('headerJoinDate')");
+    const joinDateAt = src.indexOf("t('headerGroupJoinDate')");
     const yearOfServiceAt = src.indexOf("<dt className=\"text-xs text-muted-foreground\">{t('employmentInfo.yearOfService')}</dt>");
     expect(joinDateAt).toBeGreaterThan(-1);
     expect(yearOfServiceAt).toBeGreaterThan(joinDateAt);
@@ -186,5 +210,165 @@ describe('drift guards (source assertions)', () => {
     expect(employmentCardAt).toBeGreaterThan(-1);
     expect(summaryGridAt).toBeGreaterThan(employmentCardAt); // the summary grid JSX sits after the card const
     expect(yearOfServiceAt).toBeGreaterThan(summaryGridAt);
+  });
+});
+
+/**
+ * 4ea70bb7 — the Employment tab's two length-of-service figures.
+ *
+ * They were "{years} Years {months} Months" (employmentInfo.serviceLength) off serviceYearsMonthsAt, which
+ * told a July joiner they had "0 Years 0 Months" of service and an employee of one year "1 Years 11 Months".
+ * Both now go through the SAME day-precise formatter as Year of Service — one calculation, three captions.
+ */
+describe('Employment tab service figures — day-precise and independent (4ea70bb7)', () => {
+  const messages = JSON.parse(read('messages/en.json'));
+  const t = createTranslator({ locale: 'en', messages, namespace: 'people.detail.employmentInfo' });
+  /** What the page does: fmtServiceYmd(from) — null in, null out (the caption falls back to an em dash). */
+  const fmt = (from: string | null | undefined, asOf: string): string | null =>
+    from ? composeLabel(t, serviceYearsMonthsDaysAt(from, asOf)) : null;
+
+  const ASOF = '2026-08-17'; // the day the production figures below were read off the live database
+
+  it('pins the four production vectors to the day', () => {
+    expect(fmt('2016-10-04', ASOF)).toBe('9 Years 10 Months 13 Days'); // A0014 — was "9 Years 10 Months"
+    expect(fmt('2019-05-02', ASOF)).toBe('7 Years 3 Months 15 Days'); // A0006
+    expect(fmt('2024-09-02', ASOF)).toBe('1 Year 11 Months 15 Days'); // A0007 — was "1 Years 11 Months"
+    expect(fmt('2026-07-23', ASOF)).toBe('25 Days'); // 100814 — was "0 Years 0 Months"
+  });
+
+  it('the July joiner no longer reads as no service at all', () => {
+    // The whole point of the item: the old format rounded a real month of service away to nothing.
+    const old = serviceYearsMonthsAt('2026-07-23', ASOF);
+    expect(old).toEqual({ years: 0, months: 0 }); // what the tab used to render, verbatim
+    expect(fmt('2026-07-23', ASOF)).toBe('25 Days');
+  });
+
+  it('Group Service and Current Company Service are computed INDEPENDENTLY from their own dates', () => {
+    // employee_code 100814: joined the group 23 Jul, moved to ISEDECOR BINA 11 Aug. The one production row
+    // where the two dates differ — and the case the shipped whole-months format could not fail, because it
+    // rounded BOTH sides to "0 Years 0 Months".
+    const hiredOn = '2026-07-23';
+    const joinDate = '2026-08-11';
+    const group = fmt(hiredOn, ASOF);
+    const current = fmt(joinDate ?? hiredOn, ASOF);
+    expect(group).toBe('25 Days');
+    expect(current).toBe('6 Days');
+    expect(current).not.toBe(group);
+    // Under the OLD format the two were indistinguishable — this is the regression the case exists to catch.
+    expect(serviceYearsMonthsAt(hiredOn, ASOF)).toEqual(serviceYearsMonthsAt(joinDate, ASOF));
+  });
+
+  it('a NULL Join Date still falls back to the Group Join Date (22 of 40 rows carry none)', () => {
+    const hiredOn = '2016-10-04';
+    const joinDate = null;
+    expect(fmt(joinDate ?? hiredOn, ASOF)).toBe(fmt(hiredOn, ASOF));
+  });
+
+  it('a missing Group Join Date yields no caption at all (the em-dash fallback)', () => {
+    expect(fmt(null, ASOF)).toBeNull();
+    expect(fmt(undefined, ASOF)).toBeNull();
+  });
+
+  it('the tab and the summary card cannot disagree — same formatter, same date', () => {
+    const hiredOn = '2016-10-04';
+    expect(fmt(hiredOn, ASOF)).toBe(composeLabel(t, serviceYearsMonthsDaysAt(hiredOn, ASOF)));
+  });
+});
+
+describe('Employment tab source guards (4ea70bb7)', () => {
+  const src = read('app/admin/personnel/[employmentId]/page.tsx');
+
+  it('both captions resolve through the Y/M/D helper, not through serviceLength', () => {
+    expect(src).toContain('const groupServiceLabel = fmtServiceYmd(emp.hiredOn);');
+    expect(src).toContain('const currentServiceLabel = fmtServiceYmd(emp.joinDate ?? emp.hiredOn);');
+    // No call site left for the whole-months key or the whole-months function anywhere on the page.
+    expect(src).not.toContain("t('employmentInfo.serviceLength'");
+    expect(src).not.toContain('serviceYearsMonthsAt(');
+  });
+
+  it('the two captions still render under their own labels', () => {
+    expect(src).toContain("{t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}");
+    expect(src).toContain("{t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}");
+  });
+
+  it('ONE formatter serves all three figures (no second piece of date arithmetic)', () => {
+    expect(src.split('serviceYearsMonthsDaysAt(').length - 1).toBe(1);
+    expect(src.split('const fmtServiceYmd =').length - 1).toBe(1);
+  });
+
+  it('the summary card labels emp.hiredOn as the GROUP join date', () => {
+    expect(src).toContain('{t(\'headerGroupJoinDate\')}</dt>');
+    expect(src).not.toContain("t('headerJoinDate')");
+  });
+});
+
+describe('Personnel Management rename (4ea70bb7)', () => {
+  const catalogues = Object.fromEntries(
+    LOCALES.map((loc) => [loc, JSON.parse(read(`messages/${loc}.json`))]),
+  ) as Record<(typeof LOCALES)[number], Record<string, never>>;
+  const at = (obj: unknown, dotted: string): unknown =>
+    dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj);
+
+  it.each(LOCALES)('locale %s carries every renamed key with a non-empty value', (loc) => {
+    for (const key of [
+      'nav.personnelAdmin', // sidebar AND the security-and-permissions list (lib/permissions labelKey)
+      'people.list.adminTitle', // the admin list heading — NOT people.list.title
+      'people.wizard.backLabel', // Create New Employee → Back link
+      'people.detail.headerGroupJoinDate', // summary card, relabelled over the same emp.hiredOn value
+    ]) {
+      const v = at(catalogues[loc], key);
+      expect(typeof v === 'string' && v.length > 0, `${loc} ${key}`).toBe(true);
+    }
+  });
+
+  it.each(LOCALES)('locale %s keeps the employee-facing directory its OWN name', (loc) => {
+    // THE TRAP: people.list.title is rendered by app/personnel/page.tsx (the directory everybody sees), by
+    // the Excel export header and by the leave tracker. It must NOT have become "Personnel Management".
+    const listTitle = at(catalogues[loc], 'people.list.title');
+    const adminTitle = at(catalogues[loc], 'people.list.adminTitle');
+    const navPeople = at(catalogues[loc], 'nav.people');
+    expect(listTitle).toBe(navPeople); // directory heading and its menu entry, still one name
+    expect(listTitle).not.toBe(adminTitle);
+    expect(at(catalogues[loc], 'nav.personnelAdmin')).toBe(adminTitle);
+  });
+
+  it('English reads exactly as approved', () => {
+    expect(at(catalogues.en, 'nav.personnelAdmin')).toBe('Personnel Management');
+    expect(at(catalogues.en, 'people.list.adminTitle')).toBe('Personnel Management');
+    expect(at(catalogues.en, 'people.wizard.backLabel')).toBe('Back to Personnel Management');
+    expect(at(catalogues.en, 'people.detail.headerGroupJoinDate')).toBe('Group Join Date');
+    expect(at(catalogues.en, 'people.list.title')).toBe('Personnel');
+    expect(at(catalogues.en, 'nav.people')).toBe('Personnel');
+  });
+
+  it.each(LOCALES)('locale %s has DELETED the keys nothing resolves any more', (loc) => {
+    // Presence is not the same as the value being right (the r191 class of debt): a key with no call site
+    // is a stale string waiting to be picked up again. serviceLength said "1 Years 11 Months";
+    // headerJoinDate labelled the group date "Join date".
+    expect(at(catalogues[loc], 'people.detail.employmentInfo.serviceLength')).toBeUndefined();
+    expect(at(catalogues[loc], 'people.detail.headerJoinDate')).toBeUndefined();
+  });
+
+  it('the admin list renders adminTitle and the employee directory still renders title', () => {
+    const adminList = read('app/admin/personnel/page.tsx');
+    const directory = read('app/personnel/page.tsx');
+    expect(adminList).toContain("title={t('adminTitle')}");
+    expect(adminList).not.toContain("title={t('title')}");
+    expect(directory).toContain("title={t('title')}");
+    expect(directory).not.toContain("t('adminTitle')");
+    // Both still read the SAME namespace — the split is in the key, not in a second catalogue.
+    expect(adminList).toContain("getTranslations('people.list')");
+    expect(directory).toContain("getTranslations('people.list')");
+  });
+
+  it('the sidebar and the security-and-permissions list follow from the one nav key', () => {
+    expect(read('components/sidebar.tsx')).toContain("labelKey: 'personnelAdmin'");
+    expect(read('lib/permissions.ts')).toContain("labelKey: 'nav.personnelAdmin'");
+  });
+
+  it('the Create New Employee wizard back link reads the renamed key', () => {
+    const wizard = read('app/admin/personnel/new/page.tsx');
+    expect(wizard).toContain("getTranslations('people.wizard')");
+    expect(wizard).toContain("back={{ href: '/admin/personnel', label: t('backLabel') }}");
   });
 });

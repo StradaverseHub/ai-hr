@@ -5758,10 +5758,18 @@ const recalcAdjustmentReasonCond = () =>
 export { serviceYearsAt, completedYearsAt };
 
 /**
- * Length of service between `hiredOn` and `asOf` broken into whole years + residual whole months — the
- * "XX Years XX Months" reference figure shown on the Employment tab (feedback 24c4d02e). Pure + UTC-correct
- * calendar math, consistent with serviceYearsAt (its `.years` equals serviceYearsAt for the same inputs). A
- * future `asOf` before `hiredOn` clamps to { years: 0, months: 0 }. Display-only; drives no entitlement.
+ * Length of service between `hiredOn` and `asOf` broken into whole years + residual whole months. Pure +
+ * UTC-correct calendar math, consistent with serviceYearsAt (its `.years` equals serviceYearsAt for the
+ * same inputs). A future `asOf` before `hiredOn` clamps to { years: 0, months: 0 }. Display-only; drives no
+ * entitlement.
+ *
+ * It USED to render the "XX Years XX Months" figures on the Employment tab (feedback 24c4d02e); 4ea70bb7
+ * repointed those at the day-precise serviceYearsMonthsDaysAt below, so nothing in app/ calls this any
+ * more. It is kept on purpose, not left behind: it is the whole-month reference the day-precise function is
+ * pinned against (test/personnel-year-of-service.test.ts asserts .years/.months are equal for the same
+ * inputs, over serviceYearsAt's own equality with .years). That chain is what keeps a service figure on
+ * screen and a leave service band computed from the same dates in agreement. Deleting it would remove the
+ * only thing that checks the arithmetic they share.
  */
 export const serviceYearsMonthsAt = (
   hiredOn: string,
@@ -5777,15 +5785,17 @@ export const serviceYearsMonthsAt = (
 };
 
 /**
- * Length of service between `hiredOn` and `asOf` to full day precision — the "Year of Service" figure on
- * the Employee Information card (feedback cc681bd5). Same UTC whole-month math as serviceYearsMonthsAt
+ * Length of service between `hiredOn` and `asOf` to full day precision — every service figure the Personnel
+ * profile shows: "Year of Service" on the summary card (feedback cc681bd5) and, since 4ea70bb7, the
+ * Employment tab's Group Service and Current Company Service (each from its OWN date — this function is
+ * called once per date, it does not know which is which). Same UTC whole-month math as serviceYearsMonthsAt
  * (its `.years`/`.months` ALWAYS equal serviceYearsMonthsAt for the same inputs — this only appends the
  * residual-day tail), so the card figure can never disagree with the leave service bands. Day borrowing:
  * when asOf's day-of-month is below hiredOn's, one month is borrowed and the residual days count from the
  * anchor — hiredOn advanced by the whole-month total, its day-of-month clamped to the anchor month's
  * length (31 Jan + 1 month anchors at 28/29 Feb, so 31-Jan → 1-Mar = 1 Month 1 Day; a 29-Feb hire anchors
  * at 28-Feb in common years). An `asOf` before `hiredOn` clamps to all zeros. Display-only; drives no
- * entitlement (leave bands keep reading serviceYearsAt / serviceYearsMonthsAt).
+ * entitlement — the leave service bands read serviceYearsAt, and this function's `.years` equals it.
  */
 export const serviceYearsMonthsDaysAt = (
   hiredOn: string,
