@@ -3520,6 +3520,8 @@
       },
       "recalcBannerTitle": "This run needs recalculation for {n} employee(s).",
       "recalcBannerBody": "One-off transactions were added, changed or removed after this run was processed, so the payslips, statutory figures and totals below are the earlier numbers. Reprocess the affected employees to bring them up to date; the run cannot be closed until that is done.",
+      "closeBlockedByCoverage": "This run cannot be closed: {n} employee(s) changed company inside this period, and their payslips do not cover the month exactly — some days are unpaid or paid twice. Process or reprocess the other company's run for the same period first.",
+      "generateBlockedByCounterpartClosed": "Cannot process payroll: {n} employee(s) changed company inside this period, and the other company's run for the same period is already closed, so the days it owes can no longer be paid on it. Unlock that run first.",
       "closeBlockedRecalc": "This run cannot be closed until the employees whose transactions changed after processing have been recalculated.",
       "reprocessGroupNewTitle": "New / Pending — {n} employee(s) eligible for this month with no payslip on this run",
       "reprocessColStatus": "Status",

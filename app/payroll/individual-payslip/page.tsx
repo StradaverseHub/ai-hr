@@ -85,7 +85,7 @@ import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-li
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 // 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
 // transfer split it. Null on every other payslip ⇒ this screen renders exactly as it did before.
-import { payslipSegment } from '@/core/payslip-segment';
+import { payslipSegmentOf } from '@/core/payslip-segment';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { payrollProcessBack } from '../back';
@@ -307,9 +307,12 @@ export default async function IndividualPayslipPage({
     : null;
   const pcb = row ? explainPcb(row.statutory, fallbackReliefs) : null;
   const prov = row ? payslipProvenance(row.statutory) : null;
-  // 3c88d593 — the entity segment this slip covers, from the slip's OWN stamp. Null for every payslip
+  // 3c88d593 — the entity segment this slip covers, from the slip's OWN record. Null for every payslip
   // whose month was not split by a transfer.
-  const segment = row ? payslipSegment(row.statutory) : null;
+  // 1b0943d5 — "its own record" is now the coverage window: the 0446 columns, falling back to the r194
+  // jsonb stamp and then to the whole period. Segmented means narrower than the period, so this screen,
+  // both PDF routes and the completeness control all read ONE fact.
+  const segment = row ? payslipSegmentOf(row, row.payPeriod) : null;
   // …and whether the runs on offer below span more than one legal entity, which is the case the chips
   // could not previously tell apart: two August regular runs, same month, same cycle, different employer.
   const matchesSpanCompanies = new Set(matches.map((m) => m.companyId)).size > 1;

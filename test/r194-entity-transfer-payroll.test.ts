@@ -36,8 +36,12 @@
  *   6. NOTHING ELSE MOVES. An employee who did not transfer is byte-identical, and so is an employee whose
  *      entity history exists but never changes — the post-backfill steady state for ~every employment.
  *
- * OUT OF SCOPE, DELIBERATELY (stage two): attendance, leave and reporting reading the resolver. The plan
- * says the resolver must be proven on payroll before a dozen call sites adopt it.
+ * OUT OF SCOPE, DELIBERATELY: attendance, leave and reporting reading the resolver. The plan says the
+ * resolver must be proven on payroll before a dozen call sites adopt it — and it still is out of scope
+ * after r197, which spent stage two on the CROSS-BATCH half instead (see
+ * test/r197-entity-transfer-cross-batch.test.ts). This file remains the WITHIN-ONE-RUN suite: everything
+ * it asserts is about a single batch, which is exactly why it could pass while a month lost a third of
+ * itself between two of them.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -656,13 +660,21 @@ describe('the payslip segment reader and its message keys', () => {
     // A second place deriving "which days did this slip pay" is how a screen and a document start
     // disagreeing about an issued payslip. Source-shape, because the defect would live in the contract
     // between files and a unit test of either half would pass throughout.
+    //
+    // 1b0943d5 UPDATED THE READER, NOT THE RULE. Stage two gave the payslip real coverage columns
+    // (migration 0446), so "is this slip segmented" is no longer "does the jsonb stamp exist" but "is the
+    // coverage window narrower than the pay period" — `payslipSegmentOf`, which reads the columns, falls
+    // back to the r194 stamp, and then to the whole period. The rule this case exists for is unchanged and
+    // is now stricter: the three render paths AND the completeness control read one fact.
     for (const f of [
       'app/payroll/individual-payslip/page.tsx',
       'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
       'app/me/payslip/[payslipId]/pdf/route.ts',
     ]) {
       const src = fs.readFileSync(path.join(process.cwd(), f), 'utf8');
-      expect(src, f).toContain('payslipSegment');
+      expect(src, f).toContain('payslipSegmentOf');
+      // …and nothing re-derives it from the raw stamp beside the shared reader.
+      expect(src.includes('payslipSegment('), `${f}: must not read the raw stamp directly`).toBe(false);
     }
   });
 });

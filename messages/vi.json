@@ -3936,6 +3936,8 @@
       },
       "recalcBannerTitle": "Kỳ lương này cần tính lại cho {n} nhân viên.",
       "recalcBannerBody": "Các giao dịch một lần đã được thêm, sửa hoặc xóa sau khi kỳ lương này được xử lý, nên phiếu lương, các khoản theo luật định và tổng cộng bên dưới là số liệu cũ. Hãy xử lý lại những nhân viên bị ảnh hưởng để cập nhật; kỳ lương không thể đóng cho đến khi hoàn tất.",
+      "closeBlockedByCoverage": "Không thể đóng đợt này: {n} nhân viên đã chuyển công ty trong kỳ này, và phiếu lương của họ không bao phủ trọn tháng — có những ngày chưa được trả hoặc bị trả hai lần. Hãy xử lý hoặc xử lý lại đợt của công ty còn lại cho cùng kỳ trước.",
+      "generateBlockedByCounterpartClosed": "Không thể xử lý lương: {n} nhân viên đã chuyển công ty trong kỳ này, và đợt của công ty còn lại cho cùng kỳ đã đóng, nên những ngày còn nợ không thể trả trên đợt đó nữa. Hãy mở khóa đợt đó trước.",
       "closeBlockedRecalc": "Không thể đóng kỳ lương này cho đến khi những nhân viên có giao dịch thay đổi sau khi xử lý được tính lại.",
       "reprocessGroupNewTitle": "Mới / Chờ xử lý — {n} nhân viên đủ điều kiện tháng này nhưng chưa có phiếu lương trong đợt chạy này",
       "reprocessColStatus": "Trạng thái",
