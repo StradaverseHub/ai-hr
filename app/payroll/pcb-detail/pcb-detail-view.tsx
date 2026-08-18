@@ -28,9 +28,12 @@
  *     first, only its remainder reaches the additional leg). "normal + additional − zakat" is a different
  *     number whenever a leg is under RM10 or the zakat exceeds it.
  *
- *   · A HAND-SET PCB IS NOT EXPLAINED BY ANY OF IT. An operator override replaces `statutory.pcb` and
- *     leaves `pcbMeta` alone, so every figure below still describes the engine's calculation. The screen
- *     says so at the top and lands the working on `pcbSystem`, never on the overridden deduction.
+ *   · THE WORKING IS NOT ALWAYS ABOUT THE DEDUCTED FIGURE, AND THERE ARE TWO WAYS THAT HAPPENS. An
+ *     operator override replaces `statutory.pcb` and leaves `pcbMeta` alone; an ADDITIONAL (bonus /
+ *     off-cycle) run deducts the month's INCREMENT while `pcbMeta` stays the cumulative month. Either
+ *     way every figure below still describes a different number from the one on the payslip. The screen
+ *     says which at the top, lands every working on `pcbSystem`, and prints the deduction on its own
+ *     labelled line — never as the quiet answer to a formula that did not produce it.
  *
  * WHAT AN OLD PAYSLIP GETS. Runs processed before 45df860a carry no `trace`, so `explainPcb` hands back
  * `trace: null` and this screen says "not recorded for this run" in the places the legs would have gone.
@@ -147,10 +150,26 @@ export async function PcbDetailView({
   const taxYear = /^\d{4}/.exec(ctx.payPeriod)?.[0] ?? ctx.payPeriod;
 
   const trace = explanation.kind === 'mtd' ? explanation.trace : null;
-  /** The hand-set-PCB stamp, and the figure the working on this screen actually explains. With no
-   *  override `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
-  const override = explanation.override;
+  /** WHY the working and the deduction are different numbers, and the figure the working explains. With
+   *  no basis `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
+  const basis = explanation.basis;
   const sys = explanation.pcbSystem;
+  /** An additional run's working describes the WHOLE MONTH, so every line that lands on `sys` has to be
+   *  captioned as the month rather than as "what the system calculated" — on an off-cycle run those are
+   *  not the same sentence, and the reader is looking at a figure their payslip does not contain. */
+  const wholeMonth = basis != null && basis.prior != null;
+  const L = {
+    banner: basis?.kind === 'manual' ? 'overrideBanner' : basis?.kind === 'additionalRun' ? 'deltaBanner' : 'deltaOverrideBanner',
+    bannerHeading:
+      basis?.kind === 'manual' ? 'overrideHeading' : basis?.kind === 'additionalRun' ? 'deltaHeading' : 'deltaOverrideHeading',
+    bannerSystem: wholeMonth ? 'deltaMonthTotal' : 'overrideSystem',
+    bannerApplied: basis?.kind === 'additionalRun' ? 'deltaApplied' : 'overrideApplied',
+    netSystem: wholeMonth ? 'netMtdMonth' : 'netMtdSystem',
+    netDeducted: basis?.kind === 'additionalRun' ? 'netMtdRun' : 'netMtdDeducted',
+    finalSystem: wholeMonth ? 'finalPcbMonth' : 'finalPcbSystem',
+    finalDeducted: basis?.kind === 'additionalRun' ? 'finalPcbRun' : 'finalPcbDeducted',
+    note: basis?.kind === 'manual' ? 'overrideNote' : basis?.kind === 'additionalRun' ? 'deltaNote' : 'deltaOverrideNote',
+  } as const;
 
   return (
     <div className="space-y-6">
@@ -169,17 +188,26 @@ export async function PcbDetailView({
         />
       </Block>
 
-      {/* ── THE HAND-SET PCB, SAID FIRST. Above every working and outside every `kind` branch, because
-          the sentence a reader needs before reading a single figure is that the figures below explain a
-          calculation whose answer was then replaced. Rendering the working without this would make the
-          screen a competent-looking derivation of an amount nobody deducted. ── */}
-      {override && (
+      {/* ── WHICH FIGURE THIS SCREEN IS ABOUT, SAID FIRST. Above every working and outside every `kind`
+          branch, because the sentence a reader needs before reading a single figure is that the working
+          below lands on a number their payslip may not contain — because it was replaced by hand, or
+          because this run deducted only the month's increase. Rendering the working without this makes
+          the screen a competent-looking derivation of an amount nobody deducted. ── */}
+      {basis && (
         <Card className="border-amber-500/40 bg-amber-500/10 p-4">
-          <h2 className="mb-2 text-sm font-semibold">{t('overrideHeading')}</h2>
-          <p className="mb-3 text-sm">{t('overrideBanner')}</p>
-          <Row label={t('overrideSystem')} value={rm(override.system)} />
-          <Row label={t('overrideApplied')} value={rm(override.applied)} />
-          <Row label={t('overrideReason')} value={override.reason || t('notRecordedShort')} />
+          <h2 className="mb-2 text-sm font-semibold">{t(L.bannerHeading)}</h2>
+          <p className="mb-3 text-sm">{t(L.banner)}</p>
+          <Row label={t(L.bannerSystem)} value={rm(basis.system)} />
+          {basis.prior != null && <Row label={t('deltaPrior')} value={rm(basis.prior)} />}
+          {/* The engine's own increment is worth a line only when it is NOT what was deducted — i.e. when
+              an increment run was then also set by hand, and there are three figures to keep apart. */}
+          {basis.kind === 'additionalRunManual' && basis.engineRun != null && (
+            <Row label={t('deltaEngineRun')} value={rm(basis.engineRun)} />
+          )}
+          <Row label={t(L.bannerApplied)} value={rm(basis.applied)} />
+          {basis.kind !== 'additionalRun' && (
+            <Row label={t('overrideReason')} value={basis.reason || t('notRecordedShort')} />
+          )}
         </Card>
       )}
 
@@ -207,8 +235,8 @@ export async function PcbDetailView({
             label={t('flatAdditional')}
             value={explanation.trace ? rm(explanation.trace.additional) : <NotRecorded />}
           />
-          <Row label={override ? t('netMtdSystem') : t('netMtd')} value={rm(sys)} />
-          {override && <Row label={t('netMtdDeducted')} value={rm(explanation.pcb)} />}
+          <Row label={basis ? t(L.netSystem) : t('netMtd')} value={rm(sys)} />
+          {basis && <Row label={t(L.netDeducted)} value={rm(explanation.pcb)} />}
           <div className="mt-3">
             <Formula
               formulaLabel={t('formulaLabel')}
@@ -222,8 +250,10 @@ export async function PcbDetailView({
                 )
               }
               resultLabel={t('resultLabel')}
-              // The ENGINE's figure, not the deduction: a hand-set PCB is not what this multiplication
-              // produced, and printing it here would make the flat rate look like it explained the override.
+              // The figure this multiplication ACTUALLY produced, which is the whole month's — the stored
+              // remuneration above is the cumulative month on an additional run, and a hand-set PCB is not
+              // what any multiplication produced. Printing the deduction here would make the flat rate
+              // look like it explained a number it never touched.
               result={rm(sys)}
             />
           </div>
@@ -251,12 +281,12 @@ export async function PcbDetailView({
             <Row label={t('mtdAdditional')} value={trace ? rm(trace.mtdAdditionalCalc) : <NotRecorded />} />
             <Row label={t('currentZakat')} value={rm(explanation.zakat)} muted />
             <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-              <span>{override ? t('netMtdSystem') : t('netMtd')}</span>
+              <span>{basis ? t(L.netSystem) : t('netMtd')}</span>
               <span className="tabular-nums">{rm(sys)}</span>
             </div>
-            {override && (
+            {basis && (
               <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-                <span>{t('netMtdDeducted')}</span>
+                <span>{t(L.netDeducted)}</span>
                 <span className="tabular-nums">{rm(explanation.pcb)}</span>
               </div>
             )}
@@ -433,7 +463,13 @@ export async function PcbDetailView({
               }
             />
             <Row label={t('additionalMtdCalc')} value={trace ? rm(trace.mtdAdditionalCalc) : <NotRecorded />} />
-            <Row label={t('additionalMtdDeducted')} value={rm(explanation.pcbAdditional)} />
+            {/* The split belongs to the CALCULATION, so on an additional run this leg is the whole
+                month's too — captioned as such, because "deducted" would be a false claim about a slip
+                that only carried the increase. */}
+            <Row
+              label={wholeMonth ? t('additionalMtdMonth') : t('additionalMtdDeducted')}
+              value={rm(explanation.pcbAdditional)}
+            />
             <div className="mt-3 border-t border-border pt-3">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t('yearHeading')}
@@ -489,19 +525,19 @@ export async function PcbDetailView({
               ))}
             </ol>
             <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3 text-base font-semibold">
-              <span>{override ? t('finalPcbSystem') : t('finalPcb')}</span>
+              <span>{basis ? t(L.finalSystem) : t('finalPcb')}</span>
               <span className="tabular-nums">{rm(sys)}</span>
             </div>
-            {/* The chain above ends at the ENGINE's figure. When the PCB was set by hand the deduction is
-                a separate line with its own label — never the quiet answer to a working that did not
-                produce it. */}
-            {override && (
+            {/* The chain above ends where the CALCULATION ends. When the PCB was set by hand, or when this
+                run deducted only the month's increase, the deduction is a separate line with its own
+                label — never the quiet answer to a working that did not produce it. */}
+            {basis && (
               <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-base font-semibold">
-                <span>{t('finalPcbDeducted')}</span>
+                <span>{t(L.finalDeducted)}</span>
                 <span className="tabular-nums">{rm(explanation.pcb)}</span>
               </div>
             )}
-            {override && <p className="pt-2 text-xs text-muted-foreground">{t('overrideNote')}</p>}
+            {basis && <p className="pt-2 text-xs text-muted-foreground">{t(L.note)}</p>}
           </Block>
         </>
       )}

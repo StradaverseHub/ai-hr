@@ -41,9 +41,9 @@ const CURRENT: PcbReliefBreakdown = {
 describe('169e3c24 — explaining the PCB figure from what the payslip recorded', () => {
   it('says so plainly when no working was recorded (imported / pre-stamp run)', () => {
     // 45df860a fix pass — every shape now also carries `pcbSystem` (what the working explains) and
-    // `override` (the hand-set-PCB stamp, NULL here). Updated rather than loosened, for the reason
-    // spelled out in the flat-rate case below.
-    expect(explainPcb({ pcb: 350 }, CURRENT)).toEqual({ kind: 'unavailable', pcb: 350, pcbSystem: 350, override: null });
+    // `basis` (WHY it differs from the deduction: a hand-set PCB, or an additional run that deducted the
+    // month's increase — NULL here). Updated rather than loosened, for the reason spelled out below.
+    expect(explainPcb({ pcb: 350 }, CURRENT)).toEqual({ kind: 'unavailable', pcb: 350, pcbSystem: 350, basis: null });
     expect(explainPcb({ pcb: 350, pcbMeta: {} }, CURRENT).kind).toBe('unavailable');
   });
 
@@ -56,12 +56,12 @@ describe('169e3c24 — explaining the PCB figure from what the payslip recorded'
     // These two `toEqual`s are updated rather than loosened to `toMatchObject` — an exact shape is the
     // point of asserting it this way, and a silently-grown explanation is what the update catches.
     const r = explainPcb({ pcb: 1500, pcbMeta: { nonResident: true, flatRate: 0.3, rate: 0.3 } }, CURRENT);
-    expect(r).toEqual({ kind: 'flat', rate: 0.3, nonResident: true, trace: null, pcb: 1500, pcbSystem: 1500, override: null });
+    expect(r).toEqual({ kind: 'flat', rate: 0.3, nonResident: true, trace: null, pcb: 1500, pcbSystem: 1500, basis: null });
   });
 
   it('reports the REP / knowledge-worker incentive rate as flat but NOT non-resident', () => {
     const r = explainPcb({ pcb: 750, pcbMeta: { nonResident: false, flatRate: 0.15, rate: 0.15 } }, CURRENT);
-    expect(r).toEqual({ kind: 'flat', rate: 0.15, nonResident: false, trace: null, pcb: 750, pcbSystem: 750, override: null });
+    expect(r).toEqual({ kind: 'flat', rate: 0.15, nonResident: false, trace: null, pcb: 750, pcbSystem: 750, basis: null });
   });
 
   it('reads the payslip’s OWN relief working when it has one', () => {

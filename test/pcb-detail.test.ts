@@ -41,9 +41,9 @@ import { REGISTERED_ROUTES } from '../lib/permissions';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '../core/payroll-view';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, resetDb, seedBase, setModule, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -447,7 +447,14 @@ describe('45df860a — a manually adjusted PCB is declared, not quietly explaine
     if (r.kind !== 'mtd') throw new Error('unreachable');
     expect(r.pcb, 'what was deducted').toBe(120);
     expect(r.pcbSystem, 'what the working below explains').toBe(402.65);
-    expect(r.override).toEqual({ system: 402.65, applied: 120, reason: 'LHDN instalment letter' });
+    expect(r.basis).toEqual({
+      kind: 'manual',
+      system: 402.65,
+      applied: 120,
+      prior: null,
+      engineRun: null,
+      reason: 'LHDN instalment letter',
+    });
     // The normal/additional split belongs to the CALCULATION, so it sums to the system figure. Splitting
     // a hand-set amount along the engine's proportions would invent a breakdown nobody produced.
     expect(r.pcbNormal + r.pcbAdditional).toBeCloseTo(r.pcbSystem, 2);
@@ -462,7 +469,7 @@ describe('45df860a — a manually adjusted PCB is declared, not quietly explaine
       CURRENT,
     );
     if (r.kind !== 'mtd') throw new Error('unreachable');
-    expect(r.override).toBeNull();
+    expect(r.basis).toBeNull();
     expect(r.pcbSystem).toBe(402.65);
   });
 
@@ -470,7 +477,7 @@ describe('45df860a — a manually adjusted PCB is declared, not quietly explaine
     for (const stamp of [undefined, null as unknown, {}, { reason: 'x' }, { reason: 'x', lines: {} }, [] as unknown]) {
       const r = explainPcb({ ...overridden(stamp), pcb: 402.65 }, CURRENT);
       if (r.kind !== 'mtd') throw new Error('unreachable');
-      expect(r.override, `${JSON.stringify(stamp)} is not an override`).toBeNull();
+      expect(r.basis, `${JSON.stringify(stamp)} is not an override`).toBeNull();
       expect(r.pcbSystem).toBe(r.pcb);
     }
   });
@@ -487,7 +494,172 @@ describe('45df860a — a manually adjusted PCB is declared, not quietly explaine
     if (r.kind !== 'flat') throw new Error('unreachable');
     expect(r.pcbSystem).toBe(1500);
     expect(r.pcb).toBe(900);
-    expect(r.override!.reason).toBe('agreed with LHDN');
+    expect(r.basis!.reason).toBe('agreed with LHDN');
+  });
+});
+
+// ─────────────── An ADDITIONAL run deducts the increase, and the working is the month's ───────────────
+
+describe('45df860a — an additional run’s working is the WHOLE MONTH, and the screen is told so', () => {
+  /**
+   * ADR-0024: a bonus / off-cycle run's statutory figures are the INCREMENT of the cumulative month —
+   * `deltaStat` re-runs the month with and without this run's additional remuneration and keeps the
+   * difference. It rewrites the DELTA_KEYS and nothing else, so `pcbMeta` rides through as the CUMULATIVE
+   * month's working while `pcb` is the increase.
+   *
+   * THAT IS THE SAME DEFECT SHAPE AS A HAND-SET PCB, and it was live on every bonus payslip: a complete
+   * LHDN working, correct in every line, printed as the derivation of a figure nobody deducted. The
+   * numbers below are the concrete run from the report — wage 12,000, month 6, prior PCB 2,000, a 20,000
+   * bonus on an off-cycle run — where the substituted formula evaluated to 7,071.30 beside `= RM 4,999.85`
+   * and the additional leg swallowed the whole system figure, leaving a normal leg of RM 0.00 beside a
+   * trace that plainly showed 2,071.45.
+   */
+  const DELTA_TRACE = {
+    ...STORED_TRACE,
+    Yt: 20000, Kt: 0, K2t: 0,
+    totalTaxYear: 20000, totalMtdYear: 12000,
+    mtdNormalCalc: 2071.45, mtdAdditionalCalc: 4999.85,
+    mtdNormalFloored: 2071.45, mtdAdditionalFloored: 4999.85, zakatLeftover: 0,
+  };
+  const deltaBlob = (over?: Record<string, unknown>, blob?: Record<string, unknown>) => ({
+    // What the payslip carries: the INCREASE.
+    pcb: 4999.85,
+    pcbBonus: 4999.85,
+    epfEmployee: 0,
+    pcbMeta: {
+      month: 6, n: 6, ytdNet: 60000, epfClaimed: 6600, pcbPaid: 2000, P1: 120000, P2: 140000,
+      reliefs: { individual: 9000, spouse: 0, children: 0, disabledIndividual: 0, disabledSpouse: 0, lp: 0, total: 9000 },
+      trace: DELTA_TRACE,
+      // What the working actually explains: the whole month.
+      delta: { cumulative: 7071.3, prior: 2071.45, cumulativeBonus: 4999.85 },
+      ...over,
+    },
+    ...blob,
+  });
+
+  it('reads the month’s figure as what the working explains, and the increase as what was deducted', () => {
+    const r = explainPcb(deltaBlob(), CURRENT);
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.pcb, 'what this payslip deducted').toBe(4999.85);
+    expect(r.pcbSystem, 'what every figure below it describes').toBe(7071.3);
+    expect(r.basis).toEqual({
+      kind: 'additionalRun',
+      system: 7071.3,
+      applied: 4999.85,
+      prior: 2071.45,
+      engineRun: 4999.85,
+      reason: '',
+    });
+    // The increment identity, stated rather than assumed: the month, less what the month's earlier runs
+    // already covered, IS the deduction on this slip.
+    expect(r.basis!.system - r.basis!.prior!).toBeCloseTo(r.pcb, 2);
+  });
+
+  it('RECONCILES: the working lands on the month’s PCB — which is now the figure printed beside it', () => {
+    // Rule 17, on the path the whole suite could not see. Every other reconciliation here calls pcbMonth
+    // directly, where `total = normal + additional` by construction; the delta only exists once the
+    // kernel differences two of those calls, so this is the one case that catches the mismatch.
+    const r = explainPcb(deltaBlob(), CURRENT);
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    const tr = r.trace!;
+    const net =
+      Math.max(0, tr.mtdNormalFloored - tr.zakatCurrent) +
+      Math.max(0, tr.mtdAdditionalFloored - Math.max(0, tr.zakatCurrent - tr.mtdNormalFloored));
+    expect(net, 'the §E.3 / §E.5 line evaluates to the MONTH, not to the increase').toBeCloseTo(r.pcbSystem, 2);
+    expect(net, 'and it is NOT the deducted figure — the screen must label the two apart').not.toBeCloseTo(r.pcb, 2);
+  });
+
+  it('splits normal / additional along the SAME month the working describes', () => {
+    // `statutory.pcbBonus` is a DELTA_KEY too, so pairing the blob's copy with a cumulative system figure
+    // produced pcbNormal = 0.00 sitting beside a trace that showed 2,071.45 — the screen contradicting
+    // itself about the same slip. The cumulative leg comes out of the same stamp the total does.
+    const r = explainPcb(deltaBlob(), CURRENT);
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.pcbAdditional).toBe(4999.85);
+    expect(r.pcbNormal, 'the normal leg the trace shows, not zero').toBeCloseTo(2071.45, 2);
+    expect(r.pcbNormal + r.pcbAdditional).toBeCloseTo(r.pcbSystem, 2);
+    expect(r.pcbNormal).toBeCloseTo(r.trace!.mtdNormalCalc, 2);
+  });
+
+  it('a half-written delta stamp is no stamp at all — it must never claim the month was RM 0.00', () => {
+    // Same gate, same reason as `readTrace`: `Number(undefined)` is 0, and a banner asserting "PCB for
+    // the whole month RM 0.00" is a false statement about someone's tax rather than a missing figure.
+    for (const bad of [{}, { cumulative: 7071.3 }, { prior: 2071.45 }, [] as unknown, 'nope' as unknown, null as unknown]) {
+      const r = explainPcb(deltaBlob({ delta: bad }), CURRENT);
+      if (r.kind !== 'mtd') throw new Error('unreachable');
+      expect(r.basis, `${JSON.stringify(bad)} is not a delta stamp`).toBeNull();
+      expect(r.pcbSystem, 'and the slip reads as an ordinary one').toBe(r.pcb);
+    }
+  });
+
+  it('a delta whose baseline is ZERO raises no banner — the increment IS the month', () => {
+    // `prior` is the month WITHOUT this run. When it is zero the earlier runs carried no PCB, so the
+    // increment and the month are the same number and the working DOES explain the deduction. An amber
+    // card over a payslip with nothing wrong is how readers learn to scroll past the one that matters —
+    // the same reason an adjustment to a non-PCB line raises none.
+    const r = explainPcb(
+      deltaBlob({ delta: { cumulative: 4999.85, prior: 0, cumulativeBonus: 4999.85 } }),
+      CURRENT,
+    );
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.basis).toBeNull();
+    expect(r.pcbSystem).toBe(r.pcb);
+    // …and the split still comes off the stamp, because that side is about WHICH MONTH the legs belong
+    // to rather than about a gap between two figures.
+    expect(r.pcbAdditional).toBe(4999.85);
+  });
+
+  it('a payslip with no delta stamp at all is untouched — a regular run has nothing to declare', () => {
+    const r = explainPcb(deltaBlob({ delta: undefined }), CURRENT);
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.basis).toBeNull();
+    expect(r.pcbSystem).toBe(r.pcb);
+    expect(r.pcbAdditional, 'and the split falls back to the blob’s own leg').toBe(4999.85);
+  });
+
+  it('an increment run whose PCB was ALSO set by hand keeps all three figures apart', () => {
+    // Both mechanisms at once. The working still describes the month, so the month keeps the `system`
+    // seat; the engine's own increment for this run is not lost — it becomes `engineRun`, printed on its
+    // own row — and `applied` is what left the employee's pay.
+    const r = explainPcb(
+      deltaBlob(undefined, {
+        pcb: 3000,
+        adjustment: { reason: 'LHDN instalment letter', lines: { pcb: { system: 4999.85, applied: 3000 } } },
+      }),
+      CURRENT,
+    );
+    if (r.kind !== 'mtd') throw new Error('unreachable');
+    expect(r.basis).toEqual({
+      kind: 'additionalRunManual',
+      system: 7071.3,
+      applied: 3000,
+      prior: 2071.45,
+      engineRun: 4999.85,
+      reason: 'LHDN instalment letter',
+    });
+    expect(r.pcbSystem, 'the working explains the month, not the operator’s figure').toBe(7071.3);
+    expect(r.pcb).toBe(3000);
+  });
+
+  it('a FLAT-rate additional run has the identical shape, and is declared the same way', () => {
+    // `pcbMeta.trace.remuneration / additional` are the cumulative month's too, so ( remuneration +
+    // additional ) × rate overshoots the deduction by exactly the same amount. Same stamp, same banner.
+    const r = explainPcb(
+      {
+        pcb: 4500,
+        pcbMeta: {
+          nonResident: true, flatRate: 0.3, rate: 0.3,
+          trace: { remuneration: 5000, additional: 20000, rate: 0.3 },
+          delta: { cumulative: 7500, prior: 3000, cumulativeBonus: 6000 },
+        },
+      },
+      CURRENT,
+    );
+    if (r.kind !== 'flat') throw new Error('unreachable');
+    expect(r.pcbSystem, 'what ( 5,000 + 20,000 ) × 30% actually produces').toBe(7500);
+    expect(r.pcb, 'what this payslip deducted').toBe(4500);
+    expect(r.basis!.kind).toBe('additionalRun');
+    expect(r.trace!.remuneration + r.trace!.additional).toBeCloseTo(r.pcbSystem / 0.3, 2);
   });
 });
 
@@ -576,6 +748,13 @@ describe('45df860a — the shared screen, and the two entry points that reach it
       // THIRTEEN, not eleven. The chain used to stop at the normal leg and then print the deducted PCB
       // underneath it, silently skipping the bonus leg, the RM10 rule and the zakat offset.
       ...Array.from({ length: 13 }, (_, i) => `step${i + 1}`),
+      // The banner, the two summary lines and the two final lines are chosen by `basis.kind` through a
+      // lookup, for the same reason and with the same blind spot.
+      'overrideHeading', 'overrideBanner', 'deltaHeading', 'deltaBanner', 'deltaOverrideHeading', 'deltaOverrideBanner',
+      'overrideSystem', 'deltaMonthTotal', 'overrideApplied', 'deltaApplied', 'deltaPrior', 'deltaEngineRun',
+      'netMtdSystem', 'netMtdMonth', 'netMtdDeducted', 'netMtdRun',
+      'finalPcbSystem', 'finalPcbMonth', 'finalPcbDeducted', 'finalPcbRun',
+      'overrideNote', 'deltaNote', 'deltaOverrideNote', 'additionalMtdDeducted', 'additionalMtdMonth',
     ];
     const keysOf = (loc: string) =>
       Object.keys(
@@ -669,7 +848,7 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     // Both must be present, and the banner must exist, or a manual override turns the whole screen into
     // a derivation of a number nobody deducted.
     const view = code(VIEW);
-    expect(view).toContain('explanation.override');
+    expect(view).toContain('explanation.basis');
     expect(view).toContain('explanation.pcbSystem');
     for (const k of ['overrideHeading', 'overrideBanner', 'overrideSystem', 'overrideApplied', 'overrideReason', 'finalPcbDeducted']) {
       expect(view, `the screen must render ${k}`).toContain(k);
@@ -678,6 +857,47 @@ describe('45df860a — the shared screen, and the two entry points that reach it
       .payroll.pcbDetail;
     expect(en.overrideBanner.toLowerCase(), 'and it must say the working does not explain the deduction')
       .toContain('not an explanation');
+  });
+
+  it('an ADDITIONAL run is announced on the same banner, with its own words', () => {
+    // The delta run has the identical shape — a complete working about a figure the payslip does not
+    // carry — so it rides the identical mechanism. What it must NOT do is borrow the hand-set wording:
+    // "set by hand" is a false statement about a bonus run, and a reader who is told the wrong reason
+    // stops trusting the banner on the payslips where the reason matters.
+    const view = code(VIEW);
+    for (const k of ['deltaHeading', 'deltaBanner', 'deltaMonthTotal', 'deltaPrior', 'deltaApplied', 'deltaNote',
+                     'deltaEngineRun', 'deltaOverrideHeading', 'deltaOverrideBanner', 'deltaOverrideNote',
+                     'netMtdMonth', 'netMtdRun', 'finalPcbMonth', 'finalPcbRun', 'additionalMtdMonth']) {
+      expect(view, `the screen must render ${k}`).toContain(k);
+    }
+    const en = (JSON.parse(read('messages/en.json')) as { payroll: { pcbDetail: Record<string, string> } })
+      .payroll.pcbDetail;
+    expect(en.deltaBanner.toLowerCase(), 'it must say what was deducted was the increase').toContain('increase');
+    expect(en.deltaBanner.toLowerCase(), 'and that the working is the whole month').toContain('whole month');
+    expect(en.deltaHeading.toLowerCase(), 'the delta heading must not claim a manual adjustment')
+      .not.toContain('by hand');
+  });
+
+  it('the flat-rate rounding note does not promise 5 sen and then name the RM10 floor', () => {
+    // The note used to say the product "lands within 5 sen of the figure beside it" in the same breath
+    // as the RM10 rule. With the floor in play the gap is up to RM 9.99 — remuneration of RM30 at 30%
+    // prints 9.00 beside `= RM 0.00` — so the sentence contradicted its own screen. The two rules are
+    // now stated as two, and the nil case is named.
+    for (const loc of LOCALES) {
+      const blk = (JSON.parse(read(`messages/${loc}.json`)) as {
+        payroll: { pcbDetail: Record<string, string> };
+      }).payroll.pcbDetail;
+      const note = blk.flatRoundingNote;
+      expect(note, `${loc}: the RM10 rule is still named`).toContain('RM10');
+      const fiveSen = note.indexOf('5');
+      const floor = note.indexOf('RM10');
+      expect(floor, `${loc}: the RM10 case must be stated AFTER the 5-sen claim, not inside it`)
+        .toBeGreaterThan(fiveSen);
+    }
+    const en = (JSON.parse(read('messages/en.json')) as { payroll: { pcbDetail: Record<string, string> } })
+      .payroll.pcbDetail;
+    expect(en.flatRoundingNote.toLowerCase(), 'and the floored case must say what is shown instead')
+      .toContain('nil');
   });
 
   it('the missing-working sentence is on the screen, and it does not say zero', () => {
@@ -759,5 +979,93 @@ describe('45df860a — a payroll run processed today closes its own formula', ()
     expect(tr.mtdNormalCalc, 'and this month is above the RM10 floor with no zakat, so it IS the deduction')
       .toBeGreaterThanOrEqual(10);
     expect(x.pcb).toBeCloseTo(tr.mtdNormalCalc, 2);
+  });
+
+  it('an ADDITIONAL run records the month it explains, and the working closes on THAT figure', async () => {
+    // THE CASE THE WHOLE SUITE COULD NOT SEE. Every other reconciliation here calls `pcbMonth` directly,
+    // where `total = normal + additional` by construction. The delta only comes into existence when the
+    // KERNEL differences two of those calls (ADR-0024), so the mismatch between the carried-through
+    // `pcbMeta` and the incremental `pcb` is invisible until a real bonus run is generated end to end.
+    // `entitledCtx`, not `adminCtx`: `createAdditionalRun` reads the multi_cycle_payroll ENTITLEMENT off
+    // the session snapshot, and adminCtx's snapshot is derived from the env (which test/env.ts clears).
+    // The grant must be written BEFORE the context is built — a snapshot is a point-in-time read.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Pcb Bonus', primaryEmail: 'pcb.bonus@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await setCompensation(a, {
+      employmentId: e.employmentId,
+      basicSalary: 12000,
+      monthlyAllowance: 0,
+      effectiveFrom: '2026-01-01',
+    });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011602', taxCategory: 1 });
+
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const extra = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-06', runType: 'bonus' });
+    await setPayrollInput(a, {
+      batchId: extra.batchId,
+      employmentId: e.employmentId,
+      overtimeAmount: 0,
+      bonusAmount: 20000,
+    });
+    await generatePayslips(a, { batchId: extra.batchId });
+
+    const rows = await listProcessedPayslipsAcross(a, {
+      companyIds: [base.companyId],
+      employmentId: e.employmentId,
+    });
+    const bonusRow = rows.find((r) => r.runType === 'bonus')!;
+    expect(bonusRow, 'the bonus run produced a payslip').toBeTruthy();
+    const row = await payslipForReview(a, { companyIds: [base.companyId], payslipId: bonusRow.id });
+    const fallback = await currentPcbReliefs(a, {
+      companyIds: [base.companyId],
+      employmentId: e.employmentId,
+      asOf: '2026-06-28',
+    });
+    const x = explainPcb(row!.statutory, fallback);
+    if (x.kind !== 'mtd') throw new Error('unreachable');
+
+    // The deduction is the INCREASE; the working is the month's, and they are different numbers.
+    expect(x.basis, 'the screen is told which figure it is looking at').not.toBeNull();
+    expect(x.basis!.kind).toBe('additionalRun');
+    expect(x.pcb, 'what the payslip deducted').toBeCloseTo(Number((row!.statutory as { pcb: number }).pcb), 2);
+    expect(x.pcbSystem, 'the whole month, which is larger').toBeGreaterThan(x.pcb);
+    expect(x.basis!.prior! + x.pcb, 'the increment identity holds on a real run').toBeCloseTo(x.pcbSystem, 2);
+
+    // RULE 17 ACROSS THE DELTA. What the SCREEN reads, put back through §E.3 and §E.5, is the month's
+    // PCB — the figure the screen now prints beside the expression. Before this it printed the increase
+    // there, so the working overshot its own answer by everything the earlier run had already covered.
+    const tr = x.trace!;
+    expect(tr, 'a run processed today records the whole working').toBeTruthy();
+    const net =
+      Math.max(0, tr.mtdNormalFloored - tr.zakatCurrent) +
+      Math.max(0, tr.mtdAdditionalFloored - Math.max(0, tr.zakatCurrent - tr.mtdNormalFloored));
+    expect(net).toBeCloseTo(x.pcbSystem, 2);
+
+    // …and the P₁ bracket line still closes on the normal leg it is printed above.
+    const substituted = ceil5sen(
+      trunc2(
+        Math.max(0, ((x.chargeableIncome - tr.M) * tr.R + tr.B - (tr.Z + x.pcbPaidYtd)) / (x.remainingMonths + 1)),
+      ),
+    );
+    expect(substituted).toBeCloseTo(tr.mtdNormalCalc, 2);
+
+    // The split describes the SAME month as the working: a normal leg that is actually there, and the
+    // two summing to the figure the working lands on rather than to the increment.
+    expect(x.pcbNormal).toBeGreaterThan(0);
+    expect(x.pcbAdditional).toBeGreaterThan(0);
+    expect(x.pcbNormal + x.pcbAdditional).toBeCloseTo(x.pcbSystem, 2);
+    expect(rm10Floor(r2(x.pcbNormal)), 'the normal leg is the one the trace shows').toBeCloseTo(
+      tr.mtdNormalCalc,
+      2,
+    );
   });
 });

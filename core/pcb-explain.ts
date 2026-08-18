@@ -39,12 +39,22 @@
  *      bracket was zero", which is a false statement about someone's tax. The caller renders "not
  *      recorded for this run" and shows the legs it genuinely has.
  *
- *   5. A HAND-SET PCB — a working that is complete, correct, and about a DIFFERENT NUMBER. When an
- *      operator overrides the PCB line (2961a7ae), `statutory.pcb` becomes their figure and `pcbMeta` is
- *      left exactly as the engine wrote it, because no second calculation ran. So `pcbSystem` (what the
- *      working explains) and `pcb` (what was deducted) part company, `override` carries the before /
- *      after / reason, and the screen must say the deduction was set by hand rather than presenting a
- *      tidy LHDN formula as the explanation of an amount nobody computed.
+ *   5. A WORKING THAT IS COMPLETE, CORRECT, AND ABOUT A DIFFERENT NUMBER. This happens for TWO unrelated
+ *      reasons, and both are read out through the same three members — `pcbSystem` is what the recorded
+ *      working explains, `pcb` is what was deducted, `basis` says why they differ:
+ *
+ *        a. A HAND-SET PCB. An operator overrides the PCB line (2961a7ae): `statutory.pcb` becomes their
+ *           figure and `pcbMeta` is left exactly as the engine wrote it, because no second calculation
+ *           ran.
+ *
+ *        b. AN ADDITIONAL RUN. A bonus / off-cycle run deducts the INCREMENT of the cumulative month
+ *           (ADR-0024): `deltaStat` (core/payroll.ts) rewrites `pcb` to `now − before` but carries
+ *           `pcbMeta` through untouched, so the stored working — P, the bracket, both MTD legs — is the
+ *           WHOLE month's while the deduction is the increase. `deltaStat` stamps `pcbMeta.delta` with
+ *           the two figures it took the difference between, and that stamp is what is read here.
+ *
+ *      Either way the screen must say the deduction was set by hand / is this run's increase, rather than
+ *      presenting a tidy LHDN formula as the explanation of an amount nobody computed.
  */
 
 export type PcbReliefBreakdown = {
@@ -105,25 +115,42 @@ export type PcbTrace = {
 };
 
 /**
- * 2961a7ae × 45df860a — A PCB SET BY HAND.
+ * 2961a7ae × ADR-0024 × 45df860a — WHY THE WORKING AND THE DEDUCTION ARE DIFFERENT NUMBERS.
  *
- * `applyStatutoryAdjustment` (core/payroll.ts) overwrites `statutory.pcb` with an operator's figure and
- * records the before/after under `statutory.adjustment`. It deliberately does NOT rewrite `pcbMeta`:
- * there is no second calculation to record, because none ran. So every member of the trace describes the
- * figure the ENGINE produced, while `pcb` is the figure that was actually deducted, and the two are
- * different numbers.
+ * Two mechanisms open this gap, and neither rewrites `pcbMeta`, so in both cases every member of the
+ * trace describes one figure while `statutory.pcb` is another:
  *
- * A screen that did not notice would present a complete, correct-looking LHDN working as the explanation
- * of an amount nobody computed — the exact failure this whole item exists to remove, wearing a
- * respectable formula. So the override is read out and reported, the working is labelled as explaining
- * `pcbSystem`, and the screen says the deduction was set by hand.
+ *   · `applyStatutoryAdjustment` overwrites `statutory.pcb` with an operator's figure and records the
+ *     before/after under `statutory.adjustment`. There is no second calculation to record because none
+ *     ran, so the working still describes what the ENGINE produced.
+ *
+ *   · `deltaStat` turns an additional run's `pcb` into the month's INCREMENT while carrying `pcbMeta`
+ *     through as the CUMULATIVE month, and stamps `pcbMeta.delta` with the pair it differenced. The
+ *     working therefore describes the whole month; the payslip deducted the increase.
+ *
+ * A screen that did not notice either would present a complete, correct-looking LHDN working as the
+ * explanation of an amount nobody computed — the exact failure this whole item exists to remove, wearing
+ * a respectable formula. So the basis is read out and reported, the working is labelled as explaining
+ * `pcbSystem`, and the screen says in plain words which figure is which.
  */
-export type PcbOverride = {
-  /** What the engine computed (`adjustment.lines.pcb.system`). */
+export type PcbBasis = {
+  /** WHY the two figures differ — the screen's banner, labels and extra rows all turn on this.
+   *   · 'manual'              an operator replaced the PCB line; the working is the engine's figure.
+   *   · 'additionalRun'       this run deducted the month's increase; the working is the whole month.
+   *   · 'additionalRunManual' both — an increment run whose PCB was then also set by hand. */
+  kind: 'manual' | 'additionalRun' | 'additionalRunManual';
+  /** What the recorded working explains: the engine's figure, or — on an additional run — the figure for
+   *  the WHOLE month, because the whole month is what `pcbMeta` describes. Always `pcbSystem`. */
   system: number;
-  /** What was deducted instead. */
+  /** What was actually deducted on this payslip (`statutory.pcb`). Always `pcb`. */
   applied: number;
-  /** The operator's mandatory reason for the override. */
+  /** additionalRun* — the month's PCB WITHOUT this run's additional remuneration: what the month's
+   *  earlier runs already carried, and what the increment was taken against. NULL for a plain override. */
+  prior: number | null;
+  /** additionalRun* — the increment the ENGINE computed for this run. Equal to `applied` unless the
+   *  figure was afterwards set by hand, which is the only case worth printing it in. NULL otherwise. */
+  engineRun: number | null;
+  /** The operator's mandatory reason. '' when nothing was set by hand. */
   reason: string;
 };
 
@@ -134,12 +161,12 @@ export type PcbFlatTrace = {
   rate: number;
 };
 
-/** Present on EVERY shape, because a hand-set PCB is orthogonal to how the figure was computed and a
- *  screen must never explain one while displaying the other.
+/** Present on EVERY shape, because both gaps above are orthogonal to how the figure was computed and a
+ *  screen must never explain one figure while displaying the other.
  *   · `pcb`       — what was DEDUCTED (`statutory.pcb`), override included.
- *   · `pcbSystem` — what the recorded working EXPLAINS. Identical to `pcb` unless overridden.
- *   · `override`  — NULL unless the PCB line itself was set by hand. */
-type PcbFigures = { pcb: number; pcbSystem: number; override: PcbOverride | null };
+ *   · `pcbSystem` — what the recorded working EXPLAINS. Identical to `pcb` on a plain regular run.
+ *   · `basis`     — NULL when they are the same number; otherwise why they are not. */
+type PcbFigures = { pcb: number; pcbSystem: number; basis: PcbBasis | null };
 
 export type PcbExplanation =
   | ({
@@ -175,7 +202,10 @@ export type PcbExplanation =
       zakat: number;
       /** The split the engine produced: normal-remuneration MTD and the additional-remuneration leg.
        *  Both are taken against `pcbSystem`, not against `pcb`: they belong to the calculation, and
-       *  splitting a hand-set figure along the engine's proportions would invent a breakdown. */
+       *  splitting a hand-set figure along the engine's proportions would invent a breakdown. On an
+       *  additional run that means the CUMULATIVE month's legs, read from the same `delta` stamp
+       *  `pcbSystem` comes from — pairing a cumulative total with an incremental leg would make the two
+       *  disagree with each other as well as with the trace. */
       pcbNormal: number;
       pcbAdditional: number;
       /** NULL for a run predating 45df860a. The caller says "not recorded for this run"; it does NOT
@@ -189,7 +219,7 @@ const n = (v: unknown) => {
 };
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
-type FlatMeta = { nonResident?: unknown; flatRate?: unknown; rate?: unknown; trace?: unknown };
+type FlatMeta = { nonResident?: unknown; flatRate?: unknown; rate?: unknown; trace?: unknown; delta?: unknown };
 type SnapshotMeta = {
   month?: unknown;
   n?: unknown;
@@ -200,7 +230,12 @@ type SnapshotMeta = {
   P2?: unknown;
   reliefs?: Partial<PcbReliefBreakdown>;
   trace?: unknown;
+  delta?: unknown;
 };
+
+/** `deltaStat`'s stamp: the cumulative month the working describes, and the pair it was differenced
+ *  against. Shaped exactly as core/payroll.ts writes it. */
+type PcbDelta = { cumulative: number; prior: number; cumulativeBonus: number };
 
 /**
  * Read a stored MTD trace, or NULL.
@@ -253,7 +288,7 @@ function readTrace(raw: unknown): PcbTrace | null {
  * leaves `statutory.pcb` exactly as the engine computed it (`applyStatutoryAdjustment` deliberately does
  * not cascade), so the tax working still explains the deducted figure and there is nothing to warn about.
  */
-function readOverride(raw: unknown): PcbOverride | null {
+function readOverride(raw: unknown): { system: number; applied: number; reason: string } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const stamp = raw as { reason?: unknown; lines?: unknown };
   const lines = stamp.lines;
@@ -267,6 +302,19 @@ function readOverride(raw: unknown): PcbOverride | null {
     applied: n(l.applied),
     reason: typeof stamp.reason === 'string' ? stamp.reason : '',
   };
+}
+
+/**
+ * The additional-run stamp, or NULL — gated on PRESENCE for the same reason `readTrace` is. `n()` turns
+ * `undefined` into 0, so a half-written stamp would otherwise claim the whole month's PCB was RM 0.00
+ * and hand the screen a banner asserting that as fact. Both figures the difference was taken between
+ * must be there, or this is not a delta stamp and the payslip is read as an ordinary one.
+ */
+function readDelta(raw: unknown): PcbDelta | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const d = raw as Record<string, unknown>;
+  if (d.cumulative === undefined || d.prior === undefined) return null;
+  return { cumulative: n(d.cumulative), prior: n(d.prior), cumulativeBonus: n(d.cumulativeBonus) };
 }
 
 /** The flat-rate twin of `readTrace`, gated the same way: the rate the percentage came from. */
@@ -289,14 +337,36 @@ export function explainPcb(
 ): PcbExplanation {
   const st = (statutory ?? {}) as Record<string, unknown>;
   const pcb = n(st.pcb);
-  // The three figures every shape carries. `pcbSystem` is what the recorded working explains; `pcb` is
-  // what left the employee's pay. They differ only when the PCB line itself was set by hand.
-  const override = readOverride(st.adjustment);
-  const figures = { pcb, pcbSystem: override ? override.system : pcb, override };
   const meta = st.pcbMeta;
-  if (!meta || typeof meta !== 'object') return { kind: 'unavailable', ...figures };
+  const metaObj = meta && typeof meta === 'object' && !Array.isArray(meta) ? (meta as Record<string, unknown>) : null;
+  // The three figures every shape carries. `pcbSystem` is what the recorded working explains; `pcb` is
+  // what left the employee's pay. They differ when the PCB line was set by hand, when this is an
+  // additional run whose deduction is the month's increase — or, unhappily but legally, both.
+  //
+  // THE DELTA WINS THE `system` SEAT WHEN BOTH ARE PRESENT, and it has to: `pcbMeta` is the cumulative
+  // month either way, so the cumulative figure is the only one the working on screen actually lands on.
+  // The engine's own figure for this run is not lost — it is `engineRun`, printed as its own row.
+  const manual = readOverride(st.adjustment);
+  const delta = readDelta(metaObj?.delta);
+  // A DELTA WITH A ZERO BASELINE HAS NOTHING TO DECLARE. `prior` is the month WITHOUT this run, so when
+  // it is zero the increment IS the month and the working already explains the deduction. Raising the
+  // banner anyway would train readers to ignore it on the payslips where it matters — the same reason an
+  // adjustment to a NON-PCB line raises none. The stamp is still read for the normal/additional split
+  // below, because that side is about which month the legs belong to, not about a gap.
+  const gap = delta && r2(delta.prior) !== 0 ? delta : null;
+  const pcbSystem = gap ? gap.cumulative : manual ? manual.system : pcb;
+  const basis: PcbBasis | null =
+    gap && manual
+      ? { kind: 'additionalRunManual', system: pcbSystem, applied: pcb, prior: gap.prior, engineRun: manual.system, reason: manual.reason }
+      : gap
+        ? { kind: 'additionalRun', system: pcbSystem, applied: pcb, prior: gap.prior, engineRun: pcb, reason: '' }
+        : manual
+          ? { kind: 'manual', system: pcbSystem, applied: pcb, prior: null, engineRun: null, reason: manual.reason }
+          : null;
+  const figures = { pcb, pcbSystem, basis };
+  if (!metaObj) return { kind: 'unavailable', ...figures };
 
-  const flat = meta as FlatMeta;
+  const flat = metaObj as FlatMeta;
   if (flat.flatRate != null || flat.rate != null) {
     const rate = n(flat.flatRate ?? flat.rate);
     return {
@@ -308,7 +378,7 @@ export function explainPcb(
     };
   }
 
-  const m = meta as SnapshotMeta;
+  const m = metaObj as SnapshotMeta;
   if (m.P1 === undefined) return { kind: 'unavailable', ...figures };
 
   const stored = m.reliefs;
@@ -332,8 +402,13 @@ export function explainPcb(
 
   // `pcbBonus` is the additional-remuneration leg the engine reported. The normal leg is the remainder,
   // derived by subtraction rather than recomputed — the two must sum to the figure the ENGINE produced
-  // (`pcbSystem`), which is the figure this working explains and is `pcb` itself unless it was overridden.
-  const pcbAdditional = Math.min(n(st.pcbBonus), figures.pcbSystem);
+  // (`pcbSystem`), which is the figure this working explains and is `pcb` itself on a plain regular run.
+  //
+  // ON AN ADDITIONAL RUN THE BLOB'S `pcbBonus` IS ALSO A DELTA (it is a DELTA_KEY), so pairing it with a
+  // cumulative `pcbSystem` produced a normal leg of RM 0.00 sitting beside a trace that plainly showed
+  // one. The cumulative leg comes out of the same stamp the cumulative total does, so both sides of the
+  // split describe the same month.
+  const pcbAdditional = Math.min(delta ? delta.cumulativeBonus : n(st.pcbBonus), figures.pcbSystem);
   return {
     kind: 'mtd',
     reliefSource,
