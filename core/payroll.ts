@@ -105,7 +105,6 @@ import {
   SettingNotEnabledError,
   isModuleEnabled,
   settingEnabled,
-  settingEnabledOrDefault,
 } from './entitlements';
 
 export class BatchNotDraftError extends Error {
@@ -6370,9 +6369,15 @@ export class RemoveNoEmployeesError extends Error {
  * let the operator find out by pressing the button. That is the exact failure the screen's own header
  * promises not to have.
  *
- * `settingEnabledOrDefault`, not `settingEnabled`: this is a READ that decides what a page renders, so an
- * entitlements-resolution failure must degrade to the catalog default (the app/ idiom) rather than 500 a
- * route with no error boundary. The MUTATION keeps the strict form.
+ * THE SETTING IS RESOLVED BY THE CALLER, AND THAT IS THE WHOLE REASON `enabled` IS A PARAMETER.
+ * Degrading an entitlements-resolution failure to the catalog default is right for a page that must still
+ * render, and it is the app/ idiom — app/payroll/[batchId]/page.tsx does exactly that for the sibling
+ * gates. But the degrade-to-default form inside core/ is refused by test/module-catalog-drift.test.ts,
+ * and
+ * its reasoning is sound: in a service that form swallows an infrastructure failure and answers "off",
+ * turning an incident into a silent refusal that reads like a plan change. So the degrade happens in the
+ * page, where it belongs, and this reader takes the answer. The MUTATION keeps the strict form and gates
+ * itself — nothing here is load-bearing for refusing the action.
  */
 export type RemoveEligibility = {
   enabled: boolean;
@@ -6383,9 +6388,9 @@ export type RemoveEligibility = {
 
 export async function removeEligibility(
   ctx: SessionContext,
-  p: { batchId: string },
+  p: { batchId: string; enabled: boolean },
 ): Promise<RemoveEligibility | null> {
-  const enabled = settingEnabledOrDefault(ctx, 'payroll.reset_enabled');
+  const enabled = p.enabled;
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId })

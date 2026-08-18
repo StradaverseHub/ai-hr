@@ -108,7 +108,12 @@ describe('(b) payroll surfaces — "not registered" is said, not implied by a bl
     // than on the whole element, so 862ed0ad renaming the rows variable (History became the landing tab
     // and its read is now capped, so the table renders `shownHistoryRows`) does not read as an HRDF
     // regression — while dropping the prop still does.
-    expect(VIEW).toMatch(/<HistoryTable\s+rows=\{\w+\}\s+hrdfRegisteredCompanyIds=\{hrdfRegisteredCompanyIds\}\s*\/>/);
+    //
+    // The regex now matches what that paragraph always claimed. It used to pin the ELEMENT — exactly two
+    // props, single line, self-closing — so r199 adding payItemNames and sourceTxnsByPayslip and wrapping
+    // the call across lines failed it, with the registration set still very much reaching the table. A
+    // guard that fires on formatting reports a regression nobody caused, and the next person deletes it.
+    expect(VIEW).toMatch(/<HistoryTable\b[\s\S]*?hrdfRegisteredCompanyIds=\{hrdfRegisteredCompanyIds\}[\s\S]*?\/>/);
   });
 });
 

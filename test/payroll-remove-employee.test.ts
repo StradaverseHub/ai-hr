@@ -46,6 +46,8 @@
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import {
@@ -461,7 +463,7 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     await expect(
       removeEmployeePayroll(g, { batchId, employmentIds: [e1.employmentId], reason: 'too late' }),
     ).rejects.toBeInstanceOf(RemovePeriodClosedError);
-    expect((await removeEligibility(g, { batchId }))!.periodClosed).toBe(true);
+    expect((await removeEligibility(g, { batchId, enabled: true }))!.periodClosed).toBe(true);
   });
 
   it('d5. a caller without payroll.remove.employee is refused — the key is its OWN, not payroll.rollback', async () => {
@@ -479,7 +481,7 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
       removeEmployeePayroll(partner, { batchId, employmentIds: [e1.employmentId], reason: 'x' }),
     ).rejects.toBeInstanceOf(PayrollPermissionDeniedError);
     expect(await slipsOf(batchId)).toHaveLength(2);
-    expect((await removeEligibility(partner, { batchId }))!.permitted).toBe(false);
+    expect((await removeEligibility(partner, { batchId, enabled: true }))!.permitted).toBe(false);
   });
 
   it('d6. the payroll.reset_enabled setting OFF refuses before touching anything', async () => {
@@ -499,9 +501,21 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     // setting is off, so the only way onto the Remove route is a direct visit — which rendered the whole
     // selection form until `enabled` joined this reader. Without it the operator learns the answer by
     // pressing a destructive button and gets the service's raw English back, untranslated, in six locales.
-    expect((await removeEligibility(g, { batchId }))!.enabled).toBe(false);
-    await setSetting(base.tenantId, 'payroll.reset_enabled', true);
-    expect((await removeEligibility(await entitledCtx(base), { batchId }))!.enabled).toBe(true);
+    // `enabled` is now the PAGE's answer handed in, not the reader's own lookup — core/ may not use the
+    // degrade-to-default form (test/module-catalog-drift.test.ts), so the resolution moved to app/ where
+    // that idiom belongs. Asserting the passthrough here would be vacuous, so the claim this case protects
+    // — the screen knows before the button is pressed — is pinned where the mechanism now lives: the page
+    // resolves the setting and feeds it to the reader. A contract across two files, so source-shape.
+    const removePage = readFileSync(
+      resolve(__dirname, '..', 'app/payroll/[batchId]/remove/page.tsx'),
+      'utf8',
+    );
+    expect(removePage, 'the page must resolve the setting itself').toContain(
+      "settingEnabledOrDefault(s, 'payroll.reset_enabled')",
+    );
+    expect(removePage, 'and feed it to the reader, or the refusal reason goes dark').toMatch(
+      /removeEligibility\(s, \{ batchId, enabled: \w+ \}\)/,
+    );
   });
 
   it('e. round trip: remove → the employee is on the Reprocess New/Pending list → reprocess adds them back at the same gross and net', async () => {

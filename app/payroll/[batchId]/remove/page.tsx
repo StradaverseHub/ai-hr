@@ -9,7 +9,7 @@ import {
   listRemovalHistory,
   removeEligibility,
 } from '@/core/payroll';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 import { payrollListReturnTo } from '@/lib/return-to';
@@ -76,7 +76,13 @@ export default async function RemoveEmployeePayrollPage({
   // (and matching the module refusal the service throws).
   if (!isModuleEnabledOrFalse(s, 'multi_cycle_payroll')) notFound();
 
-  const eligibility = await removeEligibility(s, { batchId });
+  // The setting is resolved HERE, not in the reader, and the app/ idiom is deliberate: an
+  // entitlements-resolution failure must degrade to the catalog default rather than 500 a route with no
+  // error boundary. The sibling run screen resolves its own gates the same way. core/ may not use that
+  // form — test/module-catalog-drift.test.ts refuses it, because in a service it turns an incident into a
+  // silent refusal that reads like a plan change.
+  const removeOn = settingEnabledOrDefault(s, 'payroll.reset_enabled');
+  const eligibility = await removeEligibility(s, { batchId, enabled: removeOn });
   if (!eligibility) notFound();
 
   const listed = (await listBatches(s, [batch.companyId], batch.payPeriod)).find((b) => b.id === batchId);
