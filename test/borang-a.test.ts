@@ -647,6 +647,38 @@ async function drawnPages(form: ReturnType<typeof borangAFrom>): Promise<Drawn[]
   return pages;
 }
 
+/**
+ * Every RECTANGLE the renderer drew, per sheet — the boxes, which carry no text and are therefore
+ * invisible to `drawnPages`. A box that is not drawn is exactly as hard to notice as a value that is
+ * clipped, and the missing signature block was both.
+ *
+ * pdf-lib emits a border-only rectangle as a translate followed by a four-segment closed path:
+ * `1 0 0 1 x y cm … 0 0 m / 0 h l / w h l / w 0 l / h / S`.
+ */
+type Box = { x: number; y: number; w: number; h: number };
+async function drawnBoxes(form: ReturnType<typeof borangAFrom>): Promise<Box[][]> {
+  const buf = Buffer.from(await renderBorangAPdf(form));
+  const RE =
+    /1 0 0 1 (-?[\d.]+) (-?[\d.]+) cm\s+1 0 0 1 0 0 cm\s+1 0 0 1 0 0 cm\s+0 0 m\s+0 (-?[\d.]+) l\s+(-?[\d.]+) -?[\d.]+ l\s+-?[\d.]+ 0 l\s+h\s+S/g;
+  const pages: Box[][] = [];
+  for (const m of buf.toString('latin1').matchAll(/stream\r?\n/g)) {
+    const start = m.index! + m[0].length;
+    const end = buf.indexOf('endstream', start, 'latin1');
+    let body: string;
+    try {
+      body = zlib.inflateSync(buf.subarray(start, end)).toString('latin1');
+    } catch {
+      continue;
+    }
+    if (!body.includes(' Tj')) continue;
+    pages.push(
+      [...body.matchAll(RE)].map((r) => ({ x: Number(r[1]), y: Number(r[2]), h: Number(r[3]), w: Number(r[4]) })),
+    );
+  }
+  expect(pages, 'one content stream per sheet').toHaveLength(form.pages.length);
+  return pages;
+}
+
 /** Joining with a single space reconstructs every WRAPPED paragraph, because `wrap` splits on /\s+/. */
 const flatten = (page: Drawn[]) => page.map((d) => d.text).join(' ');
 
@@ -901,5 +933,176 @@ describe('the KWSP 6 page furniture', () => {
     expect(flat).toContain('bukan borang rasmi KWSP');
     expect(flat).toContain('TRANSCRIBED from a filled Borang A produced by another payroll system');
     expect(flat).toContain('the English line under PERINGATAN is our own translation');
+  });
+});
+
+/**
+ * cc9f9420 verify — NOTHING SOMEBODY SIGNS FOR IS SILENTLY CUT.
+ *
+ * ⚠️ WHY A GREEN SUITE PROVED NOTHING ABOUT THIS. The first cut of the foot band drew every
+ * representative value through a 98pt clip — about twenty characters at 8pt bold — and the fixture at
+ * the top of this file happens to sit just under that budget on all five fields, so 318 passing tests
+ * said nothing at all. 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM' with no ellipsis and
+ * no marker, so the page read as if that were the signatory's name; the employer's own name lost its
+ * last fifteen characters the same way, and the address lost its `postcode city, state` tail to a
+ * `.slice(0, 3)`. The overprint guard above cannot see any of it either: CLIPPING IS EXACTLY HOW YOU
+ * MAKE AN OVERPRINT INVISIBLE TO A COLLISION CHECK.
+ *
+ * So every test below renders PRODUCTION-SHAPED values — the kind the one company in nine that fills
+ * this block in actually has — and compares the string the renderer DREW with the value that went in.
+ */
+describe('nothing somebody signs for is silently cut', () => {
+  const LONG = {
+    employerName: 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR SDN BHD',
+    employerAddress:
+      'Level 12, Menara Satu\nJalan Ampang\nBukit Bintang\n50450 Kuala Lumpur, Wilayah Persekutuan',
+    repName: 'NURUL HUDA BINTI ISMAIL',
+    repIc: '910416145530',
+    repPosition: 'ASSISTANT MANAGER, PEOPLE OPS',
+    repPhone: '0123081733',
+    repEmail: 'payroll@strada.example.com',
+  };
+  const longForm = (p: Record<string, string> = {}) =>
+    borangAFrom({ header: header({ ...LONG, ...p }), rows: [row({ employmentId: 'a' })] });
+  const longSheet = async (p: Record<string, string> = {}) => (await drawnPages(longForm(p)))[0];
+  const embed = async () => {
+    const doc = await PDFDocument.create();
+    return {
+      false: await doc.embedFont(StandardFonts.Helvetica),
+      true: await doc.embedFont(StandardFonts.HelveticaBold),
+    } as const;
+  };
+  const endOf = (d: Drawn, f: Awaited<ReturnType<typeof embed>>) =>
+    d.x + f[String(d.bold) as 'true' | 'false'].widthOfTextAtSize(d.text, d.size);
+
+  it('prints every authorised-representative value WHOLE, at whatever size that takes', async () => {
+    const drawn = (await longSheet()).map((d) => d.text);
+    for (const v of [LONG.repName, LONG.repIc, LONG.repPosition, LONG.repPhone, LONG.repEmail]) {
+      expect(drawn, `the drawn page does not carry "${v}" in full`).toContain(v);
+    }
+  });
+
+  it('prints the employer name in full and EVERY address line, postcode and state included', async () => {
+    // `addressLines` builds up to FOUR — addressLine1..3 and a "postcode city, state" tail — and the
+    // renderer took the first three, which dropped exactly the tail. It is the line a counter clerk
+    // reads, and the plain-text twin was still printing it, so the two outputs disagreed in silence.
+    const sheet = await longSheet();
+    const drawn = sheet.map((d) => d.text);
+    expect(drawn, 'the employer name is cut').toContain(LONG.employerName);
+    for (const l of LONG.employerAddress.split('\n')) expect(drawn, `the address line "${l}" is missing`).toContain(l);
+    // …and all of it stayed inside the employer box rather than being fitted by running off the bottom.
+    const tail = sheet.find((d) => d.text.startsWith('50450'))!;
+    const name = sheet.find((d) => d.text === LONG.employerName)!;
+    expect(tail.y).toBeLessThan(name.y);
+    expect(tail.y).toBeGreaterThan(638.89 + 3);
+  });
+
+  it('shrinks a pathological value rather than shortening it, and keeps it inside its column', async () => {
+    // Nobody is called this. The point is that the renderer's answer to a value it cannot fit is a
+    // SMALLER one and never a SHORTER one, at any length — so no length of name can ever read as
+    // somebody else's name on a signed return.
+    const monster = 'DATUK SERI PANGLIMA MUHAMMAD SYAFIQ BIN ABDUL RAHMAN MOHAMED ZULKIFLI BIN ABDULLAH SHAH';
+    const fonts = await embed();
+    const sheet = await longSheet({ repName: monster });
+    const v = sheet.find((d) => d.text === monster);
+    expect(v, 'the representative name was cut instead of shrunk').toBeDefined();
+    expect(v!.size, 'a value that fits should not have been shrunk at all').toBeLessThan(8);
+    // The value column runs from SIG_VALUE_X (M + 72 = 106) to an 8pt gutter short of CATATAN_X
+    // (M + 294 = 328). Past 320 it prints into the notes; that is the overprint the clip was hiding.
+    expect(v!.x).toBe(106);
+    expect(endOf(v!, fonts), 'the name ran out of its column').toBeLessThanOrEqual(320.001);
+  });
+
+  it('keeps every foot-band value out of the CATATAN column, on the drawn page', async () => {
+    const fonts = await embed();
+    const sheet = await longSheet();
+    const catatan = sheet.find((d) => d.text === 'CATATAN')!;
+    // The band between the CATATAN heading and the PERINGATAN line — the two-column part of the foot.
+    // Below the warning the page goes back to full width on purpose.
+    const warning = sheet.find((d) => d.text.startsWith('PERINGATAN'))!;
+    const band = sheet.filter((x) => x.y <= catatan.y && x.y > warning.y && x.x < catatan.x);
+    expect(band.length, 'nothing was drawn in the left half of the foot band').toBeGreaterThan(6);
+    for (const d of band) {
+      expect(endOf(d, fonts), `"${d.text}" prints into the CATATAN column`).toBeLessThanOrEqual(catatan.x);
+    }
+  });
+
+  it('draws a place to SIGN as well as a place to stamp, both big enough to use', async () => {
+    // `main` drew a box captioned "Tandatangan & Tarikh". The first cut of this band replaced it with a
+    // Cop Rasmi Majikan box and NOTHING ELSE, so the only "Tandatangan" left on the sheet was the band
+    // heading — while the plain-text twin went on advertising a signature line. A Borang A is a signed
+    // return; a form with nowhere to sign is not one.
+    const sheet = await longSheet();
+    const boxes = (await drawnBoxes(longForm()))[0];
+    const heading = sheet.find((d) => d.text === 'Tandatangan Wakil Majikan')!;
+    const found: Record<string, Box> = {};
+    for (const cap of ['Tandatangan', 'Cop Rasmi Majikan']) {
+      const t = sheet.find((d) => d.text === cap);
+      expect(t, `there is no "${cap}" block on the drawn page — only the band heading`).toBeDefined();
+      expect(t!.y, `"${cap}" is the band heading, not a block of its own`).toBeLessThan(heading.y - 100);
+      const b = boxes.find((r) => t!.x >= r.x && t!.x <= r.x + r.w && t!.y >= r.y && t!.y <= r.y + r.h);
+      expect(b, `"${cap}" is a caption with no box around it`).toBeDefined();
+      expect(b!.h, `the "${cap}" box is too shallow to use`).toBeGreaterThanOrEqual(40);
+      found[cap] = b!;
+    }
+    expect(found['Tandatangan'].x, 'the two boxes are the same box').not.toBe(found['Cop Rasmi Majikan'].x);
+    // The boxes sit UNDER the rows and ABOVE the warning — which is the whole reason the value column
+    // could go back to being wide enough for a name.
+    const lastRow = Math.min(...sheet.filter((d) => d.x === 34 && d.y < heading.y && d.y > 120).map((d) => d.y));
+    const warning = sheet.find((d) => d.text.startsWith('PERINGATAN'))!;
+    for (const b of Object.values(found)) {
+      expect(b.y + b.h, 'a signing box overlaps the representative rows').toBeLessThan(lastRow);
+      expect(b.y, 'a signing box overlaps the PERINGATAN line').toBeGreaterThan(warning.y + 5);
+    }
+  });
+
+  it('gives every payment method its own tick box, all of them on the page', async () => {
+    // A fixed 150pt stride was fine for two ticks and puts the fifth 634pt from the margin — off the
+    // right edge of an A4 sheet. A box drawn off the page is not a box anybody notices is missing.
+    const fonts = await embed();
+    const sheet = await longSheet();
+    const ticks = BORANG_A_PAYMENT_METHODS.map((m) => {
+      const d = sheet.find((x) => x.text === m);
+      expect(d, `"${m}" has no caption on the drawn page`).toBeDefined();
+      return d!;
+    });
+    expect(new Set(ticks.map((t) => t.y)).size, 'the ticks are not on one baseline').toBe(1);
+    // The CARA BAYARAN box ends at HDR_LEFT_R = RIGHT - 126 = 435.28.
+    expect(endOf(ticks[ticks.length - 1], fonts), 'the last tick is outside the band').toBeLessThan(435.28);
+    // …and one box per caption, at the caption's own baseline.
+    const boxes = (await drawnBoxes(longForm()))[0];
+    for (const t of ticks) {
+      expect(
+        boxes.some((b) => Math.abs(b.w - 8) < 0.01 && Math.abs(b.h - 8) < 0.01 && b.x < t.x && t.x - b.x < 20),
+        `"${t.text}" has a caption but no tick box`,
+      ).toBe(true);
+    }
+  });
+
+  it('gives each named method a tick of its own, and no tick two methods', () => {
+    // The approved plan names five. An approval on this board carries no payload, so there is no reading
+    // of it under which the reporter asked for two — and a tick that means "Cek OR Kiriman Wang OR Wang
+    // Pos" makes an operator paying by Wang Pos state a payment method they did not use.
+    for (const m of ['Wang Tunai', 'Cek', 'Kiriman Wang', 'Wang Pos', 'Draf Bank']) {
+      expect(BORANG_A_PAYMENT_METHODS, `"${m}" has no tick of its own`).toContain(m);
+    }
+    for (const m of BORANG_A_PAYMENT_METHODS) expect(m, `"${m}" is more than one method`).not.toMatch(/[/,]/);
+  });
+
+  it('has a payment reference label that reads as Malay rather than as a mis-transcription', () => {
+    // It shipped as '/Draf Bank*No /EFT /TT. :' and printed verbatim: a leading slash, an inline '*No'
+    // and a stray full stop before the colon. The Latin-1 test proves a string survives the font; it
+    // cannot tell you the string is gibberish.
+    expect(BORANG_A_PAYMENT_REF_LABEL).toMatch(/^No\. /);
+    expect(BORANG_A_PAYMENT_REF_LABEL, 'the reference label is mis-transcribed').not.toMatch(/[*]|\. :$/);
+  });
+
+  it('leaves the clip to the one column that cannot grow', () => {
+    // `atFit` shrinks and keeps the whole value; `atClip` drops characters off the end. Exactly ONE call
+    // site may clip — the employee NAME cell, where shrinking a single row would leave a ragged column
+    // of type sizes down the sheet. Everything a person signs for goes through `atFit`.
+    const pdfCode = code('lib/borang-a-pdf.ts');
+    expect(pdfCode.match(/atClip\(/g) ?? [], 'a value on this form is being clipped again').toHaveLength(1);
+    expect(pdfCode).toContain('textClip(r.name');
   });
 });

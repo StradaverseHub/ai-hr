@@ -11,9 +11,9 @@
  *
  * ── WHAT cc9f9420 ADDED, AND WHY THE PAGE GOT TIGHTER ─────────────────────────────────────────────
  * The reporter asked for the page FURNITURE a counter clerk recognises, none of which existed: the
- * KWSP 6 masthead and its Kaedah 11(1) citation, the No. Rujukan Borang A box, the CARA BAYARAN band,
- * the reserved N K column, the Cop Rasmi Majikan / Cop Agen Kutipan stamp boxes, the eight-point CATATAN
- * block and the PERINGATAN warning. All of that eats vertical space the employee rows used to have —
+ * KWSP 6 masthead and its Kaedah 11(1) citation, the No. Rujukan Borang A box, the CARA BAYARAN band and
+ * its five ticks, the reserved N K column, the Tandatangan / Cop Rasmi Majikan / Cop Agen Kutipan boxes,
+ * the eight-point CATATAN block and the PERINGATAN warning. All of that eats vertical space the employee rows used to have —
  * which is why `BORANG_A_ROWS_PER_PAGE` is now MEASURED against `borangASheetRowCapacity()` below rather
  * than chosen, and asserted against it in test/borang-a.test.ts.
  *
@@ -112,19 +112,39 @@ const FIRST_ROW_TOP = 594.89;
 const TOTALS_BLOCK_H = 23;
 
 /**
- * The three columns of the foot band, side by side and NON-OVERLAPPING — signature rules, then the
- * employer's stamp box, then CATATAN. Named rather than inlined because the first draft's inlined numbers
- * overlapped and nothing but a raster said so.
- *   labels  M .. SIG_VALUE_X           (34 .. 106; the widest, "No. Kad Pengenalan", ends at 97.55)
- *   values  SIG_VALUE_X .. +SIG_VALUE_W (106 .. 204)
- *   stamp   COP_BOX_X .. +COP_BOX_W     (212 .. 318)
+ * The foot band, TWO columns wide and NON-OVERLAPPING — the representative's rows with their two signing
+ * boxes underneath on the left, CATATAN on the right. Named rather than inlined because the first draft's
+ * inlined numbers overlapped and nothing but a raster said so.
+ *   labels  M .. SIG_VALUE_X            (34 .. 106; the widest, "No. Kad Pengenalan", ends at 97.55)
+ *   values  SIG_VALUE_X .. SIG_RIGHT    (106 .. 320)
+ *   boxes   M .. SIG_RIGHT, below the rows: TANDATANGAN then COP RASMI MAJIKAN
  *   catatan CATATAN_X .. RIGHT          (328 .. 561.28)
+ *
+ * ⚠️ THE VALUE COLUMN WAS 98pt WIDE AND THAT WAS A DEFECT, not a measurement. The employer's stamp box
+ * used to sit BETWEEN the values and CATATAN, in the same horizontal band, which left the values about
+ * twenty characters at 8pt bold: 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM', with no
+ * ellipsis and no marker, so the page read as if that were the signatory's name. On a signed statutory
+ * filing that is worse than the overprint it was introduced to cure — an overprint LOOKS wrong, a
+ * truncation looks right. So the stamp box moved DOWN, under the rows and beside the signature box, and
+ * the values got the whole left half of the sheet back. Nothing in this band is clipped: see `atFit`.
  */
-const SIG_VALUE_X = M + 72;
-const SIG_VALUE_W = 98;
-const COP_BOX_X = M + 178;
-const COP_BOX_W = 106;
 const CATATAN_X = M + 294;
+const SIG_VALUE_X = M + 72;
+/** Right edge of the representative's value column: an 8pt gutter short of CATATAN. */
+const SIG_RIGHT = CATATAN_X - 8;
+const SIG_VALUE_W = SIG_RIGHT - SIG_VALUE_X;
+/** The representative's rows: first baseline, and the step down to the next. */
+const REP_ROW_TOP = FOOT_BAND_TOP - 13;
+const REP_ROW_H = 12;
+/**
+ * The two signing boxes, side by side UNDER the rows: TANDATANGAN at the margin, COP RASMI MAJIKAN
+ * right-aligned to the value column. Their top clears the last row's baseline by 7pt and their bottom
+ * clears the PERINGATAN line by 12pt; both gaps are asserted on the drawn page rather than eyeballed.
+ */
+const SIGN_BOX_W = 136;
+const SIGN_BOX_H = 44;
+const SIGN_BOX_TOP = FOOT_BAND_TOP - 80;
+const COP_BOX_X = SIG_RIGHT - SIGN_BOX_W;
 
 /**
  * The drawn sheet's own vertical budget, PUBLISHED so the row count can be checked against it.
@@ -206,7 +226,38 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y: yy, size, font: f, color });
     const atC = (s: string, cx: number, yy: number, size: number, f = font, color = ink) =>
       page.drawText(safe(s), { x: cx - f.widthOfTextAtSize(safe(s), size) / 2, y: yy, size, font: f, color });
-    /** Clip to a width so a long value can never run into the next column. */
+    /**
+     * A value that MUST NOT BE CUT: it SHRINKS to fit its column, and is always drawn WHOLE.
+     *
+     * ⚠️ THIS REPLACED A CLIP, AND THE DIFFERENCE IS THE ENTIRE POINT. Every header and foot-band value
+     * on this page used to go through `atClip`, which drops characters off the end until the rest fits —
+     * so 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM' and 'PERBADANAN PEMBANGUNAN
+     * PERTANIAN NEGERI SELANGOR SDN BHD' as 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI S'. There is no
+     * ellipsis and no marker, so a truncated legal name reads as the name, which on a filing somebody
+     * signs is the worst failure this renderer has: an overprint looks wrong and gets queried, a clean
+     * truncation does not. A clip is also exactly how you HIDE an overprint from a collision check, so
+     * the overprint guard in the tests cannot see one.
+     *
+     * The size is floored to 0.1pt so the drawn string is strictly inside `maxW`, and clamped at 1pt so
+     * an absurd input can never shrink to nothing — invisible is silent loss too. It shrinks below a
+     * comfortable reading size rather than dropping a character: a small name is the person's name, and
+     * a cut one is somebody else's.
+     */
+    const fitSize = (v: string, maxW: number, size: number, f = font) => {
+      const w = f.widthOfTextAtSize(v, size);
+      if (w <= maxW || w <= 0) return size;
+      return Math.max(1, Math.floor((size * maxW * 10) / w) / 10);
+    };
+    const atFit = (s: string, x: number, yy: number, maxW: number, size: number, f = font, color = ink) => {
+      const v = safe(s);
+      page.drawText(v, { x, y: yy, size: fitSize(v, maxW, size, f), font: f, color });
+    };
+
+    /**
+     * Clip to a width. THE TABLE'S NAME COLUMN ONLY, where the column is fixed and shrinking one row's
+     * name would leave a ragged column of different type sizes down the page. Nothing else on the sheet
+     * may use this — every value a person signs for goes through `atFit`.
+     */
     const atClip = (s: string, x: number, yy: number, maxW: number, size: number, f = font, color = ink) => {
       let v = safe(s);
       while (v.length > 1 && f.widthOfTextAtSize(v, size) > maxW) v = v.slice(0, -1);
@@ -255,7 +306,7 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       box(x, capRow, cellW, 20);
       box(x, valRow, cellW, 18);
       atC(cap, x + cellW / 2, capRow + 7, 7, bold);
-      if (val) atClip(val, x + 4, valRow + 6, cellW - 8, 8.5, bold);
+      if (val) atFit(val, x + 4, valRow + 6, cellW - 8, 8.5, bold);
     }
 
     // CARA BAYARAN — the reporter's point 2. Every box below is EMPTY and stays empty: payroll does not
@@ -268,10 +319,14 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       py -= 9;
     }
     py -= 4;
-    for (const [i, opt] of BORANG_A_PAYMENT_METHODS.entries()) {
-      const x = M + 6 + i * 150;
-      box(x, py - 1, 8, 8);
-      at(opt, x + 12, py + 0.5, 7.5);
+    // ONE TICK PER METHOD, stepped by each caption's MEASURED width rather than a fixed stride: at the
+    // 150pt stride two ticks could afford, the fifth box would be drawn at x=640 on a 595.28pt sheet —
+    // off the right edge, and a box drawn off the page is not a box anybody notices is missing.
+    let tx = M + 6;
+    for (const opt of BORANG_A_PAYMENT_METHODS) {
+      box(tx, py - 1, 8, 8);
+      at(opt, tx + 12, py + 0.5, 7.5);
+      tx += 12 + font.widthOfTextAtSize(safe(opt), 7.5) + 16;
     }
     py -= 15;
     at(BORANG_A_PAYMENT_REF_LABEL, M + 6, py, 7.5);
@@ -286,11 +341,19 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     // band — where the specimen puts them, and where they no longer cost the table a whole strip slot.
     box(M, HDR_BOT, HDR_LEFT_R - M, empTop - HDR_BOT);
     at('Nama Majikan / Alamat', M + 6, empTop - 9, 6.5, font, muted);
-    atClip(form.employerName, M + 6, empTop - 20, 240, 9, bold);
-    let ay = empTop - 30;
-    for (const l of form.employerAddress.slice(0, 3)) {
-      atClip(l, M + 6, ay, 240, 7, font, muted);
-      ay -= 9;
+    atFit(form.employerName, M + 6, empTop - 20, 240, 9, bold);
+    /**
+     * EVERY address line, not the first three. `addressLines` builds up to four — addressLine1..3 and a
+     * `postcode city, state` tail — and taking three dropped exactly the tail, which is the line a
+     * counter clerk reads and the one the plain-text twin was still printing. The leading is computed
+     * from the room actually left inside the box rather than fixed at 9pt, so a fourth line clears the
+     * rule instead of straddling it, and a caller that hands over more lines than `addressLines` can
+     * build compresses instead of overflowing. Nothing is dropped at any count.
+     */
+    const addrTop = empTop - 29;
+    const addrLead = Math.min(8, (addrTop - (HDR_BOT + 4)) / Math.max(1, form.employerAddress.length - 1));
+    for (const [i, l] of form.employerAddress.entries()) {
+      atFit(l, M + 6, addrTop - i * addrLead, 240, Math.min(7, addrLead - 0.6), font, muted);
     }
     const infoX = M + 254;
     const infoVX = M + 320;
@@ -307,7 +370,7 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     ).entries()) {
       const yy = empTop - 9 - i * 11;
       at(`${l} :`, infoX, yy, 7, font, muted);
-      atClip(v, infoVX, yy, HDR_LEFT_R - 8 - infoVX, 7.5, bold);
+      atFit(v, infoVX, yy, HDR_LEFT_R - 8 - infoVX, 7.5, bold);
     }
 
     // The Borang A column: form label, page number and the collection agent's stamp box, stacked exactly
@@ -424,27 +487,37 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
         ['Tarikh', ''],
       ];
       for (const [i, [l, v]] of rep.entries()) {
-        const yy = FOOT_BAND_TOP - 16 - i * 17;
+        const yy = REP_ROW_TOP - i * REP_ROW_H;
         at(`${l}`, M, yy, 7, font, muted);
         // A BLANK RULE RATHER THAN AN INVENTED VALUE. Production carries this block for one company in
         // nine; the rest print a rule to write on, which is what the specimen's own blank lines are.
+        //
+        // ⚠️ `atFit`, NEVER `atClip`. This is the signatory's legal identity on a KWSP filing; it shrinks
+        // to fit and is always whole. See the note on `atFit` for what the clip that was here did.
         if (v) {
-          atClip(v, SIG_VALUE_X, yy, SIG_VALUE_W, 8, bold);
+          atFit(v, SIG_VALUE_X, yy, SIG_VALUE_W, 8, bold);
         } else {
           page.drawLine({
             start: { x: SIG_VALUE_X, y: yy - 2 },
-            end: { x: SIG_VALUE_X + SIG_VALUE_W, y: yy - 2 },
+            end: { x: SIG_RIGHT, y: yy - 2 },
             thickness: 0.5,
             color: hair,
           });
         }
       }
-      // The employer's own stamp box — the reporter's point 7, drawn empty. THE THREE FOOT COLUMNS DO NOT
-      // OVERLAP, and that is measured rather than assumed: the first draft put the value column 125pt wide
-      // from M+78 (ending at 237) and this box at M+180 (214), so "ASSISTANT MANAGER, PEOPLE OPS" printed
-      // straight through the stamp box. Found by rasterising sheet 2 and looking at it.
-      box(COP_BOX_X, FOOT_BAND_TOP - 108, COP_BOX_W, 98);
-      atC('Cop Rasmi Majikan', COP_BOX_X + COP_BOX_W / 2, FOOT_BAND_TOP - 102, 7, font, muted);
+      // THE PLACE TO SIGN, and the employer's own stamp box, side by side UNDER the rows. Both drawn
+      // empty. The signature box is not decoration: a Borang A is a signed return, and the branch that
+      // added the stamp box deleted the box `main` captioned "Tandatangan & Tarikh" without replacing it,
+      // which left a form whose plain-text twin advertised a signature line the drawn page did not have.
+      //
+      // They sit BELOW the rows rather than beside them because beside them is what forced the 98pt value
+      // column that truncated the representative's name. Vertical room is what this band is short of, and
+      // 44pt of box is enough to sign and stamp in; 98pt of box was not worth the name.
+      const signBoxY = SIGN_BOX_TOP - SIGN_BOX_H;
+      box(M, signBoxY, SIGN_BOX_W, SIGN_BOX_H);
+      atC('Tandatangan', M + SIGN_BOX_W / 2, signBoxY + 6, 7, font, muted);
+      box(COP_BOX_X, signBoxY, SIGN_BOX_W, SIGN_BOX_H);
+      atC('Cop Rasmi Majikan', COP_BOX_X + SIGN_BOX_W / 2, signBoxY + 6, 7, font, muted);
     }
 
     // ── CATATAN, on EVERY sheet ─────────────────────────────────────────────────────────────────

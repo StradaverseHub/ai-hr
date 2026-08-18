@@ -221,18 +221,33 @@ export const BORANG_A_PERINGATAN_EN =
 /**
  * CARA BAYARAN — the payment-method ticks, DRAWN EMPTY on every sheet.
  *
- * The specimen groups the five methods the reporter listed into TWO tick boxes, which is what is
- * transcribed here: Wang Tunai on its own, and Cek / Kiriman Wang / Wang Pos together, with Draf Bank
- * on the reference line beneath. All five methods are named on the page; the grouping is the agency's,
- * not ours.
+ * ONE TICK PER METHOD, all five of them. An earlier draft folded them into two — 'Wang Tunai' and
+ * 'Cek/Kiriman Wang/Wang Pos', with Draf Bank pushed onto the reference line — on the grounds that the
+ * specimen groups them that way. That is wrong for a box somebody TICKS: an operator paying by Wang Pos
+ * would tick a box that also says Cek and Kiriman Wang, and the filing would then state a payment
+ * method that was not used. The approved plan says five, and an approval on this board carries no
+ * payload, so there is no reading of it under which the reporter asked for two.
  *
  * NEVER PRE-FILLED. Payroll does not know how a filing was paid, and ticking a box here would be
  * inventing a fact about a payment.
  */
-export const BORANG_A_PAYMENT_METHODS: readonly string[] = ['Wang Tunai', 'Cek/Kiriman Wang/Wang Pos'];
+export const BORANG_A_PAYMENT_METHODS: readonly string[] = [
+  'Wang Tunai',
+  'Cek',
+  'Kiriman Wang',
+  'Wang Pos',
+  'Draf Bank',
+];
 
-/** The line under the ticks: the cheque / draft / transfer reference, left blank for the operator. */
-export const BORANG_A_PAYMENT_REF_LABEL = '/Draf Bank*No /EFT /TT. :';
+/**
+ * The line under the ticks: the cheque / draft / transfer reference, left blank for the operator.
+ *
+ * It reads as Malay, which the first transcription of it did not: '/Draf Bank*No /EFT /TT. :' printed
+ * verbatim on the page, leading slash, inline '*No' and stray full stop included. A Latin-1 round-trip
+ * test proves a string survives the font; it cannot tell you the string is gibberish. Draf Bank is a
+ * tick of its own now, so this line is purely the instrument's reference number.
+ */
+export const BORANG_A_PAYMENT_REF_LABEL = 'No. Cek / Draf Bank / EFT / TT :';
 
 /** The instruction printed above the ticks, transcribed from the specimen. */
 export const BORANG_A_PAYMENT_INSTRUCTION =
@@ -354,7 +369,10 @@ export function paginateBorangA(rows: readonly BorangARow[], perPage = BORANG_A_
  * the screen names them beside the per-employee readiness list.
  *
  * THE REPRESENTATIVE BLOCK IS NOT IN HERE, deliberately — see `missingBorangARep`.
- * `employerAddress` is excluded too: the form prints however many address lines exist.
+ * `employerAddress` is excluded too: the form prints however many address lines exist — ALL of them,
+ * up to the four `addressLines` can build. The drawn page took the first THREE for one release, which
+ * dropped exactly the `postcode city, state` tail, the line a counter clerk reads; both outputs print
+ * every line again, and test/borang-a.test.ts renders a four-line address to keep it that way.
  */
 export function missingBorangAHeader(header: Record<string, unknown> | null | undefined): string[] {
   const h = header ?? {};
