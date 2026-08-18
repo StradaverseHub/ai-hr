@@ -76,8 +76,13 @@ rsync FROM mainwt.
 **THE FOUR APPROVED ARE ALL BLOCKED ON SOMETHING, NOT WAITING FOR A BUILDER:**
   - **`1b0943d5` + `3c88d593`** entity transfer — BUILT on `build/r197-entity`, green, and HELD. Re-verify
     found that cancelling or re-dating a transfer after the outgoing run is processed removes the
-    employment from the examined population, so a month can still close with somebody underpaid. It is
-    also INERT until `scripts/backfill-assignment-company.ts` runs on production, which it has not.
+    employment from the examined population, so a month can still close with somebody underpaid.
+    ⚠️ **THE "INERT UNTIL THE BACKFILL RUNS" CLAIM THAT WAS HERE IS FALSE — I CHECKED THE BOX.**
+    `assignment` holds 59 rows, 55 with `company_id`, and **all 55 CURRENT rows (not superseded) carry one**;
+    the 4 without are superseded and the resolver filters them. That matches r194's own record of running
+    `backfill-assignment-company.ts --apply` (1 split, 54 stamps) — see the r194 entry. An r197 build agent
+    asserted the script had never run, and I repeated it here without checking. The resolver has its data;
+    the only thing holding this item is its own blocker above.
     ⚠️ **ITS MIGRATION `0442` IS DEAD.** `0443` shipped in r199, so drizzle's watermark is past it and a
     later merge carrying `0442` would be SILENTLY SKIPPED (rule 14). Reissue a fresh number when reworked.
   - **`45df860a`** PCB/MTD detail view — BUILT on `build/r197-pcbview`, green, HELD. On an additional run
