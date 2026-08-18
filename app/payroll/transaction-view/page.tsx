@@ -311,10 +311,25 @@ export default async function TransactionViewPage({
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const cookieStore = await cookies();
   const gridPanelDefaultOpen = cookieStore.get(GRID_PANEL_COOKIE)?.value !== '0';
-  // bd14b7e2 — the other four tabs: EXPANDED whenever nobody is chosen, whatever the cookie says. A reader
-  // arriving with no selection has nothing to fold away yet, and a collapsed panel there would hide the one
-  // control the round exists to put in front of them. Once someone IS chosen the remembered answer wins.
-  const tabPanelDefaultOpen = employmentId == null || cookieStore.get(TAB_PANEL_COOKIES[tab])?.value !== '0';
+  // bd14b7e2 — the other four tabs, read the SAME way: absent ⇒ expanded, '0' ⇒ collapsed, in every state.
+  //
+  // THIS IS DELIBERATELY NARROWER THAN THE APPROVED PLAN'S WORDING, which said "expanded when no employee
+  // is selected, otherwise whatever the cookie says". The plan's INTENT — a reader who has never touched
+  // the control finds the panel open, because it is the one thing this round exists to put in front of
+  // them — is already what an ABSENT cookie means, so it costs nothing. What forcing it cost was the
+  // control itself: unlike the six single-employee screens, "nobody selected" is not a prompt on these
+  // four, it is their DEFAULT and normal view (that is the whole argument for `allowAll`, and History is
+  // the landing tab). Ignoring the cookie in that state meant collapsing the panel on History and hitting
+  // Apply — a GET submit — put it straight back, as did every tab switch, refresh and back/forward. The
+  // fold would have worked only in the one state where the table is already narrowed to one person.
+  //
+  // That matters more here than anywhere else on the board: the panel-versus-width trade-off on these four
+  // tabs has been reversed once in each direction already (r179 removed the rail for width, 98e69987 rev 2
+  // restored it, 1372d169/152fea7f then gave every tab pageWideCls). Adding the rail is what was asked
+  // for; adding it in a mode where the thirteen-column History table cannot get its ~22rem back would have
+  // been the half nobody has been shown. An explicit collapse now sticks, so both states remain reachable
+  // and the reporter's own choice decides.
+  const tabPanelDefaultOpen = cookieStore.get(TAB_PANEL_COOKIES[tab])?.value !== '0';
   // The panel carries the grid's own filters across an employee switch. `months` rides as ONE comma-joined
   // value because `preserve` is a flat string map — `cleanMonths` accepts that form as well as the
   // checkboxes' repeated params, so both routes into this screen mean the same thing.

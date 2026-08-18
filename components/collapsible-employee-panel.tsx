@@ -57,7 +57,14 @@ export function CollapsibleEmployeePanel({
   children: ReactNode;
   /** SSR-resolved initial state, read from the cookie by the server page. */
   defaultOpen: boolean;
-  /** Cookie persisting the choice. One per screen, so the two do not share a state. */
+  /**
+   * Cookie persisting the choice. ONE KEY PER COLLAPSE STATE A READER EXPECTS TO SET SEPARATELY — which
+   * was one per SCREEN while every consumer showed one person, and is one per TAB on Transaction View
+   * (bd14b7e2), whose five tabs are five different tables: History is thirteen columns and is read with
+   * the panel folded away, Fixed is read with it open. Two mounts sharing a key means every move between
+   * them undoes the last answer, so the first thing each switch does is fight the previous one. Give a new
+   * mount its own key unless you positively want it to move in lockstep with an existing one.
+   */
   cookieKey: string;
   /** Pre-translated label for the control while the panel is OPEN (e.g. "Hide employee list"). */
   hideLabel?: string;
