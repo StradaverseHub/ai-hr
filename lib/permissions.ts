@@ -603,14 +603,24 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/payroll-cycle',
     labelKey: 'nav.payrollCycleConfig',
     guard: 'scopedAdmin',
-    routes: ['/admin/payroll-cycle'],
+    // 6df24751 — the screen became company-first (listing → one company's catalog → one cycle), the
+    // pay-components shape. SAME screen key on purpose: these are the same data behind the same
+    // scopedAdmin guard, one company (then one cycle) at a time, so the access answer must not change.
+    routes: [
+      '/admin/payroll-cycle',
+      '/admin/payroll-cycle/[companyId]',
+      '/admin/payroll-cycle/[companyId]/new',
+      '/admin/payroll-cycle/[companyId]/[cycleId]',
+    ],
   },
   {
     screenKey: 'payrollConfig',
     href: '/admin/payroll-config',
     labelKey: 'admin.users.screen.payrollConfig',
     guard: 'scopedSession',
-    routes: ['/admin/payroll-config'],
+    // 6df24751 — as above: the company listing, one company's pay schedule, and its edit form. No new
+    // screen key, so no new access surface.
+    routes: ['/admin/payroll-config', '/admin/payroll-config/[companyId]', '/admin/payroll-config/[companyId]/edit'],
     hasScopeNote: true,
   },
   {

@@ -226,8 +226,10 @@ describe('HRDF Contribution Rate — Organization form layout', () => {
     expect(select).toContain("t('hrdfOptional')");
   });
 
+  // 6df24751 — the file moved (Pay Schedule is company-first now, and the read-only statutory block sits
+  // on the company's own screen), the assertion did not: the same three values, in the same rate order.
   it('the Admin payroll-config surface offers the same three values in the same order', () => {
-    const PAGE = read('app/admin/payroll-config/page.tsx');
+    const PAGE = read('app/admin/payroll-config/[companyId]/page.tsx');
     expect(PAGE).toContain("const HRDF = ['not_registered', 'mandatory', 'optional'] as const;");
   });
 });

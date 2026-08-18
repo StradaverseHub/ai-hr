@@ -5010,6 +5010,12 @@ export const payrollCycle = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // 6df24751 (migration 0443) — the "Last Updated" the company-first Payroll Cycles listing shows.
+    // NULLABLE ON PURPOSE, and it is not an oversight to leave it so: every row that existed before 0443
+    // was never edited under a schema that could record it, and stamping one would be inventing history.
+    // Null renders as an em dash. New rows are stamped by the column DEFAULT (attached by 0443 AFTER the
+    // ADD COLUMN, so existing rows stayed null); edits are stamped by core/payroll-cycle.ts.
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (t) => [
     index('payroll_cycle_company_idx').on(t.companyId),
