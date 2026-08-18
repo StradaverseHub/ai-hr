@@ -44,19 +44,27 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // Work Schedule row is new; its SCREEN is not (af7a8eb4 gave /admin/attendance-policy/schedule its own
     // route), which is exactly why it belongs in this file: a screen that gains a menu row must be proved
     // to guard itself, because the row is not what protects it.
+    //
+    // 4509d2b8 — SIX rows now: /admin/holidays LEFT this node for System Settings. Its guard coverage did
+    // NOT lapse, it MOVED with it (see the note above the it.each below). This file's premise is that a
+    // screen is protected by its own guard and never by which menu hides its link, so a screen that
+    // changes menus must arrive at the new one with that proof intact.
     expect(adminRoutes).toEqual([
       '/admin/attendance',
       '/admin/attendance-policy',
       '/admin/attendance-policy/schedule',
-      '/admin/holidays',
       '/admin/attendance-allowance',
       '/admin/locations',
       '/admin/toil',
     ]);
   });
 
+  // 4509d2b8 — /admin/holidays was the FIRST entry in this list and has been MOVED, not dropped: the
+  // identical requireAdmin-in-its-own-page-body case now lives in
+  // test/holidays-system-settings-relocation.test.ts, beside the rest of that screen's new-home guards.
+  // Losing it entirely would have been the exact failure this file exists to prevent — a screen whose
+  // only remaining protection is that a menu happens not to show it.
   it.each([
-    '/admin/holidays',
     '/admin/attendance',
     '/admin/attendance-policy',
     '/admin/attendance-policy/schedule',

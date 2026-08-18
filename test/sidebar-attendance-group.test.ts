@@ -16,11 +16,18 @@
  * a324a4b3 rev2 merged the manager and admin nodes back into a single `ATTENDANCE_NAV`, which is the
  * literal this guard reads again. MY_ATTENDANCE_NAV survives, carrying Clock in/out alone.
  *
- * WHAT SURVIVES BOTH MOVES, and is what is asserted below: the five config screens still travel
+ * WHAT SURVIVES BOTH MOVES, and is what is asserted below: the config screens still travel
  * TOGETHER in one node, in the ticket's order, each still admin-gated, and every row still appears
  * exactly once across the rail. Those were the ticket's actual guarantees, and the merge restores the
  * one thing the split had cost — "Records precedes the config rows WITHIN one node" is true again and
  * is re-asserted below, alongside the full screenshot order in test/attendance-pack.test.ts.
+ *
+ * 4509d2b8 then took HOLIDAYS out of the group altogether — the FIRST of the five ever to leave. It was
+ * never an attendance service (core/holidays.ts is spine, read by leave, attendance and payroll alike),
+ * and hanging off this node meant its row was gated behind the billable attendance module, hiding the
+ * holiday calendar from Leave-only tenants. So "all five in one node" is now FOUR in this node plus one
+ * in System Settings, and the guards below say so explicitly rather than being quietly loosened: the
+ * rail-wide invariants (exactly one row, never in the self-service node) still cover all five.
  *
  * Deliberately order-of-SUBSEQUENCE, not adjacency: item e776d17d reserves an "Overtime
  * Configuration" child slot between Clocking Location and TOIL, and future children may be
@@ -29,20 +36,43 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+// The file keeps its own inline nodeBlock (it slices the PACK); the shared helper is needed for the one
+// assertion that has to look inside components/sidebar.tsx instead — where Holidays now lives (4509d2b8).
+import { nodeBlock as nodeBlockOf } from './helpers/sidebar-source';
 
 const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
 const PACK = fs.readFileSync(path.resolve(__dirname, '../packs/attendance/index.ts'), 'utf8');
 /** The rail's combined nav sources: hardcoded groups + the registry-mounted attendance node. */
 const SRC = SIDEBAR + PACK;
 
-/** The ticket's five relocated screens. */
+/**
+ * The ticket's five relocated screens, MINUS the one that has since left the node.
+ *
+ * 4509d2b8 moved Holidays out to System Settings, so "all five live under the Attendance parent" is no
+ * longer true and asserting it would be asserting something false. The case is UPDATED rather than
+ * deleted: the four that stayed are still checked exactly as 5cb199b3 required, and the departure is
+ * stated positively in TICKET_MOVED_OUT below — including the two guarantees that DID survive the move
+ * (exactly one row across the rail, and not in the self-service node).
+ */
 const TICKET_HREFS = [
-  '/admin/holidays',
   '/admin/attendance',
   '/admin/attendance-allowance',
   '/admin/locations',
   '/admin/toil',
 ] as const;
+
+/**
+ * 4509d2b8 — the fifth ticket screen, now a child of SYSTEM_SETTINGS_NODE in components/sidebar.tsx.
+ *
+ * Holidays is not an attendance service (core/holidays.ts is spine; leave, attendance and payroll all
+ * read the one list) and, while it hung off the attendance node, MODULE_OF_HREF gated its row behind the
+ * BILLABLE attendance module — so a Leave-only tenant saw no holiday row at all. The screen, its URL and
+ * its requireAdmin guard are unchanged. Its new home is pinned by
+ * test/holidays-system-settings-relocation.test.ts and test/sidebar-system-settings-group.test.ts.
+ */
+const TICKET_MOVED_OUT = ['/admin/holidays'] as const;
+/** Every ticket screen, wherever it now lives — the rail-wide invariants below hold for all five. */
+const ALL_TICKET_HREFS = [...TICKET_HREFS, ...TICKET_MOVED_OUT] as const;
 
 /**
  * ad52212d ROUND 1 — the four that still hold the ticket's relative order among themselves.
@@ -51,8 +81,12 @@ const TICKET_HREFS = [
  * settings categories, so it now leads the node. That is the change the item asked for, so it is asserted
  * positively below rather than left to a sequence that would have to be false to accommodate it. The other
  * four never moved relative to each other and are still checked exactly as the ticket required.
+ *
+ * 4509d2b8 — Holidays LED this tail until it moved to System Settings, so the tail is three long now.
+ * The three that remain keep exactly the relative order they have always had among themselves; that is
+ * the part of the ticket order this item did not touch, so it is still asserted.
  */
-const TICKET_TAIL_HREFS = ['/admin/holidays', '/admin/attendance-allowance', '/admin/locations', '/admin/toil'] as const;
+const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/locations', '/admin/toil'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -68,7 +102,8 @@ const countQuoted = (haystack: string, href: string) =>
   haystack.split(`'${href}'`).length - 1;
 
 describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 rev2 re-merge)', () => {
-  // The five config screens moved WHOLESALE into the merged node — that is the node this guard follows.
+  // The config screens moved WHOLESALE into the merged node — that is the node this guard follows.
+  // (Four of them, since 4509d2b8 moved Holidays to System Settings; see TICKET_MOVED_OUT.)
   const node = nodeBlock('ATTENDANCE_NAV');
 
   it('keeps the parent labelled with the nav.attendanceSettings key', () => {
@@ -79,13 +114,25 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(node).toMatch(/labelKey:\s*'attendanceSettings'/);
   });
 
-  it('contains all five ticket screens as children, with the four unmoved ones in the ticket order', () => {
+  it('contains the four remaining ticket screens as children, with the tail in the ticket order', () => {
     for (const href of TICKET_HREFS) {
       expect(node.indexOf(`'${href}'`), `${href} is a child of the Attendance settings node`).toBeGreaterThan(-1);
     }
     const positions = TICKET_TAIL_HREFS.map((href) => node.indexOf(`'${href}'`));
     const sorted = [...positions].sort((a, b) => a - b);
-    expect(positions, 'the four keep the ticket order (Holidays → Allowance → Locations → TOIL)').toEqual(sorted);
+    expect(positions, 'the three keep the ticket order (Allowance → Locations → TOIL)').toEqual(sorted);
+  });
+
+  it('4509d2b8: Holidays has LEFT this node — for System Settings, not for nowhere', () => {
+    // The reversal, stated positively so it cannot be satisfied by the row simply vanishing. Both halves
+    // are required: gone from the attendance node, AND present inside SYSTEM_SETTINGS_NODE. A row deleted
+    // from one file and never added to the other passes "not here" and would strand the screen.
+    for (const href of TICKET_MOVED_OUT) {
+      expect(node.indexOf(`'${href}'`), `${href} is NOT a child of the Attendance settings node`).toBe(-1);
+      const sys = nodeBlockOf(SIDEBAR, 'SYSTEM_SETTINGS_NODE');
+      expect(sys, 'SYSTEM_SETTINGS_NODE exists in components/sidebar.tsx').not.toBeNull();
+      expect(sys!.indexOf(`'${href}'`), `${href} is a child of the System Settings node`).toBeGreaterThan(-1);
+    }
   });
 
   it('ad52212d: the three settings categories lead the node, Shift first', () => {
@@ -109,7 +156,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(countQuoted(SRC, '/admin/attendance-policy/schedule'), 'listed exactly once across the rail').toBe(1);
   });
 
-  it('admin-gates each of the five children (permissions unchanged by the move)', () => {
+  it('admin-gates each of the four remaining children (permissions unchanged by the move)', () => {
     for (const href of TICKET_HREFS) {
       const line = node.split('\n').find((l) => l.includes(`'${href}'`));
       expect(line, `child row for ${href}`).toBeDefined();
@@ -118,15 +165,21 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   });
 
   it('lists each of the five hrefs exactly once across the rail sources (no duplicate rows left behind)', () => {
-    for (const href of TICKET_HREFS) {
+    // ALL five, including the one that moved: this invariant is about the RAIL, not about which file the
+    // row is written in, and SRC is both sources concatenated. It is also the assertion that catches the
+    // likeliest way to get 4509d2b8 wrong — adding the System Settings row without removing the
+    // Attendance one, which would render Holidays twice and leave it entitlement-gated in one of them.
+    for (const href of ALL_TICKET_HREFS) {
       expect(countQuoted(SRC, href), `${href} appears exactly once across sidebar.tsx + packs/attendance/index.ts`).toBe(1);
     }
   });
 
-  it('keeps the five config screens TOGETHER — none leaked into the My Attendance node', () => {
-    // The consolidation ticket's real guarantee: an administrator finds all five in one place. Both the
-    // split and the re-merge moved the node they live in; neither may have scattered them across nodes.
-    // ATTENDANCE_MANAGE_NAV is gone (a324a4b3 rev2 merged it in), so the only other node is the staff one.
+  it('keeps the config screens TOGETHER — none leaked into the My Attendance node', () => {
+    // The consolidation ticket's real guarantee: an administrator finds the config screens in one place.
+    // Both the split and the re-merge moved the node they live in; neither may have scattered them across
+    // nodes. ATTENDANCE_MANAGE_NAV is gone (a324a4b3 rev2 merged it in), so the only other node is staff.
+    // 4509d2b8 — checked over ALL five: Holidays left for a DIFFERENT menu entirely (System Settings, in
+    // the other file), and it must not have landed in the self-service node on the way.
     const staff = nodeBlock('MY_ATTENDANCE_NAV');
     expect(PACK, 'the manager node was merged away, not left behind as a third copy').not.toContain(
       'const ATTENDANCE_MANAGE_NAV',
@@ -134,7 +187,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(PACK, 'the admin node was merged away, not left behind as a third copy').not.toContain(
       'const ATTENDANCE_ADMIN_NAV',
     );
-    for (const href of TICKET_HREFS) {
+    for (const href of ALL_TICKET_HREFS) {
       expect(staff.indexOf(`'${href}'`), `${href} is NOT in My Attendance`).toBe(-1);
     }
   });

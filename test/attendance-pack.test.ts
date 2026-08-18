@@ -110,6 +110,26 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
   ] as const;
 
+  /**
+   * Rows that have LEFT the pack since the capture — the mirror of ADDED_SINCE, and for the same reason.
+   *
+   * EXPECTED is frozen, so a departure cannot be expressed by deleting its line: that would erase the
+   * record of what parity meant and turn "row vanished" back into a silent pass. It is declared here
+   * instead, with where it went, and the parity assertions below subtract it explicitly — so a row that
+   * disappears WITHOUT a line here still fails, which is the whole point of the oracle.
+   *
+   * 4509d2b8 — Holidays moved to components/sidebar.tsx SYSTEM_SETTINGS_NODE. It is not an attendance
+   * service (core/holidays.ts is spine: leave, attendance and payroll all read the one list), and while
+   * its row lived here MODULE_OF_HREF gated it behind the BILLABLE `attendance` module, hiding the
+   * holiday calendar from Leave-only tenants whose leave maths depends on it. The row's own href, icon,
+   * labelKey and adminOnly gate are unchanged — only its container. Pinned at its new home by
+   * test/sidebar-system-settings-group.test.ts and test/holidays-system-settings-relocation.test.ts.
+   */
+  const MOVED_OUT = [
+    { href: '/admin/holidays', to: 'components/sidebar.tsx SYSTEM_SETTINGS_NODE' },
+  ] as const;
+  const movedOutHrefs: string[] = MOVED_OUT.map((r) => r.href);
+
   // 0bb0e303 split the node three ways and a324a4b3 rev2 merged two of the three back, so parity is
   // no longer "one node with ten rows in order" and no longer "three nodes by audience" either.
   // The guarantee that MATTERS survives every regrouping and is what is asserted below: every
@@ -138,14 +158,16 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   it('orders the Attendance CONFIG menu as the reporter listed the settings', () => {
     const merged = NODES.find((n) => n.labelKey === 'attendanceSettings')!;
     // ad52212d ROUND 1 — the order the reporter asked for: their THREE named settings categories first
-    // (Shift → Overtime Pattern → Work Schedule), then the four remaining configuration screens in the
-    // 5cb199b3 ticket order they have always held among themselves. Seven rows, all config, all adminOnly.
+    // (Shift → Overtime Pattern → Work Schedule), then the remaining configuration screens in the
+    // 5cb199b3 ticket order they have always held among themselves. All config, all adminOnly.
     // Records / Roster / Import are still not here — see rev3.
+    //
+    // 4509d2b8 — SIX rows, not seven: Holidays left for System Settings (MOVED_OUT above). The three
+    // categories still lead and the tail keeps its ticket order among the screens that stayed.
     expect(merged.children.map((c) => c.href)).toEqual([
       '/admin/attendance', // Shift
       '/admin/attendance-policy', // Overtime Pattern
       '/admin/attendance-policy/schedule', // Work Schedule
-      '/admin/holidays',
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
       '/admin/toil', // Time off in lieu
@@ -164,15 +186,29 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
-    expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length);
-    [...EXPECTED, ...ADDED_SINCE].forEach((want) => {
-      const got = flattened.filter((c) => c.href === want.href);
-      expect(got, `${want.href} appears exactly once`).toHaveLength(1);
-      expect(got[0].labelKey, `${want.href} labelKey`).toBe(want.labelKey);
-      expect(got[0].icon, `${want.href} icon ref`).toBe(want.icon);
-      expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
-      expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
-    });
+    expect(flattened).toHaveLength(EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length);
+    [...EXPECTED, ...ADDED_SINCE]
+      .filter((want) => !movedOutHrefs.includes(want.href))
+      .forEach((want) => {
+        const got = flattened.filter((c) => c.href === want.href);
+        expect(got, `${want.href} appears exactly once`).toHaveLength(1);
+        expect(got[0].labelKey, `${want.href} labelKey`).toBe(want.labelKey);
+        expect(got[0].icon, `${want.href} icon ref`).toBe(want.icon);
+        expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
+        expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
+      });
+  });
+
+  it('a row declared MOVED_OUT is gone from the pack entirely — not left behind as a second copy', () => {
+    // The other half of the subtraction above. Without this, "declare it moved out" would be a way to
+    // switch off coverage for a row that is quietly still here (or, worse, here TWICE — which would put
+    // it back into MODULE_OF_HREF and undo the un-gating that was the point of moving it).
+    for (const row of MOVED_OUT) {
+      expect(
+        flattened.filter((c) => c.href === row.href),
+        `${row.href} left the attendance pack for ${row.to}`,
+      ).toHaveLength(0);
+    }
   });
 
   it('preserves the pre-retrofit relative order WITHIN each node', () => {
@@ -259,8 +295,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         managerUp: true,
       });
     }
+    // 4509d2b8 — /admin/holidays is no longer in this list because it is no longer in this node. Its new
+    // row (position, key, glyph) is pinned by test/sidebar-system-settings-group.test.ts, and its
+    // requireAdmin PAGE guard — the thing that actually protects it, whatever the rail renders — by
+    // test/holidays-system-settings-relocation.test.ts.
     for (const href of [
-      '/admin/holidays',
       '/admin/attendance',
       '/admin/attendance-policy',
       // ad52212d round 1 — the new Work Schedule row. Declared here rather than tolerated: it lives in a
@@ -310,8 +349,15 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/attendance'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the node through the registry').toContain(`modulePackById('attendance')`);
-    for (const { href } of [...EXPECTED, ...ADDED_SINCE]) {
+    for (const { href } of [...EXPECTED, ...ADDED_SINCE].filter((r) => !movedOutHrefs.includes(r.href))) {
       expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
+    }
+    // …and the INVERSE for a row that has left the pack. 4509d2b8's Holidays row is hardcoded in
+    // sidebar.tsx ON PURPOSE — it belongs to no pack now, it is a spine screen in the System Settings
+    // node — so "not hardcoded" is the wrong assertion for it and "present" is the right one. Written as
+    // a positive check rather than an exemption: a MOVED_OUT row that is in neither file is a lost screen.
+    for (const { href, to } of MOVED_OUT) {
+      expect(sidebar.includes(`'${href}'`), `${href} is hardcoded in sidebar.tsx now — it moved to ${to}`).toBe(true);
     }
   });
 });
@@ -366,7 +412,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
   it('the Administration rows read as the screens they open', () => {
     const labels = Object.fromEntries(adminRows.map((r) => [r.href, en.nav[r.labelKey]]));
     expect(labels).toEqual({
-      '/admin/holidays': 'Holidays',
+      // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
+      // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
+      // 'holidays' column), it is simply no longer one of THIS node's rows.
       // The shared shift library (R33). This row is the reporter's "Shift Setting" — it exists, and it
       // has said so since R17; only its key still said "attendancePolicy".
       // ad52212d round 1 — plain "Shift": it is a category under a node already called "Attendance

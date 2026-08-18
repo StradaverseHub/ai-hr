@@ -40,7 +40,10 @@ function classNameLiterals(source: string): string[] {
 const capsPage = (cls: string) => /\bmx-auto\b/.test(cls) && /\bmax-w-\d*xl\b/.test(cls);
 
 // The Attendance admin menu's LIST screens (ATTENDANCE_NODES in packs/attendance/index.ts), minus
-// /admin/toil.
+// /admin/toil — plus /admin/holidays, which 4509d2b8 moved to the System Settings menu. Its MENU moved;
+// its screen did not, and af7a8eb4's full-width list layout is a property of the screen. Kept in this
+// list deliberately: dropping it because the row changed parents would retire live coverage of a screen
+// that still renders exactly the same table.
 const WIDE_LIST_SCREENS = [
   'app/admin/attendance/page.tsx',
   'app/admin/attendance-policy/page.tsx',
