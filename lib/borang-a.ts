@@ -527,7 +527,9 @@ export function borangATextExport(form: BorangAForm): string {
   field('Amaun Caruman', `RM ${money(form.totalContribution)}`);
   L.push('');
 
-  // CARA BAYARAN — the same two ticks the drawn page carries, and blank for the same reason.
+  // CARA BAYARAN — the same FIVE methods the drawn page carries, and blank for the same reason. (Said
+  // "two ticks" until the review, immediately above a loop over all five: the text twin and the drawn
+  // page have always agreed, only this sentence disagreed with both.)
   L.push('CARA BAYARAN');
   L.push(`  ${BORANG_A_PAYMENT_INSTRUCTION}`);
   for (const m of BORANG_A_PAYMENT_METHODS) L.push(`  [ ] ${m}`);

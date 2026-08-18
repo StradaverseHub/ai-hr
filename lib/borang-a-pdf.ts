@@ -253,22 +253,12 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       page.drawText(v, { x, y: yy, size: fitSize(v, maxW, size, f), font: f, color });
     };
 
-    /**
-     * Clip to a width. THE TABLE'S NAME COLUMN ONLY, where the column is fixed and shrinking one row's
-     * name would leave a ragged column of different type sizes down the page. Nothing else on the sheet
-     * may use this — every value a person signs for goes through `atFit`.
-     */
-    const atClip = (s: string, x: number, yy: number, maxW: number, size: number, f = font, color = ink) => {
-      let v = safe(s);
-      while (v.length > 1 && f.widthOfTextAtSize(v, size) > maxW) v = v.slice(0, -1);
-      page.drawText(v, { x, y: yy, size, font: f, color });
-    };
-
     /** Flowing helpers, for the table, which walks `y` down the page. */
     const text = (s: string, x: number, size: number, f = font, color = ink) => at(s, x, y, size, f, color);
     const textR = (s: string, xr: number, size: number, f = font, color = ink) => atR(s, xr, y, size, f, color);
-    const textClip = (s: string, x: number, maxW: number, size: number, f = font, color = ink) =>
-      atClip(s, x, y, maxW, size, f, color);
+    /** The table's flowing shrink-to-fit — same rule as `atFit`, walking `y` down the page. */
+    const textFit = (s: string, x: number, maxW: number, size: number, f = font, color = ink) =>
+      atFit(s, x, y, maxW, size, f, color);
     const line = (yy: number, thickness = 0.7, color = rule) =>
       page.drawLine({ start: { x: M, y: yy }, end: { x: RIGHT, y: yy }, thickness, color });
     const box = (x: number, yy: number, w: number, h: number, color = rule) =>
@@ -310,8 +300,12 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     }
 
     // CARA BAYARAN — the reporter's point 2. Every box below is EMPTY and stays empty: payroll does not
-    // know how a filing was paid. The specimen groups the five methods into two ticks with Draf Bank on
-    // the reference line; that grouping is the agency's, not ours.
+    // know how a filing was paid.
+    //
+    // FIVE TICKS, NOT TWO. This comment used to justify a two-tick grouping "the agency's, not ours" and
+    // sat directly above a loop that emits five — the justification survived the change that reversed it.
+    // The reporter's own correction asks for the five methods listed separately, and that is what the loop
+    // below does.
     box(M, payBot, HDR_LEFT_R - M, payTop - payBot);
     let py = payTop - 10;
     for (const l of wrap(BORANG_A_PAYMENT_INSTRUCTION, 7, HDR_LEFT_R - M - 12)) {
@@ -428,11 +422,18 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       text(String(bil), COL.bil, 8.5);
       text(r.memberNo, COL.member, 8.5);
       text(r.ic, COL.ic, 8.5);
-      // The clip allowance is 56, not the 40 the first draft used: at 40 a 40-character legal name ran
-      // right up against the Upah figure with no visible gap ("…MOHAMED ZUL 6,200.00"). Found by
-      // rasterising the page and looking at it, which is the only thing that can see it. The allowance
-      // survived the N K shift because the NAME column moved with the columns to its left, not into them.
-      textClip(r.name, COL.name, COL.wageR - COL.name - 56, 8.5);
+      // SHRINK, NEVER CUT. This was `textClip` until the review: a name longer than the column lost its
+      // tail silently, so 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM' and the page read as
+      // if that were the person's name. On a form an employer signs and files, a slightly smaller name is
+      // right and a wrong name is not — so the table's name now goes through the same fit-to-width every
+      // other signed value on this sheet uses, and nothing on the page is clipped at all.
+      //
+      // The 56pt allowance is kept and is not arbitrary: at 40 a 40-character legal name ran right up
+      // against the Upah figure with no visible gap ("…MOHAMED ZUL 6,200.00"), found by rasterising. And
+      // the earlier comment here claimed the allowance "survived the N K shift because the NAME column
+      // moved with the columns to its left" — it did NOT: the budget went 133.28pt to 127.28pt, about one
+      // character. That is exactly the sentence a later reader would have trusted instead of measuring.
+      textFit(r.name, COL.name, COL.wageR - COL.name - 56, 8.5);
       // A row whose EPF wage basis was never recorded cannot reach this renderer — the download gate
       // refuses it — but if it ever did, it must not print a zero that reads as a real wage.
       textR(r.wageRecorded ? money(r.wage) : '(tiada)', COL.wageR, 8.5);

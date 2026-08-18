@@ -1097,12 +1097,20 @@ describe('nothing somebody signs for is silently cut', () => {
     expect(BORANG_A_PAYMENT_REF_LABEL, 'the reference label is mis-transcribed').not.toMatch(/[*]|\. :$/);
   });
 
-  it('leaves the clip to the one column that cannot grow', () => {
-    // `atFit` shrinks and keeps the whole value; `atClip` drops characters off the end. Exactly ONE call
-    // site may clip — the employee NAME cell, where shrinking a single row would leave a ragged column
-    // of type sizes down the sheet. Everything a person signs for goes through `atFit`.
+  it('clips nothing at all — every value on the sheet shrinks to fit instead', () => {
+    // UPDATED, NOT DELETED. This case used to LICENSE exactly one clip — the employee NAME cell — on the
+    // argument that shrinking one row would leave a ragged column of type sizes. The review answered it:
+    // the budget had quietly gone 133.28pt to 127.28pt, so names that printed whole before were being cut
+    // mid-word, and a truncated legal name on a filed statutory form is a factual error while a ragged
+    // column is a cosmetic one. The name now goes through fit-to-width like every other signed value, so
+    // the guard asserts the stronger property the form actually needs: NOTHING here is clipped.
+    //
+    // The clipping helpers are GONE, not merely unused: dead code carrying a docblock that explains why
+    // it is dead is an invitation to use it again. (My first version of this guard matched the helper's
+    // own definition and failed on it — which is the same 'a guard that cannot mean what it says' problem
+    // this file has now hit twice.)
     const pdfCode = code('lib/borang-a-pdf.ts');
-    expect(pdfCode.match(/atClip\(/g) ?? [], 'a value on this form is being clipped again').toHaveLength(1);
-    expect(pdfCode).toContain('textClip(r.name');
+    expect(pdfCode, 'a clipping helper is back on this statutory form').not.toMatch(/atClip|textClip/);
+    expect(pdfCode, 'the table name must shrink to fit').toContain('textFit(r.name');
   });
 });
