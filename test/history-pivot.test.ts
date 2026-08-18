@@ -831,6 +831,33 @@ describe('0253dc7c — the export file and the screen are ONE projection', () =>
     'utf8',
   );
 
+  /**
+   * 417d4937 — AND EVERY INPUT THE PROJECTION TAKES, not only the switches. The label repair was wired
+   * into the page's pivotHistoryGrid call and not the route's, so the Grid tab showed the repaired
+   * description while the Excel file downloaded from that same screen, with the same filters, still
+   * showed the stored one. The export is where a label leaves the building. Source-shape for the same
+   * reason as the switches above: the defect lives in the gap between two call sites, and a unit test of
+   * either one passes throughout.
+   */
+  it('every map the screen feeds pivotHistoryGrid is also fed by the export route', () => {
+    const page = readFileSync(resolve(__dirname, '..', 'app/payroll/transaction-view/page.tsx'), 'utf8');
+    // THE ARGUMENT LIST, NOT THE FILE. Asserting the file merely CONTAINS the name is satisfied by the
+    // `const payItemNames = …` that builds it, so the guard passes with the argument removed from the
+    // call — which is precisely how it read as coverage while the export drifted. (Written weak first;
+    // it passed with the fix reverted, which is the only reason this comment exists.)
+    const callArgs = (src: string) => {
+      const at = src.indexOf('pivotHistoryGrid({');
+      expect(at, 'pivotHistoryGrid call not found').toBeGreaterThan(-1);
+      return src.slice(at, src.indexOf('})', at));
+    };
+    const pageCall = callArgs(page);
+    const routeCall = callArgs(route);
+    for (const arg of ['payItemSubjects', 'payItemNames']) {
+      expect(pageCall, `the screen must pass ${arg} into pivotHistoryGrid`).toContain(arg);
+      expect(routeCall, `the export route must pass ${arg} too, or the file drifts from the screen`).toContain(arg);
+    }
+  });
+
   it('every switch the screen writes onto the href is read by the route', () => {
     for (const k of ['hideZero', 'hideSystem', 'showSubject']) {
       expect(grid, `the export href must carry ${k}`).toContain(`${k}:`);
