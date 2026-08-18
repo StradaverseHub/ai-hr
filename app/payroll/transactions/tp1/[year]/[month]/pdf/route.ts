@@ -18,8 +18,16 @@
  *
  * WHAT IS PRINTED IS WHAT IS STORED. Every figure comes from the declaration row; the structure, the
  * wording and the limits come from the country pack catalogue. Nothing is computed here.
+ *
+ * THE LANGUAGE OF THE DOCUMENT, NOT OF THE VIEWER — the same guard app/me/ea/[employmentId]/pdf/route.ts
+ * carries, and for a harder reason. `lib/tp1-pdf.ts` embeds Helvetica, which is WinAnsi, and folds every
+ * unmappable codepoint to '?'. Every word of this form's body comes from the `taxRelief` namespace, and
+ * messages/{ta,zh,th,vi}.json translate all of it — so resolving that namespace against the viewer's UI
+ * locale would print a statutory form whose entire Section C reads as rows of '?' for four of our six
+ * locales. LHDN issues the TP1 in Bahasa Malaysia and English; those are the two this renders, `lang`
+ * chooses between them, and a viewer in any other locale gets the English form rather than a broken one.
  */
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import {
@@ -36,6 +44,12 @@ import { isTp1Categories2026, type Tp1ItemAmounts } from '@/db/schema';
 import { renderTp1Pdf, type Tp1PdfItem } from '@/lib/tp1-pdf';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
+
+// Allowlisted, never trusted: an unrecognised `lang` falls back rather than reaching next-intl, which
+// would throw on an unknown locale and 500 a download.
+const TP1_LANGS = ['en', 'ms'] as const;
+type Tp1Lang = (typeof TP1_LANGS)[number];
+const isTp1Lang = (v: string | null): v is Tp1Lang => TP1_LANGS.includes(v as Tp1Lang);
 
 export async function GET(req: Request, { params }: { params: Promise<{ year: string; month: string }> }) {
   const { year: rawYear, month: rawMonth } = await params;
@@ -58,15 +72,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ year: st
     (month === 1 ? rows.find((r) => r.deductionMonth == null) : undefined);
   if (!winner) return notFound();
 
+  // The requested form language, then the viewer's locale IF the form exists in it, then English.
+  const langParam = new URL(req.url).searchParams.get('lang');
+  const viewer = await getLocale();
+  const locale: Tp1Lang = isTp1Lang(langParam) ? langParam : isTp1Lang(viewer) ? viewer : 'en';
+
   const [row, accumulated, identity, t] = await Promise.all([
     getTp1ByIdForPerson(s, { personId: emp.personId, id: winner.id }),
+    // EXCLUDING THIS RECORD'S OWN MONTH — "already claimed this year" is the OTHER months, which is what
+    // the form's ACCUMULATED column means. By month, not by row id: a correction appends, so the
+    // superseded rows for this month are still approved. Same call, same argument, as the HR screen's
+    // remaining strip and the server's own refusal.
     getTp1AccumulatedForPerson(s, {
       personId: emp.personId,
       assessmentYear: year,
-      excludeRowId: winner.id,
+      deductionMonth: winner.deductionMonth,
     }),
     getTp1FormIdentity(s, { personId: emp.personId, companyId: emp.companyId }),
-    getTranslations('taxRelief'),
+    getTranslations({ locale, namespace: 'taxRelief' }),
   ]);
   if (!row) return notFound();
 
@@ -119,9 +142,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ year: st
             approvedMonth: row.approvedMonth,
             approvedYear: row.approvedYear,
             date: row.approvedAt ? row.approvedAt.toISOString().slice(0, 10) : null,
-            // Resolved through approved_by rather than copied onto the row; not joined yet, so the box
-            // prints its blank rule — which is what the paper form's own blank Name box is.
-            name: null,
+            // Resolved through approved_by rather than copied onto the row, so a renamed user is never
+            // two names on two documents. Null — the paper form's own blank rule — only when the
+            // approving login has no person behind it or RLS hides them from this reader.
+            name: row.approvedByName,
             position: row.approverPosition,
           }
         : null,

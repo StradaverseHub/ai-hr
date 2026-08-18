@@ -43,12 +43,31 @@ server's sum of its sub-lines, exactly as the grand total is the server's sum of
 line that keeps the PCB arithmetic byte-identical, and the byte-stability case (ADR-0073 point 2) was
 re-pointed at the C1–C17 shape rather than deleted.
 
-**4. Accumulation is per item and per sub-line, across APPROVED declarations of the same assessment
-year.** Remaining = limit − accumulated; a claim that would pass the limit is refused with the
-shortfall named. The screen's "remaining" strip and the server's refusal come from the SAME function,
-so they cannot agree today and disagree tomorrow. Legacy eight-key rows contribute nothing to the
-accumulation: there is no honest mapping from `medicalInsurance` onto C4 / C11 / C13, and an invented
-one would refuse a claim citing a number nobody entered.
+**4. A DECLARATION IS AN INCREMENT, AND A YEAR IS THE SUM OF ITS MONTHS.** This is the decision the
+rest of points 4–6 hang off, and it has to be stated once for both halves of the round to be true at
+the same time. Accumulation is per item and per sub-line across the APPROVED declarations of the year;
+remaining = limit − accumulated; a claim that would pass the limit is refused with the shortfall named
+("RM X has already been approved … so at most RM Y can be claimed now"). That message teaches HR to key
+what is NEW this month — so the relief the payroll feed must apply is the SUM of the approved months,
+not the newest row. A feed that took one annual figure per person would make a second declaration
+*reduce* the relief (January 3,000 then June 2,000 would feed 2,000), silently and with no error
+anywhere; `test/tp1-2026-form.test.ts`'s "feeds the SUM of the approved months" case is the guard.
+
+**4a. One month, one record — `collapseTp1ApprovedByMonth` is the only rule.** Approval is an UPDATE
+and a correction is a NEW row, so a superseded declaration keeps `status = 'approved'`. Every consumer
+therefore collapses the approved rows per `deduction_month` (newest `created_at`, tie-broken on id)
+before doing anything else, and the accumulated figure for a month EXCLUDES that month's own bucket.
+Without the collapse, a correction to an approved month is refused by its own prior figure and payroll
+double-counts it; without the exclusion, no correction to an approved declaration is possible at all.
+The month list, the screen's "remaining" strip, the server's refusal, the printed ACCUMULATED column
+and `prefillTp1FromSelfRelief` all call that one exported function with the month they are asking about
+— an id-based exclusion was tried and is wrong, because a month can hold several superseded approved
+rows. `deduction_month IS NULL` is its own bucket (pre-round rows, and /me self-service, which declares
+for the year), never folded into January.
+
+Legacy eight-key rows contribute nothing to the accumulation: there is no honest mapping from
+`medicalInsurance` onto C4 / C11 / C13, and an invented one would refuse a claim citing a number nobody
+entered. Their `tp1_amount` still feeds payroll.
 
 **5. The record's grain moved from the assessment YEAR to the DEDUCTION MONTH.** The form has a
 DEDUCTION MONTH box, so a year holds up to twelve declarations. `tp1_relief` gains `deduction_month`,
@@ -58,7 +77,8 @@ written before this round has no month and is not given one.
 
 **6. Employer consent gates the payroll feed.** `tp1_status` becomes
 Draft → Submitted → Approved / Rejected → Cancelled, and `prefillTp1FromSelfRelief` reads only
-`approved` rows whose `approved_month` is at or before the batch's month. Approval is an UPDATE, not an
+`approved` rows whose `approved_month` is at or before the batch's month — then collapses them per
+month (point 4a) and SUMS, which is the annual figure the ADR-0050 §0.1 delta is taken against. Approval is an UPDATE, not an
 append — a decision is a fact about a row, not a new declaration — and every decision appends a
 DomainEvent carrying who, when, and the changed field NAMES. PDPA Layer-0 holds: never an amount.
 
@@ -74,6 +94,20 @@ draws A4 from scratch in the house pattern of `lib/borang-a-pdf.ts`. It is faith
 wording, numbering, legal references and column order (ANNUAL LIMIT · CURRENT · ACCUMULATED) and is
 never described as the official form. An unfilled box prints EMPTY rather than `0.00`: a zero asserts
 "nothing was claimed under this head", which is a statement about a legal declaration.
+
+**8a. The form is printed in the DOCUMENT's language, not the viewer's — allowlisted to `en` / `ms`.**
+`lib/tp1-pdf.ts` embeds Helvetica, which is WinAnsi, and folds anything outside Latin-1 to `?`. Every
+word of the body comes from the `taxRelief` namespace and every locale in `messages/` translates it, so
+resolving that namespace against the viewer's UI locale prints a statutory form whose whole of Section C
+reads as rows of `?` for `ta` / `zh` / `th` / `vi`. Same allowlist, for the same reason, as
+`app/me/ea/[employmentId]/pdf/route.ts` (587ee719); a `lang` parameter chooses between the two and any
+other locale gets the English form rather than a broken one.
+
+**9. Section F's Name is resolved through `approved_by`, never copied onto the row.** The column stores
+the deciding `app_user`; the screen and the PDF both read the name through a LEFT join to that user's
+person, so a renamed user is never two names on two documents. Absent — no decision yet, a login with
+no person behind it, or RLS hiding that person from this reader — prints the form's own blank rule
+rather than a guess.
 
 ## Consequences
 

@@ -238,7 +238,11 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
     // January: 1,800 of C5's 2,500 — fine on its own, and APPROVED so it counts as accumulated.
     const { id } = await submit(admin, e.personId, { deductionMonth: 1, items: { c5: 1800 } });
     await approveTp1ForPerson(admin, { personId: e.personId, id, approvedMonth: 1, approvedYear: YEAR });
-    expect((await getTp1AccumulatedForPerson(admin, { personId: e.personId, assessmentYear: YEAR })).items.c5).toBe(1800);
+    // Asked FOR February — "already claimed" is the other months, so January's 1,800 counts here.
+    expect(
+      (await getTp1AccumulatedForPerson(admin, { personId: e.personId, assessmentYear: YEAR, deductionMonth: 2 }))
+        .items.c5,
+    ).toBe(1800);
 
     // February: another 900 would make 2,700 — RM200 past the limit, and the message says so, because
     // "invalid" tells the reader nothing they can act on.
@@ -249,15 +253,68 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
     await expect(submit(admin, e.personId, { deductionMonth: 2, items: { c5: 700 } })).resolves.toBeTruthy();
   });
 
+  /**
+   * A CORRECTION TO AN ALREADY-APPROVED MONTH MUST NOT BE REFUSED BY ITS OWN PRIOR FIGURE.
+   *
+   * Approval is an UPDATE and a correction is a NEW row, so the superseded row keeps `status='approved'`.
+   * Accumulating over every approved row therefore made January refuse itself — "RM 2,500.00 has already
+   * been approved … so at most RM 0.00 can be claimed now" — and no correction to any approved catalogue
+   * declaration was possible. The screen and the server disagreed on top of that: the screen took the
+   * edited ROW out of the accumulation, the server took nothing out.
+   *
+   * The rule is now one function and one argument on both sides: exclude the MONTH being declared, not a
+   * row id — a month can hold several superseded approved rows and excluding only the newest leaves the
+   * older ones counted.
+   */
+  it('accepts a correction to an already-approved month, and the strip agrees with the server', async () => {
+    const admin = adminCtx(base);
+    const e = await hire('Correct', 'correct@acme.test');
+    await setCompensation(admin, { employmentId: e.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(admin, { personId: e.personId, icNumber: '900707075001' });
+
+    // January fills C5 to its 2,500 ceiling, and is approved.
+    const first = await submit(admin, e.personId, { deductionMonth: 1, items: { c5: 2500 } });
+    await approveTp1ForPerson(admin, { personId: e.personId, id: first.id, approvedMonth: 1, approvedYear: YEAR });
+
+    // The strip the HR month page draws for JANUARY: its own month is not "already claimed", so the full
+    // 2,500 is still available — which is exactly what the server must accept next.
+    const strip = await getTp1AccumulatedForPerson(admin, {
+      personId: e.personId,
+      assessmentYear: YEAR,
+      deductionMonth: 1,
+    });
+    expect(strip.items.c5, 'January is not accumulated against itself').toBeUndefined();
+
+    // …and it does. Before this fix the row refused itself with "at most RM 0.00 can be claimed now".
+    const fixed = await submit(admin, e.personId, { deductionMonth: 1, items: { c5: 2400 } });
+    await approveTp1ForPerson(admin, { personId: e.personId, id: fixed.id, approvedMonth: 1, approvedYear: YEAR });
+
+    // ONE January record, and it is the correction — for the list, for the next month's allowance, and
+    // for payroll. The superseded 2,500 is still `approved` in the table and must count nowhere.
+    const rows = await listTp1DeclarationsForPersonYear(admin, { personId: e.personId, assessmentYear: YEAR });
+    expect(rows.map((r) => r.deductionMonth)).toEqual([1]);
+    expect(rows[0].tp1Amount).toBe(2400);
+    const feb = await getTp1AccumulatedForPerson(admin, {
+      personId: e.personId,
+      assessmentYear: YEAR,
+      deductionMonth: 2,
+    });
+    expect(feb.items.c5, 'the correction supersedes, it does not add to, January').toBe(2400);
+    const { batchId } = await createBatch(admin, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
+    await prefillTp1FromSelfRelief(admin, { batchId });
+    expect(Number((await inputRow(batchId, e.employmentId)).tp1Deduction), 'not 4,900').toBe(2400);
+  });
+
   it('counts only APPROVED declarations toward the accumulation', async () => {
     const admin = adminCtx(base);
     const e = await hire('OnlyApproved', 'onlyapproved@acme.test');
     // Submitted but never approved: a claim, not yet a deduction. It must not consume the allowance and
     // block the employee out of their own relief while HR is still deciding.
     await submit(admin, e.personId, { deductionMonth: 1, items: { c5: 2000 } });
-    expect((await getTp1AccumulatedForPerson(admin, { personId: e.personId, assessmentYear: YEAR })).items.c5).toBe(
-      undefined,
-    );
+    expect(
+      (await getTp1AccumulatedForPerson(admin, { personId: e.personId, assessmentYear: YEAR, deductionMonth: 2 }))
+        .items.c5,
+    ).toBe(undefined);
     await expect(submit(admin, e.personId, { deductionMonth: 2, items: { c5: 2000 } })).resolves.toBeTruthy();
   });
 
@@ -340,6 +397,44 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
     );
   });
 
+  /**
+   * THE ROUND'S TWO HALVES HAVE TO MEET HERE, AND THIS IS THE CASE THAT MAKES THEM.
+   *
+   * The limit check is ADDITIVE across months and the screen's strip says so in words — "RM X has already
+   * been approved for this assessment year, so at most RM Y can be claimed now" — which teaches HR to key
+   * each month's INCREMENT. A feed that took ONE annual figure per person (the newest row) therefore made
+   * a second declaration REDUCE the relief: January 3,000 then June 2,000 fed 2,000, the year-to-date
+   * stayed at 3,000, and the newly approved 2,000 never reached payroll at all — with no error anywhere.
+   *
+   * So the fed figure is the SUM of the winning approved declaration per deduction month, over the months
+   * already effective. The March assertion is the other half of the same sentence: a June approval must
+   * not reach back into March.
+   */
+  it('feeds the SUM of the approved months, not the newest declaration', async () => {
+    const admin = adminCtx(base);
+    const e = await hire('Additive', 'additive@acme.test');
+    await setCompensation(admin, { employmentId: e.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(admin, { personId: e.personId, icNumber: '900606065001' });
+
+    const jan = await submit(admin, e.personId, { deductionMonth: 1, items: { c4: 3000 } });
+    await approveTp1ForPerson(admin, { personId: e.personId, id: jan.id, approvedMonth: 1, approvedYear: YEAR });
+    // June: another 3,000 + 2,000 = 5,000 against C4's 10,000 group limit — accepted by the same check
+    // whose message told HR to enter the increment.
+    const jun = await submit(admin, e.personId, { deductionMonth: 6, items: { c4: 2000 } });
+    await approveTp1ForPerson(admin, { personId: e.personId, id: jun.id, approvedMonth: 6, approvedYear: YEAR });
+
+    // MARCH — only January is effective. 3,000, and the June approval is invisible to this run.
+    const march = await createBatch(admin, { companyId: base.companyId, payPeriod: `${YEAR}-03` });
+    await prefillTp1FromSelfRelief(admin, { batchId: march.batchId });
+    expect(Number((await inputRow(march.batchId, e.employmentId)).tp1Deduction)).toBe(3000);
+
+    // JUNE — both are effective. 5,000, NOT 2,000: the year-to-date relief grows by the increment
+    // instead of collapsing onto the newest row.
+    const june = await createBatch(admin, { companyId: base.companyId, payPeriod: `${YEAR}-06` });
+    await prefillTp1FromSelfRelief(admin, { batchId: june.batchId });
+    expect(Number((await inputRow(june.batchId, e.employmentId)).tp1Deduction), 'not 2,000').toBe(5000);
+  });
+
   // ═══════════════════ D. Sections E and F ═══════════════════
 
   it('refuses a catalogue submission without the Section E declaration', async () => {
@@ -411,6 +506,68 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
     expect(row.declaredAt, 'Section E is stamped by the server at submit').toBeTruthy();
     // Approving twice is not a second approval.
     await expect(approveTp1ForPerson(admin, { personId: e.personId, id })).rejects.toThrow(TaxReliefError);
+  });
+
+  /**
+   * SECTION F'S "NAME" BOX. Besides the month, the approver's identity is the one fact the section exists
+   * to record — and it was captured (`approved_by`) and rendered nowhere: both surfaces passed a
+   * hardcoded null with a comment acknowledging the gap. The name is RESOLVED through `approved_by`
+   * rather than copied onto the row, so a renamed user is never two names on two screens.
+   */
+  it('Section F resolves the approver’s NAME through approved_by, on the screen and on the form', async () => {
+    const admin = adminCtx(base);
+    const e = await hire('Named', 'named@acme.test');
+    const hr = await hire('Halim Approver', 'halim@acme.test');
+    const hrCtx: SessionContext = {
+      ...admin,
+      userId: await createAppUser(base.tenantId, hr.personId, 'hr_admin'),
+    };
+    const { id } = await submit(admin, e.personId, { deductionMonth: 1, items: { c5: 100 } });
+    // Undecided: the box is blank, and blank is the honest answer — it is what the paper form's own
+    // blank rule means.
+    expect((await getTp1ByIdForPerson(admin, { personId: e.personId, id }))!.approvedByName).toBeNull();
+
+    await approveTp1ForPerson(hrCtx, {
+      personId: e.personId,
+      id,
+      approvedMonth: 1,
+      approvedYear: YEAR,
+      approverPosition: 'HR Manager',
+    });
+    const row = (await getTp1ByIdForPerson(admin, { personId: e.personId, id }))!;
+    expect(row.approvedBy).toBe(hrCtx.userId);
+    expect(row.approvedByName).toBe('Halim Approver');
+
+    // …and BOTH surfaces render it from the row rather than from a placeholder. This is the assertion
+    // that stops the hardcoded null coming back the next time either file is touched.
+    const PAGE = fs.readFileSync(path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/page.tsx'), 'utf8');
+    const PDF = fs.readFileSync(path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'), 'utf8');
+    expect(PAGE).toContain('approvedByName: full.approvedByName');
+    expect(PDF).toContain('name: row.approvedByName');
+  });
+
+  /**
+   * THE FORM PRINTS IN A LANGUAGE THE EMBEDDED FONT CAN SET. `lib/tp1-pdf.ts` embeds Helvetica, which is
+   * WinAnsi, and folds every codepoint outside Latin-1 to '?'. Every word of the form body — seventeen
+   * item labels, their sub-lines, the frequency notes, the declaration and the provenance band — comes
+   * from the `taxRelief` namespace, and messages/{ta,zh,th,vi}.json translate all of it. Resolving that
+   * namespace against the VIEWER's UI locale therefore handed four of our six locales a statutory form
+   * whose whole of Section C read as rows of '?'. Same allowlist app/me/ea/[employmentId]/pdf carries.
+   */
+  it('prints the statutory form only in a language the embedded font can set', () => {
+    const ROUTE = fs.readFileSync(
+      path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'),
+      'utf8',
+    );
+    expect(ROUTE).toContain("TP1_LANGS = ['en', 'ms']");
+    expect(ROUTE).toContain("getTranslations({ locale, namespace: 'taxRelief' })");
+    expect(ROUTE, 'the bare-string form resolves the viewer’s locale — the bug this replaced').not.toContain(
+      "getTranslations('taxRelief')",
+    );
+    // …and the fold that makes the guard necessary is still there, so this case cannot go stale quietly.
+    const PDF_LIB = fs.readFileSync(path.join(ROOT, 'lib/tp1-pdf.ts'), 'utf8');
+    expect(PDF_LIB).toContain('StandardFonts.Helvetica');
+    expect(PDF_LIB).toMatch(/replace\(\/\[\^\\x20-\\x7E/);
   });
 
   it('an employee cannot approve, reject or cancel their own declaration', async () => {
@@ -496,7 +653,11 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
     // "medicalInsurance" onto C4 / C11 / C13, and an invented one would refuse a claim citing a number
     // nobody entered.
     await approveTp1ForPerson(admin, { personId: e.personId, id, approvedMonth: 1, approvedYear: YEAR });
-    const acc = await getTp1AccumulatedForPerson(admin, { personId: e.personId, assessmentYear: YEAR });
+    const acc = await getTp1AccumulatedForPerson(admin, {
+      personId: e.personId,
+      assessmentYear: YEAR,
+      deductionMonth: 1,
+    });
     expect(acc.items).toEqual({});
 
     // …and it still reaches payroll, which is the promise that matters.

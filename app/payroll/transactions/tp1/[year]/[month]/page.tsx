@@ -83,14 +83,23 @@ export default async function Tp1DeclarationMonthPage({
   const latest =
     monthRows.find((r) => r.deductionMonth === month) ??
     (month === 1 ? (monthRows.find((r) => r.deductionMonth == null) ?? null) : null);
-  // EXCLUDING THIS ROW from its own accumulation. Without that, editing an already-approved declaration
-  // would count the figure currently on it as "already claimed" and refuse the very number it holds.
+  // THE BUCKET THIS PAGE WRITES INTO. Normally the URL's month. But a month-less legacy declaration is
+  // reachable at month 1, and a correction to it must go back into the month-LESS bucket it came from —
+  // writing it as January would leave the old whole-year row still approved beside it, and the payroll
+  // feed (which SUMS the winning row per month) would then count the same relief twice.
+  const formMonth = latest ? latest.deductionMonth : month;
+  // EXCLUDING THIS MONTH from its own accumulation, because "already claimed this year" means the OTHER
+  // months. Without that, correcting an already-approved month would count the figure currently on it as
+  // already claimed and refuse the very number it holds. `deductionMonth` — not a row id: a correction
+  // appends, so the superseded rows for this month are still status='approved' and excluding only the
+  // newest of them would leave the older ones counted. The server's own refusal calls the same function
+  // with the same month, so this strip and that refusal are one answer.
   const [full, accumulated] = await Promise.all([
     latest ? getTp1ByIdForPerson(s, { personId: emp.personId, id: latest.id }) : Promise.resolve(null),
     getTp1AccumulatedForPerson(s, {
       personId: emp.personId,
       assessmentYear: year,
-      excludeRowId: latest?.id ?? null,
+      deductionMonth: formMonth,
     }),
   ]);
 
@@ -132,7 +141,7 @@ export default async function Tp1DeclarationMonthPage({
           Section F, which only an admin session ever gets. */}
       <Tp1DeclarationForm
         selectedYear={year}
-        deductionMonth={month}
+        deductionMonth={formMonth}
         latest={full}
         accumulated={accumulated}
         readOnly={readOnly}
@@ -145,9 +154,10 @@ export default async function Tp1DeclarationMonthPage({
                 rejectAction: adminRejectTp1,
                 cancelAction: adminCancelTp1,
                 // The approver's name is not stored on the row; it is resolved through approved_by, so a
-                // renamed user is never two names on two screens. Not yet joined here — the column is
-                // rendered from the row's own stamps and shows an em dash until that join lands.
-                approvedByName: null,
+                // renamed user is never two names on two screens. Null only when nobody has approved
+                // yet, when the approving login has no person behind it, or when RLS hides that person
+                // from this reader — in which case the field renders an em dash rather than a guess.
+                approvedByName: full.approvedByName,
                 hiddenFields: { ...hidden, tp1ReliefId: full.id, assessmentYear: String(year) },
               }
             : undefined

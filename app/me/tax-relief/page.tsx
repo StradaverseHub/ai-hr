@@ -46,7 +46,11 @@ export default async function TaxReliefPage({
 
   const [latest, accumulated] = await Promise.all([
     getTp1(s, { assessmentYear: selectedYear }),
-    getTp1Accumulated(s, { assessmentYear: selectedYear }),
+    // `deductionMonth: null` is not a placeholder — it names the bucket this screen writes into. Self
+    // service declares for the YEAR and the record stays month-less, so "already claimed" here means
+    // every MONTH record HR has approved, and never this screen's own previous declaration (which would
+    // refuse a correction by its own figure). The HR month page passes its month for the same reason.
+    getTp1Accumulated(s, { assessmentYear: selectedYear, deductionMonth: null }),
   ]);
   // Sections A and B, read from the company and employee records that already hold them — read-only, so
   // nobody re-keys a tax number onto a form. Null when this account has no employment resolved.

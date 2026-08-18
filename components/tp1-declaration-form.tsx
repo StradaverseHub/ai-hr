@@ -41,9 +41,16 @@ export type Tp1Employee = { name: string; idNumber: string | null; tin: string |
  *
  * ── EVERY ITEM CARRIES FOUR FIGURES, WHICH IS WHAT THE REPORTER ASKED FOR ───────────────────────────
  * Annual limit · Current · Accumulated · Remaining. Accumulated is what this person has ALREADY had
- * APPROVED this assessment year (core/tax-relief getTp1Accumulated) — computed by the SAME function that
- * refuses the over-claim at the write, so the remaining figure on the screen is the figure the server
- * will enforce. Not two implementations that agree today.
+ * APPROVED this assessment year IN OTHER DEDUCTION MONTHS (core/tax-relief `getTp1Accumulated`, given
+ * this form's own `deductionMonth`) — the same function, with the same argument, that refuses the
+ * over-claim at the write and that the payroll feed sums. So the remaining figure on the screen is the
+ * figure the server enforces; not two implementations that agree today.
+ *
+ * CURRENT IS THE INCREMENT FOR THIS MONTH, NOT THE YEAR-TO-DATE. That follows from the three figures
+ * above: remaining is limit − accumulated, and the refusal names what is left to claim NOW. The year's
+ * relief is the sum of its months, which is exactly what `prefillTp1FromSelfRelief` feeds. A month's own
+ * record is never accumulated against itself, so correcting an approved month is measured against the
+ * rest of the year rather than against the figure it replaces.
  *
  * ── RULE 17, SECTION E ──────────────────────────────────────────────────────────────────────────────
  * The declaration tick is NEVER read by presence. A hidden `declarationAccepted=no` is rendered FIRST and
@@ -108,10 +115,11 @@ export async function Tp1DeclarationForm({
   const num = (v: unknown) => (v == null || v === '' ? '' : Number(v).toFixed(2));
 
   /**
-   * The annual limit, what is already approved this year, and what is therefore left — for one item or
-   * one lettered sub-line. The CURRENT figure is the input beside it (or the printed amount in read-only
-   * mode), so `remaining` here is "before this claim": limit minus accumulated. That is the number the
-   * reader needs while typing, and it is the number the server checks this claim against.
+   * The annual limit, what is already approved this year IN THE OTHER MONTHS, and what is therefore
+   * left — for one item or one lettered sub-line. The CURRENT figure is the input beside it (or the
+   * printed amount in read-only mode), so `remaining` here is "before this claim": limit minus
+   * accumulated. That is the number the reader needs while typing, and it is literally the number the
+   * server checks this claim against — same function, same month.
    */
   const strip = (limit: number | null, prior: number) => {
     const remaining = limit == null ? null : Math.max(0, Math.round((limit - prior) * 100) / 100);

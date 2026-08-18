@@ -2,8 +2,11 @@
  * Self-service Personal Tax Relief — LHDN TP1 (ADR-0050, #1.1.3; per-category breakdown a2f1fa24).
  *
  * An employee declares their optional reliefs (TP1) per assessment year on /me, and HR maintains the same
- * record on /payroll/transactions/tp1. The latest APPROVED row for a year — effective from its approved
- * deduction month — feeds monthly PCB/MTD through `prefillTp1FromSelfRelief` (core/payroll).
+ * record on /payroll/transactions/tp1 — since 7ad37961 one record per DEDUCTION MONTH. The SUM of the
+ * winning APPROVED declaration per month, over the months already effective, feeds monthly PCB/MTD
+ * through `prefillTp1FromSelfRelief` (core/payroll). Both sides of that sentence — which row wins a
+ * month, and which months count — come from `collapseTp1ApprovedByMonth` in this file, so the limit
+ * check, the screen's remaining strip, the printed form and the payslip cannot disagree.
  *
  * ⚠️ THE FEED GATE MOVED FROM `submitted` TO `approved` IN 7ad37961 (ADR-0081). Migration 0445 stamps
  * every pre-existing submitted row approved; without that backfill, every existing employee's relief
@@ -36,10 +39,11 @@
  * amounts. That holds for the three new decision events (tp1.approved / rejected / cancelled) too.
  */
 import { and, desc, eq, isNull, lte, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz';
 import {
+  appUser,
   company,
   companyStatutoryMy,
   employeeStatutoryMy,
@@ -269,13 +273,52 @@ function readRemarks(raw: unknown): string | null {
 }
 
 /**
+ * ══ THE ONE RULE FOR "WHAT IS THIS PERSON'S APPROVED TP1 FOR THIS YEAR" ══════════════════════════════
+ *
+ * A YEAR IS A SET OF MONTH BUCKETS, AND EACH BUCKET HAS EXACTLY ONE WINNER. `tp1_relief` is append-only
+ * and approval is an UPDATE, so a CORRECTION to an already-approved month is a NEW row while the
+ * superseded one keeps `status = 'approved'`. Counting both rows would break two things at once:
+ *
+ *   · the limit check would refuse a correction BY ITS OWN PRIOR FIGURE ("RM 2,500 has already been
+ *     approved, so at most RM 0.00 can be claimed now" — the row refusing itself), and
+ *   · the payroll feed would DOUBLE-COUNT the corrected month and silently over-relieve.
+ *
+ * So approved rows collapse per `deduction_month`: newest `created_at` wins, tie-broken on id. That is
+ * the SAME collapse `listTp1DeclarationsForPersonYear` shows HR, so the screen, the server's refusal,
+ * the printed ACCUMULATED column and the figure `prefillTp1FromSelfRelief` feeds cannot disagree about
+ * which row is the record for a month — they all call THIS function.
+ *
+ * `deduction_month` NULL IS ITS OWN BUCKET, not January. Every declaration written before 7ad37961 has
+ * no month, and /me self-service still declares for the whole year with no month box, so folding those
+ * into January would invent a month nobody keyed and would let a January increment silently supersede a
+ * whole-year declaration.
+ */
+export function collapseTp1ApprovedByMonth<
+  T extends { id: string; deductionMonth: number | null; createdAt: Date },
+>(rows: readonly T[]): T[] {
+  const byMonth = new Map<number, T>();
+  const newestFirst = [...rows].sort(
+    (a, b) =>
+      b.createdAt.getTime() - a.createdAt.getTime() ||
+      // Tie-break on id so two runs of this can never disagree about which row won on a
+      // microsecond-identical created_at. Same rule, same direction, as the month list's.
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+  );
+  for (const r of newestFirst) {
+    const key = r.deductionMonth ?? 0; // 0 is the month-less bucket; a real month is 1–12, so no collision
+    if (!byMonth.has(key)) byMonth.set(key, r);
+  }
+  return [...byMonth.values()];
+}
+
+/**
  * The ACCUMULATED figure the official form asks for, per item and per lettered sub-line: what this person
  * has ALREADY had APPROVED for this assessment year. Approved only — a draft is not a claim and a
  * rejected or cancelled declaration is not one either, so counting them would refuse a legitimate claim.
  *
- * `excludeRowId` takes the row being edited out of its own accumulation. Without it, editing an approved
- * declaration would count the figure already on it as "already claimed" and refuse the very number it
- * currently holds.
+ * Fed the COLLAPSED winners (see above), and always asked for a specific deduction month whose own
+ * bucket is left out: "already claimed" means the OTHER months, so that a correction to a month is
+ * measured against the rest of the year rather than against the figure it is replacing.
  *
  * Legacy eight-key rows contribute NOTHING here, and that is correct rather than convenient: their
  * categories do not map onto C1–C17 (there is no honest way to split "medicalInsurance" across C4, C11
@@ -406,6 +449,17 @@ export type Tp1Row = {
   approvedMonth: number | null;
   approvedYear: number | null;
   approverPosition: string | null;
+  /**
+   * Section F's "Name" box — the approver, RESOLVED THROUGH `approved_by` rather than copied onto the
+   * row, so a renamed user is never two different names on two different screens (db/schema.ts says so
+   * at the column, and this is the join that makes the sentence true rather than aspirational).
+   *
+   * NULL when nobody has approved yet, when the approving login has no person behind it (a service
+   * principal), or when RLS hides that person from THIS reader — the left joins keep the declaration
+   * visible either way, and the screen and the printed form both render an absent name as blank rather
+   * than as a name they invented.
+   */
+  approvedByName: string | null;
 };
 
 /** The column list every single-row read shares, so a new column can never reach one read and not another. */
@@ -424,6 +478,14 @@ const TP1_ROW_COLUMNS = {
   approvedMonth: tp1Relief.approvedMonth,
   approvedYear: tp1Relief.approvedYear,
   approverPosition: tp1Relief.approverPosition,
+  // Section F's Name box. See Tp1Row.approvedByName — the pair of left joins below is part of this
+  // column list, so `withApprover(tx.select(TP1_ROW_COLUMNS))` is the only way any read may spell it.
+  // Section F's Name box — see Tp1Row.approvedByName. Every read that selects this list must chain
+  //   .leftJoin(appUser, eq(appUser.id, tp1Relief.approvedBy))
+  //   .leftJoin(person, eq(person.id, appUser.personId))
+  // LEFT, never inner: a declaration with no approver, or one whose approver RLS hides from this
+  // reader, must still come back with its own figures intact.
+  approvedByName: person.fullName,
 } as const;
 
 type Tp1RowRaw = { [K in keyof typeof TP1_ROW_COLUMNS]: unknown };
@@ -481,6 +543,8 @@ function getTp1ForPersonId(
     const [row] = await tx
       .select(TP1_ROW_COLUMNS)
       .from(tp1Relief)
+      .leftJoin(appUser, eq(appUser.id, tp1Relief.approvedBy))
+      .leftJoin(person, eq(person.id, appUser.personId))
       .where(and(eq(tp1Relief.personId, personId), eq(tp1Relief.assessmentYear, year)))
       .orderBy(desc(tp1Relief.createdAt))
       .limit(1);
@@ -494,6 +558,8 @@ function getTp1RowById(ctx: SessionContext, personId: string, id: string): Promi
     const [row] = await tx
       .select(TP1_ROW_COLUMNS)
       .from(tp1Relief)
+      .leftJoin(appUser, eq(appUser.id, tp1Relief.approvedBy))
+      .leftJoin(person, eq(person.id, appUser.personId))
       .where(and(eq(tp1Relief.id, id), eq(tp1Relief.personId, personId)))
       .limit(1);
     return row ? toTp1Row(row) : null;
@@ -509,8 +575,15 @@ export async function getTp1ByIdForPerson(
 }
 
 /**
- * The latest APPROVED TP1 for a person + year, effective for a given deduction month — the value the PCB
- * prefill feeds (7ad37961; was `getLatestSubmittedTp1` before the approval gate existed).
+ * The latest APPROVED TP1 for a person + year, effective for a given deduction month — i.e. the WINNING
+ * declaration for that point in the year (7ad37961; was `getLatestSubmittedTp1` before the approval gate
+ * existed).
+ *
+ * ⚠️ THIS IS ONE ROW, NOT THE YEAR'S TOTAL. Since a year now holds up to twelve declarations and the
+ * screen teaches HR to enter each month's INCREMENT, the figure `prefillTp1FromSelfRelief` feeds is the
+ * SUM of the winning row per effective month (`collapseTp1ApprovedByMonth`) — not this row. Use this to
+ * ask "is there an approved declaration in force for month M, and which row is it"; never as the annual
+ * relief.
  *
  * TWO PREDICATES, AND BOTH MATTER:
  *   status = 'approved'      Section F consent gates the feed. A submitted-but-unapproved declaration is
@@ -536,6 +609,8 @@ export function getLatestApprovedTp1(
     const [row] = await tx
       .select(TP1_ROW_COLUMNS)
       .from(tp1Relief)
+      .leftJoin(appUser, eq(appUser.id, tp1Relief.approvedBy))
+      .leftJoin(person, eq(person.id, appUser.personId))
       .where(
         and(
           eq(tp1Relief.personId, p.personId),
@@ -558,45 +633,70 @@ export function getLatestApprovedTp1(
 
 /**
  * The ACCUMULATED column of the official form: what this person already has APPROVED this assessment
- * year, per item and per lettered sub-line. Drives the limit / current / accumulated / remaining strip on
- * the declaration screen AND the refusal at the write — the SAME function on both sides, so the number
- * the screen shows as remaining is the number the server will enforce.
+ * year, per item and per lettered sub-line, EXCLUDING the deduction month being declared. Drives the
+ * limit / current / accumulated / remaining strip on the declaration screen, the ACCUMULATED column on
+ * the printed form, AND the refusal at the write.
+ *
+ * `deductionMonth` IS REQUIRED, AND THAT IS THE POINT. Every surface has to name the month it is asking
+ * about, because "already claimed" means the OTHER months: the HR month page passes its own month, the
+ * PDF passes the month of the row it prints, /me passes `null` (self-service declares for the year and
+ * writes a month-less row), and `submitTp1ForPersonId` passes the month it is about to write. All four
+ * land in `accumulatedInTx`, so the number the screen shows as remaining IS the number the server
+ * enforces — one implementation, not two that agree today.
  */
 export function getTp1AccumulatedForPerson(
   ctx: SessionContext,
-  p: { personId: string; assessmentYear: number; excludeRowId?: string | null },
+  p: { personId: string; assessmentYear: number; deductionMonth: number | null },
 ): Promise<Tp1Accumulated> {
-  return readAccumulated(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear, p.excludeRowId);
+  return readAccumulated(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear, p.deductionMonth);
 }
 
-/** The employee's own view of the same figures on /me. */
+/** The employee's own view of the same figures on /me (month-less: self-service declares for the year). */
 export function getTp1Accumulated(
   ctx: SessionContext,
-  p: { assessmentYear: number; excludeRowId?: string | null },
+  p: { assessmentYear: number; deductionMonth: number | null },
 ): Promise<Tp1Accumulated> {
-  return readAccumulated(ctx, requirePerson(ctx), p.assessmentYear, p.excludeRowId);
+  return readAccumulated(ctx, requirePerson(ctx), p.assessmentYear, p.deductionMonth);
 }
 
 function readAccumulated(
   ctx: SessionContext,
   personId: string,
   assessmentYear: number,
-  excludeRowId?: string | null,
+  deductionMonth: number | null,
 ): Promise<Tp1Accumulated> {
   const year = Math.trunc(Number(assessmentYear));
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({ id: tp1Relief.id, categories: tp1Relief.categories })
-      .from(tp1Relief)
-      .where(
-        and(
-          eq(tp1Relief.personId, personId),
-          eq(tp1Relief.assessmentYear, year),
-          eq(tp1Relief.status, 'approved'),
-        ),
-      );
-    return accumulate(excludeRowId ? rows.filter((r) => r.id !== excludeRowId) : rows);
-  });
+  return withTenant(ctx, (tx) => accumulatedInTx(tx, personId, year, deductionMonth));
+}
+
+/**
+ * THE function — the read every surface and the write itself go through. Kept `tx`-shaped so the refusal
+ * inside `submitTp1ForPersonId` runs the identical query in its own transaction rather than a
+ * second implementation that drifts.
+ */
+async function accumulatedInTx(
+  tx: Tx,
+  personId: string,
+  assessmentYear: number,
+  deductionMonth: number | null,
+): Promise<Tp1Accumulated> {
+  const rows = await tx
+    .select({
+      id: tp1Relief.id,
+      deductionMonth: tp1Relief.deductionMonth,
+      createdAt: tp1Relief.createdAt,
+      categories: tp1Relief.categories,
+    })
+    .from(tp1Relief)
+    .where(
+      and(
+        eq(tp1Relief.personId, personId),
+        eq(tp1Relief.assessmentYear, assessmentYear),
+        eq(tp1Relief.status, 'approved'),
+      ),
+    );
+  const month = deductionMonth == null ? null : Math.trunc(Number(deductionMonth));
+  return accumulate(collapseTp1ApprovedByMonth(rows).filter((r) => r.deductionMonth !== month));
 }
 
 /**
@@ -960,17 +1060,10 @@ async function submitTp1ForPersonId(
     // TP1 is a per-person self-declaration with no concurrent writer in any shipped flow, and adding a
     // lock this round would be an unexercised code path on the payroll write path. Recorded, not hidden.)
     if (isCatalogue) {
-      const rows = await tx
-        .select({ id: tp1Relief.id, categories: tp1Relief.categories })
-        .from(tp1Relief)
-        .where(
-          and(
-            eq(tp1Relief.personId, personId),
-            eq(tp1Relief.assessmentYear, year),
-            eq(tp1Relief.status, 'approved'),
-          ),
-        );
-      assertWithinRemaining(categories, accumulate(rows));
+      // THE SAME FUNCTION THE SCREEN CALLS, with the month this row is about to be written against — so
+      // a correction to an already-approved month is measured against the REST of the year and not
+      // against the figure it is replacing, and so the strip and this refusal can never disagree.
+      assertWithinRemaining(categories, await accumulatedInTx(tx, personId, year, deductionMonth));
     }
     const [row] = await tx
       .insert(tp1Relief)
