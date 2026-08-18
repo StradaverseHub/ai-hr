@@ -295,6 +295,25 @@ export default async function StatutoryFormPage({
                   ⬇ {t('cp39DownloadLabel')}
                 </a>
               )}
+              {/* e0cd4583 — the PRINTED CP39, one press further on. This screen is the figures; the
+                  review screen is where the preparer block is typed and where the drawn statement and
+                  its plain-text twin are downloaded from. Deliberately NOT gated on `ready`, exactly like
+                  the Borang 8A and Borang A rows below: the review screen's whole job is to NAME whoever
+                  is missing an income tax reference number, which it cannot do if you cannot reach it.
+                  The downloads themselves are gated, on that screen AND in the routes.
+
+                  It sits BESIDE the e-Data PCB file above, not instead of it: that file is the actual
+                  LHDN submission, and this page is for internal records and as a payment cover document
+                  (LHDN has not accepted a paper CP39 since September 2019). */}
+              {formId === 'my.cp39' && (
+                <a
+                  href={`/payroll/cp39/preview?companyId=${encodeURIComponent(companyId)}&periodKey=${encodeURIComponent(periodKey)}`}
+                  className={outBtn}
+                  title={t('cp39ReviewTitle')}
+                >
+                  {t('cp39Review')}
+                </a>
+              )}
               {formId === 'my.socso-eis' && ready && (
                 <a
                   href={`/payroll/reports/socso-eis-file?companyId=${companyId}&periodKey=${periodKey}`}
