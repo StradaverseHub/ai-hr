@@ -367,6 +367,15 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
                 <tr>
                   <th className="px-4 py-2 font-medium">{t('colBil')}</th>
                   <th className="px-4 py-2 font-medium">{t('colMember')}</th>
+                  {/*
+                    NO "N K" COLUMN HERE, AND THAT IS DELIBERATE — do not "fix" it. cc9f9420 added the
+                    reserved N K column to the PRINTED form (catatan 5: "Ruang ketiga (N K) hanya diisi
+                    oleh KWSP sahaja"), where it exists so the sheet has the agency's column count. It is
+                    permanently blank. This screen is the REVIEW screen: its whole job is to show what an
+                    operator must check before filing, and a column that is empty by law has nothing to
+                    review. Adding it here would add a dead column to every row and invite somebody to
+                    populate it.
+                  */}
                   <th className="px-4 py-2 font-medium">{t('colIc')}</th>
                   <th className="px-4 py-2 font-medium">{t('colName')}</th>
                   <th className="px-4 py-2 text-right font-medium">{t('colWage')}</th>

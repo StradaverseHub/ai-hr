@@ -161,9 +161,101 @@ export const BORANG_A_HEADER_KEYS = [
 
 /**
  * Rows per printed sheet. Ours, not the specimen's — the specimen is a ONE-employee form and shows no
- * page break. 22 leaves room for the repeated employer header, the two carry rows and the JUMLAH line.
+ * page break.
+ *
+ * ⚠️ MEASURED AGAINST THE DRAWN PAGE, NOT CHOSEN. cc9f9420 added the KWSP 6 masthead, the CARA BAYARAN
+ * band, the signature/stamp band and the CATATAN block, and every one of them eats vertical space the
+ * rows used to have. The renderer publishes its own vertical budget as `BORANG_A_SHEET_GEOMETRY` and
+ * `borangASheetRowCapacity()`; test/borang-a.test.ts asserts this number never exceeds it. Raising it
+ * past the capacity overprints the CATATAN block — which every static check, `next build` and a 200 all
+ * miss, because a PDF that overlaps itself is still a valid PDF.
+ *
+ * 20 rather than the measured 21: one row of headroom, because the capacity is arithmetic over
+ * hand-measured constants and a sheet that overprints its own notes is worse than a sheet that holds one
+ * name fewer.
  */
-export const BORANG_A_ROWS_PER_PAGE = 22;
+export const BORANG_A_ROWS_PER_PAGE = 20;
+
+/**
+ * THE CATATAN BLOCK — the eight numbered notes printed at the foot of the form, in ONE place.
+ *
+ * ⚠️ PROVENANCE, BECAUSE IT DECIDES WHAT MAY BE CHANGED HERE. These sentences are TRANSCRIBED from the
+ * reporter's specimen, which is a filled Borang A produced by another payroll vendor's reporting engine
+ * (DevExpress v23.2.5) — not a KWSP page. KWSP publishes no blank Borang A, so this is the closest thing
+ * to the agency's own wording anybody on this project has been able to obtain, and it is second-hand.
+ * The drawn page says exactly that at its foot. If a real KWSP 6 sheet ever arrives, the sentences below
+ * are swapped word for word and NOTHING ELSE MOVES — that is why they are an exported array rather than
+ * string literals scattered through the renderer.
+ *
+ * MALAY ONLY, and deliberately so: an English "translation" of a statutory note is our sentence wearing
+ * the agency's authority. The English gloss the form does carry is on the PERINGATAN line, where it is
+ * labelled as ours.
+ *
+ * Note 5 is the one the renderer is bound to: the N K column exists to be left empty, and
+ * test/borang-a.test.ts asserts the renderer never writes a row value into it.
+ */
+export const BORANG_A_CATATAN: readonly string[] = [
+  'Nombor Majikan mesti ditulis di belakang cek.',
+  'Jumlah bayaran mesti sama dengan jumlah di Borang A.',
+  'Potong maklumat ahli yang telah berhenti kerja.',
+  'Jika ada butir-butir pekerja yang tidak disenaraikan, sila catatkan semua butirnya dan masukkan ' +
+    'pekerja baru dalam ruangan kosong (jika ada).',
+  'Ruang ketiga (N K) hanya diisi oleh KWSP sahaja.',
+  'Bulan caruman bersamaan Bulan Upah + 1.',
+  'Upah termasuklah gaji pokok, komisyen, bonus, elaun dan bayaran yang dikenakan caruman KWSP.',
+  'Sila rujuk panduan mengisi Borang A di buku Panduan Majikan.',
+];
+
+/**
+ * The penalty warning under the EPF Act 1991. Malay is the specimen's own sentence; the English line
+ * below it is OURS and the form says so, because translating a statutory warning and printing it
+ * unattributed is how a plain-language gloss acquires the force of the agency's own words.
+ */
+export const BORANG_A_PERINGATAN_MS =
+  'PERINGATAN : Berdasarkan Akta KWSP 1991, kesilapan membekalkan maklumat ahli boleh menyebabkan tuan ' +
+  'dikenakan caj atau tindakan undang-undang.';
+export const BORANG_A_PERINGATAN_EN =
+  'Our translation, not the agency\'s: under the EPF Act 1991, supplying incorrect member information ' +
+  'may render you liable to charges or legal action.';
+
+/**
+ * CARA BAYARAN — the payment-method ticks, DRAWN EMPTY on every sheet.
+ *
+ * ONE TICK PER METHOD, all five of them. An earlier draft folded them into two — 'Wang Tunai' and
+ * 'Cek/Kiriman Wang/Wang Pos', with Draf Bank pushed onto the reference line — on the grounds that the
+ * specimen groups them that way. That is wrong for a box somebody TICKS: an operator paying by Wang Pos
+ * would tick a box that also says Cek and Kiriman Wang, and the filing would then state a payment
+ * method that was not used. The approved plan says five, and an approval on this board carries no
+ * payload, so there is no reading of it under which the reporter asked for two.
+ *
+ * NEVER PRE-FILLED. Payroll does not know how a filing was paid, and ticking a box here would be
+ * inventing a fact about a payment.
+ */
+export const BORANG_A_PAYMENT_METHODS: readonly string[] = [
+  'Wang Tunai',
+  'Cek',
+  'Kiriman Wang',
+  'Wang Pos',
+  'Draf Bank',
+];
+
+/**
+ * The line under the ticks: the cheque / draft / transfer reference, left blank for the operator.
+ *
+ * It reads as Malay, which the first transcription of it did not: '/Draf Bank*No /EFT /TT. :' printed
+ * verbatim on the page, leading slash, inline '*No' and stray full stop included. A Latin-1 round-trip
+ * test proves a string survives the font; it cannot tell you the string is gibberish. Draf Bank is a
+ * tick of its own now, so this line is purely the instrument's reference number.
+ */
+export const BORANG_A_PAYMENT_REF_LABEL = 'No. Cek / Draf Bank / EFT / TT :';
+
+/** The instruction printed above the ticks, transcribed from the specimen. */
+export const BORANG_A_PAYMENT_INSTRUCTION =
+  'Jumlah caruman untuk bulan di atas hendaklah dibayar kepada KWSP/Agen Kutipan KWSP sebelum/pada ' +
+  '15hb setiap bulan';
+
+/** The regulation citation under the masthead, transcribed from the specimen. */
+export const BORANG_A_CITATION = 'PERATURAN-PERATURAN DAN KAEDAH-KAEDAH KWSP 1991 KAEDAH 11(1)';
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const str = (v: unknown): string => (v == null ? '' : String(v));
@@ -277,7 +369,10 @@ export function paginateBorangA(rows: readonly BorangARow[], perPage = BORANG_A_
  * the screen names them beside the per-employee readiness list.
  *
  * THE REPRESENTATIVE BLOCK IS NOT IN HERE, deliberately — see `missingBorangARep`.
- * `employerAddress` is excluded too: the form prints however many address lines exist.
+ * `employerAddress` is excluded too: the form prints however many address lines exist — ALL of them,
+ * up to the four `addressLines` can build. The drawn page took the first THREE for one release, which
+ * dropped exactly the `postcode city, state` tail, the line a counter clerk reads; both outputs print
+ * every line again, and test/borang-a.test.ts renders a four-line address to keep it that way.
  */
 export function missingBorangAHeader(header: Record<string, unknown> | null | undefined): string[] {
   const h = header ?? {};
@@ -409,51 +504,72 @@ const padL = (s: string, n: number) => (s.length >= n ? s : ' '.repeat(n - s.len
  */
 export function borangATextExport(form: BorangAForm): string {
   const L: string[] = [];
+  const field = (label: string, value: string) => L.push(`${pad(label, 20)} : ${value}`);
+
   L.push('BORANG A — CARUMAN BULANAN KWSP (EPF)');
+  L.push(`KWSP 6 — ${BORANG_A_CITATION}`);
   L.push('');
   L.push('NOT KWSP ARTWORK. Our own layout, drawn to match the agency form. KWSP publishes no blank');
   L.push('Borang A to print onto. Check every figure before you key or file it.');
   L.push('');
-  L.push(`No. Rujukan Majikan : ${form.employerRef}`);
-  L.push(`Nama Majikan        : ${form.employerName}`);
+  field('No. Rujukan Majikan', form.employerRef);
+  // DRAWN EMPTY ON THE PAGE, AND EMPTY HERE. KWSP issues this reference; payroll cannot know it, and a
+  // placeholder that looks like a number is worse than a blank.
+  field('No. Rujukan Borang A', '(kosong - untuk diisi oleh tuan)');
+  field('Nama Majikan', form.employerName);
   for (const [i, line] of form.employerAddress.entries()) {
-    L.push(`${i === 0 ? 'Alamat              : ' : '                      '}${line}`);
+    L.push(`${i === 0 ? pad('Alamat', 20) + ' : ' : ' '.repeat(23)}${line}`);
   }
-  L.push(`Bulan Caruman       : ${form.contributionMonth}  (${form.contributionMonthCode})`);
-  L.push(`Bulan Upah          : ${form.payrollPeriodKey}`);
-  L.push(`Tarikh DiCetak      : ${form.printedOn}`);
-  L.push(`Bil Pekerja         : ${form.employees}`);
-  L.push(`Amaun Caruman       : RM ${money(form.totalContribution)}`);
+  field('Bulan Caruman', `${form.contributionMonth}  (${form.contributionMonthCode})`);
+  field('Bulan Upah', form.payrollPeriodKey);
+  field('Tarikh DiCetak', form.printedOn);
+  field('Bil Pekerja', String(form.employees));
+  field('Amaun Caruman', `RM ${money(form.totalContribution)}`);
   L.push('');
 
+  // CARA BAYARAN — the same FIVE methods the drawn page carries, and blank for the same reason. (Said
+  // "two ticks" until the review, immediately above a loop over all five: the text twin and the drawn
+  // page have always agreed, only this sentence disagreed with both.)
+  L.push('CARA BAYARAN');
+  L.push(`  ${BORANG_A_PAYMENT_INSTRUCTION}`);
+  for (const m of BORANG_A_PAYMENT_METHODS) L.push(`  [ ] ${m}`);
+  L.push(`  ${BORANG_A_PAYMENT_REF_LABEL} ______________________________`);
+  L.push('');
+
+  // Bil runs across the WHOLE form. Counted from the sheets themselves rather than multiplied out of
+  // BORANG_A_ROWS_PER_PAGE: a caller that passes its own `perPage` would otherwise renumber every sheet
+  // but the first, and the drawn page — which counts the same way — would silently disagree with this one.
+  let bil = 0;
   for (const page of form.pages) {
     L.push(`Mukasurat ${page.sheet}/${page.of}`);
     L.push(
       pad('BIL', 5) +
         pad('NO. AHLI', 14) +
+        // N K — printed and PERMANENTLY EMPTY. Reserved for KWSP (catatan 5). Never populated.
+        pad('N K', 4) +
         pad('NO. K/P', 15) +
-        pad('NAMA PEKERJA', 42) +
+        pad('NAMA PEKERJA / AHLI', 42) +
         padL('UPAH', 13) +
         padL('MAJIKAN', 13) +
         padL('PEKERJA', 13),
     );
-    L.push('-'.repeat(115));
+    L.push('-'.repeat(119));
     if (page.sheet > 1) {
       // Contribution columns only — the specimen leaves Upah blank on both carry rows.
       L.push(
         pad('', 5) +
-          pad('Jumlah yang dibawa dari mukasurat terdahulu', 71) +
+          pad('Jumlah yang dibawa dari mukasurat terdahulu (jika ada)', 75) +
           padL('', 13) +
           padL(money(page.carryInEmployer), 13) +
           padL(money(page.carryInEmployee), 13),
       );
     }
-    let bil = (page.sheet - 1) * BORANG_A_ROWS_PER_PAGE;
     for (const r of page.rows) {
       bil += 1;
       L.push(
         pad(String(bil), 5) +
           pad(r.memberNo, 14) +
+          pad('', 4) +
           pad(r.ic, 15) +
           pad(r.name.slice(0, 41), 42) +
           padL(r.wageRecorded ? money(r.wage) : 'NOT RECORDED', 13) +
@@ -462,11 +578,11 @@ export function borangATextExport(form: BorangAForm): string {
       );
     }
     if (page.rows.length === 0) L.push('(tiada pekerja / no employees)');
-    L.push('-'.repeat(115));
+    L.push('-'.repeat(119));
     if (page.sheet < page.of) {
       L.push(
         pad('', 5) +
-          pad('Jumlah yang dibawa ke mukasurat seterusnya', 71) +
+          pad('Jumlah yang dibawa ke mukasurat seterusnya (jika ada)', 75) +
           padL('', 13) +
           padL(money(page.carryOutEmployer), 13) +
           padL(money(page.carryOutEmployee), 13),
@@ -474,7 +590,7 @@ export function borangATextExport(form: BorangAForm): string {
     } else {
       L.push(
         pad('', 5) +
-          pad('JUMLAH (RM)', 71) +
+          pad('JUMLAH (RM)', 75) +
           padL(money(form.totalWage), 13) +
           padL(money(form.totalEmployer), 13) +
           padL(money(form.totalEmployee), 13),
@@ -485,14 +601,28 @@ export function borangATextExport(form: BorangAForm): string {
 
   L.push(`AMAUN CARUMAN (Majikan + Pekerja) : RM ${money(form.totalContribution)}`);
   L.push('');
-  L.push('Wakil Yang Diberi Kuasa:');
-  L.push(`  Nama     : ${form.repName || '—'}`);
-  L.push(`  No. K/P  : ${form.repIc || '—'}`);
-  L.push(`  Jawatan  : ${form.repPosition || '—'}`);
-  L.push(`  No. Tel  : ${form.repPhone || '—'}`);
-  L.push(`  E-mel    : ${form.repEmail || '—'}`);
+  L.push('Tandatangan Wakil Majikan:');
+  L.push(`  Nama              : ${form.repName || '—'}`);
+  L.push(`  No. Kad Pengenalan: ${form.repIc || '—'}`);
+  L.push(`  Jawatan           : ${form.repPosition || '—'}`);
+  L.push(`  No. Tel / Bimbit  : ${form.repPhone || '—'}`);
+  L.push(`  E-mel             : ${form.repEmail || '—'}`);
+  // The representative's own Tarikh is NEVER the print date. It is the date they signed, which has not
+  // happened yet when this file is written.
+  L.push('  Tarikh            : ____________________');
+  L.push('  Tandatangan       : ____________________');
   L.push('');
-  L.push('Left blank on purpose — these are yours to complete, never payroll-derived:');
-  L.push('  No. Rujukan Borang A · Kaedah Pembayaran · Tandatangan & Tarikh · Cop Agen Kutipan');
+  L.push('Kotak yang dibiarkan kosong pada borang bercetak / boxes the printed form leaves blank:');
+  L.push('  Cop Rasmi Majikan · Cop Agen Kutipan');
+  L.push('');
+  L.push('CATATAN');
+  for (const [i, note] of BORANG_A_CATATAN.entries()) L.push(`  ${i + 1}. ${note}`);
+  L.push('');
+  L.push(BORANG_A_PERINGATAN_MS);
+  L.push(BORANG_A_PERINGATAN_EN);
+  L.push('');
+  L.push('Nota CATATAN dan PERINGATAN di atas disalin daripada spesimen Borang A yang dijana oleh sistem');
+  L.push('penggajian lain, bukan daripada halaman rasmi KWSP. / The CATATAN and PERINGATAN wording above is');
+  L.push('transcribed from a Borang A produced by another payroll system, not from a KWSP page.');
   return L.join('\n') + '\n';
 }
