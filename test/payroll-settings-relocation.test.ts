@@ -216,13 +216,32 @@ describe('step 4 — the company statutory block has ONE writer', () => {
     expect(action).not.toMatch(/epfEmployerNo/);
   });
 
-  it('the payroll screen renders statutory read-only (no posted field names)', () => {
-    const page = readSource('app/admin/payroll-config/page.tsx');
-    // No input/select can post these back, so even a hand-crafted POST changes nothing.
-    for (const field of ['hrdfStatus', 'epfEmployerNo', 'socsoEmployerCode', 'lhdnEmployerNo', 'myinvoisTin', 'ssmRegistrationNo']) {
-      expect(page).not.toMatch(new RegExp(`name="${field}"`));
+  /**
+   * 6df24751 moved the block, so this case follows it rather than being deleted.
+   *
+   * Pay Schedule became company-first (listing → one company → edit), and the statutory block belongs on
+   * the READ screen — the one route of the three with no Save button on it. The rule is unchanged and is
+   * now asserted across ALL THREE files: whichever one an admin is looking at, no statutory field name is
+   * rendered anywhere, so no POST from any Pay Schedule screen can carry one.
+   */
+  const PAY_SCHEDULE_PAGES = [
+    'app/admin/payroll-config/page.tsx',
+    'app/admin/payroll-config/[companyId]/page.tsx',
+    'app/admin/payroll-config/[companyId]/edit/page.tsx',
+  ];
+
+  it('no Pay Schedule screen renders a statutory field name (no posted field names)', () => {
+    for (const rel of PAY_SCHEDULE_PAGES) {
+      const page = readSource(rel);
+      // No input/select can post these back, so even a hand-crafted POST changes nothing.
+      for (const field of ['hrdfStatus', 'epfEmployerNo', 'socsoEmployerCode', 'lhdnEmployerNo', 'myinvoisTin', 'ssmRegistrationNo']) {
+        expect(page, `${rel} posts ${field}`).not.toMatch(new RegExp(`name="${field}"`));
+      }
     }
-    // It still SHOWS the values, and points at the owner.
+  });
+
+  it('the company read screen still SHOWS the statutory values and points at their owner', () => {
+    const page = readSource('app/admin/payroll-config/[companyId]/page.tsx');
     expect(page).toMatch(/statutoryEditInOrganization/);
     expect(page).toMatch(/\/admin\/organization/);
   });

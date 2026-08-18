@@ -17,12 +17,40 @@ import {
   PayrollCycleInUseError,
   PayrollCycleRegularConflictError,
 } from '@/core/payroll-cycle';
+import { cycleCompanyHref, cycleHref, cycleNewHref } from './nav';
 
 const PAGE = '/admin/payroll-cycle';
 
-/** Preserve the selected company across the redirect so the page keeps showing the same company's list. */
-const dest = (companyId: string, kind: 'toast' | 'error', value: string) =>
-  `${PAGE}?company=${encodeURIComponent(companyId)}&${kind}=${encodeURIComponent(value)}`;
+/**
+ * 6df24751 — WHERE A WRITE LANDS, now that the screen is company-first.
+ *
+ * These actions used to redirect to one page with `?company=` on it, because there WAS one page. There
+ * are four routes now (company listing · one company's catalog · new · one cycle), so each action says
+ * where it belongs:
+ *   • success  ⇒ the company's catalog, which is the list the change is visible in;
+ *   • failure  ⇒ back to the FORM the admin was filling in, so their rejected input is re-rendered with
+ *                the message rather than being thrown away on a list screen.
+ * `q` is the company listing's search term, threaded through the form as a hidden input so that a save
+ * does not quietly discard it (the plan promises the search survives the round trip).
+ */
+const backTo = (href: string, kind: 'toast' | 'error', value: string) =>
+  `${href}${href.includes('?') ? '&' : '?'}${kind}=${encodeURIComponent(value)}`;
+
+/**
+ * Invalidate the whole company-first subtree, not just the listing. `revalidatePath(PAGE)` alone was
+ * sufficient while the screen WAS one page; a cycle now appears on three routes (the company listing's
+ * counts and Last Updated, the company's catalog, and the cycle's own screen), and two of them sit behind
+ * dynamic segments — which is why the second call passes the route PATTERN plus `'layout'`, the form the
+ * Next 16 API requires for a path containing a dynamic segment (docs: revalidatePath, "Parameters").
+ */
+const revalidateCycles = () => {
+  revalidatePath(PAGE);
+  revalidatePath('/admin/payroll-cycle/[companyId]', 'layout');
+};
+
+/** The company's own cycle catalog — where every successful write lands. */
+const dest = (companyId: string, kind: 'toast' | 'error', value: string, q?: string) =>
+  backTo(cycleCompanyHref(companyId, q), kind, value);
 
 /** Map the service's stable typed errors to localised, user-facing messages (no raw English leaks). */
 async function localise(e: unknown): Promise<string> {
@@ -43,6 +71,7 @@ async function toastMsg(key: 'seeded' | 'saved' | 'deleted'): Promise<string> {
 export async function seedCatalogAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
+  const q = String(formData.get('q') ?? '') || undefined;
   let ok = false;
   let err = '';
   try {
@@ -51,14 +80,15 @@ export async function seedCatalogAction(formData: FormData) {
   } catch (e) {
     err = await localise(e);
   }
-  revalidatePath(PAGE);
-  redirect(ok ? dest(companyId, 'toast', await toastMsg('seeded')) : dest(companyId, 'error', err));
+  revalidateCycles();
+  redirect(ok ? dest(companyId, 'toast', await toastMsg('seeded'), q) : dest(companyId, 'error', err, q));
 }
 
 export async function upsertCycleAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
   const id = String(formData.get('id') ?? '') || undefined;
+  const q = String(formData.get('q') ?? '') || undefined;
   let ok = false;
   let err = '';
   try {
@@ -76,38 +106,55 @@ export async function upsertCycleAction(formData: FormData) {
   } catch (e) {
     err = await localise(e);
   }
-  revalidatePath(PAGE);
-  redirect(ok ? dest(companyId, 'toast', await toastMsg('saved')) : dest(companyId, 'error', err));
+  revalidateCycles();
+  // A rejection goes back to the form that produced it — the edit screen for an existing cycle, the Add
+  // screen for a new one — so the admin sees the message on the fields it is about.
+  redirect(
+    ok
+      ? dest(companyId, 'toast', await toastMsg('saved'), q)
+      : backTo(id ? cycleHref(companyId, id, q) : cycleNewHref(companyId, q), 'error', err),
+  );
 }
 
 export async function setActiveAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
+  const id = String(formData.get('id') ?? '');
+  const q = String(formData.get('q') ?? '') || undefined;
   let ok = false;
   let err = '';
   try {
-    await setPayrollCycleActive(s, { id: String(formData.get('id')), active: formData.get('active') === 'true' });
+    await setPayrollCycleActive(s, { id, active: formData.get('active') === 'true' });
     ok = true;
   } catch (e) {
     err = await localise(e);
   }
-  revalidatePath(PAGE);
-  redirect(ok ? dest(companyId, 'toast', await toastMsg('saved')) : dest(companyId, 'error', err));
+  revalidateCycles();
+  // The cycle still exists either way, and the toggle lives on its own screen — so stay on it.
+  redirect(backTo(cycleHref(companyId, id, q), ok ? 'toast' : 'error', ok ? await toastMsg('saved') : err));
 }
 
 export async function deleteCycleAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
+  const id = String(formData.get('id') ?? '');
+  const q = String(formData.get('q') ?? '') || undefined;
   let ok = false;
   let err = '';
   try {
-    await deletePayrollCycle(s, String(formData.get('id')));
+    await deletePayrollCycle(s, id);
     ok = true;
   } catch (e) {
     err = await localise(e);
   }
-  revalidatePath(PAGE);
-  redirect(ok ? dest(companyId, 'toast', await toastMsg('deleted')) : dest(companyId, 'error', err));
+  revalidateCycles();
+  // A deleted cycle has no screen left to return to, so success goes up to the catalog. A REFUSED delete
+  // (the in-use guard) does have one, and that is where the reason belongs.
+  redirect(
+    ok
+      ? dest(companyId, 'toast', await toastMsg('deleted'), q)
+      : backTo(cycleHref(companyId, id, q), 'error', err),
+  );
 }
 
 /**
@@ -120,6 +167,7 @@ export async function copyCycleAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
   const id = String(formData.get('id') ?? '');
+  const q = String(formData.get('q') ?? '') || undefined;
   let ok = false;
   let err = '';
   let toast = '';
@@ -138,6 +186,8 @@ export async function copyCycleAction(formData: FormData) {
   } catch (e) {
     err = await localise(e);
   }
-  revalidatePath(PAGE);
-  redirect(ok ? dest(companyId, 'toast', toast) : dest(companyId, 'error', err));
+  revalidateCycles();
+  // The copy form lives on the source cycle's screen, and its result is a per-company summary about THAT
+  // cycle — so the summary is delivered where the choice was made.
+  redirect(backTo(cycleHref(companyId, id, q), ok ? 'toast' : 'error', ok ? toast : err));
 }

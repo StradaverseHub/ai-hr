@@ -8423,7 +8423,28 @@
     "statutoryReadOnlyHint": "Dipaparkan untuk rujukan sahaja. Butiran pendaftaran majikan ini ialah satu rekod dengan satu pemilik — Organisasi → Berkanun. Dahulu ia boleh disunting di sini juga, jadi skrin yang menyimpan terakhir menang secara senyap.",
     "movedSettingsHint": "Tempoh percubaan, peringatan penilaian dan mata wang gaji lalai bukan tetapan gaji dan telah berpindah:",
     "movedHiringLink": "Tetapan lalai pengambilan",
-    "movedCurrencyLink": "Mata wang syarikat"
+    "movedCurrencyLink": "Mata wang syarikat",
+    "listDescription": "Pilih syarikat untuk melihat atau mengubah jadual gajinya.",
+    "viewDescription": "Tetapan jadual gaji",
+    "colCompany": "Syarikat",
+    "colStatus": "Status",
+    "colLastUpdated": "Kemas kini terakhir",
+    "statusSet": "Ditetapkan",
+    "statusNotSet": "Tidak ditetapkan",
+    "searchCompanyPlaceholder": "Cari syarikat",
+    "search": "Cari",
+    "view": "Lihat",
+    "edit": "Sunting",
+    "editTitle": "Sunting Jadual Gaji",
+    "cancel": "Batal",
+    "companiesTitle": "Syarikat",
+    "emptyCompanies": "Tiada syarikat sepadan dengan carian anda.",
+    "toast": {
+      "saved": "Jadual gaji disimpan"
+    },
+    "errors": {
+      "invalidDefaultPolicy": "Dasar gaji lalai yang dipilih mestilah dasar aktif dalam syarikat ini."
+    }
   },
   "employeeIdConfig": {
     "title": "Persediaan Nombor Berjalan Automatik ID Pekerja",
@@ -9365,7 +9386,24 @@
     "copyConfirm": "Salin kitaran",
     "colCode": "Kod",
     "codePlaceholder": "cth. ME",
-    "codeHelp": "Kod ringkas bagi kitaran ini dalam lajur Kitaran Gaji fail sejarah gaji yang diimport. Pilihan — tetapi import hanya boleh menyemak lajur itu setelah kod diisi."
+    "codeHelp": "Kod ringkas bagi kitaran ini dalam lajur Kitaran Gaji fail sejarah gaji yang diimport. Pilihan — tetapi import hanya boleh menyemak lajur itu setelah kod diisi.",
+    "listDescription": "Pilih syarikat untuk melihat atau mengubah kitaran gajinya.",
+    "colCompany": "Syarikat",
+    "colCycles": "Kitaran",
+    "colDefaultCycle": "Kitaran lalai",
+    "colLastUpdated": "Kemas kini terakhir",
+    "statusReady": "Sedia",
+    "statusNeedsSetup": "Perlu tetapan",
+    "readinessNote": "Status menggunakan semula semakan kesediaan gaji yang sudah berjalan di halaman Tetapan Gaji, jadi syarikat yang tidak boleh memproses gaji turut ditandakan di sini.",
+    "searchCompanyPlaceholder": "Cari syarikat",
+    "search": "Cari",
+    "emptyCompanies": "Tiada syarikat sepadan dengan carian anda.",
+    "notSet": "Tidak ditetapkan",
+    "defaultCycleMissing": "Kitaran lalai yang dinamakan pada syarikat ini tidak sepadan dengan mana-mana kitaran aktif.",
+    "addNewCycle": "Tambah Kitaran Baharu",
+    "manageTitle": "Urus kitaran ini",
+    "companiesTitle": "Syarikat",
+    "emptyScope": "Tiada syarikat dalam skop semasa. Guna penukar syarikat di atas."
   },
   "auth": {
     "logout": "Log keluar",

@@ -188,6 +188,9 @@ export type PayrollCycleRow = {
   description: string | null;
   sortOrder: number;
   archivedAt: Date | null;
+  /** 6df24751 — when this cycle was last changed. NULL for rows nobody has edited since migration 0443
+   *  shipped (there is no honest value to backfill); the listing renders that as an em dash. */
+  updatedAt: Date | null;
 };
 
 /** List cycles for one or more companies, ordered by sortOrder then name. `activeOnly` hides archived. */
@@ -214,6 +217,7 @@ export function listPayrollCycles(
         description: r.description,
         sortOrder: r.sortOrder,
         archivedAt: r.archivedAt,
+        updatedAt: r.updatedAt,
       }),
     );
   });
@@ -289,7 +293,9 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
       }
       await tx
         .update(payrollCycle)
-        .set({ name, code, runType, remarks, description, sortOrder })
+        // 6df24751 — every edit stamps `updated_at`; the company listing's Last Updated column reads
+        // max(updated_at) per company, so a write that skipped it would leave the column lying.
+        .set({ name, code, runType, remarks, description, sortOrder, updatedAt: sql`now()` })
         .where(eq(payrollCycle.id, p.id))
         .catch((e) => {
           // Two partial-unique indexes can now fire: the live NAME and the live CODE. Distinguish them so
@@ -347,7 +353,9 @@ export async function setPayrollCycleActive(ctx: SessionContext, p: { id: string
     }
     await tx
       .update(payrollCycle)
-      .set({ archivedAt: p.active ? null : sql`now()` })
+      // 6df24751 — activating/deactivating IS a change to the cycle, so it stamps `updated_at` like any
+      // other edit (the listing's Last Updated must not read as stale after a deactivation).
+      .set({ archivedAt: p.active ? null : sql`now()`, updatedAt: sql`now()` })
       .where(eq(payrollCycle.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) throw uniqueError(e);
