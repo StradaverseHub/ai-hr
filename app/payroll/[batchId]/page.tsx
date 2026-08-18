@@ -11,6 +11,7 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
+import { payrollListReturnTo } from '@/lib/return-to';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
@@ -55,6 +56,18 @@ export default async function BatchPage({
   if (!UUID_RE.test(batchId)) notFound(); // see UUID_RE — a non-uuid segment must 404, not 500
   const sp = await searchParams;
   const { error, from, hw } = sp;
+  // 9066bd6c — BACK RETURNS THE LIST AS IT WAS LEFT. The Payroll Process list hands each row link its
+  // own current query as `?from=…`; this sends Back there instead of to a bare `/payroll`, which threw
+  // away the year, months, company, cycle and status every single time.
+  //
+  // `from` ALREADY EXISTED ON THIS ROUTE with an older meaning — `?from=process`, the marker that once
+  // made this screen title itself "Step 3 of 3". Nothing has read that value since 7076f8af (see the
+  // note below); it survives only as a pager passthrough. `payrollListReturnTo` refuses anything that
+  // is not a relative path under `/payroll`, so a legacy `?from=process` resolves to `/payroll` — i.e.
+  // byte-identical to today's behaviour — while a real filter query is honoured.
+  const backHref = payrollListReturnTo(from);
+  // …and the two screens BELOW this one get it too, so Back is unbroken all the way down the chain.
+  const fromSuffix = backHref === '/payroll' ? '' : `?from=${encodeURIComponent(backHref)}`;
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
@@ -255,7 +268,7 @@ export default async function BatchPage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
-        back={{ href: '/payroll', label: t('back') }}
+        back={{ href: backHref, label: t('back') }}
         title={batch.payPeriod}
         description={
           <>
@@ -331,10 +344,24 @@ export default async function BatchPage({
                 not a form: the destination is a page, and this keeps the header a server component. */}
             {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
               <Link
-                href={`/payroll/${batch.id}/reprocess`}
+                href={`/payroll/${batch.id}/reprocess${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
                 {t('reprocessHeaderAction')}
+              </Link>
+            )}
+            {/* 9066bd6c — REMOVE EMPLOYEE PAYROLL, beside Reprocess and before Reset because that is
+                the order of escalation: correct one person, take one person off, clear the whole run.
+                The same three gates its Reprocess sibling carries (processed, multi-cycle on, payslips
+                exist) PLUS the reset setting, because removal rides that same operator risk switch —
+                and the destination re-asserts every one of them. A plain <Link>: the destination is a
+                page, which keeps this header a server component. */}
+            {batch.status === 'processed' && multiCycleOn && resetOn && slips.length > 0 && (
+              <Link
+                href={`/payroll/${batch.id}/remove${fromSuffix}`}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {t('removeHeaderAction')}
               </Link>
             )}
             {batch.status === 'processed' &&
@@ -412,7 +439,7 @@ export default async function BatchPage({
           <div className="font-medium">⚠ {t('recalcBannerTitle', { n: recalcEmploymentIds.length })}</div>
           <p className="mt-1">{t('recalcBannerBody')}</p>
           {multiCycleOn && slips.length > 0 && (
-            <Link href={`/payroll/${batch.id}/reprocess`} className="mt-1 inline-block font-medium underline">
+            <Link href={`/payroll/${batch.id}/reprocess${fromSuffix}`} className="mt-1 inline-block font-medium underline">
               {t('recalcBannerAction')}
             </Link>
           )}

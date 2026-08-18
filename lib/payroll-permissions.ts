@@ -20,6 +20,11 @@ export const PAYROLL_PERMISSION_KEYS = [
   'payroll.unlock',
   'payroll.reprocess.selective',
   'payroll.close',
+  // 9066bd6c — remove ONE employee's calculated result from a processed run. Deliberately its OWN key
+  // rather than a reuse of payroll.rollback: an operator trusted to take one person off a run is not
+  // thereby trusted to zeroize the whole company's month, and the two actions have to be grantable
+  // apart. It defaults to the same admin roles rollback does, so nothing widens on the day it ships.
+  'payroll.remove.employee',
 ] as const;
 
 export type PayrollPermissionKey = (typeof PAYROLL_PERMISSION_KEYS)[number];
@@ -33,6 +38,11 @@ export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly 
   // unlock, so it defaults in line with its rollback/reprocess/close siblings; narrow back to
   // super_admin-only per company via an allowed=false hr_admin override when a tenant needs it.
   'payroll.unlock': ['hr_admin', 'super_admin'],
+  // 9066bd6c — same default allow-list as payroll.rollback. Removal is narrower in blast radius (one
+  // employee, run stays Processed) but identical in kind: it destroys a calculated result and unwinds
+  // the money that result set in motion. A tenant that wants a payroll clerk to remove without being
+  // able to reset grants this key to their role and leaves payroll.rollback alone.
+  'payroll.remove.employee': ['hr_admin', 'super_admin'],
 } as const;
 
 export function isPayrollPermissionKey(v: string): v is PayrollPermissionKey {

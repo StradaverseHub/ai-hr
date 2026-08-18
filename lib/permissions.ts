@@ -482,6 +482,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // completeness: a guarded page with no matrix column fails the suite rather than silently
       // becoming a screen nobody can grant or revoke.
       '/payroll/[batchId]/reprocess',
+      // 9066bd6c — Remove Employee Payroll, the per-employee counterpart to the whole-run Reset. Same
+      // requireAdmin guard as the run page it is reached from, and registered here for the same reason
+      // its Reprocess sibling above is: test/function-access.test.ts checks reverse completeness, so a
+      // guarded page with no matrix column fails the suite rather than silently becoming a screen
+      // nobody can grant or revoke. (The per-action authority is the payroll.remove.employee granular
+      // key — this registry is coarse "can the role open the screen at all" by design.)
+      '/payroll/[batchId]/remove',
       // ADR-0076 — the payroll exceptions queue. Same requireAdmin guard as the run page it hangs off,
       // and registered here for the same reason the reprocess screen above is: a guarded page with no
       // matrix column fails the suite rather than silently becoming a screen nobody can grant or revoke.

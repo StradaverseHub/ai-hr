@@ -589,6 +589,40 @@ export async function openBlockingVerdicts(
 }
 
 /**
+ * Supersede the LIVE verdicts standing against particular employments on a batch. Returns how many moved.
+ *
+ * 9066bd6c — WHY REMOVAL NEEDS THIS AND REPROCESSING DOES NOT. `evaluateBatchAnomalies` supersedes every
+ * live verdict on the batch before writing the new generation, so any path that regenerates the run
+ * (reset → draft → process again) is already covered by that alone. Removing one employee's result
+ * deliberately leaves the run PROCESSED and regenerates nothing — so without this, an unresolved BLOCK
+ * verdict for somebody who no longer has a payslip keeps refusing `closeBatch`: `openBlockingVerdicts`
+ * above is keyed on batchId and joins no payslip, and Close is the operator's very next action. The
+ * screen would then count an employee who is not on the run as the reason the run cannot be published.
+ *
+ * SUPERSEDE, NOT DELETE — the same idiom, and the same reason, as a re-evaluation: the row is the record
+ * of what the system believed when a human looked at it, and after a removal there is nothing left to
+ * recompute it from. The `payroll_anomaly_finding` rows hang off it and are kept with it.
+ */
+export async function supersedeVerdictsForEmployments(
+  tx: Tx,
+  p: { batchId: string; employmentIds: string[] },
+): Promise<number> {
+  if (p.employmentIds.length === 0) return 0;
+  const rows = await tx
+    .update(schema.payrollAnomalyVerdict)
+    .set({ supersededAt: sql`now()` })
+    .where(
+      and(
+        eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+        inArray(schema.payrollAnomalyVerdict.employmentId, p.employmentIds),
+        isNull(schema.payrollAnomalyVerdict.supersededAt),
+      ),
+    )
+    .returning({ id: schema.payrollAnomalyVerdict.id });
+  return rows.length;
+}
+
+/**
  * Record a human's disposition of a flagged verdict.
  *
  * `false_positive` is the numerator of the false-positive rate, and `raised` — a human finding something

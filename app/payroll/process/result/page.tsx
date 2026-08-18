@@ -4,6 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
 import { listEmployeesForPayrollRun } from '@/core/read';
 import { decodeRunGroupResult, type RunGroupReasonCode } from '@/core/payroll-run-group';
+import { payrollProcessBack } from '../../back';
 
 /**
  * Payroll Process — Step 3 result summary (feedback 3653d14b, Phase 1).
@@ -14,16 +15,24 @@ import { decodeRunGroupResult, type RunGroupReasonCode } from '@/core/payroll-ru
  * record"). Shows the requested header counts, a per-company outcome table with friendly failure reasons,
  * and — as the Phase-1 failed-employee signal — the pre-flight "missing salary" employees who were in scope.
  */
-export default async function PayrollProcessResultPage({ searchParams }: { searchParams: Promise<{ r?: string }> }) {
+export default async function PayrollProcessResultPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ r?: string; from?: string }>;
+}) {
   const { s } = await scopedAdmin();
   const t = await getTranslations('payroll.process');
-  const { r } = await searchParams;
+  const { r, from } = await searchParams;
+  // 9066bd6c — this screen is the terminal step of the run flow and had no way back at all: the only
+  // exit was the browser's own. Back returns the Payroll Process list as it was left. The label and the
+  // `payroll.list` lookup live in the shared helper so this page keeps ONE namespace (see app/payroll/back.ts).
+  const back = await payrollProcessBack(from);
   const result = decodeRunGroupResult(r);
 
   if (!result) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('resultTitle')} description={t('resultSubtitle')} />
+        <PageHeader back={back} title={t('resultTitle')} description={t('resultSubtitle')} />
         <ErrorBanner message={t('resultExpired')} />
         <Link href="/payroll/process" className="text-sm font-medium text-primary hover:underline">
           {t('resultBackToProcess')}
@@ -58,7 +67,7 @@ export default async function PayrollProcessResultPage({ searchParams }: { searc
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('resultTitle')} description={t('resultSubtitle')} />
+      <PageHeader back={back} title={t('resultTitle')} description={t('resultSubtitle')} />
 
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">

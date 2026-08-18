@@ -86,6 +86,7 @@ import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-empl
 import { payslipSegment } from '@/core/payslip-segment';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
+import { payrollProcessBack } from '../back';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
 import { Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
@@ -175,6 +176,7 @@ export default async function IndividualPayslipPage({
     month?: string;
     cycle?: string;
     payslipId?: string;
+    from?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -183,6 +185,10 @@ export default async function IndividualPayslipPage({
   const tTxn = await getTranslations('payroll.transactions');
   const locale = await getLocale();
   const sp = await searchParams;
+  // 9066bd6c — Back to the Payroll Process list, as it was left (year, months, company, cycle, status
+  // ride the `from` query the list hands its row links). This screen had no back link of any kind. The
+  // label and its `payroll.list` lookup live in the shared helper — see app/payroll/back.ts.
+  const back = await payrollProcessBack(sp.from);
 
   const [employees, companies] = await Promise.all([listEmployees(s, scopeIds), listCompanies(s)]);
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
@@ -298,7 +304,7 @@ export default async function IndividualPayslipPage({
     // variant has to restate it or a printed payslip would sit hard against the left edge.
     <div className={`${pageWideCls} print:mx-auto print:max-w-4xl`}>
       <div className="print:hidden">
-        <PageHeader title={t('title')} description={t('subtitle')} />
+        <PageHeader back={back} title={t('title')} description={t('subtitle')} />
       </div>
 
       <CollapsibleEmployeePanel
