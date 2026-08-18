@@ -425,6 +425,35 @@ describe('a period the screens cannot validate degrades, it does not throw', () 
     }
   });
 
+  /**
+   * THE ONE THE ORDERING FIX ALONE DOES NOT COVER, and the reason the guard is a call rather than a
+   * comment. `hasBatch` is true whenever a payroll_batch.pay_period equals the key VERBATIM, and nothing
+   * enforces that column's shape: it is plain `text` with no CHECK, createBatch does not validate it, and
+   * the wizard's only real guard is `<input type="month">` — which Firefox and desktop Safari do not
+   * implement and render as a free text box. So a run CAN exist under "2026-13". Before the guard, that
+   * made hasBatch true, skipped the no-batch return, and threw out of the validating read into two screens
+   * that have degraded gracefully since slice 0.
+   */
+  it('degrades even when a real run EXISTS under an impossible month', async () => {
+    await hire({ name: 'ANG PEI YEE', salary: 4000 });
+    // Created the ONLY way this is actually reachable, which is worth stating because the obvious route
+    // is closed: createBatch derives batch_date as `<period>-28` when no payment date is given, so a bare
+    // 2026-13 run is refused by Postgres as an invalid DATE (verified — the first draft of this case died
+    // exactly there). Supply the wizard's own payment-date field and the fallback never runs, pay_period
+    // takes the free-text value verbatim, and the batch commits.
+    // The batch is created but NOT processed, and that is the real shape of this state rather than a
+    // convenience: generatePayslips cannot run on an impossible month either — preProcessChecksTx builds
+    // a period end of `2026-13-undefined` out of daysInMonth(2026, 13) and Postgres refuses it. So what an
+    // operator is actually left holding is a DRAFT run under a month that does not exist. That is enough,
+    // because `hasBatch` is true the moment the batch row exists.
+    const a = adminCtx(b);
+    await createBatch(a, { companyId: b.companyId, payPeriod: '2026-13', paymentDate: '2026-12-28' });
+    const r = await preview('2026-13');
+    expect(r.meta.hasBatch, 'the batch really is there — this is not the no-batch path').toBe(true);
+    expect(r.rows).toEqual([]);
+    expect(r.columns.map((c) => c.key)).toEqual(['name', 'taxNo', 'ic', 'pcb']);
+  });
+
   it('answers no-batch for a month that was simply never run', async () => {
     await hire({ name: 'ANG PEI YEE', salary: 4000 });
     const r = await preview('2099-12');

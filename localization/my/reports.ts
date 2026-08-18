@@ -29,6 +29,10 @@ import { borangAReport } from './borang-a';
 // NOT a second catalogue entry: `cp39()` below merges these into the rows and meta it already returns,
 // so the LHDN shelf keeps ONE CP39 card with ONE readiness gate.
 import { cp39FormExtras, CP39_FORM_NOTES } from './cp39-form';
+// The period-shape guard lives with the FORM MODEL (lib/cp39-form.ts), not with this read, because the
+// model is what refuses to print a month it cannot name. Imported here so the read degrades on the same
+// rule the model enforces, rather than on a second copy of the regex that could drift from it.
+import { isCp39PeriodKey } from '../../lib/cp39-form';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
 export type ReportRow = Record<string, string | number | null>;
@@ -474,6 +478,18 @@ async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportRe
   // `StatutoryReportPanel`, which the no-batch branch of both screens does not reach. The four queries
   // this used to run on the empty path were discarded work.
   if (!b.hasBatch) return empty(CP39_COLS, b);
+  // …AND THE ORDERING ABOVE IS NOT ENOUGH ON ITS OWN, because `hasBatch` is true whenever some
+  // payroll_batch.pay_period equals this key VERBATIM — and nothing enforces that column's format.
+  // db/schema.ts declares it plain `text` with no CHECK; createBatch/createAdditionalRun never validate
+  // it; the server action takes `String(formData.get('payPeriod'))`; and the only real guard is
+  // `<input type="month">` on the wizard, which Firefox and desktop Safari do not implement and render
+  // as a plain text box. So a run genuinely CAN exist under "2026-13", and then hasBatch is true, the
+  // return above does not fire, and the validating read below throws into two screens that have always
+  // degraded gracefully. Resting a 500 on a browser's input-type support is not a guard.
+  //
+  // `isCp39PeriodKey` already existed for exactly this and was called only by its own test — dead
+  // production code. Calling it here makes the degradation structural.
+  if (!isCp39PeriodKey(params.periodKey)) return empty(CP39_COLS, b);
   // Second, narrow query rather than a wider `loadBatchRows`: that loader is shared by six reports and
   // only this one needs a passport number. Reached only with a period that produced a real batch, which
   // is why its validation is now a backstop rather than the screen's error path.
