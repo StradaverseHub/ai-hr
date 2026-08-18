@@ -6514,8 +6514,15 @@ export async function removeEmployeePayroll(
       .limit(1);
     if (period?.status === 'closed') throw new RemovePeriodClosedError();
 
-    // ── 2. What is actually on this run. Row-locked, so a concurrent removal/reprocess of the same
-    //    person serialises rather than both computing a delta from the same stale figures. ──
+    // ── 2 + 3. WHAT IS ACTUALLY ON THIS RUN, AND THE SNAPSHOT, IN ONE READ. ──
+    //
+    // A bare `select()` (every column), row-locked. Both halves are deliberate:
+    //   • FOR UPDATE, so a concurrent removal or reprocess of the same run serialises instead of two
+    //     transactions computing a totals delta from the same stale stored figure;
+    //   • every column, because these rows ARE the snapshot written to
+    //     payroll_employee_result_history.before at step 6b — after the delete there is no other copy
+    //     of a removed payslip anywhere, so a narrowed projection here would silently decide what can
+    //     never be recovered.
     const onRun = await tx
       .select()
       .from(payslip)
@@ -6526,7 +6533,7 @@ export async function removeEmployeePayroll(
     if (removing.length === onRun.length) throw new RemoveWholeRunError();
     const removedIds = removing.map((sl) => sl.employmentId);
 
-    // ── 4. The unwind, narrowed to the selected employments. ──
+    // ── 4. THE UNWIND, narrowed to the selected employments and to them alone. ──
     const { reversed: loanInstalmentsReversed, loansReopened } = await unwindAppliedLoanRepayments(tx, ctx, {
       batchId: p.batchId,
       employmentIds: removedIds,
