@@ -443,7 +443,12 @@ function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
       kind: 'item',
       code: l.code,
       labelKey: null,
-      name: recordLineIdentity(l, payItemNames).label || l.code,
+      // `.name`, NOT `.label` — the Grid already has a `code` column of its own (history-grid.tsx renders
+      // r.code in a sticky column; grid-export writes code and description as two cells), so `.label`
+      // printed it twice: `A0040 | A0040 · MEAL ALLOWANCE`, while the componentLines row built 30 lines
+      // above reads `A0040 | MEAL ALLOWANCE`. history-export.ts reasoned exactly this way for its column
+      // headings; the Grid is where it is most literally true and it was missed.
+      name: recordLineIdentity(l, payItemNames).name || l.name || l.code,
       group: 'item',
       reconciling: false,
       amount: num(l.amount),

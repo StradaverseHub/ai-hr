@@ -261,9 +261,18 @@ export default async function TransactionViewPage({
         })
       : [];
   // Keyed by (run, employee) — the pair a payslip IS. Built here so the client table does no grouping.
+  //
+  // AND FILTERED TO THE PAIRS ACTUALLY ON SCREEN, which is not what the fence alone gives you. The read is
+  // fenced `batchIds × employmentIds` — a CROSS PRODUCT — so 200 shown rows spanning 20 runs and 100
+  // employees fence in up to 2,000 pairs. The surplus renders nothing (its `${batchId}:${employmentId}`
+  // key never matches a shown row) and would ship in the flight payload anyway, which is exactly the
+  // invisible surplus core/payroll-view.ts claims this read does not have. Cheap to close, and closing it
+  // keeps that docblock true rather than aspirational.
+  const shownKeys = new Set(shownHistoryRows.map((r) => `${r.batchId}:${r.employmentId}`));
   const sourceTxnsByPayslip: Record<string, PayslipSourceTxnRow[]> = {};
   for (const r of sourceTxnRows) {
     const key = `${r.batchId}:${r.employmentId}`;
+    if (!shownKeys.has(key)) continue;
     (sourceTxnsByPayslip[key] ??= []).push(r);
   }
 
