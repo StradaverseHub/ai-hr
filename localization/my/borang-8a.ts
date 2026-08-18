@@ -67,12 +67,22 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const num = (v: unknown) => Number(v ?? 0);
 
 /** The schedule's own columns, in the specimen's own order and numbering. */
+/**
+ * The schedule's columns, in the agency form's own numbering and — since 16f2aac1 — its own full wording,
+ * so a figures table and the drawn page cannot describe the same column differently.
+ *
+ * TWO DATE COLUMNS HERE, ONE ON THE FORM, AND THAT IS DELIBERATE. The drawn page merges (1) Mula and (1)
+ * Berhenti into a single "TARIKH MULA/BERHENTI KERJA" cell because that is what the agency form does. A
+ * TABLE is not a form: two sortable, separately-readable date columns are easier to check a month's
+ * joiners and leavers against, which is the entire job of the review screen. They keep the same `(1)`
+ * number as the form gives them, so the mapping stays obvious in both directions.
+ */
 export const BORANG_8A_COLUMNS: ReportColumn[] = [
-  { key: 'startDate', label: '(1) Tarikh Mula Kerja' },
-  { key: 'stopDate', label: '(1) Tarikh Berhenti Kerja' },
+  { key: 'startDate', label: '(1) Tarikh Mula Kerja (hhbbtttt)' },
+  { key: 'stopDate', label: '(1) Tarikh Berhenti Kerja (hhbbtttt)' },
   { key: 'status', label: '(2) Status' },
-  { key: 'ic', label: '(3) No. K/P' },
-  { key: 'name', label: '(4) Nama Pekerja' },
+  { key: 'ic', label: '(3) No. Kad Pengenalan' },
+  { key: 'name', label: '(4) Nama Pekerja (Mengikut Kad Pengenalan)' },
   { key: 'contribution', label: '(5) Caruman (RM)', numeric: true },
 ];
 
