@@ -12,6 +12,13 @@
  * specimen line for line, and the catalog entry declares `agency-layout` — never `official`, which in
  * this codebase means the government's own published page and belongs to `my.cp22` alone.
  *
+ * 16f2aac1 ASKED AGAIN, WITH A NEW ATTACHMENT, AND THE ANSWER DID NOT CHANGE. Its metadata was read
+ * before any of its corrections were built: producer "Developer Express Inc. DXperience (tm) v23.2.5",
+ * one A4 page, no form fields — the SAME vendor engine as 91ce0f6a, so it is another completed form from
+ * another payroll system and not an agency blank. It is excellent evidence of the agency's WORDING, and
+ * every one of the nine corrections was taken from it; it is not evidence that we have agency artwork.
+ * `agency-layout` STANDS. Do not promote this form to `official` on the strength of a third such file.
+ *
  * ── THE NO-OFFSET RULE, AND WHY IT IS A RULE RATHER THAN A DEFAULT ─────────────────────────────────
  * A Borang 8A's contribution month IS the payroll month. KWSP's Borang A, for the same payroll cycle, is
  * stamped the month AFTER. The reporter's own two attachments prove it: both come off the July 2026
@@ -32,15 +39,18 @@
 export type Borang8ARow = {
   /** Not printed — the key a typed STATUS override is addressed by. */
   employmentId: string;
-  /** Column (1) Tarikh Mula Kerja, `ddmmyyyy`, blank unless they joined inside the contribution month. */
+  /**
+   * Column (1) TARIKH MULA/BERHENTI KERJA (hhbbtttt) — ONE column on the form (16f2aac1), carrying two
+   * fixed slots. `ddmmyyyy`, blank unless they joined inside the contribution month.
+   */
   startDate: string;
-  /** Column (1) Tarikh Berhenti Kerja, `ddmmyyyy`, blank unless they left inside the contribution month. */
+  /** Column (1)'s second slot: berhenti. `ddmmyyyy`, blank unless they left inside the contribution month. */
   stopDate: string;
   /** Column (2) STATUS — blank for a continuing employee, exactly as the specimen leaves it. */
   status: string;
-  /** Column (3) No. K/P. */
+  /** Column (3) NO. KAD PENGENALAN. */
   ic: string;
-  /** Column (4) Nama Pekerja. */
+  /** Column (4) NAMA PEKERJA (MENGIKUT KAD PENGENALAN). */
   name: string;
   /** Column (5) Caruman, in RM. */
   contribution: number;
@@ -310,36 +320,47 @@ const padL = (s: string, n: number) => (s.length >= n ? s : ' '.repeat(n - s.len
  */
 export function borang8ATextExport(form: Borang8AForm): string {
   const L: string[] = [];
-  L.push('BORANG 8A — CARUMAN BULANAN (PERKESO)');
+  L.push('PERTUBUHAN KESELAMATAN SOSIAL');
+  L.push('PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A)');
+  L.push(`CARUMAN GAJI BULAN ${form.contributionMonth} — BORANG 8A`);
   L.push('');
   L.push('NOT PERKESO ARTWORK. Our own layout, drawn to match the agency form. PERKESO publishes no');
   L.push('blank Borang 8A to print onto. Check every figure before you key or file it.');
   L.push('');
-  L.push(`No. Kod Majikan          : ${form.employerCode}`);
-  L.push(`MyCoID / No. Pendaftaran : ${form.mycoid || '—'}`);
-  L.push(`Nama Majikan             : ${form.employerName}`);
-  for (const [i, line] of form.employerAddress.entries()) {
-    L.push(`${i === 0 ? 'Alamat Majikan           : ' : '                           '}${line}`);
-  }
-  L.push(`Caruman Gaji Bulan       : ${form.contributionMonth}`);
-  L.push(`Bayaran tidak lewat dari : ${form.paymentDueDate}`);
-  L.push(`Amaun Caruman            : RM ${money(form.total)}`);
-  L.push(`Bil. Pekerja             : ${form.employees}`);
+  L.push(`No. Kod Majikan                        : ${form.employerCode}`);
+  L.push(`No. MyCoID / No. Pendaftaran Perniagaan: ${form.mycoid || '—'}`);
+  L.push(`Nama dan Alamat Majikan                : ${form.employerName}`);
+  for (const line of form.employerAddress) L.push(`                                         ${line}`);
+  L.push(`Caruman Gaji Bulan                     : ${form.contributionMonth}`);
+  L.push(`Amaun Caruman (RM)                     : ${money(form.total)}`);
+  L.push(`Bil. Pekerja                           : ${form.employees}`);
+  L.push('');
+  // The deadline sentence, verbatim as it prints on the form. The DATE is unchanged — `paymentDueDateFor`
+  // owns that rule (last day of the contribution month) and is deliberately untouched by the re-wording.
+  L.push(`Amaun caruman di atas hendaklah dibayar kepada PERKESO/EJEN PEMUNGUT tidak lewat daripada`);
+  L.push(`${form.paymentDueDate}`);
   L.push('');
 
   for (const page of form.pages) {
     L.push(`Lembaran ${page.sheet}/${page.of}`);
+    // The drawn form's own columns, in its own words: ONE merged date column (1), then (2)…(5). The two
+    // dates share the cell as `mula/berhenti`, which is why the column is 19 wide.
     L.push(
-      pad('MULA', 9) + pad('BERHENTI', 9) + pad('STATUS', 13) + pad('NO. K/P', 15) + pad('NAMA', 42) + padL('CARUMAN', 12),
+      pad('TARIKH MULA/BERHENTI', 21) +
+        pad('STATUS', 9) +
+        pad('NO. KAD PENGENALAN', 20) +
+        pad('NAMA PEKERJA', 38) +
+        padL('CARUMAN', 12),
     );
+    L.push(pad('KERJA (hhbbtttt) (1)', 21) + pad('(2)', 9) + pad('(3)', 20) + pad('(MENGIKUT KAD PENGENALAN) (4)', 38) + padL('(5)', 12));
     L.push('-'.repeat(100));
     for (const r of page.rows) {
+      const dates = r.startDate && r.stopDate ? `${r.startDate}/${r.stopDate}` : r.startDate || r.stopDate;
       L.push(
-        pad(r.startDate, 9) +
-          pad(r.stopDate, 9) +
-          pad(r.status, 13) +
-          pad(r.ic, 15) +
-          pad(r.name.slice(0, 41), 42) +
+        pad(dates, 21) +
+          pad(r.status, 9) +
+          pad(r.ic, 20) +
+          pad(r.name.slice(0, 37), 38) +
           padL(money(r.contribution), 12),
       );
     }
@@ -349,10 +370,11 @@ export function borang8ATextExport(form: Borang8AForm): string {
     L.push('');
   }
 
-  L.push(pad('JUMLAH KESELURUHAN (Amaun Caruman)', 88) + padL(money(form.total), 12));
+  L.push(pad('AMAUN CARUMAN (jumlah keseluruhan)', 88) + padL(money(form.total), 12));
   L.push('');
   L.push('Left blank on purpose — these are yours to complete, never payroll-derived:');
-  L.push('  Kaedah Pembayaran · No. Cek / Kiriman Wang · Tandatangan · No. Tel & Cop Majikan');
-  L.push('  Kegunaan Ejen Pemungut');
+  L.push('  Kaedah Pembayaran (Sila tandakan (x)) — Tunai · Kiriman Wang · Cek · Lain-lain');
+  L.push('  No. Cek / Kiriman Wang · Tandatangan · Nama · No. Tel & Cop Majikan');
+  L.push('  Kegunaan Ejen Pemungut — Cop · No. Slip Bayaran');
   return L.join('\n') + '\n';
 }

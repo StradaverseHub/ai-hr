@@ -38,7 +38,15 @@ import {
 import { epfContributionPeriodFor } from '../lib/borang-a';
 import { MY_REPORTS } from '../localization/my/reports';
 import { BORANG_8A_COLUMNS } from '../localization/my/borang-8a';
-import { borang8AFilename, renderBorang8APdf } from '../lib/borang-8a-pdf';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+import {
+  BORANG_8A_HEADINGS,
+  BORANG_8A_HEAD_PAD,
+  BORANG_8A_HEAD_SIZE,
+  borang8AFilename,
+  renderBorang8APdf,
+  wrapTo,
+} from '../lib/borang-8a-pdf';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import en from '../messages/en.json';
 
@@ -384,6 +392,91 @@ describe('the plain-text twin', () => {
     for (const b of ['Kaedah Pembayaran', 'Tandatangan', 'Kegunaan Ejen Pemungut']) expect(text).toContain(b);
     // …and the drawn page leaves the same ones empty rather than pre-filling them.
     for (const b of ['Kaedah Pembayaran', 'Tandatangan', 'Kegunaan Ejen Pemungut']) expect(PDF_SRC).toContain(b);
+    // 16f2aac1 added three more manual fields; every one is the operator's or the agent's, never ours.
+    for (const b of ['Nama', 'No. Slip Bayaran', 'Cop']) expect(text).toContain(b);
+  });
+
+  /**
+   * 16f2aac1 — THE REPORTER'S NINE CORRECTIONS, pinned as the STRINGS THEY ASKED FOR rather than loosened.
+   *
+   * Every one is wording or position; not one is a figure, which is why the two dating rules above are
+   * untouched and still pass. These assertions exist because the form's whole value is that it reads like
+   * the agency's page: a heading that quietly reverts to a shortened form is invisible in every other
+   * check, since the PDF still renders, still totals, and still answers 200.
+   */
+  it('prints the nine corrections, in the reporter’s own words', () => {
+    // 1 — the legal reference, above the title.
+    expect(PDF_SRC).toContain('PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A)');
+    expect(text).toContain('PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A)');
+    // 2 — one title line, the month and year in their own boxes under bulan / tahun.
+    expect(PDF_SRC).toContain("'CARUMAN GAJI BULAN'");
+    expect(PDF_SRC).toContain("TR('BORANG 8A'");
+    for (const cap of ["'bulan'", "'tahun'"]) expect(PDF_SRC).toContain(cap);
+    expect(text).toContain('CARUMAN GAJI BULAN 07 / 2026');
+    // 3 — the four-field row, relabelled, with the contribution month no longer in it.
+    for (const l of ['No. Kod Majikan', 'No. MyCoID / No. Pendaftaran Perniagaan', 'Amaun Caruman (RM)']) {
+      expect(PDF_SRC).toContain(l);
+      expect(text).toContain(l);
+    }
+    // 4 — Lembaran and Bil. Pekerja up beside the employer's name and address.
+    for (const l of ['Nama dan Alamat Majikan', 'Lembaran', 'Bil. Pekerja']) expect(PDF_SRC).toContain(l);
+    // 5 — the deadline sentence, verbatim. The DATE is unchanged and is asserted elsewhere.
+    const sentence = 'Amaun caruman di atas hendaklah dibayar kepada PERKESO/EJEN PEMUNGUT tidak lewat daripada';
+    expect(PDF_SRC).toContain(sentence);
+    expect(text).toContain(sentence);
+    // 6 — the collecting agent's box, with both of its fields.
+    for (const l of ['Kegunaan Ejen Pemungut', 'Cop', 'No. Slip Bayaran']) expect(PDF_SRC).toContain(l);
+    // 7 and 8 — the merged date column and the two full column names.
+    expect(BORANG_8A_HEADINGS.map((h) => h.parts[0])).toEqual([
+      'TARIKH MULA/BERHENTI KERJA',
+      'STATUS',
+      'NO. KAD PENGENALAN',
+      'NAMA PEKERJA (MENGIKUT KAD PENGENALAN)',
+    ]);
+    // 9 — the payment block, in the reporter's order, with the signature box split into three.
+    expect(PDF_SRC).toContain('Kaedah Pembayaran (Sila tandakan (x))');
+    expect(text).toContain('Kaedah Pembayaran (Sila tandakan (x))');
+    const opts = [...PDF_SRC.matchAll(/\['(Tunai|Kiriman Wang|Cek|Lain-lain)', \d+, \d+\]/g)].map((m) => m[1]);
+    expect(opts).toEqual(['Tunai', 'Kiriman Wang', 'Cek', 'Lain-lain']);
+    for (const f of ['Tandatangan', 'Nama', 'No. Tel &', 'No. Cek / Kiriman Wang']) expect(PDF_SRC).toContain(f);
+  });
+
+  /**
+   * THE SHORTENED HEADINGS MUST NOT COME BACK. They were shortened once, deliberately, because the full
+   * wording overflowed its column and printed "(1) Tarikh Berhenti(2) Status" as a single run — and 16f2aac1
+   * is the reporter telling us the shortening was the wrong trade. `wrapTo` is what makes the full wording
+   * safe now, so a future "it doesn't fit, trim it" would silently undo this whole round.
+   */
+  it('never falls back to the shortened column headings', () => {
+    for (const old of ["'(3) No. K/P'", "'(4) Nama Pekerja'", "'(1) Mula Kerja'", "'(1) Berhenti Kerja'"]) {
+      expect(code('lib/borang-8a-pdf.ts'), old).not.toContain(old);
+    }
+    expect(BORANG_8A_COLUMNS.find((c) => c.key === 'ic')!.label).toBe('(3) No. Kad Pengenalan');
+    expect(BORANG_8A_COLUMNS.find((c) => c.key === 'name')!.label).toBe('(4) Nama Pekerja (Mengikut Kad Pengenalan)');
+  });
+
+  /**
+   * THE OVERFLOW BUG, PINNED MECHANICALLY RATHER THAN BY EYE.
+   *
+   * pdf-lib does not clip text: a heading wider than its column prints straight into its neighbour, which
+   * is what "(1) Tarikh Berhenti(2) Status" was. It was found by rasterising the page and looking at it,
+   * and nothing else could see it. This embeds the REAL Helvetica-Bold and measures every wrapped line
+   * against the column it will be drawn in — so widening a heading, narrowing a column, or bumping the
+   * point size fails here instead of on a filed form. A single word longer than its own column cannot be
+   * wrapped by anything, and that is the case this really catches.
+   */
+  it('wraps every column heading inside its own column, at the real font metrics', async () => {
+    const doc = await PDFDocument.create();
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    for (const h of BORANG_8A_HEADINGS) {
+      const maxW = h.col.w - BORANG_8A_HEAD_PAD;
+      expect(maxW, `${h.key}: column must leave room for a heading`).toBeGreaterThan(0);
+      for (const part of h.parts) {
+        for (const l of wrapTo(part, maxW, BORANG_8A_HEAD_SIZE, bold)) {
+          expect(bold.widthOfTextAtSize(l, BORANG_8A_HEAD_SIZE), `${h.key}: "${l}"`).toBeLessThanOrEqual(maxW);
+        }
+      }
+    }
   });
 
   it('paginates like the drawn form, sheet totals and all', () => {
