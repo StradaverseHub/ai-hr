@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5570c6a2 — Leave Type dropdown, before and after</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #16181d;
+    --muted: #6b7280;
+    --line: #e3e6ea;
+    --accent: #2f5bd0;
+    --bad: #b42318;
+    --good: #067647;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 20px 56px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .crumb { color: var(--muted); font-size: 13px; margin: 0 0 28px; }
+  .cols { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .col { flex: 1 1 420px; min-width: 320px; }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 999px; margin-bottom: 10px;
+  }
+  .tag.before { background: #fdecea; color: var(--bad); }
+  .tag.after { background: #e7f5ee; color: var(--good); }
+  .modal {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 6px 22px rgba(16,24,40,0.07); overflow: hidden;
+  }
+  .modal-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-weight: 650; font-size: 15px; }
+  .x { color: var(--muted); font-size: 16px; }
+  .body { padding: 18px; }
+  .flabel { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .select {
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 12px; font-size: 14px;
+  }
+  .select.open { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47,91,208,0.12); }
+  .caret { color: var(--muted); font-size: 11px; }
+  .list {
+    margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    box-shadow: 0 8px 20px rgba(16,24,40,0.10); overflow: hidden;
+  }
+  .opt { padding: 9px 12px; font-size: 14px; border-bottom: 1px solid #f1f3f5; }
+  .opt:last-child { border-bottom: 0; }
+  .opt.sel { background: #eef3fd; }
+  .sfx { color: var(--muted); }
+  .sfx.hit { color: var(--bad); background: #fdecea; border-radius: 4px; padding: 0 4px; }
+  .row { margin-top: 18px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .file {
+    border: 1px dashed var(--line); border-radius: 8px; padding: 9px 12px;
+    font-size: 13px; color: var(--muted); background: #fafbfc;
+  }
+  .keep { border-left: 3px solid var(--good); padding-left: 10px; }
+  .note {
+    margin-top: 14px; font-size: 13px; color: var(--muted);
+    background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .foot {
+    margin-top: 30px; font-size: 13px; color: var(--muted);
+    border-top: 1px solid var(--line); padding-top: 16px;
+  }
+  .foot b { color: var(--ink); font-weight: 650; }
+  .foot ul { margin: 8px 0 0; padding-left: 18px; }
+  .foot li { margin-bottom: 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Leave Type dropdown — Request Leave</h1>
+  <p class="crumb">Employee &gt; My Leave &gt; Request Leave &nbsp;·&nbsp; item 5570c6a2</p>
+
+  <div class="cols">
+
+    <div class="col">
+      <span class="tag before">Before — today</span>
+      <div class="modal">
+        <div class="modal-head"><span class="modal-title">Request Leave</span><span class="x">&#10005;</span></div>
+        <div class="body">
+          <div class="flabel">Leave Type</div>
+          <div class="select open"><span>Annual Leave</span><span class="caret">&#9662;</span></div>
+          <div class="list">
+            <div class="opt sel">Annual Leave</div>
+            <div class="opt">Caregiver Leave <span class="sfx hit">&middot; document required</span></div>
+            <div class="opt">Compassionate Leave</div>
+            <div class="opt">Emergency Leave</div>
+            <div class="opt">Examination Leave</div>
+            <div class="opt">Medical Leave</div>
+            <div class="opt">Study Leave</div>
+          </div>
+          <div class="row">
+            <div class="flabel">Supporting document</div>
+            <div class="file">Choose file — no file chosen</div>
+            <div class="hint">Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.</div>
+          </div>
+        </div>
+      </div>
+      <div class="note">The wording sits inside the option itself, so it reads like part of the leave type's name and shows an internal setting to the employee.</div>
+    </div>
+
+    <div class="col">
+      <span class="tag after">After — what we will build</span>
+      <div class="modal">
+        <div class="modal-head"><span class="modal-title">Request Leave</span><span class="x">&#10005;</span></div>
+        <div class="body">
+          <div class="flabel">Leave Type</div>
+          <div class="select open"><span>Annual Leave</span><span class="caret">&#9662;</span></div>
+          <div class="list">
+            <div class="opt sel">Annual Leave</div>
+            <div class="opt">Caregiver Leave</div>
+            <div class="opt">Compassionate Leave</div>
+            <div class="opt">Emergency Leave</div>
+            <div class="opt">Examination Leave</div>
+            <div class="opt">Medical Leave</div>
+            <div class="opt">Study Leave</div>
+          </div>
+          <div class="row keep">
+            <div class="flabel">Supporting document</div>
+            <div class="file">Choose file — no file chosen</div>
+            <div class="hint">Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.</div>
+          </div>
+        </div>
+      </div>
+      <div class="note">Every option shows the leave type name and nothing else. The attach-a-document field and its general wording stay exactly where they are — that wording names no leave type.</div>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    <b>What this drawing does and does not promise</b>
+    <ul>
+      <li>The leave types shown are examples of names in use, including the reporter's own example, Caregiver Leave. Which types are marked as needing a document is HR's own setting, and any type set that way loses the wording in the same way.</li>
+      <li>The same list is used by the Replacement Leave Request window, so the wording disappears there too.</li>
+      <li>Nothing else on this window changes: the same leave types remain available, and balances, dates, durations and approval routing are untouched.</li>
+      <li>Not drawn, and unchanged: HR's own leave type settings screen still shows and controls the document requirement, and a request that still needs a document is still refused at submit time with a message naming the leave type.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>
