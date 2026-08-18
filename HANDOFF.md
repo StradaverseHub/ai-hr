@@ -18,13 +18,19 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-18 (r195 RECOVERED · **r196 SHIPPED** · NOTHING IN FLIGHT · 9 APPROVED)
+## CURRENT STATE — snapshot 2026-08-18 (r195–r199 SHIPPED · NOTHING IN FLIGHT · 4 APPROVED · 5 PLANNED)
 
-**`main@cd06bcda` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run` from
+**`main@dff907c3` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run` from
 **mainwt** reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. Service
 active, `GET localhost:3000/` → 401.
-**Board re-counted on the box after r196: `deployed = 684` · `approved = 9` · `planned = 2` ·
-`cancelled = 14` · open = 0.**
+**Production is on 361 migrations** (watermark `1781862543000` = `0443` `payroll_cycle.updated_at`,
+verified present on the live schema — read `drizzle.__drizzle_migrations`, NOT `public`).
+**Board re-counted on the box after r199: `deployed = 694` · `planned = 5` · `approved = 4` ·
+`open = 2` · `cancelled = 14`.**
+
+⚠️ **`dff907c3`'S COMMIT MESSAGE SAYS "nine board items". IT IS EIGHT** — `9066bd6c` · `4ea70bb7` ·
+`e0cd4583` · `6b134681` · `417d4937` · `6df24751` · `bd14b7e2` · `4509d2b8`. Not amended on purpose:
+`main` is published to GitHub and rewriting it is rule 11b's trap. This line is the record.
 
 ⚠️⚠️ **RUN THE DRY RUN FROM `mainwt`, WITH `cd` IN THE SAME COMMAND.** The shell's cwd resets to the repo
 ROOT (`local/root-scratch`, far behind main) between tool calls, and a dry run from there reports thousands
@@ -63,43 +69,41 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**1. NOTHING IS IN FLIGHT. THE APPROVED QUEUE IS 9 DEEP AND THE CONSTRAINT IS STILL US.**
-r185–r196 are all shipped; `main@cd06bcda` is deployed and every `build/*` branch through r196 is merged.
-Prove it independently rather than trusting this line — `git for-each-ref refs/heads/build` plus a dry-run
-rsync FROM mainwt. **The 9 approved, all unbuilt at their current revision:**
-  - **`1b0943d5`** entity transfer stage two — the one that matters, see §2. Needs `0442`.
-  - **`3c88d593`** entity transfer, REFUTED after r194 by the reporter hitting the underpayment themselves.
-    It and `1b0943d5` are one problem; plan them as one round.
-  - **`9a65f808`** (rev 3) · **`31e39d74`** is SHIPPED, do not rebuild · **`bdf7d248`** EPF across cycles ·
-    **`45df860a`** PCB/MTD detail view · **`152fea7f`** payroll full-width layout.
-  - ⚠️ **`621c929d` / `d21e667e` / `e0cd4583`** are NEW IDS FOR STATUTORY FORMS WE ALREADY SHIPPED
-    (`8ca344bf` Borang 8A, `9c8dad7a` Borang A, `88076362` CP22). Establish duplicate-vs-rework BEFORE
-    planning a build, and read the statutory-form section below first.
+**1. NOTHING IS IN FLIGHT. FOUR APPROVED, FIVE PLANNED, TWO OPEN.** r195–r199 are shipped and
+`main@dff907c3` is deployed. Prove it independently — `git for-each-ref refs/heads/build` plus a dry-run
+rsync FROM mainwt.
 
-⚠️ **`build_ref` IS NOT EVIDENCE THAT THE CURRENT REVISION SHIPPED.** A post-deploy refute
-(`feedback.deployment.refuted`) → re-plan → approve leaves the OLD `build_ref` on the row beside a NEW plan
-revision, so `pull-approved` legitimately returns items that look shipped. Six of the nineteen on 2026-08-17
-were exactly that. Read the item's `domain_event` stream and compare the APPROVED revision against the one
-that was built. `feedback.plan.approved` carries `{revision}` — that is the field to compare.
+**THE FOUR APPROVED ARE ALL BLOCKED ON SOMETHING, NOT WAITING FOR A BUILDER:**
+  - **`1b0943d5` + `3c88d593`** entity transfer — BUILT on `build/r197-entity`, green, and HELD. Re-verify
+    found that cancelling or re-dating a transfer after the outgoing run is processed removes the
+    employment from the examined population, so a month can still close with somebody underpaid. It is
+    also INERT until `scripts/backfill-assignment-company.ts` runs on production, which it has not.
+    ⚠️ **ITS MIGRATION `0442` IS DEAD.** `0443` shipped in r199, so drizzle's watermark is past it and a
+    later merge carrying `0442` would be SILENTLY SKIPPED (rule 14). Reissue a fresh number when reworked.
+  - **`45df860a`** PCB/MTD detail view — BUILT on `build/r197-pcbview`, green, HELD. On an additional run
+    `deltaStat` does not carry `pcbMeta`, so the screen prints a working for the cumulative month beside a
+    deducted delta (7,071.30 shown against 4,999.85). Needs a product decision: does a bonus run show a
+    labelled month-to-date working, or none at all?
+  - **`bdf7d248`** EPF across cycles — **DO NOT BUILD. IT NEEDS A CORRECTED PLAN AND AN OWNER DECISION.**
+    See the EPF section below; the approved plan tells the reporter something untrue.
 
-**1b. r196 SHIPPED SEVEN ITEMS AS `cd06bcda`** — `5ff7daff` · `31e39d74` · `c11e81aa` (`0441`) ·
-`6b134681`+`417d4937` · `3c2f55d7` · `ad52212d` (rounds 1–2 only). Full entry in `docs/HANDOFF-HISTORY.md`.
-**THREE FOLLOW-UPS IT DELIBERATELY LEFT, each verified and each cheap to lose:**
-  - **A bonus/off-cycle run can now strand money and its run page will not say so.** `c11e81aa` lets a
-    non-regular run collect rows naming its own cycle; the outstanding indicator on
-    `app/payroll/[batchId]/page.tsx` is still gated to `runType === 'regular'`. Missing warning, not wrong
-    money — the gate's comment now states this explicitly rather than implying the old, false invariant.
-  - **`core/attendance-allowance.ts:337` still emits `…status-changed`**, which `lib/audit-format.ts`
-    `actionOf()` classifies as `other`, so the Audit Trail filter cannot find those flips. `ad52212d` fixed
-    the same shape in `core/attendance-rule.ts` but correctly refused to rename an event whose rows are
-    already on production — that needs its own decision about the existing history.
-  - **A CUSTOM leave type with an `earned_*` method accrues NOTHING, FOREVER.** `openLeaveYear` skips it as
-    `earned_method` and `accrueEarnedLeave` only ever selects codes in `STANDING_LEAVE_CODES`, so neither
-    engine ever visits it. `31e39d74` stopped the screen offering a remedy that cannot fire; the type still
-    never earns. Worth raising as its own board item — nothing else surfaces it.
+**FIVE PLANNED, AWAITING THE REPORTER:** `16f2aac1` (Borang 8A template) · `cc9f9420` (EPF Borang A
+template) · `5570c6a2` · `7ad37961` (TP1 2026) · `464b58e6`. All five carry mockups, and **all five found
+something already built** — `16f2aac1` alone reports that five of the reporter's nine corrections already
+print today. `16f2aac1` SUPERSEDES `621c929d`: that item's plan said "confirm, or reject with the specific
+differences", and rather than rejecting, the reporter raised the differences as a new item.
 
-The `com.aihr.improve-build` launchd agent IS loaded but is **notify-only** (`watch-approved.sh`) — nothing
-auto-builds.
+⚠️ **`build_ref` IS NOT EVIDENCE THAT THE CURRENT REVISION SHIPPED.** A post-deploy refute → re-plan →
+approve leaves the OLD `build_ref` beside a NEW plan revision. Compare the approved revision in the item's
+`domain_event` stream (`feedback.plan.approved` carries `{revision}`), never the ref.
+
+**1b. THE GATE NOW NEEDS `CHUNKS=5`.** The suite is 703 files and the default 3 chunks exhausts the 8GB
+RAM disk mid-run: 77 files fail with **zero AssertionErrors** and `No space left on device` in the chunk
+log. That is an environment failure wearing a red gate's clothes — always run the per-chunk cause tally
+before believing a red. The machine has 18GB total, so a bigger RAM disk is not the way out; the real fix
+is the harness (`resetDb` TRUNCATEs 107 tables per file, ~453 times a run — `gate-chunked.sh`'s own header
+names it). **UNLOGGED tables in the test template have never been tried and are the obvious first
+experiment**; 236 of the 703 files never touch the database at all and could be a separate fast project.
 
 **2. THE ENTITY-TRANSFER HAZARD IS OVERTAKEN — THE RUN IT PROTECTED NO LONGER HAS PAYSLIPS.** The r194 entry
 below still describes the DEFECT correctly (proration right, counterpart payslip in the other company's batch

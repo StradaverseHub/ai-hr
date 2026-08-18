@@ -1,3 +1,57 @@
+## r197–r199 (2026-08-18) — TEN ITEMS SHIPPED ACROSS THREE RELEASES, AND THREE HELD ON PURPOSE
+
+`fc3df3a8` (r197 part one: `9a65f808`, `152fea7f`) then `dff907c3` (r198+r199: `9066bd6c`, `4ea70bb7`,
+`e0cd4583`, `6b134681`, `417d4937`, `6df24751`, `bd14b7e2`, `4509d2b8`, migration `0443`). Final gate
+**703 declared / 703 counted / every chunk exit=0 / 0 AssertionErrors / 0 timeouts at CHUNKS=5**; tsc 0;
+`next build` 0; `gate:shadow` PASS 360→361; 48 renders across 8 routes × 6 locales, 0 `MISSING_MESSAGE`.
+
+**THE PATTERN OF THESE THREE ROUNDS, AND THE REASON TO KEEP THE VERIFY PASS: 17 of 18 workstreams built
+GREEN AND FAILED VERIFICATION.** Every one passed tsc, its own tests and `next build`. What the second
+pass found was pay- and tax-affecting: three cycles seeded onto one `run_type` so a "Mid-Month"
+transaction was collected by an "Advance Salary" run; a PCB formula that overshot its own printed answer by
+17,800 on any bonus month; a completeness control that tiled the calendar without asking WHICH employer
+owned each segment. Only `4509d2b8` shipped verified-clean first time.
+
+**AND THE FULL GATE STILL EARNED ITS PLACE, catching three things no verify agent could see** — all
+cross-branch: a `core/` service using the page-safe entitlements form (silently answering "off" on an
+infrastructure failure); a source-shape guard broken by the integrator's own merge, which pinned the
+`<HistoryTable>` ELEMENT while its comment claimed it pinned the prop; and a new CP39 preview born
+carrying the superseded width cap, caught by the guard r197 had just rebuilt after it was found unable to
+fail.
+
+**THE CONTESTED PAIR — WHY OUR OWN FIX MISSED, MEASURED ON PRODUCTION.** r196 shipped `6b134681` +
+`417d4937`; the reporter tested and rejected both. The cause: **REGULAR runs had 24 of 62 payslips carrying
+a `componentLines` stamp; BONUS runs had 0 of 19.** The additional-run path never wrote one, so nothing on
+a bonus payslip said "ANGPOW" and every screen fell back to the box label, which reads BONUS. The r196 work
+reads `componentLines`, so it was STRUCTURALLY INERT there and the reporter's three workarounds could not
+have worked. The re-plan opens "You are right, and we are sorry" and says so.
+
+⚠️ **THE CONSUMED-MARKER BACKFILL DECLINED THE ROW THAT PROMPTED IT, AND THAT IS THE ANSWER, NOT A BUG.**
+`scripts/backfill-consumed-batch-417d4937.ts` wrote 13 rows. The SpaceX Director Fee row was excluded
+because it was edited 2026-08-12 11:21 while its payslip was calculated 2026-08-11 09:57 — it fails the
+staleness rule, i.e. it genuinely was NOT paid by that run. So "Recorded Items shows A0020 DIRECTOR FEE" is
+a faithful historical stamp whose transaction moved on afterwards — a different problem from a label bug,
+and the one the new source-transaction panel addresses by listing ledger rows BESIDE Recorded Items.
+
+⚠️ **`/payroll/[batchId]/remove` SHIPPED WITHOUT A DEV-SERVER RENDER.** The seed produces no processed
+batch and a throwaway seeder failed on an RLS-fenced `pay_period` insert. Covered instead by
+`test/payroll-remove-i18n.test.ts` (every key of that multi-namespace screen resolved in six locales,
+which is exactly what i18n-coverage Check C skips) plus `next build` for the RSC boundary. Weaker than a
+render. **Render it first thing next session.**
+
+⚠️ **THE SEEDER ALMOST REPEATED THE MORNING'S MISTAKE.** It left `mk-batch-tmp.ts` importing `core/payroll`
+in the tree — the pack-drift ratchet scans the FILESYSTEM, so that is a red gate. Deleted and the guard
+re-run before merging. **Any throwaway script in the tree is a loaded gun.**
+
+**MIGRATION NUMBERING LEFT A LANDMINE.** `0442` sits on the held `build/r197-entity`. `0443` shipped, so
+the watermark is past it: if entity ever merges carrying `0442` it is SILENTLY SKIPPED. That number is
+dead; reissue when the item is reworked.
+
+**PLANNING FOUND MORE THAN BUILDING DID.** Of the last ten items planned, **every one reported something
+already built** — two were exact duplicates of shipped work (`621c929d`, `d21e667e`, closed against the
+rounds that shipped them), and `16f2aac1` reports five of the reporter's nine Borang 8A corrections already
+printing today. Investigate before proposing; this board rewards it every time.
+
 ## r196 (2026-08-18) — SEVEN ITEMS, SIX WORKSTREAMS, MIGRATION `0441`, AND A VERIFY PASS THAT EARNED ITS COST
 
 `main@cd06bcda`. Six worktrees cut from `main`, built by `scripts/improve/build-r196.workflow.js`
