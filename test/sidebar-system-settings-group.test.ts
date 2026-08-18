@@ -10,6 +10,11 @@
  * is a source-text check on components/sidebar.tsx (see test/helpers/sidebar-source.ts), mirroring
  * test/sidebar-attendance-group.test.ts.
  *
+ * The node has since grown past a4e49748's three (476f23ed Movement Settings, 7b5f18c3 Hiring Defaults,
+ * deec1691 System Analysis, 4509d2b8 Holidays), so SYSTEM_SETTINGS_CHILD_HREFS pins the WHOLE child list
+ * in order — the same anti-clipping argument as ADMIN_GROUP_FLAT_HREFS below. A genuinely new row is
+ * declared there; it is not enough for it to simply not break the three original assertions.
+ *
  * Deliberately NOT asserted here:
  *   - the per-child `adminOnly: true` flags — they are redundant today (the admin group is gated
  *     adminOnly wholesale before per-child filtering runs) and kept only for consistency with
@@ -30,6 +35,29 @@ const TICKET_HREFS = [
   '/admin/settings/employee-id',
   '/admin/settings/dashboard',
   '/admin/settings/system-labels',
+] as const;
+
+/**
+ * The node's FULL child order, every row of it.
+ *
+ * a4e49748 asserted only its own three screens, which was right while the node held three. It now holds
+ * seven, grown one item at a time, and the same argument that produced ADMIN_GROUP_FLAT_HREFS below
+ * applies here: splicing a row into the middle of a long literal is exactly where a neighbour gets
+ * clipped. Asserting the whole list means a new row must be DECLARED rather than tolerated.
+ *
+ * 4509d2b8 added Holidays — after Hiring Defaults, before System Analysis. System Analysis is last on
+ * purpose (it is a reference screen, not a setup step), so a new setup row lands ahead of it.
+ */
+const SYSTEM_SETTINGS_CHILD_HREFS = [
+  '/admin/settings/employee-id',
+  '/admin/settings/dashboard',
+  '/admin/settings/system-labels',
+  '/admin/settings/movement',
+  '/admin/settings/hiring-defaults',
+  // 4509d2b8 — moved out of the Attendance settings node (packs/attendance/index.ts). It is company-wide
+  // setup, not attendance config: one holiday list, read by leave, attendance and payroll alike.
+  '/admin/holidays',
+  '/admin/system-explorer',
 ] as const;
 
 /**
@@ -85,6 +113,31 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
       positions,
       'children follow the ticket order (Employee ID → Dashboard Cards → System Labels)',
     ).toEqual(sorted);
+  });
+
+  it('carries EVERY child in the declared order — no row appended, clipped or reshuffled unnoticed', () => {
+    const hrefs = [...node!.matchAll(/href: '([^']+)'/g)].map((m) => m[1]);
+    expect(hrefs).toEqual([...SYSTEM_SETTINGS_CHILD_HREFS]);
+  });
+
+  it('4509d2b8: the Holidays row sits between Hiring Defaults and System Analysis', () => {
+    // Position is the ticket's actual ask (found where a business user looks for company-wide setup), and
+    // "last" is reserved for System Analysis. Asserted here as well as in the full-order case above,
+    // because the full list would also be satisfied by a wholesale reordering that happens to match.
+    const hiring = node!.indexOf(`'/admin/settings/hiring-defaults'`);
+    const holidays = node!.indexOf(`'/admin/holidays'`);
+    const explorer = node!.indexOf(`'/admin/system-explorer'`);
+    expect(holidays, 'Holidays is a child of the System Settings node').toBeGreaterThan(-1);
+    expect(holidays, 'after Hiring Defaults').toBeGreaterThan(hiring);
+    expect(holidays, 'before System Analysis, which stays last').toBeLessThan(explorer);
+    expect(
+      node!.split('\n').find((l) => l.includes(`'/admin/holidays'`)),
+      'labelled by the existing nav key — the move creates no new string',
+    ).toContain(`labelKey: 'holidays'`);
+    // The row's own adminOnly flag is deliberately NOT asserted, for the reason in this file's header:
+    // it is redundant under the wholesale-gated Administration group and a future cleanup may drop every
+    // one of them. What actually keeps the screen administrators-only is its requireAdmin page guard and
+    // its lib/permissions.ts column, both pinned in test/holidays-system-settings-relocation.test.ts.
   });
 
   it('lists each of the three hrefs exactly once across the whole sidebar (old flat rows removed, not duplicated)', () => {

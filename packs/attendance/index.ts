@@ -55,7 +55,6 @@
 import {
   CalendarCheck,
   CalendarClock,
-  CalendarDays,
   CalendarRange,
   Clock,
   FilePen,
@@ -74,12 +73,18 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
 // the admin group), Roster (was in the manage group) and Import grouped under one parent node
 // with per-child role visibility. Holidays moved here from the admin group per 5cb199b3, which
 // confirmed the relocation b3dc0f78 had deferred as contested (ticket order: Holidays → Policy
-// → Allowance → Locations → TOIL). Reserved (do not create): an "Overtime Configuration" child
-// is owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
+// → Allowance → Locations → TOIL) — and 4509d2b8 has since moved it BACK OUT, to System Settings
+// (components/sidebar.tsx SYSTEM_SETTINGS_NODE). The remaining ticket order among the rows that
+// stayed (Policy → Allowance → Locations → TOIL) is unchanged. Reserved (do not create): an
+// "Overtime Configuration" child is owned by item e776d17d; when its route lands it inserts itself
+// here after Clocking Location.
 // Child order (f60cd403): day-to-day rows first, then the admin-config screens, and the
 // administrative bulk-upload Import ALWAYS last — it is used far less than daily attendance ops.
-// NOTE: /admin/holidays, /roster and /admin/toil are NAV placement only — the holiday, roster and
-// TOIL services stay outside this pack (they are not attendance services; nav grouping ≠ ownership).
+// NOTE: /roster and /admin/toil are NAV placement only — the roster and TOIL services stay outside
+// this pack (they are not attendance services; nav grouping ≠ ownership). core/holidays.ts is the
+// same shape and always was — it is SPINE, read by leave, attendance and payroll alike — which is
+// precisely why 4509d2b8 could move its row to System Settings without touching a service: nothing
+// in this pack owns it, and nothing here breaks when its row is not here.
 /**
  * 0bb0e303 split the single Attendance node into THREE, by who each row is for. a324a4b3 rev2 puts
  * NINE of those ten rows back under ONE parent, because the reporter's screenshot settled it: they
@@ -144,8 +149,15 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
 
 /**
  * The ONE Attendance configuration menu — "Attendance settings" since ad52212d round 1, carrying the
- * reporter's three categories (Shift, Overtime Pattern, Work Schedule) followed by the four remaining
- * configuration screens (Holidays, Attendance allowance, Clocking location, Time off in lieu).
+ * reporter's three categories (Shift, Overtime Pattern, Work Schedule) followed by the three remaining
+ * configuration screens (Attendance allowance, Clocking location, Time off in lieu).
+ *
+ * 4509d2b8 took HOLIDAYS out of this node. It was never an attendance service (core/holidays.ts is
+ * spine — leave, attendance and payroll all read the one list), and gating its ROW behind the
+ * billable `attendance` module meant a Leave-only tenant had no menu route to the holiday calendar
+ * their leave calculations depend on. Its row now lives in components/sidebar.tsx
+ * SYSTEM_SETTINGS_NODE; the screen, its URL and its requireAdmin guard are untouched. DO NOT put it
+ * back here, and do not add /admin/holidays to MODULE_OF_HREF by hand — the un-gating IS the fix.
  *
  * It began (a324a4b3 rev2) as the reporter's screenshot order — Records, Holidays, Shift settings,
  * Attendance policy, Attendance allowance, Clocking location, Time off in lieu, Roster, Import — and
@@ -180,8 +192,9 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   children: [
     /**
      * ad52212d ROUND 1 — THE THREE CATEGORIES THE REPORTER NAMED, FIRST: Shift, Overtime Pattern, Work
-     * Schedule. Then the four remaining configuration screens, in the 5cb199b3 ticket order they have
-     * always had among themselves (Holidays → Attendance allowance → Clocking location → Time off in lieu).
+     * Schedule. Then the remaining configuration screens, in the 5cb199b3 ticket order they have
+     * always had among themselves (Attendance allowance → Clocking location → Time off in lieu;
+     * Holidays led that tail until 4509d2b8 moved it to System Settings).
      *
      * WHY THIS IS THE WHOLE OF ROUND 1, AND WHY THERE IS NO NEW LANDING PAGE. The sidebar fly-out is
      * deliberately ONE level deep (components/nav-flyout.tsx; NavChildDescriptor has no `children`) — the
@@ -218,7 +231,10 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
     // row sharing its parent's or a sibling's icon is indistinguishable there.
     { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
-    { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
+    // 4509d2b8 — the Holidays row USED TO SIT HERE, ahead of Attendance allowance. It is now a child of
+    // SYSTEM_SETTINGS_NODE in components/sidebar.tsx. Leaving a copy here would both duplicate the row
+    // and re-enter it into MODULE_OF_HREF (built by flatMap over these children), which is exactly the
+    // entitlement gating the move exists to remove.
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Roster).
