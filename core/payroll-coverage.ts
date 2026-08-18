@@ -43,10 +43,18 @@
  * regular batch exists per (company, period) — `payroll_batch_one_regular_uq` — so the regular runs of a
  * period form exactly the partition this check needs.
  *
- * SPLIT MONTHS ONLY. An employment whose entity history resolves to ONE segment over the period is not
- * examined at all: there is nothing to tile, its single payslip covers the whole month by definition, and
+ * SPLIT MONTHS ONLY, AND A MONTH IS SPLIT IF EITHER THE HISTORY OR A PAYSLIP SAYS SO. The usual answer is
+ * the resolver's: an employment whose entity history resolves to ONE segment over the period is not
+ * examined at all — there is nothing to tile, its single payslip covers the whole month by definition, and
  * every run in this system before an entity transfer existed is untouched by this file. That is the
  * additive guarantee, and it is by construction rather than by comparison.
+ *
+ * The second answer exists because the first is asked of TODAY'S history, which a correction can move
+ * after the payslips are written: re-date a recorded transfer, or reverse it, and a month that was split
+ * when the slip was issued is not split any more. The slip is still there claiming ten days of it. So a
+ * caller may name employments whose slip covers less than its period (`partialClaimIds`) and they are
+ * examined whatever the resolver now says — see that field. Nothing else changes: the resolver still
+ * supplies `expected`, and it is the arms that report the disagreement.
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { employment, payrollBatch, payslip } from '../db/schema';
@@ -163,6 +171,25 @@ export async function segmentedCoverage(
     periodEnd: string;
     employmentIds: string[];
     currentCompanyById: Map<string, string>;
+    /**
+     * EMPLOYMENTS TO EXAMINE EVEN WHEN TODAY'S HISTORY RESOLVES THEIR MONTH TO ONE SEGMENT — the ones
+     * whose payslip on the run in front of the caller claims LESS than the pay period.
+     *
+     * The split test below asks the entity spine AS IT STANDS NOW, and that is a different fact from what
+     * the payslips claim. An ordinary correction makes the two disagree: a transfer effective 11 August is
+     * recorded, the outgoing employer's run writes a correct 01–10 August slip, and the movement is then
+     * re-dated to September or reversed (`reverseLegTx` supersedes the assignment leg and restores
+     * `employment.company_id`). August now resolves to a SINGLE segment, and without this the employment
+     * is dropped here — before any arm is evaluated — leaving a run that paid ten days of a month it owns
+     * all thirty-one of, with nothing to refuse the close.
+     *
+     * So a slip narrower than its period is itself a claim that the month was split, and it is read as
+     * one. It changes nothing else: `expected` is still whatever the resolver says (one segment ⇒ that
+     * employer owns the whole window), so `counterparts[].stale` reports the slip that no longer matches
+     * it and `defects` reports the days it left behind. A slip covering its whole period says nothing
+     * about a split and never appears in this set, which is every payslip on every ordinary run.
+     */
+    partialClaimIds?: string[];
   },
 ): Promise<EmploymentCoverage[]> {
   const ids = [...new Set(p.employmentIds)];
@@ -174,15 +201,16 @@ export async function segmentedCoverage(
     p.periodEnd,
     p.currentCompanyById,
   );
-  const splitIds = ids.filter((id) => (segmentsByEmp.get(id)?.length ?? 0) > 1);
-  if (splitIds.length === 0) return [];
+  const partialClaim = new Set(p.partialClaimIds ?? []);
+  const examineIds = ids.filter((id) => (segmentsByEmp.get(id)?.length ?? 0) > 1 || partialClaim.has(id));
+  if (examineIds.length === 0) return [];
 
-  // The employment's own tenure inside the period — see `EmploymentCoverage.window`. Read for the SPLIT
-  // employments only, which is a handful on the rare run that has any.
+  // The employment's own tenure inside the period — see `EmploymentCoverage.window`. Read for the
+  // EXAMINED employments only, which is a handful on the rare run that has any.
   const tenureRows = await tx
     .select({ id: employment.id, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
     .from(employment)
-    .where(inArray(employment.id, splitIds));
+    .where(inArray(employment.id, examineIds));
   const tenureById = new Map(tenureRows.map((r) => [r.id, r] as const));
 
   // Every REGULAR batch of this period, whatever company it belongs to. RLS fences the tenant; the
@@ -230,7 +258,7 @@ export async function segmentedCoverage(
         .from(payslip)
         .where(
           and(
-            inArray(payslip.employmentId, splitIds),
+            inArray(payslip.employmentId, examineIds),
             inArray(
               payslip.batchId,
               batches.map((b) => b.id),
@@ -249,7 +277,7 @@ export async function segmentedCoverage(
     claimsByEmp.set(r.employmentId, list);
   }
 
-  return splitIds.map((employmentId) => {
+  return examineIds.map((employmentId) => {
     const expected = segmentsByEmp.get(employmentId) ?? [];
     const claims = claimsByEmp.get(employmentId) ?? [];
     const claimByCompany = new Map(claims.map((c) => [c.companyId, c]));

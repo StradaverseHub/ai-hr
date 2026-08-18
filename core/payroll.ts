@@ -5689,6 +5689,9 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
         payPeriodId: payrollBatch.payPeriodId,
         companyId: payrollBatch.companyId,
         payPeriod: payrollBatch.payPeriod,
+        // Read for the completeness control below, which is a REGULAR-run question — an additional run
+        // pays extra money over days the regular run already owns and owns no days of its own.
+        runType: payrollBatch.runType,
         needsRecalcAt: payrollBatch.needsRecalcAt,
         recalcEmploymentIds: payrollBatch.recalcEmploymentIds,
       })
@@ -5766,65 +5769,130 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // the one they sit in today — so on an ordinary company this WHERE returns zero rows and nothing
     // further happens. The run's own payslips are unioned in rather than replaced, because an employment
     // the run paid is one this close is finalising whatever the history now says about it.
-    const closePeriodStart = `${batch.payPeriod}-01`;
-    const [cy, cm] = batch.payPeriod.split('-').map(Number);
-    const closePeriodEnd = `${batch.payPeriod}-${String(daysInMonth(cy, cm)).padStart(2, '0')}`;
-    const closeSlips = await tx
-      .select({ employmentId: payslip.employmentId })
-      .from(payslip)
-      .where(eq(payslip.batchId, p.batchId));
-    const closeOwed = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(
-        and(
-          employedByCompanyDuring(batch.companyId, closePeriodStart, closePeriodEnd),
-          entityChangedDuring(closePeriodStart, closePeriodEnd),
-          // The same tenure predicate generatePayslips selects on, so somebody whose employment did not
-          // overlap this period at all cannot refuse a close over days nobody owed them.
-          lte(employment.hiredOn, closePeriodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, closePeriodStart)),
-        ),
-      );
-    const closeIds = [...new Set([...closeSlips.map((s) => s.employmentId), ...closeOwed.map((e) => e.id)])];
-    if (closeIds.length > 0) {
-      const closeCurrentCompany = new Map(
-        (
-          await tx
-            .select({ id: employment.id, companyId: employment.companyId })
-            .from(employment)
-            .where(inArray(employment.id, closeIds))
-        ).map((r) => [r.id, r.companyId] as const),
-      );
-      const closeCoverage = await segmentedCoverage(tx, {
-        payPeriod: batch.payPeriod,
-        periodStart: closePeriodStart,
-        periodEnd: closePeriodEnd,
-        employmentIds: closeIds,
-        currentCompanyById: closeCurrentCompany,
-      });
-      // THREE ARMS, BECAUSE THE MONTH CAN FAIL TO ADD UP IN THREE DIFFERENT SHAPES and the calendar test
-      // alone sees only two of them:
+    //
+    // ⚠️ THE RESIDUAL, ON THE RECORD RATHER THAN FIXED HERE: this read is subject to RLS, and
+    // `employment_rls` resolves through TODAY'S `employment.company_id` (core/employment-company.ts). An
+    // operator scoped ONLY to the OUTGOING company therefore cannot see a transferred-out employment at
+    // all, so `closeOwed` returns nothing for them and the outgoing run closes owing the mover its days.
+    // It is contained rather than silent — the INCOMING run's close is then refused, because that
+    // operator can see the employment — and the intended user of a transfer is an operator scoped to both
+    // entities, which is the same population core/payroll-coverage.ts documents for the sibling-batch
+    // read. Closing that hole means dating the RLS predicate itself, which is stage two's adoption pass.
+    // ── REGULAR RUNS ONLY, AND THIS IS A DECISION RATHER THAN AN INHERITANCE ────────────────────────
+    //
+    // A period may also hold off-cycle, bonus and adjustment runs (ADR-0024). They pay EXTRA money over
+    // days the regular run already owns — they do not own days of their own, and core/payroll-coverage.ts
+    // does not count their payslips as claims for exactly that reason (`run_type = 'regular'` on the batch
+    // read; at most one regular run per company per period, `payroll_batch_one_regular_uq`, so the regular
+    // runs of a period are the partition the tiling is asked about).
+    //
+    // Ungated, the refusal therefore fires on a run that owes the disputed days NOTHING: a bonus run for
+    // August, for a company that happens to have a mid-period mover, could not be closed until every
+    // employer's REGULAR August tiled the month. That is a refusal the operator cannot act on from the run
+    // in front of them, and no money escapes by allowing it — the additional run's own payslips are not
+    // claims, so closing one can neither create a hole nor fill one. The month is decided where the days
+    // are paid, on the regular run, whose close still runs every arm below.
+    //
+    // GENERATION IS DELIBERATELY NOT GATED THE SAME WAY (see generatePayslips): it refuses on a CLOSED
+    // counterpart before WRITING slips, which is about not creating an unrecoverable state, not about
+    // finalising a month — and in the healthy split it is silent, because the counterpart's slip already
+    // claims exactly its segment.
+    if (batch.runType === 'regular') {
+      const closePeriodStart = `${batch.payPeriod}-01`;
+      const [cy, cm] = batch.payPeriod.split('-').map(Number);
+      const closePeriodEnd = `${batch.payPeriod}-${String(daysInMonth(cy, cm)).padStart(2, '0')}`;
+      // ── AND WHAT THE SLIPS THEMSELVES CLAIM, WHICH IS NOT THE SAME FACT AS TODAY'S HISTORY ──────────
       //
-      //   `defects`            — the days themselves: an unpaid stretch, or one claimed twice.
-      //   `missingCompanyIds`  — a segment whose employer has no regular run for the period at all. Its
-      //                          days usually show as a gap too, but not when somebody ELSE's slip claims
-      //                          them, which is an overlap the gap test alone would be satisfied by.
-      //   `counterparts[].stale` — AND THIS IS THE ONE THAT WAS COMPUTED AND NEVER READ. It asks each
-      //                          segment's employer "have you issued exactly these days?", which is a
-      //                          different question from "is every day of the month claimed by someone".
-      //                          The ordinary sequence that closed clean without it: Fiamma's August is
-      //                          processed BEFORE the transfer is recorded, so it holds a whole-month
-      //                          slip; the transfer to ISEDECOR effective 11 August is then recorded;
-      //                          ISEDECOR's run exists as a DRAFT. Every day of August is claimed — by
-      //                          Fiamma, for days it does not own — so there is no gap and no overlap,
-      //                          and a draft batch is not a missing company. Both surviving arms pass.
-      //                          `stale` says what is actually wrong: Fiamma has issued 01–31 where it
-      //                          owes 01–10, and ISEDECOR has issued nothing at all.
-      const bad = closeCoverage.filter(
-        (c) => c.defects.length > 0 || c.missingCompanyIds.length > 0 || c.counterparts.some((cp) => cp.stale),
-      );
-      if (bad.length > 0) throw new PayrollCoverageIncompleteError(bad);
+      // Everything above asks the `assignment` spine as it stands RIGHT NOW. A payslip is a claim written
+      // at generation time, and the two can be made to disagree by an ordinary correction:
+      //
+      //   Fiamma → ISEDECOR effective 11 August is recorded; Fiamma's August is generated and X's slip is
+      //   written CORRECTLY as 01–10 August; the movement is then CORRECTED — re-dated to 11 September
+      //   (a fat-finger fix) or reversed (`reverseLegTx` supersedes the assignment leg and restores
+      //   `employment.company_id`). August now resolves to ONE segment, Fiamma[01–31].
+      //
+      // Every arm below is downstream of the resolver, so an unsplit month never reaches them: X would be
+      // dropped before the first one and Fiamma's run would close with ten days paid for a month it
+      // employed X all thirty-one of — short 2,129.03, which is the production figure this control exists
+      // to prevent, reached by a different road.
+      //
+      // So a slip NARROWER THAN ITS PERIOD is read as its own claim that the month is split, and it is
+      // enough on its own to keep the employment in the examined population (`partialClaimIds`). The
+      // arms then do the work: the single segment says Fiamma owns 01–31, the slip says it issued 01–10,
+      // so `counterparts[].stale` fires — and the eleventh onward is a gap unless somebody else's slip
+      // claims it, in which case that claim belongs to an employer the history no longer names.
+      //
+      // The predicate is one indexed read of THIS run's own payslips and needs no entity history at all.
+      // `statutory -> 'segment'` is the same question asked of a slip written between r194 and migration
+      // 0442, whose coverage lives in the jsonb stamp — `payslipCoverage` reads both homes, and a
+      // population that read only the columns would drop exactly the slips r194 issued. Every ordinary
+      // slip covers its whole period, so on any run without a split month this returns nobody.
+      const closeSlips = await tx
+        .select({
+          employmentId: payslip.employmentId,
+          partial: sql<boolean>`coalesce(
+            ${payslip.coverageFrom} > ${closePeriodStart}
+              or ${payslip.coverageTo} < ${closePeriodEnd}
+              or ${payslip.statutory} -> 'segment' is not null,
+            false
+          )`,
+        })
+        .from(payslip)
+        .where(eq(payslip.batchId, p.batchId));
+      const closeOwed = await tx
+        .select({ id: employment.id })
+        .from(employment)
+        .where(
+          and(
+            employedByCompanyDuring(batch.companyId, closePeriodStart, closePeriodEnd),
+            entityChangedDuring(closePeriodStart, closePeriodEnd),
+            // The same tenure predicate generatePayslips selects on, so somebody whose employment did not
+            // overlap this period at all cannot refuse a close over days nobody owed them.
+            lte(employment.hiredOn, closePeriodEnd),
+            or(isNull(employment.terminatedOn), gte(employment.terminatedOn, closePeriodStart)),
+          ),
+        );
+      const closeIds = [...new Set([...closeSlips.map((s) => s.employmentId), ...closeOwed.map((e) => e.id)])];
+      if (closeIds.length > 0) {
+        const closeCurrentCompany = new Map(
+          (
+            await tx
+              .select({ id: employment.id, companyId: employment.companyId })
+              .from(employment)
+              .where(inArray(employment.id, closeIds))
+          ).map((r) => [r.id, r.companyId] as const),
+        );
+        const closeCoverage = await segmentedCoverage(tx, {
+          payPeriod: batch.payPeriod,
+          periodStart: closePeriodStart,
+          periodEnd: closePeriodEnd,
+          employmentIds: closeIds,
+          currentCompanyById: closeCurrentCompany,
+          partialClaimIds: closeSlips.filter((s) => s.partial).map((s) => s.employmentId),
+        });
+        // THREE ARMS, BECAUSE THE MONTH CAN FAIL TO ADD UP IN THREE DIFFERENT SHAPES and the calendar test
+        // alone sees only two of them:
+        //
+        //   `defects`            — the days themselves: an unpaid stretch, or one claimed twice.
+        //   `missingCompanyIds`  — a segment whose employer has no regular run for the period at all. Its
+        //                          days usually show as a gap too, but not when somebody ELSE's slip claims
+        //                          them, which is an overlap the gap test alone would be satisfied by.
+        //   `counterparts[].stale` — AND THIS IS THE ONE THAT WAS COMPUTED AND NEVER READ. It asks each
+        //                          segment's employer "have you issued exactly these days?", which is a
+        //                          different question from "is every day of the month claimed by someone".
+        //                          The ordinary sequence that closed clean without it: Fiamma's August is
+        //                          processed BEFORE the transfer is recorded, so it holds a whole-month
+        //                          slip; the transfer to ISEDECOR effective 11 August is then recorded;
+        //                          ISEDECOR's run exists as a DRAFT. Every day of August is claimed — by
+        //                          Fiamma, for days it does not own — so there is no gap and no overlap,
+        //                          and a draft batch is not a missing company. Both surviving arms pass.
+        //                          `stale` says what is actually wrong: Fiamma has issued 01–31 where it
+        //                          owes 01–10, and ISEDECOR has issued nothing at all.
+        const bad = closeCoverage.filter(
+          (c) => c.defects.length > 0 || c.missingCompanyIds.length > 0 || c.counterparts.some((cp) => cp.stale),
+        );
+        if (bad.length > 0) throw new PayrollCoverageIncompleteError(bad);
+      }
     }
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at

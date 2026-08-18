@@ -66,9 +66,15 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createMovementEvent } from '../core/movement';
+import { createMovementEvent, editMovementEvent, movementHistory, reverseMovementEvent } from '../core/movement';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { closeBatch, createBatch, generatePayslips, reprocessSelectedEmployees } from '../core/payroll';
+import {
+  closeBatch,
+  createAdditionalRun,
+  createBatch,
+  generatePayslips,
+  reprocessSelectedEmployees,
+} from '../core/payroll';
 import {
   PayrollCounterpartClosedError,
   PayrollCoverageIncompleteError,
@@ -636,5 +642,135 @@ describe('a transferred month, across the two batches that own it', () => {
     await closeBatch(a, { batchId: incoming.batchId });
     expect((await batchRow(outgoing.batchId)).status).toBe('closed');
     expect((await batchRow(incoming.batchId)).status).toBe('closed');
+  });
+  // ── 8. the history moved AFTER the payslips were written ─────────────────────────────────────────
+
+  const entityMovementId = async (employmentId: string) => {
+    const rows = await movementHistory(a, employmentId);
+    return rows.find((r) => r.kind === 'entityTransfer')!.id;
+  };
+
+  it('A ROLLED-BACK TRANSFER DOES NOT ERASE THE HALF-PAID MONTH FROM THE CONTROL', async () => {
+    // THE THIRD TIME THE SAME DEFECT: a signal computed and never read. Everything the control asks is
+    // asked of TODAY'S entity history — so a correction made AFTER the outgoing run is processed removes
+    // the underpaid employment from the examined population altogether, and every arm passes by never
+    // being reached. Each step here is a first-class supported operation.
+    const moved = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010715');
+    await transferOn(moved.employmentId, '2026-08-11');
+
+    // 1. Fiamma's August is generated while the transfer stands, and its slip is CORRECT: ten days.
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    const out = (await slipOf(outgoing.batchId, moved.employmentId))!;
+    expect([out.coverageFrom, out.coverageTo]).toEqual(['2026-08-01', '2026-08-10']);
+    expect(Number(out.grossPay)).toBeCloseTo(2129.03, 2);
+
+    // 2. …and the movement is then ROLLED BACK. `reverseLegTx` supersedes the assignment leg and puts
+    //    `employment.company_id` back in the same transaction, which is the whole point of a rollback.
+    await reverseMovementEvent(a, {
+      employmentId: moved.employmentId,
+      movementId: await entityMovementId(moved.employmentId),
+      reason: 'keyed against the wrong employee',
+    });
+    const [emp] = await owner.db
+      .select({ companyId: schema.employment.companyId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, moved.employmentId));
+    expect(emp.companyId, 'the rollback put the employment back under Fiamma').toBe(b.companyId);
+
+    // 3. August now resolves to ONE segment — Fiamma for all thirty-one days — so the split-only fast
+    //    path drops this employment before any arm is evaluated. That is the hole: Fiamma employed them
+    //    the whole month and its run has issued ten days of it, and nothing else in the system would
+    //    notice. No movement or entity-history path marks a processed run, so needs-recalculation does
+    //    not cover it either. WHAT SAVES IT is the slip: a payslip narrower than its own period is a
+    //    claim that the month was split, and it is read as one.
+    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
+    await closeBatch(a, { batchId: outgoing.batchId }).catch((e) => {
+      const problem = (e as PayrollCoverageIncompleteError).problems[0];
+      expect(problem.employmentId).toBe(moved.employmentId);
+      expect(problem.expected.map((seg) => [seg.companyId, seg.from, seg.to])).toEqual([
+        [b.companyId, '2026-08-01', '2026-08-31'],
+      ]);
+      expect(problem.defects, 'the twenty-one days nobody now claims').toEqual([
+        { kind: 'gap', from: '2026-08-11', to: '2026-08-31' },
+      ]);
+      expect(problem.counterparts.map((c) => [c.companyId, c.stale])).toEqual([[b.companyId, true]]);
+    });
+    expect((await batchRow(outgoing.batchId)).status).toBe('processed');
+
+    // 4. And the way out is the recalculation the refusal points at: the whole month, on one slip, under
+    //    the only employer the history now names.
+    await reprocessSelectedEmployees(a, {
+      batchId: outgoing.batchId,
+      employmentIds: [moved.employmentId],
+      reason: 'entity transfer rolled back',
+    });
+    const fixed = (await slipOf(outgoing.batchId, moved.employmentId))!;
+    expect([fixed.coverageFrom, fixed.coverageTo]).toEqual(['2026-08-01', '2026-08-31']);
+    expect(Number(fixed.grossPay)).toBeCloseTo(6600, 2);
+    await closeBatch(a, { batchId: outgoing.batchId });
+    expect((await batchRow(outgoing.batchId)).status).toBe('closed');
+  });
+
+  it('AND SO DOES RE-DATING ONE: an ordinary fat-finger fix moves the month out from under the slip', async () => {
+    // The same hole reached without any rollback at all. The transfer is real and stays recorded — only
+    // its effective date is corrected, from 11 August to 11 September, which is the most ordinary
+    // correction there is. August then resolves to a single Fiamma segment exactly as above while
+    // Fiamma's run still holds a ten-day slip.
+    const moved = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010716');
+    await transferOn(moved.employmentId, '2026-08-11');
+    const outgoing = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: outgoing.batchId });
+    expect([
+      (await slipOf(outgoing.batchId, moved.employmentId))!.coverageFrom,
+      (await slipOf(outgoing.batchId, moved.employmentId))!.coverageTo,
+    ]).toEqual(['2026-08-01', '2026-08-10']);
+
+    await editMovementEvent(a, {
+      movementId: await entityMovementId(moved.employmentId),
+      employmentId: moved.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-09-11',
+      companyId: coB,
+      departmentId: deptB2,
+      reason: 'effective date keyed a month early',
+    });
+
+    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
+    await closeBatch(a, { batchId: outgoing.batchId }).catch((e) => {
+      const problem = (e as PayrollCoverageIncompleteError).problems[0];
+      expect(problem.employmentId).toBe(moved.employmentId);
+      expect(problem.defects).toEqual([{ kind: 'gap', from: '2026-08-11', to: '2026-08-31' }]);
+    });
+    expect((await batchRow(outgoing.batchId)).status).toBe('processed');
+  });
+
+  it('AN ADDITIONAL RUN IS NOT REFUSED OVER DAYS IT OWES NOTHING TO', async () => {
+    // The control is a REGULAR-run question. A bonus run pays extra money over days the regular run
+    // already owns — core/payroll-coverage.ts does not count its payslips as claims, so closing one can
+    // neither open a hole in the month nor fill one. Ungated, the refusal fired on it anyway, and the
+    // operator standing on the bonus run could do nothing about it from there.
+    const moved = await hireInto(b.companyId, b.deptA, '2026-01-01', '900101010717');
+    await transferOn(moved.employmentId, '2026-08-11');
+    const regular = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId: regular.batchId });
+
+    // ISEDECOR has no run at all, so August does not tile and the REGULAR run is refused — unchanged.
+    await expect(closeBatch(a, { batchId: regular.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
+
+    // The bonus run for the same company and month closes, and closing it cascades nothing: the pay
+    // period stays open because its regular run is still processed.
+    const bonus = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: '2026-08', runType: 'bonus' });
+    await generatePayslips(a, { batchId: bonus.batchId });
+    await closeBatch(a, { batchId: bonus.batchId });
+    expect((await batchRow(bonus.batchId)).status).toBe('closed');
+    const [period] = await owner.db
+      .select({ status: schema.payPeriod.status })
+      .from(schema.payPeriod)
+      .where(and(eq(schema.payPeriod.companyId, b.companyId), eq(schema.payPeriod.period, '2026-08')));
+    expect(period.status).not.toBe('closed');
+
+    // …and the regular run is still refused afterwards: nothing about the bonus run's close satisfied it.
+    await expect(closeBatch(a, { batchId: regular.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
   });
 });
