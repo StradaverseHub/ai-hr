@@ -143,18 +143,25 @@ const PAYROLL_MODULE_ON_DISK = [
 ].sort();
 
 /**
- * The Payroll files that STILL carry `mx-auto max-w-[100rem]`, deliberately and by name. All three are
- * printed statutory DOCUMENTS, not screens: the Borang A and Borang 8A previews and one rendered
+ * The Payroll files that STILL carry `mx-auto max-w-[100rem]`, deliberately and by name. All FOUR are
+ * printed statutory DOCUMENTS, not screens: the Borang A, Borang 8A and CP39 previews and one rendered
  * statutory form. They are Section C's category — a single record laid out to be read and filed, whose
  * on-screen measure mirrors the sheet — reached FROM the widened Statutory Forms screen rather than
  * sub-menus of their own, and the approved scope kept that class of page at a reading width.
  *
  * This list is the point of the assertion below, not a nuisance beside it: to move one of these you
  * must delete its line here and say why, which is the review this width has failed to get four times.
+ *
+ * CP39's preview joined the list when e0cd4583 built it, and the guard caught it in the same release —
+ * which is the behaviour advertised two cases below ("it fails when a NEW Payroll screen is born carrying
+ * the old cap"). It is admitted rather than swept because it is the same category as its three
+ * neighbours: a printed LHDN form built to mirror the Borang A three-layer split, previewed at the
+ * measure of the sheet it prints to. If CP39's preview ever stops being a document, this line goes.
  */
 const CAP_SURVIVORS = [
   'app/payroll/borang-8a/preview/page.tsx',
   'app/payroll/borang-a/preview/page.tsx',
+  'app/payroll/cp39/preview/page.tsx',
   'app/payroll/statutory-forms/[formId]/page.tsx',
 ] as const;
 
@@ -185,12 +192,12 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     //
     // So the module is enumerated from disk instead, and the survivors are pinned by name. It fails
     // when a NEW Payroll screen is born carrying the old cap, when a swept screen regresses to it, and
-    // when one of the three documents below is widened without this list being updated to say so. It
+    // when one of the four documents below is widened without this list being updated to say so. It
     // also fails if the walk itself breaks, because the expected list is not empty.
     const carriers = PAYROLL_MODULE_ON_DISK.filter((f) => read(f).includes('mx-auto max-w-[100rem]'));
     expect(
       carriers,
-      'the Payroll module carries the superseded cap somewhere other than the three printed documents',
+      'the Payroll module carries the superseded cap somewhere other than the four printed documents',
     ).toEqual([...CAP_SURVIVORS]);
   });
 

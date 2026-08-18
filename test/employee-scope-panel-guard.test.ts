@@ -26,6 +26,8 @@
  * the refactor had widened the panel's source to `allEmployees` to make the Status filter look useful, that
  * is the assertion that catches it.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,8 +38,18 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidat
 vi.mock('next/navigation', () => ({ redirect: vi.fn(() => undefined), notFound: vi.fn(() => undefined) }));
 vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
 vi.mock('@/lib/authz', () => ({ requireAdmin: vi.fn(async () => scope.s) }));
-// The collapse state is read from a cookie; no request context here, so report "absent" ⇒ expanded.
-vi.mock('next/headers', () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
+// The collapse state is read from a cookie. Empty by default, so every panel reports "absent" ⇒ expanded,
+// which is what every case below except bd14b7e2's default-open one assumes; that one writes into this map
+// to drive the panel's remembered state, and `beforeEach` clears it so it cannot leak between cases.
+const { panelCookies } = vi.hoisted(() => ({ panelCookies: new Map<string, string>() }));
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({
+    get: (name: string) => {
+      const value = panelCookies.get(name);
+      return value === undefined ? undefined : { name, value };
+    },
+  })),
+}));
 // getTranslations → identity, so assertions read as keys without the full next-intl runtime config.
 // getLocale is exported too because BOTH r179 screens format a month name on the SERVER through Intl —
 // Transaction Detail its month captions, Individual Payslip its pay period. An undefined locale would
@@ -118,6 +130,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
   });
 
   beforeEach(async () => {
+    panelCookies.clear();
     await resetDb();
     base = await seedBase();
     const a = adminCtx(base);
@@ -428,16 +441,222 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     expect(findByType(tree, HistoryGrid), 'no employee, no figures').toHaveLength(0);
   });
 
-  it('the other four tabs are untouched — the redesign is one tab wide', async () => {
-    // 98e69987's own plan flags that the reporter previously asked for the OPPOSITE on two other screens.
-    // This change is scoped to one tab, and the four beside it must still offer the control they always had.
-    for (const tab of ['fixed', 'individual', 'history', 'outstanding']) {
-      const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
+  // ───────── bd14b7e2 — the OTHER four tabs now pick an employee the same way ─────────
+  //
+  // THIS EDITS 98e69987's "the redesign is one tab wide" CASE RATHER THAN DELETING IT, because the
+  // reporter has since asked for the opposite and only HALF of what that case asserted is being reversed:
+  //
+  //   · REVERSED, on the approved plan: "the four beside it must still offer the control they always had"
+  //     — the long `<select name="employmentId">` listing every employee in scope. That is the control the
+  //     request is about; it is gone from all four, replaced by the same panel Transaction Detail uses.
+  //   · KEPT, unchanged and still the point: no tab may carry TWO employee controls. Two controls that can
+  //     disagree on one screen is the failure both halves of this guard have always existed to prevent, in
+  //     whichever direction the screen is moving.
+  //
+  // The fence is asserted the same way it is everywhere else in this file — off `selectedId`, the guard's
+  // verdict, rather than off source text — because widening the panel's source or dropping the coercion
+  // still renders, still 200s, and still passes every grep.
+
+  const PANEL_TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
+
+  it('bd14b7e2 — the four inquiry tabs pick an employee with the shared PANEL, and the dropdown is gone', async () => {
+    for (const tab of PANEL_TABS) {
+      const tree = await TransactionViewPage({
+        searchParams: Promise.resolve({ tab, employmentId: mine.employmentId }),
+      });
+
       expect(
         findByType(tree, EmployeeSearchField),
         `${tab} must not have grown a second employee control`,
       ).toHaveLength(0);
-      expect(controlsNamed(tree, 'select', 'employmentId'), `${tab} lost its employee filter`).toHaveLength(1);
+      expect(
+        controlsNamed(tree, 'select', 'employmentId'),
+        `${tab}: the long dropdown is REPLACED by the panel, never joined by it`,
+      ).toHaveLength(0);
+
+      expect(
+        findByType(tree, CollapsibleEmployeePanel),
+        `${tab} must mount the same collapsible rail Transaction Detail uses`,
+      ).toHaveLength(1);
+      expect(panelSelection(tree), `${tab} must hand the guard's verdict to the panel`).toBe(mine.employmentId);
+
+      // The selection rides through Apply as a hidden field. Without it, changing any filter would
+      // silently widen the tab back to everybody while the rail still showed the person as selected —
+      // the two-controls-disagreeing failure in its quietest form.
+      const carried = controlsNamed(tree, 'input', 'employmentId');
+      expect(carried, `${tab}: an Apply must not drop the panel's selection`).toHaveLength(1);
+      expect(carried[0].props.type).toBe('hidden');
+      expect(carried[0].props.value).toBe(mine.employmentId);
+    }
+  });
+
+  it('bd14b7e2 — an out-of-scope ?employmentId= selects NOTHING on all four, and Apply carries nothing', async () => {
+    for (const tab of PANEL_TABS) {
+      const tree = await TransactionViewPage({
+        searchParams: Promise.resolve({ tab, employmentId: foreign.employmentId }),
+      });
+      expect(panelSelection(tree), `${tab}: a company outside scope must coerce to no selection`).toBeNull();
+
+      // A FIELD THAT IS ALWAYS SUBMITTED CANNOT BE READ BY PRESENCE — so the hidden input exists only when
+      // a selection survived the guard. That is also what makes "All employees" expressible at all: no
+      // field, no employee, and the tab shows what it shows today.
+      expect(
+        controlsNamed(tree, 'input', 'employmentId'),
+        `${tab}: there is no surviving selection to carry`,
+      ).toHaveLength(0);
+
+      const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+        (e: { employmentId: string }) => e.employmentId,
+      );
+      expect(offered).toContain(mine.employmentId);
+      expect(offered, `${tab}: the panel must not reach past the company fence`).not.toContain(
+        foreign.employmentId,
+      );
+    }
+  });
+
+  it('bd14b7e2 — the "All employees" row is OPT-IN, and stays OFF wherever a person is required', async () => {
+    // The row clears the selection. On the four inquiry tabs that is a real destination — it is the view
+    // each of them opens on today. On every screen that shows ONE person's record it is a row leading
+    // nowhere, so the prop must default off and no existing consumer may quietly acquire it.
+    for (const tab of PANEL_TABS) {
+      const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
+      expect(
+        findByType(tree, EmployeeScopePanel)[0].props.allowAll,
+        `${tab}: clearing the selection is this tab's default view and must be offered`,
+      ).toBe(true);
+    }
+
+    const requiresAPerson: [string, unknown][] = [
+      ['Transaction Detail', await TransactionViewPage({ searchParams: Promise.resolve({ tab: 'grid' }) })],
+      ['Zakat', await ZakatTransactionPage({ searchParams: Promise.resolve({}) })],
+      ['Individual Payslip', await IndividualPayslipPage({ searchParams: Promise.resolve({}) })],
+      ['Loans', await LoansPage({ searchParams: Promise.resolve({}) })],
+    ];
+    for (const [name, tree] of requiresAPerson) {
+      expect(
+        findByType(tree, EmployeeScopePanel)[0].props.allowAll ?? false,
+        `${name} must not have acquired the All-employees row`,
+      ).toBe(false);
+    }
+
+    // …and the component's own default, read at source: the two screens NOT rendered above (Fixed
+    // Transaction, TP1) inherit it, and a default flipped to `true` would arm the row on all six at once
+    // while every assertion above still passed.
+    const shell = fs.readFileSync(
+      path.resolve(__dirname, '..', 'components/collapsible-employee-panel.tsx'),
+      'utf8',
+    );
+    expect(shell, 'the All-employees row must be opt-in at the component').toContain('allowAll = false');
+  });
+
+  it('bd14b7e2 — every caption the panel adds exists in all six catalogues', () => {
+    // Transaction View reads TWO namespaces, so i18n-coverage's check C skips the whole file: a key that
+    // exists nowhere would pass tsc, this suite and `next build`, and paint MISSING_MESSAGE on all four
+    // tabs. These six are looked up on every visit — four by the page (header row and panel heading) and
+    // two by the shared component for the All-employees row.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const msgs = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', `messages/${loc}.json`), 'utf8'));
+      for (const key of ['heading', 'hint', 'change', 'select']) {
+        expect(
+          msgs.payroll?.transactions?.view?.panel?.[key],
+          `payroll.transactions.view.panel.${key} missing from ${loc}.json`,
+        ).toBeTruthy();
+      }
+      for (const key of ['allEmployees', 'allEmployeesHint']) {
+        expect(msgs.employeePanel?.[key], `employeePanel.${key} missing from ${loc}.json`).toBeTruthy();
+      }
+    }
+  });
+
+  // ───────── bd14b7e2 — the two mechanisms the cases above structurally cannot see ─────────
+  //
+  // Everything asserted so far reads props off `EmployeeScopePanel` (the LIST). The round also introduced
+  // two values on the SHELL around it — `cookieKey` and `defaultOpen` — and nothing was reading either, so
+  // both could be broken in the exact ways they exist to prevent while tsc, this suite and `next build`
+  // all stayed green: collapsing the five keys back into one, or re-forcing the panel open in the state
+  // these tabs actually live in. Assert them off the shell, per tab.
+
+  const ALL_TABS = ['fixed', 'individual', 'history', 'grid', 'outstanding'] as const;
+
+  /** The single shell each tab mounts — the thing that owns the cookie and the initial state. */
+  function shell(tree: unknown, tab: string) {
+    const mounted = findByType(tree, CollapsibleEmployeePanel);
+    expect(mounted, `${tab} must mount exactly one collapse shell`).toHaveLength(1);
+    return mounted[0].props as { cookieKey: string; defaultOpen: boolean };
+  }
+  const render = (params: Record<string, string>) => TransactionViewPage({ searchParams: Promise.resolve(params) });
+
+  it('bd14b7e2 — five tabs, five DIFFERENT cookie keys, and Transaction Detail keeps the one it had', async () => {
+    // The whole reason TAB_PANEL_COOKIES is a five-entry map rather than one constant: History is thirteen
+    // columns and is read folded away, Fixed is read with the panel open, so two tabs sharing a key means
+    // the first thing every switch does is undo the last one. A copy-paste that gave two tabs the same
+    // string would leave every other assertion in this file passing.
+    const keys: Record<string, string> = {};
+    for (const tab of ALL_TABS) {
+      keys[tab] = shell(await render({ tab, employmentId: mine.employmentId }), tab).cookieKey;
+      expect(keys[tab], `${tab} must name a cookie`).toBeTruthy();
+    }
+    expect(new Set(Object.values(keys)).size, `two tabs share one key: ${JSON.stringify(keys)}`).toBe(
+      ALL_TABS.length,
+    );
+    // The names themselves are pinned as well, because a RENAME is the silent version of the same bug:
+    // every reader's saved answer is simply forgotten, and `grid` must keep the key 080de5cf gave it or
+    // this round resets a Transaction Detail choice it promised not to touch.
+    expect(keys).toEqual({
+      fixed: 'txnview_fixed_panel',
+      individual: 'txnview_individual_panel',
+      history: 'txnview_history_panel',
+      grid: 'txnview_grid_panel',
+      outstanding: 'txnview_outstanding_panel',
+    });
+  });
+
+  it('bd14b7e2 — a collapsed panel STAYS collapsed, including in the no-selection view these tabs open on', async () => {
+    // WHY THIS CASE IS WORTH ITS LENGTH. The rail costs the workspace ~22rem while it is open, and the
+    // panel-versus-width trade-off on these four tabs has already been reversed once in each direction
+    // (r179 removed the rail, 98e69987 rev 2 restored it, 1372d169 then widened every tab). An initial
+    // state that ignored the cookie while nobody was selected would mean the fold did not survive a single
+    // server navigation in the DEFAULT view — Apply is a GET submit — so the thirteen-column History table
+    // could never get that width back. That is a one-clause change away at all times, and invisible.
+
+    // 1. Never touched ⇒ open, in both selection states. This is the round's point: a reader who has not
+    //    asked for anything finds the control it exists to put in front of them.
+    for (const tab of PANEL_TABS) {
+      expect(shell(await render({ tab }), tab).defaultOpen, `${tab}: absent cookie ⇒ expanded`).toBe(true);
+      expect(
+        shell(await render({ tab, employmentId: mine.employmentId }), tab).defaultOpen,
+        `${tab}: absent cookie ⇒ expanded even with somebody chosen`,
+      ).toBe(true);
+    }
+
+    // 2. Explicitly collapsed ⇒ collapsed, and CRUCIALLY with nobody selected, which is what "All
+    //    employees" leaves these tabs in and is the state History is read in.
+    for (const tab of PANEL_TABS) {
+      panelCookies.clear();
+      panelCookies.set(`txnview_${tab}_panel`, '0');
+      expect(
+        shell(await render({ tab }), tab).defaultOpen,
+        `${tab}: a collapse must survive an Apply / tab switch / refresh with NOBODY selected`,
+      ).toBe(false);
+      expect(
+        shell(await render({ tab, employmentId: mine.employmentId }), tab).defaultOpen,
+        `${tab}: a collapse must survive with somebody selected too`,
+      ).toBe(false);
+      panelCookies.set(`txnview_${tab}_panel`, '1');
+      expect(shell(await render({ tab }), tab).defaultOpen, `${tab}: reopening must stick as well`).toBe(true);
+    }
+
+    // 3. And the keys are actually independent, not merely spelled differently: collapsing the widest tab
+    //    must leave the other four exactly as they were.
+    panelCookies.clear();
+    panelCookies.set('txnview_history_panel', '0');
+    expect(shell(await render({ tab: 'history' }), 'history').defaultOpen).toBe(false);
+    for (const tab of ALL_TABS.filter((t) => t !== 'history')) {
+      expect(
+        shell(await render({ tab }), tab).defaultOpen,
+        `folding History must not fold ${tab}`,
+      ).toBe(true);
     }
   });
 });

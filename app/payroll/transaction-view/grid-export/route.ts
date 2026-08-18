@@ -93,16 +93,19 @@ export async function GET(req: Request) {
     : [];
 
   // 0253dc7c — the SAME catalogue read the page does, so the Y/N in the file is the Y/N on screen.
-  const payItemSubjects: PayItemSubjectMap = selected
-    ? Object.fromEntries(
-        (await listPayComponents(s, { includeArchived: true })).map((c) => [
-          c.code,
-          { epf: c.includedInEpf, socso: c.includedInSocsoEis, pcb: c.includedInPcb },
-        ]),
-      )
-    : {};
+  // ONE catalogue read feeding BOTH maps, because they are the same read and drifting them is the defect
+  // this file's header forbids. Was two `Object.fromEntries` over two separate awaits in the first draft
+  // of 417d4937 — the export simply never built the second one, so the screen printed the repaired label
+  // and the file downloaded from that same screen, with the same filters, still printed the stored one.
+  const gridComponents = selected ? await listPayComponents(s, { includeArchived: true }) : [];
+  const payItemSubjects: PayItemSubjectMap = Object.fromEntries(
+    gridComponents.map((c) => [c.code, { epf: c.includedInEpf, socso: c.includedInSocsoEis, pcb: c.includedInPcb }]),
+  );
+  // 417d4937 — code → the pay item's CURRENT description, the read-time record-line label repair. The
+  // export is where a label leaves the building, so it is the one surface that must not miss it.
+  const payItemNames: Record<string, string> = Object.fromEntries(gridComponents.map((c) => [c.code, c.name]));
 
-  const grid = pivotHistoryGrid({ rows: payslips, year, months, hrdfRegisteredCompanyIds, payItemSubjects });
+  const grid = pivotHistoryGrid({ rows: payslips, year, months, hrdfRegisteredCompanyIds, payItemSubjects, payItemNames });
   const rows = filterGridRows(grid.rows, { hideZero, hideSystem });
   const labels = monthLabels(locale);
   // 0253dc7c — Y / N / blank, exactly as the screen renders it (blank on a row that is not a pay item;

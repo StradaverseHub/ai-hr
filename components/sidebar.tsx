@@ -233,11 +233,29 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // registration and neither ships without the other (a row whose route is unregistered is refused by
     // our own access check; a registered route with no row cannot be found).
     { href: '/admin/settings/hiring-defaults', labelKey: 'hiringDefaults', icon: UserRoundPlus, adminOnly: true },
-    // deec1691: System Analysis & Dependency Explorer. Unlike its three siblings this row is ALSO
+    // 4509d2b8: Holidays. The row MOVED here from the Attendance settings node (packs/attendance/index.ts)
+    // — nav placement only. Nothing about the screen changed: same URL (/admin/holidays, so bookmarks keep
+    // working), same Holiday / Holiday Group tabs, same requireAdmin guard, same lib/permissions.ts
+    // 'holidays' column with its four routes.
+    //
+    // WHY IT BELONGS HERE AND NOT UNDER ATTENDANCE. There has only ever been ONE holiday list, and
+    // core/holidays.ts is SPINE: core/leave.ts, core/absence-days.ts, core/attendance.ts, core/payroll.ts
+    // and core/leave-escalation.ts all read it through holidayDatesFor / effectiveHolidayState. Filing it
+    // under Attendance made a company-wide setup screen read as an attendance-only one — and had a real
+    // cost, not just a cosmetic one: `attendance` is billable (isCore:false in packs/catalog.ts) while
+    // `leave` is core, so MODULE_OF_HREF hid the row entirely from a Leave-only tenant whose leave
+    // calculations depend on holidays. Sitting here, owned by no sellable module, it shows for everyone.
+    //
+    // CalendarDays is already imported (REPORTS_NODE's Leave report uses it) and no sibling in THIS node
+    // carries it, so the collapsed rail has no glyph collision.
+    { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
+    // deec1691: System Analysis & Dependency Explorer. Alone among the rows of this node it is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed
-    // by a service that refuses (core/schema-explorer.ts). Last in the node because it is a reference
-    // screen, not a setup step; the three configuration screens keep their ticket order above.
+    // by a service that refuses (core/schema-explorer.ts). Every other row here, Holidays included
+    // (4509d2b8), is deliberately ungated by module: they are company-wide setup that every tenant has.
+    // Last in the node because it is a reference screen, not a setup step; the configuration screens
+    // keep their ticket order above.
     { href: '/admin/system-explorer', labelKey: 'systemExplorer', icon: Share2, adminOnly: true },
   ],
 };

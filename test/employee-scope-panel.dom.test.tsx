@@ -266,6 +266,52 @@ describe('r168a — the panel every screen now shares', () => {
     expect(selected[0].textContent).toContain('Selected');
   });
 
+  it('bd14b7e2 — no "All employees" row unless the screen asks for one', () => {
+    // Six screens mounted this panel before Transaction View's inquiry tabs did, and every one of them is
+    // one person's screen: a row that clears the selection would lead nowhere on all six. The prop is the
+    // whole difference, so its absence is asserted as carefully as its presence.
+    wrap(<EmployeeScopePanel employees={PEOPLE} selectedId="e2" basePath="/x" />);
+    expect(screen.queryByText('All employees')).toBeNull();
+  });
+
+  it('bd14b7e2 — the opt-in row DROPS the selection and keeps the caller’s own filters', async () => {
+    const user = userEvent.setup();
+    push.mockClear();
+    const { container } = wrap(
+      <EmployeeScopePanel
+        employees={PEOPLE}
+        selectedId="e2"
+        basePath="/payroll/transaction-view"
+        preserve={{ tab: 'history', year: '2026' }}
+        allowAll
+      />,
+    );
+    // It sits at the HEAD of the list, above the names — clearing is the same gesture as choosing.
+    const rowButtons = [...container.querySelectorAll('button[type="button"]')];
+    const allRow = rowButtons.find((b) => b.textContent?.includes('All employees'))!;
+    expect(allRow, 'the row must be inside the list, not beside it').toBeTruthy();
+    expect(allRow.compareDocumentPosition(screen.getByText('Aisha Rahman')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(allRow);
+    expect(push).toHaveBeenCalledTimes(1);
+    const url = new URL(push.mock.calls[0][0], 'https://example.test');
+    expect(url.pathname).toBe('/payroll/transaction-view');
+    // DROPPED, not blanked: the server treats an unrecognised ?employmentId= as "no selection" anyway, so
+    // an empty value would land in the same place only by accident, and the URL a reader bookmarks should
+    // say what it means.
+    expect(url.searchParams.get('employmentId')).toBeNull();
+    expect([...url.searchParams.keys()].sort()).toEqual(['tab', 'year']);
+  });
+
+  it('bd14b7e2 — with nothing selected the row is what reads as current', () => {
+    const { container } = wrap(
+      <EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/x" preserve={{ tab: 'fixed' }} allowAll />,
+    );
+    const current = [...container.querySelectorAll('button[aria-current="true"]')];
+    expect(current, 'exactly one row is current, and with no employee chosen it is All employees').toHaveLength(1);
+    expect(current[0].textContent).toContain('All employees');
+  });
+
   it('says so when nothing matches, rather than showing an empty box', async () => {
     const user = userEvent.setup();
     wrap(<EmployeeScopePanel employees={PEOPLE} selectedId={null} basePath="/x" />);

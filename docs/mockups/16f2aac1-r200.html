@@ -1,0 +1,392 @@
+<meta charset="utf-8">
+<title>16f2aac1 — Borang 8A: the nine corrections, before and after</title>
+<!--
+  Mockup for board item 16f2aac1 (Regenerate the Borang 8A PDF template to match PERKESO).
+
+  EVERY FIGURE ON THIS PAGE IS THE REPORTER'S OWN, carried over from the specimen they attached to the
+  original Borang 8A item (8ca344bf, attachment 91ce0f6a "Socso Borang 8A.pdf", A4, produced 2026-08-12 by
+  another payroll system's reporting engine, NOT by PERKESO):
+      Employer  ENGENIOUS SOLUTIONS SDN BHD  ·  No. Kod Majikan B3201005082P  ·  MyCoID blank
+      CARUMAN GAJI BULAN 07 / 2026  ·  tidak lewat daripada 31/07/2026
+      Row: IC 860208105128 · ANG PEI YEE · 202.35  ·  Lembaran 1/1 · Bil. Pekerja 1
+  No employee, amount, code or date on this page is invented.
+
+  THE "BEFORE" PANEL IS THE SHIPPED PAGE, transcribed box for box from lib/borang-8a-pdf.ts (r193).
+  THE "AFTER" PANEL DRAWS ONLY THE NINE CORRECTIONS THE REPORTER LISTED. Nothing else moves.
+
+  DELIBERATELY NOT DRAWN: a PERKESO page. We have never been given a blank one, and the item's new
+  attachment has not been opened yet (it lives in the app's own storage, which this planning pass cannot
+  reach). Whether it is agency artwork is stated in WORDS on this page, never implied by the drawing.
+
+  Everything inline. Tokens follow app/globals.css.
+-->
+<style>
+  :root{--background:#f5f6fa;--foreground:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;
+        --muted-foreground:#63636f;--border:#e7e8f1;--rule:#c9cad8;--ink:#17171d;
+        --amber-bg:#fffaeb;--amber-bd:#f5d98e;--amber-fg:#8a5b06;
+        --green-bg:#e9f8f2;--green-bd:#9fdcc6;--green-fg:#0d6b52;
+        --blue-bg:#eef4ff;--blue-bd:#b9cdf3;--blue-fg:#28489a;
+        --new-bg:#fff4ec;--new-bd:#f0b78a;--new-fg:#9a4b12}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px 24px 36px;background:var(--background);color:var(--foreground);
+       font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;width:1320px}
+  h1{font-size:19px;margin:0 0 6px;letter-spacing:-.01em}
+  p.lede{margin:0 0 4px;font-size:12.5px;color:var(--muted-foreground);max-width:130ch}
+  p.lede b{color:var(--foreground);font-weight:600}
+  section{margin-top:26px}
+  h2{font-size:13.5px;margin:0 0 4px}
+  h2 span.n{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:50%;
+            background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:8px;vertical-align:1px}
+  p.sub{margin:0 0 12px;font-size:12px;color:var(--muted-foreground);max-width:128ch}
+  .cols{display:flex;gap:20px;align-items:flex-start}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 3px rgba(20,20,40,.06)}
+  .chd{padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;
+       display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .tag{display:inline-block;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;
+       letter-spacing:.05em;text-transform:uppercase}
+  .tag.was{background:var(--muted);color:var(--muted-foreground)}
+  .tag.now{background:var(--blue-bg);color:var(--blue-fg)}
+
+  /* ── the drawn A4 sheet ─────────────────────────────────────────────── */
+  .sheet{width:596px;height:842px;background:#fff;margin:14px;padding:22px 20px;position:relative;
+         border:1px solid var(--rule);font:11px/1.32 ui-sans-serif,-apple-system,"Segoe UI",Arial,sans-serif;
+         color:var(--ink)}
+  .sheet .hr{border-top:1.2px solid #6f7080;margin:7px 0}
+  .sheet .hr.thin{border-top:.8px solid #b4b5c2}
+  .sheet .hair{border-top:.6px solid #dcdce6;margin:5px 0}
+  .lbl{font-size:8px;color:#6b6c79;letter-spacing:.02em}
+  .val{font-size:11px;font-weight:700}
+  .row4{display:flex;gap:14px}
+  .row4 > div{flex:1}
+  .mast{display:flex;justify-content:space-between;align-items:flex-start}
+  .big{font-size:15px;font-weight:800;letter-spacing:.01em}
+  .tbl{width:100%;border-collapse:collapse;margin-top:2px}
+  .tbl th{font-size:7.5px;font-weight:700;color:#5c5d6b;text-align:left;vertical-align:bottom;
+          padding:0 4px 3px 0;border-bottom:.8px solid #b4b5c2;line-height:1.15}
+  .tbl td{font-size:9.5px;padding:5px 4px 5px 0;border-bottom:.5px solid #e6e6ee}
+  .tbl .num{text-align:right}
+  .box{border:.8px solid #9d9eae;display:inline-block}
+  .cb{width:9px;height:9px;border:.9px solid #7a7b8a;display:inline-block;vertical-align:-1px;margin-right:5px}
+  .foot{position:absolute;left:20px;right:20px;bottom:20px}
+  .prov{font-size:7px;color:#6b6c79;line-height:1.35;border-top:.6px solid #dcdce6;padding-top:5px;margin-top:8px}
+  .mark{outline:2px solid var(--new-bd);outline-offset:2px;background:#fff8f2;border-radius:3px}
+  .pin{position:absolute;background:var(--new-fg);color:#fff;font-size:8.5px;font-weight:800;
+       width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;margin-left:-19px;margin-top:-1px}
+  .agentbox{border:.9px solid #9d9eae;padding:5px 7px;width:150px}
+  .agentbox .t{font-size:7.5px;font-weight:700;color:#5c5d6b;margin-bottom:4px}
+  .agentbox .f{font-size:7px;color:#6b6c79;border-bottom:.5px dotted #a9aab8;padding-top:9px}
+  .sigrow{display:flex;gap:9px;margin-top:7px}
+  .sigrow .s{border:.8px solid #9d9eae;height:44px;position:relative}
+  .sigrow .s span{position:absolute;top:3px;left:4px;font-size:7px;color:#6b6c79}
+
+  /* ── delta list ─────────────────────────────────────────────────────── */
+  table.delta{width:100%;border-collapse:collapse;font-size:12px}
+  table.delta th{text-align:left;font-size:11px;color:var(--muted-foreground);font-weight:600;
+                 padding:8px 10px;border-bottom:1px solid var(--border);background:#fbfbfe}
+  table.delta td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;line-height:1.45}
+  table.delta tr:last-child td{border-bottom:0}
+  .st{display:inline-block;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;white-space:nowrap}
+  .st.have{background:var(--green-bg);color:var(--green-fg);border:1px solid var(--green-bd)}
+  .st.move{background:var(--blue-bg);color:var(--blue-fg);border:1px solid var(--blue-bd)}
+  .st.new{background:var(--new-bg);color:var(--new-fg);border:1px solid var(--new-bd)}
+  .strip{border-radius:9px;padding:11px 14px;font-size:12px;border:1px solid;line-height:1.5}
+  .strip.amber{background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-fg)}
+  .strip.green{background:var(--green-bg);border-color:var(--green-bd);color:var(--green-fg)}
+  .strip b{font-weight:700}
+  .note{font-size:11px;color:var(--muted-foreground);margin-top:9px;line-height:1.5}
+</style>
+
+<h1>Borang 8A — the nine corrections you listed, drawn onto your own July 2026 figures</h1>
+<p class="lede">Left is the form the system prints <b>today</b>. Right is the same form with <b>only</b> the nine changes you
+listed applied — nothing else on the page moves. Every name, code, date and amount is from the Borang 8A you sent us
+(ENGENIOUS SOLUTIONS SDN BHD, CARUMAN GAJI BULAN 07 / 2026, ANG PEI YEE, RM202.35).</p>
+<p class="lede">Five of the nine are <b>already on the page today</b> and only need re-wording or re-positioning. Four are genuinely new.</p>
+
+<section>
+  <h2><span class="n">1</span>The printed form — before and after</h2>
+  <p class="sub">Orange circles on the right mark the nine corrections, numbered as you listed them.</p>
+
+  <div class="cols">
+
+    <!-- ══════════════════ BEFORE ══════════════════ -->
+    <div class="card">
+      <div class="chd"><span>BEFORE — what prints today</span><span class="tag was">live now</span></div>
+      <div class="sheet">
+        <div class="mast">
+          <div>
+            <div style="font-size:10px;font-weight:800">PERTUBUHAN KESELAMATAN SOSIAL</div>
+            <div style="font-size:8px;color:#6b6c79">SOCIAL SECURITY ORGANISATION (PERKESO)</div>
+          </div>
+          <div style="text-align:right">
+            <div class="big">BORANG 8A</div>
+            <div style="font-size:8.5px;color:#6b6c79">Penyata Caruman Bulanan</div>
+          </div>
+        </div>
+        <div class="hr"></div>
+
+        <div class="row4">
+          <div><div class="lbl">No. Kod Majikan</div><div class="val">B3201005082P</div></div>
+          <div><div class="lbl">MyCoID / No. Pendaftaran</div><div class="val">&mdash;</div></div>
+          <div><div class="lbl">Caruman Gaji Bulan</div><div class="val">07 / 2026</div></div>
+          <div style="text-align:right"><div class="lbl">Amaun Caruman (RM)</div><div class="val">202.35</div></div>
+        </div>
+
+        <div style="margin-top:14px">
+          <div class="lbl">Nama dan Alamat Majikan</div>
+          <div class="val">ENGENIOUS SOLUTIONS SDN BHD</div>
+          <div style="font-size:8.5px;color:#6b6c79">(alamat majikan seperti dalam rekod syarikat)</div>
+        </div>
+
+        <div style="margin-top:9px;font-size:9px;font-weight:700">
+          Bayaran hendaklah dibuat tidak lewat daripada 31/07/2026
+        </div>
+        <div style="text-align:right;font-size:8.5px;color:#6b6c79;margin-top:5px">
+          Lembaran 1/1 &nbsp;·&nbsp; Bil. Pekerja 1
+        </div>
+        <div class="hr"></div>
+
+        <table class="tbl">
+          <tr>
+            <th style="width:62px">(1) Mula Kerja<br><span style="font-weight:400">(hhbbtttt)</span></th>
+            <th style="width:62px">(1) Berhenti Kerja<br><span style="font-weight:400">(hhbbtttt)</span></th>
+            <th style="width:58px">(2) Status</th>
+            <th style="width:88px">(3) No. K/P</th>
+            <th>(4) Nama Pekerja</th>
+            <th class="num" style="width:52px">(5) Caruman RM</th>
+            <th class="num" style="width:30px">SEN</th>
+          </tr>
+          <tr>
+            <td></td><td></td><td></td>
+            <td>860208105128</td><td>ANG PEI YEE</td>
+            <td class="num">202</td><td class="num">35</td>
+          </tr>
+        </table>
+
+        <div class="hr thin" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-weight:700">
+          <span style="margin-left:210px">Jumlah muka surat ini</span><span>202&nbsp;&nbsp;&nbsp;35</span>
+        </div>
+        <div class="hr"></div>
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;font-weight:800">
+          <span style="margin-left:130px">AMAUN CARUMAN (jumlah keseluruhan)</span><span>202&nbsp;&nbsp;&nbsp;35</span>
+        </div>
+
+        <div class="foot">
+          <div class="lbl" style="font-weight:600">Kaedah Pembayaran</div>
+          <div style="margin-top:7px;font-size:8px;color:#5c5d6b">
+            <span style="display:inline-block;width:100px"><i class="cb"></i>Tunai</span>
+            <span style="display:inline-block;width:100px"><i class="cb"></i>Cek</span>
+            <span style="display:inline-block;width:100px"><i class="cb"></i>Kiriman Wang</span>
+            <span style="display:inline-block;width:100px"><i class="cb"></i>Lain-lain</span>
+          </div>
+          <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+            <span class="lbl">No. Cek / Kiriman Wang</span>
+            <span class="box" style="width:200px;height:16px"></span>
+          </div>
+          <div class="sigrow">
+            <div class="s" style="width:240px"><span>Tandatangan &amp; Cop Majikan</span></div>
+            <div class="s" style="width:120px"><span>No. Tel Majikan</span></div>
+            <div class="s" style="width:140px"><span>Kegunaan Ejen Pemungut</span></div>
+          </div>
+          <div class="prov">
+            Susun atur kami sendiri, dilukis mengikut Borang 8A — bukan borang rasmi PERKESO.<br>
+            Our own layout, drawn to match Borang 8A. PERKESO publishes no blank form to print onto.
+            Figures are taken from the payroll run, never recalculated.<br>
+            Caruman gaji bulan 07 / 2026 · payroll 2026-07
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ AFTER ══════════════════ -->
+    <div class="card">
+      <div class="chd"><span>AFTER — with your nine corrections</span><span class="tag now">proposed</span></div>
+      <div class="sheet">
+
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+          <div style="flex:1">
+            <div style="font-size:10px;font-weight:800">PERTUBUHAN KESELAMATAN SOSIAL</div>
+            <div style="font-size:8px;color:#6b6c79">SOCIAL SECURITY ORGANISATION (PERKESO)</div>
+            <div class="mark" style="position:relative;margin-top:8px;font-size:7.5px;font-weight:700;
+                 letter-spacing:.03em;padding:2px 3px;display:inline-block">
+              <span class="pin">1</span>PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A)
+            </div>
+            <div class="mark" style="position:relative;margin-top:6px;padding:2px 3px;display:inline-block">
+              <span class="pin">2</span><span class="big">CARUMAN GAJI BULAN 07 2026 &nbsp; BORANG 8A</span>
+            </div>
+          </div>
+          <div class="agentbox mark" style="position:relative">
+            <span class="pin">6</span>
+            <div class="t">Kegunaan Ejen Pemungut</div>
+            <div class="f">Cop</div>
+            <div class="f" style="margin-top:7px">No. Slip Bayaran</div>
+          </div>
+        </div>
+        <div class="hr"></div>
+
+        <div class="row4 mark" style="position:relative">
+          <span class="pin">3</span>
+          <div><div class="lbl">No. Kod Majikan</div><div class="val">B3201005082P</div></div>
+          <div><div class="lbl">No. MyCoID / No. Pendaftaran Perniagaan</div><div class="val">&mdash;</div></div>
+          <div style="text-align:right"><div class="lbl">Amaun Caruman (RM)</div><div class="val">202.35</div></div>
+        </div>
+
+        <div class="row4 mark" style="position:relative;margin-top:12px">
+          <span class="pin">4</span>
+          <div style="flex:2">
+            <div class="lbl">Nama dan Alamat Majikan</div>
+            <div class="val">ENGENIOUS SOLUTIONS SDN BHD</div>
+            <div style="font-size:8.5px;color:#6b6c79">(alamat majikan seperti dalam rekod syarikat)</div>
+          </div>
+          <div style="text-align:right"><div class="lbl">Lembaran</div><div class="val">1 / 1</div></div>
+          <div style="text-align:right"><div class="lbl">Bil. Pekerja</div><div class="val">1</div></div>
+        </div>
+
+        <div class="mark" style="position:relative;margin-top:11px;font-size:8.6px;font-weight:700;padding:2px 3px">
+          <span class="pin">5</span>Amaun caruman di atas hendaklah dibayar kepada PERKESO/EJEN PEMUNGUT
+          tidak lewat daripada 31/07/2026
+        </div>
+        <div class="hr"></div>
+
+        <table class="tbl">
+          <tr>
+            <th class="mark" style="width:104px;position:relative"><span class="pin">7</span>
+              TARIKH MULA/BERHENTI<br>KERJA (hhbbtttt) (1)</th>
+            <th style="width:50px">(2) STATUS</th>
+            <th class="mark" style="width:92px;position:relative"><span class="pin">8</span>
+              (3) NO. KAD<br>PENGENALAN</th>
+            <th class="mark" style="position:relative">
+              (4) NAMA PEKERJA<br>(MENGIKUT KAD<br>PENGENALAN)</th>
+            <th class="num" style="width:48px">(5) CARUMAN<br>RM</th>
+            <th class="num" style="width:28px">SEN</th>
+          </tr>
+          <tr>
+            <td></td><td></td>
+            <td>860208105128</td><td>ANG PEI YEE</td>
+            <td class="num">202</td><td class="num">35</td>
+          </tr>
+        </table>
+
+        <div class="hr thin" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;font-weight:700">
+          <span style="margin-left:210px">Jumlah muka surat ini</span><span>202&nbsp;&nbsp;&nbsp;35</span>
+        </div>
+        <div class="hr"></div>
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;font-weight:800">
+          <span style="margin-left:130px">AMAUN CARUMAN (jumlah keseluruhan)</span><span>202&nbsp;&nbsp;&nbsp;35</span>
+        </div>
+
+        <div class="foot">
+          <div class="mark" style="position:relative;padding:2px 3px">
+            <span class="pin">9</span>
+            <div class="lbl" style="font-weight:700">Kaedah Pembayaran (Sila tandakan (x))</div>
+            <div style="margin-top:7px;font-size:8px;color:#5c5d6b">
+              <span style="display:inline-block;width:100px"><i class="cb"></i>Tunai</span>
+              <span style="display:inline-block;width:100px"><i class="cb"></i>Kiriman Wang</span>
+              <span style="display:inline-block;width:100px"><i class="cb"></i>Cek</span>
+              <span style="display:inline-block;width:100px"><i class="cb"></i>Lain-lain</span>
+            </div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+              <span class="lbl">No. Cek / Kiriman Wang</span>
+              <span class="box" style="width:190px;height:16px"></span>
+            </div>
+            <div class="sigrow">
+              <div class="s" style="width:150px"><span>Tandatangan</span></div>
+              <div class="s" style="width:150px"><span>Nama</span></div>
+              <div class="s" style="width:194px"><span>No. Tel &amp; Cop Majikan</span></div>
+            </div>
+          </div>
+          <div class="prov">
+            Susun atur kami sendiri, dilukis mengikut Borang 8A — bukan borang rasmi PERKESO.<br>
+            Our own layout, drawn to match Borang 8A. Figures are taken from the payroll run, never recalculated.<br>
+            Caruman gaji bulan 07 / 2026 · payroll 2026-07
+            <br><span style="color:#9a4b12">(This footer stays until we have confirmed your new attachment is a
+            PERKESO-published blank form — see the note below.)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">2</span>Your nine points, one by one</h2>
+  <p class="sub">What we found when we checked each against the form that prints today.</p>
+  <div class="card" style="padding:4px 6px">
+    <table class="delta">
+      <tr><th style="width:34px">#</th><th style="width:150px">Where it stands</th><th>What we found, and what we will do</th></tr>
+
+      <tr><td>1</td><td><span class="st new">New</span></td>
+        <td>The legal reference line PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A) is not on the
+        page today. We will add it above the title, exactly as you typed it.</td></tr>
+
+      <tr><td>2</td><td><span class="st move">Re-arrange</span></td>
+        <td>The month and the form name both print today, but in two separate places — BORANG 8A top-right, and
+        "Caruman Gaji Bulan 07 / 2026" as a labelled field below it. We will join them into the single title line
+        CARUMAN GAJI BULAN 07 2026 BORANG 8A.</td></tr>
+
+      <tr><td>3</td><td><span class="st have">Already this way</span></td>
+        <td>No. Kod Majikan, MyCoID / registration and Amaun Caruman are <b>already side by side on one row</b> today —
+        they are not stacked. The only change is that the contribution month leaves this row (it moves into the title,
+        point 2), and the MyCoID label gets your exact longer wording.</td></tr>
+
+      <tr><td>4</td><td><span class="st move">Re-arrange</span></td>
+        <td>Nama dan Alamat Majikan, Lembaran and Bil. Pekerja all print today, but Lembaran and Bil. Pekerja sit on
+        their own line below the address. We will lift them onto the same row as the employer name.</td></tr>
+
+      <tr><td>5</td><td><span class="st move">Re-word</span></td>
+        <td>The deadline line and its date are already correct — today it reads "Bayaran hendaklah dibuat tidak lewat
+        daripada 31/07/2026". Only the wording changes, to your exact sentence. The date itself is unchanged: the last
+        day of the contribution month, which is what your own specimen shows.</td></tr>
+
+      <tr><td>6</td><td><span class="st move">Move + add fields</span></td>
+        <td>A Kegunaan Ejen Pemungut box already exists, but at the <b>foot</b> of the page and with no fields inside
+        it. We will move it to the top right and put Cop and No. Slip Bayaran inside, both left blank for the
+        collecting agent.</td></tr>
+
+      <tr><td>7</td><td><span class="st move">Merge</span></td>
+        <td>Start date and stop date are two separate columns today. We will merge them into the single column
+        TARIKH MULA/BERHENTI KERJA (hhbbtttt) (1). Both dates already print in the hhbbtttt format you asked for, and
+        both stay blank for anyone who neither joined nor left in the month — as a filed Borang 8A leaves them.</td></tr>
+
+      <tr><td>8</td><td><span class="st move">Re-word</span></td>
+        <td>The two column names become NO. KAD PENGENALAN and NAMA PEKERJA (MENGIKUT KAD PENGENALAN). These were
+        deliberately shortened when the form was first built because the full wording ran past its column and printed
+        over the next one. We will set them over two or three lines so the full wording fits — and check it by looking
+        at the printed page, not just the code.</td></tr>
+
+      <tr><td>9</td><td><span class="st have">Mostly there</span></td>
+        <td>Kaedah Pembayaran with its four tick boxes, the No. Cek / Kiriman Wang field and the employer signature and
+        telephone boxes are <b>all already on the page</b>. We will add "(Sila tandakan (x))" to the heading, put the
+        four options in your order (Tunai, Kiriman Wang, Cek, Lain-lain), and split the signature box into three:
+        Tandatangan, Nama, and No. Tel &amp; Cop Majikan. All stay blank — they are yours to fill in, never taken from
+        payroll.</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">3</span>Two things we want to be straight with you about</h2>
+
+  <div class="strip amber" style="margin-bottom:12px">
+    <b>The attachment.</b> The reference we built this form against last time was not a PERKESO document — it was a
+    <b>completed Borang 8A printed by another payroll system</b>, with its filled-in values highlighted. That is why
+    the form carries the footer saying it is our layout and not PERKESO's own page. Your new attachment may well be
+    the genuine blank PERKESO form; we have not opened it yet. The first thing we will do is establish what it is.
+    If it is an agency-published blank form we will say so on the shelf and re-word that footer; if it is another
+    system's output again, the nine corrections still get made exactly as listed, and the footer stays.
+    <b>We will not claim it is PERKESO's own page unless we can show it is.</b>
+  </div>
+
+  <div class="strip green">
+    <b>Nothing about the numbers changes.</b> This is a layout and wording job only. The contribution month stays the
+    payroll month itself with no shift forward (the EPF Borang A is the one that shifts by a month, and that
+    difference is deliberately protected by a check that fails if the two ever agree). The payment deadline stays the
+    last day of the contribution month. The per-sheet total, the grand total, the automatic page splitting and the
+    figures themselves are untouched.
+  </div>
+
+  <p class="note">The review screen you use before downloading (company, year, month, then the schedule with a Status
+  box per person) keeps its shape. Its column headings will be re-worded to match the printed form so the screen and
+  the document never disagree, and the plain-text version of the form is updated in the same pass.</p>
+</section>

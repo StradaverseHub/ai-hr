@@ -27,6 +27,7 @@ import {
 } from '@/components/ui';
 import { AdjustmentForm, type AdjustmentLine } from './adjustment-form';
 import { revertAdjustmentAction } from './actions';
+import { payrollProcessBack } from '../back';
 
 /**
  * Payroll → Statutory Adjustment (feedback 2961a7ae).
@@ -107,7 +108,7 @@ export default async function StatutoryAdjustmentPage({
 }: {
   searchParams: Promise<{
     company?: string; year?: string; month?: string; runType?: string;
-    batch?: string; employment?: string; q?: string; err?: string; ok?: string;
+    batch?: string; employment?: string; q?: string; err?: string; ok?: string; from?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -323,7 +324,10 @@ export default async function StatutoryAdjustmentPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      {/* 9066bd6c — Back, on the ENTRY state only: state 2 (a run's employees) and state 3 (one
+          employee) already carry their own `backToRuns` / `backToEmployees` links to their real
+          parents, and a second one pointing past them would skip a level. */}
+      <PageHeader back={await payrollProcessBack(sp.from)} title={t('title')} description={t('subtitle')} />
       {err && <ErrorBanner message={t(`errors.${err}`)} />}
 
       {/* Stated on the screen rather than only in a plan nobody re-reads. */}

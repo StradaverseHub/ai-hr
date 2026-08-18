@@ -16,7 +16,12 @@ import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recom
  * WITHOUT the release gate, so admin History can itemize processed-but-unreleased batches too.
  */
 
-export type RecordLine = { code: string; name: string; amount: number };
+/** `nonPayable` is carried through UNREAD by this derivation and is not optional decoration: it is the
+ *  discriminator `recordLineIdentity` needs to tell a txn-derived record line (whose stored name may be a
+ *  stale remark, and is repaired) from a record-only BIK (whose stored name is the pay item's own
+ *  description, and is not). Dropping it here would silently disable that branch on three screens.
+ *  Absent ⇒ written before the stamp (f35f758a / r185) — see core/payroll.ts `PayslipRecordLine`. */
+export type RecordLine = { code: string; name: string; amount: number; nonPayable?: boolean };
 
 /** Which summarised figure a pay item's money landed in (feedback 862ed0ad). Mirrors the kernel's
  *  stamp in core/payroll.ts earningsOf — the names are a stored contract, not a display choice. */

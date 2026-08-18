@@ -318,6 +318,10 @@ export type CompanyCycleReadiness = {
   defaultCycleResolves: boolean;
   /** False ⇒ a regular payroll run would be refused today with INVALID_CYCLE. */
   canRunRegularPayroll: boolean;
+  /** 6df24751 — the most recent edit across this company's cycles (max payroll_cycle.updated_at), for the
+   *  company-first listing's Last Updated column. NULL when no cycle has been edited since migration 0443
+   *  shipped, which the listing renders as an em dash rather than inventing a date. */
+  lastUpdatedAt: Date | null;
 };
 
 /**
@@ -357,6 +361,9 @@ export function payrollCycleReadiness(
         active: sql<number>`count(*) filter (where ${payrollCycle.archivedAt} is null)::int`,
         activeRegular: sql<number>`count(*) filter (where ${payrollCycle.archivedAt} is null and ${payrollCycle.runType} = 'regular')::int`,
         defaultMatches: sql<number>`count(*) filter (where ${payrollCycle.archivedAt} is null and lower(${payrollCycle.name}) = lower(${company.defaultPayrollCycle}))::int`,
+        // 6df24751 — folded into the SAME grouped pass rather than a third query: this function is the
+        // cheap one BY DESIGN (see the docblock above), and Last Updated must not cost a query per company.
+        lastUpdated: sql<Date | null>`max(${payrollCycle.updatedAt})`,
       })
       .from(payrollCycle)
       .innerJoin(company, eq(company.id, payrollCycle.companyId))
@@ -376,6 +383,9 @@ export function payrollCycleReadiness(
         defaultCycleName,
         defaultCycleResolves: defaultCycleName !== '' && (r?.defaultMatches ?? 0) > 0,
         canRunRegularPayroll: activeRegularCycles > 0,
+        // A company with no catalog row at all has no group row either ⇒ null, same as a catalog nobody
+        // has edited. Both are honestly "never changed here".
+        lastUpdatedAt: r?.lastUpdated ? new Date(r.lastUpdated) : null,
       };
     });
   });

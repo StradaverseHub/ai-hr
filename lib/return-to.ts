@@ -49,6 +49,40 @@ export function adjustmentReturnTo(raw: unknown, batchId: string): string {
   return kept ? `${path}?${kept}` : path;
 }
 
+/**
+ * 9066bd6c — WHERE "BACK" GOES FROM A SCREEN BELOW PAYROLL PROCESS, filters and all.
+ *
+ * The Payroll Process list is driven entirely by the address bar (`app/payroll/dashboard-logic.ts` —
+ * every control writes `?year=&m=&company=&cycle=&status=`). What loses the operator's selection is not
+ * the filter bar: it is the row link and the fixed `back={{ href: '/payroll' }}` on the screens below
+ * it, which throw the query away. The list therefore hands each row's links its own current query as
+ * `?from=…`, and those screens send Back to the value they were given.
+ *
+ * WHITELISTED BY SHAPE, NOT SANITISED. A href taken straight out of `searchParams` is the open-redirect
+ * shape, so the value is accepted only when it is a RELATIVE path under `/payroll`:
+ *   • it must start with `/payroll`, and the next character must be end-of-string, `/` or `?` — so
+ *     `/payrollevil.example` is refused as well as `/admin`;
+ *   • a protocol-relative `//evil.example/payroll` fails the first rule (it does not start with
+ *     `/payroll`), and so does any absolute `https://…` form, because neither begins with `/payroll`.
+ * Anything else falls back to `/payroll`, which is exactly today's behaviour.
+ *
+ * `toast=` / `error=` are stripped for the same reason `adjustmentReturnTo` strips them: the caller
+ * appends its own, and a round-tripped one would double.
+ */
+export function payrollListReturnTo(raw: unknown): string {
+  const fallback = '/payroll';
+  if (typeof raw !== 'string' || raw === '') return fallback;
+  if (!raw.startsWith('/payroll')) return fallback;
+  const next = raw.charAt('/payroll'.length);
+  if (next !== '' && next !== '/' && next !== '?') return fallback;
+  const [path, query = ''] = raw.split('?', 2);
+  const kept = query
+    .split('&')
+    .filter((p) => p && !/^(toast|error)=/.test(p))
+    .join('&');
+  return kept ? `${path}?${kept}` : path;
+}
+
 /** Append a `toast=`/`error=` to a destination that may or may not already carry a query string. */
 export function withQueryParam(destination: string, key: 'toast' | 'error', value: string): string {
   return `${destination}${destination.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;

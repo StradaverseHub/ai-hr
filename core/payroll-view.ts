@@ -24,7 +24,7 @@
  * EMPTY companyIds set fails CLOSED (returns no rows) rather than falling back to "all".
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -45,6 +45,8 @@ import type { PcbReliefBreakdown } from './pcb-explain';
 // 510f4bd1 — "is this one-off transaction in the employee's latest payslip?", pure and db-free so this
 // server read and the client-side panel derivation (existing-context.ts) apply ONE rule, not two.
 import { individualTxnReprocessRequired } from './individual-txn-status';
+// 417d4937 — NULL means 'manual' on this ledger, and that meaning lives in one place.
+import { txnSourceOf, type TxnSource } from './payroll-individual-txn';
 import { packFor } from '../localization/registry';
 // 97a9b0ab — the PURE re-run diff (no DB, no framework). Kept out of this file so the cause rules
 // are unit-testable without a database, and so the honesty constraint on the ruleset-version cause
@@ -469,6 +471,102 @@ export function listIndividualTxnCreators(
   });
 }
 
+/**
+ * ── Feedback 417d4937 (request 10) — WHERE DID THIS RECORDED LINE COME FROM? ───────────────────────
+ *
+ * The reporter opened a payslip, saw a DIRECTOR FEE line, and had no way on the screen to establish
+ * whether it belonged there. Recorded items shows a code, a description and an amount and says nothing
+ * about provenance, so settling the question meant a report and a conversation. This read is the answer
+ * the screen was missing: the one-off transactions actually recorded against that employee on that run.
+ *
+ * IT DELIBERATELY DOES **NOT** MATCH A RECORD LINE TO A LEDGER ROW. Amounts and codes can legitimately
+ * repeat inside one run (two RM400 meal allowances on two dates), and there is no stored link from a
+ * record line back to the `payroll_individual_txn.id` that produced it. A join invented from
+ * (code, amount) would be right most of the time and confidently wrong the rest, which is worse than the
+ * lump it replaces on the one screen whose job is verification. The block is listed BESIDE Recorded
+ * items, as its own population, and the reader does the matching — with every fact needed to do it.
+ *
+ * SCOPE: fenced on `companyIds` through the batch, exactly like every other read on those pages, and
+ * fail-closed on an empty scope. Read-only; no event.
+ *
+ * AND NARROWED TO THE EMPLOYMENTS THE CALLER IS ACTUALLY SHOWING. `employmentIds` is REQUIRED, not
+ * optional, and that is the point: batch + company alone returns every employee's ledger rows on every run
+ * on screen. Nothing extra RENDERS — the lookup is keyed `${batchId}:${employmentId}` — so the surplus is
+ * invisible to any DOM test while still being SERIALISED into the RSC flight payload: a History tab
+ * filtered to one employee over twelve months would ship a 500-head company's whole ledger (amount, notes,
+ * pay item, employment id) to the browser. Not a permission break, since the same rows are listable on the
+ * Individual tab under the same `scopedAdmin()` fence, but a read must not fetch what its screen cannot
+ * show. Making it a required parameter is what stops the next caller re-acquiring the surplus by omission.
+ *
+ * `consumedByThisRun` IS THE MARKER 417d4937 IS NAMED AFTER. `consumed_batch_id` (migration 0437) is what
+ * stops a later run paying the same money twice. It is stamped at CALCULATION time only, so every row
+ * that reached a payslip before 0437 shipped still reads NULL — the ledger and the payslip disagree about
+ * a line the payslip prints. That is repaired by scripts/backfill-consumed-batch-417d4937.ts; until it
+ * has run, this column is what makes the disagreement visible instead of invisible.
+ */
+export type PayslipSourceTxnRow = {
+  id: string;
+  batchId: string;
+  employmentId: string;
+  txnDate: string;
+  kind: PayrollTxnKind;
+  /** The pay item, when the row named one. A kind-only row (overtime/unpaid/leave) names none. */
+  componentCode: string | null;
+  componentName: string | null;
+  amount: string;
+  /** How it was entered. NULL in the column MEANS 'manual' — resolved here so no caller re-decides. */
+  source: TxnSource;
+  notes: string | null;
+  /** The run that marked this money as paid, or null when nothing has. */
+  consumedBatchId: string | null;
+  /** True when THIS run is the one that marked it paid — the agreement the reporter asked to be able to see. */
+  consumedByThisRun: boolean;
+};
+
+export function listPayslipSourceTxns(
+  ctx: SessionContext,
+  p: { companyIds: string[]; batchIds: string[]; employmentIds: string[] },
+): Promise<PayslipSourceTxnRow[]> {
+  // Fail closed on all three: no scope, no runs, or no employments ⇒ nothing this caller can render.
+  if (p.companyIds.length === 0 || p.batchIds.length === 0 || p.employmentIds.length === 0) {
+    return Promise.resolve([]);
+  }
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: payrollIndividualTxn.id,
+        batchId: sql<string>`${payrollIndividualTxn.batchId}`,
+        employmentId: payrollIndividualTxn.employmentId,
+        txnDate: payrollIndividualTxn.txnDate,
+        kind: payrollIndividualTxn.kind,
+        componentCode: payComponent.code,
+        componentName: payComponent.name,
+        amount: payrollIndividualTxn.amount,
+        source: payrollIndividualTxn.source,
+        notes: payrollIndividualTxn.notes,
+        consumedBatchId: payrollIndividualTxn.consumedBatchId,
+      })
+      .from(payrollIndividualTxn)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+      .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
+      .where(
+        and(
+          inArray(payrollIndividualTxn.batchId, p.batchIds),
+          inArray(payrollBatch.companyId, p.companyIds),
+          // The employments on screen. Third leg of the fence and the one that keeps the payload the size
+          // of what is rendered — see the note above.
+          inArray(payrollIndividualTxn.employmentId, p.employmentIds),
+        ),
+      )
+      .orderBy(asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.createdAt));
+    return rows.map((r) => ({
+      ...r,
+      source: txnSourceOf(r.source),
+      consumedByThisRun: r.consumedBatchId != null && r.consumedBatchId === r.batchId,
+    }));
+  });
+}
+
 // ───────────────────── 2b. Outstanding (unattached) transaction summary ─────────────────────
 
 /** One (employee, month) group of transactions that were entered but have never reached a payslip. */
@@ -794,6 +892,14 @@ export type ProcessedPayslipViewRow = {
    *  neighbouring one. Requiring it here would have bought a compile error in fixtures and nothing at
    *  runtime. */
   currency?: string | null;
+  /**
+   * 417d4937 — the RUN this payslip belongs to. Needed because "where did this recorded line come from?"
+   * is answered by `payroll_individual_txn` rows keyed on (batch_id, employment_id), and the payslip id
+   * is not that key. OPTIONAL for exactly the reason `currency` above is: the SELECT always fills it, but
+   * several test files hand-build this row from a literal, and a consumer with no batch id must degrade
+   * to showing no provenance block rather than fail to compile.
+   */
+  batchId?: string;
   payPeriod: string;
   runType: RunType;
   runSeq: number;
@@ -861,6 +967,8 @@ export function listProcessedPayslipsAcross(
         company: company.legalName,
         // ADR-0077 slice 6 (D-9). The `company` join is already here — one column, no new join.
         currency: company.currency,
+        // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
+        batchId: payslip.batchId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1134,6 +1242,8 @@ export function payslipForReview(
         company: company.legalName,
         companyReg: company.registrationNo,
         currency: company.currency,
+        // 417d4937 — the run id (see ProcessedPayslipViewRow.batchId).
+        batchId: payslip.batchId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1854,7 +1964,15 @@ export function listRecomputeDisclosure(
       .from(payrollEmployeeResultHistory)
       .innerJoin(employment, eq(employment.id, payrollEmployeeResultHistory.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollEmployeeResultHistory.batchId, p.batchId))
+      // 9066bd6c — REMOVALS ARE NOT RECOMPUTATIONS, and this table now holds both.
+      //
+      // Every row here is fed to `diffPayslipVersions`, which reads `before`/`after` as two PAYSLIP
+      // SNAPSHOTS and reports what moved between them. A removal has no `after` at all, and its `before`
+      // is a different shape on purpose — the WHOLE payslip row plus the statutory adjustment that went
+      // with it, because after a removal there is no other copy. Diffing that would render "revision 1 →
+      // ?, gross NaN" under a heading that says something was recalculated, which is false twice over.
+      // Removals have their own reader (`listRemovalHistory`) and their own card on the Remove screen.
+      .where(and(eq(payrollEmployeeResultHistory.batchId, p.batchId), ne(payrollEmployeeResultHistory.action, 'remove')))
       .orderBy(asc(payrollEmployeeResultHistory.employmentId), asc(payrollEmployeeResultHistory.createdAt));
     if (events.length === 0) return [];
 

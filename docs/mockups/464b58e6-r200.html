@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>464b58e6 — Employee Visibility, before and after</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ea;
+    --sub:#f9fafb; --accent:#2f6feb; --amber:#b45309; --amberbg:#fffbeb; --amberline:#fde68a;
+    --red:#b42318; --redbg:#fef3f2; --redline:#fecdca; --green:#0f7b53; --greenbg:#ecfdf5; --greenline:#a7f3d0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       font-size:14px;line-height:1.5;}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .lede{color:var(--muted);margin:0 0 24px;max-width:76ch}
+  .cols{display:grid;grid-template-columns:1fr;gap:20px}
+  @media(min-width:900px){.cols{grid-template-columns:1fr 1fr}}
+  .col > h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .screen{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .crumb{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;background:var(--sub)}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .step{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .step.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .body{padding:14px}
+  .sect{margin-bottom:16px}
+  .sect > .label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  .box{background:var(--sub);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
+  .row:last-of-type{margin-bottom:10px}
+  .cb{width:14px;height:14px;border:1.5px solid #9aa1ab;border-radius:3px;flex:0 0 auto;background:#fff;position:relative}
+  .cb.on{background:var(--accent);border-color:var(--accent)}
+  .cb.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .cb.off{background:#fff}
+  .cb.lock{background:var(--accent);border-color:var(--accent);opacity:.55}
+  .cb.lock::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .dim{color:var(--muted)}
+  .sel{display:inline-flex;align-items:center;justify-content:space-between;gap:16px;min-width:180px;
+       background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+  .sel .car{color:var(--muted);font-size:10px}
+  .btn{display:inline-block;background:var(--ink);color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600}
+  .help{font-size:11.5px;color:var(--muted);margin-top:6px}
+  .note{font-size:11.5px;border-radius:8px;padding:8px 10px;margin-top:8px}
+  .note.amber{background:var(--amberbg);border:1px solid var(--amberline);color:var(--amber)}
+  .note.red{background:var(--redbg);border:1px solid var(--redline);color:var(--red)}
+  .note.green{background:var(--greenbg);border:1px solid var(--greenline);color:var(--green)}
+  .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+       padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:2px}
+  .tag.gone{background:var(--redbg);color:var(--red);border:1px solid var(--redline)}
+  .tag.keep{background:var(--greenbg);color:var(--green);border:1px solid var(--greenline)}
+  .strike{text-decoration:line-through;text-decoration-thickness:1.5px;color:#9aa1ab}
+  .ess{margin-top:20px}
+  .ess .screen{border-style:solid}
+  .lt{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--line);
+      border-radius:8px;background:#fff;margin-bottom:6px;font-size:13px}
+  .legend{margin-top:26px;font-size:12px;color:var(--muted);max-width:80ch}
+  .legend b{color:var(--ink)}
+  .ul{margin:6px 0 0;padding-left:18px}
+  .ul li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>HR Admin &rsaquo; Leave Type &rsaquo; Custom Settings &rsaquo; Employee Visibility</h1>
+  <p class="lede">Left: the sub-form as it stands today. Right: the same sub-form after this change. Only the
+  admin sub-form changes — nothing about how leave is calculated, approved or paid is touched. Labels shown are
+  the live labels on the screen today.</p>
+
+  <div class="cols">
+
+    <!-- ───────────── BEFORE ───────────── -->
+    <div class="col">
+      <h2>Before — today</h2>
+      <div class="screen">
+        <div class="crumb">HR Admin &rsaquo; Leave &rsaquo; Entitlements &rsaquo; (selected leave type)</div>
+        <div class="steps">
+          <span class="step">General</span>
+          <span class="step">Eligibility</span>
+          <span class="step">Rules</span>
+          <span class="step on">Custom Settings</span>
+        </div>
+        <div class="body">
+
+          <div class="sect">
+            <div class="label">EMPLOYEE VISIBILITY</div>
+            <div class="box">
+              <div class="row"><span class="cb on"></span> Visible to employee</div>
+              <div class="row"><span class="cb off"></span> Employees can apply</div>
+              <span class="btn">Save</span>
+            </div>
+            <div class="help">Control whether employees see this leave type on their Leave tab and whether they
+              can apply for it. A hidden type disappears entirely from the employee&rsquo;s Leave tab; turning
+              off &ldquo;can apply&rdquo; keeps the type visible but blocks new applications.</div>
+            <div class="note red">Reported: on some leave types, unticking <b>Employees can apply</b> and pressing
+              Save returns a &ldquo;Failed to query&rdquo; style error and the setting is not saved.</div>
+          </div>
+
+          <div class="sect">
+            <div class="label">EMPLOYEE TAB PLACEMENT</div>
+            <div class="box">
+              <div class="row">Placement
+                <span class="sel">Secondary group <span class="car">&#9662;</span></span>
+              </div>
+              <span class="btn">Save</span>
+            </div>
+            <div class="help">Choose where this leave type appears on the employee&rsquo;s Leave tab: a Primary
+              card at the top, tucked into a Secondary group below, or Hidden from the employee entirely.
+              Hidden uses the same visibility switch above.</div>
+            <div class="note amber">Two controls, one meaning: <b>Visible to employee</b> unticked and
+              <b>Placement = Hidden</b> are the same single setting, written from two places. That is the overlap
+              the request describes.</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────── AFTER ───────────── -->
+    <div class="col">
+      <h2>After — proposed</h2>
+      <div class="screen">
+        <div class="crumb">HR Admin &rsaquo; Leave &rsaquo; Entitlements &rsaquo; (selected leave type)</div>
+        <div class="steps">
+          <span class="step">General</span>
+          <span class="step">Eligibility</span>
+          <span class="step">Rules</span>
+          <span class="step on">Custom Settings</span>
+        </div>
+        <div class="body">
+
+          <div class="sect">
+            <div class="label">EMPLOYEE VISIBILITY</div>
+            <div class="box">
+              <div class="row dim"><span class="cb off" style="visibility:hidden"></span>
+                <span class="strike">Visible to employee</span><span class="tag gone">removed</span></div>
+              <div class="row"><span class="cb off"></span> Employees can apply <span class="tag keep">the one control</span></div>
+              <span class="btn">Save</span>
+            </div>
+            <div class="help">When this is ticked, employees see the leave type on their Request Leave screen and
+              can apply for it. When it is unticked, the leave type does not appear there and cannot be applied
+              for. HR still sees and configures the type here as normal.</div>
+            <div class="note green">Unticking and pressing Save now saves cleanly — no error.</div>
+          </div>
+
+          <div class="sect">
+            <div class="label">EMPLOYEE TAB PLACEMENT <span class="tag keep">unchanged</span></div>
+            <div class="box">
+              <div class="row">Placement
+                <span class="sel">Secondary group <span class="car">&#9662;</span></span>
+              </div>
+              <span class="btn">Save</span>
+            </div>
+            <div class="help">Choose where this leave type appears on the employee&rsquo;s Leave tab: a Primary
+              card at the top, tucked into a Secondary group below, or Hidden from the employee entirely.</div>
+            <div class="note amber">Wording only: the sentence that pointed at the removed tick box is rewritten.
+              Anything you have already set to Hidden stays exactly as it is and still shows as Hidden here.</div>
+          </div>
+
+          <div class="sect">
+            <div class="label">ON A STATUTORY LEAVE TYPE (Annual, Sick, Hospitalisation, Maternity, Paternity)</div>
+            <div class="box">
+              <div class="row dim"><span class="cb lock"></span> Employees can apply <span class="dim">(locked on)</span></div>
+              <span class="btn" style="opacity:.5">Save</span>
+            </div>
+            <div class="note amber">This is a statutory leave — employees must always be able to apply for it.
+              The tick box is shown locked, instead of letting HR untick it and then refusing the save. This is
+              the cause we have identified for the reported error.</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────── EMPLOYEE SIDE ───────────── -->
+  <div class="ess cols">
+    <div class="col">
+      <h2>Employee &rsaquo; My Leave &rsaquo; Request Leave — with &ldquo;Employees can apply&rdquo; ticked</h2>
+      <div class="screen"><div class="body">
+        <div class="lt">Leave type <span class="sel">This leave type <span class="car">&#9662;</span></span></div>
+        <div class="help">The leave type is offered in the list and the employee can submit an application for it.</div>
+      </div></div>
+    </div>
+    <div class="col">
+      <h2>Employee &rsaquo; My Leave &rsaquo; Request Leave — with it unticked</h2>
+      <div class="screen"><div class="body">
+        <div class="lt dim">Leave type <span class="sel dim">(this type is not listed) <span class="car">&#9662;</span></span></div>
+        <div class="help">The leave type is not offered, and an application for it is refused even if it is
+          reached another way. This half already behaves this way today.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <b>What this mockup promises, and what it does not.</b>
+    <ul class="ul">
+      <li>Only the Employee Visibility sub-form loses a tick box; no other screen changes.</li>
+      <li>No leave type, balance, entitlement or application is altered. Everything already saved keeps
+        behaving exactly as it does now.</li>
+      <li>Hiding a leave type from the employee&rsquo;s Leave tab remains available, in the Employee Tab Placement
+        control shown here — it is the same underlying setting the removed tick box was writing to.</li>
+      <li>The exact wording of the new help text and of the locked-statutory note is indicative, not final.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

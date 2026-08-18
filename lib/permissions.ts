@@ -482,6 +482,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // completeness: a guarded page with no matrix column fails the suite rather than silently
       // becoming a screen nobody can grant or revoke.
       '/payroll/[batchId]/reprocess',
+      // 9066bd6c — Remove Employee Payroll, the per-employee counterpart to the whole-run Reset. Same
+      // requireAdmin guard as the run page it is reached from, and registered here for the same reason
+      // its Reprocess sibling above is: test/function-access.test.ts checks reverse completeness, so a
+      // guarded page with no matrix column fails the suite rather than silently becoming a screen
+      // nobody can grant or revoke. (The per-action authority is the payroll.remove.employee granular
+      // key — this registry is coarse "can the role open the screen at all" by design.)
+      '/payroll/[batchId]/remove',
       // ADR-0076 — the payroll exceptions queue. Same requireAdmin guard as the run page it hangs off,
       // and registered here for the same reason the reprocess screen above is: a guarded page with no
       // matrix column fails the suite rather than silently becoming a screen nobody can grant or revoke.
@@ -558,6 +565,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       // file downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they
       // are not listed — the check walks page.tsx.
       '/payroll/borang-a/preview',
+      // e0cd4583: the CP39 review step, between the LHDN shelf's figures screen and the two downloads
+      // (the drawn monthly PCB statement and its readable text twin). Same scopedAdmin key as the
+      // directory that links to it and as the [formId] screen above — it lists every employee's name,
+      // identity card number, income tax reference number, employee number, passport number and monthly
+      // PCB/CP38 deduction, so it is admin-scoped exactly like them. Registered here because
+      // test/function-access.test.ts checks reverse completeness: a guarded page with no matrix column
+      // fails the suite rather than silently becoming a screen nobody can grant or revoke. Its THREE
+      // siblings under /payroll/cp39 (the pdf and text downloads, and shared.ts) are route handlers and a
+      // plain module, not guarded pages, so they are not listed — the check walks page.tsx.
+      '/payroll/cp39/preview',
       // 2961a7ae: Statutory Adjustment — the manual override of a computed statutory figure on a run that
       // is processed and not yet closed. Same scopedAdmin key as the rest of the Payroll hub: it shows
       // and CHANGES per-employee EPF/SOCSO/EIS/PCB figures, so it is admin-scoped exactly like Reports
@@ -603,14 +620,24 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/payroll-cycle',
     labelKey: 'nav.payrollCycleConfig',
     guard: 'scopedAdmin',
-    routes: ['/admin/payroll-cycle'],
+    // 6df24751 — the screen became company-first (listing → one company's catalog → one cycle), the
+    // pay-components shape. SAME screen key on purpose: these are the same data behind the same
+    // scopedAdmin guard, one company (then one cycle) at a time, so the access answer must not change.
+    routes: [
+      '/admin/payroll-cycle',
+      '/admin/payroll-cycle/[companyId]',
+      '/admin/payroll-cycle/[companyId]/new',
+      '/admin/payroll-cycle/[companyId]/[cycleId]',
+    ],
   },
   {
     screenKey: 'payrollConfig',
     href: '/admin/payroll-config',
     labelKey: 'admin.users.screen.payrollConfig',
     guard: 'scopedSession',
-    routes: ['/admin/payroll-config'],
+    // 6df24751 — as above: the company listing, one company's pay schedule, and its edit form. No new
+    // screen key, so no new access surface.
+    routes: ['/admin/payroll-config', '/admin/payroll-config/[companyId]', '/admin/payroll-config/[companyId]/edit'],
     hasScopeNote: true,
   },
   {

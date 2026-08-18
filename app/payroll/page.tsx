@@ -116,6 +116,16 @@ export default async function PayrollPage({
     statuses: asArray(sp.status),
   };
 
+  // 9066bd6c — THE SELECTION THE OPERATOR IS LOOKING AT, carried onto every row link as `?from=…`.
+  //
+  // The filters have lived in the address bar since 7f6ca478 (dashboard-logic.ts: "every control writes
+  // the address bar"), so nothing about the FILTERING was broken. What lost them was leaving this screen:
+  // the row link went to a bare `/payroll/<id>` and the destination's Back went to a bare `/payroll`, so
+  // returning meant re-picking the year, months, company, cycle and status every time. `dashboardHref`
+  // is the one place that serialises a selection, and this reuses it rather than rebuilding the query.
+  // Encoded once here; re-validated BY SHAPE at the other end (lib/return-to.ts), never echoed raw.
+  const fromQuery = encodeURIComponent(dashboardHref(filters));
+
   const [yearBatches, allBatches, companies] = await Promise.all([
     // The GRID + TIMELINE read: exactly the twelve periods of the selected year, pushed into SQL through
     // listBatches' widened period-set argument. Bounded by construction, and it is the whole year rather
@@ -339,7 +349,7 @@ export default async function PayrollPage({
                     <td className="whitespace-nowrap px-3 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <Link
-                          href={`/payroll/${b.id}`}
+                          href={`/payroll/${b.id}?from=${fromQuery}`}
                           className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
                         >
                           {t('rowView')}
@@ -378,10 +388,24 @@ export default async function PayrollPage({
                             between View and Reset because Reset is the different, whole-run action. */}
                         {b.status === 'processed' && multiCycleOn && (
                           <Link
-                            href={`/payroll/${b.id}/reprocess`}
+                            href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
                             className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
                           >
                             {tb('reprocessAction')}
+                          </Link>
+                        )}
+                        {/* 9066bd6c — REMOVE EMPLOYEE PAYROLL, between Reprocess and Reset because that
+                            is the order of escalation: correct one person, take one person off, clear
+                            the whole run. PROCESSED rows only, multi-cycle on (the Reprocess screen is
+                            the way back, and removal must never be offered where re-adding is
+                            impossible) and the same `payroll.reset_enabled` risk switch Reset rides —
+                            all three re-asserted by the destination and by the service. */}
+                        {b.status === 'processed' && multiCycleOn && resetOn && (
+                          <Link
+                            href={`/payroll/${b.id}/remove?from=${fromQuery}`}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            {tb('removeAction')}
                           </Link>
                         )}
                         {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is

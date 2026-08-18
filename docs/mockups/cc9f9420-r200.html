@@ -1,0 +1,439 @@
+<meta charset="utf-8">
+<title>cc9f9420 — EPF Borang A: the printed sheet, before and after</title>
+<!--
+  Mockup for board item cc9f9420 — "Re-configure the EPF Borang A template to match KWSP's official
+  layout". Plan revision 1.
+
+  EVERY FIGURE ON THIS PAGE IS THE REPORTER'S OWN, read off the completed Borang A they attached to the
+  earlier item 9c8dad7a (attachment 2d7d4467, "EPF Borang A.pdf", produced 2026-08-12 by another payroll
+  system's reporting engine — NOT by KWSP):
+      No. Rujukan Majikan 019632261 · Bulan Caruman 0826 · Tarikh DiCetak 12/08/2026 · Bil Pekerja 1
+      Row: No. Ahli 17955667 · No. K/P 860208105128 · ANG PEI YEE · Upah 6,200.00 · 744.00 · 682.00
+      Amaun Caruman 1,426.00
+  The BEFORE sheet is what lib/borang-a-pdf.ts draws today, element for element.
+  The employer name and address are shown as a placeholder because the specimen's own is not recorded
+  here — nothing is invented.
+
+  NOTHING ON THE "AFTER" SHEET IS AGENCY ARTWORK. KWSP publishes no blank Borang A to print onto, so
+  every rule and box is our own drawing. The two blocks that are agency WORDS rather than structure —
+  the CATATAN notes and the penalty paragraph — are shown as our own plain wording and are flagged as
+  such wherever they appear.
+
+  Everything inline: the renderer blocks external CSS, fonts and images.
+-->
+<style>
+  :root{
+    --bg:#f5f6fa; --fg:#1a1a22; --card:#fff; --primary:#4f46e5; --muted:#f0f1f7;
+    --mfg:#63636f; --border:#e7e8f1; --rule:#c9cad8; --paper:#fff;
+    --green-bg:#e9f8f2; --green-bd:#9fdcc6; --green-fg:#0d6b52;
+    --amber-bg:#fffaeb; --amber-bd:#f0d18a; --amber-fg:#8a5b06;
+    --blue-bg:#eef4ff; --blue-bd:#b9cdf3; --blue-fg:#28489a;
+    --grey-bg:#f4f4f8; --grey-fg:#5b5b68;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px 24px 40px;background:var(--bg);color:var(--fg);width:1300px;
+       font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+  h1{font-size:19px;margin:0 0 6px;letter-spacing:-.01em}
+  p.lede{margin:0 0 3px;font-size:12.5px;color:var(--mfg);max-width:128ch}
+  p.lede b{color:var(--fg);font-weight:600}
+  section{margin-top:26px}
+  h2{font-size:13.5px;margin:0 0 3px}
+  h2 .n{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:50%;
+        background:var(--primary);color:#fff;font-size:11px;font-weight:700;margin-right:8px;vertical-align:1px}
+  p.sub{margin:0 0 12px;font-size:12px;color:var(--mfg);max-width:126ch}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+        box-shadow:0 1px 3px rgba(20,20,40,.06)}
+  .chd{padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;
+       display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .tag{display:inline-block;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;
+       letter-spacing:.05em;text-transform:uppercase}
+  .tag.now{background:var(--grey-bg);color:var(--grey-fg)}
+  .tag.next{background:var(--blue-bg);color:var(--blue-fg)}
+  .tag.ok{background:var(--green-bg);color:var(--green-fg)}
+  .tag.warn{background:var(--amber-bg);color:var(--amber-fg)}
+
+  /* ── the drawn A4 sheet ─────────────────────────────────────────────── */
+  .sheets{display:flex;gap:18px;align-items:flex-start}
+  .sheetwrap{flex:1 1 0;min-width:0}
+  .sheet{background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:14px 15px 12px;
+         font:9.5px/1.35 ui-sans-serif,-apple-system,"Segoe UI",Arial,sans-serif;color:#15151c;
+         box-shadow:0 1px 3px rgba(20,20,40,.08)}
+  .sheet .hair{height:1px;background:var(--rule);margin:6px 0}
+  .sheet .hair.thick{height:1.6px;background:#8b8c9c}
+  .sheet .hair.thin{background:#e3e4ec;margin:3px 0}
+  .masthead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .masthead .l{font-weight:700;font-size:10.5px;letter-spacing:.01em}
+  .masthead .l small{display:block;font-weight:400;font-size:8.5px;color:var(--mfg);letter-spacing:0}
+  .masthead .r{text-align:right}
+  .masthead .r b{font-size:14px;letter-spacing:.02em}
+  .masthead .r small{display:block;font-size:8.5px;color:var(--mfg)}
+  .strip{display:flex;gap:12px;margin-top:8px}
+  .strip .f{flex:1 1 0;min-width:0}
+  .strip .f span{display:block;font-size:7.6px;color:var(--mfg)}
+  .strip .f b{display:block;font-size:10px;letter-spacing:.01em}
+  .addr{margin-top:8px}
+  .addr span{display:block;font-size:7.6px;color:var(--mfg)}
+  .addr b{font-size:10px}
+  .addr i{display:block;font-style:normal;font-size:8.5px;color:var(--mfg)}
+  .note6{font-size:8px;color:var(--mfg);margin-top:5px}
+  .muk{text-align:right;font-size:8.5px;color:var(--mfg)}
+
+  table.tbl{width:100%;border-collapse:collapse;margin-top:2px}
+  table.tbl th{font-size:7.4px;font-weight:700;color:var(--mfg);text-align:left;padding:2px 3px;
+               border-bottom:1px solid var(--rule);white-space:nowrap}
+  table.tbl th.r{text-align:right}
+  table.tbl td{font-size:9px;padding:3px;border-bottom:1px solid #eceef4;white-space:nowrap}
+  table.tbl td.r{text-align:right;font-variant-numeric:tabular-nums}
+  table.tbl tr.tot td{font-weight:700;border-top:1px solid var(--rule);border-bottom:1.6px solid #8b8c9c;
+                      padding-top:4px}
+  table.tbl tr.carry td{font-weight:600;font-size:8.4px;color:#3a3a48}
+  .nk{background:#fbfbfe}
+  .newcell{background:#eef4ff;outline:1px solid #cfdcf8}
+
+  .block{margin-top:9px}
+  .block .cap{font-size:7.6px;font-weight:700;color:var(--mfg);letter-spacing:.02em}
+  .ticks{display:flex;gap:11px;margin-top:4px;flex-wrap:wrap}
+  .tick{display:flex;align-items:center;gap:4px;font-size:8.2px;color:#33333f}
+  .tick .b{width:8px;height:8px;border:1px solid #8b8c9c;border-radius:1px;background:#fff}
+  .fillbox{border:1px solid #8b8c9c;border-radius:1px;height:14px;margin-top:3px}
+  .stamps{display:flex;gap:9px;margin-top:8px}
+  .stamp{flex:1 1 0;border:1px solid #8b8c9c;border-radius:1px;height:52px;position:relative;background:#fff}
+  .stamp span{position:absolute;top:3px;left:4px;font-size:7.4px;color:var(--mfg);font-weight:700}
+  .rep{display:flex;gap:10px;margin-top:8px}
+  .rep .lines{flex:1 1 0}
+  .rep .row{display:flex;gap:6px;font-size:8.4px;margin-bottom:3px;align-items:baseline}
+  .rep .row em{font-style:normal;color:var(--mfg);width:82px;flex:none}
+  .rep .row .v{font-weight:600}
+  .rep .row .blank{flex:1 1 0;border-bottom:1px solid #d5d6e2;height:9px}
+  ol.catatan{margin:4px 0 0;padding-left:14px}
+  ol.catatan li{font-size:7.6px;line-height:1.4;color:#33333f;margin-bottom:1px}
+  p.warn{font-size:7.6px;line-height:1.4;color:#33333f;margin:6px 0 0;border:1px solid #d9dae6;
+         border-radius:2px;padding:5px 6px;background:#fcfcff}
+  .prov{margin-top:9px;padding-top:6px;border-top:1px solid #e3e4ec;font-size:7.2px;color:var(--mfg);line-height:1.4}
+
+  /* ── checklist ──────────────────────────────────────────────────────── */
+  table.chk{width:100%;border-collapse:collapse}
+  table.chk th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mfg);
+               text-align:left;padding:8px 12px;background:var(--muted);border-bottom:1px solid var(--border);
+               font-weight:600}
+  table.chk td{padding:8px 12px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:top}
+  table.chk tr:last-child td{border-bottom:0}
+  table.chk td.w{width:150px}
+  table.chk td.what{width:330px;font-weight:600}
+  .note{border-radius:8px;padding:11px 13px;font-size:12px;line-height:1.55}
+  .note.amber{background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber-fg)}
+  .note.green{background:var(--green-bg);border:1px solid var(--green-bd);color:var(--green-fg)}
+  .note.blue{background:var(--blue-bg);border:1px solid var(--blue-bd);color:var(--blue-fg)}
+  .note b{font-weight:700}
+  .note + .note{margin-top:9px}
+  .two{display:flex;gap:16px;align-items:flex-start}
+  .two > *{flex:1 1 0;min-width:0}
+  ul.plain{margin:6px 0 0;padding-left:16px}
+  ul.plain li{font-size:12px;margin-bottom:4px;line-height:1.5}
+  .cap2{font-size:11px;color:var(--mfg);margin:7px 2px 0}
+</style>
+
+<h1>EPF Borang A — the printed sheet today, and the sheet this plan produces</h1>
+<p class="lede">Item <b>cc9f9420</b>. Every figure below is the reporter's own, read off the completed Borang A attached to the earlier request: reference <b>019632261</b>, contribution month <b>0826</b>, one member, <b>ANG PEI YEE</b>, wage <b>6,200.00</b>, employer <b>744.00</b>, member <b>682.00</b>, total <b>1,426.00</b>. No employee, figure or company detail has been invented.</p>
+<p class="lede">Screen path: <b>HR Admin &rarr; Payroll &rarr; Statutory Forms &rarr; EPF (KWSP) &rarr; Borang A</b>. The review screen, the figures and the upload file are untouched by this plan &mdash; only the printed sheet changes.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+<section>
+  <h2><span class="n">1</span>The two sheets, side by side</h2>
+  <p class="sub">Left is exactly what downloads today. Right is what this plan draws. Blue-tinted areas are new; everything untinted on the right is already there and stays where it is.</p>
+
+  <div class="sheets">
+
+    <!-- ══════════════ BEFORE ══════════════ -->
+    <div class="sheetwrap">
+      <div class="card">
+        <div class="chd"><span>Borang A PDF &mdash; today</span><span class="tag now">Before</span></div>
+        <div style="padding:12px">
+          <div class="sheet">
+            <div class="masthead">
+              <div class="l">KUMPULAN WANG SIMPANAN PEKERJA
+                <small>EMPLOYEES PROVIDENT FUND (KWSP)</small>
+              </div>
+              <div class="r"><b>BORANG A</b><small>Penyata Caruman Bulanan</small></div>
+            </div>
+            <div class="hair thick"></div>
+
+            <div class="strip">
+              <div class="f"><span>No. Rujukan Majikan</span><b>019632261</b></div>
+              <div class="f"><span>Bulan Caruman</span><b>0826 &nbsp;(08 / 2026)</b></div>
+              <div class="f"><span>Bil Pekerja</span><b>1</b></div>
+              <div class="f"><span>Amaun Caruman (RM)</span><b>1,426.00</b></div>
+            </div>
+
+            <div class="addr">
+              <span>Nama dan Alamat Majikan</span>
+              <b style="color:#8e8fa0">(your registered name, from Organization)</b>
+              <i style="color:#a0a1b0">(your registered address, from Organization)</i>
+            </div>
+            <div class="note6">Bulan caruman bersamaan Bulan Upah + 1 &middot; Bulan Upah 2026-07 &middot; Tarikh DiCetak 12/08/2026</div>
+            <div class="muk">Mukasurat 1/1</div>
+            <div class="hair thick"></div>
+
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th style="width:22px">Bil</th>
+                  <th style="width:62px">No. Ahli</th>
+                  <th style="width:78px">No. Kad Pengenalan</th>
+                  <th>Nama Pekerja</th>
+                  <th class="r">Upah (RM)</th>
+                  <th class="r">Caruman Majikan</th>
+                  <th class="r">Caruman Pekerja</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>1</td><td>17955667</td><td>860208105128</td><td>ANG PEI YEE</td>
+                    <td class="r">6,200.00</td><td class="r">744.00</td><td class="r">682.00</td></tr>
+                <tr class="tot"><td></td><td colspan="3">JUMLAH (RM)</td>
+                    <td class="r">6,200.00</td><td class="r">744.00</td><td class="r">682.00</td></tr>
+              </tbody>
+            </table>
+
+            <div style="height:34px"></div>
+
+            <div class="rep">
+              <div class="lines">
+                <div class="cap" style="margin-bottom:4px">WAKIL YANG DIBERI KUASA / AUTHORISED REPRESENTATIVE</div>
+                <div class="row"><em>Nama:</em><span class="v">CHONG PEI YUH</span></div>
+                <div class="row"><em>No. Kad Pengenalan:</em><span class="v">910416145530</span></div>
+                <div class="row"><em>Jawatan:</em><span class="v">ASSISTANT MANAGER</span></div>
+                <div class="row"><em>No. Tel:</em><span class="v">0123081733</span></div>
+                <div class="row"><em>E-mel:</em><span class="blank"></span></div>
+              </div>
+              <div style="flex:0 0 150px">
+                <div class="cap">TANDATANGAN &amp; TARIKH</div>
+                <div class="stamp" style="height:56px;margin-top:3px"></div>
+              </div>
+            </div>
+
+            <div class="prov">
+              Susun atur kami sendiri, dilukis mengikut Borang A &mdash; bukan borang rasmi KWSP.<br>
+              Our own layout, drawn to match Borang A. KWSP publishes no blank form to print onto, so this is not the agency's own page.
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2">Correct figures, correct month rule, correct carry-forward arithmetic &mdash; but a page a KWSP counter clerk would not recognise as Borang A.</p>
+    </div>
+
+    <!-- ══════════════ AFTER ══════════════ -->
+    <div class="sheetwrap">
+      <div class="card">
+        <div class="chd"><span>Borang A PDF &mdash; after this plan</span><span class="tag next">After</span></div>
+        <div style="padding:12px">
+          <div class="sheet">
+            <div class="masthead">
+              <div class="l newcell" style="padding:2px 4px;border-radius:2px">KWSP 6
+                <small>Peraturan-Peraturan dan Kaedah-Kaedah KWSP 1991 &mdash; Kaedah 11(1)</small>
+                <small style="margin-top:2px">KUMPULAN WANG SIMPANAN PEKERJA / EPF</small>
+              </div>
+              <div class="r"><b>BORANG A</b><small>Mukasurat 1/1</small></div>
+            </div>
+            <div class="hair thick"></div>
+
+            <div class="strip">
+              <div class="f"><span>No. Rujukan Majikan</span><b>019632261</b></div>
+              <div class="f newcell" style="padding:1px 3px;border-radius:2px">
+                <span>No. Rujukan Borang A</span>
+                <b style="color:#8e8fa0">&nbsp;</b>
+              </div>
+              <div class="f"><span>Bulan Caruman</span><b>0826 &nbsp;(08 / 2026)</b></div>
+              <div class="f"><span>Amaun Caruman (RM)</span><b>1,426.00</b></div>
+            </div>
+
+            <div class="addr">
+              <span>Nama dan Alamat Majikan</span>
+              <b style="color:#8e8fa0">(your registered name, from Organization)</b>
+              <i style="color:#a0a1b0">(your registered address, from Organization)</i>
+            </div>
+            <div class="note6">Bulan caruman bersamaan Bulan Upah + 1 &middot; Bulan Upah 2026-07 &middot; Tarikh DiCetak 12/08/2026 &middot; Bil Pekerja 1</div>
+            <div class="hair thick"></div>
+
+            <!-- payment method -->
+            <div class="block newcell" style="padding:5px 6px;border-radius:2px">
+              <div class="cap">CARA BAYARAN</div>
+              <div class="ticks">
+                <div class="tick"><span class="b"></span>Wang Tunai</div>
+                <div class="tick"><span class="b"></span>Cek</div>
+                <div class="tick"><span class="b"></span>Kiriman Wang</div>
+                <div class="tick"><span class="b"></span>Wang Pos</div>
+                <div class="tick"><span class="b"></span>Draf Bank</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
+                <span style="font-size:7.6px;color:var(--mfg);font-weight:700">No. / EFT / TT</span>
+                <div class="fillbox" style="flex:1 1 0;margin-top:0"></div>
+              </div>
+            </div>
+
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th style="width:20px">BIL</th>
+                  <th style="width:56px">NO. AHLI</th>
+                  <th class="nk newcell" style="width:24px">N K</th>
+                  <th style="width:74px">NO. KAD PENGENALAN</th>
+                  <th>NAMA PEKERJA / AHLI</th>
+                  <th class="r">UPAH</th>
+                  <th class="r">CARUMAN MAJIKAN</th>
+                  <th class="r">CARUMAN PEKERJA</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>1</td><td>17955667</td><td class="nk"></td><td>860208105128</td><td>ANG PEI YEE</td>
+                    <td class="r">6,200.00</td><td class="r">744.00</td><td class="r">682.00</td></tr>
+                <tr class="tot"><td></td><td colspan="4">JUMLAH (RM)</td>
+                    <td class="r">6,200.00</td><td class="r">744.00</td><td class="r">682.00</td></tr>
+              </tbody>
+            </table>
+            <div style="font-size:7.2px;color:var(--mfg);margin-top:3px">
+              On a two-sheet return, sheet 2 opens with &ldquo;Jumlah yang dibawa dari mukasurat terdahulu (jika ada)&rdquo;
+              and every sheet but the last closes with &ldquo;Jumlah yang dibawa ke mukasurat seterusnya (jika ada)&rdquo;
+              &mdash; already built, and it keeps working unchanged.
+            </div>
+
+            <!-- signature + stamps -->
+            <div class="rep">
+              <div class="lines">
+                <div class="cap" style="margin-bottom:4px">WAKIL YANG DIBERI KUASA / AUTHORISED REPRESENTATIVE</div>
+                <div class="row"><em>Nama:</em><span class="v">CHONG PEI YUH</span></div>
+                <div class="row"><em>No. Kad Pengenalan:</em><span class="v">910416145530</span></div>
+                <div class="row"><em>Jawatan:</em><span class="v">ASSISTANT MANAGER</span></div>
+                <div class="row"><em>No. Tel / Bimbit:</em><span class="v">0123081733</span></div>
+                <div class="row"><em>E-mel:</em><span class="blank"></span></div>
+                <div class="row newcell" style="padding:1px 3px;border-radius:2px"><em>Tarikh:</em><span class="blank"></span></div>
+              </div>
+              <div style="flex:0 0 250px">
+                <div class="stamps" style="margin-top:0">
+                  <div class="stamp"><span>TANDATANGAN</span></div>
+                  <div class="stamp newcell"><span>COP RASMI MAJIKAN</span></div>
+                </div>
+                <div class="stamps">
+                  <div class="stamp newcell" style="height:44px"><span>COP AGEN KUTIPAN</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- catatan -->
+            <div class="block newcell" style="padding:5px 6px;border-radius:2px">
+              <div class="cap">CATATAN &mdash; our plain wording of KWSP's notes, not KWSP's own sentences</div>
+              <ol class="catatan">
+                <li>Cross your cheque and make it payable as endorsed by KWSP.</li>
+                <li>Write the employer reference number on the reverse of the payment instrument.</li>
+                <li>The payment must match the total on this form exactly; a shortfall is not apportioned.</li>
+                <li>Strike out any member who has left, and state the date of leaving.</li>
+                <li>Write in any member not already listed, with member number and identity card number.</li>
+                <li>Leave the N K column blank &mdash; it is for KWSP's use only.</li>
+                <li>Keep a copy of this form and the payment receipt for your own records.</li>
+                <li>Refer to the Panduan Majikan for anything not covered by these notes.</li>
+              </ol>
+              <p class="warn">
+                AMARAN: Maklumat ahli yang tidak betul boleh menyebabkan tindakan di bawah Akta KWSP 1991.
+                &mdash; Incorrect member information may attract penalties under the EPF Act 1991.
+                <b>(Our own wording. Replaced word for word the moment a KWSP 6 page is supplied.)</b>
+              </p>
+            </div>
+
+            <div class="prov">
+              Susun atur kami sendiri, dilukis mengikut Borang A (KWSP 6) &mdash; bukan borang rasmi KWSP.<br>
+              Our own layout. KWSP publishes no blank form to print onto, so this is not the agency's own page.
+              The CATATAN notes and the penalty warning above are our wording, not KWSP's.
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap2">Same figures, same month rule, same arithmetic &mdash; laid out box for box the way the reporter described KWSP 6.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+<section>
+  <h2><span class="n">2</span>The nine points, one by one</h2>
+  <p class="sub">Three of them already work today. Five are drawing work. One is words we do not hold a copy of &mdash; and that is the only honest caveat in this plan.</p>
+  <div class="card">
+    <table class="chk">
+      <thead>
+        <tr><th class="w">Status</th><th class="what">The request</th><th>What happens</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="w"><span class="tag next">New</span></td>
+          <td class="what">1. KWSP 6 heading, the 1991 regulation citation, and a No. Rujukan Borang A box</td>
+          <td>Drawn. The reference box prints empty &mdash; it is KWSP's number, not ours to fill.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag next">New</span></td>
+          <td class="what">2. Payment method ticks (Wang Tunai / Cek / Kiriman Wang / Wang Pos / Draf Bank) and a No. / EFT / TT box</td>
+          <td>Drawn, all empty. The sister SOCSO form already prints its own version of this band, so the pattern exists.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag next">New</span></td>
+          <td class="what">3. Cop Agen Kutipan box</td>
+          <td>Drawn as an empty box for the collection agent's stamp.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag ok">Mostly there</span></td>
+          <td class="what">4. Borang A label and Mukasurat in the top-right</td>
+          <td>Borang A is already top-right; the page number moves up beside it.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag ok">Mostly there</span></td>
+          <td class="what">5. Column order, with a blank N K column</td>
+          <td>Seven of the eight columns are already in that exact order. The blank N K column is added between No. Ahli and No. Kad Pengenalan, and is guaranteed to stay empty.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag ok">Already works</span></td>
+          <td class="what">6. Carry-forward subtotal rows across pages</td>
+          <td>Built and checked at one, two and three sheets. Only the wording gains &ldquo;(jika ada)&rdquo;.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag ok">Mostly there</span></td>
+          <td class="what">7. Signature block plus Cop Rasmi Majikan</td>
+          <td>Nama, identity card, Jawatan, telephone and e-mail already print. A Tarikh line and the employer's stamp box are added, and the telephone label becomes No. Tel / Bimbit.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag warn">Wording caveat</span></td>
+          <td class="what">8. The 8-point CATATAN block</td>
+          <td>All eight notes appear, covering exactly the subjects listed &mdash; in our own plain wording, because we hold no copy of KWSP 6 to quote from.</td>
+        </tr>
+        <tr>
+          <td class="w"><span class="tag warn">Wording caveat</span></td>
+          <td class="what">9. The penalty warning under the EPF Act 1991</td>
+          <td>Printed, in our own wording, in Malay and English, and flagged as ours.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+<section>
+  <h2><span class="n">3</span>Two things worth knowing before you approve</h2>
+  <div class="two">
+    <div>
+      <div class="note amber">
+        <b>There is no blank KWSP 6 for us to copy.</b>
+        The specimen this form was built from is a completed Borang A produced by <b>another payroll system's report engine</b>, not by KWSP &mdash; the agency publishes no blank page to print onto. So this plan draws a faithful replica of the layout you described, but the sheet will keep saying, in small print at the foot, that it is our drawing and not the agency's own page. That sentence is what keeps the claim honest, and it stays.
+      </div>
+      <div class="note amber">
+        <b>The CATATAN notes and the penalty paragraph are agency words, not agency structure.</b>
+        We can place them exactly where you asked; we cannot quote sentences from a document we do not have. They will print in our own plain Malay and English wording, marked as ours. Send a KWSP 6 page and we swap the text word for word &mdash; no box moves, nothing is redrawn.
+      </div>
+    </div>
+    <div>
+      <div class="note blue">
+        <b>The sheet gets fuller, so it holds fewer names.</b>
+        The payment band, the two stamp boxes, the eight notes and the warning take up roughly a third of the page. A sheet holds about <b>22 names today and about 14 after this</b>. Nothing is lost &mdash; the carry-forward rows already handle it &mdash; but a 33-person return that prints on two sheets today will print on three.
+      </div>
+      <div class="note green">
+        <b>Nothing about the numbers changes.</b>
+        The wage, the two contribution columns, the totals, the &ldquo;contribution month is the payroll month plus one&rdquo; rule and the review screen that names anyone missing an EPF member number all stay exactly as they are. The i-Akaun upload file is untouched. This is a drawing change only.
+      </div>
+    </div>
+  </div>
+</section>

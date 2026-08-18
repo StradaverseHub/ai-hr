@@ -2,12 +2,52 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { setPayrollConfig } from '@/core/payroll-config';
+import { InvalidDefaultPolicyError, setPayrollConfig } from '@/core/payroll-config';
+import { configCompanyHref, configEditHref } from './nav';
 
 const PAGE = '/admin/payroll-config';
-const back = (toast: string) => redirect(`${PAGE}?toast=${encodeURIComponent(toast)}`);
-const fail = (e: unknown) => redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+
+/**
+ * 6df24751 — WHERE A SAVE LANDS, now that the screen is company-first.
+ *
+ * This action used to redirect to one page, because there WAS one page: every company's form was rendered
+ * on it at once. There are three routes now (company listing · one company's settings · edit), so:
+ *   • success ⇒ that company's read screen, where the saved values are what you now see;
+ *   • failure ⇒ back to the edit form, so the rejection is shown on the fields it is about.
+ * `q` is the listing's search term, threaded through the form as a hidden input so a save does not quietly
+ * discard it.
+ *
+ * The COMPANY is taken from the form, exactly as before — it was never derived from the URL, and
+ * setPayrollConfig + RLS (can_admin_payroll_for) remain the authority on whether the write is allowed.
+ */
+const withParam = (href: string, kind: 'toast' | 'error', value: string) =>
+  `${href}${href.includes('?') ? '&' : '?'}${kind}=${encodeURIComponent(value)}`;
+
+/**
+ * Both halves of that redirect carry TEXT, not a code: `?toast=` / `?error=` are rendered raw by
+ * ToastFromQuery (app/layout.tsx) and ErrorBanner, so whatever is put in the URL is what the admin reads
+ * — in ms/ta/th/vi/zh as well as en. Adopting the sibling's ok/err shape without these two helpers would
+ * have shipped a hardcoded English toast and a raw English service message to five other locales, which
+ * no gate can see: i18n-coverage checks catalogues, not string literals handed to a redirect.
+ *
+ * Same rule and same shape as app/admin/payroll-cycle/actions.ts (localise / toastMsg), and the rule is
+ * written down at app/admin/_redirects.ts.
+ */
+async function localise(e: unknown): Promise<string> {
+  const t = await getTranslations('payrollConfig');
+  if (e instanceof InvalidDefaultPolicyError) return t('errors.invalidDefaultPolicy');
+  // Anything else (an RLS refusal, a driver error) has no user-facing text of its own; the sibling falls
+  // back the same way rather than inventing a message for a fault we have not classified.
+  return (e as Error).message;
+}
+
+/** ToastFromQuery renders the raw string, so pass already-localised toast text (not a code). */
+async function toastMsg(key: 'saved'): Promise<string> {
+  const t = await getTranslations('payrollConfig');
+  return t(`toast.${key}`);
+}
 
 const str = (fd: FormData, k: string): string | undefined => {
   const v = String(fd.get(k) ?? '').trim();
@@ -32,6 +72,7 @@ const str = (fd: FormData, k: string): string | undefined => {
 export async function savePayrollConfigAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
+  const q = String(formData.get('q') ?? '') || undefined;
   // Step 6 (f3148da1) — assemble the payslip-release blob from the mode + value; cleanPayslipRelease
   // validates + clamps (fixed_day → day, relative → offsetDays; 'immediate' or a blank value ⇒ null).
   const releaseMode = str(formData, 'payslipReleaseMode') ?? 'immediate';
@@ -43,6 +84,8 @@ export async function savePayrollConfigAction(formData: FormData) {
       : releaseMode === 'relative'
         ? { mode: 'relative' as const, offsetDays: releaseValue }
         : { mode: 'immediate' as const };
+  let ok = false;
+  let err = '';
   try {
     await setPayrollConfig(s, {
       companyId,
@@ -55,9 +98,22 @@ export async function savePayrollConfigAction(formData: FormData) {
       defaultPayrollPolicyId: str(formData, 'defaultPayrollPolicyId') ?? null,
       payslipRelease,
     });
-    revalidatePath(PAGE);
-    back('Payroll config saved');
+    ok = true;
   } catch (e) {
-    fail(e);
+    err = await localise(e);
   }
+  // The subtree, not just the listing: the saved values appear on three routes, two of them behind a
+  // dynamic segment — hence the route PATTERN plus 'layout', the form Next 16 requires for one.
+  revalidatePath(PAGE);
+  revalidatePath('/admin/payroll-config/[companyId]', 'layout');
+  // OUTSIDE the try, which is not a style choice: `redirect()` works by THROWING, and the Next 16 docs
+  // say so explicitly ("redirect should be called outside the try block when using try/catch"). Called
+  // inside, its own throw was caught by the catch below and re-reported as a failure — every successful
+  // save redirected to `?error=NEXT_REDIRECT`. The sibling payroll-cycle actions have always used this
+  // ok/err shape; this one had not.
+  redirect(
+    ok
+      ? withParam(configCompanyHref(companyId, q), 'toast', await toastMsg('saved'))
+      : withParam(configEditHref(companyId, q), 'error', err),
+  );
 }

@@ -1,0 +1,372 @@
+<title>TP1 Relief 2026</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #14181f;
+    --muted: #667085;
+    --line: #e3e6eb;
+    --accent: #1f5eff;
+    --ok-bg: #e7f6ed;
+    --ok-ink: #17663c;
+    --draft-bg: #eef0f4;
+    --draft-ink: #4a5364;
+    --warn-bg: #fff4e5;
+    --warn-ink: #8a5300;
+    --new-bg: #eef3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 18px 60px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .lede { color: var(--muted); margin: 0 0 26px; max-width: 70ch; }
+  .band {
+    display: flex; align-items: center; gap: 10px;
+    margin: 34px 0 12px; padding-top: 20px; border-top: 1px solid var(--line);
+  }
+  .band:first-of-type { border-top: 0; padding-top: 0; }
+  .tag {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px; background: var(--draft-bg); color: var(--draft-ink);
+  }
+  .tag.after { background: var(--accent); color: #fff; }
+  .band h2 { font-size: 15px; margin: 0; font-weight: 650; }
+  .note { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; max-width: 78ch; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    overflow: hidden; margin-bottom: 16px;
+  }
+  .card > .head {
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between;
+  }
+  .card > .head strong { font-size: 13.5px; }
+  .body { padding: 14px 16px; }
+  .crumb { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .emp {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    padding: 12px 16px; background: #fbfcfd; border-bottom: 1px solid var(--line);
+  }
+  .emp .who { font-weight: 650; }
+  .emp .sub { color: var(--muted); font-size: 12px; }
+  .btn {
+    display: inline-block; padding: 6px 12px; border-radius: 7px; font-size: 12.5px;
+    font-weight: 600; background: var(--accent); color: #fff; border: 1px solid var(--accent);
+  }
+  .btn.ghost { background: #fff; color: var(--draft-ink); border-color: var(--line); font-weight: 500; }
+  .sel {
+    display: inline-block; padding: 5px 10px; border: 1px solid var(--line);
+    border-radius: 7px; background: #fff; font-size: 12.5px;
+  }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th {
+    text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); font-weight: 600; padding: 9px 16px; background: #fafbfc;
+    border-bottom: 1px solid var(--line);
+  }
+  td { padding: 10px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+  }
+  .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  .pill.draft { background: var(--draft-bg); color: var(--draft-ink); }
+  .pill.new { background: var(--new-bg); color: var(--accent); }
+  .field {
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px;
+    background: #fff; color: var(--muted); font-size: 12.5px; min-height: 32px;
+  }
+  .field.filled { color: var(--ink); }
+  .field.locked { background: #f4f6f8; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  label.lbl { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  .sechead {
+    padding: 10px 16px; background: #f2f5f9; border-bottom: 1px solid var(--line);
+    font-size: 12px; font-weight: 700; letter-spacing: 0.03em;
+  }
+  .sub { color: var(--muted); font-size: 12px; }
+  .rowline { padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  .rowline:last-child { border-bottom: 0; }
+  .cline { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+  .cname { font-weight: 600; font-size: 13px; }
+  .subitems { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .meter { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 8px; font-size: 12px; }
+  .meter div { min-width: 120px; }
+  .meter span.k { display: block; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .meter span.v { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .bar { height: 5px; border-radius: 3px; background: #e9edf3; margin-top: 9px; overflow: hidden; max-width: 420px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .callout {
+    border: 1px dashed #c3cfe6; background: #f7f9ff; border-radius: 8px;
+    padding: 11px 13px; color: #3d4c6b; font-size: 12.5px; margin: 14px 0 0;
+  }
+  .words { border-left: 3px solid var(--warn-ink); background: var(--warn-bg); color: var(--warn-ink);
+    padding: 10px 13px; border-radius: 0 8px 8px 0; font-size: 12.5px; margin: 14px 0; }
+  ul.tight { margin: 6px 0 0; padding-left: 18px; }
+  ul.tight li { margin: 2px 0; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 30px; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+
+<div class="wrap">
+
+  <h1>TP1 Relief — Payroll › Transactions</h1>
+  <p class="lede">
+    Before and after, using the reporter's own example employee and figures. Anything still to be
+    confirmed is written in words rather than drawn, so nothing here promises a number we have not sourced.
+  </p>
+
+  <!-- ============================ BEFORE ============================ -->
+  <div class="band"><span class="tag">Before</span><h2>What the screen shows today</h2></div>
+  <p class="note">
+    Employee search, filters and the separate declaration page already exist and are not changing.
+    What is missing is everything the official form asks for below the total.
+  </p>
+
+  <div class="card">
+    <div class="head">
+      <strong>TP1 Relief</strong>
+      <span class="sub">Search employee · Company · Business unit · Department · Status &nbsp;— already built</span>
+    </div>
+    <div class="emp">
+      <div style="flex:1 1 220px">
+        <div class="who">A0001 — Employee Name</div>
+        <div class="sub">Company · Department · Position</div>
+      </div>
+      <span class="btn">Edit 2026 declaration</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Year</th><th class="num">Amount</th><th>Status</th><th>Last saved</th><th class="num">Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2026</td>
+            <td class="num">RM 3,000.00</td>
+            <td><span class="pill ok">Submitted</span></td>
+            <td class="sub">2026-03-11 09:24</td>
+            <td class="num"><span class="btn ghost">View / Edit</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="body sub">
+      One line per assessment year. The reporter's three monthly claims collapse into this single row —
+      there is no deduction month anywhere in the record.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head"><strong>The declaration form today (its own page — already built)</strong></div>
+    <div class="body">
+      <div class="grid2">
+        <div><label class="lbl">Individual and dependent relatives (RM)</label><div class="field">0.00</div></div>
+        <div><label class="lbl">Spouse / alimony (RM)</label><div class="field">0.00</div></div>
+        <div><label class="lbl">Children (RM)</label><div class="field">0.00</div></div>
+        <div><label class="lbl">Parents (RM)</label><div class="field">0.00</div></div>
+        <div><label class="lbl">Medical / insurance (RM)</label><div class="field">0.00</div></div>
+        <div><label class="lbl">Lifestyle (RM)</label><div class="field filled">500.00</div></div>
+        <div><label class="lbl">Education fees (RM)</label><div class="field">0.00</div></div>
+        <div><label class="lbl">Other reliefs (RM)</label><div class="field">0.00</div></div>
+      </div>
+      <div class="callout">
+        Eight general buckets. No annual limit shown, no accumulated figure, no remaining figure,
+        no employer or employee identity block, no rebate section, no declaration, no employer consent,
+        and no printable form. Only two of the eight buckets are checked against a legal limit.
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ AFTER ============================ -->
+  <div class="band"><span class="tag after">After</span><h2>The completed TP1 (2026) e-form</h2></div>
+
+  <div class="card">
+    <div class="head">
+      <strong>TP1 Relief</strong>
+      <span class="sub">Same employee search and filters as today — unchanged</span>
+    </div>
+    <div class="emp">
+      <div style="flex:1 1 220px">
+        <div class="who">A0001 — Employee Name</div>
+        <div class="sub">Company · Department · Position</div>
+      </div>
+      <span class="sel">Year: 2026</span>
+      <span class="btn">+ Add New TP1</span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Month</th><th>Status</th><th class="num">Current relief</th><th class="num">Accumulated</th><th>Last updated</th><th class="num">Action</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>January</td><td><span class="pill ok">Approved</span></td>
+            <td class="num">RM 2,500.00</td><td class="num">RM 2,500.00</td>
+            <td class="sub">2026-01-14 10:02</td>
+            <td class="num"><span class="btn ghost">View</span></td>
+          </tr>
+          <tr>
+            <td>February</td><td><span class="pill draft">Draft</span></td>
+            <td class="num">RM 1,500.00</td><td class="num">RM 4,000.00</td>
+            <td class="sub">2026-02-09 16:41</td>
+            <td class="num"><span class="btn ghost">View / Edit</span></td>
+          </tr>
+          <tr>
+            <td>March</td><td><span class="pill ok">Approved</span></td>
+            <td class="num">RM 3,000.00</td><td class="num">RM 7,000.00</td>
+            <td class="sub">2026-03-11 09:24</td>
+            <td class="num"><span class="btn ghost">View</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="body sub">
+      One line per deduction month within the chosen year, exactly as the reporter drew it.
+      Add, View and Edit each open the full e-form on its own page — never underneath this list.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <strong>TP1 (2026) e-form — A0001, March</strong>
+      <span><span class="pill new">Draft</span> &nbsp; <span class="btn ghost">Download form</span></span>
+    </div>
+
+    <div class="sechead">Section A — Employer information</div>
+    <div class="body">
+      <div class="grid2">
+        <div><label class="lbl">A1 Employer name</label><div class="field locked filled">Filled in from the company record</div></div>
+        <div><label class="lbl">A2 Employer tax identification number</label><div class="field locked filled">Filled in from the company tax record</div></div>
+      </div>
+      <p class="sub" style="margin:10px 0 0">Read-only here. Corrected on the company record, where it is kept today.</p>
+    </div>
+
+    <div class="sechead">Section B — Employee information</div>
+    <div class="body">
+      <div class="grid2">
+        <div><label class="lbl">B1 Employee name</label><div class="field locked filled">Employee Name</div></div>
+        <div><label class="lbl">B2 Identity card / passport no.</label><div class="field locked filled">From the employee profile</div></div>
+        <div><label class="lbl">B3 Employee tax identification number</label><div class="field locked filled">From the employee tax record</div></div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div><label class="lbl">Deduction month</label><div class="field filled">March</div></div>
+        <div><label class="lbl">Deduction year</label><div class="field filled">2026</div></div>
+      </div>
+    </div>
+
+    <div class="sechead">Section C — Deduction information (C1 to C17)</div>
+
+    <div class="rowline">
+      <div class="cline">
+        <span class="cname">C1 &nbsp; Parents / grandparents</span>
+        <span class="sub">Annual limit RM 8,000.00</span>
+      </div>
+      <div class="subitems">Medical treatment, special needs and carer &nbsp;·&nbsp; Dental treatment &nbsp;·&nbsp; Full medical check-up including vaccination</div>
+      <div class="meter">
+        <div><span class="k">This claim</span><span class="v">RM 0.00</span></div>
+        <div><span class="k">Accumulated</span><span class="v">RM 0.00</span></div>
+        <div><span class="k">Remaining</span><span class="v">RM 8,000.00</span></div>
+      </div>
+      <div class="bar"><i style="width:0%"></i></div>
+    </div>
+
+    <div class="rowline">
+      <div class="cline">
+        <span class="cname">C5 &nbsp; Lifestyle</span>
+        <span class="sub">Annual limit RM 2,500.00</span>
+      </div>
+      <div class="subitems">Books and publications &nbsp;·&nbsp; Computer, smartphone or tablet &nbsp;·&nbsp; Internet subscription &nbsp;·&nbsp; Skill improvement or self-development course</div>
+      <div class="meter">
+        <div><span class="k">This claim</span><span class="v">RM 500.00</span></div>
+        <div><span class="k">Accumulated</span><span class="v">RM 1,200.00</span></div>
+        <div><span class="k">Remaining</span><span class="v">RM 1,300.00</span></div>
+      </div>
+      <div class="bar"><i style="width:48%"></i></div>
+      <p class="sub" style="margin:8px 0 0">The reporter's own worked example. A figure that would push the year past RM 2,500.00 is refused with a message that says by how much.</p>
+    </div>
+
+    <div class="rowline">
+      <div class="cline">
+        <span class="cname">C6 &nbsp; Sports-related lifestyle</span>
+        <span class="sub">Annual limit RM 1,000.00</span>
+      </div>
+      <div class="subitems">Sports equipment &nbsp;·&nbsp; Facility rental or entry fees &nbsp;·&nbsp; Competition registration &nbsp;·&nbsp; Gym membership or sports training</div>
+      <div class="meter">
+        <div><span class="k">This claim</span><span class="v">RM 0.00</span></div>
+        <div><span class="k">Accumulated</span><span class="v">RM 0.00</span></div>
+        <div><span class="k">Remaining</span><span class="v">RM 1,000.00</span></div>
+      </div>
+      <div class="bar"><i style="width:0%"></i></div>
+    </div>
+
+    <div class="rowline sub">
+      C2 Basic support equipment &nbsp;·&nbsp; C3 Education fees &nbsp;·&nbsp; C4 Medical expenses &nbsp;·&nbsp;
+      C7 Breastfeeding equipment &nbsp;·&nbsp; C8 Childcare fees &nbsp;·&nbsp; C9 National education savings &nbsp;·&nbsp;
+      C10 Alimony &nbsp;·&nbsp; C11 Voluntary EPF and life insurance &nbsp;·&nbsp; C12 Private retirement schemes &nbsp;·&nbsp;
+      C13 Education and medical insurance &nbsp;·&nbsp; C14 PERKESO &nbsp;·&nbsp; C15 Electric vehicle and household equipment &nbsp;·&nbsp;
+      C16 First home loan interest &nbsp;·&nbsp; C17 Domestic tourism, culture and arts
+      <div style="margin-top:6px">— each laid out the same way, with its own sub-items and its own annual limit.</div>
+    </div>
+
+    <div class="sechead">Section D — Rebate</div>
+    <div class="body">
+      <div class="grid2">
+        <div><label class="lbl">D1 Zakat, other than zakat deducted from monthly salary</label><div class="field">0.00</div></div>
+        <div><label class="lbl">D1 Exemption levy for religious travel</label><div class="field">0.00</div></div>
+      </div>
+      <p class="sub" style="margin:10px 0 0">Zakat already deducted through the payroll is excluded here, so the same zakat is never counted twice.</p>
+    </div>
+
+    <div class="sechead">Section E — Employee declaration</div>
+    <div class="body">
+      <div class="field" style="min-height:auto">I declare that the information given is true and complete.</div>
+      <div class="grid2" style="margin-top:12px">
+        <div><label class="lbl">Declared by</label><div class="field locked filled">Employee Name</div></div>
+        <div><label class="lbl">Declaration date</label><div class="field">Stamped when the employee confirms</div></div>
+      </div>
+      <p class="sub" style="margin:10px 0 0">Confirmed on screen with a tick and a recorded name, date and time — the same way notices are acknowledged today. No drawn signature.</p>
+    </div>
+
+    <div class="sechead">Section F — Employer consent</div>
+    <div class="body">
+      <div class="grid2">
+        <div><label class="lbl">Approved deduction month</label><div class="field filled">March</div></div>
+        <div><label class="lbl">Approved deduction year</label><div class="field filled">2026</div></div>
+        <div><label class="lbl">Date</label><div class="field">Stamped on approval</div></div>
+        <div><label class="lbl">Employer / HR name</label><div class="field">Filled in from the approver's account</div></div>
+        <div><label class="lbl">Position</label><div class="field">From the approver's employment record</div></div>
+      </div>
+      <div class="callout">
+        Draft &rarr; Submitted &rarr; Approved or Rejected &rarr; Cancelled. Once approved, the amounts are
+        picked up by the monthly tax calculation from the approved deduction month onward. Nothing already
+        approved is ever overwritten — a change is a new version and the earlier one stays readable.
+      </div>
+    </div>
+  </div>
+
+  <div class="words">
+    <strong>Kept in words on purpose, not drawn:</strong>
+    <ul class="tight">
+      <li>The exact ringgit limits for every one of C1 to C17 are transcribed from the reporter's uploaded LHDN TP1 (2026) document. Where a figure or a frequency rule cannot be read off that document with certainty, the item is still captured and still printed, but with no blocking limit — we do not guess a legal number.</li>
+      <li>C15 and C7 carry frequency rules (once every so many years) rather than a plain annual limit. Those are recorded and shown as guidance next to the item; enforcing them across years is confirmed against the document before it is switched on.</li>
+      <li>The downloadable form follows the official layout and carries every entered figure. Whether it may be used as a filing document rather than an internal record is the company's call, not a system claim.</li>
+    </ul>
+  </div>
+
+  <p class="foot">
+    Mockup for board item 7ad37961. Employee reference, months, statuses and every ringgit figure above
+    are the reporter's own example from the request. Nothing is drawn from live company data.
+  </p>
+
+</div>

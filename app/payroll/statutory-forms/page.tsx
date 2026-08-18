@@ -13,6 +13,7 @@ import {
 import type { FormOutput, StatutoryBodyKey } from '@/localization/country-pack';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
+import { payrollProcessBack } from '../back';
 
 /**
  * Payroll → Statutory Forms: the shelf, by the authority you file with (6babf4f6, redesigning 956cec85).
@@ -174,6 +175,7 @@ export default async function StatutoryFormsPage({
     /** 587ee719 — the search term, filtered server-side so the view stays in the address. */
     q?: string;
     error?: string;
+    from?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -355,7 +357,7 @@ export default async function StatutoryFormsPage({
     // answered. 152fea7f then moved the whole Payroll module off the old centred `max-w-[100rem]` cap
     // onto `pageWideCls`, the true full-browser-width container, so this screen follows it.
     <div className={pageWideCls}>
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader back={await payrollProcessBack(sp.from)} title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">

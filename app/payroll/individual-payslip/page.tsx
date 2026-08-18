@@ -77,7 +77,9 @@ import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
-import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
+// 417d4937 — today's Pay Item catalogue, for the read-time repair of record-line labels.
+import { listPayComponents } from '@/core/pay-components';
+import { currentPcbReliefs, listPayslipSourceTxns, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
 import { explainPcb } from '@/core/pcb-explain';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
@@ -86,6 +88,7 @@ import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-empl
 import { payslipSegment } from '@/core/payslip-segment';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
+import { payrollProcessBack } from '../back';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
 import { Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
@@ -95,9 +98,14 @@ import {
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
+// 417d4937 request 10 — the shared provenance block, so this screen and Transaction View → History
+// cannot drift the way the four record-line renderers already did.
+import { SourceTxnBlock } from '../transaction-view/source-txn-block';
 // 6b134681 / 417d4937 — one label format for a pay item across every payroll result surface: the item's
 // own code and description, never the category it was classified into.
-import { payItemLabel } from '@/core/payslip-earning-lines';
+// 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
+// r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
+import { payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -175,6 +183,7 @@ export default async function IndividualPayslipPage({
     month?: string;
     cycle?: string;
     payslipId?: string;
+    from?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -183,8 +192,20 @@ export default async function IndividualPayslipPage({
   const tTxn = await getTranslations('payroll.transactions');
   const locale = await getLocale();
   const sp = await searchParams;
+  // 9066bd6c — Back to the Payroll Process list, as it was left (year, months, company, cycle, status
+  // ride the `from` query the list hands its row links). This screen had no back link of any kind. The
+  // label and its `payroll.list` lookup live in the shared helper — see app/payroll/back.ts.
+  const back = await payrollProcessBack(sp.from);
 
-  const [employees, companies] = await Promise.all([listEmployees(s, scopeIds), listCompanies(s)]);
+  // 417d4937 — the tenant's live Pay Items, keyed by CODE, for the record-line label repair below.
+  // `includeArchived` on purpose: an archived item can still be the code on an already-calculated run,
+  // and its real description is a better answer than a remark that was never that item's.
+  const [employees, companies, payItems] = await Promise.all([
+    listEmployees(s, scopeIds),
+    listCompanies(s),
+    listPayComponents(s, { includeArchived: true }),
+  ]);
+  const payItemNames: Record<string, string> = Object.fromEntries(payItems.map((c) => [c.code, c.name]));
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
   // SCOPE-GUARD every ?param, exactly as Transaction View does: an out-of-scope companyId/employmentId is
@@ -238,6 +259,20 @@ export default async function IndividualPayslipPage({
   const chosen = sp.payslipId ? matches.find((r) => r.id === sp.payslipId) : matches[0];
 
   const row = chosen ? await payslipForReview(s, { companyIds, payslipId: chosen.id }) : null;
+  // 417d4937 (request 10) — the one-off transactions recorded against THIS employee on THIS run, so the
+  // screen can answer "where did this recorded item come from?" without a report. One indexed query,
+  // fenced on the same `companyIds` as the payslip itself, and only once a payslip has been chosen.
+  const sourceTxns =
+    row?.batchId != null
+      ? await listPayslipSourceTxns(s, {
+          companyIds,
+          batchIds: [row.batchId],
+          // Narrowed IN THE QUERY rather than by a `.filter` on the result: this screen shows one payslip,
+          // so fetching the whole run's ledger and discarding all but one employee's rows was work and
+          // payload nobody could see.
+          employmentIds: [row.employmentId],
+        })
+      : [];
 
   // Year-to-date: the same read for the whole year, no month. No new query shape is needed — the totals
   // are summed from the rows it already returns, so YTD can never disagree with the months it lists.
@@ -298,7 +333,7 @@ export default async function IndividualPayslipPage({
     // variant has to restate it or a printed payslip would sit hard against the left edge.
     <div className={`${pageWideCls} print:mx-auto print:max-w-4xl`}>
       <div className="print:hidden">
-        <PageHeader title={t('title')} description={t('subtitle')} />
+        <PageHeader back={back} title={t('title')} description={t('subtitle')} />
       </div>
 
       <CollapsibleEmployeePanel
@@ -767,12 +802,39 @@ export default async function IndividualPayslipPage({
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {tTxn('view.history.itemsHeading')}
                 </h3>
-                {b.recordLines.map((l, i) => (
-                  <Row key={`${l.code}-${i}`} label={`${l.code} · ${l.name}`} value={rm(l.amount)} muted />
-                ))}
+                {/* 417d4937 — the pay item's own code and description, with the words that were typed
+                    kept beside them as the remark. Nothing is rewritten and nothing is hidden; the code
+                    and the amount are exactly as stored. */}
+                {b.recordLines.map((l, i) => {
+                  const id = recordLineIdentity(l, payItemNames);
+                  return (
+                    <div
+                      key={`${l.code}-${i}`}
+                      className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0"
+                    >
+                      <span className="text-muted-foreground">
+                        {id.label}
+                        {id.remark && (
+                          <span className="ms-2 text-xs italic">
+                            {tTxn('view.history.itemRemark', { remark: id.remark })}
+                          </span>
+                        )}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">{rm(l.amount)}</span>
+                    </div>
+                  );
+                })}
                 <p className="mt-2 text-xs text-muted-foreground">{tTxn('view.history.itemsNote')}</p>
               </div>
             )}
+
+            {/* 417d4937 request 10 — WHERE THE RECORDED ITEMS CAME FROM. A second population beside the
+                list above, never a join onto it: two entries can share a pay item and an amount, and
+                nothing links a record line back to the ledger row that produced it. Renders nothing when
+                the run has no one-off rows for this employee. */}
+            <div className="mt-4">
+              <SourceTxnBlock rows={sourceTxns} />
+            </div>
           </Block>
 
           {/* THE IN-PAGE DOCUMENT VIEWER IS GONE (rev 2). r179 framed the real file in an iframe here so

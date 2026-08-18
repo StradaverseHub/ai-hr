@@ -5010,6 +5010,12 @@ export const payrollCycle = pgTable(
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // 6df24751 (migration 0443) — the "Last Updated" the company-first Payroll Cycles listing shows.
+    // NULLABLE ON PURPOSE, and it is not an oversight to leave it so: every row that existed before 0443
+    // was never edited under a schema that could record it, and stamping one would be inventing history.
+    // Null renders as an em dash. New rows are stamped by the column DEFAULT (attached by 0443 AFTER the
+    // ADD COLUMN, so existing rows stayed null); edits are stamped by core/payroll-cycle.ts.
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (t) => [
     index('payroll_cycle_company_idx').on(t.companyId),
@@ -5195,6 +5201,13 @@ export const payslip = pgTable(
 // ─────────────── Payroll status control + selective reprocessing (feedback 9bc442bc) ───────────────
 // Dedicated audit tables (reporter req.: capture actor/timestamp/reason + before/after snapshot for every
 // rollback, unlock and reprocess) — a purpose-built, queryable trail alongside the generic domain_event log.
+//
+// 9066bd6c WIDENED WHAT LANDS HERE, and the enumerations below are the only statement of it. Per-employee
+// REMOVAL writes both tables too (`remove-employee` on the run, `remove` per employee), and the two are
+// NOT reprocesses: a removal row has no `after` and its `before` is the whole payslip. Reading "every row
+// in payroll_employee_result_history is a reprocess" off a stale comment is exactly the premise that made
+// `diffPayslipVersions` render "gross NaN" for a removal until core/payroll-view.ts filtered it out — so
+// keep these two lists in step with what the services actually write.
 export const payrollStatusHistory = pgTable(
   'payroll_status_history',
   {
@@ -5203,7 +5216,7 @@ export const payrollStatusHistory = pgTable(
     batchId: uuid('batch_id')
       .notNull()
       .references(() => payrollBatch.id),
-    action: text('action').notNull(), // 'rollback' | 'unlock' | 'close' | 'reprocess'
+    action: text('action').notNull(), // 'rollback' | 'unlock' | 'close' | 'reprocess' | 'remove-employee'
     fromStatus: text('from_status'),
     toStatus: text('to_status'),
     actorType: text('actor_type').notNull(),
@@ -5227,7 +5240,11 @@ export const payrollEmployeeResultHistory = pgTable(
     employmentId: uuid('employment_id')
       .notNull()
       .references(() => employment.id),
-    action: text('action').notNull(), // 'reprocess'
+    /** 'reprocess' | 'remove' — and the two do not describe the same thing. A reprocess carries a
+     *  before AND an after (six keys each); a REMOVAL carries the whole payslip row in `before` and
+     *  `after` is null, because there is no after and no other copy of those figures anywhere. Any
+     *  reader that diffs the two snapshots must exclude 'remove' (core/payroll-view.ts). */
+    action: text('action').notNull(),
     actorType: text('actor_type').notNull(),
     actorId: uuid('actor_id'),
     reason: text('reason'),

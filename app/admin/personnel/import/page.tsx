@@ -37,6 +37,11 @@ export default async function ImportPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {/* 4ea70bb7 — this back link names the same destination as the wizard's and the profile's, and all
+          three now say Personnel Management. people.import is admin-only (nothing outside
+          app/admin/personnel/import reads the namespace), so backLabel could be renamed IN PLACE — no
+          second key needed here, unlike people.detail.backToPeople which the employee-facing profile
+          shares. */}
       <PageHeader
         back={{ href: '/admin/personnel', label: t('backLabel') }}
         title={t('title')}

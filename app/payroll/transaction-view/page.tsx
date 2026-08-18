@@ -9,13 +9,15 @@ import {
   listFixedTransactionsAcross,
   listIndividualTxnCreators,
   listIndividualTxnsAcross,
+  listPayslipSourceTxns,
   listProcessedPayslipsAcross,
   listUnattachedTxnSummary,
+  type PayslipSourceTxnRow,
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
-import { employeeLabel } from '@/lib/employee-code';
+import { payrollProcessBack } from '../back';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
 import { OutstandingTable } from './outstanding-table';
@@ -78,6 +80,22 @@ const HISTORY_ROW_CAP = 200;
 const GRID_PANEL_COOKIE = 'txnview_grid_panel';
 
 type Tab = (typeof TABS)[number];
+
+/**
+ * bd14b7e2 — the same convention, ONE COOKIE PER TAB.
+ *
+ * Per TAB and not per screen, deliberately: History is thirteen columns wide and is read with the panel
+ * folded away, while Fixed is usually read with it open. A single shared key would make the five tabs
+ * overwrite each other's answer, so the first thing every switch did would be to undo the last one.
+ * `grid` reuses the key it has always had, so nobody's Transaction Detail choice is reset by this change.
+ */
+const TAB_PANEL_COOKIES: Record<Tab, string> = {
+  fixed: 'txnview_fixed_panel',
+  individual: 'txnview_individual_panel',
+  history: 'txnview_history_panel',
+  grid: GRID_PANEL_COOKIE,
+  outstanding: 'txnview_outstanding_panel',
+};
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 // 'unattached' = no run yet (f1564110 Phase 2); 'reprocess' = DERIVED (510f4bd1) — on a processed run but
@@ -119,6 +137,7 @@ export default async function TransactionViewPage({
     createdBy?: string;
     createdFrom?: string;
     createdTo?: string;
+    from?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -143,7 +162,10 @@ export default async function TransactionViewPage({
     // suite and `next build` all stay green. `includeArchived` on purpose — an archived pay item can
     // still be the code on an old payslip, and a blank column there would be a worse answer than the
     // setting it was archived with.
-    tab === 'grid' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
+    // 417d4937 — the SAME read now also serves the History tab, because the read-time label repair for
+    // record lines needs the catalogue's descriptions on both tabs. It was `tab === 'grid'` only, which
+    // is why the repair would have been silently inert on the tab the reporter actually opened.
+    tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
   ]);
   // Department options for the Individual History filter — distinct current-assignment departments in scope.
   const departmentOptions = (() => {
@@ -235,6 +257,42 @@ export default async function TransactionViewPage({
   const historyTruncated = historyRows.length > HISTORY_ROW_CAP;
   const shownHistoryRows = historyTruncated ? historyRows.slice(0, HISTORY_ROW_CAP) : historyRows;
 
+  // 417d4937 (request 10) — the one-off transactions behind each shown payslip's Recorded items, so the
+  // screen can answer "where did this line come from?" instead of sending the reader to a report. ONE
+  // indexed query for every run on screen, issued only for the History tab and only when there are rows;
+  // it is fenced on the same `companyIds` as the payslips themselves.
+  const historyBatchIds = [
+    ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
+  ];
+  // …and the EMPLOYMENTS on screen. Batch + company alone would return every employee's ledger rows on
+  // every shown run and serialise them all into the flight payload for a table that can only look up
+  // `${batchId}:${employmentId}` — invisible on screen, and a whole company's ledger on a tab filtered to
+  // one person. The read requires this list for that reason.
+  const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];
+  const sourceTxnRows =
+    tab === 'history' && historyBatchIds.length > 0
+      ? await listPayslipSourceTxns(s, {
+          companyIds,
+          batchIds: historyBatchIds,
+          employmentIds: historyEmploymentIds,
+        })
+      : [];
+  // Keyed by (run, employee) — the pair a payslip IS. Built here so the client table does no grouping.
+  //
+  // AND FILTERED TO THE PAIRS ACTUALLY ON SCREEN, which is not what the fence alone gives you. The read is
+  // fenced `batchIds × employmentIds` — a CROSS PRODUCT — so 200 shown rows spanning 20 runs and 100
+  // employees fence in up to 2,000 pairs. The surplus renders nothing (its `${batchId}:${employmentId}`
+  // key never matches a shown row) and would ship in the flight payload anyway, which is exactly the
+  // invisible surplus core/payroll-view.ts claims this read does not have. Cheap to close, and closing it
+  // keeps that docblock true rather than aspirational.
+  const shownKeys = new Set(shownHistoryRows.map((r) => `${r.batchId}:${r.employmentId}`));
+  const sourceTxnsByPayslip: Record<string, PayslipSourceTxnRow[]> = {};
+  for (const r of sourceTxnRows) {
+    const key = `${r.batchId}:${r.employmentId}`;
+    if (!shownKeys.has(key)) continue;
+    (sourceTxnsByPayslip[key] ??= []).push(r);
+  }
+
   // ── 080de5cf — the Grid tab's pivot + the plain data its client component needs ──
   // The fold happens on the SERVER: the browser gets finished rows, so the two switches over them cost no
   // round-trip. Everything crossing to the client is plain data — a function prop from a server component
@@ -251,6 +309,11 @@ export default async function TransactionViewPage({
       { epf: c.includedInEpf, socso: c.includedInSocsoEis, pcb: c.includedInPcb },
     ]),
   );
+  // 417d4937 — code → the pay item's CURRENT description, for the read-time repair of record-line labels
+  // on runs that were already calculated. Same read, same key, same plain-data crossing as the map above;
+  // see core/payslip-earning-lines.ts `recordLineIdentity` for why this one map is allowed to override
+  // what the payslip stored, and only for record lines.
+  const payItemNames: Record<string, string> = Object.fromEntries(gridComponents.map((c) => [c.code, c.name]));
   const grid =
     tab === 'grid'
       ? pivotHistoryGrid({
@@ -259,6 +322,7 @@ export default async function TransactionViewPage({
           months: gridMonths,
           hrdfRegisteredCompanyIds,
           payItemSubjects,
+          payItemNames,
         })
       : null;
   const locale = await getLocale();
@@ -294,7 +358,27 @@ export default async function TransactionViewPage({
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
-  const gridPanelDefaultOpen = (await cookies()).get(GRID_PANEL_COOKIE)?.value !== '0';
+  const cookieStore = await cookies();
+  const gridPanelDefaultOpen = cookieStore.get(GRID_PANEL_COOKIE)?.value !== '0';
+  // bd14b7e2 — the other four tabs, read the SAME way: absent ⇒ expanded, '0' ⇒ collapsed, in every state.
+  //
+  // THIS IS DELIBERATELY NARROWER THAN THE APPROVED PLAN'S WORDING, which said "expanded when no employee
+  // is selected, otherwise whatever the cookie says". The plan's INTENT — a reader who has never touched
+  // the control finds the panel open, because it is the one thing this round exists to put in front of
+  // them — is already what an ABSENT cookie means, so it costs nothing. What forcing it cost was the
+  // control itself: unlike the six single-employee screens, "nobody selected" is not a prompt on these
+  // four, it is their DEFAULT and normal view (that is the whole argument for `allowAll`, and History is
+  // the landing tab). Ignoring the cookie in that state meant collapsing the panel on History and hitting
+  // Apply — a GET submit — put it straight back, as did every tab switch, refresh and back/forward. The
+  // fold would have worked only in the one state where the table is already narrowed to one person.
+  //
+  // That matters more here than anywhere else on the board: the panel-versus-width trade-off on these four
+  // tabs has been reversed once in each direction already (r179 removed the rail for width, 98e69987 rev 2
+  // restored it, 1372d169/152fea7f then gave every tab pageWideCls). Adding the rail is what was asked
+  // for; adding it in a mode where the thirteen-column History table cannot get its ~22rem back would have
+  // been the half nobody has been shown. An explicit collapse now sticks, so both states remain reachable
+  // and the reporter's own choice decides.
+  const tabPanelDefaultOpen = cookieStore.get(TAB_PANEL_COOKIES[tab])?.value !== '0';
   // The panel carries the grid's own filters across an employee switch. `months` rides as ONE comma-joined
   // value because `preserve` is a flat string map — `cleanMonths` accepts that form as well as the
   // checkboxes' repeated params, so both routes into this screen mean the same thing.
@@ -312,7 +396,47 @@ export default async function TransactionViewPage({
     months: gridMonths.join(','),
     ...(cycle ? { cycle } : {}),
   };
-  const selectedGridEmployee = employees.find((e) => e.employmentId === employmentId);
+  // The chosen person, for whichever tab is showing — the id it is looked up by is the SCOPE-GUARDED one,
+  // so this can only ever resolve to somebody the caller is allowed to see.
+  const selectedEmployee = employees.find((e) => e.employmentId === employmentId);
+
+  /**
+   * bd14b7e2 — what each of the four inquiry tabs carries across an employee switch: its OWN already
+   * scope-guarded filters, plus the tab token so the switch lands back where the reader was.
+   *
+   * Anything not listed here is DROPPED, which is EmployeeScopePanel's contract and not an oversight — a
+   * param scoped to the previous employee is wrong for the next one. Every value in these maps has been
+   * through this page's guards above, so a tampered one was already discarded before it could ride along.
+   */
+  const periodPreserve: Record<string, string> = {
+    ...(companyId ? { companyId } : {}),
+    ...(year != null ? { year: String(year) } : {}),
+    ...(month != null ? { month: String(month) } : {}),
+  };
+  const tabPanelPreserve: Record<string, string> =
+    tab === 'fixed'
+      ? {
+          tab: 'fixed',
+          ...(companyId ? { companyId } : {}),
+          ...(componentId ? { componentId } : {}),
+          ...(status ? { status } : {}),
+        }
+      : tab === 'individual'
+        ? {
+            tab: 'individual',
+            ...periodPreserve,
+            ...(kind ? { kind } : {}),
+            ...(departmentId ? { departmentId } : {}),
+            ...(txnStatus ? { txnStatus } : {}),
+            ...(createdBy ? { createdBy } : {}),
+            ...(createdFrom ? { createdFrom } : {}),
+            ...(createdTo ? { createdTo } : {}),
+          }
+        : tab === 'history'
+          ? { tab: 'history', ...periodPreserve, ...(cycle ? { cycle } : {}) }
+          : // outstanding. `grid` also lands here and never reads it — the Transaction Detail tab has its
+            // own `gridPanelPreserve` above, because its `months` ride as one comma-joined value.
+            { tab: 'outstanding', ...periodPreserve };
 
   // 0fcb2557 — the History tab's Export to Excel. The already scope-guarded filters ride on the "this
   // view" link; the route re-guards every one of them anyway, so a hand-edited link can never widen the
@@ -345,19 +469,9 @@ export default async function TransactionViewPage({
       </select>
     </Field>
   );
-  const employeeSelect = (
-    <Field label={t('view.filters.employee')}>
-      <select name="employmentId" defaultValue={employmentId ?? ''} className={inputCls}>
-        <option value="">{t('view.filters.all')}</option>
-        {employees.map((e) => (
-          <option key={e.employmentId} value={e.employmentId}>
-            {/* Employee ID left-of-name (feedback 38668d9b) */}
-            {employeeLabel(e.employeeCode, e.name)} · {e.company}
-          </option>
-        ))}
-      </select>
-    </Field>
-  );
+  // bd14b7e2 — the long employee <select> that used to sit here is GONE from all four inquiry tabs; the
+  // searchable panel on the left replaced it. Keeping both would have put two employee controls that can
+  // disagree on one screen, which is the trap the grid tab's filter-bar gate has always existed to avoid.
   const yearMonthSelects = (
     <>
       <Field label={t('view.filters.year')}>
@@ -390,11 +504,16 @@ export default async function TransactionViewPage({
     // employee and company names at that measure. So the conditional is gone: every tab is pageWideCls.
     //
     // This is NOT the employee-rail question. That rail (98e69987 rev 2, restored 2026-08-11 after r179
-    // removed it and the reporter contested) lives ONLY inside the `tab === 'grid'` branch below, which
-    // was already full width — so it is untouched by this change and must stay that way. r179 → 98e69987
-    // was one round-trip already; a second removal would be the third reversal.
+    // removed it and the reporter contested) was untouched by the widening and must stay that way:
+    // r179 → 98e69987 was one round-trip already, and a REMOVAL would be the third reversal.
+    //
+    // bd14b7e2 (2026-08-17) moves in the opposite direction and is the reporter's own request: the rail no
+    // longer lives only inside the `tab === 'grid'` branch — the Fixed, Individual, History and Outstanding
+    // tabs now mount the same control instead of a long employee dropdown, so all five tabs pick a person
+    // the same way. ADDING the rail is not the trade-off r179 made; nothing gave up width for it, and every
+    // tab is still pageWideCls with the panel folding away to hand its width back to the table.
     <div className={pageWideCls}>
-      <PageHeader title={t('view.title')} description={t('view.subtitle')} />
+      <PageHeader back={await payrollProcessBack(sp.from)} title={t('view.title')} description={t('view.subtitle')} />
 
       {/* Sub-tab strip (Fixed | Individual | History | Transaction Detail | Outstanding). Switching tabs
           resets the filters on purpose — each view has its own filter set. The captions come off the
@@ -418,256 +537,341 @@ export default async function TransactionViewPage({
 
       <p className="text-xs text-muted-foreground">{t('view.readOnly')}</p>
 
-      {/* ── Filters (GET form — pure navigation, no mutation) ──
-          The Transaction Detail tab is excluded: its employee comes from the shared searchable panel
-          rather than a dropdown, and its own year / months / cycle row lives inside the panel's
-          workspace. Rendering both would put two employee controls that disagree on one screen. */}
+      {/* ── The four inquiry tabs, inside the SAME employee panel Transaction Detail already uses
+          (bd14b7e2) ──
+          One shell for all four rather than four copies: the cookie, the preserve map and the panel's
+          default state are per-TAB values resolved above, so each tab gets its own instance of one
+          control and the five tabs cannot drift into five slightly different pickers — which is the
+          whole of what was asked for. Transaction Detail keeps its own wrapper below because its panel
+          sits beside a different workspace (its year / months / cycle form) and because it is the one
+          tab where "no employee" is a prompt rather than a view.
+          The employee is chosen in the panel and NOWHERE ELSE on the tab: the long dropdown that used to
+          sit in the filter row is gone, and the panel navigates by router.push rather than posting, which
+          is why it can live outside the filter form without the two ever disagreeing. */}
       {tab !== 'grid' && (
-      <Card className="p-4">
-        <form method="GET" className="flex flex-wrap items-end gap-3">
-          <input type="hidden" name="tab" value={tab} />
-          {companySelect}
-          {employeeSelect}
-          {tab === 'fixed' && (
-            <>
-              <Field label={t('view.filters.payItem')}>
-                <select name="componentId" defaultValue={componentId ?? ''} className={inputCls}>
-                  <option value="">{t('view.filters.all')}</option>
-                  {components.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('view.filters.status')}>
-                <select name="status" defaultValue={status ?? ''} className={inputCls}>
-                  <option value="">{t('view.filters.all')}</option>
-                  <option value="active">{t('fixed.statusActive')}</option>
-                  <option value="ended">{t('fixed.statusEnded')}</option>
-                </select>
-              </Field>
-            </>
-          )}
-          {tab !== 'fixed' && yearMonthSelects}
-          {tab === 'individual' && (
-            <>
-              <Field label={t('view.filters.payItem')}>
-                <select name="kind" defaultValue={kind ?? ''} className={inputCls}>
-                  <option value="">{t('view.filters.all')}</option>
-                  {TXN_KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {t(`individual.kindLabel.${k}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('view.filters.department')}>
-                <select name="departmentId" defaultValue={departmentId ?? ''} className={inputCls}>
-                  <option value="">{t('view.filters.all')}</option>
-                  {departmentOptions.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('view.filters.txnStatus')}>
-                <select name="txnStatus" defaultValue={txnStatus ?? ''} className={inputCls}>
-                  <option value="">{t('view.filters.all')}</option>
-                  {TXN_STATUSES.map((st) => (
-                    <option key={st} value={st}>
-                      {tList(`status.${st}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('view.filters.createdBy')}>
-                <select name="createdBy" defaultValue={createdBy ?? ''} className={inputCls}>
-                  <option value="">{t('view.filters.all')}</option>
-                  {creators.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('view.filters.createdFrom')}>
-                <input type="date" name="createdFrom" defaultValue={createdFrom ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('view.filters.createdTo')}>
-                <input type="date" name="createdTo" defaultValue={createdTo ?? ''} className={inputCls} />
-              </Field>
-            </>
-          )}
-          {tab === 'history' && (
-            <Field label={t('view.filters.cycle')}>
-              <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
-                <option value="">{t('view.filters.all')}</option>
-                {CYCLES.map((c) => (
-                  <option key={c} value={c}>
-                    {t(`individual.cycle.${c}`)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-          <Button type="submit" variant="secondary">
-            {t('view.filters.apply')}
-          </Button>
-        </form>
-      </Card>
-      )}
-
-      {/* ── 1. Fixed Transaction View ── */}
-      {tab === 'fixed' && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('view.tabs.fixed')} count={fixedRows.length} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{t('fixed.colEmployee')}</th>
-                  <th className="px-4 py-2 font-medium">{t('fixed.colCompany')}</th>
-                  <th className="px-4 py-2 font-medium">{t('fixed.payrollItem')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('fixed.amount')}</th>
-                  <th className="px-4 py-2 font-medium">{t('fixed.payrollCycle')}</th>
-                  <th className="px-4 py-2 font-medium">{t('fixed.startDate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('fixed.endDate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('fixed.status')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {fixedRows.map((r) => {
-                  const ended = r.validTo != null && r.validTo < today;
-                  return (
-                    <tr key={r.id}>
-                      {/* 1372d169 — identity and pay-item cells stay on ONE line now that the page has the
-                          full width to give them; the table's own overflow-x-auto wrapper handles a narrow
-                          window. Deliberately NOT applied to the <th> captions: TOTAL DEDUCTIONS wants two
-                          header lines and nowrap truncates it. */}
-                      <td className="whitespace-nowrap px-4 py-2.5 font-medium">
-                        {/* Employee ID left-of-name (feedback 38668d9b) */}
-                        <EmployeeName code={r.employeeCode} name={r.employeeName} />
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                      <td className="whitespace-nowrap px-4 py-2.5">
-                        <span className="font-mono text-xs">{r.code}</span>{' '}
-                        <span className="text-muted-foreground">{r.name}</span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(r.amount).toFixed(2)}</td>
-                      <td className="px-4 py-2.5">
-                        {r.runType ? t(`individual.cycle.${r.runType}`) : t('fixed.cycleUnspecified')}
-                      </td>
-                      <td className="px-4 py-2.5 tabular-nums">{r.validFrom}</td>
-                      <td className="px-4 py-2.5 tabular-nums">{r.validTo ?? '—'}</td>
-                      <td className="px-4 py-2.5">
-                        <Badge variant={ended ? 'default' : 'success'}>
-                          {ended ? t('fixed.statusEnded') : t('fixed.statusActive')}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {fixedRows.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                      {t('view.fixed.empty')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-
-      {/* ── 2. Individual Transaction View (all batches, any status) ── */}
-      {tab === 'individual' && (
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 pr-4">
-            <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
-            {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
-            <a
-              href={`/payroll/transaction-view/export?${new URLSearchParams({
-                ...(companyId ? { companyId } : {}),
-                ...(employmentId ? { employmentId } : {}),
-                ...(year != null ? { year: String(year) } : {}),
-                ...(month != null ? { month: String(month) } : {}),
-                ...(kind ? { kind } : {}),
-                ...(departmentId ? { departmentId } : {}),
-                ...(txnStatus ? { txnStatus } : {}),
-                ...(createdBy ? { createdBy } : {}),
-                ...(createdFrom ? { createdFrom } : {}),
-                ...(createdTo ? { createdTo } : {}),
-              }).toString()}`}
-              className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            >
-              {t('view.exportCsv')}
-            </a>
-          </div>
-          {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
-              adds column sorting over the fetched rows. */}
-          <IndividualTxnTable rows={individualRows} />
-        </Card>
-      )}
-
-      {/* ── 3. Transaction History (processed payslip results) ──
-          Each summary row expands to the itemized payslip breakdown (feedback 5f8d8395). The client table
-          receives the already-fetched, scope-guarded rows (full statutory blob + aggregates) and renders the
-          detail inline with no extra round-trip. */}
-      {tab === 'history' && (
-        // 0fcb2557 — the clip moved OFF the Card and onto the table below. The Card was `overflow-hidden`
-        // purely to round the table's bottom corners; an absolutely-positioned dropdown inside it would be
-        // clipped by that same rule, and on an empty result set (short card) the second choice would have
-        // been cut off — a control that works only when there is data is worse than no control.
-        <Card>
-          {/* The header row mirrors the Individual tab's (SectionHeader + a download on the right),
-              because "in the same place the Individual tab already keeps its download" is what the
-              reporter approved. The control is a <details> disclosure rather than a client dropdown so the
-              whole page stays a server component: two plain anchors, no state, no server action. */}
-          <div className="flex items-center justify-between gap-3 pr-4">
-            <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
-            <details className="relative shrink-0">
-              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
-                {t('view.history.export')}
-                <span aria-hidden="true" className="text-[10px]">
-                  ▼
+        <CollapsibleEmployeePanel
+          defaultOpen={tabPanelDefaultOpen}
+          cookieKey={TAB_PANEL_COOKIES[tab]}
+          // With nobody chosen the header carries the tab's own caption. On these four tabs that state is
+          // a real view — everybody — so it is named rather than begged for.
+          title={t(`view.tabs.${tab}`)}
+          // PRE-TRANSLATED, because no translator closure may cross from this server component into that
+          // client one (see the LABELS note in components/collapsible-employee-panel.tsx). The wording is
+          // this screen's own — "Change employee" / "Select employee" — not the shared fallback.
+          hideLabel={t('view.panel.change')}
+          showLabel={t('view.panel.select')}
+          detailHeader={
+            selectedEmployee ? (
+              <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
+                {/* Employee ID left-of-name (feedback 38668d9b) */}
+                <EmployeeName
+                  code={selectedEmployee.employeeCode}
+                  name={selectedEmployee.name}
+                  className="text-sm font-semibold text-foreground"
+                />
+                <span className="text-xs text-muted-foreground">
+                  {selectedEmployee.company}
+                  {selectedEmployee.department ? ` · ${selectedEmployee.department}` : ''}
                 </span>
-              </summary>
-              {/* Opens down and to the LEFT (end-0), so a wide panel never pushes the page sideways. */}
-              <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
-                {historyExportChoices.map((choice) => (
-                  <a
-                    key={choice.scope}
-                    href={`/payroll/transaction-view/history-export?${new URLSearchParams(
-                      // "All processed payroll" carries NO filters — the link says what the file is, so a
-                      // saved or shared one cannot quietly turn back into a filtered download.
-                      choice.scope === 'all' ? { scope: 'all' } : { ...historyExportParams, scope: 'current' },
-                    ).toString()}`}
-                    className="block rounded px-3 py-2 transition-colors hover:bg-muted"
-                  >
-                    <span className="block text-sm font-medium text-foreground">{choice.label}</span>
-                    <span className="block text-xs text-muted-foreground">{choice.hint}</span>
-                  </a>
-                ))}
               </div>
-            </details>
-          </div>
-          {historyTruncated && (
-            <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
-              {t('view.history.capped', { cap: HISTORY_ROW_CAP })}
-            </p>
+            ) : undefined
+          }
+          panel={
+            <Card className="p-4">
+              <h2 className="text-sm font-semibold">{t('view.panel.heading')}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{t('view.panel.hint')}</p>
+              <div className="mt-3">
+                <EmployeeScopePanel
+                  employees={panelEmployees}
+                  selectedId={employmentId ?? null}
+                  basePath="/payroll/transaction-view"
+                  preserve={tabPanelPreserve}
+                  // The ONLY place this prop is switched on. These four tabs are cross-employee lists that
+                  // an employee merely NARROWS, so "All employees" is a real destination — it is the view
+                  // each of them opens on today, and dropping it would take that view away. The six
+                  // screens that require a person keep the default (off).
+                  allowAll
+                />
+              </div>
+            </Card>
+          }
+        >
+          {/* ── Filters (GET form — pure navigation, no mutation) ──
+              Every filter each tab already had, unchanged. Only the employee dropdown left the row; the
+              chosen employee rides through Apply as a hidden field below, so applying a filter cannot
+              silently drop the person the panel picked. */}
+          <Card className="p-4">
+            <form method="GET" className="flex flex-wrap items-end gap-3">
+              <input type="hidden" name="tab" value={tab} />
+              {/* bd14b7e2 — the panel's choice rides through Apply, exactly as the grid tab's own form has
+                  always carried it. Rendered ONLY when somebody is selected, and read on the way back in
+                  by VALUE through the scope guard above — never by presence, which is what makes "All
+                  employees" expressible at all: no field, no employee. */}
+              {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
+              {companySelect}
+              {tab === 'fixed' && (
+                <>
+                  <Field label={t('view.filters.payItem')}>
+                    <select name="componentId" defaultValue={componentId ?? ''} className={inputCls}>
+                      <option value="">{t('view.filters.all')}</option>
+                      {components.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('view.filters.status')}>
+                    <select name="status" defaultValue={status ?? ''} className={inputCls}>
+                      <option value="">{t('view.filters.all')}</option>
+                      <option value="active">{t('fixed.statusActive')}</option>
+                      <option value="ended">{t('fixed.statusEnded')}</option>
+                    </select>
+                  </Field>
+                </>
+              )}
+              {tab !== 'fixed' && yearMonthSelects}
+              {tab === 'individual' && (
+                <>
+                  <Field label={t('view.filters.payItem')}>
+                    <select name="kind" defaultValue={kind ?? ''} className={inputCls}>
+                      <option value="">{t('view.filters.all')}</option>
+                      {TXN_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {t(`individual.kindLabel.${k}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('view.filters.department')}>
+                    <select name="departmentId" defaultValue={departmentId ?? ''} className={inputCls}>
+                      <option value="">{t('view.filters.all')}</option>
+                      {departmentOptions.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('view.filters.txnStatus')}>
+                    <select name="txnStatus" defaultValue={txnStatus ?? ''} className={inputCls}>
+                      <option value="">{t('view.filters.all')}</option>
+                      {TXN_STATUSES.map((st) => (
+                        <option key={st} value={st}>
+                          {tList(`status.${st}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('view.filters.createdBy')}>
+                    <select name="createdBy" defaultValue={createdBy ?? ''} className={inputCls}>
+                      <option value="">{t('view.filters.all')}</option>
+                      {creators.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('view.filters.createdFrom')}>
+                    <input type="date" name="createdFrom" defaultValue={createdFrom ?? ''} className={inputCls} />
+                  </Field>
+                  <Field label={t('view.filters.createdTo')}>
+                    <input type="date" name="createdTo" defaultValue={createdTo ?? ''} className={inputCls} />
+                  </Field>
+                </>
+              )}
+              {tab === 'history' && (
+                <Field label={t('view.filters.cycle')}>
+                  <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
+                    <option value="">{t('view.filters.all')}</option>
+                    {CYCLES.map((c) => (
+                      <option key={c} value={c}>
+                        {t(`individual.cycle.${c}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Button type="submit" variant="secondary">
+                {t('view.filters.apply')}
+              </Button>
+            </form>
+          </Card>
+
+          {/* ── 1. Fixed Transaction View ── */}
+          {tab === 'fixed' && (
+            <Card className="overflow-hidden">
+              <SectionHeader title={t('view.tabs.fixed')} count={fixedRows.length} />
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">{t('fixed.colEmployee')}</th>
+                      <th className="px-4 py-2 font-medium">{t('fixed.colCompany')}</th>
+                      <th className="px-4 py-2 font-medium">{t('fixed.payrollItem')}</th>
+                      <th className="px-4 py-2 text-right font-medium">{t('fixed.amount')}</th>
+                      <th className="px-4 py-2 font-medium">{t('fixed.payrollCycle')}</th>
+                      <th className="px-4 py-2 font-medium">{t('fixed.startDate')}</th>
+                      <th className="px-4 py-2 font-medium">{t('fixed.endDate')}</th>
+                      <th className="px-4 py-2 font-medium">{t('fixed.status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {fixedRows.map((r) => {
+                      const ended = r.validTo != null && r.validTo < today;
+                      return (
+                        <tr key={r.id}>
+                          {/* 1372d169 — identity and pay-item cells stay on ONE line now that the page has the
+                              full width to give them; the table's own overflow-x-auto wrapper handles a narrow
+                              window. Deliberately NOT applied to the <th> captions: TOTAL DEDUCTIONS wants two
+                              header lines and nowrap truncates it. */}
+                          <td className="whitespace-nowrap px-4 py-2.5 font-medium">
+                            {/* Employee ID left-of-name (feedback 38668d9b) */}
+                            <EmployeeName code={r.employeeCode} name={r.employeeName} />
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            <span className="font-mono text-xs">{r.code}</span>{' '}
+                            <span className="text-muted-foreground">{r.name}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(r.amount).toFixed(2)}</td>
+                          <td className="px-4 py-2.5">
+                            {r.runType ? t(`individual.cycle.${r.runType}`) : t('fixed.cycleUnspecified')}
+                          </td>
+                          <td className="px-4 py-2.5 tabular-nums">{r.validFrom}</td>
+                          <td className="px-4 py-2.5 tabular-nums">{r.validTo ?? '—'}</td>
+                          <td className="px-4 py-2.5">
+                            <Badge variant={ended ? 'default' : 'success'}>
+                              {ended ? t('fixed.statusEnded') : t('fixed.statusActive')}
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {fixedRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          {t('view.fixed.empty')}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           )}
-          {/* The rounding the Card used to do for the whole box, applied to the table alone — matching
-              Card's own `rounded-[1.25rem]` so the bottom corners look exactly as they did. */}
-          <div className="overflow-hidden rounded-b-[1.25rem]">
-            <HistoryTable rows={shownHistoryRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
-          </div>
-        </Card>
+
+          {/* ── 2. Individual Transaction View (all batches, any status) ── */}
+          {tab === 'individual' && (
+            <Card className="overflow-hidden">
+              <div className="flex items-center justify-between gap-3 pr-4">
+                <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
+                {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
+                <a
+                  href={`/payroll/transaction-view/export?${new URLSearchParams({
+                    ...(companyId ? { companyId } : {}),
+                    ...(employmentId ? { employmentId } : {}),
+                    ...(year != null ? { year: String(year) } : {}),
+                    ...(month != null ? { month: String(month) } : {}),
+                    ...(kind ? { kind } : {}),
+                    ...(departmentId ? { departmentId } : {}),
+                    ...(txnStatus ? { txnStatus } : {}),
+                    ...(createdBy ? { createdBy } : {}),
+                    ...(createdFrom ? { createdFrom } : {}),
+                    ...(createdTo ? { createdTo } : {}),
+                  }).toString()}`}
+                  className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  {t('view.exportCsv')}
+                </a>
+              </div>
+              {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
+                  adds column sorting over the fetched rows. */}
+              <IndividualTxnTable rows={individualRows} />
+            </Card>
+          )}
+
+          {/* ── 3. Transaction History (processed payslip results) ──
+              Each summary row expands to the itemized payslip breakdown (feedback 5f8d8395). The client table
+              receives the already-fetched, scope-guarded rows (full statutory blob + aggregates) and renders the
+              detail inline with no extra round-trip. */}
+          {tab === 'history' && (
+            // 0fcb2557 — the clip moved OFF the Card and onto the table below. The Card was `overflow-hidden`
+            // purely to round the table's bottom corners; an absolutely-positioned dropdown inside it would be
+            // clipped by that same rule, and on an empty result set (short card) the second choice would have
+            // been cut off — a control that works only when there is data is worse than no control.
+            <Card>
+              {/* The header row mirrors the Individual tab's (SectionHeader + a download on the right),
+                  because "in the same place the Individual tab already keeps its download" is what the
+                  reporter approved. The control is a <details> disclosure rather than a client dropdown so the
+                  whole page stays a server component: two plain anchors, no state, no server action. */}
+              <div className="flex items-center justify-between gap-3 pr-4">
+                <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
+                <details className="relative shrink-0">
+                  <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+                    {t('view.history.export')}
+                    <span aria-hidden="true" className="text-[10px]">
+                      ▼
+                    </span>
+                  </summary>
+                  {/* Opens down and to the LEFT (end-0), so a wide panel never pushes the page sideways. */}
+                  <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
+                    {historyExportChoices.map((choice) => (
+                      <a
+                        key={choice.scope}
+                        href={`/payroll/transaction-view/history-export?${new URLSearchParams(
+                          // "All processed payroll" carries NO filters — the link says what the file is, so a
+                          // saved or shared one cannot quietly turn back into a filtered download.
+                          choice.scope === 'all' ? { scope: 'all' } : { ...historyExportParams, scope: 'current' },
+                        ).toString()}`}
+                        className="block rounded px-3 py-2 transition-colors hover:bg-muted"
+                      >
+                        <span className="block text-sm font-medium text-foreground">{choice.label}</span>
+                        <span className="block text-xs text-muted-foreground">{choice.hint}</span>
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              </div>
+              {historyTruncated && (
+                <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
+                  {t('view.history.capped', { cap: HISTORY_ROW_CAP })}
+                </p>
+              )}
+              {/* The rounding the Card used to do for the whole box, applied to the table alone — matching
+                  Card's own `rounded-[1.25rem]` so the bottom corners look exactly as they did. */}
+              <div className="overflow-hidden rounded-b-[1.25rem]">
+                {/* 6b134681 / 417d4937 — payItemNames drives the read-time record-line label repair;
+                    sourceTxnsByPayslip is the ledger panel beside Recorded items. Both are plain data
+                    and both are folded on the server. Grafted onto txnsearch's restructured render
+                    rather than taking that side of the merge, which would have reverted the search
+                    standardization this same round shipped. */}
+                <HistoryTable
+                  rows={shownHistoryRows}
+                  hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds}
+                  payItemNames={payItemNames}
+                  sourceTxnsByPayslip={sourceTxnsByPayslip}
+                />
+              </div>
+            </Card>
+          )}
+
+          {/* ── 4. Outstanding transactions (feedback d0d2c9d1) ──
+              Money entered against an employee and a month that has never reached a payslip. The rows were
+              always listable on the Individual tab (?txnStatus=unattached); what was missing — and what let
+              RM23,170 accumulate unnoticed — is the per-employee/per-month grouping and the grand total. */}
+          {tab === 'outstanding' && (
+            <Card className="overflow-hidden">
+              <SectionHeader title={t('view.tabs.outstanding')} count={outstandingRows.length} />
+              <p className="px-4 pb-2 text-xs text-muted-foreground">{t('view.outstanding.hint')}</p>
+              <OutstandingTable rows={outstandingRows} />
+            </Card>
+          )}
+        </CollapsibleEmployeePanel>
       )}
 
-      {/* ── 4. TRANSACTION DETAIL (feedback 080de5cf; renamed by 98e69987) ──
+      {/* ── 5. TRANSACTION DETAIL (feedback 080de5cf; renamed by 98e69987) ──
           The same processed payslips as the tab beside it, turned on their side: pay item down the left,
           month across the top, annual total on the right — the shape the reporter reconciles in. The
           payslip-by-payslip view is NOT replaced; it answers a different question.
@@ -676,7 +880,13 @@ export default async function TransactionViewPage({
           reporter saw both live and asked for the list, with its Business Unit / Department / Status
           narrowers, to return. It collapses to give the figures the full width, and the choice is
           remembered in GRID_PANEL_COOKIE. The tab's ?tab=grid token is UNCHANGED — the rename is a
-          caption, and saved links keep working. */}
+          caption, and saved links keep working.
+
+          bd14b7e2 gave the same rail to the four tabs above, which is why this branch is no longer the
+          only one that mounts the shell. It keeps its OWN wrapper rather than joining theirs because its
+          workspace is different (a year / months / cycle form, not the shared filter row) and because it
+          is the one tab where no employee means no figures at all — so it neither offers nor wants the
+          "All employees" row. */}
       {tab === 'grid' && (
         <CollapsibleEmployeePanel
           defaultOpen={gridPanelDefaultOpen}
@@ -686,16 +896,16 @@ export default async function TransactionViewPage({
           // identity and the control; with nobody picked it carries the tab name and the control.
           title={t('view.tabs.grid')}
           detailHeader={
-            selectedGridEmployee ? (
+            selectedEmployee ? (
               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
                 {/* Employee ID left-of-name (feedback 38668d9b) */}
                 <EmployeeName
-                  code={selectedGridEmployee.employeeCode}
-                  name={selectedGridEmployee.name}
+                  code={selectedEmployee.employeeCode}
+                  name={selectedEmployee.name}
                   className="text-sm font-semibold text-foreground"
                 />
                 <span className="text-xs text-muted-foreground">
-                  {selectedGridEmployee.company} · {gridYear}
+                  {selectedEmployee.company} · {gridYear}
                 </span>
               </div>
             ) : undefined
@@ -772,7 +982,7 @@ export default async function TransactionViewPage({
             </Card>
 
             <Card className="p-4">
-              {selectedGridEmployee ? (
+              {selectedEmployee ? (
                 <>
                   {/* 009c8a37 — the identity line that used to sit here is now the shell's header row. */}
                   <HistoryGrid
@@ -796,18 +1006,6 @@ export default async function TransactionViewPage({
             </Card>
           </div>
         </CollapsibleEmployeePanel>
-      )}
-
-      {/* ── 5. Outstanding transactions (feedback d0d2c9d1) ──
-          Money entered against an employee and a month that has never reached a payslip. The rows were
-          always listable on the Individual tab (?txnStatus=unattached); what was missing — and what let
-          RM23,170 accumulate unnoticed — is the per-employee/per-month grouping and the grand total. */}
-      {tab === 'outstanding' && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('view.tabs.outstanding')} count={outstandingRows.length} />
-          <p className="px-4 pb-2 text-xs text-muted-foreground">{t('view.outstanding.hint')}</p>
-          <OutstandingTable rows={outstandingRows} />
-        </Card>
       )}
     </div>
   );

@@ -347,7 +347,12 @@ export default async function PeoplePage({
     // re-cap Payroll — not to uncap this page to match it.
     <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
-        title={t('title')}
+        // 4ea70bb7 — `adminTitle`, NOT `title`. The people.list namespace is shared: people.list.title is
+        // also the heading of the employee-facing directory at /personnel, the header of the Excel export
+        // and a column label on the leave tracker. Renaming it in place would have renamed a screen this
+        // item never mentioned. The admin module alone becomes "Personnel Management"; the directory stays
+        // "Personnel" (nav.people), which is what tells the two menu entries apart.
+        title={t('adminTitle')}
         actions={
           // `flex-wrap` (c002b3c3): this row gained a search box, and PageHeader holds its actions
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
