@@ -19,13 +19,18 @@ is a queryable knowledge graph of the whole codebase (run commands from mainwt):
 LLM; `--force` after big deletions). Details in HANDOFF.md → "The code graph".
 
 **Which tree you are on** — the repo ROOT is a scratch worktree on `local/root-scratch`, far behind
-main. **`main` lives at `.claude/worktrees/mainwt`.** Check `pwd`/branch in every gate command and
-read vitest's `RUN` line + file count; a gate in the wrong tree reports green for the wrong code
-(this has happened three times). Never let `isolation: 'worktree'` cut an agent's tree from the root
-HEAD — create worktrees from `main` yourself.
+main. **`main` lives at `.claude/worktrees/mainwt`.** Put `cd .../mainwt &&` in EVERY command, including
+read-only greps: the shell's cwd resets between tool calls. Check `pwd`/branch in every gate command and
+read vitest's `RUN` line + file count; a gate in the wrong tree reports green for the wrong code, and a
+GREP in the wrong tree silently answers about code from weeks ago. **This has now landed five times** —
+most recently on 2026-08-19, when a run of cold greps against the root scratch tree concluded that
+`individual-payslip`, `pcb-detail` and `cp39` did not exist, and an investigation was written on it
+before the contradiction between `git cat-file -e main:<path>` (exists) and `ls` (does not) gave it away.
+Never let `isolation: 'worktree'` cut an agent's tree from the root HEAD — create worktrees from `main`
+yourself, with an ABSOLUTE path (rule 24).
 
 **The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-22
-were all added on 2026-08-12/13, each after it cost a real round:
+were added on 2026-08-12/13 and 23-28 on 2026-08-20, each after it cost a real round:
 
 1. **One vitest at a time.** A second run wipes the first's worker DBs. Parallel agents get their own
    `TEST_DB_NAMESPACE`; otherwise never invent one.
@@ -144,6 +149,53 @@ were all added on 2026-08-12/13, each after it cost a real round:
     existing order and APPEND. And when several branches each add a migration, resolve the conflict as the
     UNION — taking either side DROPS a migration, leaving a `.sql` with no journal entry, which never runs
     and reports nothing.
+
+23. **A GREEN GATE AND GREEN TARGETED TESTS ARE NOT EVIDENCE THE WORK IS RIGHT. THE ADVERSARIAL VERIFY IS
+    THE LOAD-BEARING STEP.** r209 built eleven items as seven workstreams; ALL SEVEN reported tsc-clean
+    and test-green, and the verify pass then found **19 majors, 13 of them introduced by the build
+    itself** — a payroll figure that silently deleted money, a statutory form printing RM 0.00 for money
+    it printed elsewhere, a health card reporting green for a leave type the engine granted to nobody.
+    A gate would have shipped every one. **Brief the verifier to RE-DERIVE the builder's non-vacuity
+    claim itself** (revert the fix from a `cp` copy, watch the named assertion fail) rather than trust
+    the report — that instruction is what finds defects the builder sincerely believed it had tested.
+    Budget for it: verification took as long as building, and was worth more.
+
+23b. **ONE FIX PASS, THEN HAND-FIX.** A second agent pass on the same code is where this repo goes
+    backwards — r197-r199 and r201 each made a workstream WORSE that way. Send the verify findings back
+    once, with "fix the defect, not the test; decline anything you disagree with rather than change code
+    you do not believe in"; hand-fix whatever the recheck still reports. Anything money-affecting is
+    hand-fixed on the first pass, not delegated.
+
+24. **CREATE WORKTREES WITH AN ABSOLUTE PATH, AND NEVER READ A CLEAN RESULT OUT OF A `git -C` YOU HAVE
+    NOT CONFIRMED EXISTS.** `git worktree add .claude/worktrees/x` run from mainwt NESTS them at
+    `mainwt/.claude/worktrees/x`, so briefs quoting the flat path are wrong. Worse, `git -C <missing dir>
+    status --short | wc -l` prints **0** — indistinguishable from "clean" — which is how r209 believed
+    two workstreams had written nothing for an hour. Same family as the wrong-tree trap, which has now
+    landed FIVE times: the tell is a contradiction between `git cat-file -e main:<path>` and `ls`.
+
+25. **A FRESH WORKTREE HAS NO `.env.local`** (it is gitignored), and vitest dies with
+    `TEST_MIGRATION_DATABASE_URL must be set` in global-setup **before running a single test** — which
+    reads like a broken harness, not a missing file. Copy it in when you create the worktree, along with
+    the `node_modules` symlink.
+
+26. **`pnpm improve:push-plan` EXITS NON-ZERO ON SUCCESS** — pnpm raises ELIFECYCLE over the SSH client's
+    stderr noise while the plan pushes fine. Grep the output for `pushed plan`, never the exit code
+    (same family as rules 2 and 16). And drive it ONE ITEM AT A TIME: a `while read` loop around it
+    pushed only the first of seven while reporting failure for all seven.
+
+27. **SOURCE-SCANNING GUARDS DO NOT STRIP COMMENTS.** Documented for the pack-drift ratchet; it is
+    general. r209's fix for the UTC-date guard failed THAT SAME GUARD because the explanatory comment
+    spelled the forbidden expression out. Reword the comment — do NOT add a source file to the guard's
+    quote-allowlist, which exists for the guards themselves.
+
+28. **NEVER PRINT A FIGURE OR AN ASSURANCE ON A STATUTORY DOCUMENT THAT YOU CANNOT STAND BEHIND. AN
+    ABSENT BOX ASSERTS NOTHING; A BOX READING 0.00 ASSERTS THE MONEY DOES NOT EXIST.** Twice in r209, on
+    two different forms. The EA gained manual Part B boxes drawn at their derived value — always 0, since
+    only an `ea_override` writes them — so a director paid RM 48,000 in commission got "Fees (incl.
+    director's fees) RM 0.00" beside an Allowances figure carrying it, on a C.P.8A. The CP39 gained a
+    printed sentence asserting the row count matched Bilangan Pekerja, which is false whenever the PCB
+    and CP38 sets differ. **Adding a box or a caption can make a form WORSE than the gap it filled** —
+    incomplete becomes affirmatively false, and on a tax document that is the more expensive failure.
 
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round

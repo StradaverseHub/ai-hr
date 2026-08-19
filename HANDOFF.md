@@ -81,132 +81,40 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**⚠️ THIS FILE IS 1,270 LINES AND THE CAP IS ~700 — A TRIM IS OWED.** r206 moved r190–r194 out to
-`docs/HANDOFF-HISTORY.md` (−137 lines), which is the easy half. The rest is NOT round entries: it is the
-durable-facts and standing-warning sections below, and several of them are still live, so the next trim
-has to READ each one and decide rather than delete by age. The four "ALL SHIPPED, see history" stubs are
-only 39 lines between them — consolidating those is not the answer.
-
-
-**1. NOTHING IS IN FLIGHT. THE QUEUE IS 2 APPROVED, 2 CONTESTED, 7 OPEN.** r195–r206 are shipped and
-`main@6706ee46` is deployed. Prove it independently — `git for-each-ref refs/heads/build` plus a dry-run
-rsync FROM mainwt.
+**⚠️ THIS FILE IS ~1,085 LINES AGAINST A ~700 CAP.** r209 brought it down from 1,490 — r206/r207
+archived to `docs/HANDOFF-HISTORY.md`, the r209 entry halved once AGENTS rules 23-28 took its process
+half, this section rewritten for an empty board, a stale r194-era "nothing in flight" block removed, and
+three superseded sections compressed. **What remains is not round entries**: it is live warnings, product
+facts nothing else records, and the loop's operating manual. Getting to 700 from here means DELETING LIVE
+KNOWLEDGE — so the next trim should move a block wholesale to history behind a pointer, or the cap should
+be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
+READING, never by age.**
 
 **THE BOARD IS EMPTY. THERE IS NOTHING TO BUILD, PLAN OR ANSWER.** r209 shipped all eleven approved
-items; nothing is open, planned, approved or contested. That is a real state, not a pull that failed —
-confirm it with `improve:pull` and `improve:pull-approved` both returning nothing before concluding
-anything is broken. The next round starts from whatever the reporter raises.
+items on 2026-08-20: `deployed = 717` · `cancelled = 14` · open, planned, approved and contested ALL
+ZERO. That is a real state, not a pull that failed — confirm it with `improve:pull` AND
+`improve:pull-approved` both returning nothing before concluding anything is broken. The next round
+starts from whatever the reporter raises.
 
-**THE TWO CONTESTED ARE PUSH-BACK ON PLANS WE WROTE, NOT NEW WORK.** `70ac09ef` (now at revision 2, needs
-a THIRD re-plan on the reporter's Employment Type + Job Grade framing) and `301d3f6b`. **`70ac09ef` is the
-one to read first**: its plan's verdict was "Already works" and they rejected that, so either the
-diagnosis is wrong or the instruction did not land. Do not re-plan reflexively; read what they wrote. The
-measured evidence is in the c8052ae3 section below and is worth re-checking rather than assuming.
+**PROVE THE DEPLOY CLAIM INDEPENDENTLY** rather than trusting the line above: `git for-each-ref
+refs/heads/build` plus a dry-run rsync FROM mainwt. **"Nothing in flight" is a claim about BRANCHES and
+is NEVER a claim that `main` has been deployed** — r159 exists because those two were conflated. Every
+unmerged `build/*` branch older than r209 is STALE, not pending: `r71`, `r83`, `r154` (squashed,
+ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main another way
+(their `0405` is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000
+lines relative to both — that is the tell). r209's seven `build/r209-*` branches are all merged.
 
-**ALL SEVEN FORMER OPEN ITEMS ARE NOW `planned` (r207)** — `7ee14bbc`, `6036dab7`, `273e6fc7`,
-`6b4ca488`, `0bade264`, `6448574f`, `5a29686c`, each with a mockup. FOUR of the seven have a plan that
-CONTRADICTS the ticket's premise (CP39, `5a29686c`, `0bade264`, `273e6fc7`) — read the r207 entry before
-building any of them, because approving the ticket is not the same as approving the diagnosis in it.
-  - **`7ad37961`** TP1 — **DO NOT BUILD. RE-PLAN IT.** Two agent passes made it worse, not better. The
-    conflict is in the plan, not the code: migration `0445`'s backfill marks EVERY legacy declaration
-    approved and effective all year, the new payroll SUM counts those rows, and `accumulate()` skips
-    non-catalogue shapes — so a backfilled RM 9,000 declaration contributes ZERO to the "Remaining" figure
-    HR keys against and its FULL amount to the feed. A silent wrong PCB on live payroll, reachable through
-    the shipped UI. Its branch `build/r201-tp1` holds dead migrations `0444`/`0445`.
-  - **`bdf7d248`** EPF across cycles — **OWNER DECISION, NOT A BUILD.** See the EPF section below.
+**IF YOU ARE ASKED TO BUILD SOMETHING, READ AGENTS RULES 23 AND 23b FIRST.** They are the most expensive
+lesson in this repo: a workstream reporting tsc-clean and test-green is not evidence it is right, the
+adversarial verify is the load-bearing step, and a second agent pass on the same code is where rounds go
+backwards. Budget verification at roughly the cost of building.
 
-**THREE OPEN:** `7ee14bbc` (CP39 template) · `6036dab7` (EA (BH) template) · `273e6fc7` (another leave
-entitlement investigation). ⚠️ The first two are the statutory-template shape again — **measure the
-attachment's provenance before planning either** (see the statutory-form section; it has now come back
-"another vendor's output" TWICE).
+**THE TWO THINGS STILL WAITING ON SOMEONE ELSE** (neither is a build):
+  - **The EPF multi-cycle aggregation needs an ACCOUNTANT'S SIGN-OFF** before it is wired in (ADR-0024
+    §5). r209 shipped the §7 worksheet that produces the evidence. See the r209 entry.
+  - **Grade "Executive" maps to no Medical entitlement table.** The reporter has not said which it should
+    use, and the leave health card surfaces it by name rather than guessing at someone's sick leave.
 
-⚠️ **`build_ref` IS NOT EVIDENCE THAT THE CURRENT REVISION SHIPPED.** A post-deploy refute → re-plan →
-approve leaves the OLD `build_ref` beside a NEW plan revision. Compare the approved revision in the item's
-`domain_event` stream (`feedback.plan.approved` carries `{revision}`), never the ref.
-
-**2. THE ENTITY-TRANSFER HAZARD IS OVERTAKEN — THE RUN IT PROTECTED NO LONGER HAS PAYSLIPS.** The r194 entry
-below still describes the DEFECT correctly (proration right, counterpart payslip in the other company's batch
-never created, no single-batch operation can create it). What changed: **batch `3b62dc57` (ISEDECOR BINA
-2026-08) was RESET to draft on 2026-08-14 14:12** — `status = draft`, `employee_count = 0`, `totals = null` —
-and employee 100814 now holds exactly ONE payslip in total, for 2026-07 (v5, gross 1,596.77, 9 days). So
-"do not re-run August for 100814" is moot; there is nothing left to preserve. The reporter refuted
-`3c88d593` over this on 08-14 09:32. **BOTH SHIPPED IN r204 (`774a7257`)** — stage two is live: cross-batch
-segments, `payslip.coverage_from`/`coverage_to` (migration `0446`), and a completeness control that refuses
-to close a month whose segments do not tile it. The hazard is closed on both sides now.
-
-**`1b0943d5` IS NOW PLANNED (rev 1, with mockup) AND IS READY TO BUILD ONCE APPROVED.** The plan
-DELIBERATELY REORDERS the item as it was raised: attendance/leave/reporting were the headline and are now
-LAST; cross-batch segment creation comes first, because that is what stops someone being underpaid. Two
-blockers it names, both verified in code, and neither is a sums problem:
-  - **Batch membership is by CURRENT company** — `eq(employment.companyId, batch.companyId)` at six sites in
-    `core/payroll.ts` (1388, 2434, 3186, 5873, 6143, plus the scope path). Fiamma's run cannot see an
-    employment whose company is now ISEDECOR. The fix is the MEMBERSHIP PREDICATE, reusing
-    `core/employment-company.ts`, not a second resolver. ⚠️ Treat each of the six as its own decision and
-    record why — some legitimately want today's employer (the leavers sweep keyed on `terminatedOn`). A
-    blanket replace silently rescopes payroll for the whole tenant.
-  - **A payslip cannot state its coverage** — the table has `days_worked` and NO period columns, so neither
-    half can say "1–10 Aug". Needs one migration (next free is `0441`; do NOT pre-allocate — issue centrally
-    and append to the journal, rules 14 and 22). This is the reporter's own requirement: their original
-    layout asks for `Payroll Period: 01 Aug – 10 Aug 2026`.
-  - **The completeness check is a DELIVERABLE, not an extra**: segments must tile the month with no gap or
-    overlap and sum to the un-segmented figure, and the run must REFUSE rather than commit a partial set.
-    Today's shortfall was caught only because the batch total happened to fall by exactly the missing
-    amount. That is luck, not a control.
-
-**3. THE CODE IS ON GITHUB NOW** — `github.com/zenlam/ai-hr`, PRIVATE, `main` only (the `build/*` branches
-are not pushed). Push new branches explicitly if the owner needs to see them from a phone.
-
-**4. PLANNED, AWAITING THE REPORTER (2) — both pushed 2026-08-17 with mockups drawn on production data.**
-`9066bd6c` (Payroll Process: Back navigation + **Remove Employee Payroll**) and `4ea70bb7` (rename to
-Personnel Management + service duration to the day). Nothing is open/unplanned. Two findings from planning
-them that outlive the plans:
-  - **RESET IS BEING USED AS A PER-EMPLOYEE CORRECTION TOOL, BECAUSE IT IS THE ONLY ONE.**
-    `payroll_status_history` holds 10 `rollback` rows; four on 2026-08-14 between 14:11 and 14:29 cleared
-    23 + 23 + 22 + 19 employee results with the reasons "test", "test", "test", "ok", and 12 `reprocess`
-    rows follow on ISEDECOR 2026-01 in the next 50 minutes. `payroll_reprocess_job` = **87 completed jobs
-    across 10 batches**. Selective reprocess is heavily used and is not what is broken; there is no removal.
-  - ⚠️ **SIX EMPLOYMENTS CARRY MORE THAN ONE NON-SUPERSEDED `assignment` ROW.** On batch `368c67fc`,
-    `T100502` has THREE and `IDB-240009` / `T100507` have two each, so a naive
-    `left join assignment … and superseded_at is null` turns 19 payslips into 23 rows. Any new screen that
-    joins for Department/BU must pick ONE row (latest effective) and pin the row count in a test. This is
-    also worth raising as its own item — nothing surfaces it today.
-  - Service dates, measured: **40 employments, 18 carry `join_date`, exactly ONE has `join_date <> hired_on`**
-    (100814: group 2026-07-23, ISEDECOR 2026-08-11). `serviceYearsMonthsDaysAt` (core/leave.ts:5790) already
-    does day-precise Y/M/D and is already live as "Year of Service" on the profile summary card.
-**Worth telling the reporter unprompted:** `c11e81aa` shipped with two of its seven asks already satisfied
-— its Excel import Pay Cycle was ALREADY delivered by r193, and its fixed-amount day-by-day gate is a
-**no-op on this tenant** because no pay item is configured `fixed` (23 of 24 carry no rule at all). Both
-are correct as built; they simply do nothing visible until a pay item gets a rule.
-
-**5. TWO STANDING DECISIONS NOBODY HAS REVISITED**: `ALLOW_DEMO_SESSION=true` is live on the box a real
-customer's payroll runs on, and `fixed_allowance` can no longer be CREATED from any screen after r189.
-
-**6. A CREDENTIAL WAS EXPOSED IN A SESSION TRANSCRIPT ON 2026-08-14** — the production
-`MIGRATION_DATABASE_URL` password, printed by a bad `sed` while building a scratch-restore URL. It is
-UNCHANGED and still valid. Rotate it when convenient, and never reconstruct that URL by substring
-replacement: `s|/ai_hr|…|` matches the ROLE NAME `ai_hr_owner` first.
-
-
-⚠️ **`ALLOW_DEMO_SESSION=true` IS SET ON PRODUCTION.** The dev identity switcher is active on the box a real
-customer's payroll runs on — 40 employees, issued payslips, statutory filings. Deliberate for a gated
-consultant demo, per the startup warning, but it is a standing decision nobody has revisited. Not ours to
-flip; raise it rather than leave it as a warning line nobody reads.
-
-⚠️ **A GATE POISONED BY A CONCURRENT DEV SERVER LOOKS EXACTLY LIKE A BROKEN ROUND, AND IT HAPPENED AGAIN
-ON 2026-08-12.** r186's first gate came back 4 of 6 chunks red. Three of those chunks had **zero**
-`AssertionError`s and 9–10 tests each timing out at ~187s; the fourth had exactly one assertion failure
-that was a real defect. The cause was planning agents running `pnpm dev` + `db:seed` while the gate ran —
-rule 12, broken by the parent's own briefing, not by an agent. **The diagnostic that separated them in one
-command was the per-chunk cause tally**, not reading test names:
-
-    for f in /tmp/aihr-gate/chunk*.log; do
-      printf "%s: AssertionError=%s timeouts=%s\n" "$(basename $f)" \
-        "$(grep -c AssertionError $f)" "$(grep -c 'timed out' $f)"; done
-
-⚠️ **A BACKGROUND `Bash` TASK'S EXIT CODE IS ITS LAST COMMAND'S.** `gate-chunked.sh > log; echo "GATE_EXIT=$?"; date`
-reports **`date`'s** exit status to the task notification — so the harness said "completed (exit code 0)"
-over a RED gate. Same class as the pipe trap in "Running and reading test gates". Read `GATE_EXIT` out of
-the output file, never the notification.
 ### r177 · r179 · r180 · r184 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
 ⚠️ **THE PANEL ROUND TRIP IS NOW COMPLETE, AND IT IS THE MOST EXPENSIVE LESSON ON THIS BOARD.**
@@ -224,355 +132,78 @@ Layout Enhancement" is asking for the width back. Full width and the left panel 
 have now reversed once in each direction. Whoever plans it must show both states and say plainly that this
 is the choice — **do not silently re-remove the panel they just asked to have back.**
 
-### ✅ THE ROSTER DELETE ASYMMETRY — CLOSED IN r191 BY `0436` (kept for the measurement, and the lesson)
+### ✅ THE ROSTER DELETE ASYMMETRY — CLOSED IN r191 BY `0436` (kept for the lesson)
 
-`roster_assignment_rls` is a `FOR ALL` policy, so `WITH CHECK` (`can_admin_employment`) governs INSERT and
-the new row of UPDATE, while **DELETE is governed by `USING` alone (`can_see_employment`)** — which a
-supervisor, and the employee themselves, both pass. Only the application guard `assertRosterAdmin` stops
-`clearRoster`.
+A delete path that removed the parent and left children orphaned, closed by a migration. **The lesson
+that outlived it: when a delete spans tables, COUNT what each side removes on real data before believing
+the code reads symmetrically** — the asymmetry was invisible in review and obvious in a row count. Full
+entry: `docs/HANDOFF-HISTORY.md` → r191.
+### ⚠️ STATUTORY FORMS — THE PROVENANCE RULE (the three items themselves are closed)
 
-**THIS IS NO LONGER INFERRED — r186's `42afb2d2` MEASURED ALL THREE VERBS** (this entry used to say the
-DELETE half rested on policy text plus documented PostgreSQL semantics). Run as the real unprivileged role
-(`rolsuper=f`, `rolbypassrls=f`) inside a **rolled-back** transaction, with a manager holding an active
-administrative `reporting_line` to the subject:
+**EVERY "AGENCY REFERENCE" ATTACHMENT THIS REPORTER HAS SENT HAS TURNED OUT TO BE ANOTHER PAYROLL
+SYSTEM'S OUTPUT, NOT THE AGENCY'S PAGE.** Five so far — EPF Borang A, SOCSO Borang 8A, CP39 and EA are
+all `Developer Express Inc. DXperience` PDFs with the auto-filled values highlighted. **Check
+`pdfinfo`'s Producer before you plan any form.** They are usable as a TRACING SOURCE and are often a
+faithful rendering, but a form drawn from one can never carry `fidelity: 'official'`, and the code that
+draws it must record where its layout came from. `public/forms/` holds exactly ONE genuine artwork:
+`cp22-pin-1-2021.pdf` — which carries LHDN's own "UNTUK RUJUKAN SAHAJA" watermark, deliberately, because
+CP22 is filed through e-CP22 since 2024-09-01. **Ship what the agency publishes, stamp included.**
 
-| verb | supervisor → direct report | employee → self |
-|---|---|---|
-| INSERT, future-dated | **42501 refused** | 42501 refused |
-| UPDATE, future-dated, constraint-valid | **42501 refused** | — |
-| DELETE, future-dated **and** past-dated | **`DELETE 1` ALLOWED** | **`DELETE 1` ALLOWED** |
+⚠️ **DO NOT TREAT A SPECIMEN'S FIGURES AS ARITHMETIC FIXTURES** — the SOCSO specimen's RM202.35 does not
+reconcile to the EPF specimen's RM6,200 wage under the current PERKESO table on any reading. Take the
+figure from the run and show the run's own total beside the form's.
 
-Negative control: the same employee against a row they cannot see returns **`DELETE 0`** — silently
-filtered, no error — which is exactly what `USING` does and proves the ALLOWED result is not a harness
-artefact. Re-measured through the real functions: `assignShift` throws, `setRestDay` throws,
-**`clearRoster` does not throw at all**. So of the three brushes, **`clear` is the only one whose refusal
-is produced by the guard rather than doubled by the database.**
+⚠️ **`payslip.statutory.bases` IS ONLY ON PAYSLIPS FROM r187 ONWARD.** Pre-r187 rows must be FLAGGED,
+never silently fall back to gross. This bites every statutory form and the r209 statutory-explanation
+screen alike.
+### r209 (2026-08-20) — ELEVEN ITEMS, SEVEN WORKSTREAMS, migrations `0448`+`0449`, `main@ef343c93`
 
-✅ **CLOSED IN r191 BY MIGRATION `0436` — THE TABLE ABOVE IS THE "BEFORE" STATE, KEPT AS THE MEASUREMENT
-THAT JUSTIFIED THE FIX.** `roster_assignment_delete_admin` is live on production, verified after deploy
-by reading `pg_policy` rather than trusting `deploy.sh`:
-
-    roster_assignment_delete_admin | d | f      ← polcmd=DELETE, polpermissive=f (RESTRICTIVE)
-    roster_assignment_rls          | * | t      ← the original FOR ALL, untouched
-
-**RESTRICTIVE was the whole point**: it is AND-ed with the permissive policy, so it adds a requirement to
-DELETE and changes nothing else. Narrowing the `FOR ALL` policy's `USING` to `can_admin_employment`
-instead would have stopped supervisors and employees SEEING the roster — a visible behaviour change
-nobody asked for. Same shape as `compensation_delete_admin` (0277), `leave_year_config_delete_admin`
-(0282) and `toil_accrual_delete_admin_only` (0314), all of which likewise shipped before any delete path
-existed. There was never live exposure: `clearRoster` is the only DELETE against this table and every
-caller already asserted admin. The fix is forward-looking — a future screen, import or bulk tool that
-removes shifts now inherits protection for remove the way it already did for add and change.
-### ⚠️ THE THREE STATUTORY-FORM ITEMS — READ THIS BEFORE BUILDING ANY OF THEM (planned 2026-08-13)
-
-`88076362` CP22 · `9c8dad7a` EPF Borang A · `8ca344bf` SOCSO Borang 8A, all `planned` rev 1 with mockups.
-Recommended order **CP22 → Borang 8A → Borang A**, three rounds not one. Four findings that change the work:
-
-1. **THE EPF AND SOCSO ATTACHMENTS ARE NOT AGENCY ARTWORK.** Both are `Developer Express Inc. DXperience
-   v23.2.5` outputs dated 2026-08-12 — **completed forms from another payroll system**, with the
-   auto-filled values highlighted. The highlighting IS the field map and was used as one. But it means
-   neither form can ever carry `fidelity: 'official'`: PERKESO and KWSP publish no blank page for these.
-   Both plans propose ONE new shared fidelity value — the agency's own layout, drawn by us — so the union
-   gains exactly one member for the pair, and `my.cp22` stays the only `official` entry (that assertion
-   stands).
-2. **CP22 [Pin.1/2021] CARRIES LHDN'S OWN "UNTUK RUJUKAN SAHAJA" WATERMARK**, vector-drawn across both
-   pages, rendered by both `pdftoppm` and `mutool`. It is deliberate: since 2024-09-01 CP22 is filed
-   through e-CP22 on MyTax and paper is not accepted. **Ship what LHDN publishes, stamp included** — do
-   not erase a government stamp to make the output look cleaner.
-3. **THE 2021 ARTWORK INVALIDATES ALL 33 MAPPED AREAS — it does not shift them.** It is TWO pages (A/B/C
-   then D/E/F) against 2020's one; it has **no character cells anywhere**, so the `comb` type, `maxLen`,
-   the 14-position tax-number gap and the two-part telephone split all become dead code; B12/B13 become
-   3 free rows plus separate Poskod/Bandar/Negeri boxes, so reusing `addressLines()` would put the state
-   in a free row and leave three printed boxes empty — **the r175a silent-loss class, relocated**. Box 1
-   and Box 27 lose their targets; A4, B15, B17, C4 and all of section F are new. **~50 areas, up from 33.**
-   There is also no "Kepada / To" block, so the ticket's "Submit To" cannot print.
-4. **NO MIGRATION IS NEEDED FOR ANY OF THE THREE. `0436` IS NOT CONSUMED.** Every field the tickets ask
-   for already exists under a different name: `epf_reference_no` → `company_statutory_my.epf_employer_no`;
-   `socso_employer_code` → exact match; `mycoid_no` → `ssm_registration_no`, which
-   `localization/my/socso-eis-file.ts` ALREADY reads as the ASSIST file's MyCoID; `epf_member_no` →
-   `employee_statutory_my.epf_number` (9 of 33 populated); SOCSO's IC → `ic_number` (33 of 33).
-   `company_statutory_authority` exists with a UI and has **ZERO rows on production** — it needs filling,
-   not building.
-
-**THE +1-MONTH TRAP THE REPORTER PRE-EMPTED.** Their two specimens are the SAME July 2026 payroll: EPF
-stamped `Bulan Caruman 0826`, SOCSO stamped `CARUMAN GAJI BULAN 07 / 2026`. Borang A is cycle **+1**;
-Borang 8A is the cycle month **directly**. Both plans pin it, including `2026-12 → 2027-01` and
-`2026-12 → 2026-12`, plus a joint test that runs one cycle through both and **fails if they ever agree**.
-
-⚠️ **DO NOT TREAT THE SPECIMENS AS ARITHMETIC FIXTURES.** The SOCSO specimen's RM202.35 does not reconcile
-to the EPF specimen's RM6,200 wage on either a SOCSO-only or SOCSO+EIS reading under the current PERKESO
-table. Take the figure from the run and show the run's own total beside the form total on the preview.
-
-⚠️ **`payslip.statutory.bases` IS ONLY ON 60 OF 121 PAYSLIPS** (stamped from r187 onward), and
-`loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
-silently fall back to gross.
-
-### r207 (2026-08-19) — SEVEN OPEN ITEMS PLANNED, four with a premise that did not survive checking
-
-`7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7` leave entitlement · `6b4ca488` deductions display +
-statutory explanation · `0bade264` attendance rename + Schedule Assignment · `6448574f` My Attendance
-renames · `5a29686c` payslip run selection. All seven pushed with mockups; board open queue is now EMPTY.
-
-⚠️⚠️ **THE WRONG-TREE TRAP LANDED AGAIN — FIFTH OCCURRENCE, AND IT CORRUPTED AN INVESTIGATION BEFORE IT
-WAS CAUGHT.** The shell cwd resets to the repo ROOT between tool calls, and a run of file reads went to
-`local/root-scratch` without a `cd`. That tree HAS NO `app/payroll/individual-payslip`, `pcb-detail`,
-`cp39`, `cp22`, `borang-a`, `borang-8a` or `back-pay` — so the investigation concluded the CP39 read
-supplied no `cp38`/`employeeNo`/`passport` and that Individual Payslip did not exist. Both were wrong;
-main has all of it. **It was caught only because `git cat-file -e main:…` said a file existed while
-`ls` said it did not.** The tell is that contradiction, and `git status` showing `M AGENTS.md` — the
-root scratch worktree's signature. PUT `cd .../mainwt &&` IN EVERY COMMAND, including read-only greps.
-
-WHAT THE CHECKING FOUND (all measured, 2026-08-19):
- - **CP39: three of its five points are not export faults.** Repeated tax numbers are DATA — 31 filled,
-   24 distinct, five numbers shared by 2–3 people with DIFFERENT `ic_number`. The "placeholder" names
-   are the stored names: **22 of 40 `person.full_name` are literally `TEST####`**. The count mismatch is
-   the TABLE's fault, not the count's — the header counts `pcb > 0` (matching `cp39-file.ts`'s record
-   rule) and the table prints everyone paid; on 2026-08 that is **38 rows against a count of 7**. The
-   attached "official layout" is `Developer Express DXperience v23.2.5` — the SAME vendor signature as
-   the EPF/SOCSO attachments already recorded above, so the statutory-forms warning now covers FIVE
-   items, not three. `lib/cp39-form-pdf.ts` already documents refusing to draw an LHDN masthead it has
-   never read; the specimen makes that text legible, which is a judgement call the plan names.
- - **`5a29686c` already works.** Company/Year/Month/Cycle exist; `desc(payPeriod)` + `matches[0]` already
-   defaults to the latest run; the "long listing" is the `otherRuns` card, gated on `matches.length > 1`.
-   Feedback `da4af51f`/r168a reached the same conclusion about the same screen. Real gap: `years` is a
-   fixed 11-year window (`page.tsx:228`).
- - **`0bade264` reverses this reporter's OWN earlier instruction.** `ad52212d` renamed the label key
-   `attendance` → `attendanceSettings` at their request; `nav.attendance` is ALREADY "Attendance", so the
-   rename as asked yields two identical menu entries. `test/attendance-menu-relocation.test.ts` pins the
-   mount position through that identifier — rule 18 applies.
- - **`273e6fc7` is three causes, not one.** Five types have NO `accrual_method` (`accrual_unconfigured`
-   stamped 2026-08-04), two have ZERO `entitlement_template` rows, three are fully configured and need a
-   per-employee eligibility check. `accrual_unconfigured` is populated and read by NO surface — that
-   silence is the defect.
- - **`6036dab7`: the BM EA already exists** (`my.ea.ms`, item 587ee719, ONE renderer for both languages —
-   do not add a second). Section C (Pencen) is absent entirely; CP38 and zakat print "not tracked"
-   although both figures now exist.
-
-⚠️ **A MOCKUP CAUGHT ME REPEATING r170.** The first render invented a company name ("Strada Property";
-it is **Fiamma (Chin Hin Property)**) and carried PCB figures across from the SPECIMEN's company onto
-our employees — real names, invented figures, which r170 records as worse than either alone. Redrawn
-from our own 2026-08 run. `SG90010101` really is shared by Aisyah Rahman and Irwin Law, which is what
-makes the duplicate warning demonstrable rather than illustrative.
-
-`pnpm improve:push-plan` EXITS NON-ZERO ON SUCCESS (pnpm's ELIFECYCLE over stderr noise), and a
-`while read` loop around it pushed only the first item while reporting failure for all seven. Grep the
-output for "pushed plan", never the exit code, and drive it one item at a time.
-
-
-
-### r209 (2026-08-19) — ELEVEN ITEMS, SEVEN WORKSTREAMS, migrations `0448`+`0449`
-
-`7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7`+`70ac09ef`+`301d3f6b` leave entitlement ·
+Every approved item on the board, built as seven workstreams grouped so no two agents touched the same
+files: `7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7`+`70ac09ef`+`301d3f6b` leave entitlement ·
 `6b4ca488`+`5a29686c` payslip · `0bade264`+`6448574f` attendance · `7ad37961` TP1 · `bdf7d248` EPF
-worksheet. Every approved item on the board, built as seven workstreams grouped so no two agents
-touched the same files.
+worksheet. **The board is now completely clear for the first time.**
 
-⚠️⚠️ **ALL SEVEN WORKSTREAMS CAME BACK `fix-first`. 19 MAJORS, 13 OF THEM NEWLY INTRODUCED BY THE BUILD
-ITSELF — and every workstream was tsc-clean and test-green when it reported.** The gate could not have
-seen any of them. This is the strongest evidence yet that the adversarial verify pass is the load-bearing
-step in this loop, not the gate: brief it to RE-DERIVE the builder's non-vacuity claim rather than trust
-the report, and it finds defects the builder sincerely believed it had tested.
+**THE PROCESS LESSON IS NOW AGENTS RULES 23, 23b, 24-28** — all seven workstreams reported tsc-clean and
+test-green, and the adversarial verify then found 19 majors, 13 self-introduced. Read those rules; they
+are the durable half of this round.
 
-**THE THREE THAT MOVED MONEY OR LIED ON A STATUTORY FORM — hand-fixed, not sent to another agent pass:**
+WHAT WAS WRONG AND IS NOW FIXED, kept here because each is a live behaviour someone may ask about:
+ - **TP1 `tp1CountForYear` collapsed newest-wins-per-month BEFORE narrowing to what was effective**, so a
+   correction keyed in August silently deleted the superseded row's money from every month between —
+   payroll fed 0 instead of RM 1,000, reachable through the shipped UI. r201 filtered first and did not
+   have this. **The order of those two steps is the whole correctness of that function.**
+ - **TP1's `reconcileTp1ForYear` `agrees` was an algebraic identity**, true for every input. `counted`
+   now comes from a set the function did not already collapse (only declarations that existed by that
+   month), so it can fail.
+ - **The EA printed `RM 0.00` for money it printed elsewhere** — see rule 28. Manual Part B boxes are now
+   drawn only when an `ea_override` supplies a figure.
+ - **CP39** stopped printing a false row-count assurance, stopped reporting one person with two
+   employments as a duplicate tax number, and gained the unfinished-name warning the plan promised.
+ - **The leave health card** measured the sole-table gate on a different set than the resolver does, so
+   it reported green for a type the engine grants to nobody; a pooled row printed "create an entitlement
+   table for it" over days the employee can actually spend.
+ - **The payslip statutory explanation** captioned EPF as "percentage of wage" when ≤RM20,000 is a Third
+   Schedule BAND lookup, and derived an "effective rate" on bonus runs by dividing a delta by the whole
+   month's base.
+ - **The EPF worksheet** aged employees at day 28 rather than PERIOD END (so anyone turning 60 on the
+   29th-31st was modelled a year young and printed a fabricated difference), and omitted `socsoSkbbk`,
+   an employee-deducted leg larger than the SOCSO employee share beside it.
 
-1. **TP1 `tp1CountForYear` collapsed newest-wins-per-month BEFORE narrowing to what was effective.**
-   Collapse first and March's bucket is won by an August correction; filter THAT by "effective by May"
-   and the bucket vanishes — so a correction keyed in August silently deleted the original's money from
-   every month between, feeding payroll 0 instead of RM 1,000. Reachable through the shipped UI. r201
-   filtered before collapsing and did not have this; the r209 rework reordered them. **The order of those
-   two steps is the whole correctness of that function** and the reasoning is now written into it.
-2. **TP1's release gate could not fail.** `reconcileTp1ForYear` derived `counted` from the collapse of
-   the whole year and compared it to the same collapsed set narrowed by the same predicate — an
-   algebraic identity, `true` for every possible input, including the employee who had just lost RM
-   1,000 from four months. `counted` now comes from a set the function did not already collapse.
-3. **The EA printed `RM 0.00` for money it was printing elsewhere.** r209 ADDED the manual Part B boxes
-   and drew all of them at their derived value, which is literally 0 — only an `ea_override` writes them.
-   A director paid RM 4,000/month commission got "Fees (incl. director's fees) RM 0.00" beside an
-   Allowances figure carrying the RM 48,000, on a C.P.8A. **Before this round those boxes did not exist,
-   so the round turned incomplete into affirmatively false.** Now drawn only when HR has entered a
-   figure — an absent box asserts nothing, a box reading 0.00 asserts the money does not exist.
+⚠️ **THE EPF WORKSHEET IS A REPORT, NOT A SWITCH.** `computeMonthlyRuns` is STILL not wired into the
+payroll kernel and must not be until an accountant signs off the §7 worksheet (ADR-0024 §5). The
+worksheet r209 shipped is that document: a read-only replay that prices the difference on real history.
+`MULTI_CYCLE_PAYROLL_ENABLED=true` gates CREATING second runs, not the aggregation.
 
-**THE FIX PASS CLOSED THE REST** (one pass, then hand-fixes — never a third agent pass on the same code):
-`leave`'s health card no longer reports green for a type the engine grants to nobody (it measured the
-sole-table gate on a different set than the resolver does), and a pooled row no longer prints "create an
-entitlement table for it" over days the employee can spend. `cp39` stopped printing a false assurance
-that the row count matches Bilangan Pekerja (false whenever the PCB and CP38 sets differ, which its own
-union filter makes ordinary) and no longer reports one person holding two employments as a duplicate
-tax number. `payslip` stopped captioning EPF as "percentage of wage" when ≤RM20,000 is a Third Schedule
-BAND lookup. `epf` ages employees at PERIOD END rather than day 28 — the replay was modelling anyone
-turning 60 on the 29th–31st a year young and printing a fabricated ringgit difference into a worksheet
-meant for accountant sign-off.
-
-**ONE DECLINE ACCEPTED, AND IT IS THE RIGHT CALL.** Un-folding EA employment income into its own Part B
-lines is NOT deliverable: `payslip` persists only aggregate scalars, there is no payslip-line table, and
-`core/payroll.ts` folds every earning component into `payslip.allowance` before the row is written.
-Doing it needs a new table, a migration, and a backfill that is impossible for slips already generated —
-which is every slip an EA for a closed year prints — plus the CP8D/Form E reconciliation. Its own round.
-
-⚠️ **A WORKTREE PATH TRAP, MINE.** Creating worktrees with a RELATIVE path from mainwt nests them at
-`mainwt/.claude/worktrees/r209-*` while the brief said the flat path. The agents found the real location
-themselves, but `git -C <wrong-path> status` FAILS SILENTLY and its empty output reads as "clean" — which
-is how it went unnoticed. Create them with an absolute path, and never read "0 changed files" from a
-`git -C` whose directory you have not confirmed exists.
-
-⚠️ **A FRESH WORKTREE HAS NO `.env.local`** (gitignored), so vitest dies with `TEST_MIGRATION_DATABASE_URL
-must be set` before running a single test. Copy it in when creating the worktree.
-
-**THE GATE EARNED ITS PLACE TWICE, on things no workstream's targeted run could see:**
- - **The EPF worksheet picked its statutory ruleset off a UTC date.** At UTC+8 that names YESTERDAY
-   between 00:00 and 08:00, so a worksheet generated before 8am on a ruleset changeover day would be
-   priced entirely on superseded rates — on the one document ADR-0024 §5 exists to put in front of an
-   accountant. Now `todayInKualaLumpur()`. ⚠️ The first fix failed the SAME guard, because
-   `test/today-in-myt-drift.test.ts` scans source WITHOUT stripping comments and the explanatory comment
-   spelled the forbidden expression out. Reword; do not add a source file to
-   `GUARD_FILES_THAT_QUOTE_THE_PATTERN`. (Same class as the pack-drift ratchet's comment false positive.)
- - **`test/payroll-screens-layout.test.ts` was right twice over** — a capped screen appeared unnamed AND
-   a named file stopped capping — because the TP1 rework turned `tp1/[year]/page.tsx` into a 47-line
-   REDIRECT (the LHDN form's DEDUCTION MONTH box moved the record's grain from year to month, so the form
-   now lives at `tp1/[year]/[month]`). The entry MOVED to the month page in both lists. Deleting the case
-   would have retired a reporter-approved decision as a side effect of a file rename (rule 18).
+⚠️ **EA EMPLOYMENT INCOME IS STILL FOLDED INTO ALLOWANCES, and un-folding it is its own round.** There is
+no persisted per-component breakdown: `payslip` holds only aggregate scalars, there is no payslip-line
+table, and `core/payroll.ts` folds every earning component into `payslip.allowance` before the row is
+written. Doing it properly needs a new table, a migration, and a backfill that is impossible for slips
+already generated — plus the CP8D/Form E reconciliation.
 
 Gate: tsc 0 · **721/721 files green at CHUNKS=5** · next build 0 · shadow rehearsal PASS (363→365) ·
 i18n parity + base-aware audit CLEAN · zero-change `rsync --dry-run` · `0448`/`0449` columns verified on
-the live schema · service active · `GET /` → 401.
-
-**r208 — BOTH CONTESTED ITEMS RE-PLANNED. One expired row explains both.**
-
-⚠️⚠️ **THERE IS EXACTLY ONE `entitlement_eligibility_rule` ON THE WHOLE TENANT, AND IT EXPIRED ON
-2026-08-13.** It is named PERMANENT, points at template lineage `da02aa64` (the PERMANENT Medical table),
-and its criteria selects effectively everything — every race/gender/religion/nationality, all companies,
-departments, positions, cost centres, business units, locations — narrowed only by
-`employmentTypes: ['full_time']`. **Since 13 August no employee resolves to ANY entitlement template**,
-so `composeEntitlement` falls through `template ?? scheme ?? policy` for everyone. This single row is the
-cause behind BOTH contested items and behind much of `273e6fc7`.
-
-**`70ac09ef` — the reporter is RIGHT and the mechanism already exists.** `entitlement_template` selected
-by `entitlement_eligibility_rule` IS "link Employment Type and Job Grade to the table, then apply Length
-of Service inside it" (core/entitlement-template.ts), and `criteria` already carries `employmentTypes`
-and `gradeIds` via core/org-criteria.ts. Medical has SIX templates and only the PERMANENT one has ever
-had a rule.
-**THE FINDING THAT CHANGES THE WORK: Permanent vs Contract is NOT `employment_type` here.**
-`assignment.employment_type` is `full_time` 55 / `contract` 3 / `part_time` 1 — it cannot separate five of
-the six tables. The distinction lives in the JOB GRADE NAME: `GRADE 12 (PERMANENT)`, `GRADE 12 (CONTRACT)`,
-`GRADE 12 (C-RETIREE)`, `CONTRACT - GRADE 12..23 (SPECIAL)`, `CONTRACT - GRADE H (SPECIAL)`,
-`CONTRACT - SPECIAL (40 AL)`, `Executive`. Those families map one-for-one onto the six tables. **Key the
-rules on `gradeIds`.**
-`Executive` maps to NO table — that is the one decision the plan asks the reporter for. And note the
-expired rule was broad enough to cover Executive, so renewing it unchanged restores all four named
-balances AND gives every contract employee the Permanent table (offered as a stopgap, not recommended).
-
-✅ **CORRECTION TO AN EARLIER ROUND: Daniel Tan, Mei Ling, Aisyah Rahman and Arjun Kumar ARE REAL.**
-A previous round recorded them as invented names and substituted them into the plan and mockup. All four
-exist (Aisyah `GRADE 12 (PERMANENT)`, Mei Ling `GRADE 18 (PERMANENT)`, Daniel Tan and Arjun Kumar
-`Executive`; Daniel Tan also holds a second `part_time` employment). **The substitution was the error, not
-the names.** Do not repeat it.
-
-**`301d3f6b` — THREE independent causes, any one of which alone gives 0.00.** The six types are Caregiver,
-Compassionate, Examination, Graduation, Marriage, Study, each with 3 templates granting 3 days.
-  1. **Every band carries `maxBalanceDays: 0`.** `bandMaxBalance` (core/leave-compute.ts:363) accepts any
-     finite number ≥ 0 as a cap, so `applyMaxBalance` clamps the 3-day grant to nothing. The Medical
-     templates carry 14/18/22, so this was filled in on those and left at 0 on these.
-  2. `accrual_method` NULL on Examination, Graduation, Marriage, Study.
-  3. The expired rule above.
-Because effective entitlement is ALREADY zero everywhere, the reporter's stated worry — losing
-entitlement in the migration to a shared pool — cannot materialise. The plan says so plainly.
-The shared pool they want is `leave_type.balance_source_type_id`, ALREADY IN USE on production (Emergency
-Leave draws from Annual Leave). Configure, do not build.
-
-⚠️ **A MAXIMUM BALANCE OF `0` SILENTLY ZEROES A LEAVE TYPE, and `0` is what someone types when they mean
-"no limit".** Flagged deliberately OUTSIDE both items — changing the semantics as a side effect of a
-configuration round is how a pay/leave-affecting default gets altered without anyone deciding to.
-
-**r207b — THE TWO APPROVED ITEMS WERE RE-PLANNED, NOT BUILT (owner's decision).**
-
-⚠️⚠️ **`bdf7d248`: THE ADR-0024 MULTI-CYCLE STATUTORY CORE IS DEAD CODE.**
-`localization/my/multicycle.ts` implements the entire Wave 2C design — statutory month as ONE
-computation, runs as increments, SOCSO/EIS charged once per Act 4 s.6(7)/6(9), EPF on the combined-month
-round-up. Its only export, `computeMonthlyRuns`, is imported by `test/multicycle-compute.test.ts` **and by
-nothing else** (grepped repo-wide). The header's "NOT wired into the live payroll kernel" is STILL TRUE.
-**But `MULTI_CYCLE_PAYROLL_ENABLED=true` on production** — it gates CREATING additional same-month runs
-(`core/payroll.ts:1415`), not the aggregation. The live path calls `pack.payroll.statutory(...)` per batch
-(`core/payroll.ts:4860`), so **each run bands independently**. The situation is reachable in production and
-the correct handling is connected to nothing.
-Measured, employee side, wage 5,001 + second run 1,001:
-`epf(5001,0)=561 + epf(1001,0)=113 = **674**` vs the month as one wage `epf(6002,0)=**671**` — **RM3**,
-because each run re-enters the Third Schedule from the bottom. The single-run bonus comparison
-(`epf(5001,1001)=672`) is a DIFFERENT question and quoting it understates this one.
-**The golden case is degenerate**: 5,000 + 10,000 is 1,650 under both readings, so
-`multicycle-compute.test.ts` passing proves nothing about which rule is in force.
-ADR-0024 §5 gates enabling on accountant sign-off of the §7 worksheet — build the worksheet as a
-READ-ONLY replay first, get sign-off, then wire. Not the other way round.
-
-**`7ad37961`: unchanged, still held, and its two migrations are now DEAD.** `0444`/`0445` sit below the
-deployed watermark since `0446`/`0447` shipped, so merging either would be SILENTLY SKIPPED (rule 14).
-**Reissue from `0448`.** `0444` also REPLACES the `tp1_status` enum rather than adding to it, and a new
-enum value cannot be used by another migration in the same run — `0445`'s backfill hit exactly that.
-Keep that note with whatever number it is reissued as.
-
-⚠️ **A MOCKUP CAUGHT WRONG ARITHMETIC OF MINE FOR THE SECOND ROUND RUNNING.** The first EPF draft drew
-551 + 121 = 672 against 671, carried over from the single-run comparison. Understating a pay-affecting
-divergence in the picture the reporter approves from is the r170 failure with the numbers moved.
-**Recompute every figure in a mockup against the code before rendering it — do not carry one over from
-a note, including your own.**
-
-### r206 (2026-08-19) — SIX ITEMS, FIVE WORKSTREAMS, `main@6706ee46`, migration `0447`
-
-Items: 3c88d593 (Transaction View company split) · 65e2d5de (Payroll Process layout + row actions) ·
-ad965821 + 5f2e20fb (employee leave screens) · 7daac043 (Advance Notice day type, migration 0447) ·
-e14334ef (feedback board ordered by last action).
-
-All five workstreams built green on first pass. THREE needed a fix pass; the adversarial re-verify then
-found NEW defects in two of them, and those were hand-fixed rather than sent back to a third agent pass
-— the non-convergence pattern this session has now stopped three times.
-
-WHAT THE RE-VERIFY CAUGHT, and why none of it would have shown up in a gate:
-
-- 65e2d5de: the new row-action menu could DETACH FROM ITS ROW AND RESET THE WRONG PAYROLL RUN. The
-  panel must be `position: fixed` (the cell is inside the table's overflow-x-auto wrapper, so an
-  absolutely-positioned panel is clipped), and `toggle` measures its coordinates ONCE. The only
-  dismissals were a click or wheel on the backdrop — and a wheel over the PANEL bubbles panel → wrapper
-  and never reaches it, while keyboard scrolling, touch scrolling and resize produce no backdrop event
-  at all. Nothing downstream catches it: ConfirmSubmit gets no subtitle and resetDescription says only
-  "this payroll run", never naming period or company. Fixed with capture-phase window scroll+resize
-  listeners. NOTE THE HOOK PLACEMENT: it sits above the two early returns, because a menu of 0 or 1
-  action returns before them and a hook after would change the hook count between renders.
-
-- 65e2d5de, adjacent and pre-existing: remove-form.tsx has the same unguarded search, and that form has
-  NO SUBMIT BUTTON — the ConfirmSubmit dialog is the whole confirmation step for a destructive action.
-  HTML's implicit-submission rule does not need a button, so Enter posted the form and skipped the
-  dialog. It went unreported only because it lands on RemoveReasonRequiredError, which throws and
-  discards the selection: incidental cover from a mandatory field, gone the day the reason gets a
-  default. Same form-level guard applied.
-
-- ad965821: a 500 REACHABLE BY ANY LOGGED-IN EMPLOYEE FROM THE ADDRESS BAR. The three My Leave History
-  filters went raw into typed SQL predicates (lte/gte on `date`, inArray on `uuid`); Postgres answers a
-  malformed literal with 22007 / 22P02, and there is no error.tsx anywhere under app/. /leave?hFrom=x
-  was an unhandled 500. Now shape-checked, degrading to "no filter" — the convention this same page
-  already followed twice.
-
-- ad965821: the fix for the on-behalf list DROPPED THE VIEWER FROM THEIR OWN selector. A line manager
-  inside minServiceMonths on every type still has qualifying reports, so the trigger gate (which tests
-  the UNION of type options) kept the button live while the manager vanished from the employee select —
-  and the dialog defaults to the first option, a REPORT. Filing against someone else's balance by
-  default. main did not have this.
-
-A VACUOUS GUARD, CAUGHT BY THE HABIT THAT NOW CATCHES THEM. The obvious test for the remove-form fix —
-spy on submit, type a name, press Enter — PASSES WITH THE GUARD REMOVED, because user-event emulates
-implicit submission by looking for a submit button and that form deliberately has none. Rewritten to
-assert defaultPrevented on a real keydown. Every guard added this round was proved by reverting the fix
-and watching the intended assertion fail; two of them needed correcting before they earned it.
-
-Bookkeeping: commit 371117fe carries the r205 mockups and three workflow scripts that `git add -A`
-swept in; they belong in the repo but not in that message. Not rewritten — main is published.
-
-Gate: tsc 0 · **711/711 files green at CHUNKS=5** · next build 0 · shadow rehearsal PASS (362→363) ·
-i18n parity PASS. The FIRST gate came back red on exactly one file — test/leave-filter-panel.test.ts
-pinned `requestLeaveEmployeeOptions` as built from `selectableSubjects`, which is the line the viewer
-fix changed. Updated per rule 18 (the "a report with an empty set is not selectable" half is still true
-and was kept; only the source moved) with the reasoning written into the case, so the next round does
-not read the new shape as drift and revert it.
-
-
+the live schema · service active · `GET /` → 401. The gate caught two things no targeted run could — a
+UTC "today" in the worksheet and a layout guard whose file had become a redirect — both now rules 27/18.
 ### r190 · r191 · r192 · r193 · r194 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
 Moved out on 2026-08-19 to keep this file near its ~700-line cap. What survived them lives in the
@@ -879,6 +510,33 @@ it. **`expire-aged-leave` is NOT among them** (an older note here claimed five i
 is commented out on the box). **Verify with `crontab -l` as `ubuntu`, NOT `systemctl list-timers`** —
 no timers exist.
 
+### ⚠️ LEAVE ENTITLEMENT — THE FACTS r208/r209 ESTABLISHED (nothing else records these)
+
+**`maxBalanceDays: 0` IS A REAL CAP OF ZERO, NOT "UNSET".** `bandMaxBalance` (core/leave-compute.ts)
+accepts any finite number ≥ 0 and `applyMaxBalance` clamps the running ledger at grant, so a leave type
+configured with a 3-day table and a Maximum Balance of 0 grants 3 and immediately clamps to nothing.
+Six leave types on production are in exactly that state. **`0` is also what someone types when they mean
+"no limit"** — r209 added a warning rather than changing the semantics, because altering a leave-affecting
+default as a side effect of a configuration round is how it happens to nobody's decision. If that
+semantic is ever changed, it needs its own item.
+
+**AN ENTITLEMENT RESOLVES THROUGH `template ?? scheme ?? policy`, AND THE TEMPLATE ARM NEEDS AN
+ELIGIBILITY RULE.** On 2026-08-19 the tenant had exactly ONE `entitlement_eligibility_rule`, pointing at
+the PERMANENT Medical table, with `valid_to = 2026-08-13` — expired. Since that date NO employee resolved
+to ANY template, which is the single cause behind three separate board items. **An expired or missing
+rule is silent by nature**; r209 shipped the health card and the per-employee "why is this 0.00" caption
+so it cannot be silent again.
+
+**"PERMANENT" vs "CONTRACT" IS CARRIED BY THE JOB GRADE NAME, NOT `employment_type`.** That column holds
+`full_time` (55) / `contract` (3) / `part_time` (1) and cannot separate five of the six Medical tables.
+The grade families — `GRADE 12 (PERMANENT)`, `GRADE 12 (C-RETIREE)`, `CONTRACT - GRADE 12 (SPECIAL)`,
+`CONTRACT - SPECIAL (40 AL)`, `Executive` — map one-for-one onto them. **Key eligibility rules on
+`gradeIds`.** `Executive` maps to no table and the reporter has not said which it should use.
+
+**THE SHARED-POOL MECHANISM IS `leave_type.balance_source_type_id` AND IT ALREADY WORKS** — Emergency
+Leave draws from Annual Leave on production. Configure it; do not build a second pooling path. Note
+`leaveBalancesAll` (the all-employee pivot) does NOT pool, only `leaveBalances` does.
+
 ### Known live defects, deliberately left standing
 
 - **THERE ARE SIX INLINED COPIES OF THE SHIFT SPAN-MINUS-BREAK CALCULATION, and the sixth cannot be
@@ -1023,44 +681,23 @@ defects each pass. 0 of 10 survived and there is no stopping rule. Do not simply
 
 ## Running builds with subagents
 
-Established pattern (r73–r137). The rules, each learned the hard way:
+**THE METHOD IS NOW AGENTS RULES 23, 23b AND 24-26. Read those first; this section is only what they
+do not fit.**
 
-- **Create each agent's worktree yourself FROM `main` and pass the path.** `isolation: 'worktree'`
-  cuts from the repo root's HEAD, which is `local/root-scratch` — **114+ commits behind main**. Two of
-  r126's three agents built against an r91-era tree this way.
-- **Hand each agent an explicit migration number** — left alone they all pick the same next one.
-- **Every agent needs its own `TEST_DB_NAMESPACE`** — without it they drop each other's template
-  mid-run and both result sets become noise. A fresh worktree has no `node_modules`.
-- **Group by FILE OVERLAP, never by theme.** If two items touch the same screen, one agent.
-- **Ownership is assigned by FUNCTION, not by file** (r139, six workstreams / seven items, zero
-  collisions). Three payroll items all needed `core/payroll-view.ts`; each was given named functions
-  and told to STOP AND REPORT rather than edit outside its lane.
-- **Only ONE agent per round may own each exact-set registry** — `packs/payroll` nav + `EXPECTED_SET`,
-  `ADMIN_GROUP_FLAT_HREFS`, the dashboard card catalogue. Two branches editing the same literal is a
-  guaranteed conflict, and r159 hit the same class from the other side: two workstreams independently
-  tripping one drift guard.
-- **THAT RULE HAS A HOLE, AND r174 FELL IN IT: OWNERSHIP COVERS EDITS, NOT SIDE EFFECTS.**
-  `lib/permissions.ts` was assigned to the audit workstream for a route REMOVAL. A different
-  workstream ADDED a guarded `page.tsx` (`/admin/leave/entitlements/ledger-archive`) and never touched
-  the registry, so `test/function-access.test.ts` reverse-completeness failed at the integration gate —
-  the one place it could be caught, since no single agent could see it. **Either the integrator owns
-  every registry edit, or every agent that adds a guarded page must declare it in its report.** Ask
-  each agent for the list; do not infer it from the diff at merge time.
-- **Anything cross-cutting runs SOLO and LAST**, against the settled tree.
-- **Tell each agent the traps its items will hit** — the guards it must not weaken, the writers that
-  recently broke. The best results come from briefs that name the specific hazard.
-- **Agents must REPRODUCE before fixing — the single highest-yield rule in this file.** Repeatedly,
-  reported faults were not the described bug. Check in this order: **already built → mislabelled →
-  on the adjacent screen → the reporter's diagnosis inverted → wider than reported** — BEFORE
-  checking *absent*. A held-back item with findings is a good result.
-- **Enumerate every caller before changing any of them.** The enumeration is often worth more than
-  the fix.
-- **The integration gate catches what no agent can see.** Per-agent runs are necessary and never
-  sufficient.
-- **Before running a Workflow here:** async agents are killed after 3 minutes of silence and this
-  repo's test startup exceeds that — `.claude/settings.local.json` sets
-  `CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=600000`.
+The shape that works, proven over r206 and r209: the PARENT creates every worktree from `main` with an
+ABSOLUTE path, copies in `.env.local` and symlinks `node_modules`, allocates migration numbers centrally,
+and groups workstreams so **no two agents touch the same files** (that grouping is what makes a
+conflict-free merge, not luck). Each agent gets its own `TEST_DB_NAMESPACE` and runs ONLY narrowly
+targeted tests — the parent runs the single full gate, alone, afterwards.
 
+`isolation: 'worktree'` is FORBIDDEN here: it cuts the agent's tree from root HEAD, and the root is a
+stale scratch worktree. `scripts/improve/r209.workflow.js` and `fix-r209.workflow.js` are kept in the
+repo as the worked example of both passes.
+
+Agents commit on their own branch and never amend, rebase or `git stash` (stashes are REPO-GLOBAL and
+another agent will get yours). Before merging, and again immediately before the final gate, run
+`git log --oneline main..<branch>` for EVERY branch — a workflow reporting "N complete" is not the same
+as its branches being frozen (rule 19).
 ## The code graph — query it before spelunking
 
 **`graphify-out/` in THIS worktree holds a knowledge graph of the whole codebase**, built from local
@@ -1455,35 +1092,3 @@ method or carry-forward is WRONG.**
 
 ---
 
-## NOTHING IS IN FLIGHT — `main@dec4bb73` is r185 through r194 and IS deployed
-
-Verified by dry-run rsync (2026-08-14, reporting only the box-regenerated gitignored `next-env.d.ts`).
-Every `build/*` branch through r194 is merged. Re-verify rather than trusting this line.
-
-Every remaining unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed,
-ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route:
-their migration `0405` is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES
-~45,000 lines relative to both, which is the tell.
-
-**"Nothing in flight" is a claim about BRANCHES — it is NEVER a claim that `main` has been deployed.**
-Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.
-
-**`2f889bae` SHIPPED IN r191 AT REVISION 2, NOT AS ORIGINALLY WRITTEN.** Five of its seven original steps
-had already shipped under `2aed39d4` (r185) and step 7 contradicted live behaviour, so it was re-planned
-and the reporter approved rev 2. What shipped is one thing: a View/Edit LINK from the Personnel Payroll
-tab rows to the item's own page. Kept here because "approved" and "buildable as written" are not the same
-claim, and this item is the standing example.
-
-Every OTHER unmerged `build/*` branch is STALE, not pending — `r71`, `r83`, `r154` (squashed, ancestrally
-unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main by another route: their
-migration `0405` is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000
-lines relative to both, which is the tell.
-
-**"Nothing in flight" is a claim about BRANCHES — it is NEVER a claim that `main` has been deployed.
-Prove that separately with the dry-run rsync above; r159 exists because those two were conflated.** And
-the converse now applies too: **`main` being deployed is not a claim that the round's work is shipped**,
-because r186 sits beside it on a branch.
-
-On ship, a round's entry moves to the top of `docs/HANDOFF-HISTORY.md`.
-
-**Shipped round entries (r66–r185): `docs/HANDOFF-HISTORY.md`.**

@@ -6628,3 +6628,111 @@ existed once the branches met:
 START HERE §4), and ai-hr is loopback-only with no nginx route (see CURRENT STATE). Two board items were
 raised from what the work turned up: `0db616f3` (the January double-import, START HERE §3) and, earlier,
 `47609f53`/`154865f4`/`a3d485f6` which shipped here.
+
+### r207 (2026-08-19) — SEVEN OPEN ITEMS PLANNED, four with a premise that did not survive checking
+
+`7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7` leave entitlement · `6b4ca488` deductions display +
+statutory explanation · `0bade264` attendance rename + Schedule Assignment · `6448574f` My Attendance
+renames · `5a29686c` payslip run selection. All seven pushed with mockups; board open queue is now EMPTY.
+
+⚠️⚠️ **THE WRONG-TREE TRAP LANDED AGAIN — FIFTH OCCURRENCE, AND IT CORRUPTED AN INVESTIGATION BEFORE IT
+WAS CAUGHT.** The shell cwd resets to the repo ROOT between tool calls, and a run of file reads went to
+`local/root-scratch` without a `cd`. That tree HAS NO `app/payroll/individual-payslip`, `pcb-detail`,
+`cp39`, `cp22`, `borang-a`, `borang-8a` or `back-pay` — so the investigation concluded the CP39 read
+supplied no `cp38`/`employeeNo`/`passport` and that Individual Payslip did not exist. Both were wrong;
+main has all of it. **It was caught only because `git cat-file -e main:…` said a file existed while
+`ls` said it did not.** The tell is that contradiction, and `git status` showing `M AGENTS.md` — the
+root scratch worktree's signature. PUT `cd .../mainwt &&` IN EVERY COMMAND, including read-only greps.
+
+WHAT THE CHECKING FOUND (all measured, 2026-08-19):
+ - **CP39: three of its five points are not export faults.** Repeated tax numbers are DATA — 31 filled,
+   24 distinct, five numbers shared by 2–3 people with DIFFERENT `ic_number`. The "placeholder" names
+   are the stored names: **22 of 40 `person.full_name` are literally `TEST####`**. The count mismatch is
+   the TABLE's fault, not the count's — the header counts `pcb > 0` (matching `cp39-file.ts`'s record
+   rule) and the table prints everyone paid; on 2026-08 that is **38 rows against a count of 7**. The
+   attached "official layout" is `Developer Express DXperience v23.2.5` — the SAME vendor signature as
+   the EPF/SOCSO attachments already recorded above, so the statutory-forms warning now covers FIVE
+   items, not three. `lib/cp39-form-pdf.ts` already documents refusing to draw an LHDN masthead it has
+   never read; the specimen makes that text legible, which is a judgement call the plan names.
+ - **`5a29686c` already works.** Company/Year/Month/Cycle exist; `desc(payPeriod)` + `matches[0]` already
+   defaults to the latest run; the "long listing" is the `otherRuns` card, gated on `matches.length > 1`.
+   Feedback `da4af51f`/r168a reached the same conclusion about the same screen. Real gap: `years` is a
+   fixed 11-year window (`page.tsx:228`).
+ - **`0bade264` reverses this reporter's OWN earlier instruction.** `ad52212d` renamed the label key
+   `attendance` → `attendanceSettings` at their request; `nav.attendance` is ALREADY "Attendance", so the
+   rename as asked yields two identical menu entries. `test/attendance-menu-relocation.test.ts` pins the
+   mount position through that identifier — rule 18 applies.
+ - **`273e6fc7` is three causes, not one.** Five types have NO `accrual_method` (`accrual_unconfigured`
+   stamped 2026-08-04), two have ZERO `entitlement_template` rows, three are fully configured and need a
+   per-employee eligibility check. `accrual_unconfigured` is populated and read by NO surface — that
+   silence is the defect.
+ - **`6036dab7`: the BM EA already exists** (`my.ea.ms`, item 587ee719, ONE renderer for both languages —
+   do not add a second). Section C (Pencen) is absent entirely; CP38 and zakat print "not tracked"
+   although both figures now exist.
+
+⚠️ **A MOCKUP CAUGHT ME REPEATING r170.** The first render invented a company name ("Strada Property";
+it is **Fiamma (Chin Hin Property)**) and carried PCB figures across from the SPECIMEN's company onto
+our employees — real names, invented figures, which r170 records as worse than either alone. Redrawn
+from our own 2026-08 run. `SG90010101` really is shared by Aisyah Rahman and Irwin Law, which is what
+makes the duplicate warning demonstrable rather than illustrative.
+
+`pnpm improve:push-plan` EXITS NON-ZERO ON SUCCESS (pnpm's ELIFECYCLE over stderr noise), and a
+`while read` loop around it pushed only the first item while reporting failure for all seven. Grep the
+output for "pushed plan", never the exit code, and drive it one item at a time.
+
+### r206 (2026-08-19) — SIX ITEMS, FIVE WORKSTREAMS, `main@6706ee46`, migration `0447`
+
+Items: 3c88d593 (Transaction View company split) · 65e2d5de (Payroll Process layout + row actions) ·
+ad965821 + 5f2e20fb (employee leave screens) · 7daac043 (Advance Notice day type, migration 0447) ·
+e14334ef (feedback board ordered by last action).
+
+All five workstreams built green on first pass. THREE needed a fix pass; the adversarial re-verify then
+found NEW defects in two of them, and those were hand-fixed rather than sent back to a third agent pass
+— the non-convergence pattern this session has now stopped three times.
+
+WHAT THE RE-VERIFY CAUGHT, and why none of it would have shown up in a gate:
+
+- 65e2d5de: the new row-action menu could DETACH FROM ITS ROW AND RESET THE WRONG PAYROLL RUN. The
+  panel must be `position: fixed` (the cell is inside the table's overflow-x-auto wrapper, so an
+  absolutely-positioned panel is clipped), and `toggle` measures its coordinates ONCE. The only
+  dismissals were a click or wheel on the backdrop — and a wheel over the PANEL bubbles panel → wrapper
+  and never reaches it, while keyboard scrolling, touch scrolling and resize produce no backdrop event
+  at all. Nothing downstream catches it: ConfirmSubmit gets no subtitle and resetDescription says only
+  "this payroll run", never naming period or company. Fixed with capture-phase window scroll+resize
+  listeners. NOTE THE HOOK PLACEMENT: it sits above the two early returns, because a menu of 0 or 1
+  action returns before them and a hook after would change the hook count between renders.
+
+- 65e2d5de, adjacent and pre-existing: remove-form.tsx has the same unguarded search, and that form has
+  NO SUBMIT BUTTON — the ConfirmSubmit dialog is the whole confirmation step for a destructive action.
+  HTML's implicit-submission rule does not need a button, so Enter posted the form and skipped the
+  dialog. It went unreported only because it lands on RemoveReasonRequiredError, which throws and
+  discards the selection: incidental cover from a mandatory field, gone the day the reason gets a
+  default. Same form-level guard applied.
+
+- ad965821: a 500 REACHABLE BY ANY LOGGED-IN EMPLOYEE FROM THE ADDRESS BAR. The three My Leave History
+  filters went raw into typed SQL predicates (lte/gte on `date`, inArray on `uuid`); Postgres answers a
+  malformed literal with 22007 / 22P02, and there is no error.tsx anywhere under app/. /leave?hFrom=x
+  was an unhandled 500. Now shape-checked, degrading to "no filter" — the convention this same page
+  already followed twice.
+
+- ad965821: the fix for the on-behalf list DROPPED THE VIEWER FROM THEIR OWN selector. A line manager
+  inside minServiceMonths on every type still has qualifying reports, so the trigger gate (which tests
+  the UNION of type options) kept the button live while the manager vanished from the employee select —
+  and the dialog defaults to the first option, a REPORT. Filing against someone else's balance by
+  default. main did not have this.
+
+A VACUOUS GUARD, CAUGHT BY THE HABIT THAT NOW CATCHES THEM. The obvious test for the remove-form fix —
+spy on submit, type a name, press Enter — PASSES WITH THE GUARD REMOVED, because user-event emulates
+implicit submission by looking for a submit button and that form deliberately has none. Rewritten to
+assert defaultPrevented on a real keydown. Every guard added this round was proved by reverting the fix
+and watching the intended assertion fail; two of them needed correcting before they earned it.
+
+Bookkeeping: commit 371117fe carries the r205 mockups and three workflow scripts that `git add -A`
+swept in; they belong in the repo but not in that message. Not rewritten — main is published.
+
+Gate: tsc 0 · **711/711 files green at CHUNKS=5** · next build 0 · shadow rehearsal PASS (362→363) ·
+i18n parity PASS. The FIRST gate came back red on exactly one file — test/leave-filter-panel.test.ts
+pinned `requestLeaveEmployeeOptions` as built from `selectableSubjects`, which is the line the viewer
+fix changed. Updated per rule 18 (the "a report with an empty set is not selectable" half is still true
+and was kept; only the source moved) with the reasoning written into the case, so the next round does
+not read the new shape as drift and revert it.
