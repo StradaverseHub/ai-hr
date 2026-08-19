@@ -3,6 +3,11 @@
 // employeeEaStatement read + localized labels, so it is unit-testable and reused identically by every
 // surface that links the /me EA PDF route. Mirrors lib/payslip-pdf.ts; A4 portrait because the EA is
 // denser than the A5 payslip.
+//
+// 587ee719 / 6036dab7 — ONE RENDERER, AND IT STAYS ONE. English and Bahasa Malaysia are a label bundle
+// handed to this function, not a second implementation: two renderers can disagree about one employee's
+// income on a tax document, and that is the single outcome this file exists to prevent. Every box the
+// customer's field mapping names is drawn HERE, from the ONE eaStatement read, in both languages.
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 /** Mirrors EaStatement (localization/my/reports.ts). year is a STRING end-to-end (the read filters
@@ -20,11 +25,39 @@ export type EaPdfData = {
     children: number;
     hiredOn: string;
     terminatedOn: string | null;
+    /** 6036dab7 — Part A's three added particulars. REQUIRED, not optional-and-additive like
+     *  `exemptAllowances` below: an optional Part A field is one a caller can forget to pass, and the
+     *  form then prints a blank box that looks like "nothing on file" rather than "nobody wired it". */
+    employeeNo: string | null;
+    jobTitle: string | null;
+    passport: string | null;
   };
   /** exemptAllowances (feedback 09b554e9): the year's tax-exempt PCB_* allowance portions — optional +
-   *  additive (older callers omit it and the row renders as 0.00). */
-  partB: { grossSalary: number; bonus: number; allowances: number; gross: number; exemptAllowances?: number };
-  partD: { mtd: number };
+   *  additive (older callers omit it and the row renders as 0.00).
+   *
+   *  6036dab7 — the ten fields after it are the customer's mapped Part B boxes, and they are REQUIRED for
+   *  the same reason the Part A trio is: a taxable box that silently prints 0.00 because a caller forgot
+   *  it is indistinguishable from a taxable box that is genuinely nil. `gross` is their sum. */
+  partB: {
+    grossSalary: number;
+    bonus: number;
+    allowances: number;
+    gross: number;
+    exemptAllowances?: number;
+    directorFee: number;
+    tipsPerquisites: number;
+    taxBorneByEmployer: number;
+    esos: number;
+    gratuity: number;
+    arrears: number;
+    benefitsInKind: number;
+    livingAccommodation: number;
+    unapprovedFundRefund: number;
+    compensation: number;
+  };
+  /** 6036dab7 — Part C (Pencen dan Lain-lain), which this renderer did not draw at all. */
+  partC: { pension: number; annuity: number; total: number };
+  partD: { mtd: number; cp38: number; zakat: number };
   partE: { epf: number; socso: number; eis: number };
   statutoryVersion: string;
   /** 1.2.6 EA Data Overwrite — EA-only amendments overlaid by HR; drives the footnote marker. Optional +
@@ -41,8 +74,11 @@ export type EaPdfLabels = {
   category3: string;
   sectionAEmployeeParticulars: string;
   name: string;
+  jobTitle: string;
+  employeeNo: string;
   incomeTaxNo: string;
   icNo: string;
+  passportNo: string;
   epfNo: string;
   socsoNo: string;
   mtdCategory: string;
@@ -52,12 +88,23 @@ export type EaPdfLabels = {
   sectionBEmploymentIncome: string;
   grossSalary: string;
   bonus: string;
+  directorFee: string;
   allowancesPerquisites: string;
+  tipsPerquisites: string;
+  taxBorneByEmployer: string;
+  esos: string;
+  gratuity: string;
+  arrears: string;
   exemptAllowances: string;
   benefitsInKind: string;
   livingAccommodation: string;
-  notTracked: string;
+  unapprovedFundRefund: string;
+  compensation: string;
   totalGrossRemuneration: string;
+  sectionCPensionOther: string;
+  pension: string;
+  annuity: string;
+  totalPensionOther: string;
   sectionDTotalDeductions: string;
   monthlyTaxDeduction: string;
   cp38Deductions: string;
@@ -70,11 +117,13 @@ export type EaPdfLabels = {
   amendedNote: string; // 1.2.6 — printed only when ≥1 EA field was amended by HR
 };
 
+const A4: [number, number] = [595.28, 841.89];
+
 export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`${t.title} — ${d.year}`);
   doc.setProducer('AI HR');
-  const page = doc.addPage([595.28, 841.89]); // A4 portrait — EA is denser than the A5 payslip
+  let page = doc.addPage(A4); // A4 portrait — EA is denser than the A5 payslip
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
@@ -103,17 +152,73 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   };
   const hr = (yy: number) =>
     page.drawLine({ start: { x: M, y: yy }, end: { x: right, y: yy }, thickness: 0.7, color: lineCol });
+  /** Greedy word-wrap at `size`. Exists so the disclaimer band can be MEASURED before it is placed: a
+   *  band whose height is only known once it has been drawn cannot be kept off a page of its own. */
+  const wrapped = (s: string, size: number, maxW: number) => {
+    const out: string[] = [];
+    let line = '';
+    for (const w of s.split(/\s+/)) {
+      const trial = line ? `${line} ${w}` : w;
+      if (font.widthOfTextAtSize(trial, size) > maxW && line) {
+        out.push(line);
+        line = w;
+      } else line = trial;
+    }
+    if (line) out.push(line);
+    return out;
+  };
+
+  // ── 6036dab7 — PAGINATION, AND THE CORRECTION r209 MADE TO IT ───────────────────────────────────
+  // This renderer used to draw ~20 rows onto ONE fixed page and never look at the cursor, which was safe
+  // only because the form was short. The customer's field mapping takes it to ~35 rows (Part A grows by
+  // three particulars, Part B by ten boxes, Part C is a whole new section), so every row now asks for its
+  // space before it draws and takes a new page when the page is full.
+  //
+  // THE CORRECTION. The first version of this comment claimed the guard "is not load-bearing TODAY" and
+  // that the form still fits on one A4 page. Both halves were FALSE: the guard fired on 100% of renders.
+  // The two floors below were one floor. `BOTTOM` is where the CONTENT stops so that the footnote band
+  // underneath it still has room — and the band was measured against `BOTTOM` too, so it asked for space
+  // that BOTTOM had already reserved *for it*, found none, and took a page of its own. Every EA came out
+  // two pages, page two holding nothing but the orphaned disclaimer. Hence the second floor: the band is
+  // a footnote and may sit in the bottom margin the rows keep clear of; only the page edge stops it.
+  //
+  // The invariant the guard buys is real and unchanged: pdf-lib does NOT complain when you draw at a
+  // negative y — it silently places the text outside the media box — so an overflowing form is a valid,
+  // openable, larger-than-before PDF that has quietly lost its deduction and contribution sections, and
+  // `%PDF-`, byte length and no-throw all pass it. test/ea-pdf.test.ts pins BOTH ends: one page for the
+  // real message-bundle labels in every locale, and every drawn line inside its page when the disclaimer
+  // is long enough to genuinely need a second one.
+  const BOTTOM = M + 28; // CONTENT floor — rows stop here so the footnote band below them still fits
+  const FOOT = 12; // PAGE floor — the footnote band may use the bottom margin, but never leaves the page
+  const newPage = () => {
+    page = doc.addPage(A4);
+    y = page.getHeight() - M;
+  };
+  const ensure = (need: number) => {
+    if (y - need < BOTTOM) newPage();
+  };
+
   const sectionHeader = (label: string) => {
+    // A header alone at the foot of a page is a section that looks empty; reserve the header plus one row.
+    ensure(20 + 16);
     y -= 6;
     text(label.toUpperCase(), M, 8.5, bold, muted);
     y -= 14;
   };
   const row = (label: string, value: string, opts: { bold?: boolean; color?: ReturnType<typeof rgb> } = {}) => {
+    ensure(16);
     const f = opts.bold ? bold : font;
     const c = opts.color ?? ink;
     text(label, M, 9.5, f, c);
     textR(value, right, 9.5, f, c);
     y -= 16;
+  };
+  /** A section total: the rule above it and the bold line must not be split across a page break. */
+  const totalRow = (label: string, value: string) => {
+    ensure(18);
+    hr(y + 9);
+    y -= 2;
+    row(label, value, { bold: true });
   };
 
   // Letterhead
@@ -128,8 +233,11 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // A — Employee particulars
   sectionHeader(t.sectionAEmployeeParticulars);
   row(t.name, d.employee.name);
+  row(t.jobTitle, d.employee.jobTitle || '—');
+  row(t.employeeNo, d.employee.employeeNo || '—');
   row(t.incomeTaxNo, d.employee.taxNo || '—');
   row(t.icNo, d.employee.ic || '—');
+  row(t.passportNo, d.employee.passport || '—');
   row(t.epfNo, d.employee.epfNo || '—');
   row(t.socsoNo, d.employee.socsoNo || '—');
   row(t.mtdCategory, CATEGORY[d.employee.category] ?? String(d.employee.category));
@@ -140,25 +248,60 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
       : '—';
   row(t.employmentPeriod, period);
 
-  // B — Employment income (cash)
+  // B — Employment income
   sectionHeader(t.sectionBEmploymentIncome);
   row(t.grossSalary, rm(d.partB.grossSalary));
   row(t.bonus, rm(d.partB.bonus));
+  // ⚠️ A BOX THAT PRINTS 0.00 MAKES A CLAIM; AN ABSENT BOX MAKES NONE — and for these lines we are not
+  // entitled to the claim. Nothing in payroll can derive them: `payslip` persists only basic_salary /
+  // allowance / overtime_pay / bonus / gross_pay plus a `statutory` jsonb, there is no payslip-line
+  // table anywhere in db/schema.ts, and core/payroll.ts folds EVERY earning component into
+  // `payslip.allowance` before the row is written. `eaFormLine` on a component definition has no
+  // consumer on this path. So the only source for these boxes is an `ea_override` HR has keyed.
+  //
+  // Printing them as a derived 0.00 was therefore an ASSERTION THAT MONEY DOES NOT EXIST while the same
+  // money is printed two lines up under Allowances: a tenant paying a director RM 4,000/month of
+  // commission got "Fees (incl. director's fees) / commission  RM 0.00" beside an Allowances figure
+  // carrying the RM 48,000 — an affirmative false statement on a C.P.8A, and one that costs HR an
+  // amendment per box to undo. Before this round these boxes did not exist at all, so printing them
+  // unconditionally made the form actively wrong rather than merely incomplete.
+  //
+  // `optionalRow` prints the line when HR has entered a figure (an override, or a genuine non-zero) and
+  // omits it otherwise. Un-folding the components properly needs a persisted per-component breakdown —
+  // a new table, a migration, and a backfill that is impossible for slips already generated — which is
+  // its own round with its own plan, alongside the CP8D / Form E reconciliation.
+  const optionalRow = (label: string, v: number) => {
+    if (Math.round((Number(v) || 0) * 100) !== 0) row(label, rm(v));
+  };
+  optionalRow(t.directorFee, d.partB.directorFee);
   row(t.allowancesPerquisites, rm(d.partB.allowances));
+  optionalRow(t.tipsPerquisites, d.partB.tipsPerquisites);
+  optionalRow(t.taxBorneByEmployer, d.partB.taxBorneByEmployer);
+  optionalRow(t.esos, d.partB.esos);
+  optionalRow(t.gratuity, d.partB.gratuity);
+  optionalRow(t.arrears, d.partB.arrears);
   // Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside the
-  // allowances figure above; LHDN's EA reports exempt allowances in their own section).
+  // allowances figure above, so it is NOT one of the components that sum into the total; LHDN's EA
+  // reports exempt allowances in their own section).
   row(t.exemptAllowances, rm(d.partB.exemptAllowances ?? 0), { color: muted });
-  row(t.benefitsInKind, t.notTracked, { color: muted });
-  row(t.livingAccommodation, t.notTracked, { color: muted });
-  hr(y + 9);
-  y -= 2;
-  row(t.totalGrossRemuneration, rm(d.partB.gross), { bold: true });
+  optionalRow(t.benefitsInKind, d.partB.benefitsInKind);
+  optionalRow(t.livingAccommodation, d.partB.livingAccommodation);
+  optionalRow(t.unapprovedFundRefund, d.partB.unapprovedFundRefund);
+  optionalRow(t.compensation, d.partB.compensation);
+  totalRow(t.totalGrossRemuneration, rm(d.partB.gross));
 
-  // D — Total deductions
+  // C — Pension and other payments. 6036dab7: the section the form did not have at all.
+  sectionHeader(t.sectionCPensionOther);
+  row(t.pension, rm(d.partC.pension));
+  row(t.annuity, rm(d.partC.annuity));
+  totalRow(t.totalPensionOther, rm(d.partC.total));
+
+  // D — Total deductions. CP38 and zakat are real figures now (both are stamped on every payslip); the
+  // two `notTracked` placeholders that stood here were stale, not unimplemented.
   sectionHeader(t.sectionDTotalDeductions);
   row(t.monthlyTaxDeduction, rm(d.partD.mtd));
-  row(t.cp38Deductions, t.notTracked, { color: muted });
-  row(t.zakatViaSalary, t.notTracked, { color: muted });
+  row(t.cp38Deductions, rm(d.partD.cp38));
+  row(t.zakatViaSalary, rm(d.partD.zakat));
 
   // E — Contributions (employee's share)
   sectionHeader(t.sectionEContributions);
@@ -166,34 +309,37 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   row(t.socso, rm(d.partE.socso));
   row(t.eisSip, rm(d.partE.eis));
 
+  // ── Footnote band: the 1.2.6 "Amended" marker + the disclaimer ─────────────────────────────────────
+  // MEASURED AS A WHOLE AND PLACED AS A WHOLE, against FOOT (the page floor) and not BOTTOM (the content
+  // floor BOTTOM already reserved for this band). The marker is part of the band, not a row above it —
+  // measured separately it orphaned onto its own page for exactly the same reason the disclaimer did.
+  //
+  // `bandH` mirrors the drawing that follows, step for step: 6 down to the marker's baseline + 4 after
+  // it, then 8 + 8 down to the first disclaimer baseline, then 10 per further line.
+  const discLines = wrapped(safe(t.disclaimer), 7.5, right - M);
+  const noteH = d.overrides && d.overrides.length > 0 ? 10 : 0;
+  const bandH = noteH + 16 + Math.max(0, discLines.length - 1) * 10;
+  if (y - bandH < FOOT) newPage();
+
   // 1.2.6 — "Amended" marker: print a footnote when ≥1 EA field was overwritten by HR (the merge already
   // overlaid the figures above). Disclosure of which figures were amended is a compliance decision flagged
   // in the plan; the default is this neutral marker.
-  if (d.overrides && d.overrides.length > 0) {
+  if (noteH) {
     y -= 6;
     text(t.amendedNote, M, 8, bold, accent);
     y -= 4;
   }
 
-  // Disclaimer band
   y -= 8;
   hr(y + 6);
   y -= 8;
-  // Wrap the disclaimer across the content width so it never runs off the page edge.
-  const words = safe(t.disclaimer).split(/\s+/);
-  const maxW = right - M;
-  let line = '';
-  for (const w of words) {
-    const trial = line ? `${line} ${w}` : w;
-    if (font.widthOfTextAtSize(trial, 7.5) > maxW && line) {
-      text(line, M, 7.5, font, muted);
-      y -= 10;
-      line = w;
-    } else {
-      line = trial;
-    }
+  for (const l of discLines) {
+    // Only a disclaimer taller than a whole page reaches this — the measurement above has already placed
+    // a band that fits. It stays so an absurd string spills onto a second page rather than off this one.
+    if (y < FOOT) newPage();
+    text(l, M, 7.5, font, muted);
+    y -= 10;
   }
-  if (line) text(line, M, 7.5, font, muted);
 
   return doc.save();
 }
