@@ -25,6 +25,7 @@ import {
   Hourglass,
   MapPin,
   SlidersHorizontal,
+  Users,
 } from 'lucide-react';
 import { attendancePack } from '../packs/attendance';
 import { listPacks, modulePackById, packById } from '../packs/registry';
@@ -108,6 +109,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // it had no menu row at all and was reachable only from a button on the rule list, which is why the
     // reporter read the whole category as missing. adminOnly like every other row in this node.
     { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
+    // 0bade264 (r209) — Schedule Assignment: every employee's current shift arrangement in one list. The
+    // SCREEN is new; the arrangement it lists is not, and neither is the editor its View / Edit opens
+    // (the personnel profile's Shift arrangement card). adminOnly like every sibling in that node.
+    { href: '/admin/attendance/schedule-assignment', labelKey: 'scheduleAssignment', icon: Users, adminOnly: true },
   ] as const;
 
   /**
@@ -144,8 +149,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
 
   it('declares TWO nodes — self-service in main, config in admin (a324a4b3 rev3)', () => {
     // ad52212d round 1 renamed the config node's label key `attendance` → `attendanceSettings`: it is the
-    // reporter's "Attendance › Settings" sub-menu, and calling it "Attendance" a third time beside "Leave
-    // config" and "Claims config" is what they objected to. Two nodes, same groups, same rows.
+    // reporter's "Attendance › Settings" sub-menu. 0bade264 (r209) put the STRING back to plain
+    // "Attendance" at their request and left the key alone — see test/attendance-menu-relocation.test.ts
+    // for why the key cannot become `attendance` again and what pays for the collision that would create.
+    // Two nodes, same groups, same rows.
     expect(NODES.map((n) => n.labelKey)).toEqual(['myAttendance', 'attendanceSettings']);
     // rev2 had both in 'main' because the merged node mixed three gates. rev3 is the reporter's own
     // correction — the CONFIG menu belongs in Administration between Leave config and Claims config — and
@@ -164,10 +171,16 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     //
     // 4509d2b8 — SIX rows, not seven: Holidays left for System Settings (MOVED_OUT above). The three
     // categories still lead and the tail keeps its ticket order among the screens that stayed.
+    //
+    // 0bade264 (r209) — SEVEN rows: Schedule Assignment lands FOURTH, after the reporter's three named
+    // categories and ahead of the 5cb199b3 tail. It is not a fourth category of settings — it is the
+    // screen that USES the shift library the three above configure — so it goes after them, and the tail
+    // keeps the ticket order it has always held among its own members.
     expect(merged.children.map((c) => c.href)).toEqual([
       '/admin/attendance', // Shift
       '/admin/attendance-policy', // Overtime Pattern
       '/admin/attendance-policy/schedule', // Work Schedule
+      '/admin/attendance/schedule-assignment', // Schedule Assignment
       '/admin/attendance-allowance',
       '/admin/locations', // Clocking location
       '/admin/toil', // Time off in lieu
@@ -425,6 +438,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       '/admin/attendance-policy': 'Overtime Pattern',
       // ad52212d round 1 — the third category. The screen is af7a8eb4's; the ROW is new.
       '/admin/attendance-policy/schedule': 'Work Schedule',
+      // 0bade264 (r209) — the reporter's own name for the new screen. Both words matter: it is the
+      // SCHEDULE (which shift) ASSIGNED (to whom), not another settings category.
+      '/admin/attendance/schedule-assignment': 'Schedule Assignment',
       '/admin/attendance-allowance': 'Attendance allowance',
       '/admin/locations': 'Clocking location',
       // Plain words, not the TOIL abbreviation — and the same words the screen's own title uses.
@@ -460,6 +476,15 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       expect(cat.nav.shiftSettings, `${loc}: dead nav.shiftSettings`).toBeUndefined();
       expect(cat.nav.attendancePolicy, `${loc}: dead nav.attendancePolicy`).toBeUndefined();
       expect(typeof cat.nav.attendance, `${loc}: nav.attendance is still used by the matrix`).toBe('string');
+      // 0bade264 (r209) — AND IT MUST NOT SAY THE SAME THING AS THE MENU ABOVE IT, IN ANY LOCALE. This
+      // node's label went back to plain "Attendance" at the reporter's request while `nav.attendance`
+      // WAS that same word, so the rename only works because that column became "Attendance Records".
+      // Translating one half and not the other re-creates the duplicate in that language alone, which
+      // i18n-check.mjs cannot see: it checks that a key exists, never that its value was updated.
+      expect(
+        cat.nav.attendance,
+        `${loc}: nav.attendance must not read the same as the Administration menu (nav.attendanceSettings)`,
+      ).not.toBe(cat.nav.attendanceSettings);
       // admin.attendancePolicy / admin.toilPolicy are the SCREENS' own namespaces and share the old
       // names by coincidence. Renaming them would blank two pages; this proves they were left alone.
       expect(typeof cat.admin.attendancePolicy, `${loc}: admin.attendancePolicy`).toBe('object');

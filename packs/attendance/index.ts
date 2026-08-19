@@ -63,6 +63,7 @@ import {
   Hourglass,
   MapPin,
   SlidersHorizontal,
+  Users,
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 
@@ -148,9 +149,28 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
 };
 
 /**
- * The ONE Attendance configuration menu — "Attendance settings" since ad52212d round 1, carrying the
- * reporter's three categories (Shift, Overtime Pattern, Work Schedule) followed by the three remaining
- * configuration screens (Attendance allowance, Clocking location, Time off in lieu).
+ * The ONE Attendance configuration menu — labelled simply "Attendance" since 0bade264 (r209), carrying
+ * the reporter's three categories (Shift, Overtime Pattern, Work Schedule), then Schedule Assignment,
+ * then the three remaining configuration screens (Attendance allowance, Clocking location, Time off in
+ * lieu).
+ *
+ * 0bade264 (r209) — THE LABEL WENT BACK TO "Attendance", AND THE KEY DID NOT. ad52212d round 1 renamed
+ * the key `attendance` → `attendanceSettings` AND its string to "Attendance settings"; this round the
+ * same reporter asked for the Administration entry to read plain "Attendance" again. Only the STRING
+ * moved back: the key stays `attendanceSettings` because `nav.attendance` is a live, different label
+ * (the /attendance Records column in lib/permissions.ts) and two keys cannot share a name.
+ *
+ * ⚠️ THE KEY THEREFORE NO LONGER CAMEL-CASES ITS OWN LABEL, DELIBERATELY. a324a4b3's rule — a nav key
+ * spells the string it resolves to — still holds for every CHILD row here (test/attendance-pack.test.ts
+ * enforces it over the adminOnly rows) and is knowingly suspended for this parent, because the
+ * alternative is a second key called `attendance`. Do NOT "fix" it by renaming either key.
+ *
+ * ⚠️ AND THE COLLISION IT WOULD HAVE CREATED IS ALREADY PAID FOR. `nav.attendance` was itself the string
+ * "Attendance" until this round; leaving it would have put the same word on two different things (this
+ * menu and the operational Records screen's function-access column). It now reads "Attendance Records",
+ * which is what that column covers (/attendance + /attendance/daily + /attendance/individual). Reverting
+ * either half alone re-creates the duplicate the reporter raised — test/attendance-menu-relocation.ts
+ * pins the pair.
  *
  * 4509d2b8 took HOLIDAYS out of this node. It was never an attendance service (core/holidays.ts is
  * spine — leave, attendance and payroll all read the one list), and gating its ROW behind the
@@ -172,10 +192,9 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
  * parent does not render the same glyph as My Attendance directly above it in the collapsed rail.
  */
 const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
-  // ad52212d ROUND 1 — the node is the reporter's "Attendance > Settings" sub-menu, so it is labelled for
-  // what it holds ("Attendance settings") beside its Administration siblings "Leave config" and "Claims
-  // config", instead of repeating the module name a third time. `nav.attendance` is NOT removed: it still
-  // labels the /attendance Records column in lib/permissions.ts.
+  // ad52212d ROUND 1 minted this key for the reporter's "Attendance > Settings" sub-menu. 0bade264 (r209)
+  // changed the STRING it resolves to back to plain "Attendance" — their words — and left the key alone;
+  // see the ⚠️ notes in the header above for why the key cannot simply become `attendance` again.
   labelKey: 'attendanceSettings',
   icon: CalendarRange,
   // a324a4b3 rev3 — 'admin', so the menu lands in Administration between Leave config and Claims config,
@@ -231,6 +250,21 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // rather than a second CalendarRange/CalendarDays: the fly-out panel renders every child's glyph, and a
     // row sharing its parent's or a sibling's icon is indistinguishable there.
     { href: '/admin/attendance-policy/schedule', labelKey: 'workSchedule', icon: CalendarCheck, adminOnly: true },
+    // 0bade264 (r209) — SCHEDULE ASSIGNMENT: every employee's current shift arrangement in ONE list, with
+    // View / Edit opening the SAME editor as Personnel Management › Employee › Attendance › Shift
+    // arrangement (app/admin/personnel/[employmentId] ?tab=attendance#section-default-shift). Deliberately
+    // a link into that card and not a second form: the request is that both surfaces act on one record,
+    // and a duplicate editor is precisely how the two would drift.
+    //
+    // It sits FOURTH — after the reporter's three named settings categories, ahead of the 5cb199b3 tail —
+    // because it is the screen that USES the shift library the three above configure, not a fourth
+    // category of settings. adminOnly like every other row in this node (the parent group gates wholesale,
+    // so a row without the flag would be admin-only anyway and silently so).
+    //
+    // Users, not a fourth calendar glyph: the fly-out panel renders every child's icon and the collapsed
+    // rail renders glyphs alone, so a row sharing a sibling's picture is unreachable there. It is also the
+    // right picture — this screen is the people side of the schedule, where its neighbours are the shapes.
+    { href: '/admin/attendance/schedule-assignment', labelKey: 'scheduleAssignment', icon: Users, adminOnly: true },
     // 4509d2b8 — the Holidays row USED TO SIT HERE, ahead of Attendance allowance. It is now a child of
     // SYSTEM_SETTINGS_NODE in components/sidebar.tsx. Leaving a copy here would both duplicate the row
     // and re-enter it into MODULE_OF_HREF (built by flatMap over these children), which is exactly the

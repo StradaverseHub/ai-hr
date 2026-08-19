@@ -105,9 +105,19 @@ const ATTENDANCE_MANAGE_ROWS: ChildItem[] = (modulePackById('attendance')!.navLi
 );
 // The Attendance CONFIG menu, in the Administration group. ad52212d round 1 renamed its label key
 // `attendance` → `attendanceSettings` ("Attendance settings"), because it is the reporter's
-// Attendance › Settings sub-menu and now opens on the three categories they named (Shift, Overtime
-// Pattern, Work Schedule). The const name is unchanged — its MOUNT POSITION between Leave config and
-// Claims config is pinned by test/attendance-menu-relocation.test.ts through this identifier.
+// Attendance › Settings sub-menu and opens on the three categories they named (Shift, Overtime
+// Pattern, Work Schedule).
+//
+// 0bade264 (r209) — THE SAME REPORTER ASKED FOR THE LABEL BACK: this entry reads plain "Attendance"
+// again. Only the STRING moved; the KEY is still `attendanceSettings`, because `nav.attendance` is a
+// live label of a different thing (the /attendance Records column in lib/permissions.ts) and two keys
+// cannot share a name. That other label was itself the word "Attendance", so renaming this one alone
+// would have produced two entries reading the same — it is now "Attendance Records", which is what its
+// column covers. Both halves are pinned together by test/attendance-menu-relocation.test.ts; reverting
+// either one alone re-creates the duplicate the reporter raised.
+//
+// The const name is unchanged — its MOUNT POSITION between Leave config and Claims config is pinned by
+// test/attendance-menu-relocation.test.ts through this identifier.
 const ATTENDANCE_NODE = node('attendanceSettings');
 
 // Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes

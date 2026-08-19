@@ -27,13 +27,14 @@
  *   · saving twice for the SAME date REPLACES that entry (supersede + insert) instead of creating a second;
  *   · periods can never overlap, because each simply runs until the next begins.
  */
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, employment, employmentShiftArrangement, person, shift } from '../db/schema';
+import { appUser, company, employment, employmentShiftArrangement, person, shift } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   arrangementsForEmploymentTx,
+  liveArrangementsTx,
   pickArrangementOn,
   type ArrangementPeriod,
 } from './shift-arrangement-resolve';
@@ -318,5 +319,147 @@ export function shiftArrangementHistory(
         recordedOnRelease: i === 0 && r.createdBy == null,
       };
     }).reverse(); // ascending while previous-shift is resolved, newest-first for the screen
+  });
+}
+
+// ── 0bade264 (r209) · SCHEDULE ASSIGNMENT — every employee's current arrangement, in one read ────────
+
+/** One row of the Schedule Assignment list: who, on what, from when, and whether that is in force yet. */
+export type ShiftArrangementListRow = {
+  employmentId: string;
+  /** The reporter's "Employee ID" (employment.employee_code). Nullable — legacy rows may have none. */
+  employeeCode: string | null;
+  name: string;
+  company: string;
+  shiftType: 'fixed' | 'roster';
+  /** Null only alongside status 'notRecorded' AND an employment whose cache is empty too. */
+  shiftId: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
+  /** valid_from of the period shown. Null for 'notRecorded' — there is no dated period to name. */
+  effectiveFrom: string | null;
+  /**
+   * `current`      — a live period is in force today (the greatest valid_from <= today).
+   * `scheduled`    — the employee HAS live periods but the earliest starts after today.
+   * `notRecorded`  — no live period at all; the shift shown is employment.default_shift_id, the cache
+   *                  every resolver falls back to (core/shift-arrangement-resolve.ts).
+   */
+  status: 'current' | 'scheduled' | 'notRecorded';
+};
+
+/** Filters the Schedule Assignment screen posts as plain GET params. All optional; all narrowing. */
+export type ShiftArrangementListFilters = {
+  /** Free text over employee ID and name. */
+  q?: string;
+  shiftType?: 'fixed' | 'roster';
+  /** Backup shift of the arrangement SHOWN (the resolved one), not of every period the employee has. */
+  shiftId?: string;
+  status?: ShiftArrangementListRow['status'];
+  /** Today in the tenant's calendar. Defaults to todayInKualaLumpur(); injectable so a test can pin it. */
+  today?: string;
+};
+
+/** LIKE metacharacters escaped so a code containing '%' or '_' searches for itself. */
+function likeLiteral(v: string): string {
+  return v.replace(/([\\%_])/g, '\\$1');
+}
+
+/**
+ * Every ACTIVE employee's shift arrangement as it stands, for the Schedule Assignment screen.
+ *
+ * WHAT "CURRENT" MEANS HERE, AND WHY THIS FUNCTION DOES NOT DECIDE IT. The arrangement ladder has a
+ * partial unique index — employment_shift_arrangement_live_uq on (tenant, employment, valid_from) WHERE
+ * superseded_at IS NULL — and that predicate IS the definition of a live period: a save for a date that
+ * already has one supersedes its predecessor rather than adding a second. `liveArrangementsTx` reads
+ * exactly that predicate, and `pickArrangementOn` applies the one house rule for choosing among the
+ * survivors (greatest valid_from <= the date; else the earliest). Both live in
+ * core/shift-arrangement-resolve.ts and are shared with the attendance/OT derivation, the personnel card
+ * and the roster resolver — so this screen answers "which shift is this person on" with the same
+ * sentence the engine uses. DO NOT sort the periods here and take the last: a second rule is how a list
+ * starts disagreeing with the payslip it is meant to explain.
+ *
+ * TERMINATED EMPLOYMENTS ARE OUT. They have no current arrangement to assign; their history stays on
+ * their own profile, where shiftArrangementHistory already renders it.
+ *
+ * Unpaginated by design, like the shift library it sits beside: the filters narrow, and the screen is a
+ * working list an administrator scans rather than a report they page through.
+ */
+export function listShiftArrangements(
+  ctx: SessionContext,
+  filters: ShiftArrangementListFilters = {},
+): Promise<ShiftArrangementListRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const today = filters.today ?? todayInKualaLumpur();
+    const q = filters.q?.trim();
+    const conds = [isNull(employment.terminatedOn)];
+    if (q) {
+      const pattern = `%${likeLiteral(q)}%`;
+      // Non-null assertion: `or` is only undefined when given no arguments.
+      conds.push(or(ilike(person.fullName, pattern), ilike(employment.employeeCode, pattern))!);
+    }
+
+    const emps = await tx
+      .select({
+        employmentId: employment.id,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        company: company.legalName,
+        // The CACHE (employment.default_shift_id / shift_type) — read only for an employment with no
+        // ladder row at all, which is the exact fallback every other resolver makes. Reading it for
+        // everyone else would put a stale answer on screen the moment a future-dated change is saved.
+        cachedShiftType: employment.shiftType,
+        cachedShiftId: employment.defaultShiftId,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(and(...conds))
+      .orderBy(asc(person.fullName));
+
+    // ONE batched read of the ladder for the whole page, and one of the shift library, rather than a
+    // query per row.
+    const periodsByEmployment = await liveArrangementsTx(
+      tx,
+      emps.map((e) => e.employmentId),
+    );
+    const shifts = await tx.select({ id: shift.id, code: shift.code, name: shift.name }).from(shift);
+    const shiftById = new Map(shifts.map((s) => [s.id, s]));
+
+    const rows: ShiftArrangementListRow[] = emps.map((e) => {
+      const periods = periodsByEmployment.get(e.employmentId);
+      const inForce = pickArrangementOn(periods, today);
+      // pickArrangementOn resolves a date BEFORE the earliest period to that earliest period (the
+      // release promise — see its header). For a LIST that means "their first arrangement has not
+      // started yet", which is a different thing from "this is what they are on today" and is said so.
+      const status: ShiftArrangementListRow['status'] = !inForce
+        ? 'notRecorded'
+        : inForce.validFrom <= today
+          ? 'current'
+          : 'scheduled';
+      const shiftId = inForce ? inForce.shiftId : e.cachedShiftId;
+      const sh = shiftId ? shiftById.get(shiftId) : undefined;
+      return {
+        employmentId: e.employmentId,
+        employeeCode: e.employeeCode,
+        name: e.name,
+        company: e.company,
+        shiftType: inForce ? inForce.shiftType : e.cachedShiftType,
+        shiftId: shiftId ?? null,
+        shiftCode: sh?.code ?? null,
+        shiftName: sh?.name ?? null,
+        effectiveFrom: inForce ? inForce.validFrom : null,
+        status,
+      };
+    });
+
+    // The three narrowing filters are applied to the RESOLVED row, not to the ladder: filtering the
+    // periods in SQL would match an employee on a shift they used to be on (or will be on) and then
+    // display the one they are actually on — a list whose rows contradict their own filter.
+    return rows.filter(
+      (r) =>
+        (!filters.shiftType || r.shiftType === filters.shiftType) &&
+        (!filters.shiftId || r.shiftId === filters.shiftId) &&
+        (!filters.status || r.status === filters.status),
+    );
   });
 }

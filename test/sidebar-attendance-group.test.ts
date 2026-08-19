@@ -107,10 +107,15 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   const node = nodeBlock('ATTENDANCE_NAV');
 
   it('keeps the parent labelled with the nav.attendanceSettings key', () => {
-    // Was nav.attendance until ad52212d round 1. The node is the reporter's "Attendance › Settings"
-    // sub-menu now, and it sits in Administration beside "Leave config" and "Claims config", so a third
-    // row reading plain "Attendance" was the duplication they raised the item about. nav.attendance is
-    // NOT deleted — it still labels the /attendance Records column in lib/permissions.ts.
+    // Was nav.attendance until ad52212d round 1, which minted this key for the reporter's
+    // "Attendance › Settings" sub-menu.
+    //
+    // 0bade264 (r209) — the same reporter asked for the ROW to read plain "Attendance" again, and it now
+    // does; only the STRING moved back. The KEY stays `attendanceSettings` because `nav.attendance` is
+    // still a live label (the /attendance Records column in lib/permissions.ts, now reading "Attendance
+    // Records") and two keys cannot share a name. So this assertion is about the KEY and deliberately
+    // says nothing about the string — the string, and the fact that the two labels must differ, are
+    // pinned together in test/attendance-menu-relocation.test.ts, where the mount position lives.
     expect(node).toMatch(/labelKey:\s*'attendanceSettings'/);
   });
 

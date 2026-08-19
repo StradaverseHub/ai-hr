@@ -155,6 +155,12 @@ export const SCREENS: readonly ScreenEntry[] = [
   {
     screenKey: 'attendance',
     href: '/attendance',
+    // 0bade264 (r209) — `nav.attendance` now reads "Attendance Records", not "Attendance". The
+    // Administration menu next door took the plain word back at the reporter's request, and this column
+    // held the identical string, so the matrix and the rail would have shown the same name for two
+    // different things. "Attendance Records" is also what this column actually covers — the three routes
+    // below. The KEY is untouched (it may key stored role configs, the same label-only split a324a4b3
+    // established for the rows further down this file).
     labelKey: 'nav.attendance',
     guard: 'scopedSession',
     // Attendance>Records tabs (314ea061): Overview (/attendance) · Daily · Individual.
@@ -406,9 +412,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     // af7a8eb4 (r186): the add/edit shift form moved off this page into its own routes, so the shift
     // library is now a list + two sub-pages, matching the notice-board / pay-components shape above.
     // Both call requireAdmin, the same guard as their parent, so they ride THIS screen.
+    // 0bade264 (r209): '/admin/attendance/schedule-assignment' — every employee's current shift
+    // arrangement in one list, with View / Edit opening the per-employee card on the personnel profile.
+    // requireAdmin, same guard and same admin surface as the shift library it sits beside, so it rides
+    // THIS column rather than minting one. It is a STATIC segment declared before '[shiftId]' here for
+    // readability only — on disk Next resolves app/admin/attendance/schedule-assignment/page.tsx ahead
+    // of the dynamic sibling either way, exactly as '/admin/attendance/new' already does.
     routes: [
       '/admin/attendance',
       '/admin/attendance/new',
+      '/admin/attendance/schedule-assignment',
       '/admin/attendance/[shiftId]',
       '/attendance/import',
       '/roster/import',
