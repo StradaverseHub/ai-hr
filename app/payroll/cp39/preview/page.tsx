@@ -1,7 +1,7 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { listCompanies } from '@/core/read';
 import { scopedAdmin } from '@/lib/scope';
-import { money } from '@/lib/cp39-form';
+import { formatMyIc, money } from '@/lib/cp39-form';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { loadCp39Form } from '../shared';
@@ -182,6 +182,8 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
 
   const { form, missing, headerMissing, preparerMissing, notes } = loaded;
   const ready = missing.length === 0 && headerMissing.length === 0;
+  // 7ee14bbc — THE ROWS THE STATEMENT PRINTS, which is now the deducted rather than everyone the run
+  // paid. `form.employees` is still the paid figure and is shown beside this one, never instead of it.
   const rows = form.pages.flatMap((p) => p.rows);
 
   return (
@@ -271,6 +273,48 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
         </div>
       )}
 
+      {/* 7ee14bbc — DUPLICATED TAX REFERENCE NUMBERS, NAMING EVERYBODY FILED UNDER EACH ONE.
+          ADVISORY, NEVER BLOCKING, and a different banner from the amber one above on purpose: a
+          MISSING number stops the filing (the e-Data PCB file refuses without it), a SHARED one does
+          not — it is the staff records disagreeing with themselves, and the statement must go on
+          printing what is filed under each person. Naming both people is the whole deliverable: it is
+          the only way to tell which of the two records is the wrong one. */}
+      {form.duplicateTaxNumbers.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <p className="font-medium">{t('dupTinTitle', { count: form.duplicateTaxNumbers.length })}</p>
+          <ul className="mt-1 space-y-0.5">
+            {form.duplicateTaxNumbers.map((d) => (
+              <li key={d.tin}>
+                <span className="font-mono">{d.tin}</span> — {d.names.join(' · ')}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">{t('dupTinHint')}</p>
+        </div>
+      )}
+
+      {/* 7ee14bbc — UNFINISHED EMPLOYEE NAMES, the plan's second "before you file rather than after"
+          warning ("warns you about duplicated tax numbers and unfinished employee names"). 22 of the
+          reporter's 40 people are named TEST followed by a number, and a CP39 filed under those names
+          is filed under those names. ADVISORY and NEVER BLOCKING, exactly like the banner above and for
+          the same reason: it is their data, the statement prints the name on file, and the correction
+          belongs on the staff record. The employee number rides along because a BLANK name leaves
+          nothing else to find the person by. NOT printed on the document — see `unfinishedCp39Names`. */}
+      {form.unfinishedNames.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <p className="font-medium">{t('unfinishedNameTitle', { count: form.unfinishedNames.length })}</p>
+          <ul className="mt-1 space-y-0.5">
+            {form.unfinishedNames.map((u) => (
+              <li key={u.employmentId}>
+                <span className="font-mono">{u.name || '—'}</span>
+                {u.employeeNo ? ` — ${u.employeeNo}` : ''}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">{t('unfinishedNameHint')}</p>
+        </div>
+      )}
+
       {/* THE TWO COLUMNS WE CANNOT FILL, SAID ONCE, HERE. A blank column with no explanation reads as a
           bug and invites somebody to "fix" it by guessing a country code onto a tax document. */}
       <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -279,7 +323,10 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
       </div>
 
       <Card className="overflow-hidden">
-        <SectionHeader title={t('scheduleTitle')} count={form.employees} />
+        {/* THE COUNT ON THE HEADING IS THE COUNT OF ROWS BELOW IT. It used to be `form.employees` —
+            everyone the run paid — over a table that also printed everyone, and the two Bilangan Pekerja
+            tiles above already counted only the deducted. That is 7ee14bbc: 38 against 7. */}
+        <SectionHeader title={t('scheduleTitle')} count={form.deductedEmployees} />
 
         {/* SIBLING of the filter form above, never nested inside it. Carries its own companyId +
             periodKey so a download always asks for the month that is on screen. */}
@@ -343,6 +390,12 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
           </div>
           <p className="px-4 pt-2 text-xs text-muted-foreground">{t('inputsHint')}</p>
           <p className="px-4 pt-1 text-xs text-muted-foreground">{t('paymentHint')}</p>
+          {/* Both numbers, always, even when they agree: "12 of 12" is a reconciliation, "12" is a claim
+              somebody has to go and check. The dropped rows are not lost — they are the people the run
+              paid with nothing deducted, and a CP39 is a statement of deductions. */}
+          <p className="px-4 pt-1 text-xs text-muted-foreground">
+            {t('deductedOnly', { count: form.deductedEmployees, paid: form.employees })}
+          </p>
 
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
@@ -371,7 +424,12 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                     {/* Not an error state: there is no old-IC field to be missing. Rendered as a neutral
                         dash rather than the red one a genuinely absent value gets. */}
                     <td className="px-3 py-2 text-muted-foreground">{r.oldIc || '—'}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{r.newIc || <span className="text-red-600">—</span>}</td>
+                    {/* 7ee14bbc — DASHED HERE AND ON THE DRAWN PAGE, NOWHERE ELSE. `formatMyIc` touches
+                        neither the stored value nor the e-Data PCB upload file, whose identity-card
+                        field is twelve characters wide. What the operator checks here is what prints. */}
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {r.newIc ? formatMyIc(r.newIc) : <span className="text-red-600">—</span>}
+                    </td>
                     <td className="px-3 py-2 font-mono text-xs">{r.employeeNo || '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs">{r.passport || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{r.countryCode || '—'}</td>
@@ -382,7 +440,11 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={10} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      {t('noEmployees')}
+                      {/* TWO DIFFERENT EMPTY STATES since the table started printing only the deducted.
+                          "No employees in this run" and "this run paid 38 people and deducted tax from
+                          none of them" are not the same fact, and telling an operator the first when the
+                          second is true sends them to look for a payroll run that is right there. */}
+                      {form.employees > 0 ? t('noDeductions', { paid: form.employees }) : t('noEmployees')}
                     </td>
                   </tr>
                 )}

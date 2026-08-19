@@ -68,6 +68,7 @@ export function IdentityTaxCard({
   personId,
   defaults,
   derivedChildCount,
+  taxNumberSharedWith = [],
   embedded = false,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -75,6 +76,16 @@ export function IdentityTaxCard({
   personId: string;
   defaults: IdentityTaxDefaults;
   derivedChildCount: number;
+  /**
+   * 7ee14bbc — the OTHER people in this company already filed under `defaults.taxNumber`, by name.
+   *
+   * THE CP39 PREVIEW'S WARNING, AT THE POINT THE NUMBER IS ENTERED, which is what the approved plan
+   * asks for: without it a duplicate keyed here is discovered on the statement at filing time. Names,
+   * because "this number is used twice" is unactionable — the operator has to know WHO the other record
+   * is to tell which of the two is wrong. Advisory: it never blocks the save, and it is empty for
+   * everybody who is not a duplicate, which is almost everybody.
+   */
+  taxNumberSharedWith?: string[];
   /**
    * Item df09f22a — when true the island drops its own outer card chrome and renders as an "Income Tax (PCB)"
    * section nested inside the Statutory (Malaysia) card (visual merge). It keeps its OWN <form action={setTaxAction}>
@@ -144,6 +155,15 @@ export function IdentityTaxCard({
             <Field label={t('taxNumber')}>
               {/* Grey placeholder example; the sample seed value is no longer defaulted in (item 8b5334db). */}
               <input name="taxNumber" defaultValue={defaults.taxNumber ?? ''} placeholder="IG1234567890" className={inputCls} />
+              {/* 7ee14bbc — SAME WARNING AS THE CP39 PREVIEW'S, HERE, where the number is typed. Under
+                  the field rather than at the top of the card so it reads as being about this box, and
+                  never disabled/blocking: the record may legitimately need to stay as keyed while the
+                  employee sorts their number out with LHDN. */}
+              {taxNumberSharedWith.length > 0 && (
+                <span className="text-xs text-amber-700 dark:text-amber-400">
+                  {t('taxNumberSharedTitle', { count: taxNumberSharedWith.length, names: taxNumberSharedWith.join(', ') })}
+                </span>
+              )}
             </Field>
             {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
                 list, its order and the 5→3 value mapping moved into components/tax-category-field.tsx

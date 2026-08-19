@@ -101,6 +101,13 @@ function addressLines(c: {
 
 /** The per-employee fields the FIGURES table has no column for and the printed page needs. */
 export type Cp39FormRowExtras = {
+  /**
+   * WHO the row is. Not printed and not a column — it is what lets the printed form's duplicate
+   * tax-number warning tell ONE PERSON'S TWO EMPLOYMENTS (same `person_id`, therefore the same
+   * `employee_statutory_my.tax_number` by construction) from two people sharing one number. Without it
+   * that warning accused a concurrently-employed person of being two people, twice by name.
+   */
+  personId: string;
   employeeNo: string;
   passport: string;
   /** Always ''. See the block comment above — no ISO-2 column exists and none is guessed. */
@@ -218,6 +225,9 @@ export function cp39FormExtras(
       const rows = await tx
         .select({
           employmentId: employment.id,
+          // The PERSON behind the employment — see `Cp39FormRowExtras.personId`. Already on the row
+          // this query joins through, so it costs nothing.
+          personId: employment.personId,
           employeeNo: employment.employeeCode,
           passport: employeeStatutoryMy.passportNumber,
         })
@@ -226,6 +236,7 @@ export function cp39FormExtras(
         .where(inArray(employment.id, p.employmentIds));
       for (const r of rows) {
         byEmployment.set(r.employmentId, {
+          personId: r.personId,
           employeeNo: r.employeeNo ?? '',
           passport: r.passport ?? '',
           // NOT a lookup that came back empty — a column that does not exist. See the block comment.
