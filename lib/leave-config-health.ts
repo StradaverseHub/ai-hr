@@ -81,9 +81,11 @@ export type LeaveConfigFinding =
   | 'no_earning_method'
   /** BLOCKING — no entitlement table in force for this type at all. */
   | 'no_entitlement_table'
-  /** BLOCKING — several tables in force and NO eligibility rule in force to choose between them, so the
-   *  resolver returns nothing for everybody. THE PRODUCTION STATE from 2026-08-14: six Medical tables, one
-   *  rule, expired. (One table and no rule is NOT this — see `soleTableApplies`.) */
+  /** BLOCKING — tables are in force and NO rule that could hand one out is, so the resolver returns nothing
+   *  for everybody. THE PRODUCTION STATE from 2026-08-14: six Medical tables, one rule, expired. It also
+   *  covers the shape where a rule IS in force but points only at a table that has been STOPPED: that rule
+   *  matches nobody AND blocks the sole-table fallback (see `soleTableApplies`), so the type grants nothing
+   *  either way. (One table and no rule at all is NOT this.) */
   | 'no_rule_in_force'
   /** WARNING — a table in force that no rule in force points at. Nobody can ever receive it. */
   | 'table_without_rule'
@@ -117,7 +119,9 @@ export type LeaveConfigHealth = {
    *  (the resolver drops it, so it matches nobody); it still blocks `soleTableApplies`, exactly as it does
    *  in the engine. */
   ruleCount: number;
-  /** r193 fault 3 — one table, no rule in force, so the table applies to everyone with no rule needed. */
+  /** r193 fault 3 — one table in force and NO rule in force anywhere on this leave type (whichever version
+   *  of whichever of its tables that rule points at), so the table applies to everyone with no rule needed.
+   *  The second half is the engine's `leaveTypeIdsWithEligibilityRulesAt` join, not `ruleCount`. */
   soleTableApplies: boolean;
   findings: LeaveConfigFinding[];
   /** Named so the screen can say WHICH, never just "some". */
