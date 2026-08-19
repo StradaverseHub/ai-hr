@@ -3238,7 +3238,8 @@
       "summaryTotal": "Jumlah proses",
       "colProcessedDate": "Tarikh diproses",
       "rowView": "Lihat",
-      "rowContinue": "Teruskan"
+      "rowContinue": "Teruskan",
+      "rowMoreActions": "Tindakan lain"
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -4004,7 +4005,10 @@
       "removeWarnStatutoryFiled": "Penyata berkanun bagi bulan ini telah pun direkodkan.",
       "removeWarnLaterPeriods": "Bulan kemudian yang telah diproses bagi pekerja yang dipilih: {periods}. Cukai terkumpul mereka pada bulan tersebut dikira dengan hasil gaji ini disertakan.",
       "removeHistoryTitle": "Sejarah pembuangan",
-      "removeHistoryNote": "Setiap pembuangan pada proses ini — siapa, bila, mengapa, dan angka yang dibuang. Ini satu-satunya salinan angka tersebut yang tinggal."
+      "removeHistoryNote": "Setiap pembuangan pada proses ini — siapa, bila, mengapa, dan angka yang dibuang. Ini satu-satunya salinan angka tersebut yang tinggal.",
+      "reprocessSearchPlaceholder": "Cari mengikut ID atau nama pekerja",
+      "reprocessNoMatches": "Tiada pekerja sepadan dengan carian anda.",
+      "reprocessHistoryToggle": "Lihat sejarah pengiraan semula"
     },
     "transactions": {
       "title": "Transaksi",

@@ -6,7 +6,7 @@ import { batchDetail, batchInputRows, leaverAdvisory, preProcessAdvisory, type P
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
-import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -266,7 +266,9 @@ export default async function BatchPage({
   const outstandingHref = `/payroll/transaction-view?tab=outstanding&companyId=${batch.companyId}&year=${txnYear}&month=${String(txnMonth).padStart(2, '0')}`;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    /* 65e2d5de — the View screen joins the one Payroll width standard (152fea7f). It was one of three
+       under app/payroll/[batchId] the sweep missed, and it is the widest table in the module. */
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: backHref, label: t('back') }}
         title={batch.payPeriod}
@@ -397,6 +399,11 @@ export default async function BatchPage({
             {batch.status === 'processed' && resetOn && (
               <form action={resetAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
+                {/* 65e2d5de — a successful reset now returns to the Payroll Process list rather than into
+                    Continue Progress, so this screen posts the same filter selection its own Back uses.
+                    `backHref` is already whitelisted by shape; posting the raw `from` would hand the
+                    action an untrusted value to re-validate for no gain. */}
+                <input type="hidden" name="from" value={backHref} />
                 {/* d0d2c9d1 — returning to Draft and calculating again DOES collect every outstanding
                     transaction for the month (the attach guard runs on a full draft→processed
                     generation). That is the one working recovery path and nothing said so. */}

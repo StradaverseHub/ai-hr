@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
@@ -126,6 +126,48 @@ export function ReprocessForm({
   const pickedNew = additions.filter((e) => selected.has(e.employmentId));
   const picked = [...pickedNew, ...pickedExisting];
 
+  /**
+   * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, ported from the Remove Employee Payroll screen
+   * (remove-form.tsx) rather than invented a second time, so the two selection screens under a payroll run
+   * behave identically. Partial, case-insensitive, and applied to BOTH groups: filtering the people
+   * already paid while leaving the New / Pending list unfiltered would answer "where is Siti?" with
+   * silence on one table and a row on the other.
+   */
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const matches = (e: { employeeCode: string | null; name: string }) =>
+    (e.employeeCode ?? '').toLowerCase().includes(needle) || e.name.toLowerCase().includes(needle);
+  const visibleEmployees = useMemo(
+    () => (needle === '' ? employees : employees.filter(matches)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `matches` is a render-local closure over `needle`
+    [employees, needle],
+  );
+  const visibleAdditions = useMemo(
+    () => (needle === '' ? additions : additions.filter(matches)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above; `additions` is derived from newCandidates
+    [newCandidates, needle],
+  );
+  /**
+   * THE TICKED PEOPLE THE SEARCH IS CURRENTLY HIDING — and the reason the hidden inputs below exist.
+   *
+   * The table bodies render the VISIBLE rows, so a ticked row that stops matching the search box is
+   * UNMOUNTED and its `<input type="checkbox" name="employmentIds">` leaves the DOM with it. Everything
+   * else on this screen — the count, the review list, the button label — is computed from `selected` over
+   * the UNFILTERED lists, so without this the operator would be told "Reprocess 3 employee(s)", shown
+   * three names in the review, and ONE employment id would be posted. The set that is reviewed and the set
+   * that is submitted must be the same set. This is the exact defect 9066bd6c found on the Remove screen;
+   * it is a contract between the review block and the form, which is why it is pinned by a FormData test.
+   *
+   * Hidden inputs rather than clearing ticks on search, for the same reason as there: the review block
+   * below already NAMES every ticked person regardless of the search, so the full selection is on screen
+   * and honoured, whereas dropping ticks as the operator types silently discards work they can see listed.
+   */
+  const visibleIds = useMemo(
+    () => new Set([...visibleEmployees, ...visibleAdditions].map((e) => e.employmentId)),
+    [visibleEmployees, visibleAdditions],
+  );
+  const pickedOffscreen = picked.filter((e) => !visibleIds.has(e.employmentId));
+
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -138,6 +180,23 @@ export function ReprocessForm({
     <form action={reprocessSelectedAction} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+
+      {/* 65e2d5de — Search Employee, at the top of the screen where the request put it. It filters the
+          rows only; it never changes the selection. */}
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={t('reprocessSearchPlaceholder')}
+        className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
+      />
+
+      {/* See `pickedOffscreen`: the checkbox of a ticked row the search has filtered away is no longer in
+          the DOM, so it carries its id here instead. Disjoint from the mounted checkboxes by construction
+          (these are exactly the picked ids NOT visible), so nothing is posted twice. */}
+      {pickedOffscreen.map((e) => (
+        <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
+      ))}
 
       {/* fbcf706d — THE NEW / PENDING GROUP, above the people already paid. Rendered only when there is
           somebody in it, so a run with nobody waiting looks exactly as it did. */}
@@ -156,7 +215,7 @@ export function ReprocessForm({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {additions.map((c) => {
+              {visibleAdditions.map((c) => {
                 const on = selected.has(c.employmentId);
                 const blocked = c.blockers.length > 0;
                 const gaps = (codes: string[]) => codes.map((g) => t(GAP_LABEL[g] ?? g)).join(', ');
@@ -192,6 +251,13 @@ export function ReprocessForm({
                   </tr>
                 );
               })}
+              {visibleAdditions.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+                    {t('reprocessNoMatches')}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -207,9 +273,14 @@ export function ReprocessForm({
                   <span className="normal-case tracking-normal text-foreground">
                     {t('reprocessSummary', { n: selected.size, total })}
                   </span>
+                  {/* 65e2d5de — SELECT ALL REPLACES THE SELECTION WITH THE ROWS ON SCREEN, and under a
+                      search that is narrower than the word "all" — deliberately, and matching
+                      remove-form.tsx. It cannot diverge from what the operator is told: the count, the
+                      review list and the button label all move with it, and every id it leaves selected is
+                      still submitted (see `pickedOffscreen`). With no search it is exactly what it was. */}
                   <button
                     type="button"
-                    onClick={() => setSelected(new Set(employees.map((e) => e.employmentId)))}
+                    onClick={() => setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessSelectAll')}
@@ -233,7 +304,7 @@ export function ReprocessForm({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {employees.map((e) => {
+            {visibleEmployees.map((e) => {
               const on = selected.has(e.employmentId);
               return (
                 <tr key={e.employmentId} className={on ? 'bg-primary/5' : undefined}>
@@ -267,10 +338,13 @@ export function ReprocessForm({
                 </tr>
               );
             })}
-            {employees.length === 0 && (
+            {visibleEmployees.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                  {t('reprocessNoEmployees')}
+                  {/* An empty RUN and an empty SEARCH RESULT are different facts, and saying "No employees
+                      on this run" to somebody who has just typed a name is a false statement about the
+                      payroll run. Same split as remove-form.tsx. */}
+                  {employees.length === 0 ? t('reprocessNoEmployees') : t('reprocessNoMatches')}
                 </td>
               </tr>
             )}

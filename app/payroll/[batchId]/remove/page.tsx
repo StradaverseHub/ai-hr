@@ -10,7 +10,7 @@ import {
   removeEligibility,
 } from '@/core/payroll';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
-import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 import { payrollListReturnTo } from '@/lib/return-to';
 import { RemoveForm, type RemoveCandidate } from './remove-form';
@@ -135,7 +135,8 @@ export default async function RemoveEmployeePayrollPage({
           : null;
   if (refusal) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4">
+      /* 65e2d5de — both branches carry the module's one width standard, not just the happy path. */
+      <div className={pageWideCls}>
         {header}
         <ErrorBanner message={refusal} />
       </div>
@@ -160,7 +161,7 @@ export default async function RemoveEmployeePayrollPage({
   const removed = Number(sp.removed ?? 0);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className={pageWideCls}>
       {header}
 
       <ErrorBanner message={sp.error} />

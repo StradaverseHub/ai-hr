@@ -36,8 +36,9 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
 import { resumeHref, materializeToggle } from '../app/payroll/process/selection-logic';
-// 7076f8af — the reset destination is composed from these two, and the Step-2 search is this predicate.
-import { adjustmentReturnTo, withQueryParam } from '../lib/return-to';
+// 65e2d5de — the reset destination is composed from payrollListReturnTo + withQueryParam (it was
+// resumeHref until the reporter reversed it — see a3); the Step-2 search is the predicate below.
+import { adjustmentReturnTo, payrollListReturnTo, withQueryParam } from '../lib/return-to';
 import { matchesEmployeeSearch } from '../lib/employee-search';
 import {
   adminCtx,
@@ -120,17 +121,31 @@ describe('Payroll draft-resume — pure UI logic', () => {
   });
 
   /**
-   * 7076f8af a3 — WHERE A RESET LANDS. The reported defect was one line: a successful reset redirected to
-   * `/payroll/<id>`, the long draft screen, whose payslip list is empty at that exact moment because
-   * resetProcessedBatch deletes the run's payslips. It now composes its destination from `resumeHref` —
-   * the SAME rule the list rows and the resume link use — so the three can never disagree about where a
-   * draft is resumed. Pinned as the composed string because that string is what the browser follows.
+   * a3 — WHERE A RESET LANDS. Decided twice; this case now states the SECOND answer and records the first.
+   *
+   * 7076f8af's reported defect was one line: a successful reset redirected to `/payroll/<id>`, the long
+   * draft screen, whose payslip list is empty at that exact moment because resetProcessedBatch deletes the
+   * run's payslips. That round sent it to `resumeHref` instead — the guided run flow.
+   *
+   * 65e2d5de is the reporter REVERSING that: "Payroll Process → Reset Payroll → Confirm → Submit → Payroll
+   * Process". The destination is now composed from `payrollListReturnTo` over the filter query the reset
+   * form posts, so the list comes back exactly as it was left. `resumeHref` is untouched and still the one
+   * rule for "where does a draft resume?" — case a. above still pins it — it is simply no longer what the
+   * reset follows. Pinned as the composed string because that string is what the browser follows.
    */
-  it('a3. the reset destination is the wizard resume link, with the toast appended (not the run screen)', () => {
-    const dest = withQueryParam(resumeHref('b1', 'draft'), 'toast', 'Payroll reset');
-    expect(dest).toBe('/payroll/process?resume=b1&toast=Payroll%20reset');
-    // The old destination, pinned negatively: whatever else changes, it must not go back to the run screen.
+  it('a3. the reset destination is the Payroll Process list with the filters kept (not the wizard, not the run screen)', () => {
+    const dest = withQueryParam(
+      payrollListReturnTo('/payroll?year=2026&m=5&company=abc&status=processed'),
+      'toast',
+      'Payroll reset',
+    );
+    expect(dest).toBe('/payroll?year=2026&m=5&company=abc&status=processed&toast=Payroll%20reset');
+    // A form that posts nothing (or anything hostile) still lands on the list, never off-site.
+    expect(withQueryParam(payrollListReturnTo(''), 'toast', 'Payroll reset')).toBe('/payroll?toast=Payroll%20reset');
+    // Both retired destinations, pinned negatively: the run screen a reset has just emptied (7076f8af's
+    // defect) and the Continue Progress flow the reporter asked not to be dropped into (65e2d5de).
     expect(dest.startsWith('/payroll/b1')).toBe(false);
+    expect(dest.startsWith('/payroll/process')).toBe(false);
   });
 
   /**

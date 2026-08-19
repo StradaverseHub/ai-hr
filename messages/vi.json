@@ -3238,7 +3238,8 @@
       "summaryTotal": "Tổng số đợt",
       "colProcessedDate": "Ngày xử lý",
       "rowView": "Xem",
-      "rowContinue": "Tiếp tục"
+      "rowContinue": "Tiếp tục",
+      "rowMoreActions": "Thao tác khác"
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -4004,7 +4005,10 @@
       "removeWarnStatutoryFiled": "Tờ khai theo luật của tháng này đã được ghi nhận.",
       "removeWarnLaterPeriods": "Các tháng sau đã xử lý cho nhân viên được chọn: {periods}. Thuế lũy kế của họ trong những tháng đó được tính khi đã bao gồm kết quả lương này.",
       "removeHistoryTitle": "Lịch sử gỡ",
-      "removeHistoryNote": "Mọi lần gỡ trên đợt lương này — ai thực hiện, khi nào, vì sao, và các con số đã bị gỡ. Đây là bản sao duy nhất còn lại của những con số đó."
+      "removeHistoryNote": "Mọi lần gỡ trên đợt lương này — ai thực hiện, khi nào, vì sao, và các con số đã bị gỡ. Đây là bản sao duy nhất còn lại của những con số đó.",
+      "reprocessSearchPlaceholder": "Tìm theo mã hoặc tên nhân viên",
+      "reprocessNoMatches": "Không có nhân viên nào khớp với tìm kiếm của bạn.",
+      "reprocessHistoryToggle": "Xem lịch sử tính lại"
     },
     "transactions": {
       "title": "Giao dịch",

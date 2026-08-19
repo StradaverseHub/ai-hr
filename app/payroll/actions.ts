@@ -56,10 +56,6 @@ import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
 // lib/return-to.ts.
 import { adjustmentReturnTo, payrollListReturnTo, withQueryParam } from '@/lib/return-to';
-// resumeHref is the ONE declaration of "where does a draft run resume?" (app/payroll/process/
-// selection-logic.ts). resetAction sends the operator there instead of hard-coding the wizard path, so the
-// two can never drift apart.
-import { resumeHref } from './process/selection-logic';
 
 // Note: run creation (regular + additional) moved to app/payroll/process/actions.ts (createRunAction) as
 // part of the Payroll Process wizard — creation is now the wizard's TERMINAL action. createBatch /
@@ -350,12 +346,23 @@ export async function deleteDraftBatchAction(formData: FormData) {
  * payroll-batch.reset event with the session's real actor. Toast/error copy localised here
  * (ToastFromQuery renders the raw query string — same convention as deleteDraftBatchAction).
  *
- * 7076f8af — WHERE IT LANDS IS THE WHOLE DEFECT. A successful reset used to drop the operator back on
- * `/payroll/<id>`, a long draft screen carrying functions they never asked for and a payslip list that is
- * EMPTY at that exact moment (resetProcessedBatch deletes the run's payslips). The reset now hands off to
- * the guided run flow the reporter described, which is where the work actually continues: choose the
- * people, review, process. The destination comes from `resumeHref`, the one declaration of "where does a
- * draft resume?", so a future change to that route cannot leave this action pointing at a dead path.
+ * WHERE IT LANDS HAS NOW BEEN DECIDED TWICE, AND THIS IS THE SECOND ANSWER. The history matters, because
+ * the first answer was not a mistake:
+ *
+ *   · Originally a successful reset dropped the operator back on `/payroll/<id>`, a long draft screen
+ *     carrying functions they never asked for and a payslip list that is EMPTY at that exact moment
+ *     (resetProcessedBatch deletes the run's payslips).
+ *   · 7076f8af replaced that with the guided run flow (`resumeHref`) on the reporter's own instruction,
+ *     which fixed the empty screen.
+ *   · 65e2d5de is the reporter REVERSING that: "Payroll Process → Reset Payroll → Confirm → Submit →
+ *     Payroll Process". Landing inside Continue Progress is a workflow they did not ask to enter, and the
+ *     list is where the run's new Draft status can actually be seen. The Continue link on the row is still
+ *     there for anyone who does want the guided flow, so nothing is lost — only the default changed.
+ *
+ * So the destination is now the PAYROLL PROCESS LIST, as the operator left it: the reset form posts the
+ * screen's own filter query as `from`, and `payrollListReturnTo` whitelists it BY SHAPE (a posted value is
+ * untrusted — see lib/return-to.ts). Absent or hostile ⇒ a bare `/payroll`, which is still the list.
+ *
  * A FAILED reset still returns to the run screen — the run is still processed, and that is where the
  * refusal makes sense.
  */
@@ -363,6 +370,9 @@ export async function resetAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const reason = String(formData.get('reason') ?? '').trim();
+  // 65e2d5de — the list AS THE OPERATOR LEFT IT. Both reset forms post the filter query they were pressed
+  // with; whitelisted by shape, never echoed raw. A form that posts nothing resolves to '/payroll'.
+  const back = payrollListReturnTo(String(formData.get('from') ?? ''));
   const t = await getTranslations('payroll.batch');
   try {
     await resetProcessedBatch(s, { batchId, reason: reason || undefined });
@@ -380,9 +390,10 @@ export async function resetAction(formData: FormData) {
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
   revalidatePath('/payroll/process');
-  // The run is a DRAFT again by the time this line runs, so resumeHref answers with the wizard resume
-  // link. The toast rides along and is rendered by the layout's ToastFromQuery, exactly as before.
-  redirect(withQueryParam(resumeHref(batchId, 'draft'), 'toast', t('resetDone')));
+  // All three revalidatePath calls above are kept: the list is now the destination, so its cache MUST be
+  // dropped or the operator lands on a page still showing the run as Processed. The toast rides along and
+  // is rendered by the layout's ToastFromQuery, exactly as before.
+  redirect(withQueryParam(back, 'toast', t('resetDone')));
 }
 
 /**

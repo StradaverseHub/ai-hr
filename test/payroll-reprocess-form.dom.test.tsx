@@ -260,3 +260,137 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
     expect(container.querySelectorAll('table')[1]!.textContent).toContain('Already paid on this run');
   });
 });
+
+/**
+ * 65e2d5de — SEARCH EMPLOYEE, and the trap that comes with it.
+ *
+ * The request is small ("the Reprocess screen currently does not provide an employee search"), but the
+ * defect it invites is not, and 9066bd6c already paid for it once on the sibling Remove screen: the table
+ * body renders the FILTERED rows, so a ticked row the search hides is unmounted and its
+ * `<input type="checkbox" name="employmentIds">` leaves the DOM — while the count, the review list and the
+ * button label are all computed from the UNFILTERED lists and keep naming that person. The screen goes on
+ * agreeing with itself while submitting a smaller set. On a reprocess that means somebody's pay is not
+ * recalculated and nothing says so.
+ *
+ * So these cases assert `new FormData(form)` — exactly what `requestSubmit()` serialises, the mounted
+ * controls and nothing else — rather than spying on the action. It is a contract between the review block
+ * and the form, and a unit test of either half alone passes throughout.
+ */
+const posted = (container: HTMLElement): string[] =>
+  new FormData(container.querySelector('form') as HTMLFormElement).getAll('employmentIds').map(String);
+
+describe('65e2d5de — the submitted set IS the reviewed set, filtered or not', () => {
+  it('filters BOTH groups on employee ID or name, partially and case-insensitively', async () => {
+    const user = userEvent.setup();
+    const { container } = form({ newCandidates: [add({ employmentId: 'n1' }), add({ employmentId: 'n2', employeeCode: 'A0002', name: 'Raj Perumal' })] });
+    const search = screen.getByRole('searchbox');
+
+    // A name fragment, lower case against a capitalised name — and it reaches the New / Pending group as
+    // well as the people already paid. Filtering one table and not the other would answer "where is Raj?"
+    // with a row on one list and silence on the other.
+    await user.type(search, 'raj');
+    const tables = [...container.querySelectorAll('table')];
+    expect(tables[0]!.textContent).toContain('Raj Perumal');
+    expect(tables[0]!.textContent).not.toContain('Siti Aminah');
+    expect(tables[1]!.textContent).toContain('Raj Kumar');
+    expect(tables[1]!.textContent).not.toContain('John Tan');
+
+    // …and the employee ID, partially. T100002 is Alice Lim, on the second table (the first is the
+    // New / Pending group, which is still rendered — with its own "no matches" row).
+    await user.clear(search);
+    await user.type(search, '00002');
+    const paid = container.querySelectorAll('table')[1]!;
+    expect(paid.textContent).toContain('Alice Lim');
+    expect(paid.textContent).not.toContain('Raj Kumar');
+  });
+
+  it('a ticked employee the search box has since hidden is STILL submitted', async () => {
+    const user = userEvent.setup();
+    const { container } = form();
+    await user.click(boxes()[0]!); // John Tan
+    await user.click(boxes()[1]!); // Alice Lim
+    await user.click(boxes()[2]!); // Raj Kumar
+    expect(posted(container).sort()).toEqual(['e1', 'e2', 'e3']);
+
+    await user.type(screen.getByRole('searchbox'), 'Alice');
+    // The table really has filtered — the condition that would otherwise drop the other two.
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(posted(container).sort()).toEqual(['e1', 'e2', 'e3']);
+    // Not twice: the visible row's checkbox and the hidden inputs are disjoint by construction.
+    expect(posted(container)).toHaveLength(3);
+  });
+
+  it('an ADDITION hidden by the search is carried too — the hidden inputs span both groups', async () => {
+    const user = userEvent.setup();
+    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })] });
+    // n1 arrives ticked (it is the finding), and 'Alice' hides its ROW.
+    expect(posted(container)).toEqual(['n1']);
+    await user.type(screen.getByRole('searchbox'), 'Alice');
+    expect(container.querySelectorAll('table')[0]!.textContent).not.toContain('Siti Aminah');
+    // She is still NAMED in the review — which is exactly why hiding her row may not drop her — and her
+    // id is still posted, off a hidden input rather than a checkbox that no longer exists.
+    expect(screen.getByText(/Before you submit/).closest('div')!.textContent).toContain('Siti Aminah');
+    expect(posted(container)).toEqual(['n1']);
+  });
+
+  it('while a pick is hidden, the count, the review list and the button all still name it', async () => {
+    const user = userEvent.setup();
+    const { container } = form();
+    await user.click(boxes()[0]!);
+    await user.click(boxes()[2]!);
+    await user.type(screen.getByRole('searchbox'), 'Alice');
+
+    expect(screen.getByText('2 of 3 selected')).toBeInTheDocument();
+    expect(submit().textContent).toContain('2');
+    const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
+    expect(review.textContent).toContain('John Tan');
+    expect(review.textContent).toContain('Raj Kumar');
+    expect(posted(container)).toHaveLength(2);
+  });
+
+  it('un-ticking a row that is back in view removes it — the hidden inputs are not sticky', async () => {
+    const user = userEvent.setup();
+    const { container } = form();
+    await user.click(boxes()[0]!);
+    await user.click(boxes()[1]!);
+    const search = screen.getByRole('searchbox');
+    await user.type(search, 'John');
+    expect(posted(container).sort()).toEqual(['e1', 'e2']);
+    await user.clear(search);
+    await user.click(screen.getByRole('checkbox', { name: /Alice Lim/ }));
+    expect(posted(container)).toEqual(['e1']);
+  });
+
+  it('a search that matches nobody says so — it does not claim the run is empty', async () => {
+    // An empty RUN and an empty SEARCH RESULT are different facts. "No employees on this run" to somebody
+    // who has just typed a name is a false statement about the payroll run.
+    const user = userEvent.setup();
+    const { container } = form();
+    await user.click(boxes()[0]!);
+    await user.type(screen.getByRole('searchbox'), 'zzzz');
+    expect(container.textContent).toContain('No employee matches your search.');
+    expect(container.textContent).not.toContain('No employees on this run.');
+    // …and the selection made before the search is still on its way to the server.
+    expect(posted(container)).toEqual(['e1']);
+  });
+
+  it('Select all under a search takes what is ON SCREEN, and every id it leaves ticked is posted', async () => {
+    const user = userEvent.setup();
+    const { container } = form();
+    await user.type(screen.getByRole('searchbox'), 'Lim');
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    // Narrower than the word "all" — deliberately, and matching the Remove screen. The count and the
+    // button move with it, so the operator is never told more than is happening.
+    expect(posted(container)).toEqual(['e2']);
+    expect(screen.getByText('1 of 3 selected')).toBeInTheDocument();
+    // Clearing the search brings the other rows back UNTICKED, and the posted set does not grow.
+    await user.clear(screen.getByRole('searchbox'));
+    expect(posted(container)).toEqual(['e2']);
+  });
+
+  it('no search and nothing ticked ⇒ no hidden inputs at all', () => {
+    const { container } = form();
+    expect(posted(container)).toEqual([]);
+    expect(container.querySelectorAll('input[type="hidden"][name="employmentIds"]')).toHaveLength(0);
+  });
+});
