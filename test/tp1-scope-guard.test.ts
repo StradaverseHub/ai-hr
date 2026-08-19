@@ -29,7 +29,13 @@ import { vi } from 'vitest';
 
 let scope: { s: SessionContext; scopeIds: string[] };
 vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
-vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (k: string) => k) }));
+// `getLocale` joins `getTranslations` here because the TP1 list resolves its MONTH NAMES through
+// Intl in the request's locale (7ad37961) rather than from a message catalogue — twelve month
+// names in six catalogues would be six copies of the calendar.
+vi.mock('next-intl/server', () => ({
+  getTranslations: vi.fn(async () => (k: string) => k),
+  getLocale: vi.fn(async () => 'en'),
+}));
 vi.mock('next/headers', () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
 
 import Tp1TransactionPage from '../app/payroll/transactions/tp1/page';

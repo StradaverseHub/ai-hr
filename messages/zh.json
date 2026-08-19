@@ -4405,7 +4405,7 @@
         "pickEmployee": "员工",
         "pickEmployeeHint": "请在左侧选择一位员工，以查看其 TP1 个人税务减免申报。",
         "noEmployees": "当前公司范围内没有员工。",
-        "addButton": "添加 TP1 减免（{year}）",
+        "addButton": "+ 新增 TP1",
         "editButton": "编辑 TP1 减免（{year}）",
         "employeeSection": "员工信息",
         "addTitle": "添加 TP1 减免",
@@ -4430,7 +4430,14 @@
           "viewEdit": "查看 / 编辑",
           "searchPlaceholder": "搜索年度、金额或日期",
           "nShown": "显示 {count} 项",
-          "noMatches": "没有符合搜索条件的申报。"
+          "noMatches": "没有符合搜索条件的申报。",
+          "colMonth": "月份",
+          "wholeYear": "全年",
+          "status_draft": "草稿",
+          "status_submitted": "已提交",
+          "status_approved": "已批准",
+          "status_rejected": "已拒绝",
+          "status_cancelled": "已取消"
         },
         "applied": {
           "title": "已在薪资中应用",
@@ -4446,7 +4453,11 @@
         "batchStatus": {
           "processed": "已处理",
           "closed": "已关闭"
-        }
+        },
+        "yearLabel": "课税年度",
+        "viewYear": "查看年度",
+        "monthSubtitle": "扣除月份 {month}，{year}",
+        "downloadForm": "下载表单"
       },
       "zakat": {
         "title": "天课",
@@ -9224,6 +9235,166 @@
       "other": {
         "label": "其他减免（RM）",
         "help": "上面未列出的任何其他 TP1 减免类别。"
+      }
+    },
+    "sectionA": "A 部分 — 雇主资料",
+    "sectionB": "B 部分 — 雇员资料",
+    "sectionC": "C 部分 — 扣除资料",
+    "sectionCHelp": "填写您此次申报的金额。每个项目均显示年度上限及本年度已获批准的金额；超出上限的申报将被拒绝。",
+    "sectionD": "D 部分 — 回扣",
+    "sectionE": "E 部分 — 雇员声明",
+    "sectionF": "F 部分 — 雇主同意",
+    "employerName": "名称",
+    "employerTin": "税务识别号（TIN）",
+    "employeeIdNumber": "身份证／护照号码",
+    "employeeTin": "税务识别号（TIN）",
+    "colAnnualLimit": "年度上限",
+    "colCurrent": "本次",
+    "colAccumulated": "累计",
+    "colRemaining": "剩余",
+    "noLimit": "—",
+    "countedHeading": "{year} 年度已计入的金额",
+    "countedNote": "本评税年度所有已批准的申报，本表单上的这一笔除外。下方的总额就是送交税务计算的数字。",
+    "countedNone": "本评税年度尚无已批准的申报。",
+    "countedForMonth": "扣除月份 {month}",
+    "countedWholeYear": "全年申报",
+    "countedEffectiveFrom": "自第 {month} 月起计入",
+    "countedItemised": "已分项",
+    "countedNotItemised": "未分项",
+    "countedTotal": "已计入总额",
+    "countedUnattributedNote": "其中 {amount} 是在完整 TP1 表单启用之前申报的。该金额已包含在送交税务计算的数字内，但无法归入任何编号项目，因此不计入下方的「剩余」金额。",
+    "deductionMonthLabel": "扣除月份",
+    "deductionYearLabel": "扣除年份",
+    "legacyHeading": "依据旧表单申报",
+    "legacyNote": "此申报在完整 TP1 表单推出前记录，按当初填写的内容显示，并仍用于您的每月税务扣除。",
+    "rebateNote": "回扣直接减免税额，而非减少计税收入，因此不计入上方总额。",
+    "declarationText": "本人声明，本表单所列的一切资料真实、正确且完整。若所提供的资料被证实为虚假，本人可能依据1967年所得税法令第113(1)(b)段承担法律责任。",
+    "declarationTick": "本人确认此声明。",
+    "declaredOn": "确认于 {at}",
+    "declaredNone": "尚未确认。",
+    "consentStatus": "状态",
+    "consentDate": "日期",
+    "consentIntro": "批准此申报的扣除月份，或予以拒绝。",
+    "consentPending": "雇主尚未作出决定。",
+    "approvedMonth": "批准的扣除月份",
+    "approvedYear": "批准的扣除年份",
+    "approverName": "姓名",
+    "approverPosition": "职位",
+    "approve": "批准",
+    "reject": "拒绝",
+    "cancelDeclaration": "取消申报",
+    "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP1 — bukan borang rasmi LHDN.",
+    "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP1 form. This is not the agency’s own page. Every figure is the one stored against this declaration; the item wording and the annual limits come from the TP1 (1/2026) form.",
+    "status": {
+      "draft": "草稿",
+      "submitted": "已提交",
+      "approved": "已批准",
+      "rejected": "已拒绝",
+      "cancelled": "已取消"
+    },
+    "frequency": {
+      "onceEveryTwoYears": "每2个课税年度限申报一次。",
+      "compostingThreeYearsShredderCctvTwoYears": "厨余堆肥机：每3个课税年度一次。厨余粉碎机与闭路电视：每2个课税年度一次。",
+      "twoClaimsLifetime": "终身限申报2次。"
+    },
+    "items": {
+      "c1": {
+        "label": "父母／祖父母的支出",
+        "sub": {
+          "a": "医疗、特殊需要与看护费用",
+          "b": "牙科治疗",
+          "c": "全面体检，包括疫苗接种费用"
+        }
+      },
+      "c2": {
+        "label": "供本人／配偶／子女／残障父母使用的基本辅助器材"
+      },
+      "c3": {
+        "label": "进修学费（本人）",
+        "sub": {
+          "a": "法律、会计、伊斯兰金融、技术、职业、工业科学或科技领域中硕士或博士以外的课程",
+          "b": "任何领域或课程的硕士或博士学位",
+          "c": "技能提升或个人发展课程"
+        }
+      },
+      "c4": {
+        "label": "医疗费用",
+        "sub": {
+          "a": "本人／配偶／子女的重病",
+          "b": "本人／配偶的生育治疗",
+          "c": "本人／配偶／子女的疫苗接种",
+          "d": "本人／配偶／子女的牙科检查或治疗",
+          "e": "本人／配偶／子女的全面体检、心理健康评估或咨询、疾病筛查费用，以及自我健康监测器材的购置（非商业用途）",
+          "f": "18岁及以下学习障碍儿童的诊断评估、早期干预课程或康复治疗"
+        }
+      },
+      "c5": {
+        "label": "生活方式——本人／配偶／子女的个人支出",
+        "sub": {
+          "a": "购买或订阅书籍、期刊、杂志、报章及其他同类出版物（非禁止读物）",
+          "b": "购买个人电脑／智能手机／平板电脑（非商业用途）",
+          "c": "每月互联网订阅账单（以本人名义）",
+          "d": "技能提升或自我发展课程费用"
+        }
+      },
+      "c6": {
+        "label": "生活方式——本人／配偶／子女／父母的体育相关支出",
+        "sub": {
+          "a": "依据1997年体育发展法令购买体育器材",
+          "b": "体育设施的租用或入场费",
+          "c": "参加体育比赛的报名费",
+          "d": "健身房会员费或体育训练费"
+        }
+      },
+      "c7": {
+        "label": "为2岁及以下子女购买自用哺乳器材"
+      },
+      "c8": {
+        "label": "送12岁及以下子女到注册托儿中心／幼儿园／日间照护中心／过渡中心的费用"
+      },
+      "c9": {
+        "label": "国家教育储蓄计划的净存款"
+      },
+      "c10": {
+        "label": "支付前妻的赡养费"
+      },
+      "c11": {
+        "label": "自愿雇员公积金（EPF）／人寿保险",
+        "sub": {
+          "a": "自愿公积金，包括强制性公积金缴款",
+          "b": "人寿保险／自愿公积金"
+        }
+      },
+      "c12": {
+        "label": "私人退休计划与延期年金"
+      },
+      "c13": {
+        "label": "教育与医疗保险"
+      },
+      "c14": {
+        "label": "依据1969年雇员社会保险法令／2017年就业保险制度法令向PERKESO缴纳的款项"
+      },
+      "c15": {
+        "label": "自用车辆电动车充电设施的安装费、租金、器材购置（含租购）或订阅费用；家用厨余堆肥机的购置；家用厨余粉碎机与闭路电视的购置与安装"
+      },
+      "c16": {
+        "label": "首套房贷款利息（须符合资格条件）",
+        "sub": {
+          "a": "房价最高RM500,000",
+          "b": "房价超过RM500,000至RM750,000"
+        }
+      },
+      "c17": {
+        "label": "国内旅游的旅游景点入场费及文化／艺术节目费用"
+      }
+    },
+    "rebates": {
+      "d1": {
+        "label": "回扣",
+        "sub": {
+          "a": "通过每月薪金扣除以外缴付的天课",
+          "b": "副朝／宗教旅程的豁免税"
+        }
       }
     }
   },

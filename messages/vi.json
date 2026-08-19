@@ -4405,7 +4405,7 @@
         "pickEmployee": "Nhân viên",
         "pickEmployeeHint": "Chọn một nhân viên ở bên trái để xem các bản khai miễn trừ thuế TP1 của họ.",
         "noEmployees": "Không có nhân viên trong phạm vi công ty hiện tại.",
-        "addButton": "Thêm miễn trừ TP1 ({year})",
+        "addButton": "+ Thêm TP1 mới",
         "editButton": "Sửa miễn trừ TP1 ({year})",
         "employeeSection": "Thông tin nhân viên",
         "addTitle": "Thêm miễn trừ TP1",
@@ -4430,7 +4430,14 @@
           "viewEdit": "Xem / Sửa",
           "searchPlaceholder": "Tìm năm, số tiền hoặc ngày",
           "nShown": "Hiển thị {count}",
-          "noMatches": "Không có bản khai nào khớp với tìm kiếm của bạn."
+          "noMatches": "Không có bản khai nào khớp với tìm kiếm của bạn.",
+          "colMonth": "Tháng",
+          "wholeYear": "Cả năm",
+          "status_draft": "Bản nháp",
+          "status_submitted": "Đã nộp",
+          "status_approved": "Đã duyệt",
+          "status_rejected": "Bị từ chối",
+          "status_cancelled": "Đã hủy"
         },
         "applied": {
           "title": "Đã áp dụng trong lương",
@@ -4446,7 +4453,11 @@
         "batchStatus": {
           "processed": "Đã xử lý",
           "closed": "Đã đóng"
-        }
+        },
+        "yearLabel": "Năm tính thuế",
+        "viewYear": "Xem năm",
+        "monthSubtitle": "Tháng khấu trừ {month}, {year}",
+        "downloadForm": "Tải biểu mẫu"
       },
       "zakat": {
         "title": "Zakat",
@@ -9224,6 +9235,166 @@
       "other": {
         "label": "Giảm trừ khác (RM)",
         "help": "Bất kỳ hạng mục giảm trừ TP1 nào khác không được liệt kê ở trên."
+      }
+    },
+    "sectionA": "Phần A — Thông tin người sử dụng lao động",
+    "sectionB": "Phần B — Thông tin người lao động",
+    "sectionC": "Phần C — Thông tin khấu trừ",
+    "sectionCHelp": "Nhập số tiền bạn kê khai lần này. Mỗi mục hiển thị hạn mức năm và số đã được duyệt trong năm; kê khai vượt hạn mức sẽ bị từ chối.",
+    "sectionD": "Phần D — Hoàn thuế",
+    "sectionE": "Phần E — Cam kết của người lao động",
+    "sectionF": "Phần F — Chấp thuận của người sử dụng lao động",
+    "employerName": "Tên",
+    "employerTin": "Mã số thuế (TIN)",
+    "employeeIdNumber": "Số CMND / hộ chiếu",
+    "employeeTin": "Mã số thuế (TIN)",
+    "colAnnualLimit": "Hạn mức năm",
+    "colCurrent": "Lần này",
+    "colAccumulated": "Lũy kế",
+    "colRemaining": "Còn lại",
+    "noLimit": "—",
+    "countedHeading": "Đã tính cho năm {year}",
+    "countedNote": "Mọi tờ khai đã được duyệt trong năm tính thuế này, ngoại trừ tờ khai trên biểu mẫu này. Tổng số bên dưới chính là con số gửi sang phần tính thuế.",
+    "countedNone": "Chưa có tờ khai nào được duyệt cho năm tính thuế này.",
+    "countedForMonth": "Tháng khấu trừ {month}",
+    "countedWholeYear": "Tờ khai cho cả năm",
+    "countedEffectiveFrom": "tính từ tháng {month}",
+    "countedItemised": "có chi tiết theo mục",
+    "countedNotItemised": "không có chi tiết theo mục",
+    "countedTotal": "Tổng đã tính",
+    "countedUnattributedNote": "Trong đó {amount} được khai trước khi có biểu mẫu TP1 đầy đủ. Số tiền này đã nằm trong con số gửi sang phần tính thuế, nhưng không thể hiển thị dưới bất kỳ mục đánh số nào, nên không được trừ vào các con số Còn lại bên dưới.",
+    "deductionMonthLabel": "Tháng khấu trừ",
+    "deductionYearLabel": "Năm khấu trừ",
+    "legacyHeading": "Kê khai theo biểu mẫu trước đây",
+    "legacyNote": "Bản kê khai này được ghi nhận trước khi có biểu mẫu TP1 đầy đủ. Nội dung hiển thị đúng như đã nhập và vẫn được dùng cho khấu trừ thuế hằng tháng của bạn.",
+    "rebateNote": "Hoàn thuế làm giảm chính số thuế, không giảm thu nhập tính thuế, nên không nằm trong tổng số ở trên.",
+    "declarationText": "Tôi xác nhận rằng mọi thông tin nêu trong biểu mẫu này là đúng sự thật, chính xác và đầy đủ. Nếu thông tin cung cấp bị phát hiện là sai sự thật, tôi có thể bị xử lý theo đoạn 113(1)(b) của Đạo luật Thuế Thu nhập 1967.",
+    "declarationTick": "Tôi xác nhận bản kê khai này.",
+    "declaredOn": "Đã xác nhận vào {at}",
+    "declaredNone": "Chưa xác nhận.",
+    "consentStatus": "Trạng thái",
+    "consentDate": "Ngày",
+    "consentIntro": "Duyệt kê khai này cho một tháng khấu trừ, hoặc từ chối.",
+    "consentPending": "Người sử dụng lao động chưa quyết định.",
+    "approvedMonth": "Tháng khấu trừ được duyệt",
+    "approvedYear": "Năm khấu trừ được duyệt",
+    "approverName": "Tên",
+    "approverPosition": "Chức vụ",
+    "approve": "Duyệt",
+    "reject": "Từ chối",
+    "cancelDeclaration": "Hủy kê khai",
+    "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP1 — bukan borang rasmi LHDN.",
+    "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP1 form. This is not the agency’s own page. Every figure is the one stored against this declaration; the item wording and the annual limits come from the TP1 (1/2026) form.",
+    "status": {
+      "draft": "Bản nháp",
+      "submitted": "Đã nộp",
+      "approved": "Đã duyệt",
+      "rejected": "Bị từ chối",
+      "cancelled": "Đã hủy"
+    },
+    "frequency": {
+      "onceEveryTwoYears": "Giới hạn một lần trong mỗi 2 năm tính thuế.",
+      "compostingThreeYearsShredderCctvTwoYears": "Máy ủ phân từ rác thải thực phẩm: một lần trong mỗi 3 năm tính thuế. Máy nghiền rác thải thực phẩm và camera giám sát: một lần trong mỗi 2 năm tính thuế.",
+      "twoClaimsLifetime": "Giới hạn 2 lần kê khai trong đời."
+    },
+    "items": {
+      "c1": {
+        "label": "Chi phí cho cha mẹ/ông bà",
+        "sub": {
+          "a": "Điều trị y tế, nhu cầu đặc biệt và người chăm sóc",
+          "b": "Điều trị nha khoa",
+          "c": "Khám sức khỏe tổng quát bao gồm chi phí tiêm chủng"
+        }
+      },
+      "c2": {
+        "label": "Thiết bị hỗ trợ cơ bản cho bản thân / vợ chồng / con / cha mẹ khuyết tật"
+      },
+      "c3": {
+        "label": "Học phí (bản thân)",
+        "sub": {
+          "a": "Các bậc học khác ngoài Thạc sĩ hoặc Tiến sĩ trong các lĩnh vực luật, kế toán, tài chính Hồi giáo, kỹ thuật, dạy nghề, khoa học công nghiệp hoặc công nghệ",
+          "b": "Bậc Thạc sĩ hoặc Tiến sĩ ở bất kỳ lĩnh vực hoặc khóa học nào",
+          "c": "Khóa nâng cao kỹ năng hoặc phát triển bản thân"
+        }
+      },
+      "c4": {
+        "label": "Chi phí y tế",
+        "sub": {
+          "a": "Bệnh hiểm nghèo của bản thân / vợ chồng / con",
+          "b": "Điều trị hiếm muộn cho bản thân / vợ chồng",
+          "c": "Tiêm chủng cho bản thân / vợ chồng / con",
+          "d": "Khám hoặc điều trị nha khoa cho bản thân / vợ chồng / con",
+          "e": "Khám sức khỏe tổng quát, đánh giá hoặc tư vấn sức khỏe tâm thần, phí xét nghiệm sàng lọc bệnh, và mua thiết bị tự theo dõi sức khỏe (không dùng cho kinh doanh) cho bản thân / vợ chồng / con",
+          "f": "Đánh giá chẩn đoán, chương trình can thiệp sớm hoặc điều trị phục hồi cho trẻ khuyết tật học tập từ 18 tuổi trở xuống"
+        }
+      },
+      "c5": {
+        "label": "Lối sống — chi phí cá nhân cho bản thân / vợ chồng / con",
+        "sub": {
+          "a": "Mua hoặc đăng ký sách, tạp chí, báo và các ấn phẩm tương tự khác (không phải tài liệu bị cấm)",
+          "b": "Mua máy tính cá nhân / điện thoại thông minh / máy tính bảng (không dùng cho kinh doanh)",
+          "c": "Thanh toán hóa đơn internet hằng tháng (đứng tên bản thân)",
+          "d": "Chi phí khóa học nâng cao kỹ năng hoặc phát triển bản thân"
+        }
+      },
+      "c6": {
+        "label": "Lối sống — chi phí liên quan đến thể thao cho bản thân / vợ chồng / con / cha mẹ",
+        "sub": {
+          "a": "Mua thiết bị thể thao theo Đạo luật Phát triển Thể thao 1997",
+          "b": "Chi phí thuê hoặc vé vào cửa cơ sở thể thao",
+          "c": "Phí đăng ký tham gia thi đấu thể thao",
+          "d": "Phí hội viên phòng tập hoặc phí huấn luyện thể thao"
+        }
+      },
+      "c7": {
+        "label": "Mua thiết bị cho con bú để sử dụng cá nhân cho con từ 2 tuổi trở xuống"
+      },
+      "c8": {
+        "label": "Chi phí gửi con từ 12 tuổi trở xuống đến trung tâm giữ trẻ đã đăng ký / mẫu giáo / trung tâm chăm sóc ban ngày / trung tâm trung chuyển"
+      },
+      "c9": {
+        "label": "Tiết kiệm ròng trong Chương trình Tiết kiệm Giáo dục Quốc gia"
+      },
+      "c10": {
+        "label": "Tiền cấp dưỡng cho vợ cũ"
+      },
+      "c11": {
+        "label": "Quỹ Tiết kiệm Nhân viên (EPF) tự nguyện / bảo hiểm nhân thọ",
+        "sub": {
+          "a": "EPF tự nguyện, bao gồm các khoản đóng góp EPF bắt buộc",
+          "b": "Bảo hiểm nhân thọ / EPF tự nguyện"
+        }
+      },
+      "c12": {
+        "label": "Chương trình hưu trí tư nhân và niên kim trả chậm"
+      },
+      "c13": {
+        "label": "Bảo hiểm giáo dục và y tế"
+      },
+      "c14": {
+        "label": "Đóng góp cho PERKESO theo Đạo luật An sinh Xã hội Người lao động 1969 / Đạo luật Hệ thống Bảo hiểm Việc làm 2017"
+      },
+      "c15": {
+        "label": "Chi phí lắp đặt, thuê, mua (kể cả thuê mua) thiết bị, hoặc đăng ký sử dụng trạm sạc xe điện cho xe của bản thân; mua máy ủ phân từ rác thải thực phẩm dùng trong gia đình; mua và lắp đặt máy nghiền rác thải thực phẩm và camera giám sát dùng trong gia đình"
+      },
+      "c16": {
+        "label": "Tiền lãi khoản vay mua nhà đầu tiên (phải đáp ứng điều kiện)",
+        "sub": {
+          "a": "Giá nhà đến RM500,000",
+          "b": "Giá nhà trên RM500,000 đến RM750,000"
+        }
+      },
+      "c17": {
+        "label": "Phí vào cửa các trung tâm du lịch và chương trình văn hóa/nghệ thuật cho du lịch nội địa"
+      }
+    },
+    "rebates": {
+      "d1": {
+        "label": "Hoàn thuế",
+        "sub": {
+          "a": "Zakat ngoài khoản đã nộp qua khấu trừ lương hằng tháng",
+          "b": "Phí miễn trừ cho chuyến đi Umrah / chuyến đi vì mục đích tôn giáo"
+        }
       }
     }
   },

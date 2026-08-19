@@ -19,6 +19,7 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, prefillTp1FromSelfRelief } from '../core/payroll';
 import {
+  approveTp1ForPerson,
   getTp1,
   getTp1ForPerson,
   listTp1YearsForPerson,
@@ -136,6 +137,19 @@ describe('Standardize TP1 — HR admin-on-behalf', () => {
     expect((await getTp1ForPerson(admin, { personId: e.personId, assessmentYear: YEAR }))?.tp1Amount).toBe(2500);
     const submitted = (await tp1Rows(e.personId)).filter((r) => r.status === 'submitted');
     expect(submitted).toHaveLength(2); // append-only history
+
+    // 7ad37961 — the correction is APPROVED before it can feed. Section F of the official TP1 is the
+    // employer's consent, and consent is what turns a claim into an instruction to payroll. The two rows
+    // above stay two rows: approval is a decision ABOUT the winning row, not a third declaration.
+    const winner = (await getTp1ForPerson(admin, { personId: e.personId, assessmentYear: YEAR }))!;
+    await approveTp1ForPerson(admin, {
+      personId: e.personId,
+      id: winner.id,
+      approvedMonth: 1,
+      approvedYear: YEAR,
+      approverPosition: 'HR Manager',
+    });
+    expect((await tp1Rows(e.personId))).toHaveLength(2); // still two rows, one of them now approved
 
     // The monthly PCB feed still flows declaration → payroll via the unchanged prefill bridge.
     const { batchId } = await createBatch(admin, { companyId: base.companyId, payPeriod: `${YEAR}-01` });

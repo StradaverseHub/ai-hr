@@ -281,6 +281,55 @@ to these tables is traceable to the exact runs it affects.
 
 ---
 
+## 7. LHDN TP1 (1/2026) — deduction & rebate catalogue — ⚠️ Transcribed from the reporter's uploaded form
+
+- **Source:** _PCB FORM /TP1 (1/2026)_ — "Individual Tax Deduction and Rebate Claim Form for Monthly
+  Tax Deduction Purposes (PCB)", Income Tax (Deductions from Remuneration) Regulations 1994, prescribed
+  under s.152 ITA 1967. **Supplied as an attachment on board item `7ad37961`**, not retrieved from
+  hasil.gov.my. Two A4 pages, producer metadata `Microsoft Word 2019`.
+- **Encoded in:** `localization/my/statutory-tables.ts` → `MY_TP1_2026`, surfaced on the pack contract
+  as `payroll.taxReliefCatalogue` and consumed by `core/tax-relief.ts`.
+- **What we encoded** — the ANNUAL LIMIT (RM) column, item by item, exactly as the form prints it:
+
+  | Item | Annual limit | Printed sub-limits |
+  | --- | --- | --- |
+  | C1 Parents/grandparents | 8,000 | (c) full medical check-up incl. vaccination 1,000 |
+  | C2 Basic support equipment | 6,000 | — |
+  | C3 Study fees (self) | 7,000 | (c) skills / personal development 2,000 |
+  | C4 Medical expenses | 10,000 | (c) 1,000 · (d) 1,000 · (e) 1,000 · (f) 10,000 |
+  | C5 Lifestyle | 2,500 | — |
+  | C6 Lifestyle — sport | 1,000 | — |
+  | C7 Breastfeeding equipment | 1,000 | once every 2 years of assessment |
+  | C8 Childcare / kindergarten | 3,000 | — |
+  | C9 National Education Savings Scheme | 8,000 | — |
+  | C10 Alimony | 4,000 | — |
+  | C11 Voluntary EPF / life insurance | **7,000 (group)** | (a) 4,000 incl. mandatory EPF · (b) 3,000 |
+  | C12 Private retirement / deferred annuity | 3,000 | — |
+  | C13 Education & medical insurance | 4,000 | — |
+  | C14 PERKESO contributions | 350 | — |
+  | C15 EV charging / food-waste / CCTV | **2,500** | composting once/3 years; shredder + CCTV once/2 years |
+  | C16 First home loan interest | *(none — per band)* | (a) ≤RM500,000 → 7,000 · (b) >RM500,000–750,000 → 5,000 |
+  | C17 Domestic tourism / cultural & arts | 1,000 | — |
+  | D1 Rebate | *(none printed)* | (b) Umrah / religious travel: 2 claims in a lifetime |
+
+- **Two figures the approved plan did not carry, and the form does:** **C11's RM7,000 group limit**
+  (the item description recorded only its 4,000/3,000 sub-limits) and **C15's RM2,500** (the plan
+  expected it to be unsourced and to ship as `limit: null`). Both are printed in the form's own Annual
+  Limit column and are encoded. Pinned in `test/tp1-2026-form.test.ts`.
+- **What ships as `null`, deliberately (ADR-0008):** C16's group limit — the form gives its two bands
+  their own limits and their own Current/Accumulated rows, so there is no group figure to encode — and
+  both Section D rebate lines, against which the form prints no limit at all. A `null` is captured,
+  summed and printed; nothing blocks on it.
+- **Frequency rules are CAPTURED AND PRINTED, NEVER ENFORCED.** "Once every 2 years of assessment"
+  needs the employee's claim history at LHDN, which this system does not hold. A wrong refusal on a
+  valid claim is worse than no check.
+- **⚠️ Verify before production:** the attached PDF is an office document, not a file retrieved from
+  hasil.gov.my by us. Re-download TP1 (1/2026) from the LHDN forms page and diff the Annual Limit
+  column against the table above before a real filing relies on it. Until then this section is
+  **transcribed, not verified**, on the same footing as the RATE-ONLY entries in §1.
+
+---
+
 ## Verification checklist (before production payroll)
 
 - [x] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec; full computerised
@@ -298,3 +347,5 @@ to these tables is traceable to the exact runs it affects.
       EPF on bonus + SOCSO/EIS exclusion handled. Bonus month verified against Exhibit 5
       (RM727.50 / RM833.70 total).
 - [ ] Sign-off recorded (who / date) and `MY_STATUTORY_VERSION` bumped on any change.
+- [ ] **TP1 (1/2026) catalogue re-checked against the LHDN forms page** — see §7. The figures came from
+      an attachment on a board item, not from the agency's own site.

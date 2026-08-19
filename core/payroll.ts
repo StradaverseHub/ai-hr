@@ -85,6 +85,10 @@ import {
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
 import { cp38ForPeriod } from './cp38';
+// The month-collapse rule for approved TP1 declarations. Imported rather than re-implemented: the
+// limit check, the screen's remaining strip, the printed ACCUMULATED column and this feed must all
+// agree on which row is the record for a month, and one function is the only way that stays true.
+import { TP1_COUNTABLE_COLUMNS, tp1CountForYear } from './tax-relief';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
@@ -2073,9 +2077,18 @@ export async function setPayrollDeductionInput(
 }
 
 /**
- * Prefill a draft batch's TP1 personal-relief deduction from the employee's yearly self-service
- * declaration (ADR-0050, #1.1.3). The employee declares ONE annual TP1 amount per assessment year on
- * /me; the latest SUBMITTED row feeds monthly PCB here.
+ * Prefill a draft batch's TP1 personal-relief deduction from the employee's TP1 declarations
+ * (ADR-0050, #1.1.3; ADR-0081). On /me an employee declares for the assessment YEAR; on the HR screen a
+ * year holds one declaration per DEDUCTION MONTH, each carrying that month's INCREMENT.
+ *
+ * `annual` HERE IS `tp1CountForYear(rows, { throughMonth: this batch's month }).total` — core/tax-relief's
+ * OWN reduction, not a copy of it: the winning APPROVED declaration per deduction month, over the months
+ * already effective for this batch. Not the newest row: with additive per-month declarations, taking the
+ * newest would make a second declaration REDUCE the relief. The screen's Accumulated/Remaining strip and
+ * the limit check call that SAME function, which is the whole point of r209 — before it, this side and
+ * that side each decided for themselves what a carried-forward declaration was worth and disagreed by
+ * its full amount, with nothing between them to say so. See the query below, and migration 0449's
+ * backfill for why the gate moved from 'submitted' to 'approved'.
  *
  * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated` and PCB consumes `∑LP + LP₁`, so feeding
  * the full annual every month over-relieves. Per ADR-0050 §0.1 (delta method) the feed is
@@ -2157,26 +2170,53 @@ export async function prefillTp1FromSelfRelief(
     }
     if (targetByPerson.size === 0) return { applied: 0, skipped: 0 };
 
-    // Latest SUBMITTED annual declaration per person for this assessment year (§0.6: payPeriod's year).
+    // The APPROVED declarations for this assessment year (§0.6: payPeriod's year), reduced to the money
+    // in force for THIS month by core/tax-relief's `tp1CountForYear` — THE rule, not a copy of it.
+    //
+    // ⚠️ THE GATE MOVED FROM 'submitted' TO 'approved' IN 7ad37961 (ADR-0081). The official LHDN TP1 has
+    // a Section F employer consent block, and consent is what turns an employee's claim into an
+    // instruction to payroll. Migration 0449 stamps every declaration that existed before that round
+    // approved — WITHOUT THAT BACKFILL THIS QUERY RETURNS NOTHING and every existing employee's relief
+    // stops silently, because "no approved declaration" and "nobody declared anything" are the same
+    // empty set. If relief has gone missing on a run, check the backfill first.
+    //
+    // ⚠️ WHY THERE IS NO `approved_month <= pMonth` IN THIS WHERE CLAUSE ANY MORE (r209, item 7ad37961).
+    // There used to be one, and core/tax-relief's limit check had no equivalent — so a declaration
+    // carried forward from before this form counted in FULL here and ZERO there, and HR keyed each
+    // month's increment against a baseline missing it. Neither half was wrong alone; the contract
+    // between them was, and two fix passes that patched one half each moved money the wrong way. The
+    // effective-from rule now lives in exactly one place (`tp1EffectiveFromMonth`) and BOTH halves reach
+    // it through `tp1CountForYear`. Filtering here in SQL would restore the second spelling that caused
+    // the defect, so this reads every approved row of the year and lets the rule decide.
+    //
+    // ONE ROW PER MONTH, SUMMED — NOT "LATEST WINS", and that is inside `tp1CountForYear` too.
+    // 7ad37961 made a year hold up to twelve declarations (deduction_month) and made the limit check
+    // ADDITIVE across them, so HR is taught to enter each month's INCREMENT. Taking only the newest row
+    // would make a second declaration REDUCE the relief fed here (January 3,000 then June 2,000 would
+    // feed 2,000, not 5,000) — silently, with no error anywhere.
     const personIds = [...targetByPerson.keys()];
     const declarations = await tx
-      .select({
-        personId: tp1Relief.personId,
-        amount: tp1Relief.tp1Amount,
-        createdAt: tp1Relief.createdAt,
-      })
+      .select({ personId: tp1Relief.personId, ...TP1_COUNTABLE_COLUMNS })
       .from(tp1Relief)
       .where(
         and(
           inArray(tp1Relief.personId, personIds),
           eq(tp1Relief.assessmentYear, pYear),
-          eq(tp1Relief.status, 'submitted'),
+          eq(tp1Relief.status, 'approved'),
         ),
-      )
-      .orderBy(desc(tp1Relief.createdAt));
-    const annualByPerson = new Map<string, number>();
+      );
+    const rowsByPerson = new Map<string, typeof declarations>();
     for (const d of declarations) {
-      if (!annualByPerson.has(d.personId)) annualByPerson.set(d.personId, Number(d.amount)); // latest wins
+      const list = rowsByPerson.get(d.personId) ?? [];
+      list.push(d);
+      rowsByPerson.set(d.personId, list);
+    }
+    const annualByPerson = new Map<string, number>();
+    for (const [pid, rows] of rowsByPerson) {
+      // THE shared reduction. `throughMonth` is this batch's month: what is in force NOW. The screen's
+      // Accumulated/Remaining strip asks the same function for the same year with `throughMonth: null`,
+      // because an annual limit is annual — same rule, two questions, one implementation.
+      annualByPerson.set(pid, tp1CountForYear(rows, { throughMonth: pMonth }).total);
     }
     if (annualByPerson.size === 0) return { applied: 0, skipped: 0 };
 
@@ -2219,7 +2259,7 @@ export async function prefillTp1FromSelfRelief(
     for (const personId of personIds) {
       const employmentId = targetByPerson.get(personId)!;
       const annual = annualByPerson.get(personId);
-      if (annual == null) continue; // no submitted declaration this year
+      if (annual == null) continue; // no approved declaration effective for this month
       const lpAcc = lpAccByEmp.get(employmentId) ?? 0;
       const feed = Math.max(0, round2(annual - lpAcc)); // §0.1/0.2 delta — never grows ∑LP past the annual
       const prior = existingByEmp.get(employmentId);
