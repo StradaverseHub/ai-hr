@@ -268,9 +268,21 @@ export default async function LeavePage({
   const selectableSubjects = active.filter(
     (e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,
   );
+  // THE VIEWER IS NEVER FILTERED OUT OF THEIR OWN SELECTOR, even when they qualify for nothing today.
+  // `selectableSubjects` drops anyone with an empty eligible set, and applying that to the viewer is a
+  // regression main did not have (it built this list from `active` outright). It bites a line manager who
+  // is a recent hire — inside minServiceMonths on every type, or on probation under a confirmed_only
+  // catalogue — who still has a qualifying report: the trigger gate below tests the type options, which
+  // are the UNION and stay non-empty, so the "+ Request Leave" button renders, the manager is ABSENT from
+  // the employee select, and LeaveDurationFields defaults employmentId to the first option — a REPORT.
+  // They would be filing against someone else's balance by default with nothing on screen saying so.
+  // An empty-handed viewer sees themselves and an empty type list, which is the honest answer.
+  const requestLeaveSubjects = selectableSubjects.some((e) => e.employmentId === me.employmentId)
+    ? selectableSubjects
+    : [...active.filter((e) => e.employmentId === me.employmentId), ...selectableSubjects];
   const requestLeaveEmployeeOptions = [
-    ...selectableSubjects.filter((e) => e.employmentId === me.employmentId),
-    ...selectableSubjects.filter((e) => e.employmentId !== me.employmentId),
+    ...requestLeaveSubjects.filter((e) => e.employmentId === me.employmentId),
+    ...requestLeaveSubjects.filter((e) => e.employmentId !== me.employmentId),
   ].map((e) => ({ id: e.employmentId, name: e.name }));
 
   // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
@@ -505,9 +517,18 @@ export default async function LeavePage({
   const myEmploymentIds = (await myEmploymentIdsAll(session)).map((e) => e.employmentId);
   const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];
   const hArr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
-  const hTypeIds = hArr(sp.hType).filter((v) => v.length > 0);
-  const hFrom = sp.hFrom || undefined;
-  const hTo = sp.hTo || undefined;
+  // SHAPE-CHECKED BEFORE THEY REACH SQL, because these three go straight into typed predicates in
+  // core/read.ts — `from`/`to` into lte/gte against `date` columns, `hType` into an inArray against a
+  // `uuid` column — and Postgres rejects a malformed literal with 22007 / 22P02 rather than returning
+  // nothing. There is no error.tsx anywhere under app/, so that throw is an unhandled 500 that ANY
+  // logged-in employee can reach by hand-editing the query string. A bad filter must degrade to "no
+  // filter", never to a crash. This is also just the convention this page already follows twice
+  // (breakdownAsOf below, and startDefault at the Request Leave trigger).
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const hTypeIds = hArr(sp.hType).filter((v) => UUID.test(v));
+  const hFrom = sp.hFrom && ISO_DATE.test(sp.hFrom) ? sp.hFrom : undefined;
+  const hTo = sp.hTo && ISO_DATE.test(sp.hTo) ? sp.hTo : undefined;
   const historyFiltered = hTypeIds.length > 0 || hFrom != null || hTo != null;
   // The SYMMETRIC carrier. The filter panel already carries `asOf` so applying a filter cannot reset the
   // as-at date; this is the same courtesy the other way round — the as-at GET forms (the one under the

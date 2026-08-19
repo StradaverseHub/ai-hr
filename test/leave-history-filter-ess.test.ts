@@ -234,3 +234,64 @@ describe('5f2e20fb · only the history box is affected (source shape)', () => {
     expect(page).not.toContain('new Map(historyShown.rows.map(');
   });
 });
+
+describe('a hand-edited filter in the URL degrades to no filter, never to a 500', () => {
+  /**
+   * WHY BOTH HALVES. The page's three history filters go straight into typed SQL predicates —
+   * from/to into lte/gte against `date` columns, hType into an inArray against a `uuid` column — and
+   * Postgres answers a malformed literal with an ERROR (22007 / 22P02), not an empty result. There is
+   * no error.tsx anywhere under app/, so that throw surfaces as an unhandled 500 that ANY logged-in
+   * employee can reach by typing /leave?hFrom=x into the address bar. Nothing about it needs a manager
+   * role or a crafted session.
+   *
+   * The first case proves the DANGER IS REAL against a live database, so the guard in the page is
+   * load-bearing rather than decorative. The second proves the page actually applies it — the defect
+   * lives in the contract between the two files, so a test of either half alone passes throughout.
+   */
+  it('the read really does reject a malformed date or type id — the guard is load-bearing', async () => {
+    await expect(
+      listLeaveRequestsPage(myCtx, { employmentIds: [me.employmentId], from: 'x', limit: 10, offset: 0 }),
+    ).rejects.toThrow();
+    await expect(
+      listLeaveRequestsPage(myCtx, { employmentIds: [me.employmentId], leaveTypeIds: ['x'], limit: 10, offset: 0 }),
+    ).rejects.toThrow();
+  });
+
+  it('the page shape-checks all three before they reach the read', () => {
+    const page = read('app/leave/page.tsx');
+    // Each raw param is consumed exactly once, and that use is guarded.
+    expect(page).toMatch(/const hTypeIds = hArr\(sp\.hType\)\.filter\(\(v\) => UUID\.test\(v\)\)/);
+    expect(page).toMatch(/const hFrom = sp\.hFrom && ISO_DATE\.test\(sp\.hFrom\) \? sp\.hFrom : undefined/);
+    expect(page).toMatch(/const hTo = sp\.hTo && ISO_DATE\.test\(sp\.hTo\) \? sp\.hTo : undefined/);
+    // And no OTHER path reads them raw — an unguarded second read would reopen the hole.
+    for (const p of ['sp.hFrom', 'sp.hTo', 'sp.hType']) {
+      expect(page.split(p).length - 1, `${p} is read more than once; every read needs the guard`).toBe(1);
+    }
+  });
+});
+
+describe('the viewer never disappears from their own Request Leave selector', () => {
+  /**
+   * THE REGRESSION. ad965821 narrowed the selector to employees with a non-empty eligible set, which is
+   * right for reports and wrong for the viewer: a line manager inside minServiceMonths on every type (a
+   * recent hire, or on probation under a confirmed_only catalogue) qualifies for nothing today but still
+   * has qualifying reports. The trigger gate tests the TYPE options, which are the union across subjects
+   * and stay non-empty — so the button renders, the manager is missing from the employee select, and the
+   * dialog defaults employmentId to the first option, a REPORT. They file against someone else's balance
+   * by default with nothing on screen saying so. main built this list from `active` outright.
+   */
+  it('the viewer is added back when their own eligible set is empty', () => {
+    const page = read('app/leave/page.tsx');
+    // The fallback exists and is keyed on the viewer's ABSENCE from the narrowed set.
+    expect(page).toMatch(
+      /requestLeaveSubjects = selectableSubjects\.some\(\(e\) => e\.employmentId === me\.employmentId\)/,
+    );
+    expect(page).toMatch(/: \[\.\.\.active\.filter\(\(e\) => e\.employmentId === me\.employmentId\), \.\.\.selectableSubjects\]/);
+    // …and the options are built from the RESTORED list, not the narrowed one. This is the half that
+    // actually ships the fix: a fallback nobody reads changes nothing.
+    const opts = page.slice(page.indexOf('const requestLeaveEmployeeOptions'));
+    const body = opts.slice(0, opts.indexOf('}));') + 4);
+    expect(body).toContain('requestLeaveSubjects.filter');
+    expect(body, 'the selector still reads the narrowed set').not.toContain('selectableSubjects.filter');
+  });
+});
