@@ -85,7 +85,16 @@ import { listPayComponents } from '@/core/pay-components';
 // 45df860a — `currentPcbReliefs` / `explainPcb` moved WITH the PCB working to app/payroll/pcb-detail.
 // This screen links to that screen; it no longer reads the tax working itself, which is the point (one
 // display, not two). `listPayslipSourceTxns` stays — that is r199's ledger panel, a different feature.
-import { listPayslipSourceTxns, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
+// 5a29686c — `listPayslipPeriodsFor` is the period index behind the Year / Month dropdowns: the distinct
+// 'YYYY-MM' this employee actually has a payslip for. See the derivation below for why the old fixed
+// eleven-year window had to go.
+import {
+  listPayslipPeriodsFor,
+  listPayslipSourceTxns,
+  listProcessedPayslipsAcross,
+  payslipForReview,
+  sumPayslipYtd,
+} from '@/core/payroll-view';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 // 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
@@ -103,6 +112,8 @@ import {
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
+// 5a29686c — the Year / Month dropdown rules, pure so they can be asserted without a browser.
+import { payslipPeriodOptions } from './period-options';
 // 417d4937 request 10 — the shared provenance block, so this screen and Transaction View → History
 // cannot drift the way the four record-line renderers already did.
 import { SourceTxnBlock } from '../transaction-view/source-txn-block';
@@ -115,7 +126,9 @@ import { payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
 
-const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
+// 5a29686c — the twelve-month literal that used to sit here now lives in ./period-options.ts as the
+// no-periods FALLBACK. Keeping a second copy on this screen is how the dropdown and the rule behind it
+// would drift.
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
@@ -224,9 +237,6 @@ export default async function IndividualPayslipPage({
   const month = intParam(sp.month, 1, 12);
   const cycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
 
-  const nowYear = new Date().getFullYear();
-  const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
-
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(PAYSLIP_PANEL_COOKIE)?.value !== '0';
   // Fed the SAME set the scope guard above accepts, so the panel cannot offer a row the server refuses.
@@ -257,9 +267,22 @@ export default async function IndividualPayslipPage({
 
   // A payslip only loads once an EMPLOYEE is chosen — the ticket's flow (period → employee → payslip),
   // and also what keeps this screen from becoming a second, slower copy of History.
-  const matches = employmentId
-    ? await listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: 25 })
-    : [];
+  // 5a29686c — the SECOND read is the period index behind the Year / Month dropdowns: the distinct
+  // 'YYYY-MM' this employee actually has a payslip for, one column, DISTINCT in the database. Issued
+  // alongside the payslip read rather than after it, so the screen costs the same round trip it did.
+  const [matches, periods] = await Promise.all([
+    employmentId
+      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: 25 })
+      : Promise.resolve([]),
+    employmentId ? listPayslipPeriodsFor(s, { companyIds, employmentId }) : Promise.resolve([]),
+  ]);
+
+  // ── 5a29686c: the Year / Month options are the employee's OWN periods, not a fixed window ──
+  // The rules (and why each one is a rule) live in ./period-options.ts, pure and asserted directly —
+  // a dropdown that omits the value it is displaying, or that empties itself before an employee is
+  // chosen, still renders and still returns 200, so none of this is safe to leave unpinned here.
+  const { years, months } = payslipPeriodOptions(periods, { year, month }, new Date().getFullYear());
+
   // The chosen run, or the most recent match. A tampered payslipId simply does not match.
   const chosen = sp.payslipId ? matches.find((r) => r.id === sp.payslipId) : matches[0];
 
@@ -402,7 +425,7 @@ export default async function IndividualPayslipPage({
           <Field label={t('filterMonth')}>
             <select name="month" defaultValue={month != null ? String(month).padStart(2, '0') : ''} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
-              {MONTHS.map((m) => (
+              {months.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
@@ -428,7 +451,13 @@ export default async function IndividualPayslipPage({
           them rather than silently showing the newest. */}
       {matches.length > 1 && (
         <Card className="p-4 print:hidden">
-          <SectionHeader title={t('otherRuns')} count={matches.length} />
+          {/* 5a29686c — THE SUBTITLE, and why the card itself is untouched. This section has now been
+              reported twice as an over-long payslip history that ought to be a Year/Month/Cycle picker.
+              It is not a history: it appears ONLY when more than one run matches all four dropdowns —
+              a bonus run beside a regular one, a re-issue, or the two halves of a mid-month entity
+              transfer — and those four dropdowns cannot tell such runs apart, so deleting it would
+              remove the only control that can. What it was missing was a sentence saying that. */}
+          <SectionHeader title={t('otherRuns')} count={matches.length} subtitle={t('otherRunsHint')} />
           <div className="flex flex-wrap gap-2 pt-2">
             {matches.map((m) => (
               <Link

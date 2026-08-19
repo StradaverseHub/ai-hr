@@ -5048,6 +5048,7 @@
       "filterYear": "年份",
       "noPayslip": "所选期间和周期内尚未为该员工计算薪资。",
       "otherRuns": "此选择范围内的薪资批次",
+      "otherRunsHint": "有多个薪资批次同时符合此公司、年份、月份和周期，例如常规批次之外的花红批次，或重新发放的批次。请选择您要查看的批次。",
       "payDateLine": "发放日期：{date}",
       "payPeriodLine": "薪资期间：{period}",
       "segmentPeriodLine": "在本公司任职 {from} 至 {to}",

@@ -5048,6 +5048,7 @@
       "filterYear": "Year",
       "noPayslip": "No payroll has been calculated for this employee in the selected period and cycle.",
       "otherRuns": "Payroll runs in this selection",
+      "otherRunsHint": "More than one payroll run matches this company, year, month and cycle — for example a bonus run beside the regular one, or a re-issue. Choose the one you want to see.",
       "payDateLine": "Payment date: {date}",
       "payPeriodLine": "Payroll period: {period}",
       "segmentPeriodLine": "Employed by this company {from} to {to}",
