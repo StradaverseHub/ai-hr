@@ -6,12 +6,16 @@ import { orgCriteriaFromFields, countOrgCriteriaTargets } from '@/core/org-crite
 import {
   createEligibilityRule,
   createEntitlementTemplate,
+  leaveTypeIdForRuleLineage,
+  leaveTypeIdForTemplateLineage,
+  reprojectEntitlementForLeaveTypeCohort,
   retireEligibilityRule,
   retireEntitlementTemplate,
   updateEligibilityRule,
   updateEntitlementTemplate,
   type ServiceBand,
 } from '@/packs/leave/service';
+import type { SessionContext } from '@/db/client';
 
 /**
  * 6e9a126e RELEASE TWO — the writes behind the Entitlement Tables + Employee Eligibility editor.
@@ -102,6 +106,45 @@ function criteriaFrom(fd: FormData) {
   );
 }
 
+/**
+ * r209 — RECALCULATE ON SAVE. The reporter's request, in one sentence: "saving an entitlement setup should
+ * recalculate the affected employees' balances straight away, so you no longer have to remember to run
+ * Generate Entitlement afterwards."
+ *
+ * ⚠️ THE TRIGGER WAS DOCUMENTED AND NEVER WIRED. `reprojectEntitlementForLeaveTypeCohort`'s own header in
+ * core/leave.ts has said since release three that it fires "when an entitlement TEMPLATE or an ELIGIBILITY
+ * RULE for the type is written" — and no call site existed. Only `setLeaveTypeRulesAction` called it, and
+ * only when the earning-method marker was cleared. So a table typed today and a rule renewed today changed
+ * nothing on anybody's balance until somebody thought to press a button on a different screen.
+ *
+ * FOUR PROPERTIES, EACH LOAD-BEARING:
+ *
+ *  1. AFTER THE WRITE TRANSACTION HAS COMMITTED, never inside it. Each per-employee recalc opens its OWN
+ *     transaction and reads the COMMITTED configuration; calling it inside the write would have every
+ *     employee reproject against the configuration the save just replaced. Every caller below awaits the
+ *     service first and calls this second — the same ordering `setLeaveTypeRulesAction` is pinned on.
+ *  2. BEST EFFORT. The configuration is saved and must stay saved. The recalc is idempotent and self-heals
+ *     on the next trigger, so a failure here must not turn a successful save into an error banner. Same
+ *     disposition as the leave-type cohort catch-up next door.
+ *  3. BEFORE the redirect. `saved()` throws (that is how `redirect()` works), so anything after it is
+ *     unreachable — and anything inside the service try/catch would be caught by the handler meant for
+ *     validation errors.
+ *  4. NO OPINION IS NOT ZERO. Retiring a table is a legitimate call here: the affected employees then
+ *     resolve to nothing, `composeEntitlement` returns `noOpinion`, and the kernel posts a delta of exactly
+ *     0 rather than clawing days back. That guard is why this can fire on a retire at all.
+ *
+ * BLAST RADIUS, stated plainly: this posts recalc rows for everyone the leave type reaches, at the moment
+ * the table or rule is saved. That is the point — it is the moment balances are supposed to move.
+ */
+async function recomputeAfterSave(s: SessionContext, leaveTypeId: string | null, trigger: string) {
+  if (!leaveTypeId) return;
+  try {
+    await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId, trigger });
+  } catch (e) {
+    console.error(`entitlement recompute after ${trigger} failed for leave type ${leaveTypeId}:`, e);
+  }
+}
+
 export async function createEntitlementTemplateAction(formData: FormData) {
   const s = await requireAdmin();
   try {
@@ -114,6 +157,7 @@ export async function createEntitlementTemplateAction(formData: FormData) {
   } catch (e) {
     refused(formData, e);
   }
+  await recomputeAfterSave(s, String(formData.get('leaveTypeId') ?? ''), 'entitlement_template_created');
   saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
@@ -127,9 +171,10 @@ export async function createEntitlementTemplateAction(formData: FormData) {
  */
 export async function updateEntitlementTemplateAction(formData: FormData) {
   const s = await requireAdmin();
+  const lineageId = String(formData.get('lineageId') ?? '');
   try {
     await updateEntitlementTemplate(s, {
-      lineageId: String(formData.get('lineageId') ?? ''),
+      lineageId,
       name: String(formData.get('name') ?? ''),
       serviceBands: bandsFrom(formData),
       validFrom: String(formData.get('validFrom') ?? ''),
@@ -137,64 +182,83 @@ export async function updateEntitlementTemplateAction(formData: FormData) {
   } catch (e) {
     refused(formData, e);
   }
+  await recomputeAfterSave(
+    s,
+    await leaveTypeIdForTemplateLineage(s, lineageId),
+    'entitlement_template_updated',
+  );
   saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 /** Stop a table from a date. There is no delete — see `retireEntitlementTemplate`. */
 export async function retireEntitlementTemplateAction(formData: FormData) {
   const s = await requireAdmin();
+  const lineageId = String(formData.get('lineageId') ?? '');
+  // Resolved BEFORE the retire only for symmetry of reading; the lineage's leave type is immutable, so the
+  // answer is the same either side of the write.
   try {
     await retireEntitlementTemplate(s, {
-      lineageId: String(formData.get('lineageId') ?? ''),
+      lineageId,
       validTo: String(formData.get('validTo') ?? ''),
     });
   } catch (e) {
     refused(formData, e);
   }
+  await recomputeAfterSave(s, await leaveTypeIdForTemplateLineage(s, lineageId), 'entitlement_template_retired');
   saved(formData, `Stopped ${String(formData.get('name') ?? '')}`);
 }
 
 export async function createEligibilityRuleAction(formData: FormData) {
   const s = await requireAdmin();
+  const templateLineageId = String(formData.get('templateLineageId') ?? '');
   try {
     await createEligibilityRule(s, {
       name: String(formData.get('name') ?? ''),
-      templateLineageId: String(formData.get('templateLineageId') ?? ''),
+      templateLineageId,
       criteria: criteriaFrom(formData),
       validFrom: String(formData.get('validFrom') ?? ''),
     });
   } catch (e) {
     refused(formData, e);
   }
+  // THE ONE THAT MATTERS MOST. A rule is what connects an employee to a table at all, so writing one is
+  // exactly the moment a population goes from resolving nothing to resolving days — and, until r209, the
+  // moment when nothing whatsoever happened to their balances.
+  await recomputeAfterSave(s, await leaveTypeIdForTemplateLineage(s, templateLineageId), 'eligibility_rule_created');
   saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 export async function updateEligibilityRuleAction(formData: FormData) {
   const s = await requireAdmin();
+  const templateLineageId = String(formData.get('templateLineageId') ?? '');
   try {
     await updateEligibilityRule(s, {
       lineageId: String(formData.get('lineageId') ?? ''),
       name: String(formData.get('name') ?? ''),
-      templateLineageId: String(formData.get('templateLineageId') ?? ''),
+      templateLineageId,
       criteria: criteriaFrom(formData),
       validFrom: String(formData.get('validFrom') ?? ''),
     });
   } catch (e) {
     refused(formData, e);
   }
+  // Read off the POSTED template, not the rule's previous one: an edit may have re-pointed the rule at a
+  // different table, and the type that needs recomputing is the one it points at NOW.
+  await recomputeAfterSave(s, await leaveTypeIdForTemplateLineage(s, templateLineageId), 'eligibility_rule_updated');
   saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
 export async function retireEligibilityRuleAction(formData: FormData) {
   const s = await requireAdmin();
+  const lineageId = String(formData.get('lineageId') ?? '');
+  // The retire form posts no template, so the leave type is derived from the rule's own lineage.
+  const leaveTypeId = await leaveTypeIdForRuleLineage(s, lineageId);
   try {
-    await retireEligibilityRule(s, {
-      lineageId: String(formData.get('lineageId') ?? ''),
-      validTo: String(formData.get('validTo') ?? ''),
-    });
+    await retireEligibilityRule(s, { lineageId, validTo: String(formData.get('validTo') ?? '') });
   } catch (e) {
     refused(formData, e);
   }
+  await recomputeAfterSave(s, leaveTypeId, 'eligibility_rule_retired');
   saved(formData, `Stopped ${String(formData.get('name') ?? '')}`);
 }
 

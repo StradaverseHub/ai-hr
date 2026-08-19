@@ -59,6 +59,9 @@ import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
+// r209 — whose breakdown explains a pooled row's figures. A borrower shows the POOL's numbers, so it must
+// show the pool's entitlement story too, or the row contradicts itself. See lib/shared-leave-balance.ts.
+import { balanceStoryTypeId } from '@/lib/shared-leave-balance';
 import { durationLabel } from '@/lib/leave-duration';
 // 46afcc48 — the shared-group context lines interpolate day figures, and a day figure is printed one way
 // in this repo (4a1abc4a). Interpolating a raw Number would print "10" beside the card's "9.00".
@@ -381,7 +384,8 @@ export default async function LeavePage({
   // COLLAPSED by default the double-listing that motivated the skip is no longer prominent.
   type SelfBalance = (typeof selfBalances)[number];
   const buildCardPanel = (b: SelfBalance) => {
-    const bd = breakdownByType.get(b.leaveTypeId);
+    // r209 — the POOL's breakdown for a borrower (balanceStoryTypeId); identity for every other type.
+    const bd = breakdownByType.get(balanceStoryTypeId(b));
     // 1f6fd6d8: the `entitlementCalcBreakdown` toggle named a section that no longer exists. The honest
     // form of the question the three call sites were really asking is essViewHasAnyVisibleRow — a side-sheet
     // whose every line HR has hidden is an empty panel, and an empty panel should not be offered.
@@ -784,7 +788,8 @@ export default async function LeavePage({
             group,
             label: tMe(`leaveGroups.${group}`),
             types: types.map((b) => {
-              const bd = breakdownByType.get(b.leaveTypeId);
+              // r209 — the POOL's breakdown for a borrower; identity for every other type.
+              const bd = breakdownByType.get(balanceStoryTypeId(b));
               const showBreakdown = essViewHasAnyVisibleRow(b.essView);
               return {
                 leaveTypeId: b.leaveTypeId,
@@ -983,7 +988,10 @@ export default async function LeavePage({
                 // deriveBalanceRow applies the ESS available/taken gating; the breakdown side-sheet is offered only
                 // when HR has left at least one Leave Summary line visible (1f6fd6d8) — else the expander never mounts.
                 const showBreakdown = essViewHasAnyVisibleRow(b.essView);
-                const bd = breakdownByType.get(b.leaveTypeId);
+                // r209 — a BORROWER's row carries the pool's figures, so it tells the pool's entitlement
+                // story (balanceStoryTypeId). Its own breakdown describes a leave type that has no
+                // entitlement table by design, and printing that beside spendable days read as a fault.
+                const bd = breakdownByType.get(balanceStoryTypeId(b));
                 return {
                   ...deriveBalanceRow(b, bd ?? null),
                   detail:

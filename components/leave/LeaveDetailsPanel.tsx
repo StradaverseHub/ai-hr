@@ -64,6 +64,14 @@ const PANEL_STATUS_COPY: Partial<Record<EntitlementStatus, { title: string; body
   earned_accrual: { title: 'statusEarnedAccrualTitle', body: 'statusEarnedAccrualBody' },
   zero_entitlement: { title: 'statusZeroEntitlementTitle', body: 'statusZeroEntitlementBody' },
   earning_method_missing: { title: 'statusEarningMethodMissingTitle', body: 'statusEarningMethodMissingBody' },
+  // r209 — the three states 31e39d74 could not distinguish, and the reason it could not: `not_configured`
+  // was one bucket for "there is no day table" AND "there are six and none of them reaches you", and it was
+  // SILENT. `capped_by_max_balance` was not a state at all — a cap of 0 grants, clamps, writes its accrual
+  // row and reads as `granted` over a figure of 0.00. None of the three borrows another's copy, for the same
+  // reason `earned_accrual` may not borrow `not_generated`'s: each names a DIFFERENT thing to go and fix.
+  no_entitlement_table: { title: 'statusNoEntitlementTableTitle', body: 'statusNoEntitlementTableBody' },
+  no_eligibility_match: { title: 'statusNoEligibilityMatchTitle', body: 'statusNoEligibilityMatchBody' },
+  capped_by_max_balance: { title: 'statusCappedByMaxBalanceTitle', body: 'statusCappedByMaxBalanceBody' },
 };
 
 export function LeaveDetailsPanel({

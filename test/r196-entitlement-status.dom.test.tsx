@@ -14,9 +14,16 @@
  *     the suite and passes `next build`. That is AGENTS rule 6, and this file is how it is answered when a
  *     dev server is not available (precedent: test/r191-panel-order-locales.dom.test.tsx).
  *
- * Also asserted here, and not statically assertable anywhere else: the caption appears ONLY for the two
- * states that need announcing. A banner on every leave type a tenant has not configured would bury the
- * two that matter, which is the same failure as saying nothing.
+ * Also asserted here, and not statically assertable anywhere else: the caption appears ONLY for the states
+ * that need announcing, and stays absent for the ones that do not.
+ *
+ * ⚠️ r209 CHANGED WHICH STATES THOSE ARE, and the original sentence here is worth keeping alongside the
+ * correction rather than overwriting: "a banner on every leave type a tenant has not configured would bury
+ * the two that matter, which is the same failure as saying nothing." That reasoning kept `not_configured`
+ * silent — and `not_configured` was ALSO the answer for "six entitlement tables exist and no eligibility
+ * rule reaches you", which is what one rule expiring on 13 August 2026 did to an entire tenant. Six days of
+ * 0.00 with nothing on any screen. So the state was SPLIT: the un-actionable half kept its name and its
+ * silence, and the three actionable ones are announced.
  */
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -48,6 +55,12 @@ const ALL_STATUSES: EntitlementStatus[] = [
   'earned_accrual',
   'zero_entitlement',
   'earning_method_missing',
+  // r209 — the three states that split `not_configured` apart and named the max-balance clamp. Added here
+  // rather than to a separate file precisely because this file is the render check: each one resolves its
+  // copy through the same status-indexed map, so a locale missing one paints MISSING_MESSAGE behind a 200.
+  'no_entitlement_table',
+  'no_eligibility_match',
+  'capped_by_max_balance',
   'not_configured',
 ];
 const ANNOUNCED = ALL_STATUSES.filter(entitlementStatusNeedsNotice);
@@ -99,6 +112,9 @@ const row = (status: EntitlementStatus): LeaveBalanceRow => ({
   ytdEntitled: 0,
   entitlementStatus: status,
   balance: 0,
+  // r209 — no shared pool on this fixture: the caption under test is the entitlement STATUS, and a pool
+  // descriptor here would add a second caption to every assertion for no reason.
+  sharedBalance: null,
 });
 
 function renderPanel(locale: Locale, status: EntitlementStatus) {

@@ -57,6 +57,9 @@ import { buildTemplateEntitlementResolver } from './entitlement-template';
 // 31e39d74 — "configured but not yet generated" as a value, not as a silence. Pure + DB-free, so the
 // server read and the two presentation layers that show it share ONE definition (lib/entitlement-status.ts).
 import { resolveEntitlementStatus, type EntitlementStatus } from '../lib/entitlement-status';
+// r209 — the shared-pool descriptor. Declared in lib/ rather than here so the CLIENT-safe balance grids can
+// name the shape without importing a module that drags in db/client.
+import type { SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
 // predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
 // drifted into the bug both items describe.
@@ -2387,6 +2390,8 @@ export function leaveBalances(
         // ess_placement + visible_to_employee are known (resolvePlacement, lib/leave-groups.ts). The planned
         // cards-and-groups renderer (6d78f373) reads this to decide the type's card/group/hidden slot.
         placement: 'secondary' as EssPlacement,
+        // r209 — filled in the pooling pass below; null for every type that spends its own balance.
+        sharedBalance: null as SharedLeaveBalanceInfo | null,
       };
     });
     // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
@@ -2410,6 +2415,7 @@ export function leaveBalances(
         role: null as string | null,
         // Leave grouping visibility (b653ac1b): placeholder, overwritten in the final pass. See rows.map above.
         placement: 'secondary' as EssPlacement,
+        sharedBalance: null as SharedLeaveBalanceInfo | null,
       });
       seen.add(p.leaveTypeId);
     }
@@ -2431,7 +2437,7 @@ export function leaveBalances(
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
-      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement });
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement, sharedBalance: null as SharedLeaveBalanceInfo | null });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
     // archived types with old ledger entries fall back to their stored English name).
@@ -2449,14 +2455,17 @@ export function leaveBalances(
     // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
     const visualByType = new Map<
       string,
-      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null }
+      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null }
     >();
     if (seenIds.length > 0) {
       const visuals = await tx
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee })
+        // r209 — `balanceSourceTypeId` rides along on the select that already runs for every seen type. It
+        // is not a visual, and it is here for the same reason the placement columns are: one query over the
+        // ids already in hand, rather than a second one for a column that is null on almost every type.
+        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId })
         .from(leaveType)
         .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee });
+      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId });
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
@@ -2484,6 +2493,66 @@ export function leaveBalances(
         v?.role ?? r.role ?? null,
       );
     }
+    /**
+     * r209 — THE SHARED POOL, READ AS ONE FIGURE.
+     *
+     * `leave_type.balance_source_type_id` has worked in the ENGINE since cdf9ca48: `resolveBalanceSourceTypeId`
+     * moves the submit guard and the approval debit to the source type, and `balanceSpenderTypeIds` reserves
+     * the pending days of EVERY type that spends it. This read did none of that — it grouped the ledger by
+     * leave type and stopped — so a borrowing type showed a permanently empty ledger of its own. On
+     * production that is Emergency Leave reading 0.00 next to the Annual Leave balance it actually spends.
+     *
+     * WHAT THIS PASS DOES, and each part matches a line of the engine it has to agree with:
+     *   · `balance` / `accrued` / `taken` come from the SOURCE row, because the source's ledger IS the pool —
+     *     every debit for every member landed there (core/leave.ts, `balanceTypeId`).
+     *   · `pending` is the sum over the SOURCE AND EVERY BORROWER, which is exactly `balanceSpenderTypeIds`'
+     *     reservation. This corrects the source type too: a pending Emergency application reserves Annual
+     *     days at approval time, and until now Annual's own "Available" did not know it.
+     *   · `available = balance − pending`, so the figure on screen is the one the submit guard will use, and
+     *     an application that the screen says fits cannot be refused for not fitting.
+     *   · `sharedBalance` names the pool and every type in it, so the employee is never left guessing whether
+     *     a number is per type or shared.
+     *
+     * NO SECOND POOLING MECHANISM. This reads the column the product already has; shared leave GROUPS
+     * (core/leave-shared-group.ts) are a different, TAKING-side limit and are untouched.
+     *
+     * A tenant with no `balance_source_type_id` anywhere takes the `pools.size === 0` exit and every figure
+     * is byte-identical to before.
+     */
+    const pools = new Map<string, string[]>(); // source type id → member type ids (source included)
+    for (const r of out) {
+      const src = visualByType.get(r.leaveTypeId)?.balanceSourceTypeId;
+      if (!src) continue;
+      const members = pools.get(src);
+      if (members) members.push(r.leaveTypeId);
+      else pools.set(src, [src, r.leaveTypeId]);
+    }
+    if (pools.size > 0) {
+      const rowById = new Map(out.map((r) => [r.leaveTypeId, r]));
+      for (const [sourceId, memberIds] of pools) {
+        const source = rowById.get(sourceId);
+        // The source type is archived, hidden from this employee's eligible set, or otherwise absent from
+        // `out`. There is no pooled figure to show and inventing one from the borrowers alone would be a
+        // number no ledger holds — leave every member exactly as it was.
+        if (!source) continue;
+        const members = memberIds.map((id) => rowById.get(id)).filter((x): x is typeof source => x != null);
+        const pooledPending = members.reduce((n, m) => n + m.pending, 0);
+        const info: SharedLeaveBalanceInfo = {
+          sourceLeaveTypeId: sourceId,
+          sourceLeaveTypeName: source.leaveType,
+          contributingLeaveTypes: members.map((m) => m.leaveType),
+        };
+        for (const m of members) {
+          m.accrued = source.accrued;
+          m.taken = source.taken;
+          m.balance = source.balance;
+          m.pending = pooledPending;
+          m.available = source.balance - pooledPending;
+          m.sharedBalance = info;
+        }
+      }
+    }
+
     // Leave Type Employee Visibility (7b11f1c1) — visibility gate. HR can hide a whole leave type from the
     // /me Leave tab (visible_to_employee=false) — its balance, its pending request, and its no-activity menu
     // entry all disappear. SINGLE choke point covering all three ways a row enters `out` (ledger rows, the
@@ -3026,6 +3095,16 @@ export function leaveEntitlementBreakdown(
     );
     const entitlementStatus = resolveEntitlementStatus({
       hasTemplateInForce: entitlementWinner != null,
+      // r209 — THE FACT THAT SEPARATES THE TWO ZEROES. `entitlementWinner == null` is true both when the
+      // leave type has no day table at all and when it has six of them and no eligibility rule reaches this
+      // employee. Those call for opposite actions, and until this line both rendered as one silent 0.00 —
+      // which is how a single rule expiring on 13 August 2026 took a whole tenant's entitlement out with no
+      // signal anywhere. Read off the resolver already built above, so it costs nothing.
+      leaveTypeHasTemplates: templates.hasTemplatesFor(leaveTypeId),
+      // r209 — the SAME cap `applyMaxBalance` will clamp the grant against (band's own, or the leave type's
+      // rule overlaid by `applyLeaveTypeRules`). A cap of 0 clamps every granted day away while still
+      // writing the accrual row, so without this the screen reads "generated" over 0.00.
+      maxBalanceDays: policy?.maxBalanceDays ?? null,
       accrualUnconfigured: isAccrualUnconfigured(type),
       // ⚠️ THE TWO INPUTS THE FIRST CUT OF THIS LACKED, AND WHY IT WAS WRONG WITHOUT THEM. "A table is in
       // force and no accrual row exists" was read as "generation has not run", but `openLeaveYear` has

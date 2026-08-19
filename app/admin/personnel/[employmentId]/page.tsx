@@ -30,6 +30,9 @@ import {
   ENTITLEMENT_STATUS_TIP_KEY,
   entitlementStatusNeedsNotice,
 } from '@/lib/entitlement-status';
+// r209 — a borrowing leave type's card shows the POOL's figures, so it must show the pool's entitlement
+// story too. See lib/shared-leave-balance.ts for the contradiction this closes.
+import { balanceStoryTypeId } from '@/lib/shared-leave-balance';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
@@ -2373,7 +2376,9 @@ export default async function EmployeePage({
                   not an ANSWER: it cannot distinguish a type nobody configured from one whose table is
                   written and waiting for Generate Entitlement. The caption is that distinction. */}
               {(() => {
-                const st = breakdownByType.get(b.leaveTypeId)?.entitlementStatus;
+                // r209 — the POOL's status for a borrower (balanceStoryTypeId): its own breakdown says
+                // "no entitlement table", which is true of the type and false of the figure beside it.
+                const st = breakdownByType.get(balanceStoryTypeId(b))?.entitlementStatus;
                 return st && entitlementStatusNeedsNotice(st) ? (
                   <div
                     className="mt-1 text-xs text-amber-700 dark:text-amber-500"
@@ -2383,9 +2388,9 @@ export default async function EmployeePage({
                   </div>
                 ) : null;
               })()}
-              {breakdownByType.get(b.leaveTypeId) && (
+              {breakdownByType.get(balanceStoryTypeId(b)) && (
                 <EntitlementBreakdown
-                  data={breakdownByType.get(b.leaveTypeId)!}
+                  data={breakdownByType.get(balanceStoryTypeId(b))!}
                   summary={{ available: b.available }}
                   // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
                   visual={{ color: b.color, icon: b.icon, code: b.code }}

@@ -20,6 +20,16 @@ import {
 // The grade-group ⇄ job-grade arithmetic, shared with the client rule form so "whole group" cannot come to
 // mean two different things on the two halves of this screen.
 import { partiallyCoveredGradeGroups, type GradeGroupOption } from '@/lib/grade-group-coverage';
+// r209 — the pure "why can this leave type not produce a balance" derivation, and its two renderers. The
+// block is where the tables and rules the findings are ABOUT already live, so the notice sits beside them.
+import {
+  addDaysIso,
+  leaveConfigHealthAll,
+  leaveTypeConfigHealth,
+  RULE_EXPIRY_WARNING_DAYS,
+  type HealthLeaveType,
+} from '@/lib/leave-config-health';
+import { LeaveConfigHealthCard, LeaveConfigHealthNotice } from '@/components/leave/leave-config-health';
 import { Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
@@ -74,7 +84,10 @@ export type EntitlementTablesData = {
    *  mount is composed for archived panels too, so a name resolved off an active-only list would render
    *  blank there. OFFERING a type in the create picker must not: a new table for an archived type is not a
    *  thing to invite. The picker filters; the name map does not. */
-  leaveTypes: { id: string; name: string; archived: boolean }[];
+  /** r209 — `accrualMethod` / `accrualUnconfigured` ride along because the health check needs them and this
+   *  read already has them. `leave_type.accrual_unconfigured` has been stamped since 2026-08-04 and was read
+   *  by NO surface until r209 — that is the defect, not a missing column. */
+  leaveTypes: (HealthLeaveType & { archived: boolean })[];
   /** EVERY version, not just the running ones — a superseded table is the record a closed year was
    *  reported against, and the three past-date readers still resolve it. The list marks which is running. */
   templates: EntitlementTemplateRow[];
@@ -96,6 +109,9 @@ export type EntitlementTablesData = {
    *  Without these names it went in NAKED: the picker showed a bare UUID an operator could tick. This list
    *  adds no option; it only gives the ones already there a name to render. */
   archivedMemberGrades: { id: string; name: string }[];
+  /** r209 — the ACTIVE job-grade catalogue, which is the population "a Job Grade belongs to no entitlement
+   *  table" is measured against. Read here rather than in the health module because the module is pure. */
+  activeGrades: { id: string; name: string }[];
   today: string;
 };
 
@@ -165,7 +181,13 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     .map((g) => ({ id: g.id, name: g.name }));
 
   return {
-    leaveTypes: leaveTypes.map((x) => ({ id: x.id, name: x.name, archived: !!x.archivedAt })),
+    leaveTypes: leaveTypes.map((x) => ({
+      id: x.id,
+      name: x.name,
+      archived: !!x.archivedAt,
+      accrualMethod: x.accrualMethod ?? null,
+      accrualUnconfigured: x.accrualUnconfigured != null,
+    })),
     templates,
     rules,
     ruleCounts,
@@ -174,6 +196,7 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     // the rule form is a CLIENT component, so nothing beyond id / name / membership may cross to it.
     gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds })),
     archivedMemberGrades,
+    activeGrades: activeGrades.map((g) => ({ id: g.id, name: g.name })),
     today,
   };
 }
@@ -208,7 +231,8 @@ export async function EntitlementTablesBlock({
   editRule?: string;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
-  const { leaveTypes, ruleCounts, criteriaSections, gradeGroups, archivedMemberGrades, today } = data;
+  const { leaveTypes, ruleCounts, criteriaSections, gradeGroups, archivedMemberGrades, activeGrades, today } =
+    data;
 
   const scoped = leaveTypeId != null;
   const typeNameById = new Map(leaveTypes.map((x) => [x.id, x.name]));
@@ -230,6 +254,42 @@ export async function EntitlementTablesBlock({
 
   const editingTemplate = running.find((x) => x.lineageId === editTemplate);
   const editingRule = runningRules.find((x) => x.lineageId === editRule);
+
+  /**
+   * r209 — THE HEALTH OF WHAT IS ON SCREEN, computed from the slice already in hand.
+   *
+   * Scoped mount ⇒ ONE type's findings, rendered above its own tables. Unfiltered mount ⇒ the whole
+   * traffic-light listing, which is what makes the standalone screen the place all 24 types can be judged
+   * side by side rather than one Edit click at a time. Both derive from `lib/leave-config-health.ts`, so
+   * "no eligibility rule points at this table" cannot come to mean two things on two screens.
+   *
+   * NO EXTRA QUERY. `templates`, `rules`, `activeGrades` and the leave types' earning-method columns are
+   * all in `data`, which each host page loads exactly once.
+   */
+  const scopedType = scoped ? leaveTypes.find((x) => x.id === leaveTypeId) : undefined;
+  const scopedHealth = scopedType
+    ? leaveTypeConfigHealth({ leaveType: scopedType, templates, rules, grades: activeGrades, today })
+    : null;
+  const allHealth = scoped
+    ? []
+    : leaveConfigHealthAll({ leaveTypes, templates, rules, grades: activeGrades, today });
+  /**
+   * The leave types whose SINGLE table applies to everyone with no rule (r193 fault 3). Needed BY TYPE, not
+   * as one boolean: the unfiltered mount shows every type's tables in one list, so a single flag would
+   * either warn on a healthy Hospitalization row or stay silent on a broken Medical one. Built from
+   * whichever health set this mount computed — the same derivation, so the table's marker and the card
+   * above it can never disagree about which zero is a fault.
+   */
+  const soleTableTypeIds = new Set(
+    (scopedHealth ? [scopedHealth] : allHealth).filter((h) => h.soleTableApplies).map((h) => h.leaveTypeId),
+  );
+
+  /** A rule lineage's CURRENT version — a retired lineage has no version in force, so "in force" would hide
+   *  the very rules whose expiry is the finding. Latest `validFrom` wins; `rules` arrives ascending. */
+  const ruleHeadIds = new Set(
+    [...new Map(rules.map((r) => [r.lineageId, r.id])).values()],
+  );
+  const expiryWarnEnd = addDaysIso(today, RULE_EXPIRY_WARNING_DAYS);
 
   /**
    * ⚠️ THE `#type-<id>` ANCHOR IS NOT DECORATION WHEN EMBEDDED. `LeaveTypeWorkspace` seeds its selection
@@ -259,6 +319,12 @@ export async function EntitlementTablesBlock({
 
   return (
     <div className="space-y-6">
+      {/* ── r209 · STEP 0: CAN THIS LEAVE TYPE PRODUCE A BALANCE AT ALL? ─────────────────────────────
+          Above the tables, because it is the question the tables below cannot answer on their own: six
+          correct Medical tables and one eligibility rule that expired on 13 August 2026 read, on this
+          screen, as six correct tables. Everything it names was already in the database and shown nowhere. */}
+      {scopedHealth ? <LeaveConfigHealthNotice health={scopedHealth} /> : <LeaveConfigHealthCard rows={allHealth} />}
+
       {/* ── STEP 1: THE NAMED DAY TABLES ────────────────────────────────────────────────────────── */}
       <Card>
         <SectionHeader
@@ -300,7 +366,21 @@ export async function EntitlementTablesBlock({
                     {x.validFrom}
                     <span className="block">{x.validTo ?? t('stillRunning')}</span>
                   </td>
-                  <td className="px-3 py-2 text-xs">{x.validTo == null ? (ruleCounts.get(x.lineageId) ?? 0) : dash}</td>
+                  {/* r209 — A ZERO HERE IS THE WHOLE DEFECT AND IT USED TO RENDER AS A ZERO. Five of the
+                      six Medical tables on the reporter's account have never had a rule; the count said
+                      "0" and nothing said that 0 means nobody can ever receive this table. It is now
+                      said in words, except where the leave type's SINGLE table applies to everyone with
+                      no rule needed (r193 fault 3) — calling that broken would make the warning noise. */}
+                  <td className="px-3 py-2 text-xs">
+                    {x.validTo == null ? (ruleCounts.get(x.lineageId) ?? 0) : dash}
+                    {x.validTo == null &&
+                    (ruleCounts.get(x.lineageId) ?? 0) === 0 &&
+                    !soleTableTypeIds.has(x.leaveTypeId) ? (
+                      <span className="mt-0.5 block font-medium text-amber-700 dark:text-amber-500">
+                        {t('ruleNonePointsHere')}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {x.validTo == null ? (
                       <Link href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)} className="text-sm underline">
@@ -489,6 +569,21 @@ export async function EntitlementTablesBlock({
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {x.validFrom}
                       <span className="block">{x.validTo ?? t('stillRunning')}</span>
+                      {/* r209 — AN END DATE IN THE PAST IS NOT A DATE, IT IS A FAULT. The tenant's only
+                          eligibility rule carried valid_to 2026-08-13 and this cell printed it as an
+                          ordinary date; from the 14th nobody resolved to any entitlement table and no
+                          screen said so for six days. Only the lineage's CURRENT version is judged — an
+                          older superseded version ending is exactly how versioning works and is not news. */}
+                      {ruleHeadIds.has(x.id) && x.validTo != null && x.validTo <= today ? (
+                        <span className="mt-0.5 block font-medium text-red-700 dark:text-red-400">
+                          {t('ruleExpiredBadge')}
+                        </span>
+                      ) : null}
+                      {ruleHeadIds.has(x.id) && x.validTo != null && x.validTo > today && x.validTo <= expiryWarnEnd ? (
+                        <span className="mt-0.5 block font-medium text-amber-700 dark:text-amber-500">
+                          {t('ruleExpiringBadge')}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {x.validTo == null ? (

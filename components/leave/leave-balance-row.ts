@@ -11,6 +11,7 @@
  */
 import type { ReactNode } from 'react';
 import type { EntitlementStatus } from '@/lib/entitlement-status';
+import type { SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
 
 export type LeaveBalanceRow = {
   leaveTypeId: string;
@@ -35,6 +36,10 @@ export type LeaveBalanceRow = {
    *  of ledger days, shown GROSS of pending), surfaced directly — NOT re-derived (6574c6b4). null ⇒ Accrued/Taken
    *  ESS-hidden. */
   balance: number | null;
+  /** r209 — present when this leave type's figures ARE another type's pool (`balance_source_type_id`).
+   *  Carried on the row so the caption naming the pool travels with the number it explains, and every grid
+   *  says the same thing. `null` for a type that spends its own balance, which is almost all of them. */
+  sharedBalance: SharedLeaveBalanceInfo | null;
   /** RSC-instantiated <EntitlementBreakdown/> side-sheet trigger (R22). */
   detail?: ReactNode;
 };
@@ -66,6 +71,9 @@ export type BalanceInput = {
   taken: number;
   /** Employee Leave View Configuration (65dec703): resolved per-component visibility (missing ⇒ visible). */
   essView: Record<string, boolean>;
+  /** r209 — the shared-pool descriptor `leaveBalances` attaches when this type draws on another's balance.
+   *  Optional so existing fixtures and callers that predate the pool compile unchanged. */
+  sharedBalance?: SharedLeaveBalanceInfo | null;
 };
 
 /** The subset of leaveEntitlementBreakdown this table consumes (null ⇒ no breakdown loaded for the type). */
@@ -121,6 +129,10 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     // No breakdown loaded ⇒ 'not_configured' (we cannot claim a table exists), which shows no caption.
     entitlementStatus: bd ? bd.entitlementStatus : 'not_configured',
     balance,
+    // r209 — NOT ESS-gated, for the same reason the status is not: it is not a figure, it is the sentence
+    // that says whose figure this is. Hiding "shared with Annual Leave" while showing the shared number is
+    // how an employee concludes they have two allowances when they have one.
+    sharedBalance: b.sharedBalance ?? null,
   };
 }
 

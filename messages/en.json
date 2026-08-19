@@ -1893,7 +1893,13 @@
       "statusZeroEntitlementBody": "An entitlement table applies to this leave type, but it grants 0 days for this length of service. Generating entitlement will not change the figures below until the table's service bands are changed.",
       "statusEarningMethodMissingTitle": "Earning method not set",
       "statusEarningMethodMissingBody": "An entitlement table applies to this leave type, but no earning method has been chosen for it, so generating entitlement will grant 0.00 days until one is set.",
-      "statusEntitlementTable": "Entitlement table: {name}"
+      "statusEntitlementTable": "Entitlement table: {name}",
+      "statusNoEntitlementTableTitle": "No entitlement table for this leave type",
+      "statusNoEntitlementTableBody": "No entitlement table has been set up for this leave type, so there is no number of days for anybody to be granted and the figures below are 0.00. An administrator creates one on Settings, Leave, Entitlements.",
+      "statusNoEligibilityMatchTitle": "No eligibility rule reaches you",
+      "statusNoEligibilityMatchBody": "This leave type has entitlement tables, but no eligibility rule in force points you at one, so nothing resolves and the figures below are 0.00. An administrator should check whether the rule has expired or narrows to a group you are not in.",
+      "statusCappedByMaxBalanceTitle": "Capped at 0 by Maximum Balance",
+      "statusCappedByMaxBalanceBody": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away as soon as it is granted. An administrator sets a Maximum Balance that is at least the number of days granted."
     },
     "preview": {
       "loading": "Calculating…"
@@ -2020,7 +2026,9 @@
       "empSearchResultsLabel": "Employee search results",
       "empSearchNoMatches": "No matching employee",
       "empSearchClear": "Clear employee",
-      "colEntitlementStatus": "Entitlement Status"
+      "colEntitlementStatus": "Entitlement Status",
+      "resolvedEntitlementTable": "Entitlement table: {name}",
+      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
     },
     "override": {
       "title": "Before you submit",
@@ -2448,7 +2456,14 @@
       "statusNotGeneratedTip": "An entitlement table applies to this leave type for this leave year, but the entitlement has not been generated yet. Run Generate Entitlement to grant it. If the figure does not change afterwards, this balance may be frozen for an encashment, or the country pack for this company may not be active.",
       "statusEarnedAccrualTip": "This leave type is earned gradually through the leave year, so Generate Entitlement does not grant it. Days appear as each accrual run posts them, and nothing has been posted for this leave year yet.",
       "statusZeroEntitlementTip": "An entitlement table applies to this leave type, but it grants 0 days for this length of service. Generating entitlement will not change the figure until the table's service bands are changed.",
-      "statusEarningMethodMissingTip": "An entitlement table applies, but this leave type has no earning method chosen, so it grants 0.00 days until one is set."
+      "statusEarningMethodMissingTip": "An entitlement table applies, but this leave type has no earning method chosen, so it grants 0.00 days until one is set.",
+      "statusNoEntitlementTable": "No entitlement table",
+      "statusNoEligibilityMatch": "No eligibility rule reaches you",
+      "statusCappedByMaxBalance": "Capped at 0 by Maximum Balance",
+      "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on Settings, Leave, Entitlements.",
+      "statusNoEligibilityMatchTip": "This leave type has entitlement tables, but no eligibility rule in force points this employee at one, so nothing resolves and the figure is 0.00. Check whether the rule has expired or narrows to a group this employee is not in.",
+      "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
+      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
     },
     "typeLabel": "Type",
     "fromLabel": "From",
@@ -8049,7 +8064,33 @@
       "ruleGradeGroupApplied": "{count} job grades are selected.",
       "ruleGradeGroupNote": "Picking a grade group fills in the job grades it holds today. If a grade joins that group later, this rule keeps the grades it was saved with until you pick the group again.",
       "ruleGradeGroupPartial": "This rule covers only part of {groups}. Pick the group again to take in every grade it holds — until then it cannot be assigned to an approval template.",
-      "ruleGradeArchived": "{name} (archived)"
+      "ruleGradeArchived": "{name} (archived)",
+      "healthTitle": "Can this leave type produce a balance?",
+      "healthCardTitle": "Leave balance health",
+      "healthCardHelp": "Every active leave type, and what is still missing before it can produce a balance. A leave type marked Cannot grant shows 0.00 for everybody today.",
+      "healthNoTypes": "No active leave types.",
+      "healthColLeaveType": "Leave type",
+      "healthColStatus": "Status",
+      "healthColWhatIsMissing": "What is missing",
+      "healthStatusReady": "Ready",
+      "healthStatusWarning": "Needs attention",
+      "healthStatusBlocked": "Cannot grant",
+      "healthCounts": "Earning method: {method} · Entitlement tables in force: {tables} · Eligibility rules in force: {rules}",
+      "healthMethodSet": "set",
+      "healthMethodMissing": "not set",
+      "healthSoleTable": "The single table applies to everyone, so no eligibility rule is needed.",
+      "healthNothingMissing": "Nothing missing.",
+      "healthNoEarningMethod": "No earning method chosen, so nothing is granted however complete the tables are.",
+      "healthNoEntitlementTable": "No entitlement table has been set up, so there is no number of days to grant.",
+      "healthNoRuleInForce": "{tables} entitlement tables and no eligibility rule in force, so no employee resolves to any of them.",
+      "healthTableWithoutRule": "No eligibility rule points at: {tables}. Nobody can receive them.",
+      "healthRuleExpired": "Eligibility rule expired, so it matches nobody: {rules}",
+      "healthRuleExpiring": "Eligibility rule ends soon: {rules}",
+      "healthGradesWithoutTable": "Job grades that belong to no entitlement table: {grades}",
+      "healthMaxBalanceZero": "Maximum Balance is 0, which cancels the days granted: {tables}",
+      "ruleNonePointsHere": "No eligibility rule points here",
+      "ruleExpiredBadge": "Expired — matches nobody",
+      "ruleExpiringBadge": "Ends soon"
     }
   },
   "topbar": {

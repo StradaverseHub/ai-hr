@@ -59,7 +59,11 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { accrueEarnedLeave, openLeaveYear } from '../core/leave';
 import { leaveEntitlementBreakdown } from '../core/read';
-import { createEntitlementTemplate } from '../core/entitlement-template';
+import {
+  createEligibilityRule,
+  createEntitlementTemplate,
+  retireEligibilityRule,
+} from '../core/entitlement-template';
 import {
   ENTITLEMENT_STATUS_LABEL_KEY,
   ENTITLEMENT_STATUS_TIP_KEY,
@@ -82,6 +86,10 @@ const ALL_STATUSES: EntitlementStatus[] = [
   'earned_accrual',
   'zero_entitlement',
   'earning_method_missing',
+  // r209 — see the `no table in force` case below for why the one `not_configured` became three states.
+  'no_entitlement_table',
+  'no_eligibility_match',
+  'capped_by_max_balance',
   'not_configured',
 ];
 
@@ -94,6 +102,10 @@ const REMEDY_STATUS: EntitlementStatus = 'not_generated';
  *  resolves real days. Each case below overrides exactly the fact it is about. */
 const facts = (over: Partial<Parameters<typeof resolveEntitlementStatus>[0]> = {}) => ({
   hasTemplateInForce: true,
+  // r209 — a table resolved for this employee, so of course the type has tables. The two are only ever
+  // different when `hasTemplateInForce` is FALSE, which is the case the split below is about.
+  leaveTypeHasTemplates: true,
+  maxBalanceDays: null as number | null,
   accrualUnconfigured: false,
   earnedMethod: false,
   entitlementDays: 14,
@@ -104,21 +116,73 @@ const facts = (over: Partial<Parameters<typeof resolveEntitlementStatus>[0]> = {
 // ── The pure derivation ─────────────────────────────────────────────────────────────────────────────
 
 describe('resolveEntitlementStatus: the engine’s own branches, in the engine’s own order', () => {
-  it('no table in force ⇒ not_configured, whatever every other fact says', () => {
+  /**
+   * ⚠️ r209 REVISED THIS CASE — THE ORIGINAL ASSERTED `not_configured` FOR BOTH HALVES OF A SPLIT.
+   *
+   * The pinned decision was "no table in force ⇒ not_configured, whatever every other fact says", and the
+   * "whatever every other fact says" half is UNCHANGED and still asserted below: nothing about the earning
+   * method, the ledger, the method family or the day count can outrank an unresolved table.
+   *
+   * What was wrong is the ANSWER, and it cost a tenant six days. `hasTemplateInForce: false` covers two
+   * situations that call for opposite actions — the leave type has no day table (write one), and the leave
+   * type has six and no eligibility rule reaches this employee (fix the rule). Production, 2026-08-19: ONE
+   * `entitlement_eligibility_rule` tenant-wide, `valid_to = 2026-08-13`. From the 14th every employee took
+   * this branch, resolved to `not_configured`, and `not_configured` is SILENT — so six correct Medical
+   * tables sat unreachable behind a 0.00 nobody could explain.
+   */
+  it('no table resolved ⇒ WHICH kind of nothing, whatever every other fact says', () => {
     for (const accrualUnconfigured of [false, true]) {
       for (const hasAccrualRowInCycle of [false, true]) {
         for (const earnedMethod of [false, true]) {
           for (const entitlementDays of [0, 14]) {
+            const base = { hasTemplateInForce: false, accrualUnconfigured, hasAccrualRowInCycle, earnedMethod, entitlementDays };
+            const label = `${accrualUnconfigured}/${hasAccrualRowInCycle}/${earnedMethod}/${entitlementDays}`;
+            // The leave type has NO table at all: 0.00 is arithmetically true and the missing piece is the
+            // day table.
             expect(
-              resolveEntitlementStatus(
-                facts({ hasTemplateInForce: false, accrualUnconfigured, hasAccrualRowInCycle, earnedMethod, entitlementDays }),
-              ),
-              `${accrualUnconfigured}/${hasAccrualRowInCycle}/${earnedMethod}/${entitlementDays}`,
-            ).toBe('not_configured');
+              resolveEntitlementStatus(facts({ ...base, leaveTypeHasTemplates: false })),
+              label,
+            ).toBe('no_entitlement_table');
+            // The tables EXIST and none of them reaches this employee. THE PRODUCTION STATE.
+            expect(
+              resolveEntitlementStatus(facts({ ...base, leaveTypeHasTemplates: true })),
+              label,
+            ).toBe('no_eligibility_match');
           }
         }
       }
     }
+  });
+
+  /**
+   * r209 — A MAXIMUM BALANCE OF 0 IS NOT A SILENT `granted`, AND THE ORDER IS THE WHOLE ASSERTION.
+   *
+   * The six Special Leave types on the reporter's account carry bands of `{days: 3, maxBalanceDays: 0}`.
+   * `openLeaveYear` grants the 3, `applyMaxBalance` clamps it to 0.00, AND THE ACCRUAL ROW IS STILL
+   * WRITTEN — so `hasAccrualRowInCycle` is true and the honest-looking branch below would answer
+   * "generated" over a figure of 0.00. That is the silent zero this whole item is about, reached from a
+   * completely different direction than the missing rule.
+   *
+   * The cap's MEANING is untouched: `bandMaxBalance` treats any finite number >= 0 as a real cap and this
+   * only reports it.
+   */
+  it('a cap of 0 over a table that grants days outranks granted — the clamp is announced, not applied silently', () => {
+    for (const hasAccrualRowInCycle of [false, true]) {
+      expect(
+        resolveEntitlementStatus(facts({ maxBalanceDays: 0, entitlementDays: 3, hasAccrualRowInCycle })),
+        `row=${hasAccrualRowInCycle}`,
+      ).toBe('capped_by_max_balance');
+    }
+    // …but a table that grants NOTHING is a statement about the day table, and that is the more useful
+    // answer: fixing the cap would still leave 0 days to be capped.
+    expect(resolveEntitlementStatus(facts({ maxBalanceDays: 0, entitlementDays: 0 }))).toBe('zero_entitlement');
+    // A REAL cap is not a fault. Only zero zeroes the type.
+    expect(resolveEntitlementStatus(facts({ maxBalanceDays: 14, hasAccrualRowInCycle: true }))).toBe('granted');
+    expect(resolveEntitlementStatus(facts({ maxBalanceDays: null, hasAccrualRowInCycle: true }))).toBe('granted');
+    // And the earning method still outranks it: a type with no method grants nothing for the cap to clamp.
+    expect(
+      resolveEntitlementStatus(facts({ maxBalanceDays: 0, entitlementDays: 3, accrualUnconfigured: true })),
+    ).toBe('earning_method_missing');
   });
 
   it('a table, a LUMP method, real days and no accrual row ⇒ not_generated — the reporter’s case', () => {
@@ -168,17 +232,34 @@ describe('resolveEntitlementStatus: the engine’s own branches, in the engine�
     }
   });
 
-  it('exactly one state offers a remedy; the other three announced states explain instead', () => {
+  it('exactly one state offers a remedy; every other announced state explains instead', () => {
+    // ⚠️ r209 GREW THIS LIST BY THREE, and the half of the original reasoning that survives is stated at
+    // the bottom of this case rather than deleted with the line it justified.
     expect(ALL_STATUSES.filter(entitlementStatusNeedsNotice)).toEqual([
       'not_generated',
       'earned_accrual',
       'zero_entitlement',
       'earning_method_missing',
+      'no_entitlement_table',
+      'no_eligibility_match',
+      'capped_by_max_balance',
     ]);
-    // The two silent ones stay silent: `granted` needs no caption, and announcing `not_configured` on
-    // every type a tenant never wrote a table for would bury the four that matter.
+    // `granted` needs no caption — unchanged.
     expect(entitlementStatusNeedsNotice('granted')).toBe(false);
+    // `not_configured` STAYS SILENT, but it no longer means what it meant when that was decided. The old
+    // reasoning was "announcing it on every type a tenant never wrote a table for would bury the four that
+    // matter" — and it was ALSO the answer for "the tables exist and no rule reaches you", which is a
+    // defect, not a blank. That half is now `no_eligibility_match` and is announced; the "never wrote a
+    // table" half is `no_entitlement_table` and is announced too, because it is a one-line answer to the
+    // reporter's actual question. What is left under this name is a row with no breakdown AT ALL, which
+    // has nothing to explain — and `resolveEntitlementStatus` never returns it.
     expect(entitlementStatusNeedsNotice('not_configured')).toBe(false);
+    for (const f of [true, false]) {
+      expect(resolveEntitlementStatus(facts({ leaveTypeHasTemplates: f }))).not.toBe('not_configured');
+      expect(resolveEntitlementStatus(facts({ hasTemplateInForce: false, leaveTypeHasTemplates: f }))).not.toBe(
+        'not_configured',
+      );
+    }
   });
 
   it('every status has a label; every announced status has an explanation', () => {
@@ -327,15 +408,124 @@ describe('31e39d74: the breakdown says WHY a leave type reads 0.00', () => {
     expect(bd!.entitlementStatus).toBe('granted');
   });
 
-  it('a leave type with no table at all stays not_configured — 0.00 is the true answer there', async () => {
+  it('a leave type with no table at all now SAYS SO — r209 replaced this case’s silence', async () => {
+    // ⚠️ WHAT THIS CASE USED TO ASSERT, KEPT SO THE REVERSAL IS READABLE: `not_configured`, and
+    // `entitlementStatusNeedsNotice(...) === false`, on the argument that "announcing this one on every
+    // unconfigured type would bury the two that matter". r209 reversed it, because the reporter's question
+    // was literally "why does this leave type show 0.00" and "no entitlement table has been set up" is a
+    // one-line answer to it. The state also has its own name now, which is the load-bearing half.
     const typeId = await customLeaveType('UNCONF196', 'Unconfigured Leave');
     const emp = await hire('2024-03-01');
 
     const bd = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, ASOF);
-    expect(bd!.entitlementStatus).toBe('not_configured');
+    expect(bd!.entitlementStatus).toBe('no_entitlement_table');
     expect(bd!.entitlementTemplateName).toBeNull();
-    // Announcing this one on every unconfigured type would bury the two that matter.
-    expect(entitlementStatusNeedsNotice(bd!.entitlementStatus)).toBe(false);
+    expect(entitlementStatusNeedsNotice(bd!.entitlementStatus)).toBe(true);
+  });
+
+  /**
+   * ⚠️ THE PRODUCTION FAULT, END TO END, AND THE ONE THIS WORKSTREAM EXISTS FOR.
+   *
+   * Measured 2026-08-19: one `entitlement_eligibility_rule` tenant-wide, pointing at the PERMANENT Medical
+   * table, `valid_to = 2026-08-13`. Two tables in force, so r193's sole-table fallback correctly does NOT
+   * apply — several tables genuinely need a rule to choose between them. From 14 August nothing resolved
+   * for anybody, and the screen said exactly what it says for a leave type nobody ever configured: nothing.
+   */
+  it('tables exist and the only eligibility rule has EXPIRED ⇒ no_eligibility_match, not silence', async () => {
+    const typeId = await customLeaveType('MEDEXP209', 'Medical Leave');
+    const permanent = await table(typeId, 14, '2026-01-01', 'Medical — permanent');
+    await table(typeId, 18, '2026-01-01', 'Medical — contract');
+    const emp = await hire('2024-03-01');
+
+    // While the rule is in force the employee resolves to the table it names.
+    const rule = await createEligibilityRule(adminCtx(b), {
+      name: 'PERMANENT',
+      templateLineageId: permanent.lineageId,
+      criteria: {},
+      validFrom: '2026-01-01',
+    });
+    const live = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, '2026-08-10');
+    expect(live!.entitlementStatus).not.toBe('no_eligibility_match');
+    expect(live!.entitlementTemplateName).toBe('Medical — permanent');
+
+    // …and the day it ends, the same employee, the same tables, resolve to nothing.
+    await retireEligibilityRule(adminCtx(b), { lineageId: rule.lineageId, validTo: '2026-08-13' });
+    const after = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, ASOF);
+    expect(after!.entitlementTemplateName).toBeNull();
+    expect(after!.eligibleDays).toBe(0);
+    // THE ASSERTION THE WHOLE ITEM TURNS ON. Before r209 this was `not_configured`, which is silent — the
+    // two tables might as well not have existed, and nothing anywhere said the rule had lapsed.
+    expect(after!.entitlementStatus).toBe('no_eligibility_match');
+    expect(entitlementStatusNeedsNotice(after!.entitlementStatus)).toBe(true);
+  });
+
+  /**
+   * ⚠️ THE SECOND EXIT, AND IT IS THE ONE PRODUCTION TAKES. `buildTemplateEntitlementResolver` captures
+   * `hasTemplatesFor` before any short-circuit and returns it through `emptyWith(...)` at BOTH exits — and
+   * only the first (`ruleRows.length === 0`, the expired-rule case above) was pinned. Reverting the second
+   * to a bare `return empty;` left the whole r209 + r196 suite green, which means the fact the entire item
+   * rests on had no guard on the path its own comment names as the production one.
+   *
+   * REACHING IT NEEDS TWO THINGS AND NOTHING ELSE: two or more tables in force (so r193's sole-table
+   * fallback correctly does not apply) and every rule in force narrowing to a population this employee is
+   * not in — plan 70ac09ef's open case, an employee on a grade the six grade-keyed Medical rules do not
+   * name. `matchedByEmp` is then EMPTY while `templates` holds both tables.
+   *
+   * A regression here tells HR "No entitlement table for this leave type — create one" while two tables sit
+   * in the database and the RULE is the thing to fix: the exact wrong instruction r209 exists to stop.
+   */
+  it('a rule in force that reaches NOBODY ⇒ no_eligibility_match, not "no entitlement table"', async () => {
+    const typeId = await customLeaveType('MEDGRD209', 'Medical Leave');
+    const permanent = await table(typeId, 14, '2026-01-01', 'Medical — permanent');
+    await table(typeId, 18, '2026-01-01', 'Medical — contract');
+    const [grade] = await owner.db
+      .insert(schema.jobGrade)
+      .values({ tenantId: b.tenantId, code: 'EXEC209', name: 'Executive', rank: 1 })
+      .returning({ id: schema.jobGrade.id });
+    // In force, valid, and pointing at a table in force — so the rule list is NOT empty and the first exit
+    // is not the one taken. It simply names a grade this employee is not on.
+    await createEligibilityRule(adminCtx(b), {
+      name: 'Executive only',
+      templateLineageId: permanent.lineageId,
+      criteria: { gradeIds: [grade.id] },
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('2024-03-01');
+
+    const bd = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, ASOF);
+    expect(bd!.entitlementTemplateName).toBeNull();
+    expect(bd!.eligibleDays).toBe(0);
+    // THE ASSERTION. `no_entitlement_table` here would be a lie about a type with two of them.
+    expect(bd!.entitlementStatus).toBe('no_eligibility_match');
+    expect(entitlementStatusNeedsNotice(bd!.entitlementStatus)).toBe(true);
+  });
+
+  /**
+   * r209 — THE OTHER SILENT ZERO: a Maximum Balance of 0 over a table that grants days.
+   *
+   * The six Special Leave types on the reporter's account are `{days: 3, maxBalanceDays: 0}`. The year-open
+   * grants 3, `applyMaxBalance` clamps it to 0.00, and the accrual ROW IS STILL WRITTEN — so every
+   * row-counting reading of the ledger says "generated" over a figure of zero. The cap's meaning is
+   * untouched here; only the silence is.
+   */
+  it('a table granting 3 days under a Maximum Balance of 0 reads capped_by_max_balance, not granted', async () => {
+    const typeId = await customLeaveType('SPEC209', 'Marriage Leave');
+    await createEntitlementTemplate(adminCtx(b), {
+      leaveTypeId: typeId,
+      name: 'Marriage — all staff',
+      serviceBands: [{ fromYears: 0, toYears: null, days: 3, carryForwardDays: 0, maxBalanceDays: 0 }],
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('2024-03-01');
+
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+
+    // The clamp really happened: the row exists and it is worth nothing.
+    const bd = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, ASOF);
+    expect(bd!.eligibleDays).toBe(3);
+    expect(bd!.currentYearEntitlement).toBe(0);
+    expect(bd!.entitlementStatus).toBe('capped_by_max_balance');
+    expect(entitlementStatusNeedsNotice(bd!.entitlementStatus)).toBe(true);
   });
 
   it('an earned type is NEVER told to press Generate Entitlement — the run skips it, forever', async () => {
@@ -476,7 +666,11 @@ describe('31e39d74: the breakdown says WHY a leave type reads 0.00', () => {
 
     const july = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, '2026-07-31');
     const december = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, ASOF);
-    expect(july!.entitlementStatus).toBe('not_configured');
+    // r209: the status is DATED, and so is the split. As at 31 July this leave type had no entitlement
+    // table IN FORCE — the one that exists starts on 1 August — so the answer is `no_entitlement_table`,
+    // not "the tables exist and no rule reaches you". Still not "not generated yet", which is the mistake
+    // this case was written to prevent.
+    expect(july!.entitlementStatus).toBe('no_entitlement_table');
     expect(july!.entitlementTemplateName).toBeNull();
     expect(december!.entitlementStatus).toBe('granted');
     expect(december!.entitlementTemplateName).toBe('Medical — all staff');

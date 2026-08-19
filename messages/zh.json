@@ -1893,7 +1893,13 @@
       "statusZeroEntitlementBody": "此假期类型已有适用的额度表，但按此服务年资只发放 0 天。除非修改该表的服务年资分级，否则生成额度不会改变下方数字。",
       "statusEarningMethodMissingTitle": "未设置累积方式",
       "statusEarningMethodMissingBody": "此假期类型已有适用的额度表，但尚未选择累积方式，因此生成额度只会发放 0.00 天，直到设置为止。",
-      "statusEntitlementTable": "额度表：{name}"
+      "statusEntitlementTable": "额度表：{name}",
+      "statusNoEntitlementTableTitle": "此假期类型没有额度表",
+      "statusNoEntitlementTableBody": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数，下方数字为 0.00。管理员可在设置、假期、额度中创建。",
+      "statusNoEligibilityMatchTitle": "没有适用于您的资格规则",
+      "statusNoEligibilityMatchBody": "此假期类型已有额度表，但没有生效的资格规则将您指向其中任何一张表，因此无法解析，下方数字为 0.00。管理员应检查规则是否已过期，或是否只涵盖您不属于的群体。",
+      "statusCappedByMaxBalanceTitle": "因最高余额为 0 而被清零",
+      "statusCappedByMaxBalanceBody": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天在发放时即被清零。管理员应将最高余额设为至少等于发放的天数。"
     },
     "preview": {
       "loading": "计算中…"
@@ -2020,7 +2026,9 @@
       "empSearchResultsLabel": "员工搜索结果",
       "empSearchNoMatches": "没有匹配的员工",
       "empSearchClear": "清除员工",
-      "colEntitlementStatus": "额度状态"
+      "colEntitlementStatus": "额度状态",
+      "resolvedEntitlementTable": "额度表：{name}",
+      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
     },
     "override": {
       "title": "Before you submit",
@@ -2448,7 +2456,14 @@
       "statusNotGeneratedTip": "本休假年度此假期类型已有适用的额度表，但尚未生成额度。请运行“生成额度”以发放。若之后数字仍无变化，此余额可能因套现而被冻结，或此公司所属的国家配套未启用。",
       "statusEarnedAccrualTip": "此假期类型在休假年度内逐步累积，因此“生成额度”不会发放它。天数会随每次累积运行入账而出现，本休假年度尚未有任何入账。",
       "statusZeroEntitlementTip": "此假期类型已有适用的额度表，但按此服务年资只发放 0 天。除非修改该表的服务年资分级，否则生成额度不会改变此数字。",
-      "statusEarningMethodMissingTip": "已有适用的额度表，但此假期类型尚未选择累积方式，因此在设置之前只会发放 0.00 天。"
+      "statusEarningMethodMissingTip": "已有适用的额度表，但此假期类型尚未选择累积方式，因此在设置之前只会发放 0.00 天。",
+      "statusNoEntitlementTable": "无假期额度表",
+      "statusNoEligibilityMatch": "没有适用于您的资格规则",
+      "statusCappedByMaxBalance": "因最高余额为 0 而被清零",
+      "statusNoEntitlementTableTip": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数。请在设置、假期、额度中为其创建额度表。",
+      "statusNoEligibilityMatchTip": "此假期类型已有额度表，但没有生效的资格规则将该员工指向其中任何一张表，因此无法解析，数字为 0.00。请检查规则是否已过期，或是否只涵盖该员工不属于的群体。",
+      "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。",
+      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
     },
     "typeLabel": "类型",
     "fromLabel": "从",
@@ -8049,7 +8064,33 @@
       "ruleGradeGroupApplied": "已选择 {count} 个职级。",
       "ruleGradeGroupNote": "选择职级组会填入该组当前包含的职级。若日后有职级加入该组，本规则仍保留保存时的职级，直到您重新选择该组。",
       "ruleGradeGroupPartial": "本规则仅覆盖 {groups} 的一部分。请重新选择该组以纳入其全部职级——在此之前，它无法分配到审批模板。",
-      "ruleGradeArchived": "{name}（已归档）"
+      "ruleGradeArchived": "{name}（已归档）",
+      "healthTitle": "此假期类型能否产生余额？",
+      "healthCardTitle": "假期余额健康检查",
+      "healthCardHelp": "列出每个启用的假期类型，以及它能产生余额之前还缺什么。标记为无法发放的假期类型，今天对所有人都显示 0.00。",
+      "healthNoTypes": "没有启用的假期类型。",
+      "healthColLeaveType": "假期类型",
+      "healthColStatus": "状态",
+      "healthColWhatIsMissing": "缺少什么",
+      "healthStatusReady": "就绪",
+      "healthStatusWarning": "需要处理",
+      "healthStatusBlocked": "无法发放",
+      "healthCounts": "累积方式：{method} · 生效的额度表：{tables} · 生效的资格规则：{rules}",
+      "healthMethodSet": "已设置",
+      "healthMethodMissing": "未设置",
+      "healthSoleTable": "唯一的额度表适用于所有人，因此无需资格规则。",
+      "healthNothingMissing": "没有缺少的项目。",
+      "healthNoEarningMethod": "未选择累积方式，因此无论额度表多完整都不会发放任何天数。",
+      "healthNoEntitlementTable": "尚未设置额度表，因此没有可发放的天数。",
+      "healthNoRuleInForce": "有 {tables} 张额度表，但没有生效的资格规则，因此没有员工能对应到其中任何一张。",
+      "healthTableWithoutRule": "没有资格规则指向：{tables}。没有人能获得这些额度表。",
+      "healthRuleExpired": "资格规则已过期，因此不匹配任何人：{rules}",
+      "healthRuleExpiring": "资格规则即将到期：{rules}",
+      "healthGradesWithoutTable": "不属于任何额度表的职级：{grades}",
+      "healthMaxBalanceZero": "最高余额为 0，抵销了发放的天数：{tables}",
+      "ruleNonePointsHere": "没有资格规则指向此表",
+      "ruleExpiredBadge": "已过期 — 不匹配任何人",
+      "ruleExpiringBadge": "即将到期"
     }
   },
   "topbar": {

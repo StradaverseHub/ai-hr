@@ -1893,7 +1893,13 @@
       "statusZeroEntitlementBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng nó cấp 0 ngày cho thâm niên này. Việc tạo định mức sẽ không thay đổi các con số bên dưới cho đến khi các mốc thâm niên trong bảng được thay đổi.",
       "statusEarningMethodMissingTitle": "Chưa đặt phương thức tích lũy",
       "statusEarningMethodMissingBody": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng chưa chọn phương thức tích lũy, nên việc tạo định mức sẽ cấp 0,00 ngày cho đến khi được đặt.",
-      "statusEntitlementTable": "Bảng định mức: {name}"
+      "statusEntitlementTable": "Bảng định mức: {name}",
+      "statusNoEntitlementTableTitle": "Loại nghỉ phép này không có bảng định mức",
+      "statusNoEntitlementTableBody": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai và các con số bên dưới là 0,00. Quản trị viên có thể tạo tại Cài đặt, Nghỉ phép, Định mức.",
+      "statusNoEligibilityMatchTitle": "Không có quy tắc đủ điều kiện nào áp dụng cho bạn",
+      "statusNoEligibilityMatchBody": "Loại nghỉ phép này có bảng định mức, nhưng không có quy tắc đủ điều kiện nào đang hiệu lực trỏ bạn tới một bảng, nên không có kết quả và các con số bên dưới là 0,00. Quản trị viên nên kiểm tra xem quy tắc đã hết hạn hay chỉ áp dụng cho nhóm mà bạn không thuộc về.",
+      "statusCappedByMaxBalanceTitle": "Bị giới hạn về 0 bởi Số dư tối đa",
+      "statusCappedByMaxBalanceBody": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay khi được cấp. Quản trị viên nên đặt Số dư tối đa ít nhất bằng số ngày được cấp."
     },
     "preview": {
       "loading": "Đang tính toán…"
@@ -2020,7 +2026,9 @@
       "empSearchResultsLabel": "Kết quả tìm nhân viên",
       "empSearchNoMatches": "Không có nhân viên phù hợp",
       "empSearchClear": "Xóa nhân viên",
-      "colEntitlementStatus": "Trạng thái định mức"
+      "colEntitlementStatus": "Trạng thái định mức",
+      "resolvedEntitlementTable": "Bảng định mức: {name}",
+      "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})"
     },
     "override": {
       "title": "Before you submit",
@@ -2448,7 +2456,14 @@
       "statusNotGeneratedTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này trong năm nghỉ phép này, nhưng định mức chưa được tạo. Hãy chạy Tạo định mức để cấp. Nếu sau đó con số vẫn không thay đổi, số dư này có thể đang bị đóng băng để quy đổi thành tiền, hoặc gói quốc gia của công ty này có thể chưa được kích hoạt.",
       "statusEarnedAccrualTip": "Loại nghỉ phép này được tích lũy dần trong năm nghỉ phép, nên Tạo định mức không cấp nó. Số ngày sẽ xuất hiện khi mỗi lần chạy tích lũy ghi nhận, và chưa có lần nào được ghi nhận cho năm nghỉ phép này.",
       "statusZeroEntitlementTip": "Có một bảng định mức áp dụng cho loại nghỉ phép này, nhưng nó cấp 0 ngày cho thâm niên này. Việc tạo định mức sẽ không thay đổi con số này cho đến khi các mốc thâm niên trong bảng được thay đổi.",
-      "statusEarningMethodMissingTip": "Có một bảng định mức áp dụng, nhưng loại nghỉ phép này chưa chọn phương thức tích lũy, nên sẽ cấp 0,00 ngày cho đến khi được đặt."
+      "statusEarningMethodMissingTip": "Có một bảng định mức áp dụng, nhưng loại nghỉ phép này chưa chọn phương thức tích lũy, nên sẽ cấp 0,00 ngày cho đến khi được đặt.",
+      "statusNoEntitlementTable": "Không có bảng định mức",
+      "statusNoEligibilityMatch": "Không có quy tắc đủ điều kiện nào áp dụng cho bạn",
+      "statusCappedByMaxBalance": "Bị giới hạn về 0 bởi Số dư tối đa",
+      "statusNoEntitlementTableTip": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai. Hãy tạo bảng định mức cho loại này tại Cài đặt, Nghỉ phép, Định mức.",
+      "statusNoEligibilityMatchTip": "Loại nghỉ phép này có bảng định mức, nhưng không có quy tắc đủ điều kiện nào đang hiệu lực trỏ nhân viên này tới một bảng, nên không có kết quả và con số là 0,00. Hãy kiểm tra xem quy tắc đã hết hạn hay chỉ áp dụng cho nhóm mà nhân viên này không thuộc về.",
+      "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp.",
+      "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})"
     },
     "typeLabel": "Loại",
     "fromLabel": "Từ",
@@ -8049,7 +8064,33 @@
       "ruleGradeGroupApplied": "Đã chọn {count} bậc công việc.",
       "ruleGradeGroupNote": "Chọn một nhóm bậc sẽ điền vào các bậc công việc mà nhóm đó đang có hôm nay. Nếu sau này có bậc gia nhập nhóm, quy tắc này vẫn giữ các bậc đã lưu cho đến khi bạn chọn lại nhóm đó.",
       "ruleGradeGroupPartial": "Quy tắc này chỉ bao gồm một phần của {groups}. Hãy chọn lại nhóm để lấy tất cả các bậc trong đó — cho đến lúc đó, quy tắc không thể được gán cho mẫu phê duyệt.",
-      "ruleGradeArchived": "{name} (đã lưu trữ)"
+      "ruleGradeArchived": "{name} (đã lưu trữ)",
+      "healthTitle": "Loại nghỉ phép này có thể tạo số dư không?",
+      "healthCardTitle": "Tình trạng số dư nghỉ phép",
+      "healthCardHelp": "Mọi loại nghỉ phép đang hoạt động, và những gì còn thiếu trước khi nó có thể tạo số dư. Loại nghỉ phép được đánh dấu Không thể cấp sẽ hiển thị 0,00 cho tất cả mọi người hôm nay.",
+      "healthNoTypes": "Không có loại nghỉ phép nào đang hoạt động.",
+      "healthColLeaveType": "Loại nghỉ phép",
+      "healthColStatus": "Trạng thái",
+      "healthColWhatIsMissing": "Còn thiếu gì",
+      "healthStatusReady": "Sẵn sàng",
+      "healthStatusWarning": "Cần xem lại",
+      "healthStatusBlocked": "Không thể cấp",
+      "healthCounts": "Phương thức tích lũy: {method} · Bảng định mức đang hiệu lực: {tables} · Quy tắc đủ điều kiện đang hiệu lực: {rules}",
+      "healthMethodSet": "đã đặt",
+      "healthMethodMissing": "chưa đặt",
+      "healthSoleTable": "Bảng duy nhất này áp dụng cho tất cả mọi người, nên không cần quy tắc đủ điều kiện.",
+      "healthNothingMissing": "Không thiếu gì.",
+      "healthNoEarningMethod": "Chưa chọn phương thức tích lũy, nên không cấp ngày nào dù các bảng có đầy đủ đến đâu.",
+      "healthNoEntitlementTable": "Chưa thiết lập bảng định mức, nên không có số ngày nào để cấp.",
+      "healthNoRuleInForce": "Có {tables} bảng định mức và không có quy tắc đủ điều kiện nào đang hiệu lực, nên không nhân viên nào được trỏ tới bảng nào.",
+      "healthTableWithoutRule": "Không có quy tắc đủ điều kiện nào trỏ tới: {tables}. Không ai có thể nhận được chúng.",
+      "healthRuleExpired": "Quy tắc đủ điều kiện đã hết hạn nên không khớp với ai: {rules}",
+      "healthRuleExpiring": "Quy tắc đủ điều kiện sắp hết hạn: {rules}",
+      "healthGradesWithoutTable": "Các bậc chức danh không thuộc bảng định mức nào: {grades}",
+      "healthMaxBalanceZero": "Số dư tối đa là 0, triệt tiêu số ngày được cấp: {tables}",
+      "ruleNonePointsHere": "Không có quy tắc đủ điều kiện nào trỏ tới đây",
+      "ruleExpiredBadge": "Đã hết hạn — không khớp với ai",
+      "ruleExpiringBadge": "Sắp hết hạn"
     }
   },
   "topbar": {

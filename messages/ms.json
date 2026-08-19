@@ -1893,7 +1893,13 @@
       "statusZeroEntitlementBody": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi ia memberikan 0 hari bagi tempoh perkhidmatan ini. Menjana kelayakan tidak akan mengubah angka di bawah sehingga jalur perkhidmatan dalam jadual itu diubah.",
       "statusEarningMethodMissingTitle": "Kaedah perolehan belum ditetapkan",
       "statusEarningMethodMissingBody": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi tiada kaedah perolehan dipilih, jadi penjanaan kelayakan akan memberikan 0.00 hari sehingga satu ditetapkan.",
-      "statusEntitlementTable": "Jadual kelayakan: {name}"
+      "statusEntitlementTable": "Jadual kelayakan: {name}",
+      "statusNoEntitlementTableTitle": "Tiada jadual kelayakan untuk jenis cuti ini",
+      "statusNoEntitlementTableBody": "Tiada jadual kelayakan disediakan untuk jenis cuti ini, jadi tiada bilangan hari untuk diberikan kepada sesiapa dan angka di bawah ialah 0.00. Pentadbir boleh menciptanya di Tetapan, Cuti, Kelayakan.",
+      "statusNoEligibilityMatchTitle": "Tiada peraturan kelayakan mencapai anda",
+      "statusNoEligibilityMatchBody": "Jenis cuti ini mempunyai jadual kelayakan, tetapi tiada peraturan kelayakan yang berkuat kuasa menghalakan anda kepada mana-mana jadual, jadi tiada apa-apa terhasil dan angka di bawah ialah 0.00. Pentadbir perlu menyemak sama ada peraturan itu telah tamat tempoh atau hanya merangkumi kumpulan yang anda bukan sebahagian daripadanya.",
+      "statusCappedByMaxBalanceTitle": "Dihadkan kepada 0 oleh Baki Maksimum",
+      "statusCappedByMaxBalanceBody": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong sebaik sahaja ia diberikan. Pentadbir perlu menetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan."
     },
     "preview": {
       "loading": "Mengira…"
@@ -2020,7 +2026,9 @@
       "empSearchResultsLabel": "Hasil carian pekerja",
       "empSearchNoMatches": "Tiada pekerja yang sepadan",
       "empSearchClear": "Kosongkan pekerja",
-      "colEntitlementStatus": "Status Kelayakan"
+      "colEntitlementStatus": "Status Kelayakan",
+      "resolvedEntitlementTable": "Jadual kelayakan: {name}",
+      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
     },
     "override": {
       "title": "Before you submit",
@@ -2448,7 +2456,14 @@
       "statusNotGeneratedTip": "Jadual kelayakan terpakai untuk jenis cuti ini bagi tahun cuti ini, tetapi kelayakan belum dijana. Jalankan Jana Kelayakan untuk memberikannya. Jika angka tidak berubah selepas itu, baki ini mungkin dibekukan untuk penunaian, atau pakej negara bagi syarikat ini mungkin tidak aktif.",
       "statusEarnedAccrualTip": "Jenis cuti ini diperoleh secara berperingkat sepanjang tahun cuti, jadi Jana Kelayakan tidak memberikannya. Hari akan muncul apabila setiap larian perolehan mencatatkannya, dan belum ada yang dicatatkan bagi tahun cuti ini.",
       "statusZeroEntitlementTip": "Jadual kelayakan terpakai untuk jenis cuti ini, tetapi ia memberikan 0 hari bagi tempoh perkhidmatan ini. Menjana kelayakan tidak akan mengubah angka itu sehingga jalur perkhidmatan dalam jadual itu diubah.",
-      "statusEarningMethodMissingTip": "Jadual kelayakan terpakai, tetapi jenis cuti ini tiada kaedah perolehan yang dipilih, jadi ia memberikan 0.00 hari sehingga satu ditetapkan."
+      "statusEarningMethodMissingTip": "Jadual kelayakan terpakai, tetapi jenis cuti ini tiada kaedah perolehan yang dipilih, jadi ia memberikan 0.00 hari sehingga satu ditetapkan.",
+      "statusNoEntitlementTable": "Tiada jadual kelayakan",
+      "statusNoEligibilityMatch": "Tiada peraturan kelayakan mencapai anda",
+      "statusCappedByMaxBalance": "Dihadkan kepada 0 oleh Baki Maksimum",
+      "statusNoEntitlementTableTip": "Jenis cuti ini tiada jadual kelayakan yang disediakan, jadi tiada bilangan hari untuk diberikan kepada sesiapa. Cipta jadual kelayakan untuknya di Tetapan, Cuti, Kelayakan.",
+      "statusNoEligibilityMatchTip": "Jenis cuti ini mempunyai jadual kelayakan, tetapi tiada peraturan kelayakan yang berkuat kuasa menghalakan pekerja ini kepada mana-mana jadual, jadi tiada apa-apa yang terhasil dan angkanya ialah 0.00. Semak sama ada peraturan itu telah tamat tempoh atau hanya merangkumi kumpulan yang pekerja ini bukan sebahagian daripadanya.",
+      "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
+      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",
@@ -8049,7 +8064,33 @@
       "ruleGradeGroupApplied": "{count} gred pekerjaan dipilih.",
       "ruleGradeGroupNote": "Memilih kumpulan gred akan mengisi gred pekerjaan yang ada dalam kumpulan itu hari ini. Jika satu gred menyertai kumpulan itu kemudian, peraturan ini kekal dengan gred yang disimpan sehingga anda memilih kumpulan itu semula.",
       "ruleGradeGroupPartial": "Peraturan ini hanya meliputi sebahagian daripada {groups}. Pilih kumpulan itu semula untuk mengambil setiap gred di dalamnya — sehingga itu, ia tidak boleh ditetapkan kepada templat kelulusan.",
-      "ruleGradeArchived": "{name} (diarkibkan)"
+      "ruleGradeArchived": "{name} (diarkibkan)",
+      "healthTitle": "Bolehkah jenis cuti ini menghasilkan baki?",
+      "healthCardTitle": "Kesihatan baki cuti",
+      "healthCardHelp": "Setiap jenis cuti aktif, dan apa yang masih hilang sebelum ia boleh menghasilkan baki. Jenis cuti yang bertanda Tidak boleh memberi menunjukkan 0.00 untuk semua orang hari ini.",
+      "healthNoTypes": "Tiada jenis cuti aktif.",
+      "healthColLeaveType": "Jenis cuti",
+      "healthColStatus": "Status",
+      "healthColWhatIsMissing": "Apa yang hilang",
+      "healthStatusReady": "Sedia",
+      "healthStatusWarning": "Perlu perhatian",
+      "healthStatusBlocked": "Tidak boleh memberi",
+      "healthCounts": "Kaedah perolehan: {method} · Jadual kelayakan berkuat kuasa: {tables} · Peraturan kelayakan berkuat kuasa: {rules}",
+      "healthMethodSet": "ditetapkan",
+      "healthMethodMissing": "belum ditetapkan",
+      "healthSoleTable": "Jadual tunggal itu terpakai kepada semua orang, jadi tiada peraturan kelayakan diperlukan.",
+      "healthNothingMissing": "Tiada yang hilang.",
+      "healthNoEarningMethod": "Tiada kaedah perolehan dipilih, jadi tiada apa-apa diberikan walau selengkap mana jadualnya.",
+      "healthNoEntitlementTable": "Tiada jadual kelayakan disediakan, jadi tiada bilangan hari untuk diberikan.",
+      "healthNoRuleInForce": "{tables} jadual kelayakan dan tiada peraturan kelayakan berkuat kuasa, jadi tiada pekerja yang terhubung kepada mana-mana daripadanya.",
+      "healthTableWithoutRule": "Tiada peraturan kelayakan menghala ke: {tables}. Tiada sesiapa boleh menerimanya.",
+      "healthRuleExpired": "Peraturan kelayakan telah tamat tempoh, jadi ia tidak sepadan dengan sesiapa: {rules}",
+      "healthRuleExpiring": "Peraturan kelayakan akan tamat tidak lama lagi: {rules}",
+      "healthGradesWithoutTable": "Gred jawatan yang tidak tergolong dalam mana-mana jadual kelayakan: {grades}",
+      "healthMaxBalanceZero": "Baki Maksimum ialah 0, yang membatalkan hari yang diberikan: {tables}",
+      "ruleNonePointsHere": "Tiada peraturan kelayakan menghala ke sini",
+      "ruleExpiredBadge": "Tamat tempoh — tidak sepadan dengan sesiapa",
+      "ruleExpiringBadge": "Akan tamat tidak lama lagi"
     }
   },
   "topbar": {

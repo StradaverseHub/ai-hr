@@ -16,6 +16,7 @@ import {
   ENTITLEMENT_STATUS_TIP_KEY,
   entitlementStatusNeedsNotice,
 } from '@/lib/entitlement-status';
+import { otherContributors } from '@/lib/shared-leave-balance';
 import { employeeBalanceRows } from './rows';
 
 /**
@@ -303,6 +304,27 @@ export default async function EmployeeBalancesPage({
                           {r.code || r.leaveType}
                         </Link>
                         <span className="ml-1.5 text-xs text-muted-foreground">{r.leaveType}</span>
+                        {/* r209 — WHICH TABLE THIS PERSON RESOLVED TO. The reporter's words: "a screen that
+                            shows you which table each person got, rather than leaving you to work it out
+                            from the balance". The figure alone cannot answer it — several Medical tables
+                            grant the same days at some service lengths. It goes in the LEAVE CODE column
+                            rather than a twelfth one: 026e16b9 measured this table to the pixel and the
+                            eleven it has already overflow a laptop. */}
+                        {r.entitlementTemplateName && (
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                            {tInq('resolvedEntitlementTable', { name: r.entitlementTemplateName })}
+                          </span>
+                        )}
+                        {/* r209 — the same sentence the employee's own grid carries, from the same row, so
+                            HR and the employee are never told two different stories about one pool. */}
+                        {r.sharedBalance && otherContributors(r.sharedBalance, r.leaveType).length > 0 && (
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                            {tInq('sharedBalanceWith', {
+                              pool: r.sharedBalance.sourceLeaveTypeName,
+                              types: otherContributors(r.sharedBalance, r.leaveType).join(', '),
+                            })}
+                          </span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">
                         {r.entitlementYear ?? '—'}
