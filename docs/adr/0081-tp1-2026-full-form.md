@@ -77,17 +77,56 @@ written before this round has no month and is not given one.
 
 **6. Employer consent gates the payroll feed.** `tp1_status` becomes
 Draft → Submitted → Approved / Rejected → Cancelled, and `prefillTp1FromSelfRelief` reads only
-`approved` rows whose `approved_month` is at or before the batch's month — then collapses them per
-month (point 4a) and SUMS, which is the annual figure the ADR-0050 §0.1 delta is taken against. Approval is an UPDATE, not an
+`approved` rows in force for the batch's month — then collapses them per month (point 4a) and SUMS,
+which is the annual figure the ADR-0050 §0.1 delta is taken against. Approval is an UPDATE, not an
 append — a decision is a fact about a row, not a new declaration — and every decision appends a
 DomainEvent carrying who, when, and the changed field NAMES. PDPA Layer-0 holds: never an amount.
+
+**6a. (r209 — THE DECISION THAT UNBLOCKED THIS ADR.) "In force" and "already counted" are ONE rule,
+expressed once and consumed by both sides.** `tp1EffectiveFromMonth` says when a declaration starts
+counting (Section F's approved month, else the month claimed, else January) and `tp1CountForYear`
+reduces a person-year's approved rows to money, attribution and provenance. `prefillTp1FromSelfRelief`
+calls it with `throughMonth` = the batch's month; the limit check and the screen's Accumulated strip
+call it for the whole year with the month being keyed left out — an annual limit is annual, a feed is
+as-at-month, and that is the ONLY difference between them.
+
+Why it needed an ADR entry of its own: as first built (r201) there were TWO implementations. The
+payroll feed filtered `approved_month <= month` in SQL and summed `tp1_amount`; the limit check
+accumulated only C1–C17 attribution. A declaration carried forward from before this form has money but
+no attribution, so it counted in FULL on one side and ZERO on the other. HR was shown a "Remaining"
+figure that had never heard of it, keyed against that, and the PCB came out wrong with no error on the
+screen, in the log, or on the payslip. The build was HELD for it and two agent fix passes — one per
+side — moved money the wrong way before the rule was collapsed into one place.
+
+Two consequences follow and are load-bearing:
+- **Neither side may spell the rule for itself.** No `approved_month` comparison exists outside
+  `tp1EffectiveFromMonth`; `test/tp1-counted-contract.test.ts` asserts that about the SOURCE of both
+  files, because a numeric test passes as long as two implementations happen to agree on its fixtures.
+- **Money with no attribution is SHOWN, never dropped.** `Tp1Counted` carries `total`, `sources` and
+  `unattributedTotal` beside `items`/`subItems`, and the declaration form prints them: what has already
+  been counted for the year, one line per declaration, with the month it was claimed for, the month it
+  starts feeding payroll, and whether it is itemised. A carried-forward claim cannot honestly be split
+  across C4/C11/C13, so the honest thing is to name it rather than to hide it or to invent one.
 
 **7. The backfill is part of the migration, not a script.** Every declaration that existed before this
 round is `submitted`; under the new gate they would all stop feeding, silently, because "no approved
 declaration" and "nobody declared anything" are the same empty set. Migration `0449` stamps them
-`approved` with `approved_at = submitted_at`, `approved_by = NULL` and `approved_month = 1` — the
-behaviour those rows have today, preserved exactly. It is in the migration because `deploy.sh` runs
-migrations and does not run scripts.
+`approved` with `approved_at = submitted_at`, `approved_by = NULL`, and `approved_month` = **the month
+that timestamp falls in** (`AT TIME ZONE 'Asia/Kuala_Lumpur'`; clamped to 1 for an approval before the
+assessment year and to 12 for one after it). It is in the migration because `deploy.sh` runs migrations
+and does not run scripts.
+
+r209 changed that month from a flat `1`. A flat 1 made every carried-forward declaration effective for
+the whole year, which is the input half of the defect in 6a — and the reporter's chosen rule is that a
+carried-forward declaration belongs to the month it was actually approved in, so it behaves exactly
+like a claim keyed today. `test/tp1-counted-contract.test.ts` lifts the UPDATE out of the `.sql` and
+runs it, because a migration is otherwise the one piece of this round no test would touch.
+
+**7a. `0448` / `0449` WERE `0444` / `0445`.** The pair was written for r201 and held unmerged while
+`0446` and `0447` shipped. drizzle's watermark is the last applied `when`, so a migration numbered
+below it never runs and reports nothing — merging either at its old number would have left the columns
+absent and the first payroll run reading them as missing. Both `.sql` files and both journal entries
+were reissued; the journal was appended to, never re-sorted.
 
 **8. The generated form is our own layout, drawn to follow the agency's, and says so.** `lib/tp1-pdf.ts`
 draws A4 from scratch in the house pattern of `lib/borang-a-pdf.ts`. It is faithful to the agency's
@@ -115,6 +154,11 @@ rather than a guess.
   employee's relief stops with no error anywhere. Verify the row count after deploy, not just that
   `deploy.sh` returned. `test/tp1-self-relief.test.ts`'s legacy-row case is the regression guard: its
   fixture is now shaped exactly as the backfill leaves a row.
+- **After deploy, reconcile before trusting the first run.** `reconcileTp1ForYear(ctx, { personId,
+  assessmentYear })` returns, month by month, what the screen accounts for and what the feed takes, plus
+  the year's unattributed total. It agrees by construction today — both figures come from
+  `tp1CountForYear` — and that is the point: the day somebody re-forks the rule it starts reporting
+  `false`, which is the only thing that was missing when this build was held.
 - **`Tp1Categories` is a discriminated union.** Readers narrow on `isTp1Categories2026`. Legacy rows
   stay readable, editable, printable and payroll-feeding — the branch in `resolveInput` is what makes
   that true, and `TP1_CATEGORY_KEYS` stays exported for it.

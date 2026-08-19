@@ -29,8 +29,14 @@
  *
  * ══ NON-VACUITY ═════════════════════════════════════════════════════════════════════════════════════
  *
- * Section A's first case is the one to revert against: make `tp1CountForYear` skip unattributed rows
- * (its pre-r209 behaviour) and it fails with 9500 fed against 0 counted.
+ * Three reverts were run against these cases, each from a `cp` copy, each watched failing:
+ *   1. `tp1CountForYear` skips unattributed rows (`accumulate`'s pre-r209 behaviour) → section A fails
+ *      `month 3: the screen and payroll must be the same number: expected 9500 to be +0`, plus three more.
+ *   2. `tp1EffectiveFromMonth` ignores `approvedMonth`, and 0449 goes back to `approved_month = 1` (the
+ *      r201 rule) → six cases fail, including `row 0 approved from month: expected 1 to be 3` against
+ *      the migration's own SQL.
+ *   3. The `approved_month` predicate goes back into the payroll feed's WHERE clause → only section D
+ *      fails, which is what it is for: the numbers still agreed.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -148,7 +154,8 @@ describe('TP1 — the counted-for-the-year contract', () => {
    * increments against a baseline missing the whole carried-forward claim.
    *
    * REVERT-AGAINST-ME: make `tp1CountForYear` skip rows whose categories are not the 2026 shape (that
-   * was `accumulate`'s behaviour) and this case fails at March with `expected 0 to be 9500`.
+   * was `accumulate`'s behaviour) and this case fails at March — the screen still lists the RM 9,500 and
+   * the feed drops it, `expected 9500 to be +0`.
    */
   it('the screen accounts for every ringgit payroll takes, month by month, including carried-forward money', async () => {
     const admin = adminCtx(base);

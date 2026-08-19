@@ -521,18 +521,29 @@ describe('ADR-0050 — TP1 self-relief', () => {
       await setCompensation(a, { employmentId: subject.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
       await setStatutoryProfileMY(a, { personId: subject.personId, icNumber: '900303013099' });
       // Raw insert of a legacy row WITHOUT categories (mimics a pre-a2f1fa24 row) — and stamped exactly
-      // as MIGRATION 0449 leaves such a row: status 'approved', approved_month 1, no approver. That is
-      // the shape every declaration in production has the moment this round deploys, so this fixture is
-      // now also the regression guard for the backfill: if the grandfathering were dropped, this case
-      // fails with the relief silently gone, which is precisely the production symptom.
+      // as MIGRATION 0449 leaves such a row: status 'approved', no approver, and `approved_month` = the
+      // month it was APPROVED, read off submitted_at.
+      //
+      // ⚠️ THAT LAST PART CHANGED IN r209 AND THE FIXTURE CHANGED WITH IT. 0445 (as this migration was
+      // numbered while it was held) stamped a flat `approved_month = 1`, making every carried-forward
+      // declaration effective for the whole year — money the payroll feed took in full and the limit
+      // check could not see, because a legacy row has no C1–C17 attribution. So `submitted_at` is now an
+      // explicit JANUARY date rather than `new Date()`: 1 here is the month this row was approved in,
+      // not "always January". test/tp1-counted-contract.test.ts pins the new rule against the
+      // migration's own SQL, and this case stays what it has always been — proof that a scalar-only row
+      // still reads and still reaches payroll.
+      //
+      // It is also the regression guard for the grandfathering itself: drop the backfill and this fails
+      // with the relief silently gone, which is precisely the production symptom.
+      const declaredOn = new Date(Date.UTC(YEAR, 0, 15, 4, 0));
       await owner.db.insert(schema.tp1Relief).values({
         tenantId: base.tenantId,
         personId: subject.personId,
         assessmentYear: YEAR,
         status: 'approved',
         tp1Amount: '2000.00',
-        submittedAt: new Date(),
-        approvedAt: new Date(),
+        submittedAt: declaredOn,
+        approvedAt: declaredOn,
         approvedMonth: 1,
         approvedYear: YEAR,
       });
