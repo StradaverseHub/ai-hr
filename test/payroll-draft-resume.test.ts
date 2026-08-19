@@ -36,10 +36,12 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
 import { resumeHref, materializeToggle } from '../app/payroll/process/selection-logic';
-// 65e2d5de — the reset destination is composed from payrollListReturnTo + withQueryParam (it was
+// 65e2d5de — the reset destination is composed from payrollListAfterReset + withQueryParam (it was
 // resumeHref until the reporter reversed it — see a3); the Step-2 search is the predicate below.
-import { adjustmentReturnTo, payrollListReturnTo, withQueryParam } from '../lib/return-to';
+import { adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam } from '../lib/return-to';
 import { matchesEmployeeSearch } from '../lib/employee-search';
+// a3b runs the LIST's own filter arithmetic over the post-reset row, rather than asserting another string.
+import { applyFilters } from '../app/payroll/dashboard-logic';
 import {
   adminCtx,
   closeAll,
@@ -128,24 +130,71 @@ describe('Payroll draft-resume — pure UI logic', () => {
    * run's payslips. That round sent it to `resumeHref` instead — the guided run flow.
    *
    * 65e2d5de is the reporter REVERSING that: "Payroll Process → Reset Payroll → Confirm → Submit → Payroll
-   * Process". The destination is now composed from `payrollListReturnTo` over the filter query the reset
+   * Process". The destination is now composed from `payrollListAfterReset` over the filter query the reset
    * form posts, so the list comes back exactly as it was left. `resumeHref` is untouched and still the one
    * rule for "where does a draft resume?" — case a. above still pins it — it is simply no longer what the
    * reset follows. Pinned as the composed string because that string is what the browser follows.
+   *
+   * AND THE STATUS FILTER IS DROPPED, which is the half a "keep the filters" destination gets wrong on its
+   * own. Reset is offered on PROCESSED runs only, so Status = Processed is the natural filter to be
+   * standing in; the reset makes the run DRAFT; `applyFilters` intersects on status. Round-tripping the
+   * query verbatim therefore delivers the operator to a list the row they just acted on has fallen out of
+   * — a success toast over a table with no sign of the run. Cleared rather than widened because the Status
+   * control is a single `<select>` bound to `statuses[0]`: a two-value query would paint "Processed" over a
+   * table also listing Draft rows. See `payrollListAfterReset` for the full argument, and case D below for
+   * the single-select premise it rests on.
    */
   it('a3. the reset destination is the Payroll Process list with the filters kept (not the wizard, not the run screen)', () => {
     const dest = withQueryParam(
-      payrollListReturnTo('/payroll?year=2026&m=5&company=abc&status=processed'),
+      payrollListAfterReset('/payroll?year=2026&m=5&company=abc&status=processed'),
       'toast',
       'Payroll reset',
     );
-    expect(dest).toBe('/payroll?year=2026&m=5&company=abc&status=processed&toast=Payroll%20reset');
+    // Year, month and company survive untouched. `status=processed` does NOT: it is the one filter that
+    // would hide the run this reset just made Draft, on the very screen the operator was sent to see it.
+    expect(dest).toBe('/payroll?year=2026&m=5&company=abc&toast=Payroll%20reset');
+    // No status filter ⇒ every status is already shown ⇒ nothing changes. A filter is never invented…
+    expect(payrollListAfterReset('/payroll?year=2026&m=5')).toBe('/payroll?year=2026&m=5');
+    // …and one that already admits the reset run is left exactly as the operator set it.
+    expect(payrollListAfterReset('/payroll?year=2026&status=draft')).toBe('/payroll?year=2026&status=draft');
+    // A status that was the whole query leaves a bare list, not a dangling '?'.
+    expect(payrollListAfterReset('/payroll?status=processed')).toBe('/payroll');
     // A form that posts nothing (or anything hostile) still lands on the list, never off-site.
-    expect(withQueryParam(payrollListReturnTo(''), 'toast', 'Payroll reset')).toBe('/payroll?toast=Payroll%20reset');
+    expect(withQueryParam(payrollListAfterReset(''), 'toast', 'Payroll reset')).toBe('/payroll?toast=Payroll%20reset');
+    expect(payrollListAfterReset('https://evil.example/payroll?status=processed')).toBe('/payroll');
+    // The whitelist underneath is unchanged — this only ever removes a status from a destination that has
+    // already passed `payrollListReturnTo`.
+    expect(payrollListAfterReset('/payroll?year=2026&toast=done')).toBe(payrollListReturnTo('/payroll?year=2026&toast=done'));
     // Both retired destinations, pinned negatively: the run screen a reset has just emptied (7076f8af's
     // defect) and the Continue Progress flow the reporter asked not to be dropped into (65e2d5de).
     expect(dest.startsWith('/payroll/b1')).toBe(false);
     expect(dest.startsWith('/payroll/process')).toBe(false);
+  });
+
+  /**
+   * a3b — THE RESET RUN IS ACTUALLY ON THE LIST IT LANDS ON. a3 above pins the string; this pins the fact
+   * the string exists for, by running the list's own filter arithmetic over the row as it is AFTER the
+   * reset. Every guard on this path was a source-shape or string assertion, so nothing was evaluating the
+   * destination's filters against the post-reset row — which is exactly how a destination that hides it
+   * passed review.
+   */
+  it('a3b. applyFilters over the reset destination still contains the run — the point of dropping the status', () => {
+    const row = { payPeriod: '2026-05', companyId: 'abc', runType: 'monthly', status: 'draft' as const };
+    const parse = (href: string) => {
+      const q = new URLSearchParams(href.split('?', 2)[1] ?? '');
+      return {
+        periods: q.getAll('m').map((m) => `${q.get('year')}-${String(m).padStart(2, '0')}`),
+        companyIds: q.getAll('company'),
+        cycles: q.getAll('cycle'),
+        statuses: q.getAll('status'),
+      };
+    };
+    const from = '/payroll?year=2026&m=5&company=abc&status=processed';
+    // The destination the operator is handed: the run they just reset is on it.
+    expect(applyFilters([row], parse(payrollListAfterReset(from)))).toEqual([row]);
+    // …and the destination that was there before this was fixed: it is not. Kept as the negative half so
+    // the case cannot quietly become vacuous.
+    expect(applyFilters([row], parse(payrollListReturnTo(from)))).toEqual([]);
   });
 
   /**

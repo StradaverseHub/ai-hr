@@ -96,11 +96,20 @@ async function hire(b: Base, name: string, opts: { basic?: number } = {}) {
 }
 
 describe('7076f8af — Reset lands in the run flow, and the run flow ends', () => {
-  it('1. resetAction composes its success destination from payrollListReturnTo (65e2d5de reversed 7076f8af)', () => {
+  it('1. resetAction composes its success destination from payrollListAfterReset (65e2d5de reversed 7076f8af)', () => {
     // The reporter's new destination: the Payroll Process LIST, as they left it. The posted `from` is
     // untrusted, so it is whitelisted by shape rather than followed — see lib/return-to.ts.
-    expect(PAYROLL_ACTIONS).toMatch(/import \{ adjustmentReturnTo, payrollListReturnTo, withQueryParam \} from '@\/lib\/return-to'/);
-    expect(PAYROLL_ACTIONS).toMatch(/const back = payrollListReturnTo\(String\(formData\.get\('from'\) \?\? ''\)\);/);
+    //
+    // `payrollListAfterReset`, NOT the bare `payrollListReturnTo`, and the difference is the whole point
+    // of the destination: reset is offered on PROCESSED runs only, so a "Status: Processed" filter is the
+    // one the operator is most likely holding when they press it, and this action makes the run DRAFT.
+    // Following the query verbatim lands them on a list the row has just dropped out of. Behaviour pinned
+    // in test/payroll-draft-resume.test.ts a3; the CALL is pinned here because a helper nobody calls fixes
+    // nothing.
+    expect(PAYROLL_ACTIONS).toMatch(
+      /import \{ adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam \} from '@\/lib\/return-to'/,
+    );
+    expect(PAYROLL_ACTIONS).toMatch(/const back = payrollListAfterReset\(String\(formData\.get\('from'\) \?\? ''\)\);/);
     expect(PAYROLL_ACTIONS).toMatch(/redirect\(withQueryParam\(back, 'toast', t\('resetDone'\)\)\)/);
     // The 7076f8af destination is gone with the decision it implemented — resumeHref is no longer read
     // here at all (the list row's Continue link is still its caller, in app/payroll/page.tsx).

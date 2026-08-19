@@ -55,7 +55,7 @@ import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 // Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
 // lib/return-to.ts.
-import { adjustmentReturnTo, payrollListReturnTo, withQueryParam } from '@/lib/return-to';
+import { adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam } from '@/lib/return-to';
 
 // Note: run creation (regular + additional) moved to app/payroll/process/actions.ts (createRunAction) as
 // part of the Payroll Process wizard — creation is now the wizard's TERMINAL action. createBatch /
@@ -360,8 +360,16 @@ export async function deleteDraftBatchAction(formData: FormData) {
  *     there for anyone who does want the guided flow, so nothing is lost — only the default changed.
  *
  * So the destination is now the PAYROLL PROCESS LIST, as the operator left it: the reset form posts the
- * screen's own filter query as `from`, and `payrollListReturnTo` whitelists it BY SHAPE (a posted value is
- * untrusted — see lib/return-to.ts). Absent or hostile ⇒ a bare `/payroll`, which is still the list.
+ * screen's own filter query as `from`, and `payrollListAfterReset` whitelists it BY SHAPE (a posted value
+ * is untrusted — see lib/return-to.ts). Absent or hostile ⇒ a bare `/payroll`, which is still the list.
+ *
+ * WHY `payrollListAfterReset` AND NOT `payrollListReturnTo`. Reset is offered on PROCESSED runs only, so
+ * "Status: Processed" is the filter the operator is most likely standing in when they press it — and this
+ * action makes the run DRAFT. Following the posted query verbatim would land them on a list the row they
+ * just acted on has fallen out of: a success toast over a table with no sign of the run. The helper drops
+ * a status filter that would hide the reset run and keeps every other one (year, months, company, cycle),
+ * so the run is on the list, showing Draft. Its doc comment carries the full reasoning, including why the
+ * filter is cleared rather than widened — the Status control is a single `<select>`.
  *
  * A FAILED reset still returns to the run screen — the run is still processed, and that is where the
  * refusal makes sense.
@@ -370,9 +378,10 @@ export async function resetAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const reason = String(formData.get('reason') ?? '').trim();
-  // 65e2d5de — the list AS THE OPERATOR LEFT IT. Both reset forms post the filter query they were pressed
-  // with; whitelisted by shape, never echoed raw. A form that posts nothing resolves to '/payroll'.
-  const back = payrollListReturnTo(String(formData.get('from') ?? ''));
+  // 65e2d5de — the list AS THE OPERATOR LEFT IT, minus a status filter that would hide the Draft run this
+  // reset is about to create. Both reset forms post the filter query they were pressed with; whitelisted
+  // by shape, never echoed raw. A form that posts nothing resolves to '/payroll'.
+  const back = payrollListAfterReset(String(formData.get('from') ?? ''));
   const t = await getTranslations('payroll.batch');
   try {
     await resetProcessedBatch(s, { batchId, reason: reason || undefined });

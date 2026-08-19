@@ -83,6 +83,43 @@ export function payrollListReturnTo(raw: unknown): string {
   return kept ? `${path}?${kept}` : path;
 }
 
+/**
+ * 65e2d5de — WHERE A SUCCESSFUL RESET LANDS: the list as the operator left it, MINUS the one filter that
+ * would hide the run they just reset.
+ *
+ * `payrollListReturnTo` alone is not enough here, and the gap is specific to reset. The Payroll Process
+ * list filters on status (`?status=…`, intersected in `applyFilters`), and Reset is offered on PROCESSED
+ * runs ONLY — so "Status: Processed" is the natural filter to be standing in when you press it. Reset then
+ * makes the run DRAFT. Handing the query back verbatim drops the operator on a filtered list that the row
+ * they just acted on has fallen straight out of: a success toast over a table with no sign of the run,
+ * which reads as "did that delete it?". Every other filter they set — year, months, company, cycle — still
+ * matches the run and is kept untouched.
+ *
+ * CLEARED, NOT WIDENED, AND THE CONTROL IS WHY. The obvious alternative is to append `status=draft` and
+ * keep `status=processed`, which sounds like it honours "your filters are still set" more faithfully. It
+ * does not: the Status control (app/payroll/dashboard-filters.tsx) is a SINGLE `<select>` bound to
+ * `filters.statuses[0]`, so a two-value query paints "Processed" in the dropdown above a table that is
+ * also listing Draft rows — the filter bar would be making a false statement about the list under it, and
+ * the next filter the operator touched would carry the invisible second value along. Replacing the value
+ * with `draft` has the opposite problem: it is a filter they never chose, and it hides every processed run
+ * they were looking at. Clearing is the only one of the three where the control and the list agree — the
+ * dropdown reads "All statuses", which is exactly what is being shown.
+ *
+ * An EMPTY status filter already shows every status and is left exactly as it is, and so is a `status=draft`
+ * that already admits the reset run. So is a destination that is not the list itself (`payrollListReturnTo`
+ * also accepts `/payroll/…` sub-paths, where `status=` means nothing).
+ */
+export function payrollListAfterReset(raw: unknown): string {
+  const dest = payrollListReturnTo(raw);
+  const [path, query = ''] = dest.split('?', 2);
+  if (path !== '/payroll') return dest;
+  const params = query.split('&').filter(Boolean);
+  // Defensive on the plural: the control emits at most one today, but `applyFilters` intersects a set.
+  if (!params.some((p) => p.startsWith('status=') && p !== 'status=draft')) return dest;
+  const kept = params.filter((p) => !p.startsWith('status='));
+  return kept.length > 0 ? `${path}?${kept.join('&')}` : path;
+}
+
 /** Append a `toast=`/`error=` to a destination that may or may not already carry a query string. */
 export function withQueryParam(destination: string, key: 'toast' | 'error', value: string): string {
   return `${destination}${destination.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;

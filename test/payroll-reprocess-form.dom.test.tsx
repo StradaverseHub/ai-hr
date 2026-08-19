@@ -35,6 +35,9 @@ import {
 // is about is the screen in front of it, and the action's own behaviour is proved against a real database
 // in test/payroll-reprocess-route-e440991b.test.ts.
 vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
+// Imported so the Enter cases below can assert the recalculation was never enqueued — the same mock the
+// form is rendered against, not a second one.
+import { reprocessSelectedAction } from '../app/payroll/actions';
 
 const wrap = (ui: ReactNode) =>
   render(
@@ -392,5 +395,107 @@ describe('65e2d5de — the submitted set IS the reviewed set, filtered or not', 
     const { container } = form();
     expect(posted(container)).toEqual([]);
     expect(container.querySelectorAll('input[type="hidden"][name="employmentIds"]')).toHaveLength(0);
+  });
+
+  it('finds an Employee ID typed the way it is SPOKEN — the shared rule folds the separators', async () => {
+    // The ask is "search by Employee ID", and nobody says "E, M, P, hyphen, zero…". The shared
+    // `matchesEmployeeSearch` folds `[\s._-]` out of both sides, which is why the Personnel switcher, the
+    // Payroll Process wizard's Step-2 picker, Transaction Detail and Individual Payslip all answer
+    // "emp0008" with EMP-0008. A local `.toLowerCase().includes()` — the predicate the sibling Remove
+    // screen still carries — answers it with an empty table, on the screen whose whole request was this.
+    const user = userEvent.setup();
+    const { container } = form({
+      employees: [
+        emp({ employmentId: 'e8', employeeCode: 'EMP-0008', name: 'Nurul Huda' }),
+        emp({ employmentId: 'e9', employeeCode: 'EMP-0009', name: 'Chan Wei Ming' }),
+      ],
+    });
+    const search = screen.getByRole('searchbox');
+
+    await user.type(search, 'emp0008');
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(container.textContent).toContain('Nurul Huda');
+    expect(container.textContent).not.toContain('Chan Wei Ming');
+
+    // The written form still works, and so does a partial one — the fold widens the rule, it never
+    // narrows it.
+    await user.clear(search);
+    await user.type(search, 'EMP-0009');
+    expect(container.textContent).toContain('Chan Wei Ming');
+    await user.clear(search);
+    await user.type(search, '0008');
+    expect(container.textContent).toContain('Nurul Huda');
+  });
+});
+
+/**
+ * 65e2d5de — ENTER IN THE SEARCH BOX MUST NOT RUN THE PAYROLL.
+ *
+ * This is a keystroke test rather than a shape test because the defect is a keystroke, and no other test
+ * on this screen can see it: every case above types into the search box and then reads `new FormData(form)`,
+ * which is a snapshot of the DOM, not a submit.
+ *
+ * The mechanism is plain HTML. Pressing Enter in a text-type field inside a form performs IMPLICIT
+ * SUBMISSION — the browser clicks that form's default (first) submit button. Until this round the form had
+ * no such field: hidden inputs, checkboxes and one `<textarea>` (where Enter inserts a newline). The Search
+ * Employee box is the first blocking field on it, the default submit button is "Reprocess N employee(s)",
+ * and the selection is NON-EMPTY on arrival by design — so the button is live, and the fastest way to
+ * enqueue a payroll recalculation on the wrong people would have been to type a name and press Enter.
+ * There is no confirmation dialog in front of it (the review block is inside this same form, by design).
+ *
+ * `@testing-library/user-event` implements implicit submission faithfully — its `keypress` behaviour
+ * dispatches a click on `button[type="submit"]` — and skips it when the keydown was default-prevented,
+ * exactly as a browser does. So these two cases are a real test of the guard, and the last one is the
+ * control that proves the harness can see a submit at all.
+ */
+describe('65e2d5de — Enter cannot submit this form', () => {
+  const submitSpy = (container: HTMLElement) => {
+    const spy = vi.fn();
+    (container.querySelector('form') as HTMLFormElement).addEventListener('submit', spy);
+    return spy;
+  };
+
+  it('the premise: the search box is inside the reprocess form, whose button is already live', () => {
+    // Both halves matter. Outside the form, Enter would be harmless; with an empty selection the button
+    // would be disabled and the click would do nothing. Neither is true here — `preselectedIds` are the
+    // employments the run itself marked stale, and they arrive ticked.
+    const { container } = form({ preselectedIds: ['e1', 'e3'] });
+    expect(screen.getByRole('searchbox').closest('form')).toBe(container.querySelector('form'));
+    expect(submit()).toBeEnabled();
+  });
+
+  it('typing a name and pressing Enter filters the list and submits NOTHING', async () => {
+    const user = userEvent.setup();
+    vi.mocked(reprocessSelectedAction).mockClear();
+    const { container } = form({ preselectedIds: ['e1', 'e3'], newCandidates: [add({ employmentId: 'n1' })] });
+    const spy = submitSpy(container);
+
+    await user.type(screen.getByRole('searchbox'), 'Alice{Enter}');
+
+    expect(spy, 'Enter in the search box submitted the reprocess form').not.toHaveBeenCalled();
+    expect(reprocessSelectedAction, 'Enter enqueued a payroll recalculation').not.toHaveBeenCalled();
+    // …and the search itself still did its job, which is the only thing Enter is allowed to have changed.
+    expect(container.querySelectorAll('table')[1]!.textContent).toContain('Alice Lim');
+    expect(container.querySelectorAll('table')[1]!.textContent).not.toContain('John Tan');
+    // The three people who would have been reprocessed are still merely ticked.
+    expect(posted(container).sort()).toEqual(['e1', 'e3', 'n1']);
+  });
+
+  it('Enter on a ticked checkbox does not submit either — the guard is on the form, not the box', async () => {
+    const user = userEvent.setup();
+    const { container } = form({ preselectedIds: ['e1'] });
+    const spy = submitSpy(container);
+    const box = boxes()[0]!;
+    box.focus();
+    await user.keyboard('{Enter}');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL — clicking the submit button still submits, so the cases above are not vacuous', async () => {
+    const user = userEvent.setup();
+    const { container } = form({ preselectedIds: ['e1'] });
+    const spy = submitSpy(container);
+    await user.click(submit());
+    expect(spy, 'the harness cannot see a submit at all — the guard cases prove nothing').toHaveBeenCalledTimes(1);
   });
 });

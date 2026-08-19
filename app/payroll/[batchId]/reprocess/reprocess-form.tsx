@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
+import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
 import { reprocessSelectedAction } from '../../actions';
 
@@ -127,24 +128,30 @@ export function ReprocessForm({
   const picked = [...pickedNew, ...pickedExisting];
 
   /**
-   * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, ported from the Remove Employee Payroll screen
-   * (remove-form.tsx) rather than invented a second time, so the two selection screens under a payroll run
-   * behave identically. Partial, case-insensitive, and applied to BOTH groups: filtering the people
-   * already paid while leaving the New / Pending list unfiltered would answer "where is Siti?" with
-   * silence on one table and a row on the other.
+   * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, through the ONE SHARED RULE in `lib/employee-search.ts`.
+   *
+   * The obvious move was to port the predicate out of the sibling Remove Employee Payroll screen
+   * (remove-form.tsx), and the first cut of this file did exactly that. It is the wrong copy to spread:
+   * that one compares raw strings, so it answers "emp0008" with nobody, while the Personnel switcher, the
+   * Payroll Process wizard's Step-2 picker, Transaction Detail and Individual Payslip all find EMP-0008
+   * because they go through `matchesEmployeeSearch`, which FOLDS the separators an Employee ID carries.
+   * The ask here is literally "search by Employee ID", and an ID typed the way it is spoken has to work.
+   * (remove-form.tsx still carries the older, weaker copy — pre-existing, and not this round's to move.)
+   *
+   * Applied to BOTH groups: filtering the people already paid while leaving the New / Pending list
+   * unfiltered would answer "where is Siti?" with silence on one table and a row on the other.
    */
   const [q, setQ] = useState('');
-  const needle = q.trim().toLowerCase();
-  const matches = (e: { employeeCode: string | null; name: string }) =>
-    (e.employeeCode ?? '').toLowerCase().includes(needle) || e.name.toLowerCase().includes(needle);
+  // NOT lowercased here — `matchesEmployeeSearch` owns the trimming, casing and separator folding, and
+  // pre-mangling the query would silently defeat the fold it exists for.
+  const needle = q.trim();
   const visibleEmployees = useMemo(
-    () => (needle === '' ? employees : employees.filter(matches)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `matches` is a render-local closure over `needle`
+    () => (needle === '' ? employees : employees.filter((e) => matchesEmployeeSearch(e, needle))),
     [employees, needle],
   );
   const visibleAdditions = useMemo(
-    () => (needle === '' ? additions : additions.filter(matches)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above; `additions` is derived from newCandidates
+    () => (needle === '' ? additions : additions.filter((e) => matchesEmployeeSearch(e, needle))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `additions` is derived from `newCandidates`
     [newCandidates, needle],
   );
   /**
@@ -176,13 +183,43 @@ export function ReprocessForm({
       return next;
     });
 
+  /**
+   * ENTER MUST NOT RUN THE PAYROLL. This is the reason the form carries a keydown handler at all.
+   *
+   * HTML IMPLICIT SUBMISSION: pressing Enter in a text-type field inside a form CLICKS that form's
+   * default (first) submit button. Until 65e2d5de this form had no such field — only hidden inputs,
+   * checkboxes and the reason `<textarea>` (where Enter inserts a newline) — so the rule had nothing to
+   * fire on. The Search Employee box below is the first blocking field on it, and the default submit
+   * button is "Reprocess N employee(s)". Without this guard, typing a name and pressing Enter — the most
+   * natural thing anybody does in a search box — would enqueue the recalculation immediately: no review
+   * click, no confirmation, on whatever happens to be ticked. And something IS ticked on arrival by
+   * design (the stale employments from `preselectedIds`, plus every addable in-scope New / Pending
+   * candidate), so the button is live on exactly the runs big enough to want a search.
+   *
+   * Blocked at the FORM, not at the search box, so the next text field added here inherits the guard
+   * rather than re-opening the hole. `<textarea>`, `<button>` and the Cancel `<a>` are untouched: Enter
+   * in the reason box still makes a newline, and Enter on a focused button still activates it — which
+   * keeps the ONLY route to a submit an explicit press of the submit button.
+   */
+  const blockImplicitSubmit = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter') return;
+    const el = e.target as HTMLElement;
+    if (el.tagName !== 'INPUT') return;
+    // An `<input type="submit">` IS the explicit press; nothing here renders one, but excluding the
+    // activation types keeps this guard from ever disabling a button somebody adds later.
+    const type = (el as HTMLInputElement).type;
+    if (type === 'submit' || type === 'button' || type === 'reset' || type === 'image') return;
+    e.preventDefault();
+  };
+
   return (
-    <form action={reprocessSelectedAction} className="space-y-4">
+    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
 
       {/* 65e2d5de — Search Employee, at the top of the screen where the request put it. It filters the
-          rows only; it never changes the selection. */}
+          rows only; it never changes the selection — and, per `blockImplicitSubmit` above, Enter in it
+          filters and nothing else. It cannot reach the submit button. */}
       <input
         type="search"
         value={q}

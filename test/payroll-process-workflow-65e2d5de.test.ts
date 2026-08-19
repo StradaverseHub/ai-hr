@@ -15,15 +15,18 @@
  *      View + a ⋯ menu — and each action keeps its OWN unchanged visibility condition on the server page.
  *   B. The menu island decides placement and nothing else, and never renders a menu of one.
  *   C. Recalculation History folds, CLOSED by default, and the just-submitted job's result panel does not.
- *   D. The reprocess search carries its ticked-but-hidden ids, pinned at the source as well as by
- *      FormData in test/payroll-reprocess-form.dom.test.tsx (rule 17: the defect lives in the contract
- *      BETWEEN the review block and the form, so both halves are asserted).
+ *   D. The reprocess search carries its ticked-but-hidden ids, matches through the ONE shared
+ *      employee-search rule, and cannot be submitted by pressing Enter — pinned at the source as well as
+ *      by FormData and keystroke in test/payroll-reprocess-form.dom.test.tsx (rule 17: the defect lives in
+ *      the contract BETWEEN the review block and the form, so both halves are asserted).
+ *   Da. The one premise the reset destination is decided on, which lives in a file this round did not
+ *      touch: the Status filter is single-valued.
  *   E. Every message key this round mints resolves in all six catalogues and takes no ICU argument.
  *
  * The reset DESTINATION — the item's first ask, and a reversal of 7076f8af — is guarded where that
  * decision already lived: test/payroll-reset-flow-7076f8af.test.ts case 1 and test/payroll-draft-resume
- * case a3, both updated rather than duplicated here. The widths are in test/payroll-screens-layout.test.ts
- * for the same reason.
+ * cases a3 / a3b, all updated rather than duplicated here. The widths are in
+ * test/payroll-screens-layout.test.ts for the same reason.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -185,15 +188,65 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
     expect(REPROCESS_FORM).toContain('{visibleAdditions.map((c) => {');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
     expect(REPROCESS_FORM).toContain('setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))');
-    // The match is on employee ID **or** name, partial and case-insensitive — the reporter's ask, and the
-    // same predicate remove-form.tsx uses.
-    expect(REPROCESS_FORM).toMatch(
-      /\(e\.employeeCode \?\? ''\)\.toLowerCase\(\)\.includes\(needle\) \|\| e\.name\.toLowerCase\(\)\.includes\(needle\)/,
-    );
+  });
+
+  it('the match is the SHARED employee-search rule, not a fourth hand-rolled copy of it', () => {
+    // "Search by Employee ID" is the ask, and lib/employee-search.ts is the one place that knows an
+    // Employee ID is spoken without its separators — `matchesEmployeeSearch` folds them, so "emp0008"
+    // finds EMP-0008 here exactly as it does in the Personnel switcher, the Step-2 picker, Transaction
+    // Detail and Individual Payslip. A local `.toLowerCase().includes()` pair passes every other test on
+    // this screen and answers that query with nobody, which is why the copy is pinned OUT by name.
+    expect(REPROCESS_FORM).toContain("import { matchesEmployeeSearch } from '@/lib/employee-search'");
+    expect(REPROCESS_FORM).toContain('employees.filter((e) => matchesEmployeeSearch(e, needle))');
+    expect(REPROCESS_FORM).toContain('additions.filter((e) => matchesEmployeeSearch(e, needle))');
+    expect(
+      REPROCESS_FORM,
+      'the hand-rolled predicate is back — it does not fold separators, so an Employee ID typed as it is spoken finds nobody',
+    ).not.toMatch(/employeeCode \?\? ''\)\.toLowerCase\(\)\.includes\(/);
   });
 
   it('an empty run and an empty search result say different things', () => {
     expect(REPROCESS_FORM).toContain("employees.length === 0 ? t('reprocessNoEmployees') : t('reprocessNoMatches')");
+  });
+
+  it('Enter in the search box cannot reach the submit button — the guard is on the FORM', () => {
+    /**
+     * THE KEYSTROKE THAT WOULD HAVE RUN PAYROLL. HTML implicit submission clicks a form's default submit
+     * button when Enter is pressed in a text-type field, and this round put the first such field inside
+     * `<form action={reprocessSelectedAction}>` — a form whose default button is "Reprocess N
+     * employee(s)" and whose selection arrives NON-EMPTY (stale employments plus addable New / Pending
+     * candidates), so the button is live before anything is clicked. Behaviour is proved by keystroke in
+     * test/payroll-reprocess-form.dom.test.tsx; the SHAPE is pinned here because the guard has to sit on
+     * the form for the next text field added to this screen to inherit it.
+     */
+    expect(REPROCESS_FORM).toContain('<form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit}');
+    const guard = REPROCESS_FORM.slice(
+      REPROCESS_FORM.indexOf('const blockImplicitSubmit'),
+      REPROCESS_FORM.indexOf('return (', REPROCESS_FORM.indexOf('const blockImplicitSubmit')),
+    );
+    expect(guard, 'the guard no longer exists').toContain("if (e.key !== 'Enter') return;");
+    expect(guard, 'it must stop the default action, not merely observe the key').toContain('e.preventDefault();');
+    // …and it must NOT swallow Enter in the reason textarea (newline) or on a focused button/link (which
+    // is the one explicit route to a submit that has to keep working).
+    expect(guard).toContain("if (el.tagName !== 'INPUT') return;");
+  });
+});
+
+describe('65e2d5de · Da — the premise the reset destination is decided on', () => {
+  it('the Status filter is a SINGLE-valued control', () => {
+    /**
+     * Not a test of this round's code, and that is the point. `payrollListAfterReset` CLEARS a status
+     * filter that would hide the reset run rather than widening it to processed + draft, and the only
+     * reason widening is wrong is that this control is one `<select>` bound to `statuses[0]`: a two-value
+     * query would paint "Processed" in the dropdown above a table that is also listing Draft rows, so the
+     * filter bar would be making a false statement about the list under it. If the control ever becomes
+     * multi-select that argument stops holding and the destination deserves re-reading — which is why the
+     * premise is pinned here rather than left in a comment. The destination ITSELF is guarded in
+     * test/payroll-draft-resume.test.ts a3 / a3b and test/payroll-reset-flow-7076f8af.test.ts case 1.
+     */
+    const FILTERS = code('app/payroll/dashboard-filters.tsx');
+    expect(FILTERS).toContain("value={filters.statuses[0] ?? ''}");
+    expect(FILTERS).toContain('statuses: e.target.value ? [e.target.value] : []');
   });
 });
 
