@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>70ac09ef — Medical and Hospitalization reading 0.00</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#16191d; --muted:#5c6572; --line:#e2e6ea;
+    --amber:#b45309; --amberbg:#fffbeb; --amberline:#fcd34d;
+    --green:#15803d; --greenbg:#f0fdf4; --greenline:#86efac;
+    --slate:#334155; --chip:#eef2f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       padding:28px 18px 56px}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:0 0 16px}
+  .card h2{font-size:15px;margin:0 0 10px;letter-spacing:.02em;text-transform:uppercase;color:var(--slate)}
+  .lead{font-size:13.5px;color:var(--muted);margin:0 0 14px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:760px){.two{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--card)}
+  .panel h3{margin:0 0 2px;font-size:16px}
+  .panel .tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+              padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--slate);margin-bottom:10px}
+  .measured{font-size:13px;color:var(--muted);border-left:3px solid var(--line);padding:2px 0 2px 12px;margin:10px 0 12px}
+  .measured b{color:var(--ink)}
+  .cause{background:var(--amberbg);border:1px solid var(--amberline);border-radius:8px;padding:11px 13px;font-size:13.5px}
+  .cause .k{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);margin-bottom:4px}
+  .fix{background:var(--greenbg);border:1px solid var(--greenline);border-radius:8px;padding:11px 13px;font-size:13.5px;margin-top:10px}
+  .fix .k{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);margin-bottom:4px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left}
+  th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .note{display:block;font-size:11.5px;color:var(--amber);margin-top:2px;font-weight:500}
+  .scroll{overflow-x:auto}
+  .beforeafter{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:760px){.beforeafter{grid-template-columns:1fr}}
+  .ba h4{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .ba .box{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card)}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{counter-increment:s;position:relative;padding:0 0 14px 34px;font-size:14px}
+  .steps li:last-child{padding-bottom:0}
+  .steps li:before{content:counter(s);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;
+    background:var(--slate);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .steps b{display:block}
+  .steps span{color:var(--muted);font-size:13px}
+  .foot{font-size:12px;color:var(--muted);margin-top:6px}
+  .warn{background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:13px 15px;font-size:13.5px}
+  .warn b{color:#9f1239}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Medical and Hospitalization Leave reading 0.00</h1>
+  <p class="sub">What we found on the live system &mdash; two leave types, two different reasons, two different fixes.</p>
+
+  <div class="card">
+    <h2>The finding</h2>
+    <p class="lead">The two leave types look identical on screen. They are not in the same state at all.</p>
+
+    <div class="two">
+
+      <div class="panel">
+        <span class="tag">Hospitalization Leave</span>
+        <h3>Entitlement WAS worked out &mdash; and it granted zero</h3>
+        <div class="measured">
+          <b>35</b> entitlement entries exist, one per employee, dated <b>1 Jan 2026</b> through
+          <b>27 Jul 2026</b>. Every one of them is worth <b>0.00 days</b>.
+        </div>
+        <div class="cause">
+          <span class="k">Why</span>
+          The entitlement table is fine. The <b>leave type itself has no earning method chosen</b>, and while that
+          is true the system deliberately grants 0.00 &mdash; the rule that stops it handing out a year of leave
+          nobody can take back.
+        </div>
+        <div class="fix">
+          <span class="k">What moves it</span>
+          Saving an earning method on Hospitalization Leave. That save credits all 35 people the full amount
+          owed, in one correction, immediately.
+        </div>
+      </div>
+
+      <div class="panel">
+        <span class="tag">Medical Leave</span>
+        <h3>Entitlement was never generated</h3>
+        <div class="measured">
+          <b>0</b> entitlement entries exist &mdash; nothing to add up. Unpaid Medical Leave is in the same
+          position: <b>0</b> entries.
+        </div>
+        <div class="cause">
+          <span class="k">Why</span>
+          The leave reset you approved ran on <b>12 Aug 2026</b>: <b>147</b> leave entries for Medical and
+          Hospitalization were archived and removed, and entitlement was never re-generated for Medical
+          afterwards.
+        </div>
+        <div class="fix">
+          <span class="k">What moves it</span>
+          Running Generate Entitlement for 2026 on Medical Leave. Its preview step names, per employee,
+          exactly what they would get &mdash; before anything is written.
+        </div>
+      </div>
+
+    </div>
+    <p class="foot">Archived entries from the 12 August reset are kept and viewable: Leave Config &rarr;
+      Entitlements &rarr; leave entries archive, capture tag c8052ae3-2026-08-12.</p>
+  </div>
+
+  <div class="card">
+    <h2>What the screen already tells you</h2>
+    <p class="lead">My Leave and Employee Balances now print a short reason underneath any figure that is 0.00
+      for a reason. This is live today &mdash; the panel on the right is not a proposal.</p>
+
+    <div class="beforeafter">
+      <div class="ba">
+        <h4>Before &mdash; the silent zero</h4>
+        <div class="box scroll">
+          <table>
+            <thead><tr><th>Leave type</th><th class="num">YTD Entitled</th><th class="num">Balance</th></tr></thead>
+            <tbody>
+              <tr><td>Medical Leave</td><td class="num">0.00</td><td class="num">0.00</td></tr>
+              <tr><td>Hospitalization Leave</td><td class="num">0.00</td><td class="num">0.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="foot">No reason given. Nothing to act on.</p>
+      </div>
+
+      <div class="ba">
+        <h4>Now &mdash; the figure keeps its place, and says why</h4>
+        <div class="box scroll">
+          <table>
+            <thead><tr><th>Leave type</th><th class="num">YTD Entitled</th><th class="num">Balance</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Medical Leave</td>
+                <td class="num">0.00<span class="note">Not yet generated</span></td>
+                <td class="num">0.00</td>
+              </tr>
+              <tr>
+                <td>Hospitalization Leave</td>
+                <td class="num">0.00<span class="note">Earning method not set</span></td>
+                <td class="num">0.00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="foot">Hovering the note gives the full sentence. The wording shown for Medical Leave is one of
+          the states the screen can report; the screen resolves the exact one per employee.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>The four employees you named</h2>
+    <p class="lead">This is the same reading, per person, on Leave &rarr; Employee Balances. The reasons are the
+      leave type's, so they read the same for everyone on that type.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Employee</th><th class="num">Medical Leave</th><th class="num">Hospitalization Leave</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Daniel Tan</td>
+              <td class="num">0.00<span class="note">Not yet generated</span></td>
+              <td class="num">0.00<span class="note">Earning method not set</span></td></tr>
+          <tr><td>Mei Ling</td>
+              <td class="num">0.00<span class="note">Not yet generated</span></td>
+              <td class="num">0.00<span class="note">Earning method not set</span></td></tr>
+          <tr><td>Aisyah Rahman</td>
+              <td class="num">0.00<span class="note">Not yet generated</span></td>
+              <td class="num">0.00<span class="note">Earning method not set</span></td></tr>
+          <tr><td>Arjun Kumar</td>
+              <td class="num">0.00<span class="note">Not yet generated</span></td>
+              <td class="num">0.00<span class="note">Earning method not set</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="foot">Figures shown are the 0.00 you reported. No entitlement amounts are invented here &mdash; the
+      real amounts come from your own table once the two actions below are done.</p>
+  </div>
+
+  <div class="card">
+    <h2>The two actions, in this order</h2>
+    <ol class="steps">
+      <li><b>Set the earning method on Hospitalization Leave.</b>
+        <span>Leave Config &rarr; Entitlements &rarr; Hospitalization Leave &rarr; Earning method. Saving it
+        credits all 35 people the full amount owed, straight away. Nothing else needs running.</span></li>
+      <li><b>Generate entitlement for Medical Leave, 2026.</b>
+        <span>Generate Entitlement &rarr; choose 2026 and Medical Leave &rarr; run the preview first. The
+        preview is a rehearsal of the real run and lists every employee with the outcome they would get, so
+        anyone still landing at zero is named with the reason before a single entry is written.</span></li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>One thing to avoid</h2>
+    <div class="warn">
+      <b>Generate Entitlement will not fix Hospitalization Leave.</b> Those 35 zero entries already mark the
+      2026 leave year as opened for those people, so a re-run reports them as already generated and changes
+      nothing. Only saving the earning method moves those balances.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

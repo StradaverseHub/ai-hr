@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5f2e20fb — Filter on My Leave History</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --fg:#0f172a; --muted:#64748b; --border:#e2e8f0;
+    --primary:#2563eb; --primary-fg:#ffffff; --amber-bg:#fffbeb; --amber-fg:#b45309;
+    --emerald-bg:#ecfdf5; --emerald-fg:#047857; --rose-bg:#fff1f2; --rose-fg:#be123c;
+    --chip:#f1f5f9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+       font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1140px;margin:0 auto}
+  h1{font-size:18px;margin:0 0 4px;font-weight:650}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 6px}
+  .note{color:var(--muted);font-size:12px;margin:0 0 26px}
+  .states{display:grid;grid-template-columns:1fr;gap:26px}
+  @media(min-width:920px){.states{grid-template-columns:1fr 1fr}}
+  .state{min-width:0}
+  .state-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+               color:var(--muted);margin:0 0 8px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;display:flex;
+        flex-direction:column;position:relative}
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+             border-bottom:1px solid var(--border);padding:11px 14px;font-size:14px;font-weight:600}
+  .filter-btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+              background:var(--card);border-radius:8px;padding:5px 11px;font-size:13px;font-weight:600;
+              color:var(--fg);cursor:default}
+  .filter-btn svg{width:15px;height:15px;color:var(--muted)}
+  .badge-count{display:grid;place-items:center;width:19px;height:19px;border-radius:999px;
+               background:var(--primary);color:var(--primary-fg);font-size:10px;font-weight:700}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:9px 14px;
+         border-bottom:1px solid var(--border)}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--border);
+        border-radius:999px;padding:3px 9px;font-size:12px;color:var(--fg)}
+  .chip b{font-weight:600;color:var(--muted)}
+  .chip .x{color:var(--muted);font-size:12px}
+  .clear-all{font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+  .body{padding:14px;display:flex;flex-direction:column;gap:8px}
+  .rec{border:1px solid var(--border);border-radius:12px;padding:13px}
+  .rec-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .rec-type{font-size:14px;font-weight:600}
+  .pill{display:inline-flex;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+  .pill.approved{background:var(--emerald-bg);color:var(--emerald-fg)}
+  .pill.pending{background:var(--amber-bg);color:var(--amber-fg)}
+  .pill.rejected{background:var(--rose-bg);color:var(--rose-fg)}
+  .rec-range{margin:8px 0 0;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .rec-dur{margin:2px 0 0;font-size:12px;color:var(--muted)}
+  .rec-link{margin:10px 0 0;font-size:12px;font-weight:600;color:var(--primary);
+            text-decoration:underline;text-underline-offset:2px}
+  .empty{padding:26px 14px;text-align:center;color:var(--muted);font-size:13px}
+  .empty a{color:var(--primary);text-decoration:underline;text-underline-offset:2px}
+
+  /* Filter popover */
+  .pop{position:absolute;right:14px;top:52px;width:min(21rem,88%);background:var(--card);
+       border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 34px rgba(15,23,42,.16);
+       padding:14px;z-index:5}
+  .fld{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .fld-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+             font-size:11px;font-weight:600;color:var(--muted)}
+  .bulk{font-size:11px;color:var(--muted)}
+  .opt{display:flex;align-items:center;gap:8px;font-size:13px;padding:1px 0}
+  .box{width:15px;height:15px;border:1px solid #94a3b8;border-radius:4px;display:inline-block;
+       position:relative;flex:none;background:var(--card)}
+  .box.on{background:var(--primary);border-color:var(--primary)}
+  .box.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;
+                 border:solid #fff;border-width:0 2px 2px 0;transform:rotate(42deg)}
+  .datefield{border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;
+             color:var(--fg);background:var(--card);display:flex;justify-content:space-between;
+             align-items:center;font-variant-numeric:tabular-nums}
+  .datefield.placeholder{color:#94a3b8}
+  .pop-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:2px}
+  .apply{background:var(--primary);color:var(--primary-fg);border:none;border-radius:8px;
+         padding:6px 14px;font-size:13px;font-weight:600;cursor:default}
+  .legend{margin-top:30px;border-top:1px solid var(--border);padding-top:16px;color:var(--muted);font-size:12px}
+  .legend b{color:var(--fg)}
+  .legend ul{margin:8px 0 0;padding-left:18px}
+  .legend li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>My Leave &rsaquo; My Leave History &mdash; date range and leave-type filter</h1>
+  <p class="sub">Employee self-service. The filter sits in the My Leave History box only; leave balances and every other section of the page are untouched.</p>
+  <p class="note">Leave type names shown are the system&rsquo;s own catalogue. Record dates are illustrative placeholders &mdash; each employee sees their own records.</p>
+
+  <div class="states">
+
+    <!-- STATE 1 — panel open -->
+    <div class="state">
+      <p class="state-label">1 &middot; Filter open</p>
+      <div class="card">
+        <div class="card-head">
+          <span>My leave history (14)</span>
+          <span class="filter-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filter
+          </span>
+        </div>
+
+        <div class="pop">
+          <div class="fld">
+            <span class="fld-label"><span>Leave type</span><span class="bulk">Select all &middot; Clear</span></span>
+            <label class="opt"><span class="box on"></span> Annual Leave</label>
+            <label class="opt"><span class="box on"></span> Sick Leave</label>
+            <label class="opt"><span class="box"></span> Hospitalisation Leave</label>
+            <label class="opt"><span class="box"></span> Emergency Leave</label>
+            <label class="opt"><span class="box"></span> Replacement Leave</label>
+          </div>
+          <div class="fld">
+            <span class="fld-label"><span>Start date</span></span>
+            <span class="datefield">01/01/2026 <span style="color:#94a3b8">&#128197;</span></span>
+          </div>
+          <div class="fld">
+            <span class="fld-label"><span>End date</span></span>
+            <span class="datefield placeholder">dd/mm/yyyy <span>&#128197;</span></span>
+          </div>
+          <div class="pop-foot">
+            <span class="apply">Apply</span>
+            <span class="clear-all">Clear all</span>
+          </div>
+        </div>
+
+        <div class="body" style="opacity:.35;min-height:330px">
+          <div class="rec">
+            <div class="rec-top"><span class="rec-type">Annual Leave</span><span class="pill approved">Approved</span></div>
+            <p class="rec-range">10 Aug 2026 &ndash; 12 Aug 2026</p>
+            <p class="rec-dur">3.00 days</p>
+            <p class="rec-link">View details</p>
+          </div>
+          <div class="rec">
+            <div class="rec-top"><span class="rec-type">Emergency Leave</span><span class="pill pending">Pending</span></div>
+            <p class="rec-range">28 Jul 2026</p>
+            <p class="rec-dur">1.00 day</p>
+            <p class="rec-link">View details</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATE 2 — filters applied -->
+    <div class="state">
+      <p class="state-label">2 &middot; Filters applied</p>
+      <div class="card">
+        <div class="card-head">
+          <span>My leave history (3 of 14)</span>
+          <span class="filter-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filter <span class="badge-count">3</span>
+          </span>
+        </div>
+
+        <div class="chips">
+          <span class="chip"><b>Leave type:</b> Annual Leave <span class="x">&#10005;</span></span>
+          <span class="chip"><b>Leave type:</b> Sick Leave <span class="x">&#10005;</span></span>
+          <span class="chip"><b>Start date:</b> 01 Jan 2026 <span class="x">&#10005;</span></span>
+          <span class="clear-all">Clear all</span>
+        </div>
+
+        <div class="body">
+          <div class="rec">
+            <div class="rec-top"><span class="rec-type">Annual Leave</span><span class="pill approved">Approved</span></div>
+            <p class="rec-range">10 Aug 2026 &ndash; 12 Aug 2026</p>
+            <p class="rec-dur">3.00 days</p>
+            <p class="rec-link">View details</p>
+          </div>
+          <div class="rec">
+            <div class="rec-top"><span class="rec-type">Sick Leave</span><span class="pill approved">Approved</span></div>
+            <p class="rec-range">17 Jun 2026</p>
+            <p class="rec-dur">1.00 day &middot; Half day (AM)</p>
+            <p class="rec-link">View details</p>
+          </div>
+          <div class="rec">
+            <div class="rec-top"><span class="rec-type">Annual Leave</span><span class="pill rejected">Rejected</span></div>
+            <p class="rec-range">02 Mar 2026 &ndash; 03 Mar 2026</p>
+            <p class="rec-dur">2.00 days</p>
+            <p class="rec-link">View details</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="state-label" style="margin-top:22px">3 &middot; Filters match nothing</p>
+      <div class="card">
+        <div class="card-head">
+          <span>My leave history (0 of 14)</span>
+          <span class="filter-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filter <span class="badge-count">2</span>
+          </span>
+        </div>
+        <div class="chips">
+          <span class="chip"><b>Leave type:</b> Replacement Leave <span class="x">&#10005;</span></span>
+          <span class="chip"><b>End date:</b> 31 Dec 2024 <span class="x">&#10005;</span></span>
+          <span class="clear-all">Clear all</span>
+        </div>
+        <div class="empty">No leave records match the filters. <a href="#">Clear all</a></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <b>What the drawing shows</b>
+    <ul>
+      <li>The Filter button sits on the top row of the My Leave History box, on the right of the existing record count. Nothing else on the My Leave page changes.</li>
+      <li>Opening it reveals Leave type (tick as many as you like), Start date and End date, then Apply.</li>
+      <li>Applied filters appear as removable tags under the top row, so it is always visible why the list is short. Each tag drops one value; Clear all restores the full history.</li>
+      <li>The count reads &ldquo;3 of 14&rdquo; while a filter is on, and returns to &ldquo;14&rdquo; when cleared.</li>
+      <li>Leave type, Start date, End date, the tags, Apply and Clear all already exist word-for-word in all six languages.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

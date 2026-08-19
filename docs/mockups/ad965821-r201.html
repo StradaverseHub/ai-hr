@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ad965821 — Leave conditions narrow the Request Leave list</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
+    --primary:#1d4ed8; --primary-soft:#eff6ff; --good:#047857; --good-soft:#ecfdf5;
+    --bad:#b91c1c; --bad-soft:#fef2f2; --amber:#92400e; --amber-soft:#fffbeb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 20px 56px}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 22px;font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:860px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .panel > header{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;justify-content:space-between;gap:10px}
+  .panel > header .ttl{font-weight:600;font-size:13px}
+  .tag{font-size:11px;font-weight:600;border-radius:999px;padding:2px 9px;letter-spacing:.02em}
+  .tag.now{background:var(--bad-soft);color:var(--bad)}
+  .tag.after{background:var(--good-soft);color:var(--good)}
+  .tag.same{background:#f3f4f6;color:var(--muted)}
+  .body{padding:14px}
+  .crumb{font-size:11px;color:var(--muted);margin:0 0 10px}
+  .lbl{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.04em;margin:0 0 5px}
+  .select{border:1px solid var(--line);border-radius:8px;background:#fff}
+  .select .chosen{padding:8px 11px;border-bottom:1px solid var(--line);display:flex;
+    justify-content:space-between;align-items:center;color:var(--muted)}
+  .opt{padding:7px 11px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .opt + .opt{border-top:1px solid #f1f2f4}
+  .opt .nm{display:flex;align-items:center;gap:8px}
+  .opt.flag{background:var(--bad-soft)}
+  .opt.flag .nm{color:var(--bad);font-weight:600}
+  .why{font-size:11px;color:var(--bad)}
+  .field{margin-bottom:14px}
+  .inp{border:1px solid var(--line);border-radius:8px;padding:8px 11px;color:var(--muted);background:#fff}
+  .note{margin-top:8px;font-size:12px;color:var(--amber);background:var(--amber-soft);
+    border:1px solid #fde68a;border-radius:8px;padding:8px 10px}
+  .err{margin-top:12px;font-size:12.5px;color:var(--bad);background:var(--bad-soft);
+    border:1px solid #fecaca;border-radius:8px;padding:9px 11px}
+  .btnrow{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+  .btn{border-radius:7px;padding:6px 13px;font-size:12.5px;font-weight:600;border:1px solid var(--line);
+    background:#fff;color:var(--muted)}
+  .btn.p{background:var(--primary);border-color:var(--primary);color:#fff}
+  .ref{margin-top:22px}
+  .ref .body{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:860px){.ref .body{grid-template-columns:1fr}}
+  .kv{border:1px solid var(--line);border-radius:8px}
+  .kv .row{display:flex;justify-content:space-between;padding:7px 11px;font-size:12.5px}
+  .kv .row + .row{border-top:1px solid #f1f2f4}
+  .kv .row .k{color:var(--muted)}
+  .kv .row .v{font-weight:600}
+  .chip{display:inline-block;font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 9px;
+    background:var(--primary-soft);color:var(--primary);border:1px solid #dbeafe}
+  .arrowline{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:10px 0 0}
+  .legend{margin-top:20px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+  .legend b{color:var(--ink)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--bad);display:inline-block}
+  .dot.ok{background:var(--good)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Request Leave — the list narrows to what the employee qualifies for</h1>
+  <p class="sub">Item ad965821 · viewer in both panels: an employee whose Personnel Profile records Gender = Male and Marital Status = Single.</p>
+
+  <div class="grid">
+
+    <!-- TODAY -->
+    <section class="panel">
+      <header>
+        <span class="ttl">Today</span>
+        <span class="tag now">Sees leave it cannot take</span>
+      </header>
+      <div class="body">
+        <p class="crumb">My Absence &rsaquo; Request Leave</p>
+
+        <div class="field">
+          <p class="lbl">Leave type</p>
+          <div class="select">
+            <div class="chosen"><span>Select a leave type</span><span>&#9662;</span></div>
+            <div class="opt"><span class="nm">Annual Leave</span></div>
+            <div class="opt"><span class="nm">Compassionate Leave</span></div>
+            <div class="opt"><span class="nm">Hospitalisation Leave</span></div>
+            <div class="opt flag">
+              <span class="nm"><span class="dot"></span>Maternity Leave</span>
+              <span class="why">Condition: Gender = Female</span>
+            </div>
+            <div class="opt flag">
+              <span class="nm"><span class="dot"></span>Paternity Leave</span>
+              <span class="why">Condition: Gender = Male + Marital Status = Married</span>
+            </div>
+            <div class="opt"><span class="nm">Sick Leave</span></div>
+            <div class="opt"><span class="nm">Unpaid Leave</span></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <p class="lbl">Start date &nbsp;·&nbsp; End date</p>
+          <div class="inp">Both filled in &mdash; then the form is submitted</div>
+        </div>
+
+        <div class="err">
+          Only now, on submit: &ldquo;This leave type is available to female employees only.&rdquo;
+        </div>
+
+        <div class="btnrow"><span class="btn">Cancel</span><span class="btn p">Submit request</span></div>
+      </div>
+    </section>
+
+    <!-- AFTER -->
+    <section class="panel">
+      <header>
+        <span class="ttl">After this change</span>
+        <span class="tag after">Only what qualifies is offered</span>
+      </header>
+      <div class="body">
+        <p class="crumb">My Absence &rsaquo; Request Leave</p>
+
+        <div class="field">
+          <p class="lbl">Leave type</p>
+          <div class="select">
+            <div class="chosen"><span>Select a leave type</span><span>&#9662;</span></div>
+            <div class="opt"><span class="nm">Annual Leave</span></div>
+            <div class="opt"><span class="nm">Compassionate Leave</span></div>
+            <div class="opt"><span class="nm">Hospitalisation Leave</span></div>
+            <div class="opt"><span class="nm">Sick Leave</span></div>
+            <div class="opt"><span class="nm">Unpaid Leave</span></div>
+          </div>
+          <div class="note">
+            Some leave types are not listed because they do not match your profile details.
+            Check your Gender and Marital Status on your profile, or ask HR.
+          </div>
+        </div>
+
+        <div class="field">
+          <p class="lbl">Start date &nbsp;·&nbsp; End date</p>
+          <div class="inp">Both filled in &mdash; then the form is submitted</div>
+        </div>
+
+        <div class="arrowline">
+          <span class="dot ok"></span>
+          Maternity and Paternity Leave were never offered, so the refusal message never has to appear.
+          It stays in place behind the screen as the safety net.
+        </div>
+
+        <div class="btnrow"><span class="btn">Cancel</span><span class="btn p">Submit request</span></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MANAGER ON BEHALF -->
+  <section class="panel ref" style="margin-top:18px">
+    <header>
+      <span class="ttl">Manager applying on behalf of a team member &mdash; the list follows whoever is selected</span>
+      <span class="tag after">New</span>
+    </header>
+    <div class="body" style="display:block">
+      <div class="grid" style="gap:16px">
+        <div>
+          <p class="lbl">Employee</p>
+          <div class="select"><div class="chosen"><span>Team member with Gender = Female</span><span>&#9662;</span></div></div>
+          <p class="lbl" style="margin-top:12px">Leave type</p>
+          <div class="select">
+            <div class="opt"><span class="nm">Annual Leave</span></div>
+            <div class="opt"><span class="nm">Maternity Leave</span></div>
+            <div class="opt"><span class="nm">Sick Leave</span></div>
+          </div>
+        </div>
+        <div>
+          <p class="lbl">Employee</p>
+          <div class="select"><div class="chosen"><span>Team member with Gender = Male, Marital Status = Married</span><span>&#9662;</span></div></div>
+          <p class="lbl" style="margin-top:12px">Leave type</p>
+          <div class="select">
+            <div class="opt"><span class="nm">Annual Leave</span></div>
+            <div class="opt"><span class="nm">Paternity Leave</span></div>
+            <div class="opt"><span class="nm">Sick Leave</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="arrowline">Changing the employee re-draws the leave type list for that person, so it always matches whoever the leave is for.</p>
+    </div>
+  </section>
+
+  <!-- WHERE THE VALUES COME FROM -->
+  <section class="panel ref">
+    <header>
+      <span class="ttl">Where the two values come from &mdash; unchanged, already working today</span>
+      <span class="tag same">No change</span>
+    </header>
+    <div class="body">
+      <div>
+        <p class="crumb">Personnel Profile &rsaquo; Employee Profile</p>
+        <div class="kv">
+          <div class="row"><span class="k">Gender</span><span class="v">Female</span></div>
+          <div class="row"><span class="k">Marital Status</span><span class="v">Married</span></div>
+        </div>
+        <p class="arrowline">Read live at the moment the screen is opened &mdash; always the latest saved values.</p>
+      </div>
+      <div>
+        <p class="crumb">HR Admin &rsaquo; Leave Config &rsaquo; Maternity Leave &rsaquo; Condition &rsaquo; Criteria</p>
+        <div class="kv">
+          <div class="row"><span class="k">Gender</span><span class="v"><span class="chip">Female</span></span></div>
+          <div class="row"><span class="k">Marital Status</span><span class="v" style="color:var(--muted);font-weight:400">not set &mdash; no restriction</span></div>
+          <div class="row"><span class="k">Minimum service</span><span class="v" style="color:var(--muted);font-weight:400">not set</span></div>
+          <div class="row"><span class="k">Probation</span><span class="v" style="color:var(--muted);font-weight:400">not set</span></div>
+        </div>
+        <p class="arrowline">The same Criteria form already carries Paternity Leave&rsquo;s Gender = Male plus Marital Status = Married.</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="legend">
+    <span class="dot"></span> <b>Offered today but always refused.</b> &nbsp;
+    <span class="dot ok"></span> <b>What this change adds.</b> &nbsp;
+    The conditions, the refusal on submit, and the Condition screen that configures them all exist already &mdash;
+    this change is the seeing half: the Request Leave list stops offering leave the employee cannot take.
+  </p>
+
+</div>
+</body>
+</html>

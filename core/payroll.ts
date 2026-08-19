@@ -414,6 +414,31 @@ function deltaStat<T extends Record<string, unknown>>(now: T, before: T): T {
   for (const k of DELTA_KEYS) {
     (out as Record<string, unknown>)[k] = Math.max(0, round2(Number(now[k] ?? 0) - Number(before[k] ?? 0)));
   }
+  // ── 45df860a — WHAT THE CARRIED-THROUGH PCB WORKING ACTUALLY EXPLAINS ──
+  // The loop above rewrites the DELTA_KEYS and nothing else, so `pcb` leaves here as the INCREMENT while
+  // `pcbMeta` — riding through `{ ...now }` untouched, because it is not a contribution field — is still
+  // the CUMULATIVE month's working: its P, its bracket, its two MTD legs. The two are different numbers,
+  // and a screen that printed the one as the derivation of the other would present a complete, correct
+  // LHDN formula as the explanation of an amount nobody deducted. That is the same failure a hand-set PCB
+  // creates (2961a7ae), so it is recorded the same way: stamp the two figures the delta was taken
+  // between, and `core/pcb-explain.ts` reports `pcbSystem` (what the working explains) against `pcb`
+  // (what was deducted) with a banner saying which is which. Additive key on a jsonb blob — no DDL, no
+  // amount moves, and an older payslip simply has no stamp.
+  const meta = now.pcbMeta;
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    (out as Record<string, unknown>).pcbMeta = {
+      ...(meta as Record<string, unknown>),
+      delta: {
+        /** The whole month's PCB — the figure `pcbMeta` below it is the working for. */
+        cumulative: round2(Number(now.pcb ?? 0)),
+        /** The month's PCB WITHOUT this run's additional remuneration: what the earlier runs carried. */
+        prior: round2(Number(before.pcb ?? 0)),
+        /** The month's additional-remuneration leg, so the screen's normal/additional split describes the
+         *  same month as the working rather than mixing a cumulative total with an incremental leg. */
+        cumulativeBonus: round2(Number(now.pcbBonus ?? 0)),
+      },
+    };
+  }
   return out;
 }
 
