@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 2 APPROVED · 2 CONTESTED · 7 PLANNED · 0 OPEN)
+## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 0 APPROVED · 9 PLANNED · 2 CONTESTED · 0 OPEN)
 
 **`main@6706ee46` IS WHAT RUNS ON PRODUCTION (r206, 2026-08-19)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** reporting ZERO differences, not by `deploy.sh`
@@ -27,8 +27,10 @@ succeeding, which is not proof. Service active, `GET localhost:3000/` → 401.
 present on the live schema. NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0448`.**
-**Board after r207: `approved = 2` · `contested = 2` · `planned = 7` · `open = 0` · deployed ≈ 707.**
-The open queue is EMPTY — all seven were planned in r207 and are waiting on the reporter.
+**Board after r207: `approved = 0` · `planned = 9` · `contested = 2` · `open = 0` · `deployed = 706`.**
+**THE BUILD QUEUE IS EMPTY AND THAT IS CORRECT** — nothing is approved because the two that were
+(`bdf7d248`, `7ad37961`) were RE-PLANNED rather than built, on the owner's decision. Everything now
+waits on the reporter.
 The two still approved are the two deliberately NOT built — `bdf7d248` (EPF, owner decision open) and
 `7ad37961` (TP1, must be re-planned). FOUR NEW OPEN ITEMS arrived during r206: `6b4ca488`, `0bade264`,
 `6448574f`, `5a29686c`. `301d3f6b` has moved from planned to CONTESTED.
@@ -91,9 +93,9 @@ rsync FROM mainwt.
 
 **THE OPEN QUEUE IS EMPTY.** r207 planned all seven; they are waiting on the reporter, not on us.
 
-**NEITHER REMAINING APPROVED ITEM IS A BUILD.** `bdf7d248` (EPF) is waiting on an OWNER DECISION and
-`7ad37961` (TP1) must be RE-PLANNED — both are detailed below. Do not let "2 approved" read as "2 to
-build": the build queue is empty and the real work is the contested pair and the seven open items.
+**NOTHING IS APPROVED. DO NOT GO LOOKING FOR A BUILD QUEUE.** `bdf7d248` and `7ad37961` were re-planned
+in r207 (owner's decision, asked and answered) and are back with the reporter. The real work is the two
+contested items and waiting on approvals.
 
 **THE TWO CONTESTED ARE PUSH-BACK ON PLANS WE WROTE, NOT NEW WORK.** `70ac09ef` (now at revision 2, needs
 a THIRD re-plan on the reporter's Employment Type + Job Grade framing) and `301d3f6b`. **`70ac09ef` is the
@@ -355,6 +357,39 @@ makes the duplicate warning demonstrable rather than illustrative.
 `pnpm improve:push-plan` EXITS NON-ZERO ON SUCCESS (pnpm's ELIFECYCLE over stderr noise), and a
 `while read` loop around it pushed only the first item while reporting failure for all seven. Grep the
 output for "pushed plan", never the exit code, and drive it one item at a time.
+
+
+**r207b — THE TWO APPROVED ITEMS WERE RE-PLANNED, NOT BUILT (owner's decision).**
+
+⚠️⚠️ **`bdf7d248`: THE ADR-0024 MULTI-CYCLE STATUTORY CORE IS DEAD CODE.**
+`localization/my/multicycle.ts` implements the entire Wave 2C design — statutory month as ONE
+computation, runs as increments, SOCSO/EIS charged once per Act 4 s.6(7)/6(9), EPF on the combined-month
+round-up. Its only export, `computeMonthlyRuns`, is imported by `test/multicycle-compute.test.ts` **and by
+nothing else** (grepped repo-wide). The header's "NOT wired into the live payroll kernel" is STILL TRUE.
+**But `MULTI_CYCLE_PAYROLL_ENABLED=true` on production** — it gates CREATING additional same-month runs
+(`core/payroll.ts:1415`), not the aggregation. The live path calls `pack.payroll.statutory(...)` per batch
+(`core/payroll.ts:4860`), so **each run bands independently**. The situation is reachable in production and
+the correct handling is connected to nothing.
+Measured, employee side, wage 5,001 + second run 1,001:
+`epf(5001,0)=561 + epf(1001,0)=113 = **674**` vs the month as one wage `epf(6002,0)=**671**` — **RM3**,
+because each run re-enters the Third Schedule from the bottom. The single-run bonus comparison
+(`epf(5001,1001)=672`) is a DIFFERENT question and quoting it understates this one.
+**The golden case is degenerate**: 5,000 + 10,000 is 1,650 under both readings, so
+`multicycle-compute.test.ts` passing proves nothing about which rule is in force.
+ADR-0024 §5 gates enabling on accountant sign-off of the §7 worksheet — build the worksheet as a
+READ-ONLY replay first, get sign-off, then wire. Not the other way round.
+
+**`7ad37961`: unchanged, still held, and its two migrations are now DEAD.** `0444`/`0445` sit below the
+deployed watermark since `0446`/`0447` shipped, so merging either would be SILENTLY SKIPPED (rule 14).
+**Reissue from `0448`.** `0444` also REPLACES the `tp1_status` enum rather than adding to it, and a new
+enum value cannot be used by another migration in the same run — `0445`'s backfill hit exactly that.
+Keep that note with whatever number it is reissued as.
+
+⚠️ **A MOCKUP CAUGHT WRONG ARITHMETIC OF MINE FOR THE SECOND ROUND RUNNING.** The first EPF draft drew
+551 + 121 = 672 against 671, carried over from the single-run comparison. Understating a pay-affecting
+divergence in the picture the reporter approves from is the r170 failure with the numbers moved.
+**Recompute every figure in a mockup against the code before rendering it — do not carry one over from
+a note, including your own.**
 
 ### r206 (2026-08-19) — SIX ITEMS, FIVE WORKSTREAMS, `main@6706ee46`, migration `0447`
 
