@@ -97,12 +97,43 @@ export type EntitlementStatus =
   /** A table applies, but the leave type has no earning method, so generation grants 0.00 until HR sets one
    *  (`leave_type.accrual_unconfigured`, bc36c768). HR's own setting — named, never changed here. */
   | 'earning_method_missing'
-  /** No entitlement table resolves for this employee and type at this date. 0.00 is the true answer. */
+  /** r209 — THE LEAVE TYPE HAS NO ENTITLEMENT TABLE IN FORCE AT ALL, for anybody, at this date. Nobody was
+   *  ever going to get days on it: 0.00 is arithmetically true and the missing piece is the day table. */
+  | 'no_entitlement_table'
+  /** r209 — THE TABLES EXIST AND NONE OF THEM REACHES THIS EMPLOYEE. Every eligibility rule that could have
+   *  pointed them at one is expired, or narrows to a population they are not in. This is the state a single
+   *  rule expiring on 13 August 2026 put an entire tenant into: six correct Medical tables, unreachable,
+   *  every employee reading 0.00 with nothing on any screen to say why. It is NOT the same fact as
+   *  `no_entitlement_table` and flattening the two is what made it invisible for six days. */
+  | 'no_eligibility_match'
+  /** r209 — A TABLE APPLIES AND GRANTS DAYS, AND THE MAXIMUM BALANCE CAP IS ZERO, so `applyMaxBalance`
+   *  clamps every one of them away at the moment they are granted. The grant still writes a 0.00 accrual
+   *  row, so without this the screen reads `granted` and shows a silent 0.00 — the exact shape of the six
+   *  Special Leave types (3 days each, maxBalanceDays 0) on the reporter's account.
+   *
+   *  ⚠️ THIS ANNOUNCES THE CAP; IT DOES NOT REINTERPRET IT. `bandMaxBalance` treats any finite number >= 0
+   *  as a real cap and that is deliberate (core/leave-compute.ts) — a cap of 0 means a cap of 0. What was
+   *  missing is anybody being TOLD. */
+  | 'capped_by_max_balance'
+  /** No breakdown resolved for this (employment, type) at all — the row has no entitlement story to tell.
+   *  ⚠️ r209: this is NO LONGER the answer to "no table resolved for this employee". That question now
+   *  splits into `no_entitlement_table` and `no_eligibility_match` above, and `resolveEntitlementStatus`
+   *  never returns this value. It survives as `deriveBalanceRow`'s value when there is no breakdown object
+   *  — a leave type the employee holds with nothing computed for it — and stays silent for that reason. */
   | 'not_configured';
 
 export function resolveEntitlementStatus(p: {
   /** An entitlement template resolved for this (employment, leave type) as at the breakdown's date. */
   hasTemplateInForce: boolean;
+  /** r209 — the leave TYPE has at least one entitlement table in force at this date, for ANYBODY. Read off
+   *  the same resolver `hasTemplateInForce` comes from (`TemplateEntitlementResolver.hasTemplatesFor`), so
+   *  it costs no query. This is the ONLY fact that separates "no table exists" from "the tables exist and
+   *  no rule points you at one", and the second of those is a defect while the first is not. */
+  leaveTypeHasTemplates: boolean;
+  /** r209 — the Maximum Balance cap the winning band (or the leave type's own rule) resolves to, exactly as
+   *  `applyMaxBalance` will read it. null ⇒ no cap. ZERO IS A REAL CAP OF ZERO and clamps the whole grant
+   *  away; that is the semantics this file reports and never changes. */
+  maxBalanceDays: number | null;
   /** `leave_type.accrual_unconfigured` is set — no earning method has been chosen for the type. */
   accrualUnconfigured: boolean;
   /** `isEarnedMethod(policy.method)` — the resolved earning method is one of the `earned_*` family, so the
@@ -115,11 +146,22 @@ export function resolveEntitlementStatus(p: {
   /** At least one `accrual` / `in_lieu_accrual` ledger row inside [cycleStart, asOf]. */
   hasAccrualRowInCycle: boolean;
 }): EntitlementStatus {
-  // Nothing configured ⇒ nothing to explain. Said FIRST so a tenant who has not written a table for a type
-  // is never told their entitlement is "not generated yet" — there is nothing to generate.
-  if (!p.hasTemplateInForce) return 'not_configured';
+  // Nothing RESOLVED ⇒ nothing to generate, so this is said FIRST — a tenant is never told their
+  // entitlement is "not generated yet" when no table reaches them. r209 splits the one answer into two,
+  // because they call for opposite actions: WRITE A TABLE, or FIX THE RULE THAT WAS SUPPOSED TO HAND OUT
+  // the tables you already wrote. Both used to read `not_configured`, and `not_configured` is silent.
+  if (!p.hasTemplateInForce) {
+    return p.leaveTypeHasTemplates ? 'no_eligibility_match' : 'no_entitlement_table';
+  }
   // Ranked above everything below, including `granted`; see the header for why the order is the point.
   if (p.accrualUnconfigured) return 'earning_method_missing';
+  // r209 — ABOVE `granted`, and that placement is the whole of this branch. A cap of zero does not stop the
+  // grant happening; `openLeaveYear` posts the accrual row and `applyMaxBalance` clamps it to 0.00. So the
+  // ledger HAS a row, `hasAccrualRowInCycle` is true, and the honest-looking answer below would be
+  // "generated" over a figure of 0.00 — the silence this item exists to end. Gated on the table actually
+  // granting something (`entitlementDays > 0`): a table of 0 days under a cap of 0 is `zero_entitlement`,
+  // which is a statement about the day table and the more useful of the two.
+  if (p.maxBalanceDays === 0 && p.entitlementDays > 0) return 'capped_by_max_balance';
   // Days have landed for this cycle: the figure on screen IS the answer, whatever produced it.
   if (p.hasAccrualRowInCycle) return 'granted';
   // ── from here on: a table applies, a method is chosen, and the ledger is empty for this cycle. WHICH of
@@ -129,9 +171,22 @@ export function resolveEntitlementStatus(p: {
   return 'not_generated';
 }
 
-/** True for the states a screen must SAY OUT LOUD beside the figure. `granted` needs no caption, and
- *  `not_configured` is the long-standing meaning of a blank row — announcing it on every unconfigured type
- *  would bury the ones that matter under noise on a tenant with a dozen types. */
+/**
+ * True for the states a screen must SAY OUT LOUD beside the figure.
+ *
+ * ⚠️ r209 REVERSED HALF OF THE ORIGINAL RULE HERE, DELIBERATELY. 31e39d74 kept `not_configured` silent on
+ * the argument that announcing "no entitlement table" on every unconfigured type "would bury the ones that
+ * matter under noise on a tenant with a dozen types". That argument assumed the silent state was always the
+ * boring one. It is not: the tenant this item comes from had SIX correct Medical tables and one eligibility
+ * rule that expired on 13 August 2026, after which every employee resolved to nothing — and the screen said
+ * nothing at all, for six days, because that state rendered as `not_configured` and `not_configured` was
+ * silent. The noise argument survives only for the state it was really about, which is now
+ * `no_entitlement_table`… and even that is announced, because "this leave type has no day table" is a
+ * one-line answer to "why is my balance 0.00" and the reporter asked for exactly that answer.
+ *
+ * `granted` still needs no caption. `not_configured` stays silent because it no longer means "nothing is
+ * configured" — it is the value for a row with no breakdown at all, which has nothing to explain.
+ */
 export function entitlementStatusNeedsNotice(s: EntitlementStatus): boolean {
   return s !== 'granted' && s !== 'not_configured';
 }
@@ -144,6 +199,9 @@ export const ENTITLEMENT_STATUS_LABEL_KEY: Record<EntitlementStatus, string> = {
   earned_accrual: 'statusEarnedAccrual',
   zero_entitlement: 'statusZeroEntitlement',
   earning_method_missing: 'statusEarningMethodMissing',
+  no_entitlement_table: 'statusNoEntitlementTable',
+  no_eligibility_match: 'statusNoEligibilityMatch',
+  capped_by_max_balance: 'statusCappedByMaxBalance',
   not_configured: 'statusNotConfigured',
 };
 
@@ -154,4 +212,7 @@ export const ENTITLEMENT_STATUS_TIP_KEY: Partial<Record<EntitlementStatus, strin
   earned_accrual: 'statusEarnedAccrualTip',
   zero_entitlement: 'statusZeroEntitlementTip',
   earning_method_missing: 'statusEarningMethodMissingTip',
+  no_entitlement_table: 'statusNoEntitlementTableTip',
+  no_eligibility_match: 'statusNoEligibilityMatchTip',
+  capped_by_max_balance: 'statusCappedByMaxBalanceTip',
 };

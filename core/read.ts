@@ -3026,6 +3026,16 @@ export function leaveEntitlementBreakdown(
     );
     const entitlementStatus = resolveEntitlementStatus({
       hasTemplateInForce: entitlementWinner != null,
+      // r209 — THE FACT THAT SEPARATES THE TWO ZEROES. `entitlementWinner == null` is true both when the
+      // leave type has no day table at all and when it has six of them and no eligibility rule reaches this
+      // employee. Those call for opposite actions, and until this line both rendered as one silent 0.00 —
+      // which is how a single rule expiring on 13 August 2026 took a whole tenant's entitlement out with no
+      // signal anywhere. Read off the resolver already built above, so it costs nothing.
+      leaveTypeHasTemplates: templates.hasTemplatesFor(leaveTypeId),
+      // r209 — the SAME cap `applyMaxBalance` will clamp the grant against (band's own, or the leave type's
+      // rule overlaid by `applyLeaveTypeRules`). A cap of 0 clamps every granted day away while still
+      // writing the accrual row, so without this the screen reads "generated" over 0.00.
+      maxBalanceDays: policy?.maxBalanceDays ?? null,
       accrualUnconfigured: isAccrualUnconfigured(type),
       // ⚠️ THE TWO INPUTS THE FIRST CUT OF THIS LACKED, AND WHY IT WAS WRONG WITHOUT THEM. "A table is in
       // force and no accrual row exists" was read as "generation has not run", but `openLeaveYear` has

@@ -39,6 +39,10 @@ import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
 } from './templates/entitlement-tables-block';
+// r209 — the traffic-light listing. Derived from the SAME page-level `entitlementTablesData` the panels
+// below are sliced from, so the card and each type's own Entitlement step can never disagree.
+import { leaveConfigHealthAll } from '@/lib/leave-config-health';
+import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
 import {
   archiveLeaveTypeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,
@@ -314,6 +318,25 @@ export default async function LeaveEntitlementsPage({
   // eleven queries into eleven times the number of leave types — 264 on this tenant, for a screen showing
   // one type's tables.
   const entitlementTablesData = await loadEntitlementTablesData(s);
+  /**
+   * r209 — EVERY LEAVE TYPE'S ANSWER TO "WHY IS THE BALANCE 0.00", ON ONE CARD.
+   *
+   * The reporter listed nine leave types showing 0.00 and expected one answer; there were three, and every
+   * one of them was already recorded and shown nowhere — `accrual_method` NULL on five types (with
+   * `accrual_unconfigured` stamped 2026-08-04 and read by no surface), two types with no entitlement table
+   * at all, and a single tenant-wide eligibility rule whose `valid_to` was 2026-08-13. This card is the
+   * "see all of them at a glance instead of opening each one" the approved plan asks for; the same
+   * derivation renders inside each type's Entitlement step beside the tables it is about.
+   *
+   * Costs nothing new: `entitlementTablesData` is already loaded above for the panels.
+   */
+  const configHealth = leaveConfigHealthAll({
+    leaveTypes: entitlementTablesData.leaveTypes,
+    templates: entitlementTablesData.templates,
+    rules: entitlementTablesData.rules,
+    grades: entitlementTablesData.activeGrades,
+    today: entitlementTablesData.today,
+  });
   /** The step's own Entitlement Tables, scoped to one type. Per type — the ONE thing on this page that
    *  legitimately cannot be a single shared node, because the filter IS the item. */
   const entitlementTablesSectionFor = (leaveTypeId: string) => (
@@ -392,6 +415,10 @@ export default async function LeaveEntitlementsPage({
         }
       />
       <ErrorBanner message={error} />
+
+      {/* r209 — above the leave-type workspace on purpose: it answers "which of these can produce a balance
+          at all", and every panel below assumes that question has already been asked. */}
+      <LeaveConfigHealthCard rows={configHealth} />
 
       {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings".
           Workspace shape (c979aa8b): the stacked collapsible rows became a two-pane workspace — an internal

@@ -565,6 +565,21 @@ export type TemplateEntitlementResolver = {
   bandFor: (employmentId: string, leaveTypeId: string, serviceYears: number) => ServiceBand | null;
   /** The full explain record — which rule won, how specific it was, and what else matched. */
   winnerFor: (employmentId: string, leaveTypeId: string) => ResolvedEntitlement | null;
+  /**
+   * r209 — DOES THIS LEAVE TYPE HAVE ANY ENTITLEMENT TABLE IN FORCE AT `asOf`, for anybody?
+   *
+   * ⚠️ THIS IS THE FACT THAT SEPARATES THE TWO ZEROES, and until r209 no caller could ask it. `winnerFor`
+   * returning null collapses two completely different situations into one silence:
+   *   - the leave type has NO table at all ⇒ nobody was ever meant to get days, and 0.00 is the truth;
+   *   - the leave type has tables, and NO ELIGIBILITY RULE POINTS THIS EMPLOYEE AT ONE ⇒ the configuration
+   *     is half-built, and 0.00 is a defect somebody has to go and fix.
+   * The second is what a single expired rule did to a whole tenant from 13 August 2026 — every employee
+   * silently resolving to nothing while six Medical tables sat there, correct and unreachable.
+   *
+   * FREE: it reads the SAME `activeTemplatesAt` map the resolution below is built from, captured before
+   * the short-circuits so a resolver that returned `empty` still answers truthfully. No extra query.
+   */
+  hasTemplatesFor: (leaveTypeId: string) => boolean;
   /** True when nothing was configured at all: the caller may skip every template branch. */
   isEmpty: boolean;
 };
@@ -573,16 +588,24 @@ export async function buildTemplateEntitlementResolver(
   tx: Tx,
   p: { employmentIds: string[]; leaveTypeIds: string[]; asOf: string },
 ): Promise<TemplateEntitlementResolver> {
-  const empty: TemplateEntitlementResolver = {
+  const emptyWith = (hasTemplatesFor: (leaveTypeId: string) => boolean): TemplateEntitlementResolver => ({
     bandFor: () => null,
     winnerFor: () => null,
+    hasTemplatesFor,
     isEmpty: true,
-  };
+  });
+  const empty = emptyWith(() => false);
   const empIds = [...new Set(p.employmentIds.filter(Boolean))];
   const typeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
   if (empIds.length === 0 || typeIds.length === 0) return empty;
 
   const templates = await activeTemplatesAt(tx, p.asOf, typeIds);
+  // r209 — captured HERE, before any short-circuit, because every `return empty` below is a case where the
+  // question "does this type have a table at all" still has a real answer and the screens need it. A tenant
+  // whose only eligibility rule expired takes the `matchedByEmp.size === 0` exit two blocks down with six
+  // Medical tables sitting in this map; answering `false` there is exactly the silence r209 exists to end.
+  const typesWithTemplates = new Set([...templates.values()].map((t) => t.leaveTypeId));
+  const hasTemplatesFor = (leaveTypeId: string) => typesWithTemplates.has(leaveTypeId);
   if (templates.size === 0) return empty;
 
   // ── r193 FAULT 3 — A LEAVE TYPE WITH EXACTLY ONE TABLE AND NO RULE NEEDS NO RULE ────────────────────
@@ -638,7 +661,7 @@ export async function buildTemplateEntitlementResolver(
   // r193: `&& soleTemplateByType.size === 0` — a tenant with tables but no rules used to short-circuit to
   // "nothing configured" HERE, which is the whole of fault 3. It still short-circuits when there is also
   // nothing unambiguous to apply, so the back-compat guarantee in this function's header is untouched.
-  if (ruleRows.length === 0 && soleTemplateByType.size === 0) return empty;
+  if (ruleRows.length === 0 && soleTemplateByType.size === 0) return emptyWith(hasTemplatesFor);
 
   // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch.
   const matchedByEmp = new Map<string, EligibilityRuleRow[]>();
@@ -654,7 +677,7 @@ export async function buildTemplateEntitlementResolver(
       else matchedByEmp.set(id, [rule]);
     }
   }
-  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0) return empty;
+  if (matchedByEmp.size === 0 && soleTemplateByType.size === 0) return emptyWith(hasTemplatesFor);
 
   // Ranked once per (employment, leave type) and memoised — the grant loops ask for the same pair at
   // several service lengths (the anniversary re-resolution in projectExpectedEntitlement asks twice for
@@ -711,6 +734,7 @@ export async function buildTemplateEntitlementResolver(
 
   return {
     winnerFor,
+    hasTemplatesFor,
     bandFor: (employmentId, leaveTypeId, serviceYears) => {
       const won = winnerFor(employmentId, leaveTypeId);
       if (!won) return null;
