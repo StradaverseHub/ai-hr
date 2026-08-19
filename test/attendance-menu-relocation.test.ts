@@ -90,8 +90,11 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // inverting it a third time. 0bb0e303 put the admin node inside the adminOnly group. a324a4b3 rev2
     // merged everything into ONE menu, which then had to sit in the ungated group or Records/Roster/Import
     // would vanish. rev3 is the reporter's own correction: "just relocate the Attendance button below My
-    // Attendance to admin section between Leave Config and Claim Config". THAT HALF IS UNCHANGED and is
-    // asserted below exactly as it was.
+    // Attendance to admin section between Leave Config and Claim Config". That INSTRUCTION is unchanged;
+    // its ASSERTION was half-dead and r209's verification caught it. `mountOf('LEAVE_CONFIG_ROW')` named a
+    // const 645e67c4 had already renamed to `LEAVE_CONFIG_NODE`, so it returned -1 and "after Leave config"
+    // held for the node mounted ANYWHERE — only "before Claims config" was ever live. Both halves are live
+    // now, and mountOf refuses to return -1 so the next rename fails loudly instead of certifying nothing.
     //
     // 0bade264 (r209) ADDS THE LABEL HALF, and it is the half that reverses a prior decision. ad52212d
     // round 1 renamed this node's key `attendance` → `attendanceSettings` AND its string to "Attendance
@@ -125,9 +128,20 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(adminGroupStart).toBeGreaterThan(-1);
     expect(manageGroupStart).toBeGreaterThan(-1);
 
-    const mountOf = (konst: string) => sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
+    // `String.search` answers -1 for no match, and -1 is below every real offset — so a const name that
+    // no longer exists turns `toBeGreaterThan(leaveConfigAt)` into a tautology instead of a failure. That
+    // is exactly how the "after Leave config" half died silently for the whole life of LEAVE_CONFIG_NODE.
+    // Assert the mount INSIDE the helper: a rename now fails here, loudly, at the name that moved.
+    const mountOf = (konst: string) => {
+      const at = sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
+      expect(
+        at,
+        `${konst} must be mounted in components/sidebar.tsx — a renamed const makes every position assertion in this case vacuously true`,
+      ).toBeGreaterThan(-1);
+      return at;
+    };
     const attendanceAt = mountOf('ATTENDANCE_NODE');
-    const leaveConfigAt = mountOf('LEAVE_CONFIG_ROW');
+    const leaveConfigAt = mountOf('LEAVE_CONFIG_NODE');
     const claimsConfigAt = mountOf('CLAIMS_CONFIG_ROW');
 
     // Literally between them, inside the admin group.
