@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 2 APPROVED · 2 CONTESTED · 7 OPEN)
+## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 2 APPROVED · 2 CONTESTED · 7 PLANNED · 0 OPEN)
 
 **`main@6706ee46` IS WHAT RUNS ON PRODUCTION (r206, 2026-08-19)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** reporting ZERO differences, not by `deploy.sh`
@@ -27,7 +27,8 @@ succeeding, which is not proof. Service active, `GET localhost:3000/` → 401.
 present on the live schema. NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0448`.**
-**Board after r206: `approved = 2` · `contested = 2` · `open = 7` · deployed ≈ 707.**
+**Board after r207: `approved = 2` · `contested = 2` · `planned = 7` · `open = 0` · deployed ≈ 707.**
+The open queue is EMPTY — all seven were planned in r207 and are waiting on the reporter.
 The two still approved are the two deliberately NOT built — `bdf7d248` (EPF, owner decision open) and
 `7ad37961` (TP1, must be re-planned). FOUR NEW OPEN ITEMS arrived during r206: `6b4ca488`, `0bade264`,
 `6448574f`, `5a29686c`. `301d3f6b` has moved from planned to CONTESTED.
@@ -88,6 +89,8 @@ only 39 lines between them — consolidating those is not the answer.
 `main@6706ee46` is deployed. Prove it independently — `git for-each-ref refs/heads/build` plus a dry-run
 rsync FROM mainwt.
 
+**THE OPEN QUEUE IS EMPTY.** r207 planned all seven; they are waiting on the reporter, not on us.
+
 **NEITHER REMAINING APPROVED ITEM IS A BUILD.** `bdf7d248` (EPF) is waiting on an OWNER DECISION and
 `7ad37961` (TP1) must be RE-PLANNED — both are detailed below. Do not let "2 approved" read as "2 to
 build": the build queue is empty and the real work is the contested pair and the seven open items.
@@ -98,11 +101,10 @@ one to read first**: its plan's verdict was "Already works" and they rejected th
 diagnosis is wrong or the instruction did not land. Do not re-plan reflexively; read what they wrote. The
 measured evidence is in the c8052ae3 section below and is worth re-checking rather than assuming.
 
-**FOUR NEW OPEN ITEMS ARRIVED DURING r206 AND HAVE NO PLAN YET:** `6b4ca488` (payslip/transaction-view
-deduction display), `0bade264` (rename Attendance Settings + schedule assignment), `6448574f` (rename
-Attendance Request to Attendance Irregularity), `5a29686c` (redesign "Payroll Runs in This Salary Month").
-Plus the three older ones: `7ee14bbc` and `6036dab7` (statutory templates — READ the statutory-form
-section below before planning either) and `273e6fc7`.
+**ALL SEVEN FORMER OPEN ITEMS ARE NOW `planned` (r207)** — `7ee14bbc`, `6036dab7`, `273e6fc7`,
+`6b4ca488`, `0bade264`, `6448574f`, `5a29686c`, each with a mockup. FOUR of the seven have a plan that
+CONTRADICTS the ticket's premise (CP39, `5a29686c`, `0bade264`, `273e6fc7`) — read the r207 entry before
+building any of them, because approving the ticket is not the same as approving the diagnosis in it.
   - **`7ad37961`** TP1 — **DO NOT BUILD. RE-PLAN IT.** Two agent passes made it worse, not better. The
     conflict is in the plan, not the code: migration `0445`'s backfill marks EVERY legacy declaration
     approved and effective all year, the new payroll SUM counts those rows, and `accumulate()` skips
@@ -302,6 +304,57 @@ table. Take the figure from the run and show the run's own total beside the form
 ⚠️ **`payslip.statutory.bases` IS ONLY ON 60 OF 121 PAYSLIPS** (stamped from r187 onward), and
 `loadBatchRows` drops it today because it only sums numeric keys. Pre-r187 rows must be FLAGGED, never
 silently fall back to gross.
+
+### r207 (2026-08-19) — SEVEN OPEN ITEMS PLANNED, four with a premise that did not survive checking
+
+`7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7` leave entitlement · `6b4ca488` deductions display +
+statutory explanation · `0bade264` attendance rename + Schedule Assignment · `6448574f` My Attendance
+renames · `5a29686c` payslip run selection. All seven pushed with mockups; board open queue is now EMPTY.
+
+⚠️⚠️ **THE WRONG-TREE TRAP LANDED AGAIN — FIFTH OCCURRENCE, AND IT CORRUPTED AN INVESTIGATION BEFORE IT
+WAS CAUGHT.** The shell cwd resets to the repo ROOT between tool calls, and a run of file reads went to
+`local/root-scratch` without a `cd`. That tree HAS NO `app/payroll/individual-payslip`, `pcb-detail`,
+`cp39`, `cp22`, `borang-a`, `borang-8a` or `back-pay` — so the investigation concluded the CP39 read
+supplied no `cp38`/`employeeNo`/`passport` and that Individual Payslip did not exist. Both were wrong;
+main has all of it. **It was caught only because `git cat-file -e main:…` said a file existed while
+`ls` said it did not.** The tell is that contradiction, and `git status` showing `M AGENTS.md` — the
+root scratch worktree's signature. PUT `cd .../mainwt &&` IN EVERY COMMAND, including read-only greps.
+
+WHAT THE CHECKING FOUND (all measured, 2026-08-19):
+ - **CP39: three of its five points are not export faults.** Repeated tax numbers are DATA — 31 filled,
+   24 distinct, five numbers shared by 2–3 people with DIFFERENT `ic_number`. The "placeholder" names
+   are the stored names: **22 of 40 `person.full_name` are literally `TEST####`**. The count mismatch is
+   the TABLE's fault, not the count's — the header counts `pcb > 0` (matching `cp39-file.ts`'s record
+   rule) and the table prints everyone paid; on 2026-08 that is **38 rows against a count of 7**. The
+   attached "official layout" is `Developer Express DXperience v23.2.5` — the SAME vendor signature as
+   the EPF/SOCSO attachments already recorded above, so the statutory-forms warning now covers FIVE
+   items, not three. `lib/cp39-form-pdf.ts` already documents refusing to draw an LHDN masthead it has
+   never read; the specimen makes that text legible, which is a judgement call the plan names.
+ - **`5a29686c` already works.** Company/Year/Month/Cycle exist; `desc(payPeriod)` + `matches[0]` already
+   defaults to the latest run; the "long listing" is the `otherRuns` card, gated on `matches.length > 1`.
+   Feedback `da4af51f`/r168a reached the same conclusion about the same screen. Real gap: `years` is a
+   fixed 11-year window (`page.tsx:228`).
+ - **`0bade264` reverses this reporter's OWN earlier instruction.** `ad52212d` renamed the label key
+   `attendance` → `attendanceSettings` at their request; `nav.attendance` is ALREADY "Attendance", so the
+   rename as asked yields two identical menu entries. `test/attendance-menu-relocation.test.ts` pins the
+   mount position through that identifier — rule 18 applies.
+ - **`273e6fc7` is three causes, not one.** Five types have NO `accrual_method` (`accrual_unconfigured`
+   stamped 2026-08-04), two have ZERO `entitlement_template` rows, three are fully configured and need a
+   per-employee eligibility check. `accrual_unconfigured` is populated and read by NO surface — that
+   silence is the defect.
+ - **`6036dab7`: the BM EA already exists** (`my.ea.ms`, item 587ee719, ONE renderer for both languages —
+   do not add a second). Section C (Pencen) is absent entirely; CP38 and zakat print "not tracked"
+   although both figures now exist.
+
+⚠️ **A MOCKUP CAUGHT ME REPEATING r170.** The first render invented a company name ("Strada Property";
+it is **Fiamma (Chin Hin Property)**) and carried PCB figures across from the SPECIMEN's company onto
+our employees — real names, invented figures, which r170 records as worse than either alone. Redrawn
+from our own 2026-08 run. `SG90010101` really is shared by Aisyah Rahman and Irwin Law, which is what
+makes the duplicate warning demonstrable rather than illustrative.
+
+`pnpm improve:push-plan` EXITS NON-ZERO ON SUCCESS (pnpm's ELIFECYCLE over stderr noise), and a
+`while read` loop around it pushed only the first item while reporting failure for all seven. Grep the
+output for "pushed plan", never the exit code, and drive it one item at a time.
 
 ### r206 (2026-08-19) — SIX ITEMS, FIVE WORKSTREAMS, `main@6706ee46`, migration `0447`
 
