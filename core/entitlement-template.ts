@@ -445,6 +445,56 @@ export async function retireEligibilityRule(
   });
 }
 
+/**
+ * r209 — WHICH LEAVE TYPE DOES THIS TABLE BELONG TO, and which does this rule ultimately configure?
+ *
+ * The reporter's request is that saving an entitlement table or an eligibility rule RECALCULATES the
+ * affected employees there and then, instead of leaving it to somebody remembering to press Generate
+ * Entitlement. The recalc's entry point (`reprojectEntitlementForLeaveTypeCohort`, core/leave.ts) is keyed
+ * by leave type — and neither writer's form carries one. An entitlement table knows its type; an
+ * ELIGIBILITY RULE DOES NOT KNOW ITS TYPE AT ALL (it names a template LINEAGE and nothing else, which is
+ * the same fact `lib/entitlement-tables-scope.ts` exists for). So both are derived, here, once.
+ *
+ * ANY version of the lineage answers: `leave_type_id` is fixed for the life of a lineage — that is exactly
+ * why `updateEntitlementTemplate` refuses to change it ("a rule pointing at the Executive ANNUAL table that
+ * silently started handing out SICK days is not an edit anybody would spot"). `limit(1)` is therefore not a
+ * guess about which row.
+ */
+export async function leaveTypeIdForTemplateLineage(
+  ctx: SessionContext,
+  templateLineageId: string,
+): Promise<string | null> {
+  if (!templateLineageId) return null;
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ leaveTypeId: entitlementTemplate.leaveTypeId })
+      .from(entitlementTemplate)
+      .where(eq(entitlementTemplate.lineageId, templateLineageId))
+      .limit(1);
+    return row?.leaveTypeId ?? null;
+  });
+}
+
+/** The leave type an eligibility rule configures — via the template lineage it points at. See above. */
+export async function leaveTypeIdForRuleLineage(
+  ctx: SessionContext,
+  ruleLineageId: string,
+): Promise<string | null> {
+  if (!ruleLineageId) return null;
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ leaveTypeId: entitlementTemplate.leaveTypeId })
+      .from(entitlementEligibilityRule)
+      .innerJoin(
+        entitlementTemplate,
+        eq(entitlementTemplate.lineageId, entitlementEligibilityRule.templateLineageId),
+      )
+      .where(eq(entitlementEligibilityRule.lineageId, ruleLineageId))
+      .limit(1);
+    return row?.leaveTypeId ?? null;
+  });
+}
+
 /** How many eligibility rules point at each template lineage — what the retire confirmation must show. */
 export async function eligibilityRuleCountsByTemplate(
   ctx: SessionContext,

@@ -2024,7 +2024,9 @@
       "empSearchResultsLabel": "员工搜索结果",
       "empSearchNoMatches": "没有匹配的员工",
       "empSearchClear": "清除员工",
-      "colEntitlementStatus": "额度状态"
+      "colEntitlementStatus": "额度状态",
+      "resolvedEntitlementTable": "额度表：{name}",
+      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
     },
     "override": {
       "title": "Before you submit",
@@ -2458,7 +2460,8 @@
       "statusCappedByMaxBalance": "因最高余额为 0 而被清零",
       "statusNoEntitlementTableTip": "此假期类型尚未设置额度表，因此没有可发放给任何人的天数。请在设置、假期、额度中为其创建额度表。",
       "statusNoEligibilityMatchTip": "此假期类型已有额度表，但没有生效的资格规则将该员工指向其中任何一张表，因此无法解析，数字为 0.00。请检查规则是否已过期，或是否只涵盖该员工不属于的群体。",
-      "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。"
+      "statusCappedByMaxBalanceTip": "有适用的额度表并发放天数，但其最高余额为 0，因此发放的每一天都会立即被清零。请将最高余额设为至少等于发放的天数。",
+      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
     },
     "typeLabel": "类型",
     "fromLabel": "从",

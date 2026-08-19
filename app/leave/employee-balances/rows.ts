@@ -2,6 +2,7 @@ import type { SessionContext } from '@/db/client';
 import { leaveBalances, leaveEntitlementBreakdown } from '@/core/read';
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import type { EntitlementStatus } from '@/lib/entitlement-status';
+import type { SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
 
 /**
  * The Employee Balances table body (feedback 20c699f8), shared by the screen and its export so a
@@ -22,6 +23,14 @@ export type EmployeeBalanceRow = {
   /** 31e39d74 — why YTD Entitled reads what it reads. Same value the employee's own screen shows, through
    *  the same `deriveBalanceRow`, so HR and the employee are never told two different stories about a 0.00. */
   entitlementStatus: EntitlementStatus;
+  /** r209 — WHICH entitlement table this employee actually resolved to, so HR can confirm the right one was
+   *  chosen instead of inferring it from the day count. Already computed by the breakdown (the winning
+   *  template's name); it simply had no reader on this screen. null ⇒ nothing resolved, which the status
+   *  beside it now explains in words. */
+  entitlementTemplateName: string | null;
+  /** r209 — set when this row's figures are another leave type's pool (`balance_source_type_id`). HR's grid
+   *  needs it for the same reason the employee's does: two rows carrying one balance read as two. */
+  sharedBalance: SharedLeaveBalanceInfo | null;
   broughtForward: number | null;
   taken: number | null;
   pending: number;
@@ -69,6 +78,8 @@ export async function employeeBalanceRows(
         entitlementYear: bd ? bd.cycleStart.slice(0, 4) : null,
         ytdEntitled: row.ytdEntitled,
         entitlementStatus: row.entitlementStatus,
+        entitlementTemplateName: bd?.entitlementTemplateName ?? null,
+        sharedBalance: row.sharedBalance,
         broughtForward: row.broughtForward,
         taken: row.taken,
         pending: b.pending,

@@ -2024,7 +2024,9 @@
       "empSearchResultsLabel": "Employee search results",
       "empSearchNoMatches": "No matching employee",
       "empSearchClear": "Clear employee",
-      "colEntitlementStatus": "Entitlement Status"
+      "colEntitlementStatus": "Entitlement Status",
+      "resolvedEntitlementTable": "Entitlement table: {name}",
+      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
     },
     "override": {
       "title": "Before you submit",
@@ -2458,7 +2460,8 @@
       "statusCappedByMaxBalance": "Capped at 0 by Maximum Balance",
       "statusNoEntitlementTableTip": "This leave type has no entitlement table set up, so there is no number of days for anybody to be granted. Create an entitlement table for it on Settings, Leave, Entitlements.",
       "statusNoEligibilityMatchTip": "This leave type has entitlement tables, but no eligibility rule in force points this employee at one, so nothing resolves and the figure is 0.00. Check whether the rule has expired or narrows to a group this employee is not in.",
-      "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted."
+      "statusCappedByMaxBalanceTip": "An entitlement table applies and grants days, but its Maximum Balance is 0, so every granted day is clamped away immediately. Set a Maximum Balance that is at least the number of days granted.",
+      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
     },
     "typeLabel": "Type",
     "fromLabel": "From",

@@ -112,6 +112,9 @@ const row = (status: EntitlementStatus): LeaveBalanceRow => ({
   ytdEntitled: 0,
   entitlementStatus: status,
   balance: 0,
+  // r209 — no shared pool on this fixture: the caption under test is the entitlement STATUS, and a pool
+  // descriptor here would add a second caption to every assertion for no reason.
+  sharedBalance: null,
 });
 
 function renderPanel(locale: Locale, status: EntitlementStatus) {

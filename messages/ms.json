@@ -2024,7 +2024,9 @@
       "empSearchResultsLabel": "Hasil carian pekerja",
       "empSearchNoMatches": "Tiada pekerja yang sepadan",
       "empSearchClear": "Kosongkan pekerja",
-      "colEntitlementStatus": "Status Kelayakan"
+      "colEntitlementStatus": "Status Kelayakan",
+      "resolvedEntitlementTable": "Jadual kelayakan: {name}",
+      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
     },
     "override": {
       "title": "Before you submit",
@@ -2458,7 +2460,8 @@
       "statusCappedByMaxBalance": "Dihadkan kepada 0 oleh Baki Maksimum",
       "statusNoEntitlementTableTip": "Jenis cuti ini tiada jadual kelayakan yang disediakan, jadi tiada bilangan hari untuk diberikan kepada sesiapa. Cipta jadual kelayakan untuknya di Tetapan, Cuti, Kelayakan.",
       "statusNoEligibilityMatchTip": "Jenis cuti ini mempunyai jadual kelayakan, tetapi tiada peraturan kelayakan yang berkuat kuasa menghalakan pekerja ini kepada mana-mana jadual, jadi tiada apa-apa yang terhasil dan angkanya ialah 0.00. Semak sama ada peraturan itu telah tamat tempoh atau hanya merangkumi kumpulan yang pekerja ini bukan sebahagian daripadanya.",
-      "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan."
+      "statusCappedByMaxBalanceTip": "Jadual kelayakan terpakai dan memberikan hari, tetapi Baki Maksimumnya ialah 0, jadi setiap hari yang diberikan dipotong serta-merta. Tetapkan Baki Maksimum sekurang-kurangnya sama dengan bilangan hari yang diberikan.",
+      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",

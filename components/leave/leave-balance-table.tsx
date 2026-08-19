@@ -19,6 +19,7 @@
  */
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { otherContributors } from '@/lib/shared-leave-balance';
 import { Info } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
 // 4a1abc4a: day figures print through the ONE shared formatter, never a local toFixed — see lib/day-format.ts.
@@ -125,6 +126,19 @@ export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
                     </span>
                     <span className="font-medium text-foreground">{r.leaveType}</span>
                   </span>
+                  {/* r209 — ONE SHARED FIGURE, AND WHAT SHARES IT. `balance_source_type_id` makes this type
+                      spend another's ledger (Emergency Leave draws on Annual Leave on production), so every
+                      number on this row is the POOL's. Without the sentence the employee reads two rows
+                      showing the same balance as two separate allowances and books both. Rendered under the
+                      NAME rather than under a figure because it qualifies all of them at once. */}
+                  {r.sharedBalance && otherContributors(r.sharedBalance, r.leaveType).length > 0 && (
+                    <span className="mt-0.5 block whitespace-normal text-[11px] font-normal normal-case text-muted-foreground">
+                      {tt('sharedBalanceWith', {
+                        pool: r.sharedBalance.sourceLeaveTypeName,
+                        types: otherContributors(r.sharedBalance, r.leaveType).join(', '),
+                      })}
+                    </span>
+                  )}
                   {r.detail}
                 </th>
                 {/* Column order matches NUM_COLS: YTD Entitled | Accrued | Carried Forward | Taken | Adjustment | Overutilized | Balance. */}

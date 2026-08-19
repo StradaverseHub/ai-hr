@@ -2024,7 +2024,9 @@
       "empSearchResultsLabel": "Kết quả tìm nhân viên",
       "empSearchNoMatches": "Không có nhân viên phù hợp",
       "empSearchClear": "Xóa nhân viên",
-      "colEntitlementStatus": "Trạng thái định mức"
+      "colEntitlementStatus": "Trạng thái định mức",
+      "resolvedEntitlementTable": "Bảng định mức: {name}",
+      "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})"
     },
     "override": {
       "title": "Before you submit",
@@ -2458,7 +2460,8 @@
       "statusCappedByMaxBalance": "Bị giới hạn về 0 bởi Số dư tối đa",
       "statusNoEntitlementTableTip": "Loại nghỉ phép này chưa được thiết lập bảng định mức, nên không có số ngày nào để cấp cho bất kỳ ai. Hãy tạo bảng định mức cho loại này tại Cài đặt, Nghỉ phép, Định mức.",
       "statusNoEligibilityMatchTip": "Loại nghỉ phép này có bảng định mức, nhưng không có quy tắc đủ điều kiện nào đang hiệu lực trỏ nhân viên này tới một bảng, nên không có kết quả và con số là 0,00. Hãy kiểm tra xem quy tắc đã hết hạn hay chỉ áp dụng cho nhóm mà nhân viên này không thuộc về.",
-      "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp."
+      "statusCappedByMaxBalanceTip": "Có bảng định mức áp dụng và cấp ngày, nhưng Số dư tối đa của bảng là 0, nên mọi ngày được cấp đều bị cắt ngay lập tức. Hãy đặt Số dư tối đa ít nhất bằng số ngày được cấp.",
+      "sharedBalanceWith": "Dùng chung một số dư với {types} (nguồn: {pool})"
     },
     "typeLabel": "Loại",
     "fromLabel": "Từ",
