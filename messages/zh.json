@@ -9074,6 +9074,7 @@
     "colCategory": "类型",
     "colReporter": "提交人",
     "colStatus": "状态",
+    "colUpdated": "最近更新",
     "status_open": "待处理",
     "status_planned": "方案就绪",
     "status_approved": "已批准",
@@ -9146,7 +9147,11 @@
     "historyEmpty": "尚未記錄方案歷史。",
     "attachStage_plan": "随方案附上的设计",
     "planMockupsHeading": "界面预览",
-    "planMockupsCaveat": "这是版面草图，不是最终界面——文字、间距和颜色都会有所不同。方案中以文字说明而未以图示呈现的部分尚未确定。"
+    "planMockupsCaveat": "这是版面草图，不是最终界面——文字、间距和颜色都会有所不同。方案中以文字说明而未以图示呈现的部分尚未确定。",
+    "sortNewestFirst": "按最近更新优先排序",
+    "sortOldestFirst": "按最久未更新优先排序",
+    "detailReported": "提交时间",
+    "detailUpdated": "最近更新"
   },
   "taxRelief": {
     "title": "个人税务减免 (TP1)",

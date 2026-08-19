@@ -9074,6 +9074,7 @@
     "colCategory": "Jenis",
     "colReporter": "Dilaporkan oleh",
     "colStatus": "Status",
+    "colUpdated": "Kemas kini terakhir",
     "status_open": "Terbuka",
     "status_planned": "Pelan sedia",
     "status_approved": "Diluluskan",
@@ -9146,7 +9147,11 @@
     "historyEmpty": "Tiada sejarah pelan direkodkan lagi.",
     "attachStage_plan": "Reka bentuk ditunjukkan bersama pelan",
     "planMockupsHeading": "Rupanya nanti",
-    "planMockupsCaveat": "Lakaran susun atur, bukan skrin siap — perkataan, jarak dan warna akan berbeza. Apa-apa yang pelan ini terangkan dengan perkataan dan bukan ditunjukkan, belum dimuktamadkan."
+    "planMockupsCaveat": "Lakaran susun atur, bukan skrin siap — perkataan, jarak dan warna akan berbeza. Apa-apa yang pelan ini terangkan dengan perkataan dan bukan ditunjukkan, belum dimuktamadkan.",
+    "sortNewestFirst": "Susun mengikut kemas kini terbaharu dahulu",
+    "sortOldestFirst": "Susun mengikut kemas kini terlama dahulu",
+    "detailReported": "Dilaporkan",
+    "detailUpdated": "Kemas kini terakhir"
   },
   "taxRelief": {
     "title": "Pelepasan Cukai Peribadi (TP1)",

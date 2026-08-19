@@ -165,4 +165,86 @@ describe('FB-1 — feedback capture + review (ADR-0043)', () => {
     expect((await getFeedback(rctx, id))!.status).toBe('deployed');
     expect(await eventTypesFor(base.tenantId, id)).toContain('feedback.deployed');
   });
+
+  /**
+   * e14334ef — the board orders by LAST ACTION, not by creation, and the ordering is SQL.
+   *
+   * THE CASE THAT MATTERS is the one a browser-side sort gets wrong. `listFeedback` caps the board at
+   * 200 rows over 517 on production; sorting the returned page would rank only the 200 newest-CREATED
+   * items, so an item raised in March and moved this morning would never reach the top — which is
+   * precisely what the reporter asked to see. Ordering therefore has to happen before the LIMIT, and
+   * the assertion below is that a transition, not an insert, decides the position.
+   */
+  describe('board ordering by last action (e14334ef)', () => {
+    it('an older item that was TOUCHED outranks a newer untouched one, and updated_asc reverses it', async () => {
+      const R = await hire('FB Sorter');
+      const rctx = await reporterCtx(R.personId);
+      const mk = (title: string) =>
+        submitFeedback(rctx, {
+          reporterEmploymentId: R.employmentId,
+          category: 'issue',
+          title,
+          description: `${title} body`,
+        });
+
+      // OLD is raised first, NEW second — so creation order alone puts NEW above OLD.
+      const { id: oldId } = await mk('FB Sort Old');
+      const { id: newId } = await mk('FB Sort New');
+
+      // Nothing has happened to either yet: an untouched item carries its creation time, which is the
+      // convention the reporter asked for and needs no special case in the service.
+      const atRest = await listFeedback(adminCtx(base));
+      const rest = new Map(atRest.map((r) => [r.id, r]));
+      expect(rest.get(oldId)!.updatedAt.getTime()).toBe(rest.get(oldId)!.createdAt.getTime());
+      expect(rest.get(newId)!.updatedAt.getTime()).toBe(rest.get(newId)!.createdAt.getTime());
+      expect(atRest.findIndex((r) => r.id === newId)).toBeLessThan(atRest.findIndex((r) => r.id === oldId));
+
+      // A real transition moves OLD — the same UPDATE that appends the domain event stamps updated_at.
+      await setFeedbackPlan(adminCtx(base), { feedbackId: oldId, plan: 'Plan for the old one', model: 'm' });
+
+      const newestFirst = await listFeedback(adminCtx(base));
+      const dOld = newestFirst.findIndex((r) => r.id === oldId);
+      const dNew = newestFirst.findIndex((r) => r.id === newId);
+      expect(dOld, 'the touched item must be listed').toBeGreaterThanOrEqual(0);
+      expect(dOld, 'the older item that just moved now outranks the newer untouched one').toBeLessThan(dNew);
+      expect(newestFirst.find((r) => r.id === oldId)!.updatedAt.getTime()).toBeGreaterThan(
+        newestFirst.find((r) => r.id === oldId)!.createdAt.getTime(),
+      );
+
+      // The default is updated_desc, so passing it explicitly must produce the same ranking.
+      const explicit = await listFeedback(adminCtx(base), { sort: 'updated_desc' });
+      expect(explicit.findIndex((r) => r.id === oldId)).toBeLessThan(explicit.findIndex((r) => r.id === newId));
+
+      // Oldest-first is the other direction of the SAME key, not a different one.
+      const oldestFirst = await listFeedback(adminCtx(base), { sort: 'updated_asc' });
+      expect(oldestFirst.findIndex((r) => r.id === newId)).toBeLessThan(oldestFirst.findIndex((r) => r.id === oldId));
+    });
+
+    it('a status filter and the sort compose — the filter narrows, the sort orders what is left', async () => {
+      const R = await hire('FB SortFilter');
+      const rctx = await reporterCtx(R.personId);
+      const { id: first } = await submitFeedback(rctx, {
+        reporterEmploymentId: R.employmentId,
+        category: 'issue',
+        title: 'FB Filter First',
+        description: 'first',
+      });
+      const { id: second } = await submitFeedback(rctx, {
+        reporterEmploymentId: R.employmentId,
+        category: 'issue',
+        title: 'FB Filter Second',
+        description: 'second',
+      });
+      // Touch the FIRST one twice over, leaving it the most recently moved `open` item of the pair.
+      await setFeedbackPlan(adminCtx(base), { feedbackId: first, plan: 'p', model: 'm' });
+      await contestFeedbackPlan(rctx, { feedbackId: first, reason: 'not that' });
+
+      const contested = await listFeedback(adminCtx(base), { status: 'contested' });
+      expect(contested.map((r) => r.id)).toContain(first);
+      expect(contested.map((r) => r.id)).not.toContain(second);
+      // Descending is the default, so the filtered page is still newest-touched first.
+      const stamps = contested.map((r) => r.updatedAt.getTime());
+      expect([...stamps].sort((a, b) => b - a)).toEqual(stamps);
+    });
+  });
 });

@@ -9074,6 +9074,7 @@
     "colCategory": "Type",
     "colReporter": "Raised by",
     "colStatus": "Status",
+    "colUpdated": "Last updated",
     "status_open": "Open",
     "status_planned": "Plan ready",
     "status_approved": "Approved",
@@ -9146,7 +9147,11 @@
     "historyEmpty": "No plan history recorded yet.",
     "attachStage_plan": "Design shown with the plan",
     "planMockupsHeading": "How it will look",
-    "planMockupsCaveat": "A sketch of the layout, not the finished screen — wording, spacing and colours will differ. Anything the plan describes in words rather than showing is not settled yet."
+    "planMockupsCaveat": "A sketch of the layout, not the finished screen — wording, spacing and colours will differ. Anything the plan describes in words rather than showing is not settled yet.",
+    "sortNewestFirst": "Sort by most recently updated first",
+    "sortOldestFirst": "Sort by least recently updated first",
+    "detailReported": "Reported",
+    "detailUpdated": "Last updated"
   },
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",

@@ -9074,6 +9074,7 @@
     "colCategory": "Loại",
     "colReporter": "Người gửi",
     "colStatus": "Trạng thái",
+    "colUpdated": "Cập nhật lần cuối",
     "status_open": "Đang mở",
     "status_planned": "Kế hoạch sẵn sàng",
     "status_approved": "Đã duyệt",
@@ -9146,7 +9147,11 @@
     "historyEmpty": "Chưa ghi nhận lịch sử kế hoạch.",
     "attachStage_plan": "Thiết kế kèm theo kế hoạch",
     "planMockupsHeading": "Giao diện sẽ trông như thế nào",
-    "planMockupsCaveat": "Đây là bản phác thảo bố cục, không phải màn hình hoàn chỉnh — câu chữ, khoảng cách và màu sắc sẽ khác. Những gì kế hoạch mô tả bằng lời thay vì hình ảnh thì vẫn chưa được chốt."
+    "planMockupsCaveat": "Đây là bản phác thảo bố cục, không phải màn hình hoàn chỉnh — câu chữ, khoảng cách và màu sắc sẽ khác. Những gì kế hoạch mô tả bằng lời thay vì hình ảnh thì vẫn chưa được chốt.",
+    "sortNewestFirst": "Sắp xếp theo cập nhật mới nhất trước",
+    "sortOldestFirst": "Sắp xếp theo cập nhật lâu nhất trước",
+    "detailReported": "Đã gửi",
+    "detailUpdated": "Cập nhật lần cuối"
   },
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",

@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { feedbackStatusCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { DEFAULT_FEEDBACK_SORT, parseFeedbackSort } from '@/lib/feedback-sort';
 import type { FeedbackCategory, FeedbackStatus } from '@/db/schema';
 import { submitFeedbackAction } from './actions';
 import { BulkTable } from './bulk-table';
@@ -50,14 +51,29 @@ export default async function FeedbackPage({
     action?: string;
     skipped?: string;
     status?: string;
+    sort?: string;
   }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('feedback');
-  const { error, toast, toastKey, count, action, skipped, status } = await searchParams;
+  const { error, toast, toastKey, count, action, skipped, status, sort } = await searchParams;
   const activeStatus = (BOARD_STATUSES as readonly string[]).includes(status ?? '')
     ? (status as FeedbackStatus)
     : undefined;
+  // e14334ef — the board's order rides in the address so the heading link can flip it and the link is
+  // shareable. Anything unrecognised falls back to newest-touched-first rather than erroring.
+  const activeSort = parseFeedbackSort(sort);
+  // The filter and the order COMPOSE. Clicking a status chip must not silently throw away an order the
+  // reporter chose — they pick "oldest first" precisely to chase stale items, and doing that within one
+  // status is the obvious next move. The default drops out of the address entirely, the same rule
+  // ClientPager applies to page 0, so the bare board stays a bare link.
+  const boardHref = (st?: FeedbackStatus) => {
+    const p = new URLSearchParams();
+    if (st) p.set('status', st);
+    if (activeSort !== DEFAULT_FEEDBACK_SORT) p.set('sort', activeSort);
+    const qs = p.toString();
+    return qs ? `/feedback?${qs}` : '/feedback';
+  };
 
   // Structured (localized) toast — e.g. the bulk-review result, rendered through t() with an ICU plural
   // and a per-action verb key. Falls back to the literal ?toast= used by the single-item actions.
@@ -78,7 +94,7 @@ export default async function FeedbackPage({
 
   const [counts, rows] = await Promise.all([
     feedbackStatusCounts(s),
-    listFeedback(s, { status: activeStatus }),
+    listFeedback(s, { status: activeStatus, sort: activeSort }),
   ]);
   const countOf = (st: string) => counts.find((c) => c.status === st)?.count ?? 0;
   const total = counts.reduce((a, c) => a + c.count, 0);
@@ -100,7 +116,7 @@ export default async function FeedbackPage({
         <SectionHeader title={t('boardTitle')} />
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href="/feedback"
+            href={boardHref()}
             className={`${chipBase} ${!activeStatus ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}
           >
             {t('boardAll')} <span className="font-semibold">{total}</span>
@@ -108,7 +124,7 @@ export default async function FeedbackPage({
           {BOARD_STATUSES.filter((st) => countOf(st) > 0).map((st) => (
             <Link
               key={st}
-              href={`/feedback?status=${st}`}
+              href={boardHref(st)}
               className={`${chipBase} ${statusTone(st)} ${activeStatus === st ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}
             >
               {t(`status_${st}`)} <span className="font-semibold">{countOf(st)}</span>
@@ -163,7 +179,7 @@ export default async function FeedbackPage({
         {rows.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
-          <BulkTable rows={rows as FeedbackRow[]} />
+          <BulkTable rows={rows as FeedbackRow[]} status={activeStatus} sort={activeSort} />
         )}
       </Card>
     </div>

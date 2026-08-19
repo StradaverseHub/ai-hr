@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getFeedback } from '@/core/feedback';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { formatFeedbackDateTime } from '@/lib/feedback-date';
 import { statusTone } from '../page';
 import {
   answerBlockingQuestionAction,
@@ -38,8 +39,10 @@ function outcomeTone(outcome: string): string {
   }
 }
 
-const fmtDate = (d: Date | string) =>
-  new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+// e14334ef — this used to be a local `fmtDate`. It now lives in lib/feedback-date.ts because the board
+// list renders the same stamps in a CLIENT component, and a second copy of the options is how the two
+// screens start disagreeing about what a timestamp means.
+const fmtDate = formatFeedbackDateTime;
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '') return null;
@@ -93,10 +96,23 @@ export default async function FeedbackDetailPage({
         title={fb.title}
         description={`${t(`category_${fb.category}`)}`}
         back={{ href: '/feedback', label: t('back') }}
+        /* e14334ef — Reported and Last Updated beside the status. Dates already appeared further down
+           against each plan version and each question, but nothing on the page said in one line when
+           this item was last moved, which is the thing the reporter scans for. */
         actions={
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(fb.status)}`}>
-            {t(`status_${fb.status}`)}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+            <span className="text-xs text-muted-foreground">
+              <span className="uppercase tracking-wide">{t('detailReported')}</span>{' '}
+              <span className="tabular-nums text-foreground">{fmtDate(fb.createdAt)}</span>
+            </span>
+            <span className="text-xs text-muted-foreground">
+              <span className="uppercase tracking-wide">{t('detailUpdated')}</span>{' '}
+              <span className="tabular-nums text-foreground">{fmtDate(fb.updatedAt)}</span>
+            </span>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(fb.status)}`}>
+              {t(`status_${fb.status}`)}
+            </span>
+          </div>
         }
       />
       <ErrorBanner message={error} />
