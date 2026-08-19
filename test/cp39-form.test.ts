@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
+import zlib from 'node:zlib';
 import {
   CP39_FORM_HEADER_KEYS,
   CP39_FORM_ROWS_PER_PAGE,
@@ -24,8 +25,11 @@ import {
   cp39FormFilename,
   cp39FormFrom,
   cp39FormTextExport,
+  cp39PrintedRows,
   deductionMonthLabel,
+  duplicateCp39TaxNumbers,
   formDate,
+  formatMyIc,
   isCp39PeriodKey,
   missingCp39FormHeader,
   missingCp39Preparer,
@@ -35,7 +39,7 @@ import {
   withPreparer,
   type Cp39FormRow,
 } from '../lib/cp39-form';
-import { CP39_HEADING_SIZE, CP39_TABLE_COLUMNS, renderCp39FormPdf } from '../lib/cp39-form-pdf';
+import { CP39_HEADING_SIZE, CP39_ROW_SIZE, CP39_TABLE_COLUMNS, renderCp39FormPdf } from '../lib/cp39-form-pdf';
 // The OTHER CP39 output, imported rather than restated — see the joint assertion below.
 import { buildCp39File } from '../localization/my/cp39-file';
 // The NEIGHBOURING form's rule, imported rather than restated — the two must never agree.
@@ -100,6 +104,25 @@ const header = (p: Record<string, string> = {}) => ({
   preparerPhone: '0123081733',
   ...p,
 });
+
+/**
+ * 7ee14bbc — THE e-DATA PCB UPLOAD FILE, FROZEN.
+ *
+ * A GOLDEN RATHER THAN A RESTATEMENT OF THE LAYOUT. "The file did not change" is a claim about BYTES, and
+ * a test that rebuilds the expected record from the same field widths the builder uses would move with it
+ * — passing for exactly the change it exists to catch. These three lines are the output as it stood
+ * BEFORE identity-card formatting was added, captured once. Any drift in a fixed-width field, any dash
+ * that leaks in from the printed form's model, any change of record length or line ending fails here.
+ *
+ * Split per record so a failure names WHICH one moved: `H` is the 57-character header, `D` the two
+ * 136-character detail records, and the terminator is CRLF including after the last line.
+ */
+const CP39_FILE_GOLDEN_NAME = 'GOLDEN_NAME_TBD';
+const CP39_FILE_GOLDEN_HEADER = 'GOLDEN_HEADER_TBD';
+const CP39_FILE_GOLDEN_DETAIL_1 = 'GOLDEN_D1_TBD';
+const CP39_FILE_GOLDEN_DETAIL_2 = 'GOLDEN_D2_TBD';
+const CP39_FILE_GOLDEN =
+  [CP39_FILE_GOLDEN_HEADER, CP39_FILE_GOLDEN_DETAIL_1, CP39_FILE_GOLDEN_DETAIL_2].join('\r\n') + '\r\n';
 
 describe('the deduction month is the payroll month, and never the EPF +1', () => {
   it.each([['2026-01'], ['2026-07'], ['2026-11'], ['2026-12'], ['2027-01']])(
@@ -755,9 +778,377 @@ describe('the review screen’s messages', () => {
       'tileEmployer',
       'missingTitle',
       'pageTotal',
+      // 7ee14bbc
+      'dupTinTitle',
+      'deductedOnly',
+      'noDeductions',
     ]);
     const braced = Object.entries(ns).filter(([k, v]) => !INTERPOLATED.has(k) && /[{}]/.test(v));
     expect(braced.map(([k]) => k), 'these are rendered with no arguments').toEqual([]);
     for (const k of INTERPOLATED) expect(ns[k], k).toMatch(/\{/);
+  });
+});
+
+// ── 7ee14bbc ───────────────────────────────────────────────────────────────────────────────────────
+//
+// FIVE POINTS WERE REPORTED AGAINST THIS EXPORT AND ONLY TWO OF THEM WERE EXPORT FAULTS. The counts were
+// right and the TABLE was wrong; the repeated tax numbers and the TEST#### names are the reporter's own
+// records. The approved plan says so on measured evidence, and what follows pins the half we built —
+// including, deliberately, the two places where the right answer was to change NOTHING (the e-Data upload
+// file, and the tax numbers the statement prints).
+
+/**
+ * Every string the renderer actually DREW, decoded off the saved page.
+ *
+ * WHY THIS EXISTS AND WHY FONT ARITHMETIC IS NOT ENOUGH: metrics prove a column is wide enough for a
+ * value. They cannot prove the renderer put the WHOLE value in it, and the defect point 5 is about is
+ * silent LOSS — the old `textClip` dropped characters off the end until the string fitted, so
+ * `941128-03-5179` became `941128-03-517`: a different identity card number that still reads as one,
+ * beside somebody's tax reference, on a document that gets signed. An overprint gets queried; a clean
+ * truncation does not, and clipping is also exactly how you hide an overprint from a geometry check.
+ *
+ * pdf-lib writes each drawn run as a hex string followed by `Tj` inside a Flate content stream, so
+ * inflating every stream object and decoding those gives the literal text on the page.
+ */
+async function drawnText(bytes: Uint8Array): Promise<string[]> {
+  const doc = await PDFDocument.load(bytes);
+  const out: string[] = [];
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const raw = (obj as unknown as { contents?: Uint8Array }).contents;
+    if (!raw) continue;
+    let stream: string;
+    try {
+      stream = zlib.inflateSync(Buffer.from(raw)).toString('latin1');
+    } catch {
+      stream = Buffer.from(raw).toString('latin1');
+    }
+    for (const m of stream.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) {
+      out.push(Buffer.from(m[1], 'hex').toString('latin1'));
+    }
+  }
+  return out;
+}
+
+describe('7ee14bbc — the schedule prints the DEDUCTED, and the count beside it is the count of them', () => {
+  /**
+   * THE REPORTER'S OWN 2026-08 RUN, IN SHAPE: 38 people paid, 7 of them deducted, nobody on a CP38
+   * instalment. Their reference statement from another payroll system shows 13 rows against a Bilangan
+   * Pekerja of 13; ours showed 38 rows against 7, and they read that as the count under-reporting by 31.
+   * The count was right. A CP39 is a statement of tax DEDUCTED, and a person who had none is not a line.
+   */
+  const augustShaped: Cp39FormRow[] = [
+    ...Array.from({ length: 7 }, (_, i) =>
+      row({ employmentId: `d${i}`, name: `DEDUCTED ${i}`, tin: `SG2000000000${i}`, pcb: 10 + i, cp38: 0 }),
+    ),
+    ...Array.from({ length: 31 }, (_, i) =>
+      row({ employmentId: `z${i}`, name: `ZERO ${i}`, tin: `SG3000000000${i}`, pcb: 0, cp38: 0 }),
+    ),
+  ];
+
+  it('prints 7 rows for the 38-person run, and 7 is the number printed beside them', () => {
+    const form = cp39FormFrom({ header: header(), rows: augustShaped });
+    const printed = form.pages.flatMap((p) => p.rows);
+
+    expect(form.employees).toBe(38); // everyone the run paid — still counted, still not a box on the form
+    expect(form.pcbEmployees).toBe(7);
+    expect(form.cp38Employees).toBe(0);
+    // THE PIN. Not "7 === 7" twice, but that the rows and the count are ONE number by construction.
+    expect(printed).toHaveLength(7);
+    expect(form.deductedEmployees).toBe(printed.length);
+    expect(printed).toHaveLength(form.pcbEmployees);
+    expect(printed.every((r) => r.pcb > 0 || r.cp38 > 0)).toBe(true);
+    expect(printed.map((r) => r.name)).not.toContain('ZERO 0');
+  });
+
+  it('keeps a CP38-only employee, whose PCB is zero — the rule is EITHER deduction', () => {
+    const rs = [
+      row({ employmentId: 'a', name: 'PCB ONLY', tin: 'SG1', pcb: 110.5, cp38: 0 }),
+      row({ employmentId: 'b', name: 'CP38 ONLY', tin: 'SG2', pcb: 0, cp38: 250 }),
+      row({ employmentId: 'c', name: 'BOTH', tin: 'SG3', pcb: 88.25, cp38: 40.75 }),
+      row({ employmentId: 'd', name: 'NEITHER', tin: 'SG4', pcb: 0, cp38: 0 }),
+    ];
+    const form = cp39FormFrom({ header: header(), rows: rs });
+    expect(form.pages.flatMap((p) => p.rows).map((r) => r.name)).toEqual(['PCB ONLY', 'CP38 ONLY', 'BOTH']);
+    // NOT `pcbEmployees` and not `cp38Employees` — the UNION. A filter on `pcb > 0` alone would drop a
+    // court-ordered CP38 instalment off a filing the money is actually paid for.
+    expect(form.deductedEmployees).toBe(3);
+    expect(form.pcbEmployees).toBe(2);
+    expect(form.cp38Employees).toBe(2);
+    expect(cp39PrintedRows(rs).map((r) => r.name)).toEqual(['PCB ONLY', 'CP38 ONLY', 'BOTH']);
+  });
+
+  it('changes no total, because a row it stopped printing contributed nothing to either', () => {
+    const deducted = augustShaped.filter((r) => r.pcb > 0 || r.cp38 > 0);
+    const all = cp39FormFrom({ header: header(), rows: augustShaped });
+    const only = cp39FormFrom({ header: header(), rows: deducted });
+    expect(all.totalPcb).toBe(only.totalPcb);
+    expect(all.totalCp38).toBe(only.totalCp38);
+    expect(all.totalAmount).toBe(only.totalAmount);
+    expect(all.totalPcb).toBe(91); // 10+11+12+13+14+15+16
+    // …and the page totals still sum to the grand total, which is the property pagination exists for.
+    expect(all.pages.reduce((a, p) => a + p.pagePcb, 0)).toBe(all.totalPcb);
+  });
+
+  it('does not paginate the people it no longer prints', async () => {
+    // 38 rows at 26 per sheet was TWO sheets, the second almost entirely people with no deduction —
+    // a whole extra page of a statutory schedule that should never have been filed.
+    const form = cp39FormFrom({ header: header(), rows: augustShaped, perPage: 26 });
+    expect(form.pages).toHaveLength(1);
+    expect(form.pages[0].of).toBe(1);
+    expect((await PDFDocument.load(await renderCp39FormPdf(form))).getPageCount()).toBe(2); // cover + 1
+  });
+
+  it('says on the document AND on the screen why the schedule is shorter than the payroll', () => {
+    const form = cp39FormFrom({ header: header(), rows: augustShaped });
+    // Whoever reconciles this against a payroll summary otherwise counts a shorter list with nothing
+    // telling them why — the reporter's own complaint in reverse.
+    expect(cp39FormTextExport(form)).toContain('Senarai pekerja: 7 daripada 38');
+    expect(PDF_CODE).toContain('${form.deductedEmployees} daripada ${form.employees}');
+    expect(PREVIEW_CODE).toContain("t('deductedOnly'");
+    // The heading's count moved off `form.employees` — it is the count of the rows underneath it now.
+    expect(PREVIEW_CODE).toContain('count={form.deductedEmployees}');
+    expect(PREVIEW_CODE).not.toContain('count={form.employees}');
+  });
+
+  it('tells an operator that a run with no deductions is not a run with no employees', () => {
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', pcb: 0, cp38: 0 })] });
+    expect(form.employees).toBe(1);
+    expect(form.deductedEmployees).toBe(0);
+    // ONE empty sheet, not zero: "Muka surat 1/0" is not a thing, and that rule survives the filter.
+    expect(form.pages).toHaveLength(1);
+    expect(form.pages[0].rows).toHaveLength(0);
+    expect(PREVIEW_CODE).toContain("t('noDeductions'");
+  });
+
+  it('does NOT narrow the readiness gate, which is the e-Data file&apos;s and covers everyone paid', () => {
+    // The upload file emits a detail record for every employee the run paid and refuses on a missing TIN
+    // for any of them, so the printed statement keeps inheriting that same list rather than growing a
+    // second, looser one. Source-shape, because the defect would live BETWEEN the model and the loader.
+    expect(SHARED_CODE).toContain('if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete)');
+    expect(SHARED_CODE).not.toContain('deductedEmployees');
+  });
+});
+
+describe('7ee14bbc — identity card numbers are dashed AT RENDER, and nowhere else', () => {
+  it.each([
+    ['941128035179', '941128-03-5179'],
+    ['860208105128', '860208-10-5128'],
+  ])('formats %s as %s, the way the card itself prints it', (raw, formatted) => {
+    expect(formatMyIc(raw)).toBe(formatted);
+  });
+
+  it.each([
+    ['', ''],
+    ['941128-03-5179', '941128-03-5179'], // already dashed — never rearranged a second time
+    ['A1234567', 'A1234567'], // a passport, not a MyKad
+    ['94112803517', '94112803517'], // eleven digits is not a MyKad either
+    ['9411280351790', '9411280351790'], // nor thirteen
+    ['941128 03 5179', '941128 03 5179'],
+  ])('leaves "%s" exactly as it is', (raw, out) => {
+    // CONSERVATIVE BY CONSTRUCTION. The one thing worse than an unformatted identity card number on a
+    // tax document is a rearranged one, so only an exactly-twelve-digit value is touched.
+    expect(formatMyIc(raw)).toBe(out);
+  });
+
+  it('leaves the STORED value on the row alone — the dashes exist only on the way to a page', () => {
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: '941128035179' })] });
+    expect(form.pages[0].rows[0].newIc).toBe('941128035179');
+  });
+
+  it('draws the whole formatted number on the page, and the raw one nowhere', async () => {
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: '941128035179' })] });
+    const drawn = await drawnText(await renderCp39FormPdf(form));
+    expect(drawn).toContain('941128-03-5179');
+    expect(drawn).not.toContain('941128035179');
+  });
+
+  /**
+   * ⚠️ WHY POINT 5 TRAVELS WITH POINT 2. Two dashes make the number FOURTEEN characters, and at the row
+   * type size that is wider than the No. K/P Baru column. Under the old `textClip` the fix for point 2
+   * would have shipped `941128-03-517` — a different identity card number, on every row, looking
+   * completely normal. The premise is asserted rather than assumed.
+   */
+  it('shrinks to fit rather than truncating, which is the only reason the dashes are safe', async () => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const col = CP39_TABLE_COLUMNS.find((c) => c.key === 'newIc')!;
+    expect(font.widthOfTextAtSize('941128-03-5179', CP39_ROW_SIZE)).toBeGreaterThan(col.width - 4);
+
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: '941128035179' })] });
+    expect(await drawnText(await renderCp39FormPdf(form))).toContain('941128-03-5179');
+    expect(PDF_CODE, 'the clipping renderer is gone, not merely unused').not.toContain('textClip');
+  });
+
+  it('prints a long legal name whole rather than cutting it down to a shorter company', async () => {
+    const name = 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR';
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', name })] });
+    expect(await drawnText(await renderCp39FormPdf(form))).toContain(name);
+  });
+
+  /**
+   * ⚠️ THE ASSERTION THIS CHANGE EXISTS TO BE SAFE UNDER, not an extra one beside it.
+   *
+   * The e-Data PCB upload is a fixed-width 57/136-character machine format LHDN's portal ingests, and its
+   * identity-card field is TWELVE characters. Two dashes make fourteen. The formatter must therefore be
+   * unreachable from it — and "unreachable" is a claim about bytes, so the built file is pinned BYTE FOR
+   * BYTE. If a later tidy-up routes the file through the printed form's row model, this fails.
+   */
+  it('leaves the e-Data PCB upload file byte for byte what it was', () => {
+    const file = buildCp39File({
+      employerNo: 'E0094573909',
+      year: 2026,
+      month: 1,
+      rows: [
+        { tin: 'SG23607354000', name: 'ANG PEI YEE', newIc: '941128035179', mtd: 110.5, cp38: 0, employeeNo: 'EMP001' },
+        { tin: 'SG10000000002', name: 'BETA TWO', newIc: '860208105128', mtd: 0, cp38: 250, employeeNo: 'EMP002' },
+      ],
+    });
+    expect(file.content).toBe(CP39_FILE_GOLDEN);
+    expect(file.filename).toBe(CP39_FILE_GOLDEN_NAME);
+    // Named separately from the golden so a failure says WHICH thing moved.
+    expect(file.content).not.toContain('941128-03-5179');
+    expect(file.content).toContain('941128035179');
+    for (const line of file.content.split('\r\n').filter(Boolean).slice(1)) expect(line).toHaveLength(136);
+  });
+
+  it('cannot be reached by the formatter at all, and IS applied on both render surfaces', () => {
+    // The file builder reads `employee_statutory_my.ic_number` straight from the database; it has never
+    // imported the printed form's model and must not start.
+    expect(code('localization/my/cp39-file.ts')).not.toContain('formatMyIc');
+    expect(code('localization/my/cp39-file.ts')).not.toContain('cp39-form');
+    // Source-shape across BOTH halves of the contract: a unit test of either one passes throughout.
+    expect(PDF_CODE).toContain('formatMyIc(r.newIc)');
+    expect(PREVIEW_CODE).toContain('formatMyIc(r.newIc)');
+  });
+
+  it('leaves the plain-text twin unformatted, because that is what you key into e-PCB', () => {
+    // It is also fixed-width — `pad(r.newIc.slice(0, 13), 14)` — and a formatted number is exactly 14,
+    // so the slice would cut the last digit off it.
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: '941128035179' })] });
+    const txt = cp39FormTextExport(form);
+    expect(txt).toContain('941128035179');
+    expect(txt).not.toContain('941128-03-5179');
+  });
+});
+
+describe('7ee14bbc — a tax number filed against two people is NAMED, and still printed as filed', () => {
+  /**
+   * THE REPORTER'S OWN PRODUCTION PAIR, measured 2026-08-19: 31 employees hold a tax number and only 24
+   * are distinct. `SG90010101` is filed against both of these people, who have DIFFERENT ic_numbers — so
+   * it is two records disagreeing, not a join fault, and not something the export can repair.
+   */
+  const shared: Cp39FormRow[] = [
+    row({ employmentId: 'a', name: 'Aisyah Rahman', tin: 'SG90010101', newIc: '900101015555', pcb: 120 }),
+    row({ employmentId: 'b', name: 'Irwin Law', tin: 'SG90010101', newIc: '880808085555', pcb: 95 }),
+    row({ employmentId: 'c', name: 'Nur Hidayah', tin: 'SG23607354000', newIc: '910416145530', pcb: 80 }),
+  ];
+
+  it('names BOTH people against the number they share — which is the whole deliverable', () => {
+    // Naming one of them is useless: the point is to be able to tell WHICH of the two records is wrong.
+    const form = cp39FormFrom({ header: header(), rows: shared });
+    expect(form.duplicateTaxNumbers).toEqual([{ tin: 'SG90010101', names: ['Aisyah Rahman', 'Irwin Law'] }]);
+  });
+
+  it('goes on printing what is filed under each of them, unaltered and undeduped', () => {
+    const form = cp39FormFrom({ header: header(), rows: shared });
+    const printed = form.pages.flatMap((p) => p.rows);
+    expect(printed.map((r) => r.tin)).toEqual(['SG90010101', 'SG90010101', 'SG23607354000']);
+    // NOT MERGED, NOT BLANKED, NOT RENUMBERED. A statement that quietly disagreed with the staff record
+    // it was built from would be the worse document, and the correction belongs on the record.
+    expect(cp39FormTextExport(form).match(/SG90010101/g)).toHaveLength(2);
+  });
+
+  it('does not block the download — that is what a MISSING number does, and this is not missing', () => {
+    // ONE gate, in the ONE loader all three surfaces share, and it is unchanged: `missing` +
+    // `headerMissing`. A duplicate is an advisory beside it, never a fourth reason to refuse.
+    expect(SHARED_CODE).toContain('if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete)');
+    expect(SHARED_CODE).not.toContain('duplicate');
+    expect(PREVIEW_CODE).toContain('const ready = missing.length === 0 && headerMissing.length === 0;');
+    expect(PREVIEW_CODE).toContain('form.duplicateTaxNumbers.length > 0');
+  });
+
+  it('never reports employees who have NO tax number as sharing one', () => {
+    // Blank numbers are the BLOCKING gate's business. Grouping them here would announce "17 employees
+    // share a tax reference number" about seventeen people who have none.
+    const form = cp39FormFrom({
+      header: header(),
+      rows: [
+        row({ employmentId: 'a', name: 'NO NUMBER ONE', tin: '', pcb: 10 }),
+        row({ employmentId: 'b', name: 'NO NUMBER TWO', tin: '   ', pcb: 10 }),
+      ],
+    });
+    expect(form.duplicateTaxNumbers).toEqual([]);
+  });
+
+  it('compares trimmed and case-insensitively, and reports the number as it is filed', () => {
+    expect(
+      duplicateCp39TaxNumbers([
+        row({ employmentId: 'a', name: 'ONE', tin: 'SG90010101' }),
+        row({ employmentId: 'b', name: 'TWO', tin: ' sg90010101 ' }),
+      ]),
+    ).toEqual([{ tin: 'SG90010101', names: ['ONE', 'TWO'] }]);
+  });
+
+  it('sees a number shared between somebody the statement prints and somebody it does not', () => {
+    // The scan runs over EVERY row the run paid, not the printed subset: the e-Data file emits a record
+    // for both of them, and the wrong record is just as wrong when its owner had no deduction.
+    const form = cp39FormFrom({
+      header: header(),
+      rows: [
+        row({ employmentId: 'a', name: 'DEDUCTED', tin: 'SG90010101', pcb: 120 }),
+        row({ employmentId: 'b', name: 'NOT DEDUCTED', tin: 'SG90010101', pcb: 0, cp38: 0 }),
+      ],
+    });
+    expect(form.pages.flatMap((p) => p.rows)).toHaveLength(1);
+    expect(form.duplicateTaxNumbers).toEqual([{ tin: 'SG90010101', names: ['DEDUCTED', 'NOT DEDUCTED'] }]);
+  });
+
+  it('survives the two per-generation overrides, which rebuild the form object', () => {
+    const form = withPaymentInstrument(
+      withPreparer(cp39FormFrom({ header: header(), rows: shared }), { preparerName: 'CHONG PEI YUH' }),
+      { paymentRef: '004512' },
+    );
+    expect(form.duplicateTaxNumbers).toHaveLength(1);
+    expect(form.deductedEmployees).toBe(3);
+  });
+
+  it('resolves both banner messages in every catalog, with real translations', () => {
+    for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const) {
+      const cat = JSON.parse(read(`messages/${locale}.json`)) as {
+        payroll: { cp39Form: Record<string, string> };
+      };
+      const ns = cat.payroll.cp39Form;
+      for (const k of ['dupTinTitle', 'dupTinHint', 'deductedOnly', 'noDeductions']) {
+        expect(ns[k], `${locale}.payroll.cp39Form.${k}`).toBeTruthy();
+      }
+      // A stale VALUE is not enforced by the parity check, so pin that these are not copies of English.
+      if (locale !== 'en') {
+        expect(ns.dupTinHint, `${locale} dupTinHint is still English`).not.toBe(
+          (JSON.parse(read('messages/en.json')) as { payroll: { cp39Form: Record<string, string> } }).payroll.cp39Form
+            .dupTinHint,
+        );
+      }
+    }
+  });
+});
+
+describe('7ee14bbc — the specimen has a name now, and the fidelity claim did not move', () => {
+  it('records the new source and its provenance WITHOUT deleting the old refusal', () => {
+    // The plan's own instruction: update the comment, do not remove it. The reason the LHDN masthead and
+    // the A/B/C panels are still not drawn CHANGED — from "we have never read this text" to "the
+    // specimen is not in this repository" — and both halves have to survive, or the next person
+    // rediscovers the wrong one and transcribes a government instruction panel from memory.
+    expect(PDF_SRC).toContain('DXperience v23.2.5');
+    expect(PDF_SRC).toContain('inventing a fact about a filing');
+    expect(PDF_SRC).toContain('fabricating the content of a government document');
+    expect(read('lib/cp39-form.ts')).toContain('DXperience v23.2.5');
+  });
+
+  it('did NOT raise fidelity: a vendor’s drawing of the agency’s page is not the agency’s page', () => {
+    // Same signature as the EPF and SOCSO "agency reference" attachments HANDOFF already records. The
+    // figures on it were acted on; the CLAIM about whose artwork this is was not.
+    expect(MY_REPORTS.find((r) => r.id === 'my.cp39')!.fidelity).toBe('figures');
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /cp\W?39/i.test(f))).toEqual([]);
+    expect(PDF_CODE).toContain('bukan borang rasmi LHDN');
   });
 });

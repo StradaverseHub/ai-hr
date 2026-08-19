@@ -21,6 +21,22 @@
  *   • The signature. Manual by definition — the request says to leave it blank for physical signing, so
  *     it is drawn as a box to sign in.
  *
+ * ⚠️ 7ee14bbc (2026-08-19) — THE FIRST TWO ARE STILL NOT DRAWN, BUT THE REASON HAS MOVED AND THE NEW
+ * ONE IS RECORDED HERE RATHER THAN LEFT TO BE REDISCOVERED. A legible specimen now EXISTS: the
+ * reference attached to that board item, "Income Tax CP39.pdf" (Producer = Developer Express Inc.
+ * DXperience v23.2.5, created 2026-08-14 — the same vendor signature as the EPF and SOCSO "agency
+ * reference" attachments HANDOFF records), is a faithful CP39 Pin.2015 rendering whose masthead and
+ * A/B/C panels can be read off it. The approved plan calls for transcribing them FROM THAT SPECIMEN.
+ *
+ * It has NOT been transcribed here, and the reason is not the old one. The old reason was "we have
+ * never read this text". The new one is "the specimen is not in this repository" — it lives on the
+ * feedback board, `public/forms/` still holds only `cp22-pin-1-2021.pdf`, and the build that would have
+ * copied it had no access to the file. Transcribing a government instruction panel FROM MEMORY instead
+ * is the precise failure the paragraph above exists to prevent, and it would be worse than the gap,
+ * because a fabricated panel reads as authoritative. Put the specimen (better: the blank LHDN form) in
+ * `public/forms/`, then transcribe, and only then reconsider `fidelity` — which stays `figures` in any
+ * case while the source is a vendor's drawing of the agency's page rather than the agency's page.
+ *
  * The payment instrument (cheque / bank draft / postal order number and branch) is manual in the same
  * sense — never payroll-derived — but it IS typeable on the review screen, because this page doubles as
  * the payment cover document and the operator normally has the instrument in front of them when they
@@ -33,7 +49,7 @@
  * three sheets without a PDF in sight.
  */
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { money, type Cp39Form, type Cp39FormPage } from './cp39-form';
+import { formatMyIc, money, type Cp39Form, type Cp39FormPage } from './cp39-form';
 
 /** A4 portrait, in points. */
 const W = 595.28;
@@ -219,6 +235,22 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     textR(money(form.totalAmount), RIGHT - 10, 10, bold);
     y = summaryTop - 74 - 18;
 
+    // ── 7ee14bbc: WHY THE SCHEDULE IS SHORTER THAN THE PAYROLL ────────────────────────────────────
+    // Said ON THE DOCUMENT, immediately under the two Bilangan Pekerja figures it explains. Whoever
+    // reconciles this against a payroll summary otherwise counts a shorter list with nothing to tell
+    // them why — which is the reporter's own complaint in reverse, and the reason the table and the
+    // counts must now be read as one statement rather than two.
+    for (const l of wrap(
+      `Senarai pekerja: ${form.deductedEmployees} daripada ${form.employees} pekerja yang dibayar mempunyai ` +
+        'potongan PCB / CP38 dan disenaraikan pada muka surat berikutnya. Ini penyata POTONGAN - pekerja ' +
+        'tanpa potongan tidak dicetak, jadi bilangan baris sepadan dengan Bilangan Pekerja di atas.',
+      6.8,
+    )) {
+      text(l, M, 6.8, font, muted);
+      y -= 9;
+    }
+    y -= 8;
+
     // The payment instrument — TYPED ON THE REVIEW SCREEN when the operator has it, a ruled line to
     // write on when they do not. This page is a payment cover document, so the cheque, bank draft or
     // postal order number is usually known at the moment it is printed; the request lists these as
@@ -306,11 +338,28 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
       page.drawText(safe(s), { x, y, size, font: f, color });
     const textR = (s: string, xr: number, size: number, f = font, color = ink) =>
       page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color });
-    /** Clip to a width so a long legal name can never run into the next column. */
-    const textClip = (s: string, x: number, maxW: number, size: number, f = font, color = ink) => {
-      let v = safe(s);
-      while (v.length > 1 && f.widthOfTextAtSize(v, size) > maxW) v = v.slice(0, -1);
-      page.drawText(v, { x, y, size, font: f, color });
+    /**
+     * SHRINK TO FIT, NEVER CLIP — r205's Borang A lesson, brought here by 7ee14bbc point 5.
+     *
+     * This used to be a `textClip` that dropped characters off the end until the string fitted, which is
+     * the worst failure a renderer of a signed filing can have: a clean truncation READS AS THE VALUE.
+     * 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR' becomes a shorter company; `941128-03-5179`
+     * becomes `941128-03-517`, a different identity card number that is still twelve-ish digits long and
+     * still looks entirely normal beside somebody's tax reference. An overprint gets queried; a
+     * truncation does not. Clipping is also exactly how you HIDE an overprint from a geometry check.
+     *
+     * So the size is shrunk instead, floored to 0.1pt so the drawn string is strictly inside `maxW` and
+     * clamped at 1pt so an absurd input can never shrink to invisible — invisible is silent loss too.
+     * Applied to EVERY text column, not just the name: a cut tax reference number is the same defect.
+     */
+    const fitSize = (v: string, maxW: number, size: number, f = font) => {
+      const w = f.widthOfTextAtSize(v, size);
+      if (w <= maxW || w <= 0) return size;
+      return Math.max(1, Math.floor((size * maxW * 10) / w) / 10);
+    };
+    const textFit = (s: string, x: number, maxW: number, size: number, f = font, color = ink) => {
+      const v = safe(s);
+      page.drawText(v, { x, y, size: fitSize(v, maxW, size, f), font: f, color });
     };
     const line = (yy: number, thickness = 0.7, color = rule) =>
       page.drawLine({ start: { x: M, y: yy }, end: { x: RIGHT, y: yy }, thickness, color });
@@ -361,13 +410,16 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     for (const r of pageData.rows) {
       bil += 1;
       text(String(bil), col('bil').x, CP39_ROW_SIZE);
-      textClip(r.tin, col('tin').x, col('tin').width - 4, CP39_ROW_SIZE);
-      textClip(r.name, col('name').x, col('name').width - 4, CP39_ROW_SIZE);
-      textClip(r.oldIc, col('oldIc').x, col('oldIc').width - 4, CP39_ROW_SIZE);
-      textClip(r.newIc, col('newIc').x, col('newIc').width - 4, CP39_ROW_SIZE);
-      textClip(r.employeeNo, col('employeeNo').x, col('employeeNo').width - 4, CP39_ROW_SIZE);
-      textClip(r.passport, col('passport').x, col('passport').width - 4, CP39_ROW_SIZE);
-      textClip(r.countryCode, col('countryCode').x, col('countryCode').width - 4, CP39_ROW_SIZE);
+      textFit(r.tin, col('tin').x, col('tin').width - 4, CP39_ROW_SIZE);
+      textFit(r.name, col('name').x, col('name').width - 4, CP39_ROW_SIZE);
+      textFit(r.oldIc, col('oldIc').x, col('oldIc').width - 4, CP39_ROW_SIZE);
+      // 7ee14bbc — THE ONLY PLACE THE DASHES ARE ADDED IS HERE, ON THE WAY TO THE PAGE. The stored value
+      // is untouched and the e-Data PCB upload file is untouched: its identity-card field is twelve
+      // characters wide and two dashes would make fourteen. See `formatMyIc`.
+      textFit(formatMyIc(r.newIc), col('newIc').x, col('newIc').width - 4, CP39_ROW_SIZE);
+      textFit(r.employeeNo, col('employeeNo').x, col('employeeNo').width - 4, CP39_ROW_SIZE);
+      textFit(r.passport, col('passport').x, col('passport').width - 4, CP39_ROW_SIZE);
+      textFit(r.countryCode, col('countryCode').x, col('countryCode').width - 4, CP39_ROW_SIZE);
       textR(money(r.pcb), col('pcb').x, CP39_ROW_SIZE);
       textR(money(r.cp38), col('cp38').x, CP39_ROW_SIZE);
       y -= 4;
