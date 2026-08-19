@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TP1 relief carry-across (7ad37961)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;
+    border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);
+    vertical-align:2px;margin-left:8px;font-weight:600}
+  .tag.new{border-color:#16a34a;color:#16a34a;background:var(--green-bg)}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel>.ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:600;padding:7px 9px;border-bottom:1px solid var(--border)}
+  td{padding:8px 9px;border-bottom:1px solid #f0f2f4}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sel{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fbfcfd;
+    border-radius:8px;padding:6px 11px;font-size:13px;margin:0 7px 7px 0}
+  .sel b{font-weight:600}.sel span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .pill.ok{background:var(--green-bg);border:1px solid var(--green-b);color:#166534}
+  .pill.warn{background:var(--amber-bg);border:1px solid var(--amber-b);color:#92400e}
+  .pill.bad{background:var(--red-bg);border:1px solid var(--red-b);color:#991b1b}
+  .strike{text-decoration:line-through;color:var(--muted)}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Payroll › Transactions › <b>TP1 Relief</b></p>
+<h1>Why the completed TP1 form is being held</h1>
+<p class="sub">An employee with a relief claim recorded before the new form was built.</p>
+<div class="panel"><div class="ttl">The same declaration, read two ways</div>
+<table>
+<tr><th>Where it is read</th><th>What it does with the older RM 9,000 claim</th><th class="n">Amount used</th></tr>
+<tr><td>The "still claimable" figure HR is shown</td><td>Skipped — not in the shape the yearly total understands</td><td class="n">0.00</td></tr>
+<tr><td>The figure sent to the tax calculation</td><td>Counted in full, effective all year</td><td class="n">9,000.00</td></tr>
+</table>
+<div class="note r">HR is told the year is empty, keys a further claim against that, and the tax calculation adds
+it to RM 9,000 nobody showed them. The monthly deduction comes out wrong and nothing reports an error.</div></div>
+<div class="panel"><div class="ttl">After — one rule, both places</div>
+<table>
+<tr><th>Where it is read</th><th>What it does with the older RM 9,000 claim</th><th class="n">Amount used</th></tr>
+<tr><td>The "still claimable" figure HR is shown</td><td>Counted from the month it was approved</td><td class="n">9,000.00</td></tr>
+<tr><td>The figure sent to the tax calculation</td><td>Counted from the month it was approved</td><td class="n">9,000.00</td></tr>
+</table>
+<div class="note g">The screen also shows what has already been counted for the year and where it came from, so
+the remaining figure is not a number HR has to trust blindly. Before release every existing declaration is run
+through both paths and must agree.</div>
+<div class="note a">The form itself — every section, the approval step, the printable English and Malay version
+and the payroll link — is built and stays built. Only the carry-across of older claims changes.</div></div>
+
+<p class="sketch">Sketch only — wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>
