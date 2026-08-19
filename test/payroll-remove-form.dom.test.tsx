@@ -167,3 +167,49 @@ describe('9066bd6c — the submitted set IS the confirmed set', () => {
     expect(container.querySelectorAll('input[type="hidden"][name="employmentIds"]')).toHaveLength(0);
   });
 });
+
+describe('Enter in the search box cannot bypass the confirmation dialog', () => {
+  /**
+   * THE ROUTE. This form has no submit button — the ConfirmSubmit dialog at the bottom IS the
+   * confirmation step, and `requestSubmit()` from inside it is meant to be the only way anything posts.
+   * But implicit submission does not need a button: with one field that blocks it (the search box added
+   * beside Select All), pressing Enter submits the form straight to `removeEmployeePayrollAction`, with
+   * whatever is ticked, without the dialog ever opening.
+   *
+   * WHY THE OLD BEHAVIOUR LOOKED SAFE. It landed on RemoveReasonRequiredError, which threw and discarded
+   * the selection — so nobody lost payroll data and nobody reported it. That is incidental cover from a
+   * mandatory field, not a guard, and it disappears the moment the reason gains a default.
+   */
+  /**
+   * ASSERTED AS `defaultPrevented` ON A REAL KEYDOWN, not by watching for a submit. That is not a
+   * shortcut, it is the only honest assertion available here: `user-event` emulates implicit submission
+   * by looking for a submit button, and this form deliberately has none, so a submit-spy version of this
+   * test PASSES WITH THE GUARD REMOVED. (Checked, by removing it.) A browser follows the HTML rule
+   * instead — one field that blocks implicit submission and it posts the form, button or no button — so
+   * the spy would have pinned nothing while reading as though it pinned everything.
+   *
+   * `preventDefault` on the Enter keydown is exactly the mechanism that stops the browser, so that is
+   * what gets asserted.
+   */
+  it('Enter in the search box is prevented, so implicit submission cannot fire', async () => {
+    const user = userEvent.setup();
+    form();
+    const box = screen.getByRole('searchbox');
+
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.type(box, PEOPLE[0].name);
+
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    box.dispatchEvent(ev);
+    expect(ev.defaultPrevented, 'Enter in the search box was left free to submit the form').toBe(true);
+
+    // The guard is on the FORM and excludes the activation types, so a textarea is untouched: Enter in
+    // the reason box must still make a newline rather than being swallowed.
+    const reason = screen.queryByRole('textbox');
+    if (reason) {
+      const nl = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      reason.dispatchEvent(nl);
+      expect(nl.defaultPrevented, 'the guard swallowed Enter in a textarea').toBe(false);
+    }
+  });
+});

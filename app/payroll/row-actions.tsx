@@ -1,6 +1,6 @@
 'use client';
 
-import { Children, useRef, useState, type ReactNode } from 'react';
+import { Children, type ReactNode, useEffect, useRef, useState } from 'react';
 
 /**
  * 65e2d5de — the Payroll Process list's compact row-action control.
@@ -41,6 +41,28 @@ export function PayrollRowActions({
   const btn = useRef<HTMLButtonElement>(null);
   const items = Children.toArray(children);
 
+  // CLOSE ON ANY SCROLL OR RESIZE, from anywhere. The panel is `position: fixed` and its coordinates are
+  // measured ONCE in `toggle`, so anything that moves the row under it leaves the menu nailed to the
+  // viewport beside a DIFFERENT run — while still carrying the original row's `<form action={resetAction}>`.
+  // Confirming then resets the run the menu was opened on while the operator is reading the row it now
+  // points at, and nothing downstream catches it: ConfirmSubmit gets no subtitle and `resetDescription`
+  // says only "this payroll run", never naming the period or company.
+  //
+  // The backdrop's own onWheel cannot cover this: a wheel with the cursor over the PANEL bubbles
+  // panel → wrapper → td and never reaches the backdrop, and keyboard scrolling (arrows, PageDown), touch
+  // scrolling and a window resize have no backdrop event at all. Capture phase so a scrolling container
+  // that stops propagation still closes it.
+  useEffect(() => {
+    if (!at) return;
+    const close = () => setAt(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [at]);
+
   if (items.length === 0) return null;
   // One action ⇒ render it as it is. Hiding a single link behind a menu costs a click and saves no width.
   if (items.length === 1) return <>{items[0]}</>;
@@ -68,8 +90,8 @@ export function PayrollRowActions({
       </button>
       {at && (
         <>
-          {/* Click-away. Also closes on scroll, because the panel's coordinates were measured once and a
-              scrolled page would leave it floating beside nothing. */}
+          {/* Click-away. The wheel handler is a belt-and-braces duplicate of the window listener above —
+              it fires only for a wheel over the BACKDROP; the effect is what actually covers scrolling. */}
           <div
             className="fixed inset-0 z-40"
             onClick={() => setAt(null)}

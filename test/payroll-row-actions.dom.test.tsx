@@ -15,7 +15,7 @@
  * this catches rendering and interaction logic, not a visual regression.
  */
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PayrollRowActions } from '../app/payroll/row-actions';
 
@@ -110,6 +110,44 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
     await user.click(trigger()!);
     expect(screen.getByRole('menu')).toBeInTheDocument();
     await user.click(trigger()!);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('a scroll ANYWHERE closes it, because the panel is nailed to viewport coordinates', async () => {
+    // THE DEFECT THIS PINS. `toggle` measures getBoundingClientRect ONCE and renders the panel `fixed` at
+    // those coordinates. Scroll the page and the row moves; the panel does not. It ends up beside a
+    // DIFFERENT payroll run while still carrying the original row's <form action={resetAction}> and its
+    // hidden batchId — so confirming resets the run the menu was opened on, not the one being read. The
+    // ConfirmSubmit dialog cannot catch it either: its description says only "this payroll run".
+    //
+    // The backdrop's own onWheel does not cover this. A wheel with the cursor over the PANEL bubbles
+    // panel → wrapper and never reaches the backdrop; keyboard scrolling (PageDown, arrows), touch
+    // scrolling and a window resize produce no backdrop event at all. Only a window listener does.
+    const user = userEvent.setup();
+    render(
+      <PayrollRowActions moreLabel="More actions">
+        <a href="/a">A</a>
+        <form action={() => {}}>
+          <input type="hidden" name="batchId" value="b1" />
+          <button type="submit">Reset Payroll</button>
+        </form>
+      </PayrollRowActions>,
+    );
+
+    // A scroll on a container that is NOT the backdrop — dispatched on document, caught in capture phase.
+    await user.click(trigger()!);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    act(() => {
+      document.dispatchEvent(new Event('scroll', { bubbles: false }));
+    });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    // And a resize, which moves the row horizontally and has no backdrop event of any kind.
+    await user.click(trigger()!);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });
