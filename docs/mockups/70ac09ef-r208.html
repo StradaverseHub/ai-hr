@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medical Leave table selection (70ac09ef)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;
+    border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);
+    vertical-align:2px;margin-left:8px;font-weight:600}
+  .tag.new{border-color:#16a34a;color:#16a34a;background:var(--green-bg)}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel>.ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:600;padding:7px 9px;border-bottom:1px solid var(--border)}
+  td{padding:8px 9px;border-bottom:1px solid #f0f2f4}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sel{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fbfcfd;
+    border-radius:8px;padding:6px 11px;font-size:13px;margin:0 7px 7px 0}
+  .sel b{font-weight:600}.sel span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .pill.ok{background:var(--green-bg);border:1px solid var(--green-b);color:#166534}
+  .pill.warn{background:var(--amber-bg);border:1px solid var(--amber-b);color:#92400e}
+  .pill.bad{background:var(--red-bg);border:1px solid var(--red-b);color:#991b1b}
+  .strike{text-decoration:line-through;color:var(--muted)}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Leave › Configuration › <b>Medical Leave</b> › Entitlement tables</p>
+<h1>Your six tables are right. Nothing points an employee at them.</h1>
+<p class="sub">Measured on your system, 19 August 2026.</p>
+<div class="panel"><div class="ttl">The six Medical Leave tables, and who is pointed at each</div>
+<table>
+<tr><th>Entitlement table</th><th>Days by length of service</th><th>Rule pointing at it</th></tr>
+<tr><td>PERMANENT</td><td>14 · 18 after 2 yrs · 22 after 5 yrs</td><td><span class="pill bad">Expired 13 Aug 2026</span></td></tr>
+<tr><td>CONTRACT - SPECIAL</td><td>14 · 18 after 2 yrs · 22 after 5 yrs</td><td><span class="pill bad">None</span></td></tr>
+<tr><td>CONTRACT - RETIREE</td><td>14 · 18 after 2 yrs · 22 after 5 yrs</td><td><span class="pill bad">None</span></td></tr>
+<tr><td>CONTRACT - GRADE &gt;= 19</td><td>18</td><td><span class="pill bad">None</span></td></tr>
+<tr><td>CONTRACT - GRADE H - 18</td><td>14</td><td><span class="pill bad">None</span></td></tr>
+<tr><td>CONTRACT - SPECIAL (40 AL)</td><td>18</td><td><span class="pill bad">None</span></td></tr>
+</table>
+<div class="note r">One eligibility rule exists on the whole system. It points at PERMANENT and expired on
+13 August 2026, so today it matches nobody. That is why every balance reads 0.00.</div></div>
+<div class="panel"><div class="ttl">After — one rule per table, keyed on Job Grade family</div>
+<table>
+<tr><th>Employee</th><th>Job Grade</th><th>Resolves to</th><th class="n">Days</th></tr>
+<tr><td>Aisyah Rahman</td><td>GRADE 12 (PERMANENT)</td><td>PERMANENT</td><td class="n">14</td></tr>
+<tr><td>Mei Ling</td><td>GRADE 18 (PERMANENT)</td><td>PERMANENT</td><td class="n">14</td></tr>
+<tr><td>Daniel Tan</td><td>Executive</td><td><span class="pill warn">No table covers this grade</span></td><td class="n">—</td></tr>
+<tr><td>Arjun Kumar</td><td>Executive</td><td><span class="pill warn">No table covers this grade</span></td><td class="n">—</td></tr>
+</table>
+<div class="note a">In your system the Permanent / Contract split is carried by the JOB GRADE name, not by
+Employment Type — Employment Type only holds full-time (55), contract (3) and part-time (1). The grade families
+line up one-for-one with the six tables, so that is what the rules key on.</div>
+<div class="note g">Two of the four people you named sit on the grade "Executive", which belongs to none of the
+six tables. We need you to tell us which table Executive should use — we would rather ask than guess at
+somebody's sick-leave entitlement.</div></div>
+
+<p class="sketch">Sketch only — wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>
