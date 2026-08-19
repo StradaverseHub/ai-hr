@@ -78,39 +78,51 @@ const sub = (a: Figures, b: Figures): Figures =>
   Object.fromEntries(WORKSHEET_ITEMS.map((k) => [k, round2(a[k] - b[k])])) as Figures;
 const isZero = (f: Figures) => WORKSHEET_ITEMS.every((k) => Math.abs(f[k]) < 0.005);
 
-/** Why an employee-month is not counted. Every one of these is a REFUSAL to guess, not a failure. */
-export type WorksheetSkipReason =
+/**
+ * Why an employee-month is not counted. Every one of these is a REFUSAL to guess, not a failure.
+ *
+ * A RUNTIME LIST, not a bare union, because the screen builds its label key as `reason.${reason}` and a
+ * type alone cannot be enumerated by the guard that checks those keys exist in all six catalogs. Adding a
+ * reason here without a message fails that guard rather than rendering the raw key on an accountant's
+ * sign-off document.
+ */
+export const WORKSHEET_SKIP_REASONS = [
   /** A negative payslip amount — a reversal or clawback. ADR-0024 §6 puts these out of scope. */
-  | 'negative_amount'
+  'negative_amount',
   /** The additional-remuneration base went DOWN between runs: a negative delta the model would clamp. */
-  | 'negative_delta'
+  'negative_delta',
   /** A run in this month is marked as needing recalculation — its stored figures are known to be stale. */
-  | 'needs_recalc'
+  'needs_recalc',
   /** A payslip predates the charged-bases stamp, so what each agency was charged on is not recorded. */
-  | 'bases_not_recorded'
+  'bases_not_recorded',
   /** run_seq 1 is not the regular run. ADR-0024 §6 requires the regular run to lead the month. */
-  | 'first_run_not_regular'
+  'first_run_not_regular',
   /** A statutory figure on this month was set by hand, so no computation explains it. */
-  | 'manual_statutory_adjustment'
+  'manual_statutory_adjustment',
   /** The EPF/SOCSO/PCB bases disagree by a pay-item carve-out, so one wage figure cannot serve all three. */
-  | 'base_carve_outs'
+  'base_carve_outs',
   /** The runs of this month were charged on DIFFERENT normal wages — a mid-month change the model cannot express. */
-  | 'inconsistent_run_bases'
+  'inconsistent_run_bases',
   /** Zakat or a TP1 optional deduction rode this month; the run inputs alone do not reproduce its MTD. */
-  | 'zakat_or_lp_present'
+  'zakat_or_lp_present',
   /** No Malaysian statutory profile for this person, so the tax category and scheme eligibility are unknown. */
-  | 'no_statutory_profile';
+  'no_statutory_profile',
+] as const;
+export type WorksheetSkipReason = (typeof WORKSHEET_SKIP_REASONS)[number];
 
-/** How the paid figures relate to the two readings — the worksheet's self-check. */
-export type WorksheetVerdict =
+/** How the paid figures relate to the two readings — the worksheet's self-check. Runtime list for the
+ *  same reason as above: the screen keys its label off the value. */
+export const WORKSHEET_VERDICTS = [
   /** Both readings give what was paid: this month cannot distinguish them, and nothing would change. */
-  | 'agree'
+  'agree',
   /** Paid matches the month-as-one reading already. Nothing would change. */
-  | 'already_aggregated'
+  'already_aggregated',
   /** Paid matches the per-run reading. THIS is a month the change would move. */
-  | 'would_change'
+  'would_change',
   /** Paid matches neither reading. Reported, never counted. */
-  | 'unexplained';
+  'unexplained',
+] as const;
+export type WorksheetVerdict = (typeof WORKSHEET_VERDICTS)[number];
 
 export type WorksheetRunView = {
   runSeq: number;

@@ -23,6 +23,8 @@
  *   4. that reversals and unreconstructable months are EXCLUDED/FLAGGED with a reason rather than
  *      clamped, and that the whole worksheet writes nothing.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -33,7 +35,13 @@ import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } f
 import { epf, socso, eis, statutory, PCB_ZERO_ACC, type TaxProfile } from '../localization/my/payroll';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { computeMonthlyRuns } from '../localization/my/multicycle';
-import { multiCycleWorksheetMY, WORKSHEET_ITEMS, type Figures } from '../localization/my/multicycle-worksheet';
+import {
+  multiCycleWorksheetMY,
+  WORKSHEET_ITEMS,
+  WORKSHEET_SKIP_REASONS,
+  WORKSHEET_VERDICTS,
+  type Figures,
+} from '../localization/my/multicycle-worksheet';
 import { myPack } from '../localization/my';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -111,6 +119,61 @@ describe('ADR-0024 §7 worksheet — the arithmetic that separates the two readi
 
   it('the MY pack exposes the worksheet, so a screen never imports the pack implementation', () => {
     expect(typeof myPack.payroll.multiCycleWorksheet).toBe('function');
+  });
+});
+
+/**
+ * THE CONTRACT BETWEEN THE PAGE AND THE CATALOGS, pinned from BOTH ends.
+ *
+ * The screen builds four of its label keys dynamically — `item.${…}`, `verdict.${…}`, `reason.${…}`,
+ * `runType.${…}` — and test/i18n-coverage.test.ts says in its own header that dynamic keys are the one
+ * class it cannot check. So a new skip reason with no message would ship as the literal string
+ * "reason.inconsistent_run_bases" on a document an accountant is being asked to sign, and every unit test
+ * of either half would stay green. These cases read the page SOURCE and the six catalogs together.
+ */
+describe('ADR-0024 §7 worksheet — the screen and the message catalogs agree', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const pageSrc = readFileSync(`${root}app/payroll/multi-cycle-worksheet/page.tsx`, 'utf8');
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const catalogs = LOCALES.map((loc) => ({
+    loc,
+    ns: JSON.parse(readFileSync(`${root}messages/${loc}.json`, 'utf8')).payroll.multiCycleWorksheet as Record<
+      string,
+      Record<string, string>
+    >,
+  }));
+
+  it('every dynamically-built label key exists in all six catalogs', () => {
+    const families: Array<[string, readonly string[]]> = [
+      ['item', WORKSHEET_ITEMS],
+      ['verdict', WORKSHEET_VERDICTS],
+      ['reason', WORKSHEET_SKIP_REASONS],
+      ['runType', ['regular', 'off_cycle', 'bonus', 'adjustment']],
+      ['col', ['paid', 'perRun', 'monthAsOne']], // the three readings, keyed off the reading name
+    ];
+    const missing: string[] = [];
+    for (const [prefix, members] of families) {
+      for (const m of members) {
+        for (const { loc, ns } of catalogs) {
+          if (typeof ns?.[prefix]?.[m] !== 'string') missing.push(`${loc}: payroll.multiCycleWorksheet.${prefix}.${m}`);
+        }
+      }
+    }
+    expect(missing, `dynamic label keys with no translation:\n${missing.join('\n')}`).toEqual([]);
+  });
+
+  it('the page builds its keys from exactly these families — a renamed prefix fails here', () => {
+    // `t(`item.${…}`)` and friends, as the page actually writes them.
+    const prefixes = [...pageSrc.matchAll(/t\(`([a-zA-Z]+)\.\$\{/g)].map((m) => m[1]).sort();
+    expect([...new Set(prefixes)]).toEqual(['col', 'item', 'reason', 'runType', 'verdict']);
+  });
+
+  it('the page renders every statutory item the worksheet computes, in one fixed order', () => {
+    // The page keeps its own literal ITEMS array (it must not import the MY pack — ADR-0080 D7), so the
+    // two lists are pinned against each other here rather than trusted to stay in step.
+    const declared = /const ITEMS: WorksheetItem\[\] = \[([\s\S]*?)\];/.exec(pageSrc)?.[1] ?? '';
+    const names = [...declared.matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]);
+    expect(names).toEqual([...WORKSHEET_ITEMS]);
   });
 });
 
@@ -265,7 +328,8 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
   it('a month whose charged bases were never recorded is FLAGGED, not assumed', async () => {
     const { a, extraBatchId } = await seedMonth();
     const ps = await slipOf(extraBatchId);
-    const { bases: _dropped, ...withoutBases } = ps.statutory as Record<string, unknown>;
+    const withoutBases = { ...(ps.statutory as Record<string, unknown>) };
+    delete withoutBases.bases;
     await owner.db.update(schema.payslip).set({ statutory: withoutBases }).where(eq(schema.payslip.id, ps.id));
 
     const w = await multiCycleWorksheetMY(a, { companyIds: [base.companyId] });
