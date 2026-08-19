@@ -484,4 +484,51 @@ describe('TP1 — the counted-for-the-year contract', () => {
     expect(rest).not.toMatch(/lte\(\s*tp1Relief\.approvedMonth/);
     expect(rest).not.toMatch(/isNull\(\s*tp1Relief\.approvedMonth/);
   });
+
+  /**
+   * ⚠️ A CORRECTION MUST NOT REACH BACK AND DELETE THE MONEY IT SUPERSEDED.
+   *
+   * `collapseTp1ApprovedByMonth` is newest-wins per deduction month, and `tp1CountForYear` also narrows
+   * to what is effective by a given month. THE ORDER OF THOSE TWO STEPS IS THE WHOLE CORRECTNESS OF THE
+   * FUNCTION. Collapse first and March's bucket is won by an August correction; filter that result by
+   * "effective by May" and the bucket vanishes entirely — so March contributes nothing to May even though
+   * the row the correction replaced was approved from March and was in force the whole time.
+   *
+   * That is money, it is silent, and it is reachable through the shipped UI: HR opens the March TP1
+   * screen, submits a correction in August, and types 8 into the free 1–12 Section F "approved for the
+   * deduction of MONTH" box. Every batch for March–July created or reprocessed afterwards then feeds 0.
+   *
+   * r201 filtered before collapsing and did not have this; the r209 rework reordered them.
+   */
+  it('an August correction does not erase the March figure from the months before it', () => {
+    const march = {
+      id: 'orig',
+      deductionMonth: 3,
+      approvedMonth: 3,
+      createdAt: new Date('2026-03-10'),
+      tp1Amount: '1000.00',
+      categories: { individual: 1000 } as never,
+    };
+    const correction = {
+      id: 'corr',
+      deductionMonth: 3,
+      approvedMonth: 8,
+      createdAt: new Date('2026-08-10'),
+      tp1Amount: '1500.00',
+      categories: { individual: 1500 } as never,
+    };
+
+    // Through May the correction is not yet in force, so the ORIGINAL still stands.
+    expect(
+      tp1CountForYear([march, correction], { throughMonth: 5 }).total,
+      'the August correction deleted March money from May',
+    ).toBe(1000);
+    // …and it is the same answer the original gives on its own — the correction changed nothing yet.
+    expect(tp1CountForYear([march], { throughMonth: 5 }).total).toBe(1000);
+
+    // From August the correction supersedes it — one row for the month, the newer amount, not the sum.
+    expect(tp1CountForYear([march, correction], { throughMonth: 8 }).total).toBe(1500);
+    expect(tp1CountForYear([march, correction], { throughMonth: null }).total).toBe(1500);
+  });
+
 });

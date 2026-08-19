@@ -448,8 +448,28 @@ export function tp1CountForYear(
   opts: Tp1CountOptions,
 ): Tp1Counted {
   const through = opts.throughMonth == null ? null : Math.trunc(Number(opts.throughMonth));
-  const counted = collapseTp1ApprovedByMonth(approvedRows)
-    .filter((r) => (through == null ? true : tp1EffectiveFromMonth(r) <= through))
+  // ⚠️ NARROW TO WHAT WAS IN FORCE **BEFORE** COLLAPSING, NOT AFTER. The order of these two steps is the
+  // whole correctness of this function, and getting it the other way round loses money silently.
+  //
+  // `collapseTp1ApprovedByMonth` is newest-wins per deduction month. Ask it first and it hands back the
+  // LATEST row for March — which may be a correction whose Section F effective month is August. Filtering
+  // that result by `effectiveFrom <= May` then drops it, and March contributes NOTHING to May, even though
+  // the row it superseded was approved from March and was genuinely in force all along. A correction keyed
+  // in August therefore reaches back and deletes the original's money from every month between.
+  //
+  // Concretely, and this is reachable through the shipped UI: an employee with March RM 1,000 (approved
+  // from March) plus an August correction to RM 1,500 (approved from August) counted 0 through May —
+  // HR opens /payroll/transactions/tp1/2026/3, submits the correction, types 8 in the free 1–12 Section F
+  // box, and every batch for March–July created or reprocessed afterwards feeds 0 instead of 1,000.
+  //
+  // Narrowing first asks the right question — "of the declarations in force by `through`, which is newest
+  // for each month" — so a later correction supersedes its predecessor only from the month it takes
+  // effect, and the earlier figure keeps standing until then. r201 filtered before collapsing for exactly
+  // this reason (c0fbe661: WHERE approvedMonth IS NULL OR approvedMonth <= month, then collapse and sum);
+  // the r209 rework reordered them and that was the regression.
+  const inForce =
+    through == null ? approvedRows : approvedRows.filter((r) => tp1EffectiveFromMonth(r) <= through);
+  const counted = collapseTp1ApprovedByMonth(inForce)
     .filter((r) => (opts.excluding ? r.deductionMonth !== opts.excluding.deductionMonth : true))
     .sort(
       (a, b) =>
