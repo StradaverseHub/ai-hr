@@ -49,10 +49,16 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // NOT lapse, it MOVED with it (see the note above the it.each below). This file's premise is that a
     // screen is protected by its own guard and never by which menu hides its link, so a screen that
     // changes menus must arrive at the new one with that proof intact.
+    //
+    // 0bade264 (r209) — SEVEN: Schedule Assignment. A brand-new screen listing EVERY employee's shift
+    // arrangement, which is exactly the confidentiality shape this file exists for — it is the row most
+    // likely to be assumed safe because it only reads. It is not: it names every employee in the tenant,
+    // so it carries its own requireAdmin below like the six beside it.
     expect(adminRoutes).toEqual([
       '/admin/attendance',
       '/admin/attendance-policy',
       '/admin/attendance-policy/schedule',
+      '/admin/attendance/schedule-assignment',
       '/admin/attendance-allowance',
       '/admin/locations',
       '/admin/toil',
@@ -68,6 +74,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     '/admin/attendance',
     '/admin/attendance-policy',
     '/admin/attendance-policy/schedule',
+    '/admin/attendance/schedule-assignment',
     '/admin/attendance-allowance',
     '/admin/locations',
     '/admin/toil',
@@ -78,15 +85,41 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(src, `${route} must call requireAdmin() or scopedAdmin()`).toMatch(/requireAdmin\(|scopedAdmin\(/);
   });
 
-  it('rev3: the config menu is INSIDE Administration, between Leave config and Claims config', () => {
-    // The assertion has now been inverted TWICE, and the reason is worth reading before inverting it a
-    // third time. 0bb0e303 put the admin node inside the adminOnly group. a324a4b3 rev2 merged everything
-    // into ONE menu, which then had to sit in the ungated group or Records/Roster/Import would vanish.
-    // rev3 is the reporter's own correction: "just relocate the Attendance button below My Attendance to
-    // admin section between Leave Config and Claim Config".
+  it('rev3: the config menu is INSIDE Administration, between Leave config and Claims config — and is the ONLY thing called "Attendance"', () => {
+    // The MOUNT-POSITION assertion has now been inverted TWICE, and the reason is worth reading before
+    // inverting it a third time. 0bb0e303 put the admin node inside the adminOnly group. a324a4b3 rev2
+    // merged everything into ONE menu, which then had to sit in the ungated group or Records/Roster/Import
+    // would vanish. rev3 is the reporter's own correction: "just relocate the Attendance button below My
+    // Attendance to admin section between Leave Config and Claim Config". That INSTRUCTION is unchanged;
+    // its ASSERTION was half-dead and r209's verification caught it. `mountOf('LEAVE_CONFIG_ROW')` named a
+    // const 645e67c4 had already renamed to `LEAVE_CONFIG_NODE`, so it returned -1 and "after Leave config"
+    // held for the node mounted ANYWHERE — only "before Claims config" was ever live. Both halves are live
+    // now, and mountOf refuses to return -1 so the next rename fails loudly instead of certifying nothing.
     //
-    // What survived all three is the PROTECTION: an administrative screen is never reachable because the
-    // rail happened to hide its link. The it.each above proves that directly, and it has not changed.
+    // 0bade264 (r209) ADDS THE LABEL HALF, and it is the half that reverses a prior decision. ad52212d
+    // round 1 renamed this node's key `attendance` → `attendanceSettings` AND its string to "Attendance
+    // settings", on the reasoning that a third menu row reading plain "Attendance" was the duplication the
+    // reporter objected to. THE SAME REPORTER HAS NOW ASKED FOR "Attendance" BACK, so:
+    //   · the KEY stays `attendanceSettings` — `nav.attendance` is a live, different label and two keys
+    //     cannot share a name, which is also why this parent knowingly stops camel-casing its own string
+    //     (the child rows still must — test/attendance-pack.test.ts);
+    //   · `nav.attendance`, which WAS the word "Attendance", becomes "Attendance Records" — the name of
+    //     what that column actually covers (/attendance + /attendance/daily + /attendance/individual).
+    // Doing only the first is the failure mode this case now catches: two entries reading "Attendance",
+    // which is worse than the state the reporter complained about. Both halves are asserted together
+    // BECAUSE they are one decision — a unit test of either file alone passes through the broken state.
+    const en = JSON.parse(read('messages/en.json')) as { nav: Record<string, string> };
+    expect(en.nav.attendanceSettings, 'the Administration menu reads plain "Attendance"').toBe('Attendance');
+    expect(en.nav.attendance, 'the operational Records column is renamed, not left colliding').toBe(
+      'Attendance Records',
+    );
+    expect(en.nav.attendance, 'the two must never read the same').not.toBe(en.nav.attendanceSettings);
+    // The node still resolves through the key, whatever the key now spells.
+    expect(attendancePack.navNodes!.find((n) => n.group === 'admin')!.labelKey).toBe('attendanceSettings');
+
+    // What survived every inversion is the PROTECTION: an administrative screen is never reachable
+    // because the rail happened to hide its link. The it.each above proves that directly, and it has not
+    // changed.
     const sidebar = read('components/sidebar.tsx');
     expect(sidebar, 'the pre-merge admin node stays gone').not.toContain('ATTENDANCE_ADMIN_NODE');
 
@@ -95,9 +128,20 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(adminGroupStart).toBeGreaterThan(-1);
     expect(manageGroupStart).toBeGreaterThan(-1);
 
-    const mountOf = (konst: string) => sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
+    // `String.search` answers -1 for no match, and -1 is below every real offset — so a const name that
+    // no longer exists turns `toBeGreaterThan(leaveConfigAt)` into a tautology instead of a failure. That
+    // is exactly how the "after Leave config" half died silently for the whole life of LEAVE_CONFIG_NODE.
+    // Assert the mount INSIDE the helper: a rename now fails here, loudly, at the name that moved.
+    const mountOf = (konst: string) => {
+      const at = sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
+      expect(
+        at,
+        `${konst} must be mounted in components/sidebar.tsx — a renamed const makes every position assertion in this case vacuously true`,
+      ).toBeGreaterThan(-1);
+      return at;
+    };
     const attendanceAt = mountOf('ATTENDANCE_NODE');
-    const leaveConfigAt = mountOf('LEAVE_CONFIG_ROW');
+    const leaveConfigAt = mountOf('LEAVE_CONFIG_NODE');
     const claimsConfigAt = mountOf('CLAIMS_CONFIG_ROW');
 
     // Literally between them, inside the admin group.
