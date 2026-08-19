@@ -920,7 +920,7 @@ describe('7ee14bbc — the schedule prints the DEDUCTED, and the count beside it
     expect(PREVIEW_CODE).toContain("t('noDeductions'");
   });
 
-  it('does NOT narrow the readiness gate, which is the e-Data file&apos;s and covers everyone paid', () => {
+  it('does NOT narrow the readiness gate, which is the e-Data file’s and covers everyone paid', () => {
     // The upload file emits a detail record for every employee the run paid and refuses on a missing TIN
     // for any of them, so the printed statement keeps inheriting that same list rather than growing a
     // second, looser one. Source-shape, because the defect would live BETWEEN the model and the loader.
