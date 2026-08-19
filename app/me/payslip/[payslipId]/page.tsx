@@ -239,9 +239,13 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
             />
           )}
           {absence.showResidual && <Row label={t('otherDeductions')} value={rm(absence.residual)} />}
+          {/* 6b4ca488 — no minus prefix. The ticket named the admin surfaces, but this ESS slip renders
+              the SAME positive `totalDeductions` with the SAME literal U+2212, and leaving it here would
+              mean the employee's copy and the admin copy of one payslip print the figure differently.
+              Display only; see app/payroll/individual-payslip/page.tsx for the full note. */}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('totalDeductions')}</span>
-            <span className="tabular-nums">−{rm(p.totalDeductions)}</span>
+            <span className="tabular-nums">{rm(p.totalDeductions)}</span>
           </div>
         </section>
 

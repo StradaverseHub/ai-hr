@@ -670,9 +670,17 @@ export default async function IndividualPayslipPage({
               />
             )}
             {absence.showResidual && <Row label={tSlip('otherDeductions')} value={rm(absence.residual)} />}
+            {/* 6b4ca488 — NO minus sign. `deriveHistoryBreakdown` returns `totalDeductions` as a POSITIVE
+                magnitude (it always has), so the U+2212 that used to sit here was a literal character
+                glued onto an already-positive figure, not a negative value. It read as "minus RM1,234"
+                under a heading that already says Deductions, i.e. a double negative, and it made the
+                printed slip disagree with the PDF and with every export, none of which carry it. Removing
+                it touches display only — nothing downstream reads this string. Pinned by a source-shape
+                assertion in test/individual-payslip.test.ts so it cannot creep back on any of the three
+                surfaces that render this line. */}
             <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
               <span>{tSlip('totalDeductions')}</span>
-              <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
+              <span className="tabular-nums">{rm(b.totalDeductions)}</span>
             </div>
 
             {/* ── PCB working: ONE screen, not a second copy of it (45df860a) ──
