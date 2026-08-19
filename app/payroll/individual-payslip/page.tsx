@@ -208,6 +208,9 @@ export default async function IndividualPayslipPage({
   const t = await getTranslations('payroll.individualPayslip');
   const tSlip = await getTranslations('me.payslip');
   const tTxn = await getTranslations('payroll.transactions');
+  // 6b4ca488 — the Statutory Explanation's own namespace, shared with /payroll/statutory-detail, its
+  // export route and Transaction View's ?tab=statutory. One catalogue block per display.
+  const tStat = await getTranslations('payroll.statutoryDetail');
   const locale = await getLocale();
   const sp = await searchParams;
   // 9066bd6c — Back to the Payroll Process list, as it was left (year, months, company, cycle, status
@@ -733,6 +736,28 @@ export default async function IndividualPayslipPage({
                 className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted print:hidden"
               >
                 {t('pcbViewCalculation')}
+              </a>
+            </div>
+
+            {/* ── Statutory working: the other five, and the same refusal (6b4ca488) ──
+                PCB has had a drill-down since 45df860a; EPF, SOCSO, EIS, SKBBK and HRDF had the amount
+                and nothing else — no wage the contribution was charged on, no rule, no split between
+                what came off take-home and what the employer funded. This is a LINK for the identical
+                reason the PCB disclosure above is: growing this panel into the working would be a second
+                display of one calculation, free to drift from the screen Transaction View's
+                ?tab=statutory renders. Both render app/payroll/statutory-detail/statutory-detail-view.
+                Addressed by THIS payslip's id, so the explanation is of the slip on screen and of no
+                other — and read off that slip's own stamp, never recomputed from today's rates. */}
+            <div className="mt-3 rounded-lg border border-border p-3">
+              <p className="text-sm font-medium">{tStat('title')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{tStat('payslipHint')}</p>
+              <a
+                href={`/payroll/statutory-detail?payslipId=${encodeURIComponent(row.id)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted print:hidden"
+              >
+                {tStat('viewExplanation')}
               </a>
             </div>
           </Block>

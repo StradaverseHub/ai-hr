@@ -251,6 +251,12 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     'app/payroll/process/result/page.tsx',
     'app/payroll/history-import/page.tsx',
     'app/payroll/pcb-detail/page.tsx',
+    // 6b4ca488 — the Statutory Explanation, capped for the SAME reason its PCB sibling above is and with
+    // the same `mx-auto max-w-5xl`: it is one payslip's working read top to bottom, six short blocks of
+    // label-and-figure rows, not a grid anybody reconciles sideways. Stretching that to a 27" monitor
+    // puts a caption at one edge and its number at the other. Its Transaction View twin is NOT a second
+    // exception — the tab renders the same component inside that screen's own pageWideCls container.
+    'app/payroll/statutory-detail/page.tsx',
     'app/payroll/transactions/adjustments/page.tsx',
     'app/payroll/transactions/import-components/page.tsx',
     // Not a page at all: an INNER measure inside the transaction-view history tab.
