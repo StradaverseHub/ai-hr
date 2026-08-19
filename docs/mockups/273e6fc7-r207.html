@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leave Balance Health (273e6fc7)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;
+    border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);
+    vertical-align:2px;margin-left:8px;font-weight:600}
+  .tag.new{border-color:#16a34a;color:#16a34a;background:var(--green-bg)}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel>.ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:600;padding:7px 9px;border-bottom:1px solid var(--border)}
+  td{padding:8px 9px;border-bottom:1px solid #f0f2f4}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sel{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fbfcfd;
+    border-radius:8px;padding:6px 11px;font-size:13px;margin:0 7px 7px 0}
+  .sel b{font-weight:600}.sel span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .pill.ok{background:var(--green-bg);border:1px solid var(--green-b);color:#166534}
+  .pill.warn{background:var(--amber-bg);border:1px solid var(--amber-b);color:#92400e}
+  .pill.bad{background:var(--red-bg);border:1px solid var(--red-b);color:#991b1b}
+  .strike{text-decoration:line-through;color:var(--muted)}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Leave › <b>Leave Types</b> › Balance health</p>
+<h1>Which leave types can actually produce a balance<span class="tag new">New check</span></h1>
+<p class="sub">Measured on your live system, 19 August 2026.</p>
+<div class="panel"><div class="ttl">Your nine reported types — three different causes, not one</div>
+<table>
+<tr><th>Leave type</th><th>Earning method</th><th>Entitlement table</th><th>Why the balance is 0.00</th></tr>
+<tr><td>Examination Leave</td><td><span class="pill bad">Not set</span></td><td>3 rows</td><td>No earning method — nothing is granted</td></tr>
+<tr><td>Graduation Leave</td><td><span class="pill bad">Not set</span></td><td>3 rows</td><td>No earning method — nothing is granted</td></tr>
+<tr><td>Marriage Leave</td><td><span class="pill bad">Not set</span></td><td>3 rows</td><td>No earning method — nothing is granted</td></tr>
+<tr><td>Study Leave</td><td><span class="pill bad">Not set</span></td><td>3 rows</td><td>No earning method — nothing is granted</td></tr>
+<tr><td>Haji Leave</td><td><span class="pill bad">Not set</span></td><td><span class="pill bad">0 rows</span></td><td>Both halves missing</td></tr>
+<tr><td>Natural Disaster Leave</td><td><span class="pill ok">Set</span></td><td><span class="pill bad">0 rows</span></td><td>No entitlement table — no days to grant</td></tr>
+<tr><td>Caregiver Leave</td><td><span class="pill ok">Set</span></td><td>3 rows</td><td><span class="pill warn">Configured — needs a per-employee check</span></td></tr>
+<tr><td>Compassionate Leave</td><td><span class="pill ok">Set</span></td><td>3 rows</td><td><span class="pill warn">Configured — needs a per-employee check</span></td></tr>
+<tr><td>Maternity Leave</td><td><span class="pill ok">Set</span></td><td>3 rows</td><td><span class="pill warn">Configured — needs a per-employee check</span></td></tr>
+</table>
+<div class="note a">The five marked "Not set" have had no earning method since 4 August, and nothing on screen said so.
+That silence is the defect we are fixing — the screen will state what is missing.</div>
+<div class="note g">Hospitalization Leave, for comparison, is set and granting. It is the behaviour the rest will follow.</div></div>
+
+<p class="sketch">Sketch only — wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>

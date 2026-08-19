@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EA (BM) coverage (6036dab7)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;
+    border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);
+    vertical-align:2px;margin-left:8px;font-weight:600}
+  .tag.new{border-color:#16a34a;color:#16a34a;background:var(--green-bg)}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel>.ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:600;padding:7px 9px;border-bottom:1px solid var(--border)}
+  td{padding:8px 9px;border-bottom:1px solid #f0f2f4}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sel{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fbfcfd;
+    border-radius:8px;padding:6px 11px;font-size:13px;margin:0 7px 7px 0}
+  .sel b{font-weight:600}.sel span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .pill.ok{background:var(--green-bg);border:1px solid var(--green-b);color:#166534}
+  .pill.warn{background:var(--amber-bg);border:1px solid var(--amber-b);color:#92400e}
+  .pill.bad{background:var(--red-bg);border:1px solid var(--red-b);color:#991b1b}
+  .strike{text-decoration:line-through;color:var(--muted)}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Payroll › Statutory forms › Income Tax (LHDN) › <b>C.P.8A (EA) — BM</b></p>
+<h1>Borang EA (Bahasa Malaysia) — where it stands against your mapping</h1>
+<p class="sub">The BM statement already exists. This is what each section holds today.</p>
+<div class="panel">
+<table>
+<tr><th>Bahagian</th><th>Status</th><th>Notes</th></tr>
+<tr><td>A — Butiran Pekerja</td><td><span class="pill warn">Mostly built</span></td><td>Name, tax no, IC, KWSP, PERKESO, kategori, bilangan anak, tarikh mula/berhenti. Missing: jawatan, no. kakitangan, no. pasport</td></tr>
+<tr><td>B — Pendapatan Penggajian</td><td><span class="pill warn">Partly built</span></td><td>Gaji kasar, bonus, elaun and the total. Not yet separated: fi pengarah, perkuisit, cukai ditanggung majikan, ESOS, ganjaran, tunggakan</td></tr>
+<tr><td>C — Pencen dan Lain-lain</td><td><span class="pill bad">Missing</span></td><td>Not on the statement at all — the clearest gap</td></tr>
+<tr><td>D — Jumlah Potongan</td><td><span class="pill warn">Partly built</span></td><td>PCB is printed. CP38 and zakat say "not tracked" although the system now holds both</td></tr>
+<tr><td>E — Caruman</td><td><span class="pill ok">Built</span></td><td>KWSP, PERKESO and SIP employee shares</td></tr>
+</table>
+<div class="note g">One generator produces both the English and BM statements, so the two languages can never disagree
+about an employee's income. We are not building a second EA.</div>
+<div class="note a">Boxes that can never come from payroll — ESOS, ganjaran, manfaat berupa barangan, nilai tempat
+kediaman, pampasan — get an HR entry field recording who entered the amount and why, using the override mechanism
+the statement already has.</div></div>
+
+<p class="sketch">Sketch only — wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CP39 corrections (7ee14bbc)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;
+    border-radius:999px;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);
+    vertical-align:2px;margin-left:8px;font-weight:600}
+  .tag.new{border-color:#16a34a;color:#16a34a;background:var(--green-bg)}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel>.ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:600;padding:7px 9px;border-bottom:1px solid var(--border)}
+  td{padding:8px 9px;border-bottom:1px solid #f0f2f4}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sel{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#fbfcfd;
+    border-radius:8px;padding:6px 11px;font-size:13px;margin:0 7px 7px 0}
+  .sel b{font-weight:600}.sel span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .pill.ok{background:var(--green-bg);border:1px solid var(--green-b);color:#166534}
+  .pill.warn{background:var(--amber-bg);border:1px solid var(--amber-b);color:#92400e}
+  .pill.bad{background:var(--red-bg);border:1px solid var(--red-b);color:#991b1b}
+  .strike{text-decoration:line-through;color:var(--muted)}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Payroll › Statutory forms › Income Tax (LHDN) › <b>CP39</b></p>
+<h1>CP39 — what changes on the printed statement</h1>
+<p class="sub">August 2026, shown with your own records.</p>
+<div class="panel"><div class="ttl">Today</div>
+<table>
+<tr><th>Bil</th><th>No. Cukai Pendapatan</th><th>Nama Penuh Pekerja</th><th>No. K/P Baru</th><th class="n">PCB (RM)</th></tr>
+<tr><td>1</td><td>IG2785140070</td><td>TEST0005</td><td class="strike">901010146616</td><td class="n">930.00</td></tr>
+<tr><td>2</td><td>SG90010101</td><td>Aisyah Rahman</td><td class="strike">900101011234</td><td class="n">400.00</td></tr>
+<tr><td>3</td><td>SG23426336090</td><td>ISMAIL</td><td class="strike">870313035407</td><td class="n">216.80</td></tr>
+<tr><td>4</td><td>IG1234567</td><td>Eee Lee Yong</td><td class="strike">760225104430</td><td class="n">0.00</td></tr>
+<tr><td>…</td><td colspan="3" style="color:var(--muted)">and 34 more rows, most of them 0.00</td><td class="n">—</td></tr>
+</table>
+<div class="note r">On your August 2026 run the statement prints <b>38 rows</b> while Bilangan Pekerja says <b>7</b> —
+because the count is the people actually deducted and the table lists everyone the run paid.</div></div>
+<div class="panel"><div class="ttl">After</div>
+<table>
+<tr><th>Bil</th><th>No. Cukai Pendapatan</th><th>Nama Penuh Pekerja</th><th>No. K/P Baru</th><th class="n">PCB (RM)</th></tr>
+<tr><td>1</td><td>IG2785140070</td><td>TEST0005</td><td>901010-14-6616</td><td class="n">930.00</td></tr>
+<tr><td>2</td><td>SG90010101 <span class="pill bad">shared</span></td><td>Aisyah Rahman</td><td>900101-01-1234</td><td class="n">400.00</td></tr>
+<tr><td>3</td><td>SG23426336090</td><td>ISMAIL</td><td>870313-03-5407</td><td class="n">216.80</td></tr>
+</table>
+<div class="note g">Identity card numbers carry dashes, and the 0.00 rows are no longer listed — so <b>7 rows print
+against Bilangan Pekerja 7</b>. Your reference form behaves the same way: 13 rows against a count of 13.</div>
+<div class="note a">SG90010101 is recorded against <b>Aisyah Rahman</b> and <b>Irwin Law</b>, who have different
+identity card numbers. Four more numbers in your records are shared the same way. The statement prints what is filed
+against each employee, so the correction is in the employee records — this warning appears before you print.</div></div>
+
+<p class="sketch">Sketch only — wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>
