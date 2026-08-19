@@ -84,7 +84,9 @@ export function LeaveDetailsPanel({
   visual: { color: string | null; icon: string | null; code: string | null };
   asOf: string;
   action: string;
-  hiddenParams?: Record<string, string>;
+  /** A value may REPEAT (a multi-select filter posts one param per ticked value), so an array is a
+   *  first-class value here — flattening it to a single string would silently drop the rest. */
+  hiddenParams?: Record<string, string | string[]>;
   applyEssConfig?: boolean;
   /** Controlled-open mode (Leave View Dashboard 6d78f373): when `open`/`onOpenChange` are supplied the caller
    *  owns the Dialog open state (e.g. a summary card that is itself the trigger). Omit both ⇒ uncontrolled,
@@ -328,9 +330,11 @@ export function LeaveDetailsPanel({
           <div className="space-y-5 px-5 py-4">
             {/* As-at date control — the preserved ?asOf= GET form, moved INTO the panel. */}
             <form method="GET" action={action} className="flex flex-wrap items-end gap-2">
-              {Object.entries(hiddenParams).map(([k, v]) => (
-                <input key={k} type="hidden" name={k} value={v} />
-              ))}
+              {Object.entries(hiddenParams).flatMap(([k, v]) =>
+                (Array.isArray(v) ? v : [v]).map((one, i) => (
+                  <input key={`${k}-${i}`} type="hidden" name={k} value={one} />
+                )),
+              )}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {t('asAtDate')}
                 <input

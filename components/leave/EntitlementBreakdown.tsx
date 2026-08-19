@@ -95,7 +95,7 @@ export function EntitlementBreakdown({
   /** The GET target of the as-at form (the page path, e.g. '/me' or '/admin/personnel/<id>'). */
   action: string;
   /** Other query params to preserve across the as-at GET (kept as hidden inputs). */
-  hiddenParams?: Record<string, string>;
+  hiddenParams?: Record<string, string | string[]>;
   /** Employee Leave View Configuration (65dec703): when true (ESS /me), gate each section/field against
    *  `data.essView` (missing key ⇒ visible). Admin/HR leave it false so everything always shows. */
   applyEssConfig?: boolean;

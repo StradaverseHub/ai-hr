@@ -35,21 +35,27 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
   });
 
   it('sorts the array alphabetically with a locale-aware, case-insensitive comparison', () => {
-    expect(
-      page.includes("leaveTypes.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }))"),
-    ).toBe(true);
+    // UPDATED BY ad965821 (AGENTS rule 18). The comparison is unchanged — it was EXTRACTED to a name,
+    // because the page now holds TWO arrays that must be ordered identically: the full catalogue (still
+    // needed for the unpaid-leave name and the Edit box) and the eligibility-filtered apply source. Two
+    // inline copies of one comparator is exactly how they would have drifted.
+    expect(page).toContain("a.name.localeCompare(b.name, locale, { sensitivity: 'base' })");
+    expect(page).toContain('leaveTypes.sort(byName);');
+    expect(page).toContain('eligibleLeaveTypes.sort(byName);');
   });
 
   it('sorts BEFORE every consumer maps off the array (one sort fixes all four)', () => {
     const sortAt = page.indexOf('leaveTypes.sort(');
     expect(sortAt).toBeGreaterThan(-1);
-    // Every `leaveTypes.map(` / `leaveTypes` read that builds options must come after the sort.
-    const consumers = [...page.matchAll(/leaveTypes\.map\(/g)].map((m) => m.index ?? -1);
+    // Every `.map(` that builds options off either array must come after the sorts.
     // afd0a87c — was >= 4. Two of the four consumers were the retired request table's leave-type filter
-    // options; removing the table removed them. The PROPERTY this test defends is unchanged and is the
-    // line below: whatever the count, every consumer reads the array AFTER the single sort. The count is
-    // kept only as a tripwire against the regex silently matching nothing and making that check vacuous.
-    expect(consumers.length).toBeGreaterThanOrEqual(1);
+    // options; removing the table removed them. ad965821 then moved the apply dropdown onto the
+    // eligibility-filtered array, so BOTH names are scanned. The PROPERTY this test defends is unchanged
+    // and is the line below: whatever the count, every consumer reads its array AFTER the single sort.
+    const consumers = [...page.matchAll(/(?:leaveTypes|eligibleLeaveTypes)\r?\n?\s*\.?(?:map|filter)\(/g)].map(
+      (m) => m.index ?? -1,
+    );
+    expect(consumers.length).toBeGreaterThanOrEqual(2);
     for (const at of consumers) expect(at).toBeGreaterThan(sortAt);
   });
 
@@ -433,9 +439,17 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
 
   it('EditLeaveDialog’s own options were already bare names and are unchanged', () => {
     // app/leave/page.tsx builds a second, separate option list for the edit dialog; both now agree.
-    const at = page.indexOf('types={leaveTypes.map((lt) => ({');
+    //
+    // UPDATED BY ad965821 (AGENTS rule 18). The property under test — the option LABEL is the type's name
+    // and nothing else — is untouched and still asserted. What changed is which rows reach the list: it is
+    // now the eligible set UNION the request's own type, so the hiding holds in the Edit box too without
+    // ever taking a request's own type out of its own editor. Pinning `types={leaveTypes.map(` would have
+    // pinned the unfiltered catalogue, which is the thing this round removed.
+    const at = page.indexOf('types={leaveTypes');
     expect(at).toBeGreaterThan(-1);
-    expect(page.slice(at, page.indexOf('}))}', at))).toContain('label: lt.name,');
+    const list = page.slice(at, page.indexOf('}))}', at));
+    expect(list).toContain('label: lt.name,');
+    expect(list).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
   });
 
   it('the badge key survives in all six catalogs (parity, and nothing checks for unused keys)', () => {

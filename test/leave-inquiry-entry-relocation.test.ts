@@ -178,10 +178,17 @@ describe('388e53c2 · My Leave means your own leave again', () => {
       'employeeFilterFields',
       'employeeHiddenParams',
       'inquiryEmploymentId',
-      'FilterPanel',
     ]) {
       expect(leavePage.includes(gone), `still on /leave: ${gone}`).toBe(false);
     }
+    // UPDATED BY 5f2e20fb (AGENTS rule 18). `FilterPanel` used to sit in this list, and every other name
+    // in it still belongs: what LEFT this page is the HR-admin employee LISTING, and none of it came back.
+    // But FilterPanel is a shared, page-agnostic control, not a fragment of that listing — the employee's
+    // own My Leave History now uses it for the date/leave-type filter the reporter asked for. So the name
+    // is asserted on what it is WIRED TO instead: this page's own history params, never the listing's.
+    // (`employeeFilterFields` / `employeeHiddenParams` — the listing's own wiring — are still asserted
+    // absent in the loop above, so the panel here can only be serving this page's own history.)
+    expect(leavePage).toContain('fields={historyFilterFields}');
   });
 
   it('an HR admin and an UNLINKED viewer both get the heading and one sentence, before any read runs', () => {
@@ -191,7 +198,10 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // An EARLY RETURN, so the self-service reads never run for either viewer. `me == null` is checked
     // FIRST and independently of the role, which is what extends the fix to a plain unlinked employee —
     // before this they got empty cards and a "+ Request Leave" button that could not possibly work.
-    for (const r of ['leaveBalances(session', 'listLeaveRequests(session', 'listEmployees(session']) {
+    // 5f2e20fb renamed the history read (the flat scope-wide `listLeaveRequests` became the
+    // self-narrowed `listLeaveRequestsPage`). The property is unchanged — no self-service read may run
+    // above the early return — so the list follows the read rather than the read being kept for the list.
+    for (const r of ['leaveBalances(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
       expect(leavePage.indexOf(r), r).toBeGreaterThan(guardAt);
     }
   });

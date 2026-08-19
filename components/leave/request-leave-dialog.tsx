@@ -27,6 +27,7 @@ export function RequestLeaveDialog({
   types,
   startDefault,
   employeeOptions,
+  eligibleTypeIdsByEmployment,
   submitAction,
   previewAction,
   summaryAction,
@@ -36,6 +37,10 @@ export function RequestLeaveDialog({
   // Optional (item 69088c13): omitted for self-service employees so the Employee selector is hidden and the
   // submit binds to the signed-in viewer; passed only on the admin/manager on-behalf-of path.
   employeeOptions?: { id: string; name: string }[];
+  /** ad965821: which leave types each selectable employment qualifies for, so the type list re-draws when
+   *  the on-behalf-of employee changes. Forwarded verbatim to LeaveDurationFields, which owns the selection
+   *  state; omitted (with employeeOptions) for a plain self-service applicant. */
+  eligibleTypeIdsByEmployment?: Record<string, string[]>;
   submitAction: Action;
   previewAction: PreviewAction;
   /** Employee apply-popup enhancement: Taken / Pending / Balance / Available for the selected type. Required — this is
@@ -98,6 +103,7 @@ export function RequestLeaveDialog({
               startDefault={startDefault}
               showDocumentFields
               employeeOptions={employeeOptions}
+              eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
               action={previewAction}
               summaryAction={summaryAction}
             />

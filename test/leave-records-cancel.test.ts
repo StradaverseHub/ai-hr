@@ -172,8 +172,16 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // The destination is unchanged and still per-employee, which is exactly why it is not a replacement.
     expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
     expect(recordsPage).toContain('pickInquiryEmployee(employees, sp.emp)');
-    // And /leave no longer runs an unnarrowed org-wide request read at all.
-    expect(leavePage).not.toContain('listLeaveRequestsPage(session');
+    // And /leave no longer runs an UNNARROWED org-wide request read at all.
+    //
+    // UPDATED BY 5f2e20fb (AGENTS rule 18): the accepted loss is the org-wide REGISTER, not the read's
+    // name. The employee's own My Leave History now uses the paginated read for its date/leave-type
+    // filter, narrowed to the viewer's own employments — which is the opposite of a register. Asserted
+    // on the narrowing, which is what made the old call org-wide in the first place.
+    for (const call of leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? []) {
+      expect(call).toContain('employmentIds:');
+      expect(call).not.toContain('companyIds:');
+    }
   });
 
   it('2. editing your OWN pending request is the one real loss for an admin', () => {
@@ -185,7 +193,10 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // the subject. Withdraw-and-reapply is the workaround; disclosed in the approved plan.
     expect(leavePage).toContain('<EditLeaveDialog');
     expect(leavePage).toContain('if (me == null || admin) {');
-    expect(leavePage).toContain('const selfHistory = [...history].sort(');
+    // 5f2e20fb moved the newest-first ordering into SQL (sort 'start', dir 'desc'), so the JS re-sort it
+    // used to need is gone. `selfHistory` is still the viewer's own rows and still what EditLeaveDialog is
+    // built from, which is the property this case is about.
+    expect(leavePage).toContain('const selfHistory = historyShown.rows;');
     // The early return really does precede the dialog it fences off.
     expect(leavePage.indexOf('if (me == null || admin) {')).toBeLessThan(leavePage.indexOf('<EditLeaveDialog'));
     expect(recordsPage.includes('<EditLeaveDialog')).toBe(false);

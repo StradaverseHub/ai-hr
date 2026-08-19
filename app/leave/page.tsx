@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -8,12 +9,19 @@ import {
   leaveRequestDateBreakdown,
   leaveRequestsFor,
   myEmployment,
+  myEmploymentIdsAll,
   listEmployees,
   listLeaveTypes,
-  listLeaveRequests,
+  listLeaveRequestsPage,
+  // ad965821 — the eligibility-filtered apply source, and its multi-employment sibling for the
+  // manager-applying-on-behalf case.
+  listEligibleLeaveTypesFor,
+  eligibleLeaveTypeIdsFor,
   reportingLinesFor,
   replacementLeaveLedger,
 } from '@/core/read';
+// 5f2e20fb — the SAME filter control the three HR leave screens use, on the employee's own history box.
+import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { todayInKualaLumpur } from '@/core/leave';
 import { essViewHasAnyVisibleRow, isReplacementLeaveType } from '@/core/ess-view';
 import { Card, PageHeader } from '@/components/ui';
@@ -123,6 +131,15 @@ export default async function LeavePage({
     // Read here rather than inside the dialog because `startDefault` is already a prop it takes — the
     // alternative was a second dialog, which the plan explicitly rules out.
     start?: string;
+    // ── My Leave History filter (5f2e20fb) ────────────────────────────────────────────────────────
+    // DELIBERATELY PREFIXED `h`, and this is the whole reason the prefix exists. The retired org-wide
+    // register owned bare `from` / `to` / `type` on this very path (see the afd0a87c note above), and
+    // admin links carrying them are still saved in people's browsers — reading them here would apply a
+    // filter nobody asked for from a link that used to mean something else. `start` is likewise already
+    // taken, by the Request Leave deep-link two fields up. `hType` repeats (multi-select tick-list).
+    hFrom?: string;
+    hTo?: string;
+    hType?: string | string[];
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -185,18 +202,32 @@ export default async function LeavePage({
     (workingDates ?? []).filter((d) => d > today);
 
   const locale = await getLocale();
-  const [employees, leaveTypes] = await Promise.all([
+  const [employees, leaveTypes, eligibleLeaveTypes] = await Promise.all([
     listEmployees(session, scopeIds),
     // Employee apply-popup enhancement: pass the viewer's locale so listLeaveTypes localizes `name` through
     // pickName. Without it the list is always English, which also makes an alphabetical sort meaningless
     // outside English. Admin master screens deliberately keep passing no locale (they edit the English name).
+    //
+    // ad965821 — THE FULL CATALOGUE IS STILL READ, and deliberately: two consumers on this page need it and
+    // would break silently on the narrowed list. (1) `unpaidTypeName` just below, which supplies the
+    // tenant's own name for unpaid leave to the fef49b9a balance split — UNPAID is a plausible hidden or
+    // not-can-apply type, so filtering it away would drop that name from the breakdown. (2) the
+    // EditLeaveDialog list, which must keep a request's OWN type selectable even when the employee no
+    // longer qualifies for it. What it no longer feeds is the apply dropdown.
     listLeaveTypes(session, { locale }),
+    // …which now comes from HERE: the types this employee actually qualifies for, resolved through the ONE
+    // gate in core/read.ts (conditions + employee_can_apply + hidden placement). An ineligible type is
+    // ABSENT — no message, no greyed row, no badge, no count. requestLeave still refuses the submission.
+    listEligibleLeaveTypesFor(session, me.employmentId, locale),
   ]);
-  // Sort ONCE, at the source: all four consumers on this page map off this array (the request-leave dialog
-  // options, the two edit-leave dialog lists, and the admin filter-chip options), so one sort makes them
-  // agree instead of one popup being ordered and another not. NOT pushed into core/read.ts listLeaveTypes —
-  // the admin master listing has its own ordering.
-  leaveTypes.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
+  // Sort ONCE, at the source: every consumer on this page maps off one of these two arrays (the
+  // request-leave dialog options, the two edit-leave dialog lists), so one sort makes them agree instead of
+  // one popup being ordered and another not. NOT pushed into core/read.ts listLeaveTypes — the admin master
+  // listing has its own ordering.
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, locale, { sensitivity: 'base' });
+  leaveTypes.sort(byName);
+  eligibleLeaveTypes.sort(byName);
   // fef49b9a — the tenant's OWN name for unpaid leave, so the breakdown says what their catalogue says.
   // Matched on the UNPAID code, which is the same lookup core/leave.ts already uses for the Emergency
   // decomposition (core/leave.ts:3480). The approved plan asked for the leave-type ROLE marker instead,
@@ -208,7 +239,11 @@ export default async function LeavePage({
   // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
   // modal launched from a "+" primary button in the PageHeader. These are the exact props the form used to
   // compute inline — mapped here in the RSC (t() runs server-side) and handed to the client dialog.
-  const requestLeaveTypeOptions = leaveTypes.map((lt) => ({
+  //
+  // ad965821 — MAPPED OFF THE ELIGIBLE LIST, not the catalogue. A male employee has no Maternity row here at
+  // all; an unmarried one has no Paternity row. Nothing on the screen indicates a row was removed, which is
+  // the reporter's explicit ask: a hint that a leave type exists is the thing they said must not happen.
+  const requestLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({
     id: lt.id,
     // 5570c6a2 — AN OPTION IS THE LEAVE TYPE'S NAME AND NOTHING ELSE.
     //
@@ -233,12 +268,27 @@ export default async function LeavePage({
     // controls once EL has been pointed at another type's balance — see LeaveTypeOption.borrowsBalance.
     borrowsBalance: lt.balanceSourceTypeId != null,
   }));
+  // ad965821 — membership test for the Edit box's union below. Built once here rather than per row.
+  const eligibleTypeIds = new Set(eligibleLeaveTypes.map((lt) => lt.id));
   const requestLeaveEmployeeOptions = active.map((e) => ({ id: e.employmentId, name: e.name }));
-  // Employee selector visibility (item 69088c13): only an on-behalf-of applicant (an HR admin or a line
-  // manager with direct reports) needs to pick WHO the leave is for. A plain self-service employee applies
-  // for themselves, so the selector is hidden and the submit binds to their own employment server-side.
-  const canApplyOnBehalf =
-    admin || (!!me && (await reportingLinesFor(session, me.employmentId)).reports.length > 0);
+  // Employee selector visibility (item 69088c13): only an on-behalf-of applicant needs to pick WHO the leave
+  // is for. A plain self-service employee applies for themselves, so the selector is hidden and the submit
+  // binds to their own employment server-side.
+  //
+  // ad965821 — the ADMIN arm of this question is dead code and has been since 8ec63139 / 388e53c2: the short
+  // page above returns for `admin`, so `admin` is necessarily false here. What is left is the real case, a
+  // line manager with direct reports. The read is bound to a name because the eligible-types map below needs
+  // the same answer and calling reportingLinesFor twice would ask the database the same question twice.
+  const reportingLines = await reportingLinesFor(session, me.employmentId);
+  const canApplyOnBehalf = reportingLines.reports.length > 0;
+  // ad965821 — WHOSE list is on offer changes when the manager changes the employee, so the answer is
+  // resolved for every employment the selector can name (plus the manager's own) and handed to the client
+  // form as a map. Keyed on the SELECTOR's ids rather than only the direct reports: `listEmployees` is what
+  // populates that <select>, and an option with no entry in the map would render an empty type list.
+  // ONE extra query for the whole set — see eligibleLeaveTypeIdsFor on why this is not an N+1.
+  const eligibleTypeIdsByEmployment = canApplyOnBehalf
+    ? await eligibleLeaveTypeIdsFor(session, [me.employmentId, ...requestLeaveEmployeeOptions.map((e) => e.id)])
+    : undefined;
 
   // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
   // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
@@ -403,14 +453,63 @@ export default async function LeavePage({
   // Details listing alone — and 388e53c2 moved that listing to app/leave/tracker/page.tsx, which reads
   // them there. So one path is left, and it is the self-service one. (An administrator never reaches this
   // line at all: the short page returns above.)
-  const history = (await listLeaveRequests(session, scopeIds)).filter(
-    (r) => session.personId != null && r.personId === session.personId,
-  );
-  const total = history.length;
-  // Self-service history ordering (feedback 657962ec): cards render newest first BY LEAVE START DATE —
-  // explicit here (the read returns createdAt-desc, i.e. most recently APPLIED first, which is not the
-  // same thing).
-  const selfHistory = [...history].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  //
+  // 5f2e20fb — NARROWED IN SQL, not in JavaScript after the fact. The old shape read the scope-wide flat
+  // list (capped at 200 rows) and then kept the viewer's own; RLS on leave_request is `can_see_employment`,
+  // so a manager's subordinates filled that cap and the manager's OWN older records fell off the bottom of
+  // it before the filter ever ran. Narrowing by employmentId makes the cap per-employee. This does NOT
+  // resurrect the org-wide register: there is no company/status/approver dimension here, only "mine".
+  //
+  // The id list comes from myEmploymentIdsAll — the exact equivalent of the personId test it replaces, and
+  // the reason it is not simply [me.employmentId]: a rehired person holds more than one employment and must
+  // keep seeing the earlier one's records. Never allowed to be empty, because an empty `employmentIds`
+  // applies NO narrowing at all in the read.
+  const myEmploymentIds = (await myEmploymentIdsAll(session)).map((e) => e.employmentId);
+  const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];
+  const hArr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+  const hTypeIds = hArr(sp.hType).filter((v) => v.length > 0);
+  const hFrom = sp.hFrom || undefined;
+  const hTo = sp.hTo || undefined;
+  const historyFiltered = hTypeIds.length > 0 || hFrom != null || hTo != null;
+  // The SYMMETRIC carrier. The filter panel already carries `asOf` so applying a filter cannot reset the
+  // as-at date; this is the same courtesy the other way round — the as-at GET forms (the one under the
+  // balance table and the one inside every EntitlementBreakdown side-sheet) post only `asOf`, so without
+  // these hidden inputs pressing Apply on a breakdown would silently clear the employee's history filter.
+  // `hType` REPEATS, which is why the shared hiddenParams prop takes an array rather than a single string.
+  const historyFilterParams: Record<string, string | string[]> = {
+    ...(hTypeIds.length > 0 ? { hType: hTypeIds } : {}),
+    ...(hFrom ? { hFrom } : {}),
+    ...(hTo ? { hTo } : {}),
+  };
+  // Call A is UNFILTERED and is what the tick-list is built from — options taken from the filtered set would
+  // vanish the moment a filter was applied. It also supplies the "of 14" half of the header count.
+  // Call B is the rendered rows. `from`/`to` are OVERLAP semantics inside the read (startDate <= to AND
+  // endDate >= from), which is exactly the reporter's three date cases and also catches leave spanning a
+  // month boundary. Skipped entirely when nothing is filtered — then the two lists are the same list.
+  const historyAll = await listLeaveRequestsPage(session, {
+    employmentIds: historyEmploymentIds,
+    sort: 'start',
+    dir: 'desc',
+    limit: 200,
+    offset: 0,
+  });
+  const historyShown = historyFiltered
+    ? await listLeaveRequestsPage(session, {
+        employmentIds: historyEmploymentIds,
+        leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
+        from: hFrom,
+        to: hTo,
+        sort: 'start',
+        dir: 'desc',
+        limit: 200,
+        offset: 0,
+      })
+    : historyAll;
+  const total = historyAll.total;
+  // Self-service history ordering (feedback 657962ec): cards render newest first BY LEAVE START DATE. SQL
+  // now produces exactly that order (sort 'start', dir 'desc'), so the JS re-sort that used to correct the
+  // read's createdAt-desc default is gone rather than duplicated.
+  const selfHistory = historyShown.rows;
 
   // Per-date outcome rows for the viewer's OWN recent requests (My Absence merge · a7cbd895): the same
   // 5-most-recent window the /me Leave tab resolved (R17 600be8ac ask #6), so the employee still sees the
@@ -450,12 +549,18 @@ export default async function LeavePage({
         <>
           <EditLeaveDialog
             leaveRequestId={r.id}
-            types={leaveTypes.map((lt) => ({
-              id: lt.id,
-              label: lt.name,
-              durations: lt.durations ?? null,
-              code: lt.code,
-            }))}
+            // ad965821 — the eligible set UNION this request's OWN type. The narrowing has to reach the Edit
+            // box too or "no indication they exist" would hold on the apply form and fail one click away;
+            // the union is the deliberate exception, because an employee who no longer qualifies for the type
+            // they already filed under must still be able to edit the request they already have.
+            types={leaveTypes
+              .filter((lt) => eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId)
+              .map((lt) => ({
+                id: lt.id,
+                label: lt.name,
+                durations: lt.durations ?? null,
+                code: lt.code,
+              }))}
             current={{
               leaveTypeId: r.leaveTypeId,
               durationType: (r.durationType ?? 'full_day') as
@@ -544,6 +649,67 @@ export default async function LeavePage({
   });
 
 
+  // ── My Leave History filter (5f2e20fb) ───────────────────────────────────────────────────────────────
+  // Assembly, not invention: components/filter-panel.tsx is the control three HR leave screens already use,
+  // and every string it needs already exists in all six catalogs under `leave.filters`. NO new i18n key.
+  //
+  // The tick-list offers only the types this employee actually HAS records for, taken from the UNFILTERED
+  // call above — so nobody ticks a type and gets a blank list, and the options do not shrink as filters are
+  // applied. Sorted by name for the same reason the type dropdown is.
+  const historyTypeOptions = [
+    ...new Map(historyAll.rows.map((r) => [r.leaveTypeId, r.leaveType])).entries(),
+  ]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, locale, { sensitivity: 'base' }));
+  const historyFilterFields: FilterField[] = [
+    {
+      kind: 'multi',
+      name: 'hType',
+      label: t('filters.leaveType'),
+      ariaLabel: t('filters.leaveType'),
+      options: historyTypeOptions,
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.leaveType') }),
+    },
+    {
+      kind: 'date',
+      name: 'hFrom',
+      label: t('filters.dateFrom'),
+      ariaLabel: t('filters.dateFrom'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.dateFrom') }),
+    },
+    {
+      kind: 'date',
+      name: 'hTo',
+      label: t('filters.dateTo'),
+      ariaLabel: t('filters.dateTo'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.dateTo') }),
+    },
+  ];
+  const historyFilterValues = { hType: hTypeIds, hFrom, hTo };
+  const historyFilterLabels = {
+    filter: t('filters.filter'),
+    apply: t('filters.apply'),
+    clearAll: t('filters.clearAll'),
+    activeCount: t('filters.activeCount', {
+      count: (hTypeIds.length > 0 ? 1 : 0) + (hFrom ? 1 : 0) + (hTo ? 1 : 0),
+    }),
+    selectAll: t('filters.selectAll'),
+    deselectAll: t('filters.deselectAll'),
+  };
+  // The panel posts a GET form carrying only its OWN fields, so every foreign param this page reads has to
+  // ride along as a hidden input — otherwise applying a history filter would silently reset the as-at date
+  // on the balance breakdown and drop the holiday warning banner mid-read.
+  const historyHiddenParams: [string, string][] = (
+    [
+      ['asOf', sp.asOf],
+      ['year', sp.year],
+      ['state', sp.state],
+      ['loaded', sp.loaded],
+    ] as [string, string | undefined][]
+  ).flatMap(([k, v]) => (v ? [[k, v] as [string, string]] : []));
+  const historyClearHref =
+    historyHiddenParams.length > 0 ? `/leave?${new URLSearchParams(historyHiddenParams).toString()}` : '/leave';
+
   // The "Other leave" breakdown Card (restored · feedback 56a0deb9): the pre-R54 grouped panels, rebuilt
   // from the SAME derivations that feed the detailed balance table (deriveBalanceRow remaining + ESS-gated
   // EntitlementBreakdown side-sheet sharing the ?asOf= reload). Null when no secondary types exist — the
@@ -576,6 +742,9 @@ export default async function LeavePage({
                       visual={{ color: b.color, icon: b.icon, code: b.code }}
                       asOf={breakdownAsOf}
                       action="/leave"
+                      // 5f2e20fb — the side-sheet's own as-at form posts only asOf; carry the history
+                      // filter so re-dating a breakdown does not clear the list behind the panel.
+                      hiddenParams={historyFilterParams}
                       applyEssConfig
                     />
                   ) : undefined,
@@ -609,9 +778,16 @@ export default async function LeavePage({
                   form and the on-behalf-of employee selector are untouched; only this trigger's audience
                   changed. Managers keep it (they are not `admin`), so applying on behalf of a report still
                   works from here. */}
-              {ess && (
+              {/* ad965821 — and only when there is something to offer. An employee who qualifies for
+                  nothing gets no trigger rather than an empty form, which is the same courtesy the
+                  Replacement Leave button immediately below already gives (replacementRequest.allowed). */}
+              {ess && requestLeaveTypeOptions.length > 0 && (
                 <RequestLeaveDialog
                   types={requestLeaveTypeOptions}
+                  // The manager-on-behalf case: whose list is on offer re-draws when the employee changes,
+                  // and a type that does not apply to the newly selected person is cleared rather than
+                  // quietly carried across. Undefined for a plain employee — there is only one subject.
+                  eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
                   // 2166ef79 — `?start=` when My Attendance sent the employee here to explain an absent
                   // day, otherwise today, exactly as before. Shape-checked, never passed through raw: this
                   // value seeds a date input and rides no further.
@@ -713,6 +889,13 @@ export default async function LeavePage({
           <div className="space-y-3 p-4">
             {/* ONE shared as-at date GET form driving every row's breakdown (mirrors /me). Invalid/empty ⇒ today. */}
             <form method="GET" action="/leave" className="flex flex-wrap items-end gap-2">
+              {/* 5f2e20fb — this form posts ONLY asOf, so the history filter rides along as hidden inputs
+                  or pressing Apply here would silently clear it. hType repeats, one input per ticked type. */}
+              {Object.entries(historyFilterParams).flatMap(([k, v]) =>
+                (Array.isArray(v) ? v : [v]).map((one, i) => (
+                  <input key={`${k}-${i}`} type="hidden" name={k} value={one} />
+                )),
+              )}
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {tMe('leaveBalanceTable.asAtDate')}
                 <input
@@ -745,6 +928,8 @@ export default async function LeavePage({
                         visual={{ color: b.color, icon: b.icon, code: b.code }}
                         asOf={breakdownAsOf}
                         action="/leave"
+                        // 5f2e20fb — same carrier as the balance-table breakdown above.
+                        hiddenParams={historyFilterParams}
                         applyEssConfig
                       />
                     ) : undefined,
@@ -777,13 +962,55 @@ export default async function LeavePage({
       {!admin && (
         <div className={`grid grid-cols-1 gap-6 ${secondaryGroups.length > 0 ? 'lg:grid-cols-2' : ''}`}>
           {secondaryBreakdownCard(`${COLUMN_CAP} lg:overflow-y-auto`)}
-          <Card className={`flex flex-col overflow-hidden ${COLUMN_CAP}`} data-tour="leave-requests">
-            <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-medium">
-              {t('historyCount', { count: total })}
+          {/* 5f2e20fb LAYOUT TRAP: `overflow-hidden` used to sit on this Card, and FilterPanel's popover is
+              an absolutely positioned div rather than a portal — inside a clipping ancestor the whole panel
+              would have been cut off at the card edge. The clipping moved to the inner scrolling div, which
+              is the element that actually needs it (it is what scrolls); the card keeps its rounded corners
+              because nothing now paints outside them except the popover, which is the point. */}
+          <Card className={`flex flex-col ${COLUMN_CAP}`} data-tour="leave-requests">
+            <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">
+                  {/* "Showing 3 of 14" while a filter is on, plain "14" once cleared. */}
+                  {historyFiltered
+                    ? t('filters.showingOf', { shown: selfHistory.length, total })
+                    : t('historyCount', { count: total })}
+                </span>
+                <FilterPanel
+                  action="/leave"
+                  fields={historyFilterFields}
+                  values={historyFilterValues}
+                  labels={historyFilterLabels}
+                  hidden={historyHiddenParams}
+                />
+              </div>
+              {/* Removable chips under the top row: it is always visible WHY the list is short, and one
+                  click puts it back. */}
+              <FilterChips
+                action="/leave"
+                fields={historyFilterFields}
+                values={historyFilterValues}
+                labels={historyFilterLabels}
+                hidden={historyHiddenParams}
+              />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {historyEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('requestsEmpty')}</p>
+                historyFiltered ? (
+                  // NOT `requestsEmpty` — that sentence means "you have no leave records at all", which is a
+                  // different and, here, untrue statement.
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">{t('filters.emptyFiltered')}</p>
+                    <Link
+                      href={historyClearHref}
+                      className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      {t('filters.clearAll')}
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t('requestsEmpty')}</p>
+                )
               ) : (
                 <LeaveHistoryCards entries={historyEntries} locale={locale} />
               )}
