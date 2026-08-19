@@ -531,4 +531,42 @@ describe('TP1 — the counted-for-the-year contract', () => {
     expect(tp1CountForYear([march, correction], { throughMonth: null }).total).toBe(1500);
   });
 
+
+  /**
+   * THE RECONCILIATION'S INVARIANT, exercised on the pure function the DB version wraps.
+   *
+   * `reconcileTp1ForYear` compares, for each month, what payroll feeds against what that month is owed
+   * computed from ONLY the declarations that existed by it. The previous version derived both sides from
+   * the same collapsed set, so `agrees` was an algebraic identity — true for every input, including the
+   * one where a later correction had silently deleted an earlier month's money. This pins the version
+   * that can actually fail.
+   */
+  it('no later-dated declaration changes what an earlier month is owed', () => {
+    const rows = [
+      {
+        id: 'orig', deductionMonth: 3, approvedMonth: 3,
+        createdAt: new Date('2026-03-10'), tp1Amount: '1000.00',
+        categories: { individual: 1000 } as never,
+      },
+      {
+        id: 'corr', deductionMonth: 3, approvedMonth: 8,
+        createdAt: new Date('2026-08-10'), tp1Amount: '1500.00',
+        categories: { individual: 1500 } as never,
+      },
+    ];
+    const effectiveFrom = (r: (typeof rows)[number]) => r.approvedMonth ?? 1;
+
+    for (let month = 1; month <= 12; month++) {
+      const fed = tp1CountForYear(rows, { throughMonth: month }).total;
+      // Withhold every row that is not yet effective — the independent question.
+      const asKnownThen = tp1CountForYear(
+        rows.filter((r) => effectiveFrom(r) <= month),
+        { throughMonth: month },
+      ).total;
+      expect(fed, `month ${month}: a later-dated declaration changed what this month is owed`).toBe(
+        asKnownThen,
+      );
+    }
+  });
+
 });

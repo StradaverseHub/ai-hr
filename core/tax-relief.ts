@@ -900,7 +900,8 @@ async function accumulatedInTx(
  */
 export type Tp1MonthReconciliation = {
   month: number;
-  /** Money the screen accounts for as in force by this month (`sources` with effectiveFrom <= month). */
+  /** What this month is owed computed from ONLY the declarations that existed by it — later-dated rows
+   *  withheld. Independent of `fed` by construction, which is what makes `agrees` falsifiable. */
   counted: number;
   /** Money `prefillTp1FromSelfRelief` feeds a batch for this month. */
   fed: number;
@@ -915,7 +916,9 @@ export type Tp1Reconciliation = {
   sources: Tp1CountedSource[];
   /** The part of the year's money that carries no C1–C17 attribution. */
   unattributedTotal: number;
-  /** True when every month agrees — the release gate the plan promised. */
+  /** True when no later-dated declaration changes what an earlier month is owed. This is the release
+   *  gate the plan promised, and it CAN fail: reordering the collapse and the narrowing in
+   *  `tp1CountForYear` breaks it on any employee holding a correction. */
   agrees: boolean;
 };
 
@@ -933,10 +936,23 @@ export function reconcileTp1ForYear(
     const whole = tp1CountForYear(rows, { throughMonth: null });
     const months: Tp1MonthReconciliation[] = [];
     for (let month = 1; month <= 12; month++) {
-      const counted = round2(
-        whole.sources.filter((s) => s.effectiveFrom <= month).reduce((sum, s) => sum + s.amount, 0),
-      );
       const fed = tp1CountForYear(rows, { throughMonth: month }).total;
+      // ⚠️ THE COMPARISON HAS TO USE A SET THIS FUNCTION DID NOT ALREADY COLLAPSE, or it proves nothing.
+      //
+      // The previous version derived `counted` by filtering `whole.sources` — the collapse of the WHOLE
+      // year — and compared it to `tp1CountForYear(rows, { throughMonth: month })`. Both sides were the
+      // same collapsed set narrowed by the same predicate, so `agrees` was an algebraic identity: true
+      // for every possible input, including the one where a later correction had silently deleted an
+      // earlier month's money. A gate that cannot fail is worse than no gate, because the round then
+      // reports it as evidence.
+      //
+      // `counted` is now computed from ONLY the rows that already existed by this month — every row whose
+      // effective month is later is withheld entirely. That is the independent question: does a
+      // declaration approved from a LATER month change what this month is owed? It must not. This is
+      // exactly the defect r209 introduced and this file was corrected for, and unlike the identity above
+      // it fails loudly when the collapse and the narrowing are reordered.
+      const asKnownThen = rows.filter((r) => tp1EffectiveFromMonth(r) <= month);
+      const counted = tp1CountForYear(asKnownThen, { throughMonth: month }).total;
       months.push({ month, counted, fed, agrees: counted === fed });
     }
     return {
