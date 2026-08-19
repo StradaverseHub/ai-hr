@@ -4442,7 +4442,7 @@
         "pickEmployee": "Pekerja",
         "pickEmployeeHint": "Pilih seorang pekerja di sebelah kiri untuk melihat perisytiharan pelepasan TP1 mereka.",
         "noEmployees": "Tiada pekerja dalam skop syarikat semasa.",
-        "addButton": "Tambah pelepasan TP1 ({year})",
+        "addButton": "+ Tambah TP1 Baharu",
         "editButton": "Sunting pelepasan TP1 ({year})",
         "employeeSection": "Maklumat pekerja",
         "addTitle": "Tambah pelepasan TP1",
@@ -4467,7 +4467,14 @@
           "viewEdit": "Lihat / Sunting",
           "searchPlaceholder": "Cari tahun, jumlah atau tarikh",
           "nShown": "{count} dipaparkan",
-          "noMatches": "Tiada perisytiharan sepadan dengan carian anda."
+          "noMatches": "Tiada perisytiharan sepadan dengan carian anda.",
+          "colMonth": "Bulan",
+          "wholeYear": "Sepanjang tahun",
+          "status_draft": "Draf",
+          "status_submitted": "Dihantar",
+          "status_approved": "Diluluskan",
+          "status_rejected": "Ditolak",
+          "status_cancelled": "Dibatalkan"
         },
         "applied": {
           "title": "Digunakan dalam gaji",
@@ -4483,7 +4490,11 @@
         "batchStatus": {
           "processed": "Diproses",
           "closed": "Ditutup"
-        }
+        },
+        "yearLabel": "Tahun taksiran",
+        "viewYear": "Papar tahun",
+        "monthSubtitle": "Bulan potongan {month}, {year}",
+        "downloadForm": "Muat turun borang"
       },
       "zakat": {
         "title": "Zakat",
@@ -9514,6 +9525,166 @@
       "other": {
         "label": "Pelepasan lain (RM)",
         "help": "Mana-mana kategori pelepasan TP1 lain yang tidak disenaraikan di atas."
+      }
+    },
+    "sectionA": "Bahagian A — Maklumat majikan",
+    "sectionB": "Bahagian B — Maklumat pekerja",
+    "sectionC": "Bahagian C — Maklumat potongan",
+    "sectionCHelp": "Masukkan tuntutan anda sekarang. Had tahunan dan jumlah yang telah diluluskan tahun ini ditunjukkan bagi setiap perkara; tuntutan yang melebihi had akan ditolak.",
+    "sectionD": "Bahagian D — Rebat",
+    "sectionE": "Bahagian E — Perakuan pekerja",
+    "sectionF": "Bahagian F — Persetujuan majikan",
+    "employerName": "Nama",
+    "employerTin": "Nombor Pengenalan Cukai (TIN)",
+    "employeeIdNumber": "Nombor kad pengenalan / pasport",
+    "employeeTin": "Nombor Pengenalan Cukai (TIN)",
+    "colAnnualLimit": "Had tahunan",
+    "colCurrent": "Semasa",
+    "colAccumulated": "Terkumpul",
+    "colRemaining": "Baki",
+    "noLimit": "—",
+    "countedHeading": "Telah dikira untuk {year}",
+    "countedNote": "Setiap perakuan LAIN yang diluluskan bagi tahun taksiran ini — yang ada pada borang ini dikecualikan, supaya pembetulan tidak pernah ditolak oleh angka yang digantikannya. Ini jumlah setahun, bukan amaun untuk mana-mana bulan tunggal: penggajian hanya mengambil apa yang berkuat kuasa menjelang bulan yang dijalankan.",
+    "countedNone": "Tiada perakuan lain yang diluluskan bagi tahun taksiran ini lagi.",
+    "countedForMonth": "Bulan potongan {month}",
+    "countedWholeYear": "Perisytiharan sepanjang tahun",
+    "countedEffectiveFrom": "dikira mulai bulan {month}",
+    "countedItemised": "terperinci",
+    "countedNotItemised": "tidak terperinci",
+    "countedTotal": "Jumlah yang telah dikira",
+    "countedUnattributedNote": "{amount} daripada jumlah ini diisytiharkan sebelum borang TP1 penuh wujud. Ia termasuk dalam amaun yang dihantar ke pengiraan cukai, tetapi tidak dapat ditunjukkan pada mana-mana item bernombor, jadi ia tidak termasuk dalam angka Baki di bawah.",
+    "deductionMonthLabel": "Bulan potongan",
+    "deductionYearLabel": "Tahun potongan",
+    "legacyHeading": "Diisytiharkan di bawah borang terdahulu",
+    "legacyNote": "Perakuan ini direkodkan sebelum borang TP1 penuh tersedia. Ia dipaparkan seperti yang dimasukkan dan masih digunakan bagi potongan cukai bulanan anda.",
+    "rebateNote": "Rebat mengurangkan cukai itu sendiri, bukan pendapatan yang dikira, jadi ia bukan sebahagian daripada jumlah di atas.",
+    "declarationText": "Saya mengaku bahawa semua maklumat yang dinyatakan dalam borang ini adalah benar, betul dan lengkap. Sekiranya maklumat yang diberikan didapati palsu, tindakan undang-undang boleh diambil terhadap saya di bawah perenggan 113(1)(b) Akta Cukai Pendapatan 1967.",
+    "declarationTick": "Saya mengesahkan perakuan ini.",
+    "declaredOn": "Disahkan pada {at}",
+    "declaredNone": "Belum disahkan.",
+    "consentStatus": "Status",
+    "consentDate": "Tarikh",
+    "consentIntro": "Luluskan tuntutan ini bagi bulan potongan, atau tolak.",
+    "consentPending": "Belum diputuskan oleh majikan.",
+    "approvedMonth": "Bulan potongan diluluskan",
+    "approvedYear": "Tahun potongan diluluskan",
+    "approverName": "Nama",
+    "approverPosition": "Jawatan",
+    "approve": "Lulus",
+    "reject": "Tolak",
+    "cancelDeclaration": "Batalkan perakuan",
+    "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP1 — bukan borang rasmi LHDN.",
+    "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP1 form. This is not the agency’s own page. Every figure is the one stored against this declaration; the item wording and the annual limits come from the TP1 (1/2026) form.",
+    "status": {
+      "draft": "Draf",
+      "submitted": "Dihantar",
+      "approved": "Diluluskan",
+      "rejected": "Ditolak",
+      "cancelled": "Dibatalkan"
+    },
+    "frequency": {
+      "onceEveryTwoYears": "Terhad kepada sekali dalam setiap 2 tahun taksiran.",
+      "compostingThreeYearsShredderCctvTwoYears": "Mesin pengkompos sisa makanan: sekali dalam setiap 3 tahun taksiran. Mesin pencincang sisa makanan dan CCTV: sekali dalam setiap 2 tahun taksiran.",
+      "twoClaimsLifetime": "Terhad kepada 2 tuntutan seumur hidup."
+    },
+    "items": {
+      "c1": {
+        "label": "Perbelanjaan untuk ibu bapa/datuk nenek",
+        "sub": {
+          "a": "Rawatan perubatan, keperluan khas dan penjagaan",
+          "b": "Rawatan pergigian",
+          "c": "Pemeriksaan perubatan penuh termasuk kos vaksinasi"
+        }
+      },
+      "c2": {
+        "label": "Peralatan sokongan asas untuk kegunaan diri / pasangan / anak / ibu bapa kurang upaya"
+      },
+      "c3": {
+        "label": "Yuran pengajian (diri sendiri)",
+        "sub": {
+          "a": "Peringkat selain Sarjana atau Doktor Falsafah dalam bidang undang-undang, perakaunan, kewangan Islam, teknikal, vokasional, saintifik industri atau teknologi",
+          "b": "Peringkat Sarjana atau Kedoktoran dalam mana-mana bidang atau kursus pengajian",
+          "c": "Kursus peningkatan kemahiran atau pembangunan diri"
+        }
+      },
+      "c4": {
+        "label": "Perbelanjaan perubatan",
+        "sub": {
+          "a": "Penyakit serius bagi diri / pasangan / anak",
+          "b": "Rawatan kesuburan bagi diri / pasangan",
+          "c": "Vaksinasi bagi diri / pasangan / anak",
+          "d": "Pemeriksaan atau rawatan pergigian bagi diri / pasangan / anak",
+          "e": "Pemeriksaan perubatan penuh, penilaian atau konsultasi kesihatan mental, yuran ujian saringan penyakit, dan pembelian peralatan pemantauan kesihatan sendiri (bukan untuk kegunaan perniagaan) bagi diri / pasangan / anak",
+          "f": "Penilaian bagi tujuan diagnostik, program intervensi awal, atau rawatan pemulihan bagi kanak-kanak kurang upaya pembelajaran berumur 18 tahun ke bawah"
+        }
+      },
+      "c5": {
+        "label": "Gaya hidup — perbelanjaan untuk kegunaan diri / pasangan / anak",
+        "sub": {
+          "a": "Pembelian atau langganan buku, jurnal, majalah, surat khabar dan penerbitan lain yang serupa (bukan bahan bacaan terlarang)",
+          "b": "Pembelian komputer peribadi / telefon pintar / tablet (bukan untuk kegunaan perniagaan)",
+          "c": "Pembayaran bil bulanan langganan internet (atas nama sendiri)",
+          "d": "Bayaran bagi kursus peningkatan kemahiran atau pembangunan diri"
+        }
+      },
+      "c6": {
+        "label": "Gaya hidup — perbelanjaan berkaitan sukan untuk kegunaan diri / pasangan / anak / ibu bapa",
+        "sub": {
+          "a": "Pembelian peralatan sukan bagi aktiviti sukan mengikut Akta Pembangunan Sukan 1997",
+          "b": "Bayaran sewa atau yuran masuk kemudahan sukan",
+          "c": "Bayaran yuran pendaftaran untuk menyertai pertandingan sukan",
+          "d": "Bayaran keahlian gimnasium atau yuran latihan sukan"
+        }
+      },
+      "c7": {
+        "label": "Pembelian peralatan penyusuan ibu untuk kegunaan sendiri bagi anak berumur 2 tahun ke bawah"
+      },
+      "c8": {
+        "label": "Yuran menghantar anak berumur 12 tahun ke bawah ke pusat asuhan berdaftar / tadika / pusat jagaan harian / pusat transit"
+      },
+      "c9": {
+        "label": "Simpanan bersih dalam Skim Simpanan Pendidikan Nasional"
+      },
+      "c10": {
+        "label": "Bayaran nafkah kepada bekas isteri"
+      },
+      "c11": {
+        "label": "Kumpulan Wang Simpanan Pekerja (KWSP) sukarela / insurans hayat",
+        "sub": {
+          "a": "KWSP sukarela, termasuk caruman KWSP wajib",
+          "b": "Insurans hayat / KWSP sukarela"
+        }
+      },
+      "c12": {
+        "label": "Skim persaraan swasta dan anuiti tertunda"
+      },
+      "c13": {
+        "label": "Insurans pendidikan dan perubatan"
+      },
+      "c14": {
+        "label": "Caruman kepada PERKESO di bawah Akta Keselamatan Sosial Pekerja 1969 / Akta Sistem Insurans Pekerjaan 2017"
+      },
+      "c15": {
+        "label": "Perbelanjaan bagi yuran pemasangan, sewa, pembelian (termasuk sewa beli) peralatan, atau langganan penggunaan kemudahan pengecasan kenderaan elektrik untuk kenderaan sendiri; pembelian mesin pengkompos sisa makanan untuk kegunaan rumah; pembelian dan pemasangan mesin pencincang sisa makanan dan CCTV untuk kegunaan rumah"
+      },
+      "c16": {
+        "label": "Bayaran faedah pinjaman perumahan pertama (mesti memenuhi syarat kelayakan)",
+        "sub": {
+          "a": "Harga rumah sehingga RM500,000",
+          "b": "Harga rumah melebihi RM500,000 sehingga RM750,000"
+        }
+      },
+      "c17": {
+        "label": "Yuran masuk ke pusat pelancongan dan program kebudayaan/kesenian bagi pelancongan dalam negara"
+      }
+    },
+    "rebates": {
+      "d1": {
+        "label": "Rebat",
+        "sub": {
+          "a": "Zakat selain daripada zakat yang dibayar melalui potongan gaji bulanan",
+          "b": "Levi pengecualian bagi perjalanan Umrah / perjalanan bagi tujuan keagamaan"
+        }
       }
     }
   },

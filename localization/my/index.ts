@@ -14,6 +14,7 @@ import {
   MY_LP_OPTIONAL_DEDUCTION_CODES,
   MY_PCB_EXEMPTION_CODES,
   MY_RELIEFS,
+  MY_TP1_2026,
   PCB_REMUNERATION_TYPES,
   pcbExemptionCodesFor,
 } from './statutory-tables';
@@ -132,6 +133,11 @@ export const myPack: CountryPack = {
     // Rung 5a (D6) — the TP1 categories with a VERIFIED LHDN cap (statutory-tables MY_RELIEFS).
     // `children` / EPF are per-unit caps and deliberately absent (see core/tax-relief.ts rationale).
     taxReliefCategoryCaps: { individual: MY_RELIEFS.individual, spouse: MY_RELIEFS.spouse },
+    // 7ad37961 (ADR-0081) — the full LHDN TP1 (1/2026) catalogue: C1–C17 with their lettered sub-lines
+    // and the annual limit the form itself prints against each, plus the Section D rebate lines. Every
+    // figure is transcribed from the agency's own form (STATUTORY-SOURCES.md §9); an item the form
+    // prints no figure against carries `limit: null` and is never blocked on (ADR-0008).
+    taxReliefCatalogue: MY_TP1_2026,
     // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
     // calls this once per run and threads the result into the calculators above.
     loadRuleset: getActiveStatutoryMY,

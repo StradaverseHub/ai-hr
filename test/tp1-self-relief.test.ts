@@ -10,6 +10,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import type { Tp1LegacyCategories } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -21,7 +22,15 @@ import {
   setPayrollDeductionInput,
   setPayrollInput,
 } from '../core/payroll';
-import { getTp1, listTp1Years, saveTp1Draft, submitTp1, TaxReliefError } from '../core/tax-relief';
+import {
+  approveTp1ForPerson,
+  getTp1ForPerson,
+  getTp1,
+  listTp1Years,
+  saveTp1Draft,
+  submitTp1,
+  TaxReliefError,
+} from '../core/tax-relief';
 import {
   adminCtx,
   closeAll,
@@ -61,6 +70,27 @@ describe('ADR-0050 — TP1 self-relief', () => {
   async function employeeCtx(personId: string): Promise<SessionContext> {
     const uid = await createAppUser(base.tenantId, personId, 'employee');
     return { tenantId: base.tenantId, userId: uid, personId, roles: ['employee'] };
+  }
+
+  /**
+   * 7ad37961 — SUBMITTED NO LONGER FEEDS PAYROLL; APPROVED DOES.
+   *
+   * Section F of the official LHDN TP1 is the EMPLOYER'S CONSENT, and consent is what turns an
+   * employee's claim into an instruction to payroll — so `prefillTp1FromSelfRelief` reads only APPROVED
+   * declarations, effective from their approved deduction month. Every case below that asserts something
+   * about the FEED was written when submitting was the whole workflow, so each now approves the
+   * declaration it submitted. The assertions about the feed itself are UNCHANGED: same amounts, same
+   * deltas, same routing, same provenance. What moved is the state the row has to be in first.
+   *
+   * IT GOES THROUGH THE REAL SERVICE, not a raw UPDATE, so these cases still exercise the gate they now
+   * depend on — a test that hand-stamped the column would pass even if approval were broken.
+   *
+   * (Rows that already existed in production are stamped by migration 0449, not by this.)
+   */
+  async function approveLatest(admin: SessionContext, personId: string, assessmentYear: number) {
+    const row = await getTp1ForPerson(admin, { personId, assessmentYear });
+    if (!row) throw new Error('nothing to approve');
+    await approveTp1ForPerson(admin, { personId, id: row.id, approvedMonth: 1, approvedYear: assessmentYear });
   }
 
   /** Read a single employment's payslip statutory block (pcb, lp) for a batch via the owner (bypass RLS). */
@@ -186,6 +216,7 @@ describe('ADR-0050 — TP1 self-relief', () => {
     }
     const ctxA = await employeeCtx(A.personId);
     await submitTp1(ctxA, { assessmentYear: YEAR, tp1Amount: 3000 });
+    await approveLatest(a, A.personId, YEAR);
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
     // A: pre-existing earnings on the row, then the prefill — siblings must survive (7.10).
@@ -231,6 +262,7 @@ describe('ADR-0050 — TP1 self-relief', () => {
 
     // Now the employee declares an annual TP1 of 1800. March prefill should feed 1800 − 1000 = 800.
     await submitTp1(ctx, { assessmentYear: YEAR, tp1Amount: 1800 });
+    await approveLatest(a, subject.personId, YEAR);
     const { batchId: march } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-03` });
     await prefillTp1FromSelfRelief(a, { batchId: march });
     expect(Number((await inputRow(march, subject.employmentId)).tp1Deduction)).toBe(800);
@@ -266,6 +298,7 @@ describe('ADR-0050 — TP1 self-relief', () => {
 
     const ctx = await employeeCtx(subject.personId);
     await submitTp1(ctx, { assessmentYear: YEAR, tp1Amount: 2400 });
+    await approveLatest(a, subject.personId, YEAR);
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
     const r = await prefillTp1FromSelfRelief(a, { batchId });
@@ -284,13 +317,17 @@ describe('ADR-0050 — TP1 self-relief', () => {
     await setStatutoryProfileMY(a, { personId: subject.personId, icNumber: '900101012004' });
     const ctx = await employeeCtx(subject.personId);
     await submitTp1(ctx, { assessmentYear: YEAR, tp1Amount: 1000 });
+    await approveLatest(a, subject.personId, YEAR);
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
 
     // (a) First prefill sets a tp1_self row; a corrected declaration + re-prefill refreshes it.
     await prefillTp1FromSelfRelief(a, { batchId });
     expect(Number((await inputRow(batchId, subject.employmentId)).tp1Deduction)).toBe(1000);
+    // A correction is a NEW submitted row, so it needs its own consent before it can feed — which is the
+    // point of the gate: an employee cannot raise their own relief mid-year without the employer.
     await submitTp1(ctx, { assessmentYear: YEAR, tp1Amount: 1500 });
+    await approveLatest(a, subject.personId, YEAR);
     await prefillTp1FromSelfRelief(a, { batchId });
     const refreshed = await inputRow(batchId, subject.employmentId);
     expect(Number(refreshed.tp1Deduction)).toBe(1500); // refreshed
@@ -364,11 +401,15 @@ describe('ADR-0050 — TP1 self-relief', () => {
       });
       const latest = await getTp1(ctx, { assessmentYear: YEAR });
       expect(latest?.tp1Amount).toBe(16700.5); // 9000 + 4000 + 1200.5 + 2500
-      expect(latest?.categories?.individual).toBe(9000);
-      expect(latest?.categories?.medicalInsurance).toBe(1200.5);
+      // 7ad37961 — `Tp1Categories` is now a UNION (legacy eight-key | TP1-2026 catalogue), so the read
+      // side narrows. This fixture submits the LEGACY shape on purpose: the assertion is that a row
+      // written the old way still round-trips exactly as it did, which is the whole compatibility claim.
+      const legacy = latest?.categories as Tp1LegacyCategories | undefined;
+      expect(legacy?.individual).toBe(9000);
+      expect(legacy?.medicalInsurance).toBe(1200.5);
       // Unsupplied categories default to 0 (empty = 0, per the plan).
-      expect(latest?.categories?.parent).toBe(0);
-      expect(latest?.categories?.education).toBe(0);
+      expect(legacy?.parent).toBe(0);
+      expect(legacy?.education).toBe(0);
     });
 
     // C.2 — the client total is never trusted: only the categories drive tp1Amount.
@@ -439,8 +480,8 @@ describe('ADR-0050 — TP1 self-relief', () => {
 
     // C.7 — BYTE-STABILITY (the don't-break-PCB gate): a submitted breakdown whose SUM equals a scalar
     // declaration must produce the IDENTICAL fed tp1_deduction, lp, and pcb. Categories never reach the
-    // kernel — only the sum does — so the MTD is unchanged. Routed through submitTp1 (only 'submitted' rows
-    // feed the prefill). Two identical employees in ONE Jan batch: A declares via categories summing to
+    // kernel — only the sum does — so the MTD is unchanged. Routed through submitTp1 and then APPROVED (only
+    // approved rows feed the prefill, 7ad37961). Two identical employees in ONE Jan batch: A declares via categories summing to
     // 3000, B keys the same 3000 manually; A.pcb must equal B.pcb to the cent.
     it('a category breakdown that sums to X yields the identical PCB as scalar X', async () => {
       const a = adminCtx(base);
@@ -455,6 +496,7 @@ describe('ADR-0050 — TP1 self-relief', () => {
       const ctxA = await employeeCtx(A.personId);
       await submitTp1(ctxA, { assessmentYear: YEAR, categories: { individual: 1500, medicalInsurance: 1000, lifestyle: 500 } });
       expect((await getTp1(ctxA, { assessmentYear: YEAR }))?.tp1Amount).toBe(3000);
+      await approveLatest(a, A.personId, YEAR);
 
       const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
       const r = await prefillTp1FromSelfRelief(a, { batchId });
@@ -478,14 +520,32 @@ describe('ADR-0050 — TP1 self-relief', () => {
       const subject = await hire('Legacy', 'legacy@acme.test');
       await setCompensation(a, { employmentId: subject.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
       await setStatutoryProfileMY(a, { personId: subject.personId, icNumber: '900303013099' });
-      // Raw insert of a submitted row WITHOUT categories (mimics a pre-a2f1fa24 row).
+      // Raw insert of a legacy row WITHOUT categories (mimics a pre-a2f1fa24 row) — and stamped exactly
+      // as MIGRATION 0449 leaves such a row: status 'approved', no approver, and `approved_month` = the
+      // month it was APPROVED, read off submitted_at.
+      //
+      // ⚠️ THAT LAST PART CHANGED IN r209 AND THE FIXTURE CHANGED WITH IT. 0445 (as this migration was
+      // numbered while it was held) stamped a flat `approved_month = 1`, making every carried-forward
+      // declaration effective for the whole year — money the payroll feed took in full and the limit
+      // check could not see, because a legacy row has no C1–C17 attribution. So `submitted_at` is now an
+      // explicit JANUARY date rather than `new Date()`: 1 here is the month this row was approved in,
+      // not "always January". test/tp1-counted-contract.test.ts pins the new rule against the
+      // migration's own SQL, and this case stays what it has always been — proof that a scalar-only row
+      // still reads and still reaches payroll.
+      //
+      // It is also the regression guard for the grandfathering itself: drop the backfill and this fails
+      // with the relief silently gone, which is precisely the production symptom.
+      const declaredOn = new Date(Date.UTC(YEAR, 0, 15, 4, 0));
       await owner.db.insert(schema.tp1Relief).values({
         tenantId: base.tenantId,
         personId: subject.personId,
         assessmentYear: YEAR,
-        status: 'submitted',
+        status: 'approved',
         tp1Amount: '2000.00',
-        submittedAt: new Date(),
+        submittedAt: declaredOn,
+        approvedAt: declaredOn,
+        approvedMonth: 1,
+        approvedYear: YEAR,
       });
       const ctx = await employeeCtx(subject.personId);
       const latest = await getTp1(ctx, { assessmentYear: YEAR });

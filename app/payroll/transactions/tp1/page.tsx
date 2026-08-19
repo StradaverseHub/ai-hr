@@ -1,11 +1,20 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
-import { listTp1DeclarationsForPerson, type Tp1DeclarationSummary } from '@/core/tax-relief';
+import { listTp1DeclarationsForPersonYear, listTp1YearsForPerson, type Tp1MonthDeclaration } from '@/core/tax-relief';
 import { listAppliedTp1Deductions, type AppliedTp1ViewRow } from '@/core/payroll-view';
-import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import {
+  Button,
+  Card,
+  EmployeeName,
+  ErrorBanner,
+  PageHeader,
+  SectionHeader,
+  inputCls,
+  pageWideCls,
+} from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
@@ -55,6 +64,15 @@ import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
  * Edit destination is a STRING this file builds): r123's 500 was a function prop crossing this exact
  * boundary while tsc, the suite and `next build` all stayed green.
  *
+ * 7ad37961 — THE LIST IS NOW PER DEDUCTION MONTH WITHIN A CHOSEN YEAR. The official LHDN TP1 (1/2026)
+ * carries a DEDUCTION MONTH box, so an employee has up to twelve declarations in an assessment year, and
+ * the old one-line-per-year list would have hidden eleven of them. The year moved into a SELECTOR, and it
+ * lives in the URL (`?year=`) beside `employmentId` rather than in client state, for the same reason the
+ * employee selection does: the scope narrowing must stay server-owned, because a value the browser owns
+ * is a value the browser can change. The GET form below is the whole mechanism — no client island, no
+ * router push. `year` was ALREADY an accepted param (the save actions redirect with it), so a shipped
+ * redirect keeps working and now actually selects something.
+ *
  * ONE NAMESPACE ON PURPOSE. Every caption here resolves from `payroll.transactions`, the payroll-cycle and
  * batch-status labels for the applied-in-payroll table included. Reaching into `payroll.list` for those two
  * would make this a multi-namespace file — the shape check C of test/i18n-coverage.test.ts skips ENTIRELY —
@@ -71,9 +89,8 @@ export default async function Tp1DeclarationPage({
     employmentId?: string;
     error?: string;
     toast?: string;
-    /** Written by adminSaveTp1Draft / adminSubmitTp1, which redirect back here after a save. Those actions
-     *  are UNCHANGED by this redesign, so the param still arrives; the year now lives in the list rather
-     *  than in a selector, so it is accepted and ignored rather than removed from a shipped redirect. */
+    /** The selected assessment year. Server-owned (see the header); also written by adminSaveTp1Draft /
+     *  adminSubmitTp1, which redirect back here after a save. */
     year?: string;
     // Two independently paged listings sit below the header, so each carries its own page/size pair.
     dPage?: string;
@@ -120,20 +137,45 @@ export default async function Tp1DeclarationPage({
   // The assessment year is a MYT calendar fact: between 00:00 and 08:00 MYT on 1 January, a host-clock
   // year is still last year's (lib/hr-date.ts).
   const currentYear = Number(todayInKualaLumpur().slice(0, 4));
-  const [declarations, applied]: [Tp1DeclarationSummary[], AppliedTp1ViewRow[]] = selectedEmp
-    ? await Promise.all([
-        listTp1DeclarationsForPerson(s, { personId: selectedEmp.personId }),
-        // Narrowed IN THE QUERY, over the same company fence the employee read uses — and it fails closed
-        // on an empty set, so an admin who can see no company sees no rows.
-        listAppliedTp1Deductions(s, { companyIds: scopeIds, employmentId: selectedEmp.employmentId }),
-      ])
-    : [[], []];
+  // The year the reader picked, validated HERE — a path/query value is untrusted input, and
+  // core/tax-relief's own accepted range is 2000–2100, so a year this page offers can never be one the
+  // read would refuse. Anything else falls back to the current assessment year rather than erroring.
+  const rawYear = Number(sp.year);
+  const selectedYear =
+    Number.isInteger(rawYear) && rawYear >= 2000 && rawYear <= 2100 ? rawYear : currentYear;
 
-  const declarationHref = (year: number) =>
-    `/payroll/transactions/tp1/${year}?employmentId=${encodeURIComponent(selectedEmploymentId ?? '')}`;
+  const [declaredYears, declarations, applied]: [number[], Tp1MonthDeclaration[], AppliedTp1ViewRow[]] =
+    selectedEmp
+      ? await Promise.all([
+          listTp1YearsForPerson(s, { personId: selectedEmp.personId }),
+          listTp1DeclarationsForPersonYear(s, {
+            personId: selectedEmp.personId,
+            assessmentYear: selectedYear,
+          }),
+          // Narrowed IN THE QUERY, over the same company fence the employee read uses — and it fails
+          // closed on an empty set, so an admin who can see no company sees no rows.
+          listAppliedTp1Deductions(s, { companyIds: scopeIds, employmentId: selectedEmp.employmentId }),
+        ])
+      : [[], [], []];
+
+  // Every year the employee already has a record for, plus the current one — so the selector can never
+  // offer a year with nothing behind it, and can never hide one that has something.
+  const yearOptions = Array.from(new Set([currentYear, selectedYear, ...declaredYears])).sort((a, b) => b - a);
+
+  // Month names come from Intl in the request's own locale, not from a message catalogue: twelve names in
+  // six locales would be six copies of the calendar, and the catalogue check cannot tell a wrong one from
+  // a right one. Resolved on the SERVER so the label the reader sees is the label the page rendered.
+  const monthFmt = new Intl.DateTimeFormat(await getLocale(), { month: 'long' });
+  const monthName = (m: number | null) =>
+    m == null ? t('tp1.history.wholeYear') : monthFmt.format(new Date(Date.UTC(2000, m - 1, 1)));
+
+  const monthHref = (year: number, month: number) =>
+    `/payroll/transactions/tp1/${year}/${month}?employmentId=${encodeURIComponent(selectedEmploymentId ?? '')}`;
   const declarationRows: Tp1DeclarationListRow[] = declarations.map((d) => ({
     id: d.id,
     assessmentYear: d.assessmentYear,
+    deductionMonth: d.deductionMonth,
+    monthLabel: monthName(d.deductionMonth),
     amount: d.tp1Amount.toFixed(2),
     status: d.status,
     versions: d.versions,
@@ -142,7 +184,9 @@ export default async function Tp1DeclarationPage({
     // Formatted HERE, in the tenant timezone — a client-side format would be a day out for anyone whose
     // device clock sits the other side of MYT midnight.
     lastSaved: myt(d.submittedAt ?? d.createdAt),
-    href: declarationHref(d.assessmentYear),
+    // A month-less legacy declaration opens on the month page for January so it stays reachable and
+    // printable; its own stored month stays NULL, because opening a record is not editing it.
+    href: monthHref(d.assessmentYear, d.deductionMonth ?? 1),
     // A past assessment year opens read-only, exactly as it did on the old screen.
     readOnly: d.assessmentYear < currentYear,
   }));
@@ -160,11 +204,10 @@ export default async function Tp1DeclarationPage({
     createdOn: r.createdOn,
   }));
 
-  // Add vs Edit, decided by the SAME list the reader is looking at, so the button and the rows under it
-  // can never disagree about whether this year has been declared. Add opens the CURRENT assessment year:
-  // that is the only year the old screen could start either (its selector offered declared years + this
-  // one), so nothing became unreachable — and a year already declared is an Edit, not a second Add.
-  const currentDeclared = declarations.some((d) => d.assessmentYear === currentYear);
+  // "+ Add New TP1" opens the SELECTED year at the current calendar month — a new declaration always
+  // needs a month now, and the month a reader means when they press Add on an open year is this one. A
+  // month already declared opens as an Edit through its own row, so Add never silently overwrites.
+  const addMonth = selectedYear === currentYear ? Number(todayInKualaLumpur().slice(5, 7)) : 1;
 
   return (
     <div className={pageWideCls}>
@@ -196,11 +239,7 @@ export default async function Tp1DeclarationPage({
                 </p>
               </div>
               <Button asChild size="sm">
-                <Link href={declarationHref(currentYear)}>
-                  {currentDeclared
-                    ? t('tp1.editButton', { year: String(currentYear) })
-                    : t('tp1.addButton', { year: String(currentYear) })}
-                </Link>
+                <Link href={monthHref(selectedYear, addMonth)}>{t('tp1.addButton')}</Link>
               </Button>
             </>
           ) : undefined
@@ -226,7 +265,29 @@ export default async function Tp1DeclarationPage({
       >
         {selectedEmp ? (
           <div className="space-y-6">
-            {/* ── Transaction history — ONE ROW PER ASSESSMENT YEAR, never a version chain ── */}
+            {/* ── Year selector — a plain GET form, so the selection lives in the URL and the server
+                   owns it. `employmentId` rides along as a hidden field or the choice would drop the
+                   employee on the way back. ── */}
+            <Card className="p-4">
+              <form method="GET" className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="employmentId" value={selectedEmp.employmentId} />
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">{t('tp1.yearLabel')}</span>
+                  <select name="year" defaultValue={String(selectedYear)} className={inputCls}>
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button type="submit" variant="secondary">
+                  {t('tp1.viewYear')}
+                </Button>
+              </form>
+            </Card>
+
+            {/* ── The year's declarations — ONE ROW PER DEDUCTION MONTH, never a version chain ── */}
             <Card className="overflow-hidden">
               <SectionHeader title={t('tp1.history.title')} count={declarationRows.length} />
               <p className="px-4 pt-2 text-xs text-muted-foreground">{t('tp1.history.subtitle')}</p>

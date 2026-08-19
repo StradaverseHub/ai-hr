@@ -649,6 +649,14 @@ export const SCREENS: readonly ScreenEntry[] = [
       // assessment year, replacing the form that opened by itself the moment somebody was selected.
       // Same scopedAdmin guard as its list — it is the same data, one year at a time.
       '/payroll/transactions/tp1/[year]',
+      // 7ad37961: the LHDN TP1 (1/2026) form has a DEDUCTION MONTH box, so the declaration's grain moved
+      // from the year to the month and the Add / View / Edit page moved with it. `[year]` above stayed as
+      // a redirect so shipped links keep working, and BOTH are listed because this set is EXACT — the
+      // reverse-completeness case in test/function-access.test.ts fails the build for a guarded page.tsx
+      // with no column, which is how a new screen is stopped from being invisible on the access grid.
+      // Same scopedAdmin guard as the list: it is the same data, one month at a time. (The PDF route
+      // beside it is a route.ts, not a page, and route handlers are deliberately not on this matrix.)
+      '/payroll/transactions/tp1/[year]/[month]',
       '/payroll/transactions/zakat',
       // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
       // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.

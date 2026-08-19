@@ -64,6 +64,7 @@ import {
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
+import { readTp1FormInput } from '@/lib/tp1-form-input';
 import { addResignationAttachment, submitResignation, withdrawResignation } from '@/core/offboarding';
 import { LeaveBalanceFrozenError } from '@/core/leave-encashment';
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
@@ -639,27 +640,15 @@ export async function myRequestProfileChange(formData: FormData) {
 
 // ── Self Personal Tax Relief (ADR-0050, #1.1.3; per-category breakdown a2f1fa24) — yearly TP1 ──
 
-// Read the structured per-category breakdown from the form. The category inputs are named `cat_<key>`
-// (one number per LHDN TP1 section) plus a `remarks` textarea. The server recomputes the total — the
-// client's total is never trusted. Falls back to a bare `tp1Amount` when no category field is present
-// (backward compatibility for any legacy scalar form).
-function readTp1Input(formData: FormData): { assessmentYear: number; categories?: Record<string, unknown>; tp1Amount?: number } {
-  const assessmentYear = Number(formData.get('assessmentYear'));
-  const keys = ['individual', 'spouse', 'children', 'parent', 'medicalInsurance', 'lifestyle', 'education', 'other'] as const;
-  const hasCategories = keys.some((k) => formData.get(`cat_${k}`) != null);
-  if (hasCategories) {
-    const categories: Record<string, unknown> = {};
-    for (const k of keys) categories[k] = Number(formData.get(`cat_${k}`) ?? 0);
-    const remarks = formData.get('remarks');
-    if (remarks != null) categories.remarks = String(remarks);
-    return { assessmentYear, categories };
-  }
-  return { assessmentYear, tp1Amount: Number(formData.get('tp1Amount')) };
-}
+// The form reader moved to lib/tp1-form-input.ts (7ad37961) so that this action and the HR
+// admin-on-behalf action (app/payroll/transactions/deductions-actions.ts) read the SAME field names —
+// the TP1 (1/2026) catalogue boxes, the legacy `cat_<key>` boxes, and the scalar fallback, in that
+// order. Two hand-maintained copies of seventeen items' field names is how a figure silently drops on
+// one surface and not the other. See that file's header, including the RULE 17 note on the tick.
 
 export async function mySaveTp1Draft(formData: FormData) {
   const { s } = await resolveMe();
-  const input = readTp1Input(formData);
+  const input = readTp1FormInput(formData);
   try {
     await saveTp1Draft(s, input);
   } catch (e) {
@@ -671,7 +660,7 @@ export async function mySaveTp1Draft(formData: FormData) {
 
 export async function mySubmitTp1(formData: FormData) {
   const { s } = await resolveMe();
-  const input = readTp1Input(formData);
+  const input = readTp1FormInput(formData);
   try {
     await submitTp1(s, input);
   } catch (e) {

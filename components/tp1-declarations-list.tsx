@@ -11,13 +11,21 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
  * 3e3d3fb2 — the TP1 Relief "Transaction history" list, with the search, sorting and paging the screen
  * never had (it had no listing at all: picking somebody dropped you straight into their declaration form).
  *
- * WHAT A ROW IS, SAID ONCE AND SAID HERE. An employee has ONE TP1 declaration per ASSESSMENT YEAR, not a
- * list of separate relief entries: the medical / education / insurance figures are lines INSIDE that one
- * declaration (components/tp1-declaration-form.tsx, laid out like the paper LHDN form) and stay there.
- * `tp1_relief` is append-only, so a correction is another row and the latest wins — core/tax-relief.ts
- * listTp1DeclarationsForPerson collapses those to the winning row per year and counts the rest. So this
- * list is one line per YEAR, never a version chain, and nothing in it may imply otherwise. The
- * month-by-month record is the "Applied in payroll" list below, which does have a row per payroll run.
+ * WHAT A ROW IS, SAID ONCE AND SAID HERE — AND CHANGED BY 7ad37961. This list used to be one line per
+ * ASSESSMENT YEAR, because a year held exactly one declaration. The official LHDN TP1 (1/2026) has a
+ * DEDUCTION MONTH box, so a year legitimately holds up to twelve, and collapsing them would hide eleven
+ * real records. It is now ONE LINE PER DEDUCTION MONTH within the year the page selected — January,
+ * February, March — which is what the reporter sketched.
+ *
+ * THE HALF OF THE OLD RULE THAT WAS NEVER ABOUT YEARS IS KEPT, UNCHANGED. `tp1_relief` is append-only, so
+ * a CORRECTION is another row and the latest wins; core/tax-relief.ts listTp1DeclarationsForPersonYear
+ * collapses those to the winning row PER MONTH and counts the rest as `versions`. Two competing lines for
+ * the same month would read as two declarations, which is the confusion the collapse exists to prevent.
+ *
+ * A DECLARATION WRITTEN BEFORE THIS ROUND HAS NO MONTH, and is not given one: it shows as a single
+ * month-less line, sorted last, labelled for what it is. The relief figures themselves are lines INSIDE a
+ * declaration (components/tp1-declaration-form.tsx) and stay there. The record of what payroll actually
+ * deducted is the "Applied in payroll" list below, which has a row per processed run.
  *
  * SORT BEFORE PAGE (components/client-pager.tsx): the whole matching set is ordered and then sliced, so a
  * column header cannot reorder twenty-five rows and leave the rest where they were. The pager keeps this
@@ -33,10 +41,19 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 export type Tp1DeclarationListRow = {
   id: string;
   assessmentYear: number;
+  /** 1–12, or null for a pre-7ad37961 whole-year declaration. */
+  deductionMonth: number | null;
+  /**
+   * The month's name, ALREADY TRANSLATED by the server page. Resolved there rather than here because
+   * this screen deliberately resolves every caption from ONE namespace (payroll.transactions) so check C
+   * of test/i18n-coverage.test.ts validates it key by key — and a month name comes from Intl, not from a
+   * message catalogue, so twelve hand-written names in six locales would be six copies of the calendar.
+   */
+  monthLabel: string;
   /** numeric(12,2) as it left the row — formatted here, never rounded here. */
   amount: string;
-  status: 'draft' | 'submitted';
-  /** Append-only rows behind this year, the winning one included (1 ⇒ no corrections). */
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'cancelled';
+  /** Append-only rows behind this month, the winning one included (1 ⇒ no corrections). */
   versions: number;
   /** 'YYYY-MM-DD HH:MM' in the tenant timezone, resolved on the SERVER (see the page). */
   lastSaved: string;
@@ -46,7 +63,7 @@ export type Tp1DeclarationListRow = {
   readOnly: boolean;
 };
 
-type SortKey = 'year' | 'amount' | 'status' | 'lastSaved';
+type SortKey = 'month' | 'amount' | 'status' | 'lastSaved';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -55,18 +72,21 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
   const t = useTranslations('payroll.transactions.tp1');
   const q = useClientPageQuery({ page: 'dPage', size: 'dSize' });
   const [query, setQuery] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('year');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // Months open in calendar order (January first), which is the order the reporter's own sketch shows.
+  const [sortKey, setSortKey] = useState<SortKey>('month');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  const statusLabel = (s: Tp1DeclarationListRow['status']) =>
-    s === 'submitted' ? t('history.statusSubmitted') : t('history.statusDraft');
+  const statusLabel = (s: Tp1DeclarationListRow['status']) => t(`history.status_${s}`);
+  /** Approved is the only status that feeds payroll, so it is the only one that reads as success. */
+  const statusVariant = (s: Tp1DeclarationListRow['status']) =>
+    s === 'approved' ? 'success' : s === 'rejected' || s === 'cancelled' ? 'danger' : 'default';
 
   const sorted = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const matched = needle
       ? rows.filter(
           (r) =>
-            String(r.assessmentYear).includes(needle) ||
+            r.monthLabel.toLowerCase().includes(needle) ||
             r.amount.includes(needle) ||
             r.status.includes(needle) ||
             r.lastSaved.toLowerCase().includes(needle),
@@ -81,9 +101,10 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
           return r.status;
         case 'lastSaved':
           return r.lastSaved;
-        case 'year':
+        case 'month':
         default:
-          return r.assessmentYear;
+          // A month-less legacy line sorts LAST rather than ahead of January (99, not 0).
+          return r.deductionMonth ?? 99;
       }
     };
     return [...matched].sort((a, b) => {
@@ -102,8 +123,8 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(key);
-      // Years and dates open newest-first; anything else reads as an accident.
-      setSortDir(key === 'year' || key === 'lastSaved' ? 'desc' : 'asc');
+      // Dates open newest-first; months open in calendar order; anything else reads as an accident.
+      setSortDir(key === 'lastSaved' ? 'desc' : 'asc');
     }
   };
   const arrow = (key: SortKey) => (key === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
@@ -134,7 +155,7 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              {sortTh('year', t('history.colYear'))}
+              {sortTh('month', t('history.colMonth'))}
               {sortTh('amount', t('history.colAmount'), 'text-right')}
               {sortTh('status', t('history.colStatus'))}
               {sortTh('lastSaved', t('history.colLastSaved'))}
@@ -144,12 +165,12 @@ export function Tp1DeclarationsList({ rows }: { rows: Tp1DeclarationListRow[] })
           <tbody className="divide-y divide-border">
             {pageRows.map((r) => (
               <tr key={r.id}>
-                <td className="px-4 py-2.5 font-medium tabular-nums">{r.assessmentYear}</td>
+                <td className="px-4 py-2.5 font-medium">{r.monthLabel}</td>
                 <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.amount)}</td>
                 <td className="px-4 py-2.5">
-                  <Badge variant={r.status === 'submitted' ? 'success' : 'default'}>{statusLabel(r.status)}</Badge>
-                  {/* The superseded rows behind this year, counted rather than listed — a correction is an
-                      append, and three "2026" lines would read as three declarations. */}
+                  <Badge variant={statusVariant(r.status)}>{statusLabel(r.status)}</Badge>
+                  {/* The superseded rows behind this MONTH, counted rather than listed — a correction is
+                      an append, and two "January" lines would read as two declarations. */}
                   {r.versions > 1 && (
                     <span className="ml-2 text-xs text-muted-foreground">
                       {t('history.versions', { count: r.versions })}

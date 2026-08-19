@@ -4442,7 +4442,7 @@
         "pickEmployee": "Employee",
         "pickEmployeeHint": "Pick an employee on the left to see their TP1 relief declarations.",
         "noEmployees": "No employees in the current company scope.",
-        "addButton": "Add TP1 relief ({year})",
+        "addButton": "+ Add New TP1",
         "editButton": "Edit TP1 relief ({year})",
         "employeeSection": "Employee information",
         "addTitle": "Add TP1 relief",
@@ -4467,7 +4467,14 @@
           "viewEdit": "View / Edit",
           "searchPlaceholder": "Search year, amount or date",
           "nShown": "{count} shown",
-          "noMatches": "No declarations match your search."
+          "noMatches": "No declarations match your search.",
+          "colMonth": "Month",
+          "wholeYear": "Whole year",
+          "status_draft": "Draft",
+          "status_submitted": "Submitted",
+          "status_approved": "Approved",
+          "status_rejected": "Rejected",
+          "status_cancelled": "Cancelled"
         },
         "applied": {
           "title": "Applied in payroll",
@@ -4483,7 +4490,11 @@
         "batchStatus": {
           "processed": "Processed",
           "closed": "Closed"
-        }
+        },
+        "yearLabel": "Assessment year",
+        "viewYear": "View year",
+        "monthSubtitle": "Deduction month {month}, {year}",
+        "downloadForm": "Download form"
       },
       "zakat": {
         "title": "Zakat",
@@ -9514,6 +9525,166 @@
       "other": {
         "label": "Other reliefs (RM)",
         "help": "Any other TP1 relief category not listed above."
+      }
+    },
+    "sectionA": "Section A — Employer information",
+    "sectionB": "Section B — Employee information",
+    "sectionC": "Section C — Deduction information",
+    "sectionCHelp": "Enter what you are claiming now. The annual limit and what has already been approved this year are shown against each item; a claim that would take you past the limit is refused.",
+    "sectionD": "Section D — Rebate",
+    "sectionE": "Section E — Employee declaration",
+    "sectionF": "Section F — Employer consent",
+    "employerName": "Name",
+    "employerTin": "Tax Identification Number (TIN)",
+    "employeeIdNumber": "Identity card / passport number",
+    "employeeTin": "Tax Identification Number (TIN)",
+    "colAnnualLimit": "Annual limit",
+    "colCurrent": "Current",
+    "colAccumulated": "Accumulated",
+    "colRemaining": "Remaining",
+    "noLimit": "—",
+    "countedHeading": "Already counted for {year}",
+    "countedNote": "Every OTHER approved declaration for this assessment year — the one on this form is left out, so a correction is never refused by the figure it replaces. This is the year's total, not the amount used for any single month: payroll takes only what is effective by the month it is running.",
+    "countedNone": "Nothing else has been approved for this assessment year yet.",
+    "countedForMonth": "Deduction month {month}",
+    "countedWholeYear": "Whole-year declaration",
+    "countedEffectiveFrom": "counts from month {month}",
+    "countedItemised": "itemised",
+    "countedNotItemised": "not itemised",
+    "countedTotal": "Total already counted",
+    "countedUnattributedNote": "{amount} of this was declared before the full TP1 form existed. It is included in the amount sent to the tax calculation, but it cannot be shown against a numbered item, so it is not part of the Remaining figures below.",
+    "deductionMonthLabel": "Deduction month",
+    "deductionYearLabel": "Deduction year",
+    "legacyHeading": "Declared under the previous form",
+    "legacyNote": "This declaration was recorded before the full TP1 form was available. It is shown as it was entered, and it still feeds your monthly tax deduction.",
+    "rebateNote": "A rebate reduces the tax itself, not the income it is calculated on, so it is not part of the total above.",
+    "declarationText": "I acknowledge that all the information stated in this form is true, correct, and complete. If the information provided is found to be false, legal action may be taken against me under paragraph 113(1)(b) of the Income Tax Act 1967.",
+    "declarationTick": "I confirm this declaration.",
+    "declaredOn": "Confirmed on {at}",
+    "declaredNone": "Not yet confirmed.",
+    "consentStatus": "Status",
+    "consentDate": "Date",
+    "consentIntro": "Approve this claim for a deduction month, or refuse it.",
+    "consentPending": "Not yet decided by the employer.",
+    "approvedMonth": "Approved deduction month",
+    "approvedYear": "Approved deduction year",
+    "approverName": "Name",
+    "approverPosition": "Position",
+    "approve": "Approve",
+    "reject": "Reject",
+    "cancelDeclaration": "Cancel declaration",
+    "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP1 — bukan borang rasmi LHDN.",
+    "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP1 form. This is not the agency’s own page. Every figure is the one stored against this declaration; the item wording and the annual limits come from the TP1 (1/2026) form.",
+    "status": {
+      "draft": "Draft",
+      "submitted": "Submitted",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled"
+    },
+    "frequency": {
+      "onceEveryTwoYears": "Limited to once every 2 years of assessment.",
+      "compostingThreeYearsShredderCctvTwoYears": "Food-waste composting machine: once every 3 years of assessment. Food-waste shredder machine and CCTV: once every 2 years of assessment.",
+      "twoClaimsLifetime": "Limited to 2 claims in a lifetime."
+    },
+    "items": {
+      "c1": {
+        "label": "Expenditure for parents/grandparents",
+        "sub": {
+          "a": "Medical treatment, special needs and caregivers",
+          "b": "Dental treatment",
+          "c": "Full medical check-up including the cost of vaccinations"
+        }
+      },
+      "c2": {
+        "label": "Basic support equipment for use by oneself / spouse / child / parents with disabilities"
+      },
+      "c3": {
+        "label": "Study fees (oneself)",
+        "sub": {
+          "a": "Levels other than Master's or Doctor of Philosophy in the fields of law, accounting, Islamic finance, technical, vocational, industrial scientific or technological",
+          "b": "Master's or Doctorate level in any field or course of study",
+          "c": "Skills enhancement or personal development courses"
+        }
+      },
+      "c4": {
+        "label": "Medical expenses",
+        "sub": {
+          "a": "Serious illness affecting oneself / spouse / child",
+          "b": "Fertility treatment for oneself / spouse",
+          "c": "Vaccination for oneself / spouse / child",
+          "d": "Dental check-up or treatment for oneself / spouse / child",
+          "e": "Full medical checkup, mental health assessment or consultation, fees for disease screening tests, and purchase of self-health monitoring equipment (not for business use) for oneself / spouse / child",
+          "f": "Assessment for diagnostic purposes, early intervention programs, or rehabilitation treatment for children with learning disabilities aged 18 years and below"
+        }
+      },
+      "c5": {
+        "label": "Lifestyle — expenses for personal use / spouse / child",
+        "sub": {
+          "a": "Purchase or subscription of books, journals, magazines, newspapers and other similar publications (not restricted reading materials)",
+          "b": "Purchase of personal computers / smartphones / tablets (not for business use)",
+          "c": "Monthly bill payment for internet subscription (in your own name)",
+          "d": "Payment for a skill improvement or self-development course"
+        }
+      },
+      "c6": {
+        "label": "Lifestyle — sport-related expenses for the use of oneself / spouse / children / parents",
+        "sub": {
+          "a": "Purchase of sports equipment for sports activities according to the Sports Development Act 1997",
+          "b": "Payment of rental or entry fees for sports facilities",
+          "c": "Payment of registration fees to participate in a sports competition",
+          "d": "Payment of gym membership or sports training fees"
+        }
+      },
+      "c7": {
+        "label": "Purchase of breastfeeding equipment for personal use for a child aged 2 years and below"
+      },
+      "c8": {
+        "label": "Fees for sending children aged 12 years and below to a registered childcare centre / kindergarten / day-care centre / transit centre"
+      },
+      "c9": {
+        "label": "Net savings in the National Education Savings Scheme"
+      },
+      "c10": {
+        "label": "Alimony payment to the ex-wife"
+      },
+      "c11": {
+        "label": "Voluntary Employees Provident Fund (EPF) / life insurance",
+        "sub": {
+          "a": "Voluntary EPF, including mandatory EPF contributions",
+          "b": "Life insurance / voluntary EPF"
+        }
+      },
+      "c12": {
+        "label": "Private retirement schemes and deferred annuities"
+      },
+      "c13": {
+        "label": "Education and medical insurance"
+      },
+      "c14": {
+        "label": "Contributions to PERKESO under the Employees' Social Security Act 1969 / Employment Insurance System Act 2017"
+      },
+      "c15": {
+        "label": "Expenses for installation fees, rental, purchase (including hire-purchase) of equipment, or subscription for the use of electric-vehicle charging facilities for one's own vehicle; purchase of a food-waste composting machine for household use; purchase and installation of a food-waste shredder machine and CCTV for household use"
+      },
+      "c16": {
+        "label": "Interest payment on the first home loan (must meet eligibility criteria)",
+        "sub": {
+          "a": "House price up to RM500,000",
+          "b": "House price exceeding RM500,000 up to RM750,000"
+        }
+      },
+      "c17": {
+        "label": "Entrance fees to tourist centres and cultural/arts programmes for domestic tourism"
+      }
+    },
+    "rebates": {
+      "d1": {
+        "label": "Rebate",
+        "sub": {
+          "a": "Zakat other than that paid through monthly salary deductions",
+          "b": "Exemption levy for Umrah travel / travel for religious purposes"
+        }
       }
     }
   },
