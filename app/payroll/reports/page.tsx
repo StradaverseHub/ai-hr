@@ -60,6 +60,17 @@ export default async function ReportsPage({
         </Link>
       </p>
 
+      {/* bdf7d248 (r209) — the ADR-0024 §7 worksheet's one entry point. It is reached from here rather
+          than from a nav row because it answers a question somebody is asking while looking at these
+          figures ("what would my statutory totals be if a second run in a month were treated as one
+          month?"), and because PAYROLL_ADMIN_NAV is an exact set the sidebar test pins. */}
+      <p className="text-sm text-muted-foreground">
+        {t('worksheetIntro')}{' '}
+        <Link href="/payroll/multi-cycle-worksheet" className="text-primary hover:underline">
+          {t('worksheetLink')}
+        </Link>
+      </p>
+
       <Card data-tour="payroll-generate">
         <SectionHeader title={t('generateTitle')} />
         <form method="get" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">

@@ -20,6 +20,7 @@ import {
 import { MY_CONFIG_SECTIONS } from './config-sections';
 import { seedReferenceDataMY } from './provision';
 import { myClientPack } from './client';
+import { multiCycleWorksheetMY } from './multicycle-worksheet';
 import { BACKFILL_COMPONENT_CODES, MY_DEFAULT_PAY_COMPONENTS } from './pay-components';
 import { EA_FIELDS } from './reports';
 import {
@@ -137,6 +138,11 @@ export const myPack: CountryPack = {
     // Resolved loader (ADR-0020 §7): same resolution + pack provenance (packVersion/signedKeyId) so the
     // kernel can snapshot which vendor pack + key produced each payslip.
     loadRulesetResolved: getActiveStatutoryResolvedMY,
+    // ADR-0024 §7 — the read-only accountant sign-off worksheet over real payroll history. Exposed on
+    // the pack (not imported by the screen) because the whole question is Malaysian: Act 4 s.6(7)'s
+    // monthly unit and the EPF Third Schedule's monthly bands are what make two same-month runs a
+    // correctness question at all. Reading it changes nothing — see the module header.
+    multiCycleWorksheet: multiCycleWorksheetMY,
   },
   // Editable statutory configuration (ADR-0019): the admin view/edit/audit surface. The verified
   // DEFAULT and per-section source metadata drive the transparency cards.

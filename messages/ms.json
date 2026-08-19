@@ -3273,7 +3273,9 @@
       "colTablesVer": "Ver. jadual",
       "recentEmpty": "Belum ada laporan direkodkan.",
       "worklistMoved": "Notis CP22 dan CP22A kini berada di Borang Berkanun, bersama penyerahan LHDN yang lain.",
-      "worklistMovedLink": "Buka senarai tugas pematuhan"
+      "worklistMovedLink": "Buka senarai tugas pematuhan",
+      "worksheetIntro": "Sedang menimbang layanan KWSP, PERKESO, SIP dan PCB bagi larian gaji kedua dalam satu bulan?",
+      "worksheetLink": "Buka Lembaran Kerja Berkanun Berbilang Kitaran"
     },
     "statutoryForms": {
       "pageTitle": "Borang Berkanun",
@@ -5687,6 +5689,111 @@
       "yearNoAdditional": "Bulan ini tidak membayar saraan tambahan, jadi langkah jumlah tahunan dalam pengiraan tidak dijalankan.",
       "yearTotalMtd": "Jumlah MTD bagi tahun yang telah diambil kira",
       "yearTotalTax": "Jumlah cukai bagi tahun atas P₂"
+    },
+    "multiCycleWorksheet": {
+      "title": "Lembaran Kerja Berkanun Berbilang Kitaran",
+      "subtitle": "Berapakah KWSP, PERKESO, SIP dan PCB sekiranya bulan yang mempunyai lebih daripada satu larian gaji dikira sebagai satu bulan berkanun — diukur pada sejarah gaji anda sendiri.",
+      "backToReports": "Kembali ke Laporan",
+      "readOnlyBanner": "Skrin ini hanya membaca. Ia tidak mengira semula mana-mana slip gaji, tidak mengubah angka yang telah dibayar, dan tidak menghidupkan apa-apa. Ia wujud untuk disemak sebelum keputusan itu dibuat.",
+      "noPackForCountry": "Negara syarikat aktif ({country}) tiada pakej berkanun yang menetapkan unit caruman bulanan, jadi tiada apa untuk diselaraskan di sini.",
+      "filterTitle": "Penapis",
+      "fieldYear": "Tahun taksiran",
+      "yearPlaceholder": "2026",
+      "yearHint": "Biarkan kosong untuk merangkumi setiap tahun dalam rekod.",
+      "apply": "Guna",
+      "headline": "{changed} daripada {compared} bulan-pekerja akan berubah, merentasi {periods} bulan-syarikat yang mempunyai lebih daripada satu larian gaji.",
+      "verdictBreakdown": "Sudah dikira sebagai satu bulan: {aggregated}. Kedua-dua bacaan sepadan: {agree}. Tidak sepadan dengan mana-mana bacaan: {unexplained}.",
+      "replayVersion": "Dimainkan semula terhadap versi set peraturan berkanun {version}.",
+      "totalsTitle": "Jumlah mengikut item berkanun",
+      "totalsHint": "“Dibayar” ialah jumlah angka yang tersimpan pada slip gaji. “Setiap larian berasingan” mengira semula setiap larian dari bawah jadual. “Sebulan sekali kira” menganggap bulan itu sebagai satu pengiraan berkanun. “Perubahan” ialah apa yang akan berubah, dikira hanya untuk bulan-pekerja yang angka dibayarnya sepadan dengan “setiap larian berasingan”.",
+      "rowsTitle": "Bulan-pekerja",
+      "rowsHint": "Sejauh mana setiap item berkanun akan berubah (sebulan sekali kira, tolak apa yang dibayar). Bulan yang akan berubah disenaraikan dahulu.",
+      "noRows": "Tiada bulan-pekerja dengan lebih daripada satu larian gaji yang boleh dibandingkan.",
+      "truncated": "Hanya 200 baris pertama disenaraikan. Jumlah di atas merangkumi setiap baris.",
+      "skipsTitle": "Tidak dikira",
+      "skipsHint": "Bulan yang dikecualikan berada di luar skop secara keputusan — pembalikan diketepikan, dan menganggap nilai negatif sebagai sifar akan mengurangkan perbezaan sebenar. Bulan yang ditanda ialah bulan yang inputnya tidak dapat dibina semula daripada rekod; ia dilaporkan, bukan diteka.",
+      "noSkips": "Setiap bulan-pekerja dengan lebih daripada satu larian dapat dibandingkan.",
+      "exampleTitle": "Kiraannya, seorang pekerja pada satu masa",
+      "exampleHint": "Ikuti kiraan sebelum membaca jumlah. Contoh di bawah dikira daripada jadual berkanun yang berkuat kuasa, bukan ditulis tetap.",
+      "exampleNoRow": "Tiada bulan-pekerja yang dapat dibandingkan, jadi hanya contoh di atas ditunjukkan.",
+      "exampleFor": "{employee} — {period}, {company}",
+      "illustrationTitle": "Contoh: gaji {normal} dan larian kedua {second} dalam bulan yang sama",
+      "illustrationStep1": "Larian gaji sahaja: KWSP atas {wage} ialah {epf} (bahagian pekerja).",
+      "illustrationStep2": "Larian kedua sahaja, masuk jadual dari bawah: KWSP atas {wage} ialah {epf}.",
+      "illustrationStep3": "Dicampur bersama, bulan itu menyumbang {total}.",
+      "illustrationStep4": "Diambil sebagai satu bulan berkanun — {normal} gaji biasa dengan {second} bayaran tambahan — bulan itu menyumbang {epf}.",
+      "illustrationStep5": "Bezanya ialah {diff}, bagi seorang pekerja dalam satu bulan.",
+      "illustrationVersion": "Dikira daripada versi set peraturan berkanun {version}.",
+      "runLabel": "Larian {seq} — {type}",
+      "monthTotal": "Jumlah bulan",
+      "signOffTitle": "Pengesahan",
+      "signOffBody": "Pegawai gaji atau akauntan bertauliah menyemak lembaran kerja ini sebelum layanan sebulan-sekali-kira dihidupkan. Tiada apa pada skrin ini yang menghidupkannya; menghidupkannya kekal satu langkah berasingan yang diambil selepas semakan.",
+      "signOffAdr": "Cetak atau eksport halaman ini untuk fail penyemak.",
+      "tile": {
+        "periods": "Bulan-syarikat dengan 2+ larian",
+        "examined": "Bulan-pekerja diperiksa",
+        "compared": "Bulan-pekerja dibandingkan",
+        "wouldChange": "Akan berubah",
+        "excluded": "Dikecualikan",
+        "flagged": "Tidak dapat disemak"
+      },
+      "col": {
+        "item": "Item berkanun",
+        "paid": "Dibayar",
+        "perRun": "Setiap larian berasingan",
+        "monthAsOne": "Sebulan sekali kira",
+        "movement": "Perubahan",
+        "company": "Syarikat",
+        "month": "Bulan",
+        "employee": "Pekerja",
+        "runs": "Larian",
+        "verdict": "Bacaan",
+        "disposition": "Kedudukan",
+        "reason": "Sebab",
+        "run": "Larian",
+        "normal": "Gaji biasa",
+        "additional": "Bayaran tambahan",
+        "overtime": "Kerja lebih masa",
+        "reading": "Bacaan"
+      },
+      "item": {
+        "epfEmployee": "KWSP (pekerja)",
+        "epfEmployer": "KWSP (majikan)",
+        "socsoEmployee": "PERKESO (pekerja)",
+        "socsoEmployer": "PERKESO (majikan)",
+        "socsoSkbbk": "SKBBK (pekerja)",
+        "eisEmployee": "SIP (pekerja)",
+        "eisEmployer": "SIP (majikan)",
+        "pcb": "PCB (MTD)"
+      },
+      "verdict": {
+        "agree": "Kedua-dua bacaan memberi angka yang dibayar",
+        "already_aggregated": "Sudah dikira sebagai satu bulan",
+        "would_change": "Akan berubah",
+        "unexplained": "Tidak sepadan dengan mana-mana bacaan"
+      },
+      "disposition": {
+        "excluded": "Dikecualikan",
+        "flagged": "Tidak dapat disemak"
+      },
+      "reason": {
+        "negative_amount": "Jumlah negatif pada slip gaji — pembalikan atau tuntutan balik",
+        "negative_delta": "Bayaran tambahan menurun antara larian",
+        "needs_recalc": "Satu larian bulan ini ditanda untuk kiraan semula",
+        "bases_not_recorded": "Slip gaji ini lebih awal daripada rekod asas caj setiap agensi",
+        "first_run_not_regular": "Larian pertama bulan ini bukan larian gaji biasa",
+        "manual_statutory_adjustment": "Satu angka berkanun bulan ini ditetapkan secara manual",
+        "base_carve_outs": "Item gaji mengecualikan jumlah berbeza daripada KWSP, PERKESO dan cukai",
+        "inconsistent_run_bases": "Larian dikenakan caj atas gaji bulanan yang berbeza",
+        "zakat_or_lp_present": "Zakat atau potongan TP1 terlibat pada bulan ini",
+        "no_statutory_profile": "Tiada profil berkanun Malaysia bagi pekerja ini"
+      },
+      "runType": {
+        "regular": "Biasa",
+        "off_cycle": "Luar kitaran",
+        "bonus": "Bonus",
+        "adjustment": "Pelarasan"
+      }
     }
   },
   "admin": {

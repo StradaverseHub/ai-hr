@@ -161,6 +161,27 @@ System figures below are produced by `test/multicycle-compute.test.ts` (2026.1 r
 | 7 | **Sum of run 1 + run 2 MTD** equals the single monthly MTD for RM5,000 normal + RM10,000 bonus computed the one-batch way | LHDN spec (month = one computation) | | **RM1,060.00** = RM110.00 + RM950.00 (== one-batch RM1,060.00) | ☐ |
 | 8 | Both runs carry the **same** statutory ruleset version (month-level snapshot) | ADR-0024 §4 | n/a | **yes** (version `2026.1`) | ☐ |
 
+### §7 over REAL history — Payroll ▸ Reports ▸ Multi-Cycle Statutory Worksheet (r209, bdf7d248)
+
+The scenario above cannot distinguish the two readings of the statute, and that is not a small caveat:
+`ceil((5,000 + 10,000) × 11%)` and `ceil(5,000 × 11%) + ceil(10,000 × 11%)` are **both RM1,650**, so
+assertion #1 has stayed green whichever way the kernel computed. The smallest pair that separates them is
+**RM5,001 + RM1,001** — each run alone gives `561 + 113 = 674`, the month as one gives `672` — and
+SOCSO/EIS separate at every wage, because the per-run reading charges the band twice.
+
+`/payroll/multi-cycle-worksheet` (read-only; `localization/my/multicycle-worksheet.ts`) therefore runs the
+§7 comparison over the customer's OWN payroll history instead of one invented employee. For every
+(company, month, employee) with more than one run it reports what was PAID (the figures stored on the
+payslips), what each reading gives, the ringgit movement per statutory item, and — deliberately — the
+months it refuses to compare: a month containing a reversal or a negative delta is EXCLUDED rather than
+clamped (§6 would otherwise understate the difference), and a month whose inputs cannot be reconstructed
+is FLAGGED with its reason. It writes nothing.
+
+Measured through that screen on a kernel-produced month, an additional run is **already** computed as the
+increment of the cumulative month (`core/payroll.ts` `deltaStat`, seeded by the earlier runs' additional
+remuneration) — so the worksheet's verdict for such a month is "already computed as one month" and its
+movement is zero. `computeMonthlyRuns` remains unwired; §5's gate is unchanged.
+
 **Sign-off**
 
 **✅ Owner-authorised to enable — 2026-06-20.** Basis: YiWei Law's "Malaysia Payroll Statutory

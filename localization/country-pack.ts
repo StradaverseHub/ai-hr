@@ -31,6 +31,23 @@
  * `typeof import(…)`, so importing the contract never drags in db/client or the MY tables.
  */
 import type { SessionContext, Tx } from '../db/client';
+
+/**
+ * ADR-0024 §7 worksheet vocabulary, RE-EXPORTED from the contract so a generic screen can name the
+ * worksheet's shape without importing the MY pack (ADR-0080 D7 — the drift ratchet counts a type-only
+ * import as coupling, and it is right to). Type-only, so this adds nothing at runtime.
+ */
+export type {
+  Figures as WorksheetFigures,
+  MultiCycleWorksheet,
+  WorksheetItem,
+  WorksheetRow,
+  WorksheetRunView,
+  WorksheetSkip,
+  WorksheetSkipReason,
+  WorksheetVerdict,
+} from './my/multicycle-worksheet';
+
 import type { Tp1CategoryKey } from '../db/schema';
 import type { MyLeaveTypeDef } from './my/leave';
 import type { MyHoliday } from './my/holidays';
@@ -369,6 +386,22 @@ export interface CountryPack {
     loadRuleset: (tx: Tx, p: { asOf: string }) => Promise<StatutoryRuleset>;
     /** Same resolution + pack provenance (ADR-0020 §7) for payslip snapshotting. */
     loadRulesetResolved: (tx: Tx, p: { asOf: string }) => Promise<ActiveResolution>;
+    /**
+     * ADR-0024 §7 — the READ-ONLY multi-cycle statutory worksheet an accountant signs off before the
+     * month-as-one aggregation may be enabled. A replay over the jurisdiction's own payroll history:
+     * for every employee-month that had more than one run it compares what was PAID against both
+     * readings of the statute, and reports the ringgit movement, the months it refuses to guess at,
+     * and a worked example.
+     *
+     * OPTIONAL on the contract. A jurisdiction whose statute has no monthly-unit rule (no SOCSO
+     * s.6(7) equivalent, no banded monthly EPF) has nothing to reconcile, and must not be forced to
+     * implement a Malaysian question. Callers check for the member and render "not applicable" when
+     * the acting company's pack omits it.
+     */
+    multiCycleWorksheet?: (
+      ctx: SessionContext,
+      p: { companyIds: string[]; year?: string },
+    ) => Promise<import('./my/multicycle-worksheet').MultiCycleWorksheet>;
   };
 
   /**

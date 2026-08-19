@@ -546,6 +546,14 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',
+      // bdf7d248 (r209): the ADR-0024 §7 Multi-Cycle Statutory Worksheet. Registered on the SAME
+      // scopedAdmin key as the Reports screen that links to it — it lists per-employee EPF/SOCSO/EIS/PCB
+      // figures for months that had more than one payroll run, so it is admin-scoped exactly like Reports
+      // and Transaction View, and grants/revokes with them. READ-ONLY: it has no server action and writes
+      // nothing, but that is not why it is registered — test/function-access.test.ts checks reverse
+      // completeness, so a guarded page with no matrix column fails the suite rather than silently
+      // becoming a screen nobody can grant or revoke.
+      '/payroll/multi-cycle-worksheet',
       // 956cec85: the statutory-form directory. Same guard as the rest of the Payroll hub — it exposes
       // which submissions are due and links to their figures, so it is admin-scoped like Reports.
       '/payroll/statutory-forms',
