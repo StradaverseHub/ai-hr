@@ -21,22 +21,32 @@ import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow
  * wording, so the href carries the switch state and the route applies the SAME `filterGridRows` to the same
  * pivot. Rebuilding the filter in the route is how the file and the screen would drift apart.
  *
- * FROZEN COLUMNS. Code / Description / Pay cycle are sticky from `md:` up, so scrolling across the months
- * keeps the row identifiable. Below `md:` they scroll with everything else on purpose — three frozen
- * columns on a phone leave no room for a month. The horizontal scroll lives in this component's OWN
+ * FROZEN COLUMNS. Code / Description / Pay cycle / Company are sticky from `md:` up, so scrolling across
+ * the months keeps the row identifiable. Below `md:` they scroll with everything else on purpose — four
+ * frozen columns on a phone leave no room for a month. The horizontal scroll lives in this component's OWN
  * container so the page body never scrolls sideways.
+ *
+ * 3c88d593 — THE COMPANY COLUMN, and why it is inside the frozen block. A row is one EMPLOYER'S line since
+ * r206: an employee who transferred entity mid-month has two August lines per pay item, and the only thing
+ * telling them apart is this column. Scrolling it out of view while reading across the months is exactly
+ * the confusion the column was added to remove, so it freezes with the identity columns rather than with
+ * the figures. It costs the block 11rem, which is why the note above now says four.
  */
 
 /**
- * The three frozen columns, declared once: a sticky offset that disagrees with the width in front of it
- * makes columns overlap while scrolling, and that is only visible on a wide screen mid-scroll. `cycle` is
- * the last of the block and carries the rule that marks where the freeze ends.
+ * The four frozen columns, declared once: a sticky offset that disagrees with the width in front of it
+ * makes columns overlap while scrolling, and that is only visible on a wide screen mid-scroll. `company`
+ * is the last of the block and carries the rule that marks where the freeze ends.
  */
 const COL = {
   code: { th: 'w-[7rem] min-w-[7rem]', left: 'md:left-0' },
   name: { th: 'w-[14rem] min-w-[14rem]', left: 'md:left-[7rem]' },
-  cycle: { th: 'w-[8rem] min-w-[8rem]', left: 'md:left-[21rem] md:border-e md:border-border' },
+  cycle: { th: 'w-[8rem] min-w-[8rem]', left: 'md:left-[21rem]' },
+  company: { th: 'w-[11rem] min-w-[11rem]', left: 'md:left-[29rem] md:border-e md:border-border' },
 };
+
+/** How many columns the frozen block holds — the section headings span exactly it. */
+const FROZEN_COLS = 4;
 
 /** Section order + heading key, matching the pivot's own group ordering. */
 const GROUPS: { group: GridRowGroup; key: string }[] = [
@@ -126,7 +136,7 @@ export function HistoryGrid({
     showSubject: showSubject ? '1' : '0',
   }).toString()}`;
 
-  const colCount = 3 + (showSubject ? SUBJECT_COLUMNS.length : 0) + months.length + 1;
+  const colCount = FROZEN_COLS + (showSubject ? SUBJECT_COLUMNS.length : 0) + months.length + 1;
 
   return (
     <div className="space-y-3">
@@ -201,10 +211,14 @@ export function HistoryGrid({
               <th className={`${COL.cycle.th} ${COL.cycle.left} sticky z-10 bg-muted px-3 py-2 font-medium`}>
                 {t('view.grid.colCycle')}
               </th>
-              {/* 0253dc7c — the subject columns sit immediately after Description/Cycle, before the
+              {/* 3c88d593 — the employer that paid this line. */}
+              <th className={`${COL.company.th} ${COL.company.left} sticky z-10 bg-muted px-3 py-2 font-medium`}>
+                {t('view.grid.colCompany')}
+              </th>
+              {/* 0253dc7c — the subject columns sit immediately after the identity block, before the
                   months, so the setting reads next to the item it belongs to. They are NOT sticky:
-                  the frozen block is three columns wide by design and widening it leaves a phone no
-                  room for a month. */}
+                  the frozen block is FOUR columns wide by design (3c88d593 added Company to it) and
+                  widening it further leaves a phone no room for a month. */}
               {showSubject &&
                 SUBJECT_COLUMNS.map((c) => (
                   <th key={c.key} className="min-w-[4.5rem] px-3 py-2 text-center font-medium">
@@ -230,12 +244,12 @@ export function HistoryGrid({
                       which section they are reading, which is when a deduction gets read as an earning. */}
                   <tr className="bg-muted/40">
                     <td
-                      colSpan={3}
+                      colSpan={FROZEN_COLS}
                       className="sticky z-10 whitespace-nowrap bg-muted px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:left-0 md:border-e md:border-border"
                     >
                       {t(`view.grid.section.${key}`)}
                     </td>
-                    <td colSpan={colCount - 3} className="px-3 py-1.5" />
+                    <td colSpan={colCount - FROZEN_COLS} className="px-3 py-1.5" />
                   </tr>
                   {groupRows.map((r) => (
                     <tr
@@ -258,6 +272,23 @@ export function HistoryGrid({
                         className={`${COL.cycle.th} ${COL.cycle.left} sticky z-10 bg-card px-3 py-2 text-muted-foreground`}
                       >
                         {cycleLabels[r.runType] ?? r.runType}
+                      </td>
+                      {/* 3c88d593 — the employer, and underneath it the days that employer actually
+                          covered when the month was split by an entity transfer. The dates come from the
+                          payslip's OWN record, so they are the same words the payslip prints; an
+                          unsegmented row carries no `segments` at all and renders the company name alone,
+                          exactly as this cell would have if the column had always been here. */}
+                      <td
+                        className={`${COL.company.th} ${COL.company.left} sticky z-10 bg-card px-3 py-2 align-top`}
+                      >
+                        <span className="block truncate" title={r.company}>
+                          {r.company}
+                        </span>
+                        {r.segments?.map((s) => (
+                          <span key={`${s.from}:${s.to}`} className="mt-0.5 block text-[11px] text-muted-foreground">
+                            {t('view.history.coverageLine', { from: s.from, to: s.to })}
+                          </span>
+                        ))}
                       </td>
                       {/* 0253dc7c — Y / N, or blank on a row that is not a pay item. Blank, never "N":
                           a row with no setting to report has not answered "no", and printing one would

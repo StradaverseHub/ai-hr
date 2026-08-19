@@ -904,6 +904,20 @@ export type ProcessedPayslipViewRow = {
   runType: RunType;
   runSeq: number;
   batchStatus: string;
+  /**
+   * 3c88d593 (r206) — WHICH DAYS OF THE PERIOD THIS SLIP CLAIMS (columns added by 0446). Read them
+   * through `payslipSegmentOf` / `payslipCoverage` (core/payslip-segment.ts), NEVER directly: that reader
+   * applies the NULL rule (both absent ⇒ the whole pay period), falls back to the r194 `statutory.segment`
+   * stamp, and is the one place the rule lives. Until r206 only `payslipForReview` selected them, so
+   * Transaction View could not tell a 1–10 August slip from a whole-August one and consolidated both into
+   * a single cell.
+   *
+   * OPTIONAL for exactly the reason `currency` and `batchId` above are: the SELECT always fills them, but
+   * several test files hand-build this row from a literal and a consumer with no coverage must degrade to
+   * "the whole period" — which is what every payslip written before 0446 means anyway.
+   */
+  coverageFrom?: string | null;
+  coverageTo?: string | null;
   /** 169e3c24 — read-side additions so a payslip screen can state its publication state and revision
    *  through lib/payroll-publication.ts, the same helper the batch page uses. Additive; no caller of this
    *  read is affected by two extra columns. */
@@ -973,6 +987,11 @@ export function listProcessedPayslipsAcross(
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         batchStatus: payrollBatch.status,
+        // 3c88d593 (r206) — the coverage window (0446), so Transaction View can show a transferred
+        // employee's month as the two employer segments it was actually paid on instead of one summed
+        // cell. Two columns off a table already joined; nothing about any FIGURE changes.
+        coverageFrom: payslip.coverageFrom,
+        coverageTo: payslip.coverageTo,
         // 169e3c24 — publication state + revision count, resolved on screen through payrollPublicationState.
         releasedAt: payrollBatch.releasedAt,
         version: payslip.version,

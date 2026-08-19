@@ -4,6 +4,9 @@ import type { ColAlign, ReportData } from '@/lib/report-export';
 // builder stays pure; it is the SAME rule history-table.tsx and history-pivot.ts apply, which is what
 // stops the file and the screen naming one item two ways.
 import { recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
+// 3c88d593 — the ONE rule for which days a payslip claims. Pure and dependency-free, so this pure builder
+// stays pure; the screen and both exports read the same function rather than three copies of the rule.
+import { payslipSegmentOf } from '@/core/payslip-segment';
 import { deriveHistoryBreakdown } from './history-breakdown';
 
 /**
@@ -75,6 +78,13 @@ const FIXED_COLUMNS: { label: string; align: ColAlign }[] = [
   // runs of the same type, and without it two such rows are indistinguishable.
   { label: 'Run No.', align: 'right' },
   { label: 'Company', align: 'left' },
+  // 3c88d593 — WHICH DAYS THIS EMPLOYER PAID FOR, beside the employer that paid them. Blank on every
+  // payslip that covered its whole month, which is every payslip until an entity transfer split one: the
+  // Payroll Period column already says which month, and filling these with a synthesised whole-month range
+  // would put a claim in the sheet that no payslip made. Two columns rather than one text range because
+  // Excel sorts and filters dates, which is the one thing this file exists for.
+  { label: 'Covered From', align: 'left' },
+  { label: 'Covered To', align: 'left' },
   { label: 'Status', align: 'left' },
   // ── Summary + employee-borne deductions. SKBBK, CP38 and Zakat are carried even though they are nil on
   //    most runs, so the deduction columns visibly reconcile against Total Deductions.
@@ -254,6 +264,13 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
       row.employeeName,
       row.runSeq,
       row.company,
+      // 3c88d593 — the slip's own coverage record, read through the one rule (`payslipSegmentOf`), so the
+      // file and both screens can never disagree about what a split month covered. Null ⇒ the whole
+      // period ⇒ two empty cells, exactly as this sheet looked before the columns existed.
+      ...(() => {
+        const seg = payslipSegmentOf(row, row.payPeriod);
+        return [seg?.from ?? '', seg?.to ?? ''];
+      })(),
       statusLabels[row.batchStatus] ?? row.batchStatus,
       money(b.gross),
       money(emp.epf),

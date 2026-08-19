@@ -4547,6 +4547,8 @@
           "empty": "Không có kết quả lương đã xử lý nào khớp với bộ lọc đã chọn.",
           "showBreakdown": "Hiện chi tiết",
           "hideBreakdown": "Ẩn chi tiết",
+          "splitBadge": "Tách",
+          "coverageLine": "Làm việc tại công ty này từ {from} đến {to}",
           "totalEmployerContributions": "Tổng đóng góp của người sử dụng lao động",
           "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
           "itemsHeading": "Các khoản lương chi tiết",
@@ -4604,6 +4606,8 @@
           "colCode": "Mã khoản thanh toán",
           "colDescription": "Mô tả khoản thanh toán",
           "colCycle": "Chu kỳ lương",
+          "colCompany": "Công ty",
+          "colCoverage": "Kỳ được tính",
           "colTotal": "Tổng",
           "section": {
             "wagebase": "Mức lương căn cứ",

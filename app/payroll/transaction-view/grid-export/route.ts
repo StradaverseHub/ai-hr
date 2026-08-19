@@ -121,12 +121,19 @@ export async function GET(req: Request) {
   const data: ReportData = {
     filename: `payroll-history-${selected?.employeeCode ?? 'employee'}-${year}`,
     title: t('view.grid.title'),
-    // The screen's columns, in the screen's order. `freeze: 3` below reproduces its frozen block as an
-    // Excel split pane, which is what makes the file usable for the same reconciliation.
+    // The screen's columns, in the screen's order. `freeze: 4` below reproduces its frozen block as an
+    // Excel split pane, which is what makes the file usable for the same reconciliation. It tracked the
+    // screen's three sticky columns and follows it to four when 3c88d593 added Company to the block.
     columns: [
       t('view.grid.colCode'),
       t('view.grid.colDescription'),
       t('view.grid.colCycle'),
+      // 3c88d593 — the same Company column the screen grew, in the same place, so a reader cannot be told
+      // two different stories by the screen and the file taken from it. The covered dates follow it as
+      // their OWN column rather than as a second line inside the company cell: on screen they are a
+      // caption, in a spreadsheet they are something a finance user filters and sorts on.
+      t('view.grid.colCompany'),
+      t('view.grid.colCoverage'),
       ...(showSubject ? SUBJECT_COLUMNS.map((c) => t(`view.grid.subject.${c.key}`)) : []),
       ...grid.months.map((m) => labels[m - 1]),
       t('view.grid.colTotal'),
@@ -138,6 +145,11 @@ export async function GET(req: Request) {
       // the coverage a computed t() key cannot get from the static i18n scan.
       r.labelKey ? r.name || t(`view.grid.row.${r.labelKey}`) : r.name,
       t(`individual.cycle.${r.runType}`),
+      r.company,
+      // EMPTY, never a substituted whole-month range, for a row nobody split: the month columns already
+      // say which months it covers, and inventing a range here would put a claim in the file that no
+      // payslip made. A row whose year holds more than one segment lists them all.
+      (r.segments ?? []).map((s) => t('view.history.coverageLine', { from: s.from, to: s.to })).join(' · '),
       ...subjectCells(r),
       // Figures go in UNFORMATTED. `toXlsxReport` marks a cell `x:num` only when it parses as a bare
       // number, and a cell carrying "RM 2,500.00" is text an operator cannot sum — which would defeat the
@@ -152,7 +164,7 @@ export async function GET(req: Request) {
     ]),
     layout: {
       orientation: 'landscape',
-      freeze: 3,
+      freeze: 4,
       // The filters the file was taken under, printed on it — the reporter asked that the export "include
       // all filters applied", and a spreadsheet that does not say whose year it is cannot be filed.
       subtitle: selected

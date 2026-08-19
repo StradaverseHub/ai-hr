@@ -2,6 +2,9 @@ import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 // 417d4937 — the shared read-time repair for RECORD-line labels (and the shared code+description format).
 // Pure and dependency-free, so this pure pivot stays pure.
 import { recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
+// 3c88d593 (r206) — which days of the period a payslip claims, read from the payslip's OWN record.
+// Pure and dependency-free for the same reason as the import above.
+import { payslipSegmentOf, type PayslipCoverage } from '@/core/payslip-segment';
 import { deriveHistoryBreakdown } from './history-breakdown';
 
 /**
@@ -19,10 +22,22 @@ import { deriveHistoryBreakdown } from './history-breakdown';
  * item assignments is what would let the grid disagree with the totals printed beside it on the very screen
  * whose purpose is reconciliation; the same rule the itemised breakdown already lives by.
  *
- * THE ROW KEY IS (item code, RUN TYPE), NOT THE ITEM. In the reference, GROSS appears four times and
- * Employee EPF twice — once per "Payment ID". That is our run type: ADR-0024 Wave 2C lets one (company,
+ * THE ROW KEY IS (COMPANY, item code, RUN TYPE), NOT THE ITEM. In the reference, GROSS appears four times
+ * and Employee EPF twice — once per "Payment ID". That is our run type: ADR-0024 Wave 2C lets one (company,
  * month) hold several runs, and a bonus run and an end-month run are genuinely different lines. Two runs of
  * the SAME type in one month (runSeq 2) are the same line and are summed into the one month slot.
+ *
+ * 3c88d593 (r206) — AND THE PAYING COMPANY IS IN THAT KEY. Until r206 it was not, so two payslips for the
+ * same (item, run type, month) issued by DIFFERENT employers summed into one cell: an employee who
+ * transferred entity on 11 August had Fiamma's 1–10 August and ISEDECOR BINA's 11–31 August added together
+ * under one "August" column, with nothing on screen saying a transfer had happened. Note this was never
+ * only a transfer-MONTH fault — someone who moved in March had Jan–Feb of one employer and Mar–Dec of
+ * another silently mixed in the same rows for the whole year.
+ *
+ * NOT ONE FIGURE MOVES. Splitting a key PARTITIONS the payslips behind it: the same amounts land on two
+ * lines instead of one, so every month column and every reconciling sum is arithmetically identical — 1,000
+ * plus 2,100 is still the 3,100 it was, shown on the two lines it was actually paid on. That is why the
+ * reconciliation invariant below survives by construction rather than by anything computed here.
  *
  * WHAT THE REFERENCE HAS AND WE DO NOT. Its "Transaction ID" column (WEEK 2 / WEEK 4) has no equivalent in
  * our data — we record no week against a payroll run — so it is deliberately absent rather than invented.
@@ -157,9 +172,10 @@ const SYNTHETIC_ORDER = new Map(SYNTHETIC.map((s, i) => [s.key, i]));
 export const SYNTHETIC_LABEL_KEYS: readonly string[] = SYNTHETIC.map((s) => s.key);
 
 export type HistoryGridRow = {
-  /** Stable identity: kind + group + code + run type. Kind and group are in the key so two different
-   *  things carrying one code (a pay item coded BASIC vs the synthetic BASIC line; a cash item vs a
-   *  record-only line) can never merge into one row and double a figure. */
+  /** Stable identity: kind + group + code + run type + COMPANY. Kind and group are in the key so two
+   *  different things carrying one code (a pay item coded BASIC vs the synthetic BASIC line; a cash item vs
+   *  a record-only line) can never merge into one row and double a figure; the company is in it (3c88d593)
+   *  so two EMPLOYERS' figures for one month can never merge into one cell and hide a transfer. */
   key: string;
   kind: 'synthetic' | 'item';
   /** Leftmost column — the reference's "ADCode". */
@@ -170,6 +186,21 @@ export type HistoryGridRow = {
   name: string;
   /** Third column — the reference's "Payment ID". */
   runType: ProcessedPayslipViewRow['runType'];
+  /** 3c88d593 — the PAYING company. Part of the row key, and the fourth column on screen. An employee who
+   *  never changed entity gets the same one name repeated down it and rows identical to before. */
+  companyId: string;
+  company: string;
+  /**
+   * 3c88d593 — the coverage windows this row's payslips claimed, when any of them claimed LESS than the
+   * whole pay period. Distinct and ascending; EMPTY on every row whose payslips each covered their whole
+   * month, which is every payslip this system issued until somebody transferred entity mid-month.
+   *
+   * A LIST rather than one window because a row spans up to twelve months and each month's slip carries
+   * its own claim — the outgoing employer's row is a full January through to a 1–10 August. Read from the
+   * payslip's OWN record (`payslipSegmentOf`), NEVER re-derived from today's assignment history: a
+   * correction made after the run must not be able to restate what an issued document covered.
+   */
+  segments?: PayslipCoverage[];
   group: GridRowGroup;
   /** See the invariant note in this file's header. */
   reconciling: boolean;
@@ -528,29 +559,36 @@ export function pivotHistoryGrid(p: {
   let payslipCount = 0;
   let detailNotRecorded = false;
   let basesNotRecorded = false;
-  // Tracked across the whole fold rather than per row: HRDF is one line, and it may be fed by payslips from
-  // two companies if the employee moved mid-year.
-  let anyHrdfRegistered = false;
-  // Per (runType), whether EVERY contributing payslip's lump-sum row was fully explained by its items.
-  // Keyed by run type because the rows are: an additional run's item detail describes only the bonus it
-  // pays (6b134681 — and a bonus run calculated before that stamps nothing at all), so its answer about
-  // Allowances must not be able to suppress the regular run's line, or be suppressed by it.
+  // 3c88d593 — per (companyId, runType), whether EVERY contributing payslip's lump-sum row was fully
+  // explained by its items. Keyed by run type because the rows are: an additional run's item detail
+  // describes only the bonus it pays (6b134681 — and a bonus run calculated before that stamps nothing at
+  // all), so its answer about Allowances must not be able to suppress the regular run's line, or be
+  // suppressed by it. Keyed by COMPANY for the same reason, now that the rows are: one employer's fully
+  // itemised August must not delete the OTHER employer's Allowances row, whose money nothing else on the
+  // screen would then account for.
   const lumpAccounted = new Map<string, { allowance: boolean; otherDeductions: boolean }>();
+  const lumpKey = (companyId: string, runType: string) => `${companyId} ${runType}`;
 
   for (const row of p.rows) {
     if (!row.payPeriod.startsWith(yearPrefix)) continue;
     const month = Number(row.payPeriod.slice(5, 7));
     if (!Number.isInteger(month) || !shown.has(month)) continue;
     payslipCount += 1;
-    if (hrdfRegistered.has(row.companyId)) anyHrdfRegistered = true;
+
+    // 3c88d593 — what this slip actually covered, from its own record (0446 columns, then the r194 jsonb
+    // stamp, then the whole period). NULL on every payslip whose month nobody split, which is every
+    // payslip this system issued before an entity transfer existed — those rows grow no `segments` and
+    // render byte-identical to before.
+    const segment = payslipSegmentOf(row, row.payPeriod);
 
     const slip = cellsFor(row, p.payItemNames);
     if (slip.detailNotRecorded) detailNotRecorded = true;
     if (slip.basesNotRecorded) basesNotRecorded = true;
-    const lump = lumpAccounted.get(row.runType) ?? { allowance: true, otherDeductions: true };
+    const lk = lumpKey(row.companyId, row.runType);
+    const lump = lumpAccounted.get(lk) ?? { allowance: true, otherDeductions: true };
     lump.allowance &&= slip.lumpAccounted.allowance;
     lump.otherDeductions &&= slip.lumpAccounted.otherDeductions;
-    lumpAccounted.set(row.runType, lump);
+    lumpAccounted.set(lk, lump);
     for (const c of slip.cells) {
       // `kind` and `group` are in the key, not just the code. Two DIFFERENT things can carry one code and
       // must never be summed into a single line: the synthetic BASIC row and a pay item an operator coded
@@ -558,7 +596,11 @@ export function pivotHistoryGrid(p: {
       // one-off transactions into recordLines by name); an item that was an earning in January and a
       // deduction in March. Each of those merges would double a figure on a reconciliation screen and look
       // entirely plausible while doing it.
-      const key = `${c.kind}:${c.group}:${c.code}:${row.runType}`;
+      //
+      // 3c88d593 — and the PAYING COMPANY, for the same reason one level out: two employers' figures for
+      // one (item, run type, month) are two different things and summing them hid an entity transfer
+      // entirely. See this file's header for why no figure moves.
+      const key = `${c.kind}:${c.group}:${c.code}:${row.runType}:${row.companyId}`;
       let target = acc.get(key);
       if (!target) {
         target = {
@@ -568,6 +610,8 @@ export function pivotHistoryGrid(p: {
           labelKey: c.labelKey,
           name: c.name,
           runType: row.runType,
+          companyId: row.companyId,
+          company: row.company,
           group: c.group,
           reconciling: c.reconciling,
           months: new Array(12).fill(0),
@@ -578,6 +622,12 @@ export function pivotHistoryGrid(p: {
       // A later payslip may carry a name where an earlier one did not (the OT-conversion line, or an item
       // renamed between runs) — keep the first non-empty one so the description column is never blank.
       if (!target.name && c.name) target.name = c.name;
+      // 3c88d593 — the covered window, recorded ONCE per distinct range: the outgoing employer's row runs
+      // a full January through to a 1–10 August and there is no honest way to reduce that to one line.
+      // Only a SEGMENTED slip contributes; an unsegmented one leaves `segments` absent entirely.
+      if (segment && !target.segments?.some((s) => s.from === segment.from && s.to === segment.to)) {
+        (target.segments ??= []).push(segment);
+      }
       // 0253dc7c — an UNRECORDED wage base does not add zero, it adds nothing, and the cell says so.
       // The month keeps whatever a sibling run of the same type already put there (there is normally
       // none), so a recorded figure is never overwritten by an unknown.
@@ -597,10 +647,17 @@ export function pivotHistoryGrid(p: {
 
   const rows = [...acc.values()];
   let subjectFromCatalogue = false;
-  const lumpFor = (runType: string) => lumpAccounted.get(runType) ?? { allowance: false, otherDeductions: false };
+  const lumpFor = (r: HistoryGridRow) =>
+    lumpAccounted.get(lumpKey(r.companyId, r.runType)) ?? { allowance: false, otherDeductions: false };
   for (const r of rows) {
     r.total = round2(r.months.reduce((s, m) => s + m, 0));
-    if (r.kind === 'synthetic' && r.labelKey === 'hrdf' && !anyHrdfRegistered) r.notRegistered = true;
+    // Ascending, so the two halves of a transferred month read in the order they were worked.
+    if (r.segments) r.segments.sort((a, b) => a.from.localeCompare(b.from));
+    // efece4ce, and 3c88d593 — asked of THIS ROW'S OWN EMPLOYER. The row is one company's HRDF line now,
+    // so a registered incoming company must not silently answer for the outgoing one.
+    if (r.kind === 'synthetic' && r.labelKey === 'hrdf' && !hrdfRegistered.has(r.companyId)) {
+      r.notRegistered = true;
+    }
     // 0253dc7c — the catalogue fallback, for any row whose code IS a pay item and that carries no
     // stamp of its own. This deliberately fills the synthetic BASIC row (the BASIC pay item exists
     // and is ticked into everything, and the ticket asks to see it); every synthetic row whose
@@ -617,8 +674,8 @@ export function pivotHistoryGrid(p: {
     // fully accounted for by item rows. Marked here, dropped in `filterGridRows`, so the pivot's own
     // reconciliation invariants (Σ earnings = Σ gross, Σ deductions = Σ total deductions) are
     // computed over the complete row set exactly as before.
-    if (r.kind === 'synthetic' && r.labelKey === 'allowance' && lumpFor(r.runType).allowance) r.itemised = true;
-    if (r.kind === 'synthetic' && r.labelKey === 'otherDeductions' && lumpFor(r.runType).otherDeductions) {
+    if (r.kind === 'synthetic' && r.labelKey === 'allowance' && lumpFor(r).allowance) r.itemised = true;
+    if (r.kind === 'synthetic' && r.labelKey === 'otherDeductions' && lumpFor(r).otherDeductions) {
       r.itemised = true;
     }
   }
@@ -632,6 +689,10 @@ export function pivotHistoryGrid(p: {
     if (ao !== bo) return ao - bo;
     const c = a.code.localeCompare(b.code);
     if (c !== 0) return c;
+    // 3c88d593 — COMPANY BEFORE RUN TYPE, so the two halves of a transferred month sit next to each other
+    // under the item they belong to instead of being separated by a bonus run.
+    const co = a.company.localeCompare(b.company);
+    if (co !== 0) return co;
     return a.runType.localeCompare(b.runType);
   });
 

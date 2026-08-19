@@ -4547,6 +4547,8 @@
           "empty": "没有符合所选筛选条件的已处理薪资结果。",
           "showBreakdown": "显示明细",
           "hideBreakdown": "隐藏明细",
+          "splitBadge": "分拆",
+          "coverageLine": "在本公司任职 {from} 至 {to}",
           "totalEmployerContributions": "雇主缴纳总额",
           "capped": "正在显示最近 {cap} 条结果。请收窄上方筛选条件以查看更早的月份。",
           "itemsHeading": "逐项列出的薪资项目",
@@ -4604,6 +4606,8 @@
           "colCode": "薪资项目代码",
           "colDescription": "薪资项目说明",
           "colCycle": "薪资周期",
+          "colCompany": "公司",
+          "colCoverage": "涵盖期间",
           "colTotal": "合计",
           "section": {
             "wagebase": "工资基数",

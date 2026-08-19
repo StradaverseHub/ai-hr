@@ -14,7 +14,9 @@
  * catches a wrong decomposition; this file catches a wrong fold, with fixtures small enough to read.)
  *
  * Everything else here pins a specific way the pivot could be wrong:
- *   • the row key is (item code, RUN TYPE), because our multi-run months are the reference's "Payment ID";
+ *   • the row key is (item code, RUN TYPE, COMPANY) — the run type because our multi-run months are the
+ *     reference's "Payment ID", and the company since 3c88d593 (r206), because two employers' figures for
+ *     one month summed into a single cell and hid an entity transfer entirely;
  *   • a pay item coded BASIC must not merge with the synthetic BASIC line;
  *   • an unselected month contributes NOTHING, so the row total always equals what is on screen;
  *   • zakat is displayed but excluded from the deduction sum — PCB is already net of it;
@@ -917,3 +919,229 @@ function accountedFixture(): ProcessedPayslipViewRow {
     },
   });
 }
+
+/**
+ * ── 3c88d593 (r206) — ONE MONTH, TWO EMPLOYERS ──────────────────────────────────────────────────
+ *
+ * The defect: the row key held (kind, group, code, run type) and NOT the paying company, so two payslips
+ * for one month issued by two different employers summed into one cell. An employee transferred out of
+ * Fiamma into ISEDECOR BINA on 11 August 2026 had 1,000.00 and 2,100.00 added into a single "August"
+ * 3,100.00 with nothing on screen saying a transfer had happened — and, less obviously, someone who moved
+ * in March had a whole YEAR of two employers' pay mixed in the same rows.
+ *
+ * THE ONE THING THAT MUST NOT CHANGE IS ANY FIGURE. Splitting a key partitions the payslips behind it, so
+ * the reconciliation invariants asserted at the top of this file must survive verbatim across two
+ * companies: 1,000 plus 2,100 is still 3,100, shown on the two lines it was actually paid on. Every case
+ * below is either that property or one of the per-row facts that stopped being answerable for the whole
+ * fold once the rows became per-company (HRDF registration, lump-sum suppression).
+ */
+const FIAMMA = '00000000-0000-0000-0000-0000000000c1'; // the company `slip()` already defaults to
+const ISEDECOR = '00000000-0000-0000-0000-0000000000c2';
+
+/** 1–10 August under the OUTGOING employer — the reporter's own worked example, 3,100 ÷ 31 × 10. */
+const AUG_FIAMMA = () =>
+  slip({
+    payPeriod: '2026-08',
+    companyId: FIAMMA,
+    company: 'Fiamma (Chin Hin Property)',
+    coverageFrom: '2026-08-01',
+    coverageTo: '2026-08-10',
+    basic: '1000.00',
+    allowance: '0.00',
+    overtime: '0.00',
+    bonus: '0.00',
+    gross: '1000.00',
+    statutory: { epfEmployee: 110 },
+    totalDeductions: '110.00',
+    net: '890.00',
+  });
+
+/** 11–31 August under the INCOMING employer — 3,100 ÷ 31 × 21. */
+const AUG_ISEDECOR = () =>
+  slip({
+    payPeriod: '2026-08',
+    companyId: ISEDECOR,
+    company: 'ISEDECOR BINA SDN BHD',
+    coverageFrom: '2026-08-11',
+    coverageTo: '2026-08-31',
+    basic: '2100.00',
+    allowance: '0.00',
+    overtime: '0.00',
+    bonus: '0.00',
+    gross: '2100.00',
+    statutory: { epfEmployee: 231 },
+    totalDeductions: '231.00',
+    net: '1869.00',
+  });
+
+/** Every synthetic row carrying `code`, whichever company paid it. */
+const rowsForCode = (rows: HistoryGridRow[], code: string) =>
+  rows.filter((r) => r.code === code && r.kind === 'synthetic');
+
+describe('3c88d593 — a transferred employee’s month is split by company, not summed', () => {
+  it('THE DEFECT: two employers’ August lands on TWO rows, and 3,100 appears on neither of them', () => {
+    const grid = pivotHistoryGrid({ rows: [AUG_FIAMMA(), AUG_ISEDECOR()], year: 2026 });
+    const basic = rowsForCode(grid.rows, 'BASIC');
+    expect(basic).toHaveLength(2);
+    expect(basic.map((r) => [r.company, r.months[7]])).toEqual([
+      ['Fiamma (Chin Hin Property)', 1000],
+      ['ISEDECOR BINA SDN BHD', 2100],
+    ]);
+    // The consolidation this item was raised about: before r206 there was ONE row reading 3,100.00.
+    expect(basic.some((r) => r.months[7] === 3100)).toBe(false);
+    // Two payslips folded, and the company travelled onto the row rather than being inferred later.
+    expect(grid.payslipCount).toBe(2);
+    expect(new Set(basic.map((r) => r.companyId))).toEqual(new Set([FIAMMA, ISEDECOR]));
+  });
+
+  it('THE INVARIANT SURVIVES: the two lines still add up to what the payslips say', () => {
+    // This is the load-bearing case. Splitting a key PARTITIONS the payslips, so nothing about any sum
+    // may move — if this ever fails, the screen is disagreeing with the payroll results beside it.
+    const grid = pivotHistoryGrid({ rows: [AUG_FIAMMA(), AUG_ISEDECOR()], year: 2026 });
+    expect(sumMonth(grid.rows, 'earning', 7)).toBe(1000 + 2100);
+    expect(sumMonth(grid.rows, 'deduction', 7)).toBe(110 + 231);
+    const annual = (group: string) =>
+      Math.round(
+        grid.rows.filter((r) => r.reconciling && r.group === group).reduce((s, r) => s + r.total, 0) * 100,
+      ) / 100;
+    expect(annual('earning')).toBe(3100);
+    expect(annual('deduction')).toBe(341);
+  });
+
+  it('each line carries the days its own employer covered, from the payslip’s own record', () => {
+    const grid = pivotHistoryGrid({ rows: [AUG_FIAMMA(), AUG_ISEDECOR()], year: 2026 });
+    const [out, inc] = rowsForCode(grid.rows, 'BASIC');
+    expect(out.segments).toEqual([{ from: '2026-08-01', to: '2026-08-10' }]);
+    expect(inc.segments).toEqual([{ from: '2026-08-11', to: '2026-08-31' }]);
+  });
+
+  it('a slip written by r194 — jsonb stamp, no coverage columns — reports the same segment', () => {
+    // The columns arrived in 0446; a slip written between r194 and that migration recorded the same fact
+    // in `statutory.segment`. `payslipSegmentOf` is the ONE place that ordering lives, and this pins that
+    // the pivot goes through it rather than reading the columns itself.
+    const grid = pivotHistoryGrid({
+      rows: [
+        slip({
+          payPeriod: '2026-08',
+          coverageFrom: null,
+          coverageTo: null,
+          statutory: {
+            epfEmployee: 110,
+            segment: { companyId: FIAMMA, from: '2026-08-01', to: '2026-08-10' },
+          },
+          totalDeductions: '110.00',
+        }),
+      ],
+      year: 2026,
+    });
+    expect(rowsForCode(grid.rows, 'BASIC')[0].segments).toEqual([{ from: '2026-08-01', to: '2026-08-10' }]);
+  });
+
+  it('the outgoing employer’s row spans a whole January and a part-August, and says both', () => {
+    // A row is up to twelve months of one employer, and only SOME of them are segmented. Reducing that
+    // to a single window would be a claim no payslip made.
+    const grid = pivotHistoryGrid({
+      rows: [slip({ payPeriod: '2026-01', companyId: FIAMMA, company: 'Fiamma (Chin Hin Property)' }), AUG_FIAMMA()],
+      year: 2026,
+    });
+    const basic = rowsForCode(grid.rows, 'BASIC');
+    expect(basic).toHaveLength(1);
+    expect(basic[0].segments).toEqual([{ from: '2026-08-01', to: '2026-08-10' }]);
+    expect([basic[0].months[0], basic[0].months[7]]).toEqual([3000, 1000]);
+  });
+
+  it('AN EMPLOYEE WHO NEVER MOVED SEES EXACTLY WHAT THEY SAW: one company, no dates, one row per line', () => {
+    // The regression guard for everybody who is not the reporter. Nothing on this grid may grow a second
+    // line or a coverage caption because a column was added.
+    const grid = pivotHistoryGrid({
+      rows: [slip({ payPeriod: '2026-01' }), slip({ payPeriod: '2026-02' }), slip({ payPeriod: '2026-03' })],
+      year: 2026,
+    });
+    expect(grid.rows.every((r) => r.companyId === FIAMMA && r.company === 'Acme Sdn Bhd')).toBe(true);
+    expect(grid.rows.some((r) => r.segments != null)).toBe(false);
+    // …and adding the company to the key created no duplicate: still exactly one row per
+    // (kind, group, code, run type), which is the row set this screen had before r206.
+    const withoutCompany = grid.rows.map((r) => `${r.kind}:${r.group}:${r.code}:${r.runType}`);
+    expect(new Set(withoutCompany).size).toBe(grid.rows.length);
+  });
+
+  it('HRDF registration is answered per EMPLOYER, so a registered new company cannot speak for the old one', () => {
+    // efece4ce one level in. This used to be a single flag for the whole fold — defensible while HRDF was
+    // one row, wrong the moment the rows became per-company: the incoming company being registered would
+    // have deleted the "Not registered" wording from the OUTGOING company's own row.
+    const grid = pivotHistoryGrid({
+      rows: [AUG_FIAMMA(), AUG_ISEDECOR()],
+      year: 2026,
+      hrdfRegisteredCompanyIds: [ISEDECOR],
+    });
+    const hrdf = rowsForCode(grid.rows, 'HRDF');
+    expect(hrdf).toHaveLength(2);
+    expect(hrdf.find((r) => r.companyId === FIAMMA)!.notRegistered).toBe(true);
+    expect(hrdf.find((r) => r.companyId === ISEDECOR)!.notRegistered).toBeUndefined();
+  });
+
+  it('one employer’s fully itemised month cannot delete the other employer’s lump-sum row', () => {
+    // 0253dc7c's suppression was keyed by run type alone. With per-company rows that would let ISEDECOR's
+    // named items account for FIAMMA's allowance and drop a row whose money nothing else explains.
+    const grid = pivotHistoryGrid({
+      rows: [
+        // Fiamma: an allowance with NO stored item detail, so nothing accounts for it.
+        slip({
+          payPeriod: '2026-08',
+          companyId: FIAMMA,
+          company: 'Fiamma (Chin Hin Property)',
+          basic: '1000.00',
+          allowance: '200.00',
+          overtime: '0.00',
+          bonus: '0.00',
+          gross: '1200.00',
+          statutory: { epfEmployee: 110 },
+          totalDeductions: '110.00',
+          net: '1090.00',
+        }),
+        // ISEDECOR: an allowance fully explained by the item behind it.
+        slip({
+          payPeriod: '2026-08',
+          companyId: ISEDECOR,
+          company: 'ISEDECOR BINA SDN BHD',
+          basic: '2100.00',
+          allowance: '300.00',
+          overtime: '0.00',
+          bonus: '0.00',
+          gross: '2400.00',
+          statutory: {
+            epfEmployee: 231,
+            componentLines: [
+              { code: 'MEAL', name: 'Meal', amount: 300, buckets: [{ bucket: 'wage', amount: 300 }] },
+            ],
+          },
+          totalDeductions: '231.00',
+          net: '2169.00',
+        }),
+      ],
+      year: 2026,
+    });
+    const allow = rowsForCode(grid.rows, 'ALLOW');
+    expect(allow.find((r) => r.companyId === FIAMMA)!.itemised).toBeUndefined();
+    expect(allow.find((r) => r.companyId === ISEDECOR)!.itemised).toBe(true);
+    // …and after the filter the unexplained 200 is still on screen while the explained 300 has given way.
+    const shown = filterGridRows(grid.rows, { hideZero: true, hideSystem: false });
+    expect(shown.filter((r) => r.code === 'ALLOW').map((r) => [r.companyId, r.months[7]])).toEqual([
+      [FIAMMA, 200],
+    ]);
+  });
+
+  it('the two halves of a month sort together, company before run type', () => {
+    // Company sorts ahead of run type so a bonus run cannot come between the outgoing and incoming lines
+    // of the same pay item.
+    const grid = pivotHistoryGrid({
+      rows: [AUG_ISEDECOR(), AUG_FIAMMA(), slip({ payPeriod: '2026-08', companyId: FIAMMA, company: 'Fiamma (Chin Hin Property)', runType: 'bonus' })],
+      year: 2026,
+    });
+    expect(rowsForCode(grid.rows, 'BASIC').map((r) => [r.company, r.runType])).toEqual([
+      ['Fiamma (Chin Hin Property)', 'bonus'],
+      ['Fiamma (Chin Hin Property)', 'regular'],
+      ['ISEDECOR BINA SDN BHD', 'regular'],
+    ]);
+  });
+});
