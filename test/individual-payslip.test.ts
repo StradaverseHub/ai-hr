@@ -27,6 +27,9 @@ import { explainPcb, type PcbReliefBreakdown } from '../core/pcb-explain';
 // f35f758a note 8 — the kernel's own fail-closed predicate, exported so the pay item master save can run
 // the same rule the batch picker and the CSV importer already run.
 import { isUnsupportedTaxableComponent } from '../core/pay-components';
+// 6b4ca488 — the derivation behind the Total Deductions line on all three payslip surfaces. Imported so
+// the sign of the VALUE and the absence of a sign in the MARKUP are pinned against each other.
+import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -762,5 +765,59 @@ describe('5c198931 — the employee’s own payslip is the SAME document as the 
     expect(p, 'and so does the employee').not.toBeNull();
     expect(p!.identityNumber).toBeNull();
     expect(p!.bankAccountMasked).toBeNull();
+  });
+});
+
+// ───────────────────────── 6b4ca488 part 1 — the Total Deductions minus sign ─────────────────────────
+
+/**
+ * THE DEFECT WAS A CHARACTER, NOT A NUMBER. Three surfaces printed `−{rm(b.totalDeductions)}`: the admin
+ * Individual Payslip, the Transaction View → History detail panel, and the employee's own ESS slip. The
+ * value they prefix has always been a POSITIVE magnitude, so the sign was a second negation under a
+ * heading that already reads "Total Deductions", and it made the three web surfaces disagree with the
+ * PDF and with every export — none of which have ever carried it.
+ *
+ * WHY BOTH HALVES ARE PINNED HERE. The sign is only wrong BECAUSE the value is positive; a future change
+ * that made `totalDeductions` genuinely signed would make the removal wrong instead. So the contract is
+ * asserted on both sides — the derivation's sign against a real payroll run, and the absence of a literal
+ * prefix in each renderer's source. Either half alone passes while the other rots.
+ */
+describe('6b4ca488 — Total Deductions is a positive magnitude and is printed without a sign', () => {
+  it('a real run derives totalDeductions as a POSITIVE figure (the reason the prefix was wrong)', async () => {
+    const a = adminCtx(base);
+    const { payslipId } = await hireWithPayslip('Minus Sign', 'minus.sign@acme.test', '900101011407');
+    const row = await payslipForReview(a, { companyIds: [base.companyId], payslipId });
+    expect(row, 'the review read must return the run').not.toBeNull();
+
+    const b = deriveHistoryBreakdown(row!);
+    // A 5,000 basic with a Malaysian statutory profile always deducts EPF/SOCSO/EIS, so this is a real
+    // non-zero figure and not a vacuous `>= 0`.
+    expect(b.totalDeductions, 'deductions are stored and derived as a magnitude, never negated').toBeGreaterThan(0);
+    expect(Number(row!.totalDeductions)).toBeGreaterThan(0);
+    // And the arithmetic the screen prints beside it only holds because of that sign: gross − deductions = net.
+    expect(Number(row!.gross) - b.totalDeductions).toBeCloseTo(Number(row!.net), 2);
+  });
+
+  it('no payslip surface glues a minus sign onto that positive figure', () => {
+    // Comments are stripped first: the notes left at each site NAME the character, and the ratchet must
+    // read code, not prose (the same trap test/borang-a.test.ts records).
+    const codeOf = (rel: string) =>
+      read(rel)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+    // U+2212 MINUS SIGN, U+2013 EN DASH, U+2014 EM DASH and ASCII '-', immediately before the money
+    // formatter — the four ways this has any chance of coming back.
+    const SIGNED_PREFIX = /[-−–—]\s*\{\s*rm\(/;
+    for (const rel of [
+      'app/payroll/individual-payslip/page.tsx',
+      'app/payroll/transaction-view/history-table.tsx',
+      'app/me/payslip/[payslipId]/page.tsx',
+    ]) {
+      const src = codeOf(rel);
+      expect(src, `${rel} must still render the Total Deductions line`).toContain('totalDeductions');
+      expect(src, `${rel} must print deductions unsigned — the value is already positive`).not.toMatch(
+        SIGNED_PREFIX,
+      );
+    }
   });
 });

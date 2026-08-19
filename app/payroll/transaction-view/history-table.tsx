@@ -305,9 +305,13 @@ export function HistoryTable({
                           {Number(st.zakat) > 0 && (
                             <Row label={tSlip('zakat')} value={`${rm(st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
                           )}
+                          {/* 6b4ca488 — no minus prefix; see the note on the same line in
+                              app/payroll/individual-payslip/page.tsx. `b.totalDeductions` is a positive
+                              magnitude, and this detail panel is the Transaction View half of the same
+                              defect the ticket named. */}
                           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                             <span>{tSlip('totalDeductions')}</span>
-                            <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
+                            <span className="tabular-nums">{rm(b.totalDeductions)}</span>
                           </div>
                         </section>
 

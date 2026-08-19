@@ -457,7 +457,18 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
   // verdict, rather than off source text — because widening the panel's source or dropping the coercion
   // still renders, still 200s, and still passes every grep.
 
-  const PANEL_TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
+  // 6b4ca488 — 'statutory' joins these: it mounts the SAME shared shell, carries the panel's selection
+  // through Apply the same way, and must coerce an out-of-scope ?employmentId= to nothing exactly as the
+  // other four do. It is deliberately NOT in ALL_EMPLOYEES_TABS below — see that constant.
+  const PANEL_TABS = ['fixed', 'individual', 'history', 'statutory', 'outstanding'] as const;
+  /**
+   * The subset for which "All employees" is a real destination. 6b4ca488 SPLIT this out of PANEL_TABS
+   * rather than widening the allowAll case, because the two lists now answer different questions and
+   * merging them would have quietly armed the row on a screen that cannot use it: a Statutory
+   * Explanation is ONE payslip's working, so clearing the selection there is not a broader view, it is
+   * no view at all. The four below are cross-employee lists an employee merely narrows.
+   */
+  const ALL_EMPLOYEES_TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
 
   it('bd14b7e2 — the four inquiry tabs pick an employee with the shared PANEL, and the dropdown is gone', async () => {
     for (const tab of PANEL_TABS) {
@@ -519,7 +530,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     // The row clears the selection. On the four inquiry tabs that is a real destination — it is the view
     // each of them opens on today. On every screen that shows ONE person's record it is a row leading
     // nowhere, so the prop must default off and no existing consumer may quietly acquire it.
-    for (const tab of PANEL_TABS) {
+    for (const tab of ALL_EMPLOYEES_TABS) {
       const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
       expect(
         findByType(tree, EmployeeScopePanel)[0].props.allowAll,
@@ -529,6 +540,10 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
 
     const requiresAPerson: [string, unknown][] = [
       ['Transaction Detail', await TransactionViewPage({ searchParams: Promise.resolve({ tab: 'grid' }) })],
+      // 6b4ca488 — the Statutory Explanation tab. It shares the four tabs' shell, so unlike Transaction
+      // Detail it cannot opt out merely by having its own wrapper: the flag is a condition on that shell
+      // and this is the assertion that keeps it one.
+      ['Statutory Explanation', await TransactionViewPage({ searchParams: Promise.resolve({ tab: 'statutory' }) })],
       ['Zakat', await ZakatTransactionPage({ searchParams: Promise.resolve({}) })],
       ['Individual Payslip', await IndividualPayslipPage({ searchParams: Promise.resolve({}) })],
       ['Loans', await LoansPage({ searchParams: Promise.resolve({}) })],
@@ -577,7 +592,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
   // all stayed green: collapsing the five keys back into one, or re-forcing the panel open in the state
   // these tabs actually live in. Assert them off the shell, per tab.
 
-  const ALL_TABS = ['fixed', 'individual', 'history', 'grid', 'outstanding'] as const;
+  const ALL_TABS = ['fixed', 'individual', 'history', 'statutory', 'grid', 'outstanding'] as const;
 
   /** The single shell each tab mounts — the thing that owns the cookie and the initial state. */
   function shell(tree: unknown, tab: string) {
@@ -587,7 +602,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
   }
   const render = (params: Record<string, string>) => TransactionViewPage({ searchParams: Promise.resolve(params) });
 
-  it('bd14b7e2 — five tabs, five DIFFERENT cookie keys, and Transaction Detail keeps the one it had', async () => {
+  it('bd14b7e2 — every tab has its OWN cookie key, and Transaction Detail keeps the one it had', async () => {
     // The whole reason TAB_PANEL_COOKIES is a five-entry map rather than one constant: History is thirteen
     // columns and is read folded away, Fixed is read with the panel open, so two tabs sharing a key means
     // the first thing every switch does is undo the last one. A copy-paste that gave two tabs the same
@@ -607,6 +622,9 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       fixed: 'txnview_fixed_panel',
       individual: 'txnview_individual_panel',
       history: 'txnview_history_panel',
+      // 6b4ca488 — the sixth tab, named by the SAME `txnview_<tab>_panel` convention, which is what lets
+      // the collapse cases below drive it without a special case.
+      statutory: 'txnview_statutory_panel',
       grid: 'txnview_grid_panel',
       outstanding: 'txnview_outstanding_panel',
     });

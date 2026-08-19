@@ -24,6 +24,11 @@ import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 import { HistoryGrid } from './history-grid';
 import { cleanMonths, pivotHistoryGrid, type PayItemSubjectMap } from './history-pivot';
+// 6b4ca488 — the Statutory Explanation tab. The DISPLAY is the same component /payroll/statutory-detail
+// renders for the Individual Payslip's link, and the derivation takes no SessionContext, so this tab can
+// neither grow a second display of one calculation nor recompute from today's configuration.
+import { StatutoryDetailView } from '../statutory-detail/statutory-detail-view';
+import { explainStatutory } from '@/core/statutory-explain';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -55,7 +60,14 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 // nav entry, no packs/payroll/index.ts change and no lib/permissions.ts column, and it inherits this
 // route's scopedAdmin() fence — whereas a new route would need all three and would let the two views of
 // one dataset drift apart.
-const TABS = ['fixed', 'individual', 'history', 'grid', 'outstanding'] as const;
+// 6b4ca488 — 'statutory' is a 6th SUB-TAB, for the same reason 'outstanding' and 'grid' are a 4th and a
+// 5th: it is another VIEW of the payslips History already lists, not a new destination. It shows the
+// working behind EPF, SOCSO, EIS, SKBBK, HRDF and PCB for ONE payslip, rendered by the SAME
+// `StatutoryDetailView` component that /payroll/statutory-detail renders for the Individual Payslip's
+// link — one display, two doors, the shape 45df860a settled for the PCB working. A sub-tab needs no nav
+// entry and no lib/permissions.ts column and inherits this route's scopedAdmin() fence; the standalone
+// route DOES carry a column, registered on this same screen key.
+const TABS = ['fixed', 'individual', 'history', 'statutory', 'grid', 'outstanding'] as const;
 
 /**
  * 862ed0ad — the most recent N processed payslips the History tab will render.
@@ -93,6 +105,7 @@ const TAB_PANEL_COOKIES: Record<Tab, string> = {
   fixed: 'txnview_fixed_panel',
   individual: 'txnview_individual_panel',
   history: 'txnview_history_panel',
+  statutory: 'txnview_statutory_panel',
   grid: GRID_PANEL_COOKIE,
   outstanding: 'txnview_outstanding_panel',
 };
@@ -130,6 +143,9 @@ export default async function TransactionViewPage({
      *  what the tick boxes mean. */
     months?: string | string[];
     cycle?: string;
+    /** 6b4ca488 (Statutory Explanation tab only) — which of the runs matching the four filters to
+     *  explain. Absent ⇒ the most recent match, the same default Individual Payslip takes. */
+    payslipId?: string;
     // Individual-tab History filters (feedback 7b2d4228)
     kind?: string;
     departmentId?: string;
@@ -143,6 +159,10 @@ export default async function TransactionViewPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const tList = await getTranslations('payroll.list');
+  // 6b4ca488 — the Statutory Explanation tab's own namespace, SHARED with /payroll/statutory-detail and
+  // its export route. One catalogue block for one display, so the tab and the standalone route cannot
+  // caption the same figure differently.
+  const tStat = await getTranslations('payroll.statutoryDetail');
   const sp = await searchParams;
 
   // 862ed0ad — History is the tab that OPENS. The reporter's point is that Transaction View is where you
@@ -205,7 +225,7 @@ export default async function TransactionViewPage({
   const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
 
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
-  const [fixedRows, individualRows, historyRows, gridPayslips, outstandingRows] = await Promise.all([
+  const [fixedRows, individualRows, historyRows, statutoryMatches, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
       ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
       : Promise.resolve([]),
@@ -227,6 +247,13 @@ export default async function TransactionViewPage({
     // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
     tab === 'history'
       ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: HISTORY_ROW_CAP + 1 })
+      : Promise.resolve([]),
+    // 6b4ca488 — the Statutory Explanation tab's source. ONE employee's runs inside the chosen window,
+    // capped like History's read: the tab explains a SINGLE payslip, and everything past the first
+    // handful only ever feeds the "which of these runs?" chips. Reads nothing until an employee is
+    // chosen, which is what makes the tab's cost independent of the payroll history's size.
+    tab === 'statutory' && employmentId
+      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: 25 })
       : Promise.resolve([]),
     // 080de5cf — the Grid pivot's source. NO row cap and none needed: one employee × one calendar year is
     // twelve months of runs. It reads nothing until an employee is chosen, which is also what makes the
@@ -251,6 +278,30 @@ export default async function TransactionViewPage({
           .filter((r) => r.hrdfStatus !== 'not_registered')
           .map((r) => r.companyId)
       : [];
+
+  // ── 6b4ca488: WHICH payslip the Statutory Explanation tab explains, and its working ──
+  //
+  // The chosen run, or the most recent match — the SAME rule Individual Payslip applies, so arriving from
+  // either door lands on the same slip. A tampered `?payslipId` simply does not match: `statutoryMatches`
+  // is already fenced on the caller's companies and on the chosen employee, so the id is checked against
+  // that set rather than being looked up separately (a second read is a second fence to get wrong).
+  const statutoryRow = sp.payslipId
+    ? (statutoryMatches.find((r) => r.id === sp.payslipId) ?? statutoryMatches[0])
+    : statutoryMatches[0];
+  // NO SessionContext, by construction. `explainStatutory` reads this payslip's OWN `statutory` blob and
+  // nothing else — it cannot reach today's EPF table, today's PERKESO schedule or the employee's current
+  // statutory flags, which is what stops this tab from ever disagreeing with the payslip it explains.
+  const statutoryExplanation = statutoryRow ? explainStatutory(statutoryRow.statutory, statutoryRow.runType) : null;
+  // The already scope-guarded filters, for the run chips. Rebuilt from the GUARDED values rather than
+  // from `sp`, so a tampered param cannot ride back out on a link the screen rendered.
+  const statutoryLinkParams: Record<string, string> = {
+    tab: 'statutory',
+    ...(companyId ? { companyId } : {}),
+    ...(employmentId ? { employmentId } : {}),
+    ...(year != null ? { year: String(year) } : {}),
+    ...(month != null ? { month: String(month) } : {}),
+    ...(cycle ? { cycle } : {}),
+  };
 
   // 862ed0ad — the CAP + 1 row, if it came back, is the proof there is more; it is dropped from the render
   // and reported instead.
@@ -434,7 +485,12 @@ export default async function TransactionViewPage({
           }
         : tab === 'history'
           ? { tab: 'history', ...periodPreserve, ...(cycle ? { cycle } : {}) }
-          : // outstanding. `grid` also lands here and never reads it — the Transaction Detail tab has its
+          : tab === 'statutory'
+            ? // 6b4ca488 — the same period filters History carries, MINUS `payslipId`: that names a run
+              // belonging to the person being navigated away from, and carrying it would ask the next
+              // employee's list for someone else's payslip (the rule Individual Payslip's panel follows).
+              { tab: 'statutory', ...periodPreserve, ...(cycle ? { cycle } : {}) }
+            : // outstanding. `grid` also lands here and never reads it — the Transaction Detail tab has its
             // own `gridPanelPreserve` above, because its `months` ride as one comma-joined value.
             { tab: 'outstanding', ...periodPreserve };
 
@@ -586,11 +642,17 @@ export default async function TransactionViewPage({
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
                   preserve={tabPanelPreserve}
-                  // The ONLY place this prop is switched on. These four tabs are cross-employee lists that
+                  // The ONLY place this prop is switched on. Those four tabs are cross-employee lists that
                   // an employee merely NARROWS, so "All employees" is a real destination — it is the view
-                  // each of them opens on today, and dropping it would take that view away. The six
-                  // screens that require a person keep the default (off).
-                  allowAll
+                  // each of them opens on today, and dropping it would take that view away. The screens
+                  // that require a person keep the default (off).
+                  //
+                  // 6b4ca488 — AND THE STATUTORY TAB IS ONE OF THOSE, which is why this is now a
+                  // condition rather than a bare flag. An explanation is ONE payslip's working; "all
+                  // employees" is not a narrower view of it, it is no view at all. Transaction Detail
+                  // reached the same conclusion by keeping its own wrapper; this tab shares the shell and
+                  // so has to say it here.
+                  allowAll={tab !== 'statutory'}
                 />
               </div>
             </Card>
@@ -681,7 +743,10 @@ export default async function TransactionViewPage({
                   </Field>
                 </>
               )}
-              {tab === 'history' && (
+              {/* 6b4ca488 — the cycle filter serves the Statutory tab too: a bonus run and the regular
+                  run that month are two different workings, and without this the tab could not be
+                  pointed at either one. */}
+              {(tab === 'history' || tab === 'statutory') && (
                 <Field label={t('view.filters.cycle')}>
                   <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
                     <option value="">{t('view.filters.all')}</option>
@@ -857,7 +922,95 @@ export default async function TransactionViewPage({
             </Card>
           )}
 
-          {/* ── 4. Outstanding transactions (feedback d0d2c9d1) ──
+          {/* ── 4. STATUTORY EXPLANATION (feedback 6b4ca488) ──
+              The working behind EPF, SOCSO, EIS, SKBBK, HRDF and PCB for ONE payslip: the wage each
+              agency was charged on, the kind of rule that produced the amount, the working itself, and
+              the employee and employer figures.
+
+              IT RENDERS THE SAME COMPONENT /payroll/statutory-detail RENDERS, and that is the point.
+              The Individual Payslip links to that route for the slip on screen; this tab lets a reader
+              arrive from the other end, by company / employee / year / month / cycle. Two doors, one
+              display — the shape 45df860a settled for the PCB working, and the reason it gave: two
+              displays of one calculation are free to drift.
+
+              NOTHING IS RECOMPUTED. `explainStatutory` takes the payslip's own `statutory` blob and no
+              SessionContext at all, so it cannot consult today's EPF table or today's PERKESO schedule
+              even by accident. A payslip that predates the r187 wage-base stamp is FLAGGED as "working
+              not recorded" by the component rather than being filled in from gross. */}
+          {tab === 'statutory' && (
+            <div className="space-y-4">
+              {!selectedEmployee ? (
+                // An explanation is one person's, so "All employees" is not a view here — it is a prompt.
+                // Said in words rather than shown as an empty page, exactly as the Grid tab does.
+                <Card className="p-4">
+                  <p className="py-8 text-center text-sm text-muted-foreground">{tStat('noEmployee')}</p>
+                </Card>
+              ) : !statutoryRow || !statutoryExplanation ? (
+                <Card className="p-4">
+                  <p className="py-8 text-center text-sm text-muted-foreground">{tStat('noPayslip')}</p>
+                </Card>
+              ) : (
+                <>
+                  {/* More than one run matches the filters (a bonus run beside the regular one, a
+                      re-issue, or the two halves of a mid-month entity transfer): offer them rather than
+                      silently explaining the newest. The SAME disambiguation Individual Payslip carries,
+                      and gated the same way — it is not a history list. */}
+                  {statutoryMatches.length > 1 && (
+                    <Card className="p-4">
+                      <SectionHeader
+                        title={tStat('otherRuns')}
+                        count={statutoryMatches.length}
+                        subtitle={tStat('otherRunsHint')}
+                      />
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {statutoryMatches.map((m) => (
+                          <Link
+                            key={m.id}
+                            href={`/payroll/transaction-view?${new URLSearchParams({
+                              ...statutoryLinkParams,
+                              payslipId: m.id,
+                            }).toString()}`}
+                            className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                              m.id === statutoryRow.id
+                                ? 'border-primary font-medium text-primary'
+                                : 'border-border hover:bg-muted'
+                            }`}
+                          >
+                            {m.payPeriod} · {t(`individual.cycle.${m.runType}`)}
+                            {m.runSeq > 1 ? ` #${m.runSeq}` : ''}
+                          </Link>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                  <div className="flex justify-end">
+                    <a
+                      href={`/payroll/statutory-detail/export?payslipId=${encodeURIComponent(statutoryRow.id)}`}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+                    >
+                      {tStat('exportExcel')}
+                    </a>
+                  </div>
+                  <StatutoryDetailView
+                    ctx={{
+                      payslipId: statutoryRow.id,
+                      employeeCode: statutoryRow.employeeCode,
+                      employeeName: statutoryRow.employeeName,
+                      company: statutoryRow.company,
+                      periodLabel: statutoryRow.payPeriod,
+                      payPeriod: statutoryRow.payPeriod,
+                      runType: statutoryRow.runType,
+                      runSeq: statutoryRow.runSeq,
+                      currency: statutoryRow.currency ?? null,
+                    }}
+                    explanation={statutoryExplanation}
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── 5. Outstanding transactions (feedback d0d2c9d1) ──
               Money entered against an employee and a month that has never reached a payslip. The rows were
               always listable on the Individual tab (?txnStatus=unattached); what was missing — and what let
               RM23,170 accumulate unnoticed — is the per-employee/per-month grouping and the grand total. */}
@@ -871,7 +1024,7 @@ export default async function TransactionViewPage({
         </CollapsibleEmployeePanel>
       )}
 
-      {/* ── 5. TRANSACTION DETAIL (feedback 080de5cf; renamed by 98e69987) ──
+      {/* ── 6. TRANSACTION DETAIL (feedback 080de5cf; renamed by 98e69987) ──
           The same processed payslips as the tab beside it, turned on their side: pay item down the left,
           month across the top, annual total on the right — the shape the reporter reconciles in. The
           payslip-by-payslip view is NOT replaced; it answers a different question.

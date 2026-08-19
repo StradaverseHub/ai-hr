@@ -1025,6 +1025,38 @@ export function listProcessedPayslipsAcross(
   });
 }
 
+/**
+ * 5a29686c — the distinct pay periods ONE employee actually has a payslip for, newest first ('YYYY-MM').
+ *
+ * WHY THIS EXISTS RATHER THAN A REUSE OF THE READ ABOVE. Individual Payslip's Year dropdown offered a
+ * fixed eleven-year window (`nowYear + 1 - i`), so a reader could pick 2031 — or 2019, before the
+ * employee was hired — and get an empty screen with nothing saying why. The options have to come from
+ * the employee's own runs. `listProcessedPayslipsAcross` would answer that, but only by dragging every
+ * payslip that person has ever had, each carrying its whole `statutory` jsonb, to read one 7-character
+ * column off each. This returns the column and nothing else, DISTINCT in the database, so the cost does
+ * not grow with tenure.
+ *
+ * Same fence as every read in this module: `companyIds` from `scopedAdmin()`, empty ⇒ no rows (fails
+ * closed, never "all"). Scoped the same way the payslip read beside it is, so the periods offered and
+ * the payslips findable can never disagree — narrowing to one company narrows the years to the ones
+ * that company paid this person in.
+ */
+export function listPayslipPeriodsFor(
+  ctx: SessionContext,
+  p: { companyIds: string[]; employmentId: string },
+): Promise<string[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .selectDistinct({ payPeriod: payrollBatch.payPeriod })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .where(and(inArray(payrollBatch.companyId, p.companyIds), eq(payslip.employmentId, p.employmentId)))
+      .orderBy(desc(payrollBatch.payPeriod));
+    return rows.map((r) => r.payPeriod);
+  });
+}
+
 // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
 
 export type PayrollRegisterRow = {

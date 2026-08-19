@@ -543,6 +543,18 @@ export const SCREENS: readonly ScreenEntry[] = [
       // test/function-access.test.ts checks reverse completeness: a guarded page with no matrix column
       // fails the suite rather than silently becoming a screen nobody can grant or revoke.
       '/payroll/pcb-detail',
+      // 6b4ca488: the Statutory Explanation — the wage base, rule, working and employee/employer amounts
+      // behind EPF, SOCSO, EIS, SKBBK, HRDF and PCB for one payslip. Registered on the SAME scopedAdmin
+      // key as its two doors (Individual Payslip links to it; Transaction View mounts the same display
+      // under ?tab=statutory) — it shows one employee's statutory working, read through the same
+      // `payslipForReview` fence, so it is admin-scoped exactly like them and grants/revokes with them.
+      // Registered here because test/function-access.test.ts checks reverse completeness: a guarded page
+      // with no matrix column fails the suite rather than silently becoming a screen nobody can grant or
+      // revoke. Its `export` sibling is a route handler, not a guarded page, so it is not listed (the
+      // check walks page.tsx files). The TAB needs no entry of its own — it is a sub-tab of
+      // /payroll/transaction-view below and inherits that route's guard, the same way `grid` and
+      // `outstanding` do.
+      '/payroll/statutory-detail',
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',

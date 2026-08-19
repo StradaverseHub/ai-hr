@@ -44,7 +44,17 @@ describe('862ed0ad — History is the tab that opens', () => {
     // 080de5cf added 'grid' (the spreadsheet view of the same History data) as a fifth sub-tab. This
     // assertion is exact on purpose: a tab quietly REMOVED breaks saved links, which is the failure it
     // guards, so it is updated deliberately when one is added rather than loosened to a subset match.
-    expect(PAGE).toMatch(/const TABS = \['fixed', 'individual', 'history', 'grid', 'outstanding'\] as const;/);
+    //
+    // 6b4ca488 UPDATES IT — it does not relax it — for a SIXTH sub-tab, 'statutory': the working behind
+    // EPF, SOCSO, EIS, SKBBK, HRDF and PCB for one payslip, rendered by the same component
+    // /payroll/statutory-detail renders. Inserted after 'history' because that is where it sits in the
+    // strip; the five tokens that were here are all still present and in their original order, which is
+    // the property that keeps every saved ?tab= link resolving.
+    expect(PAGE).toMatch(
+      /const TABS = \['fixed', 'individual', 'history', 'statutory', 'grid', 'outstanding'\] as const;/,
+    );
+    // …and the default is UNCHANGED by the addition: History still opens, which is 862ed0ad's point.
+    expect(PAGE).toMatch(/: 'history';/);
   });
 });
 
