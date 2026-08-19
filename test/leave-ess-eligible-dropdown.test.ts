@@ -17,13 +17,18 @@
  *      missing projection would silently re-show Emergency Leave's decomposition controls.
  *   3. `eligibleLeaveTypeIdsFor` — the on-behalf-of map — answers with the SAME predicate, per employment.
  *   4. The dropdown is defence in depth ONLY: `requestLeave` still throws for a posted ineligible type.
+ *   5. (rev 2) THE COMPOSITION the page performs — union the map, then narrow by the selected subject —
+ *      lands on the SUBJECT's own set. Rev 1 handed the form the viewer's list, which the client filter then
+ *      intersected with the subject's, so a male manager could not file Maternity for a female report.
+ *   6. (rev 2) The menu's as-of is TODAY where `requestLeave`'s is the START DATE. That is a decision, not a
+ *      slip, and it is pinned in the direction that matters: enforcement is not what skews.
  */
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { LeaveIneligibleError, requestLeave } from '../core/leave';
+import { LeaveIneligibleError, requestLeave, todayInKualaLumpur } from '../core/leave';
 import { eligibleLeaveTypeIdsFor, listEligibleLeaveTypesFor } from '../core/read';
 import type { SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -31,6 +36,13 @@ import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedB
 let b: Base;
 
 const uniq = (prefix: string) => `${prefix}_${randomUUID().slice(0, 8).toUpperCase().replace(/-/g, '')}`;
+
+/** Dates relative to the run day, so the as-of cases below hold whenever the suite runs. */
+const plusDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 
 async function hire(opts: { gender?: string | null; marital?: string | null; hiredOn?: string } = {}) {
   const e = await hireEmployee(adminCtx(b), {
@@ -125,6 +137,36 @@ describe('ad965821 · the probation condition finally reaches the dropdown', () 
     expect(await idsFor(confirmed.employmentId)).not.toContain(t);
   });
 
+  it('THE MENU ANSWERS AS AT TODAY, requestLeave as at the START DATE — deliberately, and documented', async () => {
+    // The two as-ofs differ and cannot be made to agree: a dropdown is drawn before the employee has picked
+    // a date. Pinned so the skew is a decision with a canary rather than an accident — and pinned in the
+    // direction that matters, which is that ENFORCEMENT is not the thing skewed. A probationer whose
+    // confirmation falls between today and their intended start does not see the type in the menu, and the
+    // submit does NOT refuse it on eligibility grounds.
+    const t = await leaveType(uniq('CONFONLY'), { probationEligibility: 'confirmed_only' });
+    const emp = await hire();
+    const today = todayInKualaLumpur();
+    await setConfirmation(emp.employmentId, plusDays(today, 30));
+
+    expect(await idsFor(emp.employmentId)).not.toContain(t);
+    // Captured rather than awaited bare, so the assertion can be about WHICH refusal did not happen. The
+    // load-bearing claim is the first line: the eligibility gate does not refuse this at the start date.
+    // The second is the stronger fact this fixture actually produces (calendar-counted, negative balance
+    // allowed, no advance-notice or ceiling rule) — nothing else refuses it either.
+    const start = plusDays(today, 60);
+    const refusal = await requestLeave(adminCtx(b), {
+      employmentId: emp.employmentId,
+      leaveTypeId: t,
+      startDate: start,
+      endDate: start,
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(refusal).not.toBeInstanceOf(LeaveIneligibleError);
+    expect(refusal).toBeNull();
+  });
+
   it('the seeded open type is unaffected — a probation rule on ONE type narrows only that type', async () => {
     await leaveType(uniq('CONFONLY'), { probationEligibility: 'confirmed_only' });
     const probationer = await hire();
@@ -183,6 +225,44 @@ describe('ad965821 · eligibleLeaveTypeIdsFor — the on-behalf-of map', () => {
     for (const id of [manager.employmentId, reportF.employmentId, reportM.employmentId]) {
       expect(map[id]).toContain(b.annualLeaveTypeId);
     }
+  });
+
+  it('what a manager is OFFERED for a report is the REPORT’s own set, never the intersection', async () => {
+    // THE COMPOSITION, not either half of it (AGENTS rule 17). app/leave/page.tsx unions every selectable
+    // subject's set into the form's `types`, and components/leave-duration-fields.tsx intersects that array
+    // with the selected subject's entry. Rev 1 handed down the VIEWER's set instead, so the offer became
+    // eligible(manager) ∩ eligible(report): a male manager could not file Maternity for a female report,
+    // which main allowed outright (it handed the manager the whole catalogue). Both halves passed their own
+    // unit tests throughout, which is why this asserts the two composed.
+    const mat = await leaveType(uniq('MAT'), { eligibility: { gender: ['female'] } });
+    const pat = await leaveType(uniq('PAT'), {
+      eligibility: { gender: ['male'], maritalStatus: ['married'] },
+    });
+    const manager = await hire({ gender: 'male', marital: 'married' });
+    const report = await hire({ gender: 'female', marital: 'single' });
+
+    const map = await eligibleLeaveTypeIdsFor(adminCtx(b), [manager.employmentId, report.employmentId]);
+    // page.tsx `offerableTypeIds` → the array the dialog is handed.
+    const offered = new Set(Object.values(map).flat());
+    // leave-duration-fields.tsx `visibleTypes` → what the <select> actually renders for a chosen subject.
+    const shownFor = (employmentId: string) => {
+      const own = new Set(map[employmentId]);
+      return [...offered].filter((id) => own.has(id)).sort();
+    };
+
+    // Maternity is on offer at all — the manager cannot take it, and that is not the question being asked.
+    expect(offered.has(mat)).toBe(true);
+    expect(shownFor(report.employmentId)).toContain(mat);
+    expect(shownFor(report.employmentId)).not.toContain(pat);
+    expect(shownFor(manager.employmentId)).toContain(pat);
+    expect(shownFor(manager.employmentId)).not.toContain(mat);
+    // …and each is EXACTLY that person's own list: nothing added by the union, nothing lost to it.
+    expect(shownFor(report.employmentId)).toEqual((await idsFor(report.employmentId)).sort());
+    expect(shownFor(manager.employmentId)).toEqual((await idsFor(manager.employmentId)).sort());
+    // The regression stated as the thing that must not come back.
+    const intersection = map[manager.employmentId].filter((id) => map[report.employmentId].includes(id));
+    expect(intersection).not.toContain(mat);
+    expect(intersection).not.toContain(pat);
   });
 
   it('agrees with listEligibleLeaveTypesFor for the same employment — ONE predicate, two callers', async () => {

@@ -49,7 +49,8 @@ import {
   workingDatesForSpans,
   type LeaveEligibility,
   // ad965821 — the probation rule lives in its OWN column, not the eligibility JSONB, so the apply-menu
-  // gate has to merge it in exactly as requestLeave/editLeave do (core/leave.ts:2467 and :5356).
+  // gate merges it in the same way requestLeave/editLeave do (core/leave.ts:2467 and :5356). The MERGE is
+  // identical; the AS-OF is not — see mayAppearInApplyMenu.
   type ProbationEligibility,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
@@ -867,6 +868,17 @@ export function listLeaveTypes(
  * rather than the eligibility JSONB, so it is merged in here the way both enforcement chokepoints merge
  * it. That closes a real gap: the read used to project `eligibility` alone, so a probation-gated type
  * sat in the dropdown right up until the submit refused it.
+ *
+ * `today` IS THE AS-OF, AND IT IS NOT THE ONE requestLeave USES. `assertEligible` is called with the
+ * request's START DATE (core/leave.ts:2492); a menu has no start date to be called with — the employee has
+ * not picked one yet, and the dropdown is drawn before the date inputs are touched. So every time-dependent
+ * rule (probation, minServiceMonths) is answered as at today. The skew is one-directional and always
+ * conservative: a type whose gate OPENS between today and the intended start is absent from the menu until
+ * it opens, and one whose gate CLOSES in that window is offered and then refused on submit. Nothing
+ * ineligible can be booked either way — `assertEligible` at the real date remains the authority. This is
+ * pre-existing behaviour for minServiceMonths (the read has always gated on it at today); probation now
+ * shares it. Re-deriving the menu against a start date the employee is still editing would mean a round
+ * trip per keystroke and a list that changes under the cursor, which is a different item.
  */
 type ApplyMenuType = {
   code: string | null;
@@ -920,6 +932,9 @@ const applyMenuEmpColumns = {
  * authority. Strict equality means an employee whose gated attribute is undisclosed/NULL is excluded —
  * the lawful conservative default (don't grant a restricted entitlement to someone whose attribute is
  * unknown). Mirrors the leaveBalances no-activity tail (read.ts) and the requestLeave gate (leave.ts).
+ *
+ * Answered AS AT TODAY, where `requestLeave` answers as at the leave's start date — see
+ * `mayAppearInApplyMenu` above for why a menu has no other date to use and why the difference is safe.
  */
 export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string) {
   return withTenant(ctx, async (tx) => {
@@ -1006,9 +1021,20 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
  *
  * TWO QUERIES, NEVER N+1: one for the catalogue, one `inArray` for every given employment's attribute row,
  * then `mayAppearInApplyMenu` per (type, employment) pair in memory — the SAME predicate the single-employee
- * read uses, so the manager's list and the employee's own list can never disagree. An employment the caller
- * may not see (RLS trims the attribute select) comes back with an EMPTY list rather than the whole catalogue:
- * offering nothing is the conservative direction, and requestLeave refuses the submission either way.
+ * read uses, so for ONE employment this map and `listEligibleLeaveTypesFor` answer identically (pinned in
+ * test/leave-ess-eligible-dropdown.test.ts).
+ *
+ * WHAT THAT SENTENCE DOES NOT SAY, because rev 1 read it as if it did: it is a statement about one
+ * employment, not about the manager and the report being alike. The two sets genuinely differ — that is the
+ * point of the map — so a caller that hands a form the MANAGER's list and then filters it by this map offers
+ * eligible(manager) ∩ eligible(report), which is nobody's answer. The form must be given a superset of every
+ * subject it can name (app/leave/page.tsx builds the union) and let this map do the narrowing.
+ *
+ * AS-OF IS TODAY, NOT THE LEAVE DATE — same caveat as `listEligibleLeaveTypesFor`; see its docblock.
+ *
+ * An employment the caller may not see (RLS trims the attribute select) comes back with an EMPTY list rather
+ * than the whole catalogue: offering nothing is the conservative direction, and requestLeave refuses the
+ * submission either way.
  */
 export function eligibleLeaveTypeIdsFor(
   ctx: SessionContext,

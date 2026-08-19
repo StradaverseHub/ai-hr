@@ -236,41 +236,8 @@ export default async function LeavePage({
   const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;
   const active = employees.filter((e) => !e.terminatedOn);
 
-  // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
-  // modal launched from a "+" primary button in the PageHeader. These are the exact props the form used to
-  // compute inline — mapped here in the RSC (t() runs server-side) and handed to the client dialog.
-  //
-  // ad965821 — MAPPED OFF THE ELIGIBLE LIST, not the catalogue. A male employee has no Maternity row here at
-  // all; an unmarried one has no Paternity row. Nothing on the screen indicates a row was removed, which is
-  // the reporter's explicit ask: a hint that a leave type exists is the thing they said must not happen.
-  const requestLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({
-    id: lt.id,
-    // 5570c6a2 — AN OPTION IS THE LEAVE TYPE'S NAME AND NOTHING ELSE.
-    //
-    // This used to append "· document required" (leave.documentRequiredBadge) for a type carrying
-    // requiresDocument. Sitting inside the option it read as part of the type's NAME ("Caregiver Leave -
-    // document required"), it made the list harder to scan, and it put an internal HR setting in front of
-    // the employee. One line covers BOTH dropdowns: this array is handed to RequestLeaveDialog and to
-    // ReplacementLeaveRequestDialog, and each renders `label` verbatim.
-    //
-    // NOTHING ABOUT ENFORCEMENT MOVES. core/leave.ts still refuses a submission whose required document is
-    // missing, app/me/actions.ts still raises that sentence (leave.documentRequired / documentRequiredAfter —
-    // NOT this key, they are different strings), the general "required for some leave types" hint under the
-    // attach-a-file box still stands, and HR still sets and sees the requirement on the admin leave-type
-    // screen. leave.documentRequiredBadge stays in all six catalogs: nothing checks for unused keys, parity
-    // is what is checked, and deleting one string from six files is churn that buys nothing.
-    label: lt.name,
-    durations: lt.durations ?? null,
-    code: lt.code,
-    // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
-    applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
-    // Balance Deduction Source (cdf9ca48): lets the form drop Emergency Leave's decomposition-specific
-    // controls once EL has been pointed at another type's balance — see LeaveTypeOption.borrowsBalance.
-    borrowsBalance: lt.balanceSourceTypeId != null,
-  }));
-  // ad965821 — membership test for the Edit box's union below. Built once here rather than per row.
+  // ad965821 — membership test for the Edit box's union below, and the self-service half of the offer set.
   const eligibleTypeIds = new Set(eligibleLeaveTypes.map((lt) => lt.id));
-  const requestLeaveEmployeeOptions = active.map((e) => ({ id: e.employmentId, name: e.name }));
   // Employee selector visibility (item 69088c13): only an on-behalf-of applicant needs to pick WHO the leave
   // is for. A plain self-service employee applies for themselves, so the selector is hidden and the submit
   // binds to their own employment server-side.
@@ -287,8 +254,79 @@ export default async function LeavePage({
   // populates that <select>, and an option with no entry in the map would render an empty type list.
   // ONE extra query for the whole set — see eligibleLeaveTypeIdsFor on why this is not an N+1.
   const eligibleTypeIdsByEmployment = canApplyOnBehalf
-    ? await eligibleLeaveTypeIdsFor(session, [me.employmentId, ...requestLeaveEmployeeOptions.map((e) => e.id)])
+    ? await eligibleLeaveTypeIdsFor(session, [me.employmentId, ...active.map((e) => e.employmentId)])
     : undefined;
+  // ad965821 rev 2 — WHO the manager may pick. Two rules, both of them the plan's own "no empty form"
+  // courtesy applied one level down:
+  //   · a subject with an EMPTY eligible set is not offered at all. The type <select> is `required` and
+  //     carries no placeholder row, so selecting such a person would render zero options — a form that can
+  //     neither be satisfied nor abandoned, and (by the reporter's explicit ask) with nothing on screen to
+  //     say why. Not selectable is the honest state.
+  //   · the VIEWER leads the list. The dialog defaults its employment selector to the first option, so
+  //     without this a manager opening Request Leave would land on a report and be applying for someone
+  //     else before touching anything.
+  const selectableSubjects = active.filter(
+    (e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,
+  );
+  const requestLeaveEmployeeOptions = [
+    ...selectableSubjects.filter((e) => e.employmentId === me.employmentId),
+    ...selectableSubjects.filter((e) => e.employmentId !== me.employmentId),
+  ].map((e) => ({ id: e.employmentId, name: e.name }));
+
+  // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
+  // modal launched from a "+" primary button in the PageHeader. These are the exact props the form used to
+  // compute inline — mapped here in the RSC (t() runs server-side) and handed to the client dialog.
+  //
+  // ad965821 — MAPPED OFF THE ELIGIBLE SET, not the catalogue. A male employee has no Maternity row here at
+  // all; an unmarried one has no Paternity row. Nothing on the screen indicates a row was removed, which is
+  // the reporter's explicit ask: a hint that a leave type exists is the thing they said must not happen.
+  //
+  // A SUPERSET ON THE ON-BEHALF PATH, AND THAT IS THE WHOLE POINT (rev 2). LeaveDurationFields filters this
+  // array AGAIN by the currently selected subject's set, so whatever is handed down here is intersected with
+  // the subject's own eligibility. Handing down the VIEWER's set therefore offered
+  // eligible(manager) ∩ eligible(report) — a male manager could not apply for Maternity on behalf of a
+  // female report, and an unmarried one could not apply for Paternity for a married one. That is narrower
+  // than main (which handed the manager the whole catalogue) and narrower than the item asked for. So the
+  // manager is handed the UNION of every subject they may pick, and the per-subject filter downstream turns
+  // it into exactly eligible(subject) — including exactly eligible(viewer) when they pick themselves.
+  const offerableTypeIds = eligibleTypeIdsByEmployment
+    ? new Set(Object.values(eligibleTypeIdsByEmployment).flat())
+    : eligibleTypeIds;
+  // Off the full catalogue (already sorted, and it carries every column the option below reads) narrowed to
+  // that id set — NOT off `eligibleLeaveTypes`, which is only ever the viewer's own.
+  const offerableLeaveTypes = leaveTypes.filter((lt) => offerableTypeIds.has(lt.id));
+  const requestLeaveTypeOptions = offerableLeaveTypes.map((lt) => ({
+    id: lt.id,
+    // 5570c6a2 — AN OPTION IS THE LEAVE TYPE'S NAME AND NOTHING ELSE.
+    //
+    // This used to append "· document required" (leave.documentRequiredBadge) for a type carrying
+    // requiresDocument. Sitting inside the option it read as part of the type's NAME ("Caregiver Leave -
+    // document required"), it made the list harder to scan, and it put an internal HR setting in front of
+    // the employee. The rule covers BOTH employee dropdowns — this array and `replacementLeaveTypeOptions`
+    // just below — and each renders `label` verbatim. (Until ad965821 rev 2 it was literally one array; the
+    // two now differ in WHICH ROWS they carry, never in what an option is.)
+    //
+    // NOTHING ABOUT ENFORCEMENT MOVES. core/leave.ts still refuses a submission whose required document is
+    // missing, app/me/actions.ts still raises that sentence (leave.documentRequired / documentRequiredAfter —
+    // NOT this key, they are different strings), the general "required for some leave types" hint under the
+    // attach-a-file box still stands, and HR still sets and sees the requirement on the admin leave-type
+    // screen. leave.documentRequiredBadge stays in all six catalogs: nothing checks for unused keys, parity
+    // is what is checked, and deleting one string from six files is churn that buys nothing.
+    label: lt.name,
+    durations: lt.durations ?? null,
+    code: lt.code,
+    // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
+    applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
+    // Balance Deduction Source (cdf9ca48): lets the form drop Emergency Leave's decomposition-specific
+    // controls once EL has been pointed at another type's balance — see LeaveTypeOption.borrowsBalance.
+    borrowsBalance: lt.balanceSourceTypeId != null,
+  }));
+  // ad965821 rev 2 — THE REPLACEMENT LEAVE LIST IS THE VIEWER'S OWN, and is a separate array for exactly one
+  // reason: that dialog has no employee selector. It asks to be CREDITED for time the SIGNED-IN employee
+  // already worked, so the union assembled above (which spans a manager's reports) would offer them credit
+  // targets belonging to somebody else. Same narrowing as the plan asked for — "the two ways into leave
+  // agree with each other" — applied to the one subject this form actually has.
+  const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));
 
   // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
   // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
@@ -786,7 +824,10 @@ export default async function LeavePage({
                   types={requestLeaveTypeOptions}
                   // The manager-on-behalf case: whose list is on offer re-draws when the employee changes,
                   // and a type that does not apply to the newly selected person is cleared rather than
-                  // quietly carried across. Undefined for a plain employee — there is only one subject.
+                  // quietly carried across. Undefined for a plain employee — there is only one subject,
+                  // and `types` is already exactly their set. With the map present `types` is a SUPERSET
+                  // (the union above) and this map is what narrows it to the selected subject — see the
+                  // note on offerableTypeIds for why the superset is the correct thing to hand down.
                   eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
                   // 2166ef79 — `?start=` when My Attendance sent the employee here to explain an absent
                   // day, otherwise today, exactly as before. Shape-checked, never passed through raw: this
@@ -808,9 +849,13 @@ export default async function LeavePage({
                   Rendered only when the server says this employee may submit. With the switch off, or the
                   employee outside the eligibility criteria, there is no button — and the action refuses
                   the POST anyway. */}
-              {ess && replacementRequest.allowed && (
+              {/* ad965821 rev 2 — …and only when there is a credit target to name. This dialog's type
+                  <select> carries neither `required` nor a placeholder row, so an empty list would render
+                  an empty control and post leaveTypeId='' — the same empty-form trap the Request Leave
+                  trigger above is guarded against, in the one dialog that would have failed silently. */}
+              {ess && replacementRequest.allowed && replacementLeaveTypeOptions.length > 0 && (
                 <ReplacementLeaveRequestDialog
-                  types={requestLeaveTypeOptions}
+                  types={replacementLeaveTypeOptions}
                   submitAction={submitReplacementLeaveRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}

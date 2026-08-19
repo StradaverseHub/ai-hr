@@ -412,9 +412,14 @@ describe('i18n: the new apply-popup keys in all six locales', () => {
  *
  * The option used to carry a "· document required" badge for any type HR had marked as needing a
  * supporting file. It read as part of the type's name ("Caregiver Leave - document required"), and it put
- * an internal HR setting in front of the employee. This lives here because one expression feeds BOTH
- * employee dropdowns — Request Leave and Replacement Leave Request read the same `requestLeaveTypeOptions`
- * array — so a single silent re-add would put the badge back on both.
+ * an internal HR setting in front of the employee. This lives here because the rule covers BOTH employee
+ * dropdowns — Request Leave and Replacement Leave Request — so a silent re-add would put the badge back in
+ * front of the same employee twice.
+ *
+ * UPDATED BY ad965821 rev 2: the two dropdowns no longer share ONE array. Request Leave is handed the union
+ * of every subject a manager may apply for (LeaveDurationFields narrows it to the selected one), while
+ * Replacement Leave — which has no employee selector — keeps the viewer's own set. WHICH ROWS they carry
+ * differs; what an option IS does not, so both are asserted here.
  *
  * The other half of the pin is what must NOT move: the submit-time refusal, its two error sentences and
  * the general attach-a-file hint all stay, or an employee whose request is refused has no way to know why.
@@ -428,6 +433,16 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
 
   it('the option label is a bare lt.name', () => {
     expect(optionsBlock()).toContain('label: lt.name,');
+  });
+
+  it('…and so is the Replacement Leave list, which is now its own array', () => {
+    const at = page.indexOf('const replacementLeaveTypeOptions =');
+    expect(at, 'the replacement dialog builds its own viewer-scoped list').toBeGreaterThan(-1);
+    const block = page.slice(at, page.indexOf(';', at));
+    expect(block).toContain('label: lt.name');
+    const code = block.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toContain('documentRequiredBadge');
+    expect(code).not.toContain('requiresDocument');
   });
 
   it('the label expression names neither the badge key nor the document flag', () => {

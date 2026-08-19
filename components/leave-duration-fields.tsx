@@ -128,6 +128,12 @@ export function LeaveDurationFields({
    * on-behalf-of path, where the subject can change after the form is open; a plain self-service applicant
    * was already handed a list narrowed to them, so there is nothing left to re-draw.
    *
+   * WHEN THIS IS PRESENT, `types` IS A SUPERSET AND MUST BE (rev 2). The filter below intersects `types`
+   * with the selected subject's set, so whatever arrives in `types` bounds every subject: handing down the
+   * VIEWER's own list produced eligible(manager) ∩ eligible(report), which is how a male manager lost the
+   * ability to apply for Maternity on behalf of a female report. app/leave/page.tsx therefore passes the
+   * UNION of every selectable subject's set, and this prop is what turns it back into one person's list.
+   *
    * An ineligible type is ABSENT from the select — not disabled, not greyed, not counted. That is the
    * reporter's explicit ask, and a disabled <option> would still announce that the type exists.
    */
@@ -177,8 +183,9 @@ export function LeaveDurationFields({
   const previewReq = useRef(0);
   const summaryReq = useRef(0);
 
-  // ad965821 — the types on offer for the CURRENTLY selected subject. No map (the self-service path) or no
-  // entry for this employment ⇒ the list is unchanged, so every existing caller behaves exactly as before.
+  // ad965821 — the types on offer for the CURRENTLY selected subject: `types` (a superset when a map is
+  // present — see the prop doc) intersected with that subject's own set. No map (the self-service path) or
+  // no entry for this employment ⇒ the list is unchanged, so every existing caller behaves exactly as before.
   const visibleTypes = useMemo(() => {
     const allowed = eligibleTypeIdsByEmployment?.[employmentId];
     if (!allowed) return types;

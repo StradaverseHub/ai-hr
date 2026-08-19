@@ -102,7 +102,38 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     // The defect lived in the CONTRACT between this page and core/read.ts (AGENTS rule 17), so it is pinned
     // on both halves: a unit test of either one passes throughout.
     expect(leavePage).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
-    expect(leavePage).toContain('const requestLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({');
+    // REV 2 — the option list is drawn from the OFFERABLE set, not from the viewer's own. Pinning
+    // `eligibleLeaveTypes.map(` here pinned the regression itself: LeaveDurationFields intersects `types`
+    // with the selected subject's set, so a viewer-only array made the on-behalf offer
+    // eligible(manager) ∩ eligible(report). The union is what makes the downstream filter produce the
+    // SUBJECT's own list.
+    expect(leavePage).toContain('const requestLeaveTypeOptions = offerableLeaveTypes.map((lt) => ({');
+    expect(leavePage).toContain('const offerableLeaveTypes = leaveTypes.filter((lt) => offerableTypeIds.has(lt.id));');
+    expect(leavePage).toMatch(
+      /const offerableTypeIds = eligibleTypeIdsByEmployment\s*\n\s*\? new Set\(Object\.values\(eligibleTypeIdsByEmployment\)\.flat\(\)\)\s*\n\s*: eligibleTypeIds;/,
+    );
+    // …and the Replacement Leave dialog, which has NO employee selector, keeps the viewer's own list rather
+    // than that union — otherwise a manager would be offered credit targets belonging to their reports.
+    expect(leavePage).toContain(
+      'const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));',
+    );
+    expect(leavePage).toContain('types={replacementLeaveTypeOptions}');
+    // A subject with an empty set is not selectable, and the viewer leads the selector: the type <select> is
+    // `required` with no placeholder row, so an empty list is a form that can neither be satisfied nor
+    // explained (the reporter forbade explaining it), and defaulting to a report would apply for the wrong
+    // person by accident.
+    expect(leavePage).toContain(
+      '(e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,',
+    );
+    expect(leavePage).toMatch(
+      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.selectableSubjects\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,
+    );
+    // Neither employee dialog may render an empty type <select>. The Replacement one carries no `required`
+    // at all, so an empty list there posts leaveTypeId='' instead of being refused by the browser.
+    expect(leavePage).toContain('{ess && requestLeaveTypeOptions.length > 0 && (');
+    expect(leavePage).toContain(
+      '{ess && replacementRequest.allowed && replacementLeaveTypeOptions.length > 0 && (',
+    );
     // The unfiltered catalogue is STILL read — two consumers need it and would break silently otherwise.
     expect(leavePage).toContain("const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;");
     expect(leavePage).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
