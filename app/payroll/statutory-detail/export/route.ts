@@ -23,7 +23,12 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { payslipForReview } from '@/core/payroll-view';
-import { explainStatutory, type StatutoryExplainKey, type StatutoryRuleKind } from '@/core/statutory-explain';
+import {
+  explainStatutory,
+  type StatutoryExplainKey,
+  type StatutoryItemExplanation,
+  type StatutoryRuleKind,
+} from '@/core/statutory-explain';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
 import { employeeLabel } from '@/lib/employee-code';
 
@@ -42,6 +47,11 @@ const RULE_LABEL: Record<StatutoryRuleKind, string> = {
   schedule: 'ruleSchedule',
   mtd: 'ruleMtd',
 };
+/** EPF and PERKESO are BOTH schedule items but they are not the same schedule — EPF is banded by the
+ *  KWSP Third Schedule, SOCSO/EIS/SKBBK by PERKESO's. The view carries the identical override, and the
+ *  file must name the rule the way the screen it was taken from does or the two disagree on paper. */
+const ruleLabelKey = (i: StatutoryItemExplanation) =>
+  i.key === 'epf' && i.ruleKind === 'schedule' ? 'ruleScheduleEpf' : RULE_LABEL[i.ruleKind];
 const CYCLE_LABEL: Record<string, string> = {
   regular: 'cycleRegular',
   off_cycle: 'cycleOffCycle',
@@ -93,7 +103,7 @@ export async function GET(req: Request) {
     ],
     rows: (explanation?.items ?? []).map((i) => [
       t(ITEM_LABEL[i.key]),
-      t(RULE_LABEL[i.ruleKind]),
+      t(ruleLabelKey(i)),
       // EMPTY, never 0.00, for a wage base this run did not record. See the header.
       i.totalBase == null ? '' : money(i.totalBase),
       money(i.employeeReported),

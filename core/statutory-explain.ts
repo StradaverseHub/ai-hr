@@ -21,8 +21,19 @@
  * applied, `amount ÷ base`, derived from the two numbers the run itself wrote down. That is still
  * reading the working rather than recomputing it: it is arithmetic ON the recorded figures, and it is
  * algebraically incapable of disagreeing with the amount beside it, which a table lookup is not.
- * `ruleKind` says which kind of rule produced the amount, so the screen never presents a PERKESO
- * schedule lookup as if it were a percentage — see the note on `ruleKind` below.
+ * `ruleKind` says which kind of rule produced the amount, so the screen never presents a contribution
+ * SCHEDULE lookup as if it were a percentage — see the note on `ruleKind` below.
+ *
+ * …AND WHY THERE IS NO RATE ON AN ADDITIONAL RUN. `amount ÷ base` is only a rate when the two terms
+ * describe the same money, and on a bonus / off-cycle / adjustment run they do NOT. The AMOUNTS such a
+ * run stamps are INCREMENTS — `deltaStat` (core/payroll.ts:412) re-runs the month with and without this
+ * run's additional remuneration and keeps the difference — while the BASES it stamps are the CUMULATIVE
+ * month (core/payroll.ts:4890, "on an additional run that is the cumulative month"). Dividing one by the
+ * other yields a percentage that is not any statutory rate and never was: RM5,000 basic already run,
+ * then a RM10,000 bonus, gives 1,100 ÷ 15,000 = 7.33%, an EPF rate that does not exist. So on an
+ * additional run BOTH effective rates are NULL, exactly as they are when the base was never recorded —
+ * "we cannot derive a rate from these two figures" and "the rate was 7.33%" are different statements,
+ * and only the first is true. This is the same trap `deltaStat`'s own comment documents for PCB.
  *
  * ══ WHAT AN OLD PAYSLIP GETS ══
  *
@@ -47,12 +58,24 @@ export type StatutoryExplainKey = (typeof STATUTORY_EXPLAIN_KEYS)[number];
  * WHICH KIND OF RULE produced the amount. The screen needs this because presenting all six the same way
  * would be a lie about three of them:
  *
- *   'rate'     — a percentage of the wage (EPF, HRD Corp levy). `base × rate = amount` is the actual
- *                working, so showing the rate as a multiplication is truthful.
- *   'schedule' — a PERKESO CONTRIBUTION SCHEDULE lookup (SOCSO, EIS, SKBBK). The amount comes from the
- *                band the wage falls in, NOT from multiplying by a percentage; the two disagree by
- *                cents for almost every wage. `effectiveEmployeeRate` is still reported for these, but
- *                as a check figure the screen must caption as effective — never as "the rate".
+ *   'rate'     — a percentage of the wage (the HRD Corp levy, and nothing else). `base × rate = amount`
+ *                is the actual working, so showing the rate as a multiplication is truthful.
+ *   'schedule' — a CONTRIBUTION SCHEDULE lookup: the amount is the figure the band the wage falls in
+ *                prescribes, NOT the product of the wage and a percentage, and the two disagree by
+ *                cents for almost every wage. Two different schedules land here:
+ *                  · SOCSO, EIS and SKBBK — PERKESO's contribution schedule.
+ *                  · EPF — the KWSP THIRD SCHEDULE (localization/my/statutory-tables.ts:200, applied at
+ *                    localization/my/payroll.ts:126 `bandFor(partA, wage)`). EPF was first classified
+ *                    'rate' here and that was wrong: for every monthly wage up to RM20,000 — which is
+ *                    very nearly all of them — the kernel does a BAND LOOKUP, exactly as it does for
+ *                    PERKESO, and the band amount is the rate applied to the band's UPPER limit rounded
+ *                    UP to the next ringgit. Wage 2,990 pays 330 (the 3,000 band), not 11% × 2,990 =
+ *                    328.90, so "Percentage of wage" mislabelled the largest deduction on the payslip
+ *                    and printed a multiplication that does not evaluate. Above RM20,000 the schedule
+ *                    ends and the percentage applies — still rounded up to the ringgit, so the printed
+ *                    product would not evaluate there either.
+ *                `effectiveEmployeeRate` is still reported for all of these, but as a check figure the
+ *                screen must caption as effective — never as "the rate".
  *   'mtd'      — LHDN's computerised MTD calculation (PCB). Reliefs, accumulators and a schedule; not
  *                expressible as a rate at all. The whole working already lives at /payroll/pcb-detail
  *                off the same payslip's `pcbMeta`, and this module deliberately does NOT reimplement it
@@ -78,8 +101,9 @@ export type StatutoryItemExplanation = {
    * `base + additionalBase` — THE ONE FIGURE every surface calls "the statutory wage", and the reason it
    * is derived here rather than at each call site. EPF is the only item with two streams, so a summary
    * column adding them, a working line adding them and an export column NOT adding them is a drift
-   * nobody would notice until an auditor did: the table would say 5,000 while the formula beside it read
-   * 5,100 × 11% = 561. Null exactly when `base` is null, so an unrecorded working stays unrecorded.
+   * nobody would notice until an auditor did: the table would say 5,000 while the working line beside it
+   * charged 5,100 for the same 561. Null exactly when `base` is null, so an unrecorded working stays
+   * unrecorded.
    */
   totalBase: number | null;
   /** The FULL employee share as computed and as FILED. An employer-bears election never reduces this. */
@@ -93,7 +117,9 @@ export type StatutoryItemExplanation = {
   /**
    * `employeeReported ÷ (base + additionalBase)`, i.e. the rate this run effectively applied. NULL when
    * the base was not recorded or is zero — a rate over an unknown or zero wage is not a number, and
-   * printing 0% would read as "this employee is exempt", which is a different statement.
+   * printing 0% would read as "this employee is exempt", which is a different statement. ALSO null on
+   * every additional run, where the amount is an increment and the base is the cumulative month, so the
+   * quotient is not a rate at all — see the header.
    */
   effectiveEmployeeRate: number | null;
   /** Likewise for the employer share. */
@@ -114,6 +140,11 @@ export type StatutoryExplanation = {
    * An additional (bonus / off-cycle / adjustment) run stamps the bases of the CUMULATIVE MONTH, not of
    * the money that run alone paid — A0006's 2026-01 bonus payslip is all zeros yet stamps an EPF base of
    * 5,100. Without this flag the screen would appear to charge a wage the slip beside it does not show.
+   *
+   * The SAME flag means the AMOUNTS are increments (`deltaStat`), which is why it also suppresses every
+   * effective rate: the two terms come from different quantities and their quotient is not a rate. The
+   * screen's banner must say BOTH halves — a banner that discloses only the cumulative wage leaves a
+   * reader to assume the amount beside it belongs to that wage.
    */
   basesCoverWholeMonth: boolean;
   /** The statutory ruleset version stamped by the run, when it recorded one. */
@@ -168,6 +199,9 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
   const bases: StatutoryBases | null = payslipStatutoryBases(statutory);
   const eb = payslipEmployerBorne(statutory);
   const socsoEisBase = bases ? bases.socsoEis : null;
+  // `isAdditionalRun`, core/payroll.ts:3700 — the same test, so this module's notion of "additional"
+  // cannot drift from the one that decided to stamp increments against a cumulative base.
+  const amountsAreIncremental = runType !== 'regular';
 
   // EPF is charged on TWO streams and the reader must see both terms, so the rate is taken over their
   // sum — that is the wage the recorded employee share was actually produced from.
@@ -196,13 +230,18 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
     employeeTakeHome: Math.max(0, r2(employeeReported - borne)),
     employerBorne: r2(borne),
     employer: r2(employer),
-    effectiveEmployeeRate: effectiveRate(employeeReported, rateBase),
-    effectiveEmployerRate: effectiveRate(employer, rateBase),
+    // An increment over a cumulative wage is not a rate — see the header. Null rather than a number
+    // nobody can act on, so the screen has one "no rate is derivable" path instead of two stories.
+    effectiveEmployeeRate: amountsAreIncremental ? null : effectiveRate(employeeReported, rateBase),
+    effectiveEmployerRate: amountsAreIncremental ? null : effectiveRate(employer, rateBase),
     workingNotRecorded: base == null,
   });
 
   const items: StatutoryItemExplanation[] = [
-    item('epf', 'rate', epfBase, n(st.epfEmployee), n(st.epfEmployer), eb.borne.epf, epfAdditional, epfTotalBase),
+    // EPF is a SCHEDULE item, not a rate one: the normal monthly wage is looked up in the KWSP Third
+    // Schedule band table for every wage up to RM20,000. See the `ruleKind` note above for why the
+    // first cut's 'rate' was wrong and what it printed.
+    item('epf', 'schedule', epfBase, n(st.epfEmployee), n(st.epfEmployer), eb.borne.epf, epfAdditional, epfTotalBase),
     item('socso', 'schedule', socsoEisBase, n(st.socsoEmployee), n(st.socsoEmployer), eb.borne.socso),
     // SKBBK (Lindung 24 Jam) is an employee-side leg of the same PERKESO schedule, gated independently of
     // SOCSO (item 5a461b99). Employer share 0 — it has none, which is why 0 here is a fact and not a gap.
@@ -222,7 +261,7 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
   return {
     items,
     basesNotRecorded: bases == null,
-    basesCoverWholeMonth: runType !== 'regular',
+    basesCoverWholeMonth: amountsAreIncremental,
     // Read through the kernel's OWN accessor rather than a second copy of `st.version` — two readers of
     // one stamp is how a screen starts reporting a different ruleset from the reprocess diff.
     rulesetVersion: payslipProvenance(statutory).rulesetVersion,

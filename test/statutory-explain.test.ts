@@ -120,7 +120,8 @@ describe('6b4ca488 — the six statutory items, read from the payslip’s own st
     for (const k of ['socso', 'skbbk', 'eis', 'hrdf', 'pcb'] as const) {
       expect(i[k].totalBase, `${k} has one stream`).toBe(i[k].base);
     }
-    // …and the rate is over the SAME figure, which is what makes the printed multiplication check out.
+    // …and the effective rate is derived over the SAME figure, which is what keeps the check percentage
+    // beside the working consistent with the wage the summary column prints.
     expect(i.epf.employeeReported / i.epf.totalBase!).toBeCloseTo(i.epf.effectiveEmployeeRate!, 9);
     // An unrecorded base stays unrecorded — the sum must not turn a null into a 0.
     expect(explainStatutory(UNSTAMPED, 'regular').items.every((x) => x.totalBase === null)).toBe(true);
@@ -128,16 +129,47 @@ describe('6b4ca488 — the six statutory items, read from the payslip’s own st
 
   it('reports the KIND of rule, so a schedule lookup is never dressed up as a percentage', () => {
     const i = byKey(STAMPED);
-    // EPF and the HRD Corp levy really are percentages of a wage; the other four are not.
-    expect(i.epf.ruleKind).toBe('rate');
+    // The HRD Corp levy really is a percentage of a wage. It is the ONLY one of the six that is.
     expect(i.hrdf.ruleKind).toBe('rate');
     // PERKESO pays from a contribution SCHEDULE (a wage band), which disagrees with any flat percentage
     // by cents for almost every wage. Calling these 'rate' would put a false working on screen.
     expect(i.socso.ruleKind).toBe('schedule');
     expect(i.eis.ruleKind).toBe('schedule');
     expect(i.skbbk.ruleKind).toBe('schedule');
+    // …and so does EPF, off the KWSP Third Schedule — see the dedicated case below for why.
+    expect(i.epf.ruleKind).toBe('schedule');
     // Income tax is not expressible as a rate at all — reliefs, accumulators and a table.
     expect(i.pcb.ruleKind).toBe('mtd');
+  });
+
+  it('classifies EPF as a KWSP THIRD SCHEDULE lookup, not "percentage of wage"', () => {
+    // THE DEFECT THIS PINS. EPF shipped as ruleKind 'rate', so the screen's summary said "Percentage of
+    // wage" for the largest deduction on a Malaysian payslip and printed a multiplication beside it. The
+    // kernel does no such thing: for every monthly wage up to RM20,000 it looks the wage up in the EPF
+    // Act 1991 Third Schedule Part A BAND table (localization/my/payroll.ts `bandFor(partA, wage)` over
+    // localization/my/statutory-tables.ts's `buildEpfThirdSchedulePartA`), exactly as SOCSO/EIS/SKBBK
+    // use PERKESO's — which is why that file's own comment says in caps that the contribution is NOT a
+    // flat percentage of the exact wage.
+    //
+    // THE REPRODUCTION, and the reason it is this wage: 2,990 falls in the 3,000 band, so the employee
+    // pays ceil(11% × 3,000) = 330 and the employer ceil(13% × 3,000) = 390. A percentage of the EXACT
+    // wage would be 328.90 / 388.70. The screen therefore printed "2,990.00 × 11.04% = 330.00", a
+    // product that does not evaluate, under the caption "the rate this run actually applied".
+    const banded = {
+      ...STAMPED,
+      epfEmployee: 330,
+      epfEmployer: 390,
+      bases: { ...STAMPED.bases, epf: 2990, epfAdditional: 0 },
+    };
+    const i = byKey(banded);
+    expect(i.epf.ruleKind, 'EPF is a band lookup, so it must be captioned as one').toBe('schedule');
+    expect(i.epf.totalBase).toBe(2990);
+    expect(i.epf.employeeReported).toBe(330);
+    // The derived percentage is NOT the statutory 11% — 330 / 2,990 = 11.0368…% — which is precisely
+    // why it may only ever be presented as an effective check figure.
+    expect(i.epf.effectiveEmployeeRate!, 'a band amount over the exact wage is not the statutory rate')
+      .not.toBeCloseTo(0.11, 4);
+    expect(i.epf.effectiveEmployeeRate!).toBeCloseTo(330 / 2990, 9);
   });
 
   it('derives the effective rate from the two numbers the run wrote down, and nothing else', () => {
@@ -230,6 +262,41 @@ describe('6b4ca488 — an additional run’s bases describe the whole month', ()
     for (const rt of ['bonus', 'off_cycle', 'adjustment']) {
       expect(explainStatutory(STAMPED, rt).basesCoverWholeMonth, `${rt} is an additional run`).toBe(true);
     }
+  });
+
+  it('derives NO effective rate on one — the amount is a delta over a cumulative wage', () => {
+    // THE DEFECT THIS PINS. An additional run stamps THIS RUN'S INCREMENT as the amount (`deltaStat`,
+    // core/payroll.ts:412, `max(0, now − before)`) against the CUMULATIVE MONTH as the base
+    // (core/payroll.ts:4890). Dividing one by the other produced a percentage that is not any statutory
+    // rate, captioned "the rate this run actually applied".
+    //
+    // THE REPRODUCTION: RM5,000 basic already run, then a RM10,000 bonus run. That slip stamps
+    // epf 5,000 + epfAdditional 10,000 (15,000 together) and epfEmployee 1,100 — the delta, being
+    // ceil(11% × 10,000) — so the screen printed "15,000.00 × 7.33% = 1,100.00". No EPF employee rate
+    // is 7.33%.
+    const bonusRun = {
+      ...STAMPED,
+      epfEmployee: 1100,
+      epfEmployer: 1200,
+      bases: { epf: 5000, epfAdditional: 10000, socsoEis: 5000, pcb: 15000, hrdf: 0 },
+    };
+    const i = byKey(bonusRun, 'bonus');
+    // The two figures are still REPORTED — they are what the run wrote down, and the screen shows both.
+    expect(i.epf.totalBase, 'the cumulative month, as stamped').toBe(15000);
+    expect(i.epf.employeeReported, 'this run’s increment, as stamped').toBe(1100);
+    // What must NOT exist is a rate between them.
+    expect(i.epf.effectiveEmployeeRate, 'an increment over a cumulative wage is not a rate').toBeNull();
+    expect(i.epf.effectiveEmployerRate).toBeNull();
+    // Every item, on every additional cycle — EPF is merely the loudest case.
+    for (const rt of ['bonus', 'off_cycle', 'adjustment']) {
+      for (const item of explainStatutory(bonusRun, rt).items) {
+        expect(item.effectiveEmployeeRate, `${rt}/${item.key}`).toBeNull();
+        expect(item.effectiveEmployerRate, `${rt}/${item.key}`).toBeNull();
+      }
+    }
+    // …and the SAME blob on a REGULAR run still derives one, so this is the run type suppressing a rate
+    // that is meaningless, not the derivation quietly ceasing to work.
+    expect(byKey(bonusRun, 'regular').epf.effectiveEmployeeRate!).toBeCloseTo(1100 / 15000, 9);
   });
 
   it('carries the statutory ruleset version the run stamped, and null when it predates it', () => {
@@ -357,8 +424,13 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
       'workingMtd',
       'effectiveRateNote',
       'effectiveRateScheduleNote',
+      // EPF is a schedule item off a DIFFERENT schedule (KWSP's, not PERKESO's), and an additional run
+      // gets a third caption again because no rate exists to caption. Three keys, three real cases.
+      'effectiveRateEpfNote',
+      'incrementalNote',
       'ruleRate',
       'ruleSchedule',
+      'ruleScheduleEpf',
       'ruleMtd',
       'pcbViewCalculation',
       // The export's two extra columns — the file splits what the screen shows as a disclosure.
@@ -394,7 +466,17 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
     const en = (JSON.parse(read('messages/en.json')) as Msgs).payroll.statutoryDetail;
     for (const loc of LOCALES.filter((l) => l !== 'en')) {
       const m = JSON.parse(read(`messages/${loc}.json`)) as Msgs;
-      for (const k of ['title', 'basesNotRecordedBody', 'workingMtd', 'effectiveRateScheduleNote', 'employerBorneNote']) {
+      const LONG_SENTENCES = [
+        'title',
+        'basesNotRecordedBody',
+        'workingMtd',
+        'effectiveRateScheduleNote',
+        'effectiveRateEpfNote',
+        'incrementalNote',
+        'wholeMonthNote',
+        'employerBorneNote',
+      ];
+      for (const k of LONG_SENTENCES) {
         expect(m.payroll.statutoryDetail[k], `${loc}: payroll.statutoryDetail.${k} is still English`).not.toBe(en[k]);
       }
     }

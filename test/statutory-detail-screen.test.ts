@@ -263,6 +263,9 @@ describe('6b4ca488 — what the display prints for a payslip whose working was n
   });
 
   it('prints the working — and the "derived rate" caveat — when the run DID record it', async () => {
+    // The HRD Corp levy is deliberately given a base of its OWN (4,800, not EPF's 5,100) so the two
+    // shapes of working line can be told apart in the flattened text. It is the only one of the six that
+    // is genuinely a percentage, and its line is the only one entitled to a `×`.
     const explanation = explainStatutory(
       {
         version: '2026.5',
@@ -272,35 +275,70 @@ describe('6b4ca488 — what the display prints for a payslip whose working was n
         socsoEmployer: 86.65,
         eisEmployee: 9.9,
         eisEmployer: 9.9,
+        hrdf: 48,
         pcb: 320,
-        bases: { epf: 5000, epfAdditional: 100, socsoEis: 5000, pcb: 5100, hrdf: 0 },
+        bases: { epf: 5000, epfAdditional: 100, socsoEis: 5000, pcb: 5100, hrdf: 4800 },
       },
       'regular',
     );
-    const text = textOf(await StatutoryDetailView({ ctx: CTX, explanation })).join(' ');
+    const rendered = textOf(await StatutoryDetailView({ ctx: CTX, explanation }));
+    const text = rendered.join(' ');
     expect(text).not.toContain('basesNotRecordedHeading');
-    // 561 / 5100 = 11.00%, shown as the multiplication that produced the employee share — and over the
-    // SAME 5,100 the summary column above prints, which is the drift `totalBase` exists to prevent.
-    expect(text).toContain('11.00%');
-    expect(text, 'the working multiplies the wage the summary column shows').toContain('5,100.00  ×');
+    // EPF IS A SCHEDULE ITEM — the KWSP Third Schedule bands the wage — so its line MAPS the wage to the
+    // amount and offers 561 / 5,100 = 11.00% only as a bracketed check figure. It must not multiply: on
+    // a wage that is not a band upper the product does not evaluate (2,990 × 11.04% ≠ 330).
+    expect(text, 'EPF maps its wage to the band amount').toContain('5,100.00 → 561.00');
+    expect(text, 'the check percentage rides along in brackets').toContain('(11.00%)');
+    expect(text, 'EPF must NOT print a multiplication').not.toContain('5,100.00 ×');
     expect(text, 'and the summary column shows both EPF streams, not just the normal one').toContain(
       'MYR 5,100.00',
     );
-    // The rate is DERIVED, not stamped, and the screen says which — differently for a schedule item,
-    // where the percentage is a check figure and the PERKESO band is the actual rule.
+    // …while a genuine percentage still gets the `wage × rate = amount` line it earns.
+    expect(text, 'the HRD Corp levy really is a percentage').toContain('4,800.00 × 1.00% = 48.00');
+    // 'ruleRate' ("Percentage of wage") may appear for the levy ONLY — twice, in the summary column and
+    // in the item's own "Rule applied" row. Classifying EPF as a rate again makes this four.
+    expect(rendered.filter((x) => x === 'ruleRate'), 'only the levy is a percentage').toHaveLength(2);
+    expect(rendered.filter((x) => x === 'ruleScheduleEpf'), 'EPF names the KWSP schedule').toHaveLength(2);
+    // The rate is DERIVED, not stamped, and the screen says which — differently for each rule: a real
+    // percentage, PERKESO's band, and the KWSP Third Schedule's band are three different sentences.
     expect(text, 'a percentage rule states it was derived').toContain('effectiveRateNote');
-    expect(text, 'a schedule rule says the band produced the amount').toContain('effectiveRateScheduleNote');
+    expect(text, 'a PERKESO schedule rule says the band produced the amount').toContain(
+      'effectiveRateScheduleNote',
+    );
+    expect(text, 'EPF gets the KWSP Third Schedule caption, not PERKESO’s').toContain('effectiveRateEpfNote');
     // PCB is linked, never rebuilt.
     expect(text).toContain(`/payroll/pcb-detail?payslipId=${CTX.payslipId}`);
     expect(text).toContain('workingMtd');
   });
 
-  it('flags a bonus run’s bases as the whole month’s, so they are not read as this run’s pay', async () => {
+  it('flags a bonus run’s bases as the whole month’s, and prints NO rate against them', async () => {
+    // The reproduction from the finding: RM5,000 basic already run, then a RM10,000 bonus run. The slip
+    // stamps the CUMULATIVE 15,000 as the wage and THIS RUN'S INCREMENT, 1,100, as the amount. The first
+    // cut divided one by the other and printed "15,000.00 × 7.33% = 1,100.00" under a caption calling
+    // 7.33% "the rate this run actually applied". No EPF employee rate is 7.33%.
     const explanation = explainStatutory(
-      { epfEmployee: 0, pcb: 0, bases: { epf: 5100, epfAdditional: 0, socsoEis: 5100, pcb: 5100, hrdf: 0 } },
+      {
+        epfEmployee: 1100,
+        epfEmployer: 1200,
+        pcb: 0,
+        bases: { epf: 5000, epfAdditional: 10000, socsoEis: 5000, pcb: 15000, hrdf: 0 },
+      },
       'bonus',
     );
     const text = textOf(await StatutoryDetailView({ ctx: { ...CTX, runType: 'bonus' }, explanation })).join(' ');
     expect(text).toContain('wholeMonthNote');
+    // No relation is asserted between the whole month's wage and this run's increment: no percentage,
+    // no multiplication, no mapping arrow. This is the assertion that fails on the shipped code.
+    expect(text, 'a rate no statutory body has must not be printed').not.toContain('7.33%');
+    expect(text).not.toContain('15,000.00 ×');
+    expect(text).not.toContain('15,000.00 →');
+    // The banner alone was not enough — it disclosed the cumulative WAGE while leaving the amount beside
+    // it looking like that wage's contribution. The working box now says which figure is which.
+    expect(text, 'the working states that the amount is an increment').toContain('incrementalNote');
+    expect(text, 'and drops the two captions that would claim a rate').not.toContain('effectiveRateNote');
+    expect(text).not.toContain('effectiveRateEpfNote');
+    // The figures themselves both survive — the increment in the working, the cumulative wage above it.
+    expect(text, 'the increment is still shown').toContain('1,100.00');
+    expect(text, 'and so is the wage it was assessed against').toContain('MYR 15,000.00');
   });
 });
