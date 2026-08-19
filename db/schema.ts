@@ -1233,8 +1233,27 @@ export const leaveType = pgTable('leave_type', {
   // updateLeaveType). Intentionally not enforced for Emergency Leave (it exists precisely for short-notice
   // absence — the reporter's scenario points employees to it; field hidden in the admin UI for EL). Admins
   // may attach a per-type custom block message via customMessages.minAdvanceDays (the 0147 JSONB extension
-  // point below — no second column).
+  // point below — no second column). The UNIT this figure is counted in is min_advance_day_type below
+  // (7daac043 / migration 0447) — calendar days unless an administrator says otherwise.
   minAdvanceDays: integer('min_advance_days'),
+  // Advance Notice — calendar days or working days (feedback 7daac043, migration 0447): the UNIT the
+  // requirement above is read in.
+  //
+  //   NULL / 'calendar_days' — every day on the wall calendar, weekends, rest days and public holidays
+  //     included. NULL is the reading every existing row takes, so no backfill exists and nothing an
+  //     administrator has not deliberately changed behaves differently.
+  //   'working_days' — only the days the employee is actually rostered to work, resolved from the SAME
+  //     attendance_policy.working_days roster and the SAME holiday resolution the rest of leave uses.
+  //     "7" then stretches roughly two days further out once a weekend falls inside it, which is exactly
+  //     why the reporter asked to choose — the same reason max_consecutive_unit below offers the pair.
+  //
+  // TEXT + CHECK, not a pgEnum (the 0338 lesson — a new enum value cannot be used in the transaction that
+  // adds it); max_consecutive_unit below is the precedent this copies. Given its reading in exactly one
+  // function, resolveAdvanceNoticeDayType() in core/leave.ts, which falls back to calendar days for
+  // anything it does not recognise. It rides minAdvanceDays' tri-state marker rather than carrying its
+  // own: clearing the requirement clears the unit it was read in (a unit with no figure is inert
+  // configuration that looks set).
+  minAdvanceDayType: text('min_advance_day_type'), // 'calendar_days' | 'working_days' (null ⇒ calendar days)
   // REMOVED by c459bff9 (migration 0370): `expiry_value` / `expiry_unit`, the age-from-earning expiry pair
   // added by fec49317 (migration 0155), together with 0155's three CHECK constraints and the expireAgedLeave
   // sweep that read them. An intentional RESET, not a feature deletion — a new expiry framework is designed

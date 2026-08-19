@@ -22,8 +22,11 @@
  * leave_ledger row through the owner connection (bypasses RLS).
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createTranslator } from 'next-intl';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import {
@@ -95,6 +98,9 @@ function uniqCode(): string {
 /** Calendar-counted type so the day math is trivial (1 calendar day == 1 leave day). */
 async function leaveType(opts: {
   minAdvanceDays?: number | null;
+  /** 7daac043: the UNIT the notice requirement is read in. Omitted ⇒ NULL ⇒ calendar days, which is what
+   *  every case in this file assumed before that item and still assumes. */
+  minAdvanceDayType?: 'calendar_days' | 'working_days' | null;
   overrideRules?: LeaveOverrideRule[] | null;
   allowNegativeBalance?: boolean;
   allowUnpaidLeave?: boolean;
@@ -113,6 +119,7 @@ async function leaveType(opts: {
       allowNegativeBalance: opts.allowNegativeBalance ?? true,
       allowUnpaidLeave: opts.allowUnpaidLeave ?? false,
       minAdvanceDays: opts.minAdvanceDays ?? null,
+      minAdvanceDayType: opts.minAdvanceDayType ?? null,
       overrideRules: opts.overrideRules ?? null,
     })
     .returning({ id: schema.leaveType.id });
@@ -497,6 +504,59 @@ describe('56910869 rule 1 · advance notice not met (65f466e2)', () => {
     expect(payload?.leaveOverrideApplied).toBe(true);
     expect(payload?.convertedFromLeaveTypeId).toBe(typeId);
   });
+
+  // ── 7daac043: the EL COMMAND EVENT carries the unit too ─────────────────────────────────────────────
+  //
+  // The decomposition writes TWO kinds of event: one leave-request.submitted per child, and a single
+  // leave-request.emergency.submitted keyed on the parent group — the one row requestEmergencyLeave's own
+  // doc comment tells an auditor to start from. Stamping the unit on the children and not on that command
+  // event leaves the audit trail's entry point saying "6 days of notice against a requirement of 7" with
+  // nothing to say WHICH six, which is the exact ambiguity the unit was added to remove.
+  it('the EL command event names the unit its notice figures are counted in, on BOTH readings', async () => {
+    const { ctx, employmentId } = await hireEmployeeCtx();
+    const { annual } = await emergencySetup(); // no balance source ⇒ the decomposition path
+    await grant(employmentId, annual, 20);
+
+    // 2026-06-23 is 8 CALENDAR days out and 6 WORKING days out from TODAY (Mon 2026-06-15, Mon–Fri roster),
+    // so a 7-day requirement fires only on the working reading — and the figure stamped must be the 6.
+    const workingType = await leaveType({
+      minAdvanceDays: 7,
+      minAdvanceDayType: 'working_days',
+      overrideRules: [{ trigger: 'advance_notice_not_met', action: 'convert_to_emergency', enabled: true }],
+    });
+    const working = await requestLeave(ctx, {
+      employmentId,
+      leaveTypeId: workingType,
+      startDate: '2026-06-23',
+      endDate: '2026-06-23',
+      today: TODAY,
+      overrideConsent: [CONVERT],
+    });
+    const w = await latestEventPayload(b.tenantId, working.parentGroupId!, 'leave-request.emergency.submitted');
+    expect(w?.leaveOverrideApplied).toBe(true);
+    expect(w?.advanceNoticeOverride).toBe(true);
+    expect(w?.minAdvanceDays).toBe(7);
+    expect(w?.daysInAdvance).toBe(6);
+    expect(w?.advanceNoticeDayType).toBe('working_days');
+
+    // …and a calendar-days conversion still says so explicitly, rather than leaving the unit to be inferred
+    // from the leave type's CURRENT configuration, which may have been changed since.
+    const calendarType = await leaveType({
+      minAdvanceDays: 7,
+      overrideRules: [{ trigger: 'advance_notice_not_met', action: 'convert_to_emergency', enabled: true }],
+    });
+    const calendar = await requestLeave(ctx, {
+      employmentId,
+      leaveTypeId: calendarType,
+      startDate: SHORT_START,
+      endDate: SHORT_END,
+      today: TODAY,
+      overrideConsent: [CONVERT],
+    });
+    const c = await latestEventPayload(b.tenantId, calendar.parentGroupId!, 'leave-request.emergency.submitted');
+    expect(c?.daysInAdvance).toBe(1);
+    expect(c?.advanceNoticeDayType).toBe('calendar_days');
+  });
 });
 
 // ── Rule 2 (fef49b9a): insufficient balance → unpaid split ────────────────────────────────────────────
@@ -701,6 +761,70 @@ describe('56910869 · the employee is TOLD before being asked', () => {
     });
     expect(preview.overrides).toBeUndefined();
   });
+
+  // ── 7daac043: the trigger fires on the type's CONFIGURED UNIT, and both sides agree on it ───────────
+  //
+  // TODAY is Monday 2026-06-15 and the roster is Mon–Fri, so 2026-06-23 (Tue) is 8 CALENDAR days out and
+  // 6 WORKING days out. Against a requirement of 7 the two readings disagree, and that is exactly the pair
+  // that catches a preview which re-implements the rule instead of asking the same helper.
+  const TUE_8_CAL_6_WORK = '2026-06-23';
+
+  it('a working-days type fires the rule on a date the calendar reading lets through', async () => {
+    const { ctx, employmentId } = await hireEmployeeCtx();
+    // Same dates, same requirement, same rule — only the unit differs.
+    const calendarType = await leaveType({
+      minAdvanceDays: 7,
+      overrideRules: [{ trigger: 'advance_notice_not_met', action: 'block', enabled: true }],
+    });
+    const workingType = await leaveType({
+      minAdvanceDays: 7,
+      minAdvanceDayType: 'working_days',
+      overrideRules: [{ trigger: 'advance_notice_not_met', action: 'block', enabled: true }],
+    });
+    const previewOf = (leaveTypeId: string) =>
+      previewLeaveDeduction(ctx, {
+        employmentId,
+        leaveTypeId,
+        startDate: TUE_8_CAL_6_WORK,
+        endDate: TUE_8_CAL_6_WORK,
+        today: TODAY,
+      });
+
+    // 8 calendar days ≥ 7 ⇒ the rule does not fire, so the form says nothing.
+    expect((await previewOf(calendarType)).overrides).toBeUndefined();
+
+    // 6 working days < 7 ⇒ it does, and the figure quoted is in the unit the rule was judged in.
+    const working = await previewOf(workingType);
+    expect(working.overrides).toHaveLength(1);
+    expect(working.overrides![0]).toMatchObject({
+      trigger: 'advance_notice_not_met',
+      action: 'block',
+      needsConsent: false,
+      minAdvanceDays: 7,
+      daysInAdvance: 6,
+      minAdvanceDayType: 'working_days',
+    });
+
+    // …AND THE SUBMISSION AGREES. A preview that promised a refusal the submission does not make (or stayed
+    // silent about one it does) is the drift this pair exists to catch.
+    await expect(
+      requestLeave(ctx, {
+        employmentId,
+        leaveTypeId: workingType,
+        startDate: TUE_8_CAL_6_WORK,
+        endDate: TUE_8_CAL_6_WORK,
+        today: TODAY,
+      }),
+    ).rejects.toBeInstanceOf(LeaveAdvanceNoticeRequiredError);
+    const allowed = await requestLeave(ctx, {
+      employmentId,
+      leaveTypeId: calendarType,
+      startDate: TUE_8_CAL_6_WORK,
+      endDate: TUE_8_CAL_6_WORK,
+      today: TODAY,
+    });
+    expect(allowed.leaveRequestId).toBeTruthy();
+  });
 });
 
 // ── The admin write path ──────────────────────────────────────────────────────────────────────────────
@@ -745,4 +869,48 @@ describe('56910869 · HR configures it in the product, and the screen reads back
     expect(listed?.minAdvanceDays).toBe(3);
     expect(listed?.overrideRules).toEqual([{ trigger: 'insufficient_balance', action: 'block', enabled: true }]);
   });
+});
+
+// ── 7daac043 · THE POP-OUT MUST NOT DESCRIBE A WORKING-DAYS RULE WITH CALENDAR-DAYS WORDING ───────────
+//
+// previewLeaveDeduction now measures `daysInAdvance` in the rule's configured unit and carries that unit on
+// the preview (asserted above). The defect this pins lives in the SEAM: a preview that carries the unit and
+// a renderer that ignores it type-checks perfectly — an optional field nobody reads is invisible to tsc and
+// to `next build` — and prints a WORKING-day count under the sentence "you have given {given} day(s)
+// notice". An employee applying on a Friday for the following Wednesday under a 7-working-day rule would be
+// told they gave 3 days' notice when the wall calendar says 5, on the very dialog they must tick to agree
+// to. Only a source-shape assertion across the renderer sees it.
+describe('the conversion pop-out words itself in the unit the rule was judged in', () => {
+  const src = readFileSync(fileURLToPath(new URL('../components/leave-duration-fields.tsx', import.meta.url)), 'utf8')
+    // Strip comments: the comment beside this branch deliberately names the very strings asserted below.
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  it('the renderer READS the unit the preview carries, and picks the wording from it', () => {
+    // The client component declares the preview shape structurally (ADR-0080: the leave pack is server-side,
+    // so it crosses as data, never as an import) — the field has to be declared there to be readable.
+    expect(src).toContain('minAdvanceDayType?:');
+    expect(src).toContain("o.minAdvanceDayType === 'working_days'");
+    expect(src).toContain("'override.convertNoticeWorking'");
+    // The calendar sentence is still the one every other rule gets, word for word.
+    expect(src).toContain("'override.convertNotice'");
+  });
+
+  it.each(['en', 'ms', 'ta', 'th', 'vi', 'zh'])(
+    'locale %s carries a DISTINCT working-days sentence with the same three tokens',
+    async (locale) => {
+      const messages = (await import(`../messages/${locale}.json`)).default;
+      const t = createTranslator({ locale, messages, namespace: 'leave.override' });
+      const args = { typeName: 'Annual Leave', days: 7, given: 3 };
+      // next-intl throws on a missing key or an unsupplied placeholder, so reaching the assertions proves
+      // the key exists in this locale and interpolates exactly the same three arguments as the calendar one.
+      const working = t('convertNoticeWorking', args);
+      expect(working).toContain('Annual Leave');
+      expect(working).toContain('7');
+      expect(working).toContain('3');
+      // A copy of the calendar sentence would render the working figure under calendar-days wording — the
+      // very defect the branch exists to prevent — so it must not be the same string.
+      expect(working).not.toBe(t('convertNotice', args));
+    },
+  );
 });

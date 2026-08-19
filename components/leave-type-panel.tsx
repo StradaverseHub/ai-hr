@@ -1519,6 +1519,7 @@ export function LeaveTypePanel({
   maxConsecutiveDays,
   maxConsecutiveUnit,
   minAdvanceDays,
+  minAdvanceDayType,
   customMessages,
   essViewConfig,
   formulaExplanations,
@@ -1600,6 +1601,10 @@ export function LeaveTypePanel({
    *  submitted; null = no requirement. Threaded so the sub-form round-trips. Field hidden for Emergency Leave
    *  (code === 'EMERGENCY' — EL exists precisely for short-notice absence and is never guarded). */
   minAdvanceDays: number | null;
+  /** Advance Notice — calendar days or working days (7daac043, migration 0447): the UNIT the requirement
+   *  above is read in. null ⇒ Calendar Days, which is what every leave type configured before this shipped
+   *  means and what the select falls back to. Threaded so the sub-form round-trips. */
+  minAdvanceDayType: 'calendar_days' | 'working_days' | null;
   /** Custom validation messages (custom-messages migration): admin-authored override text keyed by rule config
    *  field (`backdatingLimitDays` | `minAdvanceDays`). Threaded so each rule's "Custom system message"
    *  textarea round-trips. null / absent key = show the built-in localized default. */
@@ -2770,6 +2775,35 @@ export function LeaveTypePanel({
                     className={`${inputCls} w-full`}
                   />
                 </Field>
+                {/* Advance Notice — calendar days or working days (7daac043). Worded and positioned to match
+                    the Calendar Days / Working Days choice Maximum Consecutive Leave already offers two cards
+                    down, and REUSING ITS TWO OPTION LABELS verbatim so the same choice never reads as two
+                    different ones on one screen.
+
+                    INSIDE THIS SUB-FORM ON PURPOSE. It rides the `minAdvance=1` marker above, so the unit and
+                    the figure it qualifies save together and no other card's save can touch either. The
+                    option VALUES are literals: this is a client component and the leave pack's vocabulary is
+                    server-side (ADR-0080), so the strings cross as data, never as an import.
+
+                    Defaults to Calendar Days when the column is null — every leave type configured before
+                    this shipped — so a save that does not touch this select re-writes the reading it already
+                    had. A blank Minimum advance days clears both, which is why there is no "unset" option. */}
+                <Field label={t('minAdvanceDayTypeLabel')}>
+                  <select
+                    name="minAdvanceDayType"
+                    defaultValue={minAdvanceDayType ?? 'calendar_days'}
+                    className={`${inputCls} w-full`}
+                  >
+                    <option value="calendar_days">{t('conditionStep.maxConsecutiveUnitCalendar')}</option>
+                    <option value="working_days">{t('conditionStep.maxConsecutiveUnitWorking')}</option>
+                  </select>
+                </Field>
+                {/* The two options LOOK identical on the screen — both leave "7" in the box above — so the
+                    difference has to be stated in product, not left to the administrator to infer. It sits
+                    directly under the select (not with the card's closing help line) because it explains
+                    THIS control, and it carries the reassurance the reporter approved: existing leave types
+                    stay on Calendar Days, so nothing already saved changes. */}
+                <p className="text-xs text-muted-foreground">{t('minAdvanceDayTypeHelp')}</p>
                 {/* Custom validation messages (0147): optional HR-authored override for the advance-notice
                     block message. Lives in the SAME form as the rule so it saves atomically with
                     `minAdvance=1`. Blank = keep the built-in localized default. */}

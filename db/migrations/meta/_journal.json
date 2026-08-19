@@ -2535,6 +2535,13 @@
       "when": 1781862546000,
       "tag": "0446_payslip_coverage_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 447,
+      "version": "7",
+      "when": 1781862547000,
+      "tag": "0447_leave_type_min_advance_day_type",
+      "breakpoints": true
     }
   ]
 }

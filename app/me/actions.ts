@@ -292,8 +292,18 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
     return e.customMessage ?? t('backdatingNotAllowed', { typeName: name, days: e.limitDays });
   // Minimum advance-notice rule (0159): same custom-message-verbatim-else-localized-default contract as the
   // backdating branch above.
+  //
+  // Advance Notice — calendar days or working days (7daac043): the DEFAULT wording says which kind of day
+  // was counted, because "at least 7 day(s)" in front of an employee who counted five working days and a
+  // weekend explains nothing. THE CUSTOM-MESSAGE SHORT-CIRCUIT STAYS FIRST AND UNCHANGED — an admin-authored
+  // string is rendered verbatim for both units, never re-worded and never suffixed.
   if (e instanceof LeaveAdvanceNoticeRequiredError)
-    return e.customMessage ?? t('advanceNoticeRequired', { typeName: name, days: e.minDays });
+    return (
+      e.customMessage ??
+      (e.dayType === 'working_days'
+        ? t('advanceNoticeRequiredWorking', { typeName: name, days: e.minDays })
+        : t('advanceNoticeRequired', { typeName: name, days: e.minDays }))
+    );
   // Leave Year Configuration (9aa894a4): the employee applied for a future leave year that HR has not opened
   // for applications yet. Localized so all 6 locales see a clear "{year} isn't open yet" message.
   if (e instanceof LeaveYearNotOpenError) return t('leaveYearNotOpen', { year: e.year });

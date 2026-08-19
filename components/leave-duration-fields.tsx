@@ -46,6 +46,12 @@ export type LeaveOverrideNotice = {
   fromTypeName: string | null;
   daysInAdvance?: number;
   minAdvanceDays?: number | null;
+  /** Advance Notice — calendar days or working days (7daac043): the UNIT both figures above are measured in.
+   *  Absent ⇒ calendar days, the reading every leave type had before it shipped. READ IT before wording the
+   *  notice: on a working-days type `daysInAdvance` is a working-day count, so printing it under the
+   *  calendar-days sentence tells an employee they gave 3 days' notice when their wall calendar says 5 — on
+   *  the very dialog they must tick to consent. */
+  minAdvanceDayType?: 'calendar_days' | 'working_days';
   paidDays?: number;
   unpaidDays?: number;
 };
@@ -468,11 +474,20 @@ export function LeaveDurationFields({
             <div key={o.consentToken} className="space-y-1.5">
               <p className="text-xs text-foreground">
                 {o.action === 'convert_to_emergency'
-                  ? t('override.convertNotice', {
-                      typeName: o.fromTypeName ?? '',
-                      days: o.minAdvanceDays ?? 0,
-                      given: o.daysInAdvance ?? 0,
-                    })
+                  ? // Advance Notice — calendar days or working days (7daac043). BOTH numbers in this
+                    // sentence are counted in the rule's configured unit, so the sentence has to name that
+                    // unit: a working-days rule gets the "working day(s)" wording, everything else keeps the
+                    // sentence it has always had, word for word.
+                    t(
+                      o.minAdvanceDayType === 'working_days'
+                        ? 'override.convertNoticeWorking'
+                        : 'override.convertNotice',
+                      {
+                        typeName: o.fromTypeName ?? '',
+                        days: o.minAdvanceDays ?? 0,
+                        given: o.daysInAdvance ?? 0,
+                      },
+                    )
                   : o.action === 'split_unpaid'
                     ? t('override.splitNotice', { paid: o.paidDays ?? 0, unpaid: o.unpaidDays ?? 0 })
                     : t('override.blockNotice', { typeName: o.fromTypeName ?? '' })}

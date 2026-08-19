@@ -879,15 +879,29 @@ export class LeaveAdvanceNoticeRequiredError extends Error {
   // The action-layer localizer (localizeLeaveError) detects a present customMessage and renders it as-is —
   // it does NOT re-localize or interpolate an admin-authored string. Absent ⇒ the built-in localized default.
   readonly customMessage?: string;
-  constructor(minDays: number, typeName?: string, customMessage?: string) {
+  // Advance Notice — calendar days or working days (7daac043): WHICH READING refused this application, so
+  // the localizer can say "7 working day(s)" rather than "7 day(s)" and the employee is not left counting
+  // the wrong kind of day. Defaults to 'calendar_days' — the reading every leave type had before 0447 and
+  // still has unless an administrator changed it — so a caller that omits it gets today's message exactly.
+  // A CUSTOM message still wins over both: an admin-authored string is rendered verbatim, never re-worded.
+  readonly dayType: AdvanceNoticeDayType;
+  constructor(
+    minDays: number,
+    typeName?: string,
+    customMessage?: string,
+    dayType: AdvanceNoticeDayType = 'calendar_days',
+  ) {
     super(
       customMessage ??
-        `${typeName ?? 'This leave type'} must be submitted at least ${minDays} day(s) before the leave start date.`,
+        `${typeName ?? 'This leave type'} must be submitted at least ${minDays} ${
+          dayType === 'working_days' ? 'working ' : ''
+        }day(s) before the leave start date.`,
     );
     this.name = 'LeaveAdvanceNoticeRequiredError';
     this.typeName = typeName;
     this.minDays = minDays;
     this.customMessage = customMessage;
+    this.dayType = dayType;
   }
 }
 
@@ -1116,16 +1130,84 @@ export function exceedsBackdatingLimit(startDate: string, today: string, limitDa
   return daysBetween(startDate, today) > limitDays;
 }
 
-/** Minimum advance-notice rule (0159). True when `startDate` arrives with fewer than `minDays` days of
- *  notice from `today` (both ISO yyyy-mm-dd). minDays null ⇒ never blocked (existing behaviour). Exactly
- *  minDays of notice is allowed ("at least N days before"). daysBetween(today, start) is positive for a
- *  future start and NEGATIVE for a backdated one, so a backdated request always lacks notice — consistent
- *  with "must be submitted at least N days before the start date" (the separate backdating gate may fire
- *  first; both are checked before any write). minDays 0 ⇒ only past start dates lack notice (start must be
- *  today or later). Pure + `today`-injectable for deterministic tests, mirroring exceedsBackdatingLimit. */
-export function lacksMinAdvanceNotice(startDate: string, today: string, minDays: number | null): boolean {
+/** Advance Notice — calendar days or working days (feedback 7daac043, migration 0447). The UNIT a leave
+ *  type's minimum advance-notice requirement is read in. 'calendar_days' counts every day on the wall
+ *  calendar; 'working_days' counts only the days the employee is actually rostered to work. Stored as TEXT
+ *  + CHECK rather than a pgEnum (the 0338 lesson, see the schema comment) and given its reading in exactly
+ *  one function, resolveAdvanceNoticeDayType() below. */
+export type AdvanceNoticeDayType = 'calendar_days' | 'working_days';
+
+/** THE ONE PLACE the stored column is turned into a reading. NULL — which is every leave_type row in every
+ *  existing database, since 0447 backfills nothing — means calendar days, and so does anything unrecognised
+ *  (a hand-edited row must not leave the engine guessing). Mirrors how maxConsecutiveUnit is resolved in
+ *  resolveApplicationLengthLimit. */
+export function resolveAdvanceNoticeDayType(stored: string | null | undefined): AdvanceNoticeDayType {
+  return stored === 'working_days' ? 'working_days' : 'calendar_days';
+}
+
+/** How much notice a request submitted on `today` actually GIVES for a leave starting on `startDate`,
+ *  measured in `dayType`'s unit (both ISO yyyy-mm-dd). Pure + `today`-injectable, like every other rule
+ *  helper in this file.
+ *
+ *  THE WINDOW IS HALF-OPEN, [today, startDate) — and that is what makes the two units agree at the
+ *  boundary. Calendar 7 has always meant "7 whole days before the start date" (daysBetween is exclusive of
+ *  the end), so the start date itself must not be counted in EITHER unit; counting it in the working-days
+ *  branch would quietly make "7 working days" one day laxer than "7 calendar days" on a week with no
+ *  weekend in it.
+ *
+ *  calendar_days ⇒ daysBetween(today, startDate): positive for a future start, NEGATIVE for a backdated
+ *  one, which is exactly the pre-0447 arithmetic and why a backdated request has always lacked notice.
+ *  working_days ⇒ the number of dates in that window the employee is rostered to work and that are not
+ *  holidays (isWorkingDay, the same membership test the deduction engine uses). A backdated start yields
+ *  an EMPTY window and therefore 0, which still lacks any positive requirement — the semantics are
+ *  preserved, not the sign.
+ *
+ *  `workingDaysIso` / `holidays` are only consulted on the working-days branch; callers on the calendar
+ *  branch pass neither and issue no extra queries at all. Omitted on the working branch they fall back to
+ *  the Mon–Fri default and no holidays, the same fallback resolveSchedule takes for a company with no
+ *  attendance policy. */
+export function noticeDaysGiven(
+  today: string,
+  startDate: string,
+  dayType: AdvanceNoticeDayType,
+  workingDaysIso?: number[],
+  holidays?: Set<string>,
+): number {
+  if (dayType !== 'working_days') return daysBetween(today, startDate);
+  const roster = workingDaysIso ?? DEFAULT_WORKING_DAYS_ISO;
+  const hols = holidays ?? new Set<string>();
+  const end = Date.parse(`${startDate}T00:00:00Z`);
+  let n = 0;
+  for (let t = Date.parse(`${today}T00:00:00Z`); t < end; t += 86_400_000) {
+    if (isWorkingDay(new Date(t).toISOString().slice(0, 10), roster, hols)) n++;
+  }
+  return n;
+}
+
+/** Minimum advance-notice rule (0159), read in a configurable unit since 7daac043 / migration 0447. True
+ *  when `startDate` arrives with fewer than `minDays` days of notice from `today`, counted in `dayType`.
+ *  minDays null ⇒ never blocked (existing behaviour). Exactly minDays of notice is allowed ("at least N
+ *  days before"). A backdated start always lacks notice — consistent with "must be submitted at least N
+ *  days before the start date" (the separate backdating gate may fire first; both are checked before any
+ *  write). minDays 0 ⇒ only past start dates lack notice on the calendar reading (start must be today or
+ *  later). Pure + `today`-injectable for deterministic tests, mirroring exceedsBackdatingLimit. */
+export function lacksMinAdvanceNoticeIn(
+  startDate: string,
+  today: string,
+  minDays: number | null,
+  dayType: AdvanceNoticeDayType,
+  workingDaysIso?: number[],
+  holidays?: Set<string>,
+): boolean {
   if (minDays == null) return false;
-  return daysBetween(today, startDate) < minDays;
+  return noticeDaysGiven(today, startDate, dayType, workingDaysIso, holidays) < minDays;
+}
+
+/** The CALENDAR-basis reading of the rule, kept at its original 3-argument signature so every pre-0447
+ *  importer (and the tests that pin the pre-0447 arithmetic) keeps working unchanged. A thin wrapper, not a
+ *  second implementation: there is one rule and one place it is computed. */
+export function lacksMinAdvanceNotice(startDate: string, today: string, minDays: number | null): boolean {
+  return lacksMinAdvanceNoticeIn(startDate, today, minDays, 'calendar_days');
 }
 
 /**
@@ -2152,7 +2234,14 @@ async function insertLeaveRequest(
     // submitted event payload for the audit trail (CLAUDE.md substrate discipline: an admin bypassing a
     // configured control must be captured). null/absent ⇒ normal in-notice request; payload unchanged so
     // existing assertions stay green. Mirrors backdatingAudit above.
-    minAdvanceAudit?: { daysInAdvance: number; minAdvanceDays: number | null } | null;
+    // 7daac043 — `daysInAdvance` is measured in `dayType`'s unit, so the unit is stamped WITH it. Without it
+    // "5" on a working-days type and "5" on a calendar-days type are the same number describing different
+    // amounts of notice, and the history stops being readable the moment a tenant configures both.
+    minAdvanceAudit?: {
+      daysInAdvance: number;
+      minAdvanceDays: number | null;
+      dayType: AdvanceNoticeDayType;
+    } | null;
     // Leave Year Configuration (9aa894a4): set only when an HR admin SUCCESSFULLY overrode the not-yet-open
     // gate (the request is for a future leave year that is not open, but isAdmin let it through). Stamps the
     // override onto the submitted event payload for the audit trail. null/absent ⇒ normal request; payload
@@ -2239,6 +2328,10 @@ async function insertLeaveRequest(
             advanceNoticeOverride: true,
             daysInAdvance: v.minAdvanceAudit.daysInAdvance,
             minAdvanceDays: v.minAdvanceAudit.minAdvanceDays,
+            // 7daac043: the UNIT both figures above are in. Stamped always (not only for working days) so
+            // an auditor never has to infer it from the leave type's CURRENT configuration, which may have
+            // been changed since.
+            advanceNoticeDayType: v.minAdvanceAudit.dayType,
           }
         : {}),
       // Leave Year Configuration (9aa894a4): when an HR admin applied for a future leave year that is not yet
@@ -2272,6 +2365,8 @@ async function insertLeaveRequest(
                   advanceNoticeOverride: true,
                   daysInAdvance: v.overrideAudit.daysInAdvance,
                   minAdvanceDays: v.overrideAudit.minAdvanceDays,
+                  // 7daac043: same reason as the HR-side stamp above — the unit the two figures are in.
+                  ...(v.overrideAudit.dayType ? { advanceNoticeDayType: v.overrideAudit.dayType } : {}),
                 }
               : {}),
             ...(v.overrideAudit.alsoSplitUnpaid ? { overrideAlsoSplitUnpaid: true } : {}),
@@ -2340,6 +2435,11 @@ const leaveTypeRequestColumns = {
   backdatingLimitDays: leaveType.backdatingLimitDays,
   // Minimum advance-notice rule (0159): required days of notice before the start date.
   minAdvanceDays: leaveType.minAdvanceDays,
+  // Advance Notice — calendar days or working days (7daac043, migration 0447): the UNIT that requirement is
+  // read in. MUST be selected here or every request path reads `undefined`, resolveAdvanceNoticeDayType
+  // falls back to calendar days, and a type configured for working days would be silently judged on the
+  // wall calendar — the rule would look configured and do nothing.
+  minAdvanceDayType: leaveType.minAdvanceDayType,
   // Custom validation messages (custom-messages migration): the admin-authored override map, keyed by
   // rule config field. Passed through the typed error so the localizer shows it verbatim.
   customMessages: leaveType.customMessages,
@@ -2378,9 +2478,11 @@ type LeaveOverrideAudit = {
   /** The type the employee originally applied for (absent for a rule that does not convert). */
   fromLeaveTypeId?: string;
   fromLeaveTypeName?: string;
-  /** Advance-notice trigger — the same pair the HR override stamps. */
+  /** Advance-notice trigger — the same pair the HR override stamps, plus (7daac043) the unit
+   *  `daysInAdvance` is measured in, without which the figure is ambiguous. */
   daysInAdvance?: number;
   minAdvanceDays?: number | null;
+  dayType?: AdvanceNoticeDayType;
   /** Insufficient-balance trigger — the split as it was measured at submission. */
   paidDays?: number;
   unpaidDays?: number;
@@ -2528,10 +2630,32 @@ export async function requestLeave(
     // local (MYT) `today` as the backdating gate and fails fast BEFORE any write. Emergency Leave already
     // returned above — it exists precisely for short-notice absence (the reporter's custom message points
     // employees to it) and the field is hidden for EL in the admin UI.
+    //
+    // Advance Notice — calendar days or working days (7daac043, migration 0447). The requirement is now
+    // read in a configurable UNIT. The two extra reads the working-days unit needs (the roster and the
+    // holiday set) are GUARDED so the calendar path — every leave type until an administrator changes one,
+    // and the only path any existing tenant takes — issues no new query at all. The third condition,
+    // `p.startDate > today`, is not an optimisation for its own sake: a backdated start makes the notice
+    // window EMPTY, so the count is 0 whatever the roster says, and querying for it would be asking a
+    // question whose answer cannot matter.
     const minAdvance = lt?.minAdvanceDays ?? null;
-    const advanceOverride = isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, minAdvance);
+    const minAdvanceDayType = resolveAdvanceNoticeDayType(lt?.minAdvanceDayType);
+    let noticeRoster: number[] | undefined;
+    let noticeHolidays: Set<string> | undefined;
+    if (minAdvance != null && minAdvanceDayType === 'working_days' && p.startDate > today) {
+      // The SAME sources the deduction engine uses — attendance_policy.working_days (Full ∪ Half) and the
+      // business-group → state → national holiday resolution — so "working day" means one thing in this
+      // product, not two.
+      noticeRoster = await resolveWorkingDaysIso(tx, p.employmentId);
+      noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
+    }
+    // Computed ONCE and reused: the gate below, the HR-override audit stamp, and the Override-rule
+    // conversion payload must all quote the same figure, in the same unit.
+    const noticeGiven = noticeDaysGiven(today, p.startDate, minAdvanceDayType, noticeRoster, noticeHolidays);
+    const lacksNotice = minAdvance != null && noticeGiven < minAdvance;
+    const advanceOverride = isAdmin(ctx) && lacksNotice;
     const consent = parseLeaveOverrideConsent(p.overrideConsent);
-    if (!isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, minAdvance)) {
+    if (!isAdmin(ctx) && lacksNotice) {
       // ── Override Leave Application (56910869) · TRIGGER 1: advance notice not met ──────────────────
       //
       // THIS IS 65f466e2, SHIPPED AS A RULE RATHER THAN A BRANCH. Absent a rule — which is every leave type
@@ -2599,7 +2723,10 @@ export async function requestLeave(
         // Still a real state, and still loud: the chosen type can be archived after the rule was written.
         // The message names what was CHOSEN, so HR can see which configuration to repair.
         if (!target) throw new LeaveOverrideTargetMissingError(rule.targetLeaveTypeId ?? EMERGENCY_LEAVE_CODE);
-        const daysInAdvance = daysBetween(today, p.startDate);
+        // 7daac043: the notice actually given, in the unit the rule was judged in — the same figure the gate
+        // above used. Recomputing it on the calendar basis here would tell the employee they gave 5 days'
+        // notice while the rule that fired counted 3 working ones.
+        const daysInAdvance = noticeGiven;
         // CONFIRMATION IS A SERVICE CONCERN. Nothing is persisted without the employee's explicit
         // agreement to THIS rule — a client that skips the pop-out cannot submit a converted application.
         if (!consent.has(leaveOverrideConsentToken('advance_notice_not_met', 'convert_to_emergency'))) {
@@ -2617,6 +2744,7 @@ export async function requestLeave(
           fromLeaveTypeName: lt?.name,
           daysInAdvance,
           minAdvanceDays: minAdvance,
+          dayType: minAdvanceDayType,
           consentAt: new Date().toISOString(),
         };
         // Re-point the application. Everything from here on — the duplicate-application policy, the balance
@@ -2641,6 +2769,9 @@ export async function requestLeave(
           minAdvance!,
           lt?.name,
           lt?.customMessages?.minAdvanceDays || undefined,
+          // 7daac043: which reading refused them, so the standard message says "working day(s)" when that is
+          // what was counted. A custom message still wins — it is rendered verbatim, never re-worded.
+          minAdvanceDayType,
         );
       }
     }
@@ -3054,7 +3185,10 @@ export async function requestLeave(
       // Minimum advance-notice rule (0159): stamp the override onto the submitted event only when an HR admin
       // actually bypassed the type's required notice (computed at the guard above).
       minAdvanceAudit: advanceOverride
-        ? { daysInAdvance: daysBetween(today, p.startDate), minAdvanceDays: minAdvance }
+        ? // 7daac043 — the notice given in the unit the rule was JUDGED in (noticeGiven, computed once at the
+          // gate), not a fresh calendar count. An override record that says "5 days of notice against a
+          // requirement of 7" while the rule counted 3 working days describes an override that never happened.
+          { daysInAdvance: noticeGiven, minAdvanceDays: minAdvance, dayType: minAdvanceDayType }
         : null,
       // Leave Year Configuration (9aa894a4): stamp the override onto the submitted event only when an HR admin
       // actually applied for a not-yet-open future leave year (computed at the gate above).
@@ -3200,6 +3334,10 @@ export async function previewLeaveDeduction(
         // will, rather than the form guessing from what it happens to know.
         name: leaveType.name,
         minAdvanceDays: leaveType.minAdvanceDays,
+        // 7daac043: the unit that requirement is read in — projected so the pop-out evaluates the notice rule
+        // exactly as the submission will. Unprojected, the preview would judge a working-days type on the
+        // wall calendar and stay silent about a conversion the submission is about to demand consent for.
+        minAdvanceDayType: leaveType.minAdvanceDayType,
         overrideRules: leaveType.overrideRules,
       })
       .from(leaveType)
@@ -3272,16 +3410,33 @@ export async function previewLeaveDeduction(
       const rules = normalizeLeaveOverrideRules(lt.overrideRules);
       const today = p.today ?? todayInKualaLumpur();
       const advance = resolveLeaveOverrideRule(rules, 'advance_notice_not_met');
-      if (advance && !leaveTypeIs(lt, 'emergency') && lacksMinAdvanceNotice(p.startDate, today, lt.minAdvanceDays ?? null)) {
-        overrides.push({
-          trigger: 'advance_notice_not_met',
-          action: advance.action,
-          consentToken: leaveOverrideConsentToken('advance_notice_not_met', advance.action),
-          needsConsent: leaveOverrideNeedsConsent(advance.action),
-          fromTypeName: lt.name ?? null,
-          daysInAdvance: daysBetween(today, p.startDate),
-          minAdvanceDays: lt.minAdvanceDays ?? null,
-        });
+      const noticeMin = lt.minAdvanceDays ?? null;
+      if (advance && !leaveTypeIs(lt, 'emergency') && noticeMin != null) {
+        // 7daac043 — the SAME unit-aware measurement requestLeave makes, from the SAME two sources, behind
+        // the SAME guards: no extra query on the calendar reading (every type until an administrator
+        // changes one), and none for a backdated start whose notice window is empty either way. `hols` /
+        // `sched` resolved further up CANNOT be reused — they cover the LEAVE span [startDate, endDate],
+        // and the notice window is [today, startDate), a different range entirely.
+        const noticeDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
+        let noticeRoster: number[] | undefined;
+        let noticeHolidays: Set<string> | undefined;
+        if (noticeDayType === 'working_days' && p.startDate > today) {
+          noticeRoster = await resolveWorkingDaysIso(tx, p.employmentId);
+          noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
+        }
+        const noticeGiven = noticeDaysGiven(today, p.startDate, noticeDayType, noticeRoster, noticeHolidays);
+        if (noticeGiven < noticeMin) {
+          overrides.push({
+            trigger: 'advance_notice_not_met',
+            action: advance.action,
+            consentToken: leaveOverrideConsentToken('advance_notice_not_met', advance.action),
+            needsConsent: leaveOverrideNeedsConsent(advance.action),
+            fromTypeName: lt.name ?? null,
+            daysInAdvance: noticeGiven,
+            minAdvanceDays: noticeMin,
+            minAdvanceDayType: noticeDayType,
+          });
+        }
       }
       const balanceRule = resolveLeaveOverrideRule(rules, 'insufficient_balance');
       if (balanceRule) {
@@ -3328,6 +3483,9 @@ export type LeaveOverridePreview = {
   fromTypeName: string | null;
   daysInAdvance?: number;
   minAdvanceDays?: number | null;
+  /** 7daac043 — the unit BOTH figures above are measured in, carried so the form is never left describing a
+   *  working-days rule with a calendar-days number. */
+  minAdvanceDayType?: AdvanceNoticeDayType;
   paidDays?: number;
   unpaidDays?: number;
 };
@@ -3624,6 +3782,12 @@ async function requestEmergencyLeave(
             advanceNoticeOverride: true,
             daysInAdvance: overrideAudit.daysInAdvance,
             minAdvanceDays: overrideAudit.minAdvanceDays,
+            // 7daac043: the UNIT the two figures above are in — the same stamp every child's submitted event
+            // carries. This is the ONE event the doc comment above promises an auditor can start from, so it
+            // is exactly the event that must not leave "5" ambiguous between five calendar days and five
+            // working ones. Conditional only so a pre-7daac043 audit object (no dayType) writes the payload
+            // it always wrote.
+            ...(overrideAudit.dayType ? { advanceNoticeDayType: overrideAudit.dayType } : {}),
           }
         : {}),
     },
@@ -5330,6 +5494,9 @@ export async function editLeaveRequest(
         durations: leaveType.durations,
         backdatingLimitDays: leaveType.backdatingLimitDays,
         minAdvanceDays: leaveType.minAdvanceDays,
+        // 7daac043: the unit the notice requirement is read in. An edit re-runs the SAME gate as submission,
+        // so it must read the same column or an edit could rescue an application the submission refused.
+        minAdvanceDayType: leaveType.minAdvanceDayType,
         customMessages: leaveType.customMessages,
         // Duplicate Leave Application Restriction (d5e51c34): same-date double-booking policy — enforced below
         // after the AM/PM slot-clash guard, EXCLUDING this very request. null ⇒ 'allow'.
@@ -5390,11 +5557,26 @@ export async function editLeaveRequest(
         lt.customMessages?.backdatingLimitDays || undefined,
       );
     }
-    if (!isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, lt.minAdvanceDays ?? null)) {
+    // 7daac043 — the notice gate reads its configured UNIT here too, with the same guarded resolution as
+    // requestLeave: no extra query on the calendar path, and none for a backdated start whose notice window
+    // is empty either way.
+    const editMinAdvance = lt.minAdvanceDays ?? null;
+    const editDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
+    let editNoticeRoster: number[] | undefined;
+    let editNoticeHolidays: Set<string> | undefined;
+    if (!isAdmin(ctx) && editMinAdvance != null && editDayType === 'working_days' && p.startDate > today) {
+      editNoticeRoster = await resolveWorkingDaysIso(tx, req.employmentId);
+      editNoticeHolidays = await resolveHolidaySet(tx, req.employmentId, today, p.startDate);
+    }
+    if (
+      !isAdmin(ctx) &&
+      lacksMinAdvanceNoticeIn(p.startDate, today, editMinAdvance, editDayType, editNoticeRoster, editNoticeHolidays)
+    ) {
       throw new LeaveAdvanceNoticeRequiredError(
         lt.minAdvanceDays!,
         lt.name,
         lt.customMessages?.minAdvanceDays || undefined,
+        editDayType,
       );
     }
 

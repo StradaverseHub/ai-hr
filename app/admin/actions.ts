@@ -1341,10 +1341,25 @@ export async function updateLeaveTypeAction(fd: FormData) {
     : {};
   // Minimum advance-notice rule (0159): its own sub-form posts `minAdvance=1` (marker), mirroring the
   // backdating tri-state guard above. Empty input ⇒ null (clears the requirement); a number sets it.
+  //
+  // Advance Notice — calendar days or working days (7daac043): the Day Type select lives in the SAME
+  // sub-form and rides the SAME marker, so the requirement and the unit it is read in save together and a
+  // save of any OTHER card can never reset either. THE UNIT IS ONLY FORWARDED WITH A REQUIREMENT: a blank
+  // number clears both, because a unit with no figure is inert configuration that looks set. An
+  // unrecognised value falls back to 'calendar_days' — today's reading — and the service re-validates it
+  // against the closed set behind the DB CHECK.
   const touchMinAdvance = fd.get('minAdvance') === '1';
   const minAdvanceRaw = String(fd.get('minAdvanceDays') ?? '').trim();
+  const minAdvanceDayTypeRaw = String(fd.get('minAdvanceDayType') ?? '').trim();
   const minAdvanceFields = touchMinAdvance
-    ? { minAdvanceDays: minAdvanceRaw === '' ? null : Number(minAdvanceRaw) }
+    ? minAdvanceRaw === ''
+      ? { minAdvanceDays: null, minAdvanceDayType: null }
+      : {
+          minAdvanceDays: Number(minAdvanceRaw),
+          minAdvanceDayType: (minAdvanceDayTypeRaw === 'working_days' ? 'working_days' : 'calendar_days') as
+            | 'calendar_days'
+            | 'working_days',
+        }
     : {};
   // The three REQUEST-VALIDATION rules, pre-merged into one fragment. They stay three independent
   // tri-states; only the assembly is flattened, because the updateLeaveType call below is already at
@@ -1359,6 +1374,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
     maxConsecutiveDays?: number | null;
     maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
     minAdvanceDays?: number | null;
+    minAdvanceDayType?: 'calendar_days' | 'working_days' | null;
   } = { ...backdatingFields, ...applicationLimitFields, ...maxConsecutiveFields, ...minAdvanceFields };
   // Partial Leave Approval (ADR-0068): its own sub-form posts `partialApproval=1` (marker) so a rename /
   // eligibility / durations / document / payroll / backdating edit that omits it leaves per_date_approval
