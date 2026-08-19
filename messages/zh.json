@@ -3271,7 +3271,9 @@
       "colTablesVer": "税表版本",
       "recentEmpty": "暂无报表记录。",
       "worklistMoved": "CP22 与 CP22A 通知已移至“法定表格”，与其他 LHDN 申报放在一起。",
-      "worklistMovedLink": "打开合规工作清单"
+      "worklistMovedLink": "打开合规工作清单",
+      "worksheetIntro": "正在考量同一个月第二次发薪在公积金、社险、就业保险与预扣税上的处理方式？",
+      "worksheetLink": "打开多次发薪法定核对表"
     },
     "statutoryForms": {
       "pageTitle": "法定表格",
@@ -5679,6 +5681,110 @@
       "yearNoAdditional": "本月没有发放额外薪酬，因此计算中的全年总额步骤没有执行。",
       "yearTotalMtd": "全年已计入的 MTD 总计",
       "yearTotalTax": "全年 P₂ 的税额总计"
+    },
+    "multiCycleWorksheet": {
+      "title": "多次发薪法定核对表",
+      "subtitle": "若把同一个月内多次发薪合并为一个法定月份计算，公积金、社险、就业保险与预扣税会是多少 —— 以贵公司自己的薪资历史实测。",
+      "backToReports": "返回报表",
+      "readOnlyBanner": "本页面只读。它不会重算任何薪资单、不会改动任何已支付的金额，也不会启用任何功能。它的用途是在作出该决定之前供人审阅。",
+      "noPackForCountry": "当前公司所属国家（{country}）没有定义按月缴纳单位的法定规则包，因此这里没有需要核对的内容。",
+      "filterTitle": "筛选",
+      "fieldYear": "课税年度",
+      "yearPlaceholder": "2026",
+      "yearHint": "留空则涵盖记录中的所有年度。",
+      "apply": "套用",
+      "headline": "在 {periods} 个有多次发薪的公司月份中，{compared} 个员工月份里有 {changed} 个会发生变化。",
+      "verdictBreakdown": "已按整月计算：{aggregated}。两种算法一致：{agree}。两种算法都不吻合：{unexplained}。",
+      "replayVersion": "依据法定规则版本 {version} 重算。",
+      "totalsTitle": "各法定项目合计",
+      "totalsHint": "“已支付”是薪资单上存储金额的合计。“各次单独计算”把每次发薪都从税阶最低处重新计算。“整月合一”把该月视为一次法定计算。“变动额”是会改变的金额，仅统计已支付金额与“各次单独计算”吻合的员工月份。",
+      "rowsTitle": "员工月份",
+      "rowsHint": "各法定项目的变动幅度（整月合一减去已支付）。会发生变化的月份排在前面。",
+      "noRows": "没有可比较的、当月发薪超过一次的员工月份。",
+      "truncated": "仅列出前 200 行。上方合计涵盖全部行。",
+      "skipsTitle": "未计入",
+      "skipsHint": "被排除的月份是按决定不在范围内 —— 冲销另行处理，而把负数当作零会低估差额。被标记的月份是无法从记录还原输入的月份；它们如实报告，而不作臆测。",
+      "noSkips": "每一个多次发薪的员工月份都完成了比较。",
+      "exampleTitle": "逐位员工的计算过程",
+      "exampleHint": "先看算式，再看合计。下方示例由现行法定表格实时算出，并非写死的数字。",
+      "exampleNoRow": "没有可比较的员工月份，因此仅显示上方示例。",
+      "exampleFor": "{employee} — {period}，{company}",
+      "illustrationTitle": "示例：同一个月薪金 {normal} 加上第二次发薪 {second}",
+      "illustrationStep1": "薪金那次单独计算：{wage} 的公积金为 {epf}（员工部分）。",
+      "illustrationStep2": "第二次单独计算、从表格最低处起算：{wage} 的公积金为 {epf}。",
+      "illustrationStep3": "两者相加，该月合计缴纳 {total}。",
+      "illustrationStep4": "视为一个法定月份 —— 正常薪金 {normal} 加额外薪酬 {second} —— 该月合计缴纳 {epf}。",
+      "illustrationStep5": "差额为 {diff}，这只是一位员工的一个月。",
+      "illustrationVersion": "依据法定规则版本 {version} 计算。",
+      "runLabel": "第 {seq} 次 — {type}",
+      "monthTotal": "整月合计",
+      "signOffTitle": "签核",
+      "signOffBody": "在启用整月合一的算法之前，须由合格的薪资主管或会计师审阅本核对表。本页面不会启用任何功能；启用仍是审阅之后另行采取的、明确的步骤。",
+      "signOffAdr": "可打印或导出本页面，存入审阅人档案。",
+      "tile": {
+        "periods": "有 2 次以上发薪的公司月份",
+        "examined": "已检视的员工月份",
+        "compared": "已比较的员工月份",
+        "wouldChange": "会发生变化",
+        "excluded": "已排除",
+        "flagged": "无法核对"
+      },
+      "col": {
+        "item": "法定项目",
+        "paid": "已支付",
+        "perRun": "各次单独计算",
+        "monthAsOne": "整月合一",
+        "movement": "变动额",
+        "company": "公司",
+        "month": "月份",
+        "employee": "员工",
+        "runs": "发薪次数",
+        "verdict": "算法",
+        "disposition": "处置",
+        "reason": "原因",
+        "run": "发薪",
+        "normal": "正常薪金",
+        "additional": "额外薪酬",
+        "overtime": "加班",
+        "reading": "算法"
+      },
+      "item": {
+        "epfEmployee": "公积金（员工）",
+        "epfEmployer": "公积金（雇主）",
+        "socsoEmployee": "社险（员工）",
+        "socsoEmployer": "社险（雇主）",
+        "eisEmployee": "就业保险（员工）",
+        "eisEmployer": "就业保险（雇主）",
+        "pcb": "预扣税（PCB/MTD）"
+      },
+      "verdict": {
+        "agree": "两种算法都得出已支付金额",
+        "already_aggregated": "已按整月计算",
+        "would_change": "会发生变化",
+        "unexplained": "两种算法都不吻合"
+      },
+      "disposition": {
+        "excluded": "已排除",
+        "flagged": "无法核对"
+      },
+      "reason": {
+        "negative_amount": "薪资单上出现负数 —— 冲销或追回",
+        "negative_delta": "两次发薪之间额外薪酬减少",
+        "needs_recalc": "本月有一次发薪被标记为需重算",
+        "bases_not_recorded": "该薪资单早于各机构计费基数的记录",
+        "first_run_not_regular": "本月第一次发薪不是常规薪金发放",
+        "manual_statutory_adjustment": "本月有法定金额是人工设定的",
+        "base_carve_outs": "薪资项目在公积金、社险与税项上的豁免金额不一致",
+        "inconsistent_run_bases": "各次发薪按不同的月薪计费",
+        "zakat_or_lp_present": "本月涉及天课或 TP1 扣除",
+        "no_statutory_profile": "该员工没有马来西亚法定资料"
+      },
+      "runType": {
+        "regular": "常规",
+        "off_cycle": "非常规",
+        "bonus": "花红",
+        "adjustment": "调整"
+      }
     }
   },
   "admin": {

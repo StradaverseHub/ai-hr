@@ -3624,7 +3624,9 @@
       "colTablesVer": "Tables ver.",
       "recentEmpty": "No reports recorded yet.",
       "worklistMoved": "The CP22 and CP22A notices now live on Statutory Forms, with the rest of the LHDN filings.",
-      "worklistMovedLink": "Open the compliance worklist"
+      "worklistMovedLink": "Open the compliance worklist",
+      "worksheetIntro": "Deciding how a second payroll run in one month should be treated for EPF, SOCSO, EIS and PCB?",
+      "worksheetLink": "Open the Multi-Cycle Statutory Worksheet"
     },
     "statutoryForms": {
       "pageTitle": "Statutory Forms",
@@ -5679,6 +5681,110 @@
       "yearNoAdditional": "This month paid no additional remuneration, so the yearly-total step of the calculation did not run.",
       "yearTotalMtd": "Total MTD for the year already accounted for",
       "yearTotalTax": "Total tax for the year on P₂"
+    },
+    "multiCycleWorksheet": {
+      "title": "Multi-Cycle Statutory Worksheet",
+      "subtitle": "What EPF, SOCSO, EIS and PCB would be if a month with more than one payroll run were treated as one statutory month — measured on your own payroll history.",
+      "backToReports": "Back to Reports",
+      "readOnlyBanner": "This screen only reads. It does not recalculate any payslip, change any figure that has been paid, or switch anything on. It exists to be reviewed before that decision is taken.",
+      "noPackForCountry": "The active company's country ({country}) has no statutory pack defining a monthly contribution unit, so there is nothing to reconcile here.",
+      "filterTitle": "Filter",
+      "fieldYear": "Tax year",
+      "yearPlaceholder": "2026",
+      "yearHint": "Leave blank to cover every year on file.",
+      "apply": "Apply",
+      "headline": "{changed} of {compared} employee-months would change, across {periods} company-months that had more than one payroll run.",
+      "verdictBreakdown": "Already computed as one month: {aggregated}. Both readings agree: {agree}. Matched neither reading: {unexplained}.",
+      "replayVersion": "Replayed against statutory ruleset version {version}.",
+      "totalsTitle": "Totals by statutory item",
+      "totalsHint": "“Paid” is the sum of the figures stored on the payslips. “Each run alone” recomputes every run from the bottom of the bands. “Month as one” treats the month as a single statutory computation. “Movement” is what would change, counted only for the employee-months whose paid figures match “each run alone”.",
+      "rowsTitle": "Employee-months",
+      "rowsHint": "How far each statutory item would move (month as one, less what was paid). Months that would change are listed first.",
+      "noRows": "No employee-month with more than one payroll run could be compared.",
+      "truncated": "Only the first 200 rows are listed. The totals above cover every row.",
+      "skipsTitle": "Not counted",
+      "skipsHint": "Excluded months are out of scope by decision — reversals are set aside, and treating a negative as zero would understate the difference. Flagged months are ones whose inputs cannot be reconstructed from what was recorded; they are reported rather than guessed at.",
+      "noSkips": "Every employee-month with more than one run could be compared.",
+      "exampleTitle": "The working, one employee at a time",
+      "exampleHint": "Follow the arithmetic before reading the totals. The example below is computed from the statutory tables in force, not written down.",
+      "exampleNoRow": "No employee-month could be compared, so only the illustration above is shown.",
+      "exampleFor": "{employee} — {period}, {company}",
+      "illustrationTitle": "Illustration: salary {normal} and a second run of {second} in the same month",
+      "illustrationStep1": "The salary run on its own: EPF on {wage} is {epf} (employee share).",
+      "illustrationStep2": "The second run on its own, entering the table from the bottom: EPF on {wage} is {epf}.",
+      "illustrationStep3": "Added together, the month contributes {total}.",
+      "illustrationStep4": "Taken as one statutory month — {normal} of normal pay with {second} of additional pay — the month contributes {epf}.",
+      "illustrationStep5": "The difference is {diff}, for one employee in one month.",
+      "illustrationVersion": "Computed from statutory ruleset version {version}.",
+      "runLabel": "Run {seq} — {type}",
+      "monthTotal": "Month total",
+      "signOffTitle": "Sign-off",
+      "signOffBody": "A qualified payroll officer or accountant reviews this worksheet before the month-as-one treatment is switched on. Nothing on this screen enables it; enabling stays a separate, deliberate step taken after the review.",
+      "signOffAdr": "Print or export this page for the reviewer's file.",
+      "tile": {
+        "periods": "Company-months with 2+ runs",
+        "examined": "Employee-months examined",
+        "compared": "Employee-months compared",
+        "wouldChange": "Would change",
+        "excluded": "Excluded",
+        "flagged": "Could not be checked"
+      },
+      "col": {
+        "item": "Statutory item",
+        "paid": "Paid",
+        "perRun": "Each run alone",
+        "monthAsOne": "Month as one",
+        "movement": "Movement",
+        "company": "Company",
+        "month": "Month",
+        "employee": "Employee",
+        "runs": "Runs",
+        "verdict": "Reading",
+        "disposition": "Disposition",
+        "reason": "Reason",
+        "run": "Run",
+        "normal": "Normal pay",
+        "additional": "Additional pay",
+        "overtime": "Overtime",
+        "reading": "Reading"
+      },
+      "item": {
+        "epfEmployee": "EPF (employee)",
+        "epfEmployer": "EPF (employer)",
+        "socsoEmployee": "SOCSO (employee)",
+        "socsoEmployer": "SOCSO (employer)",
+        "eisEmployee": "EIS (employee)",
+        "eisEmployer": "EIS (employer)",
+        "pcb": "PCB (MTD)"
+      },
+      "verdict": {
+        "agree": "Both readings give the paid figure",
+        "already_aggregated": "Already computed as one month",
+        "would_change": "Would change",
+        "unexplained": "Matches neither reading"
+      },
+      "disposition": {
+        "excluded": "Excluded",
+        "flagged": "Could not be checked"
+      },
+      "reason": {
+        "negative_amount": "A negative amount on a payslip — a reversal or clawback",
+        "negative_delta": "Additional pay went down between runs",
+        "needs_recalc": "A run in this month is marked for recalculation",
+        "bases_not_recorded": "The payslip predates the record of what each agency was charged on",
+        "first_run_not_regular": "The month's first run is not the regular salary run",
+        "manual_statutory_adjustment": "A statutory figure in this month was set by hand",
+        "base_carve_outs": "Pay items exclude different amounts from EPF, SOCSO and tax",
+        "inconsistent_run_bases": "The runs were charged on different monthly wages",
+        "zakat_or_lp_present": "Zakat or a TP1 deduction rode this month",
+        "no_statutory_profile": "No Malaysian statutory profile for this employee"
+      },
+      "runType": {
+        "regular": "Regular",
+        "off_cycle": "Off-cycle",
+        "bonus": "Bonus",
+        "adjustment": "Adjustment"
+      }
     }
   },
   "admin": {

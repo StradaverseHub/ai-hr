@@ -3271,7 +3271,9 @@
       "colTablesVer": "Phiên bản bảng",
       "recentEmpty": "Chưa ghi nhận báo cáo nào.",
       "worklistMoved": "Thông báo CP22 và CP22A nay nằm ở Biểu mẫu luật định, cùng với các khoản nộp LHDN khác.",
-      "worklistMovedLink": "Mở danh sách tuân thủ"
+      "worklistMovedLink": "Mở danh sách tuân thủ",
+      "worksheetIntro": "Đang cân nhắc cách xử lý kỳ trả lương thứ hai trong một tháng cho EPF, SOCSO, EIS và PCB?",
+      "worksheetLink": "Mở Bảng tính pháp định cho nhiều kỳ trả lương"
     },
     "statutoryForms": {
       "pageTitle": "Biểu mẫu luật định",
@@ -5679,6 +5681,110 @@
       "yearNoAdditional": "Tháng này không chi trả thù lao bổ sung nên bước tính tổng cả năm không chạy.",
       "yearTotalMtd": "Tổng MTD cả năm đã được tính đến",
       "yearTotalTax": "Tổng thuế cả năm trên P₂"
+    },
+    "multiCycleWorksheet": {
+      "title": "Bảng tính pháp định cho nhiều kỳ trả lương",
+      "subtitle": "EPF, SOCSO, EIS và PCB sẽ là bao nhiêu nếu một tháng có nhiều hơn một kỳ trả lương được tính như một tháng pháp định — đo trên chính lịch sử lương của bạn.",
+      "backToReports": "Quay lại Báo cáo",
+      "readOnlyBanner": "Màn hình này chỉ đọc. Nó không tính lại phiếu lương nào, không thay đổi số tiền đã trả, và không bật bất cứ chức năng nào. Nó tồn tại để được xem xét trước khi quyết định đó được đưa ra.",
+      "noPackForCountry": "Quốc gia của công ty đang hoạt động ({country}) không có gói pháp định nào định nghĩa đơn vị đóng góp theo tháng, nên không có gì để đối chiếu ở đây.",
+      "filterTitle": "Bộ lọc",
+      "fieldYear": "Năm tính thuế",
+      "yearPlaceholder": "2026",
+      "yearHint": "Để trống để bao gồm mọi năm có trong hồ sơ.",
+      "apply": "Áp dụng",
+      "headline": "{changed} trong {compared} tháng-nhân viên sẽ thay đổi, trên {periods} tháng-công ty có nhiều hơn một kỳ trả lương.",
+      "verdictBreakdown": "Đã tính như một tháng: {aggregated}. Hai cách đọc trùng nhau: {agree}. Không khớp cách đọc nào: {unexplained}.",
+      "replayVersion": "Tính lại theo bộ quy tắc pháp định phiên bản {version}.",
+      "totalsTitle": "Tổng theo khoản pháp định",
+      "totalsHint": "“Đã trả” là tổng các số liệu lưu trên phiếu lương. “Từng kỳ riêng lẻ” tính lại mỗi kỳ từ bậc thấp nhất của biểu. “Cả tháng là một” coi tháng đó là một phép tính pháp định duy nhất. “Chênh lệch” là phần sẽ thay đổi, chỉ tính cho những tháng-nhân viên có số đã trả khớp với “từng kỳ riêng lẻ”.",
+      "rowsTitle": "Tháng-nhân viên",
+      "rowsHint": "Mỗi khoản pháp định sẽ dịch chuyển bao nhiêu (cả tháng là một, trừ đi số đã trả). Những tháng sẽ thay đổi được liệt kê trước.",
+      "noRows": "Không có tháng-nhân viên nào có nhiều hơn một kỳ trả lương để so sánh.",
+      "truncated": "Chỉ liệt kê 200 dòng đầu. Các tổng ở trên bao gồm mọi dòng.",
+      "skipsTitle": "Không được tính",
+      "skipsHint": "Các tháng bị loại nằm ngoài phạm vi theo quyết định — các bút toán đảo được để riêng, và coi số âm là không sẽ làm chênh lệch bị hụt. Các tháng được đánh dấu là những tháng không thể dựng lại dữ liệu đầu vào từ hồ sơ; chúng được báo cáo chứ không phỏng đoán.",
+      "noSkips": "Mọi tháng-nhân viên có nhiều hơn một kỳ đều so sánh được.",
+      "exampleTitle": "Cách tính, từng nhân viên một",
+      "exampleHint": "Hãy theo dõi phép tính trước khi đọc các tổng. Ví dụ bên dưới được tính từ các biểu pháp định đang có hiệu lực, không phải số viết sẵn.",
+      "exampleNoRow": "Không có tháng-nhân viên nào so sánh được, nên chỉ hiển thị ví dụ ở trên.",
+      "exampleFor": "{employee} — {period}, {company}",
+      "illustrationTitle": "Ví dụ: lương {normal} và kỳ thứ hai {second} trong cùng một tháng",
+      "illustrationStep1": "Riêng kỳ lương: EPF trên {wage} là {epf} (phần nhân viên).",
+      "illustrationStep2": "Riêng kỳ thứ hai, vào biểu từ bậc thấp nhất: EPF trên {wage} là {epf}.",
+      "illustrationStep3": "Cộng lại, tháng đó đóng {total}.",
+      "illustrationStep4": "Nếu coi là một tháng pháp định — {normal} lương thường cùng {second} thu nhập bổ sung — tháng đó đóng {epf}.",
+      "illustrationStep5": "Chênh lệch là {diff}, cho một nhân viên trong một tháng.",
+      "illustrationVersion": "Tính từ bộ quy tắc pháp định phiên bản {version}.",
+      "runLabel": "Kỳ {seq} — {type}",
+      "monthTotal": "Tổng cả tháng",
+      "signOffTitle": "Ký duyệt",
+      "signOffBody": "Một cán bộ tiền lương hoặc kế toán viên đủ năng lực sẽ xem xét bảng tính này trước khi cách tính cả-tháng-là-một được bật. Không có gì trên màn hình này bật nó; việc bật vẫn là một bước riêng, có chủ đích, thực hiện sau khi xem xét.",
+      "signOffAdr": "In hoặc xuất trang này để lưu vào hồ sơ của người xem xét.",
+      "tile": {
+        "periods": "Tháng-công ty có từ 2 kỳ",
+        "examined": "Tháng-nhân viên đã xét",
+        "compared": "Tháng-nhân viên đã so sánh",
+        "wouldChange": "Sẽ thay đổi",
+        "excluded": "Bị loại",
+        "flagged": "Không kiểm tra được"
+      },
+      "col": {
+        "item": "Khoản pháp định",
+        "paid": "Đã trả",
+        "perRun": "Từng kỳ riêng lẻ",
+        "monthAsOne": "Cả tháng là một",
+        "movement": "Chênh lệch",
+        "company": "Công ty",
+        "month": "Tháng",
+        "employee": "Nhân viên",
+        "runs": "Số kỳ",
+        "verdict": "Cách đọc",
+        "disposition": "Xử lý",
+        "reason": "Lý do",
+        "run": "Kỳ",
+        "normal": "Lương thường",
+        "additional": "Thu nhập bổ sung",
+        "overtime": "Làm thêm giờ",
+        "reading": "Cách đọc"
+      },
+      "item": {
+        "epfEmployee": "EPF (nhân viên)",
+        "epfEmployer": "EPF (chủ lao động)",
+        "socsoEmployee": "SOCSO (nhân viên)",
+        "socsoEmployer": "SOCSO (chủ lao động)",
+        "eisEmployee": "EIS (nhân viên)",
+        "eisEmployer": "EIS (chủ lao động)",
+        "pcb": "PCB (MTD)"
+      },
+      "verdict": {
+        "agree": "Cả hai cách đọc đều ra số đã trả",
+        "already_aggregated": "Đã tính như một tháng",
+        "would_change": "Sẽ thay đổi",
+        "unexplained": "Không khớp cách đọc nào"
+      },
+      "disposition": {
+        "excluded": "Bị loại",
+        "flagged": "Không kiểm tra được"
+      },
+      "reason": {
+        "negative_amount": "Có số âm trên phiếu lương — bút toán đảo hoặc thu hồi",
+        "negative_delta": "Thu nhập bổ sung giảm giữa các kỳ",
+        "needs_recalc": "Một kỳ trong tháng này được đánh dấu cần tính lại",
+        "bases_not_recorded": "Phiếu lương có trước khi hệ thống ghi lại cơ sở tính của từng cơ quan",
+        "first_run_not_regular": "Kỳ đầu tiên của tháng không phải kỳ lương thường",
+        "manual_statutory_adjustment": "Một số liệu pháp định trong tháng này được đặt bằng tay",
+        "base_carve_outs": "Các khoản lương loại trừ những phần khác nhau khỏi EPF, SOCSO và thuế",
+        "inconsistent_run_bases": "Các kỳ được tính trên mức lương tháng khác nhau",
+        "zakat_or_lp_present": "Tháng này có zakat hoặc khoản khấu trừ TP1",
+        "no_statutory_profile": "Nhân viên này không có hồ sơ pháp định Malaysia"
+      },
+      "runType": {
+        "regular": "Thường",
+        "off_cycle": "Ngoài kỳ",
+        "bonus": "Thưởng",
+        "adjustment": "Điều chỉnh"
+      }
     }
   },
   "admin": {

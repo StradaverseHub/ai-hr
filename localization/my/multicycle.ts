@@ -16,7 +16,7 @@
  * v1 requires runs[0] to be the regular run (it supplies Y1); later runs are additional remuneration.
  * Reversals/negative deltas are out of scope (clamped ≥ 0) — see ADR-0024 §6.
  */
-import { statutory, type EpfElection, type PcbAccumulators, type TaxProfile } from './payroll';
+import { statutory, type PcbAccumulators, type TaxProfile } from './payroll';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables';
 
 export type RunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
@@ -61,7 +61,27 @@ export function computeMonthlyRuns(p: {
   /** Prior-MONTH PCB accumulators (∑(Y−K), K, X, Z) — same seed the one-batch path uses. */
   priorAcc?: PcbAccumulators;
   rules?: StatutoryRuleset;
-  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean; flatTaxRate?: number | null; epfElection?: EpfElection };
+  /**
+   * The employee attributes the engine derives from, passed straight through to `statutory`.
+   *
+   * WIDENED (r209, worksheet slice) from a hand-copied five-member subset
+   * `{ socsoCategory, eisEligible, resident, flatTaxRate, epfElection }` to the pack's OWN option bag.
+   * That subset was written when `statutory` had five options; it has since grown `subjectToSocso`,
+   * `subjectToSkbbk`, `epfAge`, `epfCitizenship` and the pay-item base carve-outs, so the narrow copy
+   * silently computed a 60-year-old, a foreign worker and an exempted scheme as if they were none of
+   * those things. This is a TYPE widening on an optional pass-through: every existing caller supplies a
+   * value assignable to the old subset and computes byte-identically (the golden test above is the
+   * proof). It does NOT wire this module into the kernel — ADR-0024 §5 still gates that on the §7
+   * worksheet sign-off.
+   */
+  opts?: NonNullable<Parameters<typeof statutory>[5]>;
+  /**
+   * This MONTH's TP1 optional deduction (∑LP leg) and zakat-via-salary, if any. Supplied to every
+   * cumulative call, so the month's zakat offsets the month's MTD exactly once and the runs' deltas
+   * still sum to the month. Omitted ⇒ both zero, which is byte-identical to the previous behaviour.
+   */
+  lpCurrent?: number;
+  zakatCurrent?: number;
   /** Ordered by run_seq. runs[0] should be the regular run (ADR-0024 §6). */
   runs: MonthRunInput[];
 }): { runs: MonthRunResult[]; monthly: MonthlyFigures } {
@@ -79,7 +99,15 @@ export function computeMonthlyRuns(p: {
     cumOt += run.overtime ?? 0;
 
     // Re-compute the whole month with cumulative bases; the run's figure is the increment.
-    const m = statutory(cumNormal, p.profile, cumAdditional, cumOt, { month: p.month, acc: p.priorAcc }, p.opts, rules);
+    const m = statutory(
+      cumNormal,
+      p.profile,
+      cumAdditional,
+      cumOt,
+      { month: p.month, acc: p.priorAcc, lpCurrent: p.lpCurrent, zakatCurrent: p.zakatCurrent },
+      p.opts,
+      rules,
+    );
     last = {
       epfEmployee: m.epfEmployee,
       epfEmployer: m.epfEmployer,
