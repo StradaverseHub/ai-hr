@@ -5753,6 +5753,7 @@
         "epfEmployer": "KWSP (majikan)",
         "socsoEmployee": "PERKESO (pekerja)",
         "socsoEmployer": "PERKESO (majikan)",
+        "socsoSkbbk": "SKBBK (pekerja)",
         "eisEmployee": "SIP (pekerja)",
         "eisEmployer": "SIP (majikan)",
         "pcb": "PCB (MTD)"

@@ -5753,6 +5753,7 @@
         "epfEmployer": "公积金（雇主）",
         "socsoEmployee": "社险（员工）",
         "socsoEmployer": "社险（雇主）",
+        "socsoSkbbk": "SKBBK（员工）",
         "eisEmployee": "就业保险（员工）",
         "eisEmployer": "就业保险（雇主）",
         "pcb": "预扣税（PCB/MTD）"

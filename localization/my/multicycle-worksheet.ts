@@ -57,13 +57,25 @@ import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables'
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** The seven statutory figures the worksheet compares. Employer and employee legs are kept apart —
- *  they are remitted on different lines of different returns and an accountant checks them separately. */
+/**
+ * The eight statutory figures the worksheet compares. Employer and employee legs are kept apart — they
+ * are remitted on different lines of different returns and an accountant checks them separately.
+ *
+ * THE LIST IS THE KERNEL'S, NOT A SELECTION. It must be exactly the contribution fields the kernel
+ * treats as multi-cycle deltas (core/payroll.ts `DELTA_KEYS`, less `pcbBonus`, which is a component OF
+ * `pcb` and not a separate remittance). `socsoSkbbk` — Lindung 24 Jam, the EMPLOYEE-deducted leg that
+ * rides the SOCSO bands — belongs here for that reason and not as a nicety: at RM5,001 it is RM37.85 a
+ * month, LARGER than the RM25.25 SOCSO employee share beside it, it is charged twice under the per-run
+ * reading and once under month-as-one, and core/payroll.ts subtracts it from net pay alongside the
+ * other employee legs. Leaving it out understated the employee-side SOCSO family by ~60% on the very
+ * document an accountant is being asked to sign.
+ */
 export const WORKSHEET_ITEMS = [
   'epfEmployee',
   'epfEmployer',
   'socsoEmployee',
   'socsoEmployer',
+  'socsoSkbbk',
   'eisEmployee',
   'eisEmployer',
   'pcb',
@@ -71,7 +83,7 @@ export const WORKSHEET_ITEMS = [
 export type WorksheetItem = (typeof WORKSHEET_ITEMS)[number];
 export type Figures = Record<WorksheetItem, number>;
 
-const ZERO: Figures = { epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0, socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0 };
+const ZERO: Figures = { epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0 };
 const add = (a: Figures, b: Figures): Figures =>
   Object.fromEntries(WORKSHEET_ITEMS.map((k) => [k, round2(a[k] + b[k])])) as Figures;
 const sub = (a: Figures, b: Figures): Figures =>
@@ -577,9 +589,20 @@ function taxProfileOf(e: ProfileRow, rules: StatutoryRuleset): TaxProfile {
   };
 }
 
-/** Mirrors core/payroll.ts's derivation of the per-employee statutory options, term for term. */
+/**
+ * Mirrors core/payroll.ts's derivation of the per-employee statutory options, term for term.
+ *
+ * THE AGE REFERENCE DATE IS THE PERIOD END, and that is load-bearing, not a detail. The kernel ages an
+ * employee at `periodEnd` — the LAST day of the pay month (core/payroll.ts: `periodEnd` =
+ * `${payPeriod}-${daysInMonth}`, read by its own `ageAt`). An employee whose 60th birthday falls on the
+ * 29th, 30th or 31st is therefore 60 to the kernel and 59 to any replay that anchors earlier, and a
+ * replay one year young models them on EPF Part A / SOCSO Category 1 / EIS-eligible figures against
+ * payslips written on Part E / Category 2 / EIS-zero. That row would land in `rows` as `unexplained`
+ * (it matches neither reading) and, because `unexplained` sorts second, print a fabricated ringgit
+ * difference near the top of the sign-off document. Any change here must move with the kernel.
+ */
 function statutoryOptsOf(e: ProfileRow, period: string): NonNullable<Parameters<typeof statutory>[5]> {
-  const age = ageAt(e.dateOfBirth, `${period}-28`);
+  const age = ageAt(e.dateOfBirth, periodEndOf(period));
   const socsoCatSel = (e.socsoCategory ?? 'auto') as 'auto' | 'first' | 'second' | 'none';
   const eisCatSel = (e.eisCategory ?? 'auto') as 'auto' | 'none';
   const citizenship = e.epfCitizenship ?? 'citizen';
@@ -597,6 +620,16 @@ function statutoryOptsOf(e: ProfileRow, period: string): NonNullable<Parameters<
     epfCitizenship: citizenship,
     epfElection: { mode: e.epfMode ?? 'auto', employeeRate: e.epfEmployeeRate, employerRate: e.epfEmployerRate },
   };
+}
+
+/** `YYYY-MM` → its LAST day, `YYYY-MM-DD`. `Date.UTC(y, m, 0)` is day zero of the month AFTER the
+ *  1-based `m`, i.e. the last day of `m` itself — the same value core/payroll.ts builds with
+ *  `daysInMonth(pYear, pMonth)`. A malformed period yields NaN, which `ageAt` reports as unknown age. */
+function periodEndOf(period: string): string {
+  const y = Number(period.slice(0, 4));
+  const m = Number(period.slice(5, 7));
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${period}-${String(dim).padStart(2, '0')}`;
 }
 
 function ageAt(dob: string | null, on: string): number | undefined {

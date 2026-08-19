@@ -5753,6 +5753,7 @@
         "epfEmployer": "EPF (employer)",
         "socsoEmployee": "SOCSO (employee)",
         "socsoEmployer": "SOCSO (employer)",
+        "socsoSkbbk": "SKBBK (employee)",
         "eisEmployee": "EIS (employee)",
         "eisEmployer": "EIS (employer)",
         "pcb": "PCB (MTD)"

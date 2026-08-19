@@ -117,6 +117,51 @@ describe('ADR-0024 §7 worksheet — the arithmetic that separates the two readi
     expect(under60.eisEmployee).toBeGreaterThan(0);
   });
 
+  /**
+   * SKBBK (Lindung 24 Jam) is an EMPLOYEE deduction riding the SOCSO bands, and the kernel treats it as
+   * a multi-cycle delta key like any other contribution (core/payroll.ts DELTA_KEYS). It was missing
+   * from both `computeMonthlyRuns` and WORKSHEET_ITEMS, so the sign-off document silently omitted the
+   * LARGER half of the employee-side SOCSO family. This case fails the moment it drops out again.
+   */
+  it('carries the SKBBK leg — charged ONCE for the month, and larger than the SOCSO employee share', () => {
+    const band = socso(5001, 1, CFG.socso);
+    const bonusBand = socso(1001, 1, CFG.socso);
+    expect(WORKSHEET_ITEMS).toContain('socsoSkbbk');
+    // It is not a rounding crumb: RM37.85 against the RM25.25 SOCSO employee share beside it.
+    expect(band.skbbk).toBe(37.85);
+    expect(band.skbbk).toBeGreaterThan(band.employee);
+
+    const m = computeMonthlyRuns({
+      month: 5,
+      profile,
+      priorAcc: PCB_ZERO_ACC,
+      runs: [
+        { runType: 'regular', payment: 5001 },
+        { runType: 'bonus', payment: 1001 },
+      ],
+    });
+    // Act 4 s.6(7) — one monthly contribution on the same bands: the bonus run adds RM0.
+    expect(m.monthly.socsoSkbbk).toBe(band.skbbk);
+    expect(m.runs[0].socsoSkbbk).toBe(band.skbbk);
+    expect(m.runs[1].socsoSkbbk).toBe(0);
+    // …while the per-run reading enters the bands twice. THAT gap is what the worksheet has to price.
+    expect(round2(band.skbbk + bonusBand.skbbk)).toBe(45.7);
+    expect(bonusBand.skbbk).toBe(7.85);
+  });
+
+  /**
+   * WHY THE AGE REFERENCE DATE IS NOT COSMETIC. The kernel ages an employee at the PERIOD END; a replay
+   * anchored earlier in the month reads a 29th/30th/31st birthday one year young. These two lines are
+   * the whole consequence: Part A employee EPF versus Part E's zero, on the same wage in the same month.
+   */
+  it('one year of age is the difference between RM561 of employee EPF and none at all', () => {
+    const at59 = statutory(5001, profile, 0, 0, { month: 5, acc: PCB_ZERO_ACC }, { epfAge: 59 });
+    const at60 = statutory(5001, profile, 0, 0, { month: 5, acc: PCB_ZERO_ACC }, { epfAge: 60 });
+    expect(at59.epfEmployee).toBe(561);
+    expect(at60.epfEmployee).toBe(0); // EPF Part E — senior citizens contribute no employee share
+    expect(at59.eisEmployee).toBeGreaterThan(0);
+  });
+
   it('the MY pack exposes the worksheet, so a screen never imports the pack implementation', () => {
     expect(typeof myPack.payroll.multiCycleWorksheet).toBe('function');
   });
@@ -190,8 +235,9 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     await closeAll();
   });
 
-  /** A May 2026 month with a regular RM5,001 run and a RM1,001 bonus run, produced by the real kernel. */
-  async function seedMonth(p: { bonus?: number } = {}) {
+  /** A May 2026 month with a regular RM5,001 run and a RM1,001 bonus run, produced by the real kernel.
+   *  `dob` stamps the person's date of birth — the input the age-dependent statutory rules key off. */
+  async function seedMonth(p: { bonus?: number; dob?: string } = {}) {
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     const a = await entitledCtx(base);
     const e = await hireEmployee(a, {
@@ -201,13 +247,20 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
       employmentType: 'full_time',
       hiredOn: '2025-01-01',
     });
+    if (p.dob) {
+      await owner.db.update(schema.person).set({ dateOfBirth: p.dob }).where(eq(schema.person.id, e.personId));
+    }
     await setCompensation(a, {
       employmentId: e.employmentId,
       basicSalary: 5001,
       monthlyAllowance: 0,
       effectiveFrom: '2025-01-01',
     });
-    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    // SKBBK ON, because that is what the customer's data looks like: `subject_to_skbbk` defaults FALSE
+    // for a brand-new row, but migration 0198 backfilled every EXISTING employee to true so their live
+    // SKBBK was preserved. A fixture on the new-row default would leave `socsoSkbbk` at zero in all
+    // three readings and quietly stop testing that leg at all.
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234', subjectToSkbbk: true });
 
     const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: reg.batchId });
@@ -300,10 +353,48 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     expect(row.difference.eisEmployee).toBe(expected.eisEmployee);
     expect(row.difference.socsoEmployee).toBe(-5.25);
     expect(row.difference.eisEmployee).toBe(-2.1);
+    // SKBBK is part of that answer, not an afterthought. It is deducted from the EMPLOYEE, it is banded
+    // monthly exactly as SOCSO is, and at this wage it is BIGGER than the SOCSO employee share: a
+    // worksheet that priced -5.25 of SOCSO employee movement and stayed silent about -7.85 of SKBBK
+    // understated the employee-side SOCSO family by ~60% on the document being signed.
+    expect(row.paid.socsoSkbbk).toBe(round2(socso(5001, 1, CFG.socso).skbbk + socso(1001, 1, CFG.socso).skbbk));
+    expect(row.monthAsOne.socsoSkbbk).toBe(socso(5001, 1, CFG.socso).skbbk);
+    expect(row.difference.socsoSkbbk).toBe(-7.85);
+    expect(Math.abs(row.difference.socsoSkbbk)).toBeGreaterThan(Math.abs(row.difference.socsoEmployee));
     // The month-level totals are the per-employee movement, because there is exactly one such month.
     expect(w.verdicts.would_change).toBe(1);
     expect(w.movement.epfEmployee).toBe(-2);
     expect(w.movement.socsoEmployee).toBe(-5.25);
+    expect(w.movement.socsoSkbbk).toBe(-7.85);
+  });
+
+  /**
+   * THE AGE REFERENCE DATE. The kernel ages an employee at the PERIOD END (core/payroll.ts `periodEnd`
+   * = the last day of the pay month). This subject turns 60 on 2026-05-30 — inside the month, after any
+   * mid-month anchor — so the kernel wrote May's payslips on EPF Part E (employee share 0), SOCSO
+   * Category 2 and EIS zero. A replay that aged them at, say, the 28th would model a 59-year-old on
+   * Part A / Category 1 / EIS-eligible figures, match neither reading, and print a fabricated ringgit
+   * difference NEAR THE TOP of the sign-off document (`unexplained` sorts second).
+   */
+  it('an employee who turns 60 mid-month is aged at the PERIOD END, exactly as the kernel ages them', async () => {
+    const { a } = await seedMonth({ dob: '1966-05-30' });
+    const w = await multiCycleWorksheetMY(a, { companyIds: [base.companyId] });
+
+    expect(w.employeeMonthsCompared).toBe(1);
+    const [row] = w.rows;
+    expect(row.verdict).toBe('already_aggregated');
+    expect(w.verdicts.unexplained).toBe(0);
+
+    // The age really bit — this is a 60-year-old's month under every reading, not a 59-year-old's.
+    expect(row.paid.epfEmployee).toBe(0); // Part E: no employee share at all (a 59-year-old pays 561)
+    expect(row.monthAsOne.epfEmployee).toBe(0);
+    expect(row.perRun.epfEmployee).toBe(0);
+    expect(row.paid.eisEmployee).toBe(0); // Act 800 is 18–60 only
+    expect(row.paid.socsoEmployer).toBe(socso(5001, 2, CFG.socso).employer); // Category 2, injury-only
+    expect(row.paid.socsoEmployer).not.toBe(socso(5001, 1, CFG.socso).employer);
+    // …and the replay explains the month exactly, item by item.
+    for (const k of WORKSHEET_ITEMS) expect(row.difference[k]).toBe(0);
+    for (const k of WORKSHEET_ITEMS) expect(w.movement[k]).toBe(0);
   });
 
   it('a month containing a negative amount is EXCLUDED with a reason, never clamped to zero', async () => {

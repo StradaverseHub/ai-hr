@@ -24,12 +24,16 @@ import { packFor } from '@/localization/registry';
 import type { MultiCycleWorksheet, WorksheetItem, WorksheetRow } from '@/localization/country-pack';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
 
-/** The order the seven figures are read in — employee legs first, then employer, then tax. */
+/** The order the eight figures are read in — scheme by scheme, each scheme's legs together, then tax.
+ *  `socsoSkbbk` (Lindung 24 Jam) is the employee-deducted leg riding the SOCSO bands, so it sits with
+ *  its scheme. This list is pinned against the pack's WORKSHEET_ITEMS by test — a figure the worksheet
+ *  computes but this array omits would be silently absent from every table on the sign-off document. */
 const ITEMS: WorksheetItem[] = [
   'epfEmployee',
   'epfEmployer',
   'socsoEmployee',
   'socsoEmployer',
+  'socsoSkbbk',
   'eisEmployee',
   'eisEmployer',
   'pcb',
