@@ -9,6 +9,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
+import { DEFAULT_FEEDBACK_SORT, type FeedbackSort } from '../lib/feedback-sort';
 import { resolveActiveAiConfig } from './ai-config';
 import {
   employment,
@@ -773,12 +774,39 @@ export type FeedbackRow = {
   planRevision: number;
   reopenedCount: number;
   createdAt: Date;
+  /**
+   * When the item was last MOVED — the stamp every transition above writes alongside its DomainEvent
+   * (e14334ef). No aggregate over `domain_event` is needed and none should be added: the thirteen
+   * appendEvent calls in this file pair one-to-one with the submit insert plus the twelve `updatedAt`
+   * updates, and `scripts/improve/remote.ts` stamps it in the same UPDATE on all six of its transitions.
+   * An item nobody has touched since it was raised carries its creation time, which is the convention
+   * the reporter asked for and needs no special case.
+   */
+  updatedAt: Date;
 };
+
+/**
+ * How many rows the board query returns — a hard cut, applied AFTER the ORDER BY (e14334ef).
+ *
+ * It is exported because it is not an implementation detail any more. Production holds 517 items, so on
+ * an unfiltered board this drops 317 of them, and the ordering the reporter now controls decides WHICH
+ * 317: flipping to oldest-first does not reverse the list they were looking at, it swaps in a largely
+ * disjoint set. `app/feedback/page.tsx` compares this against `feedbackStatusCounts` (which is NOT
+ * capped) and says so on screen rather than letting "All 517" sit above a list of 200.
+ *
+ * ClientPager's own truncation notice cannot cover this: its ceiling is 2000 and its total is computed
+ * from the array it was handed, which is this already-truncated one.
+ */
+export const FEEDBACK_LIST_LIMIT = 200;
 
 export function listFeedback(
   ctx: SessionContext,
-  opts: { status?: FeedbackStatus; category?: FeedbackCategory } = {},
+  opts: { status?: FeedbackStatus; category?: FeedbackCategory; sort?: FeedbackSort } = {},
 ): Promise<FeedbackRow[]> {
+  // Ordering is SQL, not a browser sort, because the LIMIT below is the whole point: over 517 production
+  // rows, sorting the returned page would rank only the 200 most recently CREATED items and an old item
+  // touched yesterday would never surface. See lib/feedback-sort.ts.
+  const dir = (opts.sort ?? DEFAULT_FEEDBACK_SORT) === 'updated_asc' ? asc : desc;
   const filters = [
     opts.status ? eq(feedbackRequest.status, opts.status) : undefined,
     opts.category ? eq(feedbackRequest.category, opts.category) : undefined,
@@ -797,13 +825,18 @@ export function listFeedback(
         planRevision: feedbackRequest.planRevision,
         reopenedCount: feedbackRequest.reopenedCount,
         createdAt: feedbackRequest.createdAt,
+        updatedAt: feedbackRequest.updatedAt,
       })
       .from(feedbackRequest)
       .innerJoin(employment, eq(employment.id, feedbackRequest.reporterEmploymentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .where(filters.length ? (filters.length === 1 ? filters[0] : (and as any)(...filters)) : undefined)
-      .orderBy(desc(feedbackRequest.createdAt))
-      .limit(200) as Promise<FeedbackRow[]>,
+      // Two rows can only share an `updated_at` if they were stamped in the same transaction (Postgres
+      // freezes now() per transaction) — every writer here is its own — but the tie-breaks make the page
+      // boundary deterministic rather than left to the planner, and they follow the primary direction so
+      // "oldest first" means oldest all the way down.
+      .orderBy(dir(feedbackRequest.updatedAt), dir(feedbackRequest.createdAt), asc(feedbackRequest.id))
+      .limit(FEEDBACK_LIST_LIMIT) as Promise<FeedbackRow[]>,
   );
 }
 

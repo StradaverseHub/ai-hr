@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import type { FeedbackRow } from '@/core/feedback';
 import { paginateRows } from '@/lib/pagination';
+import { formatFeedbackDateTime } from '@/lib/feedback-date';
+import { DEFAULT_FEEDBACK_SORT, flipFeedbackSort, type FeedbackSort } from '@/lib/feedback-sort';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { bulkReviewAction } from './actions';
 
@@ -34,12 +36,42 @@ function statusTone(status: string): string {
 /** The review list with checkbox multi-select + a bulk action bar (approve / cancel the selection at once).
  *  The bar is a server-action form carrying the selected ids; the service skips items in the wrong state and
  *  reports the skipped count, so selecting a mixed bag is safe. */
-export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
+export function BulkTable({
+  rows,
+  status,
+  sort = DEFAULT_FEEDBACK_SORT,
+}: {
+  rows: FeedbackRow[];
+  /** The active ?status= chip, so flipping the order does not silently drop the filter. */
+  status?: string;
+  /** The order the SERVER applied — the heading renders its mark from this, never from local state. */
+  sort?: FeedbackSort;
+}) {
   const t = useTranslations('feedback');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Paging happens AFTER the caller's ordering and filtering, over the full set — see client-pager.tsx.
-  // This is the product's largest list (517 rows on production) and the one the reporter noticed missing.
+  // e14334ef — the Last Updated heading is a LINK, not a client-side sort. listFeedback caps the board at
+  // 200 rows; re-ordering the rows this component holds would rank only the newest-touched 200, so
+  // "oldest first" would show the oldest OF THE NEWEST rather than the stale items it is meant to chase.
+  // The flip therefore has to go back to the server. Page index is deliberately dropped: a re-sort starts
+  // at the top, and staying on page 4 of a reversed list lands somewhere meaningless.
+  const flipHref = (() => {
+    const p = new URLSearchParams();
+    if (status) p.set('status', status);
+    // The default order drops out of the address, matching the rule ClientPager applies to page 0.
+    const next = flipFeedbackSort(sort);
+    if (next !== DEFAULT_FEEDBACK_SORT) p.set('sort', next);
+    const qs = p.toString();
+    return qs ? `/feedback?${qs}` : '/feedback';
+  })();
+  // Same marks as components/loan-list.tsx and components/salary-history-table.tsx.
+  const sortMark = sort === 'updated_asc' ? ' ▲' : ' ▼';
+
+  // Paging happens AFTER the SERVER's ordering and filtering — see client-pager.tsx. It does NOT page over
+  // the full set: listFeedback cuts the board at FEEDBACK_LIST_LIMIT (200) rows, so `rows` is the top of
+  // the server's order, not all 517 production items. That is why the heading above is a link rather than
+  // a client sort, and why app/feedback/page.tsx prints how many rows the cut left behind.
+  // (This comment used to claim "over the full set"; it was written before the cap mattered to the reader.)
   const q = useClientPageQuery();
   const { rows: pageRows, state } = paginateRows(rows, q);
   const pageIds = new Set(pageRows.map((r) => r.id));
@@ -121,6 +153,17 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
             <th className="px-4 py-2 font-medium">{t('colCategory')}</th>
             <th className="px-4 py-2 font-medium">{t('colReporter')}</th>
             <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+            <th className="px-4 py-2 font-medium">
+              <Link
+                href={flipHref}
+                scroll={false}
+                title={t(sort === 'updated_asc' ? 'sortNewestFirst' : 'sortOldestFirst')}
+                className="uppercase tracking-wide hover:text-foreground"
+              >
+                {t('colUpdated')}
+                {sortMark}
+              </Link>
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -154,6 +197,12 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(r.status)}`}>
                   {t(`status_${r.status}`)}
                 </span>
+              </td>
+              {/* An item nobody has touched since it was raised shows the time it was raised — updated_at
+                  defaults to the insert. That is the reporter's stated convention, so there is no
+                  em-dash case here and no "never updated" to distinguish. */}
+              <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted-foreground">
+                {formatFeedbackDateTime(r.updatedAt)}
               </td>
             </tr>
           ))}
