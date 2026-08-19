@@ -125,8 +125,20 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     expect(leavePage).toContain(
       '(e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,',
     );
+    // …EXCEPT THE VIEWER, who is never filtered out of their own selector. Narrowing applies to REPORTS;
+    // applying it to the viewer was a regression main did not have. A line manager inside minServiceMonths
+    // on every type — a recent hire, or on probation under a confirmed_only catalogue — qualifies for
+    // nothing today but still has qualifying reports, so the trigger gate below (which tests the UNION of
+    // type options) keeps "+ Request Leave" live while the manager vanishes from the employee <select>.
+    // LeaveDurationFields then defaults employmentId to the first option, a REPORT, and they file against
+    // someone else's balance with nothing on screen saying so. An empty-handed viewer seeing themselves
+    // and an empty type list is the honest answer, and the gate on the line below is what stops the
+    // unsatisfiable form the paragraph above is worried about.
     expect(leavePage).toMatch(
-      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.selectableSubjects\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,
+      /const requestLeaveSubjects = selectableSubjects\.some\(\(e\) => e\.employmentId === me\.employmentId\)/,
+    );
+    expect(leavePage).toMatch(
+      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.requestLeaveSubjects\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,
     );
     // Neither employee dialog may render an empty type <select>. The Replacement one carries no `required`
     // at all, so an empty list there posts leaveTypeId='' instead of being refused by the browser.
