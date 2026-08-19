@@ -3,9 +3,10 @@
  * payslips, per legal entity. Each ReportDef is registered on the pack; the generic core
  * (core/reporting.ts) lists / previews / records them without naming any MY-specific report.
  */
-import { and, eq, inArray, like } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import {
+  assignment,
   company,
   companyStatutoryMy,
   eaOverride,
@@ -14,6 +15,7 @@ import {
   payrollBatch,
   payslip,
   person,
+  position,
 } from '../../db/schema';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
@@ -835,12 +837,88 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
 }
 
 // ── EA statement (C.P.8A) — per employee ────────────────────────────────────
-// 1.2.6 EA Data Overwrite — the 8 EA-form fields HR may amend (overlay) WITHOUT touching payroll. A plain
+// 1.2.6 EA Data Overwrite — the EA-form fields HR may amend (overlay) WITHOUT touching payroll. A plain
 // const tuple (not a pgEnum), mirroring app/admin/pay-components discriminators. `gross` is independently
 // overridable (HR may set a known total directly); otherwise it is recomputed from the post-overlay
 // components so the printed Part B lines always sum to their own total (see the merge below).
-export const EA_FIELDS = ['grossSalary', 'bonus', 'allowances', 'gross', 'mtd', 'epf', 'socso', 'eis'] as const;
+//
+// 6036dab7 — THE VOCABULARY GREW; THERE IS STILL EXACTLY ONE OVERRIDE PATH. The customer's field mapping
+// names EA boxes that payroll can never produce a figure for — a director's fee that is not a pay item, a
+// share-option benefit, a gratuity, the value of living accommodation, a refund from an unapproved fund,
+// compensation for loss of employment, a pension, an annuity. Every one of them is an amount HR KNOWS and
+// the payroll ledger does not. The temptation is a second "manual EA figures" table beside ea_override;
+// that would give one tax document two places to hold a number for the same box, which is how the two
+// disagree. So they join THIS list instead: their derived baseline is 0 (see `derived` below), the same
+// amend panel writes them, the same event trail records them, and the same "amended" footnote covers them.
+//
+// The three groups, and why the distinction matters when reading the merge:
+//   • PAYROLL-DERIVED  grossSalary · bonus · allowances · gross · mtd · cp38 · zakat · epf · socso · eis
+//                      — a real figure summed from the year's payslips; an override CORRECTS it.
+//   • MANUAL PART B    directorFee · tipsPerquisites · taxBorneByEmployer · esos · gratuity · arrears ·
+//                      benefitsInKind · livingAccommodation · unapprovedFundRefund · compensation
+//                      — baseline 0; an override is the ONLY way any of them is non-zero.
+//   • MANUAL PART C    pension · annuity — as above, and they total into Part C rather than Part B.
+export const EA_FIELDS = [
+  'grossSalary',
+  'bonus',
+  'allowances',
+  'gross',
+  'mtd',
+  // 6036dab7 — cp38 and zakat were printed as the words "not tracked" on both EA surfaces long after
+  // payroll started stamping them (payslip.statutory.cp38 / .zakat). They are DERIVED figures now, and
+  // amendable for the same reason `mtd` is: HR may have to reconcile the form against what was remitted.
+  'cp38',
+  'zakat',
+  'epf',
+  'socso',
+  'eis',
+  // Manual Part B boxes — no payroll source, derived baseline 0.
+  'directorFee',
+  'tipsPerquisites',
+  'taxBorneByEmployer',
+  'esos',
+  'gratuity',
+  'arrears',
+  'benefitsInKind',
+  'livingAccommodation',
+  'unapprovedFundRefund',
+  'compensation',
+  // Manual Part C boxes — no payroll source, derived baseline 0.
+  'pension',
+  'annuity',
+] as const;
 export type EaField = (typeof EA_FIELDS)[number];
+
+/** 6036dab7 — the Part B lines that sum into `partB.gross` when HR has not set the total directly. Held
+ *  here rather than inline in the merge so the renderer's printed lines and the recomputed total can never
+ *  drift apart: a new Part B box is added to THIS list or it silently fails to reach the total.
+ *
+ *  TWO DECISIONS ARE RECORDED IN THIS LIST, NOT JUST A SUM.
+ *  1. `exemptAllowances` is deliberately ABSENT. It is the tax-exempt PORTION of `allowances`, already
+ *     inside that line — adding it would double-count, which is why the form prints it muted and says
+ *     "(included above)".
+ *  2. The NON-CASH boxes (benefitsInKind, livingAccommodation) and the terminal ones
+ *     (unapprovedFundRefund, compensation) ARE included, even though the section used to be titled
+ *     "employment income (cash)". The alternative was a manual box HR can fill that changes no total,
+ *     which is indistinguishable on the page from a box nothing reads. The rule this keeps is the one
+ *     §0 established and the §0 test still pins: THE PRINTED LINES SUM TO THE PRINTED TOTAL. Every one
+ *     of these is 0 until HR enters it, so every statement that exists today is arithmetically unchanged.
+ *     HR can still override `gross` directly when the group's own total is known and differs. */
+export const EA_PART_B_COMPONENTS = [
+  'grossSalary',
+  'bonus',
+  'allowances',
+  'directorFee',
+  'tipsPerquisites',
+  'taxBorneByEmployer',
+  'esos',
+  'gratuity',
+  'arrears',
+  'benefitsInKind',
+  'livingAccommodation',
+  'unapprovedFundRefund',
+  'compensation',
+] as const satisfies readonly EaField[];
 /** One amended EA field, surfaced so the UI/PDF can render "original vs amended" + an "Amended" badge. */
 export type EaOverrideEntry = { field: EaField; original: number; amended: number; reason: string };
 
@@ -860,13 +938,48 @@ export type EaStatement = {
     children: number;
     hiredOn: string;
     terminatedOn: string | null;
+    /** 6036dab7 — three Part A particulars the customer's field mapping asks for. All three already
+     *  existed on tables this read ALREADY joins (employment.employee_code, employee_statutory_my.
+     *  passport_number) or on one join away (the current assignment's position title) — which is why the
+     *  plan says "no migration". `passport` is the same column cp39FormExtras reads for the same purpose;
+     *  a second passport source is a second answer to "which passport is on this person's tax paperwork". */
+    employeeNo: string | null;
+    jobTitle: string | null;
+    passport: string | null;
   };
-  /** Part B — employment income (cash). Untracked items (BIK, VOLA, ESOS, gratuity) are out of scope.
-   *  `exemptAllowances` (feedback 09b554e9) — the year's TAX-EXEMPT allowance portions (the PCB_* exemption
-   *  amounts each slip stamps as statutory.exemptionUsed), reported in the EA's exempt-allowances section.
-   *  Optional + additive; the general EA line-mapping (ea_form_line consumption) remains a follow-up. */
-  partB: { grossSalary: number; bonus: number; allowances: number; gross: number; exemptAllowances?: number };
-  partD: { mtd: number; zakat: number }; // total deduction — MTD/PCB + the year's zakat-via-salary (Z)
+  /** Part B — employment income. `exemptAllowances` (feedback 09b554e9) — the year's TAX-EXEMPT allowance
+   *  portions (the PCB_* exemption amounts each slip stamps as statutory.exemptionUsed), reported in the
+   *  EA's exempt-allowances section; it is a PORTION of `allowances`, not an addition to it.
+   *
+   *  6036dab7 — the ten fields after it are the customer's mapped Part B boxes. Every one has a derived
+   *  baseline of 0 and becomes non-zero only through an ea_override (see EA_FIELDS). They are REQUIRED on
+   *  this type, not optional: an EA surface that can forget to print "Compensation for loss of employment"
+   *  is an EA surface that quietly omits a taxable box. `gross` is their sum (EA_PART_B_COMPONENTS). */
+  partB: {
+    grossSalary: number;
+    bonus: number;
+    allowances: number;
+    gross: number;
+    exemptAllowances?: number;
+    directorFee: number;
+    tipsPerquisites: number;
+    taxBorneByEmployer: number;
+    esos: number;
+    gratuity: number;
+    arrears: number;
+    benefitsInKind: number;
+    livingAccommodation: number;
+    unapprovedFundRefund: number;
+    compensation: number;
+  };
+  /** 6036dab7 — Part C (Pencen dan Lain-lain). The section did not exist on either EA surface at all,
+   *  which the plan calls the clearest gap in the mapping. Neither figure has a payroll source (this
+   *  product does not pay pensions), so both are manual boxes and `total` is their sum. */
+  partC: { pension: number; annuity: number; total: number };
+  /** Total deduction — MTD/PCB, the LHDN/court CP38 instalment, and the year's zakat-via-salary (Z).
+   *  6036dab7 — `cp38` is summed from payslip.statutory.cp38, the SAME scalar cp39() files; the EA
+   *  surfaces printed the words "not tracked" for it long after payroll started stamping it. */
+  partD: { mtd: number; cp38: number; zakat: number };
   partE: { epf: number; socso: number; eis: number }; // employee's share of EPF + SOCSO/EIS
   statutoryVersion: string;
   /** EA-only amendments overlaid by HR (1.2.6). Empty = none. Additive + optional so existing consumers
@@ -953,11 +1066,20 @@ export async function eaStatement(
         terminatedOn: employment.terminatedOn,
         companyId: employment.companyId,
         companyName: company.legalName,
+        // 6036dab7 — Part A's three missing particulars. `employeeCode` and `passportNumber` are on tables
+        // this SELECT already reads; only the job title needed a join, and it is the same one
+        // cp39FormExtras uses for the preparer's Jawatan: the CURRENT assignment (valid_to null) and its
+        // position title. LEFT joined throughout — an employment with no position still renders Part A.
+        employeeNo: employment.employeeCode,
+        passport: employeeStatutoryMy.passportNumber,
+        jobTitle: position.title,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
+      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!info) return null;
@@ -1006,6 +1128,10 @@ export async function eaStatement(
     let allowances = 0;
     let gross = 0;
     let mtd = 0;
+    // 6036dab7 — the LHDN/court instalment, DISTINCT from MTD. Stamped on the REGULAR run only (an
+    // additional run carries cp38 = 0, core/payroll.ts:4749), so summing the year's slips single-counts
+    // each month's one instalment — the same rule cp39() and cp39FileForBatch apply to the monthly return.
+    let cp38 = 0;
     let zakat = 0;
     let epf = 0;
     let socso = 0;
@@ -1018,6 +1144,7 @@ export async function eaStatement(
       allowances += num(s.allowance);
       gross += num(s.gross);
       mtd += num(st.pcb);
+      cp38 += num(st.cp38);
       // 1.2.4 Zakat — the year's accumulated zakat-via-salary (each payslip stamps the month's figure).
       zakat += num(st.zakat);
       epf += num(st.epfEmployee);
@@ -1042,9 +1169,28 @@ export async function eaStatement(
       allowances: round2(allowances),
       gross: round2(gross),
       mtd: round2(mtd),
+      cp38: round2(cp38),
+      zakat: round2(zakat),
       epf: round2(epf),
       socso: round2(socso),
       eis: round2(eis),
+      // 6036dab7 — the manual boxes. ZERO IS THEIR DERIVED VALUE, not a missing lookup: payroll holds no
+      // director's fee, share-option benefit, gratuity, accommodation value, unapproved-fund refund,
+      // compensation, pension or annuity, and inventing a source for one is how a tax document acquires a
+      // figure nobody can trace. They become non-zero only through an ea_override, which carries the
+      // amender, the reason and the event trail with it.
+      directorFee: 0,
+      tipsPerquisites: 0,
+      taxBorneByEmployer: 0,
+      esos: 0,
+      gratuity: 0,
+      arrears: 0,
+      benefitsInKind: 0,
+      livingAccommodation: 0,
+      unapprovedFundRefund: 0,
+      compensation: 0,
+      pension: 0,
+      annuity: 0,
     };
     // b7b22514 — AN AMENDMENT IS APPLIED TO EXACTLY ONE OF A TRANSFER YEAR'S FORMS.
     //
@@ -1075,7 +1221,10 @@ export async function eaStatement(
       if (field === 'gross') grossOverridden = true;
     }
     // Recompute the total from the (possibly amended) components, unless HR set `gross` directly.
-    if (!grossOverridden) merged.gross = round2(merged.grossSalary + merged.bonus + merged.allowances);
+    // 6036dab7 — driven off EA_PART_B_COMPONENTS rather than a hand-written sum, so a Part B box added to
+    // the form cannot be left out of the form's own total. Every added component's baseline is 0, so this
+    // is arithmetically identical to `grossSalary + bonus + allowances` for every statement that exists.
+    if (!grossOverridden) merged.gross = round2(EA_PART_B_COMPONENTS.reduce((a, f) => a + merged[f], 0));
 
     return {
       year: p.year,
@@ -1091,9 +1240,31 @@ export async function eaStatement(
         children: info.children ?? 0,
         hiredOn: info.hiredOn,
         terminatedOn: info.terminatedOn,
+        employeeNo: info.employeeNo ?? null,
+        jobTitle: info.jobTitle ?? null,
+        passport: info.passport ?? null,
       },
-      partB: { grossSalary: merged.grossSalary, bonus: merged.bonus, allowances: merged.allowances, gross: merged.gross, exemptAllowances: round2(exemptAllowances) },
-      partD: { mtd: merged.mtd, zakat: round2(zakat) },
+      partB: {
+        grossSalary: merged.grossSalary,
+        bonus: merged.bonus,
+        allowances: merged.allowances,
+        gross: merged.gross,
+        exemptAllowances: round2(exemptAllowances),
+        directorFee: merged.directorFee,
+        tipsPerquisites: merged.tipsPerquisites,
+        taxBorneByEmployer: merged.taxBorneByEmployer,
+        esos: merged.esos,
+        gratuity: merged.gratuity,
+        arrears: merged.arrears,
+        benefitsInKind: merged.benefitsInKind,
+        livingAccommodation: merged.livingAccommodation,
+        unapprovedFundRefund: merged.unapprovedFundRefund,
+        compensation: merged.compensation,
+      },
+      // Part C's total is recomputed from the (possibly amended) lines for the same reason Part B's is:
+      // a printed section total that does not equal its own printed lines is worse than no total.
+      partC: { pension: merged.pension, annuity: merged.annuity, total: round2(merged.pension + merged.annuity) },
+      partD: { mtd: merged.mtd, cp38: merged.cp38, zakat: merged.zakat },
       partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis },
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),
       overrides,

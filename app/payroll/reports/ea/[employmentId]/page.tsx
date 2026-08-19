@@ -90,9 +90,25 @@ export default async function EaStatementPage({
     allowances: t('override.fieldAllowances'),
     gross: t('override.fieldGross'),
     mtd: t('override.fieldMtd'),
+    cp38: t('override.fieldCp38'),
+    zakat: t('override.fieldZakat'),
     epf: t('override.fieldEpf'),
     socso: t('override.fieldSocso'),
     eis: t('override.fieldEis'),
+    // 6036dab7 — the manual boxes. They reuse the SECTION labels rather than getting their own amend-panel
+    // wording, so the operator amends the line they can see on the form above.
+    directorFee: t('directorFee'),
+    tipsPerquisites: t('tipsPerquisites'),
+    taxBorneByEmployer: t('taxBorneByEmployer'),
+    esos: t('esos'),
+    gratuity: t('gratuity'),
+    arrears: t('arrears'),
+    benefitsInKind: t('benefitsInKind'),
+    livingAccommodation: t('livingAccommodation'),
+    unapprovedFundRefund: t('unapprovedFundRefund'),
+    compensation: t('compensation'),
+    pension: t('pension'),
+    annuity: t('annuity'),
   };
   const derivedFor: Record<string, number> = {
     grossSalary: ovByField.get('grossSalary')?.original ?? ea.partB.grossSalary,
@@ -100,15 +116,58 @@ export default async function EaStatementPage({
     allowances: ovByField.get('allowances')?.original ?? ea.partB.allowances,
     gross: ovByField.get('gross')?.original ?? ea.partB.gross,
     mtd: ovByField.get('mtd')?.original ?? ea.partD.mtd,
+    cp38: ovByField.get('cp38')?.original ?? ea.partD.cp38,
+    zakat: ovByField.get('zakat')?.original ?? ea.partD.zakat,
     epf: ovByField.get('epf')?.original ?? ea.partE.epf,
     socso: ovByField.get('socso')?.original ?? ea.partE.socso,
     eis: ovByField.get('eis')?.original ?? ea.partE.eis,
+    directorFee: ovByField.get('directorFee')?.original ?? ea.partB.directorFee,
+    tipsPerquisites: ovByField.get('tipsPerquisites')?.original ?? ea.partB.tipsPerquisites,
+    taxBorneByEmployer: ovByField.get('taxBorneByEmployer')?.original ?? ea.partB.taxBorneByEmployer,
+    esos: ovByField.get('esos')?.original ?? ea.partB.esos,
+    gratuity: ovByField.get('gratuity')?.original ?? ea.partB.gratuity,
+    arrears: ovByField.get('arrears')?.original ?? ea.partB.arrears,
+    benefitsInKind: ovByField.get('benefitsInKind')?.original ?? ea.partB.benefitsInKind,
+    livingAccommodation: ovByField.get('livingAccommodation')?.original ?? ea.partB.livingAccommodation,
+    unapprovedFundRefund: ovByField.get('unapprovedFundRefund')?.original ?? ea.partB.unapprovedFundRefund,
+    compensation: ovByField.get('compensation')?.original ?? ea.partB.compensation,
+    pension: ovByField.get('pension')?.original ?? ea.partC.pension,
+    annuity: ovByField.get('annuity')?.original ?? ea.partC.annuity,
   };
   // #18 — the statutory EA fields reconciled against the year's filed CP39/agency total. For these, the
   // payroll-derived value IS the filed total (same payslip.statutory.* source), so filedTotal = derived.
-  const STATUTORY_EA_FIELDS = new Set(['mtd', 'epf', 'socso', 'eis']);
+  // 6036dab7 — `cp38` joins them (it is remitted on the same CP39 return as the MTD); `zakat` does not,
+  // because it goes to a state religious authority and this system holds no filed total for it. The set
+  // here MIRRORS core/ea-override.ts's STATUTORY_FIELDS — the service is the authority, this is the hint.
+  const STATUTORY_EA_FIELDS = new Set(['mtd', 'cp38', 'epf', 'socso', 'eis']);
+  // 6036dab7 — THE ORDER IS THE FORM'S ORDER, not the vocabulary's: the panel is read against the
+  // statement printed directly above it, and a box that is hard to find in the panel is a box that gets
+  // left empty. Derived figures first (Part B cash, then D, then E), then the manual boxes in form order.
   const amendFields: AmendField[] = (
-    ['grossSalary', 'bonus', 'allowances', 'gross', 'mtd', 'epf', 'socso', 'eis'] as const
+    [
+      'grossSalary',
+      'bonus',
+      'directorFee',
+      'allowances',
+      'tipsPerquisites',
+      'taxBorneByEmployer',
+      'esos',
+      'gratuity',
+      'arrears',
+      'benefitsInKind',
+      'livingAccommodation',
+      'unapprovedFundRefund',
+      'compensation',
+      'gross',
+      'pension',
+      'annuity',
+      'mtd',
+      'cp38',
+      'zakat',
+      'epf',
+      'socso',
+      'eis',
+    ] as const
   ).map((field) => ({
     field,
     label: fieldLabels[field],
@@ -171,8 +230,13 @@ export default async function EaStatementPage({
             {t('sectionAEmployeeParticulars')}
           </h2>
           <Row label={t('name')} value={ea.employee.name} />
+          {/* 6036dab7 — job title, employee number and passport. All three read from tables the statement
+              already joined; the passport is the same column the CP39 form reads for the same purpose. */}
+          <Row label={t('jobTitle')} value={ea.employee.jobTitle || '—'} />
+          <Row label={t('employeeNo')} value={ea.employee.employeeNo || '—'} />
           <Row label={t('incomeTaxNo')} value={ea.employee.taxNo || '—'} />
           <Row label={t('icNo')} value={ea.employee.ic || '—'} />
+          <Row label={t('passportNo')} value={ea.employee.passport || '—'} />
           <Row label={t('epfNo')} value={ea.employee.epfNo || '—'} />
           <Row label={t('socsoNo')} value={ea.employee.socsoNo || '—'} />
           <Row label={t('mtdCategory')} value={CATEGORY[ea.employee.category] ?? ea.employee.category} />
@@ -186,12 +250,22 @@ export default async function EaStatementPage({
           </h2>
           <Row label={t('grossSalary')} value={rm(ea.partB.grossSalary)} amended={ovByField.has('grossSalary')} amendedLabel={amendedBadge} />
           <Row label={t('bonus')} value={rm(ea.partB.bonus)} amended={ovByField.has('bonus')} amendedLabel={amendedBadge} />
+          <Row label={t('directorFee')} value={rm(ea.partB.directorFee)} amended={ovByField.has('directorFee')} amendedLabel={amendedBadge} />
           <Row label={t('allowancesPerquisites')} value={rm(ea.partB.allowances)} amended={ovByField.has('allowances')} amendedLabel={amendedBadge} />
+          <Row label={t('tipsPerquisites')} value={rm(ea.partB.tipsPerquisites)} amended={ovByField.has('tipsPerquisites')} amendedLabel={amendedBadge} />
+          <Row label={t('taxBorneByEmployer')} value={rm(ea.partB.taxBorneByEmployer)} amended={ovByField.has('taxBorneByEmployer')} amendedLabel={amendedBadge} />
+          <Row label={t('esos')} value={rm(ea.partB.esos)} amended={ovByField.has('esos')} amendedLabel={amendedBadge} />
+          <Row label={t('gratuity')} value={rm(ea.partB.gratuity)} amended={ovByField.has('gratuity')} amendedLabel={amendedBadge} />
+          <Row label={t('arrears')} value={rm(ea.partB.arrears)} amended={ovByField.has('arrears')} amendedLabel={amendedBadge} />
           {/* Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside
               the allowances line; LHDN's EA reports exempt allowances in their own section). */}
           <Row label={t('exemptAllowances')} value={rm(ea.partB.exemptAllowances ?? 0)} muted />
-          <Row label={t('benefitsInKind')} value={t('notTracked')} muted />
-          <Row label={t('livingAccommodation')} value={t('notTracked')} muted />
+          {/* 6036dab7 — BIK and living accommodation were the words "not tracked"; they are manual boxes
+              now, filled from the same amend panel as every other amended figure. */}
+          <Row label={t('benefitsInKind')} value={rm(ea.partB.benefitsInKind)} amended={ovByField.has('benefitsInKind')} amendedLabel={amendedBadge} />
+          <Row label={t('livingAccommodation')} value={rm(ea.partB.livingAccommodation)} amended={ovByField.has('livingAccommodation')} amendedLabel={amendedBadge} />
+          <Row label={t('unapprovedFundRefund')} value={rm(ea.partB.unapprovedFundRefund)} amended={ovByField.has('unapprovedFundRefund')} amendedLabel={amendedBadge} />
+          <Row label={t('compensation')} value={rm(ea.partB.compensation)} amended={ovByField.has('compensation')} amendedLabel={amendedBadge} />
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span className="flex items-center gap-2">
               {t('totalGrossRemuneration')}
@@ -205,14 +279,32 @@ export default async function EaStatementPage({
           </div>
         </section>
 
+        {/* 6036dab7 — C · Pension and other payments. The section did not exist on this screen at all,
+            which the plan calls the clearest gap against the customer's field mapping. Neither figure has
+            a payroll source, so both are manual boxes; the total is recomputed from the two lines. */}
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('sectionCPensionOther')}
+          </h2>
+          <Row label={t('pension')} value={rm(ea.partC.pension)} amended={ovByField.has('pension')} amendedLabel={amendedBadge} />
+          <Row label={t('annuity')} value={rm(ea.partC.annuity)} amended={ovByField.has('annuity')} amendedLabel={amendedBadge} />
+          <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+            <span>{t('totalPensionOther')}</span>
+            <span className="tabular-nums">{rm(ea.partC.total)}</span>
+          </div>
+        </section>
+
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('sectionDTotalDeductions')}
           </h2>
           <Row label={t('monthlyTaxDeduction')} value={rm(ea.partD.mtd)} amended={ovByField.has('mtd')} amendedLabel={amendedBadge} />
-          <Row label={t('cp38Deductions')} value={t('notTracked')} muted />
+          {/* 6036dab7 — CP38 is stamped on every regular payslip (payslip.statutory.cp38, the same scalar
+              the monthly CP39 return files). It printed the words "not tracked" here for a year after
+              payroll started producing it: stale wording, not an unimplemented figure. */}
+          <Row label={t('cp38Deductions')} value={rm(ea.partD.cp38)} amended={ovByField.has('cp38')} amendedLabel={amendedBadge} />
           {/* 1.2.4 Zakat — the year's accumulated zakat-via-salary (Z), now sourced from the payslips. */}
-          <Row label={t('zakatViaSalary')} value={rm(ea.partD.zakat)} />
+          <Row label={t('zakatViaSalary')} value={rm(ea.partD.zakat)} amended={ovByField.has('zakat')} amendedLabel={amendedBadge} />
         </section>
 
         <section>
@@ -228,8 +320,24 @@ export default async function EaStatementPage({
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('sectionFTaxExempt')}
           </h2>
+          {/* 6036dab7 — LEFT SAYING "not tracked", DELIBERATELY, and it is the only line on this form that
+              still does. Section F on the C.P.8A is the total of tax reliefs and deductions APPROVED by
+              LHDN (the TP1 items), which is not the same thing as the tax-exempt allowance portions Part B
+              already reports — and this screen's own label for it ("Total tax-exempt allowances") may
+              itself be wrong. We hold no copy of the official artwork to settle which it is, so wiring
+              `partB.exemptAllowances` in here would be attaching a real number to a box we cannot name.
+              An honest blank beats a confident wrong figure on a tax document; see MY_STATUTORY_LINKS on
+              why this catalogue never claims `fidelity: 'official'` without the agency's own page. */}
           <Row label={t('taxExemptAllowances')} value={t('notTracked')} muted />
         </section>
+
+        {/* 6036dab7 — the boxes with no payroll source say so in one place, rather than each printing a
+            muted "not tracked" that reads as "this product cannot do it". */}
+        {canAmend && isCurrentEmployer && (
+          <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+            {t('manualEntryNote')}
+          </div>
+        )}
 
         {/* 1.2.6 — "Amended" note shown when ≥1 EA field was overwritten by HR (drives the same marker the
             PDF prints). */}

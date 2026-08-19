@@ -17,7 +17,7 @@ import { eaOverride } from '../db/schema';
 import { canManagePayroll, isAdmin } from '../lib/authz';
 import { employeeEaStatement } from './reporting';
 import { countryPacks } from '../localization/registry';
-import type { EaField, EaOverrideEntry } from '../localization/country-pack';
+import type { EaField, EaStatement } from '../localization/country-pack';
 
 /**
  * The EA-form field vocabulary, supplied by the registered country packs (ADR-0080 D6, rung 5a —
@@ -52,7 +52,12 @@ const isField = (s: string): s is EaField => (EA_FIELDS as readonly string[]).in
  * so divergence = amended ≠ derived/filed. Part B income fields (grossSalary/bonus/allowances/gross) carry
  * no remittance and are NOT reconciled.
  */
-const STATUTORY_FIELDS = new Set<EaField>(['mtd', 'epf', 'socso', 'eis']);
+// 6036dab7 — `cp38` joins them: it is remitted on the SAME CP39 return as the MTD (cp39() totals both,
+// localization/my/reports.ts), so an amendment to it diverges from a filed agency figure exactly as an
+// `mtd` amendment does. `zakat` deliberately does NOT: zakat-via-salary is paid to a state religious
+// authority, not remitted on the CP39, so there is no filed total on this system to reconcile it against
+// and claiming one would be the overstatement this reconciliation exists to prevent.
+const STATUTORY_FIELDS = new Set<EaField>(['mtd', 'cp38', 'epf', 'socso', 'eis']);
 const isStatutoryField = (f: EaField): boolean => STATUTORY_FIELDS.has(f);
 const MONEY_TOL = 0.005;
 
@@ -69,12 +74,14 @@ function assertCanAmend(ctx: SessionContext) {
  * value); otherwise the statement's current field value IS the derived value. Returns null only when the
  * employment is missing (eaStatement → null).
  */
-function derivedField(
-  ea: { partB: { grossSalary: number; bonus: number; allowances: number; gross: number }; partD: { mtd: number }; partE: { epf: number; socso: number; eis: number }; overrides: EaOverrideEntry[] },
-  field: EaField,
-): number {
+function derivedField(ea: EaStatement, field: EaField): number {
   const existing = ea.overrides.find((o) => o.field === field);
   if (existing) return existing.original;
+  // 6036dab7 — NO `default:` CLAUSE, ON PURPOSE. This switch is exhaustive over EaField, so adding a box
+  // to the EA vocabulary without deciding where its derived baseline comes from is a COMPILE error rather
+  // than a silent `undefined` written into an amendment's audit `before`. That is what the tsc gate caught
+  // when the twelve manual boxes were added, and it is why the arm below reads them off the statement
+  // (where the pack has already resolved their baseline to 0) instead of hard-coding a literal here.
   switch (field) {
     case 'grossSalary':
       return ea.partB.grossSalary;
@@ -86,12 +93,40 @@ function derivedField(
       return ea.partB.gross;
     case 'mtd':
       return ea.partD.mtd;
+    case 'cp38':
+      return ea.partD.cp38;
+    case 'zakat':
+      return ea.partD.zakat;
     case 'epf':
       return ea.partE.epf;
     case 'socso':
       return ea.partE.socso;
     case 'eis':
       return ea.partE.eis;
+    case 'directorFee':
+      return ea.partB.directorFee;
+    case 'tipsPerquisites':
+      return ea.partB.tipsPerquisites;
+    case 'taxBorneByEmployer':
+      return ea.partB.taxBorneByEmployer;
+    case 'esos':
+      return ea.partB.esos;
+    case 'gratuity':
+      return ea.partB.gratuity;
+    case 'arrears':
+      return ea.partB.arrears;
+    case 'benefitsInKind':
+      return ea.partB.benefitsInKind;
+    case 'livingAccommodation':
+      return ea.partB.livingAccommodation;
+    case 'unapprovedFundRefund':
+      return ea.partB.unapprovedFundRefund;
+    case 'compensation':
+      return ea.partB.compensation;
+    case 'pension':
+      return ea.partC.pension;
+    case 'annuity':
+      return ea.partC.annuity;
   }
 }
 
