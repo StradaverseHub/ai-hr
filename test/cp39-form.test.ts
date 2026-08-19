@@ -117,10 +117,10 @@ const header = (p: Record<string, string> = {}) => ({
  * Split per record so a failure names WHICH one moved: `H` is the 57-character header, `D` the two
  * 136-character detail records, and the terminator is CRLF including after the last line.
  */
-const CP39_FILE_GOLDEN_NAME = 'GOLDEN_NAME_TBD';
-const CP39_FILE_GOLDEN_HEADER = 'GOLDEN_HEADER_TBD';
-const CP39_FILE_GOLDEN_DETAIL_1 = 'GOLDEN_D1_TBD';
-const CP39_FILE_GOLDEN_DETAIL_2 = 'GOLDEN_D2_TBD';
+const CP39_FILE_GOLDEN_NAME = '009457390901_2026.txt';
+const CP39_FILE_GOLDEN_HEADER = 'H00945739090094573909202601000001105000001000002500000001';
+const CP39_FILE_GOLDEN_DETAIL_1 = 'D23607354000ANG PEI YEE                                                             941128035179              0001105000000000EMP001    ';
+const CP39_FILE_GOLDEN_DETAIL_2 = 'D10000000002BETA TWO                                                                860208105128              0000000000025000EMP002    ';
 const CP39_FILE_GOLDEN =
   [CP39_FILE_GOLDEN_HEADER, CP39_FILE_GOLDEN_DETAIL_1, CP39_FILE_GOLDEN_DETAIL_2].join('\r\n') + '\r\n';
 
