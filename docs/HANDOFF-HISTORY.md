@@ -6486,3 +6486,145 @@ dev database with it. Both r184 build agents found 0 tenants and 0 payroll batch
 because of it. **Seed AFTER the gate, never before** — and a render check run before a gate proves nothing
 about the tree you are about to ship.
 
+### r194 (2026-08-14) — THE APPROVED QUEUE EMPTIED: FIVE ITEMS, MIGRATION `0440`
+
+`main@dec4bb73`. Four workstreams cut from main. Gate **682 declared / 682 counted / every chunk exit=0 /
+9,133 tests / 0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 358→359. Shipped:
+`c11e81aa` (Individual Transaction) · `3c88d593` STAGE ONE (entity transfer, `0440`) · `5ff7daff`
+(Replacement Leave approval surface) · `9c8dad7a` + `3aae0789` (EPF Borang A printed form + i-Akaun text
+file, built together for shared groundwork).
+
+**TWO DEFECTS THIS ROUND INTRODUCED, BOTH CAUGHT ONLY BY THE FULL GATE:**
+1. `localization/my/borang-a.ts` stamped its printed date from `new Date().toISOString().slice(0,10)`.
+   MYT is UTC+8, so between 00:00 and 08:00 that yields YESTERDAY — a statutory form carrying the wrong
+   Tarikh DiCetak for a third of every day. `test/today-in-myt-drift.test.ts` exists for exactly this.
+   Fixed with `todayInKualaLumpur()` (`lib/hr-date.ts`), which `localization/my/statutory-config.ts`
+   already imports.
+2. `app/leave/actions.ts` declared a SECOND `const t` for the `approvals` namespace while `t` was already
+   bound to `replacementRequest`. `test/leave-i18n-key-resolution.test.ts` maps VARIABLE NAME → namespace,
+   so the rebind made an existing, correct `t('submittedToast')` resolve as the missing
+   `approvals.submittedToast`. **THE KEY WAS NEVER MISSING** — adding it would have silenced a working
+   guard with an entry no call site reads. Renamed to `tApprovals`. Watch for this shape: one file binding
+   two namespaces to the same identifier.
+
+**TWO PLANS OF OURS WERE STALE AND THE BUILDER SAID SO — both worth reading as a caution on plan shelf-life:**
+- `c11e81aa` item 8 (Excel import Pay Cycle) **was already built by r193's `0db616f3`**: `payroll_cycle` is
+  in the import schema, the hardcoded `runType === 'regular'` is gone, five cases pin it. The plan's build
+  note was written against pre-r193 main. Nothing in the import was changed.
+- `c11e81aa` item 5 (grey out Day-by-Day for fixed-amount items) is a **no-op on this tenant**: of 24 active
+  allowance/deduction pay items, 23 have NO rule and one has a formula; **none is configured `fixed`**. The
+  gate was built correctly and engages the moment an item gets a rule, but it greys out nothing today. The
+  builder deliberately did NOT widen it to null-rule items — null-rule is precisely the case the day grid
+  exists for (`ABSENT`, `UNPAID LEAVE`), and widening would have reversed r191's feature.
+
+✅ **BOTH HAND-RUN SCRIPTS HAVE NOW BEEN RUN** (2026-08-14, against a fresh backup
+`/home/ubuntu/backups/aihr-pre-r194-scripts-20260814-015648.dump`):
+  `scripts/backfill-assignment-company.ts --apply` → **1 split, 54 stamps**; 55 of 59 assignment rows now
+  carry a company. The 4 without are all `superseded` and the resolver filters those
+  (`isNull(assignment.supersededAt)`, core/employment-company.ts:83), so they are not a gap.
+  `scripts/archive-duplicate-replacement-leave-type.ts --apply --tenant=…` → archived `REPLACEMENT`, kept
+  `RL`. **It REFUSES `--apply` without `--tenant`** — it will not guess which customer to write to.
+
+### r193 (2026-08-13) — TEN ITEMS, THREE MIGRATIONS, AND THE JANUARY BONUS REPAIR RUN BY HAND
+
+`main@970a1f22`. Nine parallel workstreams cut from main. Gate **677 declared / 677 counted / every
+chunk exit=0 / 8,974 tests / 0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 355→358.
+Shipped: `2333b7fb`+`0253dc7c` (statutory wage base — one root cause, two screens) · `a9d0a94a`
+(entitlement generation) · `0db616f3` (January double import, `0437`) · `46afcc48` (shared leave group
+display, `0438`) · `7c834696` (OT rounding, `0439`) · `e7eb5d83` (claim config width) · `6b018920`
+(back pay / statutory adjustment) · `3c2f55d7` (organization) · `8ca344bf` (SOCSO Borang 8A).
+
+**THE MIGRATION JOURNAL COST TWO ATTEMPTS AND BOTH FAILURES WERE THE INTEGRATOR'S** — now AGENTS rule 22.
+Three branches each appended an entry, so `_journal.json` conflicted. First attempt: the resolver
+asserted and aborted BEFORE writing, but `git add && git commit` was chained off the `git add`, so the
+file went in WITH CONFLICT MARKERS as invalid JSON. Second attempt: sorting every entry by `when`
+relocated idx 240 ahead of 225 — because 240 shares its `when` with 220 and sits below 230's — breaking
+`test/migration-journal-ordering.test.ts`'s strictly-ascending-idx case. **The full gate caught it: one
+AssertionError, everything else green.** The journal has TWO invariants that pull against each other on
+that one grandfathered pair; APPENDING satisfies both because main already does. Final diff vs main is
+purely additive, 21 insertions / 0 deletions. And resolve multi-branch journal conflicts as the UNION —
+taking either side DROPS a migration, leaving a `.sql` with no journal entry that never runs.
+
+**THE JANUARY REPAIR IS DONE — DO NOT RE-RUN IT.** `scripts/repair-january-bonus-double-import.ts
+--apply`, run by hand after the deploy (rule 13), against a fresh backup
+`/home/ubuntu/backups/aihr-pre-0db616f3-20260813-224333.dump` (108MB, pg_dump exit 0, 166 TABLE DATA
+entries, taken with `--exclude-table-data` for the three FORCE-RLS tables — all confirmed 0 rows).
+Result, verified independently of the script's own summary: **13 rows / RM62,524.51 now on the bonus run
+`fc9e5309`, 0 left on the regular run, 0 surplus duplicates**; the 17 hand-keyed rows (RM7,997.75) on
+`368c67fc` untouched; payslips 121 / batches 23 / ledger 171 unchanged; January payslip totals unchanged
+(regular 19 @ net 96,045.78, bonus 19 @ 0.00). **No payslip was touched — re-issuing the January bonus
+run remains a separate, deliberate act by the owner.** A0014's RM17,325.00 exists ONLY in the second
+import and A0001's RM1,650.71 ONLY in the first, so "delete the later import" would have stranded a real
+person's bonus; the keep-set is the distinct union, earliest of each pair.
+
+⚠️ **`node --env-file=` DOES NOT RUN ON THE SERVER** — node v18.19.1, flag arrived in node 20, exits 9.
+**23 scripts document that invocation** and none works as written on production. Source the env instead.
+Now AGENTS rule 21.
+
+### r192 (2026-08-13) — THE THREE COMMITS r191 LEFT BEHIND, AND A CORRECTION TO ITS OWN WRITE-UP
+
+Not a board round: no item changed state. r191 was declared complete while **three commits sat unmerged on
+two of its branches** — a resumed workflow kept committing at 13:37–13:44, half an hour after the
+integration merged those branches at 13:04. Found only because a routine `git for-each-ref refs/heads/build`
+sweep showed `build/r191-cp22` two ahead and `build/r191-midmonth` one ahead of main. **That is now
+AGENTS.md rule 19.**
+
+What shipped here:
+
+- **`723904b1` — a REAL defect on the CP22 review screen.** The preview computed its listed box values from
+  the CORRECTED record but its "this box will not hold its whole value" warning from the BARE one, so a
+  correction that overflows was shown in full and announced nowhere — reachable through the very boxes the
+  reporter asked to have made editable. Cause was two sources of truth: `page.tsx` had INLINED
+  `applyCp22Review`'s body instead of calling it. Fixed to one call feeding both, pinned from both ends
+  (trap 17's shape).
+- **`7f2bc027`** — pins the December→January rollover in `nextFirstOfMonth`; a naive +1 on the month would
+  suggest `2026-13-01` and every other month in the file passes over it in silence.
+- **`b5269a56`** — already live by content: r191's hand-fix set the identical string in all six catalogues.
+
+**AND IT CORRECTS r191'S OWN DIAGNOSIS.** r191 wrote up its stale-translation catch as a hunk-granularity
+merge fault and made a standing order out of it. Re-checked here by reading `messages/en.json` at each of
+the eight merge commits: **the value was main's at every one, including cp22's own merge — nothing reverted
+anything.** The audit had compared the merged tree against a branch HEAD that had moved since. The catch was
+real and the fix was right; the explanation was wrong, and a wrong standing order is worse than none.
+Rule 19 is now the staleness rule; 19b keeps the base-aware audit with the correction attached.
+
+### r190+r191 (2026-08-13) — ELEVEN ITEMS AS ONE RELEASE, `main@de887a85`, migration `0436`
+
+Built by a 7-workstream Workflow plus r190 carried over. Gate **666 declared / 666 counted / every chunk
+exit=0 / 8,706 tests / 0 AssertionErrors**; tsc 0; `next build` 0; `gate:shadow` PASS 355/355. Shipped:
+`2f889bae` (rev 2 — Pay Items View/Edit link) · `009c8a37`+`e1e33ca0` (employee panel + Individual
+Transaction) · `3ddae357`+`38b94df7` (balances As-at date, searchable picker) · `3214cb11`+`813fd22a`
+(entitlement table ordering — ONE fix, both surfaces) · `47609f53` (dashboard link gating) · `154865f4`
+(`0436`, roster DELETE) · `a3d485f6` (mid-month restatement refusal) · `88076362` (CP22 review screen).
+
+**THE ROUND'S REAL LESSON IS THAT BOTH DEFECTS IT PRODUCED WERE INVISIBLE TO EVERY BRANCH THAT CAUSED
+THEM.** Seven worktrees, each green on its own targeted tests; the integration found two faults that only
+existed once the branches met:
+
+1. **A STALE TRANSLATION THAT `i18n-check` CANNOT SEE — and the round's own explanation of it was WRONG,
+   corrected in r192.** The shipped `payroll.cp22.monthHint` was main's old value, describing a "branch you
+   type" field the same round had DELETED. `scripts/i18n-check.mjs` passed throughout: the key was present
+   in every locale, parity held, no placeholder changed; only the TEXT was stale. **Only a base-aware audit
+   (base vs merged vs every side) reads a value as stale rather than merely present** — that part stands,
+   and it is why the defect was caught at all.
+
+   **The CAUSE written up at the time — "the balances merge reverted it at hunk granularity" — did not
+   happen.** Re-checked in r192 by reading `messages/en.json` at each of the eight merge commits: the value
+   was main's at *every* one, including `build/r191-cp22`'s own merge. Nothing reverted anything. The real
+   cause is rule 19: the integration merged at 13:04 while a resumed workflow was still running, and the
+   cp22 branch rewrote that hint at 13:37 — so the audit compared the merged tree against a branch HEAD that
+   had MOVED SINCE. The hand-fix applied then is byte-identical to what the branch later committed, so the
+   shipped text was right; only the reasoning was wrong. **Three commits missed r191 entirely because of
+   this, one of them a real defect fix — shipped in r192.**
+2. **A NEW GUARDED PAGE WITH NO MATRIX COLUMN.** cp22 added `/payroll/cp22/[employmentId]/preview` and
+   never registered it, so `test/function-access.test.ts`'s reverse-completeness case failed — a guarded
+   route nobody can grant or revoke. Registered on the same `scopedAdmin` key as
+   `/payroll/statutory-forms/[formId]`, the screen that links to it. Its four siblings under
+   `/payroll/cp22` are route handlers, not pages, which is why exactly one route was missing. **18 test
+   files read that registry, spread across chunks — a targeted re-run could not have been trusted, so the
+   full gate was re-run.**
+
+**Also settled in this round, both worth not re-deriving:** `9a65f808` does NOT block `31e39d74` (see
+START HERE §4), and ai-hr is loopback-only with no nginx route (see CURRENT STATE). Two board items were
+raised from what the work turned up: `0db616f3` (the January double-import, START HERE §3) and, earlier,
+`47609f53`/`154865f4`/`a3d485f6` which shipped here.
