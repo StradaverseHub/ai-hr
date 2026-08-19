@@ -2023,6 +2023,7 @@
     "override": {
       "title": "Before you submit",
       "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "convertNoticeWorking": "This application does not meet the {days}-working-day notice period for {typeName} (you have given {given} working day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
       "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
@@ -6331,6 +6332,7 @@
       "advanceNoticeSectionTitle": "การแจ้งล่วงหน้า",
       "minAdvanceDaysLabel": "จำนวนวันแจ้งล่วงหน้าขั้นต่ำ",
       "minAdvanceDayTypeLabel": "ประเภทวัน",
+      "minAdvanceDayTypeHelp": "วันตามปฏิทินจะนับทุกวัน รวมถึงวันหยุดสุดสัปดาห์ วันหยุดพัก และวันหยุดนักขัตฤกษ์ ส่วนวันทำงานจะนับเฉพาะวันที่พนักงานมีกำหนดต้องทำงานเท่านั้น ประเภทการลาที่มีอยู่เดิมจะยังคงใช้วันตามปฏิทิน ดังนั้นสิ่งที่บันทึกไว้แล้วจะไม่เปลี่ยนแปลง",
       "advanceNoticeSectionHelp": "พนักงานต้องยื่นการลาประเภทนี้ล่วงหน้ากี่วันก่อนวันเริ่มลา เว้นว่างไว้หากไม่มีข้อกำหนด ผู้ดูแลระบบ HR จะไม่ถูกจำกัดด้วยกฎนี้",
       "advanceCustomMessageHelp": "แสดงต่อพนักงานเมื่อการลาประเภทนี้ถูกปฏิเสธเพราะแจ้งล่วงหน้าน้อยเกินไป สูงสุด 500 อักขระ เว้นว่างไว้เพื่อคงข้อความมาตรฐาน ใช้กับการลาประเภทนี้เท่านั้น",
       "recalcToast": "แก้ไขสิทธิ์วันลาแล้ว — คำนวณใหม่ให้พนักงาน {count} คน (รวม {delta} วัน)",

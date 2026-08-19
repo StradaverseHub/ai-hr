@@ -2023,6 +2023,7 @@
     "override": {
       "title": "Before you submit",
       "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "convertNoticeWorking": "This application does not meet the {days}-working-day notice period for {typeName} (you have given {given} working day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
       "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
@@ -6331,6 +6332,7 @@
       "advanceNoticeSectionTitle": "Thông báo trước",
       "minAdvanceDaysLabel": "Số ngày báo trước tối thiểu",
       "minAdvanceDayTypeLabel": "Loại ngày",
+      "minAdvanceDayTypeHelp": "Ngày theo lịch tính mọi ngày, bao gồm cuối tuần, ngày nghỉ và ngày lễ. Ngày làm việc chỉ tính những ngày nhân viên được xếp lịch làm việc. Các loại nghỉ phép hiện có vẫn giữ Ngày theo lịch, nên không có thiết lập nào đã lưu bị thay đổi.",
       "advanceNoticeSectionHelp": "Nhân viên phải nộp đơn xin loại nghỉ phép này trước ngày bắt đầu bao nhiêu ngày. Để trống nếu không yêu cầu. Quản trị viên HR không bao giờ bị chặn bởi quy tắc này.",
       "advanceCustomMessageHelp": "Hiển thị cho nhân viên khi loại nghỉ phép này được nộp mà không đủ thời gian báo trước. Tối đa 500 ký tự. Để trống để giữ thông báo tiêu chuẩn. Chỉ áp dụng cho loại nghỉ phép này.",
       "recalcToast": "Đã sửa quyền nghỉ — tính lại cho {count} nhân viên (tổng cộng {delta} ngày).",

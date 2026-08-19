@@ -3782,6 +3782,12 @@ async function requestEmergencyLeave(
             advanceNoticeOverride: true,
             daysInAdvance: overrideAudit.daysInAdvance,
             minAdvanceDays: overrideAudit.minAdvanceDays,
+            // 7daac043: the UNIT the two figures above are in — the same stamp every child's submitted event
+            // carries. This is the ONE event the doc comment above promises an auditor can start from, so it
+            // is exactly the event that must not leave "5" ambiguous between five calendar days and five
+            // working ones. Conditional only so a pre-7daac043 audit object (no dayType) writes the payload
+            // it always wrote.
+            ...(overrideAudit.dayType ? { advanceNoticeDayType: overrideAudit.dayType } : {}),
           }
         : {}),
     },

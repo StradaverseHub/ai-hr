@@ -2023,6 +2023,7 @@
     "override": {
       "title": "Before you submit",
       "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "convertNoticeWorking": "This application does not meet the {days}-working-day notice period for {typeName} (you have given {given} working day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
       "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
@@ -6331,6 +6332,7 @@
       "advanceNoticeSectionTitle": "Advance notice",
       "minAdvanceDaysLabel": "Minimum advance days",
       "minAdvanceDayTypeLabel": "Day type",
+      "minAdvanceDayTypeHelp": "Calendar Days counts every day, including weekends, rest days and public holidays. Working Days counts only the days the employee is scheduled to work. Existing leave types stay on Calendar Days, so nothing already saved changes.",
       "advanceNoticeSectionHelp": "How many days before the start date an employee must submit this leave type. Leave blank for no requirement. HR admins are never blocked by this rule.",
       "advanceCustomMessageHelp": "Shown to the employee when this leave type is submitted with too little advance notice. Up to 500 characters. Leave blank to keep the standard message. Applies to this leave type only.",
       "recalcToast": "Corrected entitlement — recalculated {count} employee(s) ({delta} days total).",

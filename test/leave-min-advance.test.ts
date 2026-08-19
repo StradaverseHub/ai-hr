@@ -799,6 +799,17 @@ describe('the Day Type select lives INSIDE the advance-notice sub-form', () => {
     expect(subForm()).toContain("minAdvanceDayType ?? 'calendar_days'");
   });
 
+  // The two options READ IDENTICALLY on the screen — both leave the same "7" in the box above — so the
+  // difference has to be stated in product. Without this line the administrator is given a two-option
+  // select and no in-product statement of what Working Days counts, nor of the fact that saved types are
+  // untouched. A missing help key is invisible to tsc, to i18n-check and to every service test here.
+  it('states IN PRODUCT what the two options mean, right under the select', () => {
+    const block = subForm();
+    expect(block).toContain("t('minAdvanceDayTypeHelp')");
+    // Under the select, not appended to the card's closing help line — it explains THIS control.
+    expect(block.indexOf("t('minAdvanceDayTypeHelp')")).toBeGreaterThan(block.indexOf('name="minAdvanceDayType"'));
+  });
+
   it('the whole card is still hidden for Emergency Leave (EL is deliberately never notice-guarded)', () => {
     expect(panel).toContain("code !== 'EMERGENCY'");
   });
@@ -851,6 +862,20 @@ describe('i18n — advanceNoticeRequired renders in all 6 locales with both toke
     const messages = (await import(`../messages/${locale}.json`)).default;
     const t = createTranslator({ locale, messages, namespace: 'admin.leave' });
     expect(t('minAdvanceDayTypeLabel')).toBeTruthy();
+  });
+
+  it.each(LOCALES)('locale %s explains the two options, and says saved types do not change', async (locale) => {
+    const messages = (await import(`../messages/${locale}.json`)).default;
+    const t = createTranslator({ locale, messages, namespace: 'admin.leave' });
+    const help = t('minAdvanceDayTypeHelp');
+    expect(help).toBeTruthy();
+    // It must name BOTH readings in that locale's own words — a help line that describes only one of them
+    // leaves the administrator guessing at the choice it is supposed to explain.
+    const cond = createTranslator({ locale, messages, namespace: 'admin.leave.conditionStep' });
+    expect(help).toContain(cond('maxConsecutiveUnitCalendar'));
+    expect(help).toContain(cond('maxConsecutiveUnitWorking'));
+    // …and it must be longer than the label it sits under: this is the explanation, not a second caption.
+    expect(help.length).toBeGreaterThan(t('minAdvanceDayTypeLabel').length);
   });
 });
 

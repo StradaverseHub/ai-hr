@@ -2798,6 +2798,12 @@ export function LeaveTypePanel({
                     <option value="working_days">{t('conditionStep.maxConsecutiveUnitWorking')}</option>
                   </select>
                 </Field>
+                {/* The two options LOOK identical on the screen — both leave "7" in the box above — so the
+                    difference has to be stated in product, not left to the administrator to infer. It sits
+                    directly under the select (not with the card's closing help line) because it explains
+                    THIS control, and it carries the reassurance the reporter approved: existing leave types
+                    stay on Calendar Days, so nothing already saved changes. */}
+                <p className="text-xs text-muted-foreground">{t('minAdvanceDayTypeHelp')}</p>
                 {/* Custom validation messages (0147): optional HR-authored override for the advance-notice
                     block message. Lives in the SAME form as the rule so it saves atomically with
                     `minAdvance=1`. Blank = keep the built-in localized default. */}

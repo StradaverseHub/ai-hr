@@ -2023,6 +2023,7 @@
     "override": {
       "title": "Before you submit",
       "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "convertNoticeWorking": "This application does not meet the {days}-working-day notice period for {typeName} (you have given {given} working day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
       "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
@@ -6331,6 +6332,7 @@
       "advanceNoticeSectionTitle": "முன்கூட்டிய அறிவிப்பு",
       "minAdvanceDaysLabel": "குறைந்தபட்ச முன்கூட்டிய நாட்கள்",
       "minAdvanceDayTypeLabel": "நாள் வகை",
+      "minAdvanceDayTypeHelp": "நாட்காட்டி நாட்கள் வார இறுதிகள், ஓய்வு நாட்கள் மற்றும் பொது விடுமுறைகள் உட்பட ஒவ்வொரு நாளையும் கணக்கிடும். வேலை நாட்கள் பணியாளர் வேலைக்கு நியமிக்கப்பட்டுள்ள நாட்களை மட்டுமே கணக்கிடும். ஏற்கெனவே உள்ள விடுப்பு வகைகள் நாட்காட்டி நாட்களிலேயே இருக்கும், எனவே ஏற்கெனவே சேமிக்கப்பட்ட எதுவும் மாறாது.",
       "advanceNoticeSectionHelp": "தொடக்கத் தேதிக்கு எத்தனை நாட்களுக்கு முன் ஒரு பணியாளர் இந்த விடுப்பு வகையைச் சமர்ப்பிக்க வேண்டும். தேவை இல்லாதிருக்க காலியாக விடவும். HR நிர்வாகிகள் இந்த விதியால் ஒருபோதும் தடுக்கப்பட மாட்டார்கள்.",
       "advanceCustomMessageHelp": "போதுமான முன்கூட்டிய அறிவிப்பு இல்லாமல் இந்த விடுப்பு வகை சமர்ப்பிக்கப்படும்போது பணியாளருக்குக் காட்டப்படும். 500 எழுத்துகள் வரை. நிலையான செய்தியை வைத்திருக்க காலியாக விடவும். இந்த விடுப்பு வகைக்கு மட்டுமே பொருந்தும்.",
       "recalcToast": "உரிமை திருத்தப்பட்டது — {count} ஊழியர்களுக்கு மீண்டும் கணக்கிடப்பட்டது (மொத்தம் {delta} நாட்கள்).",

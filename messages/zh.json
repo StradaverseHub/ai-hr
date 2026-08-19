@@ -2023,6 +2023,7 @@
     "override": {
       "title": "Before you submit",
       "convertNotice": "This application does not meet the {days}-day notice period for {typeName} (you have given {given} day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
+      "convertNoticeWorking": "This application does not meet the {days}-working-day notice period for {typeName} (you have given {given} working day(s) notice). If you continue, it will be submitted as Emergency Leave instead. The days still come off the balance your company has set for Emergency Leave.",
       "splitNotice": "Your balance does not cover this application. {paid} day(s) would be paid and {unpaid} day(s) would be taken as unpaid leave, which may reduce your salary.",
       "blockNotice": "This application cannot be submitted: {typeName} does not allow this exception.",
       "convertConfirm": "Yes — submit this as Emergency Leave.",
@@ -6331,6 +6332,7 @@
       "advanceNoticeSectionTitle": "提前申请",
       "minAdvanceDaysLabel": "最少提前天数",
       "minAdvanceDayTypeLabel": "天数类型",
+      "minAdvanceDayTypeHelp": "日历天计算每一天，包括周末、休息日和公共假期。工作日只计算员工按排班需要上班的日子。现有假期类型维持日历天，因此已保存的设置不会有任何改变。",
       "advanceNoticeSectionHelp": "员工必须在开始日期前多少天提交此假期类型的申请。留空表示无要求。HR 管理员不受此规则限制。",
       "advanceCustomMessageHelp": "当此假期类型因提前申请天数不足被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。",
       "recalcToast": "已更正应享额度——已为 {count} 名员工重新计算（共 {delta} 天）。",
