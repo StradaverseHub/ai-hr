@@ -2820,6 +2820,13 @@ export async function updateLeaveType(
     // request-validation rule with its own sub-form, so an unrelated save must not touch it and the audit
     // diff must label it correctly.
     minAdvanceDays?: number | null;
+    // Advance Notice — calendar days or working days (7daac043, migration 0447): the UNIT the requirement
+    // above is read in. It rides minAdvanceDays' tri-state marker rather than carrying its own — the two are
+    // ONE decision (a unit with no figure configures the reading of a rule that does not exist), exactly as
+    // maxDaysPeriod rides maxDaysPerLeaveYear's. So: minAdvanceDays undefined ⇒ BOTH columns untouched;
+    // minAdvanceDays null ⇒ both cleared; a figure ⇒ the figure plus this unit (null ⇒ calendar days, the
+    // reading every existing row already takes).
+    minAdvanceDayType?: 'calendar_days' | 'working_days' | null;
     // Application Limits (feedback c6ffa725, migration 0335): the maximum total days an employee may APPLY
     // for of this type within one leave year, regardless of entitlement balance. OWN tri-state (undefined =
     // leave column untouched), mirroring backdatingLimitDays — it has its own sub-form, so an unrelated
@@ -3225,6 +3232,17 @@ export async function updateLeaveType(
   if (p.minAdvanceDays != null && (!Number.isInteger(p.minAdvanceDays) || p.minAdvanceDays < 0)) {
     throw new Error('“Minimum advance days” must be a whole number ≥ 0.');
   }
+  // Advance Notice — calendar days or working days (7daac043): mirrors migration 0447's vocabulary CHECK.
+  // Validated rather than silently coerced — an unrecognised value would fall back to calendar days at read
+  // time, so accepting it here would store a rule that means something other than what the administrator
+  // chose, and look correct in the audit trail while doing it. Defence in depth behind the DB CHECK.
+  if (
+    p.minAdvanceDayType != null &&
+    p.minAdvanceDayType !== 'calendar_days' &&
+    p.minAdvanceDayType !== 'working_days'
+  ) {
+    throw new Error('“Day type” for the advance-notice rule must be Calendar Days or Working Days.');
+  }
   // Application Limits (c6ffa725): mirrors the DB CHECK in migration 0335. A zero or negative ceiling would
   // refuse EVERY application of the type, which is a configuration mistake, not a policy — archive or hide
   // the leave type instead. Fractional figures ARE allowed (half-day leave exists), unlike the whole-day
@@ -3321,7 +3339,15 @@ export async function updateLeaveType(
   // Configurable backdated-leave restriction (0133): its own set fragment, merged alongside docSet.
   const backdatingSet = touchBackdating ? { backdatingLimitDays: p.backdatingLimitDays } : {};
   // Minimum advance-notice rule (0159): its own set fragment, mirroring backdatingSet.
-  const minAdvanceSet = touchMinAdvance ? { minAdvanceDays: p.minAdvanceDays } : {};
+  // 7daac043 — the DAY TYPE rides this same marker and is cleared WITH the requirement, so the pair
+  // "no requirement, but read in working days" (inert configuration that looks set) can never be written
+  // from here. Same shape as maxDaysPeriod riding maxDaysPerLeaveYear above.
+  const minAdvanceSet = touchMinAdvance
+    ? {
+        minAdvanceDays: p.minAdvanceDays,
+        minAdvanceDayType: p.minAdvanceDays == null ? null : (p.minAdvanceDayType ?? null),
+      }
+    : {};
   // Application Limits (c6ffa725): its own set fragment, mirroring backdatingSet. It is PRE-MERGED with the
   // two fragments above rather than spread as a fourth key in the `.set({...})` below — that literal is
   // already at TypeScript's union-complexity ceiling (TS2590 "union type that is too complex to represent"),
@@ -3353,6 +3379,7 @@ export async function updateLeaveType(
   const requestRuleSet: {
     backdatingLimitDays?: number | null;
     minAdvanceDays?: number | null;
+    minAdvanceDayType?: 'calendar_days' | 'working_days' | null;
     maxDaysPerLeaveYear?: string | null;
     maxConsecutiveDays?: string | null;
     maxConsecutiveUnit?: 'calendar_days' | 'working_days' | null;
@@ -3407,6 +3434,10 @@ export async function updateLeaveType(
         paid: leaveType.paid,
         backdatingLimitDays: leaveType.backdatingLimitDays,
         minAdvanceDays: leaveType.minAdvanceDays,
+        // Advance Notice — calendar days or working days (7daac043): selected for the before/after audit
+        // diff. MUST be here or before?.minAdvanceDayType is always undefined and a switch from calendar to
+        // working days records itself as a change from nothing.
+        minAdvanceDayType: leaveType.minAdvanceDayType,
         // Application Limits (c6ffa725): selected for the before/after audit diff.
         maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
         maxDaysPeriod: leaveType.maxDaysPeriod,
@@ -3680,7 +3711,15 @@ export async function updateLeaveType(
           ...(touchBalanceSource ? { balanceSourceTypeId: before?.balanceSourceTypeId ?? null } : {}),
           ...(touchAllowUpl ? { allowUnpaidLeave: before?.allowUnpaidLeave ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
-          ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
+          ...(touchMinAdvance
+            ? {
+                minAdvanceDays: before?.minAdvanceDays ?? null,
+                // 7daac043 — the unit belongs in the same diff as the figure. "7" moving from calendar days
+                // to working days changes the rule's meaning entirely while the FIGURE stays at 7; an audit
+                // trail showing only the figure would show nothing at all. (Same reasoning as maxDaysPeriod.)
+                minAdvanceDayType: before?.minAdvanceDayType ?? null,
+              }
+            : {}),
           ...(touchApplicationLimits
             ? {
                 maxDaysPerLeaveYear: before?.maxDaysPerLeaveYear ?? null,
@@ -3744,7 +3783,11 @@ export async function updateLeaveType(
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
             : {}),
           ...(touchMinAdvance
-            ? { minAdvanceDays: p.minAdvanceDays !== undefined ? p.minAdvanceDays : (before?.minAdvanceDays ?? null) }
+            ? {
+                minAdvanceDays: p.minAdvanceDays !== undefined ? p.minAdvanceDays : (before?.minAdvanceDays ?? null),
+                // 7daac043 — the resolved next unit, cleared with the requirement exactly as the column is.
+                minAdvanceDayType: p.minAdvanceDays == null ? null : (p.minAdvanceDayType ?? null),
+              }
             : {}),
           ...(touchApplicationLimits
             ? {

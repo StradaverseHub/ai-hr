@@ -95,6 +95,9 @@ function uniqCode(): string {
 /** Calendar-counted type so the day math is trivial (1 calendar day == 1 leave day). */
 async function leaveType(opts: {
   minAdvanceDays?: number | null;
+  /** 7daac043: the UNIT the notice requirement is read in. Omitted ⇒ NULL ⇒ calendar days, which is what
+   *  every case in this file assumed before that item and still assumes. */
+  minAdvanceDayType?: 'calendar_days' | 'working_days' | null;
   overrideRules?: LeaveOverrideRule[] | null;
   allowNegativeBalance?: boolean;
   allowUnpaidLeave?: boolean;
@@ -113,6 +116,7 @@ async function leaveType(opts: {
       allowNegativeBalance: opts.allowNegativeBalance ?? true,
       allowUnpaidLeave: opts.allowUnpaidLeave ?? false,
       minAdvanceDays: opts.minAdvanceDays ?? null,
+      minAdvanceDayType: opts.minAdvanceDayType ?? null,
       overrideRules: opts.overrideRules ?? null,
     })
     .returning({ id: schema.leaveType.id });
@@ -700,6 +704,70 @@ describe('56910869 · the employee is TOLD before being asked', () => {
       today: TODAY,
     });
     expect(preview.overrides).toBeUndefined();
+  });
+
+  // ── 7daac043: the trigger fires on the type's CONFIGURED UNIT, and both sides agree on it ───────────
+  //
+  // TODAY is Monday 2026-06-15 and the roster is Mon–Fri, so 2026-06-23 (Tue) is 8 CALENDAR days out and
+  // 6 WORKING days out. Against a requirement of 7 the two readings disagree, and that is exactly the pair
+  // that catches a preview which re-implements the rule instead of asking the same helper.
+  const TUE_8_CAL_6_WORK = '2026-06-23';
+
+  it('a working-days type fires the rule on a date the calendar reading lets through', async () => {
+    const { ctx, employmentId } = await hireEmployeeCtx();
+    // Same dates, same requirement, same rule — only the unit differs.
+    const calendarType = await leaveType({
+      minAdvanceDays: 7,
+      overrideRules: [{ trigger: 'advance_notice_not_met', action: 'block', enabled: true }],
+    });
+    const workingType = await leaveType({
+      minAdvanceDays: 7,
+      minAdvanceDayType: 'working_days',
+      overrideRules: [{ trigger: 'advance_notice_not_met', action: 'block', enabled: true }],
+    });
+    const previewOf = (leaveTypeId: string) =>
+      previewLeaveDeduction(ctx, {
+        employmentId,
+        leaveTypeId,
+        startDate: TUE_8_CAL_6_WORK,
+        endDate: TUE_8_CAL_6_WORK,
+        today: TODAY,
+      });
+
+    // 8 calendar days ≥ 7 ⇒ the rule does not fire, so the form says nothing.
+    expect((await previewOf(calendarType)).overrides).toBeUndefined();
+
+    // 6 working days < 7 ⇒ it does, and the figure quoted is in the unit the rule was judged in.
+    const working = await previewOf(workingType);
+    expect(working.overrides).toHaveLength(1);
+    expect(working.overrides![0]).toMatchObject({
+      trigger: 'advance_notice_not_met',
+      action: 'block',
+      needsConsent: false,
+      minAdvanceDays: 7,
+      daysInAdvance: 6,
+      minAdvanceDayType: 'working_days',
+    });
+
+    // …AND THE SUBMISSION AGREES. A preview that promised a refusal the submission does not make (or stayed
+    // silent about one it does) is the drift this pair exists to catch.
+    await expect(
+      requestLeave(ctx, {
+        employmentId,
+        leaveTypeId: workingType,
+        startDate: TUE_8_CAL_6_WORK,
+        endDate: TUE_8_CAL_6_WORK,
+        today: TODAY,
+      }),
+    ).rejects.toBeInstanceOf(LeaveAdvanceNoticeRequiredError);
+    const allowed = await requestLeave(ctx, {
+      employmentId,
+      leaveTypeId: calendarType,
+      startDate: TUE_8_CAL_6_WORK,
+      endDate: TUE_8_CAL_6_WORK,
+      today: TODAY,
+    });
+    expect(allowed.leaveRequestId).toBeTruthy();
   });
 });
 

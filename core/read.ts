@@ -713,6 +713,11 @@ export function listLeaveTypes(
         // Minimum advance-notice rule (0159): feeds the admin panel's "Minimum advance days" input (same
         // MUST-be-projected reason as backdatingLimitDays above).
         minAdvanceDays: leaveType.minAdvanceDays,
+        // Advance Notice — calendar days or working days (7daac043): feeds the same card's Day Type select.
+        // MUST be projected for the same reason as the line above — the select reads its state from this
+        // column, so an unprojected one renders as Calendar Days on every reload for a type actually
+        // configured in working days, and the next save of that card silently writes the wrong unit back.
+        minAdvanceDayType: leaveType.minAdvanceDayType,
         // Application Limits (c6ffa725): feeds the admin panel's "Application Limits" card — the Unlimited /
         // Limited radio reads its state from whether this is null, so it MUST be projected or the card
         // renders as Unlimited on every reload for a type that actually has a limit ("my setting didn't
@@ -870,6 +875,9 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           backdatingLimitDays: leaveType.backdatingLimitDays,
           // Minimum advance-notice rule (0159): projected alongside backdatingLimitDays for the same reason.
           minAdvanceDays: leaveType.minAdvanceDays,
+          // 7daac043 — the unit that requirement is read in, kept WITH it: the figure alone is ambiguous, so
+          // any consumer that gets one must be able to get the other from the same row.
+          minAdvanceDayType: leaveType.minAdvanceDayType,
           // Feedback 9d8cf621: the apply-time custom message (applyNotice key) is read off this JSONB to show
           // the HR-authored notice under the leave-type select on the /me apply form.
           customMessages: leaveType.customMessages,

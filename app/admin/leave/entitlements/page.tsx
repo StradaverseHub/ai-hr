@@ -504,6 +504,13 @@ export default async function LeaveEntitlementsPage({
                   : null
               }
               minAdvanceDays={lt.minAdvanceDays ?? null}
+              // 7daac043: narrowed to the closed vocabulary here (the column is plain TEXT + a DB CHECK), so
+              // the client panel receives the union it declares and never has to guess at a stray value.
+              minAdvanceDayType={
+                lt.minAdvanceDayType === 'working_days' || lt.minAdvanceDayType === 'calendar_days'
+                  ? lt.minAdvanceDayType
+                  : null
+              }
               customMessages={(lt.customMessages as Record<string, string> | null) ?? null}
               essViewConfig={(lt.essViewConfig as Record<string, boolean> | null) ?? null}
               formulaExplanations={(lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null) ?? null}
