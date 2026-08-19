@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback board — Last Updated column</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#101828; --muted:#667085; --line:#e4e7ec;
+    --amber-bg:#fffaeb; --amber-ink:#b54708;
+    --blue-bg:#eff8ff; --blue-ink:#175cd3;
+    --green-bg:#ecfdf3; --green-ink:#027a48;
+    --indigo-bg:#eef4ff; --indigo-ink:#3538cd;
+    --rose-bg:#fef3f2; --rose-ink:#b42318;
+    --accent:#3538cd;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       padding:28px 20px 40px}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px;letter-spacing:-.2px}
+  .sub{color:var(--muted);margin:0 0 22px;font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px}
+  .card > .hd{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:10px}
+  .hd .t{font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.6px}
+  .hd .n{font-size:12px;color:var(--muted)}
+  .pad{padding:14px 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);
+           font-weight:600;background:#fafafb;padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  .title{font-weight:600}
+  .dim{color:var(--muted)}
+  .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;white-space:nowrap}
+  .p-open{background:var(--amber-bg);color:var(--amber-ink)}
+  .p-planned{background:var(--blue-bg);color:var(--blue-ink)}
+  .p-deployed{background:var(--green-bg);color:var(--green-ink)}
+  .p-building{background:var(--indigo-bg);color:var(--indigo-ink)}
+  .p-contested{background:var(--rose-bg);color:var(--rose-ink)}
+  .stamp{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .stamp .time{color:var(--muted)}
+  .sorthead{color:var(--accent);font-weight:700}
+  .sorthead .arrow{font-size:9px;margin-left:3px}
+  .newcol{background:#f7f8ff}
+  .missing{color:#b42318;font-style:italic}
+  .flag{display:inline-block;background:var(--accent);color:#fff;border-radius:5px;
+        font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;text-transform:uppercase}
+  .stampgrid{display:flex;flex-wrap:wrap;gap:7px}
+  .ev{border:1px solid var(--line);background:#fafafb;border-radius:7px;padding:5px 10px;font-size:12px;color:#344054}
+  .note{font-size:12px;color:var(--muted);margin:10px 0 0}
+  .detail{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+  .detail .dt{font-size:16px;font-weight:650;margin:0 0 3px}
+  .metarow{display:flex;gap:26px;margin-top:12px;padding-top:11px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .meta .lab{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:600}
+  .meta .val{font-size:13px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .caveat{background:#fffaeb;border:1px solid #fedf89;border-radius:10px;padding:11px 14px;font-size:12.5px;color:#7a4d05}
+  .foot{font-size:11.5px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Latest action date on the Feedback board</h1>
+  <p class="sub">The finding first: the date is already being recorded on every action. It has simply never been put on screen.</p>
+
+  <div class="card">
+    <div class="hd"><span class="t">What is already stamped today</span><span class="n">no new recording needed</span></div>
+    <div class="pad">
+      <div class="stampgrid">
+        <span class="ev">Item raised</span>
+        <span class="ev">Plan published</span>
+        <span class="ev">Plan approved</span>
+        <span class="ev">Plan pushed back</span>
+        <span class="ev">Parked on a question</span>
+        <span class="ev">Question answered</span>
+        <span class="ev">Build started</span>
+        <span class="ev">Build finished</span>
+        <span class="ev">Deployed</span>
+        <span class="ev">Result sent back</span>
+        <span class="ev">Withdrawn</span>
+        <span class="ev">Restored</span>
+      </div>
+      <p class="note">Each of these already writes the date and time onto the item, from both the in-app buttons and the AI improvement loop. An item nobody has touched since it was raised carries the date it was raised — the convention the request asked for.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><span class="t">Before — the board today</span><span class="n">four columns, no date anywhere, no sorting</span></div>
+    <table>
+      <thead>
+        <tr><th style="width:26px"></th><th>Title</th><th>Category</th><th>Reporter</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="dim">☐</td><td class="title">Add a latest-action updated date field to the Feedback module</td><td class="dim">Enhancement</td><td class="dim">(reporter)</td><td><span class="pill p-open">Open</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">Granular payroll permission overrides</td><td class="dim">New function</td><td class="dim">(reporter)</td><td><span class="pill p-building">Building</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">HR-Admin Dashboard Card Master</td><td class="dim">New function</td><td class="dim">(reporter)</td><td><span class="pill p-deployed">Deployed</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">Employee ID Auto Running Number Setup</td><td class="dim">New function</td><td class="dim">(reporter)</td><td><span class="pill p-planned">Planned</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">Feedback list needs paging</td><td class="dim">Issue</td><td class="dim">(reporter)</td><td><span class="pill p-deployed">Deployed</span></td></tr>
+      </tbody>
+    </table>
+    <div class="pad" style="border-top:1px solid var(--line)">
+      <span class="missing">Nothing on this screen tells you which of these moved today and which have sat untouched for six weeks.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><span class="t">After — what will be built</span><span class="flag">New</span><span class="n">most recently updated first</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:26px"></th><th>Title</th><th>Category</th><th>Reporter</th><th>Status</th>
+          <th class="newcol sorthead">Last updated <span class="arrow">▼</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="dim">☐</td><td class="title">Granular payroll permission overrides</td><td class="dim">New function</td><td class="dim">(reporter)</td><td><span class="pill p-building">Building</span></td><td class="newcol stamp">17 Aug 2026 <span class="time">09:14</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">Add a latest-action updated date field to the Feedback module</td><td class="dim">Enhancement</td><td class="dim">(reporter)</td><td><span class="pill p-open">Open</span></td><td class="newcol stamp">16 Aug 2026 <span class="time">18:02</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">Employee ID Auto Running Number Setup</td><td class="dim">New function</td><td class="dim">(reporter)</td><td><span class="pill p-planned">Planned</span></td><td class="newcol stamp">14 Aug 2026 <span class="time">11:47</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">HR-Admin Dashboard Card Master</td><td class="dim">New function</td><td class="dim">(reporter)</td><td><span class="pill p-deployed">Deployed</span></td><td class="newcol stamp">11 Aug 2026 <span class="time">20:35</span></td></tr>
+        <tr><td class="dim">☐</td><td class="title">Feedback list needs paging</td><td class="dim">Issue</td><td class="dim">(reporter)</td><td><span class="pill p-deployed">Deployed</span></td><td class="newcol stamp">02 Aug 2026 <span class="time">16:21</span></td></tr>
+      </tbody>
+    </table>
+    <div class="pad" style="border-top:1px solid var(--line)">
+      <p class="note" style="margin:0">Clicking the <strong style="color:var(--accent)">Last updated</strong> heading flips between newest-first and oldest-first. The reordering is applied to the whole board before the list is cut to a page, so the top of the list is genuinely the most recently touched item — not merely the most recently touched of the ones already on screen.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><span class="t">And on the item's own page</span><span class="flag">New</span></div>
+    <div class="pad">
+      <div class="detail">
+        <p class="dt">Add a latest-action updated date field to the Feedback module</p>
+        <div class="dim" style="font-size:12.5px">Enhancement &nbsp;·&nbsp; <span class="pill p-open">Open</span></div>
+        <div class="metarow">
+          <div class="meta"><div class="lab">Reported</div><div class="val">16 Aug 2026, 18:02</div></div>
+          <div class="meta"><div class="lab">Last updated</div><div class="val">16 Aug 2026, 18:02</div></div>
+        </div>
+      </div>
+      <p class="note">Same wording and same date format already used further down this page for the plan and question history, so the whole item reads in one style.</p>
+    </div>
+  </div>
+
+  <div class="caveat">
+    <strong>About the dates shown above:</strong> the timestamps in this drawing are illustrative placeholders to show the shape of the column. Every real value comes from the item's own recorded history — nothing is estimated or entered by hand. Reporter names are left blank here rather than invented.
+  </div>
+  <p class="foot">Mockup for feedback item e14334ef.</p>
+
+</div>
+</body>
+</html>

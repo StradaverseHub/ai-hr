@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payroll Process — Reset, Reprocess and Full Width</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#16181d; --muted:#666c7a; --line:#e2e5ea;
+    --pri:#2f5bd7; --pri-soft:#eef2fe;
+    --ok:#0f7a4b; --ok-soft:#e7f5ee;
+    --warn:#9a6100; --warn-soft:#fdf3e0;
+    --new:#7a2fb3; --new-soft:#f4ecfb;
+    --bad:#b3261e; --bad-soft:#fdecea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+     margin:34px 0 10px;font-weight:700}
+  h3{font-size:14px;margin:0 0 8px;font-weight:700}
+  p{margin:0 0 10px}
+  .sub{color:var(--muted);margin:0 0 20px;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 14px}
+  .grid2{display:grid;gap:14px;grid-template-columns:1fr}
+  @media(min-width:840px){.grid2{grid-template-columns:1fr 1fr}}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:700;
+        letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
+  .c-ok{background:var(--ok-soft);color:var(--ok)}
+  .c-part{background:var(--warn-soft);color:var(--warn)}
+  .c-new{background:var(--new-soft);color:var(--new)}
+  .c-bad{background:var(--bad-soft);color:var(--bad)}
+  table.asks{width:100%;border-collapse:collapse;font-size:14px}
+  table.asks td{border-top:1px solid var(--line);padding:11px 8px;vertical-align:top}
+  table.asks tr:first-child td{border-top:none}
+  table.asks td.n{width:26px;color:var(--muted);font-variant-numeric:tabular-nums}
+  table.asks td.s{width:120px}
+  .scroller{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+  table.ui{border-collapse:collapse;font-size:12.5px;width:100%}
+  table.ui th{background:#f1f3f6;text-align:left;font-size:10.5px;text-transform:uppercase;
+     letter-spacing:.05em;color:var(--muted);padding:7px 9px;white-space:nowrap;font-weight:700}
+  table.ui td{border-top:1px solid var(--line);padding:7px 9px;white-space:nowrap}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .lnk{color:var(--pri);font-weight:600}
+  .pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;
+        background:#e8eefc;color:#2b4fb8}
+  .dots{display:inline-flex;align-items:center;justify-content:center;width:24px;height:22px;
+        border:1px solid var(--line);border-radius:6px;color:var(--muted);font-weight:700}
+  .frame{border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden}
+  .frame .bar{background:#f1f3f6;padding:6px 10px;font-size:11px;color:var(--muted);
+              border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+  .frame .body{padding:12px}
+  .measure{height:8px;border-radius:4px;background:var(--pri-soft);border:1px solid #cfdafa;position:relative}
+  .measure span{position:absolute;top:-1px;bottom:-1px;left:0;background:var(--pri);border-radius:4px}
+  .cap{font-size:11.5px;color:var(--muted);margin-top:5px}
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px}
+  .step{border:1px solid var(--line);border-radius:8px;padding:5px 10px;background:#fff}
+  .step.hit{border-color:#f0c0bc;background:var(--bad-soft);color:var(--bad);font-weight:600}
+  .step.good{border-color:#b9e2cd;background:var(--ok-soft);color:var(--ok);font-weight:600}
+  .arw{color:var(--muted)}
+  .search{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .search input{flex:0 1 280px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;background:#fff}
+  .btn{border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12.5px;background:#fff;font-weight:600}
+  .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+  .fold{border:1px solid var(--line);border-radius:10px;background:#fff;padding:9px 12px;
+        display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600}
+  .fold .hint{font-weight:400;color:var(--muted);font-size:12px}
+  .note{border-left:3px solid var(--pri);background:#fff;padding:10px 14px;border-radius:0 10px 10px 0;
+        font-size:13.5px;margin:0 0 12px;border-top:1px solid var(--line);border-right:1px solid var(--line);
+        border-bottom:1px solid var(--line)}
+  .strike{color:var(--muted);text-decoration:line-through}
+  ul.tight{margin:6px 0 0;padding-left:18px;font-size:13.5px}
+  ul.tight li{margin:3px 0}
+  .foot{color:var(--muted);font-size:12px;margin-top:34px;border-top:1px solid var(--line);padding-top:12px}
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#0f1115;--card:#171a20;--ink:#e8eaee;--muted:#9aa1ae;--line:#2a2f38;
+          --pri:#7fa0ff;--pri-soft:#1c2540;--ok:#4fc48c;--ok-soft:#12291f;
+          --warn:#e0ab55;--warn-soft:#2b2313;--new:#c08ee8;--new-soft:#241a2e;
+          --bad:#f08a80;--bad-soft:#2c1815;}
+    table.ui th{background:#1e222a}
+    .frame .bar{background:#1e222a}
+    .search input,.btn,.step,.fold,.frame,.scroller,.note{background:var(--card)}
+    .btn.pri{background:var(--pri);color:#0f1115}
+    .pill{background:#1c2540;color:#9db6ff}
+    .measure{background:#1c2540;border-color:#334066}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Payroll Process — Reset, Reprocess and Full Width</h1>
+  <p class="sub">Item 65e2d5de &middot; what is already live, and what this plan adds. Employee names below are the reporter's own examples.</p>
+
+  <h2>The six asks, checked one by one</h2>
+  <div class="card">
+    <table class="asks">
+      <tr>
+        <td class="n">1</td><td class="s"><span class="chip c-bad">Build</span></td>
+        <td><strong>Reset returns to Payroll Process.</strong> Today Reset deliberately hands you into Continue Progress — that was the change approved on item 7076f8af. We will reverse it and land on the Payroll Process list, filters intact.</td>
+      </tr>
+      <tr>
+        <td class="n">2</td><td class="s"><span class="chip c-new">Build</span></td>
+        <td><strong>Recalculation History behind a button.</strong> It already sits at the bottom of Reprocess rather than on the payroll run screen, but it is always open — one live January run carries 37 entries. We will fold it behind View Recalculation History.</td>
+      </tr>
+      <tr>
+        <td class="n">3</td><td class="s"><span class="chip c-new">Build</span></td>
+        <td><strong>Search employee on Reprocess.</strong> Not there today. The Remove Employee Payroll screen shipped with exactly this search hours ago; we copy it across.</td>
+      </tr>
+      <tr>
+        <td class="n">4</td><td class="s"><span class="chip c-part">Partly</span></td>
+        <td><strong>Reprocess full width.</strong> Reprocess was missed by the full-width sweep and is still capped. We widen it.</td>
+      </tr>
+      <tr>
+        <td class="n">5</td><td class="s"><span class="chip c-part">Partly</span></td>
+        <td><strong>Pay Period, Remove, View, Reprocess full width.</strong> Pay Period is already full width. View, Remove and Reprocess were missed. We widen the three.</td>
+      </tr>
+      <tr>
+        <td class="n">6</td><td class="s"><span class="chip c-new">Build</span></td>
+        <td><strong>Compact Actions column.</strong> Four separate links per processed row today. We keep View visible and move Reprocess, Remove Employee and Reset Payroll into a More menu.</td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>1 &middot; Reset Payroll — where it lands</h2>
+  <div class="note">
+    This is not a defect, it is a reversal. Reset used to land on the payroll run screen, which was empty at that moment because resetting clears the payslips. Item 7076f8af moved it into Continue Progress instead. You are now asking for a third destination — the Payroll Process list. That is a better answer than either, and nothing is lost: the row still shows a Continue link.
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Today</h3>
+      <div class="flow">
+        <span class="step">Payroll Process</span><span class="arw">&rarr;</span>
+        <span class="step">Reset Payroll</span><span class="arw">&rarr;</span>
+        <span class="step">Confirm</span><span class="arw">&rarr;</span>
+        <span class="step hit">Continue Progress</span>
+      </div>
+      <p class="cap">You are dropped inside the guided run flow you did not ask for.</p>
+    </div>
+    <div class="card">
+      <h3>After</h3>
+      <div class="flow">
+        <span class="step">Payroll Process</span><span class="arw">&rarr;</span>
+        <span class="step">Reset Payroll</span><span class="arw">&rarr;</span>
+        <span class="step">Confirm</span><span class="arw">&rarr;</span>
+        <span class="step good">Payroll Process</span>
+      </div>
+      <p class="cap">Back on the list, refreshed, with your year / month / company / status filters still set, the run now showing Draft, and a confirmation message.</p>
+    </div>
+  </div>
+
+  <h2>6 &middot; The Actions column</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Today — a processed row</h3>
+      <div class="scroller">
+        <table class="ui">
+          <thead><tr><th>Period</th><th>Company</th><th class="num">Employees</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>2026-07</td><td>Strada Sdn Bhd</td><td class="num">2</td>
+              <td><span class="pill">Processed</span></td>
+              <td style="text-align:right">
+                <span class="lnk">View</span> &nbsp;<span class="lnk">Reprocess</span> &nbsp;<span class="lnk">Remove Employee</span> &nbsp;<span class="lnk">Reset Payroll</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">Four links, and every new action makes the row wider. The grid scrolls sideways to fit.</p>
+    </div>
+    <div class="card">
+      <h3>After — one visible action, the rest in a menu</h3>
+      <div class="scroller">
+        <table class="ui">
+          <thead><tr><th>Period</th><th>Company</th><th class="num">Employees</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>2026-07</td><td>Strada Sdn Bhd</td><td class="num">2</td>
+              <td><span class="pill">Processed</span></td>
+              <td style="text-align:right"><span class="lnk">View</span> &nbsp;<span class="dots">&#8942;</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="frame" style="margin-top:10px;max-width:230px;margin-left:auto">
+        <div class="bar"><span>More actions</span></div>
+        <div class="body" style="padding:4px 0;font-size:13px">
+          <div style="padding:6px 12px">Reprocess</div>
+          <div style="padding:6px 12px">Remove Employee</div>
+          <div style="padding:6px 12px;border-top:1px solid var(--line)">Reset Payroll</div>
+        </div>
+      </div>
+      <p class="cap">A draft row keeps Continue and Delete; a closed row still offers View only. Which actions appear for which status does not change — only where they sit.</p>
+    </div>
+  </div>
+
+  <h2>2 &amp; 3 &middot; The Reprocess screen</h2>
+  <div class="card">
+    <h3>After</h3>
+    <div class="frame">
+      <div class="bar"><span>&larr; Payroll &nbsp;&middot;&nbsp; Reprocess Payroll &nbsp;&middot;&nbsp; 2026-07</span><span>full browser width</span></div>
+      <div class="body">
+        <div class="search">
+          <input value="" placeholder="Search employee ID or name">
+          <span style="font-size:12.5px;color:var(--muted)">2 of 2 selected</span>
+          <span class="lnk" style="font-size:12.5px">Select all</span>
+          <span class="lnk" style="font-size:12.5px">Clear</span>
+        </div>
+        <div class="scroller">
+          <table class="ui">
+            <thead><tr><th>Employee</th><th>Status</th><th>Reason</th><th>Already reprocessed</th><th class="num">Gross</th><th class="num">Net</th></tr></thead>
+            <tbody>
+              <tr><td><input type="checkbox" checked> A0001 &nbsp;John Tan</td><td>Processed</td><td>On this run</td><td>&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+              <tr><td><input type="checkbox"> A0002 &nbsp;Mary Lim</td><td>Processed</td><td>On this run</td><td>&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="cap">Figures are shown as dashes here because this is a sketch, not a real run &mdash; the live screen shows each person's gross and net.</p>
+        <div style="height:12px"></div>
+        <div class="fold"><span>View Recalculation History</span><span class="hint">37 entries &nbsp; &#9662;</span></div>
+        <p class="cap">Closed on arrival. Open it and the full history appears exactly as it reads today &mdash; nothing is removed, and your choice is remembered next visit.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>4 &amp; 5 &middot; Screen width</h2>
+  <div class="card">
+    <p style="font-size:13.5px;margin-bottom:14px">Every screen on the Payroll Process list was standardised to full width hours ago. The three screens you reach <em>through</em> a run were missed by that sweep. This is what changes:</p>
+    <div class="grid2">
+      <div>
+        <div class="measure"><span style="width:100%"></span></div><p class="cap">Payroll Process list &mdash; already full width</p>
+        <div class="measure"><span style="width:100%"></span></div><p class="cap">Pay Period (new run) &mdash; already full width</p>
+        <div class="measure"><span style="width:63%"></span></div><p class="cap">View &mdash; capped today, widened by this plan</p>
+      </div>
+      <div>
+        <div class="measure"><span style="width:52%"></span></div><p class="cap">Reprocess &mdash; capped today, widened by this plan</p>
+        <div class="measure"><span style="width:52%"></span></div><p class="cap">Remove Employee Payroll &mdash; capped today, widened by this plan</p>
+        <div class="measure"><span style="width:100%"></span></div><p class="cap">After: all six on one width standard</p>
+      </div>
+    </div>
+    <ul class="tight">
+      <li>Printed documents (payslip, Borang A, Borang 8A, CP39) keep their paper measure &mdash; widening those would change what prints.</li>
+      <li>Single-record forms (one loan, one pay item) also keep a comfortable reading width, as agreed on the previous width request.</li>
+    </ul>
+  </div>
+
+  <h2>Already live &mdash; no work needed</h2>
+  <div class="card">
+    <ul class="tight">
+      <li><strong>Remove Employee Payroll</strong> exists as its own screen with search, multi-select, a required reason, a full audit record, and a refusal to empty a whole run.</li>
+      <li><strong>Back navigation</strong> is on Reprocess, Remove and View, and it returns the Payroll Process list with your filters still applied.</li>
+      <li><strong>Recalculation History is already off the payroll run screen</strong> &mdash; it was moved to Reprocess. This plan only folds it shut.</li>
+      <li><strong>Employee search on the new-run Employee Selection step</strong> shipped with the earlier Reset request.</li>
+      <li><strong>Action availability by status</strong> is already enforced on the screen and again when the button is pressed. Nothing about that changes.</li>
+    </ul>
+  </div>
+
+  <p class="foot">No payroll figure, rule or calculation is touched by any part of this. Everything above is presentation and navigation only.</p>
+</div>
+</body>
+</html>

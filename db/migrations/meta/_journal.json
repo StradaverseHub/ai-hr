@@ -2528,6 +2528,13 @@
       "when": 1781862543000,
       "tag": "0443_payroll_cycle_updated_at",
       "breakpoints": true
+    },
+    {
+      "idx": 446,
+      "version": "7",
+      "when": 1781862546000,
+      "tag": "0446_payslip_coverage_dates",
+      "breakpoints": true
     }
   ]
 }

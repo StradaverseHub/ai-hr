@@ -15,7 +15,7 @@ import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
 // 3c88d593 — the entity segment this slip covers. The EMPLOYEE's own copy needs it most: after a
 // mid-month transfer they hold two documents for one month, from two different employers.
-import { payslipSegment } from '@/core/payslip-segment';
+import { payslipSegmentOf } from '@/core/payslip-segment';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -46,7 +46,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
     runType: p.runType,
     employmentType: p.employmentType,
     paymentMethod: p.paymentMethod,
-    segment: payslipSegment(p.statutory),
+    // 1b0943d5 — derived from the slip's COVERAGE window (see the admin PDF route for the full note).
+    segment: payslipSegmentOf(p, p.payPeriod),
   });
 
   // 3c473773 — the data is assembled by the shared builder so this PDF, the on-screen payslip and the

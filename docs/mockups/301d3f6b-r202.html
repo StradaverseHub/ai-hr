@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Special Leave Balance</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ea;
+    --soft:#f1f3f6; --good:#0f7b4f; --goodbg:#e7f5ee; --bad:#a13b2a; --badbg:#fdeeea;
+    --warn:#8a5a00; --warnbg:#fdf3e0; --accent:#2b5cd9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 24px;font-size:14px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+     margin:32px 0 12px;font-weight:600}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+       text-transform:uppercase;padding:3px 8px;border-radius:999px;margin-bottom:12px}
+  .tag.now{background:var(--badbg);color:var(--bad)}
+  .tag.after{background:var(--goodbg);color:var(--good)}
+  .card{background:var(--soft);border-radius:12px;padding:16px;max-width:290px}
+  .card .icon{width:20px;height:20px;display:block;margin-bottom:8px;opacity:.75}
+  .fig{font-size:30px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .fig.bad{color:var(--bad)}
+  .fig.good{color:var(--good)}
+  .ctx{font-size:12px;color:var(--muted);margin-top:2px}
+  .nm{font-size:12px;font-weight:600;margin-top:8px}
+  .mem{font-size:12px;color:var(--muted);margin-top:3px}
+  .note{font-size:13px;color:var(--muted);margin-top:14px}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+  td.num{font-variant-numeric:tabular-nums;font-weight:600}
+  .steps{margin:0;padding:0;list-style:none}
+  .steps li{padding:10px 0 10px 26px;position:relative;border-bottom:1px solid var(--line);font-size:14px}
+  .steps li:last-child{border-bottom:0}
+  .steps li::before{content:"";position:absolute;left:4px;top:17px;width:8px;height:8px;
+    border-radius:50%;background:var(--accent)}
+  .flag{border-left:3px solid var(--warn);background:var(--warnbg);border-radius:0 10px 10px 0;
+    padding:12px 14px;font-size:13.5px;margin-top:14px;color:#4a3a12}
+  .flag b{color:#5b4611}
+  .kv{font-size:13px;color:var(--muted);margin:6px 0 0}
+  .kv b{color:var(--ink);font-weight:600}
+  .rule{height:1px;background:var(--line);border:0;margin:34px 0 0}
+  .foot{font-size:12px;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Special Leave balance — what the card shows, and why</h1>
+  <p class="sub">Employee &gt; My Leave &gt; My Leave Balance &nbsp;·&nbsp; the pooled Special Leave card</p>
+
+  <h2>The card today, and the card after this change</h2>
+  <div class="grid2">
+    <div class="panel">
+      <span class="tag now">Today</span>
+      <div class="card">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
+        </svg>
+        <div class="fig bad">9.00</div>
+        <div class="ctx">of 10.00 shared days</div>
+        <div class="nm">Special Leave</div>
+        <div class="mem">Shared across: Caregiver, Compassionate, Examination, Graduation, Natural Disaster, Study</div>
+        <div class="ctx" style="margin-top:6px">Up to 3.00 days in one application</div>
+      </div>
+      <p class="note">Nothing has been taken, yet the card reads 9.00. The card adds up the days each
+        of the six types holds <em>in its own name</em> — and that adds up to nine, not ten.</p>
+    </div>
+
+    <div class="panel">
+      <span class="tag after">After this change</span>
+      <div class="card">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
+        </svg>
+        <div class="fig good">10.00</div>
+        <div class="ctx">of 10.00 shared days</div>
+        <div class="nm">Special Leave</div>
+        <div class="mem">Shared across: Caregiver, Compassionate, Examination, Graduation, Natural Disaster, Study</div>
+        <div class="ctx" style="margin-top:6px">Up to 3.00 days in one application</div>
+      </div>
+      <p class="note">The card reads the one pool the six types actually draw on, so an untouched
+        entitlement reads 10.00 — and the apply screen will agree with it.</p>
+    </div>
+  </div>
+
+  <h2>How the number moves as leave is taken</h2>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr><th>What has been taken</th><th>Card today</th><th>Card after</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nothing taken</td><td class="num" style="color:var(--bad)">9.00</td><td class="num" style="color:var(--good)">10.00</td></tr>
+        <tr><td>2 days on one of the grouped types</td><td class="num" style="color:var(--bad)">7.00</td><td class="num" style="color:var(--good)">8.00</td></tr>
+        <tr><td>a further 3 days on another grouped type</td><td class="num" style="color:var(--bad)">4.00</td><td class="num" style="color:var(--good)">5.00</td></tr>
+        <tr><td>a further 5 days across the grouped types</td><td class="num" style="color:var(--bad)">−1.00 or refused</td><td class="num" style="color:var(--good)">0.00</td></tr>
+      </tbody>
+    </table>
+    <p class="note">The deduction behaviour the request describes — any grouped type reduces the one
+      shared figure — already works today and is unchanged. Only the starting point is wrong, and every
+      later figure inherits that one-day error.</p>
+  </div>
+
+  <h2>Why it reads 9.00</h2>
+  <div class="panel">
+    <ul class="steps">
+      <li>The pooled card was built on 13 August. It deliberately shows the <em>smaller</em> of two
+        figures: what is left under the 10-day shared ceiling, and what the six grouped types hold
+        between them. That was the right instinct — a card must never promise a day the system then
+        refuses.</li>
+      <li>But the second figure is measured wrongly. Some grouped types do not hold days in their own
+        name at all: they are set up to draw from a shared Special Leave pot. The card counts those
+        types as holding nothing, so the pot they draw on never enters the total.</li>
+      <li>The apply screen does not make that mistake — it already follows the link to the pot. So the
+        balance card and the apply screen can disagree, and the card is the pessimistic one.</li>
+      <li>The fix is to make the card ask the same question the apply screen asks, counting each shared
+        pot once. The 10-day ceiling still caps the answer, so the card can never overstate.</li>
+    </ul>
+    <div class="flag">
+      <b>One thing to confirm on the live system before we finalise the figure.</b>
+      We know from the code that at least one grouped type draws from a shared Special Leave pot, and we
+      know the card ignores that link. What we cannot see from here is whether all six are linked and
+      whether the pot itself is set to the full ten days. If one grouped type is simply set up with nine
+      days of its own and no link, the card will read correctly only once that setup is completed —
+      which is a settings change, not a code change. We will check and complete it in the same round,
+      and report exactly what we found.
+    </div>
+  </div>
+
+  <h2>Not part of this</h2>
+  <div class="panel">
+    <p class="kv"><b>Last year's unused days.</b> The board title says this is about entitlement carried
+      over from last year. The request itself does not mention last year — it is entirely about the
+      shared grouping. Carrying unused days into a new year already works today and is switched on per
+      leave type, with a cap, an optional percentage and an expiry date. Nothing there is being changed.</p>
+    <p class="kv" style="margin-top:10px"><b>Who sees the card.</b> Where the Special Leave card appears
+      on the Leave tab, and which of the six types are listed individually, are settings that already
+      exist and are untouched.</p>
+  </div>
+
+  <hr class="rule">
+  <p class="foot">Figures shown are the ones recorded from the live system on 13 August 2026 (a 10.00
+    ceiling, 9.00 across the grouped types for at least one employee) and the worked example in the
+    request itself. No employee is named and no figure here is invented.</p>
+
+</div>
+</body>
+</html>

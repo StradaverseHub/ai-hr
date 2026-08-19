@@ -523,6 +523,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // Transaction View beside it. Its `[payslipId]/pdf` route is a route handler, not a guarded page,
       // and so is not listed here (the reverse-completeness check walks page.tsx files).
       '/payroll/individual-payslip',
+      // 45df860a: the shared PCB / MTD calculation detail. Registered on the SAME scopedAdmin key as the
+      // two screens that link to it (Transaction View and Individual Payslip above) — it shows one
+      // employee's tax working, read through the same `payslipForReview` fence, so it is admin-scoped
+      // exactly like them and grants/revokes with them. Registered here because
+      // test/function-access.test.ts checks reverse completeness: a guarded page with no matrix column
+      // fails the suite rather than silently becoming a screen nobody can grant or revoke.
+      '/payroll/pcb-detail',
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',

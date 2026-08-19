@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advance Notice — Day Type (7daac043)</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --border:#e3e6ea; --fg:#111418; --muted:#6b7280;
+    --accent:#2563eb; --accent-soft:#eff4ff; --amber-b:#f0c674; --amber-bg:#fdf6e6;
+    --green-b:#a7d7b4; --green-bg:#eef8f1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    padding:2px 7px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);
+    background:var(--accent-soft);vertical-align:2px;margin-left:8px;font-weight:600}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel > .ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .step{font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fbfcfd}
+  .step.on{background:var(--fg);border-color:var(--fg);color:#fff;font-weight:600}
+  .card{border:1px solid var(--border);border-radius:10px;padding:14px;background:#fdfdfe}
+  .card + .card{margin-top:12px}
+  .card .hd{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+  input[type=number],select,textarea{width:100%;font:inherit;font-size:13px;padding:7px 9px;
+    border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--fg)}
+  textarea{resize:vertical}
+  .hint{font-size:11.5px;color:var(--muted);margin:6px 0 0}
+  .new{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .newlbl{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--accent);
+    background:var(--accent-soft);border:1px solid #cadcff;border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:1px}
+  .btn{display:inline-block;font-size:13px;font-weight:600;padding:7px 14px;border-radius:8px;
+    background:var(--fg);color:#fff;border:none}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.two{grid-template-columns:1fr}}
+  .ex{border:1px solid var(--border);border-radius:10px;padding:13px;background:#fff}
+  .ex h3{font-size:12.5px;margin:0 0 8px;font-weight:700}
+  .ex.cal{border-color:var(--green-b);background:var(--green-bg)}
+  .ex.wrk{border-color:var(--amber-b);background:var(--amber-bg)}
+  .strip{display:flex;gap:3px;flex-wrap:wrap;margin:10px 0 8px}
+  .d{width:34px;text-align:center;font-size:10.5px;padding:5px 0;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--muted)}
+  .d.count{background:#fff;border-color:#9aa4b2;color:var(--fg);font-weight:600}
+  .d.skip{background:#eef0f3;border-style:dashed;color:#9aa4b2;text-decoration:line-through}
+  .d.start{background:var(--fg);border-color:var(--fg);color:#fff;font-weight:700}
+  .d .n{display:block;font-size:9px;font-weight:700;color:var(--accent)}
+  .d.skip .n{color:transparent}
+  .d.start .n{color:#fff}
+  .legend{font-size:11px;color:var(--muted);margin-top:6px}
+  .msg{border:1px solid var(--border);border-left:3px solid #d97706;border-radius:8px;background:#fffaf1;
+    padding:10px 12px;font-size:13px}
+  .msg .who{font-size:11px;color:var(--muted);margin-bottom:4px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:600;font-size:11.5px}
+  td.k{white-space:nowrap}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+  .scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="crumb">HR Admin &rsaquo; Leave Config &rsaquo; <b>Condition</b> &rsaquo; Leave Application Rules &rsaquo; Advance Notice</div>
+  <h1>Advance Notice — Day Type<span class="tag">Mockup · 7daac043</span></h1>
+  <p class="sub">One new choice inside the existing Advance Notice card. Everything else on this card is unchanged.</p>
+
+  <div class="panel">
+    <div class="steps">
+      <span class="step">General</span>
+      <span class="step">Entitlement</span>
+      <span class="step on">Condition</span>
+      <span class="step">Approval</span>
+    </div>
+    <div class="steps" style="margin-bottom:16px">
+      <span class="step">Criteria</span>
+      <span class="step on">Leave Application Rules</span>
+    </div>
+
+    <div class="card">
+      <div class="hd">Backdating</div>
+      <div class="field">
+        <label>Backdating limit days</label>
+        <input type="number" value="" placeholder="">
+      </div>
+      <p class="hint">Unchanged by this request.</p>
+    </div>
+
+    <div class="card new">
+      <div class="hd">Advance notice</div>
+
+      <div class="field">
+        <label>Minimum advance days</label>
+        <input type="number" value="7">
+      </div>
+
+      <div class="field">
+        <label>Day type <span class="newlbl">NEW</span></label>
+        <select>
+          <option selected>Calendar Days</option>
+          <option>Working Days</option>
+        </select>
+        <p class="hint">Calendar Days counts every day, including weekends, rest days and public holidays.
+          Working Days counts only the days the employee is scheduled to work. Existing leave types stay on
+          Calendar Days, so nothing already saved changes.</p>
+      </div>
+
+      <div class="field">
+        <label>Custom system message</label>
+        <textarea rows="2" placeholder="Leave blank to keep the standard message."></textarea>
+      </div>
+
+      <button class="btn" type="button">Save</button>
+      <p class="hint">How many days before the start date an employee must submit this leave type. Leave blank
+        for no requirement. HR admins are never blocked by this rule.</p>
+    </div>
+
+    <div class="card">
+      <div class="hd">Override Leave Application</div>
+      <p class="hint">Unchanged by this request. When advance notice is not met, whatever is set here still
+        decides what happens next — it simply now reads the notice in the day type chosen above.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ttl">The same setting of 7, read two ways</div>
+    <div class="two">
+
+      <div class="ex cal">
+        <h3>Minimum advance days 7 · Calendar Days (default, today's behaviour)</h3>
+        <div class="strip">
+          <div class="d count"><span class="n">1</span>Mon</div>
+          <div class="d count"><span class="n">2</span>Tue</div>
+          <div class="d count"><span class="n">3</span>Wed</div>
+          <div class="d count"><span class="n">4</span>Thu</div>
+          <div class="d count"><span class="n">5</span>Fri</div>
+          <div class="d count"><span class="n">6</span>Sat</div>
+          <div class="d count"><span class="n">7</span>Sun</div>
+          <div class="d start"><span class="n">&#9660;</span>Mon</div>
+        </div>
+        <p class="legend">Submitting on the first Monday, the earliest leave start allowed is the next Monday.
+          Saturday and Sunday both count.</p>
+      </div>
+
+      <div class="ex wrk">
+        <h3>Minimum advance days 7 · Working Days (new)</h3>
+        <div class="strip">
+          <div class="d count"><span class="n">1</span>Mon</div>
+          <div class="d count"><span class="n">2</span>Tue</div>
+          <div class="d count"><span class="n">3</span>Wed</div>
+          <div class="d count"><span class="n">4</span>Thu</div>
+          <div class="d count"><span class="n">5</span>Fri</div>
+          <div class="d skip"><span class="n">.</span>Sat</div>
+          <div class="d skip"><span class="n">.</span>Sun</div>
+          <div class="d count"><span class="n">6</span>Mon</div>
+          <div class="d count"><span class="n">7</span>Tue</div>
+          <div class="d start"><span class="n">&#9660;</span>Wed</div>
+        </div>
+        <p class="legend">The same figure of 7 now reaches two days further out, because the weekend is not
+          counted. Public holidays and the employee's own non-working days are skipped the same way.</p>
+      </div>
+
+    </div>
+    <p class="note">Struck-through days are not counted. The dark day is the earliest leave start date the
+      employee may choose.</p>
+  </div>
+
+  <div class="panel">
+    <div class="ttl">What the employee sees when they are too early</div>
+    <div class="two">
+      <div>
+        <p class="hint" style="margin-top:0">Calendar Days (unchanged wording)</p>
+        <div class="msg">
+          <div class="who">Apply Leave &rsaquo; on submit</div>
+          Annual Leave must be submitted at least 7 day(s) before the leave start date.
+        </div>
+      </div>
+      <div>
+        <p class="hint" style="margin-top:0">Working Days (new wording)</p>
+        <div class="msg">
+          <div class="who">Apply Leave &rsaquo; on submit</div>
+          Annual Leave must be submitted at least 7 working day(s) before the leave start date.
+        </div>
+      </div>
+    </div>
+    <p class="note">A leave type with its own custom message keeps showing that message word for word, exactly
+      as it does today. The new wording is used only where the standard message is used, and it is translated
+      into all six languages the system already carries.</p>
+  </div>
+
+  <div class="panel">
+    <div class="ttl">Where the choice is honoured</div>
+    <div class="scroll">
+      <table>
+        <tr><th>Moment</th><th>Behaviour after this change</th></tr>
+        <tr><td class="k">Employee picks dates on the leave form</td><td>The advance-notice warning shown before submitting is measured in the chosen day type.</td></tr>
+        <tr><td class="k">Employee submits</td><td>The application is accepted or refused on the chosen day type.</td></tr>
+        <tr><td class="k">Employee edits a submitted application</td><td>Same rule, same day type.</td></tr>
+        <tr><td class="k">HR admin applies on someone's behalf</td><td>Still never blocked, exactly as today. The record kept for audit now also says which day type was in force and how much notice was actually given in it.</td></tr>
+        <tr><td class="k">Emergency Leave</td><td>Unchanged — the Advance Notice card stays hidden for it, as it is today.</td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
