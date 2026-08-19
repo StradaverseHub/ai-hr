@@ -37,3 +37,32 @@ export type SharedLeaveBalanceInfo = {
 export function otherContributors(info: SharedLeaveBalanceInfo, leaveTypeName: string): string[] {
   return info.contributingLeaveTypes.filter((n) => n !== leaveTypeName);
 }
+
+/**
+ * WHOSE ENTITLEMENT STORY A BALANCE ROW TELLS — the leave type whose `leaveEntitlementBreakdown` explains
+ * the figures printed on this row. Itself for an ordinary type; THE POOL for a borrower.
+ *
+ * ⚠️ THIS IS NOT A REFINEMENT, IT IS THE OTHER HALF OF THE POOLING PASS, AND THE FIRST CUT SHIPPED WITHOUT
+ * IT. `leaveBalances` replaces a borrower's `balance` / `accrued` / `taken` / `available` with the SOURCE's,
+ * because the source's ledger IS the pool. Every OTHER figure on the row — YTD Entitled, Carried Forward,
+ * Adjustment, Forfeited — and the entitlement STATUS come from the breakdown, and a borrower's own
+ * breakdown describes a leave type that has no entitlement table and never will. Reading it beside the
+ * pooled figures produced a row that contradicted itself:
+ *
+ *     Emergency Leave · YTD Entitled 0.00 · Carried Forward 0.00 · Balance 10.00
+ *     ⚠ "This leave type has no entitlement table set up, so there is no number of days for anybody to be
+ *        granted. Create an entitlement table for it."
+ *
+ * — a red notice, over days the employee can in fact spend, instructing HR to do the one thing that would
+ * be wrong (a borrower with its own table would stop borrowing). The pool's breakdown is the true story of
+ * where those days came from, so it is the one every grid tells, and the shared caption beside it says
+ * whose figure it is.
+ *
+ * Returns the row's own id when nothing is pooled, so an ordinary type takes an identity path.
+ */
+export function balanceStoryTypeId(row: {
+  leaveTypeId: string;
+  sharedBalance?: SharedLeaveBalanceInfo | null;
+}): string {
+  return row.sharedBalance ? row.sharedBalance.sourceLeaveTypeId : row.leaveTypeId;
+}

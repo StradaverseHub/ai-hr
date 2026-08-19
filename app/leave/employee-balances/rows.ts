@@ -2,7 +2,7 @@ import type { SessionContext } from '@/db/client';
 import { leaveBalances, leaveEntitlementBreakdown } from '@/core/read';
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import type { EntitlementStatus } from '@/lib/entitlement-status';
-import type { SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
+import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
 
 /**
  * The Employee Balances table body (feedback 20c699f8), shared by the screen and its export so a
@@ -69,7 +69,11 @@ export async function employeeBalanceRows(
   const needle = filter.q?.trim().toLowerCase();
   const rows = balances
     .map((b): EmployeeBalanceRow => {
-      const bd = byType.get(b.leaveTypeId) ?? null;
+      // r209 — a BORROWER's figures are the pool's, so its entitlement story must be the pool's too
+      // (`balanceStoryTypeId`). Reading its own empty breakdown here printed "YTD Entitled 0.00" and a red
+      // "create an entitlement table for it" beside a balance the employee can spend — on this screen, in
+      // its export, and in the side-sheet. Identity for every type that is not in a pool.
+      const bd = byType.get(balanceStoryTypeId(b)) ?? null;
       const row = deriveBalanceRow({ ...b, essView: {} }, bd);
       return {
         leaveTypeId: b.leaveTypeId,

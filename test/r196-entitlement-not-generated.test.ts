@@ -460,6 +460,47 @@ describe('31e39d74: the breakdown says WHY a leave type reads 0.00', () => {
   });
 
   /**
+   * ⚠️ THE SECOND EXIT, AND IT IS THE ONE PRODUCTION TAKES. `buildTemplateEntitlementResolver` captures
+   * `hasTemplatesFor` before any short-circuit and returns it through `emptyWith(...)` at BOTH exits — and
+   * only the first (`ruleRows.length === 0`, the expired-rule case above) was pinned. Reverting the second
+   * to a bare `return empty;` left the whole r209 + r196 suite green, which means the fact the entire item
+   * rests on had no guard on the path its own comment names as the production one.
+   *
+   * REACHING IT NEEDS TWO THINGS AND NOTHING ELSE: two or more tables in force (so r193's sole-table
+   * fallback correctly does not apply) and every rule in force narrowing to a population this employee is
+   * not in — plan 70ac09ef's open case, an employee on a grade the six grade-keyed Medical rules do not
+   * name. `matchedByEmp` is then EMPTY while `templates` holds both tables.
+   *
+   * A regression here tells HR "No entitlement table for this leave type — create one" while two tables sit
+   * in the database and the RULE is the thing to fix: the exact wrong instruction r209 exists to stop.
+   */
+  it('a rule in force that reaches NOBODY ⇒ no_eligibility_match, not "no entitlement table"', async () => {
+    const typeId = await customLeaveType('MEDGRD209', 'Medical Leave');
+    const permanent = await table(typeId, 14, '2026-01-01', 'Medical — permanent');
+    await table(typeId, 18, '2026-01-01', 'Medical — contract');
+    const [grade] = await owner.db
+      .insert(schema.jobGrade)
+      .values({ tenantId: b.tenantId, code: 'EXEC209', name: 'Executive', rank: 1 })
+      .returning({ id: schema.jobGrade.id });
+    // In force, valid, and pointing at a table in force — so the rule list is NOT empty and the first exit
+    // is not the one taken. It simply names a grade this employee is not on.
+    await createEligibilityRule(adminCtx(b), {
+      name: 'Executive only',
+      templateLineageId: permanent.lineageId,
+      criteria: { gradeIds: [grade.id] },
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('2024-03-01');
+
+    const bd = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, typeId, ASOF);
+    expect(bd!.entitlementTemplateName).toBeNull();
+    expect(bd!.eligibleDays).toBe(0);
+    // THE ASSERTION. `no_entitlement_table` here would be a lie about a type with two of them.
+    expect(bd!.entitlementStatus).toBe('no_eligibility_match');
+    expect(entitlementStatusNeedsNotice(bd!.entitlementStatus)).toBe(true);
+  });
+
+  /**
    * r209 — THE OTHER SILENT ZERO: a Maximum Balance of 0 over a table that grants days.
    *
    * The six Special Leave types on the reporter's account are `{days: 3, maxBalanceDays: 0}`. The year-open

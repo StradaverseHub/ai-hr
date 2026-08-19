@@ -112,7 +112,10 @@ export type LeaveConfigHealth = {
   earningMethodSet: boolean;
   /** Entitlement tables IN FORCE at `today` (superseded and stopped versions excluded). */
   templateCount: number;
-  /** Eligibility rules IN FORCE at `today` pointing at one of this type's tables. */
+  /** Eligibility rules IN FORCE at `today` that can actually hand somebody a table — in force, AND pointing
+   *  at a table version that is itself in force. A rule in force over a STOPPED table is not counted here
+   *  (the resolver drops it, so it matches nobody); it still blocks `soleTableApplies`, exactly as it does
+   *  in the engine. */
   ruleCount: number;
   /** r193 fault 3 — one table, no rule in force, so the table applies to everyone with no rule needed. */
   soleTableApplies: boolean;
@@ -176,15 +179,38 @@ export function leaveTypeConfigHealth(p: {
 
   const liveTemplates = p.templates.filter((t) => inForce(t, today));
   const liveTemplateLineages = new Set(liveTemplates.map((t) => t.lineageId));
-  // A rule pointing at a lineage with no version in force is not a live rule — the resolver drops it for
-  // exactly that reason ("a rule whose table had not been written yet, or had been closed").
+  // A rule pointing at a lineage with no version in force can MATCH NOBODY — the resolver drops it for
+  // exactly that reason ("a rule whose table had not been written yet, or had been closed"). So these are
+  // the rules that can actually hand a table to somebody, and they are what `ruleCount`, `tablesWithoutRule`
+  // and `gradesWithoutTable` are measured on. They are NOT what the sole-table gate is measured on — see
+  // `rulesInForce` immediately below, and do not collapse the two.
   const liveRules = p.rules.filter((r) => inForce(r, today) && liveTemplateLineages.has(r.templateLineageId));
+
+  // This type's OWN lineages, every version — the join `leaveTypeIdsWithEligibilityRulesAt` makes.
+  const ownLineages = new Set(p.templates.map((t) => t.lineageId));
+  /**
+   * ⚠️ THE SOLE-TABLE GATE IS MEASURED ON A WIDER SET THAN `liveRules`, AND GETTING THIS WRONG SHIPPED A
+   * GREEN LIGHT OVER A LEAVE TYPE THE ENGINE GRANTED TO NOBODY.
+   *
+   * The resolver's safety condition is `leaveTypeIdsWithEligibilityRulesAt` (core/entitlement-template.ts),
+   * and that query joins rule → leave type through EVERY VERSION of the template lineage, in force or not,
+   * deliberately: "a rule pointing at a lineage whose current version is closed is still HR having stated
+   * an opinion, and the sole-table fallback must stay out of its way". So a rule in force pointing at a
+   * STOPPED table blocks the fallback in the engine.
+   *
+   * Measured on `liveRules` instead — which drops exactly that rule — this file reported `soleTableApplies`
+   * and called such a type READY, while `leaveEntitlementBreakdown` returned `no_eligibility_match` for
+   * every employee; the same flag also suppressed the per-table "No eligibility rule points here" marker,
+   * so both new signals went quiet at once. It is reached by ordinary use: stop an entitlement table
+   * without also stopping the rule that points at it (which is why the retire confirmation names the rule
+   * count in the first place).
+   */
+  const rulesInForce = p.rules.filter((r) => inForce(r, today) && ownLineages.has(r.templateLineageId));
 
   // r193 fault 3, mirrored. Both conditions, and the second is the safety one: a type with ONE table and a
   // rule that narrows it has deliberately excluded everybody else, and "there is only one table so give it
-  // to everyone" would silently reverse that. `liveRules` here is deliberately measured against ALL of this
-  // type's rules in force, which is what `leaveTypeIdsWithEligibilityRulesAt` asks.
-  const soleTableApplies = liveTemplates.length === 1 && liveRules.length === 0;
+  // to everyone" would silently reverse that.
+  const soleTableApplies = liveTemplates.length === 1 && rulesInForce.length === 0;
 
   const pointedAt = new Set(liveRules.map((r) => r.templateLineageId));
   const tablesWithoutRule = soleTableApplies
@@ -192,9 +218,8 @@ export function leaveTypeConfigHealth(p: {
     : liveTemplates.filter((t) => !pointedAt.has(t.lineageId)).map((t) => t.name);
 
   // Rule lineages, judged on their CURRENT version — see `latestPerLineage`. Scoped to this type by the
-  // lineage they point at, using EVERY template version: a rule whose table was stopped still belongs to
-  // the type that owned it, and hiding it would hide the expiry that matters most.
-  const ownLineages = new Set(p.templates.map((t) => t.lineageId));
+  // lineage they point at, using EVERY template version (`ownLineages`, above): a rule whose table was
+  // stopped still belongs to the type that owned it, and hiding it would hide the expiry that matters most.
   const ruleHeads = latestPerLineage(p.rules.filter((r) => ownLineages.has(r.templateLineageId)));
   const expiredRules = ruleHeads
     .filter((r) => r.validTo != null && r.validTo <= today)

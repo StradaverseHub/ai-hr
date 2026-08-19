@@ -45,14 +45,20 @@ import {
   requestLeave,
   InsufficientLeaveBalanceOnSubmitError,
 } from '../core/leave';
-import { leaveBalances } from '../core/read';
+import { leaveBalances, leaveEntitlementBreakdown } from '../core/read';
 import {
   createEligibilityRule,
   createEntitlementTemplate,
   leaveTypeIdForRuleLineage,
   leaveTypeIdForTemplateLineage,
+  listEligibilityRules,
+  listEntitlementTemplates,
+  retireEntitlementTemplate,
   updateEntitlementTemplate,
 } from '../core/entitlement-template';
+// The HR grid + its export both render from this one helper, so a row that contradicts itself here
+// contradicts itself in the downloaded file too.
+import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
 import {
   addDaysIso,
   isBlockingFinding,
@@ -199,6 +205,33 @@ describe('r209 · leaveTypeConfigHealth names the missing piece instead of leavi
     });
     expect(several.soleTableApplies).toBe(false);
     expect(several.findings).toContain('no_rule_in_force');
+  });
+
+  it('a rule in force over a STOPPED table still blocks the sole-table fallback, exactly as the engine does', () => {
+    /**
+     * ⚠️ THE GATE IS MEASURED ON A WIDER SET OF RULES THAN "the rules that can match somebody", AND THE
+     * FIRST CUT OF THIS FILE GOT IT WRONG — it reported READY over a leave type the engine granted to
+     * nobody, and suppressed the surviving table's own "No eligibility rule points here" at the same time.
+     *
+     * `leaveTypeIdsWithEligibilityRulesAt` (core/entitlement-template.ts) joins rule → leave type through
+     * EVERY version of the template lineage, in force or not, deliberately: a rule pointing at a stopped
+     * table is still HR having stated an opinion, so the sole-table fallback stays out of its way and
+     * NOBODY resolves. The shape is reached by ordinary use — stop a table without stopping the rule that
+     * points at it, which is precisely what the retire confirmation's rule count warns about.
+     */
+    const h = health({
+      templates: [
+        template({ lineageId: 'old', name: 'Medical — OLD', validFrom: '2020-01-01', validTo: '2026-01-01' }),
+        template({ lineageId: 'new', name: 'Medical — NEW', validFrom: '2026-01-01', validTo: null }),
+      ],
+      rules: [rule({ lineageId: 'r-old', templateLineageId: 'old', validFrom: '2020-01-01', validTo: null })],
+    });
+    expect(h.templateCount, 'one table in force — the stopped one is not').toBe(1);
+    expect(h.soleTableApplies, 'a rule in force claims this type, so its single live table is NOT automatic').toBe(false);
+    expect(h.status).toBe('blocked');
+    expect(h.findings).toContain('no_rule_in_force');
+    // …and because the fallback does not apply, the live table's own marker is not suppressed either.
+    expect(h.tablesWithoutRule).toEqual(['Medical — NEW']);
   });
 
   it('no earning method blocks the type however complete the tables are (the accrual_unconfigured column)', () => {
@@ -570,6 +603,70 @@ describe('r209 · recalculate on save, instead of remembering to press Generate 
   });
 });
 
+describe('r209 · the health card and the ENGINE agree about which zero is a fault', () => {
+  /**
+   * ⚠️ THE MIRROR, PINNED AGAINST THE THING IT MIRRORS, over one database and one configuration.
+   *
+   * The card's whole value is that it says "blocked" exactly when the engine grants nobody anything. Where
+   * the two drift, the card is worse than no card: a GREEN "Ready" over a leave type producing 0.00 for
+   * every employee is the silence r209 exists to end, restated in a nicer font. The drift that shipped was
+   * `soleTableApplies` — measured on rules pointing at a LIVE table, where the resolver's own gate
+   * (`leaveTypeIdsWithEligibilityRulesAt`) counts a rule in force pointing at ANY version of the lineage.
+   *
+   * The configuration below is reached by ordinary use, not by a contrived state: HR writes a new table for
+   * 2026, stops the old one, and leaves the rule pointing at the old one — which is exactly the state the
+   * stop-confirmation's "this table has N eligibility rules" exists to warn about.
+   */
+  it('a rule left pointing at a STOPPED table: the engine grants nobody, so the card must not say ready', async () => {
+    const typeId = await leaveTypeRow({ name: 'Medical Leave' });
+    const old = await createEntitlementTemplate(adminCtx(b), {
+      leaveTypeId: typeId,
+      name: 'Medical — OLD',
+      serviceBands: [{ fromYears: 0, toYears: null, days: 14 }],
+      validFrom: '2020-01-01',
+    });
+    await createEntitlementTemplate(adminCtx(b), {
+      leaveTypeId: typeId,
+      name: 'Medical — NEW',
+      serviceBands: [{ fromYears: 0, toYears: null, days: 18 }],
+      validFrom: '2026-01-01',
+    });
+    await createEligibilityRule(adminCtx(b), {
+      name: 'ALL STAFF',
+      templateLineageId: old.lineageId,
+      criteria: {},
+      validFrom: '2020-01-01',
+    });
+    await retireEntitlementTemplate(adminCtx(b), { lineageId: old.lineageId, validTo: '2026-01-01' });
+    const { employmentId } = await hireWithCtx();
+
+    // THE ENGINE. One table in force, one rule in force — and the rule names the table that was stopped,
+    // so the resolver drops it, the sole-table fallback stays out of its way, and NOTHING resolves.
+    const bd = await leaveEntitlementBreakdown(adminCtx(b), employmentId, typeId, TODAY);
+    expect(bd!.entitlementTemplateName).toBeNull();
+    expect(bd!.entitlementStatus).toBe('no_eligibility_match');
+
+    // THE CARD, over the very same rows — which is the point: no fixture is shared, the DB is.
+    const templates = await listEntitlementTemplates(adminCtx(b), { leaveTypeId: typeId });
+    const lineages = new Set(templates.map((t) => t.lineageId));
+    const rules = (await listEligibilityRules(adminCtx(b))).filter((r) => lineages.has(r.templateLineageId));
+    const h = leaveTypeConfigHealth({
+      // An earning method IS set, deliberately: it leaves the rule/table state as the only thing that can
+      // colour this card, so the case cannot pass for the wrong reason.
+      leaveType: { id: typeId, name: 'Medical Leave', accrualMethod: 'grant_on_hire_prorated', accrualUnconfigured: false, archived: false },
+      templates,
+      rules,
+      grades: [],
+      today: TODAY,
+    });
+    expect(h.soleTableApplies, 'a rule in force claims this type — its one live table is NOT automatic').toBe(false);
+    expect(h.status).toBe('blocked');
+    expect(h.findings).toContain('no_rule_in_force');
+    // …and the surviving table keeps its own amber marker, which `soleTableApplies` would have silenced.
+    expect(h.tablesWithoutRule).toEqual(['Medical — NEW']);
+  });
+});
+
 describe('r209 · the shared pool reads as ONE figure, and refuses when it is spent', () => {
   /**
    * SIX TYPES, ONE POOL. `balance_source_type_id` is proven for one borrower already
@@ -617,6 +714,64 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     const outsider = await leaveTypeRow({ name: 'Annual Leave' });
     const again = await leaveBalances(adminCtx(b), employmentId, 'en', { includeHidden: true });
     expect(again.find((r) => r.leaveTypeId === outsider)?.sharedBalance ?? null).toBeNull();
+  });
+
+  /**
+   * ⚠️ THE OTHER HALF OF A POOLED ROW, WHICH THE FIRST CUT LEFT BEHIND AND THEREBY MADE WORSE.
+   *
+   * The pooling pass replaces a borrower's balance / accrued / taken with the SOURCE's. Every remaining
+   * figure — YTD Entitled, Carried Forward, Adjustment, Forfeited — and the entitlement STATUS came from
+   * the borrower's OWN breakdown, which describes a leave type that has no entitlement table and by design
+   * never will. The row therefore read "YTD Entitled 0.00 · Balance 10.00" under a red notice whose tip
+   * says "This leave type has no entitlement table set up… Create an entitlement table for it" — over days
+   * the employee can in fact spend, and instructing HR to do the one thing that would BREAK the pool.
+   * Before r209 that row was a silent 0.00; a wrong instruction is worse than the silence it replaced.
+   */
+  it('a BORROWER tells the POOL’s entitlement story — never “create a table” over days it can spend', async () => {
+    const pool = await leaveTypeRow({ name: 'Annual Leave' });
+    const borrower = await leaveTypeRow({ name: 'Emergency Leave', balanceSourceTypeId: pool });
+    await createEntitlementTemplate(adminCtx(b), {
+      leaveTypeId: pool,
+      name: 'Annual — all staff',
+      serviceBands: [{ fromYears: 0, toYears: null, days: 10, carryForwardDays: 0, maxBalanceDays: null }],
+      validFrom: '2026-01-01',
+    });
+    const { employmentId } = await hireWithCtx();
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+
+    const rows = await employeeBalanceRows(adminCtx(b), employmentId, TODAY, 'en');
+    const byId = new Map(rows.map((r) => [r.leaveTypeId, r]));
+    const src = byId.get(pool)!;
+    const bor = byId.get(borrower)!;
+
+    // The pooled figure itself is unchanged — this case is about everything printed BESIDE it.
+    expect(bor.balance, 'the borrower still shows the pool').toBe(10);
+    // THE ASSERTION THE CASE TURNS ON: a leave type that borrows is not a leave type missing a table.
+    expect(bor.entitlementStatus).not.toBe('no_entitlement_table');
+    // The pool's story, whole, so the row cannot contradict itself in any column.
+    expect(src.entitlementStatus).toBe('granted');
+    expect(bor.entitlementStatus).toBe(src.entitlementStatus);
+    expect(bor.ytdEntitled, 'YTD Entitled beside a balance of 10.00').toBe(10);
+    expect(bor.ytdEntitled).toBe(src.ytdEntitled);
+    expect(bor.entitlementTemplateName).toBe('Annual — all staff');
+    // …and the caption that says WHOSE figure it is is still there, so one pool never reads as two.
+    expect(bor.sharedBalance!.sourceLeaveTypeName).toBe('Annual Leave');
+  });
+
+  it('every grid that captions a pooled balance looks its story up through the pool, not the row', () => {
+    // AGENTS rule 17 — the defect lives in the CONTRACT between the pooling pass (core/read.ts) and each
+    // grid's breakdown lookup, so a unit test of either half passes throughout. The employee's own grid,
+    // HR's grid + its export, and the Personnel profile all show the pooled figure; all three must resolve
+    // the breakdown through `balanceStoryTypeId` or the contradiction comes back on the one that does not.
+    for (const rel of [
+      'app/leave/page.tsx',
+      'app/leave/employee-balances/rows.ts',
+      'app/admin/personnel/[employmentId]/page.tsx',
+    ]) {
+      expect(read(rel), rel).toContain('balanceStoryTypeId(');
+    }
+    // …and it stays DB-free, so the client grids can keep sharing one definition of "whose figure is this".
+    expect(read('lib/shared-leave-balance.ts')).not.toMatch(/from '(\.\.\/)?(db|core)\//);
   });
 
   it('a pending application on ONE member reduces Available on ALL of them', async () => {
