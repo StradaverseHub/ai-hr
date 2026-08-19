@@ -53,6 +53,7 @@ import {
 import { childReliefAmountFor, epf, statutory, type PcbAccumulators, type TaxProfile } from './payroll';
 import { computeMonthlyRuns, type MonthRunInput, type RunType } from './multicycle';
 import { getActiveStatutoryMY } from './statutory-config';
+import { todayInKualaLumpur } from '../../lib/hr-date';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -647,7 +648,14 @@ function ageAt(dob: string | null, on: string): number | undefined {
 
 async function activeRules(tx: Tx): Promise<StatutoryRuleset> {
   try {
-    return await getActiveStatutoryMY(tx, { asOf: new Date().toISOString().slice(0, 10) });
+    // ⚠️ `todayInKualaLumpur()`, never the UTC-instant form. This product runs at UTC+8, so a date taken
+    // off the current instant in UTC names YESTERDAY between 00:00 and 08:00 MYT (item bb4f2265, guarded
+    // by test/today-in-myt-drift.test.ts — which scans source WITHOUT stripping comments, so do not spell
+    // the forbidden expression out here). It matters at this line specifically: this picks WHICH STATUTORY
+    // RULESET the whole replay is priced with, so a worksheet generated before 8am on the day a new
+    // ruleset takes effect would be built entirely on the superseded rates — on the very document an
+    // accountant is being asked to sign.
+    return await getActiveStatutoryMY(tx, { asOf: todayInKualaLumpur() });
   } catch {
     // A tenant with no ruleset row resolves the verified built-in — the same fallback the loader itself
     // makes. Reported through `replayVersion` so the page can name which tables the replay used.

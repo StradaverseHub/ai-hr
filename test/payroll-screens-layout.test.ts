@@ -235,7 +235,12 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     'app/payroll/cp22/[employmentId]/preview/page.tsx',
     'app/payroll/reports/ea/[employmentId]/page.tsx',
     'app/payroll/transactions/fixed/[id]/page.tsx',
-    'app/payroll/transactions/tp1/[year]/page.tsx',
+    // 7ad37961 (r209) MOVED THIS ENTRY, it did not retire it. The official LHDN TP1 (1/2026) carries a
+    // DEDUCTION MONTH box, so the record's grain moved from the year to the month and the form now lives
+    // at tp1/[year]/[month]. The [year] page is a REDIRECT to it — 47 lines, no layout, nothing to cap —
+    // so it belongs in neither list, while the decision this entry pins (a single-record form keeps a
+    // reading width) is unchanged and now applies to the month page.
+    'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
     'app/payroll/transactions/zakat/election/page.tsx',
     // Statutory Configuration — single-record settings forms, one agency each.
     'app/payroll/configuration/page.tsx',
@@ -312,7 +317,8 @@ describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () 
  */
 const NARROW_FORMS = [
   'app/payroll/transactions/fixed/[id]/page.tsx',
-  'app/payroll/transactions/tp1/[year]/page.tsx',
+  // 7ad37961 (r209): the TP1 form moved from the year to the month — see CAPPED_BY_DESIGN above.
+  'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
   'app/payroll/transactions/zakat/election/page.tsx',
   'app/payroll/reports/ea/[employmentId]/page.tsx',
   'app/admin/loans/new/page.tsx',
