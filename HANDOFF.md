@@ -18,19 +18,29 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-18 (r195–r199 SHIPPED · NOTHING IN FLIGHT · 4 APPROVED · 5 PLANNED)
+## CURRENT STATE — snapshot 2026-08-19 (r195–r204 SHIPPED · NOTHING IN FLIGHT · 6 APPROVED · 3 CONTESTED)
 
-**`main@dff907c3` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run` from
+**`main@774a7257` IS WHAT RUNS ON PRODUCTION** — verified by an `rsync -azi --delete --dry-run` from
 **mainwt** reporting ONLY `next-env.d.ts`, not by `deploy.sh` succeeding, which is not proof. Service
 active, `GET localhost:3000/` → 401.
-**Production is on 361 migrations** (watermark `1781862543000` = `0443` `payroll_cycle.updated_at`,
-verified present on the live schema — read `drizzle.__drizzle_migrations`, NOT `public`).
-**Board re-counted on the box after r199: `deployed = 694` · `planned = 5` · `approved = 4` ·
-`open = 2` · `cancelled = 14`.**
+**Production is on 362 migrations** (watermark `1781862546000` = `0446` `payslip.coverage_from` /
+`coverage_to`, verified present on the live schema — read `drizzle.__drizzle_migrations`, NOT `public`).
+**Board re-counted on the box after r204: `deployed = 701` · `approved = 6` · `contested = 3` ·
+`open = 3` · `cancelled = 14` · planned = 0.**
 
-⚠️ **`dff907c3`'S COMMIT MESSAGE SAYS "nine board items". IT IS EIGHT** — `9066bd6c` · `4ea70bb7` ·
-`e0cd4583` · `6b134681` · `417d4937` · `6df24751` · `bd14b7e2` · `4509d2b8`. Not amended on purpose:
-`main` is published to GitHub and rewriting it is rule 11b's trap. This line is the record.
+⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
+be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
+later merge carrying either would be SILENTLY SKIPPED (rule 14). Reissue fresh numbers when TP1 is reworked.
+`0442` was the same trap and was caught: it was reissued as `0446` in the merge commit that shipped it.
+**Next free is `0447`.**
+
+⚠️ **THE GATE NEEDS `CHUNKS=5`.** The suite is 706 files and the default 3 chunks exhausts the 8GB RAM disk
+mid-run: 77 files fail with **zero AssertionErrors** and `No space left on device` in the chunk log — an
+environment failure wearing a red gate's clothes. ALWAYS run the per-chunk cause tally before believing a
+red. The machine has 18GB, so a bigger RAM disk is not the way out. The real fix is the harness: `resetDb`
+TRUNCATEs 107 tables per file, ~453 times a run (`gate-chunked.sh`'s own header names it). **UNLOGGED test
+tables have never been tried and are the obvious first experiment**; 236 of the 706 files never touch the
+database and could be a separate fast project.
 
 ⚠️⚠️ **RUN THE DRY RUN FROM `mainwt`, WITH `cd` IN THE SAME COMMAND.** The shell's cwd resets to the repo
 ROOT (`local/root-scratch`, far behind main) between tool calls, and a dry run from there reports thousands
@@ -69,46 +79,39 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**1. NOTHING IS IN FLIGHT. FOUR APPROVED, FIVE PLANNED, TWO OPEN.** r195–r199 are shipped and
-`main@dff907c3` is deployed. Prove it independently — `git for-each-ref refs/heads/build` plus a dry-run
+**1. NOTHING IS IN FLIGHT. THE QUEUE IS 6 APPROVED, 3 CONTESTED, 3 OPEN.** r195–r204 are shipped and
+`main@774a7257` is deployed. Prove it independently — `git for-each-ref refs/heads/build` plus a dry-run
 rsync FROM mainwt.
 
-**THE FOUR APPROVED ARE ALL BLOCKED ON SOMETHING, NOT WAITING FOR A BUILDER:**
-  - **`1b0943d5` + `3c88d593`** entity transfer — BUILT on `build/r197-entity`, green, and HELD. Re-verify
-    found that cancelling or re-dating a transfer after the outgoing run is processed removes the
-    employment from the examined population, so a month can still close with somebody underpaid.
-    ⚠️ **THE "INERT UNTIL THE BACKFILL RUNS" CLAIM THAT WAS HERE IS FALSE — I CHECKED THE BOX.**
-    `assignment` holds 59 rows, 55 with `company_id`, and **all 55 CURRENT rows (not superseded) carry one**;
-    the 4 without are superseded and the resolver filters them. That matches r194's own record of running
-    `backfill-assignment-company.ts --apply` (1 split, 54 stamps) — see the r194 entry. An r197 build agent
-    asserted the script had never run, and I repeated it here without checking. The resolver has its data;
-    the only thing holding this item is its own blocker above.
-    ⚠️ **ITS MIGRATION `0442` IS DEAD.** `0443` shipped in r199, so drizzle's watermark is past it and a
-    later merge carrying `0442` would be SILENTLY SKIPPED (rule 14). Reissue a fresh number when reworked.
-  - **`45df860a`** PCB/MTD detail view — BUILT on `build/r197-pcbview`, green, HELD. On an additional run
-    `deltaStat` does not carry `pcbMeta`, so the screen prints a working for the cumulative month beside a
-    deducted delta (7,071.30 shown against 4,999.85). Needs a product decision: does a bonus run show a
-    labelled month-to-date working, or none at all?
-  - **`bdf7d248`** EPF across cycles — **DO NOT BUILD. IT NEEDS A CORRECTED PLAN AND AN OWNER DECISION.**
-    See the EPF section below; the approved plan tells the reporter something untrue.
+**START WITH THE THREE CONTESTED — THEY ARE PUSH-BACK ON PLANS WE WROTE, NOT NEW WORK.**
+`70ac09ef` · `ad965821` · `301d3f6b`, all three raised on 2026-08-19 against r202's plans. **`70ac09ef` is
+the one to read first**: its plan's verdict was "Already works" — Hospitalization needs an earning method
+set and Medical needs regenerating, both actions on the reporter's side — and they have rejected that. So
+either the diagnosis is wrong or the instruction did not land, and their contest reason says which. Do not
+re-plan reflexively; read what they wrote. The measured evidence behind that plan is in the c8052ae3
+section below and it is worth re-checking rather than assuming.
 
-**FIVE PLANNED, AWAITING THE REPORTER:** `16f2aac1` (Borang 8A template) · `cc9f9420` (EPF Borang A
-template) · `5570c6a2` · `7ad37961` (TP1 2026) · `464b58e6`. All five carry mockups, and **all five found
-something already built** — `16f2aac1` alone reports that five of the reporter's nine corrections already
-print today. `16f2aac1` SUPERSEDES `621c929d`: that item's plan said "confirm, or reject with the specific
-differences", and rather than rejecting, the reporter raised the differences as a new item.
+**SIX APPROVED, AND ONLY FOUR ARE BUILDS:**
+  - **`5f2e20fb`** leave-history date range + multi-select · **`7daac043`** calendar vs working days ·
+    **`65e2d5de`** Reset/Reprocess workflow · **`e14334ef`** feedback last-action date. All four planned
+    with mockups in r202, all four report something already built — `e14334ef` in particular is a DISPLAY
+    change, not a column: `feedback_request.updated_at` already exists.
+  - **`7ad37961`** TP1 — **DO NOT BUILD. RE-PLAN IT.** Two agent passes made it worse, not better. The
+    conflict is in the plan, not the code: migration `0445`'s backfill marks EVERY legacy declaration
+    approved and effective all year, the new payroll SUM counts those rows, and `accumulate()` skips
+    non-catalogue shapes — so a backfilled RM 9,000 declaration contributes ZERO to the "Remaining" figure
+    HR keys against and its FULL amount to the feed. A silent wrong PCB on live payroll, reachable through
+    the shipped UI. Its branch `build/r201-tp1` holds dead migrations `0444`/`0445`.
+  - **`bdf7d248`** EPF across cycles — **OWNER DECISION, NOT A BUILD.** See the EPF section below.
+
+**THREE OPEN:** `7ee14bbc` (CP39 template) · `6036dab7` (EA (BH) template) · `273e6fc7` (another leave
+entitlement investigation). ⚠️ The first two are the statutory-template shape again — **measure the
+attachment's provenance before planning either** (see the statutory-form section; it has now come back
+"another vendor's output" TWICE).
 
 ⚠️ **`build_ref` IS NOT EVIDENCE THAT THE CURRENT REVISION SHIPPED.** A post-deploy refute → re-plan →
 approve leaves the OLD `build_ref` beside a NEW plan revision. Compare the approved revision in the item's
 `domain_event` stream (`feedback.plan.approved` carries `{revision}`), never the ref.
-
-**1b. THE GATE NOW NEEDS `CHUNKS=5`.** The suite is 703 files and the default 3 chunks exhausts the 8GB
-RAM disk mid-run: 77 files fail with **zero AssertionErrors** and `No space left on device` in the chunk
-log. That is an environment failure wearing a red gate's clothes — always run the per-chunk cause tally
-before believing a red. The machine has 18GB total, so a bigger RAM disk is not the way out; the real fix
-is the harness (`resetDb` TRUNCATEs 107 tables per file, ~453 times a run — `gate-chunked.sh`'s own header
-names it). **UNLOGGED tables in the test template have never been tried and are the obvious first
-experiment**; 236 of the 703 files never touch the database at all and could be a separate fast project.
 
 **2. THE ENTITY-TRANSFER HAZARD IS OVERTAKEN — THE RUN IT PROTECTED NO LONGER HAS PAYSLIPS.** The r194 entry
 below still describes the DEFECT correctly (proration right, counterpart payslip in the other company's batch
@@ -116,7 +119,9 @@ never created, no single-batch operation can create it). What changed: **batch `
 2026-08) was RESET to draft on 2026-08-14 14:12** — `status = draft`, `employee_count = 0`, `totals = null` —
 and employee 100814 now holds exactly ONE payslip in total, for 2026-07 (v5, gross 1,596.77, 9 days). So
 "do not re-run August for 100814" is moot; there is nothing left to preserve. The reporter refuted
-`3c88d593` over this on 08-14 09:32 and its stage-two successor `1b0943d5` is approved and waiting.
+`3c88d593` over this on 08-14 09:32. **BOTH SHIPPED IN r204 (`774a7257`)** — stage two is live: cross-batch
+segments, `payslip.coverage_from`/`coverage_to` (migration `0446`), and a completeness control that refuses
+to close a month whose segments do not tile it. The hazard is closed on both sides now.
 
 **`1b0943d5` IS NOW PLANNED (rev 1, with mockup) AND IS READY TO BUILD ONCE APPROVED.** The plan
 DELIBERATELY REORDERS the item as it was raised: attendance/leave/reporting were the headline and are now
@@ -560,10 +565,24 @@ the one that was built.
 **c8052ae3 IS DONE — the leave reset RAN on 2026-08-12.** It was the longest-open item on the board.
 147 `leave_ledger` rows and 22 `leave_entitlement_recalc_audit` rows archived under capture tag
 **`c8052ae3-2026-08-12`** and then deleted; `leave_ledger` went 318 → 171, leave requests (41) and
-payslips (121) untouched, no entitlement generation run. Medical and Hospitalization now read 0.00 for
-everyone because no rows exist, not because something granted zero. The record is at
+payslips (121) untouched, no entitlement generation run. The record is at
 `/admin/leave/entitlements/ledger-archive`, reached from the Entitlements screen and deliberately not in
 the sidebar.
+
+⚠️ **THE SENTENCE THAT USED TO SIT HERE — "Medical and Hospitalization now read 0.00 for everyone because
+no rows exist, not because something granted zero" — IS HALF FALSE, AND THE HALF THAT IS FALSE MATTERS.**
+Measured on the box 2026-08-18 while planning `70ac09ef`:
+  · **HOSPITALIZATION has 35 `leave_ledger` rows**, all `accrual`, effective 2026-01-01 → 2026-07-27, and
+    they sum to **0.00 days**. Rows EXIST and the engine granted zero.
+  · **SICK (Medical Leave) has 0 rows**, and `UPM` has 0. For those two the old sentence was right.
+The distinction is the whole diagnosis. `openLeaveYear`'s `no_entitlement` (days ≤ 0) and `earned_method`
+branches both `continue` WITHOUT writing a row, so a row sitting at 0.00 cannot be either — it can only
+have come through the `isAccrualUnconfigured(t) ? 0 : …` line, which also proves a template band DID
+resolve. Hospitalization's table is fine; the leave type has **no earning method set**, and the engine
+deliberately grants zero while that is true. Saving the earning method fires
+`reprojectEntitlementForLeaveTypeCohort` and credits all 35 in one top-up — pressing Generate Entitlement
+does NOT fix it, because those 0.00 rows already mark the year open and the run reports them as granted.
+**`70ac09ef` is CONTESTED as of 2026-08-19 — read the reporter's push-back before acting on any of this.**
 
 ⚠️ **TWO STEPS OF THAT PLAN WERE WRONG, AND ONLY RUNNING IT FOUND THEM. Fix them before reusing it.**
 1. **Step 0's `pg_dump "$U" -Fc -f …` EXITS 1 on this database** and leaves an ~889 KB partial that looks

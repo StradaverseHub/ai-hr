@@ -1,3 +1,57 @@
+## r201–r204 (2026-08-18/19) — SIX ITEMS SHIPPED IN FOUR RELEASES, AND THE LOOP LEARNED WHEN TO STOP
+
+`df29af37` (`16f2aac1` Borang 8A) · `eb9a2e2f` (`cc9f9420` EPF Borang A, `5570c6a2`, `464b58e6`) ·
+`774a7257` (`1b0943d5`+`3c88d593` entity transfer stage two with migration `0446`, `45df860a` PCB detail).
+Final gate 706 declared / 706 counted / every chunk exit=0 / 0 AssertionErrors at CHUNKS=5; `gate:shadow`
+PASS 361→362; renders in six locales with 0 `MISSING_MESSAGE` on every release.
+
+**THE HEADLINE: TWO FIX PASSES MADE THINGS WORSE, AND STOPPING WAS THE RIGHT CALL BOTH TIMES.**
+r201's pass closed `cc9f9420`'s blocker and introduced the same defect one column over (the employee NAME
+budget silently lost 6pt) while writing a comment claiming it had not. The same pass closed `7ad37961`'s two
+blockers and created a worse one — a silent wrong PCB on live payroll for every employee the backfill
+touched. r123's non-convergence, twice in one round. **What worked instead: ship what is clean, hand-fix
+what is precisely located, and RE-PLAN what is structurally wrong.** `16f2aac1` shipped alone that day;
+`cc9f9420` was hand-fixed and shipped the next; `7ad37961` is still unbuilt and correctly so.
+
+⚠️ **`0442` WAS ONE MERGE FROM VANISHING.** The entity branch carried it at `when 1781862542000` while
+production's watermark was already `1781862543000` (`0443`, r199). drizzle skips anything at or below the
+watermark, so merging as written would have applied NOTHING, reported NOTHING, and shipped code reading
+`payslip.coverage_from` — a column that would never have existed. Reissued as `0446` before the merge, with
+every prose reference following it. **That sweep needed two passes: BSD `sed` has no `\b` word boundary, so
+the first one matched nothing while printing "fixed" for every file.** Check with a grep afterwards, never
+the tool's own output.
+
+⚠️ **A MERGE CONFLICT NEARLY RESURRECTED A SENTENCE r199 HAD FALSIFIED.** `pcbview` branched before r199 and
+its side of `payroll.transactions.view.history.exportDetailNote` still said "bonus, off-cycle and adjustment
+runs never recorded it" — which is exactly what r199 disproved by making bonus runs stamp per-item detail.
+Taking that side would have reinstated it in six languages. The integrator's rule: on a conflicted i18n
+value, ask which side is TRUE, not which is newer.
+
+⚠️ **AND THE BASE-AWARE i18n AUDIT REPORTED 28 FALSE PROBLEMS BEFORE IT REPORTED THE REAL ANSWER.** It
+compared each branch against **main-now** rather than that branch's own merge-base, so `r201-bora` — cut
+before the Borang 8A release — looked like it "wanted" the old wording for keys it never touched. Acting on
+it would have reverted a release from an hour earlier. Rule 19b's real content is *consult the right base*.
+
+**THE STATUTORY SPECIMENS ARE NOT AGENCY ARTWORK, NOW MEASURED TWICE.** The reporter attached fresh
+"official" PDFs for Borang 8A and Borang A; both carry `Producer: Developer Express DXperience v23.2.5` —
+the same producer as the first round's, i.e. another payroll system's rendered output — and the TP1 is
+`Microsoft Word 2019`. Neither PERKESO nor KWSP publishes a blank template. The forms stay
+`fidelity: 'agency-layout'` and must never become `'official'`. **Extract and check `Producer` before
+planning any future template item**; the attachment is in `feedback_attachment.content` as bytea.
+
+**WHAT GOOD LOOKED LIKE, WORTH COPYING.** The `16f2aac1` agent rasterised its own output and read the pages,
+finding two defects nothing else could see: a blank MyCoID printing as a bare `-` (an em dash folding to
+ASCII reads as a value somebody entered) and the "no employees" line struck through by column dividers. It
+solved the heading-overflow risk by MEASURING — a `wrapTo` helper using the real embedded font — and proved
+the guard non-vacuous with a negative control. The `1b0943d5` agent mutation-tested its own fixes: removing
+the `partialClaimIds` argument fails exactly the two new cases and nothing else.
+
+**PLANNING BEAT BUILDING AGAIN.** Of thirteen items planned across r200–r202, **every single one reported
+something already built**; two were exact duplicates closed against the rounds that shipped them
+(`621c929d`, `d21e667e`), and `16f2aac1` found five of the reporter's nine Borang 8A corrections already
+printing. `70ac09ef`'s plan disproved my own band-gap hypothesis from the code and found the real cause.
+The board's constraint is not build capacity — it is that the reported fault keeps not being the real one.
+
 ## r197–r199 (2026-08-18) — TEN ITEMS SHIPPED ACROSS THREE RELEASES, AND THREE HELD ON PURPOSE
 
 `fc3df3a8` (r197 part one: `9a65f808`, `152fea7f`) then `dff907c3` (r198+r199: `9066bd6c`, `4ea70bb7`,
