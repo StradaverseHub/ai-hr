@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transaction Detail — split per company</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #16181d;
+    --muted: #6b7280;
+    --line: #e3e6ea;
+    --head: #f0f2f5;
+    --accent: #1f5fd0;
+    --warn-bg: #fff6e5;
+    --warn-line: #e8c98a;
+    --warn-ink: #7a5310;
+    --good-bg: #eaf5ee;
+    --good-line: #a9d3ba;
+    --good-ink: #1d6b3a;
+    --a: #7b3fa0;
+    --b: #0f7b8a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 28px 20px 60px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 22px; max-width: 78ch; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 18px 16px;
+    margin-bottom: 22px;
+  }
+  .card > h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  .card > .lead { margin: 0 0 14px; color: var(--ink); max-width: 86ch; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 720px; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  thead th {
+    background: var(--head);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .sect td {
+    background: var(--head);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .dash { color: #b6bcc4; }
+  .co { font-weight: 600; font-size: 12px; }
+  .coA { color: var(--a); }
+  .coB { color: var(--b); }
+  .pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    vertical-align: middle;
+  }
+  .pill.split { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .pill.ok { background: var(--good-bg); border-color: var(--good-line); color: var(--good-ink); }
+  .tag {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  .tag.now { background: #fdecec; color: #96262c; }
+  .tag.new { background: var(--good-bg); color: var(--good-ink); }
+  .note {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    background: var(--head);
+    border-left: 3px solid var(--line);
+    border-radius: 0 6px 6px 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    max-width: 90ch;
+  }
+  .note strong { color: var(--ink); }
+  .cover { font-size: 11.5px; color: var(--muted); display: block; }
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  .panel > header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--head);
+    border-bottom: 1px solid var(--line);
+  }
+  .panel > header .who { font-weight: 600; }
+  .panel .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  @media (max-width: 720px) { .panel .grid2 { grid-template-columns: 1fr; } }
+  .panel .col { padding: 12px 14px; }
+  .panel .col + .col { border-left: 1px solid var(--line); }
+  @media (max-width: 720px) { .panel .col + .col { border-left: 0; border-top: 1px solid var(--line); } }
+  .panel h3 {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .line { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+  .line:last-child { border-bottom: 0; }
+  .line span:last-child { font-variant-numeric: tabular-nums; }
+  .line.total { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--ink); margin-top: 6px; padding-top: 6px; }
+  .legend { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .caret { color: var(--muted); display: inline-block; width: 12px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101216;
+      --card: #181b21;
+      --ink: #e9ecf1;
+      --muted: #98a1ad;
+      --line: #2a2f38;
+      --head: #1f242c;
+      --accent: #7aa8f5;
+      --warn-bg: #3a2f14;
+      --warn-line: #6b5522;
+      --warn-ink: #f0cd85;
+      --good-bg: #16301f;
+      --good-line: #2f5b3c;
+      --good-ink: #8fd6a8;
+      --a: #cba0e0;
+      --b: #74cfda;
+    }
+    :root:not([data-theme="light"]) .tag.now { background: #3a1d20; color: #f0a3a8; }
+    :root:not([data-theme="light"]) .dash { color: #545c67; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Transaction Detail — one line per company, not one line per month</h1>
+  <p class="sub">
+    Employee 100814, August 2026. Entity Transfer from Fiamma (Chin Hin Property) to ISEDECOR BINA SDN BHD,
+    effective 11 August 2026. Payroll already produces the two separate results correctly — this sketch is
+    only about how Transaction View shows them.
+  </p>
+
+  <!-- ─────────── TODAY ─────────── -->
+  <div class="card">
+    <span class="tag now">Today</span>
+    <h2>Payroll › Transaction View › Transaction Detail</h2>
+    <p class="lead">
+      This screen shows one employee's payroll year — pay items down the left, months across the top.
+      There is one August column and one line per pay item, so both employers' figures land in the same cell
+      and add together. Nothing on the screen says a transfer happened, and there is no way to tell how much
+      belongs to Fiamma and how much to ISEDECOR BINA.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Payment item code</th>
+            <th>Payment item description</th>
+            <th>Pay cycle</th>
+            <th class="num">Jul 2026</th>
+            <th class="num">Aug 2026</th>
+            <th class="num">Sep 2026</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="sect"><td colspan="6">Earnings</td></tr>
+          <tr>
+            <td>BASIC</td><td>Basic salary</td><td>Regular</td>
+            <td class="num dash">—</td><td class="num"><strong>3,100.00</strong></td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>ALLOW</td><td>Allowances</td><td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr class="sect"><td colspan="6">Deductions</td></tr>
+          <tr>
+            <td>EPF_EE</td><td>EPF / KWSP (employee)</td><td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>PCB</td><td>PCB / MTD (income tax)</td><td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      <strong>The August cell is the problem.</strong> RM 3,100.00 is the whole month added up across two
+      different employers. Both companies are inside one figure, and the screen offers no way to pull them
+      apart — which is exactly what was reported.
+    </p>
+  </div>
+
+  <!-- ─────────── AFTER: GRID ─────────── -->
+  <div class="card">
+    <span class="tag new">After this change</span>
+    <h2>Payroll › Transaction View › Transaction Detail</h2>
+    <p class="lead">
+      A Company column is added, and each pay item gets its own line per company. August now reads as two
+      lines — Fiamma for 1–10 August and ISEDECOR BINA for 11–31 August — with the annual total for each
+      employer on its own line. Every other employee, who has one company all year, simply sees the same
+      company name repeated and their figures unchanged.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Payment item code</th>
+            <th>Payment item description</th>
+            <th>Company</th>
+            <th>Pay cycle</th>
+            <th class="num">Jul 2026</th>
+            <th class="num">Aug 2026</th>
+            <th class="num">Sep 2026</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="sect"><td colspan="7">Earnings</td></tr>
+          <tr>
+            <td>BASIC</td><td>Basic salary</td>
+            <td><span class="co coA">Fiamma (Chin Hin Property)</span><span class="cover">1 – 10 Aug 2026</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num"><strong>1,000.00</strong></td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>BASIC</td><td>Basic salary</td>
+            <td><span class="co coB">ISEDECOR BINA SDN BHD</span><span class="cover">11 – 31 Aug 2026</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num"><strong>2,100.00</strong></td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>ALLOW</td><td>Allowances</td>
+            <td><span class="co coA">Fiamma (Chin Hin Property)</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>ALLOW</td><td>Allowances</td>
+            <td><span class="co coB">ISEDECOR BINA SDN BHD</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr class="sect"><td colspan="7">Deductions</td></tr>
+          <tr>
+            <td>EPF_EE</td><td>EPF / KWSP (employee)</td>
+            <td><span class="co coA">Fiamma (Chin Hin Property)</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>EPF_EE</td><td>EPF / KWSP (employee)</td>
+            <td><span class="co coB">ISEDECOR BINA SDN BHD</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>PCB</td><td>PCB / MTD (income tax)</td>
+            <td><span class="co coA">Fiamma (Chin Hin Property)</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+          <tr>
+            <td>PCB</td><td>PCB / MTD (income tax)</td>
+            <td><span class="co coB">ISEDECOR BINA SDN BHD</span></td>
+            <td>Regular</td>
+            <td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      <strong>1,000.00 plus 2,100.00 is still 3,100.00.</strong> Nothing is recalculated and no total moves —
+      the same money is simply shown on the two lines it was actually paid on. The exported spreadsheet
+      carries the same Company column, so an export and the screen never disagree.
+    </p>
+  </div>
+
+  <!-- ─────────── AFTER: HISTORY ─────────── -->
+  <div class="card">
+    <span class="tag new">After this change</span>
+    <h2>Payroll › Transaction View › History — the two results, side by side</h2>
+    <p class="lead">
+      The History list already shows one line per payroll result, so August 2026 already appears twice for
+      this employee. What it does not say is which days each employer paid for, or why there are two lines.
+      Both lines gain the covered dates and a Split marker, and each still opens into its own full
+      breakdown — earnings, deductions, employer contributions and statutory — for that company alone.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28px"></th>
+            <th>Period</th>
+            <th>Cycle</th>
+            <th>Employee</th>
+            <th>Company</th>
+            <th class="num">Gross</th>
+            <th class="num">Net</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="caret">▼</td>
+            <td>Aug 2026 <span class="pill split">Split</span><span class="cover">1 – 10 Aug 2026</span></td>
+            <td>Regular</td>
+            <td>100814</td>
+            <td><span class="co coA">Fiamma (Chin Hin Property)</span></td>
+            <td class="num">1,000.00</td>
+            <td class="num dash">—</td>
+            <td><span class="pill ok">Processed</span></td>
+          </tr>
+          <tr>
+            <td class="caret">▶</td>
+            <td>Aug 2026 <span class="pill split">Split</span><span class="cover">11 – 31 Aug 2026</span></td>
+            <td>Regular</td>
+            <td>100814</td>
+            <td><span class="co coB">ISEDECOR BINA SDN BHD</span></td>
+            <td class="num">2,100.00</td>
+            <td class="num dash">—</td>
+            <td><span class="pill ok">Processed</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <header>
+        <span class="who">August 2026 · <span class="coA">Fiamma (Chin Hin Property)</span></span>
+        <span class="cover">Employed by this company 1 Aug 2026 to 10 Aug 2026</span>
+      </header>
+      <div class="grid2">
+        <div class="col">
+          <h3>Earnings</h3>
+          <div class="line"><span>Basic salary</span><span>1,000.00</span></div>
+          <div class="line"><span>Allowances</span><span class="dash">—</span></div>
+          <div class="line"><span>Overtime</span><span class="dash">—</span></div>
+          <div class="line total"><span>Gross pay</span><span>1,000.00</span></div>
+        </div>
+        <div class="col">
+          <h3>Deductions</h3>
+          <div class="line"><span>EPF / KWSP</span><span class="dash">—</span></div>
+          <div class="line"><span>SOCSO / PERKESO</span><span class="dash">—</span></div>
+          <div class="line"><span>EIS / SIP</span><span class="dash">—</span></div>
+          <div class="line"><span>PCB / MTD</span><span class="dash">—</span></div>
+          <div class="line total"><span>Total deductions</span><span class="dash">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="legend">
+      A dash marks a figure that comes from that company's own payroll result. This sketch deliberately
+      shows no statutory amounts: the only money figures on the page are the ones the request itself worked
+      out (RM 3,100 &divide; 31 days &times; 10 days, and &times; 21 days). Real amounts come straight from
+      each company's payslip and are not recalculated by this change.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>What this change does not touch</h2>
+    <p class="lead" style="margin-bottom:0">
+      No calculation, no proration rule, no statutory working and no payslip is altered. Every figure shown
+      is read from the payslip each company already produced, which is what keeps Transaction Detail, the
+      payroll result and the payslip in agreement. An employee who never changed company sees exactly the
+      screen they see today.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

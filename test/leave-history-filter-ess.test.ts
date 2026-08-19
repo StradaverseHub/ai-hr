@@ -263,9 +263,15 @@ describe('a hand-edited filter in the URL degrades to no filter, never to a 500'
     expect(page).toMatch(/const hTypeIds = hArr\(sp\.hType\)\.filter\(\(v\) => UUID\.test\(v\)\)/);
     expect(page).toMatch(/const hFrom = sp\.hFrom && ISO_DATE\.test\(sp\.hFrom\) \? sp\.hFrom : undefined/);
     expect(page).toMatch(/const hTo = sp\.hTo && ISO_DATE\.test\(sp\.hTo\) \? sp\.hTo : undefined/);
-    // And no OTHER path reads them raw — an unguarded second read would reopen the hole.
-    for (const p of ['sp.hFrom', 'sp.hTo', 'sp.hType']) {
-      expect(page.split(p).length - 1, `${p} is read more than once; every read needs the guard`).toBe(1);
+    // And no path OUTSIDE those three lines touches the raw param — an unguarded second read would
+    // reopen the hole while every assertion above still passed. Checked by deleting the guard lines and
+    // looking at what is left, so the guards' own (repeated, in a ternary) reads do not count themselves.
+    const withoutGuards = page
+      .split('\n')
+      .filter((l) => !/const (hTypeIds|hFrom|hTo) =/.test(l))
+      .join('\n');
+    for (const raw of ['sp.hFrom', 'sp.hTo', 'sp.hType']) {
+      expect(withoutGuards.includes(raw), `${raw} is read outside the guard`).toBe(false);
     }
   });
 });

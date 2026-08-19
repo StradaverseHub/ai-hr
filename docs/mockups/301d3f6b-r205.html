@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One Special Leave Pool</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --panel:#ffffff; --ink:#1b1b18; --muted:#6b6b64; --line:#e3e3dd;
+    --soft:#f0f0ec; --good:#1f7a4d; --goodbg:#e8f4ee; --bad:#a33a26; --badbg:#fbeeea;
+    --warn:#8a6100; --warnbg:#fdf3dd; --accent:#2f4f7a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#16171a; --panel:#1e2024; --ink:#eceae4; --muted:#a2a29a; --line:#32343a;
+      --soft:#26282d; --good:#6cc79a; --goodbg:#1c3128; --bad:#e08a74; --badbg:#33211c;
+      --warn:#e0b354; --warnbg:#33290f; --accent:#8fb2df;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 18px 56px}
+  .wrap{max-width:940px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 26px}
+  h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+     margin:34px 0 12px;font-weight:600}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .note{border-left:3px solid var(--accent);background:var(--soft);border-radius:0 10px 10px 0;
+        padding:14px 16px;margin:0 0 18px}
+  .note p{margin:0 0 8px}
+  .note p:last-child{margin:0}
+  .warnbox{border-left:3px solid var(--warn);background:var(--warnbg);border-radius:0 10px 10px 0;
+        padding:14px 16px;margin:18px 0 0}
+  .cols{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:720px){.cols{grid-template-columns:1fr 1fr}}
+  .card{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+       padding:3px 8px;border-radius:999px;font-weight:600}
+  .tag.now{background:var(--badbg);color:var(--bad)}
+  .tag.after{background:var(--goodbg);color:var(--good)}
+  .fig{font-size:34px;font-weight:650;font-variant-numeric:tabular-nums;margin:12px 0 2px}
+  .figsub{font-size:12px;color:var(--muted)}
+  .name{font-size:13px;font-weight:600;margin-top:10px}
+  .members{font-size:12px;color:var(--muted);margin-top:4px}
+  .icon{width:22px;height:22px;display:block;color:var(--muted)}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  tr:last-child td{border-bottom:none}
+  .zero{color:var(--muted)}
+  .scroll{overflow-x:auto}
+  ul{margin:8px 0 0;padding-left:18px}
+  li{margin:5px 0}
+  .pill{display:inline-block;font-size:12px;background:var(--soft);border:1px solid var(--line);
+        border-radius:999px;padding:3px 10px;margin:3px 4px 0 0}
+  .arrow{text-align:center;color:var(--muted);font-size:22px;padding:6px 0}
+  .k{font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Special Leave: one pool of ten days, shared by six leave types</h1>
+  <p class="sub">Item 301d3f6b &middot; what is already true, what is not, and what changes</p>
+
+  <div class="note">
+    <p><span class="k">Where we got it wrong.</span> The plan you rejected said we would &ldquo;complete the
+    Special Leave setup so the pool is worth ten days rather than nine&rdquo; without saying how. That
+    left room for exactly the outcome you are warning against &mdash; topping each of the six types up to
+    ten days of its own. That was loose wording on our side, and this page closes it.</p>
+    <p><span class="k">Where the system is already right.</span> Any day taken on any of the six already
+    counts against the same ten-day Special Leave allowance, and the eleventh day is refused whichever
+    of the six it is asked for &mdash; both when leave is applied for and again when it is approved.
+    Nobody can reach sixty days. What is wrong is the figure the employee reads, not the entitlement
+    they are given.</p>
+  </div>
+
+  <h2>Two different settings, and only one of them is wrong</h2>
+  <div class="cols">
+    <div class="panel">
+      <span class="tag after">Already correct</span>
+      <p style="margin:12px 0 0"><span class="k">How many days may be taken</span></p>
+      <p style="margin:6px 0 0;color:var(--muted);font-size:13px">
+        The Special Leave group carries a shared limit of 10.00 days a year across all six types.
+        This is pooled today and has been since the group was created.
+      </p>
+      <div>
+        <span class="pill">Caregiver</span><span class="pill">Compassionate</span><span class="pill">Examination</span>
+        <span class="pill">Graduation</span><span class="pill">Natural Disaster</span><span class="pill">Study</span>
+      </div>
+    </div>
+    <div class="panel">
+      <span class="tag now">Not yet set up this way</span>
+      <p style="margin:12px 0 0"><span class="k">Where the days themselves live</span></p>
+      <p style="margin:6px 0 0;color:var(--muted);font-size:13px">
+        Today the days sit partly in the individual types&rsquo; own names, adding up to 9.00 between the
+        six &mdash; which is both why the card opens one day short and why it can look as though each type
+        has an allowance of its own. They should all sit in one Special Leave balance of 10.00.
+      </p>
+    </div>
+  </div>
+
+  <h2>The card the employee reads &mdash; today, and after</h2>
+  <div class="cols">
+    <div class="card">
+      <span class="tag now">Today</span>
+      <svg class="icon" style="margin-top:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
+      </svg>
+      <div class="fig">9.00</div>
+      <div class="figsub">of 10.00 shared days</div>
+      <div class="name">Special Leave</div>
+      <div class="members">Shared across: Caregiver, Compassionate, Examination, Graduation,
+        Natural Disaster, Study</div>
+      <p style="margin:12px 0 0;font-size:12px;color:var(--bad)">
+        Employee has taken nothing, yet one day is missing before they start.</p>
+    </div>
+    <div class="card">
+      <span class="tag after">After this change</span>
+      <svg class="icon" style="margin-top:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
+      </svg>
+      <div class="fig">10.00</div>
+      <div class="figsub">of 10.00 shared days</div>
+      <div class="name">Special Leave</div>
+      <div class="members">Shared across: Caregiver, Compassionate, Examination, Graduation,
+        Natural Disaster, Study</div>
+      <p style="margin:12px 0 0;font-size:12px;color:var(--good)">
+        One balance of ten. No type holds days of its own.</p>
+    </div>
+  </div>
+
+  <h2>Your own example, once the pool is the only source of days</h2>
+  <div class="panel scroll">
+    <table>
+      <thead>
+        <tr><th>What the employee does</th><th>Which of the six</th>
+            <th style="text-align:right">Shared Special Leave balance</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nothing taken yet</td><td class="zero">&mdash;</td><td class="num">10.00</td></tr>
+        <tr><td>Takes 2 days</td><td>Caregiver Leave</td><td class="num">8.00</td></tr>
+        <tr><td>Takes 3 more days</td><td>Any other of the six</td><td class="num">5.00</td></tr>
+        <tr><td>Takes 5 more days</td><td>Any of the six</td><td class="num">0.00</td></tr>
+        <tr><td>Asks for one more day</td><td>Any of the six</td>
+            <td class="num" style="color:var(--bad)">Refused</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:12px;color:var(--muted);margin:10px 2px 0">
+    The same figure appears on the balance card and on the apply screen, and it is the same figure the
+    system uses when it decides whether to accept the application.</p>
+
+  <h2>What we will actually do</h2>
+  <div class="panel">
+    <ul>
+      <li>Put all ten days in one Special Leave balance, and set each of the six types to draw on that
+        balance instead of holding days of its own. That is what makes it literally one pool.</li>
+      <li>Move the days those six types are holding today into that single balance, so nothing is
+        stranded and nobody loses a day in the move.</li>
+      <li>Correct the balance card so it follows that link. Today it only counts days a type holds in
+        its own name.</li>
+      <li>Check the finished figures against your example above on the live system, and report what we
+        found either way.</li>
+    </ul>
+    <div class="warnbox">
+      <p style="margin:0"><span class="k">Order matters, and this is why the display fix is not optional.</span>
+      If the setting change went in on its own, the card would count six types each holding nothing and
+      show <span class="k">0.00</span> &mdash; worse than the 9.00 it shows now. The display fix ships
+      first; the setting change follows in the same round.</p>
+    </div>
+  </div>
+
+  <h2>What does not change</h2>
+  <div class="panel">
+    <ul>
+      <li>All six types keep their own names on the apply screen and in leave history. An employee still
+        picks the right reason for their leave.</li>
+      <li>The ten-day limit, the maximum per application, and who may see what are all untouched.</li>
+      <li>Leave already taken this year keeps counting against the pool exactly as it does now.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

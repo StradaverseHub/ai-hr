@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medical vs Hospitalization — why one needed Generate</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#15181d; --muted:#5d6572; --line:#e2e5ea;
+    --ok:#0f7a4d; --okbg:#e8f6ee; --bad:#b3261e; --badbg:#fdecea; --warn:#8a5a00; --warnbg:#fff6e2;
+    --accent:#2c4bd8; --accentbg:#eef1fe; --chip:#eef0f4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1216; --card:#171b21; --ink:#e9ecf1; --muted:#9aa4b2; --line:#282e37;
+      --ok:#5cd39b; --okbg:#12271e; --bad:#ff8b80; --badbg:#2a1614; --warn:#e8b45c; --warnbg:#2a2214;
+      --accent:#8fa4ff; --accentbg:#171d33; --chip:#212730;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:26px;line-height:1.25;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0 0 30px;font-size:14px}
+  h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+     margin:40px 0 12px;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .ttl{font-size:15px;font-weight:650;margin:0 0 2px}
+  .big{font-size:30px;font-weight:680;letter-spacing:-.02em;margin:10px 0 2px}
+  .tiny{font-size:12px;color:var(--muted)}
+  .pill{display:inline-block;font-size:11px;font-weight:650;padding:3px 9px;border-radius:999px;
+        letter-spacing:.02em}
+  .p-ok{background:var(--okbg);color:var(--ok)}
+  .p-bad{background:var(--badbg);color:var(--bad)}
+  .p-warn{background:var(--warnbg);color:var(--warn)}
+  .p-neutral{background:var(--chip);color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;letter-spacing:.05em;
+     text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .scroll{overflow-x:auto}
+  .screen{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .bar{background:var(--chip);padding:8px 14px;font-size:11.5px;color:var(--muted);
+       border-bottom:1px solid var(--line);letter-spacing:.02em}
+  .body{padding:16px 18px}
+  .note{border-radius:9px;padding:11px 13px;font-size:13px;margin:0}
+  .n-bad{background:var(--badbg);color:var(--bad);border:1px solid color-mix(in srgb,var(--bad) 25%,transparent)}
+  .n-warn{background:var(--warnbg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent)}
+  .n-ok{background:var(--okbg);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 25%,transparent)}
+  .n-acc{background:var(--accentbg);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 25%,transparent)}
+  .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  .stat div{background:var(--chip);border-radius:9px;padding:10px 12px}
+  .stat .v{font-size:20px;font-weight:680}
+  .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+  .step{flex:1 1 150px;min-width:140px;background:var(--chip);border-radius:9px;padding:11px 12px;
+        font-size:12.5px;position:relative;margin-right:22px;margin-bottom:10px}
+  .step:last-child{margin-right:0}
+  .step::after{content:"→";position:absolute;right:-18px;top:50%;transform:translateY(-50%);
+               color:var(--muted);font-size:15px}
+  .step:last-child::after{content:""}
+  .step b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+          margin-bottom:3px;font-weight:600}
+  .stop{background:var(--badbg);color:var(--bad)}
+  .go{background:var(--okbg);color:var(--ok)}
+  .btn{display:inline-block;background:var(--accent);color:#fff;border-radius:8px;padding:7px 14px;
+       font-size:12.5px;font-weight:600}
+  @media (prefers-color-scheme: dark){.btn{color:#0f1216}}
+  .btn-ghost{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:6px 13px;
+             font-size:12.5px;color:var(--ink)}
+  .rule{border:0;border-top:1px solid var(--line);margin:36px 0 0}
+  .kv{display:flex;gap:10px;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:0}
+  .kv span:first-child{flex:0 0 210px;color:var(--muted)}
+  .strike{text-decoration:line-through;opacity:.55}
+  .caption{font-size:11.5px;color:var(--muted);margin:8px 2px 0}
+  ul{margin:8px 0 0;padding-left:19px}
+  li{margin:4px 0;font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Medical Leave and Hospitalization Leave — why one moved on its own and one did not</h1>
+  <p class="sub">Measured on your live system, 19 August 2026. Everything below uses your own figures.
+     This page shows what we would build and what the screens would say.</p>
+
+  <!-- ─────────────── 1. WHAT ACTUALLY HAPPENED ─────────────── -->
+  <h2>1 · What happened after you followed the last plan</h2>
+  <div class="grid2">
+    <div class="card">
+      <span class="pill p-ok">Worked</span>
+      <p class="ttl" style="margin-top:9px">Hospitalization Leave</p>
+      <p class="tiny">You set the earning method and saved.</p>
+      <div class="big">2,100.00 days</div>
+      <p class="tiny">across 70 entitlement entries, for 35 people</p>
+      <div class="kv" style="margin-top:12px"><span>Before you saved</span><span>35 entries, 0.00 days</span></div>
+      <div class="kv"><span>Entitlement tables</span><span>1</span></div>
+      <div class="kv"><span>Generate Entitlement needed</span><span>No</span></div>
+    </div>
+    <div class="card">
+      <span class="pill p-bad">Still stuck</span>
+      <p class="ttl" style="margin-top:9px">Medical Leave</p>
+      <p class="tiny">Same earning method, same setting, saved the same way.</p>
+      <div class="big">0.00 days</div>
+      <p class="tiny">0 entitlement entries — and Generate Entitlement fails for everyone</p>
+      <div class="kv" style="margin-top:12px"><span>Before you saved</span><span>0 entries, 0.00 days</span></div>
+      <div class="kv"><span>Entitlement tables</span><span>6</span></div>
+      <div class="kv"><span>Rules reaching these people</span><span>none</span></div>
+    </div>
+  </div>
+  <p class="caption">For comparison, Annual Leave has 16 entitlement tables and Hospitalization Leave has 1.</p>
+
+  <!-- ─────────────── 2. THE EXACT FAILURE REASON ─────────────── -->
+  <h2>2 · The exact reason every employee fails — what the screen says today</h2>
+  <div class="screen">
+    <div class="bar">Leave · Generate Entitlement · Step 4 — Validation &amp; Preview · Year 2026 · Medical Leave</div>
+    <div class="body">
+      <div class="stat">
+        <div><div class="lbl">Selected</div><div class="v">4</div></div>
+        <div><div class="lbl">Passed</div><div class="v" style="color:var(--bad)">0</div></div>
+        <div><div class="lbl">Failed</div><div class="v" style="color:var(--bad)">4</div></div>
+      </div>
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Employee</th><th>Leave type</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>FARAH</td><td>Medical Leave</td><td>No entitlement configured for this employee and leave type</td></tr>
+          <tr><td>IMIN BIN AZHAR</td><td>Medical Leave</td><td>No entitlement configured for this employee and leave type</td></tr>
+          <tr><td>NURUL ALIAH BINTI ACHIN</td><td>Medical Leave</td><td>No entitlement configured for this employee and leave type</td></tr>
+          <tr><td>Eee Lee Yong</td><td>Medical Leave</td><td>No entitlement configured for this employee and leave type</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="note n-bad" style="margin-top:14px">
+        That sentence is the exact wording on your screen, and it is misleading. You HAVE configured
+        Medical Leave — six times over. The real reason is that the system cannot tell which of your
+        six Medical Leave tables applies to Daniel, IMIN BIN AZHAR, Aisyah or Arjun, so it applies none of
+        them and grants nothing.
+      </p>
+    </div>
+  </div>
+
+  <h2>3 · What that same screen would say after this change</h2>
+  <div class="screen">
+    <div class="bar">Leave · Generate Entitlement · Step 4 — Validation &amp; Preview · Year 2026 · Medical Leave</div>
+    <div class="body">
+      <p class="note n-warn" style="margin-bottom:14px">
+        Medical Leave has 6 entitlement tables in force for 2026 and no rule saying who each one
+        applies to. Nobody can be granted until either one table is left in force, or a rule is added
+        for each table. Open Entitlement Tables →
+      </p>
+      <div class="stat">
+        <div><div class="lbl">Selected</div><div class="v">4</div></div>
+        <div><div class="lbl">Passed</div><div class="v">0</div></div>
+        <div><div class="lbl">Failed</div><div class="v" style="color:var(--warn)">4</div></div>
+      </div>
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Employee</th><th>Leave type</th><th>Reason</th><th>What fixes it</th></tr></thead>
+        <tbody>
+          <tr><td>FARAH</td><td>Medical Leave</td>
+              <td>6 entitlement tables apply to this leave type and no rule chooses between them</td>
+              <td>Add an eligibility rule, or keep only one table</td></tr>
+          <tr><td>IMIN BIN AZHAR</td><td>Medical Leave</td>
+              <td>6 entitlement tables apply to this leave type and no rule chooses between them</td>
+              <td>Add an eligibility rule, or keep only one table</td></tr>
+          <tr><td>NURUL ALIAH BINTI ACHIN</td><td>Medical Leave</td>
+              <td>6 entitlement tables apply to this leave type and no rule chooses between them</td>
+              <td>Add an eligibility rule, or keep only one table</td></tr>
+          <tr><td>Eee Lee Yong</td><td>Medical Leave</td>
+              <td>6 entitlement tables apply to this leave type and no rule chooses between them</td>
+              <td>Add an eligibility rule, or keep only one table</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="caption">Three other reasons get their own wording too, so a failure is never a category again:
+        no table at all for this person · a rule exists but this person matches none of them ·
+        the table that applies is set to 0 days for their length of service.</p>
+    </div>
+  </div>
+
+  <!-- ─────────────── 4. CATCH IT BEFORE THE RUN ─────────────── -->
+  <h2>4 · Caught before you ever press Generate</h2>
+  <div class="screen">
+    <div class="bar">Leave Config · Entitlements · Entitlement Tables</div>
+    <div class="body">
+      <p class="note n-warn" style="margin-bottom:14px">
+        Medical Leave — 6 tables in force, no rule. Nobody will be granted Medical Leave until this
+        is resolved.
+      </p>
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Leave type</th><th>Tables in force</th><th>Rules</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Annual Leave</td><td>16</td><td>not measured</td><td><span class="pill p-neutral">Earns monthly — not granted here</span></td></tr>
+          <tr><td>Medical Leave</td><td>6</td><td>0</td><td><span class="pill p-warn">Cannot choose a table</span></td></tr>
+          <tr><td>Hospitalization Leave</td><td>1</td><td>0</td><td><span class="pill p-ok">Resolves — only one table</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="caption">One table and no rule is fine — there is nothing to choose. Several tables and no
+      rule is not, and today nothing on this screen says so.</p>
+    </div>
+  </div>
+
+  <!-- ─────────────── 5. MY LEAVE ─────────────── -->
+  <h2>5 · And on the employee's own screen</h2>
+  <div class="grid2">
+    <div class="screen">
+      <div class="bar">Today — FARAH · My Leave</div>
+      <div class="body">
+        <div class="kv"><span>Hospitalization Leave</span><span><span class="pill p-ok">Credited</span></span></div>
+        <div class="kv"><span>Medical Leave</span><span><b>0.00</b></span></div>
+        <p class="note n-bad" style="margin-top:12px">The 0.00 carries no explanation at all. The system
+        treats "six tables it cannot choose between" as "nothing was ever configured", so it says nothing.</p>
+      </div>
+    </div>
+    <div class="screen">
+      <div class="bar">After this change — FARAH · My Leave</div>
+      <div class="body">
+        <div class="kv"><span>Hospitalization Leave</span><span><span class="pill p-ok">Credited</span></span></div>
+        <div class="kv" style="align-items:flex-start">
+          <span>Medical Leave</span>
+          <span><b>0.00</b><br><span class="tiny" style="color:var(--warn)">Entitlement tables need a rule</span></span>
+        </div>
+        <p class="note n-ok" style="margin-top:12px">A zero that HR can act on. The same wording appears
+        on Employee Balances and in the exported balance file.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────── 6. THE DEEPER QUESTION ─────────────── -->
+  <h2>6 · Why Hospitalization moved on save and Medical did not</h2>
+  <div class="card">
+    <p class="ttl">Hospitalization Leave — the figures already existed, so saving CORRECTED them</p>
+    <div class="flow" style="margin-top:12px">
+      <div class="step"><b>Already there</b>35 entitlement entries for 2026, each worth 0.00</div>
+      <div class="step"><b>You saved</b>Earning method chosen</div>
+      <div class="step"><b>System</b>Finds the 35 existing entries and tops each one up</div>
+      <div class="step go"><b>Result</b>2,100.00 days, immediately</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <p class="ttl">Medical Leave — there was nothing to correct, and nothing that could be created either</p>
+    <div class="flow" style="margin-top:12px">
+      <div class="step"><b>Already there</b>0 entitlement entries for 2026</div>
+      <div class="step"><b>You saved</b>Earning method chosen</div>
+      <div class="step stop"><b>System</b>Looks for entries to top up, finds none — credits nobody</div>
+      <div class="step stop"><b>Then Generate</b>Cannot choose between 6 tables — grants nobody</div>
+    </div>
+    <p class="note n-warn" style="margin-top:14px">
+      There are TWO separate blockers on Medical Leave, and this matters: even if saving the earning
+      method did open the year automatically, Medical would still credit 0.00, because the six-table
+      ambiguity stops the calculation regardless of what triggers it. Fixing the trigger alone would
+      change nothing you can see.
+    </p>
+  </div>
+
+  <h2>7 · So should saving a setting create entitlement by itself?</h2>
+  <div class="grid2">
+    <div class="card">
+      <span class="pill p-ok">Automatic — correcting</span>
+      <p style="margin:10px 0 0;font-size:13.5px">Adjusting figures people have already been granted.
+      There is a before and an after, the change is recorded against each person, and it can be read
+      back on their record. This is what moved your 35 Hospitalization balances.</p>
+    </div>
+    <div class="card">
+      <span class="pill p-warn">Deliberate — creating</span>
+      <p style="margin:10px 0 0;font-size:13.5px">Handing a whole year of days to everyone for the
+      first time. It is money and it is time off. It gets a rehearsal you can read before anything is
+      written, and a downloadable log naming every person afterwards. That is Generate Entitlement,
+      and we recommend keeping it as the one place a year is opened.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <p class="ttl">What we WILL make automatic: the telling.</p>
+    <div class="screen" style="margin-top:12px">
+      <div class="bar">Leave Config · Entitlements · Medical Leave — after pressing Save</div>
+      <div class="body">
+        <p class="note n-acc">
+          Earning method saved. No balances changed, because Medical Leave has no entitlement generated
+          for 2026 yet — and it cannot be generated until its 6 entitlement tables have a rule.
+        </p>
+        <div style="margin-top:12px;display:flex;gap:9px;flex-wrap:wrap">
+          <span class="btn">Fix the tables</span>
+          <span class="btn-ghost">Generate Entitlement for 2026</span>
+        </div>
+        <p class="caption">Compare with what Hospitalization Leave would have said on the same save:
+        "Earning method saved. 35 employees credited, 2,100.00 days in total."</p>
+      </div>
+    </div>
+  </div>
+
+  <hr class="rule">
+  <h2>What this fixes, in order</h2>
+  <div class="card">
+    <ul>
+      <li>The Generate Entitlement preview names the real blocker per employee instead of a category.</li>
+      <li>The Entitlement Tables screen warns you the moment a leave type has several tables and no rule.</li>
+      <li>A 0.00 on My Leave and Employee Balances is never silent again, including this case.</li>
+      <li>Saving an earning method tells you what it did and did not do, and points at the next step.</li>
+      <li>Once Medical Leave has one table in force, or a rule per table, Generate Entitlement credits
+          everyone in one run — and from the following year it behaves exactly like Hospitalization.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

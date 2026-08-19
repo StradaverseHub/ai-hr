@@ -1,0 +1,237 @@
+<title>Leave Type Dropdown Filter</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#14181f; --muted:#5d6672; --line:#dfe3e8;
+    --accent:#2f6fed; --accent-soft:#eaf0fe; --good:#127a4a; --good-soft:#e6f4ec;
+    --warn:#8a5a00; --warn-soft:#fdf3dd; --gone:#b3261e; --gone-soft:#fdecea;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1216; --card:#171b21; --ink:#e8ecf1; --muted:#9aa4b1; --line:#2a3038;
+      --accent:#7aa2f7; --accent-soft:#1b2436; --good:#5fd39a; --good-soft:#14261e;
+      --warn:#e0b25f; --warn-soft:#2a2318; --gone:#f18a80; --gone-soft:#2c1a19;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1216; --card:#171b21; --ink:#e8ecf1; --muted:#9aa4b1; --line:#2a3038;
+    --accent:#7aa2f7; --accent-soft:#1b2436; --good:#5fd39a; --good-soft:#14261e;
+    --warn:#e0b25f; --warn-soft:#2a2318; --gone:#f18a80; --gone-soft:#2c1a19;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 20px 64px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 26px;font-size:14px;max-width:70ch}
+  h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+     margin:34px 0 12px;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .who{font-size:12px;color:var(--muted);margin:0 0 10px}
+  .who b{color:var(--ink);font-weight:600}
+  .label{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px}
+  .select{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+  .select .head{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 11px;border-bottom:1px solid var(--line);font-size:14px}
+  .chev{color:var(--muted);font-size:11px}
+  .opt{padding:8px 11px;font-size:14px;border-top:1px solid transparent}
+  .opt+.opt{border-top:1px solid var(--line)}
+  .opt.sel{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .opt.strike{color:var(--gone);background:var(--gone-soft);text-decoration:line-through}
+  .opt.ghost{color:var(--muted);font-style:italic}
+  .tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:99px;
+    border:1px solid var(--line);color:var(--muted);margin-left:6px;vertical-align:1px;
+    text-decoration:none;font-style:normal;font-weight:600}
+  .tag.bad{color:var(--gone);border-color:var(--gone)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;
+    text-transform:uppercase;padding:3px 9px;border-radius:99px;margin-bottom:10px}
+  .pill.before{background:var(--warn-soft);color:var(--warn)}
+  .pill.after{background:var(--good-soft);color:var(--good)}
+  .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:10px;padding:14px 16px;margin-top:16px}
+  .note p{margin:0 0 8px}
+  .note p:last-child{margin:0}
+  .note .t{font-weight:700;font-size:13px;letter-spacing:.03em;text-transform:uppercase;color:var(--accent)}
+  .x{border-left-color:var(--gone)} .x .t{color:var(--gone)}
+  ul{margin:8px 0 0;padding-left:18px} li{margin:4px 0}
+  .crossout{position:relative;border:1px dashed var(--gone);background:var(--gone-soft);
+    border-radius:8px;padding:10px 12px;color:var(--gone);font-size:13px}
+  .small{font-size:13px;color:var(--muted)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .scroll{overflow-x:auto}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+</style>
+
+<div class="wrap">
+
+<h1>Request Leave — the leave type list, filtered</h1>
+<p class="sub">Board item ad965821. The employee only ever sees the leave types their own profile
+qualifies them for. Anything they do not qualify for is simply absent — no message, no greyed-out
+row, no hint that it exists.</p>
+
+<h2>The employee's Request Leave list</h2>
+
+<div class="grid">
+
+  <div class="card">
+    <span class="pill before">Today</span>
+    <p class="who">Profile says <b>Gender = Male</b></p>
+    <p class="label">Leave Type</p>
+    <div class="select">
+      <div class="head"><span>Annual Leave</span><span class="chev">&#9660;</span></div>
+      <div class="opt sel">Annual Leave</div>
+      <div class="opt">Sick Leave</div>
+      <div class="opt">Hospitalization Leave</div>
+      <div class="opt">Emergency Leave</div>
+      <div class="opt">Replacement Leave</div>
+      <div class="opt">Maternity Leave</div>
+      <div class="opt">Paternity Leave</div>
+      <div class="opt">Unpaid Leave</div>
+    </div>
+    <p class="small" style="margin-top:10px">He can pick Maternity Leave, fill in dates, attach a
+    document — and is only stopped at Submit, with "This leave type is available to female
+    employees only."</p>
+  </div>
+
+  <div class="card">
+    <span class="pill after">After this change</span>
+    <p class="who">Profile says <b>Gender = Male</b>, <b>Marital Status = Single</b></p>
+    <p class="label">Leave Type</p>
+    <div class="select">
+      <div class="head"><span>Annual Leave</span><span class="chev">&#9660;</span></div>
+      <div class="opt sel">Annual Leave</div>
+      <div class="opt">Sick Leave</div>
+      <div class="opt">Hospitalization Leave</div>
+      <div class="opt">Emergency Leave</div>
+      <div class="opt">Replacement Leave</div>
+    </div>
+    <p class="small" style="margin-top:10px">Maternity Leave is gone (Gender rule). Paternity Leave
+    is gone (Marital Status rule). Unpaid Leave is gone because HR has it closed to employee
+    applications. Nothing marks their absence.</p>
+  </div>
+
+  <div class="card">
+    <span class="pill after">After this change</span>
+    <p class="who">Profile says <b>Gender = Female</b>, <b>Marital Status = Married</b></p>
+    <p class="label">Leave Type</p>
+    <div class="select">
+      <div class="head"><span>Annual Leave</span><span class="chev">&#9660;</span></div>
+      <div class="opt sel">Annual Leave</div>
+      <div class="opt">Sick Leave</div>
+      <div class="opt">Hospitalization Leave</div>
+      <div class="opt">Emergency Leave</div>
+      <div class="opt">Maternity Leave</div>
+      <div class="opt">Replacement Leave</div>
+    </div>
+    <p class="small" style="margin-top:10px">She sees Maternity Leave because her Gender matches the
+    rule HR configured. She does not see Paternity Leave, because that rule asks for Gender = Male.</p>
+  </div>
+
+</div>
+
+<h2>What we are deliberately NOT drawing</h2>
+
+<div class="note x">
+  <p class="t">No explanatory line under the list</p>
+  <p>The previous plan proposed a short caption saying "some leave types have been left out — check
+  your profile". That is now dropped. The employee is given no signal at all that a filtered-out
+  leave type exists.</p>
+  <div class="crossout" style="margin-top:10px">Some leave types are not shown because of your
+  profile details. &nbsp;— removed from the plan</div>
+  <ul>
+    <li>No greyed-out or disabled rows.</li>
+    <li>No "unavailable" badge, tooltip or footnote.</li>
+    <li>No count of what was removed.</li>
+  </ul>
+</div>
+
+<h2>Applying on behalf of a team member</h2>
+
+<div class="grid">
+  <div class="card">
+    <p class="who">A manager has selected <b>a female team member</b></p>
+    <p class="label">Employee</p>
+    <div class="select"><div class="head"><span>Team member (Female, Married)</span><span class="chev">&#9660;</span></div></div>
+    <p class="label" style="margin-top:12px">Leave Type</p>
+    <div class="select">
+      <div class="opt sel">Annual Leave</div>
+      <div class="opt">Sick Leave</div>
+      <div class="opt">Hospitalization Leave</div>
+      <div class="opt">Emergency Leave</div>
+      <div class="opt">Maternity Leave</div>
+    </div>
+  </div>
+  <div class="card">
+    <p class="who">The same manager switches to <b>a male, single team member</b></p>
+    <p class="label">Employee</p>
+    <div class="select"><div class="head"><span>Team member (Male, Single)</span><span class="chev">&#9660;</span></div></div>
+    <p class="label" style="margin-top:12px">Leave Type</p>
+    <div class="select">
+      <div class="opt sel">Annual Leave</div>
+      <div class="opt">Sick Leave</div>
+      <div class="opt">Hospitalization Leave</div>
+      <div class="opt">Emergency Leave</div>
+      <div class="opt ghost">Maternity Leave &mdash; removed on switch</div>
+    </div>
+    <p class="small" style="margin-top:10px">The list re-draws for whoever is selected. If Maternity
+    Leave was already chosen and the manager switches to someone it does not apply to, the choice is
+    cleared rather than carried across. The italic row is an annotation, not something drawn on the
+    screen.</p>
+  </div>
+</div>
+
+<h2>Which HR settings decide what appears</h2>
+
+<div class="scroll">
+<table>
+  <tr><th>The setting HR already has</th><th>Where HR sets it</th><th>Effect on the list</th></tr>
+  <tr>
+    <td>Condition &rarr; Criteria: Gender, Marital Status, length of service, probation status, and
+    the eight organisation criteria</td>
+    <td>HR Admin &rarr; Leave Config &rarr; Leave Type &rarr; Condition</td>
+    <td>A type whose criteria the employee does not match is absent from their list</td>
+  </tr>
+  <tr>
+    <td>Employee Tab Placement set to Hidden</td>
+    <td>HR Admin &rarr; Leave Config &rarr; Leave Type &rarr; Employee Visibility</td>
+    <td>Absent from the list, for everyone</td>
+  </tr>
+  <tr>
+    <td>Employees can apply for this leave type &mdash; unticked</td>
+    <td>HR Admin &rarr; Leave Config &rarr; Leave Type &rarr; Employee Visibility</td>
+    <td>Absent from the list, for everyone</td>
+  </tr>
+</table>
+</div>
+
+<div class="note">
+  <p class="t">Three settings, no fourth one</p>
+  <p>These are the three switches that already exist. Last round the duplicate "Visible to employee"
+  tick box was removed so each of them means exactly one thing. This item adds no new switch — it
+  simply makes the Request Leave list obey the three you already have.</p>
+</div>
+
+<h2>What does not change</h2>
+
+<div class="note">
+  <p class="t">The refusal stays behind the screen</p>
+  <p>The system still checks eligibility again when the form is submitted, and still refuses an
+  application it should not accept. Hiding the option is the courtesy; refusing the submission
+  remains the control. Nothing about entitlement, balances, accrual, approval routing or payroll is
+  touched, and no existing leave record changes.</p>
+</div>
+
+<div class="note">
+  <p class="t">A blank Gender or Marital Status hides the restricted type</p>
+  <p>An employee whose Gender or Marital Status is not filled in does not match a rule that asks for
+  one, so that leave type does not appear. That is already how the system decides at submit time
+  today, and it is the safe default. With no explanatory line on the screen, the way this surfaces is
+  an employee asking HR where a leave type went — and the answer is to complete the profile.</p>
+</div>
+
+</div>
