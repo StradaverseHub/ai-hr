@@ -514,6 +514,10 @@ async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportRe
       // only, so summing across the period's runs single-counts the month's one instalment; that is the
       // same rule `cp39FileForBatch` applies to the upload file (localization/my/cp39-file.ts:204).
       cp38: num(r.st.cp38),
+      // WHO, as opposed to which job. Not a column and not printed: the printed form's duplicate
+      // tax-number warning needs it to tell one person's two concurrent employments — which carry the
+      // same tax number by construction, it is stored per PERSON — from two people sharing a number.
+      personId: x?.personId ?? '',
       employeeNo: x?.employeeNo ?? '',
       passport: x?.passport ?? '',
       // Blank because no column exists, not because a lookup came back empty. See localization/my/cp39-form.ts.

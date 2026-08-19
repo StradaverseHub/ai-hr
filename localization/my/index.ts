@@ -2,7 +2,7 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
+import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import { childReliefAmountFor, eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
@@ -68,6 +68,10 @@ export const myPack: CountryPack = {
     // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
     setPassport: setPassportProfileMY,
     setTax: setTaxProfileMY,
+    // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview
+    // warns at filing time; the approved plan asks for the same warning on the screen where the number
+    // is typed, and the personnel page reads it through the pack rather than importing MY directly.
+    taxNumberSharedWith: taxNumberSharedWithMY,
     // Feedback 0df0c635 — partial save of only the Others Statutory controls (today: subject_to_hrdf).
     // The Others Statutory card on the Bank & Statutory tab saves through this, like setTp3/setBank/setTax.
     setOthersStatutory: setOthersStatutoryMY,

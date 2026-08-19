@@ -32,6 +32,7 @@ import {
   setStatutoryProfileMY,
   setIcProfileMY,
   setTaxProfileMY,
+  taxNumberSharedWithMY,
   NoIcYetError,
 } from '../localization/my/statutory';
 import { setTaxAction, setIcAction } from '../app/admin/personnel/[employmentId]/actions';
@@ -287,6 +288,77 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     expect(kwPcb).toBeCloseTo(repPcb, 2);
     expect(resPcb).not.toBeCloseTo(repPcb, 2);
   });
+  // ── r209 7ee14bbc — THE DUPLICATE TAX-NUMBER WARNING AT THE POINT OF ENTRY ─────────────────────────────
+  //
+  // The approved plan asks for the warning in TWO places: "a warning on the preview screen, before you
+  // print, when two employees share a tax reference number" AND "the same warning where the number is
+  // entered, so a duplicate is caught at the point of typing rather than at filing time". Only the first
+  // shipped, so a duplicate keyed on this card was still discovered on the CP39 at filing time — the
+  // failure the second bullet names. On the reporter's own records five numbers are each filed against
+  // two or three different people. These live INSIDE this describe because it owns the DB lifecycle.
+
+  const withTax = async (a: SessionContext, name: string, ic: string, taxNumber: string) => {
+    const e = await hire(a, name);
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: ic });
+    await setTaxProfileMY(a, { personId: e.personId, taxNumber });
+    return e;
+  };
+
+  it('(r209) names the OTHER person filed under the number, from either side of the pair', async () => {
+    const a = adminCtx(base);
+    const aisyah = await withTax(a, 'Aisyah Rahman', '900101015555', 'SG90010101');
+    const irwin = await withTax(a, 'Irwin Law', '880808085555', 'SG90010101');
+    expect(
+      await taxNumberSharedWithMY(a, { personId: aisyah.personId, companyId: base.companyId, taxNumber: 'SG90010101' }),
+    ).toEqual(['Irwin Law']);
+    expect(
+      await taxNumberSharedWithMY(a, { personId: irwin.personId, companyId: base.companyId, taxNumber: 'SG90010101' }),
+    ).toEqual(['Aisyah Rahman']);
+  });
+
+  it('(r209) never reports somebody against THEMSELVES — including on a second concurrent employment', async () => {
+    // This is the guard that makes the warning usable: the tax record is keyed on person_id, so one
+    // person holding two employments in this company still has exactly ONE record and nothing to correct.
+    const a = adminCtx(base);
+    const solo = await withTax(a, 'Ali Bin Abu', '900101015556', 'IG25834425022');
+    await owner.db
+      .insert(schema.employment)
+      .values({ tenantId: base.tenantId, personId: solo.personId, companyId: base.companyId, hiredOn: '2026-02-01' });
+    expect(
+      await taxNumberSharedWithMY(a, { personId: solo.personId, companyId: base.companyId, taxNumber: 'IG25834425022' }),
+    ).toEqual([]);
+  });
+
+  it('(r209) matches trimmed and case-insensitively, the same rule the CP39 banner uses', async () => {
+    const a = adminCtx(base);
+    await withTax(a, 'Aisyah Rahman', '900101015557', 'SG90010101');
+    const other = await withTax(a, 'Irwin Law', '880808085557', 'sg90010101 ');
+    expect(
+      await taxNumberSharedWithMY(a, { personId: other.personId, companyId: base.companyId, taxNumber: ' Sg90010101' }),
+    ).toEqual(['Aisyah Rahman']);
+  });
+
+  it('(r209) says nothing when there is no number to share — that is the MISSING-number gate’s business', async () => {
+    const a = adminCtx(base);
+    const e = await withTax(a, 'No Number', '900101015558', 'IG777');
+    expect(await taxNumberSharedWithMY(a, { personId: e.personId, companyId: base.companyId, taxNumber: '' })).toEqual([]);
+    expect(await taxNumberSharedWithMY(a, { personId: e.personId, companyId: base.companyId, taxNumber: null })).toEqual(
+      [],
+    );
+    expect(
+      await taxNumberSharedWithMY(a, { personId: e.personId, companyId: base.companyId, taxNumber: '   ' }),
+    ).toEqual([]);
+  });
+
+  it('(r209) is ADVISORY: the save that creates the duplicate still succeeds', async () => {
+    // LHDN decides whose number is right, and HR must stay able to record what an employee's own EA form
+    // says while that is sorted out. A screen that refused the save would be unusable on the reporter's
+    // own data, where five numbers are already shared.
+    const a = adminCtx(base);
+    await withTax(a, 'First Filer', '900101015559', 'IG25834425030');
+    const second = await withTax(a, 'Second Filer', '880808085559', 'IG25834425030');
+    expect((await getStatutoryProfileMY(a, second.personId))?.taxNumber).toBe('IG25834425030');
+  });
 });
 
 // ── (6) i18n coverage ────────────────────────────────────────────────────────────────────────────────────
@@ -330,6 +402,35 @@ describe('Identification & Tax — i18n (item 8b5334db)', () => {
         expect(typeof v, `messages/${loc}.json missing people.detail.${k}`).toBe('string');
         expect(v.length, `messages/${loc}.json people.detail.${k} empty`).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+// ── r209 7ee14bbc — the point-of-entry warning is WIRED, across four files and six catalogs ───────────────
+describe('r209 — the shared-tax-number warning reaches the field it is about', () => {
+  it('is wired from the pack, through the page, into the field itself', () => {
+    // The contract lives across four files and a unit test of any one of them passes throughout.
+    expect(read('localization/my/index.ts')).toContain('taxNumberSharedWith: taxNumberSharedWithMY');
+    expect(read('localization/country-pack.ts')).toContain(
+      "taxNumberSharedWith: MyStatutoryModule['taxNumberSharedWithMY']",
+    );
+    const page = read('app/admin/personnel/[employmentId]/page.tsx');
+    expect(page).toContain('countryPack?.statutory.taxNumberSharedWith(s, {');
+    expect(page).toContain('taxNumberSharedWith={taxNumberSharedWith}');
+    const card = read('components/identity-tax-card.tsx');
+    expect(card).toContain("t('taxNumberSharedTitle'");
+    // Beside the field it is about, not at the top of the card.
+    expect(card.indexOf('taxNumberSharedWith.length > 0')).toBeGreaterThan(card.indexOf('name="taxNumber"'));
+  });
+
+  it('resolves the warning in all six locales, and none of them is a copy of English', () => {
+    const enMsg = JSON.parse(read('messages/en.json')).people.detail.taxNumberSharedTitle as string;
+    expect(enMsg).toContain('{names}');
+    for (const loc of LOCALES) {
+      const v = JSON.parse(read(`messages/${loc}.json`)).people.detail.taxNumberSharedTitle as string;
+      expect(typeof v, `messages/${loc}.json missing people.detail.taxNumberSharedTitle`).toBe('string');
+      expect(v).toContain('{names}');
+      if (loc !== 'en') expect(v, `${loc} is still English`).not.toBe(enMsg);
     }
   });
 });

@@ -26,6 +26,7 @@ import {
   cp39FormFrom,
   cp39FormTextExport,
   cp39PrintedRows,
+  cp39ScheduleScopeNote,
   deductionMonthLabel,
   duplicateCp39TaxNumbers,
   formDate,
@@ -35,6 +36,7 @@ import {
   missingCp39Preparer,
   money,
   paginateCp39,
+  unfinishedCp39Names,
   withPaymentInstrument,
   withPreparer,
   type Cp39FormRow,
@@ -76,6 +78,9 @@ const TEXT_ROUTE_CODE = code('app/payroll/cp39/text/route.ts');
 const REPORTS_CODE = code('localization/my/reports.ts');
 
 const row = (p: Partial<Cp39FormRow> & { employmentId: string }): Cp39FormRow => ({
+  // '' by default ON PURPOSE: it exercises the identity fallback in `cp39PersonKey`, which is what a
+  // caller that predates the field gets. The person-aware cases below pass one explicitly.
+  personId: '',
   tin: 'SG23607354000',
   name: 'ANG PEI YEE',
   oldIc: '',
@@ -782,6 +787,7 @@ describe('the review screen’s messages', () => {
       'dupTinTitle',
       'deductedOnly',
       'noDeductions',
+      'unfinishedNameTitle',
     ]);
     const braced = Object.entries(ns).filter(([k, v]) => !INTERPOLATED.has(k) && /[{}]/.test(v));
     expect(braced.map(([k]) => k), 'these are rendered with no arguments').toEqual([]);
@@ -903,7 +909,10 @@ describe('7ee14bbc — the schedule prints the DEDUCTED, and the count beside it
     // Whoever reconciles this against a payroll summary otherwise counts a shorter list with nothing
     // telling them why — the reporter's own complaint in reverse.
     expect(cp39FormTextExport(form)).toContain('Senarai pekerja: 7 daripada 38');
-    expect(PDF_CODE).toContain('${form.deductedEmployees} daripada ${form.employees}');
+    // ONE sentence, called twice — see `cp39ScheduleScopeNote`. Two copies of a claim about the
+    // document's own arithmetic are two claims that can drift, and one of them already drifted false.
+    expect(PDF_CODE).toContain('cp39ScheduleScopeNote(form)');
+    expect(LIB_CODE).toContain('cp39ScheduleScopeNote(form)');
     expect(PREVIEW_CODE).toContain("t('deductedOnly'");
     // The heading's count moved off `form.employees` — it is the count of the rows underneath it now.
     expect(PREVIEW_CODE).toContain('count={form.deductedEmployees}');
@@ -1150,5 +1159,253 @@ describe('7ee14bbc — the specimen has a name now, and the fidelity claim did n
     expect(MY_REPORTS.find((r) => r.id === 'my.cp39')!.fidelity).toBe('figures');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /cp\W?39/i.test(f))).toEqual([]);
     expect(PDF_CODE).toContain('bukan borang rasmi LHDN');
+  });
+});
+
+// ── r209 cp39 FIX ROUND ────────────────────────────────────────────────────────────────────────────
+//
+// Three defects the adversarial verification found in 7ee14bbc's first build. Two of them were things
+// that WORKED BEFORE AND DID NOT AFTER — a false sentence printed on the document, and a warning that
+// fired on correct data — which is the worse kind, and they come first.
+
+describe('r209 — the document never claims a reconciliation that can be false', () => {
+  /**
+   * THE ORDINARY CASE THAT MAKES THE OLD SENTENCE A LIE: one employee on PCB, a DIFFERENT employee on a
+   * CP38 instalment (a Personnel-entered court/LHDN instalment on somebody whose MTD is nil), and one
+   * paid with neither. Two rows print; Bilangan Pekerja reads 1 and 1. The first build printed
+   * "bilangan baris sepadan dengan Bilangan Pekerja di atas" under exactly that — a false assurance
+   * about the very disagreement 7ee14bbc was raised about.
+   */
+  const split: Cp39FormRow[] = [
+    row({ employmentId: 'a', personId: 'p1', name: 'PCB ONLY', tin: 'SG1', pcb: 110.5, cp38: 0 }),
+    row({ employmentId: 'b', personId: 'p2', name: 'CP38 ONLY', tin: 'SG2', pcb: 0, cp38: 250 }),
+    row({ employmentId: 'c', personId: 'p3', name: 'NEITHER', tin: 'SG3', pcb: 0, cp38: 0 }),
+  ];
+  const form = () => cp39FormFrom({ header: header(), rows: split });
+  /** Every drawn run joined back into one string — `wrap` splits the sentence across drawn lines. */
+  const flat = (drawn: string[]) => drawn.join(' ').replace(/\s+/g, ' ');
+
+  it('is the case the claim is false in: 2 rows, and neither Bilangan Pekerja is 2', () => {
+    const f = form();
+    expect(f.deductedEmployees).toBe(2);
+    expect(f.pcbEmployees).toBe(1);
+    expect(f.cp38Employees).toBe(1);
+    expect(f.pages.flatMap((p) => p.rows)).toHaveLength(2);
+  });
+
+  it('says how many rows there are and NOT that they match the Bilangan Pekerja figures', () => {
+    const note = cp39ScheduleScopeNote(form());
+    expect(note).toContain('Senarai pekerja: 2 daripada 3');
+    // The false half, gone from the sentence itself…
+    expect(note).not.toMatch(/sepadan dengan Bilangan Pekerja/);
+    // …and replaced by the relation that IS true at 1, 1 and 2.
+    expect(note).toContain('sekurang-kurangnya satu potongan');
+  });
+
+  it('prints that sentence, not the old one, on the drawn page AND in the text export', async () => {
+    const f = form();
+    const drawn = flat(await drawnText(await renderCp39FormPdf(f)));
+    const txt = cp39FormTextExport(f);
+    for (const surface of [drawn, txt]) {
+      expect(surface).toContain('Senarai pekerja: 2 daripada 3');
+      expect(surface, 'the false reconciliation must not survive on any printed surface').not.toMatch(
+        /sepadan dengan Bilangan Pekerja/,
+      );
+      expect(surface).toContain('sekurang-kurangnya satu potongan');
+    }
+  });
+
+  it('carries ONE sentence, so the page and the text export cannot drift apart', async () => {
+    const f = form();
+    const note = cp39ScheduleScopeNote(f);
+    expect(cp39FormTextExport(f)).toContain(note);
+    // The drawn page wraps it, so compare word-wise rather than as one run.
+    expect(flat(await drawnText(await renderCp39FormPdf(f)))).toContain(note.slice(0, 60));
+  });
+
+  it('never tells any of the six catalogs that the row count always matches the two counts', () => {
+    // The sentence exists on the REVIEW SCREEN too, once per language, and the English one said "the
+    // number of rows always matches the Bilangan Pekerja figures above". Frozen per locale so a revert
+    // fails here and not only in Malay.
+    const FALSE_CLAIM: Record<string, string> = {
+      en: 'always matches the Bilangan Pekerja',
+      ms: 'sentiasa sepadan dengan angka Bilangan Pekerja',
+      ta: 'எப்போதும் ஒத்துப்போகும்',
+      th: 'ตรงกับตัวเลข Bilangan Pekerja ด้านบนเสมอ',
+      vi: 'luôn khớp với các con số Bilangan Pekerja',
+      zh: '始终与上方的 Bilangan Pekerja 人数一致',
+    };
+    for (const [locale, claim] of Object.entries(FALSE_CLAIM)) {
+      const cat = JSON.parse(read(`messages/${locale}.json`)) as { payroll: { cp39Form: Record<string, string> } };
+      expect(cat.payroll.cp39Form.deductedOnly, `${locale}.deductedOnly still carries the false claim`).not.toContain(
+        claim,
+      );
+    }
+    // …and the English one states the true relation instead of a false equality.
+    expect((en.payroll as { cp39Form: Record<string, string> }).cp39Form.deductedOnly).toContain(
+      'at least one deduction',
+    );
+  });
+
+  it('does not leave the false claim in the model’s own documentation either', () => {
+    // A false comment is how the next round reintroduces the sentence.
+    expect(read('lib/cp39-form.ts')).not.toContain('THIS IS THE FIGURE THAT MUST AGREE WITH THE HEADER');
+    expect(read('lib/cp39-form.ts')).toContain('IT IS THE UNION');
+  });
+});
+
+describe('r209 — a tax number is a PERSON’s, so one person’s two employments are not a duplicate', () => {
+  /**
+   * THE FALSE ALARM: `employee_statutory_my` is keyed on `person_id` (uniqueIndex
+   * `employee_statutory_my_person_uq`), while a CP39 row is an EMPLOYMENT. One person holding two
+   * concurrent employments in one company — supported and tested elsewhere in this suite — therefore
+   * arrives as two rows with the SAME tax number by construction. The first build reported that as a
+   * duplicate, printed the person's name twice, and told the operator to "correct whichever record is
+   * wrong" about a single, correct record.
+   */
+  const twoJobs: Cp39FormRow[] = [
+    row({ employmentId: 'e1', personId: 'p1', name: 'ALI BIN ABU', tin: 'IG25834425022', newIc: '900101015555', pcb: 120 }),
+    row({ employmentId: 'e2', personId: 'p1', name: 'ALI BIN ABU', tin: 'IG25834425022', newIc: '900101015555', pcb: 80 }),
+  ];
+
+  it('reports nothing for one person paid on two employments', () => {
+    expect(duplicateCp39TaxNumbers(twoJobs)).toEqual([]);
+    const form = cp39FormFrom({ header: header(), rows: twoJobs });
+    expect(form.duplicateTaxNumbers).toEqual([]);
+    // BOTH rows still print, and both still print the number as filed. The warning was wrong; the
+    // statement was not.
+    expect(form.pages.flatMap((p) => p.rows).map((r) => r.employmentId)).toEqual(['e1', 'e2']);
+    expect(form.deductedEmployees).toBe(2);
+  });
+
+  it('STILL reports two different people under one number — the real defect is untouched', () => {
+    const real = [
+      row({ employmentId: 'e1', personId: 'p1', name: 'Aisyah Rahman', tin: 'SG90010101', newIc: '900101015555', pcb: 120 }),
+      row({ employmentId: 'e2', personId: 'p2', name: 'Irwin Law', tin: 'SG90010101', newIc: '880808085555', pcb: 95 }),
+    ];
+    expect(duplicateCp39TaxNumbers(real)).toEqual([{ tin: 'SG90010101', names: ['Aisyah Rahman', 'Irwin Law'] }]);
+  });
+
+  it('names each person ONCE even when they hold two of the employments in the group', () => {
+    // Otherwise the banner reads "SG90010101 — Aisyah Rahman · Aisyah Rahman · Irwin Law", which reads
+    // as three records to check.
+    expect(
+      duplicateCp39TaxNumbers([
+        row({ employmentId: 'e1', personId: 'p1', name: 'Aisyah Rahman', tin: 'SG90010101', pcb: 120 }),
+        row({ employmentId: 'e2', personId: 'p1', name: 'Aisyah Rahman', tin: 'SG90010101', pcb: 40 }),
+        row({ employmentId: 'e3', personId: 'p2', name: 'Irwin Law', tin: 'SG90010101', pcb: 95 }),
+      ]),
+    ).toEqual([{ tin: 'SG90010101', names: ['Aisyah Rahman', 'Irwin Law'] }]);
+  });
+
+  it('falls back to identity card AND name together when the caller supplies no person', () => {
+    const sameCard = [
+      row({ employmentId: 'e1', name: 'ALI BIN ABU', tin: 'IG1', newIc: '900101015555' }),
+      row({ employmentId: 'e2', name: 'ALI BIN ABU', tin: 'IG1', newIc: '900101015555' }),
+    ];
+    expect(duplicateCp39TaxNumbers(sameCard), 'same card, same name ⇒ one person').toEqual([]);
+    const namesakes = [
+      row({ employmentId: 'e1', name: 'ALI BIN ABU', tin: 'IG1', newIc: '900101015555' }),
+      row({ employmentId: 'e2', name: 'ALI BIN ABU', tin: 'IG1', newIc: '880808085555' }),
+    ];
+    // Different card ⇒ two people, however alike the names. Never the card alone and never the name
+    // alone: either one on its own fuses a pair the other one separates.
+    expect(duplicateCp39TaxNumbers(namesakes)).toEqual([{ tin: 'IG1', names: ['ALI BIN ABU', 'ALI BIN ABU'] }]);
+  });
+
+  it('still counts ROWS when a row says nothing at all about who it is', () => {
+    // Knowing nothing must be the LOUD answer, not a silent suppression.
+    expect(
+      duplicateCp39TaxNumbers([
+        row({ employmentId: 'e1', name: '', tin: 'IG1', newIc: '' }),
+        row({ employmentId: 'e2', name: '', tin: 'IG1', newIc: '' }),
+      ]),
+    ).toEqual([{ tin: 'IG1', names: ['', ''] }]);
+  });
+
+  it('is fed a real personId by the READ, which is the half a unit test of the model cannot see', () => {
+    // The contract lives BETWEEN two files (AGENTS rule 17): the model can only tell people apart if the
+    // read puts a person on the row. Both halves pinned.
+    expect(READ_CODE).toContain('personId: employment.personId');
+    expect(READ_CODE).toContain('personId: r.personId');
+    expect(REPORTS_CODE).toContain("personId: x?.personId ?? ''");
+    expect(LIB_CODE).toContain('personId: str(r.personId)');
+  });
+});
+
+describe('r209 — unfinished employee names are warned about before filing, as the plan promised', () => {
+  it.each([['TEST0001'], ['TEST'], ['TEST_1'], ['Test User'], ['test 12'], ['   ']])(
+    'flags "%s" as a name that is not yet a name',
+    (name) => {
+      expect(unfinishedCp39Names([row({ employmentId: 'a', name })]).map((u) => u.name)).toHaveLength(1);
+    },
+  );
+
+  it.each([['ANG PEI YEE'], ['TESTA BINTI OSMAN'], ['Testani Rahman'], ['Ernest Testman']])(
+    'leaves the real name "%s" alone — a false accusation costs more than a missed placeholder',
+    (name) => {
+      expect(unfinishedCp39Names([row({ employmentId: 'a', name })])).toEqual([]);
+    },
+  );
+
+  it('carries the employee number, because a BLANK name leaves nothing else to find them by', () => {
+    expect(unfinishedCp39Names([row({ employmentId: 'a', name: '', employeeNo: 'EMP0042' })])).toEqual([
+      { employmentId: 'a', name: '', employeeNo: 'EMP0042' },
+    ]);
+  });
+
+  it('reaches the form and the review screen, scanning everyone PAID and not only the printed rows', () => {
+    const form = cp39FormFrom({
+      header: header(),
+      rows: [
+        row({ employmentId: 'a', personId: 'p1', name: 'TEST0001', tin: 'SG1', pcb: 120 }),
+        row({ employmentId: 'b', personId: 'p2', name: 'TEST0002', tin: 'SG2', pcb: 0, cp38: 0 }),
+        row({ employmentId: 'c', personId: 'p3', name: 'ANG PEI YEE', tin: 'SG3', pcb: 90 }),
+      ],
+    });
+    // The e-Data file carries a name for everybody the run paid, so an unfinished one is just as wrong
+    // on somebody the printed schedule leaves out.
+    expect(form.unfinishedNames.map((u) => u.name)).toEqual(['TEST0001', 'TEST0002']);
+    expect(PREVIEW_CODE).toContain("t('unfinishedNameTitle'");
+    expect(PREVIEW_CODE).toContain("t('unfinishedNameHint')");
+    expect(PREVIEW_CODE).toContain('form.unfinishedNames.length > 0');
+  });
+
+  it('counts one person once, however many employments they hold', () => {
+    const form = cp39FormFrom({
+      header: header(),
+      rows: [
+        row({ employmentId: 'e1', personId: 'p1', name: 'TEST0001', pcb: 120 }),
+        row({ employmentId: 'e2', personId: 'p1', name: 'TEST0001', pcb: 60 }),
+      ],
+    });
+    expect(form.unfinishedNames).toHaveLength(1);
+  });
+
+  it('NEVER blocks the download, and never appears on the document itself', () => {
+    // Same standing as the duplicate-number banner: it is their data, the statement prints the name on
+    // file, and the correction belongs on the staff record. Our OPINION about a staff record is not
+    // something a signed statutory statement gets to publish.
+    expect(SHARED_CODE).not.toContain('unfinished');
+    expect(PREVIEW_CODE).toContain('const ready = missing.length === 0 && headerMissing.length === 0;');
+    expect(PDF_CODE).not.toContain('unfinishedNames');
+    expect(LIB_CODE.slice(LIB_CODE.indexOf('export function cp39FormTextExport'))).not.toContain('unfinishedNames');
+  });
+
+  it('resolves both messages in every catalog, with real translations', () => {
+    const enNs = (JSON.parse(read('messages/en.json')) as { payroll: { cp39Form: Record<string, string> } }).payroll
+      .cp39Form;
+    for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const) {
+      const ns = (JSON.parse(read(`messages/${locale}.json`)) as { payroll: { cp39Form: Record<string, string> } })
+        .payroll.cp39Form;
+      for (const k of ['unfinishedNameTitle', 'unfinishedNameHint']) {
+        expect(ns[k], `${locale}.payroll.cp39Form.${k}`).toBeTruthy();
+      }
+      if (locale !== 'en') {
+        expect(ns.unfinishedNameHint, `${locale} unfinishedNameHint is still English`).not.toBe(
+          enNs.unfinishedNameHint,
+        );
+      }
+    }
   });
 });

@@ -55,6 +55,19 @@
 export type Cp39FormRow = {
   /** Not printed. React keys, and matching a row to the readiness list. */
   employmentId: string;
+  /**
+   * Not printed either — WHO the row is, as opposed to which job it is.
+   *
+   * ⚠️ THE ROW IS AN EMPLOYMENT AND THE TAX NUMBER IS A PERSON. `employee_statutory_my` is keyed on
+   * `person_id` (uniqueIndex `employee_statutory_my_person_uq`), so ONE person holding TWO concurrent
+   * employments in one company — a supported, tested configuration, and what a terminate-and-rehire
+   * inside one month also looks like — produces two rows carrying the SAME tax number by construction.
+   * Without this field `duplicateCp39TaxNumbers` cannot tell that from two different people sharing one
+   * number, and it accused one person of being two, twice by name, with nothing to correct.
+   *
+   * May be '' for a caller that predates it; see `cp39PersonKey` for what identifies a row then.
+   */
+  personId: string;
   /** No. Cukai Pendapatan — `employee_statutory_my.tax_number` (today labelled "Tax number"). */
   tin: string;
   /** Nama Penuh Pekerja. */
@@ -175,12 +188,21 @@ export type Cp39Form = Cp39FormHeader & {
    */
   employees: number;
   /**
-   * The number of rows the statement actually PRINTS — everyone with a PCB or a CP38 deduction.
+   * The number of rows the statement actually PRINTS — everyone with a PCB **or** a CP38 deduction,
+   * counted once each. `cp39PrintedRows` is the one rule; both this and the pages below come off it.
    *
-   * ⚠️ THIS IS THE FIGURE THAT MUST AGREE WITH THE HEADER'S TWO COUNTS, and 7ee14bbc is what happens
-   * when it does not: the header counted the deducted (7) while the table printed everyone paid (38),
-   * and the reporter read the statement as under-counting by 31 people. `cp39PrintedRows` is the one
-   * rule; both this and the pages below come off it.
+   * ⚠️ IT IS THE UNION, SO IT IS NOT EQUAL TO EITHER `pcbEmployees` OR `cp38Employees`, AND NOTHING
+   * MAY SAY THAT IT IS. An earlier draft of this comment (and the sentence it put on the printed page)
+   * claimed the row count "must agree with the header's two counts"; that is false the moment one
+   * person has PCB and a different person has a CP38 instalment — one row each, both Bilangan Pekerja
+   * figures at 1, two rows printed. The only true relations are
+   *   max(pcbEmployees, cp38Employees) ≤ deductedEmployees ≤ pcbEmployees + cp38Employees,
+   * with equality on the left exactly when one deduction's people are a subset of the other's.
+   * Printing a false reconciliation on a tax document is worse than printing none: it tells the reader
+   * to stop checking the disagreement 7ee14bbc was raised about.
+   *
+   * What WAS the defect is unchanged: the header counted the deducted (7) while the table printed
+   * everyone paid (38), and the reporter read the statement as under-counting by 31 people.
    */
   deductedEmployees: number;
   /**
@@ -195,12 +217,34 @@ export type Cp39Form = Cp39FormHeader & {
    *
    * A MISSING tax number is the OTHER thing and it is handled elsewhere: that one blocks, because the
    * e-Data PCB file refuses without it (`readinessFor`, localization/my/reports.ts).
+   *
+   * ⚠️ TWO PEOPLE, NEVER ONE PERSON TWICE. See `duplicateCp39TaxNumbers`: a row is an EMPLOYMENT and a
+   * tax number is a PERSON'S, so the first draft of this reported a concurrent second employment as a
+   * duplicate, named the same person twice, and told the operator to correct whichever record was
+   * wrong when there was only one record and nothing to correct.
    */
   duplicateTaxNumbers: Cp39DuplicateTin[];
+  /**
+   * 7ee14bbc — employees whose NAME is still a placeholder (`TEST0001`) or blank. ADVISORY.
+   *
+   * THE OTHER HALF OF THE APPROVED PLAN'S "warns you about duplicated tax numbers and unfinished
+   * employee names before you file rather than after". Measured on the reporter's own records: 22 of
+   * their 40 people are named `TEST` followed by a number, so this is the warning that fires on most of
+   * their staff — and, exactly like the duplicate above, it is THEIR DATA and not an export fault. The
+   * statement goes on printing the name on file; the correction belongs on the staff record.
+   *
+   * ⚠️ SCREEN ONLY, NEVER ON THE DRAWN PAGE OR IN THE TEXT EXPORT. "This name looks unfinished" is our
+   * opinion about a staff record, and a printed statutory statement is not the place to publish it —
+   * the document must carry what is filed and nothing else.
+   */
+  unfinishedNames: Cp39UnfinishedName[];
 };
 
-/** One income tax reference number and every employee filed under it, in printed order. */
+/** One income tax reference number and every PERSON filed under it, in printed order. */
 export type Cp39DuplicateTin = { tin: string; names: string[] };
+
+/** One employee whose name is not yet a name, with the employee number that finds them. */
+export type Cp39UnfinishedName = { employmentId: string; name: string; employeeNo: string };
 
 /**
  * The header fields the READ must put on `ReportResult.meta.formHeader` and this file must find there.
@@ -368,18 +412,113 @@ export function cp39PrintedRows(rows: readonly Cp39FormRow[]): Cp39FormRow[] {
  *
  * Compared CASE-INSENSITIVELY and trimmed, because `sg90010101` and `SG90010101 ` are the same number
  * to LHDN and a comparison that missed that would report the one pair it was written to catch.
+ *
+ * ⚠️ IT COUNTS PEOPLE, NOT ROWS, AND THAT IS THE WHOLE CORRECTNESS OF IT. A row is an EMPLOYMENT; the
+ * tax number is stored ONCE PER PERSON (`employee_statutory_my_person_uq` on `person_id`). So one
+ * person holding two concurrent employments in one company — supported, tested (test/tp1-self-relief),
+ * and also what a terminate-and-rehire inside one month looks like — arrives as two rows carrying the
+ * same number BY CONSTRUCTION. Grouping rows reported that person as sharing a number with themselves,
+ * printed their name twice in the banner, and instructed the operator to "correct whichever record is
+ * wrong" about a single record that was entirely correct. A warning that fires on correct data is worse
+ * than no warning: it is how the real five duplicates get scrolled past.
  */
 export function duplicateCp39TaxNumbers(rows: readonly Cp39FormRow[]): Cp39DuplicateTin[] {
-  const byTin = new Map<string, Cp39DuplicateTin>();
+  const byTin = new Map<string, Cp39DuplicateTin & { seen: Set<string> }>();
   for (const r of rows) {
     const raw = str(r.tin).trim();
     if (!raw) continue;
     const key = raw.toUpperCase();
-    const g = byTin.get(key) ?? { tin: raw, names: [] };
-    g.names.push(str(r.name));
+    const g = byTin.get(key) ?? { tin: raw, names: [], seen: new Set<string>() };
+    // ONE ENTRY PER PERSON. A second employment of somebody already listed under this number adds
+    // nothing — it is the same record seen twice, not a second record to correct.
+    const who = cp39PersonKey(r);
+    if (!g.seen.has(who)) {
+      g.seen.add(who);
+      g.names.push(str(r.name));
+    }
     byTin.set(key, g);
   }
-  return [...byTin.values()].filter((g) => g.names.length > 1).sort((a, b) => a.tin.localeCompare(b.tin));
+  return [...byTin.values()]
+    .filter((g) => g.names.length > 1)
+    .map((g) => ({ tin: g.tin, names: g.names }))
+    .sort((a, b) => a.tin.localeCompare(b.tin));
+}
+
+/**
+ * WHICH PERSON A ROW BELONGS TO, for the one question above: two people, or one person twice?
+ *
+ * `personId` when the read supplied it — that is the authoritative answer and the production path
+ * (localization/my/cp39-form.ts puts it on every row). It may be absent, because `cp39FormFrom` takes
+ * plain shapes from a caller it does not control, and then the closest available identity is the PAIR
+ * the record itself carries: the identity card number AND the name, both normalised. Both, not either:
+ * the identity card alone would fuse two genuinely different people who share one wrong IC, and the
+ * name alone would fuse two employees who happen to be namesakes.
+ *
+ * When the row carries no identity at all it falls back to `employmentId`, i.e. to counting rows — the
+ * LOUDER answer. Knowing nothing about who somebody is must not silently suppress the warning.
+ */
+function cp39PersonKey(r: Cp39FormRow): string {
+  const pid = str(r.personId).trim();
+  if (pid) return `person:${pid}`;
+  const ic = str(r.newIc).replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+  const name = str(r.name).trim().replace(/\s+/g, ' ').toUpperCase();
+  if (!ic && !name) return `employment:${str(r.employmentId)}`;
+  return `identity:${ic}|${name}`;
+}
+
+/**
+ * 7ee14bbc — employees whose NAME is not yet a name: `TEST0001`, or blank. ONE ENTRY PER PERSON.
+ *
+ * THE SECOND WARNING THE APPROVED PLAN PROMISED ("warns you about duplicated tax numbers and unfinished
+ * employee names before you file rather than after"). 22 of the reporter's 40 people are named `TEST`
+ * followed by a number; those are the names stored on the staff records, so — exactly like a shared tax
+ * number — this is REPORTED, NEVER REPAIRED and NEVER BLOCKING. The statement prints the name on file.
+ *
+ * ⚠️ DELIBERATELY NARROW, because it accuses a staff record of being unfinished in front of the person
+ * who keyed it. `TEST`, `TEST0001`, `TEST_1`, `Test User` — the leading token has to BE the word "test",
+ * so `TESTA BINTI OSMAN` and `Testani` are names and are left alone. A blank name is unfinished by any
+ * reading: Nama Penuh Pekerja is a box on the form. Nothing else is guessed at; a false accusation here
+ * costs more than a missed placeholder, which the operator can still see in the table right beside it.
+ */
+const UNFINISHED_NAME = /^test(?![a-z])/i;
+
+export function unfinishedCp39Names(rows: readonly Cp39FormRow[]): Cp39UnfinishedName[] {
+  const out: Cp39UnfinishedName[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const name = str(r.name).trim();
+    if (name && !UNFINISHED_NAME.test(name)) continue;
+    const who = cp39PersonKey(r);
+    if (seen.has(who)) continue;
+    seen.add(who);
+    // The employee number travels with it because a BLANK name leaves nothing else to find them by.
+    out.push({ employmentId: str(r.employmentId), name, employeeNo: str(r.employeeNo) });
+  }
+  return out;
+}
+
+/**
+ * WHY THE SCHEDULE IS SHORTER THAN THE PAYROLL, in one sentence, in ONE place.
+ *
+ * Printed on the drawn cover page AND in the plain-text twin, from here rather than typed into each of
+ * them: it is a claim about the document's own arithmetic, and two copies of a claim are two claims that
+ * can drift. Bahasa Malaysia because it sits among the form's own Malay captions.
+ *
+ * ⚠️ WHAT IT MUST NOT SAY — and said, in 7ee14bbc's first build — is that the row count "matches the
+ * Bilangan Pekerja figures above". The row count is the count of people with AT LEAST ONE deduction;
+ * each Bilangan Pekerja counts one deduction only. One employee on PCB and one on a CP38 instalment is
+ * two rows under two figures of 1 and 1, and the document would have carried a false assurance about
+ * exactly the disagreement the reporter raised. A reconciliation sentence that can be false is worse
+ * than no sentence: it tells the reader to stop checking.
+ */
+export function cp39ScheduleScopeNote(form: Pick<Cp39Form, 'deductedEmployees' | 'employees'>): string {
+  return (
+    `Senarai pekerja: ${form.deductedEmployees} daripada ${form.employees} pekerja yang dibayar mempunyai ` +
+    'potongan PCB dan/atau CP38, dan hanya mereka disenaraikan. Ini penyata POTONGAN - pekerja tanpa ' +
+    'potongan tidak dicetak. Bilangan baris ialah bilangan pekerja yang mempunyai sekurang-kurangnya satu ' +
+    'potongan; setiap Bilangan Pekerja di atas mengira potongannya sendiri sahaja, jadi ia boleh berbeza ' +
+    'daripada bilangan baris.'
+  );
 }
 
 /**
@@ -470,6 +609,10 @@ export function cp39FormFrom(p: {
   const h = p.header ?? {};
   const rows: Cp39FormRow[] = p.rows.map((r) => ({
     employmentId: str(r.employmentId),
+    // WHO, not which job. '' when the caller has no person to give — `cp39PersonKey` says what happens
+    // then. The read supplies it (localization/my/cp39-form.ts) precisely so the duplicate-tax-number
+    // warning can tell one person's two employments from two people.
+    personId: str(r.personId),
     tin: str(r.tin ?? r.taxNo),
     name: str(r.name),
     // Read, not hardcoded, so the read stays the single source of the blank and this file has no opinion
@@ -526,6 +669,9 @@ export function cp39FormFrom(p: {
     // deducted and somebody who was not is still one number filed against two people, and the e-Data
     // file emits a record for both of them.
     duplicateTaxNumbers: duplicateCp39TaxNumbers(rows),
+    // Same reasoning, same row set: the upload file carries a name for everybody the run paid, so an
+    // unfinished one is just as wrong on somebody the printed schedule leaves out.
+    unfinishedNames: unfinishedCp39Names(rows),
   };
 }
 
@@ -642,11 +788,9 @@ export function cp39FormTextExport(form: Cp39Form): string {
   L.push('');
   // 7ee14bbc — SAID ON THE DOCUMENT, not only on the screen that produced it. A reader comparing the
   // schedule against a payroll summary otherwise sees a shorter list and has nothing telling them why.
-  L.push(
-    `Senarai pekerja: ${form.deductedEmployees} daripada ${form.employees} pekerja yang dibayar mempunyai ` +
-      'potongan PCB / CP38 dan disenaraikan di bawah — ini penyata POTONGAN, jadi yang tiada potongan ' +
-      'tidak dicetak dan bilangan baris sepadan dengan Bilangan Pekerja di atas.',
-  );
+  // The sentence itself lives in `cp39ScheduleScopeNote` so this and the drawn page cannot say two
+  // different things about the same arithmetic.
+  L.push(cp39ScheduleScopeNote(form));
   L.push('');
 
   for (const page of form.pages) {

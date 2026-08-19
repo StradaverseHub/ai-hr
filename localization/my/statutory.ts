@@ -2,7 +2,7 @@
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
  */
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
@@ -1161,6 +1161,56 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
       },
     });
     return { id: existing.id };
+  });
+}
+
+/**
+ * 7ee14bbc — WHO ELSE IN THIS COMPANY IS FILED UNDER THE SAME INCOME TAX REFERENCE NUMBER.
+ *
+ * THE SAME WARNING AS THE CP39 PREVIEW'S, AT THE POINT THE NUMBER IS TYPED. The approved plan asks for
+ * both halves in as many words — "a warning on the preview screen, before you print, when two employees
+ * share a tax reference number" and "the same warning where the number is entered, so a duplicate is
+ * caught at the point of typing rather than at filing time". Only the first half existed, so a duplicate
+ * keyed today was discovered on the CP39 at filing time, which is the failure the second half names.
+ * On the reporter's own records five numbers are each filed against two or three different people.
+ *
+ * ⚠️ OTHER PEOPLE, NOT OTHER EMPLOYMENTS. The row is keyed on `person_id`
+ * (`employee_statutory_my_person_uq`), so one person holding two concurrent employments in this company
+ * has ONE tax record, not two — `ne(person_id)` is what keeps this from reporting somebody as sharing a
+ * number with themselves, which is exactly the false alarm the preview banner had to be fixed for.
+ *
+ * ADVISORY, and it can only ever be advisory: it is a read. The save is not gated on it — LHDN, not us,
+ * decides whose number is right, and a screen that refused the save would leave HR unable to record
+ * what the employee's own EA form says while a support ticket is open.
+ *
+ * SCOPED TO ONE COMPANY because that is the scope of the CP39 this warning exists to protect, and RLS
+ * scopes the whole query to the tenant on top of it. A blank number is not a duplicate (that is the
+ * missing-number gate's business) and returns [] without querying.
+ */
+export function taxNumberSharedWithMY(
+  ctx: SessionContext,
+  p: { personId: string; companyId: string; taxNumber: string | null | undefined },
+): Promise<string[]> {
+  const wanted = (p.taxNumber ?? '').trim();
+  if (!wanted) return Promise.resolve([]);
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .selectDistinct({ personId: person.id, name: person.fullName })
+      .from(employeeStatutoryMy)
+      .innerJoin(person, eq(person.id, employeeStatutoryMy.personId))
+      .innerJoin(employment, eq(employment.personId, employeeStatutoryMy.personId))
+      .where(
+        and(
+          eq(employment.companyId, p.companyId),
+          ne(employeeStatutoryMy.personId, p.personId),
+          // Trimmed and case-folded on BOTH sides: `sg90010101` and `SG90010101 ` are one number to
+          // LHDN, and a comparison that missed that would miss the pair it was written to catch. Same
+          // rule as `duplicateCp39TaxNumbers`, which is what makes the two warnings agree.
+          eq(sql`upper(trim(${employeeStatutoryMy.taxNumber}))`, wanted.toUpperCase()),
+        ),
+      )
+      .orderBy(asc(person.fullName));
+    return rows.map((r) => r.name);
   });
 }
 

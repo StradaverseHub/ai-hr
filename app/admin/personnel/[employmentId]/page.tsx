@@ -327,6 +327,21 @@ export default async function EmployeePage({
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
   const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
+  // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview warns
+  // at filing time; the approved plan asks for the same warning on the screen where the number is typed,
+  // because five of the reporter's numbers are each filed against two or three different people and they
+  // only found out when the statement was produced. ADVISORY: it never gates the save (LHDN decides
+  // whose number is right, and HR must still be able to record what an employee's EA form says).
+  // OTHER PEOPLE only — the pack read excludes this person, so a second concurrent employment of the
+  // same person, which shares one tax record by construction, is not reported as a duplicate.
+  const taxNumberSharedWith =
+    admin && statutory?.taxNumber
+      ? ((await countryPack?.statutory.taxNumberSharedWith(s, {
+          personId: emp.personId,
+          companyId: emp.companyId,
+          taxNumber: statutory.taxNumber,
+        })) ?? [])
+      : [];
   // Feedback 57840a6e — the company's HRDF registration band never again feeds the Others Statutory
   // control's defaultValue. Pre-ticking its checkbox from that band is exactly how an untouched card pinned
   // an employee to an explicit No while the company was not_registered. The control is a tri-state select
@@ -2817,12 +2832,17 @@ export default async function EmployeePage({
           It keeps its OWN <form action={setTaxAction}> + Save button (embedded mode) rather than folding into the
           full-row setStatutoryAction form — the two-action design is preserved so one save can't overwrite the
           other. Rendered as a sibling of the statutory form inside the same Card (no nested forms). */}
+      {/* 7ee14bbc — `taxNumberSharedWith` (computed above) is the names of the OTHER people in this
+          company already filed under this employee's income tax reference number. Shown beside the
+          field itself so a duplicate is caught where it is typed rather than on the CP39 at filing
+          time. Advisory only: the save is never gated on it. */}
       <IdentityTaxCard
         embedded
         action={setTaxAction}
         employmentId={emp.employmentId}
         personId={emp.personId}
         derivedChildCount={eligibleChildReliefCount(dependents)}
+        taxNumberSharedWith={taxNumberSharedWith}
         defaults={{
           taxNumber: statutory?.taxNumber ?? null,
           taxCategory: statutory?.taxCategory ?? 1,

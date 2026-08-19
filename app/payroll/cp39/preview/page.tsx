@@ -293,6 +293,28 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
         </div>
       )}
 
+      {/* 7ee14bbc — UNFINISHED EMPLOYEE NAMES, the plan's second "before you file rather than after"
+          warning ("warns you about duplicated tax numbers and unfinished employee names"). 22 of the
+          reporter's 40 people are named TEST followed by a number, and a CP39 filed under those names
+          is filed under those names. ADVISORY and NEVER BLOCKING, exactly like the banner above and for
+          the same reason: it is their data, the statement prints the name on file, and the correction
+          belongs on the staff record. The employee number rides along because a BLANK name leaves
+          nothing else to find the person by. NOT printed on the document — see `unfinishedCp39Names`. */}
+      {form.unfinishedNames.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <p className="font-medium">{t('unfinishedNameTitle', { count: form.unfinishedNames.length })}</p>
+          <ul className="mt-1 space-y-0.5">
+            {form.unfinishedNames.map((u) => (
+              <li key={u.employmentId}>
+                <span className="font-mono">{u.name || '—'}</span>
+                {u.employeeNo ? ` — ${u.employeeNo}` : ''}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">{t('unfinishedNameHint')}</p>
+        </div>
+      )}
+
       {/* THE TWO COLUMNS WE CANNOT FILL, SAID ONCE, HERE. A blank column with no explanation reads as a
           bug and invites somebody to "fix" it by guessing a country code onto a tax document. */}
       <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

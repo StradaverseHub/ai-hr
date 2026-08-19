@@ -223,6 +223,12 @@ export interface CountryPack {
     setIc: MyStatutoryModule['setIcProfileMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
+    /**
+     * 7ee14bbc — every OTHER person in a company already filed under one income tax reference number.
+     * ADVISORY: the personnel screen shows it beside the field as it is typed, so a duplicate is caught
+     * there rather than on the CP39 at filing time. Never gates the save.
+     */
+    taxNumberSharedWith: MyStatutoryModule['taxNumberSharedWithMY'];
     setOthersStatutory: MyStatutoryModule['setOthersStatutoryMY'];
     /**
      * Feedback 57840a6e — one-shot, audit-gated repair of the employees an earlier UI pinned to an

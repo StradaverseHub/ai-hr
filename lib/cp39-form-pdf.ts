@@ -49,7 +49,7 @@
  * three sheets without a PDF in sight.
  */
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { formatMyIc, money, type Cp39Form, type Cp39FormPage } from './cp39-form';
+import { cp39ScheduleScopeNote, formatMyIc, money, type Cp39Form, type Cp39FormPage } from './cp39-form';
 
 /** A4 portrait, in points. */
 const W = 595.28;
@@ -238,14 +238,13 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     // ── 7ee14bbc: WHY THE SCHEDULE IS SHORTER THAN THE PAYROLL ────────────────────────────────────
     // Said ON THE DOCUMENT, immediately under the two Bilangan Pekerja figures it explains. Whoever
     // reconciles this against a payroll summary otherwise counts a shorter list with nothing to tell
-    // them why — which is the reporter's own complaint in reverse, and the reason the table and the
-    // counts must now be read as one statement rather than two.
-    for (const l of wrap(
-      `Senarai pekerja: ${form.deductedEmployees} daripada ${form.employees} pekerja yang dibayar mempunyai ` +
-        'potongan PCB / CP38 dan disenaraikan pada muka surat berikutnya. Ini penyata POTONGAN - pekerja ' +
-        'tanpa potongan tidak dicetak, jadi bilangan baris sepadan dengan Bilangan Pekerja di atas.',
-      6.8,
-    )) {
+    // them why — which is the reporter's own complaint in reverse.
+    //
+    // ⚠️ THE SENTENCE IS NOT WRITTEN HERE. `cp39ScheduleScopeNote` owns it and the text export prints
+    // the same call, because it is a claim about the document's own arithmetic and the first build of
+    // this shipped a copy of that claim that was FALSE — "bilangan baris sepadan dengan Bilangan
+    // Pekerja", which stops being true the moment one person has PCB and another has CP38.
+    for (const l of wrap(cp39ScheduleScopeNote(form), 6.8)) {
       text(l, M, 6.8, font, muted);
       y -= 9;
     }
