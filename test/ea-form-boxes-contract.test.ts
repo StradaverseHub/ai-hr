@@ -83,4 +83,54 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     const missing = EA_PART_B_COMPONENTS.filter((f) => !RENDERER.includes(`d.partB.${f}`));
     expect(missing, `Part B components that reach the total but are never printed: ${missing.join(', ')}`).toEqual([]);
   });
+
+  /**
+   * ⚠️ A BOX THAT PRINTS 0.00 MAKES A CLAIM. AN ABSENT BOX MAKES NONE.
+   *
+   * None of the manual Part B boxes can be derived from payroll: `payslip` persists only aggregate
+   * scalars (basic_salary / allowance / overtime_pay / bonus / gross_pay + a statutory jsonb), there is
+   * no payslip-line table, and every earning component is folded into `payslip.allowance` before the
+   * row is written. Their only source is an `ea_override` HR has keyed.
+   *
+   * Printing them unconditionally therefore asserted "this money does not exist" while the same money
+   * was printed two lines up under Allowances — a tenant paying a director RM 4,000/month of commission
+   * got "Fees (incl. director's fees) RM 0.00" beside an Allowances figure carrying the RM 48,000. That
+   * is an affirmative false statement on a C.P.8A, and it is worse than the box being absent, which is
+   * what the form did before this round.
+   *
+   * Source-shape, deliberately, for the same reason as every other case in this file: the defect is
+   * which renderer call a line uses, and no runtime value distinguishes "0.00 printed" from "omitted"
+   * without rasterising a PDF.
+   */
+  it('the manual Part B boxes are drawn only when HR has entered a figure', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../lib/ea-pdf.ts'), 'utf8');
+
+    // The guard exists and is a real zero test, not a truthiness check (0 and '' differ here).
+    expect(src).toMatch(/const optionalRow = \(label: string, v: number\) => \{/);
+    expect(src).toMatch(/if \(Math\.round\(\(Number\(v\) \|\| 0\) \* 100\) !== 0\) row\(label, rm\(v\)\);/);
+
+    // Every box whose ONLY source is an override goes through it…
+    for (const box of [
+      'directorFee', 'tipsPerquisites', 'taxBorneByEmployer', 'esos', 'gratuity', 'arrears',
+      'benefitsInKind', 'livingAccommodation', 'unapprovedFundRefund', 'compensation',
+    ]) {
+      expect(src, `${box} still prints unconditionally`).toContain(`optionalRow(t.${box}, d.partB.${box});`);
+      expect(src, `${box} is also drawn unconditionally somewhere`).not.toContain(
+        `row(t.${box}, rm(d.partB.${box}));`,
+      );
+    }
+
+    // …and the boxes that ARE payroll-derived keep printing even at zero, because there a zero is a
+    // fact we can stand behind. Suppressing these would hide a real "you were paid no bonus".
+    for (const [label, field] of [
+      ['grossSalary', 'grossSalary'],
+      ['bonus', 'bonus'],
+      ['allowancesPerquisites', 'allowances'],
+    ]) {
+      expect(src, `${field} must still print unconditionally`).toContain(
+        `row(t.${label}, rm(d.partB.${field}));`,
+      );
+    }
+  });
+
 });

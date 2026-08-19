@@ -252,21 +252,42 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   sectionHeader(t.sectionBEmploymentIncome);
   row(t.grossSalary, rm(d.partB.grossSalary));
   row(t.bonus, rm(d.partB.bonus));
-  row(t.directorFee, rm(d.partB.directorFee));
+  // ⚠️ A BOX THAT PRINTS 0.00 MAKES A CLAIM; AN ABSENT BOX MAKES NONE — and for these lines we are not
+  // entitled to the claim. Nothing in payroll can derive them: `payslip` persists only basic_salary /
+  // allowance / overtime_pay / bonus / gross_pay plus a `statutory` jsonb, there is no payslip-line
+  // table anywhere in db/schema.ts, and core/payroll.ts folds EVERY earning component into
+  // `payslip.allowance` before the row is written. `eaFormLine` on a component definition has no
+  // consumer on this path. So the only source for these boxes is an `ea_override` HR has keyed.
+  //
+  // Printing them as a derived 0.00 was therefore an ASSERTION THAT MONEY DOES NOT EXIST while the same
+  // money is printed two lines up under Allowances: a tenant paying a director RM 4,000/month of
+  // commission got "Fees (incl. director's fees) / commission  RM 0.00" beside an Allowances figure
+  // carrying the RM 48,000 — an affirmative false statement on a C.P.8A, and one that costs HR an
+  // amendment per box to undo. Before this round these boxes did not exist at all, so printing them
+  // unconditionally made the form actively wrong rather than merely incomplete.
+  //
+  // `optionalRow` prints the line when HR has entered a figure (an override, or a genuine non-zero) and
+  // omits it otherwise. Un-folding the components properly needs a persisted per-component breakdown —
+  // a new table, a migration, and a backfill that is impossible for slips already generated — which is
+  // its own round with its own plan, alongside the CP8D / Form E reconciliation.
+  const optionalRow = (label: string, v: number) => {
+    if (Math.round((Number(v) || 0) * 100) !== 0) row(label, rm(v));
+  };
+  optionalRow(t.directorFee, d.partB.directorFee);
   row(t.allowancesPerquisites, rm(d.partB.allowances));
-  row(t.tipsPerquisites, rm(d.partB.tipsPerquisites));
-  row(t.taxBorneByEmployer, rm(d.partB.taxBorneByEmployer));
-  row(t.esos, rm(d.partB.esos));
-  row(t.gratuity, rm(d.partB.gratuity));
-  row(t.arrears, rm(d.partB.arrears));
+  optionalRow(t.tipsPerquisites, d.partB.tipsPerquisites);
+  optionalRow(t.taxBorneByEmployer, d.partB.taxBorneByEmployer);
+  optionalRow(t.esos, d.partB.esos);
+  optionalRow(t.gratuity, d.partB.gratuity);
+  optionalRow(t.arrears, d.partB.arrears);
   // Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside the
   // allowances figure above, so it is NOT one of the components that sum into the total; LHDN's EA
   // reports exempt allowances in their own section).
   row(t.exemptAllowances, rm(d.partB.exemptAllowances ?? 0), { color: muted });
-  row(t.benefitsInKind, rm(d.partB.benefitsInKind));
-  row(t.livingAccommodation, rm(d.partB.livingAccommodation));
-  row(t.unapprovedFundRefund, rm(d.partB.unapprovedFundRefund));
-  row(t.compensation, rm(d.partB.compensation));
+  optionalRow(t.benefitsInKind, d.partB.benefitsInKind);
+  optionalRow(t.livingAccommodation, d.partB.livingAccommodation);
+  optionalRow(t.unapprovedFundRefund, d.partB.unapprovedFundRefund);
+  optionalRow(t.compensation, d.partB.compensation);
   totalRow(t.totalGrossRemuneration, rm(d.partB.gross));
 
   // C — Pension and other payments. 6036dab7: the section the form did not have at all.
