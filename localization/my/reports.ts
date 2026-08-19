@@ -3,7 +3,7 @@
  * payslips, per legal entity. Each ReportDef is registered on the pack; the generic core
  * (core/reporting.ts) lists / previews / records them without naming any MY-specific report.
  */
-import { and, eq, inArray, isNull, like } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import {
   assignment,
@@ -940,9 +940,11 @@ export type EaStatement = {
     terminatedOn: string | null;
     /** 6036dab7 — three Part A particulars the customer's field mapping asks for. All three already
      *  existed on tables this read ALREADY joins (employment.employee_code, employee_statutory_my.
-     *  passport_number) or on one join away (the current assignment's position title) — which is why the
-     *  plan says "no migration". `passport` is the same column cp39FormExtras reads for the same purpose;
-     *  a second passport source is a second answer to "which passport is on this person's tax paperwork". */
+     *  passport_number) or on one join away (the position title on the dated assignment) — which is why
+     *  the plan says "no migration". `passport` is the same column cp39FormExtras reads for the same
+     *  purpose; a second passport source is a second answer to "which passport is on this person's tax
+     *  paperwork". `jobTitle` is the title on the assignment IN FORCE at the end of the employment's year,
+     *  NOT on an open assignment — a leaver has none, and an EA is chiefly a leaver's document. */
     employeeNo: string | null;
     jobTitle: string | null;
     passport: string | null;
@@ -1066,23 +1068,47 @@ export async function eaStatement(
         terminatedOn: employment.terminatedOn,
         companyId: employment.companyId,
         companyName: company.legalName,
-        // 6036dab7 — Part A's three missing particulars. `employeeCode` and `passportNumber` are on tables
-        // this SELECT already reads; only the job title needed a join, and it is the same one
-        // cp39FormExtras uses for the preparer's Jawatan: the CURRENT assignment (valid_to null) and its
-        // position title. LEFT joined throughout — an employment with no position still renders Part A.
+        // 6036dab7 — Part A's two remaining particulars. `employeeCode` and `passportNumber` are on tables
+        // this SELECT already reads. The job title needs a dated lookup and is read separately below.
         employeeNo: employment.employeeCode,
         passport: employeeStatutoryMy.passportNumber,
-        jobTitle: position.title,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
-      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!info) return null;
+    // ── Part A's Jawatan — r209 fix: IT MUST SURVIVE TERMINATION ─────────────────────────────────────
+    // 6036dab7 read this off the OPEN assignment (`valid_to IS NULL`), copying cp39FormExtras, which asks
+    // about a serving preparer. An EA is chiefly issued to LEAVERS, and terminateEmploymentTx closes the
+    // open assignment at the termination date (core/org.ts) — so that predicate matched nobody who had
+    // left, and Part A printed '—' for the job title on every leaver's form while the employee number and
+    // passport beside it printed fine.
+    //
+    // So reconstruct the assignment IN FORCE on the last day this employment ran inside the tax year,
+    // which is what ADR-0001 prescribes and what core/org.ts getAssignmentAsOf / core/analytics.ts
+    // `assignmentEffectiveAt` already do. The upper bound is INCLUSIVE for the reason analytics documents
+    // for its termination cohort: the closing row carries valid_to = the termination date, and the
+    // employee held that job through their last day. `desc(validFrom)` settles a same-day handover (a
+    // change closes the old row and opens the new one on the SAME date) in favour of the newer row.
+    const yearEnd = `${p.year}-12-31`;
+    const titleAsOf = info.terminatedOn && info.terminatedOn < yearEnd ? info.terminatedOn : yearEnd;
+    const [asg] = await tx
+      .select({ jobTitle: position.title })
+      .from(assignment)
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          eq(assignment.employmentId, p.employmentId),
+          isNull(assignment.supersededAt),
+          lte(assignment.validFrom, titleAsOf),
+          or(isNull(assignment.validTo), gte(assignment.validTo, titleAsOf)),
+        ),
+      )
+      .orderBy(desc(assignment.validFrom))
+      .limit(1);
     // The employer this form speaks for. Defaults to where the employment sits now; for a past employer
     // in a transfer year it is that company, and the name + E number must BOTH come from it — a form
     // carrying one company's name and another's employer number is worse than either alone.
@@ -1241,7 +1267,7 @@ export async function eaStatement(
         hiredOn: info.hiredOn,
         terminatedOn: info.terminatedOn,
         employeeNo: info.employeeNo ?? null,
-        jobTitle: info.jobTitle ?? null,
+        jobTitle: asg?.jobTitle ?? null,
         passport: info.passport ?? null,
       },
       partB: {

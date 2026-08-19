@@ -4,6 +4,7 @@
  * non-Latin names (the WinAnsi safe-encode guard, until a Unicode font is embedded per ADR-0036) and on a
  * tax category outside the 1/2/3 map (the renderer's String(category) fallback).
  */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { renderEaPdf, type EaPdfData, type EaPdfLabels } from '../lib/ea-pdf';
@@ -207,12 +208,13 @@ describe('EA PDF renderer', () => {
   /**
    * 6036dab7 — EVERY LINE LANDS INSIDE A PAGE, AND pdf-lib WILL NOT TELL YOU OTHERWISE.
    *
-   * HONEST SCOPE: this passes today with or without the renderer's pagination guard. The mapped form is
-   * ~35 rows against the old ~20 and it still fits on one A4 page, with roughly one row of clearance.
-   * The assertion is here for the row after next, because drawing at a NEGATIVE y is not an error in
-   * pdf-lib — the text is placed outside the media box, and the result is a valid, openable, bigger PDF
-   * that has silently lost its deduction and contribution sections. Every other assertion in this file
-   * (`%PDF-`, byte length, no throw) passes that document, which is precisely why this one exists.
+   * HONEST SCOPE: this case uses the SHORT fixture disclaimer above and passes with or without the
+   * renderer's pagination guard — which is exactly how r209's two-page regression got past it. The two
+   * cases below (`the real message bundle` / `a disclaimer taller than the band`) are the ones that fail
+   * when the guard is wrong in either direction; this one stays because drawing at a NEGATIVE y is not an
+   * error in pdf-lib — the text is placed outside the media box, and the result is a valid, openable,
+   * bigger PDF that has silently lost its deduction and contribution sections. Every other assertion in
+   * this file (`%PDF-`, byte length, no throw) passes that document.
    */
   it('draws every line INSIDE a page — no row falls off the bottom as the form grows', async () => {
     const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, labels));
@@ -251,5 +253,122 @@ describe('EA PDF renderer', () => {
     // Nothing on the PDF says "not tracked" any more — the label is gone from the bundle entirely, so a
     // renderer that reintroduced the placeholder could not even compile against it.
     expect(printed).not.toContain('not tracked');
+  });
+});
+
+/**
+ * r209 fix — THE FORM IS ONE PAGE, AND THE FIXTURE ABOVE CANNOT SEE THAT.
+ *
+ * The fixture `disclaimer` in this file is one short sentence. The REAL one — `payroll.ea.disclaimer` in
+ * `messages/*.json`, which is what the route hands the renderer — wraps to four or five lines, and that is
+ * the difference between a form that fits and a form whose footnote band was measured against the CONTENT
+ * floor that exists to reserve room for it. The result was a two-page EA on 100% of downloads, page two
+ * holding nothing but the orphaned disclaimer (and the "amended" marker, when there was one).
+ *
+ * So this case renders with the shipped label bundle, in every locale the app has, and asserts the page
+ * COUNT. Reading a plausible-looking PDF back is not enough: the two-page document decoded perfectly.
+ */
+const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+
+/** The renderer's WinAnsi degrade (lib/ea-pdf.ts `safe`), replicated so a label from a non-Latin bundle
+ *  can be matched against the bytes actually DRAWN — 'Beberapa' survives, '由' is drawn as '?'. */
+const winAnsi = (s: string) => s.replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+
+const interp = (s: string, vars: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+
+/** The label bundle EXACTLY as app/me/ea/[employmentId]/pdf/route.ts builds it, minus next-intl. */
+function bundleFor(locale: string): EaPdfLabels {
+  const msgs = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8'));
+  const ea = msgs.payroll.ea as Record<string, string> & { override: Record<string, string> };
+  const L = (k: string) => {
+    const v = ea[k];
+    if (typeof v !== 'string') throw new Error(`messages/${locale}.json is missing payroll.ea.${k}`);
+    return v;
+  };
+  return {
+    title: L('title'),
+    yearEnded: interp(L('yearEnded'), { year: '2026', employer: 'Acme Sdn Bhd' }),
+    category1: L('category1'),
+    category2: L('category2'),
+    category3: L('category3'),
+    sectionAEmployeeParticulars: L('sectionAEmployeeParticulars'),
+    name: L('name'),
+    jobTitle: L('jobTitle'),
+    employeeNo: L('employeeNo'),
+    incomeTaxNo: L('incomeTaxNo'),
+    icNo: L('icNo'),
+    passportNo: L('passportNo'),
+    epfNo: L('epfNo'),
+    socsoNo: L('socsoNo'),
+    mtdCategory: L('mtdCategory'),
+    childrenTaxRelief: L('childrenTaxRelief'),
+    employmentPeriod: L('employmentPeriod'),
+    present: L('present'),
+    sectionBEmploymentIncome: L('sectionBEmploymentIncome'),
+    grossSalary: L('grossSalary'),
+    bonus: L('bonus'),
+    directorFee: L('directorFee'),
+    allowancesPerquisites: L('allowancesPerquisites'),
+    tipsPerquisites: L('tipsPerquisites'),
+    taxBorneByEmployer: L('taxBorneByEmployer'),
+    esos: L('esos'),
+    gratuity: L('gratuity'),
+    arrears: L('arrears'),
+    exemptAllowances: L('exemptAllowances'),
+    benefitsInKind: L('benefitsInKind'),
+    livingAccommodation: L('livingAccommodation'),
+    unapprovedFundRefund: L('unapprovedFundRefund'),
+    compensation: L('compensation'),
+    totalGrossRemuneration: L('totalGrossRemuneration'),
+    sectionCPensionOther: L('sectionCPensionOther'),
+    pension: L('pension'),
+    annuity: L('annuity'),
+    totalPensionOther: L('totalPensionOther'),
+    sectionDTotalDeductions: L('sectionDTotalDeductions'),
+    monthlyTaxDeduction: L('monthlyTaxDeduction'),
+    cp38Deductions: L('cp38Deductions'),
+    zakatViaSalary: L('zakatViaSalary'),
+    sectionEContributions: L('sectionEContributions'),
+    epfKwsp: L('epfKwsp'),
+    socso: L('socso'),
+    eisSip: L('eisSip'),
+    disclaimer: interp(L('disclaimer'), { year: '2026', version: '2026.3' }),
+    amendedNote: ea.override.amendedNote,
+  };
+}
+
+describe('EA PDF renderer — the real message bundle', () => {
+  it.each(LOCALES)('%s: the whole form is ONE page, with every line inside it', async (locale) => {
+    const real = bundleFor(locale);
+    // The fully-populated form WITH an amendment marker — the tallest document this renderer can produce.
+    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, real));
+
+    expect(items.length).toBeGreaterThan(40); // the whole form was drawn, not an early return
+    expect(pageHeights.length, `${locale}: the EA must be a single page`).toBe(1);
+
+    const off = items.filter((it) => it.y < 0 || it.y > pageHeights[it.page]);
+    expect(off.map((it) => `p${it.page} y=${it.y} ${it.text}`), `${locale}: every line inside its page`).toEqual([]);
+
+    // The three blocks that orphaned onto page two: Part E's last figure, the "amended" marker and the
+    // wrapped disclaimer. Named individually so a regression says WHICH one left, not just "2 pages".
+    expect(items.find((it) => it.text.includes('RM 118.80'))?.page, `${locale}: the EIS figure`).toBe(0);
+    expect(items.find((it) => it.text === winAnsi(real.amendedNote))?.page, `${locale}: the amended marker`).toBe(0);
+    expect(items[items.length - 1].page, `${locale}: the last disclaimer line`).toBe(0);
+  });
+
+  it('a disclaimer taller than the band still lands INSIDE the pages it spills onto', async () => {
+    // The pathological input the band's own page break exists for: no real bundle string is this long, so
+    // this is the only way to exercise it. Every line must still be on a page, and the spill must carry
+    // content — an empty trailing page is the failure mode the r209 fix removed from the normal path.
+    const longWinded = { ...bundleFor('en'), disclaimer: Array.from({ length: 400 }, (_, i) => `clause-${i}`).join(' ') };
+    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, longWinded));
+
+    expect(pageHeights.length).toBeGreaterThan(1);
+    const off = items.filter((it) => it.y < 0 || it.y > pageHeights[it.page]);
+    expect(off.map((it) => `p${it.page} y=${it.y} ${it.text}`), 'every line inside its page').toEqual([]);
+    // Every page carries drawn text — no page is created and left blank.
+    for (let p = 0; p < pageHeights.length; p++) {
+      expect(items.some((it) => it.page === p), `page ${p} must carry text`).toBe(true);
+    }
   });
 });

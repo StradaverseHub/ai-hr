@@ -20,7 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, terminateEmployment } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setPassportProfileMY, setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCp38 } from '../core/cp38';
@@ -153,6 +153,38 @@ describe('6036dab7 — EA statement against the customer field mapping', () => {
       0,
     );
     expect(after!.partB.gross).toBeCloseTo(componentSum, 2);
+  });
+
+  /**
+   * r209 fix — THE JAWATAN MUST SURVIVE TERMINATION, AND THE CASE ABOVE CANNOT SEE THAT.
+   *
+   * 6036dab7 read the job title off the OPEN assignment (`valid_to IS NULL`), and `terminateEmploymentTx`
+   * closes the open assignment at the termination date. So Part A printed '—' for the job title on every
+   * LEAVER's form — the population an EA is chiefly issued to — while the employee number and passport
+   * beside it printed fine. The active-employee case above passes throughout, which is exactly why the
+   * hole survived the round: this test asserts the SAME three particulars AFTER a termination.
+   */
+  it('Part A keeps the job title after termination — the assignment closes, the Jawatan does not', async () => {
+    const a = adminCtx(base);
+    const E = await seedEmployee(base);
+    const before = await employeeEaStatement(a, { employmentId: E.employmentId, year: '2026' });
+    expect(before!.employee.jobTitle).toBe('Executive');
+
+    await terminateEmployment(a, { employmentId: E.employmentId, terminationDate: '2026-02-28' });
+
+    // The state the old predicate could not see: the assignment is CLOSED, on the termination date.
+    const [asg] = await owner.db
+      .select({ validTo: schema.assignment.validTo })
+      .from(schema.assignment)
+      .where(eq(schema.assignment.employmentId, E.employmentId));
+    expect(asg.validTo).toBe('2026-02-28');
+
+    const after = await employeeEaStatement(a, { employmentId: E.employmentId, year: '2026' });
+    expect(after!.employee.terminatedOn).toBe('2026-02-28');
+    expect(after!.employee.jobTitle).toBe('Executive');
+    // The two particulars that never broke, asserted alongside so a regression is attributable.
+    expect(after!.employee.employeeNo).toBe('EA-0007');
+    expect(after!.employee.passport).toBe('A12345678');
   });
 
   it('every field in the EA vocabulary can be amended and read back off the statement', async () => {

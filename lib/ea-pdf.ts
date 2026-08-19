@@ -152,24 +152,44 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   };
   const hr = (yy: number) =>
     page.drawLine({ start: { x: M, y: yy }, end: { x: right, y: yy }, thickness: 0.7, color: lineCol });
+  /** Greedy word-wrap at `size`. Exists so the disclaimer band can be MEASURED before it is placed: a
+   *  band whose height is only known once it has been drawn cannot be kept off a page of its own. */
+  const wrapped = (s: string, size: number, maxW: number) => {
+    const out: string[] = [];
+    let line = '';
+    for (const w of s.split(/\s+/)) {
+      const trial = line ? `${line} ${w}` : w;
+      if (font.widthOfTextAtSize(trial, size) > maxW && line) {
+        out.push(line);
+        line = w;
+      } else line = trial;
+    }
+    if (line) out.push(line);
+    return out;
+  };
 
-  // ── 6036dab7 — PAGINATION, AND THE MEASURED REASON FOR IT ───────────────────────────────────────
+  // ── 6036dab7 — PAGINATION, AND THE CORRECTION r209 MADE TO IT ───────────────────────────────────
   // This renderer used to draw ~20 rows onto ONE fixed page and never look at the cursor, which was safe
   // only because the form was short. The customer's field mapping takes it to ~35 rows (Part A grows by
-  // three particulars, Part B by ten boxes, Part C is a whole new section). MEASURED after that change:
-  // the last contribution row lands at y≈98 and the wrapped disclaimer bottoms out at y≈26 — about one
-  // row of clearance left on an A4 page. It still fits, so nothing below is load-bearing TODAY, and this
-  // comment says so rather than claiming a fix for a bug that is not yet there.
+  // three particulars, Part B by ten boxes, Part C is a whole new section), so every row now asks for its
+  // space before it draws and takes a new page when the page is full.
   //
-  // It is here because of what happens on the row after next. pdf-lib does NOT complain when you draw at
-  // a negative y — it silently places the text outside the media box. So the form does not degrade when
-  // it overflows: it produces a valid, openable, larger-than-before PDF that has quietly lost its
-  // deduction and contribution sections off the bottom, and every assertion this file used to make
-  // (`%PDF-`, byte length, no throw) passes. Rather than leave the next box to discover that, every row
-  // asks for its space first and takes a new page when the page is full. test/ea-pdf.test.ts asserts the
-  // invariant that buys — every drawn line lands inside its page — which is what fails if this is removed
-  // and the form keeps growing.
-  const BOTTOM = M + 28; // keep clear of the disclaimer band
+  // THE CORRECTION. The first version of this comment claimed the guard "is not load-bearing TODAY" and
+  // that the form still fits on one A4 page. Both halves were FALSE: the guard fired on 100% of renders.
+  // The two floors below were one floor. `BOTTOM` is where the CONTENT stops so that the footnote band
+  // underneath it still has room — and the band was measured against `BOTTOM` too, so it asked for space
+  // that BOTTOM had already reserved *for it*, found none, and took a page of its own. Every EA came out
+  // two pages, page two holding nothing but the orphaned disclaimer. Hence the second floor: the band is
+  // a footnote and may sit in the bottom margin the rows keep clear of; only the page edge stops it.
+  //
+  // The invariant the guard buys is real and unchanged: pdf-lib does NOT complain when you draw at a
+  // negative y — it silently places the text outside the media box — so an overflowing form is a valid,
+  // openable, larger-than-before PDF that has quietly lost its deduction and contribution sections, and
+  // `%PDF-`, byte length and no-throw all pass it. test/ea-pdf.test.ts pins BOTH ends: one page for the
+  // real message-bundle labels in every locale, and every drawn line inside its page when the disclaimer
+  // is long enough to genuinely need a second one.
+  const BOTTOM = M + 28; // CONTENT floor — rows stop here so the footnote band below them still fits
+  const FOOT = 12; // PAGE floor — the footnote band may use the bottom margin, but never leaves the page
   const newPage = () => {
     page = doc.addPage(A4);
     y = page.getHeight() - M;
@@ -268,38 +288,37 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   row(t.socso, rm(d.partE.socso));
   row(t.eisSip, rm(d.partE.eis));
 
+  // ── Footnote band: the 1.2.6 "Amended" marker + the disclaimer ─────────────────────────────────────
+  // MEASURED AS A WHOLE AND PLACED AS A WHOLE, against FOOT (the page floor) and not BOTTOM (the content
+  // floor BOTTOM already reserved for this band). The marker is part of the band, not a row above it —
+  // measured separately it orphaned onto its own page for exactly the same reason the disclaimer did.
+  //
+  // `bandH` mirrors the drawing that follows, step for step: 6 down to the marker's baseline + 4 after
+  // it, then 8 + 8 down to the first disclaimer baseline, then 10 per further line.
+  const discLines = wrapped(safe(t.disclaimer), 7.5, right - M);
+  const noteH = d.overrides && d.overrides.length > 0 ? 10 : 0;
+  const bandH = noteH + 16 + Math.max(0, discLines.length - 1) * 10;
+  if (y - bandH < FOOT) newPage();
+
   // 1.2.6 — "Amended" marker: print a footnote when ≥1 EA field was overwritten by HR (the merge already
   // overlaid the figures above). Disclosure of which figures were amended is a compliance decision flagged
   // in the plan; the default is this neutral marker.
-  if (d.overrides && d.overrides.length > 0) {
-    ensure(16);
+  if (noteH) {
     y -= 6;
     text(t.amendedNote, M, 8, bold, accent);
     y -= 4;
   }
 
-  // Disclaimer band
-  ensure(30);
   y -= 8;
   hr(y + 6);
   y -= 8;
-  // Wrap the disclaimer across the content width so it never runs off the page edge.
-  const words = safe(t.disclaimer).split(/\s+/);
-  const maxW = right - M;
-  let line = '';
-  for (const w of words) {
-    const trial = line ? `${line} ${w}` : w;
-    if (font.widthOfTextAtSize(trial, 7.5) > maxW && line) {
-      text(line, M, 7.5, font, muted);
-      y -= 10;
-      // The band itself wraps to several lines and must not run off the foot either.
-      if (y < M) newPage();
-      line = w;
-    } else {
-      line = trial;
-    }
+  for (const l of discLines) {
+    // Only a disclaimer taller than a whole page reaches this — the measurement above has already placed
+    // a band that fits. It stays so an absurd string spills onto a second page rather than off this one.
+    if (y < FOOT) newPage();
+    text(l, M, 7.5, font, muted);
+    y -= 10;
   }
-  if (line) text(line, M, 7.5, font, muted);
 
   return doc.save();
 }
