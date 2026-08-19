@@ -9075,6 +9075,7 @@
     "colReporter": "แจ้งโดย",
     "colStatus": "สถานะ",
     "colUpdated": "อัปเดตล่าสุด",
+    "listTruncated": "แสดง {shown, number} รายการแรกจากทั้งหมด {total, number} รายการตามลำดับนี้ สลับ อัปเดตล่าสุด หรือเลือกสถานะ เพื่อดูรายการที่เหลือ",
     "status_open": "เปิด",
     "status_planned": "แผนพร้อม",
     "status_approved": "อนุมัติแล้ว",

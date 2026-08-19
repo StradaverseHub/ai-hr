@@ -9075,6 +9075,7 @@
     "colReporter": "提交人",
     "colStatus": "状态",
     "colUpdated": "最近更新",
+    "listTruncated": "按此排序仅显示前 {shown, number} 条，共 {total, number} 条。点击「最近更新」切换顺序，或选择状态，即可查看其余条目。",
     "status_open": "待处理",
     "status_planned": "方案就绪",
     "status_approved": "已批准",

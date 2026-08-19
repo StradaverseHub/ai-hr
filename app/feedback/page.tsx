@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { feedbackStatusCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
+import { FEEDBACK_LIST_LIMIT, feedbackStatusCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { DEFAULT_FEEDBACK_SORT, parseFeedbackSort } from '@/lib/feedback-sort';
 import type { FeedbackCategory, FeedbackStatus } from '@/db/schema';
@@ -99,6 +99,15 @@ export default async function FeedbackPage({
   const countOf = (st: string) => counts.find((c) => c.status === st)?.count ?? 0;
   const total = counts.reduce((a, c) => a + c.count, 0);
 
+  // e14334ef — SAY when the cut bites. listFeedback returns at most FEEDBACK_LIST_LIMIT rows while the
+  // chips above come from feedbackStatusCounts, which is uncapped: on production that paints "All 517"
+  // over a list of 200. Harmless while the order was fixed; not harmless now that the heading flips it,
+  // because oldest-first does not reverse the list you were reading, it swaps in a largely disjoint set
+  // (the 200 stalest instead of the 200 freshest). ClientPager's own truncation notice cannot cover this
+  // — its ceiling is 2000 and its total is derived from the array it was handed, which is the cut one.
+  const scopedTotal = activeStatus ? countOf(activeStatus) : total;
+  const truncated = rows.length >= FEEDBACK_LIST_LIMIT && scopedTotal > rows.length;
+
   const chipBase = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition';
 
   return (
@@ -176,6 +185,11 @@ export default async function FeedbackPage({
 
       <Card className="overflow-hidden">
         <SectionHeader title={activeStatus ? t(`status_${activeStatus}`) : t('listTitle')} count={rows.length} />
+        {truncated && (
+          <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+            {t('listTruncated', { shown: rows.length, total: scopedTotal })}
+          </p>
+        )}
         {rows.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (

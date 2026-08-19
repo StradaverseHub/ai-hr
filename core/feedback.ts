@@ -785,6 +785,20 @@ export type FeedbackRow = {
   updatedAt: Date;
 };
 
+/**
+ * How many rows the board query returns — a hard cut, applied AFTER the ORDER BY (e14334ef).
+ *
+ * It is exported because it is not an implementation detail any more. Production holds 517 items, so on
+ * an unfiltered board this drops 317 of them, and the ordering the reporter now controls decides WHICH
+ * 317: flipping to oldest-first does not reverse the list they were looking at, it swaps in a largely
+ * disjoint set. `app/feedback/page.tsx` compares this against `feedbackStatusCounts` (which is NOT
+ * capped) and says so on screen rather than letting "All 517" sit above a list of 200.
+ *
+ * ClientPager's own truncation notice cannot cover this: its ceiling is 2000 and its total is computed
+ * from the array it was handed, which is this already-truncated one.
+ */
+export const FEEDBACK_LIST_LIMIT = 200;
+
 export function listFeedback(
   ctx: SessionContext,
   opts: { status?: FeedbackStatus; category?: FeedbackCategory; sort?: FeedbackSort } = {},
@@ -822,7 +836,7 @@ export function listFeedback(
       // boundary deterministic rather than left to the planner, and they follow the primary direction so
       // "oldest first" means oldest all the way down.
       .orderBy(dir(feedbackRequest.updatedAt), dir(feedbackRequest.createdAt), asc(feedbackRequest.id))
-      .limit(200) as Promise<FeedbackRow[]>,
+      .limit(FEEDBACK_LIST_LIMIT) as Promise<FeedbackRow[]>,
   );
 }
 

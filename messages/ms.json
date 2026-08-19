@@ -9075,6 +9075,7 @@
     "colReporter": "Dilaporkan oleh",
     "colStatus": "Status",
     "colUpdated": "Kemas kini terakhir",
+    "listTruncated": "Memaparkan {shown, number} pertama daripada {total, number} dalam susunan ini. Tukar Kemas kini terakhir, atau pilih satu status, untuk melihat yang selebihnya.",
     "status_open": "Terbuka",
     "status_planned": "Pelan sedia",
     "status_approved": "Diluluskan",

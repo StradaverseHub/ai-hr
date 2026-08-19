@@ -66,6 +66,27 @@ describe('client-side list grids are paginated', () => {
     expect(en.feedback.bulkPageScope).toBeTruthy();
   });
 
+  // The feedback board is the one grid that is CUT before it ever reaches the browser: listFeedback
+  // returns 200 of production's 517. ClientPager's own truncation notice structurally cannot cover that
+  // — its ceiling is 2000 and its total is derived from the array it was handed, which is the cut one —
+  // so the server page has to disclose it, or "All 517" sits above a list of 200 and flipping Last
+  // updated swaps in a largely disjoint set with nothing on screen saying so.
+  //
+  // Pinned across BOTH files: the defect lives in the contract between the cap and the disclosure, and a
+  // unit test of either half passes while the two disagree. No DB test can see it either — the suite
+  // never builds a tenant with more than a handful of feedback rows.
+  it('the feedback board discloses the server-side cap the client pager cannot see', () => {
+    const core = read('core/feedback.ts');
+    expect(core).toMatch(/export const FEEDBACK_LIST_LIMIT = \d+;/);
+    expect(core, 'the cap must BE the constant, not a literal beside it').toMatch(/\.limit\(FEEDBACK_LIST_LIMIT\)/);
+    const page = read('app/feedback/page.tsx');
+    expect(page, 'the page compares the returned row count against the cap').toMatch(/FEEDBACK_LIST_LIMIT/);
+    expect(page, 'and renders the notice').toMatch(/listTruncated/);
+    const en = JSON.parse(read('messages/en.json')) as { feedback: Record<string, string> };
+    expect(en.feedback.listTruncated).toMatch(/\{shown, number\}/);
+    expect(en.feedback.listTruncated).toMatch(/\{total, number\}/);
+  });
+
   // The client pager exists precisely because the server one cannot be awaited inside a client grid.
   it('the client pager is a client module and does not import the server pager', () => {
     const src = read('components/client-pager.tsx');

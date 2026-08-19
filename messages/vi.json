@@ -9075,6 +9075,7 @@
     "colReporter": "Người gửi",
     "colStatus": "Trạng thái",
     "colUpdated": "Cập nhật lần cuối",
+    "listTruncated": "Đang hiển thị {shown, number} mục đầu tiên trong tổng số {total, number} theo thứ tự này. Đổi chiều Cập nhật lần cuối, hoặc chọn một trạng thái, để xem phần còn lại.",
     "status_open": "Đang mở",
     "status_planned": "Kế hoạch sẵn sàng",
     "status_approved": "Đã duyệt",

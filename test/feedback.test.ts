@@ -235,16 +235,44 @@ describe('FB-1 — feedback capture + review (ADR-0043)', () => {
         title: 'FB Filter Second',
         description: 'second',
       });
-      // Touch the FIRST one twice over, leaving it the most recently moved `open` item of the pair.
-      await setFeedbackPlan(adminCtx(base), { feedbackId: first, plan: 'p', model: 'm' });
+      // A third item stays `open` and is never touched — it is what the FILTER has to remove. Without it
+      // the case could not tell a working filter from no filter at all.
+      const { id: untouched } = await submitFeedback(rctx, {
+        reporterEmploymentId: R.employmentId,
+        category: 'issue',
+        title: 'FB Filter Untouched',
+        description: 'untouched',
+      });
+
+      // BOTH of the others are driven to `contested`, so the filtered set has two rows and the ordering
+      // assertion below can actually fail. SECOND is contested FIRST, deliberately: that leaves FIRST —
+      // the older of the two — carrying the later stamp, so the expected order is the OPPOSITE of the
+      // order they were raised in. An ORDER BY that fell back to created_at would satisfy a same-order
+      // pair silently; this pair rejects it.
+      await setFeedbackPlan(adminCtx(base), { feedbackId: first, plan: 'p1', model: 'm' });
+      await setFeedbackPlan(adminCtx(base), { feedbackId: second, plan: 'p2', model: 'm' });
+      await contestFeedbackPlan(rctx, { feedbackId: second, reason: 'nor that' });
       await contestFeedbackPlan(rctx, { feedbackId: first, reason: 'not that' });
 
+      // The filter NARROWS: the untouched `open` item is gone, both contested ones are present.
       const contested = await listFeedback(adminCtx(base), { status: 'contested' });
-      expect(contested.map((r) => r.id)).toContain(first);
-      expect(contested.map((r) => r.id)).not.toContain(second);
-      // Descending is the default, so the filtered page is still newest-touched first.
-      const stamps = contested.map((r) => r.updatedAt.getTime());
-      expect([...stamps].sort((a, b) => b - a)).toEqual(stamps);
+      const dFirst = contested.findIndex((r) => r.id === first);
+      const dSecond = contested.findIndex((r) => r.id === second);
+      expect(dFirst, 'the first-raised contested item must survive the filter').toBeGreaterThanOrEqual(0);
+      expect(dSecond, 'the second-raised contested item must survive the filter').toBeGreaterThanOrEqual(0);
+      expect(contested.map((r) => r.id)).not.toContain(untouched);
+      // The sort ORDERS what is left, by last action: FIRST was contested last, so it leads — even though
+      // it is the older item and creation order would have put it second.
+      expect(dFirst, 'the most recently contested item leads the filtered page').toBeLessThan(dSecond);
+      expect(contested[dFirst]!.updatedAt.getTime()).toBeGreaterThan(contested[dSecond]!.updatedAt.getTime());
+      expect(contested[dFirst]!.createdAt.getTime()).toBeLessThan(contested[dSecond]!.createdAt.getTime());
+
+      // …and the flip applies WITHIN the filter rather than resetting it.
+      const oldestFirst = await listFeedback(adminCtx(base), { status: 'contested', sort: 'updated_asc' });
+      expect(oldestFirst.findIndex((r) => r.id === second)).toBeLessThan(
+        oldestFirst.findIndex((r) => r.id === first),
+      );
+      expect(oldestFirst.map((r) => r.id)).not.toContain(untouched);
     });
   });
 });

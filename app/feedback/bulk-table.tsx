@@ -67,8 +67,11 @@ export function BulkTable({
   // Same marks as components/loan-list.tsx and components/salary-history-table.tsx.
   const sortMark = sort === 'updated_asc' ? ' ▲' : ' ▼';
 
-  // Paging happens AFTER the caller's ordering and filtering, over the full set — see client-pager.tsx.
-  // This is the product's largest list (517 rows on production) and the one the reporter noticed missing.
+  // Paging happens AFTER the SERVER's ordering and filtering — see client-pager.tsx. It does NOT page over
+  // the full set: listFeedback cuts the board at FEEDBACK_LIST_LIMIT (200) rows, so `rows` is the top of
+  // the server's order, not all 517 production items. That is why the heading above is a link rather than
+  // a client sort, and why app/feedback/page.tsx prints how many rows the cut left behind.
+  // (This comment used to claim "over the full set"; it was written before the cap mattered to the reader.)
   const q = useClientPageQuery();
   const { rows: pageRows, state } = paginateRows(rows, q);
   const pageIds = new Set(pageRows.map((r) => r.id));

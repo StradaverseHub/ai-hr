@@ -9075,6 +9075,7 @@
     "colReporter": "Raised by",
     "colStatus": "Status",
     "colUpdated": "Last updated",
+    "listTruncated": "Showing the first {shown, number} of {total, number} in this order. Flip Last updated, or pick a status, to reach the rest.",
     "status_open": "Open",
     "status_planned": "Plan ready",
     "status_approved": "Approved",
