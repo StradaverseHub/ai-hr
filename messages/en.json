@@ -4547,6 +4547,8 @@
           "empty": "No processed payroll results match the selected filters.",
           "showBreakdown": "Show breakdown",
           "hideBreakdown": "Hide breakdown",
+          "splitBadge": "Split",
+          "coverageLine": "Employed by this company {from} to {to}",
           "totalEmployerContributions": "Total employer contributions",
           "capped": "Showing the {cap} most recent results. Narrow the filters above to see earlier months.",
           "itemsHeading": "Itemised payroll items",
@@ -4604,6 +4606,8 @@
           "colCode": "Payment item code",
           "colDescription": "Payment item description",
           "colCycle": "Pay cycle",
+          "colCompany": "Company",
+          "colCoverage": "Covered period",
           "colTotal": "Total",
           "section": {
             "wagebase": "Wage base",

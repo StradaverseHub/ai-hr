@@ -14,6 +14,9 @@ import { deriveHistoryBreakdown } from './history-breakdown';
 // question from the one above: a record line's stored name was a free-text remark until r196, so it is
 // repaired from the catalogue at READ time with the words that were typed kept beside it as the remark.
 import { payItemLabel, recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
+// 3c88d593 — which days of the period a payslip claims, from the payslip's OWN record. Two lines for one
+// month is otherwise indistinguishable from a duplicate on this list.
+import { payslipSegmentOf } from '@/core/payslip-segment';
 import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
 // 417d4937 request 10 — the one-off transactions behind this run's recorded items, listed BESIDE them
 // (never matched to them: see the component's own note on why a (code, amount) join would be worse).
@@ -136,6 +139,11 @@ export function HistoryTable({
             const b = deriveHistoryBreakdown(r);
             const st = b.st;
             const isOpen = open.has(r.id);
+            // 3c88d593 — null for every payslip that covered its whole month, which is every payslip this
+            // system issued until an entity transfer split one. Read from the slip's own coverage record,
+            // never re-derived from today's assignment history: a correction made afterwards must not be
+            // able to restate what an already-issued document covered.
+            const segment = payslipSegmentOf(r, r.payPeriod);
             return (
               <Fragment key={r.id}>
                 <tr className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => toggle(r.id)}>
@@ -155,7 +163,24 @@ export function HistoryTable({
                       </span>
                     </button>
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
+                  {/* 3c88d593 — WHY THERE ARE TWO AUGUST LINES. This list already showed a transferred
+                      employee's two results as two rows, and nothing on it said which days each employer
+                      paid for, so the second row read as a duplicate. The badge names the reason and the
+                      line under it gives the dates, in the same wording the payslip itself prints. An
+                      unsegmented payslip renders exactly the single period it always did. */}
+                  <td className="px-4 py-2.5 align-top tabular-nums">
+                    <span className="block">{r.payPeriod}</span>
+                    {segment && (
+                      <>
+                        <Badge variant="info" className="mt-1">
+                          {t('view.history.splitBadge')}
+                        </Badge>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          {t('view.history.coverageLine', { from: segment.from, to: segment.to })}
+                        </span>
+                      </>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">
                     {t(`individual.cycle.${r.runType}`)}
                     {r.runSeq > 1 ? ` #${r.runSeq}` : ''}

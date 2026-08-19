@@ -34,6 +34,9 @@ import {
 // test/history-pivot.test.ts against fixtures: the fixtures catch a wrong fold, this catches a wrong
 // decomposition of what the payslip actually stores.
 import { pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
+// 3c88d593 — the ONE rule for which days a payslip claims. Read here so the assertion below tests what
+// the SCREENS ask ("is this slip segmented?"), not merely that two columns came back non-null.
+import { payslipSegmentOf } from '../core/payslip-segment';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 /** A second company in the same tenant — the out-of-scope side of every fencing assertion. */
@@ -325,6 +328,28 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
 
     // Unused: bJun keeps the one-regular-run-per-month invariant honest in this fixture.
     void bJun;
+  });
+
+  it('history: the coverage window rides along, and an unsplit month reads as the whole period (3c88d593)', async () => {
+    // Until r206 this read selected neither coverage column — only `payslipForReview` did — so
+    // Transaction Detail could not tell a 1–10 August slip from a whole-August one and summed both
+    // employers into a single cell. Two columns, no figure touched.
+    const a = adminCtx(base);
+    await hirePayrollReady(a, base.companyId, base.deptA, 'Cover One', '900101011234');
+    const b = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: b.batchId });
+
+    const [r] = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] });
+    // The kernel stamps the whole period on every slip it writes (core/payroll.ts), split or not.
+    expect([r.coverageFrom, r.coverageTo]).toEqual(['2026-05-01', '2026-05-31']);
+    // …and nobody split this month, so the shared rule reports NO segment — which is what makes every
+    // screen render exactly what it rendered before this item existed.
+    expect(payslipSegmentOf(r, r.payPeriod)).toBeNull();
+    // The pivot therefore grows no coverage caption, and the company travels onto the row so a
+    // transferred employee's two employers can never share one cell.
+    const grid = pivotHistoryGrid({ rows: [r], year: 2026 });
+    expect(grid.rows.some((row) => row.segments != null)).toBe(false);
+    expect(grid.rows.every((row) => row.companyId === base.companyId)).toBe(true);
   });
 
   it('history: year/month + employee filters narrow; scope fencing excludes the other company; empty scope fails closed', async () => {

@@ -4547,6 +4547,8 @@
           "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih.",
           "showBreakdown": "Tunjuk pecahan",
           "hideBreakdown": "Sembunyikan pecahan",
+          "splitBadge": "Pecahan",
+          "coverageLine": "Bekerja dengan syarikat ini {from} hingga {to}",
           "totalEmployerContributions": "Jumlah caruman majikan",
           "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
           "itemsHeading": "Butiran item gaji",
@@ -4604,6 +4606,8 @@
           "colCode": "Kod item bayaran",
           "colDescription": "Keterangan item bayaran",
           "colCycle": "Kitaran gaji",
+          "colCompany": "Syarikat",
+          "colCoverage": "Tempoh diliputi",
           "colTotal": "Jumlah",
           "section": {
             "wagebase": "Asas upah",

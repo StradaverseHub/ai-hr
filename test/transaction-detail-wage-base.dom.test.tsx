@@ -123,6 +123,14 @@ function renderGrid(rows: ProcessedPayslipViewRow[], months = [1, 2]) {
 /** The `<tr>` a row's leftmost code cell belongs to. */
 const rowByCode = (code: string) => screen.getAllByText(code)[0].closest('tr')!;
 
+/**
+ * How many IDENTITY cells precede the first figure on a row: code, description, pay cycle and — since
+ * 3c88d593 gave Transaction Detail a Company column so a transferred employee's two employers stop
+ * sharing a cell — the paying company. Declared once because every index below counts from it, and a
+ * fifth identity column would otherwise mean four separate off-by-one failures again.
+ */
+const IDENT_COLS = 4;
+
 describe('0253dc7c — the wage base block renders, with captions rather than key paths', () => {
   it('shows every wage-base caption and the section heading — no MISSING_MESSAGE', () => {
     renderGrid([A0006_JANUARY]);
@@ -148,8 +156,8 @@ describe('0253dc7c — the wage base block renders, with captions rather than ke
     renderGrid([A0006_JANUARY], [1]);
     for (const code of ['EPF_WAGE', 'SOCSO_WAGE', 'EIS_WAGE', 'SKBBK_WAGE', 'PCB_WAGE', 'HRDF_WAGE']) {
       const cells = within(rowByCode(code)).getAllByRole('cell');
-      // [code, description, cycle, Jan, total]
-      expect(cells[3].textContent, code).toBe('4,777.42');
+      // [code, description, cycle, company, Jan, total]
+      expect(cells[IDENT_COLS].textContent, code).toBe('4,777.42');
     }
   });
 
@@ -158,13 +166,13 @@ describe('0253dc7c — the wage base block renders, with captions rather than ke
     const grid = renderGrid([A0006_JANUARY, PRE_R187], [1, 2]);
     expect(grid.basesNotRecorded).toBe(true);
     const cells = within(rowByCode('EPF_WAGE')).getAllByRole('cell');
-    expect(cells[3].textContent).toBe('4,777.42'); // January, recorded
-    expect(cells[4].textContent).toBe('—'); //         February, not recorded
-    expect(cells[4].textContent).not.toBe('0.00');
-    expect(cells[4].textContent).not.toContain('5,100'); // …and specifically not gross pay
+    expect(cells[IDENT_COLS].textContent).toBe('4,777.42'); //     January, recorded
+    expect(cells[IDENT_COLS + 1].textContent).toBe('—'); //        February, not recorded
+    expect(cells[IDENT_COLS + 1].textContent).not.toBe('0.00');
+    expect(cells[IDENT_COLS + 1].textContent).not.toContain('5,100'); // …and specifically not gross pay
     // The total is the recorded months only, and the caption explains the dash rather than leaving it
     // to read as a broken screen.
-    expect(cells[5].textContent).toBe('4,777.42');
+    expect(cells[IDENT_COLS + 2].textContent).toBe('4,777.42');
     expect(screen.getByText(/did not record the wage each contribution was charged on/)).toBeTruthy();
   });
 });
@@ -183,7 +191,7 @@ describe('0253dc7c — the statutory subject columns', () => {
     // UNPAID LEAVE is ticked into all four, which is the reporter's own case: the row that was doing
     // nothing to any wage base and now does.
     const upl = within(rowByCode('UPL')).getAllByRole('cell');
-    expect(upl.slice(3, 8).map((c) => c.textContent)).toEqual(['Y', 'Y', 'Y', 'Y', 'Y']);
+    expect(upl.slice(IDENT_COLS, IDENT_COLS + 5).map((c) => c.textContent)).toEqual(['Y', 'Y', 'Y', 'Y', 'Y']);
   });
 
   it('a row that is not a pay item has BLANK subject cells, never N', async () => {
@@ -193,7 +201,7 @@ describe('0253dc7c — the statutory subject columns', () => {
     // item, so none of them has a subject answer to give.
     for (const code of ['EPF_WAGE', 'EPF_EE', 'GROSS']) {
       const cells = within(rowByCode(code)).getAllByRole('cell');
-      expect(cells.slice(3, 8).map((c) => c.textContent), code).toEqual(['', '', '', '', '']);
+      expect(cells.slice(IDENT_COLS, IDENT_COLS + 5).map((c) => c.textContent), code).toEqual(['', '', '', '', '']);
     }
   });
 
