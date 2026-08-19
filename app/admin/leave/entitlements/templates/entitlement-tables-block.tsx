@@ -273,6 +273,16 @@ export async function EntitlementTablesBlock({
   const allHealth = scoped
     ? []
     : leaveConfigHealthAll({ leaveTypes, templates, rules, grades: activeGrades, today });
+  /**
+   * The leave types whose SINGLE table applies to everyone with no rule (r193 fault 3). Needed BY TYPE, not
+   * as one boolean: the unfiltered mount shows every type's tables in one list, so a single flag would
+   * either warn on a healthy Hospitalization row or stay silent on a broken Medical one. Built from
+   * whichever health set this mount computed — the same derivation, so the table's marker and the card
+   * above it can never disagree about which zero is a fault.
+   */
+  const soleTableTypeIds = new Set(
+    (scopedHealth ? [scopedHealth] : allHealth).filter((h) => h.soleTableApplies).map((h) => h.leaveTypeId),
+  );
 
   /** A rule lineage's CURRENT version — a retired lineage has no version in force, so "in force" would hide
    *  the very rules whose expiry is the finding. Latest `validFrom` wins; `rules` arrives ascending. */
@@ -365,7 +375,7 @@ export async function EntitlementTablesBlock({
                     {x.validTo == null ? (ruleCounts.get(x.lineageId) ?? 0) : dash}
                     {x.validTo == null &&
                     (ruleCounts.get(x.lineageId) ?? 0) === 0 &&
-                    !(scopedHealth?.soleTableApplies ?? false) ? (
+                    !soleTableTypeIds.has(x.leaveTypeId) ? (
                       <span className="mt-0.5 block font-medium text-amber-700 dark:text-amber-500">
                         {t('ruleNonePointsHere')}
                       </span>

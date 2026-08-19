@@ -331,10 +331,46 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
     }
   });
 
+  /**
+   * The keys these two files resolve through a MAP or from a MULTI-NAMESPACE file, which is exactly the
+   * class `test/i18n-coverage.test.ts` cannot see: check C reads literal `t('a.b')` calls and skips any
+   * file with more than one namespace. A key missing here paints MISSING_MESSAGE in the browser behind a
+   * green 200 that passes tsc, the suite and `next build` — AGENTS rule 6.
+   */
+  it('the map-resolved and multi-namespace captions exist in all six catalogues', () => {
+    const card = read('components/leave/leave-config-health.tsx');
+    const statusKeys = [...card.matchAll(/'(healthStatus[A-Za-z]+)'/g)].map((m) => m[1]);
+    expect(new Set(statusKeys)).toEqual(new Set(['healthStatusBlocked', 'healthStatusWarning', 'healthStatusReady']));
+    for (const loc of LOCALES) {
+      for (const k of statusKeys) {
+        expect(leaf(msgs(loc), `admin.entitlementTemplates.${k}`), `${loc}.${k}`).toBeTruthy();
+      }
+      // The two captions on the balance grids. `app/leave/employee-balances/page.tsx` reads three
+      // namespaces and `leave-balance-table.tsx` reads two, so neither is checked by i18n-coverage.
+      for (const k of ['leave.inquiry.resolvedEntitlementTable', 'leave.inquiry.sharedBalanceWith', 'me.leaveBalanceTable.sharedBalanceWith']) {
+        expect(leaf(msgs(loc), k), `${loc}.${k}`).toBeTruthy();
+      }
+    }
+    // …and the surfaces really do ask for them, or the keys above are six catalogues of dead strings.
+    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('resolvedEntitlementTable'");
+    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('sharedBalanceWith'");
+    expect(read('components/leave/leave-balance-table.tsx')).toContain("tt('sharedBalanceWith'");
+  });
+
   it('the two mounts render it: one type inside its own step, every type on the Entitlements page', () => {
     const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).toContain('<LeaveConfigHealthNotice health={scopedHealth} />');
     expect(block).toContain('<LeaveConfigHealthCard rows={allHealth} />');
+    // ⚠️ THE "no rule points here" MARKER IS PER LEAVE TYPE, not one boolean for the whole table. The
+    // unfiltered mount lists every type's tables together, so a single flag would either warn on a healthy
+    // single-table type or stay silent on a broken multi-table one — and it is the same set the card above
+    // it derives from, so the two cannot disagree about which zero is a fault.
+    expect(block).toContain('!soleTableTypeIds.has(x.leaveTypeId)');
+    expect(block).toContain("t('ruleNonePointsHere')");
+    // …and the expiry badges on the rules table, judged on the lineage's CURRENT version only.
+    expect(block).toContain("t('ruleExpiredBadge')");
+    expect(block).toContain("t('ruleExpiringBadge')");
+    expect(block).toContain('ruleHeadIds.has(x.id)');
     const page = read('app/admin/leave/entitlements/page.tsx');
     expect(page).toContain('leaveConfigHealthAll(');
     expect(page).toContain('<LeaveConfigHealthCard rows={configHealth} />');
@@ -559,7 +595,12 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
 
     const rows = await leaveBalances(adminCtx(b), employmentId, 'en', { includeHidden: true });
     const byId = new Map(rows.map((r) => [r.leaveTypeId, r]));
-    for (const id of [pool, ...members]) {
+    // ⚠️ ASSERTED ON A BORROWER FIRST, ON PURPOSE. The POOL's own row read 10 before r209 as well, so a
+    // loop that started there would pass its first two assertions against the old behaviour and fail
+    // later, on the descriptor — which is a much weaker statement than "the borrower's figure was wrong".
+    expect(byId.get(members[0])!.balance, 'the borrower shows the POOL, not its own empty ledger').toBe(10);
+    expect(byId.get(members[0])!.available).toBe(10);
+    for (const id of [...members, pool]) {
       const row = byId.get(id);
       expect(row, id).toBeTruthy();
       // ONE FIGURE. Before r209 the three borrowers each read 0.00 here while the pool read 10.
