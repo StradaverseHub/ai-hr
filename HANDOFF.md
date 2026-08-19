@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 0 APPROVED · 9 PLANNED · 2 CONTESTED · 0 OPEN)
+## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 11 PLANNED · 0 APPROVED · 0 CONTESTED · 0 OPEN)
 
 **`main@6706ee46` IS WHAT RUNS ON PRODUCTION (r206, 2026-08-19)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** reporting ZERO differences, not by `deploy.sh`
@@ -27,10 +27,10 @@ succeeding, which is not proof. Service active, `GET localhost:3000/` → 401.
 present on the live schema. NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0448`.**
-**Board after r207: `approved = 0` · `planned = 9` · `contested = 2` · `open = 0` · `deployed = 706`.**
-**THE BUILD QUEUE IS EMPTY AND THAT IS CORRECT** — nothing is approved because the two that were
-(`bdf7d248`, `7ad37961`) were RE-PLANNED rather than built, on the owner's decision. Everything now
-waits on the reporter.
+**Board after r208: `planned = 11` · `approved = 0` · `contested = 0` · `open = 0` · `deployed = 706` ·
+`cancelled = 14`.** **EVERY LIVE ITEM IS `planned` AND WAITING ON THE REPORTER.** Nothing is approved
+because the two that were (`bdf7d248`, `7ad37961`) were re-planned on the owner's decision, and the two
+contested were re-planned in r208. There is no build queue and that is the correct state, not a stall.
 The two still approved are the two deliberately NOT built — `bdf7d248` (EPF, owner decision open) and
 `7ad37961` (TP1, must be re-planned). FOUR NEW OPEN ITEMS arrived during r206: `6b4ca488`, `0bade264`,
 `6448574f`, `5a29686c`. `301d3f6b` has moved from planned to CONTESTED.
@@ -358,6 +358,54 @@ makes the duplicate warning demonstrable rather than illustrative.
 `while read` loop around it pushed only the first item while reporting failure for all seven. Grep the
 output for "pushed plan", never the exit code, and drive it one item at a time.
 
+
+
+**r208 — BOTH CONTESTED ITEMS RE-PLANNED. One expired row explains both.**
+
+⚠️⚠️ **THERE IS EXACTLY ONE `entitlement_eligibility_rule` ON THE WHOLE TENANT, AND IT EXPIRED ON
+2026-08-13.** It is named PERMANENT, points at template lineage `da02aa64` (the PERMANENT Medical table),
+and its criteria selects effectively everything — every race/gender/religion/nationality, all companies,
+departments, positions, cost centres, business units, locations — narrowed only by
+`employmentTypes: ['full_time']`. **Since 13 August no employee resolves to ANY entitlement template**,
+so `composeEntitlement` falls through `template ?? scheme ?? policy` for everyone. This single row is the
+cause behind BOTH contested items and behind much of `273e6fc7`.
+
+**`70ac09ef` — the reporter is RIGHT and the mechanism already exists.** `entitlement_template` selected
+by `entitlement_eligibility_rule` IS "link Employment Type and Job Grade to the table, then apply Length
+of Service inside it" (core/entitlement-template.ts), and `criteria` already carries `employmentTypes`
+and `gradeIds` via core/org-criteria.ts. Medical has SIX templates and only the PERMANENT one has ever
+had a rule.
+**THE FINDING THAT CHANGES THE WORK: Permanent vs Contract is NOT `employment_type` here.**
+`assignment.employment_type` is `full_time` 55 / `contract` 3 / `part_time` 1 — it cannot separate five of
+the six tables. The distinction lives in the JOB GRADE NAME: `GRADE 12 (PERMANENT)`, `GRADE 12 (CONTRACT)`,
+`GRADE 12 (C-RETIREE)`, `CONTRACT - GRADE 12..23 (SPECIAL)`, `CONTRACT - GRADE H (SPECIAL)`,
+`CONTRACT - SPECIAL (40 AL)`, `Executive`. Those families map one-for-one onto the six tables. **Key the
+rules on `gradeIds`.**
+`Executive` maps to NO table — that is the one decision the plan asks the reporter for. And note the
+expired rule was broad enough to cover Executive, so renewing it unchanged restores all four named
+balances AND gives every contract employee the Permanent table (offered as a stopgap, not recommended).
+
+✅ **CORRECTION TO AN EARLIER ROUND: Daniel Tan, Mei Ling, Aisyah Rahman and Arjun Kumar ARE REAL.**
+A previous round recorded them as invented names and substituted them into the plan and mockup. All four
+exist (Aisyah `GRADE 12 (PERMANENT)`, Mei Ling `GRADE 18 (PERMANENT)`, Daniel Tan and Arjun Kumar
+`Executive`; Daniel Tan also holds a second `part_time` employment). **The substitution was the error, not
+the names.** Do not repeat it.
+
+**`301d3f6b` — THREE independent causes, any one of which alone gives 0.00.** The six types are Caregiver,
+Compassionate, Examination, Graduation, Marriage, Study, each with 3 templates granting 3 days.
+  1. **Every band carries `maxBalanceDays: 0`.** `bandMaxBalance` (core/leave-compute.ts:363) accepts any
+     finite number ≥ 0 as a cap, so `applyMaxBalance` clamps the 3-day grant to nothing. The Medical
+     templates carry 14/18/22, so this was filled in on those and left at 0 on these.
+  2. `accrual_method` NULL on Examination, Graduation, Marriage, Study.
+  3. The expired rule above.
+Because effective entitlement is ALREADY zero everywhere, the reporter's stated worry — losing
+entitlement in the migration to a shared pool — cannot materialise. The plan says so plainly.
+The shared pool they want is `leave_type.balance_source_type_id`, ALREADY IN USE on production (Emergency
+Leave draws from Annual Leave). Configure, do not build.
+
+⚠️ **A MAXIMUM BALANCE OF `0` SILENTLY ZEROES A LEAVE TYPE, and `0` is what someone types when they mean
+"no limit".** Flagged deliberately OUTSIDE both items — changing the semantics as a side effect of a
+configuration round is how a pay/leave-affecting default gets altered without anyone deciding to.
 
 **r207b — THE TWO APPROVED ITEMS WERE RE-PLANNED, NOT BUILT (owner's decision).**
 
