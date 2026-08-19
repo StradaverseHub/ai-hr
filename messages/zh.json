@@ -3238,7 +3238,8 @@
       "summaryTotal": "流程总数",
       "colProcessedDate": "处理日期",
       "rowView": "查看",
-      "rowContinue": "继续"
+      "rowContinue": "继续",
+      "rowMoreActions": "更多操作"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -4004,7 +4005,10 @@
       "removeWarnStatutoryFiled": "本月的法定申报已经记录。",
       "removeWarnLaterPeriods": "所选员工已处理的后续月份：{periods}。这些月份的累计税额是把本次薪资结果计算在内得出的。",
       "removeHistoryTitle": "移除记录",
-      "removeHistoryNote": "本批次的每一次移除——由谁执行、何时、原因，以及被移除的金额。这是那些金额仅存的副本。"
+      "removeHistoryNote": "本批次的每一次移除——由谁执行、何时、原因，以及被移除的金额。这是那些金额仅存的副本。",
+      "reprocessSearchPlaceholder": "按员工编号或姓名搜索",
+      "reprocessNoMatches": "没有符合搜索条件的员工。",
+      "reprocessHistoryToggle": "查看重新计算记录"
     },
     "transactions": {
       "title": "交易",

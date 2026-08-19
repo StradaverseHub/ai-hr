@@ -90,6 +90,13 @@ const capsPage = (raw: string) => {
  */
 const STANDARDISED = [
   'app/payroll/page.tsx',
+  // 65e2d5de — the three screens under app/payroll/[batchId] that 152fea7f's sweep missed: the run VIEW
+  // screen (max-w-6xl), Reprocess and Remove Employee Payroll (max-w-5xl, on BOTH branches each — the
+  // refusal render as well as the main one). They are the working screens of the Payroll Process
+  // workflow and were the last three still boxed into a narrow column.
+  'app/payroll/[batchId]/page.tsx',
+  'app/payroll/[batchId]/reprocess/page.tsx',
+  'app/payroll/[batchId]/remove/page.tsx',
   'app/payroll/individual-payslip/page.tsx',
   'app/payroll/process/page.tsx',
   'app/payroll/reports/page.tsx',
@@ -199,6 +206,72 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
       carriers,
       'the Payroll module carries the superseded cap somewhere other than the four printed documents',
     ).toEqual([...CAP_SURVIVORS]);
+  });
+
+  /**
+   * 65e2d5de — THE CENSUS THAT WOULD HAVE CAUGHT THIS ROUND'S GAP, and the reason the case above did not.
+   *
+   * The `max-w-[100rem]` case greps for ONE literal. The three screens the 152fea7f sweep missed carried
+   * `max-w-6xl` and `max-w-5xl`, so that grep walked straight past them for two releases, while `capsPage`
+   * — which matches every `max-w-*xl` and the bracket form — was applied only to the ENUMERATED list of
+   * files each round had already edited. A guard whose input is the diff cannot see the screens nobody
+   * thought about. So this one applies `capsPage` to the module READ FROM DISK and pins the exceptions.
+   *
+   * WHAT THE LIST BELOW IS, honestly: a snapshot of every Payroll file that caps its container TODAY, not
+   * a claim that each was individually approved to. Three categories are genuinely settled — the four
+   * printed documents (CAP_SURVIVORS), the single-record forms of section C, and the statutory
+   * CONFIGURATION pages, which are one-record settings forms of the same kind. The rest are simply
+   * untouched by any width round so far. The value of naming them is that adding a NEW capped Payroll
+   * screen, or regressing a swept one, now fails here and has to be argued for in this list — which is
+   * exactly the review the module's width has failed to get five times.
+   */
+  const CAPPED_BY_DESIGN = [
+    // Printed statutory documents — see CAP_SURVIVORS.
+    'app/payroll/borang-8a/preview/page.tsx',
+    'app/payroll/borang-a/preview/page.tsx',
+    'app/payroll/cp39/preview/page.tsx',
+    'app/payroll/statutory-forms/[formId]/page.tsx',
+    // One-record previews and forms — section C's category.
+    'app/payroll/cp22/[employmentId]/preview/page.tsx',
+    'app/payroll/reports/ea/[employmentId]/page.tsx',
+    'app/payroll/transactions/fixed/[id]/page.tsx',
+    'app/payroll/transactions/tp1/[year]/page.tsx',
+    'app/payroll/transactions/zakat/election/page.tsx',
+    // Statutory Configuration — single-record settings forms, one agency each.
+    'app/payroll/configuration/page.tsx',
+    'app/payroll/configuration/eis/page.tsx',
+    'app/payroll/configuration/epf/page.tsx',
+    'app/payroll/configuration/hrdf/page.tsx',
+    'app/payroll/configuration/pcb/page.tsx',
+    'app/payroll/configuration/skbbk/page.tsx',
+    'app/payroll/configuration/socso/page.tsx',
+    // Narrow by nature: a task list, a wizard outcome, an upload form, a panel host, a detail read-out —
+    // none of them a grid the reporter asked to widen. Untouched by any width round, and named so.
+    'app/payroll/[batchId]/anomalies/page.tsx',
+    'app/payroll/process/result/page.tsx',
+    'app/payroll/history-import/page.tsx',
+    'app/payroll/pcb-detail/page.tsx',
+    'app/payroll/transactions/adjustments/page.tsx',
+    'app/payroll/transactions/import-components/page.tsx',
+    // Not a page at all: an INNER measure inside the transaction-view history tab.
+    'app/payroll/transaction-view/history-table.tsx',
+  ] as const;
+
+  it('no Payroll file on disk caps its container except the ones named as deliberate', () => {
+    const carriers = PAYROLL_MODULE_ON_DISK.filter((f) => classNameLiterals(read(f)).some(capsPage));
+    expect(
+      carriers,
+      'a Payroll screen caps its page width without saying why — add it to CAPPED_BY_DESIGN with a reason, or move it to pageWideCls',
+    ).toEqual([...CAPPED_BY_DESIGN].sort());
+  });
+
+  it('CAPPED_BY_DESIGN names only files that exist and really do cap — no permanent holes', () => {
+    // Without this, a renamed or widened file would leave an entry that silently excuses nothing, and the
+    // list would rot into a set of names rather than a set of decisions.
+    for (const f of CAPPED_BY_DESIGN) {
+      expect(fs.existsSync(path.join(ROOT, f)), `${f} is listed as capped but no longer exists`).toBe(true);
+      expect(classNameLiterals(read(f)).some(capsPage), `${f} no longer caps — drop it from the list`).toBe(true);
+    }
   });
 
   it('pageWideCls is still the full-width container and not quietly re-capped at source', () => {

@@ -3238,7 +3238,8 @@
       "summaryTotal": "Total runs",
       "colProcessedDate": "Processed date",
       "rowView": "View",
-      "rowContinue": "Continue"
+      "rowContinue": "Continue",
+      "rowMoreActions": "More actions"
     },
     "batch": {
       "back": "Payroll",
@@ -3588,7 +3589,10 @@
       "removeWarnStatutoryFiled": "A statutory return has already been recorded for this month.",
       "removeWarnLaterPeriods": "Later months already processed for the selected employees: {periods}. Their tax to date in those months was worked out with this payroll result included.",
       "removeHistoryTitle": "Removal history",
-      "removeHistoryNote": "Every removal on this run — who did it, when, why, and the figures that were removed. This is the only remaining copy of those figures."
+      "removeHistoryNote": "Every removal on this run — who did it, when, why, and the figures that were removed. This is the only remaining copy of those figures.",
+      "reprocessSearchPlaceholder": "Search by employee ID or name",
+      "reprocessNoMatches": "No employee matches your search.",
+      "reprocessHistoryToggle": "View recalculation history"
     },
     "reports": {
       "pageTitle": "Payroll",

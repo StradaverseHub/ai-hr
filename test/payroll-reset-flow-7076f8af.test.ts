@@ -10,9 +10,16 @@
  *
  * WHAT THIS FILE PINS, and why each could regress in silence:
  *
- *   1. THE DESTINATION. resetAction's success redirect is composed from `resumeHref` and never from a
- *      literal run-screen path. Source-asserted because the alternative is a redirect nobody notices until
- *      an operator is standing on the wrong screen again.
+ *   1. THE DESTINATION. **REVERSED BY THE REPORTER ON ITEM 65e2d5de, AND THE CASE IS UPDATED RATHER THAN
+ *      DELETED.** This round's answer was `resumeHref` — the guided run flow — and it did fix the reported
+ *      defect (the run screen is empty right after a reset). The reporter then asked for the opposite:
+ *      "Payroll Process → Reset Payroll → Confirm → Submit → Payroll Process". Landing inside Continue
+ *      Progress is a workflow they did not ask to enter, and the LIST is where the run's new Draft status
+ *      is visible. So the success redirect now composes `payrollListReturnTo` over the posted `from`.
+ *      What survives from the original case, unchanged and still load-bearing, is the NEGATIVE half: it
+ *      must never go back to the long run screen, which was the defect 7076f8af was raised for.
+ *      Still source-asserted, because the alternative is a redirect nobody notices until an operator is
+ *      standing on the wrong screen again.
  *   2. THE FLOW IS TERMINAL. resumeRunAction ends on `/payroll/process/result`, not on `/payroll/<id>`,
  *      and it goes through the same generatePayslips + summarize + encodeRunGroupResult the multi-company
  *      run uses — so the result page renders a resumed run with no change of its own.
@@ -89,13 +96,37 @@ async function hire(b: Base, name: string, opts: { basic?: number } = {}) {
 }
 
 describe('7076f8af — Reset lands in the run flow, and the run flow ends', () => {
-  it('1. resetAction composes its success destination from resumeHref, not from a run-screen literal', () => {
-    // The action imports the ONE rule for "where does a draft resume?" …
-    expect(PAYROLL_ACTIONS).toMatch(/import \{ resumeHref \} from '\.\/process\/selection-logic'/);
-    // … and uses it for the reset's success redirect.
-    expect(PAYROLL_ACTIONS).toMatch(/redirect\(withQueryParam\(resumeHref\(batchId, 'draft'\), 'toast', t\('resetDone'\)\)\)/);
-    // The defect itself, pinned negatively: no success redirect back to the long run screen.
+  it('1. resetAction composes its success destination from payrollListAfterReset (65e2d5de reversed 7076f8af)', () => {
+    // The reporter's new destination: the Payroll Process LIST, as they left it. The posted `from` is
+    // untrusted, so it is whitelisted by shape rather than followed — see lib/return-to.ts.
+    //
+    // `payrollListAfterReset`, NOT the bare `payrollListReturnTo`, and the difference is the whole point
+    // of the destination: reset is offered on PROCESSED runs only, so a "Status: Processed" filter is the
+    // one the operator is most likely holding when they press it, and this action makes the run DRAFT.
+    // Following the query verbatim lands them on a list the row has just dropped out of. Behaviour pinned
+    // in test/payroll-draft-resume.test.ts a3; the CALL is pinned here because a helper nobody calls fixes
+    // nothing.
+    expect(PAYROLL_ACTIONS).toMatch(
+      /import \{ adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam \} from '@\/lib\/return-to'/,
+    );
+    expect(PAYROLL_ACTIONS).toMatch(/const back = payrollListAfterReset\(String\(formData\.get\('from'\) \?\? ''\)\);/);
+    expect(PAYROLL_ACTIONS).toMatch(/redirect\(withQueryParam\(back, 'toast', t\('resetDone'\)\)\)/);
+    // The 7076f8af destination is gone with the decision it implemented — resumeHref is no longer read
+    // here at all (the list row's Continue link is still its caller, in app/payroll/page.tsx).
+    expect(PAYROLL_ACTIONS).not.toMatch(/resumeHref/);
+    // THE ORIGINAL DEFECT, still pinned negatively and still the reason this case exists: whatever the
+    // destination becomes, it must never be the long run screen whose payslip list a reset has emptied.
     expect(PAYROLL_ACTIONS).not.toMatch(/redirect\(`\/payroll\/\$\{batchId\}\?toast=\$\{encodeURIComponent\(t\('resetDone'\)\)\}`\)/);
+  });
+
+  it('1b. both reset forms post the filter selection, or the destination cannot honour it', () => {
+    // The contract lives between TWO files (the form posts `from`, the action whitelists it), and a test
+    // of either half alone passes while the operator loses their filters — rule 17's generalisation.
+    const LIST = code('app/payroll/page.tsx');
+    expect(LIST).toMatch(/<form action=\{resetAction\}>/);
+    expect(LIST).toContain('<input type="hidden" name="from" value={dashboardHref(filters)} />');
+    expect(RUN_SCREEN).toMatch(/<form action=\{resetAction\}>/);
+    expect(RUN_SCREEN).toContain('<input type="hidden" name="from" value={backHref} />');
   });
 
   it('2. resumeRunAction is terminal: it generates and lands on the result page, never back on the run screen', () => {

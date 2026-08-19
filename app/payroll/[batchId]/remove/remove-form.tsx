@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { type KeyboardEvent, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { EmployeeCode } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -101,8 +101,31 @@ export function RemoveForm({
       return next;
     });
 
+  /**
+   * ENTER IN THE SEARCH BOX MUST NOT SUBMIT THIS FORM. Same guard, same reasoning as the one on
+   * reprocess-form.tsx — see the long note there — but the stakes here are higher in one specific way:
+   * this form has NO submit button at all. Its only submit route is the ConfirmSubmit dialog at the
+   * bottom, which is the entire confirmation step for a destructive action. HTML's implicit-submission
+   * rule does not care that the button is missing: with one field that blocks implicit submission, the
+   * browser submits the form directly, so Enter in the search box skips the dialog the operator is
+   * supposed to read.
+   *
+   * Today that lands on RemoveReasonRequiredError, which throws and DISCARDS the selection — annoying
+   * rather than destructive, and only because the reason is mandatory. That mitigation is incidental:
+   * it evaporates the day the reason becomes optional or gets a default. Block the route, not the
+   * symptom.
+   */
+  const blockImplicitSubmit = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter') return;
+    const el = e.target as HTMLElement;
+    if (el.tagName !== 'INPUT') return;
+    const type = (el as HTMLInputElement).type;
+    if (type === 'submit' || type === 'button' || type === 'reset' || type === 'image') return;
+    e.preventDefault();
+  };
+
   return (
-    <form action={removeEmployeePayrollAction} className="space-y-4">
+    <form action={removeEmployeePayrollAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       {from && <input type="hidden" name="from" value={from} />}
 

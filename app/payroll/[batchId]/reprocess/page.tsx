@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -5,7 +6,10 @@ import { batchDetail, getReprocessJob, listBatches, listPayslipLessEligible, rep
 import { listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+// 65e2d5de — the Recalculation History card folds. The open/closed choice is a cookie the SERVER reads,
+// so the first paint is already correct (no closed-then-restored flash); see the component's own note.
+import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 import { formatMoney } from '@/lib/money';
 // 9066bd6c — Back returns the Payroll Process list EXACTLY as it was left. The list hands each row link
 // its own filter query as `?from=…`; without this the Back here went to a bare `/payroll` and the year,
@@ -31,6 +35,16 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
  * is shut instead of finding out by pressing the button.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * 65e2d5de — the Recalculation History fold, remembered per browser.
+ *
+ * Note the polarity, which is the opposite of every OTHER panel cookie in this module: the payroll
+ * transaction screens read `!== '0'` because their employee panel opens by default. This one is CLOSED by
+ * default — that is the whole request — so it opens only on an explicit `'1'`. Getting this backwards
+ * would ship a "fold" that is always open, pass every test, and read as nothing having changed.
+ */
+const HISTORY_OPEN_COOKIE = 'payroll-reprocess-history';
 
 /** 97a9b0ab — statutory line key → its payroll.batch label key. Exhaustive by TYPE (Record over
  *  StatutoryLineKey), so adding a key to STATUTORY_LINE_KEYS without a label fails the build rather
@@ -140,7 +154,8 @@ export default async function ReprocessPage({
         : null;
   if (refusal) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4">
+      /* 65e2d5de — both branches carry the module's one width standard, not just the happy path. */
+      <div className={pageWideCls}>
         {header}
         <ErrorBanner message={refusal} />
       </div>
@@ -183,6 +198,8 @@ export default async function ReprocessPage({
   // Trail does not carry it: this page is now its ONLY reader, which is why point 4 MOVED it here
   // rather than deleting it (r168b). A never-reprocessed run pays one indexed lookup and shows nothing.
   const disclosure = await listRecomputeDisclosure(s, { batchId });
+  // Resolved on the SERVER so the first paint is already right — see HISTORY_OPEN_COOKIE for the polarity.
+  const historyOpen = (await cookies()).get(HISTORY_OPEN_COOKIE)?.value === '1';
 
   // The job just submitted, when the action redirected here carrying its id. Fenced to THIS run: a job
   // id belonging to another batch is ignored rather than rendered under this run's heading.
@@ -212,7 +229,7 @@ export default async function ReprocessPage({
   ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className={pageWideCls}>
       {header}
 
       <ErrorBanner message={sp.error} />
@@ -354,11 +371,22 @@ export default async function ReprocessPage({
 
       {/* RECALCULATION HISTORY, moved off the run screen (point 4) rather than deleted. Here it reads as
           the record of past reprocessing on this run instead of clutter under a payslip list — one
-          January run on production is carrying 37 of these entries. Nothing is deleted. */}
+          January run on production is carrying 37 of these entries. Nothing is deleted.
+          65e2d5de — AND IT ARRIVES CLOSED. Moving it off the run screen was only half the complaint: 37
+          entries, each with a statutory-line breakdown and a bases table, still buried the work the
+          operator came here to do. It folds behind its own summary bar, the count stays visible while
+          closed, and the choice is remembered per browser. The freshly-submitted job's result panel above
+          is deliberately NOT folded — that one IS what the operator came back for. */}
       {earlier.length > 0 && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('disclosureTitle')} count={earlier.length} />
-          <p className="px-4 pb-2 text-xs text-muted-foreground">{t('reprocessHistoryNote')}</p>
+          <CollapsibleCardSection
+            title={t('disclosureTitle')}
+            count={earlier.length}
+            toggleLabel={t('reprocessHistoryToggle')}
+            cookieKey={HISTORY_OPEN_COOKIE}
+            defaultOpen={historyOpen}
+          >
+          <p className="px-4 pt-3 pb-2 text-xs text-muted-foreground">{t('reprocessHistoryNote')}</p>
           <ul className="divide-y divide-border">
             {earlier.map((r) => {
               const d = r.diff;
@@ -483,6 +511,7 @@ export default async function ReprocessPage({
               );
             })}
           </ul>
+          </CollapsibleCardSection>
         </Card>
       )}
     </div>

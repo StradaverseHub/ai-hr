@@ -17,6 +17,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import { formatMoney } from '@/lib/money';
 import { payrollRunTypeEnum, payrollStatusEnum } from '@/db/schema';
 import { DashboardFilterBar } from './dashboard-filters';
+import { PayrollRowActions } from './row-actions';
 import {
   MONTHS,
   applyFilters,
@@ -379,58 +380,72 @@ export default async function PayrollPage({
                             </ConfirmSubmit>
                           </form>
                         )}
-                        {/* e440991b — REPROCESS, from the list. Correcting one person on a processed run
-                            used to mean opening the run, scrolling past the payslips and past the
-                            Recalculation History, and finding tick-boxes at the bottom of a 1,286-line
-                            page; this screen offered no way in at all. PROCESSED rows only (a draft has
-                            no payslips; a closed run is immutable) and only with multi-cycle on — the
-                            same gates the destination re-asserts and the service enforces. Placed
-                            between View and Reset because Reset is the different, whole-run action. */}
-                        {b.status === 'processed' && multiCycleOn && (
-                          <Link
-                            href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
-                            className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                          >
-                            {tb('reprocessAction')}
-                          </Link>
-                        )}
-                        {/* 9066bd6c — REMOVE EMPLOYEE PAYROLL, between Reprocess and Reset because that
-                            is the order of escalation: correct one person, take one person off, clear
-                            the whole run. PROCESSED rows only, multi-cycle on (the Reprocess screen is
-                            the way back, and removal must never be offered where re-adding is
-                            impossible) and the same `payroll.reset_enabled` risk switch Reset rides —
-                            all three re-asserted by the destination and by the service. */}
-                        {b.status === 'processed' && multiCycleOn && resetOn && (
-                          <Link
-                            href={`/payroll/${b.id}/remove?from=${fromQuery}`}
-                            className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
-                          >
-                            {tb('removeAction')}
-                          </Link>
-                        )}
-                        {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is
-                            locked; the controlled reset returns it to Draft (payslips cleared, loan/claim
-                            side-effects reversed, audited). Closed rows render nothing: permanently
-                            immutable. Admin-only + processed-only re-enforced server-side. This is the
-                            "Rollback (subject to permissions)" action the request listed. */}
-                        {b.status === 'processed' && resetOn && (
-                          <form action={resetAction}>
-                            <input type="hidden" name="batchId" value={b.id} />
-                            <ConfirmSubmit
-                              size="sm"
-                              title={tb('resetTitle')}
-                              description={tb('resetDescription')}
-                              confirmLabel={tb('resetConfirm')}
-                              reasonField={{
-                                name: 'reason',
-                                label: tb('resetReasonLabel'),
-                                placeholder: tb('resetReasonPlaceholder'),
-                              }}
+                        {/* 65e2d5de — THE OTHER THREE ACTIONS MOVE BEHIND A ⋯ MENU, and nothing else about
+                            them changes. Each is written here, under its own unchanged condition, and
+                            handed to the island as an already-rendered node; the island only decides
+                            WHERE it sits (and renders a lone survivor inline rather than a menu of one).
+                            The reporter's complaint was the width four side-by-side controls forced on
+                            the grid, not the actions themselves — see app/payroll/row-actions.tsx. */}
+                        <PayrollRowActions moreLabel={t('rowMoreActions')}>
+                          {/* e440991b — REPROCESS, from the list. Correcting one person on a processed run
+                              used to mean opening the run, scrolling past the payslips and past the
+                              Recalculation History, and finding tick-boxes at the bottom of a 1,286-line
+                              page; this screen offered no way in at all. PROCESSED rows only (a draft has
+                              no payslips; a closed run is immutable) and only with multi-cycle on — the
+                              same gates the destination re-asserts and the service enforces. Placed
+                              between View and Reset because Reset is the different, whole-run action. */}
+                          {b.status === 'processed' && multiCycleOn && (
+                            <Link
+                              href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
+                              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
                             >
-                              {tb('resetPayroll')}
-                            </ConfirmSubmit>
-                          </form>
-                        )}
+                              {tb('reprocessAction')}
+                            </Link>
+                          )}
+                          {/* 9066bd6c — REMOVE EMPLOYEE PAYROLL, between Reprocess and Reset because that
+                              is the order of escalation: correct one person, take one person off, clear
+                              the whole run. PROCESSED rows only, multi-cycle on (the Reprocess screen is
+                              the way back, and removal must never be offered where re-adding is
+                              impossible) and the same `payroll.reset_enabled` risk switch Reset rides —
+                              all three re-asserted by the destination and by the service. */}
+                          {b.status === 'processed' && multiCycleOn && resetOn && (
+                            <Link
+                              href={`/payroll/${b.id}/remove?from=${fromQuery}`}
+                              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                            >
+                              {tb('removeAction')}
+                            </Link>
+                          )}
+                          {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is
+                              locked; the controlled reset returns it to Draft (payslips cleared, loan/claim
+                              side-effects reversed, audited). Closed rows render nothing: permanently
+                              immutable. Admin-only + processed-only re-enforced server-side. This is the
+                              "Rollback (subject to permissions)" action the request listed. */}
+                          {b.status === 'processed' && resetOn && (
+                            <form action={resetAction}>
+                              <input type="hidden" name="batchId" value={b.id} />
+                              {/* 65e2d5de — the filter selection this row was rendered under, so the reset
+                                  returns to the Payroll Process list EXACTLY as it was left. Read by VALUE
+                                  through payrollListReturnTo, never by presence: a hidden input is posted
+                                  whatever it holds. Raw path here — `fromQuery` is already URL-encoded for
+                                  a href, and a FormData value must not be double-encoded. */}
+                              <input type="hidden" name="from" value={dashboardHref(filters)} />
+                              <ConfirmSubmit
+                                size="sm"
+                                title={tb('resetTitle')}
+                                description={tb('resetDescription')}
+                                confirmLabel={tb('resetConfirm')}
+                                reasonField={{
+                                  name: 'reason',
+                                  label: tb('resetReasonLabel'),
+                                  placeholder: tb('resetReasonPlaceholder'),
+                                }}
+                              >
+                                {tb('resetPayroll')}
+                              </ConfirmSubmit>
+                            </form>
+                          )}
+                        </PayrollRowActions>
                       </div>
                     </td>
                   </tr>
