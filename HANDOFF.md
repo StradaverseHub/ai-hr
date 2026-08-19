@@ -18,19 +18,20 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-19 (r195–r206 SHIPPED · NOTHING IN FLIGHT · 11 PLANNED · 0 APPROVED · 0 CONTESTED · 0 OPEN)
+## CURRENT STATE — snapshot 2026-08-20 (r195–r209 SHIPPED · NOTHING IN FLIGHT · THE BOARD IS EMPTY)
 
-**`main@6706ee46` IS WHAT RUNS ON PRODUCTION (r206, 2026-08-19)** — verified by an
+**`main@ef343c93` IS WHAT RUNS ON PRODUCTION (r209, 2026-08-20)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** reporting ZERO differences, not by `deploy.sh`
 succeeding, which is not proof. Service active, `GET localhost:3000/` → 401.
-**Production is on 363 migrations** — r206 added `0447` `leave_type.min_advance_day_type`, verified
-present on the live schema. NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
+**Production is on 365 migrations** — r209 added `0448` `tp1_status_values` and `0449` `tp1_approval`
+(the reissue of the dead `0444`/`0445`), both verified present on the live schema
+(`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0448`.**
-**Board after r208: `planned = 11` · `approved = 0` · `contested = 0` · `open = 0` · `deployed = 706` ·
-`cancelled = 14`.** **EVERY LIVE ITEM IS `planned` AND WAITING ON THE REPORTER.** Nothing is approved
-because the two that were (`bdf7d248`, `7ad37961`) were re-planned on the owner's decision, and the two
-contested were re-planned in r208. There is no build queue and that is the correct state, not a stall.
+**Board after r209: `deployed = 717` · `cancelled = 14` · EVERYTHING ELSE ZERO.** No open, no planned,
+no approved, no contested — the reporter approved all eleven r207/r208 plans and r209 shipped every one.
+**This is the first time the board has been completely clear.** The next round starts from whatever the
+reporter raises next; there is no backlog to work.
 The two still approved are the two deliberately NOT built — `bdf7d248` (EPF, owner decision open) and
 `7ad37961` (TP1, must be re-planned). FOUR NEW OPEN ITEMS arrived during r206: `6b4ca488`, `0bade264`,
 `6448574f`, `5a29686c`. `301d3f6b` has moved from planned to CONTESTED.
@@ -39,9 +40,9 @@ The two still approved are the two deliberately NOT built — `bdf7d248` (EPF, o
 be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
 later merge carrying either would be SILENTLY SKIPPED (rule 14). Reissue fresh numbers when TP1 is reworked.
 `0442` was the same trap and was caught: it was reissued as `0446` in the merge commit that shipped it.
-**`0447` shipped in r206; next free is `0448`.**
+**`0448` and `0449` shipped in r209; next free is `0450`.**
 
-⚠️ **THE GATE NEEDS `CHUNKS=5`.** The suite is 711 files (r206) and the default 3 chunks exhausts the 8GB RAM disk
+⚠️ **THE GATE NEEDS `CHUNKS=5`.** The suite is 721 files (r209) and the default 3 chunks exhausts the 8GB RAM disk
 mid-run: 77 files fail with **zero AssertionErrors** and `No space left on device` in the chunk log — an
 environment failure wearing a red gate's clothes. ALWAYS run the per-chunk cause tally before believing a
 red. The machine has 18GB, so a bigger RAM disk is not the way out. The real fix is the harness: `resetDb`
@@ -91,11 +92,10 @@ only 39 lines between them — consolidating those is not the answer.
 `main@6706ee46` is deployed. Prove it independently — `git for-each-ref refs/heads/build` plus a dry-run
 rsync FROM mainwt.
 
-**THE OPEN QUEUE IS EMPTY.** r207 planned all seven; they are waiting on the reporter, not on us.
-
-**NOTHING IS APPROVED. DO NOT GO LOOKING FOR A BUILD QUEUE.** `bdf7d248` and `7ad37961` were re-planned
-in r207 (owner's decision, asked and answered) and are back with the reporter. The real work is the two
-contested items and waiting on approvals.
+**THE BOARD IS EMPTY. THERE IS NOTHING TO BUILD, PLAN OR ANSWER.** r209 shipped all eleven approved
+items; nothing is open, planned, approved or contested. That is a real state, not a pull that failed —
+confirm it with `improve:pull` and `improve:pull-approved` both returning nothing before concluding
+anything is broken. The next round starts from whatever the reporter raises.
 
 **THE TWO CONTESTED ARE PUSH-BACK ON PLANS WE WROTE, NOT NEW WORK.** `70ac09ef` (now at revision 2, needs
 a THIRD re-plan on the reporter's Employment Type + Job Grade framing) and `301d3f6b`. **`70ac09ef` is the
@@ -359,6 +359,82 @@ makes the duplicate warning demonstrable rather than illustrative.
 output for "pushed plan", never the exit code, and drive it one item at a time.
 
 
+
+### r209 (2026-08-19) — ELEVEN ITEMS, SEVEN WORKSTREAMS, migrations `0448`+`0449`
+
+`7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7`+`70ac09ef`+`301d3f6b` leave entitlement ·
+`6b4ca488`+`5a29686c` payslip · `0bade264`+`6448574f` attendance · `7ad37961` TP1 · `bdf7d248` EPF
+worksheet. Every approved item on the board, built as seven workstreams grouped so no two agents
+touched the same files.
+
+⚠️⚠️ **ALL SEVEN WORKSTREAMS CAME BACK `fix-first`. 19 MAJORS, 13 OF THEM NEWLY INTRODUCED BY THE BUILD
+ITSELF — and every workstream was tsc-clean and test-green when it reported.** The gate could not have
+seen any of them. This is the strongest evidence yet that the adversarial verify pass is the load-bearing
+step in this loop, not the gate: brief it to RE-DERIVE the builder's non-vacuity claim rather than trust
+the report, and it finds defects the builder sincerely believed it had tested.
+
+**THE THREE THAT MOVED MONEY OR LIED ON A STATUTORY FORM — hand-fixed, not sent to another agent pass:**
+
+1. **TP1 `tp1CountForYear` collapsed newest-wins-per-month BEFORE narrowing to what was effective.**
+   Collapse first and March's bucket is won by an August correction; filter THAT by "effective by May"
+   and the bucket vanishes — so a correction keyed in August silently deleted the original's money from
+   every month between, feeding payroll 0 instead of RM 1,000. Reachable through the shipped UI. r201
+   filtered before collapsing and did not have this; the r209 rework reordered them. **The order of those
+   two steps is the whole correctness of that function** and the reasoning is now written into it.
+2. **TP1's release gate could not fail.** `reconcileTp1ForYear` derived `counted` from the collapse of
+   the whole year and compared it to the same collapsed set narrowed by the same predicate — an
+   algebraic identity, `true` for every possible input, including the employee who had just lost RM
+   1,000 from four months. `counted` now comes from a set the function did not already collapse.
+3. **The EA printed `RM 0.00` for money it was printing elsewhere.** r209 ADDED the manual Part B boxes
+   and drew all of them at their derived value, which is literally 0 — only an `ea_override` writes them.
+   A director paid RM 4,000/month commission got "Fees (incl. director's fees) RM 0.00" beside an
+   Allowances figure carrying the RM 48,000, on a C.P.8A. **Before this round those boxes did not exist,
+   so the round turned incomplete into affirmatively false.** Now drawn only when HR has entered a
+   figure — an absent box asserts nothing, a box reading 0.00 asserts the money does not exist.
+
+**THE FIX PASS CLOSED THE REST** (one pass, then hand-fixes — never a third agent pass on the same code):
+`leave`'s health card no longer reports green for a type the engine grants to nobody (it measured the
+sole-table gate on a different set than the resolver does), and a pooled row no longer prints "create an
+entitlement table for it" over days the employee can spend. `cp39` stopped printing a false assurance
+that the row count matches Bilangan Pekerja (false whenever the PCB and CP38 sets differ, which its own
+union filter makes ordinary) and no longer reports one person holding two employments as a duplicate
+tax number. `payslip` stopped captioning EPF as "percentage of wage" when ≤RM20,000 is a Third Schedule
+BAND lookup. `epf` ages employees at PERIOD END rather than day 28 — the replay was modelling anyone
+turning 60 on the 29th–31st a year young and printing a fabricated ringgit difference into a worksheet
+meant for accountant sign-off.
+
+**ONE DECLINE ACCEPTED, AND IT IS THE RIGHT CALL.** Un-folding EA employment income into its own Part B
+lines is NOT deliverable: `payslip` persists only aggregate scalars, there is no payslip-line table, and
+`core/payroll.ts` folds every earning component into `payslip.allowance` before the row is written.
+Doing it needs a new table, a migration, and a backfill that is impossible for slips already generated —
+which is every slip an EA for a closed year prints — plus the CP8D/Form E reconciliation. Its own round.
+
+⚠️ **A WORKTREE PATH TRAP, MINE.** Creating worktrees with a RELATIVE path from mainwt nests them at
+`mainwt/.claude/worktrees/r209-*` while the brief said the flat path. The agents found the real location
+themselves, but `git -C <wrong-path> status` FAILS SILENTLY and its empty output reads as "clean" — which
+is how it went unnoticed. Create them with an absolute path, and never read "0 changed files" from a
+`git -C` whose directory you have not confirmed exists.
+
+⚠️ **A FRESH WORKTREE HAS NO `.env.local`** (gitignored), so vitest dies with `TEST_MIGRATION_DATABASE_URL
+must be set` before running a single test. Copy it in when creating the worktree.
+
+**THE GATE EARNED ITS PLACE TWICE, on things no workstream's targeted run could see:**
+ - **The EPF worksheet picked its statutory ruleset off a UTC date.** At UTC+8 that names YESTERDAY
+   between 00:00 and 08:00, so a worksheet generated before 8am on a ruleset changeover day would be
+   priced entirely on superseded rates — on the one document ADR-0024 §5 exists to put in front of an
+   accountant. Now `todayInKualaLumpur()`. ⚠️ The first fix failed the SAME guard, because
+   `test/today-in-myt-drift.test.ts` scans source WITHOUT stripping comments and the explanatory comment
+   spelled the forbidden expression out. Reword; do not add a source file to
+   `GUARD_FILES_THAT_QUOTE_THE_PATTERN`. (Same class as the pack-drift ratchet's comment false positive.)
+ - **`test/payroll-screens-layout.test.ts` was right twice over** — a capped screen appeared unnamed AND
+   a named file stopped capping — because the TP1 rework turned `tp1/[year]/page.tsx` into a 47-line
+   REDIRECT (the LHDN form's DEDUCTION MONTH box moved the record's grain from year to month, so the form
+   now lives at `tp1/[year]/[month]`). The entry MOVED to the month page in both lists. Deleting the case
+   would have retired a reporter-approved decision as a side effect of a file rename (rule 18).
+
+Gate: tsc 0 · **721/721 files green at CHUNKS=5** · next build 0 · shadow rehearsal PASS (363→365) ·
+i18n parity + base-aware audit CLEAN · zero-change `rsync --dry-run` · `0448`/`0449` columns verified on
+the live schema · service active · `GET /` → 401.
 
 **r208 — BOTH CONTESTED ITEMS RE-PLANNED. One expired row explains both.**
 
