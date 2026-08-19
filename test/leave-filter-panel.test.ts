@@ -44,17 +44,118 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
   it('the org-wide read is gone, and the self-service read is NOT', () => {
     // The expensive half of a half-removal is a read still running for a table nobody renders.
     //
-    // Asserted on the CALL and the IMPORT, not on the bare name: the page legitimately NAMES
-    // listLeaveRequestsPage in a comment explaining where the retired filter vocabularies still live, and
-    // a substring check would flag that prose as a regression. Same trap as r134's `tList(` and r135's
-    // LEAVE_CONFIG_ROW — a guard that reports correct code as wrong is worse than no guard.
-    expect(leavePage).not.toContain('listLeaveRequestsPage(session');
-    expect(leavePage).not.toMatch(/^\s*listLeaveRequestsPage,\s*$/m);
-    // The employee's own history still loads — /leave is still their My Absence home.
-    expect(leavePage.includes('listLeaveRequests(session, scopeIds)')).toBe(true);
+    // UPDATED BY 5f2e20fb (AGENTS rule 18 — the half that is still right is kept, the half that pinned the
+    // reversed decision is re-expressed, and the case is NOT deleted). This used to assert that
+    // `listLeaveRequestsPage` was absent from /leave altogether, on the reasoning that its presence meant
+    // the org-wide register had come back. That reasoning no longer holds: the employee's own My Leave
+    // History now filters by date and leave type, and the paginated read is where those filters live. What
+    // makes a call org-wide is not its NAME but its SCOPE — so the assertion moved to the scope.
+    //
+    // Every call on this page must be narrowed to the viewer's own employments. A `companyIds:` or
+    // `statuses:` argument here would be the register returning.
+    const pageCalls = leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    expect(pageCalls.length, 'the self-service history reads the paginated, self-narrowed read').toBe(2);
+    for (const call of pageCalls) {
+      expect(call, 'every /leave history read is narrowed to the viewer').toContain(
+        'employmentIds: historyEmploymentIds',
+      );
+      expect(call).not.toContain('companyIds:');
+      expect(call).not.toContain('statuses:');
+    }
+    // And it is the VIEWER's own employments — not just the current one, or a rehired person loses the
+    // records of their earlier employment (the personId test this replaced kept them).
+    expect(leavePage).toContain('const myEmploymentIds = (await myEmploymentIdsAll(session)).map(');
+    // The flat scope-wide read it replaced must not linger alongside it: two history reads on one page is
+    // the same "read running for nobody" this block exists to catch.
+    expect(leavePage.includes('listLeaveRequests(session, scopeIds)')).toBe(false);
     // And the listing that replaced it as the admin's landing view survives, at its new address.
     expect(src.includes('listEmployeesPage(s, {')).toBe(true);
     expect(leavePage.includes('listEmployeesPage'), 'the listing must not be left behind too').toBe(false);
+  });
+
+  it('5f2e20fb: My Leave History carries the SAME filter control, prefixed so old admin links stay inert', () => {
+    // Three fields, one multi + two dates, exactly the shape app/leave/employee-records/page.tsx uses.
+    expect(leavePage).toMatch(/import \{ FilterChips, FilterPanel, type FilterField \} from '@\/components\/filter-panel'/);
+    expect(leavePage).toContain("kind: 'multi'");
+    expect((leavePage.match(/kind: 'date'/g) ?? []).length).toBe(2);
+    expect(leavePage).toContain("name: 'hType'");
+    expect(leavePage).toContain("name: 'hFrom'");
+    expect(leavePage).toContain("name: 'hTo'");
+    // The panel and its chips both post back to THIS page, and both carry the page's foreign params so
+    // applying a filter cannot reset the as-at date or the holiday banner.
+    expect((leavePage.match(/action="\/leave"\n\s+fields=\{historyFilterFields\}/g) ?? []).length).toBe(2);
+    expect((leavePage.match(/hidden=\{historyHiddenParams\}/g) ?? []).length).toBe(2);
+    // THE PREFIX IS THE POINT: the retired register owned bare from/to/type on this same path, and a saved
+    // admin link carrying them must keep arriving unfiltered.
+    for (const bare of ['from?: string', 'to?: string', 'type?: string']) {
+      expect(leavePage.includes(bare), `${bare} would revive a stale admin link as a filter`).toBe(false);
+    }
+    // Empty-with-filters says the filters matched nothing — NOT requestsEmpty, which means "no records at all".
+    expect(leavePage).toContain("t('filters.emptyFiltered')");
+    expect(leavePage).toContain("t('filters.showingOf', { shown: selfHistory.length, total })");
+    // LAYOUT TRAP: FilterPanel's popover is absolutely positioned, not a portal, so a clipping ancestor
+    // would cut it off. The history Card must not clip.
+    expect(leavePage).toContain('<Card className={`flex flex-col ${COLUMN_CAP}`} data-tour="leave-requests">');
+  });
+
+  it('ad965821: the ESS apply dropdown is built from the ELIGIBILITY-filtered read', () => {
+    // The defect lived in the CONTRACT between this page and core/read.ts (AGENTS rule 17), so it is pinned
+    // on both halves: a unit test of either one passes throughout.
+    expect(leavePage).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
+    // REV 2 — the option list is drawn from the OFFERABLE set, not from the viewer's own. Pinning
+    // `eligibleLeaveTypes.map(` here pinned the regression itself: LeaveDurationFields intersects `types`
+    // with the selected subject's set, so a viewer-only array made the on-behalf offer
+    // eligible(manager) ∩ eligible(report). The union is what makes the downstream filter produce the
+    // SUBJECT's own list.
+    expect(leavePage).toContain('const requestLeaveTypeOptions = offerableLeaveTypes.map((lt) => ({');
+    expect(leavePage).toContain('const offerableLeaveTypes = leaveTypes.filter((lt) => offerableTypeIds.has(lt.id));');
+    expect(leavePage).toMatch(
+      /const offerableTypeIds = eligibleTypeIdsByEmployment\s*\n\s*\? new Set\(Object\.values\(eligibleTypeIdsByEmployment\)\.flat\(\)\)\s*\n\s*: eligibleTypeIds;/,
+    );
+    // …and the Replacement Leave dialog, which has NO employee selector, keeps the viewer's own list rather
+    // than that union — otherwise a manager would be offered credit targets belonging to their reports.
+    expect(leavePage).toContain(
+      'const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));',
+    );
+    expect(leavePage).toContain('types={replacementLeaveTypeOptions}');
+    // A subject with an empty set is not selectable, and the viewer leads the selector: the type <select> is
+    // `required` with no placeholder row, so an empty list is a form that can neither be satisfied nor
+    // explained (the reporter forbade explaining it), and defaulting to a report would apply for the wrong
+    // person by accident.
+    expect(leavePage).toContain(
+      '(e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,',
+    );
+    expect(leavePage).toMatch(
+      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.selectableSubjects\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,
+    );
+    // Neither employee dialog may render an empty type <select>. The Replacement one carries no `required`
+    // at all, so an empty list there posts leaveTypeId='' instead of being refused by the browser.
+    expect(leavePage).toContain('{ess && requestLeaveTypeOptions.length > 0 && (');
+    expect(leavePage).toContain(
+      '{ess && replacementRequest.allowed && replacementLeaveTypeOptions.length > 0 && (',
+    );
+    // The unfiltered catalogue is STILL read — two consumers need it and would break silently otherwise.
+    expect(leavePage).toContain("const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;");
+    expect(leavePage).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
+    // NOTHING announces that a row was removed: no caption, no disabled option, no count under the select.
+    const fields = read('components/leave-duration-fields.tsx');
+    expect(fields).toContain('{visibleTypes.map((x) => (');
+    // Sliced to the LEAVE TYPE select, WITH COMMENTS STRIPPED FIRST — both halves learned the hard way.
+    // The duration select below legitimately renders `disabled` options (a type allowing no half day greys
+    // that row), which is a different control answering a different question; and the comment that EXPLAINS
+    // this rule says the words "disabled option", so an un-stripped scan reports its own documentation as
+    // the violation. Same trap as test/filter-panel-not-nested.test.ts's stripComments.
+    const code = fields.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const typeSelectAt = code.indexOf('name="leaveTypeId"');
+    expect(typeSelectAt).toBeGreaterThan(-1);
+    const typeSelect = code.slice(typeSelectAt, code.indexOf('</select>', typeSelectAt));
+    expect(typeSelect).not.toMatch(/\sdisabled/);
+    expect(typeSelect).not.toMatch(/opacity-|text-muted/);
+    // …and no new message key was invented for one.
+    const en = JSON.parse(read('messages/en.json')) as { leave: Record<string, unknown> };
+    for (const invented of ['ineligibleHidden', 'someTypesHidden', 'eligibilityNotice', 'typesFilteredNotice']) {
+      expect(en.leave[invented], `leave.${invented} — the reporter asked for NO such line`).toBeUndefined();
+    }
   });
 
   it('the Employee Details panel is still admin-gated and still multi-select', () => {

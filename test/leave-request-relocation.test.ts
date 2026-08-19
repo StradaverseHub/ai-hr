@@ -49,9 +49,18 @@ describe('Request Leave: relocated to a top-right primary "+" button', () => {
     const dialogAt = page.indexOf('<RequestLeaveDialog');
     expect(dialogAt).toBeGreaterThan(-1);
     expect(page).toMatch(/const ess = !admin;/);
-    // The guard wraps the dialog — the `{ess && (` immediately preceding it is the nearest opening guard.
-    const guardAt = page.lastIndexOf('{ess && (', dialogAt);
-    expect(guardAt, 'the trigger must sit inside an {ess && (…)} guard').toBeGreaterThan(-1);
+    // The guard wraps the dialog — the nearest opening `{ess &&` before it is that guard.
+    //
+    // UPDATED BY ad965821 (AGENTS rule 18): the ESS guard — the property actually under test here — is
+    // intact, but it is no longer the WHOLE condition. An employee who qualifies for no leave type at all
+    // now gets no trigger rather than an empty form, mirroring the Replacement Leave button beside it. The
+    // literal `{ess && (` was pinning the absence of that courtesy, which was never this case's subject.
+    const guardAt = page.lastIndexOf('{ess &&', dialogAt);
+    expect(guardAt, 'the trigger must sit inside an {ess && …} guard').toBeGreaterThan(-1);
+    expect(
+      page.slice(guardAt, dialogAt),
+      'and offers nothing when the employee qualifies for nothing',
+    ).toContain('requestLeaveTypeOptions.length > 0');
     // Nothing between the guard and the dialog may reopen an admin branch.
     expect(page.slice(guardAt, dialogAt).includes('{admin && (')).toBe(false);
     // A manager is not `admin`, so on-behalf-of application from this page is unaffected.

@@ -235,7 +235,7 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     const guardAt = leavePage.indexOf('if (me == null || admin) {');
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     // …and it comes BEFORE the self-service reads it protects.
-    for (const read of ['leaveBalances(session', 'listLeaveRequests(session', 'listEmployees(session']) {
+    for (const read of ['leaveBalances(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
       expect(leavePage.indexOf(read), read).toBeGreaterThan(guardAt);
     }
   });
@@ -272,9 +272,15 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
   it('orders cards newest first by leave START date, explicitly (not the read’s createdAt order)', () => {
     // The `admin ? [] :` arm went with the admin branch (388e53c2) — an administrator never reaches this
     // line now, the short page returns above it. The ORDERING is the claim, and it is unchanged.
-    expect(leavePage).toMatch(
-      /const selfHistory = \[\.\.\.history\]\.sort\(\(a, b\) => b\.startDate\.localeCompare\(a\.startDate\)\)/,
-    );
+    //
+    // UPDATED BY 5f2e20fb (AGENTS rule 18): newest-first BY LEAVE START DATE is still the claim and is
+    // still asserted — it moved from a JavaScript re-sort into the read itself, because the history is now
+    // filtered in SQL and re-sorting a filtered page in JS would only re-order the page. Pinning the JS
+    // sort would have pinned a second ordering the same round deliberately removed as redundant.
+    expect(leavePage).toContain("sort: 'start',");
+    expect(leavePage).toContain("dir: 'desc',");
+    expect(leavePage).toContain('const selfHistory = historyShown.rows;');
+    expect(leavePage).not.toMatch(/\[\.\.\.history\]\.sort\(/);
     // The per-date outcome window follows the card order (5 newest by start date).
     expect(leavePage).toMatch(/selfHistory\.slice\(0, 5\)\.map/);
     expect(leavePage.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);

@@ -175,9 +175,16 @@ describe('drift guards (source assertions)', () => {
     expect(src).toMatch(/listLeaveRequests\(s,\s*scopeIds,\s*200,\s*\{\s*status:\s*'pending'\s*\}\)/);
   });
 
-  it('/leave keeps its pinned call shape (step 1 must not disturb it)', () => {
+  it('/leave keeps its own history read, self-narrowed (step 1 must not disturb it)', () => {
+    // UPDATED BY 5f2e20fb (AGENTS rule 18). What this case is FOR is unchanged: the approvals narrowing
+    // above must not reach across and change how /leave loads the employee's own history. What changed is
+    // which call that is — /leave moved off the flat scope-wide read onto the paginated one narrowed by
+    // employmentIds, so it can carry the My Leave History date/leave-type filter. Asserting the old literal
+    // would have pinned a read the same round deliberately replaced.
     const src = read('app/leave/page.tsx');
-    expect(src).toContain('listLeaveRequests(session, scopeIds)');
+    expect(src).toContain('listLeaveRequestsPage(session, {');
+    expect(src).toContain('employmentIds: historyEmploymentIds');
+    expect(src).not.toContain('listLeaveRequests(session, scopeIds)');
   });
 
   it('the calendar pill href is built from the shared buildApprovalAttentionHash import, never hand-rolled', () => {

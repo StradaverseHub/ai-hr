@@ -120,7 +120,13 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
 
   it('ENUMERATION: the register over every status is GONE, and /approvals never replaced it', () => {
     // INVERTED (afd0a87c). /leave no longer runs the paged, all-status projection at all.
-    expect(leavePage).not.toContain('listLeaveRequestsPage(session, {');
+    // UPDATED BY 5f2e20fb (AGENTS rule 18). The register is gone and stays gone; what identifies it is
+    // an ORG-WIDE scope, not the read it used. /leave's own history now calls the paginated read narrowed
+    // to the viewer's employments, for the filter the reporter asked for on their own records.
+    for (const call of leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? []) {
+      expect(call).toContain('employmentIds:');
+      expect(call).not.toContain('companyIds:');
+    }
     expect(leavePage).not.toContain("t('requestsTitle')");
     // The point this test has always made still stands and is why the loss is worth recording:
     // /approvals is NOT a substitute — pending rows only, capped at 200, no filters, no export.
@@ -169,7 +175,9 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     // The `admin ? [] :` arm went with the admin branch (388e53c2): an administrator no longer reaches
     // this code at all, because /leave returns the short page before it. The property being pinned is
     // unchanged and is now pinned at its source — these dialogs render from the viewer's OWN rows.
-    expect(leavePage).toContain('const selfHistory = [...history].sort(');
+    // 5f2e20fb: the newest-first ordering moved into SQL, so the JS re-sort is gone. Still the viewer's
+    // own rows, which is the property under test here.
+    expect(leavePage).toContain('const selfHistory = historyShown.rows;');
     expect(leavePage).toContain('if (me == null || admin) {');
     // The mine() self-ban is unchanged: on /approvals the viewer's OWN row shows a label, never a control.
     expect(approvalsPage).toContain('const mine = (personId: string | null) => s.personId != null && personId === s.personId;');

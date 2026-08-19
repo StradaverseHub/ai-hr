@@ -42,8 +42,11 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // My Balances: the primary cards and the detailed balance card.
     expect(leavePage).toContain('{ess && primaryCards.length > 0 && (');
     expect(leavePage).toMatch(/\{ess && \(\s*\n\s*<Card className="overflow-hidden" data-tour="leave-balance">/);
-    // Request Leave.
-    expect(leavePage).toMatch(/\{ess && \(\s*\n\s*<RequestLeaveDialog/);
+    // Request Leave. UPDATED BY ad965821 (AGENTS rule 18): the `ess` gate is intact and is still what this
+    // block is about — a second condition was ADDED beside it, so an employee who qualifies for no leave
+    // type at all gets no trigger rather than an empty form. Asserting the old exact shape would have
+    // pinned the absence of that courtesy, which is not what 8ec63139 decided.
+    expect(leavePage).toMatch(/\{ess && requestLeaveTypeOptions\.length > 0 && \(\s*\n\s*<RequestLeaveDialog/);
   });
 
   it('leaves leave application, approval and balance calculation untouched', () => {
@@ -361,7 +364,14 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     // asked plainly for the removal with no relocation, and said they will redesign Employee Leave Record
     // separately. What is asserted now is that the removal was COMPLETE — a half-removed table leaves the
     // read running for nobody, which is the expensive half.
-    expect(leavePage).not.toContain('listLeaveRequestsPage(session, {');
+    // UPDATED BY 5f2e20fb (AGENTS rule 18). The paginated read is no longer proof the register is back:
+    // the employee's own history now uses it, narrowed to their own employments, for the date and
+    // leave-type filter the reporter asked for. The register is identified by what only IT had — an
+    // org-wide scope argument, its own title and its export link — none of which may return.
+    for (const call of leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? []) {
+      expect(call, 'a /leave history read must be self-narrowed, never org-wide').toContain('employmentIds:');
+      expect(call).not.toContain('companyIds:');
+    }
     expect(leavePage).not.toContain("t('requestsTitle')");
     expect(leavePage).not.toContain('/leave/export?');
     // The employee listing that replaced it must survive — at its new address (388e53c2).

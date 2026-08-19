@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Field, inputCls } from './ui';
 // 4a1abc4a: the per-date preview quotes a fraction of a day ("Yes (0.5)"); the ledger row it becomes reads
@@ -114,6 +114,7 @@ export function LeaveDurationFields({
   layout = 'grid',
   showDocumentFields = false,
   employeeOptions,
+  eligibleTypeIdsByEmployment,
   action: previewAction,
   summaryAction,
 }: {
@@ -127,6 +128,22 @@ export function LeaveDurationFields({
    *  preview below can read the currently-selected employmentId reactively. /me omits this — the preview
    *  action there resolves the caller's own employment server-side. */
   employeeOptions?: { id: string; name: string }[];
+  /**
+   * ad965821 — which leave types each selectable employment actually qualifies for, resolved server-side by
+   * the ONE gate in core/read.ts (conditions + employee_can_apply + hidden placement). Present only on the
+   * on-behalf-of path, where the subject can change after the form is open; a plain self-service applicant
+   * was already handed a list narrowed to them, so there is nothing left to re-draw.
+   *
+   * WHEN THIS IS PRESENT, `types` IS A SUPERSET AND MUST BE (rev 2). The filter below intersects `types`
+   * with the selected subject's set, so whatever arrives in `types` bounds every subject: handing down the
+   * VIEWER's own list produced eligible(manager) ∩ eligible(report), which is how a male manager lost the
+   * ability to apply for Maternity on behalf of a female report. app/leave/page.tsx therefore passes the
+   * UNION of every selectable subject's set, and this prop is what turns it back into one person's list.
+   *
+   * An ineligible type is ABSENT from the select — not disabled, not greyed, not counted. That is the
+   * reporter's explicit ask, and a disabled <option> would still announce that the type exists.
+   */
+  eligibleTypeIdsByEmployment?: Record<string, string[]>;
   /** Feedback 31474452 (Step 5): server action returning a LeavePreview | null for the current
    *  {employmentId, leaveTypeId, startDate, endDate, durationType}. Omit to render no preview line (e.g. an
    *  admin on-behalf form that doesn't want it). Day-based durations only — hourly keeps hourlyTotal below.
@@ -171,6 +188,26 @@ export function LeaveDurationFields({
   // newer one. Each effect stamps a monotonically increasing id and drops any reply that isn't the latest.
   const previewReq = useRef(0);
   const summaryReq = useRef(0);
+
+  // ad965821 — the types on offer for the CURRENTLY selected subject: `types` (a superset when a map is
+  // present — see the prop doc) intersected with that subject's own set. No map (the self-service path) or
+  // no entry for this employment ⇒ the list is unchanged, so every existing caller behaves exactly as before.
+  const visibleTypes = useMemo(() => {
+    const allowed = eligibleTypeIdsByEmployment?.[employmentId];
+    if (!allowed) return types;
+    const set = new Set(allowed);
+    return types.filter((x) => set.has(x.id));
+  }, [types, eligibleTypeIdsByEmployment, employmentId]);
+
+  // Switching employee must not carry the previous person's choice across: a leave type that does not apply
+  // to the newly selected subject is dropped and the selection falls back to the first type that does. It
+  // cannot simply be left pointing at the missing id — the summary and preview effects below are KEYED on
+  // typeId, so a stale id would keep fetching figures for a type no longer on the list.
+  useEffect(() => {
+    if (visibleTypes.some((x) => x.id === typeId)) return;
+    setTypeId(visibleTypes[0]?.id ?? '');
+    setDuration('full_day');
+  }, [visibleTypes, typeId]);
 
   const selected = types.find((x) => x.id === typeId);
   const allowed = new Set<Duration>(['full_day', ...((selected?.durations ?? []) as Duration[])]);
@@ -319,7 +356,9 @@ export function LeaveDurationFields({
           }}
           className={inputCls}
         >
-          {types.map((x) => (
+          {/* ad965821 — `visibleTypes`, not `types`. A type the subject does not qualify for is simply not
+              here: no disabled option, no greyed row, no caption under the select saying one was left out. */}
+          {visibleTypes.map((x) => (
             <option key={x.id} value={x.id}>
               {x.label}
             </option>

@@ -48,6 +48,10 @@ import {
   workingDatesForSpan,
   workingDatesForSpans,
   type LeaveEligibility,
+  // ad965821 — the probation rule lives in its OWN column, not the eligibility JSONB, so the apply-menu
+  // gate merges it in the same way requestLeave/editLeave do (core/leave.ts:2467 and :5356). The MERGE is
+  // identical; the AS-OF is not — see mayAppearInApplyMenu.
+  type ProbationEligibility,
 } from './leave';
 import { buildTemplateEntitlementResolver } from './entitlement-template';
 // 31e39d74 — "configured but not yet generated" as a value, not as a silence. Pure + DB-free, so the
@@ -843,6 +847,87 @@ export function listLeaveTypes(
 }
 
 /**
+ * THE ONE EXPRESSION OF THE REQUEST-LEAVE DROPDOWN GATE (ad965821).
+ *
+ * Three independent questions decide whether a leave type may be OFFERED to an employee, and until this
+ * item they were three chained `.filter()`s inline inside `listEligibleLeaveTypesFor`:
+ *
+ *   1. the CONDITION criteria HR configured on the type — gender, marital status, minimum service,
+ *      probation status and the eight organisation-assignment keys — via `isLeaveEligible`, the pure
+ *      twin of the `assertEligible` that `requestLeave` throws from. Nothing here is keyed on MATERNITY
+ *      or PATERNITY: the engine is generic, which matters because production's catalogue codes those
+ *      types MTL / PTL and anything code-keyed would silently miss them.
+ *   2. `employee_can_apply = false` — HR has closed the type to employee applications (7b11f1c1).
+ *   3. a placement that resolves to 'hidden' — via `visible_to_employee = false` or the code-keyed
+ *      default-hidden set (6d78f373), resolved through lib/leave-groups `resolvePlacement`.
+ *
+ * IT IS ONE FUNCTION BECAUSE 464b58e6 SPENT A ROUND REMOVING A SECOND READER OF (3). Two surfaces now
+ * need this answer — the viewer's own dropdown (`listEligibleLeaveTypesFor`) and the on-behalf-of map
+ * (`eligibleLeaveTypeIdsFor`) — and a restated rule is how they would drift. No third switch is being
+ * introduced here: this names the switches that already exist.
+ *
+ * DEFENCE IN DEPTH ONLY. `requestLeave` re-derives all three server-side (core/leave.ts:2470 / :2493)
+ * and remains the authority, so a page left open too long still cannot submit an ineligible type.
+ *
+ * The probation rule is stored in `leave_type.probation_eligibility` (its own column, migration 0225)
+ * rather than the eligibility JSONB, so it is merged in here the way both enforcement chokepoints merge
+ * it. That closes a real gap: the read used to project `eligibility` alone, so a probation-gated type
+ * sat in the dropdown right up until the submit refused it.
+ *
+ * `today` IS THE AS-OF, AND IT IS NOT THE ONE requestLeave USES. `assertEligible` is called with the
+ * request's START DATE (core/leave.ts:2492); a menu has no start date to be called with — the employee has
+ * not picked one yet, and the dropdown is drawn before the date inputs are touched. So every time-dependent
+ * rule (probation, minServiceMonths) is answered as at today. The skew is one-directional and always
+ * conservative: a type whose gate OPENS between today and the intended start is absent from the menu until
+ * it opens, and one whose gate CLOSES in that window is offered and then refused on submit. Nothing
+ * ineligible can be booked either way — `assertEligible` at the real date remains the authority. This is
+ * pre-existing behaviour for minServiceMonths (the read has always gated on it at today); probation now
+ * shares it. Re-deriving the menu against a start date the employee is still editing would mean a round
+ * trip per keystroke and a list that changes under the cursor, which is a different item.
+ */
+type ApplyMenuType = {
+  code: string | null;
+  eligibility: unknown;
+  probationEligibility: string | null;
+  employeeCanApply: boolean | null;
+  visibleToEmployee: boolean | null;
+  essPlacement: string | null;
+  role: string | null;
+};
+/** The employee facts the gate reads — exactly `isLeaveEligible`'s own parameter, never a restated copy. */
+type ApplyMenuEmp = Parameters<typeof isLeaveEligible>[1];
+
+function mayAppearInApplyMenu(t: ApplyMenuType, emp: ApplyMenuEmp, today: string): boolean {
+  const baseElig = (t.eligibility ?? null) as LeaveEligibility | null;
+  const probation = (t.probationEligibility ?? null) as ProbationEligibility | null;
+  const elig: LeaveEligibility | null =
+    baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
+  return (
+    isLeaveEligible(elig, emp, today) &&
+    t.employeeCanApply !== false &&
+    resolvePlacement(t.code, t.essPlacement, t.visibleToEmployee, t.role) !== 'hidden'
+  );
+}
+
+/** The gate's employee-side projection, shared by both reads so neither can fetch a column the other
+ *  needs and silently answer a different question (a missing confirmation date reads as "confirmed"). */
+const applyMenuEmpColumns = {
+  gender: person.gender,
+  marital: person.maritalStatus,
+  hiredOn: employment.hiredOn,
+  confirmationDate: employment.confirmationDate,
+  finalConfirmationDate: employment.finalConfirmationDate,
+  orgDivision: employment.orgDivision,
+  orgBranch: employment.orgBranch,
+  orgRegion: employment.orgRegion,
+  orgLine: employment.orgLine,
+  orgSection: employment.orgSection,
+  orgTeam: employment.orgTeam,
+  orgBase: employment.orgBase,
+  employmentCategory: employment.employmentCategory,
+} as const;
+
+/**
  * The leave types ONE employee may actually take — `listLeaveTypes` filtered through the eligibility
  * gate (#25 visibility). This is the apply-dropdown source on /me so an employee never sees a type they
  * can't request (e.g. a male sees no Maternity). It filters the SAME projection as `listLeaveTypes`, so
@@ -852,6 +937,9 @@ export function listLeaveTypes(
  * authority. Strict equality means an employee whose gated attribute is undisclosed/NULL is excluded —
  * the lawful conservative default (don't grant a restricted entitlement to someone whose attribute is
  * unknown). Mirrors the leaveBalances no-activity tail (read.ts) and the requestLeave gate (leave.ts).
+ *
+ * Answered AS AT TODAY, where `requestLeave` answers as at the leave's start date — see
+ * `mayAppearInApplyMenu` above for why a menu has no other date to use and why the difference is safe.
  */
 export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string) {
   return withTenant(ctx, async (tx) => {
@@ -882,8 +970,18 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // the HR-authored notice under the leave-type select on the /me apply form.
           customMessages: leaveType.customMessages,
           eligibility: leaveType.eligibility,
+          // ad965821 — the probation rule's own column (migration 0225). Projected so the gate below can
+          // merge it into `eligibility` the way requestLeave does; without it a confirmed_only type stayed
+          // in the dropdown for a probationer until the submit refused it.
+          probationEligibility: leaveType.probationEligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
+          // ad965821 — Balance Deduction Source (cdf9ca48), already projected by listLeaveTypes at the top
+          // of this file. The /leave Request Leave option maps it into LeaveTypeOption.borrowsBalance, which
+          // is what drops Emergency Leave's decomposition-specific controls once EL has been pointed at
+          // another type's balance. Missing it here would have silently re-shown those controls the moment
+          // this became the dropdown's source.
+          balanceSourceTypeId: leaveType.balanceSourceTypeId,
           // Leave Type Employee Visibility (7b11f1c1): the can-apply switch — false ⇒ this type is dropped
           // from the apply dropdown (in addition to the eligibility filter). NULL ⇒ can apply (today's
           // behaviour). Independent of visibleToEmployee: a visible-but-not-can-apply type still shows in
@@ -903,27 +1001,84 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory })
+        .select(applyMenuEmpColumns)
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, employmentId))
         .limit(1),
     ]);
     const today = todayInKualaLumpur();
+    // ONE named gate (mayAppearInApplyMenu above) rather than three chained filters restated per surface.
     return types
-      .filter((t) => isLeaveEligible(t.eligibility as LeaveEligibility | null, emp, today))
-      // Leave Type Employee Visibility (7b11f1c1): drop types HR has closed to employee applications
-      // (employee_can_apply=false). NULL ⇒ keep (today's behaviour). requestLeave re-checks server-side.
-      .filter((t) => t.employeeCanApply !== false)
-      // Leave View Dashboard (6d78f373) hidden gate: a type that resolves to 'hidden' — via HR's
-      // visible_to_employee=false OR the code-keyed default-hidden set — must not appear in the Request Leave
-      // dropdown (reporter §3). Ordinary types resolve to 'primary'|'secondary' and are kept. This is the ESS
-      // apply source only (admin uses listLeaveTypes); requestLeave stays the server-side authority.
-      .filter((t) => resolvePlacement(t.code, t.essPlacement, t.visibleToEmployee, t.role) !== 'hidden')
-      .map(({ i18n, eligibility, employeeCanApply, visibleToEmployee, essPlacement, role, ...r }) => ({
-        ...r,
-        name: pickName(r.name, i18n, locale),
-      }));
+      .filter((t) => mayAppearInApplyMenu(t, emp, today))
+      .map(
+        ({ i18n, eligibility, probationEligibility, employeeCanApply, visibleToEmployee, essPlacement, role, ...r }) => ({
+          ...r,
+          name: pickName(r.name, i18n, locale),
+        }),
+      );
+  });
+}
+
+/**
+ * The same gate, answered for SEVERAL employments at once (ad965821) — `{ employmentId: [leaveTypeId…] }`.
+ *
+ * The on-behalf-of case: a line manager applying for one of their reports picks WHO first, and the leave
+ * types on offer must re-draw for that person rather than staying the manager's own. The map is resolved
+ * server-side and handed to the client form, so switching employee needs no round trip and no second read.
+ *
+ * TWO QUERIES, NEVER N+1: one for the catalogue, one `inArray` for every given employment's attribute row,
+ * then `mayAppearInApplyMenu` per (type, employment) pair in memory — the SAME predicate the single-employee
+ * read uses, so for ONE employment this map and `listEligibleLeaveTypesFor` answer identically (pinned in
+ * test/leave-ess-eligible-dropdown.test.ts).
+ *
+ * WHAT THAT SENTENCE DOES NOT SAY, because rev 1 read it as if it did: it is a statement about one
+ * employment, not about the manager and the report being alike. The two sets genuinely differ — that is the
+ * point of the map — so a caller that hands a form the MANAGER's list and then filters it by this map offers
+ * eligible(manager) ∩ eligible(report), which is nobody's answer. The form must be given a superset of every
+ * subject it can name (app/leave/page.tsx builds the union) and let this map do the narrowing.
+ *
+ * AS-OF IS TODAY, NOT THE LEAVE DATE — same caveat as `listEligibleLeaveTypesFor`; see its docblock.
+ *
+ * An employment the caller may not see (RLS trims the attribute select) comes back with an EMPTY list rather
+ * than the whole catalogue: offering nothing is the conservative direction, and requestLeave refuses the
+ * submission either way.
+ */
+export function eligibleLeaveTypeIdsFor(
+  ctx: SessionContext,
+  employmentIds: string[],
+): Promise<Record<string, string[]>> {
+  return withTenant(ctx, async (tx) => {
+    const ids = [...new Set(employmentIds)];
+    if (ids.length === 0) return {};
+    const [types, emps] = await Promise.all([
+      tx
+        .select({
+          id: leaveType.id,
+          code: leaveType.code,
+          eligibility: leaveType.eligibility,
+          probationEligibility: leaveType.probationEligibility,
+          employeeCanApply: leaveType.employeeCanApply,
+          visibleToEmployee: leaveType.visibleToEmployee,
+          essPlacement: leaveType.essPlacement,
+          role: leaveType.role,
+        })
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      tx
+        .select({ employmentId: employment.id, ...applyMenuEmpColumns })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(inArray(employment.id, ids)),
+    ]);
+    const today = todayInKualaLumpur();
+    // Every requested id gets a key, so a caller can tell "no types" from "unknown employment" only by
+    // looking at the array — both are empty, and both mean the same thing to the form: offer nothing.
+    const out: Record<string, string[]> = Object.fromEntries(ids.map((id) => [id, [] as string[]]));
+    for (const emp of emps) {
+      out[emp.employmentId] = types.filter((t) => mayAppearInApplyMenu(t, emp, today)).map((t) => t.id);
+    }
+    return out;
   });
 }
 
