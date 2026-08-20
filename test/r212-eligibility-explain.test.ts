@@ -35,6 +35,7 @@ import {
   explainEntitlementEligibility,
   resolveEntitlementForEmployment,
   retireEligibilityRule,
+  updateEligibilityRule,
 } from '../core/entitlement-template';
 import type { ServiceBand } from '../core/leave-compute';
 import { withTenant } from '../db/client';
@@ -278,6 +279,50 @@ describe('r212 — explaining why an employee resolves to no entitlement table',
     expect(x.rules[0].matched).toBe(false);
     expect(x.rules[0].firstFailure).toBeNull();
     expect(x.rules[0].failsOnCombination).toBe(false);
+  });
+
+  it('a rule edited to take effect LATER is still reported as IN FORCE today, and still tested', async () => {
+    // ⚠️ THE VERSIONING TRAP. An edit CLOSES the running version at its `validFrom` and inserts a successor
+    // from that date, so an edit dated next month leaves the lineage with a FUTURE head sitting over a
+    // version that is in force today. An explanation that judged the lineage on its latest row would report
+    // "starts next month" for a rule the engine is matching people with right now — and would never test its
+    // criteria, so it could contradict `winner` in the same answer.
+    const ctx = adminCtx(b);
+    const tpl = await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'Contract',
+      serviceBands: flat(12),
+      validFrom: '2026-01-01',
+    });
+    await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'Permanent',
+      serviceBands: flat(18),
+      validFrom: '2026-01-01',
+    });
+    const rule = await createEligibilityRule(ctx, {
+      name: 'Contract staff',
+      templateLineageId: tpl.lineageId,
+      criteria: { employmentTypes: ['contract'] },
+      validFrom: '2026-01-01',
+    });
+    // …and the successor starts AFTER `ASOF`, which is the whole point of the case.
+    await updateEligibilityRule(ctx, {
+      lineageId: rule.lineageId,
+      criteria: { employmentTypes: ['full_time'] },
+      validFrom: '2026-12-01',
+    });
+
+    const contractor = await hire('contract');
+    const x = await explain(contractor.employmentId);
+    expect(x.rules).toHaveLength(1);
+    expect(x.rules[0].validFrom).toBe('2026-01-01');
+    expect(x.rules[0].inForce).toBe(true);
+    // The version IN FORCE narrows to contract, so the contractor matches — and the engine agrees, which is
+    // the assertion that makes this more than a display preference.
+    expect(x.rules[0].matched).toBe(true);
+    expect(x.winner?.ruleName).toBe('Contract staff');
+    expect((await resolve(contractor.employmentId))?.ruleName).toBe('Contract staff');
   });
 
   it('an UNDATED axis is captioned, because it is read at today\'s value however far back asOf reaches', async () => {

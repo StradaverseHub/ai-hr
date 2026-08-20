@@ -185,7 +185,13 @@ describe('r212 — the one-click "everyone" rule really does post no criteria', 
     // itself mirroring the engine) and this screen consumes it — so a block that started deciding for
     // itself would be able to disagree with the health card directly above it.
     expect(block).toContain('soleTableNoRuleNeeded');
-    expect(block).toContain('.filter((h) => h.soleTableApplies)');
+    // The LINE'S OWN source, not merely the flag appearing somewhere in the file: the block already reads
+    // `soleTableApplies` for the per-table marker, so a file-wide search would have kept passing while this
+    // list quietly started deciding for itself.
+    const start = block.indexOf('const soleTableTypeNames');
+    expect(start, 'the sole-table list is gone').toBeGreaterThan(-1);
+    const decl = block.slice(start, block.indexOf(';', start));
+    expect(decl, 'the sole-table line stopped reading the health derivation').toContain('h.soleTableApplies');
     // The engine's own two conditions must not reappear here in any form.
     expect(block).not.toContain('liveTemplates.length === 1');
     expect(block).not.toContain('rulesInForce.length === 0');

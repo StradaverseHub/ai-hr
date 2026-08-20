@@ -1258,12 +1258,30 @@ export async function explainEntitlementEligibility(
         ).map((r) => r.id)
       : [],
   );
-  /** One entry per rule LINEAGE, its current version — a retired lineage has no version in force, and
-   *  hiding it would hide the expiry that is the commonest cause of this whole explanation existing. */
+  /**
+   * ONE ENTRY PER RULE LINEAGE — the version IN FORCE at `asOf` where there is one, and otherwise the
+   * lineage's latest version.
+   *
+   * ⚠️ "LATEST" ALONE IS NOT GOOD ENOUGH, AND THE DIFFERENCE IS NOT THEORETICAL. An edit closes the running
+   * version at its `validFrom` and inserts a successor from that date; an edit dated NEXT MONTH therefore
+   * leaves the lineage with a future head sitting over a version that is in force today. Judged on the head,
+   * a rule the engine is currently matching people with would be reported as "starts next month" — and, worse,
+   * its criteria would never be tested, so the explanation could say a rule had not begun while `winner`
+   * named that very rule. In-force first is what keeps this file's answers agreeing with the resolver's.
+   *
+   * A RETIRED lineage has no version in force at all, and then the latest version is exactly right: hiding
+   * it would hide the expiry that is the commonest reason this explanation is being read.
+   */
   const ruleHeads = new Map<string, EligibilityRuleRow>();
   for (const r of ruleVersions) {
     const prev = ruleHeads.get(r.lineageId);
-    if (!prev || r.validFrom >= prev.validFrom) ruleHeads.set(r.lineageId, r);
+    if (!prev) {
+      ruleHeads.set(r.lineageId, r);
+      continue;
+    }
+    const live = inForceIds.has(r.id);
+    const prevLive = inForceIds.has(prev.id);
+    if (live !== prevLive ? live : r.validFrom >= prev.validFrom) ruleHeads.set(r.lineageId, r);
   }
 
   // IS THIS EMPLOYMENT EVEN A CANDIDATE ON THIS DATE? `resolveOrgCriteriaTargets` excludes anybody not yet
