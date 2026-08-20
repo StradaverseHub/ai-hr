@@ -223,6 +223,18 @@ describe('bdf7d248 — the consequence this change has that nobody asked for', (
    * cliff in the published table. It is pinned so the behaviour is a stated, tested consequence rather
    * than a surprise the first time a RM4,900 employee gets a RM200 bonus, and so a future reversals ADR
    * (§6) has a concrete case to work from.
+   *
+   * ⚠️ AND IT IS THE ONE CASE WHERE THE PLAN'S HEADLINE PROMISE DOES NOT HOLD. bdf7d248's plan told the
+   * reporter, in plain words, that "an employee paid twice in one month contributes exactly what they
+   * would have contributed had it all been paid once". Everywhere else this change MAKES that true. Here
+   * it cannot: one run of RM5,050 is RM612, while RM5,000 then RM50 is RM650 + RM0 = RM650, because the
+   * clamp cannot give the RM38 back. The two readings are pinned side by side below so the divergence is
+   * a measured fact rather than a claim, and so nobody "fixes" one of them into agreement by inventing a
+   * negative EPF line on a payslip — which is what closing the gap would take, and what §6 excludes.
+   *
+   * The excess sits in the EMPLOYEE's EPF account and is an employer cost; nobody is short-paid. It is
+   * bounded by the size of the step (RM38 at this row) and only reachable when a bonus carries a month
+   * from at-or-below RM5,000 to above it. The reporter is told this when the item is marked done.
    */
   it('a bonus that crosses the RM5,000 employer step can lower the month’s employer figure', () => {
     expect(epf(5000, 0, CFG.epf).employer).toBe(650); // 13% row
@@ -241,5 +253,31 @@ describe('bdf7d248 — the consequence this change has that nobody asked for', (
     // The employee side has no such step, so it tops up normally.
     expect(runs[1].epfEmployee).toBe(11);
     expect(monthly.epfEmployee).toBe(561);
+
+    // THE DIVERGENCE ITSELF, pinned as a number rather than described in prose above: the same RM5,050
+    // paid as ONE run and as TWO runs no longer agree on the employer side. 612 against 650.
+    const oneRun = epf(5050, 0, CFG.epf).employer;
+    const twoRuns = runs[0].epfEmployer + runs[1].epfEmployer;
+    expect(oneRun).toBe(612);
+    expect(twoRuns).toBe(650);
+    expect(twoRuns - oneRun).toBe(38); // the size of the step, and the whole of the disagreement
+    // The employee side DOES agree, which is why this is a statement about the employer column only.
+    expect(epf(5050, 0, CFG.epf).employee).toBe(runs[0].epfEmployee + runs[1].epfEmployee);
+  });
+
+  /**
+   * A MONTH WHOSE ONLY PAY IS A BONUS also moved, and nobody asked for that either. Before this change an
+   * off-cycle-only month took a flat percentage of the bonus (11% / 13% rounded up); now it reads the
+   * schedule row for the month's wages, exactly as any other month does. RM1,650.71 alone: 182/215 before,
+   * 183/216 now.
+   *
+   * It is the RIGHT answer under the rule the reporter approved — the month is one lookup, and this month
+   * contains RM1,650.71 — but it is a change to payslips outside the case they measured, so it is pinned
+   * rather than left to be discovered.
+   */
+  it('a month paying only a bonus reads the schedule row, like any other month', () => {
+    expect(epf(0, 1650.71, CFG.epf)).toEqual({ employee: 183, employer: 216 });
+    // Identical to the same money arriving as salary — which is the point of the combined lookup.
+    expect(epf(0, 1650.71, CFG.epf)).toEqual(epf(1650.71, 0, CFG.epf));
   });
 });

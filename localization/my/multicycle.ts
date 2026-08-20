@@ -7,8 +7,14 @@
  * The statutory month is ONE computation. We model multiple same-month runs as INCREMENTS of the
  * monthly total: re-run the cumulative month after adding each run, and the run's contribution is the
  * delta versus the month so far. This single idea makes every statutory item correct by construction:
- *  - the per-run figures sum to the EXACT one-batch monthly figures (LHDN MTD: the month is one
- *    computation; the regular run is normal remuneration Y1, later runs are additional remuneration);
+ *  - the per-run figures sum to the one-batch monthly figures (LHDN MTD: the month is one computation;
+ *    the regular run is normal remuneration Y1, later runs are additional remuneration). ⚠️ r210: this
+ *    holds everywhere EXCEPT the EPF EMPLOYER column across the RM5,000 step, where the published table
+ *    steps DOWN (13% → 12%) and the month as one lookup can be SMALLER than the regular run alone
+ *    already produced. `clampDelta` floors the increment at 0 rather than emitting a negative
+ *    contribution (§6), so RM5,000 + RM50 sums to RM650 against a one-batch RM612. Pinned in
+ *    test/epf-combined-month-bdf7d248.test.ts; it is the one case where "the runs sum to the month" is
+ *    an aspiration rather than a fact, and closing it needs the reversals ADR, not a code change here;
  *  - SOCSO/EIS are charged ONCE for the month (Act 4 s.6(7)/6(9)) — a bonus run adds nothing to the
  *    SOCSO/EIS base, so its delta is 0 (a salary-split run tops up to the monthly band). This covers
  *    all THREE SOCSO-family legs: employer, employee, and the employee-deducted SKBBK leg that rides

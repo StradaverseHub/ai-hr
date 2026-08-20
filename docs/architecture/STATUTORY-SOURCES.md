@@ -44,8 +44,15 @@ to these tables is traceable to the exact runs it affects.
   the normal-remuneration MTD and the year total `X + [C]×(n+1)`; Steps 2–3 recompute P and the
   annual tax **including** (Yₜ−Kₜ) with K₂ re-projected; Step 4's difference is the bonus MTD;
   Step 5 sums. The bonus carries its own 11% EPF relief, pooled under the cumulative RM4,000 cap.
-  - **EPF:** bonus **is** subject; KWSP fixes the employer rate by the *normal* wage (a ≤RM5,000
-    earner stays 13% even if the bonus pushes the month over RM5,000), applied to wage+bonus.
+  - **EPF:** bonus **is** subject. ⚠️ **CORRECTED IN r210 (item bdf7d248).** This entry previously
+    recorded that KWSP fixes the employer rate by the *normal* wage — a ≤RM5,000 earner staying at 13%
+    even once the bonus pushed the month over RM5,000. The customer rejected that reading twice, with
+    figures, and the approved rule is now: the month's normal wage and additional remuneration are
+    ADDED and the Third Schedule is read ONCE on that total, so the 13%/12% employer step follows the
+    whole month. On the reporter's own case (RM7,413.00 + RM1,650.71) that is 1,001/1,092 for the month
+    against the old 1,007/1,099, and the bonus run contributes 176/192. **This line has not been
+    re-verified against an LHDN/KWSP source document since the change — it records the customer's
+    approved reading, and the ✅ below refers to the MTD exhibits, not to this bullet.**
   - **SOCSO + EIS:** annual bonus is **excluded** (not "wages" for PERKESO).
 - **✅ Verified against the spec's own Exhibit 5 worked example** (golden tests): Jan RM110.00 →
   Feb RM110.00 (accumulated) → Mar RM108.20 (TP1 RM300) → Apr bonus RM8,250: normal 106.20 +

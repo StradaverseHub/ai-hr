@@ -292,10 +292,19 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     const st = s.statutory as { epfEmployee: number; epfEmployer: number; socsoEmployee: number };
 
     expect(Number(s.bonus)).toBeCloseTo(3000, 2); // bonus payment, Yt stream
-    // EPF: normal wage RM4,000 band (440/520) + bonus at the NORMAL-wage-band rates (11% / 13% — the
-    // ≤RM5,000 employer rate STAYS 13% even though wages + bonus exceed RM5,000: the EPF Bonus rule).
-    expect(st.epfEmployee).toBe(440 + Math.ceil(0.11 * 3000)); // 440 + 330 = 770
-    expect(st.epfEmployer).toBe(520 + Math.ceil(0.13 * 3000)); // 520 + 390 = 910
+    // EPF, RESTATED FOR bdf7d248 (r210). This case used to assert the rule that item reversed — that the
+    // bonus is charged at the NORMAL wage's rates, so a ≤RM5,000 earner stayed at 13% even once wages +
+    // bonus crossed RM5,000 (it read 440 + ceil(11%×3000) and 520 + ceil(13%×3000) = 910). The month is
+    // now ONE Third Schedule lookup on RM4,000 + RM3,000 = RM7,000, which is above RM5,000, so the
+    // employer rate for the month is 12%: 770 and 840. The employee figure is unchanged at 770 by
+    // coincidence, not by rule — 11% of 7,000 and 440 + 11% of 3,000 are the same number.
+    expect(st.epfEmployee).toBe(770); // 11% × 7,000, the combined month
+    expect(st.epfEmployer).toBe(840); // 12% × 7,000 — was 910 under the pre-r210 additional-wage rule
+    // ⚠️ WHAT THIS CASE STILL TESTS. The EPF Bonus 2012 flag no longer changes the EPF AMOUNT at all —
+    // epf(4000, 3000) and epf(7000, 0) are now the same figures — so this is no longer an EPF assertion
+    // in disguise. It remains the acceptance test for the classification because the flag still decides
+    // the PCB stream (Yt, the difference method) and still keeps the bonus out of the SOCSO/EIS base,
+    // which is what the two assertions below pin. Do not delete it as redundant.
     // SOCSO excludes the bonus (Act 4 wages): the RM4,000 band employee share.
     expect(st.socsoEmployee).toBeCloseTo(19.75, 2);
   });
