@@ -18,28 +18,34 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-20 (r195–r210 SHIPPED · NOTHING IN FLIGHT · 4 PLANS AWAIT THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-21 (r195–r212 SHIPPED · NOTHING IN FLIGHT · 1 ITEM BLOCKED ON THE REPORTER)
 
-**`main@1aa0c3a2` IS WHAT RUNS ON PRODUCTION (r210, 2026-08-20)** — verified by an
+**`main@682c5af5` IS WHAT RUNS ON PRODUCTION (r212, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
-**THE DRY RUN IS NOT LITERALLY ZERO AND THAT IS EXPECTED — know the two entries before you panic:**
-`deploy-r210.log` (the deploy's own log on the box, not in the repo, so `--delete` wants it gone) and
+**THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
 `next-env.d.ts` (UNTRACKED and generated — a tree that has run `pnpm dev` says `.next/dev/types/…`,
-production says `.next/types/…`, and each side is correct for its own build mode). Anything ELSE in that
-dry run is an undeployed release.
-**r210 ADDED NO MIGRATION** — six items, 52 files, +5,749/−686, all behaviour and screens.
+production says `.next/types/…`, and each side is correct for its own build mode). DELETE the deploy's own
+`deploy-rNNN.log` off the box when you are done with it, or `--delete` will report it forever. Anything
+ELSE in that dry run is an undeployed release.
+**NEITHER r210 NOR r212 ADDED A MIGRATION** — r210 six items / 52 files; r212 two items / 30 files.
 **Production is on 365 migrations** — r209 added `0448` `tp1_status_values` and `0449` `tp1_approval`
 (the reissue of the dead `0444`/`0445`), both verified present on the live schema
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after r210 + the r211 PLANNING round (2026-08-20): `deployed = 720` · `cancelled = 14` ·
-`planned = 4` · open, contested and approved ZERO.** r210 SHIPPED SIX: `bdf7d248` EPF ·
-`cc74dcb2` KWSP Borang A file · `5a29686c` Individual Payslip selection · `9f8cd608` Reset Payroll
-screen · `7ad37961` TP1 full width · `0c367864` delete entitlement tables/rules. r211 then planned the
-four that were waiting — `8ebf77ae` (with a mockup), `5206539f`, `c1b14600`, `e52ce9b6` — and NOTHING is
-buildable until the reporter approves. Mockup sources: `docs/mockups/*-r210.html`, `*-r211.html`.
+**Board after r212 (2026-08-21): `deployed = 723` · `cancelled = 14` · `blocked = 1` · everything else
+ZERO.** r210 shipped six items; r211 planned four; r212 shipped `8ebf77ae` (leave eligibility explain)
+and `5206539f` (leave apply-on-behalf permission), closed `e52ce9b6` (our own EPF disclosure — approved
+with a plan that proposed no build), and BLOCKED `c1b14600`. Mockup sources: `docs/mockups/*-r21*.html`.
+
+⚠️ **`c1b14600` IS BLOCKED ON A QUESTION ONLY THE REPORTER CAN ANSWER, and it is not a build.** The
+Replacement Leave in Lieu workflow is ALREADY BUILT (item 296fc027) — the reporter cannot reach it
+because only **2 of their 9 companies have a `toil_policy` row at all**. The block reason on the board
+asks two things: WHICH companies to switch it on for, and whether to move expiry from 90 days to 3
+months (their own worked example, 15/08 → 15/11, needs months). **Do not answer these for them** — the
+owner's explicit instruction on 2026-08-21 was to hand it back rather than choose. Their answers land in
+`block_trail`; `unblock` returns it to the queue.
 
 ⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
 be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
@@ -95,35 +101,29 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**NOTHING IS BUILDABLE. FOUR PLANS SIT WITH THE REPORTER** — `improve:pull` and
-`improve:pull-approved` both return nothing. When one is approved, its plan's BUILD NOTES carry the
-measurements; do not re-derive them.
+**NOTHING IS BUILDABLE AND NOTHING NEEDS PLANNING.** `improve:pull` and `improve:pull-approved` both
+return nothing; the only live item is `c1b14600`, blocked above on the reporter's answer.
 
-⚠️ **THREE OF THE FOUR r211 PLANS SAY "ALREADY BUILT", AND THAT IS THE ROUND'S LESSON.** Rule 7 paid for
-itself three times in one pull:
-  - **`c1b14600` (Replacement Leave in Lieu) IS ITEM 296fc027, SHIPPED.** The whole workflow exists —
-    multi-row worked dates, per-request Hour/Day unit, pending until line-manager approval, credit minted
-    at approval with expiry counted FROM the approval, per-credit table (`REPLACEMENT_COLUMN_KEYS` =
-    requestDate/number/unit/approvalDate/expiredDate/remaining), the pending label "Replacement Leave in
-    Lieu", and the ticket's empty-state sentence VERBATIM. The reporter cannot reach it because only
-    **2 of their 9 companies have a `toil_policy` row at all** (Chin Hin Construction Engineering, Demo
-    Sdn Bhd); ISEDECOR BINA — where they test — has none, so `replacementRequestAvailability` returns
-    `not_enabled`. Their catalogue ALSO holds an **archived** "Replacement Leave (in lieu)" (code
-    REPLACEMENT, no role) beside the live "Replacement Leave" (RL, role `replacement`) — they have been
-    looking at the retired one. `expiry_unit` is `days`/90 while `expiry_months`=3 sits unused, which is
-    why their 15/08 + 3 months example does not match.
-  - **`8ebf77ae` was a PRODUCT QUESTION, not a defect**, and it has a real answer worth keeping:
-    `leave_type.eligibility` (`isLeaveEligible`, core/leave.ts ~1283) asks **may they take it** — a
-    yes/no. `entitlement_eligibility_rule` (`buildTemplateEntitlementResolver`) asks **which of the
-    sixteen Annual Leave tables do they get** — a choice. A yes/no cannot pick between tables, so the two
-    do not merge. Where a type has ONE table and no rule, the engine already applies it (`soleTableApplies`).
-    The genuine duplication is the shared criteria VOCABULARY, which the plan addresses.
-  - **`5206539f`: the reporter took the alternative the r210 plan offered** — no on-behalf for line
-    managers at all. Cheap finding recorded: `payroll_permission_grant.permission_key` is free text with
-    no enum or FK, so a `leave.apply_on_behalf` key needs **NO MIGRATION** — at the cost of that table's
-    name becoming a misnomer, which is its own ticket.
-  - **`e52ce9b6` is OURS** — the EPF RM5,000-step disclosure below, raised as a CLAUDE AI item so the
-    reporter can accept or redirect it. Its plan proposes no build.
+⚠️ **TWO LESSONS FROM r212 THAT COST REAL AGENT TIME:**
+
+  - **A FILE FENCE CAN SILENTLY DELETE THE DELIVERABLE.** r212's `elig` brief fenced the agent out of
+    `core/read.ts` and `EntitlementBreakdown.tsx` — the two files needed to carry the employee-facing
+    notice to a real page. The agent built everything else correctly and disclosed in `notBuilt` that the
+    prop had no caller; the verifier confirmed it rendered NOWHERE except its own test. **When a plan's
+    headline deliverable is an EMPLOYEE-facing screen, check the fence contains the read that feeds it**
+    before launching. It cost a whole extra pass.
+  - **THE GUARD TEST THE PLAN NAMED FOUND A REAL HOLE THE BUILD HAD MISSED.** The build skipped "a holder
+    is accepted in scope and refused outside it"; the fix pass built it and it immediately failed —
+    `subject?.companyId ?? null` judged the permission against tenant-wide overrides only, so an
+    employment the caller COULD NOT SEE fell straight through the on-behalf gate. Fixed in the same pass.
+    When a plan names a specific guard, its absence from the build report is a finding in itself.
+
+**MEASURED, SO NOBODY RE-LITIGATES IT:** the new eligibility explanation runs once per leave type in
+`no_eligibility_match`, which on this tenant is nearly every type. Reproduced locally (7 types × 4 tables,
+3 rules) `/leave` rendered in **160–210ms against a 188ms baseline** — immaterial, because the explain
+reuses the winner `core/read.ts` already resolved and touches only small configuration tables. This is
+NOT the shape of r210's `entitlementDeleteBlocks`, which really did cost 7s at scale by re-running an
+RLS SECURITY DEFINER function per ledger row.
 
 ⚠️ **THE r207 EPF DIAGNOSIS WAS WRONG; r210 FIXED THE REAL ONE. DO NOT RE-LITIGATE IT.**
 "`localization/my/multicycle.ts` is unwired, wire it" was NEVER the fix — `core/payroll.ts` already ran

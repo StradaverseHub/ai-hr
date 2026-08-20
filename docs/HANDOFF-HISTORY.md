@@ -1,3 +1,60 @@
+## r211–r212 (2026-08-20/21) — FOUR PLANS, TWO SHIPPED, ONE HANDED BACK, AND THREE "ALREADY BUILT"
+
+`682c5af5`. r211 planned the four items waiting after r210; the reporter approved all four the same day;
+r212 then discovered that only TWO of them were builds. Two workstreams, each adversarially verified, then
+ONE fix pass. No migration. 30 files, +3,995/−199. Gate 730 declared / 730 counted / every chunk exit=0 /
+0 AssertionErrors at CHUNKS=5; `next build` clean; four changed screens rendered with 0 `MISSING_MESSAGE`.
+
+Shipped: `8ebf77ae` (leave eligibility explanation + the editor affordances) · `5206539f`
+(`leave.apply_on_behalf`). Closed without a build: `e52ce9b6`. Blocked on the reporter: `c1b14600`.
+
+**DECISIONS — what the diff cannot reconstruct.**
+
+- **THREE OF FOUR APPROVED ITEMS WERE NOT BUILDS, AND SAYING SO WAS THE WORK.** `c1b14600`'s whole
+  workflow already shipped as 296fc027, down to the ticket's empty-state sentence verbatim; the reporter
+  could not reach it because 7 of their 9 companies have no `toil_policy` row. `e52ce9b6` was our own
+  disclosure and its plan proposed nothing. Only `8ebf77ae` and `5206539f` had code in them.
+- **WE DID NOT WRITE THE CUSTOMER'S CONFIGURATION FOR THEM.** Enabling Replacement Leave gives every
+  employee in a company the ability to bank worked time, and nine companies were on offer with no way to
+  know which they meant — approve carries no payload. The owner's call (2026-08-21) was to hand it back,
+  so it is `blocked` with the two questions on the board, not guessed at.
+- **AND WE CORRECTED OUR OWN PLAN IN THAT MESSAGE.** The r211 plan claimed the retired "Replacement Leave
+  (in lieu)" type was appearing beside the live one. It is not: every employee-facing read filters
+  `archivedAt`, so it shows only on the admin config list. Told the reporter rather than quietly dropping
+  the bullet.
+- **THE TWO ELIGIBILITY LAYERS STAY SEPARATE, and the plan says why to the reporter's face.**
+  `leave_type.eligibility` asks *may they take it* (a yes/no); `entitlement_eligibility_rule` asks *which
+  of sixteen tables do they get* (a choice). A yes/no cannot pick between tables. What IS duplication is
+  the shared criteria vocabulary, so the rule editor now shows the type's own conditions read-only and
+  offers a named "everyone this leave type is available to" shape.
+- **ONE VERDICT, READ BY BOTH SCREENS.** The first build let the admin panel and the employee panel each
+  derive the top-level verdict with its own precedence, and they rendered OPPOSITE sentences from one
+  object for a sole-table type outside the employment window. `eligibilityNoticeFrom` now computes the
+  verdict once and a source guard fails if either renderer starts re-deriving it. Precedence chosen
+  deliberately: a winner outranks the employment window, because "no rule can reach them" is false about
+  an outcome the engine just produced.
+- **THE "EVERYONE" RULE KEEPS ITS REACH COUNT.** The first build shipped it as a bare form; two existing
+  headers call that count "the only thing standing between 'no restrictions' and a whole-company
+  assignment", and the write fires `recomputeAfterSave` immediately. It is now a count-then-confirm island
+  with submit disabled until a number is on screen — stricter than the full editor's opt-in check, which
+  is right for the one shape that always means everybody.
+
+**PROCESS — two lessons worth more than the code.**
+
+- **A FILE FENCE CAN DELETE THE DELIVERABLE.** The `elig` brief fenced the agent out of `core/read.ts` and
+  `EntitlementBreakdown.tsx`, which are exactly what carries the employee notice to a real page — so the
+  plan's headline bullet shipped as dead code. The agent disclosed it; the verifier proved it rendered
+  nowhere. Check the fence contains the read that feeds the screen BEFORE launching.
+- **A NAMED GUARD TEST THE BUILD SKIPPED FOUND A REAL HOLE.** "A holder is accepted in scope and refused
+  outside it" was in the plan and absent from the build. Built in the fix pass, it failed immediately:
+  `subject?.companyId ?? null` judged the permission against tenant-wide overrides only, so an employment
+  the caller could not see fell through the on-behalf gate. A named guard missing from a build report is
+  itself a finding.
+- **MEASURE THE FLAGGED RISK; IT IS NOT ALWAYS THE LAST ONE.** The agent warned the new explanation runs
+  per leave type on the busiest employee screen. Reproduced (7 types × 4 tables, 3 rules): 160–210ms
+  against a 188ms baseline. Immaterial — unlike r210's `entitlementDeleteBlocks`, which really was 7s at
+  scale. Same shape of warning, opposite answer.
+
 ## r210 (2026-08-20) — SIX ITEMS, ONE MEASURED EPF REVERSAL, AND A VERIFY PASS THAT PAID FOR ITSELF AGAIN
 
 `1aa0c3a2`. Six approved items built as six workstreams, each adversarially verified, then ONE delegated
