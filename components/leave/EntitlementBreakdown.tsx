@@ -16,7 +16,7 @@
  */
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import type { PanelSummary } from './entitlement-panel-config';
-import type { EntitlementStatus } from '@/lib/entitlement-status';
+import type { EligibilityNotice, EntitlementStatus } from '@/lib/entitlement-status';
 
 /** Mirror of core/read.ts LeaveEntitlementBreakdown — kept structural so this stays db-free. */
 export type EntitlementBreakdownData = {
@@ -33,6 +33,11 @@ export type EntitlementBreakdownData = {
   entitlementStatus: EntitlementStatus;
   /** The entitlement table in force for this pair, by name (null ⇒ none). Display-only. */
   entitlementTemplateName: string | null;
+  /** r212 (8ebf77ae) — WHICH ELIGIBILITY RULES EXIST AND WHY EACH ONE MISSED THIS EMPLOYEE. Present only
+   *  where `entitlementStatus === 'no_eligibility_match'`: that is the one state the sentences answer, and
+   *  the explanation costs several queries, so core/read.ts does not pay for it anywhere else. Plain
+   *  already-resolved data (`lib/entitlement-status.ts`) — nothing here recomputes eligibility. */
+  eligibility?: EligibilityNotice;
   currentYearEntitlement: number;
   monthlyAccruedToDate: number | null;
   carriedForward: number;
@@ -109,6 +114,11 @@ export function EntitlementBreakdown({
       action={action}
       hiddenParams={hiddenParams}
       applyEssConfig={applyEssConfig}
+      /* r212 — the notice rides INSIDE the breakdown the server already loaded, so every page that renders
+         this adapter shows it without a prop of its own. Wiring it as a sibling prop instead would have
+         meant editing each of the four host pages, and the one that forgot would have silently kept the
+         silence this item exists to end. */
+      eligibility={data.eligibility}
     />
   );
 }

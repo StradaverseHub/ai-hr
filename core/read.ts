@@ -53,10 +53,18 @@ import {
   // identical; the AS-OF is not — see mayAppearInApplyMenu.
   type ProbationEligibility,
 } from './leave';
-import { buildTemplateEntitlementResolver } from './entitlement-template';
+import {
+  buildTemplateEntitlementResolver,
+  eligibilityNoticeFrom,
+  explainEntitlementEligibility,
+} from './entitlement-template';
 // 31e39d74 — "configured but not yet generated" as a value, not as a silence. Pure + DB-free, so the
 // server read and the two presentation layers that show it share ONE definition (lib/entitlement-status.ts).
-import { resolveEntitlementStatus, type EntitlementStatus } from '../lib/entitlement-status';
+import {
+  resolveEntitlementStatus,
+  type EligibilityNotice,
+  type EntitlementStatus,
+} from '../lib/entitlement-status';
 // r209 — the shared-pool descriptor. Declared in lib/ rather than here so the CLIENT-safe balance grids can
 // name the shape without importing a module that drags in db/client.
 import type { SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
@@ -2741,6 +2749,22 @@ export type LeaveEntitlementBreakdown = {
   /** The winning entitlement table's name when one is in force for this pair at `asOf`, else null. Shown
    *  beside the status so HR can see WHICH table is waiting to be generated. Display-only. */
   entitlementTemplateName: string | null;
+  /**
+   * r212 (8ebf77ae) — "NO ELIGIBILITY RULE REACHES YOU", WITH THE RULES NAMED.
+   *
+   * `entitlementStatus` says WHAT happened in one word; this is the list of reasons behind it — every
+   * eligibility rule the leave type has, whether each is in force, and for each one that was actually
+   * tested the first criterion this employee fails. It is the half of the reporter's ticket that had
+   * nowhere to go while the status was a single word, and it reaches the employee's own side-sheet through
+   * `EntitlementBreakdown` without any host page knowing about it.
+   *
+   * ⚠️ PRESENT ONLY FOR `no_eligibility_match`, and that is a cost decision as much as an editorial one.
+   * This function runs ONCE PER LEAVE TYPE per screen (a tenant has eleven to twenty-four), and the
+   * explanation costs a handful of queries plus one per rule tested. `no_eligibility_match` is the only
+   * status these sentences answer — every other one has a winner, and "which rule missed you" is not the
+   * question being asked. Undefined everywhere else, and the panel then renders exactly what it did before.
+   */
+  eligibility?: EligibilityNotice;
   /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. */
   currentYearEntitlement: number;
   /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open. */
@@ -3128,6 +3152,29 @@ export function leaveEntitlementBreakdown(
       hasAccrualRowInCycle,
     });
 
+    /**
+     * r212 — …AND THE REASONS BEHIND THAT ONE WORD, for the one status that is a list of reasons.
+     *
+     * `explainEntitlementEligibility` is handed the winner this function ALREADY resolved (`null` here by
+     * construction — `no_eligibility_match` is only reachable with no winner), so it does not build a
+     * second resolver for the same pair. Everything else it asks is the same `resolveOrgCriteriaTargets`
+     * the resolver decides with; there is no second matcher anywhere on this path.
+     */
+    const eligibility: EligibilityNotice | undefined =
+      entitlementStatus === 'no_eligibility_match'
+        ? eligibilityNoticeFrom(
+            await explainEntitlementEligibility(tx, {
+              employmentId,
+              leaveTypeId,
+              asOf,
+              winner: entitlementWinner,
+            }),
+            // No `href`: an employee's own side-sheet has nowhere to send anybody, and the admin who reads
+            // the same panel on /admin/personnel/[id] opens rules from the Entitlement Tables screen.
+            {},
+          )
+        : undefined;
+
     const i18n = type.i18n as Record<string, { name: string }> | null;
     return {
       leaveTypeId: type.id,
@@ -3142,6 +3189,7 @@ export function leaveEntitlementBreakdown(
       // configuration — nothing here changes it (the plan is explicit: surface, do not fix silently).
       entitlementStatus,
       entitlementTemplateName: entitlementWinner?.templateName ?? null,
+      eligibility,
       currentYearEntitlement: cycleAccrual,
       monthlyAccruedToDate: earned ? cycleAccrual : null,
       carriedForward: carried,

@@ -4,6 +4,10 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { EntitlementTablesBlock, loadEntitlementTablesData } from './entitlement-tables-block';
+// r212 (8ebf77ae) — the reporter's original ticket: "No eligibility rule reaches you", answered for a
+// named employee. Mounted HERE and not in the block, because the block is composed once per leave type on
+// the Entitlements page and an employee search is not a per-leave-type control.
+import { EligibilityExplainPanel } from './eligibility-explain';
 
 /**
  * 6e9a126e RELEASE TWO — ENTITLEMENT TABLES + EMPLOYEE ELIGIBILITY. The reporter's two steps, one screen.
@@ -28,14 +32,24 @@ import { EntitlementTablesBlock, loadEntitlementTablesData } from './entitlement
  * two create forms writing the same effective-dated lineage would drift the first time either was touched,
  * and both would still save.
  *
- * SERVER COMPONENT. Everything interactive is in the two client components inside the block, which receive
- * only serialisable props — r123 took a production tab down by handing a translator closure across that
- * boundary and `test/server-client-boundary.test.ts` pins the class.
+ * SERVER COMPONENT, and so is r212's explain panel below it — its search, its pickers and its links are a
+ * plain GET form, so nothing new crosses a boundary. The only client components on this screen remain the
+ * two inside the block, which receive only serialisable props: r123 took a production tab down by handing a
+ * translator closure across that boundary and `test/server-client-boundary.test.ts` pins the class.
  */
 export default async function EntitlementTemplatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; editTemplate?: string; editRule?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    editTemplate?: string;
+    editRule?: string;
+    // r212 — the explain panel's four GET parameters, so an answer is addressable and can be sent as a link.
+    explainQ?: string;
+    explainEmployment?: string;
+    explainLeaveType?: string;
+    explainAsOf?: string;
+  }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.entitlementTemplates');
@@ -61,6 +75,11 @@ export default async function EntitlementTemplatesPage({
       {/* Unfiltered: every leave type side by side. No `leaveTypeId`, so the Leave type column stays and the
           create form keeps its type picker. */}
       <EntitlementTablesBlock data={data} editTemplate={sp.editTemplate} editRule={sp.editRule} />
+
+      {/* r212 — and the question the tables above cannot answer for one person: which of these rules exist,
+          which are in force, and what about THIS employee does not match. Below the rules it explains,
+          because it is read after them. */}
+      <EligibilityExplainPanel s={s} data={data} params={sp} />
     </div>
   );
 }
