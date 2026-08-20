@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Two eligibility settings (8ebf77ae r211)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+  .ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;text-transform:uppercase;margin-bottom:10px}
+  .two{display:grid;grid-template-columns:1fr 40px 1fr;align-items:center;gap:0}
+  .q{border:1px solid var(--border);border-radius:10px;padding:14px;background:#fbfcfd;height:100%}
+  .q h3{margin:0 0 4px;font-size:14px}
+  .q .where{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+  .q .ans{font-size:12.5px;color:var(--fg)}
+  .q ul{margin:8px 0 0;padding-left:16px;font-size:12.5px;color:var(--muted)}
+  .arrow{text-align:center;color:var(--muted);font-size:20px}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin-top:12px}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid #f0f2f4}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;
+    background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent)}
+  .sketch{margin-top:24px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<h1>The two settings answer different questions</h1>
+<p class="sub">Why both exist, and when you can skip the second one entirely.</p>
+
+<div class="panel">
+  <div class="two">
+    <div class="q">
+      <div class="where">Set on the Leave Type</div>
+      <h3>May this employee take it at all?</h3>
+      <div class="ans">A yes or no for the whole leave type. Fail it and the type is not offered and an
+      application is refused.</div>
+      <ul><li>Gender, marital status</li><li>Minimum service</li><li>Probation or confirmed</li>
+      <li>Company, department, grade and the rest</li></ul>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="q">
+      <div class="where">Set on the Entitlement Table</div>
+      <h3>Which day table do they get?</h3>
+      <div class="ans">Not a yes or no - a CHOICE between tables. Your Annual Leave has sixteen of them,
+      and something has to pick one.</div>
+      <ul><li>Grade 12-15 &middot; Grade 16-19 &middot; Grade H</li><li>Permanent &middot; Contract &middot; Retiree</li>
+      <li>Part Timer &middot; Special</li><li>&hellip;sixteen in total</li></ul>
+    </div>
+  </div>
+  <div class="note g">"Yes, they may take Annual Leave" plus "their days come from the Grade 16-19
+  Permanent table". The first cannot express the second, which is the whole reason both exist.</div>
+</div>
+
+<div class="panel">
+  <div class="ttl">When do you need a rule at all?</div>
+  <table>
+    <tr><th>Leave type has&hellip;</th><th>Rule needed?</th><th>On your account</th></tr>
+    <tr><td>ONE entitlement table</td><td><span class="pill">No rule needed</span></td>
+        <td>Hospitalization Leave &mdash; one table, no rule, works today</td></tr>
+    <tr><td>MORE THAN ONE table</td><td>Yes &mdash; one rule per table</td>
+        <td>Annual Leave &mdash; 16 tables, 0 rules, so nobody resolves</td></tr>
+  </table>
+  <div class="note a">47 tables are in force across your eleven leave types and three rules exist in
+  total. That gap is what "No eligibility rule reaches you" is reporting.</div>
+</div>
+
+<div class="panel">
+  <div class="ttl">What we will change so you never key the same thing twice</div>
+  <table>
+    <tr><th>On the rule editor</th><th>What you will see</th></tr>
+    <tr><td>The leave type's own conditions</td><td>Shown read-only, marked "already applies &mdash; no need to repeat"</td></tr>
+    <tr><td>A one-click rule shape</td><td>"Everyone this leave type is available to" &mdash; a rule with no conditions of its own</td></tr>
+    <tr><td>A single-table leave type</td><td>Says plainly that no rule is needed, so one is not missing</td></tr>
+    <tr><td>An employee who resolves to nothing</td><td>Names the rule, whether it is in force, and the first condition they fail</td></tr>
+  </table>
+</div>
+
+<p class="sketch">Sketch of the proposal &mdash; wording, spacing and colours will differ in the built screens.</p>
+</div></body></html>
