@@ -288,20 +288,28 @@ describe('the read feeds both outputs', () => {
     expect(borangAFileReadiness({ employerRef: form.employerRef, rows }).ok).toBe(true);
     const text = buildBorangAFile({
       employer: { epfRefNo: form.employerRef, code: 'DSK', periodMonth: 8, periodYear: 2026 },
+      // THREE amounts per line, in the sample file's own order, and the two contributions are never
+      // added together — cc74dcb2 decoded a real KWSP file and the 02 record has a box for each.
       employees: rows.map((row) => ({
         epfMemberNo: row.memberNo,
         icNumber: row.ic,
         name: row.name,
         staffNo: row.staffNo,
+        employerContribution: row.employer,
+        employeeContribution: row.employee,
         wages: row.wage,
-        contribution: Math.round((row.employer + row.employee) * 100) / 100,
       })),
     });
     const t = parseBorangAFileTotals(text);
     expect(t.detailCount).toBe(25);
     // THE TWO OUTPUTS AGREE, which is the property that makes "check the paper, upload the file" safe.
-    expect(t.detailContribCents).toBe(Math.round(form.totalContribution * 100));
+    expect(t.detailEmployerCents).toBe(Math.round(form.totalEmployer * 100));
+    expect(t.detailEmployeeCents).toBe(Math.round(form.totalEmployee * 100));
+    expect(t.detailEmployerCents + t.detailEmployeeCents).toBe(Math.round(form.totalContribution * 100));
     expect(t.detailWageCents).toBe(Math.round(form.totalWage * 100));
-    expect(t.headerWageCents).toBe(t.trailerWageCents);
+    expect(t.headerEmployerCents).toBe(t.trailerEmployerCents);
+    expect(t.headerEmployeeCents).toBe(t.trailerEmployeeCents);
+    // The hash total counts the very member numbers on the file, so a lost 02 line would change it.
+    expect(t.controlTotal).toBe(t.memberNoSum);
   });
 });
