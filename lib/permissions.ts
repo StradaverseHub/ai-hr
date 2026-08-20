@@ -502,6 +502,15 @@ export const SCREENS: readonly ScreenEntry[] = [
       // nobody can grant or revoke. (The per-action authority is the payroll.remove.employee granular
       // key — this registry is coarse "can the role open the screen at all" by design.)
       '/payroll/[batchId]/remove',
+      // 9f8cd608 — Reset Payroll, moved out of a confirmation dialog inside the row menu and onto a screen
+      // of its own (the dialog was owned by the menu subtree and unmounted with it, so the button appeared
+      // to do nothing). Same requireAdmin guard as the run page it is reached from, and registered here for
+      // the same reason its two siblings above are: test/function-access.test.ts checks reverse
+      // completeness, so a guarded page with no matrix column fails the suite rather than silently becoming
+      // a screen nobody can grant or revoke. (The per-action authority is still the payroll.rollback
+      // granular key asserted inside resetProcessedBatch — this registry is coarse "can the role open the
+      // screen at all" by design.)
+      '/payroll/[batchId]/reset',
       // ADR-0076 — the payroll exceptions queue. Same requireAdmin guard as the run page it hangs off,
       // and registered here for the same reason the reprocess screen above is: a guarded page with no
       // matrix column fails the suite rather than silently becoming a screen nobody can grant or revoke.

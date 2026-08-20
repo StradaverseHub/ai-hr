@@ -122,9 +122,26 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
   it('1b. both reset forms post the filter selection, or the destination cannot honour it', () => {
     // The contract lives between TWO files (the form posts `from`, the action whitelists it), and a test
     // of either half alone passes while the operator loses their filters — rule 17's generalisation.
+    //
+    // 9f8cd608 MOVED ONE OF THE TWO FORMS, and this case follows it rather than being deleted. The LIST's
+    // reset form used to sit inside the ⋯ row menu, which is a `position: fixed` panel that closes on any
+    // scroll — so its ConfirmSubmit, owned by that subtree, unmounted as it opened and the button appeared
+    // to do nothing. The form now lives on app/payroll/[batchId]/reset, and the list's job shrinks to
+    // handing that screen the filter query as `?from=…`; the screen posts it on. The chain is asserted
+    // end to end here, because a break anywhere along it costs the operator their filters just the same.
     const LIST = code('app/payroll/page.tsx');
-    expect(LIST).toMatch(/<form action=\{resetAction\}>/);
-    expect(LIST).toContain('<input type="hidden" name="from" value={dashboardHref(filters)} />');
+    const RESET_SCREEN = code('app/payroll/[batchId]/reset/page.tsx');
+    expect(LIST, 'the row action carries the filter query to the reset screen').toMatch(
+      /href=\{`\/payroll\/\$\{b\.id\}\/reset\?from=\$\{fromQuery\}`\}/,
+    );
+    expect(LIST).toContain('const fromQuery = encodeURIComponent(dashboardHref(filters));');
+    expect(RESET_SCREEN, 'the screen whitelists what it was handed, by shape').toContain(
+      'const back = payrollListReturnTo(sp.from);',
+    );
+    expect(RESET_SCREEN, 'and posts it on, so payrollListAfterReset has something to honour').toContain(
+      '<input type="hidden" name="from" value={from} />',
+    );
+    expect(RESET_SCREEN).toMatch(/<form action=\{resetAction\}/);
     expect(RUN_SCREEN).toMatch(/<form action=\{resetAction\}>/);
     expect(RUN_SCREEN).toContain('<input type="hidden" name="from" value={backHref} />');
   });

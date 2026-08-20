@@ -9,7 +9,7 @@ import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } fro
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
-import { deleteDraftBatchAction, resetAction } from './actions';
+import { deleteDraftBatchAction } from './actions';
 import { resumeHref } from './process/selection-logic';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { payrollPublicationState } from '@/lib/payroll-publication';
@@ -420,30 +420,27 @@ export default async function PayrollPage({
                               locked; the controlled reset returns it to Draft (payslips cleared, loan/claim
                               side-effects reversed, audited). Closed rows render nothing: permanently
                               immutable. Admin-only + processed-only re-enforced server-side. This is the
-                              "Rollback (subject to permissions)" action the request listed. */}
+                              "Rollback (subject to permissions)" action the request listed.
+
+                              9f8cd608 — IT IS A LINK NOW, exactly like Reprocess and Remove Employee above,
+                              and the condition on it is untouched. It used to be a `<form>` carrying a
+                              ConfirmSubmit dialog rendered inside the menu; the menu is a `position: fixed`
+                              panel that closes on any scroll, the dialog was OWNED by that subtree, and
+                              opening it emitted a scroll on the table's `overflow-x-auto` wrapper — so the
+                              dialog was created and destroyed in the same tick and the operator saw nothing
+                              happen. (Measured in Chromium at 1280×720; which of the dialog's side effects
+                              emits that scroll was not isolated and does not matter — the panel closes on
+                              any scroll at all.)
+                              The confirmation, the reason field and the run's own identity now live on
+                              app/payroll/[batchId]/reset, which also carries the filter selection through as
+                              `from` so a successful reset still lands on this list as it was left. */}
                           {b.status === 'processed' && resetOn && (
-                            <form action={resetAction}>
-                              <input type="hidden" name="batchId" value={b.id} />
-                              {/* 65e2d5de — the filter selection this row was rendered under, so the reset
-                                  returns to the Payroll Process list EXACTLY as it was left. Read by VALUE
-                                  through payrollListReturnTo, never by presence: a hidden input is posted
-                                  whatever it holds. Raw path here — `fromQuery` is already URL-encoded for
-                                  a href, and a FormData value must not be double-encoded. */}
-                              <input type="hidden" name="from" value={dashboardHref(filters)} />
-                              <ConfirmSubmit
-                                size="sm"
-                                title={tb('resetTitle')}
-                                description={tb('resetDescription')}
-                                confirmLabel={tb('resetConfirm')}
-                                reasonField={{
-                                  name: 'reason',
-                                  label: tb('resetReasonLabel'),
-                                  placeholder: tb('resetReasonPlaceholder'),
-                                }}
-                              >
-                                {tb('resetPayroll')}
-                              </ConfirmSubmit>
-                            </form>
+                            <Link
+                              href={`/payroll/${b.id}/reset?from=${fromQuery}`}
+                              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                            >
+                              {tb('resetPayroll')}
+                            </Link>
                           )}
                         </PayrollRowActions>
                       </div>

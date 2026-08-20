@@ -338,8 +338,8 @@ export async function deleteDraftBatchAction(formData: FormData) {
 }
 
 /**
- * Payroll Reset / Zeroization (feedback a03b2d9b) — revert a PROCESSED run to DRAFT after the
- * ConfirmSubmit dialog. Explicit RBAC here (not just the pages' admin gates) because server actions
+ * Payroll Reset / Zeroization (feedback a03b2d9b) — revert a PROCESSED run to DRAFT after an explicit
+ * confirmation. Explicit RBAC here (not just the pages' admin gates) because server actions
  * are callable from any surface: reset is ADMIN-only — a payroll_partner passes the payroll pages
  * but must not reset. The service re-asserts the role, enforces processed-only (closed is
  * permanently immutable), reverses the loan/claim side-effects and appends the audited
@@ -371,8 +371,13 @@ export async function deleteDraftBatchAction(formData: FormData) {
  * so the run is on the list, showing Draft. Its doc comment carries the full reasoning, including why the
  * filter is cleared rather than widened — the Status control is a single `<select>`.
  *
- * A FAILED reset still returns to the run screen — the run is still processed, and that is where the
- * refusal makes sense.
+ * A FAILED reset RETURNS TO THE SURFACE IT WAS PRESSED FROM, which is not the same place for both of
+ * them (9f8cd608). Two forms post here: the run screen's own panel, and app/payroll/[batchId]/reset.
+ * Sending the screen's operator back to `/payroll/<id>` would drop them on the long run screen 7076f8af
+ * was raised to get them OFF, and throw away the filter query and the reason they came in with — so the
+ * screen posts a `surface` flag and gets its refusal back on itself, with the message and the reason,
+ * exactly as the sibling Remove screen does. The run screen posts no flag and is unchanged: its refusals
+ * still land on the run screen, where the run still is and where the refusal makes sense.
  */
 export async function resetAction(formData: FormData) {
   const s = await getSession();
@@ -382,18 +387,46 @@ export async function resetAction(formData: FormData) {
   // reset is about to create. Both reset forms post the filter query they were pressed with; whitelisted
   // by shape, never echoed raw. A form that posts nothing resolves to '/payroll'.
   const back = payrollListAfterReset(String(formData.get('from') ?? ''));
+  // 9f8cd608 — WHICH SURFACE PRESSED IT, so a refusal comes back where the operator is standing. A FLAG,
+  // never a posted destination: a path read off a form is an untrusted value, and a flag needs no
+  // whitelist at all. Anything but the reset screen's own marker means the run screen, i.e. the old
+  // behaviour. `refusalFrom` is the ORIGINAL filter query, whitelisted by shape and NOT run through
+  // `payrollListAfterReset` — a refused reset leaves the run processed, so the status filter that would
+  // have hidden the (never created) Draft run must stay exactly as the operator set it.
+  const onResetScreen = formData.get('surface') === 'reset-screen';
+  const refusalFrom = payrollListReturnTo(formData.get('from'));
   const t = await getTranslations('payroll.batch');
   try {
     await resetProcessedBatch(s, { batchId, reason: reason || undefined });
   } catch (e) {
+    // ORDERED AS THE SERVICE THROWS THEM. `SettingNotEnabledError` is FIRST because `resetProcessedBatch`
+    // raises it before anything else, and it was the hole left here: unmapped, this catch fell through to
+    // `(e as Error).message` and painted the service's raw English ("Payroll reset is not enabled.") into
+    // the banner in all six locales — the identical defect test/payroll-remove-i18n.test.ts was written
+    // to close for Remove. It needs the risk switch to flip between rendering the form and pressing it,
+    // which is narrow, but "narrow" is not "translated".
     const msg =
-      e instanceof PayrollPermissionDeniedError
-        ? t('resetAdminOnly')
-        : e instanceof ResetReasonRequiredError
-          ? t('resetReasonRequired')
-          : e instanceof BatchNotResettableError
-            ? t('resetOnlyProcessed')
-            : (e as Error).message;
+      e instanceof SettingNotEnabledError
+        ? t('resetDisabled')
+        : e instanceof PayrollPermissionDeniedError
+          ? t('resetAdminOnly')
+          : e instanceof ResetReasonRequiredError
+            ? t('resetReasonRequired')
+            : e instanceof BatchNotResettableError
+              ? t('resetOnlyProcessed')
+              : (e as Error).message;
+    if (onResetScreen) {
+      const q = new URLSearchParams({ error: msg });
+      // Only when it is not the default, so an unfiltered visit keeps a clean URL — the Remove screen's
+      // convention, and it keeps Back/Cancel pointing at the list the operator actually came from.
+      if (refusalFrom !== '/payroll') q.set('from', refusalFrom);
+      // The reason comes back IN THE BOX, so a refusal costs no retyping. Length-capped because this
+      // rides in a redirect Location header rather than a page body: a pathological essay is dropped
+      // rather than turned into a header a proxy may refuse. The one refusal reachable without a race —
+      // a whitespace-only reason, which `required` happily accepts — trims to '' and carries nothing.
+      if (reason && reason.length <= 500) q.set('reason', reason);
+      redirect(`/payroll/${batchId}/reset?${q.toString()}`);
+    }
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);
