@@ -24,8 +24,9 @@
  * on both surfaces at once, and a VIEWPORT breakpoint is not one: `lg:grid-cols-3` reads the window, so
  * on a single laptop it would mean three roomy columns on one surface and three 200px columns on the
  * other, from the same class. The form is therefore laid out with CONTAINER queries (`@container` on its
- * root, `@xl` / `@3xl` / `@5xl` below it), and section B below pins that — a later round reaching for
- * `sm:`/`lg:` on this component would silently break the surface it was not looking at.
+ * root, `@xl` / `@3xl` / `@4xl` / `@5xl` below it, and `@max-xl` to undo the wide drawing under the
+ * two-up step), and section B below pins that — a later round reaching for `sm:`/`lg:` on this component
+ * would silently break the surface it was not looking at.
  *
  * Every assertion here is made on the RENDERED tree rather than on source text, so it survives however a
  * class comes to be composed (these grids are named consts, which a className-source scan would miss
@@ -76,6 +77,25 @@ const classesIn = (tree: unknown): string[] =>
   walk(tree)
     .map((e) => e.props?.className)
     .filter((c): c is string => typeof c === 'string');
+
+/**
+ * THE grid Section C's items are actually laid out on, identified by what it CONTAINS rather than by
+ * the classes it happens to carry.
+ *
+ * This is the difference between a guard and a shape. r210's verify pass caught the earlier version
+ * asking `grids.some(c => /@\w+:grid-cols-2/)` over the UNION of every grid className in the render —
+ * which `factsGridCls` (`@xl:grid-cols-2`) and `cardPairCls` (`@3xl:grid-cols-2`) each satisfy on their
+ * own. Dropping the two-up step from the RELIEF grid, which takes the employee screen straight back to
+ * the single column this round widened, sailed through it. Asked of the one element that wraps the
+ * items, the same assertion cannot be satisfied by a neighbouring grid.
+ */
+const reliefGridOf = (tree: unknown): any | undefined =>
+  walk(tree).find(
+    (e) =>
+      typeof e.props?.className === 'string' &&
+      /\bgrid-cols-/.test(e.props.className) &&
+      walk(e.props?.children).some((d) => /^tp1_items_c\d/.test(String(d.props?.name ?? ''))),
+  );
 
 /** All string-literal className values in a source file — the module-wide guard's own extractor. */
 const classNameLiterals = (source: string): string[] =>
@@ -205,14 +225,23 @@ describe('7ad37961 · B — the shared form is laid out by container width, not 
   });
 
   it('takes the relief items two-up and then three-up, from a ONE-column base', async () => {
-    const classes = classesIn(await renderAdminForm(SUBMITTED_ROW));
-    const grids = classes.filter((c) => /\bgrid-cols-/.test(c));
+    const tree = await renderAdminForm(SUBMITTED_ROW);
+    const grids = classesIn(tree).filter((c) => /\bgrid-cols-/.test(c));
     expect(grids.length, 'the relief sections are laid out on grids').toBeGreaterThan(0);
 
-    // Two-up and three-up both present — the reporter asked for the fields "across the width", and one
-    // extra column on a 27" monitor is not that.
-    expect(grids.some((c) => /@\w+:grid-cols-2\b/.test(c)), 'a two-up step').toBe(true);
-    expect(grids.some((c) => /@\w+:grid-cols-3\b/.test(c)), 'a three-up step').toBe(true);
+    // Two-up and three-up both present ON THE RELIEF GRID ITSELF — the reporter asked for the fields
+    // "across the width", and one extra column on a 27" monitor is not that. Asked of that grid rather
+    // than of the set of all grids, because the set is satisfied by cards and read-only `dl`s that have
+    // nothing to do with the seventeen items (see `reliefGridOf`).
+    const relief = reliefGridOf(tree);
+    expect(relief, "Section C's items are laid out on a grid of their own").toBeTruthy();
+    const reliefCls = String(relief.props.className);
+    expect(reliefCls, 'the relief grid never reaches two-up — the EMPLOYEE screen stays one column').toMatch(
+      /@\w+:grid-cols-2\b/,
+    );
+    expect(reliefCls, 'the relief grid never reaches three-up — the widened HR page gains one column').toMatch(
+      /@\w+:grid-cols-3\b/,
+    );
 
     // …and NO count is fixed. Every grid must start at one column and only ADD columns at a container
     // width, which is what makes the narrow case the default rather than an afterthought.
@@ -339,4 +368,82 @@ describe('7ad37961 · D — a layout round changed the layout and nothing else',
     ).toBe(false);
   });
 
+});
+
+// ────────── E. the widening is UNDONE below the two-up step, and the buttons are in reach ──────────
+
+/**
+ * THE PHONE IS NOT A SMALLER VERSION OF THE WIDE SCREEN, AND WIDENING ONE MUST NOT LENGTHEN THE OTHER.
+ *
+ * The first cut of this round drew every relief item as a bordered CELL at every width — right for a
+ * two- or three-up row, wrong for a single column, and measured wrong: in headless Chromium with the
+ * real `taxRelief` messages, en/ms/ta/zh at 300px and 342px containers came out 5–9% TALLER than before
+ * the round, because 24px of cell padding off a 300px measure wraps captions an extra line and
+ * seventeen 12px gaps add 204px on their own. Keying a month's reliefs on a phone would have taken MORE
+ * scrolling than before, on the one surface the request said would be unchanged.
+ *
+ * So the cell, its horizontal padding and the grid's gap are all undone below the two-up step, and the
+ * cases below pin the undo to that step rather than to a literal breakpoint: if a later round moves
+ * two-up, the undo moves with it or these fail. Re-measured after the fix, 300px and 342px are
+ * byte-for-byte the same height as before r210 in all four languages, and every width from 576px up is
+ * 4–37% shorter.
+ */
+describe('7ad37961 · E — the narrow container keeps the list it had, and Save stays in reach', () => {
+  it('drops the cell, its side padding and the grid gap below the width that earns them', async () => {
+    const tree = await renderAdminForm(null);
+    const relief = reliefGridOf(tree);
+    expect(relief, "Section C's items are laid out on a grid of their own").toBeTruthy();
+    const reliefCls = String(relief.props.className);
+
+    // The step the undo has to mirror, read off the grid rather than hard-coded.
+    const twoUp = /@(\w+):grid-cols-2\b/.exec(reliefCls)?.[1];
+    expect(twoUp, 'the relief grid states no two-up step to undo below').toBeTruthy();
+
+    expect(reliefCls, `the grid keeps its cell gap below @${twoUp}, where there is only one column`).toContain(
+      `@max-${twoUp}:gap-0`,
+    );
+
+    // The grid's DIRECT children are the seventeen item blocks — one per numbered item.
+    const cells = ([] as any[])
+      .concat(relief.props.children)
+      .filter((e) => e && typeof e === 'object' && e.type === 'div');
+    expect(cells.length, 'Section C renders its numbered items as the grid cells').toBeGreaterThan(10);
+    for (const cell of cells) {
+      const cls = String(cell.props?.className ?? '');
+      expect(cls, `an item keeps its box below @${twoUp}: "${cls}"`).toContain(`@max-${twoUp}:border-0`);
+      expect(cls, `an item keeps 24px of side padding off a phone measure: "${cls}"`).toContain(
+        `@max-${twoUp}:px-0`,
+      );
+      // …and the single rule BETWEEN stacked rows comes back, or the list loses its separators entirely.
+      expect(cls, `no divider between stacked rows below @${twoUp}: "${cls}"`).toContain(
+        `@max-${twoUp}:not-first:border-t`,
+      );
+    }
+  });
+
+  it('keeps Save and Submit inside the form, sticky only where a parked band is not in the way', async () => {
+    // INSIDE the form on purpose: `position: sticky` resolves against the nearest block ancestor, so the
+    // form is what ends the row's range with the fields it submits. Lifted out into the page's own
+    // column, the row would stay parked over SECTION F — the employer-consent card — at the bottom of
+    // the page. And the stick is container-gated: a bare `sticky` parks ~60px, about 9% of a phone
+    // viewport, permanently on top of whatever field is being keyed.
+    const tree = await renderAdminForm(null);
+    const form = walk(tree).find((e) => e.type === 'form' && e.props?.id === 'tp1-form');
+    expect(form, 'the editable form is rendered').toBeTruthy();
+
+    const row = walk(form.props.children).find(
+      (e) => typeof e.props?.className === 'string' && /\bsticky\b/.test(e.props.className),
+    );
+    expect(row, 'the Save/Submit row is not inside the form whose range it needs').toBeTruthy();
+    const rowCls = String(row.props.className);
+    expect(rowCls, 'the action row sticks at EVERY width, phone included').not.toMatch(/(?:^|\s)sticky\b/);
+    expect(rowCls, 'the action row never sticks at all — the buttons are back at the foot').toMatch(
+      /@\w+:sticky\b/,
+    );
+
+    const actions = walk(row.props.children).filter((e) => e.props?.type === 'submit' && e.props?.formAction);
+    expect(actions.length, 'Save and Submit both live in the action row').toBe(2);
+    // The move must not have changed WHICH form they submit — they are still explicitly owned.
+    for (const a of actions) expect(a.props.form, 'an action button lost its form owner').toBe('tp1-form');
+  });
 });

@@ -14,28 +14,68 @@ const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
- * THE THREE CONTAINER-QUERY MEASURES THIS FORM LAYS OUT ON (r210).
+ * THE CONTAINER-QUERY MEASURES THIS FORM LAYS OUT ON (r210).
  *
- * `@xl` = 36rem, `@3xl` = 48rem, `@5xl` = 64rem — Tailwind's CONTAINER scale, resolved against the
- * nearest `@container` ancestor (the form root below) and never against the window. That distinction is
+ * `@xl` = 36rem, `@3xl` = 48rem, `@4xl` = 56rem, `@5xl` = 64rem — Tailwind's CONTAINER scale, resolved
+ * against the nearest `@container` ancestor (the form root below), never against the window. That is
  * the whole reason these exist rather than `sm:` / `lg:`: the same class has to mean "two roomy columns"
  * on the HR month page, which fills the Payroll content area, and "two tight ones" on the employee's own
  * 42rem screen, and only the container knows which of the two it is in.
  *
  * EVERY ONE STARTS AT `grid-cols-1`, so the stacked single column is the DEFAULT and columns are only
- * ever ADDED. A phone therefore keeps exactly the layout it has today without a rule of its own, and no
- * count is ever fixed: nothing here says "three columns" unconditionally.
+ * ever ADDED; no count is ever fixed, and nothing here says "three columns" unconditionally.
  *
  * The thresholds are chosen so a cell stays wide enough to read — roughly 300px of content — at the
  * width that unlocks it. Two-up at 36rem clears the employee screen outright (42rem) rather than landing
  * on its exact boundary; three-up waits for 64rem, which only the HR screen reaches.
+ *
+ * `@max-xl` — the complement of `@xl`, so the two never overlap — is used the other way round, to UNDO
+ * the wide drawing below 36rem: cell padding, cell borders and cell gaps all cost height on a phone, and
+ * a phone was measured taller than before this round until they came off. It is used only for that, never
+ * to add anything a narrow container did not already have.
  */
-/** Section C's seventeen items, Section D's rebates and the legacy read-out: one-, two-, then three-up. */
-const reliefGridCls = 'grid grid-cols-1 items-start gap-3 @xl:grid-cols-2 @5xl:grid-cols-3';
+/**
+ * Section C's seventeen items and Section D's rebates: one-, two-, then three-up.
+ *
+ * BELOW `@xl` THIS IS DELIBERATELY NOT A GRID OF CELLS. `@max-xl:gap-0` closes the gap and `itemBlock`
+ * drops its box at the same breakpoint, so a narrow container gets back the stacked, rule-separated list
+ * it had before r210 — the same padding, the same rules, the same height. The first cut boxed every item
+ * at every width and made the PHONE 5–9% taller (measured in headless Chromium over en/ms/ta/zh at 300px
+ * and 342px containers): 24px of cell padding off a 300px measure wraps captions an extra line, and
+ * seventeen 12px gaps add 204px on their own. More scrolling on a phone is the opposite of what this
+ * round was asked for, and the request explicitly left the narrow case alone.
+ */
+const reliefGridCls = 'grid grid-cols-1 items-start gap-3 @max-xl:gap-0 @xl:grid-cols-2 @5xl:grid-cols-3';
+/**
+ * Section D is ONE line in the 2026 catalogue (`TP1_REBATES`), and a three-column grid drawn for a single
+ * cell reads as a mis-sized column with two thirds of the card blank. So the grid is used only once there
+ * is more than one rebate to line up; with one, the item stays the full-width row it has always been.
+ */
+const rebateLayoutCls = TP1_REBATES.length > 1 ? reliefGridCls : '';
+/** The legacy read-out: label/amount rows, so it columns up like the items but keeps its own tight gap. */
+const legacyGridCls = 'grid grid-cols-1 gap-x-6 gap-y-1 @xl:grid-cols-2 @5xl:grid-cols-3';
 /** Two whole CARDS side by side once there is room for both (A beside B, Section E beside Remarks). */
 const cardPairCls = 'grid grid-cols-1 gap-4 @3xl:grid-cols-2';
 /** A read-only `dl` of labelled facts inside one card. */
 const factsGridCls = 'grid grid-cols-1 gap-x-6 gap-y-2 @xl:grid-cols-2';
+/**
+ * The "already counted" read-out's own measure. Its lines are `justify-between` — caption on the left,
+ * ringgit figure on the right — and on the widened page that put the two ends ~1,100px apart with nothing
+ * tying them together, which this repo's own layout guard names as the anti-pattern for a wide screen.
+ * A cap, NOT `mx-auto`: the panel stays where it is, the LINE stops being a leaderless span.
+ */
+const countedMeasureCls = 'max-w-2xl';
+/**
+ * SAVE AND SUBMIT, KEPT IN REACH — the half of the request the first cut only shortened its way towards.
+ * The row is the last child of the `<form>` it submits, so it sticks to the bottom of the scrollport for
+ * as long as that form is on screen and un-sticks at the form's own end: Section F below it is never
+ * covered at rest.
+ *
+ * ONLY FROM `@xl`. A permanently parked 60px band is ~9% of a phone viewport spent on two buttons that a
+ * single flick reaches anyway, and on a phone it would be sitting on top of the field being keyed. Below
+ * `@xl` this is exactly the plain button row it has always been.
+ */
+const actionRowCls = 'flex flex-wrap gap-2 @xl:sticky @xl:bottom-0 @xl:z-10 @xl:bg-canvas @xl:py-3';
 
 type Tp1Action = (formData: FormData) => void | Promise<void>;
 
@@ -191,9 +231,14 @@ export async function Tp1DeclarationForm({
   /**
    * One numbered item — a single amount box, or one box per lettered sub-line under a shared limit.
    *
-   * r210: a bordered CELL rather than a `border-t` divider between stacked rows. The divider was the
-   * right drawing for one tall column and the wrong one for a grid — in a two- or three-up row only the
-   * first cell would lose its top rule, so the run of items would read as if it started three times.
+   * r210: a bordered CELL from `@xl` up, where the items are laid out two- or three-up — a `border-t`
+   * divider is the right drawing for one tall column and the wrong one for a grid, since only the first
+   * cell of the run would lose its top rule and the row would read as if the list started three times.
+   *
+   * BELOW `@xl` IT IS STILL THAT DIVIDER, to the pixel: `@max-xl:border-0` drops the box, `not-first`
+   * puts the single top rule back between consecutive rows, and `@max-xl:px-0` gives the caption its full
+   * measure again. That is what keeps a phone no taller than it was before this round — see
+   * `reliefGridCls` for the measurements that forced it.
    */
   const itemBlock = (def: Tp1CatalogueItem, group: 'items' | 'rebates') => {
     const entry = entryOf(def.code);
@@ -201,7 +246,10 @@ export async function Tp1DeclarationForm({
     const priorSubs = accumulated.subItems[def.code] ?? {};
     const code = def.code.toUpperCase();
     return (
-      <div key={def.code} className="rounded-md border border-border p-3">
+      <div
+        key={def.code}
+        className="rounded-md border border-border p-3 @max-xl:rounded-none @max-xl:border-0 @max-xl:px-0 @max-xl:not-first:border-t"
+      >
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-semibold tabular-nums">{code}</span>
           <span className="text-sm">{t(`${group}.${def.code}.label`)}</span>
@@ -331,7 +379,7 @@ export async function Tp1DeclarationForm({
         {accumulated.sources.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('countedNone')}</p>
         ) : (
-          <>
+          <div className={`${countedMeasureCls} space-y-3`}>
             <ul className="divide-y divide-border rounded-md border border-border">
               {accumulated.sources.map((src) => (
                 <li
@@ -360,7 +408,7 @@ export async function Tp1DeclarationForm({
                 {t('countedUnattributedNote', { amount: rm(accumulated.unattributedTotal) })}
               </p>
             )}
-          </>
+          </div>
         )}
       </Card>
 
@@ -369,7 +417,7 @@ export async function Tp1DeclarationForm({
         <Card className="space-y-2 p-5">
           <h2 className="text-sm font-semibold">{t('legacyHeading')}</h2>
           <p className="text-xs text-muted-foreground">{t('legacyNote')}</p>
-          <div className={`${reliefGridCls} rounded-md border border-border bg-muted/40 p-3`}>
+          <div className={`${legacyGridCls} rounded-md border border-border bg-muted/40 p-3`}>
             {TP1_CATEGORY_KEYS.map((key) => (
               <div key={key} className="flex items-baseline justify-between text-sm">
                 <span className="text-muted-foreground">{t(`categories.${key}.label`)}</span>
@@ -384,7 +432,7 @@ export async function Tp1DeclarationForm({
         <>
           <Card className="p-5">
             <h2 className="text-sm font-semibold">{t('sectionC')}</h2>
-            <div className={`mt-3 ${reliefGridCls}`}>{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
+            <div className={`mt-2 ${reliefGridCls}`}>{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
             <div className="mt-4 flex items-baseline justify-between border-t border-border pt-3">
               <span className="text-sm font-medium">{t('totalLabel')}</span>
               <span className="text-lg font-semibold tabular-nums">{rm(latest?.tp1Amount ?? 0)}</span>
@@ -393,7 +441,7 @@ export async function Tp1DeclarationForm({
           <Card className="p-5">
             <h2 className="text-sm font-semibold">{t('sectionD')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{t('rebateNote')}</p>
-            <div className={`mt-3 ${reliefGridCls}`}>{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
+            <div className={`mt-2 ${rebateLayoutCls}`}>{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
           </Card>
           <Card className="space-y-2 p-5">
             <h2 className="text-sm font-semibold">{t('sectionE')}</h2>
@@ -428,13 +476,13 @@ export async function Tp1DeclarationForm({
             <Card className="p-5">
               <h2 className="text-sm font-semibold">{t('sectionC')}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{t('sectionCHelp')}</p>
-              <div className={`mt-3 ${reliefGridCls}`}>{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
+              <div className={`mt-2 ${reliefGridCls}`}>{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
             </Card>
 
             <Card className="p-5">
               <h2 className="text-sm font-semibold">{t('sectionD')}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{t('rebateNote')}</p>
-              <div className={`mt-3 ${reliefGridCls}`}>{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
+              <div className={`mt-2 ${rebateLayoutCls}`}>{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
             </Card>
 
             {/* The tick and the remarks box are the last two things before Save/Submit and neither of
@@ -475,33 +523,29 @@ export async function Tp1DeclarationForm({
                 </p>
               </Card>
             </div>
-          </form>
 
-          {isSubmitted || isDecided ? (
-            <div className="space-y-3">
+            {isSubmitted || isDecided ? (
               <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
                 {t('submittedNotice')}
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" variant="secondary" formAction={saveDraftAction} form="tp1-form">
-                  {t('saveDraft')}
-                </Button>
-                {/* A correction is just another submitted row for the same month; latest-submitted wins. */}
-                <Button type="submit" formAction={submitAction} form="tp1-form">
-                  {t('submitCorrection')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
+            ) : null}
+
+            {/* THE ACTION ROW IS INSIDE THE FORM ON PURPOSE — see `actionRowCls`. `position: sticky` is
+                resolved against the nearest block ancestor, so being the form's last child is what gives
+                it a range that ENDS with the fields it submits: Section F, which follows, is never
+                covered once the page is scrolled to the bottom. The buttons still carry `form="tp1-form"`
+                and their own `formAction`, so which action runs is unchanged by the move, and Save is
+                still first in tree order and so still the implicit-submission default. */}
+            <div className={actionRowCls}>
               <Button type="submit" variant="secondary" formAction={saveDraftAction} form="tp1-form">
                 {t('saveDraft')}
               </Button>
+              {/* A correction is just another submitted row for the same month; latest-submitted wins. */}
               <Button type="submit" formAction={submitAction} form="tp1-form">
-                {t('submit')}
+                {t(isSubmitted || isDecided ? 'submitCorrection' : 'submit')}
               </Button>
             </div>
-          )}
+          </form>
         </>
       )}
 
