@@ -216,3 +216,70 @@ export const ENTITLEMENT_STATUS_TIP_KEY: Partial<Record<EntitlementStatus, strin
   no_eligibility_match: 'statusNoEligibilityMatchTip',
   capped_by_max_balance: 'statusCappedByMaxBalanceTip',
 };
+
+/**
+ * r212 — "NO ELIGIBILITY RULE REACHES YOU", WITH THE RULES NAMED.
+ *
+ * `no_eligibility_match` above is the state a single expired rule put a whole tenant into. Its copy could
+ * say WHAT had happened and never WHICH rule, because the status is one word and the reasons are a list.
+ * This is that list, in the shape a screen can render without asking the database anything: the rules that
+ * exist for the leave type, whether each is in force, and — for one in force — the first thing about this
+ * employee that does not match it.
+ *
+ * ⚠️ EVERY FIELD IS ALREADY-RESOLVED PLAIN DATA, INCLUDING `failingAxisLabel`. The failing AXIS is decided
+ * by the engine (`explainEntitlementEligibility`, core/entitlement-template.ts) as a criteria FIELD NAME;
+ * turning that name into "Employment Type" needs the criteria vocabulary the rule editor's own pickers are
+ * built from (`buildOrgCriteriaSections`), which only a server component can read. So the server resolves
+ * it and this carries the result — which is also what keeps the type client-safe and this module DB-free.
+ *
+ * It is declared HERE, beside the status it explains, rather than in the entitlement module, for the same
+ * reason `EntitlementStatus` is: the server read, the admin screen and the employee's own panel must all
+ * name one shape, and the panel is a client island that cannot import anything touching `db/client`.
+ */
+export type EligibilityRuleNotice = {
+  name: string;
+  /** What this rule IS, before any question about this employee:
+   *   - `matched`       — it reaches this employee (and, where several do, most-specific-wins picked one);
+   *   - `in_force`      — live over a live table, and this employee is not in it;
+   *   - `expired`       — its end date has passed, so it matches nobody at all;
+   *   - `not_yet`       — its start date is in the future;
+   *   - `table_stopped` — live, but the entitlement table it points at is not, so it can hand out nothing.
+   * The last three are configuration faults with different remedies, and flattening them is what made the
+   * production expiry invisible for six days. */
+  state: 'matched' | 'in_force' | 'expired' | 'not_yet' | 'table_stopped';
+  validFrom: string;
+  validTo: string | null;
+  /** The entitlement table this rule points at, by name. Null only where the lineage has no version at all. */
+  tableName: string | null;
+  /** The first criterion this employee fails, already labelled from the shared criteria vocabulary. Null
+   *  when the rule matched, was never tested, or fails only on a COMBINATION — see `failsOnCombination`. */
+  failingAxisLabel: string | null;
+  /** This employee's own value on that axis, where it is one that can be named honestly (a stored string,
+   *  not a UUID). Null ⇒ render the axis alone; NEVER render a guess. */
+  failingAxisValue: string | null;
+  /** Every axis passes on its own and the rule still does not match, because the axes that share one dated
+   *  assignment row do not all hold on the SAME one. Stated rather than blamed on an innocent axis. */
+  failsOnCombination: boolean;
+  /** Where an administrator opens this rule. Null on the employee's own panel, which links nowhere. */
+  href: string | null;
+};
+
+/** The whole answer for one (employee, leave type, date). */
+export type EligibilityNotice = {
+  /** r193 fault 3 — one table in force, no rule in force, so the table applies and NO RULE IS NEEDED. A
+   *  screen must say "none is missing" rather than leaving a reader hunting for one. */
+  soleTableApplies: boolean;
+  /** This employment is hired by the date asked about and not already terminated. FALSE means every rule
+   *  below fails for a reason that has nothing to do with any rule. */
+  activeAtDate: boolean;
+  /** The rule that decided, when one did — so a matching employee reads WHY they get what they get. */
+  winningRuleName: string | null;
+  /** The entitlement table that decided, by name. Non-null WITHOUT `winningRuleName` in exactly one case:
+   *  `soleTableApplies`, where the table applied and no rule was consulted because none exists to consult. */
+  winningTableName: string | null;
+  rules: EligibilityRuleNotice[];
+  /** Some rule narrows by grade, gender, nationality, religion or race — none of which is effective-dated
+   *  in this schema, so it is read at TODAY'S value however far back the date reaches
+   *  (`UNDATED_ELIGIBILITY_AXES`). Captioned rather than implied away. */
+  usesUndatedAxis: boolean;
+};

@@ -71,15 +71,29 @@
 import { and, asc, eq, gte, inArray, isNull, lt, lte, or, gt, sql } from 'drizzle-orm';
 
 import { compareEntitlementTables } from '../lib/entitlement-table-order';
+// r212 — the client-safe shape the two explaining screens render. Declared beside `EntitlementStatus`
+// (which is the thing being explained) so the employee's panel, a client island, can name it without
+// importing anything that touches `db/client`. Type-only: nothing at runtime crosses back.
+import type { EligibilityNotice, EligibilityRuleNotice } from '../lib/entitlement-status';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { entitlementEligibilityRule, entitlementTemplate, leaveLedger, leaveType } from '../db/schema';
+import {
+  assignment,
+  employment,
+  entitlementEligibilityRule,
+  entitlementTemplate,
+  leaveLedger,
+  leaveType,
+  person,
+} from '../db/schema';
 import { bandFor, validateServiceBands, type AccrualConfig, type ServiceBand } from './leave-compute';
 import {
+  narrowedOrgCriteriaAxes,
   orgCriteriaSpecificity,
   resolveOrgCriteriaTargets,
   type OrgCriteria,
 } from './org-criteria';
+import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 
 /**
  * The eligibility axes that CANNOT be resolved as at a past date, because the columns behind them carry no
@@ -988,6 +1002,407 @@ export async function resolveEntitlementForEmployment(
     asOf: p.asOf,
   });
   return resolver.winnerFor(p.employmentId, p.leaveTypeId);
+}
+
+/**
+ * r212 — WHY THIS EMPLOYEE RESOLVES TO NOTHING, RULE BY RULE, WITHOUT A SECOND MATCHER.
+ *
+ * The reporter's original question was never "which rule won" — every screen could already say that. It was
+ * the opposite one: **"No eligibility rule reaches you" — WHICH rules, and what about ME did not match?**
+ * Until this function, that answer existed nowhere: `winnerFor` returns `null` and null carries no reasons.
+ *
+ * ⚠️ THIS IS NOT A THIRD ENGINE, AND IT MUST NEVER BECOME ONE. This file's header states the rule plainly —
+ * a private matcher for "who does this apply to" would be the defect wearing the fix's clothes. So:
+ *
+ *   • WHO WON comes from `resolveEntitlementForEmployment` — the existing single-employee delegate, which is
+ *     itself a one-row call into `buildTemplateEntitlementResolver`. Nothing here re-ranks anything, and
+ *     `soleTableApplies` is read off the engine's OWN `viaSoleTemplate` rather than re-deriving the r193
+ *     fault-3 gate a second time.
+ *   • WHETHER A RULE MATCHED is the SAME `resolveOrgCriteriaTargets` call the resolver makes, with the same
+ *     criteria, the same `asOf` and the same one-employment narrowing. It cannot disagree with the decision
+ *     because it IS the decision, asked again.
+ *   • WHICH AXIS FAILED is that same call run over SUBSETS of the same criteria object — one axis at a time,
+ *     in the criteria vocabulary's own order (`narrowedOrgCriteriaAxes`). The comparison is never
+ *     re-implemented in TypeScript; the axis is found by asking the resolver a narrower question.
+ *
+ * COST: bounded and paid only on an explain. One query for the winner's resolver, two for the configuration,
+ * one for "is this employment active at all on this date", one per IN-FORCE rule to test the match, and — for
+ * a rule that did NOT match — at most one per narrowed axis until the first failure. Rules are the number of
+ * populations HR has described (three on production), not a data volume.
+ *
+ * ⚠️ AND WHERE THE AXES ARE ASYMMETRIC, SAY SO. `resolveOrgCriteriaTargets` folds department, employment
+ * type, business unit, position, cost centre and location into ONE `exists()` over the assignment in force —
+ * so they must all hold on the SAME assignment row. Testing them one at a time relaxes that, which means a
+ * rule can fail while every one of its axes passes alone. That is reported as `failsOnCombination` rather
+ * than blamed on an axis that is, individually, fine.
+ */
+export type EligibilityAxisFailure = {
+  /** The criteria field name — always a member of `ORG_CRITERIA_FIELDS` / `ORG_CRITERIA_RANGE_FIELDS`, so a
+   *  screen labels it from the SAME vocabulary the rule editor's pickers are built from. */
+  axis: string;
+  /** This employee's own value on that axis, or null where it is not one this reader can honestly name —
+   *  see `employeeCriteriaFactsAt`. A screen must render the axis with or without it. */
+  employeeValue: string | null;
+};
+
+/** One eligibility rule LINEAGE of a leave type, judged against one employee at one date. */
+export type EligibilityRuleExplanation = {
+  ruleName: string;
+  ruleLineageId: string;
+  templateLineageId: string;
+  /** The table this rule points at, by the name its version in force at `asOf` carries — or, where none is
+   *  in force, the name of the lineage's current version, so a stopped table is named rather than blank. */
+  templateName: string | null;
+  validFrom: string;
+  validTo: string | null;
+  /** In force at `asOf`, decided by the SAME dated SQL `listEligibilityRules` uses, never by a date compare
+   *  written out here again. */
+  inForce: boolean;
+  /** Its table has a version in force at `asOf`. A rule over a STOPPED table matches nobody — the resolver
+   *  drops it for exactly that reason — and that is a different fault from a rule that simply excludes you. */
+  pointsAtTableInForce: boolean;
+  /** Did this employee match? Only ever asked (and only ever true) for a rule that is in force over a table
+   *  in force, which is precisely the set the resolver tests. */
+  matched: boolean;
+  /** The FIRST axis of this rule the employee fails. Null when the rule matched, when it was never tested,
+   *  or when `failsOnCombination` — never a guess. */
+  firstFailure: EligibilityAxisFailure | null;
+  /** Every narrowed axis passes on its own and the rule still does not match: the axes that share one dated
+   *  assignment row do not all hold on the SAME one. See this function's header. */
+  failsOnCombination: boolean;
+  /** This rule narrows by an axis with no effective dating in the schema (`UNDATED_ELIGIBILITY_AXES`), so
+   *  its answer is TODAY'S value however far back `asOf` reaches. */
+  usesUndatedAxis: boolean;
+};
+
+/** Everything a screen needs to answer "no eligibility rule reaches you" with something better than silence. */
+export type EntitlementEligibilityExplanation = {
+  employmentId: string;
+  leaveTypeId: string;
+  asOf: string;
+  /** This employment exists, is hired by `asOf` and has not been terminated before it. FALSE makes every
+   *  rule below fail for one reason that has nothing to do with any rule, and the screen must say that
+   *  instead of blaming an axis. */
+  activeAtDate: boolean;
+  /** r193 fault 3, read off the engine's own answer (`ResolvedEntitlement.viaSoleTemplate`): the leave type
+   *  had exactly one table in force and no rule in force, so the table applied and NO RULE IS NEEDED. A
+   *  screen must say "none is missing", not "none is configured". */
+  soleTableApplies: boolean;
+  /** What actually decided — null when nothing did, which is the state this whole type exists to explain. */
+  winner: ResolvedEntitlement | null;
+  /** Every rule lineage of this leave type, current version, in force or not, ordered by name. */
+  rules: EligibilityRuleExplanation[];
+  /** Any rule above narrows by an undated axis ⇒ the whole explanation carries the caveat. */
+  usesUndatedAxis: boolean;
+};
+
+/**
+ * The employee facts an explanation may quote back — READ FOR DISPLAY ONLY, never to decide anything.
+ *
+ * ⚠️ NOTHING HERE PARTICIPATES IN A MATCH. The decision, and the axis, come from `resolveOrgCriteriaTargets`
+ * (see `explainEntitlementEligibility`'s header). This exists so "does not match your Employment Type" can
+ * add "— yours is Permanent", which is the difference between a message an operator can act on and one they
+ * cannot. If it were ever wrong it would mislabel a value beside a correctly-named axis; it can never move
+ * an entitlement.
+ *
+ * TWO GUARDS KEEP IT FROM CONTRADICTING THE DECISION:
+ *   1. the dated assignment window is copied from `resolveOrgCriteriaTargets` exactly — started on or before
+ *      `asOf`, not ended before it — and the latest such version is the one quoted (the matcher's `exists()`
+ *      accepts ANY of them, so where superseded rows overlap the quoted one is the current statement);
+ *   2. `employeeValueForAxis` REFUSES to return a value the rule's own list contains. If this reader and the
+ *      matcher ever disagreed, the screen degrades to naming the axis alone rather than printing a value
+ *      that argues with the decision beside it.
+ *
+ * The id-shaped axes (company, department, grade, position, cost centre, location, business unit) are
+ * deliberately absent: their criteria values are UUIDs, so quoting the employee's own would put a UUID on
+ * screen, and resolving names for seven catalogues inside the entitlement module is exactly the kind of
+ * spreading this file's header argues against. Those axes are named without a value.
+ */
+type EligibilityEmployeeFacts = {
+  /** From the `assignment` version in force at `asOf` — the same row the matcher's `exists()` reads. */
+  employmentType: string | null;
+  hiredOn: string | null;
+  gender: string | null;
+  nationality: string | null;
+  religion: string | null;
+  race: string | null;
+  /** The eight Organisation-Assignment axes, whose criteria key IS the `employment` column name. */
+  org: Record<string, string | null>;
+};
+
+async function employeeCriteriaFactsAt(
+  tx: Tx,
+  employmentId: string,
+  asOf: string,
+): Promise<EligibilityEmployeeFacts | null> {
+  const [row] = await tx
+    .select({
+      hiredOn: employment.hiredOn,
+      gender: person.gender,
+      nationality: person.nationality,
+      religion: person.religion,
+      race: person.race,
+      orgDivision: employment.orgDivision,
+      orgBranch: employment.orgBranch,
+      orgRegion: employment.orgRegion,
+      orgLine: employment.orgLine,
+      orgSection: employment.orgSection,
+      orgTeam: employment.orgTeam,
+      orgBase: employment.orgBase,
+      employmentCategory: employment.employmentCategory,
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (!row) return null;
+
+  // The SAME dated window `resolveOrgCriteriaTargets` puts on its assignment `exists()`: started on or
+  // before `asOf`, and not ended before it. Latest start wins — see this type's note on overlapping rows.
+  const assignments = await tx
+    .select({ validFrom: assignment.validFrom, employmentType: assignment.employmentType })
+    .from(assignment)
+    .where(
+      and(
+        eq(assignment.employmentId, employmentId),
+        lte(assignment.validFrom, asOf),
+        or(isNull(assignment.validTo), gte(assignment.validTo, asOf)),
+      ),
+    );
+  const current = assignments.sort((a, b) => (a.validFrom < b.validFrom ? 1 : -1))[0];
+
+  const org: Record<string, string | null> = {};
+  for (const c of ORG_ASSIGNMENT_CRITERIA) org[c.key] = (row as Record<string, string | null>)[c.key] ?? null;
+  return {
+    employmentType: current?.employmentType ?? null,
+    hiredOn: row.hiredOn ?? null,
+    gender: row.gender ?? null,
+    nationality: row.nationality ?? null,
+    religion: row.religion ?? null,
+    race: row.race ?? null,
+    org,
+  };
+}
+
+/** The employee's own value on one axis, or null where this module will not claim to know it. See above. */
+function employeeValueForAxis(
+  facts: EligibilityEmployeeFacts | null,
+  axis: string,
+  criteria: OrgCriteria,
+): string | null {
+  if (!facts) return null;
+  const direct: Record<string, string | null> = {
+    employmentTypes: facts.employmentType,
+    genders: facts.gender,
+    nationalities: facts.nationality,
+    religions: facts.religion,
+    races: facts.race,
+    hiredFrom: facts.hiredOn,
+    hiredTo: facts.hiredOn,
+  };
+  const value = axis in direct ? direct[axis] : (facts.org[axis] ?? null);
+  if (value == null || value === '') return null;
+  // GUARD 2 (see `EligibilityEmployeeFacts`): a value the rule's own list contains would contradict the
+  // matcher, which has just said this employee fails on this axis. Say nothing rather than argue.
+  const listed = (criteria as Record<string, unknown>)[axis];
+  if (Array.isArray(listed) && (listed as unknown[]).map(String).includes(value)) return null;
+  return value;
+}
+
+export async function explainEntitlementEligibility(
+  tx: Tx,
+  p: { employmentId: string; leaveTypeId: string; asOf: string },
+): Promise<EntitlementEligibilityExplanation> {
+  // WHO WON — the existing delegate, not a second ranking. `viaSoleTemplate` is the r193 fault-3 gate's own
+  // answer, so `soleTableApplies` below cannot drift from the engine that applied it.
+  const winner = await resolveEntitlementForEmployment(tx, p);
+
+  const allVersions = (
+    await tx.select().from(entitlementTemplate).where(eq(entitlementTemplate.leaveTypeId, p.leaveTypeId))
+  ).map(toTemplateRow);
+  const lineageIds = [...new Set(allVersions.map((t) => t.lineageId))];
+  // In force at `asOf` through the SAME SQL the resolver builds its answer from, rather than a date compare
+  // restated here — `activeTemplatesAt` is the one definition of "which version applies".
+  const templatesInForce = lineageIds.length
+    ? await activeTemplatesAt(tx, p.asOf, [p.leaveTypeId])
+    : new Map<string, EntitlementTemplateRow>();
+  /** The lineage's CURRENT version — how a STOPPED table still gets a name. Latest `validFrom` wins. */
+  const templateHead = new Map<string, EntitlementTemplateRow>();
+  for (const t of allVersions) {
+    const prev = templateHead.get(t.lineageId);
+    if (!prev || t.validFrom >= prev.validFrom) templateHead.set(t.lineageId, t);
+  }
+
+  const ruleVersions = lineageIds.length
+    ? (
+        await tx
+          .select()
+          .from(entitlementEligibilityRule)
+          .where(inArray(entitlementEligibilityRule.templateLineageId, lineageIds))
+      ).map(toRuleRow)
+    : [];
+  // IN FORCE, asked in SQL with the resolver's own predicate rather than compared again in TypeScript.
+  const inForceIds = new Set(
+    lineageIds.length
+      ? (
+          await tx
+            .select({ id: entitlementEligibilityRule.id })
+            .from(entitlementEligibilityRule)
+            .where(
+              and(
+                inArray(entitlementEligibilityRule.templateLineageId, lineageIds),
+                lte(entitlementEligibilityRule.validFrom, p.asOf),
+                or(isNull(entitlementEligibilityRule.validTo), gt(entitlementEligibilityRule.validTo, p.asOf)),
+              ),
+            )
+        ).map((r) => r.id)
+      : [],
+  );
+  /** One entry per rule LINEAGE, its current version — a retired lineage has no version in force, and
+   *  hiding it would hide the expiry that is the commonest cause of this whole explanation existing. */
+  const ruleHeads = new Map<string, EligibilityRuleRow>();
+  for (const r of ruleVersions) {
+    const prev = ruleHeads.get(r.lineageId);
+    if (!prev || r.validFrom >= prev.validFrom) ruleHeads.set(r.lineageId, r);
+  }
+
+  // IS THIS EMPLOYMENT EVEN A CANDIDATE ON THIS DATE? `resolveOrgCriteriaTargets` excludes anybody not yet
+  // hired or already terminated as of `asOf`, BEFORE any criterion is considered. An empty criteria object
+  // asks exactly that and nothing else — and it is the same call, so the answer cannot drift.
+  const activeAtDate =
+    (await resolveOrgCriteriaTargets(tx, { criteria: {}, asOf: p.asOf, employmentIds: [p.employmentId] })).length > 0;
+
+  const facts = activeAtDate ? await employeeCriteriaFactsAt(tx, p.employmentId, p.asOf) : null;
+
+  const rules: EligibilityRuleExplanation[] = [];
+  for (const rule of [...ruleHeads.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+    const inForce = inForceIds.has(rule.id);
+    const pointsAtTableInForce = templatesInForce.has(rule.templateLineageId);
+    const testable = inForce && pointsAtTableInForce && activeAtDate;
+    const matched = testable
+      ? (
+          await resolveOrgCriteriaTargets(tx, {
+            criteria: rule.criteria,
+            asOf: p.asOf,
+            employmentIds: [p.employmentId],
+          })
+        ).length > 0
+      : false;
+
+    let firstFailure: EligibilityAxisFailure | null = null;
+    if (testable && !matched) {
+      // ONE AXIS AT A TIME, THROUGH THE SAME RESOLVER. The first subset that excludes this employee names
+      // the axis; nothing is compared here.
+      for (const axis of narrowedOrgCriteriaAxes(rule.criteria)) {
+        const only = { [axis]: (rule.criteria as Record<string, unknown>)[axis] } as OrgCriteria;
+        const hits = await resolveOrgCriteriaTargets(tx, {
+          criteria: only,
+          asOf: p.asOf,
+          employmentIds: [p.employmentId],
+        });
+        if (hits.length === 0) {
+          firstFailure = { axis, employeeValue: employeeValueForAxis(facts, axis, rule.criteria) };
+          break;
+        }
+      }
+    }
+
+    rules.push({
+      ruleName: rule.name,
+      ruleLineageId: rule.lineageId,
+      templateLineageId: rule.templateLineageId,
+      templateName:
+        templatesInForce.get(rule.templateLineageId)?.name ?? templateHead.get(rule.templateLineageId)?.name ?? null,
+      validFrom: rule.validFrom,
+      validTo: rule.validTo,
+      inForce,
+      pointsAtTableInForce,
+      matched,
+      firstFailure,
+      failsOnCombination: testable && !matched && firstFailure === null,
+      usesUndatedAxis: usesUndatedEligibilityAxis(rule.criteria),
+    });
+  }
+
+  return {
+    employmentId: p.employmentId,
+    leaveTypeId: p.leaveTypeId,
+    asOf: p.asOf,
+    activeAtDate,
+    soleTableApplies: winner?.viaSoleTemplate === true,
+    winner,
+    rules,
+    usesUndatedAxis: rules.some((r) => r.usesUndatedAxis),
+  };
+}
+
+/**
+ * The same explanation from a `SessionContext` — what a screen calls. One transaction, so every query above
+ * reads one consistent picture of the configuration.
+ */
+export async function explainEntitlementEligibilityFor(
+  ctx: SessionContext,
+  p: { employmentId: string; leaveTypeId: string; asOf: string },
+): Promise<EntitlementEligibilityExplanation> {
+  return withTenant(ctx, (tx) => explainEntitlementEligibility(tx, p));
+}
+
+/**
+ * r212 — THE EXPLANATION AS A SCREEN READS IT. Pure, and the ONE place the mapping lives.
+ *
+ * Both consumers (the admin explain panel and the employee's own Leave Details side-sheet) need the same
+ * five decisions made the same way — which of the five states a rule is in, which axis to name, whether to
+ * quote a value at all — and making them twice is how the two screens start describing one configuration
+ * two ways. The i18n and the href are injected because they belong to the caller's namespace and route,
+ * not to this module.
+ *
+ * ⚠️ THE STATE ORDER IS NOT ARBITRARY. `matched` first (it is an answer, not a fault); then `not_yet` and
+ * `expired`, which are about the RULE's own dates; then `table_stopped`, which is about the table it points
+ * at; and only then `in_force`, which is the one that is genuinely about this employee. Reordering it would
+ * report an expired rule as "you are not in it", which sends an administrator to edit criteria on a rule
+ * that matches nobody whatever they type.
+ */
+export function eligibilityNoticeFrom(
+  explanation: EntitlementEligibilityExplanation,
+  opts: {
+    /** Criteria FIELD NAME → the label the rule editor's own picker carries for it. Return null (or omit
+     *  the axis) and the screen names no axis rather than printing a raw field name at a reader. */
+    axisLabel: (axis: string) => string | null;
+    /** Where an administrator opens a rule lineage. Omit on a screen with nowhere to send anybody. */
+    href?: (ruleLineageId: string) => string;
+  },
+): EligibilityNotice {
+  return {
+    soleTableApplies: explanation.soleTableApplies,
+    activeAtDate: explanation.activeAtDate,
+    winningRuleName: explanation.winner?.ruleName ?? null,
+    winningTableName: explanation.winner?.templateName ?? null,
+    usesUndatedAxis: explanation.usesUndatedAxis,
+    rules: explanation.rules.map((r) => {
+      const state: EligibilityRuleNotice['state'] = r.matched
+        ? 'matched'
+        : r.validFrom > explanation.asOf
+          ? 'not_yet'
+          : !r.inForce
+            ? 'expired'
+            : !r.pointsAtTableInForce
+              ? 'table_stopped'
+              : 'in_force';
+      const label = r.firstFailure ? opts.axisLabel(r.firstFailure.axis) : null;
+      return {
+        name: r.ruleName,
+        state,
+        validFrom: r.validFrom,
+        validTo: r.validTo,
+        tableName: r.templateName,
+        failingAxisLabel: label,
+        // A value with no axis to hang it on is noise, so both fall together.
+        failingAxisValue: label ? (r.firstFailure?.employeeValue ?? null) : null,
+        failsOnCombination: r.failsOnCombination,
+        href: opts.href ? opts.href(r.ruleLineageId) : null,
+      };
+    }),
+  };
 }
 
 /**

@@ -40,6 +40,9 @@ import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 // ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
 import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
+// r212 (8ebf77ae) — the leave type's OWN conditions, worded from the SAME criteria vocabulary the rule
+// builder below is generated from, so the inherited list and the pickers beside it cannot drift apart.
+import { inheritedConditions, type LeaveTypeEligibility } from './leave-type-conditions';
 // 4a1abc4a — the Entitlement Table is where day figures are TYPED, so it is the one screen where the
 // summary line and the editor cell beside it must agree digit for digit.
 import { DAY_DASH, formatDayInput, formatDays } from '@/lib/day-format';
@@ -94,7 +97,18 @@ export type EntitlementTablesData = {
   /** r209 — `accrualMethod` / `accrualUnconfigured` ride along because the health check needs them and this
    *  read already has them. `leave_type.accrual_unconfigured` has been stamped since 2026-08-04 and was read
    *  by NO surface until r209 — that is the defect, not a missing column. */
-  leaveTypes: (HealthLeaveType & { archived: boolean })[];
+  /** r212 — `eligibility` rides along too, and it is the whole of item 8ebf77ae's first change. The
+   *  reporter asked why eligibility must be configured TWICE; the answer is that the leave type's own
+   *  conditions decide WHETHER an employee may take the leave and the rule decides WHICH day table they
+   *  get. Showing the first, read-only, on the screen where the second is typed is what stops the same
+   *  conditions being keyed in both places. Already projected by `listLeaveTypes`, so no extra query. */
+  leaveTypes: (HealthLeaveType & {
+    archived: boolean;
+    eligibility: LeaveTypeEligibility | null;
+    /** `leave_type.probation_eligibility` is its OWN column, not part of the JSONB — merged into the
+     *  object above exactly the way both enforcement chokepoints merge it (core/leave.ts 2568 / 5522). */
+    probationEligibility: 'confirmed_only' | 'probation_only' | null;
+  })[];
   /** EVERY version, not just the running ones — a superseded table is the record a closed year was
    *  reported against, and the three past-date readers still resolve it. The list marks which is running. */
   templates: EntitlementTemplateRow[];
@@ -212,6 +226,8 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
       archived: !!x.archivedAt,
       accrualMethod: x.accrualMethod ?? null,
       accrualUnconfigured: x.accrualUnconfigured != null,
+      eligibility: (x.eligibility ?? null) as LeaveTypeEligibility | null,
+      probationEligibility: (x.probationEligibility ?? null) as 'confirmed_only' | 'probation_only' | null,
     })),
     templates,
     rules,
@@ -257,6 +273,10 @@ export async function EntitlementTablesBlock({
   editRule?: string;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
+  // r212 — the marital-status values already shipped in six locales under the leave-type screen's own
+  // namespace. Read there rather than re-minted: r127 shipped a screen rendering entirely through
+  // MISSING_MESSAGE behind a green 200 by inventing a copy of labels that already existed.
+  const tLeave = await getTranslations('admin.leave');
   const {
     leaveTypes,
     ruleCounts,
@@ -317,6 +337,65 @@ export async function EntitlementTablesBlock({
   const soleTableTypeIds = new Set(
     (scopedHealth ? [scopedHealth] : allHealth).filter((h) => h.soleTableApplies).map((h) => h.leaveTypeId),
   );
+  /**
+   * r212 (8ebf77ae) — …AND THE SAME SET AS NAMES, so Step 2 can say "no rule is needed here, and none is
+   * missing" instead of leaving "No eligibility rules yet" to be read as a gap.
+   *
+   * READ from `lib/leave-config-health.ts`, never recomputed: `soleTableApplies` is the r193 fault-3 gate
+   * mirrored from the engine, and its two halves are subtle enough that r209 shipped a green light over a
+   * leave type the engine granted to nobody by measuring the second half on the wrong set of rules. One
+   * derivation, three readers (the health card, the per-table marker, and this line).
+   */
+  const soleTableTypeNames = (scopedHealth ? [scopedHealth] : allHealth)
+    .filter((h) => h.soleTableApplies)
+    .map((h) => h.leaveTypeName);
+
+  /**
+   * r212 (8ebf77ae) — THE LEAVE TYPE'S OWN CONDITIONS, TO BE SHOWN READ-ONLY ABOVE THE CRITERIA BUILDER.
+   *
+   * The reporter asked why eligibility must be configured twice. It is not the same decision twice: the
+   * leave type's conditions answer MAY THIS EMPLOYEE TAKE IT AT ALL (`isLeaveEligible`, core/leave.ts) and
+   * the rule answers WHICH DAY TABLE APPLIES. But both speak the same vocabulary, so an operator who does
+   * not know the first is already in force keys it again — and either copy can then silently exclude
+   * somebody. Showing it here is the fix; merging the two layers is not, and would cost either the choice
+   * of table or the ability to exclude people from a type entirely.
+   *
+   * SCOPED MOUNT ONLY. The unfiltered screen lists every leave type's rules in one table, so there is no
+   * single set of conditions to inherit and a list from one type would be a lie beside another type's rule.
+   * The probation column is merged in the way both enforcement chokepoints merge it.
+   */
+  const scopedEligibility: LeaveTypeEligibility | null =
+    scoped && scopedType
+      ? {
+          ...((scopedType.eligibility ?? {}) as LeaveTypeEligibility),
+          ...(scopedType.probationEligibility ? { probation: scopedType.probationEligibility } : {}),
+        }
+      : null;
+  const maritalLabel = (m: string) =>
+    m === 'single'
+      ? tLeave('eligibilityMaritalSingle')
+      : m === 'married'
+        ? tLeave('eligibilityMaritalMarried')
+        : m === 'divorced'
+          ? tLeave('eligibilityMaritalDivorced')
+          : m === 'widowed'
+            ? tLeave('eligibilityMaritalWidowed')
+            : m === 'separated'
+              ? tLeave('eligibilityMaritalSeparated')
+              : m === 'other'
+                ? tLeave('eligibilityMaritalOther')
+                : m;
+  const inherited = scopedEligibility
+    ? inheritedConditions(scopedEligibility, criteriaSections, {
+        maritalStatus: t('inheritedMarital'),
+        minService: t('inheritedMinService'),
+        // The unit is the leave type's own (`minServiceUnit`, absent ⇒ months) and it is NOT the criteria
+        // vocabulary's years-of-service band — near neighbours, different axes. See leave-type-conditions.ts.
+        minServiceValue: (n, unit) =>
+          unit === 'days' ? t('inheritedMinServiceDays', { count: n }) : t('inheritedMinServiceMonths', { count: n }),
+        maritalValue: maritalLabel,
+      })
+    : [];
 
   /**
    * A lineage's CURRENT version, by row id. Two readers need it and they need it for the same reason: a
@@ -612,6 +691,16 @@ export async function EntitlementTablesBlock({
       {/* ── STEP 2: WHO GETS WHICH TABLE ────────────────────────────────────────────────────────── */}
       <Card>
         <SectionHeader title={t('rulesTitle')} count={runningRules.length} />
+        {/* r212 (8ebf77ae) — "NO ELIGIBILITY RULES YET" IS THE RIGHT ANSWER FOR A TYPE WITH ONE TABLE, and
+            until now this card said it in the same words it uses for a type that is genuinely half-built.
+            The reporter's Hospitalization Leave has one table, no rule, and works; the engine applies the
+            sole table because there is nothing to choose between (r193 fault 3). Said here, beside the
+            empty list, because that is where the absence is read. */}
+        {soleTableTypeNames.length > 0 ? (
+          <p className="border-b px-4 pb-3 text-xs text-muted-foreground">
+            {t('soleTableNoRuleNeeded', { types: soleTableTypeNames.join(', ') })}
+          </p>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
@@ -774,11 +863,79 @@ export async function EntitlementTablesBlock({
         </div>
 
         <div className="border-t p-4">
+          {/* ── r212 (8ebf77ae) · WHAT THE LEAVE TYPE ALREADY DECIDES, READ-ONLY ──────────────────────
+              The reporter's question, answered where it is asked: these conditions gate the OFFER and the
+              APPLICATION, they already apply to every rule below, and repeating them here is the
+              double-keying they complained about. Every label and value is derived from `criteriaSections`
+              — the SAME vocabulary the pickers below are generated from — so the two lists cannot drift.
+              Scoped mount only; see `scopedEligibility`. */}
+          {scoped && scopedType ? (
+            <div className="mb-4 rounded-md border border-border bg-muted/30 p-3">
+              <p className="text-sm font-medium">{t('inheritedTitle')}</p>
+              {inherited.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">{t('inheritedNone')}</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('inheritedNote')}</p>
+                  <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                    {inherited.map((row) => (
+                      <div key={row.key} className="text-xs">
+                        <dt className="inline font-medium text-foreground">{row.label}: </dt>
+                        <dd className="inline text-muted-foreground">{row.values.join(', ')}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              )}
+            </div>
+          ) : null}
+
           <h3 className="mb-3 text-sm font-medium">{editingRule ? t('editRuleTitle') : t('newRuleTitle')}</h3>
           {templateOptions.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t('rulesNeedTemplate')}</p>
           ) : (
             <>
+              {/* ── r212 (8ebf77ae) · THE ONE-CLICK RULE SHAPE ────────────────────────────────────────
+                  "Everyone this leave type is available to" — `createEligibilityRule` with criteria {}.
+                  EMPTY CRITERIA ALREADY MEANS EVERYONE (`resolveOrgCriteriaTargets`' own semantics, stated
+                  in its header); nothing about resolution changes here. What changes is that it becomes a
+                  NAMED, deliberate choice instead of something you get by leaving every box empty and
+                  hoping — which is exactly what the reporter did by hand for Examination Leave on
+                  2026-08-20. This form posts no criteria field at all, and `criteriaFrom` asks for axes BY
+                  NAME rather than sweeping the FormData, so what is stored is `{}` and not a near-miss.
+                  Offered only while CREATING: an edit already has criteria on screen to clear. */}
+              {!editingRule ? (
+                <form
+                  action={createEligibilityRuleAction}
+                  className="mb-4 space-y-2 rounded-md border border-border p-3"
+                >
+                  {returnField}
+                  <p className="text-sm font-medium">{t('ruleEveryoneTitle')}</p>
+                  <p className="text-xs text-muted-foreground">{t('ruleEveryoneHelp')}</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Field label={t('ruleName')}>
+                      <input className={inputCls} name="name" defaultValue={t('ruleEveryoneDefaultName')} required />
+                    </Field>
+                    <Field label={t('ruleTemplate')}>
+                      <select className={inputCls} name="templateLineageId" defaultValue="" required>
+                        <option value="">{t('rulePickTemplate')}</option>
+                        {templateOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label={t('effectiveFrom')}>
+                      <input className={inputCls} type="date" name="validFrom" defaultValue={today} required />
+                    </Field>
+                  </div>
+                  <button type="submit" className={btnPrimary}>
+                    {t('ruleEveryoneCreate')}
+                  </button>
+                </form>
+              ) : null}
+
               <EligibilityRuleForm
                 key={editingRule?.lineageId ?? 'new'}
                 action={editingRule ? updateEligibilityRuleAction : createEligibilityRuleAction}

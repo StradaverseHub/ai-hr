@@ -32,7 +32,12 @@ import { leaveVisual } from '@/lib/leave-visual';
 // balance grid behind it cannot print the same number two ways.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
-import { entitlementStatusNeedsNotice, type EntitlementStatus } from '@/lib/entitlement-status';
+import {
+  entitlementStatusNeedsNotice,
+  type EligibilityNotice,
+  type EligibilityRuleNotice,
+  type EntitlementStatus,
+} from '@/lib/entitlement-status';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
   type PanelData,
@@ -74,6 +79,28 @@ const PANEL_STATUS_COPY: Partial<Record<EntitlementStatus, { title: string; body
   capped_by_max_balance: { title: 'statusCappedByMaxBalanceTitle', body: 'statusCappedByMaxBalanceBody' },
 };
 
+/**
+ * r212 (8ebf77ae) — THE FIVE STATES OF A RULE, EACH WITH ITS OWN SENTENCE.
+ *
+ * `statusNoEligibilityMatchBody` above already tells the employee that no rule reaches them and asks an
+ * administrator to "check whether the rule has expired or narrows to a group you are not in". That is the
+ * whole of what the screen could say, because the status is one word and the reasons are a list — so the
+ * reporter's original request ("say WHICH rules exist and what about me did not match") had nowhere to go.
+ * This map is the list's vocabulary, and it is deliberately not collapsed: an EXPIRED rule and a rule that
+ * simply excludes you call for opposite actions, and flattening them is what left a whole tenant reading
+ * 0.00 for six days after one `valid_to` passed.
+ *
+ * `{date}` is interpolated for the two dated states and ignored by the other three, so one call site can
+ * pass it unconditionally.
+ */
+const RULE_STATE_COPY: Record<EligibilityRuleNotice['state'], string> = {
+  matched: 'eligibilityStateMatched',
+  in_force: 'eligibilityStateInForce',
+  expired: 'eligibilityStateExpired',
+  not_yet: 'eligibilityStateNotYet',
+  table_stopped: 'eligibilityStateTableStopped',
+};
+
 export function LeaveDetailsPanel({
   data,
   summary,
@@ -82,6 +109,7 @@ export function LeaveDetailsPanel({
   action,
   hiddenParams = {},
   applyEssConfig = false,
+  eligibility,
   open,
   onOpenChange,
   hideTrigger = false,
@@ -96,6 +124,20 @@ export function LeaveDetailsPanel({
    *  first-class value here — flattening it to a single string would silently drop the rest. */
   hiddenParams?: Record<string, string | string[]>;
   applyEssConfig?: boolean;
+  /**
+   * r212 (8ebf77ae) — WHICH ELIGIBILITY RULES EXIST FOR THIS LEAVE TYPE, AND WHY EACH ONE MISSED YOU.
+   *
+   * Plain already-resolved data (`lib/entitlement-status.ts`), computed server-side by
+   * `explainEntitlementEligibility` + `eligibilityNoticeFrom` (core/entitlement-template.ts) — the SAME
+   * `resolveOrgCriteriaTargets` calls the resolver decides with, never a second matcher. Nothing here
+   * recomputes eligibility; this component only renders sentences.
+   *
+   * OPTIONAL, and absent is a legitimate value: a caller that has not loaded the explanation shows exactly
+   * what it showed before. Deliberately NOT ESS-gated — an employee whose leave resolves to nothing is
+   * precisely the person these sentences are for, which is the same argument the status notice above is
+   * ungated on.
+   */
+  eligibility?: EligibilityNotice;
   /** Controlled-open mode (Leave View Dashboard 6d78f373): when `open`/`onOpenChange` are supplied the caller
    *  owns the Dialog open state (e.g. a summary card that is itself the trigger). Omit both ⇒ uncontrolled,
    *  the panel manages its own open state via the internal "View Breakdown" trigger (today's behaviour). */
@@ -375,6 +417,58 @@ export function LeaveDetailsPanel({
                   <p className="mt-0.5 opacity-80">
                     {t('statusEntitlementTable', { name: data.entitlementTemplateName })}
                   </p>
+                )}
+                {/* r212 (8ebf77ae) — the reporter's original ask: "No eligibility rule reaches you" naming
+                    the rules that exist, saying which are in force, and for each one in force the FIRST
+                    thing about this employee that does not match. Rendered inside the notice it explains,
+                    not as a section of its own: it is the reason for the figure, not a figure. */}
+                {eligibility && (
+                  <div className="mt-2 border-t border-current/20 pt-2">
+                    {eligibility.soleTableApplies ? (
+                      <p>{t('eligibilitySoleTable')}</p>
+                    ) : !eligibility.activeAtDate ? (
+                      <p>{t('eligibilityNotActive', { date: asOf })}</p>
+                    ) : eligibility.rules.length === 0 ? (
+                      <p>{t('eligibilityNoRules')}</p>
+                    ) : (
+                      <>
+                        <p className="font-medium">{t('eligibilityRulesTitle')}</p>
+                        <ul className="mt-1 space-y-1">
+                          {eligibility.rules.map((r) => (
+                            <li key={r.name}>
+                              <span className="font-medium">{r.name}</span>
+                              {' — '}
+                              {t(RULE_STATE_COPY[r.state], { date: r.validTo ?? r.validFrom })}
+                              {/* The axis, and this employee's own value where it is one that can be named
+                                  honestly. A value with no axis is never printed — see `eligibilityNoticeFrom`. */}
+                              {r.failingAxisLabel && (
+                                <span className="block opacity-90">
+                                  {r.failingAxisValue
+                                    ? t('eligibilityWhyAxis', {
+                                        axis: r.failingAxisLabel,
+                                        value: r.failingAxisValue,
+                                      })
+                                    : t('eligibilityWhyAxisNoValue', { axis: r.failingAxisLabel })}
+                                </span>
+                              )}
+                              {r.failsOnCombination && (
+                                <span className="block opacity-90">{t('eligibilityWhyCombination')}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                        {eligibility.winningRuleName && (
+                          <p className="mt-1">{t('eligibilityWinner', { rule: eligibility.winningRuleName })}</p>
+                        )}
+                      </>
+                    )}
+                    {/* AGENTS 28's spirit — say what the data cannot support rather than implying a precision
+                        it does not have. `UNDATED_ELIGIBILITY_AXES` resolve at TODAY'S value however far back
+                        the as-at date above reaches, because those columns carry no effective dating. */}
+                    {eligibility.usesUndatedAxis && (
+                      <p className="mt-1 opacity-80">{t('eligibilityUndatedNote')}</p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
