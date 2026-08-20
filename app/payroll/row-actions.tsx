@@ -14,9 +14,17 @@ import { Children, type ReactNode, useEffect, useRef, useState } from 'react';
  * IT DECIDES NOTHING ABOUT AVAILABILITY. Every visibility condition stays on the server page, written
  * exactly as it was, and the actions arrive here as ALREADY-RENDERED NODES (the `adjustmentsPanel` slot
  * convention — a server-rendered node handed to a client component, never a closure). That is deliberate:
- * this island cannot accidentally offer Reset on a closed run, because it never sees a status. It also
- * keeps the server actions and their ConfirmSubmit dialogs intact — a `<form action={resetAction}>` passed
- * as children is still the same form, with the same hidden inputs.
+ * this island cannot accidentally offer Reset on a closed run, because it never sees a status.
+ *
+ * 9f8cd608 — EVERY ITEM IN HERE IS A LINK TO ITS OWN SCREEN, AND THAT IS A RULE, NOT A COINCIDENCE. Reset
+ * Payroll used to be handed in as a `<form>` carrying a confirmation dialog. The dialog's body is portalled
+ * to the document, but its OWNER is this subtree — so the moment the panel below closed, the dialog
+ * unmounted with it. Pressing the button focused it, the browser scrolled the table's `overflow-x-auto`
+ * wrapper to bring it into view, the scroll listener below fired, and the dialog was created and destroyed
+ * in the same tick: measured in Chromium at 1280×720 as one scroll on `DIV.overflow-x-auto`, zero menus
+ * and zero dialogs left on screen. Reset now opens app/payroll/[batchId]/reset like its two siblings, and
+ * test/payroll-reset-screen-9f8cd608.test.ts asserts the caller hands this island links only, so a
+ * confirmation dialog cannot move back inside a panel that closes underneath it.
  *
  * A MENU OF ONE IS WORSE THAN NO MENU, so a single surviving action renders inline. `Children.toArray`
  * drops the `false` a `cond && <X/>` produces, so the count is the number of actions actually offered —
@@ -43,10 +51,10 @@ export function PayrollRowActions({
 
   // CLOSE ON ANY SCROLL OR RESIZE, from anywhere. The panel is `position: fixed` and its coordinates are
   // measured ONCE in `toggle`, so anything that moves the row under it leaves the menu nailed to the
-  // viewport beside a DIFFERENT run — while still carrying the original row's `<form action={resetAction}>`.
-  // Confirming then resets the run the menu was opened on while the operator is reading the row it now
-  // points at, and nothing downstream catches it: ConfirmSubmit gets no subtitle and `resetDescription`
-  // says only "this payroll run", never naming the period or company.
+  // viewport beside a DIFFERENT run while still carrying the original row's hrefs. Closing is the whole
+  // mitigation, and it is now sufficient: since 9f8cd608 every item is a link to a screen that names the
+  // company, period, cycle, payment date and headcount of the run it is about, so a mis-aimed click is
+  // caught by the operator reading the screen it lands on rather than acted on silently.
   //
   // The backdrop's own onWheel cannot cover this: a wheel with the cursor over the PANEL bubbles
   // panel → wrapper → td and never reaches the backdrop, and keyboard scrolling (arrows, PageDown), touch

@@ -37,14 +37,15 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
 
   it('exactly one permitted action ⇒ it renders inline, with no menu to open', () => {
     // The real case: multi-cycle off but the reset switch on, which leaves Reset alone beside View.
+    // A LINK since 9f8cd608 — Reset opens its own screen exactly as Reprocess and Remove Employee do.
     render(
       <PayrollRowActions moreLabel="More actions">
         {false}
         {false}
-        <button type="button">Reset Payroll</button>
+        <a href="/payroll/b1/reset">Reset payroll</a>
       </PayrollRowActions>,
     );
-    expect(screen.getByRole('button', { name: 'Reset Payroll' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reset payroll' })).toBeInTheDocument();
     expect(trigger(), 'a menu of one costs a click and saves no width').not.toBeInTheDocument();
   });
 
@@ -54,7 +55,7 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
       <PayrollRowActions moreLabel="More actions">
         <a href="/payroll/b1/reprocess">Reprocess</a>
         <a href="/payroll/b1/remove">Remove Employee</a>
-        <button type="button">Reset Payroll</button>
+        <a href="/payroll/b1/reset">Reset payroll</a>
       </PayrollRowActions>,
     );
     // Closed: this is the width the reporter asked back — one control in the cell, not four.
@@ -67,12 +68,17 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
     // Every action arrives, in the order of escalation the server page renders them in: correct one
     // person, take one person off, clear the whole run.
     const items = [...screen.getByRole('menu').querySelectorAll('a, button')].map((el) => el.textContent);
-    expect(items).toEqual(['Reprocess', 'Remove Employee', 'Reset Payroll']);
+    expect(items).toEqual(['Reprocess', 'Remove Employee', 'Reset payroll']);
   });
 
   it('the actions handed in are rendered as they were given — the island rewrites nothing', async () => {
     // It receives already-rendered nodes precisely so it cannot alter what an action DOES. A dropped href
     // or a stripped form would be a silent change to a destructive payroll control.
+    //
+    // The <form> below is a SYNTHETIC node, and deliberately so: it is not the shape the payroll list
+    // hands in (since 9f8cd608 that is links only — pinned at the call site in
+    // test/payroll-reset-screen-9f8cd608.test.ts), it is the strongest thing that can be handed to this
+    // island, and the island's contract is that it passes it through untouched.
     const user = userEvent.setup();
     render(
       <PayrollRowActions moreLabel="More actions">
@@ -116,9 +122,17 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
   it('a scroll ANYWHERE closes it, because the panel is nailed to viewport coordinates', async () => {
     // THE DEFECT THIS PINS. `toggle` measures getBoundingClientRect ONCE and renders the panel `fixed` at
     // those coordinates. Scroll the page and the row moves; the panel does not. It ends up beside a
-    // DIFFERENT payroll run while still carrying the original row's <form action={resetAction}> and its
-    // hidden batchId — so confirming resets the run the menu was opened on, not the one being read. The
-    // ConfirmSubmit dialog cannot catch it either: its description says only "this payroll run".
+    // DIFFERENT payroll run while still carrying the original row's hrefs, so a click acts on the run the
+    // menu was opened on rather than the one being read. Closing on scroll is the whole mitigation.
+    //
+    // 9f8cd608 — WHAT IS NO LONGER TRUE HERE, recorded because it was the older, worse half of this note:
+    // the panel used to carry a destructive <form> with a ConfirmSubmit whose description said only "this
+    // payroll run", so a mis-aimed confirm was unrecoverable and unannounced. Every item is a link to its
+    // own screen now, and each of those screens names the company, period, cycle, payment date and
+    // headcount of the run it is about — so a mis-aimed click lands somewhere it can be read and left.
+    // (It also removed a second defect this test could never see: the dialog was OWNED by this panel, so
+    // the very focus-scroll asserted below destroyed it as it opened. jsdom computes no layout, produces
+    // no such scroll, and passed regardless.)
     //
     // The backdrop's own onWheel does not cover this. A wheel with the cursor over the PANEL bubbles
     // panel → wrapper and never reaches the backdrop; keyboard scrolling (PageDown, arrows), touch
@@ -127,10 +141,7 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
     render(
       <PayrollRowActions moreLabel="More actions">
         <a href="/a">A</a>
-        <form action={() => {}}>
-          <input type="hidden" name="batchId" value="b1" />
-          <button type="submit">Reset Payroll</button>
-        </form>
+        <a href="/payroll/b1/reset">Reset payroll</a>
       </PayrollRowActions>,
     );
 

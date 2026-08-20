@@ -3822,6 +3822,8 @@
       "lockedNote": "Proses gaji ini dikunci — slip gaji telah dijana. Untuk membuat pindaan, pentadbir perlu set semula proses ini ke Draf.",
       "resetReasonLabel": "Sebab (wajib)",
       "resetReasonPlaceholder": "Mengapa proses ini diset semula? (direkodkan dalam jejak audit)",
+      "resetBack": "Kembali ke Proses Gaji",
+      "resetDisabled": "Set semula proses gaji dimatikan untuk persekitaran ini. Minta pentadbir anda mengaktifkan set semula gaji terlebih dahulu.",
       "reprocessTitle": "Proses semula pekerja terpilih",
       "reprocessHint": "Tandakan pekerja yang perlu dibetulkan dan proses semula mereka sahaja. Hanya pekerja yang ditanda dikira semula di tempatnya — slip gaji orang lain kekal tidak berubah — dan jumlah larian dikemas kini secara delta. Dijalankan sebagai kerja beratur supaya klik dua kali tidak menduplikasinya.",
       "reprocessSummary": "{n} daripada {total} dipilih",

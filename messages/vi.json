@@ -3822,6 +3822,8 @@
       "lockedNote": "Quy trình tính lương này đã bị khóa — phiếu lương đã được tạo. Để chỉnh sửa, quản trị viên phải đặt lại về Nháp.",
       "resetReasonLabel": "Lý do (bắt buộc)",
       "resetReasonPlaceholder": "Vì sao đặt lại đợt tính này? (được ghi vào nhật ký kiểm toán)",
+      "resetBack": "Quay lại Xử lý lương",
+      "resetDisabled": "Chức năng đặt lại quy trình tính lương đang tắt cho môi trường này. Hãy đề nghị quản trị viên bật đặt lại bảng lương trước.",
       "reprocessTitle": "Xử lý lại nhân viên đã chọn",
       "reprocessHint": "Đánh dấu những nhân viên cần chỉnh sửa và chỉ xử lý lại họ. Chỉ những nhân viên được chọn được tính lại tại chỗ — phiếu lương của người khác vẫn giữ nguyên — và tổng của đợt được cập nhật theo delta. Chạy như một tác vụ xếp hàng nên nhấp đúp không tạo trùng.",
       "reprocessSummary": "Đã chọn {n}/{total}",

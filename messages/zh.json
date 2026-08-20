@@ -3822,6 +3822,8 @@
       "lockedNote": "此薪资流程已锁定——工资单已生成。如需修改，须由管理员将其重置为草稿。",
       "resetReasonLabel": "原因（必填）",
       "resetReasonPlaceholder": "为何重置此流程？（记入审计追踪）",
+      "resetBack": "返回薪资处理",
+      "resetDisabled": "本环境已关闭薪资流程重置功能。请先请管理员启用薪资重置。",
       "reprocessTitle": "重新处理所选员工",
       "reprocessHint": "勾选需要更正的员工，仅对他们重新处理。只有勾选的员工会就地重新计算——其他人的工资单保持不变——运行合计按增量更新。以排队作业运行，双击不会重复执行。",
       "reprocessSummary": "已选 {n} / {total}",

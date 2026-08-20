@@ -13,6 +13,9 @@
  *
  *   A. The Actions column. The four processed-row controls that were pushing the grid sideways are now
  *      View + a ⋯ menu — and each action keeps its OWN unchanged visibility condition on the server page.
+ *      (9f8cd608 amended one case in this group: Reset's confirmation was moved OUT of the menu onto its
+ *      own screen, because a dialog owned by a panel that closes on scroll is destroyed as it opens. The
+ *      case is updated with that reasoning rather than removed — see it for the measurement.)
  *   B. The menu island decides placement and nothing else, and never renders a menu of one.
  *   C. Recalculation History folds, CLOSED by default, and the just-submitted job's result panel does not.
  *   D. The reprocess search carries its ticked-but-hidden ids, matches through the ONE shared
@@ -73,14 +76,40 @@ describe('65e2d5de · A — the Actions column is View plus a menu, and the gate
     expect(menuSlot).toContain("tb('resetPayroll')");
   });
 
-  it('Reset keeps its confirmation dialog, its batch id and the reason field — the move is presentational', () => {
-    // A destructive payroll action that lost its ConfirmSubmit on the way into a dropdown would be a far
-    // worse defect than the width it was moved to fix.
-    expect(menuSlot).toMatch(/<form action=\{resetAction\}>/);
-    expect(menuSlot).toContain('<input type="hidden" name="batchId" value={b.id} />');
-    expect(menuSlot).toMatch(/<ConfirmSubmit/);
-    expect(menuSlot).toMatch(/reasonField=\{\{/);
-    expect(menuSlot).toContain("confirmLabel={tb('resetConfirm')}");
+  it('Reset keeps its confirmation, its batch id and its reason field — on a screen, not inside the menu', () => {
+    /**
+     * ⚠️ UPDATED BY 9f8cd608, NOT DELETED, AND THE REASONING IS REVERSED BY MEASUREMENT.
+     *
+     * This case used to read: "A destructive payroll action that lost its ConfirmSubmit on the way into a
+     * dropdown would be a far worse defect than the width it was moved to fix." That was the right
+     * instinct and the wrong conclusion, because the dialog did not survive the move — it only appeared
+     * to. ConfirmSubmit portals its BODY to the document but is OWNED by the subtree that renders it, and
+     * the subtree here is a `position: fixed` panel that closes on any scroll captured at the window.
+     * Pressing the button focused it, the browser scrolled the table's `overflow-x-auto` wrapper to bring
+     * it into view, the panel closed and the dialog unmounted in the same tick. Measured in Chromium at
+     * 1280×720 against a real processed run: one scroll event on `DIV.overflow-x-auto`, then
+     * `[role=menu]` = 0 and `[role=alertdialog]` = 0 — nothing on screen. At 1600 wide, where that wrapper
+     * needs no scroll, the same click opened the dialog, which is why it read as intermittent. jsdom
+     * computes no layout, so focus produces no scroll and the old shape passed every DOM test.
+     *
+     * So the confirmation still exists and still collects the reason — on app/payroll/[batchId]/reset,
+     * which additionally NAMES the run (the dialog only ever said "this payroll process"). What must not
+     * come back is a confirmation dialog inside the menu; that is asserted positively, by shape, in
+     * test/payroll-reset-screen-9f8cd608.test.ts.
+     */
+    expect(menuSlot, 'Reset is a link to its own screen, like Reprocess and Remove Employee').toMatch(
+      /<Link\s+href=\{`\/payroll\/\$\{b\.id\}\/reset\?from=\$\{fromQuery\}`\}/,
+    );
+    expect(menuSlot, 'a confirmation dialog is back inside the fixed panel that closes underneath it').not.toMatch(
+      /<ConfirmSubmit/,
+    );
+    expect(menuSlot, 'a form is back inside the menu').not.toMatch(/<form/);
+    // The confirmation itself, with the batch id and the reason, on the screen that replaced the dialog.
+    const RESET_SCREEN = code('app/payroll/[batchId]/reset/page.tsx');
+    expect(RESET_SCREEN).toMatch(/<form action=\{resetAction\}/);
+    expect(RESET_SCREEN).toContain('<input type="hidden" name="batchId" value={batchId} />');
+    expect(RESET_SCREEN).toMatch(/name="reason"/);
+    expect(RESET_SCREEN).toContain("{t('resetConfirm')}");
   });
 
   it('View stays permanently visible, and the DRAFT row keeps Continue and Delete where they were', () => {
