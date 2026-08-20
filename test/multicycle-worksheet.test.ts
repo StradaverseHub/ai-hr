@@ -7,9 +7,17 @@
  * the smallest pair that separates them:
  *
  *   each run alone   epf(5,001) = 561  +  epf(1,001) = 113   →  674
- *   month as one     epf(5,001 normal, 1,001 additional)     →  672
+ *   month as one     epf(5,001 normal, 1,001 additional)     →  671
  *
- * so a guard that cannot tell 674 from 672 is not guarding anything.
+ * so a guard that cannot tell 674 from 671 is not guarding anything.
+ *
+ * THE MONTH-AS-ONE FIGURE MOVED FROM 672 TO 671 IN r210 (item bdf7d248), and the reason is worth
+ * keeping: 672 was never a single lookup. It was band(5,001) = 561 plus ceil(1,001 × 11%) = 111 — the
+ * schedule read for the salary and a straight percentage added for the bonus. The genuine single
+ * lookup is on RM6,002, which is the RM6,100 row: ceil(11% × 6,100) = 671. So this file used to
+ * separate "each run alone" from a THIRD reading that was neither, and now separates it from the one
+ * the statute describes. The worksheet's own numbers are self-computing (`illustrationOf` calls `epf`),
+ * so the screen followed the change without being edited.
  *
  * The suite pins four separate things:
  *   1. the arithmetic that distinguishes the readings, and that `computeMonthlyRuns` PASSES ITS OPTIONS
@@ -65,7 +73,7 @@ describe('ADR-0024 §7 worksheet — the arithmetic that separates the two readi
       ],
     }).monthly;
     expect(perRun).toBe(674);
-    expect(monthAsOne.epfEmployee).toBe(672);
+    expect(monthAsOne.epfEmployee).toBe(671); // one lookup on RM6,002 → the RM6,100 row
     expect(perRun).not.toBe(monthAsOne.epfEmployee);
 
     // SOCSO/EIS are the bigger effect: charged TWICE by the per-run reading, ONCE by the month.
@@ -306,8 +314,8 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     // (core/payroll.ts `deltaStat`), so what was paid is the month-as-one figure, not the per-run one.
     // THIS is the customer's answer, and the worksheet reaches it by measurement, not assertion.
     expect(row.verdict).toBe('already_aggregated');
-    expect(row.paid.epfEmployee).toBe(672);
-    expect(row.monthAsOne.epfEmployee).toBe(672);
+    expect(row.paid.epfEmployee).toBe(671);
+    expect(row.monthAsOne.epfEmployee).toBe(671);
     expect(row.perRun.epfEmployee).toBe(674);
     expect(row.difference.epfEmployee).toBe(0);
     // One SOCSO/EIS contribution for the month (Act 4 s.6(7)/6(9)) — the per-run reading charges two.
@@ -318,7 +326,7 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
 
     // The worked example on screen is computed from the tables in force, not written down.
     expect(w.illustration.perRunTotal.employee).toBe(674);
-    expect(w.illustration.monthAsOneTotal.employee).toBe(672);
+    expect(w.illustration.monthAsOneTotal.employee).toBe(671);
     expect(w.illustration.version).toBe(w.replayVersion);
   });
 
@@ -338,11 +346,12 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     const [row] = w.rows;
     expect(row.verdict).toBe('would_change');
     expect(row.paid.epfEmployee).toBe(674);
-    expect(row.monthAsOne.epfEmployee).toBe(672);
+    expect(row.monthAsOne.epfEmployee).toBe(671);
 
     // The headline the customer asked for: how much would move, item by item.
     const expected: Partial<Figures> = {
-      epfEmployee: -2,
+      // -3 since bdf7d248 (r210): the month as one is 671, not the 672 the old split reading gave.
+      epfEmployee: -3,
       epfEmployer: round2(epf(5001, 1001, CFG.epf).employer - (epf(5001, 0, CFG.epf).employer + epf(1001, 0, CFG.epf).employer)),
       socsoEmployee: round2(socso(5001, 1, CFG.socso).employee - (socso(5001, 1, CFG.socso).employee + socso(1001, 1, CFG.socso).employee)),
       eisEmployee: round2(eis(5001, CFG.eis).employee - (eis(5001, CFG.eis).employee + eis(1001, CFG.eis).employee)),
@@ -363,7 +372,7 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     expect(Math.abs(row.difference.socsoSkbbk)).toBeGreaterThan(Math.abs(row.difference.socsoEmployee));
     // The month-level totals are the per-employee movement, because there is exactly one such month.
     expect(w.verdicts.would_change).toBe(1);
-    expect(w.movement.epfEmployee).toBe(-2);
+    expect(w.movement.epfEmployee).toBe(-3);
     expect(w.movement.socsoEmployee).toBe(-5.25);
     expect(w.movement.socsoSkbbk).toBe(-7.85);
   });

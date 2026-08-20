@@ -13,7 +13,12 @@
  *    SOCSO/EIS base, so its delta is 0 (a salary-split run tops up to the monthly band). This covers
  *    all THREE SOCSO-family legs: employer, employee, and the employee-deducted SKBBK leg that rides
  *    the same bands (`socsoSkbbk`), which the kernel also treats as a delta key;
- *  - EPF uses the combined-month round-up (the cumulative call rounds the combined base once).
+ *  - EPF reads the Third Schedule ONCE for the month: the cumulative call adds the month's normal wage
+ *    and additional remuneration together, looks that single base up in Part A (so the employer 13%/12%
+ *    step follows the month's whole pay), and each run's figure is the difference. Before r210 this
+ *    line described an intention rather than the code — `epf()` banded the normal wage on its own and
+ *    added a straight percentage of the bonus beside it, which on a RM7,413 + RM1,650.71 month gave
+ *    RM1,007/RM1,099 against the schedule's own RM1,001/RM1,092. Item bdf7d248 made the claim true.
  *
  * v1 requires runs[0] to be the regular run (it supplies Y1); later runs are additional remuneration.
  * Reversals/negative deltas are out of scope (clamped ≥ 0) — see ADR-0024 §6.

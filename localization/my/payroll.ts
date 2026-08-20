@@ -82,6 +82,9 @@ export type EpfElection = { mode: EpfMode; employeeRate?: number | null; employe
  * Effective EPF rates for a wage given an election, enforcing the statutory FLOOR: an elected rate
  * is `max(elected, statutory)` so i-Topup can only raise it. 'exempt' is 0/0. The statutory employer
  * rate is wage-banded (13% ≤ threshold, else 12%).
+ *
+ * `wage` is whatever base the caller is charging: since bdf7d248 `epf()` passes the COMBINED month
+ * (normal wage + additional remuneration), because the schedule row it reads carries that same step.
  */
 export function resolveEpfRates(
   wage: number,
@@ -100,14 +103,28 @@ export function resolveEpfRates(
 }
 
 /**
- * EPF. The contribution on the NORMAL monthly wage is the exact EPF Act 1991 **Third Schedule Part A**
- * band amount (≤ RM20,000; #95) — not a flat percentage of the exact wage — or, above RM20,000 where the
- * schedule ends, the exact percentage rounded up to RM1 (employee 11%, employer 12%). A bonus
- * (`additional`) is **additional remuneration**: KWSP fixes the employer rate by the NORMAL monthly wage
- * (a ≤RM5,000 earner stays 13% even when the bonus pushes the month over) and applies the percentage to
- * the bonus, rounded up to RM1 on its own. An `election` can RAISE a side above the statutory floor
- * (i-Topup) or `exempt` the employee (0/0). The normal-wage statutory floor here matches the existing
- * `epfOnBonus` split in `statutory()` (so `employee − epfOnBonus` is exactly the schedule wage-amount).
+ * EPF. **The month is ONE Third Schedule lookup** (bdf7d248, r210). The normal monthly wage and the
+ * month's additional remuneration (`additional` — a bonus) are ADDED FIRST, and that combined base is
+ * what the EPF Act 1991 **Third Schedule Part A** band is read for (≤ RM20,000; #95) — or, where the
+ * schedule ends above RM20,000, what the exact percentage is applied to, rounded up to RM1 ONCE
+ * (employee 11%, employer 12%). The employer 13%/12% step therefore resolves on the COMBINED base too:
+ * it is a step baked into the Part A rows, so reading the row for the month's whole pay is the same act
+ * as resolving the rate on it.
+ *
+ * WHAT THIS REPLACED, and why it is not a rounding crumb. Until r210 the band was read on the NORMAL
+ * wage alone and `ceil(bonus × rate)` was added beside it. On the reporter's own month — RM7,413.00
+ * salary + RM1,650.71 bonus — that gave employee RM1,007 / employer RM1,099, while the single lookup on
+ * RM9,063.71 (the RM9,100 row) gives RM1,001 / RM1,092. Two readings of one schedule, six and seven
+ * ringgit apart, and the schedule only ever describes a month. Feeding the combined base also makes the
+ * per-run increment method in `core/payroll.ts` (`deltaStat`) land on the reporter's figures: the bonus
+ * run contributes 1,001 − 825 = RM176 employee and 1,092 − 900 = RM192 employer.
+ *
+ * An `election` can RAISE a side above the statutory floor (i-Topup) or `exempt` the employee (0/0);
+ * the raise is measured on the same combined base, so it can still only ever raise.
+ *
+ * The employee EPF attributable to the bonus alone (the PCB relief leg Kₜ) is NOT computed here — it is
+ * `epfContribution`'s difference between this lookup and the same lookup on the normal wage alone, so
+ * the two legs always add back up to exactly this number.
  */
 export function epf(
   wage: number,
@@ -119,28 +136,32 @@ export function epf(
 
   const partA = cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
   const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
-  const statEmployerRate = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
+  // The month's EPF base: normal wage + additional remuneration, formed BEFORE any lookup. The `round2`
+  // is the same guard `statutory()` puts on every other base it builds, and it matters more here than
+  // anywhere else because this base is looked up in a table whose rows are RM20/RM100 wide: a base
+  // arriving as 9063.710000000001 instead of 9063.71 reads the next row up and moves the contribution
+  // by a whole ringgit. (A search over 3M random cent-accurate pairs found 641k whose raw sum differs
+  // from `round2` in the last bits and none that crossed a band edge — so this is a guard against a
+  // narrow case, not a demonstrated bug, and it costs one multiplication.)
+  const base = round2(Math.max(0, wage) + Math.max(0, additional));
+  const statEmployerRate = base <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
 
-  // Statutory floor on the normal monthly wage: exact Third Schedule band (incl. the NIL first band),
-  // or the percentage rounded up where the schedule ends (> RM20,000).
-  const band = wage <= scheduleMax ? bandFor(partA, wage) : null;
-  let wageEmployee = band ? band.employee : ceilRinggit(wage * cfg.employeeRate);
-  let wageEmployer = band ? band.employer : ceilRinggit(wage * statEmployerRate);
+  // Statutory floor: exact Third Schedule band (incl. the NIL first band), or the percentage rounded
+  // up where the schedule ends (> RM20,000).
+  const band = base <= scheduleMax ? bandFor(partA, base) : null;
+  let employee = band ? band.employee : ceilRinggit(base * cfg.employeeRate);
+  let employer = band ? band.employer : ceilRinggit(base * statEmployerRate);
 
-  // i-Topup / voluntary excess can only RAISE a side above the statutory floor.
+  // i-Topup / voluntary excess can only RAISE a side above the statutory floor. `resolveEpfRates`
+  // floors the elected rate at statutory, and the schedule amount is itself ≥ the statutory percentage
+  // of the base, so `max` here is what makes an under-floor election a no-op rather than a reduction.
   if ((election?.mode ?? 'auto') === 'voluntary_excess') {
-    if (election?.employeeRate != null) wageEmployee = Math.max(wageEmployee, ceilRinggit(wage * election.employeeRate));
-    if (election?.employerRate != null) wageEmployer = Math.max(wageEmployer, ceilRinggit(wage * election.employerRate));
+    const { employeeRate, employerRate } = resolveEpfRates(base, cfg, election);
+    if (election?.employeeRate != null) employee = Math.max(employee, ceilRinggit(base * employeeRate));
+    if (election?.employerRate != null) employer = Math.max(employer, ceilRinggit(base * employerRate));
   }
 
-  // Additional remuneration (bonus): percentage by the resolved rate (employer rate fixed by the normal
-  // wage band), each rounded up to RM1 on its own.
-  const bonus = Math.max(0, additional);
-  const { employeeRate: rEe, employerRate: rEr } = resolveEpfRates(wage, cfg, election);
-  return {
-    employee: wageEmployee + (bonus > 0 ? ceilRinggit(bonus * rEe) : 0),
-    employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * rEr) : 0),
-  };
+  return { employee, employer };
 }
 
 export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
@@ -203,10 +224,22 @@ export function epfContribution(
     };
   }
 
-  // Citizen / PR < 60: standard Part A.
-  const e = epf(wage, additional, cfg, election);
-  const { employeeRate } = resolveEpfRates(wage, cfg, election);
-  return { employee: e.employee, employer: e.employer, employeeOnBonus: bonus > 0 ? ceilRinggit(bonus * employeeRate) : 0 };
+  // Citizen / PR < 60: standard Part A — ONE combined-month lookup (bdf7d248).
+  const e = epf(wage, bonus, cfg, election);
+  // Kₜ, the employee EPF attributable to the additional remuneration, for the PCB relief split. Under
+  // the combined lookup there is no separate "percentage of the bonus" to report: the bonus leg is the
+  // DIFFERENCE between the month's lookup and the same lookup on the normal wage alone. Derived from
+  // the SAME function so `employee − employeeOnBonus` is exactly the normal-wage schedule amount that
+  // `statutory()` hands `pcbMonth` as K₁ — the two legs cannot drift apart or double-count against the
+  // annual EPF relief cap. `max(0, …)` is defence only: the Part A employee column is monotonic in the
+  // base, so a larger base never yields a smaller employee amount. (The EMPLOYER column is NOT
+  // monotonic — it steps DOWN from 13% to 12% at RM5,000 — but the employer side has no Kₜ leg.)
+  const wageOnly = bonus > 0 ? epf(wage, 0, cfg, election) : e;
+  return {
+    employee: e.employee,
+    employer: e.employer,
+    employeeOnBonus: bonus > 0 ? Math.max(0, e.employee - wageOnly.employee) : 0,
+  };
 }
 
 /**
@@ -904,8 +937,10 @@ export function statutory(
   };
   const eisOn = opts?.eisEligible ?? true;
   const i = eisOn ? eis(socsoWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
-  // EPF relief split: the employee share on the bonus (Kₜ) — 0 for seniors (Part E) and the flat
-  // non-citizen rate; for citizens < 60 it is the effective (incl. i-Topup) employee rate on the bonus.
+  // EPF relief split: the employee share on the bonus (Kₜ). 0 for seniors (Part E, no employee share);
+  // the flat rate on the bonus for a non-citizen; and for citizens < 60 (bdf7d248) the DIFFERENCE
+  // between the combined-month Third Schedule lookup and the same lookup on the normal wage alone, so
+  // `e.employee − epfOnBonus` below is exactly the normal-wage schedule amount K₁ is taken from.
   const epfOnBonus = eC.employeeOnBonus;
   // Item 8b5334db — resolve the flat PCB rate: an explicit flatTaxRate wins (REP/Knowledge Worker = 0.15,
   // non_resident = 0.30); otherwise fall back to the legacy resident=false ⇒ 0.30 branch. A resident (null

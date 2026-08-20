@@ -4,7 +4,9 @@
  * same-month runs statutorily correct:
  *   - the per-run figures SUM to the exact one-batch monthly figures (LHDN MTD: month = one computation);
  *   - SOCSO/EIS are charged ONCE for the month (Act 4 s.6(7)/6(9)) — a bonus run adds 0;
- *   - EPF uses the combined-month round-up; the employer rate is anchored to the normal monthly wage.
+ *   - EPF reads the Third Schedule ONCE for the month — normal wage + additional remuneration combined —
+ *     so the employer 13%/12% step follows the month's whole pay (bdf7d248, r210; it was anchored to the
+ *     normal monthly wage until then, and #2 below records the reversal).
  * Pure computation only (no DB) — the kernel wiring is gated and lands in a later slice.
  */
 import { describe, expect, it } from 'vitest';
@@ -51,10 +53,19 @@ describe('Wave 2C — computeMonthlyRuns (ADR-0024 sign-off figures)', () => {
     expect(sum([r1.epfEmployee, r2.epfEmployee])).toBe(1650);
   });
 
-  it('#2 EPF employer anchored at 13% (normal wage ≤ RM5,000), not 12% → RM1,950', () => {
+  it('#2 EPF employer resolves on the WHOLE MONTH → 12% of RM15,000 = RM1,800 (bdf7d248, r210)', () => {
+    // REVERSED, DELIBERATELY. This assertion used to read "anchored at 13% (normal wage ≤ RM5,000), not
+    // 12% → RM1,950", and that was the documented ADR-0024 §4 rule. Item bdf7d248 reversed it: the
+    // employer 13%/12% step is not a rate applied beside the schedule, it is a step BAKED INTO the Part
+    // A rows, so reading the row for the month's whole pay (RM5,000 salary + RM10,000 bonus = RM15,000)
+    // resolves it on the month. ADR-0024 §4 and §7 carry the restated figures and the date.
     expect(monthly.epfEmployer).toBe(epf(5000, 10000, CFG.epf).employer);
-    expect(monthly.epfEmployer).toBe(1950); // 12% would be 1,800
-    expect(sum([r1.epfEmployer, r2.epfEmployer])).toBe(1950);
+    expect(monthly.epfEmployer).toBe(1800); // the old reading gave 1,950
+    expect(sum([r1.epfEmployer, r2.epfEmployer])).toBe(1800);
+    // The increments still sum to the month: the regular run charged the 13% row on RM5,000 and the
+    // bonus run tops up to the month's figure rather than re-banding itself.
+    expect(r1.epfEmployer).toBe(650);
+    expect(r2.epfEmployer).toBe(1150);
   });
 
   it('#3 ONE SOCSO contribution for the month, on RM5,000; the bonus run adds RM0', () => {

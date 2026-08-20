@@ -93,11 +93,22 @@ For a month with runs `r1 … rk` (ordered by `run_seq`), processed one at a tim
   is the same formula; in v1 the additional runs add nothing, so it is always 0 for them.
 
 **EPF.**
-- Per-run percentage EPF on each run's EPF-wage (bonus included, OT excluded), employer rate fixed by
-  the **normal monthly wage** (a ≤RM5,000 earner stays 13% even if a bonus run pushes the month over).
-- **Rounding: round the combined monthly contribution once** (decision D6) — the monthly EPF is
-  `round(Σ run EPF-wages × rate)`, not the sum of per-run round-ups, for return consistency.
-- The RM4,000 annual EPF relief cap (for PCB) accumulates across same-month runs.
+- **One Third Schedule lookup for the month** (SUPERSEDED THE TWO BULLETS BELOW — 2026-08-20, item
+  bdf7d248, r210). The month's normal wage and its additional remuneration are added together and that
+  single base is read in Part A; each run's contribution is the difference between the month's figure
+  and what earlier runs in the month already contributed. Because the employer 13%/12% step is baked
+  into the Part A rows rather than applied beside them, it resolves on the month's whole pay.
+- ~~Per-run percentage EPF on each run's EPF-wage (bonus included, OT excluded), employer rate fixed by
+  the **normal monthly wage** (a ≤RM5,000 earner stays 13% even if a bonus run pushes the month
+  over).~~ **Reversed 2026-08-20** — see the restated §7 figures and the reason below.
+- ~~**Rounding: round the combined monthly contribution once** (decision D6) — the monthly EPF is
+  `round(Σ run EPF-wages × rate)`, not the sum of per-run round-ups.~~ **Restated 2026-08-20**: D6's
+  intent stands, but "the combined contribution" now means the combined BASE read once in the schedule,
+  not a percentage of the summed wages. The two differ by up to a band's worth of rounding, which is
+  the whole subject of bdf7d248.
+- The RM4,000 annual EPF relief cap (for PCB) accumulates across same-month runs. The relief leg Kₜ
+  attributable to the bonus is now the difference between the month's lookup and the same lookup on the
+  normal wage alone, so K₁ + Kₜ is exactly the employee EPF deducted.
 
 **Month-level statutory snapshot.** All runs in a month share **one** ruleset version (decision D7),
 snapshotted on the `pay_period` parent, so a mid-month ruleset/pack change can't make two runs in the
@@ -152,8 +163,8 @@ System figures below are produced by `test/multicycle-compute.test.ts` (2026.1 r
 
 | # | Statutory assertion | Authority | Manual figure | System figure | ✓ |
 |---|---------------------|-----------|---------------|---------------|---|
-| 1 | EPF employee for the month (combined, round-up once) = `ceil((5,000 + 10,000) × 11%)` = **RM1,650** | EPF Act, Third Schedule | | **RM1,650.00** (run1 550.00 + run2 1,100.00) | ☐ |
-| 2 | EPF employer fixed at **13%** (normal wage RM5,000 ≤ threshold), not 12% → RM1,950 | KWSP rate table | | **RM1,950.00** (run1 650.00 + run2 1,300.00) | ☐ |
+| 1 | EPF employee for the month = the Part A row for RM15,000 = **RM1,650** | EPF Act, Third Schedule | | **RM1,650.00** (run1 550.00 + run2 1,100.00) | ☐ |
+| 2 | EPF employer for the month = the same RM15,000 row, a 12% row → **RM1,800** (restated 2026-08-20; see below) | EPF Act, Third Schedule | | **RM1,800.00** (run1 650.00 + run2 1,150.00) | ☐ |
 | 3 | **One** SOCSO contribution for May, on RM5,000 (bonus excluded); run 2 adds **RM0** | Act 4 s.6(7)/6(9), s.2(24) | | run1 **RM24.75**, run2 **RM0.00** (employee) | ☐ |
 | 4 | **One** EIS contribution for May, on RM5,000; run 2 adds **RM0** | Act 800, Second Schedule | | run1 **RM9.90**, run2 **RM0.00** (employee) | ☐ |
 | 5 | Run 1 MTD = normal-remuneration MTD on `Y1 = 5,000` with the Jan–Apr accumulators | LHDN spec §D.1 | | **RM110.00** | ☐ |
@@ -166,8 +177,10 @@ System figures below are produced by `test/multicycle-compute.test.ts` (2026.1 r
 The scenario above cannot distinguish the two readings of the statute, and that is not a small caveat:
 `ceil((5,000 + 10,000) × 11%)` and `ceil(5,000 × 11%) + ceil(10,000 × 11%)` are **both RM1,650**, so
 assertion #1 has stayed green whichever way the kernel computed. The smallest pair that separates them is
-**RM5,001 + RM1,001** — each run alone gives `561 + 113 = 674`, the month as one gives `672` — and
-SOCSO/EIS separate at every wage, because the per-run reading charges the band twice.
+**RM5,001 + RM1,001** — each run alone gives `561 + 113 = 674`, the month as one gives `671` — and
+SOCSO/EIS separate at every wage, because the per-run reading charges the band twice. (That month-as-one
+figure was `672` when this section was written in r209; see the 2026-08-20 note below for why it moved
+and why `672` was not a single lookup at all.)
 
 `/payroll/multi-cycle-worksheet` (read-only; `localization/my/multicycle-worksheet.ts`) therefore runs the
 §7 comparison over the customer's OWN payroll history instead of one invented employee. For every
@@ -182,12 +195,52 @@ increment of the cumulative month (`core/payroll.ts` `deltaStat`, seeded by the 
 remuneration) — so the worksheet's verdict for such a month is "already computed as one month" and its
 movement is zero. `computeMonthlyRuns` remains unwired; §5's gate is unchanged.
 
+### The EPF rule changed on 2026-08-20 — restated §7 figures (item bdf7d248, r210)
+
+**Do not read the ticked figures above as the ones in force before checking this note.** Rows 1 and 2
+were signed off on 2026-06-20 against a reading this item reversed; rows 3–8 (SOCSO, EIS, the three MTD
+assertions and the shared ruleset version) are untouched and their sign-off stands.
+
+**What changed, and on whose figures.** ISEDECOR BINA's payroll operator reported, twice, that employee
+A0001's January 2026 bonus run recorded RM182 employee / RM199 employer EPF where they expected RM176 /
+RM192. Reproduced on production 2026-08-20: the regular run paid RM7,413.00 (EPF 825 / 900) and the
+bonus run RM1,650.71 (EPF 182 / 199). The increment method was never the problem — it was already live,
+which is why the employer figure was 12% of the bonus and not 13%. The problem was that `epf()` read the
+Third Schedule for the **normal wage alone** and added `ceil(bonus × rate)` beside it. The month is
+RM9,063.71, which is the RM9,100 row: RM1,001 employee / RM1,092 employer. 1,001 − 825 = **176** and
+1,092 − 900 = **192**, the reporter's figures. The schedule only ever describes a month, so it is now
+read once for the month.
+
+**Consequences for the §7 scenario.** The employee figure is unchanged at RM1,650 — RM5,000 + RM10,000
+is a case that cannot tell the two readings apart, which is why row 1 stayed green for two months while
+the kernel computed the wrong thing (the point already made in the §7-over-real-history note above).
+The employer figure moves from **RM1,950 to RM1,800**: RM15,000 is a 12% row, and the old reading kept
+the ≤RM5,000 earner on 13% for the bonus as well.
+
+**Consequences beyond it.** The RM5,001 + RM1,001 pair used by the worksheet screen and its tests moves
+from RM672 to **RM671** for the month-as-one reading — RM672 was itself the split reading (561 + 111),
+never a single lookup; RM6,002 is the RM6,100 row, so RM671. And because the employer column steps
+**down** from 13% to 12% at RM5,000, a small bonus paid to an employee at or just under that line makes
+the month's employer figure smaller than the salary run alone already produced (RM5,000 → 650;
+RM5,000 + RM50 → 612). §6 clamps the negative delta at zero, so the bonus run contributes RM0 and the
+month ends over the table figure rather than under it. That case is pinned in
+`test/epf-combined-month-bdf7d248.test.ts` and is an input to the deferred reversals ADR.
+
+**Not restated here.** Part E (Malaysian citizen 60–<75, employer 4% banded) still bands the normal wage
+on its own and adds 4% of the bonus. bdf7d248 was raised, measured and approved on Part A figures only,
+so Part E was deliberately left as it was; the two parts now read the same statute differently and that
+is an open question, not a settled decision.
+
+**Re-signature.** The 2026-06-20 authorisation covered rows 1 and 2 as they were written. Rows 1 and 2
+above need a counter-signature against the restated figures before the next real bonus run.
+
 **Sign-off**
 
 **✅ Owner-authorised to enable — 2026-06-20.** Basis: YiWei Law's "Malaysia Payroll Statutory
 Requirements" deck (the consultant/accountant source) + the golden test `test/multicycle-kernel.test.ts`,
 which verifies assertions #1–7 above against the real kernel (run 1 PCB 110, run 2 950, sum 1,060;
-SOCSO/EIS charged once; EPF 1,650 / 1,950). **Still recommended before the first real pay run** (employer
+SOCSO/EIS charged once; EPF 1,650 / 1,950 — **the employer half of that is now 1,800**, see the
+2026-08-20 note below). **Still recommended before the first real pay run** (employer
 carries the statutory liability): a formal licensed-accountant counter-signature below + a parallel run
 reconciled to the current system.
 

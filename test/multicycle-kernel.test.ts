@@ -4,7 +4,9 @@
  * figures through the real DB kernel, and that the per-run deltas sum to the single-batch month:
  *   - the regular run is normal remuneration; the bonus run is additional remuneration (Steps 1–5);
  *   - SOCSO/EIS are charged ONCE (only the regular run); the bonus run adds RM0 (Act 4 s.6(7)/6(9));
- *   - EPF is the combined-month round-up, employer rate anchored to the normal wage.
+ *   - EPF is ONE Third Schedule lookup on the month's normal wage plus its additional remuneration, so
+ *     the employer 13%/12% step follows the whole month (bdf7d248, r210 — it was anchored to the normal
+ *     wage until then, which is why the employer assertion below moved from RM1,950 to RM1,800).
  * Gated behind the `multi_cycle_payroll` MODULE ENTITLEMENT (ADR-0077 slice 3 — it was the
  * MULTI_CYCLE_PAYROLL_ENABLED deployment flag until the gate moved into `tenant_module`), so it never
  * runs for real payroll until the §7 sign-off.
@@ -104,9 +106,12 @@ describe('Wave 2C #4 — multi-cycle kernel (ADR-0024 §7 sign-off figures)', ()
     expect(r2.eisEmployee).toBe(0);
     expect(r2.eisEmployer).toBe(0);
 
-    // §7 #1/#2 — EPF combined: 11% of (5,000 + 10,000) = RM1,650 employee; employer anchored at 13% = RM1,950.
+    // §7 #1/#2 — the Third Schedule read ONCE for the month (bdf7d248, r210): RM5,000 + RM10,000 is a
+    // RM15,000 month, employee ceil(11% × 15,000) = RM1,650, employer ceil(12% × 15,000) = RM1,800.
+    // The employer figure was RM1,950 while the 13%/12% step was anchored to the normal wage alone;
+    // ADR-0024 §7 carries the restated sign-off figures and the date the rule changed.
     expect(round2(r1.epfEmployee + r2.epfEmployee)).toBe(1650);
-    expect(round2(r1.epfEmployer + r2.epfEmployer)).toBe(1950);
+    expect(round2(r1.epfEmployer + r2.epfEmployer)).toBe(1800);
   });
 
   it('createAdditionalRun is GATED behind the multi_cycle_payroll entitlement', async () => {

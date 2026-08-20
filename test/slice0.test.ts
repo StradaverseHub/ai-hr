@@ -978,10 +978,13 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
     expect(withBonus.pcb).toBe(m.total);
     expect(statutory(5000, profile, 0).pcbBonus).toBe(0); // no bonus → no extra PCB
 
-    // EPF: bonus IS subject. Employer rate stays 13% (normal wage ≤ RM5000) applied to wage+bonus.
-    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1300 });
+    // EPF: bonus IS subject, and since bdf7d248 (r210) the Third Schedule is read ONCE for the month —
+    // RM5,000 + RM5,000 is a RM10,000 month, so employee ceil(11% × 10,000) = 1,100 and employer
+    // ceil(12% × 10,000) = 1,200. The employer figure was 1,300 while the rate was anchored to the
+    // normal wage alone (13% of 5,000 + 13% of the bonus); that reading is the one this item reversed.
+    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1200 });
     expect(withBonus.epfEmployee).toBe(1100);
-    expect(withBonus.epfEmployer).toBe(1300);
+    expect(withBonus.epfEmployer).toBe(1200);
     expect(withBonus.epfEmployer).toBeGreaterThan(base.epfEmployer); // bonus added EPF
 
     // SOCSO + EIS: bonus EXCLUDED — identical with and without the bonus.
