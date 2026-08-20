@@ -9,7 +9,15 @@ import {
   getTp1FormIdentity,
   listTp1DeclarationsForPersonYear,
 } from '@/core/tax-relief';
-import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import {
+  Button,
+  Card,
+  EmployeeName,
+  ErrorBanner,
+  PageHeader,
+  SectionHeader,
+  pageWideCls,
+} from '@/components/ui';
 import { Tp1DeclarationForm } from '@/components/tp1-declaration-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
@@ -49,6 +57,17 @@ import {
  * ONE NAMESPACE ON PURPOSE (`payroll.transactions`), so check C of test/i18n-coverage.test.ts validates
  * every caption on this page key by key. The form's own labels come from `taxRelief`, resolved inside the
  * shared component where they already were.
+ *
+ * ── THE WIDTH (r210) ────────────────────────────────────────────────────────────────────────────────
+ * This page uses `pageWideCls`, the same container as the TP1 list it is reached from and as every other
+ * Payroll screen. It SHIPPED inside a centred 48rem column, filed under 152fea7f's "single-record forms
+ * keep a reading width" exception, and the reporter came back about it: 48rem on a laptop is half the
+ * window, and the form behind it is not a two-field record — it is the seventeen numbered items of
+ * Section C, which that column could only render as one very long list.
+ * So the exception is withdrawn FOR THIS PAGE, and the width it buys is spent inside the shared form,
+ * whose sections lay out across whatever container they are given (components/tp1-declaration-form.tsx,
+ * `@container`). The rule for the other single-record forms is untouched — see the reasoning kept in
+ * test/payroll-screens-layout.test.ts, which pins this page's width from now on.
  */
 export default async function Tp1DeclarationMonthPage({
   params,
@@ -109,7 +128,7 @@ export default async function Tp1DeclarationMonthPage({
   const hidden = { employmentId: emp.employmentId };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader
         back={{ href: backHref, label: t('tp1.title') }}
         title={readOnly ? t('tp1.viewTitle') : full ? t('tp1.editTitle') : t('tp1.addTitle')}

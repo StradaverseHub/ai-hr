@@ -536,6 +536,26 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
     );
   });
 
+  // 7ad37961 (r210) — THE DECLARATION PAGE IS FULL WIDTH, asserted on what it actually RENDERS. The page
+  // shipped inside a centred 48rem column, filed as a "single-record form keeps a reading width"
+  // exception; the reporter came back about it, because the record behind it is the seventeen numbered
+  // items of the official Section C and that column could only draw them as one very tall list. The
+  // companion assertion for the list screen is three cases above and reads identically — the two screens
+  // are now one width rule, which is what the reporter asked for in the first place.
+  // Source-level guards for the same decision live in test/tp1-form-width.test.ts and, module-wide, in
+  // test/payroll-screens-layout.test.ts (WIDENED_LATER).
+  it('the declaration page fills the width, exactly as the list it is reached from does', async () => {
+    const tree = await renderMonth(String(CURRENT_YEAR), '1', { employmentId: aisha.employmentId });
+    const classes = walk(tree)
+      .map((e) => e.props?.className)
+      .filter((c): c is string => typeof c === 'string');
+    expect(classes, 'the page container is the shared full-width one').toContain(pageWideCls);
+    // A centred max-width ANYWHERE on this page is the fault being fixed — named in both the bracket and
+    // the `-Nxl` spelling, because the caps this module has collected over five rounds use both.
+    const capped = classes.filter((c) => /\bmx-auto\b/.test(c) && /\bmax-w-(?:\d*xl\b|\[)/.test(c));
+    expect(capped, `the declaration page re-narrows itself: ${capped.join(' | ')}`).toEqual([]);
+  });
+
   // SECTION F IS ADMIN-ONLY, AND THIS IS THE ASSERTION THAT KEEPS IT THAT WAY. The employer-consent
   // controls exist only where the page passes `consent`; the employee's own screen never does, so an
   // employee cannot approve their own claim even before the service refuses it.
