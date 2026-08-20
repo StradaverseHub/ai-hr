@@ -11,16 +11,24 @@
  *
  * BOTH HALVES OF THE CONTRACT ARE HERE, because this defect lives BETWEEN two files and a unit test of
  * either half passes throughout:
- *   • `listPayslipPeriodsFor` (core/payroll-view.ts) must return that employee's OWN distinct periods,
- *     fenced on the caller's companies — a DB case, because the fence and the DISTINCT are SQL.
+ *   • `listPayslipRunsFor` (core/payroll-view.ts — `listPayslipPeriodsFor` until r210 widened it) must
+ *     return that employee's OWN runs, fenced on the caller's companies — a DB case, because the fence
+ *     and the join are SQL. The period cases below read `.payPeriod` off those rows.
  *   • `payslipPeriodOptions` (app/payroll/individual-payslip/period-options.ts) must turn those into
  *     options that (a) all lead somewhere, (b) always include the value the control is displaying, and
  *     (c) degrade to the old wide window rather than to nothing — pure cases, no DB.
  *   • and the page must actually call both, rather than keeping a fixed window beside them.
  *
- * WHAT IS DELIBERATELY NOT TESTED HERE: the "Payroll runs in this selection" card. It is NOT a history
- * list, its `matches.length > 1` gate is deliberate disambiguation, and 5a29686c's approved plan says in
- * terms not to restructure it. It gained a subtitle and nothing else.
+ * r210 REVERSED THE LAST PARAGRAPH OF THIS HEADER, and the reversal is recorded rather than erased.
+ * r209 wrote here that the "Payroll runs in this selection" card was NOT a history list, that its
+ * `matches.length > 1` gate was deliberate disambiguation, and that the approved plan said not to
+ * restructure it. The reporter's marked-up screenshot settled the argument the other way: all four
+ * dropdowns defaulted to "All", so every run the employee had matched the gate and the card WAS that
+ * employee's whole payslip history — the only control on the screen that moved between payslips. The
+ * cases that pinned it are updated below, not deleted, and they now pin its absence together with the
+ * thing that replaced it (the run number folded into the cycle option). Deleting them would have left
+ * the next round free to re-add the card as a "missing history list", which is what three rounds in a
+ * row already tried to do.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +36,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
-import { listPayslipPeriodsFor } from '../core/payroll-view';
+import { listPayslipRunsFor } from '../core/payroll-view';
 import { payslipPeriodOptions } from '../app/payroll/individual-payslip/period-options';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -91,7 +99,7 @@ describe('5a29686c — Year / Month options come from the employee’s own paysl
 
 // ───────────────────────── Source shape: the page must USE both halves ─────────────────────────
 
-describe('5a29686c — the screen reads the employee’s periods, and keeps the otherRuns card', () => {
+describe('5a29686c — the screen reads the employee’s runs, and the otherRuns card is gone', () => {
   const code = () =>
     read('app/payroll/individual-payslip/page.tsx')
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -99,36 +107,63 @@ describe('5a29686c — the screen reads the employee’s periods, and keeps the 
 
   it('derives the dropdowns from the read + the rule, with no fixed window left on the page', () => {
     const src = code();
-    expect(src, 'the period index must be read for the chosen employee').toContain('listPayslipPeriodsFor');
-    expect(src, 'and turned into options by the shared rule').toContain('payslipPeriodOptions');
+    expect(src, 'the run index must be read for the chosen employee').toContain('listPayslipRunsFor');
+    expect(src, 'and turned into options by the shared rule').toContain('payslipPeriodOptionsFor');
     // The defect itself: an eleven-slot window built on the page. The fallback of the same shape now
     // lives in period-options.ts, where it is a documented degrade rather than the primary behaviour.
     expect(src, 'no fixed year window may survive on this page').not.toMatch(/Array\.from\(\s*\{\s*length:\s*11/);
     expect(src, 'and no hard-coded twelve-month list either').not.toMatch(/'01',\s*'02',\s*'03'/);
   });
 
-  it('still renders the otherRuns card, still gated on more than one match, now with its reason', () => {
-    // 5a29686c's plan says in terms NOT to remove or restructure this card: it is the only control that
-    // separates two runs sharing company + year + month + cycle. Asserted so a later "simplification"
-    // that reads it as a redundant history list has to argue with a test.
+  it('THE otherRuns CARD IS GONE — and the control that replaced it is here in the same assertion', () => {
+    // REVERSED FROM r209, NOT DELETED. This case used to read "still renders the otherRuns card, still
+    // gated on more than one match": r209 believed the card was deliberate disambiguation between a
+    // regular and a bonus run, because those two share company, year, month and cycle and no dropdown
+    // could tell them apart. That half was TRUE, and it is why the card outlived three rounds.
+    //
+    // What r209 (and da4af51f, and r207) missed is that all four dropdowns defaulted to "All", so the
+    // card's `matches.length > 1` gate was open on every employee with more than one payslip ever — it
+    // was the payslip history the reporter kept saying it was.
+    //
+    // THE TWO HALVES ARE ASSERTED TOGETHER ON PURPOSE. Removing the card without folding the run number
+    // into the cycle option would take away the only way to reach a bonus run; folding it in without
+    // removing the card would leave two controls doing one job. Neither half may ship alone.
     const src = code();
-    expect(src, 'the card must survive').toContain("t('otherRuns')");
-    expect(src, 'gated on MORE THAN ONE match — that gate is the whole point').toContain('matches.length > 1');
-    expect(src, 'and it must now say what it is for').toContain("subtitle={t('otherRunsHint')}");
+    expect(src, 'the run-picker card is gone').not.toContain("t('otherRuns')");
+    expect(src, 'and so is the gate that made it a history list').not.toContain('matches.length > 1');
+    expect(src, 'and its subtitle').not.toContain('otherRunsHint');
+    // …because the cycle option now names the run. `runOptionValue` is `${runType}:${runSeq}`, and
+    // run_seq is unique within a pay period, so one cycle choice resolves to one payslip.
+    expect(src, 'the cycle option must carry the run number').toContain('runOptionValue');
+    expect(src, 'built from the employee’s own runs, not from the fixed CYCLES list').toContain(
+      'payslipRunChoices',
+    );
+    expect(src, 'and the run number is labelled when it is above one').toContain("t('cycleRun'");
   });
 
-  it('every locale carries a real subtitle, not the English one copied across', () => {
-    const en = (JSON.parse(read('messages/en.json')) as Msgs).payroll.individualPayslip.otherRunsHint;
+  it('every locale carries a real run label, not the English one copied across', () => {
+    // The subtitle this case used to check retired with the card. The key it checks now is the one that
+    // took its job: the cycle option's run-number label, which is the ONLY thing separating "Bonus" from
+    // "Bonus run 2" on screen. Both placeholders must survive translation or next-intl throws at render.
+    const en = (JSON.parse(read('messages/en.json')) as Msgs).payroll.individualPayslip.cycleRun;
     expect(en).toBeTruthy();
     for (const loc of ['ms', 'zh', 'ta', 'th', 'vi']) {
-      const v = (JSON.parse(read(`messages/${loc}.json`)) as Msgs).payroll.individualPayslip.otherRunsHint;
-      expect(v, `${loc} must define the subtitle`).toBeTruthy();
+      const v = (JSON.parse(read(`messages/${loc}.json`)) as Msgs).payroll.individualPayslip.cycleRun;
+      expect(v, `${loc} must define the run label`).toBeTruthy();
       expect(v, `${loc} must be translated, not the English string`).not.toBe(en);
+      expect(v, `${loc} must keep the {cycle} placeholder`).toContain('{cycle}');
+      expect(v, `${loc} must keep the {n} placeholder`).toContain('{n}');
+    }
+    // …and the retired keys are gone from every catalogue, so nothing resolves them to MISSING_MESSAGE.
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const blk = (JSON.parse(read(`messages/${loc}.json`)) as Msgs).payroll.individualPayslip;
+      expect(blk.otherRuns, `${loc} must not keep the retired card title`).toBeUndefined();
+      expect(blk.otherRunsHint, `${loc} must not keep the retired card subtitle`).toBeUndefined();
     }
   });
 });
 
-type Msgs = { payroll: { individualPayslip: Record<string, string> } };
+type Msgs = { payroll: { individualPayslip: Record<string, string | undefined> } };
 
 // ───────────────────── Behavioural: the period index and its company fence ─────────────────────
 
@@ -169,18 +204,21 @@ async function pay(period: string) {
   await generatePayslips(a, { batchId });
 }
 
-describe('5a29686c — listPayslipPeriodsFor', () => {
+/** The periods off the widened index — what this file used to receive as the read's whole return value. */
+const periodsOf = (rows: { payPeriod: string }[]) => [...new Set(rows.map((r) => r.payPeriod))];
+
+describe('5a29686c — listPayslipRunsFor', () => {
   it('returns the employee’s own periods newest-first, and nothing they were not paid in', async () => {
     const a = adminCtx(base);
     const me = await hire('Periods Me', 'periods.me@acme.test');
     await pay('2026-01');
     await pay('2026-03');
 
-    const periods = await listPayslipPeriodsFor(a, { companyIds: [base.companyId], employmentId: me.employmentId });
-    expect(periods, 'newest first, matching the payslip read beside it').toEqual(['2026-03', '2026-01']);
+    const runs = await listPayslipRunsFor(a, { companyIds: [base.companyId], employmentId: me.employmentId });
+    expect(periodsOf(runs), 'newest first, matching the payslip read beside it').toEqual(['2026-03', '2026-01']);
 
     // And the whole point of the change: the fixed window offered 2031; the derived one does not.
-    expect(payslipPeriodOptions(periods, {}, 2026).years).toEqual([2026]);
+    expect(payslipPeriodOptions(periodsOf(runs), {}, 2026).years).toEqual([2026]);
   });
 
   it('does not leak a period from an employee who was hired later', async () => {
@@ -192,25 +230,41 @@ describe('5a29686c — listPayslipPeriodsFor', () => {
     const late = await hire('Late Joiner', 'late.joiner@acme.test');
     await pay('2026-05');
 
-    const earlyPeriods = await listPayslipPeriodsFor(a, {
+    const earlyRuns = await listPayslipRunsFor(a, {
       companyIds: [base.companyId],
       employmentId: early.employmentId,
     });
-    const latePeriods = await listPayslipPeriodsFor(a, {
+    const lateRuns = await listPayslipRunsFor(a, {
       companyIds: [base.companyId],
       employmentId: late.employmentId,
     });
-    expect(earlyPeriods).toEqual(['2026-05', '2026-01']);
-    expect(latePeriods, 'a run before this person joined is not theirs').toEqual(['2026-05']);
+    expect(periodsOf(earlyRuns)).toEqual(['2026-05', '2026-01']);
+    expect(periodsOf(lateRuns), 'a run before this person joined is not theirs').toEqual(['2026-05']);
+
+    // r210 — every row names ONE payslip, and it is this employee's own. The screen reads that id
+    // directly instead of dragging twenty-five payslips through listProcessedPayslipsAcross to find it.
+    for (const r of earlyRuns) {
+      expect(r.payslipId, 'the index must name the payslip it indexes').toBeTruthy();
+      expect(r.companyId).toBe(base.companyId);
+      expect(r.runType).toBe('regular');
+      expect(r.runSeq).toBe(1);
+    }
+    expect(new Set(earlyRuns.map((r) => r.payslipId)).size, 'one row per run, never duplicated').toBe(
+      earlyRuns.length,
+    );
+    expect(
+      earlyRuns.map((r) => r.payslipId).some((id) => lateRuns.some((l) => l.payslipId === id)),
+      'two employees must never be handed the same payslip id',
+    ).toBe(false);
   });
 
   it('fails CLOSED on an empty scope, and on a company the caller does not hold', async () => {
     const a = adminCtx(base);
     const me = await hire('Fenced Periods', 'fenced.periods@acme.test');
     await pay('2026-02');
-    expect(await listPayslipPeriodsFor(a, { companyIds: [], employmentId: me.employmentId })).toEqual([]);
+    expect(await listPayslipRunsFor(a, { companyIds: [], employmentId: me.employmentId })).toEqual([]);
     expect(
-      await listPayslipPeriodsFor(a, {
+      await listPayslipRunsFor(a, {
         companyIds: ['00000000-0000-0000-0000-0000000000ff'],
         employmentId: me.employmentId,
       }),

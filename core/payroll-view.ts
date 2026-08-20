@@ -1026,35 +1026,66 @@ export function listProcessedPayslipsAcross(
 }
 
 /**
- * 5a29686c — the distinct pay periods ONE employee actually has a payslip for, newest first ('YYYY-MM').
+ * 5a29686c — every payroll RUN one employee actually holds a payslip in, newest first. The index behind
+ * Individual Payslip's whole selection row.
  *
- * WHY THIS EXISTS RATHER THAN A REUSE OF THE READ ABOVE. Individual Payslip's Year dropdown offered a
- * fixed eleven-year window (`nowYear + 1 - i`), so a reader could pick 2031 — or 2019, before the
- * employee was hired — and get an empty screen with nothing saying why. The options have to come from
- * the employee's own runs. `listProcessedPayslipsAcross` would answer that, but only by dragging every
- * payslip that person has ever had, each carrying its whole `statutory` jsonb, to read one 7-character
- * column off each. This returns the column and nothing else, DISTINCT in the database, so the cost does
- * not grow with tenure.
+ * r209 SHIPPED THIS AS `listPayslipPeriodsFor`, returning the distinct 'YYYY-MM' and nothing else, which
+ * was enough while only Year and Month were derived from it. r210 widened it because the same screen's
+ * Company and Payroll-cycle lists were still offering combinations the employee had never been paid
+ * under, and because two runs sharing company + year + month + cycle need `runSeq` to be told apart at
+ * all. Four small columns instead of one, from the SAME single indexed read.
+ *
+ * IT CARRIES THE PAYSLIP ID, and that is what makes it an index rather than a lookup table: with it the
+ * screen resolves a fully specified selection straight to one payslip and reads that one row, instead of
+ * dragging up to twenty-five payslips (each with its whole `statutory` jsonb) through
+ * `listProcessedPayslipsAcross` to pick one out. One row per (run, employee) — a batch holds exactly one
+ * payslip per employment — so no DISTINCT is needed once `employmentId` is fixed.
+ *
+ * WHY NOT REUSE THE READ ABOVE. `listProcessedPayslipsAcross` would answer the same question only by
+ * fetching every payslip the person has ever had, blobs and all, to read four short columns off each.
+ * This one's cost does not grow with tenure.
  *
  * Same fence as every read in this module: `companyIds` from `scopedAdmin()`, empty ⇒ no rows (fails
- * closed, never "all"). Scoped the same way the payslip read beside it is, so the periods offered and
- * the payslips findable can never disagree — narrowing to one company narrows the years to the ones
- * that company paid this person in.
+ * closed, never "all"). The SCREEN passes its whole authorised scope here and narrows by company in the
+ * pure selection rule instead — a Company dropdown fed from a company-narrowed index could only ever
+ * offer the company already chosen, which is a dropdown nobody can leave.
+ *
+ * ORDER IS PART OF THE CONTRACT: newest period first, then lowest run number, then company. It matches
+ * `listProcessedPayslipsAcross` above so "the employee's latest payslip" means the same thing on both
+ * reads, and the company tiebreak makes a mid-month entity transfer — two runs, one period — resolve to
+ * the same row on every request instead of whichever the planner returned first.
  */
-export function listPayslipPeriodsFor(
+export type PayslipRunRow = {
+  /** THIS employee's payslip in that run. */
+  payslipId: string;
+  companyId: string;
+  /** 'YYYY-MM'. */
+  payPeriod: string;
+  runType: RunType;
+  /** Unique WITHIN a pay period (`payroll_batch_period_run_uq`), so company + period + runSeq names
+   *  exactly one run — which is what lets one dropdown choice resolve to one payslip. */
+  runSeq: number;
+};
+
+export function listPayslipRunsFor(
   ctx: SessionContext,
   p: { companyIds: string[]; employmentId: string },
-): Promise<string[]> {
+): Promise<PayslipRunRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .selectDistinct({ payPeriod: payrollBatch.payPeriod })
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        payslipId: payslip.id,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+      })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .where(and(inArray(payrollBatch.companyId, p.companyIds), eq(payslip.employmentId, p.employmentId)))
-      .orderBy(desc(payrollBatch.payPeriod));
-    return rows.map((r) => r.payPeriod);
-  });
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(payrollBatch.companyId)),
+  );
 }
 
 // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
