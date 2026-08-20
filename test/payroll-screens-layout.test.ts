@@ -121,7 +121,19 @@ const ALREADY_WIDE = [
   'app/payroll/statutory-adjustment/page.tsx',
 ] as const;
 
-const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE];
+/**
+ * SCREENS A LATER ROUND MOVED ONTO THE SAME CONTAINER, kept apart from STANDARDISED so that list stays a
+ * true record of what 152fea7f swept rather than a bucket every future round appends to. Each entry is a
+ * decision this file used to pin the OTHER way, and the reasoning for the reversal is left beside the
+ * list it moved out of — Section C's NARROW_FORMS and CAPPED_BY_DESIGN below.
+ */
+const WIDENED_LATER = [
+  // 7ad37961 (r210) — the Edit TP1 Relief page. See NARROW_FORMS in section C for why the single-record
+  // exception no longer holds for it.
+  'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
+] as const;
+
+const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
 
 /**
  * THE MODULE AS IT IS ON DISK, not as this round edited it. Every `.tsx` under app/payroll is walked,
@@ -235,12 +247,10 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     'app/payroll/cp22/[employmentId]/preview/page.tsx',
     'app/payroll/reports/ea/[employmentId]/page.tsx',
     'app/payroll/transactions/fixed/[id]/page.tsx',
-    // 7ad37961 (r209) MOVED THIS ENTRY, it did not retire it. The official LHDN TP1 (1/2026) carries a
-    // DEDUCTION MONTH box, so the record's grain moved from the year to the month and the form now lives
-    // at tp1/[year]/[month]. The [year] page is a REDIRECT to it — 47 lines, no layout, nothing to cap —
-    // so it belongs in neither list, while the decision this entry pins (a single-record form keeps a
-    // reading width) is unchanged and now applies to the month page.
-    'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
+    // 7ad37961's TP1 month page STOOD HERE for two rounds and is now in WIDENED_LATER instead — r210
+    // withdrew the exception for that ONE page, on the reporter's request, and the reasoning is recorded
+    // in NARROW_FORMS below. Its `[year]` sibling is a REDIRECT (47 lines, no layout, nothing to cap), so
+    // it belongs in no list here either. Everything else on this list keeps its cap.
     'app/payroll/transactions/zakat/election/page.tsx',
     // Statutory Configuration — single-record settings forms, one agency each.
     'app/payroll/configuration/page.tsx',
@@ -314,11 +324,20 @@ describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () 
  * The approved scope, written as an assertion. These are one-record forms and one-record documents
  * reached FROM the widened screens, not screens of their own — a 1920px-wide two-field form is worse
  * to use, not better.
+ *
+ * ── THE ONE EXIT FROM THIS LIST, AND WHAT IT DOES NOT LICENCE (r210, 7ad37961) ──────────────────────
+ * The Edit TP1 Relief page (`transactions/tp1/[year]/[month]`) was listed here from r209 and has moved to
+ * WIDENED_LATER. The rule above is NOT being softened; the page turned out not to be an instance of it.
+ * "A single record" was doing the work of "a handful of fields", and that is true of a fixed-transaction
+ * row or a zakat election. The TP1 record is the seventeen numbered items of the official LHDN Section C,
+ * most with lettered sub-lines, each carrying a limit, an accumulated and a remaining figure — inside a
+ * 48rem column that can only be ONE very tall list, which is what the reporter came back about.
+ * So the test of this list is the SHAPE OF THE RECORD, not its cardinality: a form whose fields fit a
+ * reading column belongs here; a form that is really a table of items does not. Everything else on the
+ * list is still the first kind, and widening one of them still needs its own argument here.
  */
 const NARROW_FORMS = [
   'app/payroll/transactions/fixed/[id]/page.tsx',
-  // 7ad37961 (r209): the TP1 form moved from the year to the month — see CAPPED_BY_DESIGN above.
-  'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
   'app/payroll/transactions/zakat/election/page.tsx',
   'app/payroll/reports/ea/[employmentId]/page.tsx',
   'app/admin/loans/new/page.tsx',

@@ -13,6 +13,30 @@ import { Button, Card, inputCls } from '@/components/ui';
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/**
+ * THE THREE CONTAINER-QUERY MEASURES THIS FORM LAYS OUT ON (r210).
+ *
+ * `@xl` = 36rem, `@3xl` = 48rem, `@5xl` = 64rem — Tailwind's CONTAINER scale, resolved against the
+ * nearest `@container` ancestor (the form root below) and never against the window. That distinction is
+ * the whole reason these exist rather than `sm:` / `lg:`: the same class has to mean "two roomy columns"
+ * on the HR month page, which fills the Payroll content area, and "two tight ones" on the employee's own
+ * 42rem screen, and only the container knows which of the two it is in.
+ *
+ * EVERY ONE STARTS AT `grid-cols-1`, so the stacked single column is the DEFAULT and columns are only
+ * ever ADDED. A phone therefore keeps exactly the layout it has today without a rule of its own, and no
+ * count is ever fixed: nothing here says "three columns" unconditionally.
+ *
+ * The thresholds are chosen so a cell stays wide enough to read — roughly 300px of content — at the
+ * width that unlocks it. Two-up at 36rem clears the employee screen outright (42rem) rather than landing
+ * on its exact boundary; three-up waits for 64rem, which only the HR screen reaches.
+ */
+/** Section C's seventeen items, Section D's rebates and the legacy read-out: one-, two-, then three-up. */
+const reliefGridCls = 'grid grid-cols-1 items-start gap-3 @xl:grid-cols-2 @5xl:grid-cols-3';
+/** Two whole CARDS side by side once there is room for both (A beside B, Section E beside Remarks). */
+const cardPairCls = 'grid grid-cols-1 gap-4 @3xl:grid-cols-2';
+/** A read-only `dl` of labelled facts inside one card. */
+const factsGridCls = 'grid grid-cols-1 gap-x-6 gap-y-2 @xl:grid-cols-2';
+
 type Tp1Action = (formData: FormData) => void | Promise<void>;
 
 /** Section A — read from company_statutory_my by the page, never re-keyed on the form. */
@@ -72,6 +96,18 @@ export type Tp1Employee = { name: string; idNumber: string | null; tin: string |
  * own block, exactly as it was entered, above the current form — it still feeds payroll and it still
  * prints. It is deliberately not migrated into C1–C17: there is no honest mapping from
  * "medicalInsurance" onto C4 / C11 / C13, and inventing one would rewrite a statutory record.
+ *
+ * ── THE LAYOUT IS DRIVEN BY THE CONTAINER, NOT BY THE WINDOW (r210) ─────────────────────────────────
+ * The two surfaces render this component at DIFFERENT widths — the HR month page fills the Payroll
+ * content area (`pageWideCls`), while the employee's own screen sits in a 42rem reading column that page
+ * owns and this file must not reach into. A viewport breakpoint (`sm:`, `lg:`) cannot tell those two
+ * apart, because it reads the WINDOW: on one laptop `lg:grid-cols-3` means three 400px columns on the HR
+ * screen and three 200px columns on the employee one, from the same class. So the root carries
+ * `@container` and every grid below queries THAT — the only measure that is true on both surfaces at
+ * once. The HR screen reaches three-up; the employee column reaches two-up and stops; a phone keeps the
+ * single stacked column it has today, because every grid starts at `grid-cols-1` and only ADDS columns.
+ * The AMOUNT boxes keep their own `max-w-*` caps regardless: a ringgit figure is four or five digits and
+ * a wider container is not a reason to draw a wider box for it.
  */
 export async function Tp1DeclarationForm({
   selectedYear,
@@ -152,14 +188,20 @@ export async function Tp1DeclarationForm({
     );
   };
 
-  /** One numbered item — a single amount box, or one box per lettered sub-line under a shared limit. */
+  /**
+   * One numbered item — a single amount box, or one box per lettered sub-line under a shared limit.
+   *
+   * r210: a bordered CELL rather than a `border-t` divider between stacked rows. The divider was the
+   * right drawing for one tall column and the wrong one for a grid — in a two- or three-up row only the
+   * first cell would lose its top rule, so the run of items would read as if it started three times.
+   */
   const itemBlock = (def: Tp1CatalogueItem, group: 'items' | 'rebates') => {
     const entry = entryOf(def.code);
     const priorItem = accumulated.items[def.code] ?? 0;
     const priorSubs = accumulated.subItems[def.code] ?? {};
     const code = def.code.toUpperCase();
     return (
-      <div key={def.code} className="border-t border-border py-3 first:border-t-0">
+      <div key={def.code} className="rounded-md border border-border p-3">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-semibold tabular-nums">{code}</span>
           <span className="text-sm">{t(`${group}.${def.code}.label`)}</span>
@@ -224,12 +266,15 @@ export async function Tp1DeclarationForm({
     );
   };
 
+  // WHO THE FORM IS ABOUT, STATED FIRST AND KEPT THERE. Sections A and B are five read-only facts
+  // between them, so in a wide container they sit side by side instead of taking two full-width bands
+  // above the fields anybody actually keys.
   const identity = (
-    <>
+    <div className={cardPairCls}>
       {/* ── SECTION A: EMPLOYER INFORMATION ── read-only: nobody re-keys a tax number onto a form. */}
       <Card className="space-y-2 p-5">
         <h2 className="text-sm font-semibold">{t('sectionA')}</h2>
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+        <dl className={factsGridCls}>
           <Field label={`A1 ${t('employerName')}`} value={employer?.name ?? null} />
           <Field label={`A2 ${t('employerTin')}`} value={employer?.tin ?? null} />
         </dl>
@@ -238,17 +283,19 @@ export async function Tp1DeclarationForm({
       {/* ── SECTION B: EMPLOYEE INFORMATION ── */}
       <Card className="space-y-2 p-5">
         <h2 className="text-sm font-semibold">{t('sectionB')}</h2>
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+        <dl className={factsGridCls}>
           <Field label={`B1 ${t('employeeName')}`} value={employee.name} />
           <Field label={`B2 ${t('employeeIdNumber')}`} value={employee.idNumber} />
           <Field label={`B3 ${t('employeeTin')}`} value={employee.tin} />
         </dl>
       </Card>
-    </>
+    </div>
   );
 
   return (
-    <div className="space-y-4">
+    // `@container` — the measure every grid below is written against. See the header note: this
+    // component is rendered at two very different widths and only its own container knows which.
+    <div className="@container space-y-4">
       <Card className="p-5">
         <h2 className="text-sm font-semibold">{t('declarationHeading', { year: String(selectedYear) })}</h2>
         <p className="mt-1 text-xs text-muted-foreground">{TP1_FORM_CODE}</p>
@@ -322,7 +369,7 @@ export async function Tp1DeclarationForm({
         <Card className="space-y-2 p-5">
           <h2 className="text-sm font-semibold">{t('legacyHeading')}</h2>
           <p className="text-xs text-muted-foreground">{t('legacyNote')}</p>
-          <div className="space-y-1 rounded-md border border-border bg-muted/40 p-3">
+          <div className={`${reliefGridCls} rounded-md border border-border bg-muted/40 p-3`}>
             {TP1_CATEGORY_KEYS.map((key) => (
               <div key={key} className="flex items-baseline justify-between text-sm">
                 <span className="text-muted-foreground">{t(`categories.${key}.label`)}</span>
@@ -337,7 +384,7 @@ export async function Tp1DeclarationForm({
         <>
           <Card className="p-5">
             <h2 className="text-sm font-semibold">{t('sectionC')}</h2>
-            <div className="mt-2">{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
+            <div className={`mt-3 ${reliefGridCls}`}>{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
             <div className="mt-4 flex items-baseline justify-between border-t border-border pt-3">
               <span className="text-sm font-medium">{t('totalLabel')}</span>
               <span className="text-lg font-semibold tabular-nums">{rm(latest?.tp1Amount ?? 0)}</span>
@@ -346,7 +393,7 @@ export async function Tp1DeclarationForm({
           <Card className="p-5">
             <h2 className="text-sm font-semibold">{t('sectionD')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{t('rebateNote')}</p>
-            <div className="mt-2">{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
+            <div className={`mt-3 ${reliefGridCls}`}>{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
           </Card>
           <Card className="space-y-2 p-5">
             <h2 className="text-sm font-semibold">{t('sectionE')}</h2>
@@ -381,48 +428,53 @@ export async function Tp1DeclarationForm({
             <Card className="p-5">
               <h2 className="text-sm font-semibold">{t('sectionC')}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{t('sectionCHelp')}</p>
-              <div className="mt-2">{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
+              <div className={`mt-3 ${reliefGridCls}`}>{TP1_ITEMS.map((def) => itemBlock(def, 'items'))}</div>
             </Card>
 
             <Card className="p-5">
               <h2 className="text-sm font-semibold">{t('sectionD')}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{t('rebateNote')}</p>
-              <div className="mt-2">{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
+              <div className={`mt-3 ${reliefGridCls}`}>{TP1_REBATES.map((def) => itemBlock(def, 'rebates'))}</div>
             </Card>
 
-            <Card className="space-y-3 p-5">
-              <h2 className="text-sm font-semibold">{t('sectionE')}</h2>
-              <p className="text-xs text-muted-foreground">{t('declarationText')}</p>
-              {/* RULE 17: the 'no' is rendered FIRST and always submitted; the tick adds a 'yes'. The
-                  action reads the VALUES, never whether the field arrived. */}
-              <input type="hidden" name="declarationAccepted" value="no" />
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="declarationAccepted"
-                  value="yes"
-                  defaultChecked={latest?.declaredAt != null}
-                  className="mt-0.5"
-                />
-                <span>{t('declarationTick')}</span>
-              </label>
-            </Card>
+            {/* The tick and the remarks box are the last two things before Save/Submit and neither of
+                them is a wide field, so in a roomy container they share one band rather than pushing the
+                buttons a screen further down. */}
+            <div className={cardPairCls}>
+              <Card className="space-y-3 p-5">
+                <h2 className="text-sm font-semibold">{t('sectionE')}</h2>
+                <p className="text-xs text-muted-foreground">{t('declarationText')}</p>
+                {/* RULE 17: the 'no' is rendered FIRST and always submitted; the tick adds a 'yes'. The
+                    action reads the VALUES, never whether the field arrived. */}
+                <input type="hidden" name="declarationAccepted" value="no" />
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="declarationAccepted"
+                    value="yes"
+                    defaultChecked={latest?.declaredAt != null}
+                    className="mt-0.5"
+                  />
+                  <span>{t('declarationTick')}</span>
+                </label>
+              </Card>
 
-            <Card className="p-5">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium">{t('remarksLabel')}</span>
-                <textarea
-                  name="remarks"
-                  rows={3}
-                  defaultValue={cats?.remarks ?? ''}
-                  placeholder={t('remarksPlaceholder')}
-                  className={inputCls}
-                />
-              </label>
-              <p className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                {t('totalNote')}
-              </p>
-            </Card>
+              <Card className="p-5">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium">{t('remarksLabel')}</span>
+                  <textarea
+                    name="remarks"
+                    rows={3}
+                    defaultValue={cats?.remarks ?? ''}
+                    placeholder={t('remarksPlaceholder')}
+                    className={inputCls}
+                  />
+                </label>
+                <p className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  {t('totalNote')}
+                </p>
+              </Card>
+            </div>
           </form>
 
           {isSubmitted || isDecided ? (
@@ -457,7 +509,7 @@ export async function Tp1DeclarationForm({
       <Card className="space-y-3 p-5">
         <h2 className="text-sm font-semibold">{t('sectionF')}</h2>
         {isDecided ? (
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+          <dl className={`${factsGridCls} @4xl:grid-cols-3`}>
             <Field label={t('consentStatus')} value={t(`status.${status}`)} />
             <Field
               label={t('consentDate')}
@@ -503,7 +555,10 @@ export async function Tp1DeclarationForm({
                   className={`${inputCls} max-w-[8rem]`}
                 />
               </label>
-              <label className="block flex-1 text-sm">
+              {/* Capped for the same reason the month and year boxes are: "HR Manager" is a job title,
+                  not a paragraph, and `flex-1` alone would draw it the width of whatever container the
+                  form is in. */}
+              <label className="block max-w-[24rem] flex-1 text-sm">
                 <span className="mb-1 block font-medium">{t('approverPosition')}</span>
                 <input type="text" name="approverPosition" maxLength={200} className={inputCls} />
               </label>
