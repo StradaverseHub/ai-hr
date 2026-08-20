@@ -32,6 +32,9 @@
  *     takes all three. The "otherRuns" card renders only when matches.length > 1 — it is deliberate
  *     disambiguation between a regular and a bonus run in one month, not a history list, and it does not
  *     grow with the years.
+ *     [r210 CORRECTION — this reading was wrong, twice. See the r210 section at the foot of this header:
+ *     the four boxes defaulted to "All", so every run matched and the card WAS the history list it kept
+ *     being reported as. It is gone, and the run number now rides in the cycle option instead.]
  *   - Earnings / Deductions / employer contributions / YTD are already separate sections.
  *   - the PCB drill-down already reads the payslip's OWN persisted `pcbMeta`, so an old slip explains
  *     itself with the numbers that were true when it ran. (r197 / 45df860a: that drill-down now LIVES at
@@ -73,8 +76,39 @@
  *      button now opens the SAME route with `?inline=1` in a new tab, where the browser's own PDF viewer
  *      prints and saves it. Preview and download still cannot disagree — they are one route — and there
  *      is no second Print control competing with the viewer's.
+ *
+ * ───────────────────────────────────────────────────────────────────────────────────────────────────
+ * r210 (feedback 5a29686c) — THE SELECTION ROW, AND WHY THE "Payroll runs in this selection" CARD IS
+ * GONE AFTER THREE ROUNDS DEFENDED IT. READ THIS BEFORE ADDING A RUN LIST BACK.
+ *
+ * THREE ROUNDS LOOKED AT THIS SECTION AND TWICE CONCLUDED "already works": da4af51f (r168a) and r207,
+ * both reading the request as "the Year / Month / Cycle selector is missing" and both finding the
+ * selector already built. r209 then narrowed Year and Month to the employee's own periods and stopped.
+ * The reporter's marked-up screenshot is what settled it, and the earlier readings were wrong about the
+ * SAME thing each time:
+ *
+ *   ALL FOUR DROPDOWNS DEFAULTED TO "All", so they never described the payslip on screen — and because
+ *   they were on "All", every run the employee had matched, so the card below them listed the employee's
+ *   whole history and was the only control that actually moved between payslips. The boxes were
+ *   decoration. The card was the navigation. That is why it kept being reported as a payslip history
+ *   that ought to be a selector: it WAS one.
+ *
+ * The old comment on that card was nevertheless right on its own terms — it was the only control that
+ * could separate two runs sharing company, year, month and cycle. So it is not simply deleted. THE CYCLE
+ * OPTION NOW CARRIES THE RUN NUMBER (`regular:1`, `bonus:2`), and `payroll_batch_period_run_uq` makes
+ * run_seq unique within a pay period, so company + year + month + cycle-option names exactly ONE payslip.
+ * The card became redundant only at that point; removing it before that would have taken away the sole
+ * way to reach a bonus run sitting beside a regular one.
+ *
+ * SO: A FOURTH ROUND MUST NOT RE-ADD IT AS A "missing history list". Everything it did is now in the
+ * Payroll-cycle dropdown, and every option in all four dropdowns leads to a payslip.
+ *
+ * The rules — the hierarchy, the dropping of a stale lower choice, and the run-number fold — live in
+ * ./period-options.ts with the reasoning for each. This screen also stopped reading
+ * `listProcessedPayslipsAcross` for the run list: resolving the selection against the index yields one
+ * payslip id, which `payslipForReview` already reads, so it no longer pulls twenty-five payslips and
+ * their `statutory` blobs in order to choose one of them.
  */
-import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -85,11 +119,12 @@ import { listPayComponents } from '@/core/pay-components';
 // 45df860a — `currentPcbReliefs` / `explainPcb` moved WITH the PCB working to app/payroll/pcb-detail.
 // This screen links to that screen; it no longer reads the tax working itself, which is the point (one
 // display, not two). `listPayslipSourceTxns` stays — that is r199's ledger panel, a different feature.
-// 5a29686c — `listPayslipPeriodsFor` is the period index behind the Year / Month dropdowns: the distinct
-// 'YYYY-MM' this employee actually has a payslip for. See the derivation below for why the old fixed
-// eleven-year window had to go.
+// 5a29686c — `listPayslipRunsFor` is the index behind ALL FOUR selection dropdowns and behind which
+// payslip they describe: every run this employee holds a payslip in, as (payslipId, companyId, period,
+// runType, runSeq). r209 read only the distinct period from it; see the derivation below for why the
+// other three columns had to join them.
 import {
-  listPayslipPeriodsFor,
+  listPayslipRunsFor,
   listPayslipSourceTxns,
   listProcessedPayslipsAcross,
   payslipForReview,
@@ -105,15 +140,23 @@ import { payslipProvenance } from '@/core/payslip-recompute';
 import { payrollProcessBack } from '../back';
 import { formatMoney } from '@/lib/money';
 import { packFor } from '@/localization/registry';
-import { Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
+import { Button, Card, EmployeeName, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
-// 5a29686c — the Year / Month dropdown rules, pure so they can be asserted without a browser.
-import { payslipPeriodOptions } from './period-options';
+// 5a29686c — the selection rules, pure so they can be asserted without a browser: which payslip the four
+// dropdowns describe, and what each of them may offer.
+import {
+  parseRunOption,
+  payslipCompanyIds,
+  payslipPeriodOptionsFor,
+  payslipRunChoices,
+  resolvePayslipSelection,
+  runOptionValue,
+} from './period-options';
 // 417d4937 request 10 — the shared provenance block, so this screen and Transaction View → History
 // cannot drift the way the four record-line renderers already did.
 import { SourceTxnBlock } from '../transaction-view/source-txn-block';
@@ -129,6 +172,9 @@ export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
 // 5a29686c — the twelve-month literal that used to sit here now lives in ./period-options.ts as the
 // no-periods FALLBACK. Keeping a second copy on this screen is how the dropdown and the rule behind it
 // would drift.
+// r210 — and it is now ONLY a validator. The Payroll-cycle dropdown is built from the employee's own
+// runs (`payslipRunChoices`), so this list no longer decides what is offered; it decides what a `?cycle=`
+// in the URL is allowed to mean, which is the `payroll_run_type` enum and nothing else.
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
@@ -238,7 +284,13 @@ export default async function IndividualPayslipPage({
     sp.employmentId && employees.some((e) => e.employmentId === sp.employmentId) ? sp.employmentId : undefined;
   const year = intParam(sp.year, 2000, 2100);
   const month = intParam(sp.month, 1, 12);
-  const cycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
+  // r210 — `?cycle=` now carries the run NUMBER as well ('bonus:2'), because the run type alone does not
+  // name a run. Guarded in two halves: the type against the enum above, exactly as before, and the
+  // sequence by shape. A bare 'bonus' still parses — every link made before r210 carries one — and means
+  // "any run of that type". Neither half can widen anything: both only ever narrow the index below.
+  const parsedCycle = parseRunOption(sp.cycle);
+  const cycle = CYCLES.includes(parsedCycle?.runType as (typeof CYCLES)[number]) ? parsedCycle!.runType : undefined;
+  const cycleRunSeq = cycle ? parsedCycle!.runSeq : undefined;
 
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(PAYSLIP_PANEL_COOKIE)?.value !== '0';
@@ -261,35 +313,76 @@ export default async function IndividualPayslipPage({
   // The period filters ride along when the employee changes — these are the GUARDED values, not the raw
   // params. `payslipId` deliberately does NOT: it names a run belonging to the person being navigated away
   // from, and carrying it would ask the next employee's list for someone else's payslip.
+  //
+  // r210 — `companyId` and `cycle` join `payslipId` in NOT riding along, and for the same reason. Now that
+  // the boxes describe the payslip instead of sitting on "All", they are always filled in, so carrying
+  // them would hand the next person the previous person's employer — and company is the one choice this
+  // screen never relaxes, so a colleague at another entity would open on "no payroll has been calculated"
+  // rather than on their own latest payslip. Year and month DO ride along: comparing one month across
+  // people is a real reason to switch employee, and a month the next person has no run in is dropped by
+  // the resolution below rather than dead-ending.
   const panelPreserve: Record<string, string> = {
-    ...(companyId ? { companyId } : {}),
     ...(year != null ? { year: String(year) } : {}),
     ...(month != null ? { month: String(month).padStart(2, '0') } : {}),
-    ...(cycle ? { cycle } : {}),
   };
 
   // A payslip only loads once an EMPLOYEE is chosen — the ticket's flow (period → employee → payslip),
   // and also what keeps this screen from becoming a second, slower copy of History.
-  // 5a29686c — the SECOND read is the period index behind the Year / Month dropdowns: the distinct
-  // 'YYYY-MM' this employee actually has a payslip for, one column, DISTINCT in the database. Issued
-  // alongside the payslip read rather than after it, so the screen costs the same round trip it did.
-  const [matches, periods] = await Promise.all([
-    employmentId
-      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: 25 })
-      : Promise.resolve([]),
-    employmentId ? listPayslipPeriodsFor(s, { companyIds, employmentId }) : Promise.resolve([]),
-  ]);
+  //
+  // 5a29686c / r210 — ONE indexed read backs all four dropdowns AND the choice of payslip: every run this
+  // employee holds a payslip in, as (payslipId, companyId, period, runType, runSeq). It replaces the
+  // twenty-five-payslip `listProcessedPayslipsAcross` this screen used to issue for the same purpose, so
+  // it is a round trip fewer and a great deal less payload, not more.
+  //
+  // FENCED ON THE WHOLE AUTHORISED SCOPE, NOT ON `companyIds`, and that is deliberate: `companyIds`
+  // narrows to the chosen company, and a Company dropdown built from a company-narrowed index could only
+  // ever offer the company already chosen. The company narrowing happens in the pure rule instead, which
+  // is a filter over rows the reader is already entitled to see. `scopeIds` is the same fence
+  // `listEmployees` above ran under, so this cannot reach a company the reader does not hold.
+  const runs = employmentId ? await listPayslipRunsFor(s, { companyIds: scopeIds, employmentId }) : [];
 
-  // ── 5a29686c: the Year / Month options are the employee's OWN periods, not a fixed window ──
-  // The rules (and why each one is a rule) live in ./period-options.ts, pure and asserted directly —
-  // a dropdown that omits the value it is displaying, or that empties itself before an employee is
-  // chosen, still renders and still returns 200, so none of this is safe to leave unpinned here.
-  const { years, months } = payslipPeriodOptions(periods, { year, month }, new Date().getFullYear());
+  // ── r210: WHICH PAYSLIP THE FOUR BOXES DESCRIBE ──
+  // The rules (and why each one is a rule) live in ./period-options.ts, pure and asserted directly — a
+  // selection that resolves to the wrong payslip, or a dropdown that quietly empties, still renders and
+  // still returns 200, so none of this is safe to leave unpinned here. In short: company is honoured
+  // strictly, an explicit `payslipId` wins outright, and a stale year / month / run posted by the GET
+  // form is dropped rather than answered with an empty screen.
+  const sel = resolvePayslipSelection(runs, {
+    companyId,
+    payslipId: sp.payslipId,
+    year,
+    month,
+    runType: cycle,
+    runSeq: cycleRunSeq,
+  });
+  const selRun = sel.runType != null && sel.runSeq != null ? runOptionValue(sel.runType, sel.runSeq) : '';
 
-  // The chosen run, or the most recent match. A tampered payslipId simply does not match.
-  const chosen = sp.payslipId ? matches.find((r) => r.id === sp.payslipId) : matches[0];
+  // Each list is narrowed by the levels ABOVE it and by nothing below — Company by nothing, Year by the
+  // company showing, Month by that year, the run by that month. Narrowing every list by the other three
+  // reads as the tighter rule and strands whole companies behind it; ./period-options.ts note 1 has the
+  // worked example.
+  //
+  // WHAT EACH BOX DISPLAYS: the resolved payslip's own value, falling back to the guarded query when
+  // nothing resolved (a tampered company, or an employee who has never been paid). r209's rule 2 in both
+  // directions — the control and what was applied always agree, and the value on show is always one of
+  // the options, so no <select> can silently display a different one.
+  const showCompanyId = sel.companyId ?? companyId ?? '';
+  const showYear = sel.year ?? year;
+  const showMonth = sel.month ?? month;
+  const showRun = selRun || (cycle ? (cycleRunSeq != null ? runOptionValue(cycle, cycleRunSeq) : cycle) : '');
+  const companyChoices = new Set(payslipCompanyIds(runs, showCompanyId || undefined));
+  const companyOptions = scopedCompanies.filter((c) => companyChoices.has(c.id));
+  const { years, months } = payslipPeriodOptionsFor(
+    employmentId != null,
+    runs.filter((r) => showCompanyId === '' || r.companyId === showCompanyId).map((r) => r.payPeriod),
+    { year: showYear, month: showMonth },
+    new Date().getFullYear(),
+  );
+  const runOptions = payslipRunChoices(runs, sel, showRun);
 
-  const row = chosen ? await payslipForReview(s, { companyIds, payslipId: chosen.id }) : null;
+  // One payslip id, one read. `companyIds` is unchanged from what the guard above produced, so the fence
+  // this row is read through is exactly the fence it was read through before r210.
+  const row = sel.payslipId ? await payslipForReview(s, { companyIds, payslipId: sel.payslipId }) : null;
   // 417d4937 (request 10) — the one-off transactions recorded against THIS employee on THIS run, so the
   // screen can answer "where did this recorded item come from?" without a report. One indexed query,
   // fenced on the same `companyIds` as the payslip itself, and only once a payslip has been chosen.
@@ -335,9 +428,9 @@ export default async function IndividualPayslipPage({
   // jsonb stamp and then to the whole period. Segmented means narrower than the period, so this screen,
   // both PDF routes and the completeness control all read ONE fact.
   const segment = row ? payslipSegmentOf(row, row.payPeriod) : null;
-  // …and whether the runs on offer below span more than one legal entity, which is the case the chips
-  // could not previously tell apart: two August regular runs, same month, same cycle, different employer.
-  const matchesSpanCompanies = new Set(matches.map((m) => m.companyId)).size > 1;
+  // 3c88d593's `matchesSpanCompanies` retired with the run chips it labelled. The case it existed for —
+  // two August regular runs, same month, same cycle, different employer after a mid-month transfer — is
+  // now told apart by the Company dropdown, which is where the reader picks the employer anyway.
   const cur = row?.currency ?? null;
   const rm = (n: unknown) => formatMoney(n, cur);
   const hrdfRegistered = row
@@ -405,20 +498,30 @@ export default async function IndividualPayslipPage({
           The EMPLOYEE has left this form for the panel; it carries the current one as a hidden input so
           changing the year does not silently deselect the person you were looking at. `payslipId`
           deliberately does NOT ride along: it names a run belonging to whoever was selected before, and
-          carrying it would ask the next employee's list for someone else's payslip. */}
+          carrying it would ask the next employee's list for someone else's payslip.
+
+          r210 — THESE FOUR BOXES NOW DESCRIBE THE PAYSLIP BELOW THEM instead of sitting on "All", and each
+          list holds only what this employee actually has. That is the whole of feedback 5a29686c: while
+          they read "All" they described nothing, every run matched, and the card that used to sit under
+          this one was the only thing that moved between payslips — which is why it kept being reported as
+          an over-long payslip history. "All" survives as the first option in each box because it is still
+          the honest way to say "no opinion, show me the latest"; it is no longer the DEFAULT. */}
       <Card className="p-4 print:hidden">
         <form method="GET" className="flex flex-wrap items-end gap-3">
           {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
           <Field label={t('filterCompany')}>
-            <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
+            {/* Not `scopedCompanies` — the reader's whole scope offered companies this employee has never
+                been paid by. Company is the top of the hierarchy and is narrowed by nothing below it, so a
+                transferred employee keeps both employers here and neither becomes unreachable. */}
+            <select name="companyId" defaultValue={showCompanyId} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
-              {scopedCompanies.map((c) => (
+              {companyOptions.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </Field>
           <Field label={t('filterYear')}>
-            <select name="year" defaultValue={year != null ? String(year) : ''} className={inputCls}>
+            <select name="year" defaultValue={showYear != null ? String(showYear) : ''} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
               {years.map((y) => (
                 <option key={y} value={y}>{y}</option>
@@ -426,7 +529,11 @@ export default async function IndividualPayslipPage({
             </select>
           </Field>
           <Field label={t('filterMonth')}>
-            <select name="month" defaultValue={month != null ? String(month).padStart(2, '0') : ''} className={inputCls}>
+            <select
+              name="month"
+              defaultValue={showMonth != null ? String(showMonth).padStart(2, '0') : ''}
+              className={inputCls}
+            >
               <option value="">{tTxn('view.filters.all')}</option>
               {months.map((m) => (
                 <option key={m} value={m}>{m}</option>
@@ -434,10 +541,18 @@ export default async function IndividualPayslipPage({
             </select>
           </Field>
           <Field label={t('filterCycle')}>
-            <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
+            {/* THE OPTION VALUE CARRIES THE RUN NUMBER, and that is what retired the run-picker card: run
+                _seq is unique within a pay period, so company + year + month + this value names exactly one
+                payslip. The number is shown only when it is above 1 — "Bonus run 2" beside "Regular", never
+                "Regular run 1" on the ordinary month that has only one run. */}
+            <select name="cycle" defaultValue={showRun} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
-              {CYCLES.map((c) => (
-                <option key={c} value={c}>{tTxn(`individual.cycle.${c}`)}</option>
+              {runOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.runSeq > 1
+                    ? t('cycleRun', { cycle: tTxn(`individual.cycle.${o.runType}`), n: o.runSeq })
+                    : tTxn(`individual.cycle.${o.runType}`)}
+                </option>
               ))}
             </select>
           </Field>
@@ -449,48 +564,6 @@ export default async function IndividualPayslipPage({
 
       {!employmentId && <p className="text-sm text-muted-foreground">{t('chooseEmployeeHint')}</p>}
       {employmentId && !row && <p className="text-sm text-muted-foreground">{t('noPayslip')}</p>}
-
-      {/* More than one run in the selected window (a regular plus a bonus cycle, or a re-issue): offer
-          them rather than silently showing the newest. */}
-      {matches.length > 1 && (
-        <Card className="p-4 print:hidden">
-          {/* 5a29686c — THE SUBTITLE, and why the card itself is untouched. This section has now been
-              reported twice as an over-long payslip history that ought to be a Year/Month/Cycle picker.
-              It is not a history: it appears ONLY when more than one run matches all four dropdowns —
-              a bonus run beside a regular one, a re-issue, or the two halves of a mid-month entity
-              transfer — and those four dropdowns cannot tell such runs apart, so deleting it would
-              remove the only control that can. What it was missing was a sentence saying that. */}
-          <SectionHeader title={t('otherRuns')} count={matches.length} subtitle={t('otherRunsHint')} />
-          <div className="flex flex-wrap gap-2 pt-2">
-            {matches.map((m) => (
-              <Link
-                key={m.id}
-                href={`/payroll/individual-payslip?${new URLSearchParams({
-                  ...(companyId ? { companyId } : {}),
-                  ...(year != null ? { year: String(year) } : {}),
-                  ...(month != null ? { month: String(month) } : {}),
-                  ...(cycle ? { cycle } : {}),
-                  employmentId: employmentId!,
-                  payslipId: m.id,
-                }).toString()}`}
-                className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                  m.id === row?.id ? 'border-primary font-medium text-primary' : 'border-border hover:bg-muted'
-                }`}
-              >
-                {monthYear(m.payPeriod, locale)} · {tTxn(`individual.cycle.${m.runType}`)}
-                {m.runSeq > 1 ? ` #${m.runSeq}` : ''}
-                {/* 3c88d593 — NAME THE EMPLOYER when the runs on offer span more than one. A mid-month
-                    entity transfer puts two chips here reading "August 2026 · Regular" and "August 2026 ·
-                    Regular", and the reader has no way to tell which is the ten days under the old
-                    company. Added only when it disambiguates, so a normal month's chips are unchanged. */}
-                {matchesSpanCompanies && (
-                  <span className="block text-xs text-muted-foreground">{m.company}</span>
-                )}
-              </Link>
-            ))}
-          </div>
-        </Card>
-      )}
 
       {row && b && eb && (
         <>
