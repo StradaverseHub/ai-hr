@@ -17,16 +17,23 @@ import { resetAction } from '../../actions';
  * WHY THIS ROUTE EXISTS, AND IT IS NOT A REDESIGN. Reset payroll was a `<form action={resetAction}>`
  * with a ConfirmSubmit dialog rendered INSIDE the Payroll Process row menu (PayrollRowActions). That
  * panel is `position: fixed` and closes itself on ANY scroll captured at the window; the dialog body is
- * portalled but its OWNER is the menu subtree, so the menu closing unmounted the dialog with it. Pressing
- * the button focused it, the browser scrolled the table's `overflow-x-auto` wrapper to bring it into
- * view, and the dialog was created and destroyed in the same tick.
+ * portalled but its OWNER is the menu subtree, so the menu closing unmounted the dialog with it. Opening
+ * the dialog emitted a scroll event on the table's `overflow-x-auto` wrapper, the menu closed on it, and
+ * the dialog was created and destroyed in the same tick.
  *
  * MEASURED IN CHROMIUM AGAINST A REAL PROCESSED RUN, not argued: at 1280×720, where that wrapper is
  * genuinely scrollable, the click produced one scroll event on `DIV.overflow-x-auto` and left
  * `[role=menu]` = 0 and `[role=alertdialog]` = 0 — nothing on screen at all, which is exactly what the
  * reporter saw. At 1600 and wider, where the wrapper needs no scroll, the same click opened the dialog
  * normally. That width dependence is why it read as intermittent, and jsdom never sees it: jsdom computes
- * no layout, so focus produces no scroll and a DOM test of the old code passes.
+ * no layout, so nothing scrolls there and a DOM test of the old code passes.
+ *
+ * WHICH OF THE DIALOG'S SIDE EFFECTS EMITS THAT SCROLL WAS NOT ISOLATED, and this comment does not claim
+ * it. Two candidates fit the measurement and the width dependence equally: the focus move into the
+ * portalled dialog, and react-remove-scroll's body scroll-lock (`overflow: hidden` plus padding
+ * compensation), which reflows the page and can clamp the wrapper's `scrollLeft`. It does not change the
+ * conclusion or the fix — the menu closes on ANY scroll, from anywhere, so a dialog owned by it is
+ * destroyed by its own opening either way, and the answer is not to open dialogs from inside it.
  *
  * THE ACTION IS UNCHANGED AND SO ARE ITS RULES. `resetAction` and `resetProcessedBatch` are correct —
  * risk-switch gated, `payroll.rollback` gated, processed-only, mandatory reason, loan and claim
@@ -45,7 +52,14 @@ import { resetAction } from '../../actions';
  * the refusal by pressing a destructive button. The two the page can read for itself are rendered with
  * their reason. The `payroll.rollback` permission is NOT re-read here: it needs a tenant transaction and
  * there is no reader for it, so `requireAdmin` gates the door and `resetProcessedBatch` remains the
- * authority — a refused submit comes back on the run screen carrying `resetAdminOnly`, unchanged.
+ * authority.
+ *
+ * AND A REFUSED SUBMIT COMES BACK HERE, on `?error=`, with the reason still in the box and `from` intact
+ * — the sibling Remove screen's precedent, and the reason the form posts a `surface` flag. Every refusal
+ * `resetProcessedBatch` can raise now has a translated line in `resetAction`, `SettingNotEnabledError`
+ * included: the operator who presses a destructive button on payroll money must not get the service's
+ * raw English back. Redirecting to `/payroll/<id>` instead would answer a refusal by moving the operator
+ * to the long run screen this ticket exists to get them off, and lose the filter query on the way.
  *
  * A SCREEN, NOT A DIALOG, ALSO MEANS NO CONFIRMSUBMIT. This page IS the confirmation step: it states the
  * run, explains the consequence, takes the mandatory reason and offers Cancel / Reset Payroll. Wrapping
@@ -58,7 +72,7 @@ export default async function ResetPayrollPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; error?: string; reason?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -144,6 +158,12 @@ export default async function ResetPayrollPage({
     <div className={pageWideCls}>
       {header}
 
+      {/* A REFUSED SUBMIT COMES BACK HERE, not on the run screen — `resetAction` redirects to this route
+          with the translated message when the form posted the `surface` flag below. Same shape as the
+          sibling Remove screen: the operator stays on the screen they were reading, the summary strip
+          still names the run, and the reason is still in the box. */}
+      <ErrorBanner message={sp.error} />
+
       <Card className="px-4 py-3">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {summary.map((f) => (
@@ -164,6 +184,11 @@ export default async function ResetPayrollPage({
           <p className="mb-4 text-xs text-muted-foreground">{t('resetCollectsOutstanding')}</p>
           <form action={resetAction} className="space-y-4">
             <input type="hidden" name="batchId" value={batchId} />
+            {/* WHICH SURFACE PRESSED IT. `resetAction` is posted to by this screen and by the run screen's
+                own panel; this flag is how a refusal knows to come back HERE rather than dropping the
+                operator onto the run screen (and losing the filter query and the reason with it). A flag
+                and not a path: a destination read off a form is an untrusted value. */}
+            <input type="hidden" name="surface" value="reset-screen" />
             {/* The filter selection the operator arrived under, posted so `payrollListAfterReset` can
                 return them to the list as they left it. Raw path, not the encoded href — a FormData value
                 must not be double-encoded. */}
@@ -172,11 +197,14 @@ export default async function ResetPayrollPage({
               <span className="mb-1 block text-xs font-medium text-foreground">{t('resetReasonLabel')}</span>
               {/* `required` is the browser's nudge, not the rule: `resetProcessedBatch` throws
                   ResetReasonRequiredError on a blank or whitespace-only reason BEFORE any write, and that
-                  is what actually decides it. */}
+                  is what actually decides it — a single space satisfies `required` and is refused there.
+                  Which is why the refused text comes back as `defaultValue`: whatever the operator wrote
+                  is still in front of them when the refusal is. */}
               <textarea
                 name="reason"
                 rows={2}
                 required
+                defaultValue={sp.reason}
                 placeholder={t('resetReasonPlaceholder')}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
               />

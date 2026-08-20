@@ -130,9 +130,12 @@ describe('65e2d5de — the ⋯ menu appears only when it earns its place', () =>
     // payroll run", so a mis-aimed confirm was unrecoverable and unannounced. Every item is a link to its
     // own screen now, and each of those screens names the company, period, cycle, payment date and
     // headcount of the run it is about — so a mis-aimed click lands somewhere it can be read and left.
-    // (It also removed a second defect this test could never see: the dialog was OWNED by this panel, so
-    // the very focus-scroll asserted below destroyed it as it opened. jsdom computes no layout, produces
-    // no such scroll, and passed regardless.)
+    // (It also removed a second defect this test could never see: the dialog was OWNED by this panel, and
+    // opening it emitted exactly the kind of scroll asserted below — measured in Chromium as one scroll on
+    // the table's `overflow-x-auto` wrapper — which destroyed it as it opened. Whether that scroll came
+    // from the focus move or from react-remove-scroll's body lock was never isolated and does not matter:
+    // this panel closes on any scroll. jsdom computes no layout, produces no such scroll, and passed
+    // regardless.)
     //
     // The backdrop's own onWheel does not cover this. A wheel with the cursor over the PANEL bubbles
     // panel → wrapper and never reaches the backdrop; keyboard scrolling (PageDown, arrows), touch

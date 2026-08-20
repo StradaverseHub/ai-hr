@@ -8,12 +8,18 @@
  * OWNER is the menu subtree — so when the menu closed, the dialog unmounted with it.
  *
  * Chromium, a real processed run, 1280×720 (where the table's `overflow-x-auto` wrapper is genuinely
- * scrollable): clicking the item produced ONE scroll event on `DIV.overflow-x-auto` — the browser
- * scrolling the focused button into view — after which `[role=menu]` = 0 and `[role=alertdialog]` = 0.
- * Nothing on screen. At 1600 and 1920 wide, where the wrapper needs no scroll, the same click opened the
- * dialog normally; that width dependence is why it read as intermittent. And jsdom computes no layout, so
- * focus produces no scroll there and a DOM test of the old code passed — as did tsc, the suite,
- * `next build` and a 200 from the route.
+ * scrollable): clicking the item produced ONE scroll event on `DIV.overflow-x-auto`, after which
+ * `[role=menu]` = 0 and `[role=alertdialog]` = 0. Nothing on screen. At 1600 and 1920 wide, where the
+ * wrapper needs no scroll, the same click opened the dialog normally; that width dependence is why it read
+ * as intermittent. And jsdom computes no layout, so nothing scrolls there and a DOM test of the old code
+ * passed — as did tsc, the suite, `next build` and a 200 from the route.
+ *
+ * WHAT PRODUCES THAT SCROLL WAS NOT ISOLATED, and this file does not assert it. The focus move into the
+ * portalled dialog and react-remove-scroll's body scroll-lock (`overflow: hidden` + padding compensation,
+ * which reflows the page and can clamp the wrapper's `scrollLeft`) both fit the measurement and both fit
+ * the width dependence. The established fact is the one the guards below rest on: OPENING THE DIALOG
+ * PRODUCES A SCROLL, and this panel closes on any scroll from anywhere, so a dialog it owns is destroyed
+ * by its own opening. Which candidate it is would change nothing about the fix.
  *
  * WHAT THIS FILE GUARDS, and every case is a SOURCE-SHAPE assertion for the reason the sibling payroll
  * guards are: a menu placement is a string, and tsc is indifferent to it.
@@ -31,11 +37,14 @@
  *   E. THE RETURN PATH SURVIVES THE EXTRA HOP. list → screen (`?from=`) → action (posted `from`), so
  *      `payrollListAfterReset` still lands the operator on their own filtered list.
  *   F. The route has a screen column, and the copy resolves in all six catalogues.
+ *   G. A REFUSAL COMES BACK ON THIS SCREEN, translated — the plan's "shows a success or error message"
+ *      half, which used to redirect to the run screen and lose the filter query with it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REGISTERED_ROUTES } from '../lib/permissions';
+import { payrollRunTypeEnum } from '../db/schema';
 
 const ROOT = path.resolve(__dirname, '..');
 /** Source with comments stripped — a comment DESCRIBING a control must never satisfy a guard for it, and
@@ -64,7 +73,7 @@ describe('9f8cd608 · A — the row menu is handed links only', () => {
   it('every element inside the menu is a <Link> — no form, no dialog, no submit button', () => {
     /**
      * THE CASE THAT FAILS IF THE FIX IS REVERTED. A confirmation dialog inside this panel is destroyed by
-     * the same focus-scroll that opens it, and "opened and destroyed" is indistinguishable, from the
+     * the scroll its own opening emits, and "opened and destroyed" is indistinguishable, from the
      * operator's side, from "nothing happened". Asserting the ABSENCE of ConfirmSubmit alone would be
      * satisfied by a plain `<button onClick>` that has the identical problem, so the shape is pinned
      * positively: the only tag the menu may contain is Link.
@@ -237,5 +246,130 @@ describe('9f8cd608 · F — the route is grantable, and the copy resolves', () =
     expect(SCREEN).toContain("{tc('cancel')}");
     const en = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages/en.json'), 'utf8'));
     expect(en.payroll.batch.resetCancel, 'a reset* Cancel twin was minted after all').toBeUndefined();
+  });
+});
+
+/**
+ * G — THE PLAN'S LAST BULLET: "Confirm runs the reset, shows a success or error message, and returns you
+ * to the refreshed list."
+ *
+ * Success was always right (`payrollListAfterReset` → the list, as left, minus a status filter that would
+ * hide the new Draft run). The ERROR half was not: every refusal redirected to `/payroll/<batchId>` — the
+ * long run screen 7076f8af was raised to get operators OFF — which threw away this screen, the message's
+ * context and the filter query in one move. And it is reachable with no race at all: the reason box is
+ * guarded only by HTML `required`, which a single space satisfies, so one space and Reset Payroll reaches
+ * `ResetReasonRequiredError`.
+ *
+ * So a refusal now comes back HERE, exactly as the sibling Remove screen does — and while the refusals
+ * were being counted, `SettingNotEnabledError` turned out to be unmapped: the first thing
+ * `resetProcessedBatch` throws, falling through to `(e as Error).message` and painting the service's raw
+ * English into the banner in all six locales. That is the identical hole test/payroll-remove-i18n.test.ts
+ * was written to close for Remove.
+ */
+describe('9f8cd608 · G — a refusal returns to the screen, translated', () => {
+  const ACTIONS = code('app/payroll/actions.ts');
+  const RUN_SCREEN = code('app/payroll/[batchId]/page.tsx');
+  /** The body of one exported function, up to the next top-level `export`. */
+  const bodyOf = (src: string, decl: string) => {
+    const from = src.indexOf(decl);
+    expect(from, `${decl} not found — has it been renamed?`).toBeGreaterThan(-1);
+    const rest = src.slice(from);
+    const end = rest.indexOf('\nexport ', 1);
+    return end === -1 ? rest : rest.slice(0, end);
+  };
+  const RESET_ACTION = bodyOf(ACTIONS, 'export async function resetAction(');
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  /** `payroll.batch.resetDisabled` → the string in that locale, or undefined. */
+  const message = (loc: string, dotted: string): unknown =>
+    dotted
+      .split('.')
+      .reduce<unknown>(
+        (o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined),
+        JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8')),
+      );
+
+  it('every refusal resetProcessedBatch can raise has a translated line in resetAction', () => {
+    // Derived from the SERVICE's own source (comments stripped, so prose about an error cannot satisfy
+    // this), so a refusal added there without a line here fails immediately rather than reaching an
+    // operator as untranslated English.
+    const service = bodyOf(code('core/payroll.ts'), 'export async function resetProcessedBatch(');
+    const thrown = [...new Set([...service.matchAll(/throw new ([A-Z]\w*)\(/g)].map((m) => m[1]))]
+      .filter((n) => n !== 'Error') // the "batch not found" impossible state — not an operator outcome
+      .sort();
+    // A floor, so a refactor that stops matching cannot make this pass vacuously.
+    expect(thrown.length, `derived too few: ${thrown.join(', ')}`).toBeGreaterThanOrEqual(3);
+    const unmapped = thrown.filter((n) => !RESET_ACTION.includes(`instanceof ${n}`));
+    expect(unmapped, `unmapped in resetAction: ${unmapped.join(', ')}`).toEqual([]);
+    // The fourth one is thrown by a HELPER, not by a `throw new` the regex above can see, so it is named
+    // rather than derived — the honest form of the same check.
+    expect(service).toContain("assertPayrollPermission(tx, ctx, 'payroll.rollback'");
+    expect(RESET_ACTION, 'the permission refusal lost its translated line').toContain(
+      'instanceof PayrollPermissionDeniedError',
+    );
+  });
+
+  it.each([
+    ['resetDisabled', 'SettingNotEnabledError'],
+    ['resetAdminOnly', 'PayrollPermissionDeniedError'],
+    ['resetReasonRequired', 'ResetReasonRequiredError'],
+    ['resetOnlyProcessed', 'BatchNotResettableError'],
+  ])('payroll.batch.%s (for %s) resolves non-empty in all six locales', (key) => {
+    expect(RESET_ACTION, `resetAction no longer renders ${key}`).toContain(`t('${key}')`);
+    for (const loc of LOCALES) {
+      const v = message(loc, `payroll.batch.${key}`);
+      expect(typeof v, `${loc} missing payroll.batch.${key}`).toBe('string');
+      expect((v as string).trim().length, `${loc} blank payroll.batch.${key}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the screen posts the surface flag, and a refusal from it comes back to the screen', () => {
+    expect(SCREEN, 'the reset screen stopped identifying itself to the action').toContain(
+      '<input type="hidden" name="surface" value="reset-screen" />',
+    );
+    expect(RESET_ACTION).toContain("const onResetScreen = formData.get('surface') === 'reset-screen';");
+    expect(RESET_ACTION, 'a refusal no longer returns to the reset screen').toContain(
+      'redirect(`/payroll/${batchId}/reset?${q.toString()}`)',
+    );
+  });
+
+  it('the run screen posts NO flag, so its own refusals still land on the run screen', () => {
+    // The other caller of this action is unchanged, and must stay that way: on the run screen the run is
+    // where the operator already is, and that is where the refusal belongs.
+    const runResetForm = RUN_SCREEN.slice(
+      RUN_SCREEN.indexOf('<form action={resetAction}>'),
+      RUN_SCREEN.indexOf('</form>', RUN_SCREEN.indexOf('<form action={resetAction}>')),
+    );
+    expect(runResetForm.length, 'the run screen no longer posts resetAction').toBeGreaterThan(0);
+    expect(runResetForm, 'the run screen started claiming to be the reset screen').not.toContain('surface');
+    expect(RESET_ACTION, 'the run screen lost its own refusal destination').toContain(
+      'redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`)',
+    );
+  });
+
+  it('the refusal carries the filter query and the typed reason back with it', () => {
+    // `from` is re-whitelisted BY SHAPE and NOT put through payrollListAfterReset: a refused reset leaves
+    // the run processed, so the status filter the operator set must survive verbatim.
+    expect(RESET_ACTION).toContain("const refusalFrom = payrollListReturnTo(formData.get('from'));");
+    expect(RESET_ACTION).toContain("if (refusalFrom !== '/payroll') q.set('from', refusalFrom);");
+    // Length-capped: this rides in a Location header, not a page body.
+    expect(RESET_ACTION).toContain("if (reason && reason.length <= 500) q.set('reason', reason);");
+    // …and the screen actually renders both halves.
+    expect(SCREEN, 'the screen does not show the refusal it was sent').toContain('<ErrorBanner message={sp.error} />');
+    expect(SCREEN, 'the refused reason is not put back in the box').toContain('defaultValue={sp.reason}');
+    expect(SCREEN).toContain('searchParams: Promise<{ from?: string; error?: string; reason?: string }>;');
+  });
+
+  it('the payroll-cycle label is a DYNAMIC lookup, so every enum value it can take is checked', () => {
+    // `tl(`runType.${batch.runType}`)` is a template key: test/i18n-coverage.test.ts skips it by
+    // construction and test/payroll-remove-i18n.test.ts skips it too. Derived from the DB enum so a fifth
+    // run type fails here rather than rendering MISSING_MESSAGE on a destructive confirmation screen.
+    expect(SCREEN).toContain('tl(`runType.${batch.runType}`)');
+    expect(payrollRunTypeEnum.enumValues.length, 'the run-type enum came back empty').toBeGreaterThanOrEqual(4);
+    for (const rt of payrollRunTypeEnum.enumValues) {
+      for (const loc of LOCALES) {
+        const v = message(loc, `payroll.list.runType.${rt}`);
+        expect(typeof v, `${loc} missing payroll.list.runType.${rt}`).toBe('string');
+      }
+    }
   });
 });

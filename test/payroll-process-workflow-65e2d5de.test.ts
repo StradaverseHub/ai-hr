@@ -85,12 +85,14 @@ describe('65e2d5de · A — the Actions column is View plus a menu, and the gate
      * instinct and the wrong conclusion, because the dialog did not survive the move — it only appeared
      * to. ConfirmSubmit portals its BODY to the document but is OWNED by the subtree that renders it, and
      * the subtree here is a `position: fixed` panel that closes on any scroll captured at the window.
-     * Pressing the button focused it, the browser scrolled the table's `overflow-x-auto` wrapper to bring
-     * it into view, the panel closed and the dialog unmounted in the same tick. Measured in Chromium at
-     * 1280×720 against a real processed run: one scroll event on `DIV.overflow-x-auto`, then
-     * `[role=menu]` = 0 and `[role=alertdialog]` = 0 — nothing on screen. At 1600 wide, where that wrapper
-     * needs no scroll, the same click opened the dialog, which is why it read as intermittent. jsdom
-     * computes no layout, so focus produces no scroll and the old shape passed every DOM test.
+     * Opening the dialog emitted a scroll on the table's `overflow-x-auto` wrapper, the panel closed on
+     * it, and the dialog unmounted in the same tick. Measured in Chromium at 1280×720 against a real
+     * processed run: one scroll event on `DIV.overflow-x-auto`, then `[role=menu]` = 0 and
+     * `[role=alertdialog]` = 0 — nothing on screen. At 1600 wide, where that wrapper needs no scroll, the
+     * same click opened the dialog, which is why it read as intermittent. jsdom computes no layout, so
+     * nothing scrolls there and the old shape passed every DOM test. (Which of the dialog's side effects
+     * emits that scroll — the focus move, or react-remove-scroll's body lock reflowing the page — was not
+     * isolated and is not claimed here; the panel closes on any scroll at all, so it makes no difference.)
      *
      * So the confirmation still exists and still collects the reason — on app/payroll/[batchId]/reset,
      * which additionally NAMES the run (the dialog only ever said "this payroll process"). What must not

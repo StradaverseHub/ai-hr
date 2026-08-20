@@ -52,10 +52,17 @@ function staticKeysOf(rel: string): string[] {
   return [...keys].sort();
 }
 
-/** The surfaces this feature added or touched. Each carries at least one `remove*` key. */
+/**
+ * The multi-namespace payroll surfaces Check C is silent on. Most were added or touched by the Remove
+ * feature and carry a `remove*` key; the Reset SCREEN (9f8cd608) is here because it is the same shape and
+ * the same blind spot — three namespaces (`payroll.batch`, `payroll.list`, `common`), eighteen keys, and
+ * Check C skips it for exactly the reason it skips the other five. A guard that only covered the files
+ * whose name happens to contain "remove" would be a coincidence, not a fence.
+ */
 const FILES = [
   'app/payroll/[batchId]/remove/page.tsx',
   'app/payroll/[batchId]/remove/remove-form.tsx',
+  'app/payroll/[batchId]/reset/page.tsx',
   'app/payroll/page.tsx',
   'app/payroll/[batchId]/page.tsx',
   'app/payroll/back.ts',

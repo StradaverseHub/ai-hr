@@ -19,10 +19,13 @@ import { Children, type ReactNode, useEffect, useRef, useState } from 'react';
  * 9f8cd608 — EVERY ITEM IN HERE IS A LINK TO ITS OWN SCREEN, AND THAT IS A RULE, NOT A COINCIDENCE. Reset
  * Payroll used to be handed in as a `<form>` carrying a confirmation dialog. The dialog's body is portalled
  * to the document, but its OWNER is this subtree — so the moment the panel below closed, the dialog
- * unmounted with it. Pressing the button focused it, the browser scrolled the table's `overflow-x-auto`
- * wrapper to bring it into view, the scroll listener below fired, and the dialog was created and destroyed
- * in the same tick: measured in Chromium at 1280×720 as one scroll on `DIV.overflow-x-auto`, zero menus
- * and zero dialogs left on screen. Reset now opens app/payroll/[batchId]/reset like its two siblings, and
+ * unmounted with it. And opening it EMITTED A SCROLL: measured in Chromium at 1280×720 against a real run,
+ * one scroll event on `DIV.overflow-x-auto`, after which zero menus and zero dialogs were left on screen.
+ * The scroll listener below closed the panel, and the dialog was created and destroyed in the same tick.
+ * (Which of the dialog's side effects produces that scroll — the focus move, or react-remove-scroll's body
+ * lock reflowing the page and clamping the wrapper's `scrollLeft` — was not isolated, and does not need to
+ * be: this panel closes on ANY scroll from anywhere, so a dialog it owns is destroyed by its own opening
+ * either way.) Reset now opens app/payroll/[batchId]/reset like its two siblings, and
  * test/payroll-reset-screen-9f8cd608.test.ts asserts the caller hands this island links only, so a
  * confirmation dialog cannot move back inside a panel that closes underneath it.
  *

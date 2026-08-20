@@ -426,8 +426,11 @@ export default async function PayrollPage({
                               and the condition on it is untouched. It used to be a `<form>` carrying a
                               ConfirmSubmit dialog rendered inside the menu; the menu is a `position: fixed`
                               panel that closes on any scroll, the dialog was OWNED by that subtree, and
-                              pressing the button scrolled the table wrapper to focus it — so the dialog was
-                              created and destroyed in the same tick and the operator saw nothing happen.
+                              opening it emitted a scroll on the table's `overflow-x-auto` wrapper — so the
+                              dialog was created and destroyed in the same tick and the operator saw nothing
+                              happen. (Measured in Chromium at 1280×720; which of the dialog's side effects
+                              emits that scroll was not isolated and does not matter — the panel closes on
+                              any scroll at all.)
                               The confirmation, the reason field and the run's own identity now live on
                               app/payroll/[batchId]/reset, which also carries the filter selection through as
                               `from` so a successful reset still lands on this list as it was left. */}
