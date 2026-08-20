@@ -9,8 +9,13 @@ import { setPayrollPermissionGrant, deletePayrollPermissionGrant } from '@/core/
 const ROUTE = '/admin/payroll-permissions';
 
 /**
- * Upsert a granular payroll permission override (feedback 9bc442bc). Admin-only (RLS backstops the write);
- * the service validates the key/role and appends a DomainEvent. Company blank = tenant-wide override.
+ * Upsert a granular permission override (feedback 9bc442bc). Admin-only (RLS backstops the write); the
+ * service validates the key/role and appends a DomainEvent. Company blank = tenant-wide override.
+ *
+ * "payroll" in the names is historical (5206539f): the key set this writes now includes
+ * `leave.apply_on_behalf`, so a row saved here can decide who may file leave for another employee. Nothing
+ * in this file is key-specific — it validates against PAYROLL_PERMISSION_KEYS via the service — so a future
+ * non-payroll key needs no edit here either.
  */
 export async function setPayrollPermissionAction(formData: FormData) {
   const s = await getSession();

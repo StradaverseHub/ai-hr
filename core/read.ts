@@ -1026,9 +1026,15 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
 /**
  * The same gate, answered for SEVERAL employments at once (ad965821) — `{ employmentId: [leaveTypeId…] }`.
  *
- * The on-behalf-of case: a line manager applying for one of their reports picks WHO first, and the leave
- * types on offer must re-draw for that person rather than staying the manager's own. The map is resolved
- * server-side and handed to the client form, so switching employee needs no round trip and no second read.
+ * NO APP CODE CALLS THIS ANY MORE (5206539f) — read the next paragraph before writing one that does.
+ *
+ * It existed for ONE surface: the Leave page's on-behalf-of form, where a line manager picked WHO the leave
+ * was for and the type list had to re-draw for that person rather than staying the manager's own. 5206539f
+ * deleted that surface. Applying on somebody else's behalf is now the named permission
+ * `leave.apply_on_behalf` (lib/payroll-permissions.ts); a line manager holds nothing by virtue of being one,
+ * gets no employee selector at all, and app/leave/page.tsx offers the viewer their OWN eligible types
+ * (`listEligibleLeaveTypesFor`) and builds no union of anything. The function and its tests are kept because
+ * the multi-employment question is real and correct, not because anything is waiting on it.
  *
  * TWO QUERIES, NEVER N+1: one for the catalogue, one `inArray` for every given employment's attribute row,
  * then `mayAppearInApplyMenu` per (type, employment) pair in memory — the SAME predicate the single-employee
@@ -1036,10 +1042,12 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
  * test/leave-ess-eligible-dropdown.test.ts).
  *
  * WHAT THAT SENTENCE DOES NOT SAY, because rev 1 read it as if it did: it is a statement about one
- * employment, not about the manager and the report being alike. The two sets genuinely differ — that is the
- * point of the map — so a caller that hands a form the MANAGER's list and then filters it by this map offers
- * eligible(manager) ∩ eligible(report), which is nobody's answer. The form must be given a superset of every
- * subject it can name (app/leave/page.tsx builds the union) and let this map do the narrowing.
+ * employment, not about two people being alike. The sets for two different employments genuinely differ —
+ * that is the point of the map — so composing this map with somebody's own list offers
+ * eligible(viewer) ∩ eligible(subject), which is nobody's answer. A FUTURE on-behalf surface must therefore
+ * hand its form this map's answer FOR THE SELECTED SUBJECT (or a superset it then narrows), never the
+ * viewer's list filtered by it. There is no such surface today and no union is built anywhere — that
+ * composition is the thing to write from scratch, not to go looking for.
  *
  * AS-OF IS TODAY, NOT THE LEAVE DATE — same caveat as `listEligibleLeaveTypesFor`; see its docblock.
  *

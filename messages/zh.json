@@ -7057,7 +7057,7 @@
         "payrollConfig": "薪资配置",
         "payrollPolicy": "薪资政策",
         "payComponents": "薪资项目",
-        "payrollPermissions": "薪资权限",
+        "payrollPermissions": "薪资与休假权限",
         "leaveEmployeeBalances": "員工結餘",
         "leaveEmployeeRecords": "員工休假記錄"
       },
@@ -7515,10 +7515,10 @@
       }
     },
     "payrollPermissions": {
-      "title": "薪资权限",
-      "subtitle": "细粒度薪资操作（回退、解锁、选择性重新处理、关闭）——可按公司或整个租户配置。",
+      "title": "薪资与休假权限",
+      "subtitle": "针对高风险操作的细粒度权限——薪资处理，以及代其他员工申请休假——可按公司或整个租户配置。",
       "defaultsTitle": "默认权限",
-      "defaultsHint": "以下为内置默认值。在下方添加覆盖规则，可为特定公司或整个租户放宽或收紧某项权限的持有者。",
+      "defaultsHint": "以下为内置默认值。本页面并非仅限薪资——系统强制执行的每一项细粒度权限都列在上方，无论它属于产品的哪一部分。在下方添加覆盖规则，可为特定公司或整个租户放宽或收紧某项权限的持有者。",
       "overridesTitle": "覆盖规则",
       "overridesEmpty": "暂无覆盖规则——采用上述默认值。",
       "addTitle": "添加覆盖规则",

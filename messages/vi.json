@@ -7057,7 +7057,7 @@
         "payrollConfig": "Cấu hình bảng lương",
         "payrollPolicy": "Chính sách bảng lương",
         "payComponents": "Khoản mục lương",
-        "payrollPermissions": "Quyền tính lương",
+        "payrollPermissions": "Quyền tính lương và nghỉ phép",
         "leaveEmployeeBalances": "Số dư của nhân viên",
         "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên"
       },
@@ -7515,10 +7515,10 @@
       }
     },
     "payrollPermissions": {
-      "title": "Quyền tính lương",
-      "subtitle": "Các thao tác tính lương chi tiết (hoàn tác, mở khóa, xử lý lại có chọn lọc, đóng) — có thể cấu hình theo công ty hoặc toàn bộ tổ chức thuê bao.",
+      "title": "Quyền tính lương và nghỉ phép",
+      "subtitle": "Quyền chi tiết cho các thao tác rủi ro cao — xử lý lương, và xin nghỉ phép thay cho nhân viên khác — có thể cấu hình theo công ty hoặc toàn bộ tổ chức thuê bao.",
       "defaultsTitle": "Quyền mặc định",
-      "defaultsHint": "Đây là các mặc định tích hợp sẵn. Thêm quy tắc ghi đè bên dưới để mở rộng hoặc thu hẹp ai nắm giữ một quyền cho một công ty cụ thể hoặc toàn bộ tổ chức thuê bao.",
+      "defaultsHint": "Đây là các mặc định tích hợp sẵn. Màn hình này không chỉ dành cho tính lương — mọi quyền chi tiết mà hệ thống thực thi đều được liệt kê ở trên, thuộc phần nào của sản phẩm cũng vậy. Thêm quy tắc ghi đè bên dưới để mở rộng hoặc thu hẹp ai nắm giữ một quyền cho một công ty cụ thể hoặc toàn bộ tổ chức thuê bao.",
       "overridesTitle": "Ghi đè",
       "overridesEmpty": "Không có ghi đè — áp dụng các mặc định ở trên.",
       "addTitle": "Thêm ghi đè",

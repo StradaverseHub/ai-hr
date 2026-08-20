@@ -296,6 +296,11 @@ export default async function LeavePage({
   // a type the subject does not qualify for is refused rather than filed. Widening the offer per selected
   // subject is the deleted machinery above; if a customer grants this key and needs it back, that is a
   // deliberate re-build with its own ticket, not something to leave standing "just in case".
+  //
+  // THE SAME LIMIT IS WRITTEN WHERE THE KEY IS DECLARED (lib/payroll-permissions.ts), because that is where
+  // an operator decides to grant it — and it bites ONLY once a non-admin role holds it: hr_admin and
+  // super_admin, the two default holders, never reach this dialog at all — the trigger is gated on `ess`,
+  // which is `!admin` (defined below, rendered further down still).
   const requestLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({
     id: lt.id,
     // 5570c6a2 — AN OPTION IS THE LEAVE TYPE'S NAME AND NOTHING ELSE.

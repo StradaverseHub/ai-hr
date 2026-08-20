@@ -7057,7 +7057,7 @@
         "payrollConfig": "Payroll configuration",
         "payrollPolicy": "Payroll policy",
         "payComponents": "Pay Items",
-        "payrollPermissions": "Payroll permissions",
+        "payrollPermissions": "Payroll & leave permissions",
         "leaveEmployeeBalances": "Employee Balances",
         "leaveEmployeeRecords": "Employee Leave Record"
       },
@@ -7515,10 +7515,10 @@
       }
     },
     "payrollPermissions": {
-      "title": "Payroll permissions",
-      "subtitle": "Granular payroll actions (rollback, unlock, selective reprocess, close) — configurable per company or tenant-wide.",
+      "title": "Payroll & leave permissions",
+      "subtitle": "Granular permissions for high-risk actions — payroll runs, and applying for leave on behalf of another employee — configurable per company or tenant-wide.",
       "defaultsTitle": "Default permissions",
-      "defaultsHint": "These are the built-in defaults. Add an override below to widen or narrow who holds a permission for a specific company or tenant-wide.",
+      "defaultsHint": "These are the built-in defaults. This screen is not payroll-only — every granular permission the system enforces is listed above, whichever part of the product it belongs to. Add an override below to widen or narrow who holds a permission for a specific company or tenant-wide.",
       "overridesTitle": "Overrides",
       "overridesEmpty": "No overrides — the defaults above apply.",
       "addTitle": "Add override",

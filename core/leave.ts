@@ -2629,7 +2629,18 @@ export async function requestLeave(
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
     // HR administrator has always passed.
     const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
-    if (!isSelfSubject && !(await resolveApplyOnBehalfTx(tx, ctx, subject?.companyId ?? null))) {
+    // AN EMPLOYMENT THE CALLER CANNOT SEE IS REFUSED HERE, not thirty gates later by a policy violation. The
+    // select above runs under the caller's own RLS, so `subject` is undefined for an employment outside their
+    // scope — a company-scoped hr_admin naming another company's employee, say — and for one that does not
+    // exist at all. Both used to fall through: `companyId ?? null` judged the permission against tenant-wide
+    // overrides only, the holder passed, and the request was costed, counted and validated before the final
+    // INSERT tripped `app.can_see_employment` and threw a raw Postgres error no locale owns. Refusing now
+    // makes the paragraph above true (nothing is read or written for someone the caller may not act for),
+    // gives the screen the same translated sentence it gives a line manager, and stops the two outcomes
+    // being distinguishable — "not visible" and "does not exist" are one answer, so this is no existence
+    // oracle. Note the knock-on: `subject.companyId` below is now the REAL company, never a null stand-in,
+    // so a company-scoped grant is resolved in the company the leave is actually being filed in.
+    if (!isSelfSubject && !(subject && (await resolveApplyOnBehalfTx(tx, ctx, subject.companyId)))) {
       throw new LeaveOnBehalfNotAllowedError();
     }
 

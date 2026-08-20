@@ -9,9 +9,20 @@ import { setPayrollPermissionAction, deletePayrollPermissionAction } from './act
 const ROLES = ['employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner'] as const;
 
 /**
- * Granular payroll permissions admin (feedback 9bc442bc, reporter expected_function: "configurable per
- * company/tenant"). Shows the four permission keys' code defaults and lets an admin add per-company or
- * tenant-wide overrides that the kernel resolver honours (company override > tenant override > default).
+ * Granular permissions admin (feedback 9bc442bc, reporter expected_function: "configurable per
+ * company/tenant"). Shows EVERY key in PAYROLL_PERMISSION_KEYS with its code default, and lets an admin add
+ * per-company or tenant-wide overrides that the kernel resolver honours (company override > tenant override
+ * > default).
+ *
+ * IT IS NOT A PAYROLL SCREEN ANY MORE (5206539f), whatever its route and its identifiers say. The tuple it
+ * renders gained `leave.apply_on_behalf` — the permission to submit leave for another employee, enforced in
+ * core/leave.ts requestLeave — and THIS PAGE IS THE ONLY PLACE IT CAN BE GRANTED. Nothing here needed a code
+ * change to pick that up: the table, the <select> and the defaults panel are all driven off the tuple, and
+ * `payroll_permission_grant.permission_key` is plain text with no enum and no foreign key. What DID need
+ * changing is the wording — the heading and the defaults hint now say the screen covers more than payroll,
+ * because an operator told "grant leave.apply_on_behalf" has otherwise no reason to open a page called
+ * Payroll permissions. Renaming the route, the module and the table is its own ticket and its own migration;
+ * see the note at the key's declaration in lib/payroll-permissions.ts before writing one.
  */
 export default async function PayrollPermissionsPage({
   searchParams,

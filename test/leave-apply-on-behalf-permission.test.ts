@@ -24,7 +24,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError } from '../core/leave';
-import { reportingLinesFor } from '../core/read';
+import { listEmployees, reportingLinesFor } from '../core/read';
 import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS } from '../lib/payroll-permissions';
 import type { SessionContext } from '../db/client';
 import { readFileSync } from 'node:fs';
@@ -224,6 +224,124 @@ describe('requestLeave — the on-behalf gate', () => {
   });
 });
 
+/**
+ * A SECOND COMPANY in the same tenant, with a department of its own so employees can be hired into it.
+ * Nothing here is group-hierarchy: `is_company_descendant` is not exercised, so the two companies are
+ * genuinely separate scopes.
+ */
+async function otherCompany(): Promise<{ companyId: string; deptId: string }> {
+  const [c] = await owner.db
+    .insert(schema.company)
+    .values({ tenantId: b.tenantId, legalName: uniq('Beta Sdn Bhd') })
+    .returning({ id: schema.company.id });
+  const [d] = await owner.db
+    .insert(schema.department)
+    .values({ tenantId: b.tenantId, companyId: c.id, name: uniq('Ops') })
+    .returning({ id: schema.department.id });
+  return { companyId: c.id, deptId: d.id };
+}
+
+async function hireInto(companyId: string, departmentId: string) {
+  const { employmentId, personId } = await hireEmployee(adminCtx(b), {
+    person: { fullName: uniq('P'), primaryEmail: `${randomUUID().slice(0, 8)}@t.local` },
+    companyId,
+    departmentId,
+    employmentType: 'full_time',
+    hiredOn: '2020-01-01',
+  });
+  return { employmentId, personId };
+}
+
+/**
+ * An hr_admin whose role_assignment names ONE company — a group's per-company HR administrator, which is
+ * what `app.has_role_for(role, company)` exists for. `createAppUser` only ever mints tenant-wide grants, so
+ * this is built by hand: the whole point of the pair of tests below is a holder whose scope has an edge.
+ */
+async function companyScopedAdmin(companyId: string, departmentId: string) {
+  const { employmentId, personId } = await hireInto(companyId, departmentId);
+  const [u] = await owner.db
+    .insert(schema.appUser)
+    .values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId })
+    .returning({ id: schema.appUser.id });
+  await owner.db
+    .insert(schema.roleAssignment)
+    .values({ tenantId: b.tenantId, appUserId: u.id, companyId, role: 'hr_admin' });
+  const ctx: SessionContext = {
+    tenantId: b.tenantId,
+    userId: u.id,
+    personId,
+    roles: ['hr_admin'],
+    grants: [{ role: 'hr_admin', companyId }],
+  };
+  return { employmentId, personId, ctx };
+}
+
+/**
+ * THE PLAN'S THIRD GUARD: a permission holder is accepted for anyone IN SCOPE and refused OUTSIDE it.
+ *
+ * "Scope" is the holder's own VISIBILITY scope, not the reach of the grant row — the company-scoped GRANT is
+ * covered above. For a group's per-company HR administrator the two tests below are the two sides of one
+ * edge: `app.can_see_employment` consults `app.is_admin_for(company_id)`, so an hr_admin granted for Acme
+ * sees every Acme employment and no Beta one. That is also exactly the list the Leave screen's Employee
+ * selector is built from (`listEmployees(session, scopeIds)`), which is why it is the boundary worth pinning:
+ * the screen draws it, and a hand-crafted post ignores it.
+ */
+describe('a HOLDER — accepted for anyone IN SCOPE, refused OUTSIDE it', () => {
+  it('files for a STRANGER in scope, with NO reporting line anywhere in the tenant', async () => {
+    const typeId = await leaveType();
+    const holder = await companyScopedAdmin(b.companyId, b.deptA);
+    const stranger = await hireInto(b.companyId, b.deptB);
+
+    // THE ORG CHART IS EMPTY — asserted, not assumed. Under the rule this item replaced (`does anyone report
+    // to you`) this holder could not have filed for a soul; under the new one the permission carries, and it
+    // carries to everyone in scope rather than to a list of reports. The two halves of the reporter's
+    // complaint — a manager who should not have it, and a list that was never the reports — meet here.
+    const lines = await owner.db
+      .select({ id: schema.reportingLine.id })
+      .from(schema.reportingLine)
+      .where(eq(schema.reportingLine.tenantId, b.tenantId));
+    expect(lines).toEqual([]);
+    expect(await canApplyLeaveOnBehalf(holder.ctx, b.companyId)).toBe(true);
+
+    // In scope in the sense the screen means it: the selector's own source lists this person.
+    const visible = await listEmployees(holder.ctx);
+    expect(visible.map((e) => e.employmentId)).toContain(stranger.employmentId);
+
+    await requestLeave(holder.ctx, {
+      employmentId: stranger.employmentId,
+      leaveTypeId: typeId,
+      startDate: START,
+      endDate: END,
+    });
+    expect(await requestCount(stranger.employmentId)).toBe(1);
+  });
+
+  it('is REFUSED for an employment OUTSIDE its scope — typed, and nothing written', async () => {
+    const typeId = await leaveType();
+    const beta = await otherCompany();
+    const holder = await companyScopedAdmin(b.companyId, b.deptA);
+    const outsider = await hireInto(beta.companyId, beta.deptId);
+
+    // Out of scope, again in the screen's own terms: this employment is not in the holder's employee list,
+    // so no selector could have offered it and only a hand-crafted post can name it.
+    const visible = await listEmployees(holder.ctx);
+    expect(visible.map((e) => e.employmentId)).not.toContain(outsider.employmentId);
+
+    const err = await requestLeave(holder.ctx, {
+      employmentId: outsider.employmentId,
+      leaveTypeId: typeId,
+      startDate: START,
+      endDate: END,
+    }).catch((e: unknown) => e);
+    // TYPED, like every other refusal on this path. RLS would have blocked the INSERT at the end of a long
+    // function anyway, but as a raw policy violation: a message no locale owns, thrown after the request has
+    // been costed against an employment the caller may not act for. The gate answers first and answers the
+    // same way it answers a line manager.
+    expect(err).toBeInstanceOf(LeaveOnBehalfNotAllowedError);
+    expect(await requestCount(outsider.employmentId)).toBe(0);
+  });
+});
+
 describe('leave.apply_on_behalf — the key itself', () => {
   it('exists, and defaults to the HR roles only', () => {
     expect(PAYROLL_PERMISSION_KEYS).toContain('leave.apply_on_behalf');
@@ -242,6 +360,33 @@ describe('leave.apply_on_behalf — the key itself', () => {
     const table = schemaSrc.slice(schemaSrc.indexOf("export const payrollPermissionGrant = pgTable("));
     const body = table.slice(0, table.indexOf('\n);'));
     expect(body).toContain("permissionKey: text('permission_key').notNull(),");
+  });
+});
+
+describe('the key is grantable, and the screen that grants it says so', () => {
+  it('the ONE screen that can hand this key to a role names leave in its own heading', () => {
+    // app/admin/payroll-permissions is the only surface that writes payroll_permission_grant rows, so it is
+    // the only place `leave.apply_on_behalf` can be granted. Its route, its module and its table all still
+    // say "payroll" — renaming them is a migration and its own ticket — which leaves the WORDING as the only
+    // thing telling an operator sent to grant a LEAVE permission that they are on the right page.
+    const page = read('app/admin/payroll-permissions/page.tsx');
+    expect(page, 'the admin screen no longer mentions the key it grants').toContain('leave.apply_on_behalf');
+    const en = JSON.parse(read('messages/en.json')) as {
+      admin: { payrollPermissions: { title: string; subtitle: string } };
+    };
+    const { title, subtitle } = en.admin.payrollPermissions;
+    expect(title.toLowerCase(), 'the heading is payroll-only again').toContain('leave');
+    expect(subtitle.toLowerCase(), 'the subtitle is payroll-only again').toContain('leave');
+  });
+
+  it('the limits a grant carries are recorded AT THE GRANT, not in a build report', () => {
+    // Granting this key to a non-admin role works — requestLeave honours it everywhere — but the Leave
+    // screen offers the HOLDER's own leave types for whoever they pick, and gives a holder who qualifies
+    // for nothing no trigger at all. Neither bites at the shipped defaults (hr_admin / super_admin never
+    // open that dialog), so the only moment anyone can act on them is when deciding to grant.
+    const src = read('lib/payroll-permissions.ts').toLowerCase();
+    expect(src, 'the grant-time limits left the declaration').toContain('before granting it to a non-admin role');
+    expect(src).toContain("the leave types on offer are the holder's own");
   });
 });
 

@@ -43,8 +43,32 @@ export const PAYROLL_PERMISSION_KEYS = [
   // THE COST, STATED PLAINLY: the override table this resolves against is named `payroll_permission_grant`,
   // and with a leave key stored in it that name is now a MISNOMER. It is plain text with no enum and no
   // foreign key (db/schema.ts), so it stores this key correctly today and NO migration was needed. Renaming
-  // the table (and this module, and the admin screen's heading) is its own ticket and its own migration —
-  // deliberately not smuggled into a permission fix.
+  // the table (and this module) is its own ticket and its own migration — deliberately not smuggled into a
+  // permission fix. The admin screen that grants it (app/admin/payroll-permissions) says out loud that it is
+  // not payroll-only, so an operator looking for a LEAVE permission has some reason to open it.
+  //
+  // ── READ THIS BEFORE GRANTING IT TO A NON-ADMIN ROLE ──────────────────────────────────────────────────
+  // The key is honoured EVERYWHERE — core/leave.ts requestLeave refuses any on-behalf submission without it,
+  // whatever screen or script sent it — but the SCREEN that offers the power was only ever finished for the
+  // roles that hold it by default, and those roles never open it. app/leave/page.tsx renders the Request
+  // Leave dialog for `ess = !isAdmin(session)` only, so an hr_admin / super_admin never sees the dialog at
+  // all (they file leave from the HR screens). Grant this key to any OTHER role and that role does see it,
+  // with two limits nobody would guess from the grant:
+  //
+  //   · THE LEAVE TYPES ON OFFER ARE THE HOLDER'S OWN, not the selected employee's. `requestLeaveTypeOptions`
+  //     is built from listEligibleLeaveTypesFor(me), so a male holder picking a female report finds Maternity
+  //     simply ABSENT from the list, and a holder outside a type's service/probation window cannot file that
+  //     type for anyone. Nothing is mis-filed — requestLeave still runs assertEligible against the SUBJECT —
+  //     the offer is just narrower than the subject's real entitlement.
+  //   · A HOLDER WHO QUALIFIES FOR NOTHING THEMSELVES GETS NO TRIGGER. The "+ Request Leave" button is gated
+  //     on `requestLeaveTypeOptions.length > 0`, so a holder with an empty own eligible set (a fresh hire
+  //     inside every minServiceMonths, say) has no way in even for someone else.
+  //
+  // Both fall out of ONE decision: 5206539f deleted the per-subject type narrowing rather than adapting it,
+  // because it existed to serve a line-manager selector the reporter asked to remove entirely. Making the
+  // offer re-draw for the selected employee means rebuilding it — core/read.ts `eligibleLeaveTypeIdsFor` is
+  // the (still correct, currently uncalled) read that answers it. That is a deliberate ticket with its own
+  // UI, not a line to add here.
   'leave.apply_on_behalf',
 ] as const;
 
@@ -68,7 +92,9 @@ export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly 
   // exactly the allow-list adminCancelLeave enforces in code (isAdmin ⇒ hr_admin | super_admin) for the
   // cancel-on-behalf power, so submitting and cancelling on an employee's behalf default to the same hands.
   // A line manager is deliberately ABSENT: nothing widens on the day this ships, and a customer who wants a
-  // particular manager (or every manager in one company) to file on behalf grants the key to their role.
+  // particular manager (or every manager in one company) to file on behalf grants the key to their role —
+  // after reading the two shipped limits recorded against the key above, which bite ONLY once a non-admin
+  // role holds it.
   'leave.apply_on_behalf': ['hr_admin', 'super_admin'],
 } as const;
 

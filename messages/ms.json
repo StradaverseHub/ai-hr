@@ -7057,7 +7057,7 @@
         "payrollConfig": "Konfigurasi gaji",
         "payrollPolicy": "Dasar gaji",
         "payComponents": "Item Gaji",
-        "payrollPermissions": "Kebenaran gaji",
+        "payrollPermissions": "Kebenaran gaji & cuti",
         "leaveEmployeeBalances": "Baki Pekerja",
         "leaveEmployeeRecords": "Rekod Cuti Pekerja"
       },
@@ -7515,10 +7515,10 @@
       }
     },
     "payrollPermissions": {
-      "title": "Kebenaran gaji",
-      "subtitle": "Tindakan gaji terperinci (pemulihan, buka kunci, proses semula terpilih, tutup) — boleh dikonfigurasi mengikut syarikat atau seluruh penyewa.",
+      "title": "Kebenaran gaji & cuti",
+      "subtitle": "Kebenaran terperinci bagi tindakan berisiko tinggi — pemprosesan gaji, dan memohon cuti bagi pihak pekerja lain — boleh dikonfigurasi mengikut syarikat atau seluruh penyewa.",
       "defaultsTitle": "Kebenaran lalai",
-      "defaultsHint": "Ini ialah lalai terbina dalam. Tambah pengatasan di bawah untuk meluaskan atau menyempitkan siapa yang memegang kebenaran bagi syarikat tertentu atau seluruh penyewa.",
+      "defaultsHint": "Ini ialah lalai terbina dalam. Skrin ini bukan untuk gaji sahaja — setiap kebenaran terperinci yang dikuatkuasakan sistem disenaraikan di atas, tidak kira bahagian produk mana ia milik. Tambah pengatasan di bawah untuk meluaskan atau menyempitkan siapa yang memegang kebenaran bagi syarikat tertentu atau seluruh penyewa.",
       "overridesTitle": "Pengatasan",
       "overridesEmpty": "Tiada pengatasan — lalai di atas digunakan.",
       "addTitle": "Tambah pengatasan",
