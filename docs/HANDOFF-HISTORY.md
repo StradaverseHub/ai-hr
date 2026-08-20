@@ -1,3 +1,60 @@
+## r210 (2026-08-20) — SIX ITEMS, ONE MEASURED EPF REVERSAL, AND A VERIFY PASS THAT PAID FOR ITSELF AGAIN
+
+`1aa0c3a2`. Six approved items built as six workstreams, each adversarially verified, then ONE delegated
+fix pass for the three with no money in them while the parent hand-fixed the other three (AGENTS 23b).
+No migration. 52 files, +5,749/−686 over 21 commits. Final gate: 726 declared / 726 counted / every chunk
+exit=0 / 0 AssertionErrors at CHUNKS=5; `next build` clean; six changed screens rendered on a dev server
+with 0 `MISSING_MESSAGE`.
+
+Shipped: `bdf7d248` EPF combined-month · `cc74dcb2` KWSP Borang A upload file · `5a29686c` Individual
+Payslip selection · `9f8cd608` Reset Payroll screen · `7ad37961` TP1 full width · `0c367864` delete
+entitlement tables and eligibility rules.
+
+**DECISIONS — the part the diff cannot reconstruct.**
+
+- **The EPF rule was REVERSED on the customer's figures, not on a source document.** Malaysia's Third
+  Schedule is now read ONCE on the month's normal wage plus additional remuneration combined, instead of
+  banding the salary and adding a straight percentage of the bonus. The reporter demanded 176/192 twice;
+  that is exactly `epf(9063.71,0) − epf(7413,0)`. `docs/architecture/STATUTORY-SOURCES.md` recorded the
+  OLD reading inside a section headed as verified — it now says plainly that the line is the customer's
+  approved reading and has NOT been re-verified against LHDN/KWSP since. If anyone ever produces the
+  source document, that is the line to check.
+- **The RM5,000 employer step is a KNOWN, PINNED divergence, not an oversight.** See CURRENT STATE.
+- **A bonus-only month moved too** (182/215 → 183/216 on RM1,650.71): right under the approved rule,
+  outside the case the reporter measured, so it is pinned rather than left to be discovered.
+- **`multicycle.ts` STAYS UNWIRED.** Two rounds have now proposed wiring it as the EPF fix. It is a
+  duplicate of the kernel's own increment method and produces the same wrong figures; ADR-0024 §5 stands.
+- **The Borang A file's field map came from a REAL KWSP file this time.** Item 3aae0789's map was
+  reverse-engineered without a sample and put wages where the employer's contribution belongs. The
+  sample is now a committed fixture and the golden asserts byte-for-byte equality with it.
+- **The trailer control total is DERIVED but its field is read NARROW (12-zero filler + 9 digits).** The
+  sample cannot settle 21-wide against 12+9 — its own hash fits in nine digits either way. Two pieces of
+  evidence chose it: the 00 record ends in exactly that shape, and 3aae0789's independent transcription
+  said so. A sum that will not fit writes ZEROS (never a truncation, never a refusal — a 46-employee
+  employer must still be able to file) and the validation report says it happened.
+- **The entitlement grant-blocker was DEFERRED OFF the page render, against the finding's first
+  suggestion.** `leave_ledger`'s RLS calls `can_see_employment` (SECURITY DEFINER, two recursive walks)
+  per ROW before any filter, so the pre-computed blocker measured 1.7s at 50k ledger rows and 7s at 200k
+  on two admin pages that read no ledger at all before. Delete is offered and the refusal explains; an
+  index would not have fixed it because the cost is the function, not the scan.
+- **YTD on Individual Payslip is fenced on `scopeIds`, NOT the selected company.** Filling the Company
+  box in — the point of the item — made the screen's own button post a companyId that a panel click does
+  not, so the same visible selection printed two different year figures for a transferred employee and
+  disagreed with the PDF beside it. The selection chooses which payslip; it does not redefine the column.
+
+**PROCESS — what the verify pass caught that a green gate would have shipped:** 2 blockers and 4 majors,
+nearly all introduced by the builds. A golden asserting the very rule the round reversed (the branch was
+NOT test-green and the builder did not know); a Borang A mapping that could be transposed with all 214
+tests staying green; a YTD that halved on a no-op form submit. The fix that closed the mapping hole was
+to DELETE THE DUPLICATION (one `borangAFileEmployeesFrom`, driven by the golden) rather than add a test
+beside it.
+
+**AND THE GATE'S ONE RED FILE WAS A GUARD MEASURING A CHARACTER COUNT.** `statutory-explain` asserted
+`/payroll/transaction-view` sat within a fixed 12,000 characters of the payroll `screenKey`; the block is
+15,460 and this round's Reset screen pushed it to 12,767. Every entry was present and correctly attached.
+Fixed by slicing to the NEXT `screenKey` — the question it was really asking. Look for the other magic
+windows before one of them costs a round.
+
 ## r201–r204 (2026-08-18/19) — SIX ITEMS SHIPPED IN FOUR RELEASES, AND THE LOOP LEARNED WHEN TO STOP
 
 `df29af37` (`16f2aac1` Borang 8A) · `eb9a2e2f` (`cc9f9420` EPF Borang A, `5570c6a2`, `464b58e6`) ·

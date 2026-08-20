@@ -18,24 +18,28 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-20 (r195–r209 SHIPPED · NOTHING IN FLIGHT · r210 PLANNING ROUND DONE)
+## CURRENT STATE — snapshot 2026-08-20 (r195–r210 SHIPPED · NOTHING IN FLIGHT · 3 ITEMS WAITING)
 
-**`main@ef343c93` IS WHAT RUNS ON PRODUCTION (r209, 2026-08-20)** — verified by an
-`rsync -azi --delete --dry-run` from **mainwt** reporting ZERO differences, not by `deploy.sh`
-succeeding, which is not proof. Service active, `GET localhost:3000/` → 401.
+**`main@1aa0c3a2` IS WHAT RUNS ON PRODUCTION (r210, 2026-08-20)** — verified by an
+`rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
+Service active, `GET localhost:3000/` → 401 ON THE BOX.
+**THE DRY RUN IS NOT LITERALLY ZERO AND THAT IS EXPECTED — know the two entries before you panic:**
+`deploy-r210.log` (the deploy's own log on the box, not in the repo, so `--delete` wants it gone) and
+`next-env.d.ts` (UNTRACKED and generated — a tree that has run `pnpm dev` says `.next/dev/types/…`,
+production says `.next/types/…`, and each side is correct for its own build mode). Anything ELSE in that
+dry run is an undeployed release.
+**r210 ADDED NO MIGRATION** — six items, 52 files, +5,749/−686, all behaviour and screens.
 **Production is on 365 migrations** — r209 added `0448` `tp1_status_values` and `0449` `tp1_approval`
 (the reissue of the dead `0444`/`0445`), both verified present on the live schema
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after the r210 PLANNING round (2026-08-20): `deployed = 714` · `cancelled = 14` ·
-`planned = 7` · `approved = 1` · open and contested ZERO.** The board emptied after r209 and refilled
-the same day. EIGHT plans were written and pushed this round — three re-plans of contested items
-(`bdf7d248` EPF rev 3, `7ad37961` TP1 rev 3, `5a29686c` payslip rev 2) and five first plans
-(`9f8cd608` Reset payroll, `cc74dcb2` KWSP Borang A file, `8ebf77ae` leave eligibility explain,
-`5206539f` leave on-behalf permission, `0c367864` delete entitlement tables/rules). Mockups ride with
-`7ad37961`, `5a29686c` and `9f8cd608` (sources in `docs/mockups/*-r210.html`).
-**`bdf7d248` IS ALREADY APPROVED and is the one buildable item.** NOTHING HAS BEEN BUILT.
+**Board after r210 (2026-08-20): `deployed = 720` · `cancelled = 14` · `contested = 2` · `open = 1` ·
+planned and approved ZERO.** r210 SHIPPED SIX: `bdf7d248` EPF · `cc74dcb2` KWSP Borang A file ·
+`5a29686c` Individual Payslip selection · `9f8cd608` Reset Payroll screen · `7ad37961` TP1 full width ·
+`0c367864` delete entitlement tables/rules. Two of the eight r210 plans were never approved and have now
+been CONTESTED, and one new item arrived — see START HERE. Mockup sources live in
+`docs/mockups/*-r210.html`.
 
 ⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
 be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
@@ -91,21 +95,46 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**PICK UP `bdf7d248` (EPF) — IT IS APPROVED AND PLANNED, AND THE PLAN IS THE SPEC.** `improve:pull`
-returns nothing (no open, no contested); seven items sit `planned` awaiting the reporter. The r210 plans
-carry the whole diagnosis in their BUILD NOTES — read the plan before re-deriving anything.
+**THREE ITEMS ARE WAITING, AND NONE IS A BUILD YET — ALL THREE NEED A PLAN.** `improve:pull` returns
+them; `improve:pull-approved` returns nothing.
 
-⚠️ **THE r207 EPF DIAGNOSIS WAS WRONG AND THE r210 PLAN CORRECTS IT.** "`localization/my/multicycle.ts`
-is unwired, wire it" is NOT the fix: `core/payroll.ts` ALREADY runs the increment method
-(`earlierRunByEmp` ~3741 + `deltaStat` ~413), which is why the live bonus run shows employer 199 (12%)
-and not 215 (13%). `computeMonthlyRuns` delegates to `statutory()` and reproduces 182/199 exactly —
-wiring it would have shipped ZERO change. The defect is in `epf()` (localization/my/payroll.ts): it
-takes the Third Schedule band on the NORMAL wage and then adds a straight percentage of the bonus.
-Measured on A0001 / 2026-01: `epf(7413, 1650.71)` = 1007/1099 (today) · `epf(9063.71, 0)` = 1001/1092
-(month as one lookup) · `epf(7413,0)` = 825/900, so the bonus increment is **176/192 — exactly the
-figures the reporter demanded**. One rule: the schedule lookup takes normal + additional combined.
-Watch the `epfOnBonus` → `pcbMonth` `epfOnAdditional`/Kt leg, the non-citizen flat path, and the
-`epfWageExcluded` carve-outs (all named in the plan).
+  - **`5206539f` (leave on-behalf) — CONTESTED, and the reporter chose the alternative the plan named.**
+    The r210 plan said: line managers keep a narrowed on-behalf selector, "and if you would rather line
+    managers had no ability to apply on anyone's behalf at all, reject this plan and say so". They did
+    exactly that. Re-plan is the SAME work with the manager case switched off: the selector appears only
+    for a holder of an explicit apply-on-behalf permission, and the server-side gate (which is the real
+    fix — `requestLeaveAction` still takes any posted `employmentId` on trust) is unchanged in substance.
+  - **`8ebf77ae` (leave eligibility) — CONTESTED with a PRODUCT question, not a defect report:** "I
+    already have eligibility criteria configured within each Leave Type … why is a separate Employee
+    Eligibility rule required under the Entitlement Table? … I would like to avoid duplicating the same
+    eligibility conditions in two different places." ANSWER IT BEFORE PLANNING ANYTHING — go and read
+    what the Leave Type's own eligibility fields actually drive (whether the type is offered/appliable)
+    versus what `entitlement_eligibility_rule` drives (which TABLE resolves, `buildTemplateEntitlementResolver`).
+    If they genuinely overlap, the honest plan may be to collapse one into the other rather than to
+    explain the duplication away.
+  - **`c1b14600` (NEW, open) — Replacement Leave in Lieu request + approval workflow.** Employees cannot
+    submit an in-lieu request today; it wants a pending entitlement, line-manager approval, then a banked
+    credit with its own approval date, expiry and remaining balance. Check `replacementLeaveLedger` /
+    `submitReplacementLeaveRequestAction` / `decideReplacementLeaveRequestAction` first — parts of this
+    already exist and the ticket may be narrower than it reads.
+
+⚠️ **THE r207 EPF DIAGNOSIS WAS WRONG; r210 FIXED THE REAL ONE. DO NOT RE-LITIGATE IT.**
+"`localization/my/multicycle.ts` is unwired, wire it" was NEVER the fix — `core/payroll.ts` already ran
+the increment method (`earlierRunByEmp` ~3741 + `deltaStat` ~413). The defect was in `epf()`
+(localization/my/payroll.ts): it banded the NORMAL wage and added a straight percentage of the bonus.
+r210 makes the Third Schedule lookup take normal + additional COMBINED, so A0001's January bonus run
+went 182/199 → **176/192, the figures the reporter demanded twice**. `multicycle.ts` is STILL not wired
+into the kernel and ADR-0024 §5 still gates it.
+
+⚠️ **THE ONE CORNER WHERE r210's EPF PROMISE DOES NOT HOLD, and the reporter has NOT been told yet.**
+The plan promised, in plain words, that two runs in a month equal one run. Across the RM5,000 employer
+step the published table steps DOWN (13%→12%), so a small bonus can make the month's combined figure
+SMALLER than the regular run already contributed; `deltaStat` clamps the negative delta to 0, the bonus
+payslip prints employer EPF 0.00, and the month sits up to **RM38** over the table figure. RM5,000 + RM50
+= 650 + 0 against a one-batch 612. Pinned in `test/epf-combined-month-bdf7d248.test.ts`
+(`twoRuns - oneRun === 38`). Nobody is short-paid — the excess is in the employee's own EPF account —
+and closing it needs a negative EPF line, i.e. the reversals ADR (§6), not a code change.
+**RAISE IT TO THE REPORTER as a CLAUDE AI board item rather than leaving it in a test.**
 
 **PROVE THE DEPLOY CLAIM INDEPENDENTLY** rather than trusting the line above: `git for-each-ref
 refs/heads/build` plus a dry-run rsync FROM mainwt. **"Nothing in flight" is a claim about BRANCHES and
