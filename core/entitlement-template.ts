@@ -55,6 +55,15 @@
  * and it is not fixable inside this item — it needs those columns to become dated facts. It is surfaced
  * by `UNDATED_ELIGIBILITY_AXES` below so a screen can say so instead of implying precision it lacks.
  *
+ * ── r212 · AND THE SAME ARGUMENT APPLIES TO EXPLAINING A "NO" ────────────────────────────────────────
+ * `explainEntitlementEligibility` below answers the reporter's original question — WHICH rules exist, which
+ * are in force, and what about THIS employee did not match — and it is written under the rule this header
+ * has carried since release one. It re-implements nothing: the winner comes from
+ * `resolveEntitlementForEmployment`, `soleTableApplies` is the engine's own `viaSoleTemplate`, whether a
+ * rule matched is the SAME `resolveOrgCriteriaTargets` call the resolver makes, and the failing AXIS is
+ * found by asking that same resolver a ONE-AXIS SUBSET of the same criteria object. An explanation computed
+ * by a second comparison would eventually disagree with the decision, which is worse than no explanation.
+ *
  * ── r210 · WHAT THE LEDGER DOES NOT RECORD, AND WHAT THAT COSTS THE DELETE GUARD ──────────────────────
  * `leave_ledger` records employment, leave type, entry type, days and effective date. IT CARRIES NO
  * REFERENCE TO THE ENTITLEMENT TABLE OR THE ELIGIBILITY RULE THAT PRODUCED A ROW, and neither does

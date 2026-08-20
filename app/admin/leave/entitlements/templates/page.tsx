@@ -32,9 +32,10 @@ import { EligibilityExplainPanel } from './eligibility-explain';
  * two create forms writing the same effective-dated lineage would drift the first time either was touched,
  * and both would still save.
  *
- * SERVER COMPONENT. Everything interactive is in the two client components inside the block, which receive
- * only serialisable props — r123 took a production tab down by handing a translator closure across that
- * boundary and `test/server-client-boundary.test.ts` pins the class.
+ * SERVER COMPONENT, and so is r212's explain panel below it — its search, its pickers and its links are a
+ * plain GET form, so nothing new crosses a boundary. The only client components on this screen remain the
+ * two inside the block, which receive only serialisable props: r123 took a production tab down by handing a
+ * translator closure across that boundary and `test/server-client-boundary.test.ts` pins the class.
  */
 export default async function EntitlementTemplatesPage({
   searchParams,
