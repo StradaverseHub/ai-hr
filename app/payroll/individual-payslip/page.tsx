@@ -357,28 +357,30 @@ export default async function IndividualPayslipPage({
   });
   const selRun = sel.runType != null && sel.runSeq != null ? runOptionValue(sel.runType, sel.runSeq) : '';
 
-  // Each list is narrowed by the levels ABOVE it and by nothing below — Company by nothing, Year by the
-  // company showing, Month by that year, the run by that month. Narrowing every list by the other three
-  // reads as the tighter rule and strands whole companies behind it; ./period-options.ts note 1 has the
-  // worked example.
-  //
   // WHAT EACH BOX DISPLAYS: the resolved payslip's own value, falling back to the guarded query when
-  // nothing resolved (a tampered company, or an employee who has never been paid). r209's rule 2 in both
-  // directions — the control and what was applied always agree, and the value on show is always one of
-  // the options, so no <select> can silently display a different one.
+  // nothing resolved (a company this employee was never paid by, or an employee who has never been paid).
+  // r209's rule 2 in both directions — the control and what was applied always agree, and the value on
+  // show is always one of the options, so no <select> can silently display a different one.
   const showCompanyId = sel.companyId ?? companyId ?? '';
   const showYear = sel.year ?? year;
   const showMonth = sel.month ?? month;
   const showRun = selRun || (cycle ? (cycleRunSeq != null ? runOptionValue(cycle, cycleRunSeq) : cycle) : '');
-  const companyChoices = new Set(payslipCompanyIds(runs, showCompanyId || undefined));
+
+  // …AND WHAT EACH BOX OFFERS. Every list is narrowed by the levels ABOVE it and by nothing below —
+  // Company by nothing, Year by the company showing, Month by that year, the run by that month. Narrowing
+  // every list by the other three reads as the tighter rule and strands whole companies behind it;
+  // ./period-options.ts note 1 has the worked example. All four are fed the SHOWN values, so the box and
+  // its own options can never be derived from different selections.
+  const shown = { companyId: showCompanyId || undefined, year: showYear, month: showMonth };
+  const companyChoices = new Set(payslipCompanyIds(runs, shown.companyId));
   const companyOptions = scopedCompanies.filter((c) => companyChoices.has(c.id));
   const { years, months } = payslipPeriodOptionsFor(
     employmentId != null,
-    runs.filter((r) => showCompanyId === '' || r.companyId === showCompanyId).map((r) => r.payPeriod),
-    { year: showYear, month: showMonth },
+    runs.filter((r) => shown.companyId == null || r.companyId === shown.companyId).map((r) => r.payPeriod),
+    shown,
     new Date().getFullYear(),
   );
-  const runOptions = payslipRunChoices(runs, sel, showRun);
+  const runOptions = payslipRunChoices(runs, shown, showRun);
 
   // One payslip id, one read. `companyIds` is unchanged from what the guard above produced, so the fence
   // this row is read through is exactly the fence it was read through before r210.
@@ -541,10 +543,10 @@ export default async function IndividualPayslipPage({
             </select>
           </Field>
           <Field label={t('filterCycle')}>
-            {/* THE OPTION VALUE CARRIES THE RUN NUMBER, and that is what retired the run-picker card: run
-                _seq is unique within a pay period, so company + year + month + this value names exactly one
-                payslip. The number is shown only when it is above 1 — "Bonus run 2" beside "Regular", never
-                "Regular run 1" on the ordinary month that has only one run. */}
+            {/* THE OPTION VALUE CARRIES THE RUN NUMBER, and that is what retired the run-picker card.
+                A run number is unique within a pay period, so company + year + month + this value names
+                exactly one payslip. The number is shown only when it is above 1 — "Bonus run 2" beside
+                "Regular", never "Regular run 1" on the ordinary month that has only one run. */}
             <select name="cycle" defaultValue={showRun} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
               {runOptions.map((o) => (
