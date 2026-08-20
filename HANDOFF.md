@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-20 (r195–r209 SHIPPED · NOTHING IN FLIGHT · THE BOARD IS EMPTY)
+## CURRENT STATE — snapshot 2026-08-20 (r195–r209 SHIPPED · NOTHING IN FLIGHT · r210 PLANNING ROUND DONE)
 
 **`main@ef343c93` IS WHAT RUNS ON PRODUCTION (r209, 2026-08-20)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** reporting ZERO differences, not by `deploy.sh`
@@ -27,14 +27,15 @@ succeeding, which is not proof. Service active, `GET localhost:3000/` → 401.
 (the reissue of the dead `0444`/`0445`), both verified present on the live schema
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
-instead of by the watermark. **Next free is `0448`.**
-**Board after r209: `deployed = 717` · `cancelled = 14` · EVERYTHING ELSE ZERO.** No open, no planned,
-no approved, no contested — the reporter approved all eleven r207/r208 plans and r209 shipped every one.
-**This is the first time the board has been completely clear.** The next round starts from whatever the
-reporter raises next; there is no backlog to work.
-The two still approved are the two deliberately NOT built — `bdf7d248` (EPF, owner decision open) and
-`7ad37961` (TP1, must be re-planned). FOUR NEW OPEN ITEMS arrived during r206: `6b4ca488`, `0bade264`,
-`6448574f`, `5a29686c`. `301d3f6b` has moved from planned to CONTESTED.
+instead of by the watermark. **Next free is `0450`.**
+**Board after the r210 PLANNING round (2026-08-20): `deployed = 714` · `cancelled = 14` ·
+`planned = 7` · `approved = 1` · open and contested ZERO.** The board emptied after r209 and refilled
+the same day. EIGHT plans were written and pushed this round — three re-plans of contested items
+(`bdf7d248` EPF rev 3, `7ad37961` TP1 rev 3, `5a29686c` payslip rev 2) and five first plans
+(`9f8cd608` Reset payroll, `cc74dcb2` KWSP Borang A file, `8ebf77ae` leave eligibility explain,
+`5206539f` leave on-behalf permission, `0c367864` delete entitlement tables/rules). Mockups ride with
+`7ad37961`, `5a29686c` and `9f8cd608` (sources in `docs/mockups/*-r210.html`).
+**`bdf7d248` IS ALREADY APPROVED and is the one buildable item.** NOTHING HAS BEEN BUILT.
 
 ⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
 be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
@@ -90,11 +91,21 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**THE BOARD IS EMPTY. THERE IS NOTHING TO BUILD, PLAN OR ANSWER.** r209 shipped all eleven approved
-items on 2026-08-20: `deployed = 717` · `cancelled = 14` · open, planned, approved and contested ALL
-ZERO. That is a real state, not a pull that failed — confirm it with `improve:pull` AND
-`improve:pull-approved` both returning nothing before concluding anything is broken. The next round
-starts from whatever the reporter raises.
+**PICK UP `bdf7d248` (EPF) — IT IS APPROVED AND PLANNED, AND THE PLAN IS THE SPEC.** `improve:pull`
+returns nothing (no open, no contested); seven items sit `planned` awaiting the reporter. The r210 plans
+carry the whole diagnosis in their BUILD NOTES — read the plan before re-deriving anything.
+
+⚠️ **THE r207 EPF DIAGNOSIS WAS WRONG AND THE r210 PLAN CORRECTS IT.** "`localization/my/multicycle.ts`
+is unwired, wire it" is NOT the fix: `core/payroll.ts` ALREADY runs the increment method
+(`earlierRunByEmp` ~3741 + `deltaStat` ~413), which is why the live bonus run shows employer 199 (12%)
+and not 215 (13%). `computeMonthlyRuns` delegates to `statutory()` and reproduces 182/199 exactly —
+wiring it would have shipped ZERO change. The defect is in `epf()` (localization/my/payroll.ts): it
+takes the Third Schedule band on the NORMAL wage and then adds a straight percentage of the bonus.
+Measured on A0001 / 2026-01: `epf(7413, 1650.71)` = 1007/1099 (today) · `epf(9063.71, 0)` = 1001/1092
+(month as one lookup) · `epf(7413,0)` = 825/900, so the bonus increment is **176/192 — exactly the
+figures the reporter demanded**. One rule: the schedule lookup takes normal + additional combined.
+Watch the `epfOnBonus` → `pcbMonth` `epfOnAdditional`/Kt leg, the non-citizen flat path, and the
+`epfWageExcluded` carve-outs (all named in the plan).
 
 **PROVE THE DEPLOY CLAIM INDEPENDENTLY** rather than trusting the line above: `git for-each-ref
 refs/heads/build` plus a dry-run rsync FROM mainwt. **"Nothing in flight" is a claim about BRANCHES and

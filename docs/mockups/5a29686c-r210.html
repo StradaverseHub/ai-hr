@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Individual Payslip selection (5a29686c r210)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .panel>.ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px;
+    text-transform:uppercase}
+  .field{display:inline-block;margin:0 10px 10px 0;vertical-align:top}
+  .field .lab{font-size:11px;color:var(--muted);margin-bottom:4px}
+  .box{border:1px solid var(--border);background:#fbfcfd;border-radius:8px;padding:7px 12px;font-size:13px;
+    min-width:150px;display:flex;justify-content:space-between;gap:14px;align-items:center}
+  .box.filled{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+  .box .car{color:var(--muted);font-size:10px}
+  .btn{display:inline-block;border:1px solid var(--border);background:#f3f4f6;border-radius:8px;
+    padding:7px 14px;font-size:13px;font-weight:600}
+  .chip{display:inline-block;border:1px solid var(--border);border-radius:8px;padding:6px 11px;
+    font-size:12.5px;margin:0 7px 7px 0;background:#fff}
+  .chip.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .slip{border:1px dashed var(--border);border-radius:10px;padding:12px 14px;color:var(--muted);
+    font-size:12.5px;margin-top:12px}
+  .slip b{color:var(--fg)}
+  .hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
+  .tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;
+    font-weight:600}
+  .tag.now{border:1px solid var(--red-b);background:var(--red-bg);color:#991b1b}
+  .tag.new{border:1px solid #16a34a;background:var(--green-bg);color:#166534}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Payroll &rsaquo; <b>Individual Payslip</b></p>
+<h1>The four dropdowns carry the selection, and the run list goes</h1>
+<p class="sub">Employee: EMP-0001 Aisyah Rahman &middot; Demo Sdn Bhd</p>
+
+<div class="panel">
+  <div class="hdr"><div class="ttl">Today</div><span class="tag now">what you screenshotted</span></div>
+  <div class="field"><div class="lab">Company</div><div class="box">All <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">Year</div><div class="box">All <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">Month</div><div class="box">All <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">Payroll cycle</div><div class="box">All <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">&nbsp;</div><div class="btn">View Payslip</div></div>
+  <div class="note r">Because all four say "All", every run the employee has matches &mdash; so this appears,
+  and reads like a payslip history:</div>
+  <div style="margin-top:10px">
+    <span class="chip">August 2026 &middot; Bonus 2</span><span class="chip">July 2026 &middot; Regular</span>
+    <span class="chip">May 2026 &middot; Regular</span><span class="chip">April 2026 &middot; Regular</span>
+    <span class="chip on">January 2026 &middot; Regular</span>
+  </div>
+  <div class="slip">Showing <b>Demo Sdn Bhd &middot; January 2026 &middot; Regular</b> &mdash; which none of the four
+  boxes above says.</div>
+</div>
+
+<div class="panel">
+  <div class="hdr"><div class="ttl">After</div><span class="tag new">proposed</span></div>
+  <div class="field"><div class="lab">Company</div><div class="box filled">Demo Sdn Bhd <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">Year</div><div class="box filled">2026 <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">Month</div><div class="box filled">August <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">Payroll cycle</div><div class="box filled">Bonus run 2 <span class="car">&#9662;</span></div></div>
+  <div class="field"><div class="lab">&nbsp;</div><div class="btn">View Payslip</div></div>
+  <div class="note g">Opening the employee fills the four boxes from their newest payslip. Each list offers only
+  what this employee actually has &mdash; and where two runs share a month and cycle, the cycle list names them
+  apart ("Regular", "Bonus", "Bonus run 2"), so a choice always lands on exactly one payslip.</div>
+  <div class="slip">Showing <b>Demo Sdn Bhd &middot; August 2026 &middot; Bonus run 2</b> &mdash; exactly what the
+  four boxes say. No separate run list underneath.</div>
+</div>
+
+<p class="sketch">Sketch of the proposal &mdash; wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>

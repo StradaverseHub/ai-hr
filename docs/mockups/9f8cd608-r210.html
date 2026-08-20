@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Reset Payroll confirmation (9f8cd608 r210)</title><style>
+  :root{--bg:#f5f6f8;--card:#fff;--border:#e3e6ea;--fg:#111418;--muted:#6b7280;--accent:#2563eb;
+    --accent-soft:#eff4ff;--amber-b:#f0c674;--amber-bg:#fdf6e6;--green-b:#a7d7b4;--green-bg:#eef8f1;
+    --red-b:#e9b0b0;--red-bg:#fdf0f0;}
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px 20px 56px;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto}
+  .crumb{font-size:12px;color:var(--muted);margin-bottom:6px}.crumb b{color:var(--fg);font-weight:600}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px}
+  .ttl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;margin-bottom:12px;text-transform:uppercase}
+  .hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
+  .tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;font-weight:600}
+  .tag.now{border:1px solid var(--red-b);background:var(--red-bg);color:#991b1b}
+  .tag.new{border:1px solid #16a34a;background:var(--green-bg);color:#166534}
+  .menu{width:230px;border:1px solid var(--border);border-radius:10px;background:#fff;padding:6px;
+    box-shadow:0 6px 18px rgba(16,24,40,.08)}
+  .menu .it{padding:8px 10px;border-radius:7px;font-size:13px;color:var(--accent)}
+  .menu .it.dead{background:#e5342e;color:#fff;text-align:center;font-weight:600}
+  .side{display:flex;gap:22px;align-items:flex-start}
+  .note{border-radius:9px;padding:10px 13px;font-size:12.5px;margin:12px 0 0}
+  .note.a{border:1px solid var(--amber-b);background:var(--amber-bg)}
+  .note.g{border:1px solid var(--green-b);background:var(--green-bg)}
+  .note.r{border:1px solid var(--red-b);background:var(--red-bg)}
+  .screen{border:1px solid var(--border);border-radius:12px;background:#fff;padding:18px 20px}
+  .screen h2{font-size:17px;margin:0 0 3px}
+  .screen .lead{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+  dl{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 20px;margin:0 0 16px;
+    border:1px solid var(--border);border-radius:10px;padding:14px;background:#fbfcfd}
+  dt{font-size:11px;color:var(--muted);margin-bottom:2px}
+  dd{margin:0;font-size:13.5px;font-weight:600}
+  .lab{font-size:11px;color:var(--muted);margin:0 0 4px}
+  .ta{border:1px solid var(--border);border-radius:8px;background:#fff;padding:9px 11px;color:#9aa1ab;
+    font-size:13px;height:62px}
+  .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .btn{border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--border);background:#f3f4f6}
+  .btn.d{background:#dc2626;border-color:#dc2626;color:#fff}
+  .sketch{margin-top:26px;font-size:11px;color:var(--muted);text-align:center}
+</style></head><body><div class="wrap">
+
+<p class="crumb">Payroll &rsaquo; <b>Payroll Process</b></p>
+<h1>Reset payroll gets its own confirmation screen</h1>
+<p class="sub">The same pattern Remove Employee already uses &mdash; and it names the run before it does anything.</p>
+
+<div class="panel">
+  <div class="hdr"><div class="ttl">Today</div><span class="tag now">nothing happens</span></div>
+  <div class="side">
+    <div class="menu">
+      <div class="it">Reprocess</div>
+      <div class="it">Remove Employee</div>
+      <div class="it dead">Reset payroll</div>
+    </div>
+    <div style="flex:1">
+      <div class="note r">The first two open their own screen. Reset payroll tries to open a small pop-up on top of
+      this menu, and the menu closes underneath it as it opens &mdash; so nothing reaches the screen. No payroll is
+      touched: the action never starts.</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="hdr"><div class="ttl">After</div><span class="tag new">proposed</span></div>
+  <div class="screen">
+    <h2>Reset payroll</h2>
+    <p class="lead">Resetting returns this run to Draft: the calculated payslips are cleared and the loan and claim
+    entries it made are reversed, so the period can be processed again. It is recorded against your name.</p>
+    <dl>
+      <div><dt>Company</dt><dd>ISEDECOR BINA SDN BHD</dd></div>
+      <div><dt>Period</dt><dd>January 2026</dd></div>
+      <div><dt>Payroll cycle</dt><dd>Bonus</dd></div>
+      <div><dt>Employees</dt><dd>19</dd></div>
+    </dl>
+    <p class="lab">Why are you resetting this run?</p>
+    <div class="ta">Short reason, kept with the record</div>
+    <div class="acts"><span class="btn">Cancel</span><span class="btn d">Reset payroll</span></div>
+  </div>
+  <div class="note g">Cancel returns you to the Payroll Process list with your year, month, company, cycle and status
+  filters exactly as you left them. Confirm runs the same reset that exists today &mdash; administrators only,
+  processed runs only &mdash; then shows the result and refreshes the list.</div>
+</div>
+
+<p class="sketch">Sketch of the proposal &mdash; wording, spacing and colours will differ in the built screen.</p>
+</div></body></html>
