@@ -402,10 +402,19 @@ export default async function IndividualPayslipPage({
 
   // Year-to-date: the same read for the whole year, no month. No new query shape is needed — the totals
   // are summed from the rows it already returns, so YTD can never disagree with the months it lists.
+  // ⚠️ `scopeIds`, NOT `companyIds`, AND THAT IS THE WHOLE OF r210's BLOCKER. The Company box now always
+  // displays the resolved payslip's company, so pressing "View payslip" posts a `?companyId=` where
+  // arriving from the employee panel or a back-link posts none. Both render the same four boxes. If YTD
+  // narrowed with the selection, those two identical-looking screens would print DIFFERENT year figures
+  // for a transferred employee — measured: gross 13,200.00 on arrival, 6,600.00 after a no-op submit —
+  // and the second would disagree with the PDF of the very payslip beside it, which sums the year over
+  // `scopeIds` unconditionally (see [payslipId]/pdf/route.ts and its "cannot disagree about the year"
+  // note). The company selection chooses WHICH PAYSLIP you are looking at; it does not change what a
+  // year-to-date figure means. Selecting a company must never silently redefine the column.
   const ytdRows =
     row && employmentId
       ? await listProcessedPayslipsAcross(s, {
-          companyIds,
+          companyIds: scopeIds,
           year: Number(row.payPeriod.slice(0, 4)),
           employmentId,
         })

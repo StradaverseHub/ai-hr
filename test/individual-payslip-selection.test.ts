@@ -47,6 +47,8 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
+import { createMovementEvent } from '../core/movement';
+import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
 import {
   adminCtx,
@@ -127,6 +129,9 @@ let base: Base;
 let admin: ReturnType<typeof adminCtx>;
 /** A second company the reader HOLDS, where nobody in these cases has ever been paid. */
 let siblingCompanyId: string;
+/** …and its department, which an entity transfer INTO that company needs (a label must belong to the
+ *  company it is used in — core/org.ts guardLabel). */
+let siblingDeptId: string;
 /** A company the reader does NOT hold, with a real employee in it — the cross-company read a tampered
  *  URL actually attempts. */
 let foreignCompanyId: string;
@@ -158,6 +163,7 @@ beforeEach(async () => {
   };
   const sibling = await mk('Sibling Sdn Bhd');
   siblingCompanyId = sibling.companyId;
+  siblingDeptId = sibling.departmentId;
   const foreign = await mk('Beta Sdn Bhd');
   foreignCompanyId = foreign.companyId;
   const chen = await hireEmployee(admin, {
@@ -496,5 +502,75 @@ describe('5a29686c — a tampered URL still NARROWS; the filled-in boxes are not
     expect(selectNamed(tree, 'companyId').value, 'the box keeps naming what was asked for').toBe(siblingCompanyId);
     // …and the company they DO have payslips in is still offered, so this is a dead end you can leave.
     expect(selectNamed(tree, 'companyId').options.map((o) => o.value)).toContain(base.companyId);
+  });
+});
+
+// ────────── 5. YTD DOES NOT MOVE WHEN THE COMPANY BOX FILLS ITSELF IN (r210 blocker) ──────────
+
+/**
+ * ⚠️ THE BLOCKER THIS ROUND ALMOST SHIPPED, and the reason it needs a rendered test rather than a source
+ * one. Filling the Company box in means the screen's own "View payslip" button now POSTS a companyId
+ * where arriving from the employee panel, a back-link or a first load posts none. Both arrivals draw the
+ * same four boxes. While the year-to-date read was fenced on the SELECTED company, those two
+ * identical-looking screens printed different year figures for anyone who had been transferred between
+ * two companies the reader holds — and the second disagreed with the PDF of the payslip beside it, which
+ * sums the year over every company in scope unconditionally.
+ *
+ * The company selection chooses WHICH PAYSLIP is on screen. It does not get to redefine what a
+ * year-to-date figure counts.
+ */
+describe('5a29686c — year-to-date is the employee’s year, not the selected company’s', () => {
+  it('prints the same YTD whether or not the form posted the company back', async () => {
+    const e = await hire(admin, 'Transferred Person', 'transferred@acme.test', '2026-01-01');
+    // Paid once under the base company…
+    await payRegular(admin, '2026-01');
+    // …then moved to the sibling company the reader also holds, and paid there.
+    await createMovementEvent(admin, {
+      employmentId: e.employmentId,
+      kind: 'entityTransfer',
+      effectiveDate: '2026-02-01',
+      companyId: siblingCompanyId,
+      departmentId: siblingDeptId,
+    });
+    const { batchId } = await createBatch(admin, { companyId: siblingCompanyId, payPeriod: '2026-02' });
+    await generatePayslips(admin, { batchId });
+
+    // Both companies are in scope, so BOTH months are the employee's year however you arrived.
+    const wholeYear = await listProcessedPayslipsAcross(admin, {
+      companyIds: [base.companyId, siblingCompanyId],
+      year: 2026,
+      employmentId: e.employmentId,
+    });
+    const oneCompany = await listProcessedPayslipsAcross(admin, {
+      companyIds: [siblingCompanyId],
+      year: 2026,
+      employmentId: e.employmentId,
+    });
+    // The stakes, stated as data: narrowing the read HALVES the year. Without this the case below could
+    // pass on a screen that never had two months to lose.
+    expect(wholeYear.length).toBe(2);
+    expect(oneCompany.length).toBe(1);
+
+    // ARRIVAL ONE: no ?companyId= — the panel click, a back-link, a first load.
+    const arrived = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: e.employmentId }) });
+    // ARRIVAL TWO: exactly what arrival one's own form posts back, changing nothing.
+    const posted = await IndividualPayslipPage({
+      searchParams: Promise.resolve({
+        employmentId: e.employmentId,
+        companyId: selectNamed(arrived, 'companyId').value,
+        year: selectNamed(arrived, 'year').value,
+        month: selectNamed(arrived, 'month').value,
+        cycle: selectNamed(arrived, 'cycle').value,
+      }),
+    });
+
+    // The two screens show the same payslip…
+    expect(renderedPayslipId(posted)).toBe(renderedPayslipId(arrived));
+    // …and the same boxes…
+    expect(selectNamed(posted, 'companyId').value).toBe(selectNamed(arrived, 'companyId').value);
+    // …so they must print the same year. Compared as the rendered money strings, because that is what
+    // the reader compares, and a difference here is a number on a screen that changed under a no-op.
+    const money = (tree: unknown) => textOf(tree).filter((t) => /^MYR|^RM/.test(t.trim()));
+    expect(money(posted)).toEqual(money(arrived));
   });
 });
