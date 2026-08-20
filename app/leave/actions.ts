@@ -31,10 +31,14 @@ import { localizeLeaveError } from '@/app/me/actions';
 // leave decision keeps the approver's chosen category + sort exactly like the other nine queues do.
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 
-/** Feedback 31474452 (Step 5): read-only pre-submission preview for the Leave-tab form (which can apply
- *  on-behalf-of any employment the caller can see, via the Field label={t('fieldEmployee')} select). Runs
- *  under the caller's own session — RLS on leave_ledger/leave_type gates disclosure exactly as requestLeave
- *  does; an out-of-scope employmentId simply yields an RLS-empty balance rather than a throw.
+/** Feedback 31474452 (Step 5): read-only pre-submission preview for the Leave-tab form. Runs under the
+ *  caller's own session — RLS on leave_ledger/leave_type gates disclosure exactly as requestLeave does; an
+ *  out-of-scope employmentId simply yields an RLS-empty balance rather than a throw.
+ *
+ *  5206539f — the form now names another employment only for a holder of `leave.apply_on_behalf`, so in
+ *  practice this is asked about the caller's own employment or about somebody they may act for. It is left
+ *  ungated on purpose: it is a READ that discloses nothing RLS would not, and adding a permission check to a
+ *  best-effort preview would refuse figures for a subject whose leave the caller can already see listed.
  *
  *  Employee apply-popup enhancement: the Employee selector is rendered ONLY on the on-behalf-of path, so a
  *  plain self-service employee reached here with an empty employmentId and ALWAYS got null — the "this will
