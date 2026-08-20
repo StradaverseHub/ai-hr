@@ -378,7 +378,16 @@ describe('6b4ca488 — the explanation STRUCTURALLY cannot recompute', () => {
     const perms = read('lib/permissions.ts');
     expect(perms).toContain("'/payroll/statutory-detail'");
     // On the SAME screen key as the two doors that reach it — not a new one.
-    const payrollBlock = perms.slice(perms.indexOf("screenKey: 'payroll'"), perms.indexOf("screenKey: 'payroll'") + 12000);
+    //
+    // ⚠️ THE BLOCK IS FOUND BY ITS OWN BOUNDARY, NOT BY A CHARACTER COUNT. This read a fixed 12,000
+    // characters from the start of the payroll entry until r210, when the Reset Payroll screen
+    // (9f8cd608) added a column and pushed '/payroll/transaction-view' to 12,767 characters in — out of
+    // the window, so the case failed with every entry present and correctly attached. A guard that
+    // breaks when an unrelated screen is added to the same key is measuring the wrong thing: the
+    // question is "is it under THIS screenKey", so the slice ends where the next screenKey begins.
+    const blockStart = perms.indexOf("screenKey: 'payroll'");
+    const nextKey = perms.indexOf('screenKey:', blockStart + 'screenKey:'.length);
+    const payrollBlock = perms.slice(blockStart, nextKey === -1 ? undefined : nextKey);
     expect(payrollBlock).toContain("'/payroll/statutory-detail'");
     expect(payrollBlock).toContain("'/payroll/transaction-view'");
     // The route handler is NOT listed — the reverse-completeness check walks page.tsx files only.
