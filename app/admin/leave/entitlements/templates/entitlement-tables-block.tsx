@@ -10,12 +10,15 @@ import type { CriteriaSection } from '@/core/org-criteria-form';
 import type { SessionContext } from '@/db/client';
 import {
   eligibilityRuleCountsByTemplate,
+  entitlementDeleteBlocks,
+  isDeletableLineage,
   listEligibilityRules,
   listEntitlementTemplates,
   listGradeGroups,
   MAX_SERVICE_BANDS,
   type EligibilityRuleRow,
   type EntitlementTemplateRow,
+  type EntitlementUsageBlock,
 } from '@/packs/leave/service';
 // The grade-group ⇄ job-grade arithmetic, shared with the client rule form so "whole group" cannot come to
 // mean two different things on the two halves of this screen.
@@ -44,6 +47,8 @@ import {
   countEligibilityTargetsAction,
   createEligibilityRuleAction,
   createEntitlementTemplateAction,
+  deleteEligibilityRuleAction,
+  deleteEntitlementTemplateAction,
   retireEligibilityRuleAction,
   retireEntitlementTemplateAction,
   updateEligibilityRuleAction,
@@ -69,7 +74,9 @@ import {
  * ⚠️ READS HAPPEN ONCE PER PAGE, NOT ONCE PER MOUNT. `loadEntitlementTablesData` is called ONCE by each
  * host page and its result is sliced in memory by `leaveTypeId`. The Entitlements page composes a panel
  * for all 24 leave types up front (they are props of a client workspace, so every one of them is
- * rendered), and eleven queries per panel would be 264 queries for a screen showing one.
+ * rendered), and the fourteen reads below, run per panel, would be well over three hundred queries for a
+ * screen showing one. (Deliberately not a fixed number here — the list has grown three times since this
+ * paragraph was written and said "eleven" throughout.)
  *
  * ⚠️ SERVER COMPONENT. Only `EntitlementBandsEditor` and `EligibilityRuleForm` cross the client boundary,
  * exactly as they did on the standalone page, and both take only serialisable props —
@@ -93,6 +100,18 @@ export type EntitlementTablesData = {
   templates: EntitlementTemplateRow[];
   rules: EligibilityRuleRow[];
   ruleCounts: Map<string, number>;
+  /** r210 — WHICH ELIGIBILITY RULES POINT AT EACH TABLE, keyed by template lineage; absent or empty ⇒
+   *  none do, and the row offers Delete. This is the blocker the approved plan asks the SCREEN to name
+   *  ("an eligibility rule that points at a table has to go before the table itself — the screen will say
+   *  so rather than making you guess"), and it is pure configuration to derive.
+   *
+   *  ⚠️ THE OTHER BLOCKER — entitlement granted while the lineage was in force — IS NOT HERE, and
+   *  `entitlementDeleteBlocks` carries the measurement that decided it: pre-computing it cost 1.7s per
+   *  render at 50,000 ledger rows and grew linearly, because `leave_ledger`'s RLS calls a recursive
+   *  SECURITY DEFINER function per row. It is asked instead inside the delete's own transaction, and its
+   *  refusal is what the operator reads. So a row may offer Delete and the delete may still refuse —
+   *  with the leave type, the window and the employee count in words, beside the Stop control. */
+  templateDeleteBlocks: Map<string, EntitlementUsageBlock>;
   criteriaSections: CriteriaSection[];
   /** ARCHIVED GROUPS INCLUDED, deliberately — `listGradeGroups` returns them with an `archived` flag and
    *  this list is used for two different jobs. The rule form OFFERS them (a saved rule may well have been
@@ -143,6 +162,7 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     locations,
     profileOptions,
     gradeGroups,
+    deleteBlocks,
   ] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listEntitlementTemplates(s),
@@ -162,6 +182,11 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     // ADDED HERE IN THE SAME POSITION — a mismatch shifts every later variable by one slot and every
     // side of it is an array, so nothing type-errors and every catalogue silently becomes another one.
     listGradeGroups(s),
+    // r210 — which tables have an eligibility rule pointing at them, for the whole tenant, in two queries
+    // over configuration. It reads NO ledger, on purpose: `entitlementDeleteBlocks` carries the numbers.
+    // LAST in both lists, and the only entry here that is not an array — so a slot mismatch involving it
+    // type-errors instead of silently swapping two catalogues.
+    entitlementDeleteBlocks(s),
   ]);
 
   // The OFFER is unchanged: the Job Grade criteria field lists the ACTIVE catalogue and nothing else, so
@@ -191,6 +216,7 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     templates,
     rules,
     ruleCounts,
+    templateDeleteBlocks: deleteBlocks.templates,
     criteriaSections,
     // Only the three fields the two consumers need — a `GradeGroupOption` is plain serialisable data, and
     // the rule form is a CLIENT component, so nothing beyond id / name / membership may cross to it.
@@ -231,8 +257,16 @@ export async function EntitlementTablesBlock({
   editRule?: string;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
-  const { leaveTypes, ruleCounts, criteriaSections, gradeGroups, archivedMemberGrades, activeGrades, today } =
-    data;
+  const {
+    leaveTypes,
+    ruleCounts,
+    templateDeleteBlocks,
+    criteriaSections,
+    gradeGroups,
+    archivedMemberGrades,
+    activeGrades,
+    today,
+  } = data;
 
   const scoped = leaveTypeId != null;
   const typeNameById = new Map(leaveTypes.map((x) => [x.id, x.name]));
@@ -284,12 +318,46 @@ export async function EntitlementTablesBlock({
     (scopedHealth ? [scopedHealth] : allHealth).filter((h) => h.soleTableApplies).map((h) => h.leaveTypeId),
   );
 
-  /** A rule lineage's CURRENT version — a retired lineage has no version in force, so "in force" would hide
-   *  the very rules whose expiry is the finding. Latest `validFrom` wins; `rules` arrives ascending. */
-  const ruleHeadIds = new Set(
-    [...new Map(rules.map((r) => [r.lineageId, r.id])).values()],
-  );
+  /**
+   * A lineage's CURRENT version, by row id. Two readers need it and they need it for the same reason: a
+   * RETIRED lineage has no version in force, so "in force" would hide the very records whose expiry is
+   * the finding — and, since r210, would hide the Delete control on a stopped table that was never used,
+   * which is exactly the record an operator wants to clear away.
+   *
+   * Latest `validFrom` wins, computed rather than taken from input order: a version may be RENAMED, and
+   * both lists are ordered by name before date, so "the last row of this lineage" is not the latest one.
+   */
+  const headOf = <T extends { id: string; lineageId: string; validFrom: string }>(rows: readonly T[]) => {
+    const head = new Map<string, T>();
+    for (const r of rows) {
+      const prev = head.get(r.lineageId);
+      if (!prev || r.validFrom >= prev.validFrom) head.set(r.lineageId, r);
+    }
+    return head;
+  };
+  const templateHeads = headOf(templates);
+  const idsOf = (heads: Map<string, { id: string }>) => new Set([...heads.values()].map((r) => r.id));
+  const ruleHeadIds = idsOf(headOf(rules));
+  const templateHeadIds = idsOf(templateHeads);
   const expiryWarnEnd = addDaysIso(today, RULE_EXPIRY_WARNING_DAYS);
+
+  /**
+   * r210 · WHAT IS HOLDING THIS TABLE, in the operator's words, beside the Stop control that is the way
+   * out of it — and it NAMES THE RULES, because naming them is the operator's next step. A row that only
+   * said "cannot delete" would have made them guess which of the rules below is the one.
+   *
+   * ⚠️ THE OTHER REFUSAL — entitlement granted while this lineage was in force — IS NOT RENDERED HERE.
+   * Deriving it for every row costs one unindexed `leave_ledger` read per page render whose RLS calls a
+   * recursive SECURITY DEFINER function per row (`entitlementDeleteBlocks` carries the measurements), so
+   * it is asked inside the delete's own transaction instead. The operator presses Delete and reads the
+   * service's own sentence, which says more than a row caption could: the leave type, the window, the
+   * employee count, and the caveat that a leave record does not record WHICH table granted it.
+   */
+  const deleteBlockText = (block: EntitlementUsageBlock | undefined): string | null =>
+    !block || isDeletableLineage(block) ? null : t('deleteBlockedByRules', { rules: block.rules.join(', ') });
+  /** The row's date box for Stop. `inputCls` is `w-full` and full height — a row control is neither. */
+  const rowDateCls =
+    'h-8 w-[8.5rem] rounded-md border border-input bg-card px-2 text-xs shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 
   /**
    * ⚠️ THE `#type-<id>` ANCHOR IS NOT DECORATION WHEN EMBEDDED. `LeaveTypeWorkspace` seeds its selection
@@ -381,12 +449,67 @@ export async function EntitlementTablesBlock({
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {x.validTo == null ? (
-                      <Link href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)} className="text-sm underline">
-                        {t('edit')}
-                      </Link>
-                    ) : null}
+                  {/* ── r210 · THE WAYS OUT OF A RECORD, WHERE THE RECORD IS ─────────────────────────
+                      Stop existed and lived several fields down inside the Edit panel, which is the whole
+                      of the reporter's discoverability complaint: from the list you would never know it
+                      was there. Both ways out are row actions now, and where Delete is refused the reason
+                      stands in the same cell as the Stop control that answers it. */}
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                      {x.validTo == null ? (
+                        <Link href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)} className="text-sm underline">
+                          {t('edit')}
+                        </Link>
+                      ) : null}
+                      {x.validTo == null ? (
+                        <form action={retireEntitlementTemplateAction} className="flex items-center gap-1.5">
+                          {returnField}
+                          <input type="hidden" name="lineageId" value={x.lineageId} />
+                          <input type="hidden" name="name" value={x.name} />
+                          <input
+                            className={rowDateCls}
+                            type="date"
+                            name="validTo"
+                            defaultValue={today}
+                            required
+                            aria-label={t('stopFrom')}
+                          />
+                          <ConfirmSubmit
+                            variant="outline"
+                            size="sm"
+                            title={t('stopTemplate')}
+                            subtitle={x.name}
+                            description={t('stopTemplateConfirm', { rules: ruleCounts.get(x.lineageId) ?? 0 })}
+                          >
+                            {t('stop')}
+                          </ConfirmSubmit>
+                        </form>
+                      ) : null}
+                      {/* Delete is a LINEAGE action, so it belongs on the lineage's current version and on
+                          no other — including when that version is already stopped, which is exactly the
+                          never-used record somebody wants to clear away. */}
+                      {templateHeadIds.has(x.id) ? (
+                        deleteBlockText(templateDeleteBlocks.get(x.lineageId)) ? (
+                          <span className="max-w-[18rem] text-xs text-muted-foreground">
+                            {deleteBlockText(templateDeleteBlocks.get(x.lineageId))}
+                          </span>
+                        ) : (
+                          <form action={deleteEntitlementTemplateAction}>
+                            {returnField}
+                            <input type="hidden" name="lineageId" value={x.lineageId} />
+                            <input type="hidden" name="name" value={x.name} />
+                            <ConfirmSubmit
+                              size="sm"
+                              title={t('deleteTemplate')}
+                              subtitle={x.name}
+                              description={t('deleteTemplateConfirm')}
+                            >
+                              {t('delete')}
+                            </ConfirmSubmit>
+                          </form>
+                        )
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -479,24 +602,10 @@ export async function EntitlementTablesBlock({
             </div>
           </form>
 
-          {editingTemplate ? (
-            <form action={retireEntitlementTemplateAction} className="mt-4 flex flex-wrap items-end gap-3 border-t pt-4">
-              {returnField}
-              <input type="hidden" name="lineageId" value={editingTemplate.lineageId} />
-              <input type="hidden" name="name" value={editingTemplate.name} />
-              <Field label={t('stopFrom')}>
-                <input className={inputCls} type="date" name="validTo" defaultValue={today} required />
-              </Field>
-              <ConfirmSubmit
-                variant="outline"
-                title={t('stopTemplate')}
-                subtitle={editingTemplate.name}
-                description={t('stopTemplateConfirm', { rules: ruleCounts.get(editingTemplate.lineageId) ?? 0 })}
-              >
-                {t('stopTemplate')}
-              </ConfirmSubmit>
-            </form>
-          ) : null}
+          {/* r210 — THE STOP FORM THAT STOOD HERE IS ON THE ROW NOW, and is not also left here. Two copies
+              of one destructive control drift the first time either is touched, and the copy that lives
+              several fields inside an Edit panel is the one nobody finds — which is the complaint this
+              item opens with. The row carries the same date field and the same ConfirmSubmit subtitle. */}
         </div>
       </Card>
 
@@ -524,6 +633,17 @@ export async function EntitlementTablesBlock({
               )}
               {rules.map((x) => {
                 const target = running.find((tpl) => tpl.lineageId === x.templateLineageId);
+                /**
+                 * r210 — THE TABLE THIS RULE POINTS AT HAS BEEN STOPPED, WHICH IS NOT THE SAME AS "NONE".
+                 *
+                 * Stopping a table deliberately leaves the rules pointing at it alone (see
+                 * `retireEntitlementTemplate`): from that date they resolve no table in force and simply
+                 * stop matching. Until r210 this cell printed a bare dash for that, which reads as a rule
+                 * with nothing configured rather than as a rule that has just been cut off — the very
+                 * shape r209 found on production. Named, so the consequence of a stop is visible on the
+                 * rule it happened to and not only inside the confirmation dialog that caused it.
+                 */
+                const stoppedTarget = target ? null : templateHeads.get(x.templateLineageId);
                 const axes = Object.entries(x.criteria as Record<string, unknown>).filter(
                   ([, v]) => (Array.isArray(v) ? v.length > 0 : v != null && v !== ''),
                 );
@@ -550,7 +670,16 @@ export async function EntitlementTablesBlock({
                 return (
                   <tr key={x.id} className="border-t align-top">
                     <td className="px-3 py-2 font-medium">{x.name}</td>
-                    <td className="px-3 py-2">{target?.name ?? dash}</td>
+                    <td className="px-3 py-2">
+                      {target?.name ??
+                        (stoppedTarget ? (
+                          <span className="text-xs font-medium text-amber-700 dark:text-amber-500">
+                            {t('ruleTargetStopped', { table: stoppedTarget.name })}
+                          </span>
+                        ) : (
+                          dash
+                        ))}
+                    </td>
                     {/* An EMPTY criteria object is a real value that means EVERYONE — never a blank cell. */}
                     <td className="px-3 py-2 text-xs">
                       {axes.length === 0
@@ -585,12 +714,57 @@ export async function EntitlementTablesBlock({
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-3 py-2 text-right">
-                      {x.validTo == null ? (
-                        <Link href={href(`?editRule=${encodeURIComponent(x.lineageId)}`)} className="text-sm underline">
-                          {t('edit')}
-                        </Link>
-                      ) : null}
+                    {/* Same three row actions as a table's, for the same reason — see the note there. */}
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                        {x.validTo == null ? (
+                          <Link href={href(`?editRule=${encodeURIComponent(x.lineageId)}`)} className="text-sm underline">
+                            {t('edit')}
+                          </Link>
+                        ) : null}
+                        {x.validTo == null ? (
+                          <form action={retireEligibilityRuleAction} className="flex items-center gap-1.5">
+                            {returnField}
+                            <input type="hidden" name="lineageId" value={x.lineageId} />
+                            <input type="hidden" name="name" value={x.name} />
+                            <input
+                              className={rowDateCls}
+                              type="date"
+                              name="validTo"
+                              defaultValue={today}
+                              required
+                              aria-label={t('stopFrom')}
+                            />
+                            <ConfirmSubmit
+                              variant="outline"
+                              size="sm"
+                              title={t('stopRule')}
+                              subtitle={x.name}
+                              description={t('stopRuleConfirm')}
+                            >
+                              {t('stop')}
+                            </ConfirmSubmit>
+                          </form>
+                        ) : null}
+                        {/* NOTHING POINTS AT A RULE, so a rule row carries no pre-computed blocker at
+                            all — the only refusal it can meet is the granted one, which the delete
+                            itself raises in words. See `deleteBlockText`. */}
+                        {ruleHeadIds.has(x.id) ? (
+                          <form action={deleteEligibilityRuleAction}>
+                            {returnField}
+                            <input type="hidden" name="lineageId" value={x.lineageId} />
+                            <input type="hidden" name="name" value={x.name} />
+                            <ConfirmSubmit
+                              size="sm"
+                              title={t('deleteRule')}
+                              subtitle={x.name}
+                              description={t('deleteRuleConfirm')}
+                            >
+                              {t('delete')}
+                            </ConfirmSubmit>
+                          </form>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -628,26 +802,15 @@ export async function EntitlementTablesBlock({
                     : undefined
                 }
               />
+              {/* Stop moved to the row (see the note under the tables above). Cancel stays: it belonged to
+                  the editor, not to the stop form it happened to be nested in, and without it there is no
+                  way back out of an edit on this half of the screen. */}
               {editingRule ? (
-                <form action={retireEligibilityRuleAction} className="mt-4 flex flex-wrap items-end gap-3 border-t pt-4">
-                  {returnField}
-                  <input type="hidden" name="lineageId" value={editingRule.lineageId} />
-                  <input type="hidden" name="name" value={editingRule.name} />
-                  <Field label={t('stopFrom')}>
-                    <input className={inputCls} type="date" name="validTo" defaultValue={today} required />
-                  </Field>
-                  <ConfirmSubmit
-                    variant="outline"
-                    title={t('stopRule')}
-                    subtitle={editingRule.name}
-                    description={t('stopRuleConfirm')}
-                  >
-                    {t('stopRule')}
-                  </ConfirmSubmit>
+                <div className="mt-4 border-t pt-4">
                   <Link href={href('?')} className="text-sm underline">
                     {t('cancel')}
                   </Link>
-                </form>
+                </div>
               ) : null}
             </>
           )}

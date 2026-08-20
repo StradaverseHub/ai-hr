@@ -8061,6 +8061,13 @@
       "createRule": "创建规则",
       "stopRule": "停用此规则",
       "stopRuleConfirm": "自该日期起此规则不再匹配任何人。不会删除任何内容，也不会改变任何休假记录。",
+      "stop": "停用",
+      "delete": "删除",
+      "deleteTemplate": "删除此额度表",
+      "deleteTemplateConfirm": "此操作将永久删除该额度表及其所有版本。由于没有适用规则指向它，且在其生效期间未发放过任何额度，因此可以删除。删除无法撤销——如果日后可能还需要，请改为从某个日期起停用。",
+      "deleteRule": "删除此规则",
+      "deleteRuleConfirm": "此操作将永久删除该规则及其所有版本。由于在其生效期间未发放过任何额度，因此可以删除。删除无法撤销——如果日后可能还需要，请改为从某个日期起停用。",
+      "deleteBlockedByRules": "有适用规则指向它，因此无法删除：{rules}。请先删除该规则，或从某个日期起停用此额度表。",
       "ruleCheckAudience": "查看覆盖人数",
       "ruleCheckHint": "保存前请先查看覆盖人数。",
       "ruleMatchedCount": "生效日期当天有 {count} 名员工符合。",
@@ -8104,6 +8111,7 @@
       "healthMaxBalanceZero": "最高余额为 0，抵销了发放的天数：{tables}",
       "ruleNonePointsHere": "没有资格规则指向此表",
       "ruleExpiredBadge": "已过期 — 不匹配任何人",
+      "ruleTargetStopped": "{table} — 已停用，因此此规则不会匹配任何人",
       "ruleExpiringBadge": "即将到期"
     }
   },

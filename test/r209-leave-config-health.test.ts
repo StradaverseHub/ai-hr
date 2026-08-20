@@ -22,7 +22,7 @@
  *      `reprojectEntitlementForLeaveTypeCohort`'s header in core/leave.ts has said since release three that
  *      it fires "when an entitlement TEMPLATE or an ELIGIBILITY RULE for the type is written", and no call
  *      site existed. The DB case proves the recompute is what moves the balance; the source case proves the
- *      six actions call it, after the write and before the redirect.
+ *      eight actions call it, after the write and before the redirect (r210 added the two deletes).
  *   D. THE SHARED POOL, for SIX types at once. `balance_source_type_id` already works for one borrower
  *      (test/leave-balance-source-upl.test.ts). The approved plan asks it to carry six, and asks that the
  *      employee read ONE figure with the contributing types named — which `leaveBalances` did not do at all.
@@ -521,7 +521,7 @@ describe('r209 · recalculate on save, instead of remembering to press Generate 
     // 3. The save alone moves nothing. This IS the reporter's complaint, asserted rather than described.
     expect(await ledgerTotal(emp.employmentId, typeId)).toBe(14);
 
-    // 4. …and the recompute the six actions now fire is what closes the gap.
+    // 4. …and the recompute the eight actions now fire is what closes the gap.
     const res = await reprojectEntitlementForLeaveTypeCohort(adminCtx(b), {
       leaveTypeId: typeId,
       trigger: 'entitlement_template_updated',
@@ -574,15 +574,20 @@ describe('r209 · recalculate on save, instead of remembering to press Generate 
    *
    * And it must sit BEFORE `saved(...)`: `redirect()` works by throwing, so anything after it never runs.
    */
-  it('all six entitlement writers recompute — after the service call, before the redirect', () => {
+  it('all eight entitlement writers recompute — after the service call, before the redirect', () => {
     const src = read('app/admin/leave/entitlements/templates/actions.ts');
+    // r210 added the two deletes. They recompute for the same reason a retire does: the employees the
+    // removed lineage reached resolve to NO OPINION afterwards, which the kernel posts as a delta of 0
+    // rather than clawing days back — and it is the read that re-derives the health card.
     const writers = [
       ['createEntitlementTemplateAction', 'createEntitlementTemplate('],
       ['updateEntitlementTemplateAction', 'updateEntitlementTemplate('],
       ['retireEntitlementTemplateAction', 'retireEntitlementTemplate('],
+      ['deleteEntitlementTemplateAction', 'deleteEntitlementTemplate('],
       ['createEligibilityRuleAction', 'createEligibilityRule('],
       ['updateEligibilityRuleAction', 'updateEligibilityRule('],
       ['retireEligibilityRuleAction', 'retireEligibilityRule('],
+      ['deleteEligibilityRuleAction', 'deleteEligibilityRule('],
     ] as const;
     for (const [action, service] of writers) {
       const start = src.indexOf(`export async function ${action}(`);

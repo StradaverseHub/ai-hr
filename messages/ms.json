@@ -8061,6 +8061,13 @@
       "createRule": "Cipta peraturan",
       "stopRule": "Hentikan peraturan ini",
       "stopRuleConfirm": "Dari tarikh itu peraturan ini berhenti sepadan dengan sesiapa. Tiada apa-apa dipadam dan tiada rekod cuti berubah.",
+      "stop": "Hentikan",
+      "delete": "Padam",
+      "deleteTemplate": "Padam jadual ini",
+      "deleteTemplateConfirm": "Ini membuang jadual dan setiap versinya secara kekal. Ia boleh dipadam kerana tiada peraturan kelayakan menunjuk kepadanya dan tiada kelayakan diberikan semasa ia berkuat kuasa. Pemadaman tidak boleh dibatalkan — hentikannya dari satu tarikh jika anda mungkin memerlukannya semula.",
+      "deleteRule": "Padam peraturan ini",
+      "deleteRuleConfirm": "Ini membuang peraturan dan setiap versinya secara kekal. Ia boleh dipadam kerana tiada kelayakan diberikan semasa ia berkuat kuasa. Pemadaman tidak boleh dibatalkan — hentikannya dari satu tarikh jika anda mungkin memerlukannya semula.",
+      "deleteBlockedByRules": "Tidak boleh dipadam selagi peraturan kelayakan menunjuk ke sini: {rules}. Padam peraturan itu dahulu, atau hentikan jadual ini dari satu tarikh.",
       "ruleCheckAudience": "Semak siapa yang terlibat",
       "ruleCheckHint": "Semak siapa yang terlibat sebelum menyimpan.",
       "ruleMatchedCount": "{count} pekerja sepadan pada tarikh berkuat kuasa.",
@@ -8104,6 +8111,7 @@
       "healthMaxBalanceZero": "Baki Maksimum ialah 0, yang membatalkan hari yang diberikan: {tables}",
       "ruleNonePointsHere": "Tiada peraturan kelayakan menghala ke sini",
       "ruleExpiredBadge": "Tamat tempoh — tidak sepadan dengan sesiapa",
+      "ruleTargetStopped": "{table} — dihentikan, jadi peraturan ini tidak sampai kepada sesiapa",
       "ruleExpiringBadge": "Akan tamat tidak lama lagi"
     }
   },

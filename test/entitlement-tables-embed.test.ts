@@ -223,16 +223,19 @@ describe('§5 ee6b7c69 · a save from the embedded form returns to the step it w
     expect(blockSrc).toMatch(/const returnField = scoped \? <input type="hidden" name="embeddedLeaveTypeId"/);
   });
 
-  it('all six writes honour it, so none of them can bounce HR onto the standalone screen', () => {
+  it('all eight writes honour it, so none of them can bounce HR onto the standalone screen', () => {
     // Named individually rather than counted: a new action added without the return would be exactly the
-    // regression this catches, and a count silently absorbs it.
+    // regression this catches, and a count silently absorbs it. r210 added the two deletes, which are
+    // pressed from a ROW on either mount and so need the same return as the six saves.
     for (const action of [
       'createEntitlementTemplateAction',
       'updateEntitlementTemplateAction',
       'retireEntitlementTemplateAction',
+      'deleteEntitlementTemplateAction',
       'createEligibilityRuleAction',
       'updateEligibilityRuleAction',
       'retireEligibilityRuleAction',
+      'deleteEligibilityRuleAction',
     ]) {
       const start = actionsSrc.indexOf(`export async function ${action}(`);
       expect(start, `${action} must exist`).toBeGreaterThan(-1);

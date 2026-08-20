@@ -8061,6 +8061,13 @@
       "createRule": "Tạo quy tắc",
       "stopRule": "Ngừng quy tắc này",
       "stopRuleConfirm": "Từ ngày đó quy tắc này không còn khớp với ai. Không có gì bị xóa và không hồ sơ nghỉ phép nào thay đổi.",
+      "stop": "Dừng",
+      "delete": "Xóa",
+      "deleteTemplate": "Xóa bảng này",
+      "deleteTemplateConfirm": "Thao tác này xóa vĩnh viễn bảng và mọi phiên bản của nó. Có thể xóa vì không quy tắc điều kiện nào trỏ tới nó và không có quyền lợi nào được cấp trong thời gian nó có hiệu lực. Xóa rồi không thể hoàn tác — nếu sau này còn cần, hãy dừng từ một ngày thay vì xóa.",
+      "deleteRule": "Xóa quy tắc này",
+      "deleteRuleConfirm": "Thao tác này xóa vĩnh viễn quy tắc và mọi phiên bản của nó. Có thể xóa vì không có quyền lợi nào được cấp trong thời gian nó có hiệu lực. Xóa rồi không thể hoàn tác — nếu sau này còn cần, hãy dừng từ một ngày thay vì xóa.",
+      "deleteBlockedByRules": "Không thể xóa khi còn quy tắc điều kiện trỏ tới đây: {rules}. Hãy xóa quy tắc đó trước, hoặc dừng bảng này từ một ngày.",
       "ruleCheckAudience": "Xem quy tắc này chạm tới ai",
       "ruleCheckHint": "Hãy xem quy tắc này chạm tới ai trước khi lưu.",
       "ruleMatchedCount": "{count} nhân viên khớp vào ngày hiệu lực.",
@@ -8104,6 +8111,7 @@
       "healthMaxBalanceZero": "Số dư tối đa là 0, triệt tiêu số ngày được cấp: {tables}",
       "ruleNonePointsHere": "Không có quy tắc đủ điều kiện nào trỏ tới đây",
       "ruleExpiredBadge": "Đã hết hạn — không khớp với ai",
+      "ruleTargetStopped": "{table} — đã dừng, nên quy tắc này không đến được với ai",
       "ruleExpiringBadge": "Sắp hết hạn"
     }
   },
