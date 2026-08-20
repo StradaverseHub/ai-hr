@@ -416,10 +416,11 @@ describe('i18n: the new apply-popup keys in all six locales', () => {
  * dropdowns — Request Leave and Replacement Leave Request — so a silent re-add would put the badge back in
  * front of the same employee twice.
  *
- * UPDATED BY ad965821 rev 2: the two dropdowns no longer share ONE array. Request Leave is handed the union
- * of every subject a manager may apply for (LeaveDurationFields narrows it to the selected one), while
- * Replacement Leave — which has no employee selector — keeps the viewer's own set. WHICH ROWS they carry
- * differs; what an option IS does not, so both are asserted here.
+ * UPDATED BY ad965821 rev 2, then again by 5206539f: rev 2 split them because Request Leave was handed the
+ * union of every subject a manager could apply for while Replacement Leave kept the viewer's own set. With
+ * the manager's employee selector gone (on-behalf application is a named permission now), both arrays are
+ * the viewer's own eligible set again. They remain two arrays, and what an option IS has never differed —
+ * which is what this case pins.
  *
  * The other half of the pin is what must NOT move: the submit-time refusal, its two error sentences and
  * the general attach-a-file hint all stay, or an employee whose request is refused has no way to know why.

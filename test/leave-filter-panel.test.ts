@@ -102,43 +102,42 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     // The defect lived in the CONTRACT between this page and core/read.ts (AGENTS rule 17), so it is pinned
     // on both halves: a unit test of either one passes throughout.
     expect(leavePage).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
-    // REV 2 — the option list is drawn from the OFFERABLE set, not from the viewer's own. Pinning
-    // `eligibleLeaveTypes.map(` here pinned the regression itself: LeaveDurationFields intersects `types`
-    // with the selected subject's set, so a viewer-only array made the on-behalf offer
-    // eligible(manager) ∩ eligible(report). The union is what makes the downstream filter produce the
-    // SUBJECT's own list.
-    expect(leavePage).toContain('const requestLeaveTypeOptions = offerableLeaveTypes.map((lt) => ({');
-    expect(leavePage).toContain('const offerableLeaveTypes = leaveTypes.filter((lt) => offerableTypeIds.has(lt.id));');
-    expect(leavePage).toMatch(
-      /const offerableTypeIds = eligibleTypeIdsByEmployment\s*\n\s*\? new Set\(Object\.values\(eligibleTypeIdsByEmployment\)\.flat\(\)\)\s*\n\s*: eligibleTypeIds;/,
-    );
-    // …and the Replacement Leave dialog, which has NO employee selector, keeps the viewer's own list rather
-    // than that union — otherwise a manager would be offered credit targets belonging to their reports.
+    // REV 2 pinned a UNION here — the option list drawn from every subject a line manager could pick,
+    // because LeaveDurationFields intersects `types` with the selected subject's set and a viewer-only
+    // array made the on-behalf offer eligible(manager) ∩ eligible(report).
+    //
+    // UPDATED BY 5206539f (AGENTS rule 18). THE UNION IS GONE BECAUSE ITS SUBJECT IS. A line manager has no
+    // Employee selector at all now: applying on someone else's behalf is the named permission
+    // `leave.apply_on_behalf`, held by HR roles and by nobody else unless a customer grants it, and "does
+    // anyone report to you" grants nothing. With one subject on the self-service path — the viewer — the
+    // union and the downstream intersection both collapse to the viewer's own eligible set, which is what
+    // the dropdown is built from. The PROPERTY this case defends is unchanged and is asserted below: the
+    // apply dropdown is drawn from an ELIGIBILITY-FILTERED read, never from the raw catalogue.
+    expect(leavePage).toContain('const requestLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({');
+    // …and the per-subject narrowing machinery is DELETED, not merely unused: the extra map read, the
+    // filter that dropped a subject with an empty eligible set, and the fallback that put the viewer back.
+    for (const gone of [
+      'eligibleTypeIdsByEmployment',
+      'selectableSubjects',
+      'requestLeaveSubjects',
+      'offerableTypeIds',
+      'offerableLeaveTypes',
+      'eligibleLeaveTypeIdsFor',
+    ]) {
+      expect(leavePage, `${gone} survived the collapse`).not.toContain(gone);
+    }
+    // …and the Replacement Leave dialog, which has NO employee selector, keeps the viewer's own list. It was
+    // already the viewer's own under rev 2 and is unchanged; the two dropdowns now agree by construction.
     expect(leavePage).toContain(
       'const replacementLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({ id: lt.id, label: lt.name }));',
     );
     expect(leavePage).toContain('types={replacementLeaveTypeOptions}');
-    // A subject with an empty set is not selectable, and the viewer leads the selector: the type <select> is
-    // `required` with no placeholder row, so an empty list is a form that can neither be satisfied nor
-    // explained (the reporter forbade explaining it), and defaulting to a report would apply for the wrong
-    // person by accident.
-    expect(leavePage).toContain(
-      '(e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,',
-    );
-    // …EXCEPT THE VIEWER, who is never filtered out of their own selector. Narrowing applies to REPORTS;
-    // applying it to the viewer was a regression main did not have. A line manager inside minServiceMonths
-    // on every type — a recent hire, or on probation under a confirmed_only catalogue — qualifies for
-    // nothing today but still has qualifying reports, so the trigger gate below (which tests the UNION of
-    // type options) keeps "+ Request Leave" live while the manager vanishes from the employee <select>.
-    // LeaveDurationFields then defaults employmentId to the first option, a REPORT, and they file against
-    // someone else's balance with nothing on screen saying so. An empty-handed viewer seeing themselves
-    // and an empty type list is the honest answer, and the gate on the line below is what stops the
-    // unsatisfiable form the paragraph above is worried about.
+    // WHO a permission holder may pick, and in what order: everyone in scope, VIEWER FIRST. That ordering is
+    // the one rev-2 rule that survives, and it survives for a stronger reason than before — the dialog
+    // defaults its employment selector to the first option, so without it a holder opening Request Leave is
+    // pointed at somebody else's balance before touching anything.
     expect(leavePage).toMatch(
-      /const requestLeaveSubjects = selectableSubjects\.some\(\(e\) => e\.employmentId === me\.employmentId\)/,
-    );
-    expect(leavePage).toMatch(
-      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.requestLeaveSubjects\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,
+      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.active\.filter\(\(e\) => e\.employmentId === me\.employmentId\),\s*\n\s*\.\.\.active\.filter\(\(e\) => e\.employmentId !== me\.employmentId\),/,
     );
     // Neither employee dialog may render an empty type <select>. The Replacement one carries no `required`
     // at all, so an empty list there posts leaveTypeId='' instead of being refused by the browser.

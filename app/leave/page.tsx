@@ -13,16 +13,17 @@ import {
   listEmployees,
   listLeaveTypes,
   listLeaveRequestsPage,
-  // ad965821 — the eligibility-filtered apply source, and its multi-employment sibling for the
-  // manager-applying-on-behalf case.
+  // ad965821 — the eligibility-filtered apply source for the viewer's own dropdown. Its multi-employment
+  // sibling, and the reporting-lines read that used to decide who got an Employee selector, both left with
+  // 5206539f: the selector is a named permission now, not a shape of the org chart.
   listEligibleLeaveTypesFor,
-  eligibleLeaveTypeIdsFor,
-  reportingLinesFor,
   replacementLeaveLedger,
 } from '@/core/read';
 // 5f2e20fb — the SAME filter control the three HR leave screens use, on the employee's own history box.
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-import { todayInKualaLumpur } from '@/core/leave';
+// 5206539f — `leave.apply_on_behalf`, resolved by the SAME function requestLeave's own gate calls, so the
+// selector below and the refusal in the service can never answer differently.
+import { canApplyLeaveOnBehalf, todayInKualaLumpur } from '@/core/leave';
 import { essViewHasAnyVisibleRow, isReplacementLeaveType } from '@/core/ess-view';
 import { Card, PageHeader } from '@/components/ui';
 // 388e53c2 — the Employee Details listing, its left-side rail, its filter panel and the People status
@@ -241,51 +242,39 @@ export default async function LeavePage({
 
   // ad965821 — membership test for the Edit box's union below, and the self-service half of the offer set.
   const eligibleTypeIds = new Set(eligibleLeaveTypes.map((lt) => lt.id));
-  // Employee selector visibility (item 69088c13): only an on-behalf-of applicant needs to pick WHO the leave
-  // is for. A plain self-service employee applies for themselves, so the selector is hidden and the submit
-  // binds to their own employment server-side.
+  // Employee selector visibility (item 69088c13; the deciding question REPLACED by 5206539f): only an
+  // on-behalf applicant needs to pick WHO the leave is for, and who that is is now A NAMED PERMISSION.
   //
-  // ad965821 — the ADMIN arm of this question is dead code and has been since 8ec63139 / 388e53c2: the short
-  // page above returns for `admin`, so `admin` is necessarily false here. What is left is the real case, a
-  // line manager with direct reports. The read is bound to a name because the eligible-types map below needs
-  // the same answer and calling reportingLinesFor twice would ask the database the same question twice.
-  const reportingLines = await reportingLinesFor(session, me.employmentId);
-  const canApplyOnBehalf = reportingLines.reports.length > 0;
-  // ad965821 — WHOSE list is on offer changes when the manager changes the employee, so the answer is
-  // resolved for every employment the selector can name (plus the manager's own) and handed to the client
-  // form as a map. Keyed on the SELECTOR's ids rather than only the direct reports: `listEmployees` is what
-  // populates that <select>, and an option with no entry in the map would render an empty type list.
-  // ONE extra query for the whole set — see eligibleLeaveTypeIdsFor on why this is not an N+1.
-  const eligibleTypeIdsByEmployment = canApplyOnBehalf
-    ? await eligibleLeaveTypeIdsFor(session, [me.employmentId, ...active.map((e) => e.employmentId)])
-    : undefined;
-  // ad965821 rev 2 — WHO the manager may pick. Two rules, both of them the plan's own "no empty form"
-  // courtesy applied one level down:
-  //   · a subject with an EMPTY eligible set is not offered at all. The type <select> is `required` and
-  //     carries no placeholder row, so selecting such a person would render zero options — a form that can
-  //     neither be satisfied nor abandoned, and (by the reporter's explicit ask) with nothing on screen to
-  //     say why. Not selectable is the honest state.
-  //   · the VIEWER leads the list. The dialog defaults its employment selector to the first option, so
-  //     without this a manager opening Request Leave would land on a report and be applying for someone
-  //     else before touching anything.
-  const selectableSubjects = active.filter(
-    (e) => !eligibleTypeIdsByEmployment || (eligibleTypeIdsByEmployment[e.employmentId]?.length ?? 0) > 0,
-  );
-  // THE VIEWER IS NEVER FILTERED OUT OF THEIR OWN SELECTOR, even when they qualify for nothing today.
-  // `selectableSubjects` drops anyone with an empty eligible set, and applying that to the viewer is a
-  // regression main did not have (it built this list from `active` outright). It bites a line manager who
-  // is a recent hire — inside minServiceMonths on every type, or on probation under a confirmed_only
-  // catalogue — who still has a qualifying report: the trigger gate below tests the type options, which
-  // are the UNION and stay non-empty, so the "+ Request Leave" button renders, the manager is ABSENT from
-  // the employee select, and LeaveDurationFields defaults employmentId to the first option — a REPORT.
-  // They would be filing against someone else's balance by default with nothing on screen saying so.
-  // An empty-handed viewer sees themselves and an empty type list, which is the honest answer.
-  const requestLeaveSubjects = selectableSubjects.some((e) => e.employmentId === me.employmentId)
-    ? selectableSubjects
-    : [...active.filter((e) => e.employmentId === me.employmentId), ...selectableSubjects];
+  // WHAT THIS REPLACES, AND WHY BOTH HALVES HAD TO GO. The question used to be
+  // a reporting-lines read — "does anyone report to you", counted off the viewer's direct reports. That is
+  // not a permission, it is an accident of the org chart; and the list it opened was built from `active`
+  // (every employee in the viewer's scope), not from those reports, so a line manager was offered people who
+  // did not report to him at all. A line manager now holds nothing by virtue of being one: no selector, and
+  // Request Leave files for them. A customer who wants a particular role to file on behalf grants
+  // `leave.apply_on_behalf` to it (lib/payroll-permissions.ts), which needs no deploy.
+  //
+  // THIS READ IS THE COURTESY, NOT THE CONTROL. core/leave.ts requestLeave resolves the SAME permission
+  // through the SAME function and throws LeaveOnBehalfNotAllowedError for any subject the caller may not act
+  // for, so a hand-crafted post is refused whatever this screen chose to render.
+  //
+  // Company-scoped: an override row may be granted for one company of a group, so the viewer's OWN company
+  // (off the already-loaded employee list — `me` does not carry the id) is what this question is asked in.
+  const myCompanyId = active.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;
+  const canApplyOnBehalf = await canApplyLeaveOnBehalf(session, myCompanyId);
+  // WHO a holder may pick: everyone in their scope, with THE VIEWER LEADING THE LIST. That ordering is the
+  // one ad965821 rule that survives — LeaveDurationFields defaults employmentId to the first option, so
+  // without it a holder opening Request Leave would be applying for whoever `listEmployees` returned first
+  // before touching anything.
+  //
+  // 5206539f — the per-subject narrowing that used to sit here is DELETED, not adapted: the extra read
+  // that resolved an eligible-type map for every selectable employment, the filter that dropped anyone
+  // with an empty eligible set, and the fallback that added the viewer back when that filter had removed
+  // them. Every line of it existed to make a LINE MANAGER's list of reports behave, and there is no such
+  // list any more. What is left is one subject on the self-service path — the viewer — whose own eligible
+  // set is `eligibleLeaveTypes` and can never be empty while the trigger below renders.
   const requestLeaveEmployeeOptions = [
-    ...requestLeaveSubjects.filter((e) => e.employmentId === me.employmentId),
-    ...requestLeaveSubjects.filter((e) => e.employmentId !== me.employmentId),
+    ...active.filter((e) => e.employmentId === me.employmentId),
+    ...active.filter((e) => e.employmentId !== me.employmentId),
   ].map((e) => ({ id: e.employmentId, name: e.name }));
 
   // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
@@ -296,21 +285,18 @@ export default async function LeavePage({
   // all; an unmarried one has no Paternity row. Nothing on the screen indicates a row was removed, which is
   // the reporter's explicit ask: a hint that a leave type exists is the thing they said must not happen.
   //
-  // A SUPERSET ON THE ON-BEHALF PATH, AND THAT IS THE WHOLE POINT (rev 2). LeaveDurationFields filters this
-  // array AGAIN by the currently selected subject's set, so whatever is handed down here is intersected with
-  // the subject's own eligibility. Handing down the VIEWER's set therefore offered
-  // eligible(manager) ∩ eligible(report) — a male manager could not apply for Maternity on behalf of a
-  // female report, and an unmarried one could not apply for Paternity for a married one. That is narrower
-  // than main (which handed the manager the whole catalogue) and narrower than the item asked for. So the
-  // manager is handed the UNION of every subject they may pick, and the per-subject filter downstream turns
-  // it into exactly eligible(subject) — including exactly eligible(viewer) when they pick themselves.
-  const offerableTypeIds = eligibleTypeIdsByEmployment
-    ? new Set(Object.values(eligibleTypeIdsByEmployment).flat())
-    : eligibleTypeIds;
-  // Off the full catalogue (already sorted, and it carries every column the option below reads) narrowed to
-  // that id set — NOT off `eligibleLeaveTypes`, which is only ever the viewer's own.
-  const offerableLeaveTypes = leaveTypes.filter((lt) => offerableTypeIds.has(lt.id));
-  const requestLeaveTypeOptions = offerableLeaveTypes.map((lt) => ({
+  // 5206539f — AND THAT SET IS THE VIEWER'S OWN AGAIN. ad965821 rev 2 widened this to the UNION of every
+  // subject a line manager could pick, because LeaveDurationFields intersects `types` with the selected
+  // subject's set and a viewer-only array made the on-behalf offer eligible(manager) ∩ eligible(report).
+  // With the manager's selector gone, the self-service path has exactly one subject — the viewer — so the
+  // union and the intersection both collapse to `eligibleLeaveTypes`, which is what this maps.
+  //
+  // WHAT A PERMISSION HOLDER GETS, STATED SO IT IS NOT REDISCOVERED AS A BUG: they are offered THEIR OWN
+  // eligible types for whoever they pick, and requestLeave still runs assertEligible against the SUBJECT, so
+  // a type the subject does not qualify for is refused rather than filed. Widening the offer per selected
+  // subject is the deleted machinery above; if a customer grants this key and needs it back, that is a
+  // deliberate re-build with its own ticket, not something to leave standing "just in case".
+  const requestLeaveTypeOptions = eligibleLeaveTypes.map((lt) => ({
     id: lt.id,
     // 5570c6a2 — AN OPTION IS THE LEAVE TYPE'S NAME AND NOTHING ELSE.
     //
@@ -840,21 +826,19 @@ export default async function LeavePage({
                   Feedback 8ec63139 narrowed it to the SELF-SERVICE viewer — on the HR-admin landing page it
                   was one of the three own-leave affordances the reporter asked to remove. The action, the
                   form and the on-behalf-of employee selector are untouched; only this trigger's audience
-                  changed. Managers keep it (they are not `admin`), so applying on behalf of a report still
-                  works from here. */}
+                  changed. Managers keep the TRIGGER (they are not `admin`) — but 5206539f took the employee
+                  selector inside it away from them: being a line manager is not a permission, so the form a
+                  manager opens here now files for the manager. */}
               {/* ad965821 — and only when there is something to offer. An employee who qualifies for
                   nothing gets no trigger rather than an empty form, which is the same courtesy the
                   Replacement Leave button immediately below already gives (replacementRequest.allowed). */}
               {ess && requestLeaveTypeOptions.length > 0 && (
                 <RequestLeaveDialog
                   types={requestLeaveTypeOptions}
-                  // The manager-on-behalf case: whose list is on offer re-draws when the employee changes,
-                  // and a type that does not apply to the newly selected person is cleared rather than
-                  // quietly carried across. Undefined for a plain employee — there is only one subject,
-                  // and `types` is already exactly their set. With the map present `types` is a SUPERSET
-                  // (the union above) and this map is what narrows it to the selected subject — see the
-                  // note on offerableTypeIds for why the superset is the correct thing to hand down.
-                  eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
+                  // 5206539f — the per-subject type map is NOT passed any more, and the dialog's optional
+                  // prop is left unset rather than fed an empty object. It existed to re-draw the offer as a
+                  // line manager switched between reports; with that selector gone the self-service path has
+                  // one subject and `types` is already exactly their set.
                   // 2166ef79 — `?start=` when My Attendance sent the employee here to explain an absent
                   // day, otherwise today, exactly as before. Shape-checked, never passed through raw: this
                   // value seeds a date input and rides no further.

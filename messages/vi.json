@@ -1806,6 +1806,7 @@
       "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa.",
       "leaveYearNotOpen": "Năm nghỉ phép {year} chưa mở để nộp đơn. Vui lòng liên hệ bộ phận nhân sự.",
       "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự.",
+      "applyOnBehalfNotAllowed": "Bạn không có quyền đăng ký nghỉ phép thay cho nhân viên khác.",
       "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
       "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
       "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung.",

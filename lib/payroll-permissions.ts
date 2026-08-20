@@ -13,6 +13,12 @@
  * (`resolvePayrollPermission` in core/payroll.ts) reads the override rows for a company (falling back to
  * tenant-wide rows, then to these defaults) so an operator can, e.g., narrow payroll.unlock back to
  * super_admin-only for one company without touching code.
+ *
+ * 5206539f — THIS MODULE IS NO LONGER PAYROLL-ONLY. `leave.apply_on_behalf` (see the tuple below) rides the
+ * same two-layer mechanism, because the mechanism is about GRANULAR, CONFIGURABLE authority and nothing in
+ * it is payroll-specific. The module name, the tuple name and the override table's name are all now one
+ * word too narrow; renaming them is a separate ticket (the table rename needs a migration). Every reader
+ * should treat "payroll" in these identifiers as historical.
  */
 
 export const PAYROLL_PERMISSION_KEYS = [
@@ -25,11 +31,26 @@ export const PAYROLL_PERMISSION_KEYS = [
   // thereby trusted to zeroize the whole company's month, and the two actions have to be grantable
   // apart. It defaults to the same admin roles rollback does, so nothing widens on the day it ships.
   'payroll.remove.employee',
+  // 5206539f — APPLYING FOR LEAVE ON SOMEONE ELSE'S BEHALF, and the first key here that is not about payroll.
+  //
+  // WHY IT LIVES IN THIS TUPLE. Until now nothing in the system named this power at all: the Leave screen
+  // offered an Employee selector to anyone with a direct report, and core/leave.ts requestLeave accepted
+  // whatever employmentId was posted without asking who was posting it. Having people report to you is an
+  // accident of the org chart, not a permission. This key is the permission, and it is resolved through the
+  // same two-layer mechanism the four payroll keys use — code default below, overridable per company/tenant
+  // — so a customer can hand it to a particular role without a deploy.
+  //
+  // THE COST, STATED PLAINLY: the override table this resolves against is named `payroll_permission_grant`,
+  // and with a leave key stored in it that name is now a MISNOMER. It is plain text with no enum and no
+  // foreign key (db/schema.ts), so it stores this key correctly today and NO migration was needed. Renaming
+  // the table (and this module, and the admin screen's heading) is its own ticket and its own migration —
+  // deliberately not smuggled into a permission fix.
+  'leave.apply_on_behalf',
 ] as const;
 
 export type PayrollPermissionKey = (typeof PAYROLL_PERMISSION_KEYS)[number];
 
-/** Default role→keys map (used when no override row exists). All four keys default to admin roles. */
+/** Default role→keys map (used when no override row exists). EVERY key defaults to admin roles only. */
 export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly string[]> = {
   'payroll.rollback': ['hr_admin', 'super_admin'],
   'payroll.reprocess.selective': ['hr_admin', 'super_admin'],
@@ -43,6 +64,12 @@ export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly 
   // the money that result set in motion. A tenant that wants a payroll clerk to remove without being
   // able to reset grants this key to their role and leaves payroll.rollback alone.
   'payroll.remove.employee': ['hr_admin', 'super_admin'],
+  // 5206539f — the roles that ALREADY hold HR authority over someone else's leave, and nobody else. This is
+  // exactly the allow-list adminCancelLeave enforces in code (isAdmin ⇒ hr_admin | super_admin) for the
+  // cancel-on-behalf power, so submitting and cancelling on an employee's behalf default to the same hands.
+  // A line manager is deliberately ABSENT: nothing widens on the day this ships, and a customer who wants a
+  // particular manager (or every manager in one company) to file on behalf grants the key to their role.
+  'leave.apply_on_behalf': ['hr_admin', 'super_admin'],
 } as const;
 
 export function isPayrollPermissionKey(v: string): v is PayrollPermissionKey {

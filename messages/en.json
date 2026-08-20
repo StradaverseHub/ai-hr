@@ -1806,6 +1806,7 @@
       "leaveYearNotOpen": "Leave year {year} is not open for applications yet. Please contact HR.",
       "editNotAllowed": "This leave can no longer be edited.",
       "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
+      "applyOnBehalfNotAllowed": "You do not have permission to apply for leave on behalf of another employee.",
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
       "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types.",

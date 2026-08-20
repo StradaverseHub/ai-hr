@@ -1806,6 +1806,7 @@
       "editNotAllowed": "此请假已无法编辑。",
       "leaveYearNotOpen": "假期年度 {year} 尚未开放申请。请联系人力资源部。",
       "applyNotAllowed": "员工无法申请 {typeName}。请联系人力资源部。",
+      "applyOnBehalfNotAllowed": "您没有代其他员工申请休假的权限。",
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
       "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。",

@@ -19,6 +19,8 @@ import {
   validateLeaveDocument,
   isEmergencyReasonCategory,
   todayInKualaLumpur,
+  // 5206539f — the typed refusal when a submission names someone the caller may not act for.
+  LeaveOnBehalfNotAllowedError,
   type LeaveDurationType,
 } from '@/core/leave';
 import { resolveEssView } from '@/core/ess-view';
@@ -131,10 +133,11 @@ export async function requestLeaveAction(formData: FormData) {
   const file = formData.get('document');
   const hasFile = file instanceof File && file.size > 0;
   const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
-  // Resolve the selected type once. This is NOT mirroring /me's listEligibleLeaveTypesFor eligibility filter:
-  // the Leave-Tab dropdown renders the unfiltered listLeaveTypes (it can apply on behalf of an employee who
-  // may be ineligible), and requestLeave re-runs assertEligible server-side. We only need the localized name
-  // (for errors) and the mime/size config (for the orphan-prevention pre-check) here.
+  // Resolve the selected type once, off the FULL catalogue rather than off an eligibility-filtered read.
+  // Not a policy statement: the dropdown that produced this post is eligibility-filtered (ad965821) and
+  // requestLeave re-runs assertEligible server-side regardless. All this lookup needs is the localized name
+  // (for errors) and the mime/size config (for the orphan-prevention pre-check), and a posted type that is
+  // NOT in the caller's eligible set must still resolve to those, or the refusal would name nothing.
   const locale = await getLocale();
   const types = await listLeaveTypes(session, { locale });
   const selected = types.find((t) => t.id === leaveTypeId);
@@ -169,8 +172,14 @@ export async function requestLeaveAction(formData: FormData) {
     }
     // Self-service apply (item 69088c13): the ESS form no longer renders the Employee selector, so no
     // employmentId is posted. Fall back to the signed-in viewer's own employment (mirrors /me's myRequestLeave)
-    // so a self-service submit still binds to the logged-in employee. The on-behalf admin/manager path still
-    // posts an explicit employmentId from the selector, which takes precedence.
+    // so a self-service submit still binds to the logged-in employee. The on-behalf path still posts an
+    // explicit employmentId from the selector, which takes precedence.
+    //
+    // 5206539f — AND THAT POSTED VALUE IS NO LONGER TRUSTED. It used to reach requestLeave unchecked, so a
+    // hand-crafted post could file leave against anyone the caller could see. requestLeave now refuses a
+    // subject who is not the caller unless the caller holds `leave.apply_on_behalf` (LeaveOnBehalfNotAllowedError,
+    // localized below). This line is unchanged on purpose: the fallback is what a self-service submit relies
+    // on, and re-deriving the employment here would only move the check to the weaker of the two places.
     const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
     const employmentId = postedEmploymentId || (await myEmployment(session))?.employmentId;
     if (!employmentId) {
@@ -212,6 +221,15 @@ export async function requestLeaveAction(formData: FormData) {
       warnQuery = `?warnHoliday=1&loaded=${w.loaded}&state=${encodeURIComponent(w.state ?? '')}&year=${w.year}`;
     }
   } catch (e) {
+    // 5206539f — the on-behalf refusal is translated HERE rather than inside the shared localizeLeaveError,
+    // and that is not a shortcut: this action is the ONLY caller that can post an employmentId at all
+    // (/me resolves the caller's own employment server-side and posts none), so this is the one surface on
+    // which the error can arise. Everything else still falls through to the shared localizer, whose last
+    // resort is the raw English service message — which is exactly what a permission refusal must not show.
+    if (e instanceof LeaveOnBehalfNotAllowedError) {
+      const tErr = await getTranslations('leave.errors');
+      redirect(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`);
+    }
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
   }
   revalidatePath('/leave');

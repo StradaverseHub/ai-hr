@@ -227,13 +227,18 @@ describe('ad965821 · eligibleLeaveTypeIdsFor — the on-behalf-of map', () => {
     }
   });
 
-  it('what a manager is OFFERED for a report is the REPORT’s own set, never the intersection', async () => {
-    // THE COMPOSITION, not either half of it (AGENTS rule 17). app/leave/page.tsx unions every selectable
-    // subject's set into the form's `types`, and components/leave-duration-fields.tsx intersects that array
-    // with the selected subject's entry. Rev 1 handed down the VIEWER's set instead, so the offer became
-    // eligible(manager) ∩ eligible(report): a male manager could not file Maternity for a female report,
-    // which main allowed outright (it handed the manager the whole catalogue). Both halves passed their own
-    // unit tests throughout, which is why this asserts the two composed.
+  it('what an on-behalf applicant is OFFERED for a subject is the SUBJECT’s own set, never the intersection', async () => {
+    // THE COMPOSITION, not either half of it (AGENTS rule 17): a union of every selectable subject's set,
+    // intersected downstream (components/leave-duration-fields.tsx) with the selected subject's entry. Rev 1
+    // handed down the VIEWER's set instead, so the offer became eligible(manager) ∩ eligible(report): a male
+    // manager could not file Maternity for a female report. Both halves passed their own unit tests
+    // throughout, which is why this asserts the two composed.
+    //
+    // UPDATED BY 5206539f (AGENTS rule 18): app/leave/page.tsx no longer builds that union, because a line
+    // manager no longer has an Employee selector to build it for — on-behalf application is the named
+    // permission `leave.apply_on_behalf` now. This case therefore pins the READ's own semantics (per
+    // employment, never intersected) rather than a live composition on that screen; it is the contract any
+    // future on-behalf surface must compose with, and the reason the read is kept.
     const mat = await leaveType(uniq('MAT'), { eligibility: { gender: ['female'] } });
     const pat = await leaveType(uniq('PAT'), {
       eligibility: { gender: ['male'], maritalStatus: ['married'] },

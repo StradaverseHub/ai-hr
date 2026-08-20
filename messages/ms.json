@@ -1806,6 +1806,7 @@
       "editNotAllowed": "Cuti ini tidak boleh lagi disunting.",
       "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR.",
       "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR.",
+      "applyOnBehalfNotAllowed": "Anda tiada kebenaran untuk memohon cuti bagi pihak pekerja lain.",
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
       "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
       "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya.",

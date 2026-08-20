@@ -278,26 +278,32 @@ describe('a hand-edited filter in the URL degrades to no filter, never to a 500'
 
 describe('the viewer never disappears from their own Request Leave selector', () => {
   /**
-   * THE REGRESSION. ad965821 narrowed the selector to employees with a non-empty eligible set, which is
-   * right for reports and wrong for the viewer: a line manager inside minServiceMonths on every type (a
-   * recent hire, or on probation under a confirmed_only catalogue) qualifies for nothing today but still
-   * has qualifying reports. The trigger gate tests the TYPE options, which are the union across subjects
-   * and stay non-empty — so the button renders, the manager is missing from the employee select, and the
-   * dialog defaults employmentId to the first option, a REPORT. They file against someone else's balance
-   * by default with nothing on screen saying so. main built this list from `active` outright.
+   * THE ORIGINAL REGRESSION. ad965821 narrowed the selector to employees with a non-empty eligible set,
+   * which was right for reports and wrong for the viewer: a line manager inside minServiceMonths on every
+   * type (a recent hire, or on probation under a confirmed_only catalogue) qualified for nothing today but
+   * still had qualifying reports. The trigger gate tests the TYPE options, which were the union across
+   * subjects and stayed non-empty — so the button rendered, the manager was missing from the employee
+   * select, and the dialog defaulted employmentId to the first option, a REPORT. They filed against someone
+   * else's balance by default with nothing on screen saying so.
+   *
+   * UPDATED BY 5206539f (AGENTS rule 18). THE FIX IS NOW STRUCTURAL RATHER THAN COMPENSATORY. The narrowing
+   * that could drop the viewer is deleted outright: a line manager gets no Employee selector at all, because
+   * applying on someone else's behalf is the named permission `leave.apply_on_behalf` and having reports
+   * grants nothing. The list a HOLDER of that permission sees is `active` — everyone in scope, unnarrowed —
+   * with the VIEWER FIRST, so the hazard this case was written about (the dialog defaulting to somebody
+   * else) still cannot happen, and now cannot happen by construction rather than by a fallback.
    */
-  it('the viewer is added back when their own eligible set is empty', () => {
+  it('the viewer leads the selector, and no narrowing can drop them from it', () => {
     const page = read('app/leave/page.tsx');
-    // The fallback exists and is keyed on the viewer's ABSENCE from the narrowed set.
+    // The viewer heads the list the dialog defaults to.
     expect(page).toMatch(
-      /requestLeaveSubjects = selectableSubjects\.some\(\(e\) => e\.employmentId === me\.employmentId\)/,
+      /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.active\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,
     );
-    expect(page).toMatch(/: \[\.\.\.active\.filter\(\(e\) => e\.employmentId === me\.employmentId\), \.\.\.selectableSubjects\]/);
-    // …and the options are built from the RESTORED list, not the narrowed one. This is the half that
-    // actually ships the fix: a fallback nobody reads changes nothing.
+    // …and the list is `active` itself, so there is no filter left that could remove anyone, viewer included.
     const opts = page.slice(page.indexOf('const requestLeaveEmployeeOptions'));
     const body = opts.slice(0, opts.indexOf('}));') + 4);
-    expect(body).toContain('requestLeaveSubjects.filter');
-    expect(body, 'the selector still reads the narrowed set').not.toContain('selectableSubjects.filter');
+    expect(body).toContain('...active.filter((e) => e.employmentId !== me.employmentId),');
+    expect(body, 'a narrowed subject list is back').not.toContain('selectableSubjects');
+    expect(body, 'a narrowed subject list is back').not.toContain('requestLeaveSubjects');
   });
 });

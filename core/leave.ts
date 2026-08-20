@@ -11,6 +11,11 @@ import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
+// 5206539f — the pure "does this caller hold this key" decision (defaults ∘ tenant overrides ∘ company
+// overrides). Taken from the lib/ leaf rather than from core/payroll.ts's resolvePayrollPermission, which
+// is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
+// leave request path for fifteen lines of SELECT.
+import { decidePayrollPermission } from '../lib/payroll-permissions';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // 35b7af0a group 3 — the whole-year calendar counters, defined in a CLIENT-SAFE module and re-exported
@@ -187,6 +192,9 @@ import {
   leaveRequestDate,
   leaveType,
   payrollBatch,
+  // 5206539f — the (key, role) override rows behind `leave.apply_on_behalf`. Its table name says "payroll"
+  // for historical reasons only; see the note in lib/payroll-permissions.ts.
+  payrollPermissionGrant,
   payslip,
   person,
   reportingLine,
@@ -484,6 +492,21 @@ export class MissingRejectReasonError extends Error {
   constructor() {
     super('A reason is required to reject a leave request');
     this.name = 'MissingRejectReasonError';
+  }
+}
+
+/**
+ * 5206539f — the caller tried to submit leave for SOMEBODY ELSE without holding `leave.apply_on_behalf`.
+ *
+ * TYPED, for the same reason LeaveCancellationNotAllowedError is: a refusal has to reach the employee in
+ * their own language. The message below is the English fallback an unlocalized logger sees; the screen maps
+ * the error NAME to leave.errors.applyOnBehalfNotAllowed (app/leave/actions.ts) rather than painting this
+ * sentence onto the page.
+ */
+export class LeaveOnBehalfNotAllowedError extends Error {
+  constructor() {
+    super('You do not have permission to apply for leave on behalf of another employee.');
+    this.name = 'LeaveOnBehalfNotAllowedError';
   }
 }
 
@@ -2494,6 +2517,57 @@ type LeaveOverrideAudit = {
   consentAt: string;
 };
 
+// ── Apply-on-behalf permission (5206539f) ────────────────────────────────────────────────────────────
+/**
+ * Does this caller hold `leave.apply_on_behalf` — the named permission to submit leave for an employee who
+ * is not them? Company-scoped override rows win over tenant-wide rows, which win over the code defaults in
+ * lib/payroll-permissions.ts (hr_admin + super_admin, and nobody else, on the day this ships).
+ *
+ * WHAT IT REPLACES. Nothing checked this before. The Leave screen offered an Employee selector to anyone
+ * with a direct report, and the submission accepted whatever employmentId the form posted, so "does anyone
+ * report to you" was the de-facto permission — an accident of the org chart, and one that RLS could never
+ * fence because RLS here is SYMMETRIC: a manager can legitimately SEE a subordinate's employment, which
+ * makes the write pass every policy on the table.
+ *
+ * Read inside the caller's own tx: the grant table is tenant-readable under RLS.
+ */
+async function resolveApplyOnBehalfTx(tx: Tx, ctx: SessionContext, companyId: string | null): Promise<boolean> {
+  const rows = await tx
+    .select({
+      role: payrollPermissionGrant.role,
+      allowed: payrollPermissionGrant.allowed,
+      companyId: payrollPermissionGrant.companyId,
+    })
+    .from(payrollPermissionGrant)
+    .where(
+      and(
+        eq(payrollPermissionGrant.tenantId, ctx.tenantId),
+        eq(payrollPermissionGrant.permissionKey, 'leave.apply_on_behalf'),
+        companyId
+          ? or(isNull(payrollPermissionGrant.companyId), eq(payrollPermissionGrant.companyId, companyId))
+          : isNull(payrollPermissionGrant.companyId),
+      ),
+    );
+  return decidePayrollPermission({
+    key: 'leave.apply_on_behalf',
+    // Delegated grants count exactly as directly-assigned roles do, mirroring core/payroll.ts's callerRolesOf.
+    callerRoles: [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)],
+    overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
+  });
+}
+
+/**
+ * The SAME question, asked by the screen (app/leave/page.tsx) so the Employee selector is rendered only for
+ * a holder. Exported deliberately: the selector's visibility and the submission's refusal must be one
+ * decision resolved in one place, or they drift the moment either side is edited. Hiding the selector is
+ * the courtesy; the throw inside requestLeave below is the control.
+ *
+ * `companyId` narrows to a company-scoped override when the caller's own company is known.
+ */
+export function canApplyLeaveOnBehalf(ctx: SessionContext, companyId?: string | null): Promise<boolean> {
+  return withTenant(ctx, (tx) => resolveApplyOnBehalfTx(tx, ctx, companyId ?? null));
+}
+
 export async function requestLeave(
   ctx: SessionContext,
   p: {
@@ -2533,6 +2607,32 @@ export async function requestLeave(
   },
 ): Promise<RequestLeaveResult> {
   return withTenant(ctx, async (tx) => {
+    // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
+    // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
+    //
+    // ENFORCED HERE RATHER THAN IN THE ACTION, because the action is only one door: requestLeaveAction
+    // passed the posted employmentId straight through, and any future caller (an importer, a chatbot, a
+    // second screen) would have inherited the same hole. Mirrors requestLeaveCancellation's §6(1)
+    // subject-only check, which is enforced in code for the same reason: RLS here is SYMMETRIC — a manager
+    // may legitimately SEE a subordinate's employment, so every row policy passes and the write is allowed.
+    // Hiding the Employee selector (app/leave/page.tsx) is the courtesy; this throw is the control.
+    //
+    // ABOVE the Emergency-Leave short-circuit below, which returns into a whole separate submission path,
+    // and above every other gate: nothing is read or written on behalf of someone the caller may not act for.
+    const [subject] = await tx
+      .select({ personId: employment.personId, companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    // Self is decided by PERSON, not by employment id: one person can hold several employments (multi-company
+    // groups), and all of them are still their own leave. A caller with no personId (a service/admin context
+    // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
+    // HR administrator has always passed.
+    const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
+    if (!isSelfSubject && !(await resolveApplyOnBehalfTx(tx, ctx, subject?.companyId ?? null))) {
+      throw new LeaveOnBehalfNotAllowedError();
+    }
+
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
     const [lt0] = await tx
       .select(leaveTypeRequestColumns)
