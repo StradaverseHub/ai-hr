@@ -57,7 +57,6 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const MONTH_PAGE = 'app/payroll/transactions/tp1/[year]/[month]/page.tsx';
 const ESS_PAGE = 'app/me/tax-relief/page.tsx';
-const FORM = 'components/tp1-declaration-form.tsx';
 
 /** Every React element in a rendered tree, descending through EVERY element-valued prop. */
 function walk(node: unknown, acc: any[] = []): any[] {
