@@ -74,7 +74,9 @@ import {
  * ⚠️ READS HAPPEN ONCE PER PAGE, NOT ONCE PER MOUNT. `loadEntitlementTablesData` is called ONCE by each
  * host page and its result is sliced in memory by `leaveTypeId`. The Entitlements page composes a panel
  * for all 24 leave types up front (they are props of a client workspace, so every one of them is
- * rendered), and eleven queries per panel would be 264 queries for a screen showing one.
+ * rendered), and the fourteen reads below, run per panel, would be well over three hundred queries for a
+ * screen showing one. (Deliberately not a fixed number here — the list has grown three times since this
+ * paragraph was written and said "eleven" throughout.)
  *
  * ⚠️ SERVER COMPONENT. Only `EntitlementBandsEditor` and `EligibilityRuleForm` cross the client boundary,
  * exactly as they did on the standalone page, and both take only serialisable props —
@@ -98,12 +100,18 @@ export type EntitlementTablesData = {
   templates: EntitlementTemplateRow[];
   rules: EligibilityRuleRow[];
   ruleCounts: Map<string, number>;
-  /** r210 — WHY EACH LINEAGE CANNOT BE DELETED, keyed by lineage; absent or empty ⇒ it can. Computed once
-   *  for the whole tenant by `entitlementDeleteBlocks`, from the SAME derivation the delete itself
-   *  enforces inside its transaction, so a row that offers Delete and a delete that refuses cannot
-   *  disagree. Rendered per row so nobody has to press Delete to find out what is holding a record. */
+  /** r210 — WHICH ELIGIBILITY RULES POINT AT EACH TABLE, keyed by template lineage; absent or empty ⇒
+   *  none do, and the row offers Delete. This is the blocker the approved plan asks the SCREEN to name
+   *  ("an eligibility rule that points at a table has to go before the table itself — the screen will say
+   *  so rather than making you guess"), and it is pure configuration to derive.
+   *
+   *  ⚠️ THE OTHER BLOCKER — entitlement granted while the lineage was in force — IS NOT HERE, and
+   *  `entitlementDeleteBlocks` carries the measurement that decided it: pre-computing it cost 1.7s per
+   *  render at 50,000 ledger rows and grew linearly, because `leave_ledger`'s RLS calls a recursive
+   *  SECURITY DEFINER function per row. It is asked instead inside the delete's own transaction, and its
+   *  refusal is what the operator reads. So a row may offer Delete and the delete may still refuse —
+   *  with the leave type, the window and the employee count in words, beside the Stop control. */
   templateDeleteBlocks: Map<string, EntitlementUsageBlock>;
-  ruleDeleteBlocks: Map<string, EntitlementUsageBlock>;
   criteriaSections: CriteriaSection[];
   /** ARCHIVED GROUPS INCLUDED, deliberately — `listGradeGroups` returns them with an `archived` flag and
    *  this list is used for two different jobs. The rule form OFFERS them (a saved rule may well have been
@@ -174,10 +182,10 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     // ADDED HERE IN THE SAME POSITION — a mismatch shifts every later variable by one slot and every
     // side of it is an array, so nothing type-errors and every catalogue silently becomes another one.
     listGradeGroups(s),
-    // r210 — which tables and rules can be removed outright, and what is holding the rest. Three queries
-    // for the whole tenant rather than one per row; `entitlementDeleteBlocks` explains why the window
-    // arithmetic is done in memory. LAST in both lists, and the only entry here that is not an array —
-    // so a slot mismatch involving it type-errors instead of silently swapping two catalogues.
+    // r210 — which tables have an eligibility rule pointing at them, for the whole tenant, in two queries
+    // over configuration. It reads NO ledger, on purpose: `entitlementDeleteBlocks` carries the numbers.
+    // LAST in both lists, and the only entry here that is not an array — so a slot mismatch involving it
+    // type-errors instead of silently swapping two catalogues.
     entitlementDeleteBlocks(s),
   ]);
 
@@ -209,7 +217,6 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     rules,
     ruleCounts,
     templateDeleteBlocks: deleteBlocks.templates,
-    ruleDeleteBlocks: deleteBlocks.rules,
     criteriaSections,
     // Only the three fields the two consumers need — a `GradeGroupOption` is plain serialisable data, and
     // the rule form is a CLIENT component, so nothing beyond id / name / membership may cross to it.
@@ -254,7 +261,6 @@ export async function EntitlementTablesBlock({
     leaveTypes,
     ruleCounts,
     templateDeleteBlocks,
-    ruleDeleteBlocks,
     criteriaSections,
     gradeGroups,
     archivedMemberGrades,
@@ -336,19 +342,19 @@ export async function EntitlementTablesBlock({
   const expiryWarnEnd = addDaysIso(today, RULE_EXPIRY_WARNING_DAYS);
 
   /**
-   * r210 · WHAT IS HOLDING THIS RECORD, in the operator's words, beside the Stop control that is the way
-   * out of it. Never "cannot delete" on its own — a refusal that does not say why has been made a guess.
+   * r210 · WHAT IS HOLDING THIS TABLE, in the operator's words, beside the Stop control that is the way
+   * out of it — and it NAMES THE RULES, because naming them is the operator's next step. A row that only
+   * said "cannot delete" would have made them guess which of the rules below is the one.
    *
-   * ⚠️ THE GRANTED WORDING IS DELIBERATELY NOT "THIS TABLE GRANTED THOSE DAYS". The ledger records no
-   * reference to the table or rule that produced a row (core/entitlement-template.ts's module header), so
-   * what is true is that days were granted for this leave type WHILE this record was in force. Saying
-   * more would be inventing a precision the data does not have.
+   * ⚠️ THE OTHER REFUSAL — entitlement granted while this lineage was in force — IS NOT RENDERED HERE.
+   * Deriving it for every row costs one unindexed `leave_ledger` read per page render whose RLS calls a
+   * recursive SECURITY DEFINER function per row (`entitlementDeleteBlocks` carries the measurements), so
+   * it is asked inside the delete's own transaction instead. The operator presses Delete and reads the
+   * service's own sentence, which says more than a row caption could: the leave type, the window, the
+   * employee count, and the caveat that a leave record does not record WHICH table granted it.
    */
-  const deleteBlockText = (block: EntitlementUsageBlock | undefined): string | null => {
-    if (!block || isDeletableLineage(block)) return null;
-    if (block.rules.length > 0) return t('deleteBlockedByRules', { rules: block.rules.join(', ') });
-    return t('deleteBlockedByGrants', { employees: block.employees });
-  };
+  const deleteBlockText = (block: EntitlementUsageBlock | undefined): string | null =>
+    !block || isDeletableLineage(block) ? null : t('deleteBlockedByRules', { rules: block.rules.join(', ') });
   /** The row's date box for Stop. `inputCls` is `w-full` and full height — a row control is neither. */
   const rowDateCls =
     'h-8 w-[8.5rem] rounded-md border border-input bg-card px-2 text-xs shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
@@ -740,26 +746,23 @@ export async function EntitlementTablesBlock({
                             </ConfirmSubmit>
                           </form>
                         ) : null}
+                        {/* NOTHING POINTS AT A RULE, so a rule row carries no pre-computed blocker at
+                            all — the only refusal it can meet is the granted one, which the delete
+                            itself raises in words. See `deleteBlockText`. */}
                         {ruleHeadIds.has(x.id) ? (
-                          deleteBlockText(ruleDeleteBlocks.get(x.lineageId)) ? (
-                            <span className="max-w-[18rem] text-xs text-muted-foreground">
-                              {deleteBlockText(ruleDeleteBlocks.get(x.lineageId))}
-                            </span>
-                          ) : (
-                            <form action={deleteEligibilityRuleAction}>
-                              {returnField}
-                              <input type="hidden" name="lineageId" value={x.lineageId} />
-                              <input type="hidden" name="name" value={x.name} />
-                              <ConfirmSubmit
-                                size="sm"
-                                title={t('deleteRule')}
-                                subtitle={x.name}
-                                description={t('deleteRuleConfirm')}
-                              >
-                                {t('delete')}
-                              </ConfirmSubmit>
-                            </form>
-                          )
+                          <form action={deleteEligibilityRuleAction}>
+                            {returnField}
+                            <input type="hidden" name="lineageId" value={x.lineageId} />
+                            <input type="hidden" name="name" value={x.name} />
+                            <ConfirmSubmit
+                              size="sm"
+                              title={t('deleteRule')}
+                              subtitle={x.name}
+                              description={t('deleteRuleConfirm')}
+                            >
+                              {t('delete')}
+                            </ConfirmSubmit>
+                          </form>
                         ) : null}
                       </div>
                     </td>

@@ -58,7 +58,7 @@ function bandsFrom(fd: FormData): ServiceBand[] {
 /**
  * ee6b7c69 — WHERE THIS SAVE CAME FROM, AND THEREFORE WHERE IT MUST RETURN TO.
  *
- * These six actions now serve TWO mounts of the same block: the standalone Entitlement Tables screen and
+ * These eight actions now serve TWO mounts of the same block: the standalone Entitlement Tables screen and
  * the Entitlement step of a leave type on /admin/leave/entitlements. The embedded mount posts
  * `embeddedLeaveTypeId`; the standalone one does not. Without this the item's central promise breaks on
  * the very first save — HR types a table inside Annual Leave, presses Save, and is redirected onto the

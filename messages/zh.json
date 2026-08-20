@@ -8065,7 +8065,6 @@
       "deleteRule": "删除此规则",
       "deleteRuleConfirm": "此操作将永久删除该规则及其所有版本。由于在其生效期间未发放过任何额度，因此可以删除。删除无法撤销——如果日后可能还需要，请改为从某个日期起停用。",
       "deleteBlockedByRules": "有适用规则指向它，因此无法删除：{rules}。请先删除该规则，或从某个日期起停用此额度表。",
-      "deleteBlockedByGrants": "无法删除：在其生效期间已有 {employees} 名员工获得额度。休假记录不会记载是哪一张额度表发放的，因此该期间内的所有发放都计入。请改为从某个日期起停用。",
       "ruleCheckAudience": "查看覆盖人数",
       "ruleCheckHint": "保存前请先查看覆盖人数。",
       "ruleMatchedCount": "生效日期当天有 {count} 名员工符合。",

@@ -8065,7 +8065,6 @@
       "deleteRule": "Padam peraturan ini",
       "deleteRuleConfirm": "Ini membuang peraturan dan setiap versinya secara kekal. Ia boleh dipadam kerana tiada kelayakan diberikan semasa ia berkuat kuasa. Pemadaman tidak boleh dibatalkan — hentikannya dari satu tarikh jika anda mungkin memerlukannya semula.",
       "deleteBlockedByRules": "Tidak boleh dipadam selagi peraturan kelayakan menunjuk ke sini: {rules}. Padam peraturan itu dahulu, atau hentikan jadual ini dari satu tarikh.",
-      "deleteBlockedByGrants": "Tidak boleh dipadam: {employees} pekerja telah diberikan kelayakan semasa ia berkuat kuasa. Rekod cuti tidak menyatakan jadual mana yang memberikannya, jadi setiap pemberian dalam tempoh itu dikira. Hentikannya dari satu tarikh sebaliknya.",
       "ruleCheckAudience": "Semak siapa yang terlibat",
       "ruleCheckHint": "Semak siapa yang terlibat sebelum menyimpan.",
       "ruleMatchedCount": "{count} pekerja sepadan pada tarikh berkuat kuasa.",

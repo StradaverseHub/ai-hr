@@ -18,10 +18,22 @@
  *      produced a row, so "has this table granted anything" has no exact answer (core/entitlement-template
  *      module header). The conservative test is the date window, and these cases pin BOTH directions: a
  *      grant inside the window refuses, a grant outside it does not — otherwise "refuse when anything was
- *      ever granted for this leave type" would pass every case that only checks the refusal.
+ *      ever granted for this leave type" would pass every case that only checks the refusal. It also pins
+ *      the case the whole item dies on if it is missed: `openLeaveYear` writes an `accrual` row of 0.00
+ *      days for EVERY employee and type whether or not anything was granted, so a guard reading the entry
+ *      type alone makes the never-used table undeletable and says so in a sentence that is false.
+ *   §B2 THE COMPANY FENCE, which is application code because RLS cannot do it — WITH CHECK is not
+ *      consulted for DELETE. It is the only company scope on a rule delete and nothing else in the suite
+ *      asserts it, so removing the call leaves a green suite.
  *   §C THE HEALTH CARD RE-DERIVES. A deleted table must not still be reported as "a table without a rule".
  *      `lib/leave-config-health.ts` is pure and derives from what it is handed, so the fact under test is
  *      that the delete really removes the rows the next read hands it.
+ *      A SECOND FACT §B pins, and it is a deliberate design choice rather than an omission: the SCREEN
+ *      does not pre-compute the grant refusal. Doing so put one unindexed `leave_ledger` read on every
+ *      render of two pages, and `leave_ledger`'s RLS calls a recursive SECURITY DEFINER function per row
+ *      — measured at 1.7s per render over 50,000 ledger rows, growing linearly (`entitlementDeleteBlocks`
+ *      carries the table). The rules half, which is configuration and names the operator's next step, IS
+ *      on the row; the grant half is the delete's own refusal.
  *   §D THE SCREEN AND THE ACTIONS. Row actions are the whole discoverability half of the item, and the
  *      block is a server component importing a 'use server' module, so composition is asserted on the
  *      source (this repo's convention — see entitlement-tables-embed) and behaviour is not. The two
@@ -394,13 +406,8 @@ describe('§B r210 · the guard refuses with a named reason, and the reason is h
       validFrom: '2026-06-01',
     });
 
-    // BEFORE the table started — nothing this table could have decided. Asserted on BOTH paths: the
-    // screen's batch reader, and the delete itself, because they narrow the same window in two places
-    // (one in SQL, one in memory) and either could lose it without the other noticing.
+    // BEFORE the table started — nothing this table could have decided, so the delete goes through.
     await ledgerRow({ employmentId: emp.employmentId, leaveTypeId: typeId, effectiveOn: '2026-01-15' });
-    expect(isDeletableLineage((await entitlementDeleteBlocks(adminCtx(b))).templates.get(late.lineageId))).toBe(
-      true,
-    );
     await deleteEntitlementTemplate(adminCtx(b), { lineageId: late.lineageId });
     expect(await versionsOf(late.lineageId)).toBe(0);
 
@@ -412,9 +419,6 @@ describe('§B r210 · the guard refuses with a named reason, and the reason is h
       validFrom: '2026-06-01',
     });
     await ledgerRow({ employmentId: emp.employmentId, leaveTypeId: typeId, effectiveOn: '2026-07-01' });
-    const blocks = await entitlementDeleteBlocks(adminCtx(b));
-    expect(blocks.templates.get(tpl.lineageId)).toMatchObject({ rules: [], grants: 1, employees: 1 });
-
     const err = await deleteEntitlementTemplate(adminCtx(b), { lineageId: tpl.lineageId }).catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain('Medical Leave');
@@ -476,10 +480,8 @@ describe('§B r210 · the guard refuses with a named reason, and the reason is h
       criteria: {},
       validFrom: '2026-02-01',
     });
-    // Dated before the rule started: outside ITS window even though the table was already in force. Both
-    // paths again — the batch reader the screen renders and the guard the delete enforces.
+    // Dated before the rule started: outside ITS window even though the table was already in force.
     await ledgerRow({ employmentId: emp.employmentId, leaveTypeId: typeId, effectiveOn: '2026-01-10' });
-    expect(isDeletableLineage((await entitlementDeleteBlocks(adminCtx(b))).rules.get(early.lineageId))).toBe(true);
     await deleteEligibilityRule(adminCtx(b), { lineageId: early.lineageId });
     expect(await ruleVersionsOf(early.lineageId)).toBe(0);
 
@@ -515,9 +517,58 @@ describe('§B r210 · the guard refuses with a named reason, and the reason is h
     expect(lineageInForceWindow([])).toBeNull();
   });
 
-  it('the batch reader the SCREEN uses agrees with the guard the WRITE enforces', async () => {
-    // A row that offers Delete and a delete that refuses is the worst possible pairing, so the two are
-    // derived from the same rule and checked against each other here.
+  /**
+   * ⚠️ THE CASE THE CENTRAL PROMISE DIES ON, AND IT IS NOT HYPOTHETICAL — migration 0376 stamped
+   * `accrual_unconfigured` on EVERY non-archived leave type, and `openLeaveYear` writes ONE `accrual`
+   * row per employee per type per year UNCONDITIONALLY (its own idempotency open-marker and the expiry
+   * sweep's "year was opened" marker), forced to 0.00 days for a type carrying that marker.
+   *
+   * So the customer's ledger is full of 0-day `accrual` rows for types that granted nobody anything. A
+   * guard filtering on ENTRY TYPE alone counts every one of them: the never-used table this whole item
+   * exists to let them clear becomes undeletable, and the refusal asserts something FALSE — "granted
+   * entitlement to 1 employee" over a ledger holding zero days. This is the exact reproduction: one
+   * unconfigured type, one table, one employee, one `openLeaveYear`.
+   */
+  it('the 0-day open-marker openLeaveYear ALWAYS writes is not a grant', async () => {
+    const typeId = await leaveTypeRow('Annual Leave');
+    await owner.db
+      .update(schema.leaveType)
+      .set({ accrualUnconfigured: new Date() })
+      .where(eq(schema.leaveType.id, typeId));
+    const tpl = await createEntitlementTemplate(adminCtx(b), {
+      leaveTypeId: typeId,
+      name: 'All staff',
+      serviceBands: bands(12),
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire();
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+
+    // The ledger DOES hold a granting-entry-type row for this type, and it grants nothing.
+    const marker = await owner.db
+      .select({ entryType: schema.leaveLedger.entryType, days: schema.leaveLedger.days })
+      .from(schema.leaveLedger)
+      .where(
+        and(
+          eq(schema.leaveLedger.leaveTypeId, typeId),
+          eq(schema.leaveLedger.employmentId, emp.employmentId),
+        ),
+      );
+    expect(marker).toEqual([{ entryType: 'accrual', days: '0.00' }]);
+
+    // …so the table is still deletable, and the whole lineage goes.
+    await deleteEntitlementTemplate(adminCtx(b), { lineageId: tpl.lineageId });
+    expect(await versionsOf(tpl.lineageId)).toBe(0);
+  });
+
+  /**
+   * The SCREEN's reader names the pointing rules and NOTHING ELSE — see `entitlementDeleteBlocks` for
+   * the measurement behind that (pre-computing the grant half cost 1.7s per page render at 50,000 ledger
+   * rows, because leave_ledger's RLS calls a recursive SECURITY DEFINER function per row). What this
+   * pins is the half that IS promised on the row: the rules, BY NAME, so the operator's next step is
+   * spelled out — and that a grant does not silently take the Delete control away from a row.
+   */
+  it('the screen reader names the pointing rules, and reads no ledger', async () => {
     const typeId = await leaveTypeRow();
     const emp = await hire();
     const free = await createEntitlementTemplate(adminCtx(b), {
@@ -543,11 +594,97 @@ describe('§B r210 · the guard refuses with a named reason, and the reason is h
     expect(isDeletableLineage(blocks.templates.get(ruled.lineageId))).toBe(false);
     expect(isDeletableLineage(blocks.templates.get(free.lineageId))).toBe(true);
 
-    // …and once a grant lands inside the window, the screen stops offering Delete on the free one too.
+    // A grant inside the window does NOT change what the row offers — the delete refuses it instead.
     await ledgerRow({ employmentId: emp.employmentId, leaveTypeId: typeId, effectiveOn: '2026-05-01' });
     const after = await entitlementDeleteBlocks(adminCtx(b));
-    expect(isDeletableLineage(after.templates.get(free.lineageId))).toBe(false);
-    expect(after.templates.get(free.lineageId)?.employees).toBe(1);
+    expect(isDeletableLineage(after.templates.get(free.lineageId))).toBe(true);
+    await expect(deleteEntitlementTemplate(adminCtx(b), { lineageId: free.lineageId })).rejects.toThrow(
+      /cannot be deleted/,
+    );
+  });
+});
+
+// ── §B2 the company-scope fence on a rule delete ────────────────────────────────────────────────────
+
+/**
+ * §B2 r210 · THE ONE FENCE THE DATABASE CANNOT APPLY TO A DELETE.
+ *
+ * Migration 0409 restored the company-scoped write check on `entitlement_eligibility_rule` — as an RLS
+ * WITH CHECK, and WITH CHECK is consulted for INSERT and UPDATE only. The policy's USING clause is
+ * tenant-wide on purpose (the accrual kernel resolves entitlement under non-admin sessions), so a DELETE
+ * is fenced by tenant and by NOTHING ELSE. `retireEligibilityRule` is an UPDATE and IS refused by that
+ * check; delete must not be the weaker door, so `assertMayDeleteRuleLineage` asks the same predicate in
+ * application code.
+ *
+ * ⚠️ IT IS THEREFORE THE ONLY COMPANY FENCE ON THIS PATH, AND NOTHING ELSE IN THE SUITE ASSERTS IT.
+ * Replacing the call with a comment leaves the whole suite green — which is exactly how a later edit
+ * removes a fence nobody notices. These four cases are that pin.
+ */
+describe('§B2 r210 · a company-scoped admin cannot delete another company\'s eligibility rule', () => {
+  /** A second company, so "another company's rule" is a real row rather than a made-up uuid. */
+  async function otherCompany(): Promise<string> {
+    const [c] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Beta Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    return c.id;
+  }
+  /** The same admin, granted for ONE company instead of the whole group. `withTenant` publishes
+   *  `ctx.grants` as the `app.grants` GUC, which is what `app.is_admin_for` / `app.is_group_admin` read —
+   *  so this is the real session shape, not a stub of the predicate. */
+  const scopedTo = (companyId: string) => ({
+    ...adminCtx(b),
+    grants: [{ role: 'hr_admin', companyId }],
+  });
+
+  async function ruleFor(criteria: Record<string, unknown>) {
+    const typeId = await leaveTypeRow();
+    const tpl = await createEntitlementTemplate(adminCtx(b), {
+      leaveTypeId: typeId,
+      name: 'PERMANENT',
+      serviceBands: bands(12),
+      validFrom: '2026-01-01',
+    });
+    return createEligibilityRule(adminCtx(b), {
+      name: 'Targeted',
+      templateLineageId: tpl.lineageId,
+      criteria,
+      validFrom: '2026-01-01',
+    });
+  }
+
+  it('a GROUP admin may delete a company-scoped rule', async () => {
+    const rule = await ruleFor({ companyIds: [b.companyId] });
+    await deleteEligibilityRule(adminCtx(b), { lineageId: rule.lineageId });
+    expect(await ruleVersionsOf(rule.lineageId)).toBe(0);
+  });
+
+  it('a COMPANY-scoped admin may delete their own company\'s rule', async () => {
+    const rule = await ruleFor({ companyIds: [b.companyId] });
+    await deleteEligibilityRule(scopedTo(b.companyId), { lineageId: rule.lineageId });
+    expect(await ruleVersionsOf(rule.lineageId)).toBe(0);
+  });
+
+  it('…and is REFUSED on a rule that reaches the whole group, which needs a group admin', async () => {
+    const rule = await ruleFor({});
+    const err = await deleteEligibilityRule(scopedTo(b.companyId), { lineageId: rule.lineageId }).catch(
+      (e: Error) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/reaches every company/);
+    // Refused BEFORE anything was removed — the guard runs inside the same transaction, first.
+    expect(await ruleVersionsOf(rule.lineageId)).toBe(1);
+  });
+
+  it('…and is REFUSED on another company\'s rule', async () => {
+    const beta = await otherCompany();
+    const rule = await ruleFor({ companyIds: [beta] });
+    const err = await deleteEligibilityRule(scopedTo(b.companyId), { lineageId: rule.lineageId }).catch(
+      (e: Error) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/a company you administer/);
+    expect(await ruleVersionsOf(rule.lineageId)).toBe(1);
   });
 });
 
@@ -669,10 +806,15 @@ describe('§D r210 · Stop and Delete are ROW actions, on both blocks, and every
     expect(blockSrc).toContain('if (!prev || r.validFrom >= prev.validFrom) head.set(r.lineageId, r);');
   });
 
-  it('where Delete is refused the row says what is holding the record, in words', () => {
-    expect(blockSrc).toContain("t('deleteBlockedByRules'");
-    expect(blockSrc).toContain("t('deleteBlockedByGrants'");
+  it('where Delete is refused by a pointing rule, the row NAMES the rule', () => {
+    // The plan's own words: "an eligibility rule that points at a table has to go before the table
+    // itself — the screen will say so rather than making you guess." Naming them is the next step.
+    expect(blockSrc).toContain("t('deleteBlockedByRules', { rules: block.rules.join(', ') })");
     expect(blockSrc).toContain('isDeletableLineage(block)');
+    // …and the GRANT refusal is deliberately NOT pre-computed per row — see `entitlementDeleteBlocks`
+    // for the measurement. A caption for it here would put the ledger read back on the page render.
+    expect(blockSrc).not.toContain('deleteBlockedByGrants');
+    expect(blockSrc).not.toContain('ruleDeleteBlocks');
   });
 
   it('every new caption resolves in all six catalogues', () => {
@@ -686,7 +828,6 @@ describe('§D r210 · Stop and Delete are ROW actions, on both blocks, and every
       'deleteRule',
       'deleteRuleConfirm',
       'deleteBlockedByRules',
-      'deleteBlockedByGrants',
       'ruleTargetStopped',
     ];
     for (const k of keys) expect(blockSrc, `${k} must be asked for`).toContain(`t('${k}'`);
@@ -701,7 +842,6 @@ describe('§D r210 · Stop and Delete are ROW actions, on both blocks, and every
     for (const loc of LOCALES) {
       const msgs = JSON.parse(read(`messages/${loc}.json`)) as Record<string, never>;
       expect(String(leaf(msgs, 'admin.entitlementTemplates.deleteBlockedByRules')), loc).toContain('{rules}');
-      expect(String(leaf(msgs, 'admin.entitlementTemplates.deleteBlockedByGrants')), loc).toContain('{employees}');
       expect(String(leaf(msgs, 'admin.entitlementTemplates.ruleTargetStopped')), loc).toContain('{table}');
     }
   });

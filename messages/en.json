@@ -8065,7 +8065,6 @@
       "deleteRule": "Delete this rule",
       "deleteRuleConfirm": "This removes the rule and every version of it for good. It can be deleted because no entitlement was granted while it was in force. Deleting cannot be undone — stop it from a date instead if you may want it back.",
       "deleteBlockedByRules": "Cannot delete while an eligibility rule points here: {rules}. Delete the rule first, or stop this table from a date.",
-      "deleteBlockedByGrants": "Cannot delete: {employees} employees were granted entitlement while this was in force. A leave record does not say which table granted it, so every grant in that period counts. Stop it from a date instead.",
       "ruleCheckAudience": "Check who this reaches",
       "ruleCheckHint": "Check who this reaches before saving.",
       "ruleMatchedCount": "{count} employees match on the effective date.",
