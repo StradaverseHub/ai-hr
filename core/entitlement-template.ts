@@ -54,13 +54,23 @@
  * against TODAY'S value however far back `asOf` reaches. That is a schema fact, not a choice made here,
  * and it is not fixable inside this item — it needs those columns to become dated facts. It is surfaced
  * by `UNDATED_ELIGIBILITY_AXES` below so a screen can say so instead of implying precision it lacks.
+ *
+ * ── r210 · WHAT THE LEDGER DOES NOT RECORD, AND WHAT THAT COSTS THE DELETE GUARD ──────────────────────
+ * `leave_ledger` records employment, leave type, entry type, days and effective date. IT CARRIES NO
+ * REFERENCE TO THE ENTITLEMENT TABLE OR THE ELIGIBILITY RULE THAT PRODUCED A ROW, and neither does
+ * `leave_entitlement_recalc_audit`: the resolver's answer is computed and thrown away. So the question
+ * "has this table ever granted anybody a day" HAS NO EXACT ANSWER in this schema, and no future round
+ * should assume `deleteEntitlementTemplate`'s guard is one. What it uses instead is the conservative
+ * approximation — any granting row for the leave type dated inside a window this lineage was in force —
+ * which refuses more than it must and never less. Making it exact needs the deciding lineage recorded ON
+ * the grant, which is a schema change and a separate item.
  */
-import { and, asc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, lte, or, gt, sql } from 'drizzle-orm';
 
 import { compareEntitlementTables } from '../lib/entitlement-table-order';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { entitlementEligibilityRule, entitlementTemplate } from '../db/schema';
+import { entitlementEligibilityRule, entitlementTemplate, leaveLedger, leaveType } from '../db/schema';
 import { bandFor, validateServiceBands, type AccrualConfig, type ServiceBand } from './leave-compute';
 import {
   orgCriteriaSpecificity,
@@ -442,6 +452,418 @@ export async function retireEligibilityRule(
       payload: { lineageId: p.lineageId, validTo: p.validTo },
       actor: actorOf(ctx),
     });
+  });
+}
+
+/**
+ * r210 0c367864 — DELETE, WHICH SITS BESIDE THE STOP RULE ABOVE AND DOES NOT REPLACE IT.
+ *
+ * ⚠️ EVERYTHING `retireEntitlementTemplate`'s header says STILL HOLDS. Configuration a dated reader can
+ * reach is never removed, and the two delete entry points below refuse precisely so that it cannot be.
+ * What that rule never covered is configuration that reached NOBODY — a table typed while the setup was
+ * being built, superseded twice, and never once consulted by a grant. Measured on production 2026-08-20:
+ * 47 entitlement tables in force, THREE eligibility rules, 152 accrual rows. Annual Leave's sixteen
+ * tables have never had a rule, so they have never handed anybody a day; other leave types have granted.
+ * Both branches of the guard are therefore reachable on the customer's own data, not hypothetical.
+ *
+ * A DELETE IS THE WHOLE LINEAGE — every version, in one transaction. Removing only the running version
+ * would leave the superseded ones behind, and a report for a closed year would then resolve a table the
+ * operator believes they deleted: the worst of both rules at once.
+ *
+ * ── ⚠️ THE GUARD IS CONSERVATIVE BECAUSE THE DATA CANNOT MAKE IT EXACT ────────────────────────────────
+ * The ledger carries no reference to the table or rule that produced a row (module header, "WHAT THE
+ * LEDGER DOES NOT RECORD"). So the second refusal below is NOT "this table granted these days" and must
+ * never be reworded into that claim: it is "this leave type granted days while this lineage was in force,
+ * and nothing recorded which lineage decided them". It refuses some lineages that granted nothing — a
+ * sibling table of the same type may have been the one that granted — and it refuses nothing that did.
+ * The refusal wording says so, and the screen repeats it, so no operator reads a precision out of it that
+ * the database cannot support.
+ */
+
+/** The ledger entry types that GRANT entitlement. `adjustment` is a human act on a balance and `debit` is
+ *  leave taken — neither is evidence that an entitlement table was ever resolved. */
+const GRANTING_ENTRY_TYPES = ['accrual', 'in_lieu_accrual'] as const;
+
+/** WHY a lineage may not be deleted, as data rather than as a sentence, so the screen can name it too. */
+export type EntitlementUsageBlock = {
+  /** Eligibility rules (one name per rule lineage) that point at this template. Always empty for a rule:
+   *  nothing points at a rule. Deleting the rule first is what clears it. */
+  rules: string[];
+  /** Granting ledger entries — distinct (employment, effective date) — for this lineage's leave type,
+   *  dated inside a window the lineage was in force. See the caveat above: this is an upper bound on what
+   *  this lineage granted, never an attribution to it. */
+  grants: number;
+  /** How many DISTINCT employments those entries belong to — "24 employees", not "24 rows". */
+  employees: number;
+};
+
+/** Nothing points at it and nothing was granted while it was in force ⇒ it can be removed outright. */
+export function isDeletableLineage(b: EntitlementUsageBlock | undefined): boolean {
+  return !b || (b.rules.length === 0 && b.grants === 0);
+}
+
+/** The half-open span a lineage was in force across ALL its versions: `to` null ⇒ still running. */
+export type LineageWindow = { from: string; to: string | null };
+
+/**
+ * The outer bounds of every version of one lineage.
+ *
+ * The versions of a lineage are contiguous by construction — an edit CLOSES the running version at the
+ * successor's `validFrom` and inserts it in the same transaction, so there is no gap between them to
+ * exclude. Taking the outer bounds would be the conservative answer even if there were one, which is the
+ * direction this guard is required to err in.
+ */
+export function lineageInForceWindow(
+  versions: readonly { validFrom: string; validTo: string | null }[],
+): LineageWindow | null {
+  if (versions.length === 0) return null;
+  let from = versions[0].validFrom;
+  let to: string | null = null;
+  let stillRunning = false;
+  for (const v of versions) {
+    if (v.validFrom < from) from = v.validFrom;
+    if (v.validTo == null) stillRunning = true;
+    else if (to == null || v.validTo > to) to = v.validTo;
+  }
+  return { from, to: stillRunning ? null : to };
+}
+
+/** Is this granting entry dated inside the window? Half-open, exactly as every other dated read here. */
+const inWindow = (w: LineageWindow, effectiveOn: string): boolean =>
+  effectiveOn >= w.from && (w.to == null || effectiveOn < w.to);
+
+/** The granting entries for one leave type inside one window. See the caveat: an upper bound, not an
+ *  attribution. `count(distinct (employment, date))` so the batch reader below and this agree exactly. */
+async function grantsInWindow(
+  tx: Tx,
+  leaveTypeId: string,
+  w: LineageWindow,
+): Promise<{ grants: number; employees: number }> {
+  const conds = [
+    eq(leaveLedger.leaveTypeId, leaveTypeId),
+    inArray(leaveLedger.entryType, [...GRANTING_ENTRY_TYPES]),
+    gte(leaveLedger.effectiveOn, w.from),
+  ];
+  if (w.to != null) conds.push(lt(leaveLedger.effectiveOn, w.to));
+  const [row] = await tx
+    .select({
+      grants: sql<number>`count(distinct (${leaveLedger.employmentId}, ${leaveLedger.effectiveOn}))::int`,
+      employees: sql<number>`count(distinct ${leaveLedger.employmentId})::int`,
+    })
+    .from(leaveLedger)
+    .where(and(...conds));
+  return { grants: Number(row?.grants ?? 0), employees: Number(row?.employees ?? 0) };
+}
+
+/**
+ * Every rule LINEAGE that points at this template, named by its current version.
+ *
+ * EVERY VERSION of every rule is looked at, not only the ones in force: a rule that used to point here
+ * and was later re-pointed still has a version that names this lineage, and the dated readers resolve
+ * that version when they answer for a date inside its window. Deleting the table under it would make
+ * exactly the closed-year re-resolution the retire rule exists to prevent.
+ */
+async function ruleLineagesPointingAt(tx: Tx, templateLineageId: string): Promise<string[]> {
+  const rows = await tx
+    .select({
+      lineageId: entitlementEligibilityRule.lineageId,
+      name: entitlementEligibilityRule.name,
+    })
+    .from(entitlementEligibilityRule)
+    .where(eq(entitlementEligibilityRule.templateLineageId, templateLineageId))
+    .orderBy(asc(entitlementEligibilityRule.validFrom));
+  // Ascending by validFrom, so the LAST name written for a lineage wins — the one the screen shows.
+  const byLineage = new Map<string, string>();
+  for (const r of rows) byLineage.set(r.lineageId, r.name);
+  return [...byLineage.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/** The name a lineage carries today — its latest version's, which is the one the operator is looking at. */
+function latestName(versions: readonly { name: string; validFrom: string }[]): string {
+  let head = versions[0];
+  for (const v of versions) if (v.validFrom >= head.validFrom) head = v;
+  return head.name;
+}
+
+async function leaveTypeNameOf(tx: Tx, leaveTypeId: string): Promise<string> {
+  const [row] = await tx
+    .select({ name: leaveType.name })
+    .from(leaveType)
+    .where(eq(leaveType.id, leaveTypeId))
+    .limit(1);
+  return row?.name ?? 'This leave type';
+}
+
+/** The sentence a refusal-by-grants gives, in one place so the two entry points cannot describe the
+ *  approximation differently. `what` is "table" or "rule". */
+const grantedRefusal = (what: string, typeName: string, employees: number, w: LineageWindow): string =>
+  `${typeName} granted entitlement to ${employees} ${employees === 1 ? 'employee' : 'employees'} while this ${what} was in force ` +
+  `(${w.from}${w.to ? ` to ${w.to}` : ' onwards'}), so it cannot be deleted. A leave record does not say which ${what} ` +
+  `decided a grant, so every grant inside that period is counted. Stop the ${what} from a date instead — that keeps ` +
+  `what past years were reported against.`;
+
+/**
+ * ⚠️ THE COMPANY SCOPE THE DATABASE CANNOT APPLY TO A DELETE, ASKED HERE INSTEAD.
+ *
+ * Migration 0409 restored 0134's company-scoped write check on `entitlement_eligibility_rule` — as an RLS
+ * WITH CHECK, and WITH CHECK is consulted for INSERT and UPDATE only. The policy's USING clause is
+ * tenant-wide on purpose (the accrual kernel resolves entitlement under non-admin sessions), so a DELETE
+ * would be fenced by tenant and by nothing else: a company-scoped admin could remove another company's
+ * rule. RETIRING the same rule is an UPDATE and IS refused by that check. Delete must not be the weaker
+ * door, so the same predicate is asked here, in the same transaction, before anything is removed.
+ */
+async function assertMayDeleteRuleLineage(tx: Tx, versions: readonly RuleSelect[]): Promise<void> {
+  const companies = new Set<string>();
+  let reachesWholeGroup = false;
+  for (const v of versions) {
+    const ids = (v.criteria as { companyIds?: unknown } | null)?.companyIds;
+    if (Array.isArray(ids) && ids.length > 0) for (const c of ids) companies.add(String(c));
+    else reachesWholeGroup = true;
+  }
+  const asks = async (predicate: ReturnType<typeof sql>): Promise<boolean> => {
+    const res = await tx.execute(sql`select ${predicate} as ok`);
+    return !!(res as unknown as { ok: boolean }[])[0]?.ok;
+  };
+  if (reachesWholeGroup && !(await asks(sql`app.is_group_admin()`))) {
+    throw new Error('This eligibility rule reaches every company, so only a group administrator can delete it.');
+  }
+  for (const id of companies) {
+    if (!(await asks(sql`app.is_admin_for(${id}::uuid)`))) {
+      throw new Error('You can only delete an eligibility rule for a company you administer.');
+    }
+  }
+}
+
+/**
+ * Remove an entitlement table OUTRIGHT — every version of the lineage, in one transaction.
+ *
+ * Refuses, by name, when an eligibility rule points at it (delete the rule first) or when the leave type
+ * granted entitlement while it was in force (see the section header for what that can and cannot mean).
+ * The caller is expected to offer STOP FROM A DATE where this refuses; both refusals say so.
+ */
+export async function deleteEntitlementTemplate(
+  ctx: SessionContext,
+  p: { lineageId: string },
+): Promise<{ deletedVersions: number }> {
+  return withTenant(ctx, async (tx) => {
+    const versions = await tx
+      .select()
+      .from(entitlementTemplate)
+      .where(eq(entitlementTemplate.lineageId, p.lineageId));
+    if (versions.length === 0) throw new Error('That entitlement table no longer exists.');
+    const name = latestName(versions);
+    const rules = await ruleLineagesPointingAt(tx, p.lineageId);
+    if (rules.length > 0) {
+      throw new Error(
+        `${rules.length === 1 ? 'The eligibility rule' : 'The eligibility rules'} ${rules.join(', ')} ` +
+          `${rules.length === 1 ? 'points' : 'point'} at ${name}, so it cannot be deleted. Delete ` +
+          `${rules.length === 1 ? 'that rule' : 'those rules'} first, or stop this table from a date instead.`,
+      );
+    }
+    // The lineage's leave type is constant across its versions — `updateEntitlementTemplate` refuses to
+    // change it — so any version answers, and `versions[0]` is not a guess about which.
+    const leaveTypeId = versions[0].leaveTypeId;
+    const window = lineageInForceWindow(versions)!;
+    const used = await grantsInWindow(tx, leaveTypeId, window);
+    if (used.grants > 0) {
+      throw new Error(grantedRefusal('table', await leaveTypeNameOf(tx, leaveTypeId), used.employees, window));
+    }
+    await tx.delete(entitlementTemplate).where(eq(entitlementTemplate.lineageId, p.lineageId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      // The LINEAGE, not a row id: every row is gone by the time this is appended, and the lineage is the
+      // identity the created / superseded / retired events on it already share.
+      aggregateType: 'entitlement_template',
+      aggregateId: p.lineageId,
+      eventType: 'entitlement-template.deleted',
+      payload: {
+        lineageId: p.lineageId,
+        leaveTypeId,
+        name,
+        versions: versions.length,
+        validFrom: window.from,
+        validTo: window.to,
+      },
+      actor: actorOf(ctx),
+    });
+    return { deletedVersions: versions.length };
+  });
+}
+
+/**
+ * Remove an eligibility rule OUTRIGHT — every version of the lineage, in one transaction.
+ *
+ * Nothing points at a rule, so the only refusal is the granted one: a rule that was in force while the
+ * leave type handed out days is part of how a closed year resolves, whatever it decided for whom. Every
+ * template lineage the rule EVER pointed at is checked — `updateEligibilityRule` may re-point a rule, and
+ * a rule that spent last year pointing at another leave type's table was in force over that type too.
+ */
+export async function deleteEligibilityRule(
+  ctx: SessionContext,
+  p: { lineageId: string },
+): Promise<{ deletedVersions: number }> {
+  return withTenant(ctx, async (tx) => {
+    const versions = await tx
+      .select()
+      .from(entitlementEligibilityRule)
+      .where(eq(entitlementEligibilityRule.lineageId, p.lineageId));
+    if (versions.length === 0) throw new Error('That eligibility rule no longer exists.');
+    await assertMayDeleteRuleLineage(tx, versions);
+    const name = latestName(versions);
+    const window = lineageInForceWindow(versions)!;
+    const templateLineageIds = [...new Set(versions.map((v) => v.templateLineageId))];
+    const typeRows = await tx
+      .selectDistinct({ id: entitlementTemplate.leaveTypeId })
+      .from(entitlementTemplate)
+      .where(inArray(entitlementTemplate.lineageId, templateLineageIds));
+    for (const { id: leaveTypeId } of typeRows) {
+      const used = await grantsInWindow(tx, leaveTypeId, window);
+      if (used.grants > 0) {
+        throw new Error(grantedRefusal('rule', await leaveTypeNameOf(tx, leaveTypeId), used.employees, window));
+      }
+    }
+    await tx.delete(entitlementEligibilityRule).where(eq(entitlementEligibilityRule.lineageId, p.lineageId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'entitlement_eligibility_rule',
+      aggregateId: p.lineageId,
+      eventType: 'entitlement-eligibility.deleted',
+      payload: {
+        lineageId: p.lineageId,
+        templateLineageIds,
+        name,
+        versions: versions.length,
+        validFrom: window.from,
+        validTo: window.to,
+      },
+      actor: actorOf(ctx),
+    });
+    return { deletedVersions: versions.length };
+  });
+}
+
+/**
+ * WHICH LINEAGES ON THIS SCREEN CAN BE DELETED, AND WHAT IS HOLDING THE REST — for every table and rule
+ * the tenant has, in a bounded number of queries.
+ *
+ * The screen needs this per ROW, before anybody clicks: an operator told "cannot delete" only after
+ * pressing Delete has been made to guess. The same derivation the two writes above enforce inside their
+ * transaction is computed here in bulk, so the row's badge and the refusal cannot disagree.
+ *
+ * COST: three queries. Templates and rules are configuration (tens of rows). The ledger read is DISTINCT
+ * (leave type, employment, effective date) over the granting entry types only, narrowed to the leave
+ * types that own a table and to dates at or after the earliest table start — one entry per employee per
+ * grant date, not one per day. The window arithmetic is then in memory, because the windows differ per
+ * lineage and one query per lineage would be 47 round-trips for a screen that renders in one.
+ */
+export async function entitlementDeleteBlocks(ctx: SessionContext): Promise<{
+  templates: Map<string, EntitlementUsageBlock>;
+  rules: Map<string, EntitlementUsageBlock>;
+}> {
+  return withTenant(ctx, async (tx) => {
+    const templateVersions = await tx
+      .select({
+        lineageId: entitlementTemplate.lineageId,
+        leaveTypeId: entitlementTemplate.leaveTypeId,
+        validFrom: entitlementTemplate.validFrom,
+        validTo: entitlementTemplate.validTo,
+      })
+      .from(entitlementTemplate);
+    const ruleVersions = await tx
+      .select({
+        lineageId: entitlementEligibilityRule.lineageId,
+        name: entitlementEligibilityRule.name,
+        templateLineageId: entitlementEligibilityRule.templateLineageId,
+        validFrom: entitlementEligibilityRule.validFrom,
+        validTo: entitlementEligibilityRule.validTo,
+      })
+      .from(entitlementEligibilityRule)
+      .orderBy(asc(entitlementEligibilityRule.validFrom));
+
+    const templates = new Map<string, typeof templateVersions>();
+    const typeOfTemplate = new Map<string, string>();
+    for (const v of templateVersions) {
+      typeOfTemplate.set(v.lineageId, v.leaveTypeId);
+      const arr = templates.get(v.lineageId);
+      if (arr) arr.push(v);
+      else templates.set(v.lineageId, [v]);
+    }
+    const rules = new Map<string, typeof ruleVersions>();
+    for (const v of ruleVersions) {
+      const arr = rules.get(v.lineageId);
+      if (arr) arr.push(v);
+      else rules.set(v.lineageId, [v]);
+    }
+    /** Rule LINEAGES pointing at each template lineage, named by their latest version — the in-transaction
+     *  guard's `ruleLineagesPointingAt`, computed once for every template instead of once per template. */
+    const pointedAt = new Map<string, Map<string, string>>();
+    for (const v of ruleVersions) {
+      const named = pointedAt.get(v.templateLineageId) ?? new Map<string, string>();
+      named.set(v.lineageId, v.name);
+      pointedAt.set(v.templateLineageId, named);
+    }
+
+    const typeIds = [...new Set(templateVersions.map((v) => v.leaveTypeId))];
+    const earliest = templateVersions.reduce<string | null>(
+      (min, v) => (min == null || v.validFrom < min ? v.validFrom : min),
+      null,
+    );
+    const ledger =
+      typeIds.length === 0 || earliest == null
+        ? []
+        : await tx
+            .selectDistinct({
+              leaveTypeId: leaveLedger.leaveTypeId,
+              employmentId: leaveLedger.employmentId,
+              effectiveOn: leaveLedger.effectiveOn,
+            })
+            .from(leaveLedger)
+            .where(
+              and(
+                inArray(leaveLedger.leaveTypeId, typeIds),
+                inArray(leaveLedger.entryType, [...GRANTING_ENTRY_TYPES]),
+                gte(leaveLedger.effectiveOn, earliest),
+              ),
+            );
+    const ledgerByType = new Map<string, { employmentId: string; effectiveOn: string }[]>();
+    for (const r of ledger) {
+      const arr = ledgerByType.get(r.leaveTypeId);
+      if (arr) arr.push(r);
+      else ledgerByType.set(r.leaveTypeId, [r]);
+    }
+    const countGrants = (leaveTypeIds: readonly string[], w: LineageWindow) => {
+      let grants = 0;
+      const employees = new Set<string>();
+      for (const typeId of leaveTypeIds) {
+        for (const r of ledgerByType.get(typeId) ?? []) {
+          if (!inWindow(w, r.effectiveOn)) continue;
+          grants += 1;
+          employees.add(r.employmentId);
+        }
+      }
+      return { grants, employees: employees.size };
+    };
+
+    const templateBlocks = new Map<string, EntitlementUsageBlock>();
+    for (const [lineageId, versions] of templates) {
+      const w = lineageInForceWindow(versions)!;
+      const named = [...(pointedAt.get(lineageId)?.values() ?? [])].sort((a, b) => a.localeCompare(b));
+      templateBlocks.set(lineageId, {
+        rules: named,
+        ...countGrants([versions[0].leaveTypeId], w),
+      });
+    }
+    const ruleBlocks = new Map<string, EntitlementUsageBlock>();
+    for (const [lineageId, versions] of rules) {
+      const w = lineageInForceWindow(versions)!;
+      const typesReached = [
+        ...new Set(
+          versions.map((v) => typeOfTemplate.get(v.templateLineageId)).filter((x): x is string => !!x),
+        ),
+      ];
+      ruleBlocks.set(lineageId, { rules: [], ...countGrants(typesReached, w) });
+    }
+    return { templates: templateBlocks, rules: ruleBlocks };
   });
 }
 

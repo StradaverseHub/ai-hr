@@ -8058,6 +8058,14 @@
       "createRule": "Create rule",
       "stopRule": "Stop this rule",
       "stopRuleConfirm": "From that date this rule stops matching anybody. Nothing is deleted and no leave record changes.",
+      "stop": "Stop",
+      "delete": "Delete",
+      "deleteTemplate": "Delete this table",
+      "deleteTemplateConfirm": "This removes the table and every version of it for good. It can be deleted because no eligibility rule points at it and no entitlement was granted while it was in force. Deleting cannot be undone — stop it from a date instead if you may want it back.",
+      "deleteRule": "Delete this rule",
+      "deleteRuleConfirm": "This removes the rule and every version of it for good. It can be deleted because no entitlement was granted while it was in force. Deleting cannot be undone — stop it from a date instead if you may want it back.",
+      "deleteBlockedByRules": "Cannot delete while an eligibility rule points here: {rules}. Delete the rule first, or stop this table from a date.",
+      "deleteBlockedByGrants": "Cannot delete: {employees} employees were granted entitlement while this was in force. A leave record does not say which table granted it, so every grant in that period counts. Stop it from a date instead.",
       "ruleCheckAudience": "Check who this reaches",
       "ruleCheckHint": "Check who this reaches before saving.",
       "ruleMatchedCount": "{count} employees match on the effective date.",
@@ -8101,6 +8109,7 @@
       "healthMaxBalanceZero": "Maximum Balance is 0, which cancels the days granted: {tables}",
       "ruleNonePointsHere": "No eligibility rule points here",
       "ruleExpiredBadge": "Expired — matches nobody",
+      "ruleTargetStopped": "{table} — stopped, so this rule reaches nobody",
       "ruleExpiringBadge": "Ends soon"
     }
   },

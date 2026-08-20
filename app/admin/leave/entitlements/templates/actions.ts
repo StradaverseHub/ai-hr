@@ -6,6 +6,8 @@ import { orgCriteriaFromFields, countOrgCriteriaTargets } from '@/core/org-crite
 import {
   createEligibilityRule,
   createEntitlementTemplate,
+  deleteEligibilityRule,
+  deleteEntitlementTemplate,
   leaveTypeIdForRuleLineage,
   leaveTypeIdForTemplateLineage,
   reprojectEntitlementForLeaveTypeCohort,
@@ -190,7 +192,52 @@ export async function updateEntitlementTemplateAction(formData: FormData) {
   saved(formData, `Saved ${String(formData.get('name') ?? '')}`);
 }
 
-/** Stop a table from a date. There is no delete — see `retireEntitlementTemplate`. */
+/**
+ * r210 — REMOVE A TABLE OUTRIGHT, every version of it, where nothing can be reached through it.
+ *
+ * ⚠️ THE LEAVE TYPE IS RESOLVED BEFORE THE DELETE, and that ordering is the whole reason this action is
+ * not a copy of the retire one. `leaveTypeIdForTemplateLineage` reads the lineage's own rows; after a
+ * successful delete there are none, so asking afterwards returns null and `recomputeAfterSave` silently
+ * does nothing — a save that looks wired and recalculates nobody. The retire path can ask either side
+ * because it only closes a row.
+ *
+ * The refusals (`deleteEntitlementTemplate`) are sentences an operator can act on, and `refused()` puts
+ * them on the screen the delete was pressed from, where the Stop control they name sits on the same row.
+ */
+export async function deleteEntitlementTemplateAction(formData: FormData) {
+  const s = await requireAdmin();
+  const lineageId = String(formData.get('lineageId') ?? '');
+  const leaveTypeId = await leaveTypeIdForTemplateLineage(s, lineageId);
+  try {
+    await deleteEntitlementTemplate(s, { lineageId });
+  } catch (e) {
+    refused(formData, e);
+  }
+  // A deleted table resolves to NO OPINION for the employees it reached, never to zero days — the kernel
+  // posts a delta of 0 rather than clawing days back (see `recomputeAfterSave` note 4). This is also what
+  // re-derives the health card: the table is gone from the next read, so it can no longer be reported as
+  // a table without a rule.
+  await recomputeAfterSave(s, leaveTypeId, 'entitlement_template_deleted');
+  saved(formData, `Deleted ${String(formData.get('name') ?? '')}`);
+}
+
+/** Remove an eligibility rule outright. Same before-the-delete ordering, for the same reason: after the
+ *  delete the rule's own rows are gone and its leave type can no longer be derived from them. */
+export async function deleteEligibilityRuleAction(formData: FormData) {
+  const s = await requireAdmin();
+  const lineageId = String(formData.get('lineageId') ?? '');
+  const leaveTypeId = await leaveTypeIdForRuleLineage(s, lineageId);
+  try {
+    await deleteEligibilityRule(s, { lineageId });
+  } catch (e) {
+    refused(formData, e);
+  }
+  await recomputeAfterSave(s, leaveTypeId, 'eligibility_rule_deleted');
+  saved(formData, `Deleted ${String(formData.get('name') ?? '')}`);
+}
+
+/** Stop a table from a date — the reversible half. Delete is `deleteEntitlementTemplateAction` above and
+ *  refuses wherever a dated reader could still reach this lineage; see `retireEntitlementTemplate`. */
 export async function retireEntitlementTemplateAction(formData: FormData) {
   const s = await requireAdmin();
   const lineageId = String(formData.get('lineageId') ?? '');

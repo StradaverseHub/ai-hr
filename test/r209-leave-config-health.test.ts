@@ -574,15 +574,20 @@ describe('r209 · recalculate on save, instead of remembering to press Generate 
    *
    * And it must sit BEFORE `saved(...)`: `redirect()` works by throwing, so anything after it never runs.
    */
-  it('all six entitlement writers recompute — after the service call, before the redirect', () => {
+  it('all eight entitlement writers recompute — after the service call, before the redirect', () => {
     const src = read('app/admin/leave/entitlements/templates/actions.ts');
+    // r210 added the two deletes. They recompute for the same reason a retire does: the employees the
+    // removed lineage reached resolve to NO OPINION afterwards, which the kernel posts as a delta of 0
+    // rather than clawing days back — and it is the read that re-derives the health card.
     const writers = [
       ['createEntitlementTemplateAction', 'createEntitlementTemplate('],
       ['updateEntitlementTemplateAction', 'updateEntitlementTemplate('],
       ['retireEntitlementTemplateAction', 'retireEntitlementTemplate('],
+      ['deleteEntitlementTemplateAction', 'deleteEntitlementTemplate('],
       ['createEligibilityRuleAction', 'createEligibilityRule('],
       ['updateEligibilityRuleAction', 'updateEligibilityRule('],
       ['retireEligibilityRuleAction', 'retireEligibilityRule('],
+      ['deleteEligibilityRuleAction', 'deleteEligibilityRule('],
     ] as const;
     for (const [action, service] of writers) {
       const start = src.indexOf(`export async function ${action}(`);
