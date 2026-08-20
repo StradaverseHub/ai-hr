@@ -29,7 +29,9 @@
  *               sample file has not yet proved the value is stable per employer, and a stored field that
  *               turns out to be per-submission is a migration to undo. Typed per generation, blank ⇒
  *               three spaces.
- * `control`   — the trailer's 9-digit control number, UNRESOLVED. Defaults to zeros; never derived.
+ * `control`   — an OVERRIDE for the trailer's control total. Blank, which it normally is, means the file
+ *               derives it: cc74dcb2's sample proves it is the sum of the EPF member numbers on the file.
+ *               The box stays because KWSP may ask a particular employer for something else.
  * `batch`     — the batch/sequence number written identically into the 00 and 01 records. Defaults to 1.
  * None of them is persisted, and none of them reaches the pack: `ReportParams` stays {companyId, periodKey}.
  *
@@ -231,12 +233,13 @@ export async function loadBorangAFile(p: {
         icNumber: r.ic,
         name: r.name,
         staffNo: r.staffNo,
+        // THREE AMOUNTS, NOT TWO, AND NEVER ADDED TOGETHER. cc74dcb2's sample file carries the employer's
+        // share, then the employee's, then the wage they were worked out from — 672.00 / 616.00 /
+        // 5,600.00 on one of its lines, which is 12% and 11% of 5,600. Summing the two shares into one
+        // box, as this used to, filed a number KWSP has no field for.
+        employerContribution: r.employer,
+        employeeContribution: r.employee,
         wages: r.wage,
-        // The 02 record carries ONE contribution figure, and the specimen's own arithmetic says which:
-        // 744 (employer) + 682 (employee) = the 1,426.00 in its Amaun Caruman box.
-        contribution: Math.round((r.employer + r.employee) * 100) / 100,
-        // KWSP holds the member's balance; an employer does not. Zeros, as the request's signature allows.
-        balance: 0,
       })),
       batchNo,
       trailerControlNumber: p.query.get('control') ?? '',

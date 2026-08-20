@@ -487,6 +487,19 @@ describe('the four surfaces cannot disagree', () => {
     expect(SHARED_CODE).not.toContain('isAdmin');
   });
 
+  it('serves the field-by-field check from the SAME route as the upload file, not a second one', () => {
+    // cc74dcb2: the report must describe the bytes the operator is about to upload. A second route would
+    // build the file a second time and could describe a different one, which is worse than no report.
+    expect(FILE_ROUTE_CODE).toContain("q.get('report')");
+    expect(FILE_ROUTE_CODE).toContain('borangAFileReport');
+    expect(REGISTERED_ROUTES.has('/payroll/borang-a/file-report')).toBe(false);
+    // `name`/`value` on a submit button travel only when that button submits the form, so the plain
+    // download button stays exactly the request it was.
+    expect(PREVIEW_CODE).toContain('name="report"');
+    expect(PREVIEW_CODE).toContain("t('downloadReport')");
+    expect(PREVIEW_CODE.match(/formAction="\/payroll\/borang-a\/file"/g)).toHaveLength(2);
+  });
+
   it('hides the download buttons rather than disabling them', () => {
     // A disabled button is still a button and still gets clicked at.
     expect(PREVIEW_CODE).not.toContain('disabled');
@@ -577,6 +590,22 @@ describe('the review screen’s messages', () => {
     for (const k of ['headerField_employerRef', 'headerField_employerName']) expect(ns[k], k).toBeTruthy();
     for (const k of ['repField_name', 'repField_ic', 'repField_position', 'repField_phone', 'repField_email']) {
       expect(ns[k], k).toBeTruthy();
+    }
+  });
+
+  it('names the three downloads so the UPLOADABLE one is unmistakable, in every locale', () => {
+    // cc74dcb2's reporter uploaded the readable text export to i-Akaun, because "Download as text" and
+    // "Download upload file" are two buttons that both produce a .txt. Every language now says which
+    // portal each one is for, and the readable one says in as many words that it is not that file.
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const dict = JSON.parse(read(`messages/${loc}.json`)) as { payroll: { borangA: Record<string, string> } };
+      const b = dict.payroll.borangA;
+      for (const k of ['downloadText', 'downloadTextTitle', 'downloadFile', 'downloadFileTitle', 'downloadReport', 'downloadReportTitle']) {
+        expect(b[k], `${loc}.${k}`).toBeTruthy();
+      }
+      expect(b.downloadText, loc).not.toBe(b.downloadFile);
+      expect(b.downloadFile, `${loc} must name the portal the file is for`).toContain('i-Akaun');
+      expect(b.downloadTextTitle, `${loc} must disclaim the portal on the readable copy`).toContain('i-Akaun');
     }
   });
 

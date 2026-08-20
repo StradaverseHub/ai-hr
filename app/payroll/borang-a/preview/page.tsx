@@ -7,8 +7,9 @@ import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls 
 import { loadBorangA } from '../shared';
 
 /**
- * 9c8dad7a / 3aae0789 — the Borang A review screen: pick a processed payroll month, check the form, then
- * download it three ways.
+ * 9c8dad7a / 3aae0789 / cc74dcb2 — the Borang A review screen: pick a processed payroll month, check the
+ * form, then download it three ways — the drawn form, a readable text copy, and the i-Akaun upload file —
+ * with a fourth button that returns the upload file's own field-by-field check instead of the file.
  *
  * "SHOW ME A REVIEW SCREEN FIRST, NAMING ANYONE MISSING AN EPF MEMBER NUMBER OR IDENTITY CARD NUMBER,
  * BEFORE ANYTHING CAN BE DOWNLOADED." That is the item, and it is why this screen exists beside the
@@ -24,8 +25,9 @@ import { loadBorangA } from '../shared';
  *
  * TWO SIBLING FORMS, NEVER NESTED. A form inside a form is invalid HTML and browsers drop the inner one,
  * which would silently turn the download buttons into a second "Show". The filter form owns company /
- * year / month; the schedule form owns the contribution month, the upload file's inputs and the three
- * downloads, and carries its own hidden companyId + periodKey for exactly that reason.
+ * year / month; the schedule form owns the contribution month, the upload file's inputs, the three
+ * downloads and the check report, and carries its own hidden companyId + periodKey for exactly that
+ * reason.
  *
  * THE READINESS GATE IS ENFORCED TWICE, AND THAT IS NOT BELT-AND-BRACES. This screen hides the download
  * buttons while anyone is not ready; `loadBorangA` refuses to produce the document at all. Hiding a
@@ -347,14 +349,17 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
               />
             </Field>
             <Field label={t('controlNo')}>
+              {/* AN OVERRIDE, NOT AN INPUT THE FILE NEEDS. Left blank — which is the normal case — the
+                  trailer's control total is derived as the sum of the EPF member numbers on the file,
+                  which is what cc74dcb2's real KWSP file carries. The box is 21 wide because the field
+                  is, so a large employer's hash total cannot be silently clipped to nine digits. */}
               <input
                 type="text"
                 name="control"
                 defaultValue={typeof sp.control === 'string' ? sp.control : ''}
-                maxLength={9}
+                maxLength={21}
                 inputMode="numeric"
-                placeholder="000000000"
-                className={`${inputCls} w-36`}
+                className={`${inputCls} w-44`}
               />
             </Field>
             <button className={btnGhost}>{t('apply')}</button>
@@ -444,9 +449,24 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
                   {t('downloadText')}
                 </button>
                 {fileReadiness.ok ? (
-                  <button className={btnGhost} formAction="/payroll/borang-a/file" title={t('downloadFileTitle')}>
-                    {t('downloadFile')}
-                  </button>
+                  <>
+                    <button className={btnGhost} formAction="/payroll/borang-a/file" title={t('downloadFileTitle')}>
+                      {t('downloadFile')}
+                    </button>
+                    {/* THE SAME ROUTE, ASKED FOR THE CHECK INSTEAD OF THE FILE. `name`/`value` on a submit
+                        button are sent only when that button submits the form, so the plain download above
+                        stays exactly the request it was. The report is the field-by-field view of the very
+                        bytes this form would download — which is why it is not a second route. */}
+                    <button
+                      className={btnGhost}
+                      formAction="/payroll/borang-a/file"
+                      name="report"
+                      value="1"
+                      title={t('downloadReportTitle')}
+                    >
+                      {t('downloadReport')}
+                    </button>
+                  </>
                 ) : (
                   <span className="text-xs italic text-muted-foreground">{t('fileBlocked')}</span>
                 )}
