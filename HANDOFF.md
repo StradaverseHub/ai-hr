@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-20 (r195–r210 SHIPPED · NOTHING IN FLIGHT · 3 ITEMS WAITING)
+## CURRENT STATE — snapshot 2026-08-20 (r195–r210 SHIPPED · NOTHING IN FLIGHT · 4 PLANS AWAIT THE REPORTER)
 
 **`main@1aa0c3a2` IS WHAT RUNS ON PRODUCTION (r210, 2026-08-20)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
@@ -34,12 +34,12 @@ dry run is an undeployed release.
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after r210 (2026-08-20): `deployed = 720` · `cancelled = 14` · `contested = 2` · `open = 1` ·
-planned and approved ZERO.** r210 SHIPPED SIX: `bdf7d248` EPF · `cc74dcb2` KWSP Borang A file ·
-`5a29686c` Individual Payslip selection · `9f8cd608` Reset Payroll screen · `7ad37961` TP1 full width ·
-`0c367864` delete entitlement tables/rules. Two of the eight r210 plans were never approved and have now
-been CONTESTED, and one new item arrived — see START HERE. Mockup sources live in
-`docs/mockups/*-r210.html`.
+**Board after r210 + the r211 PLANNING round (2026-08-20): `deployed = 720` · `cancelled = 14` ·
+`planned = 4` · open, contested and approved ZERO.** r210 SHIPPED SIX: `bdf7d248` EPF ·
+`cc74dcb2` KWSP Borang A file · `5a29686c` Individual Payslip selection · `9f8cd608` Reset Payroll
+screen · `7ad37961` TP1 full width · `0c367864` delete entitlement tables/rules. r211 then planned the
+four that were waiting — `8ebf77ae` (with a mockup), `5206539f`, `c1b14600`, `e52ce9b6` — and NOTHING is
+buildable until the reporter approves. Mockup sources: `docs/mockups/*-r210.html`, `*-r211.html`.
 
 ⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
 be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
@@ -95,28 +95,35 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**THREE ITEMS ARE WAITING, AND NONE IS A BUILD YET — ALL THREE NEED A PLAN.** `improve:pull` returns
-them; `improve:pull-approved` returns nothing.
+**NOTHING IS BUILDABLE. FOUR PLANS SIT WITH THE REPORTER** — `improve:pull` and
+`improve:pull-approved` both return nothing. When one is approved, its plan's BUILD NOTES carry the
+measurements; do not re-derive them.
 
-  - **`5206539f` (leave on-behalf) — CONTESTED, and the reporter chose the alternative the plan named.**
-    The r210 plan said: line managers keep a narrowed on-behalf selector, "and if you would rather line
-    managers had no ability to apply on anyone's behalf at all, reject this plan and say so". They did
-    exactly that. Re-plan is the SAME work with the manager case switched off: the selector appears only
-    for a holder of an explicit apply-on-behalf permission, and the server-side gate (which is the real
-    fix — `requestLeaveAction` still takes any posted `employmentId` on trust) is unchanged in substance.
-  - **`8ebf77ae` (leave eligibility) — CONTESTED with a PRODUCT question, not a defect report:** "I
-    already have eligibility criteria configured within each Leave Type … why is a separate Employee
-    Eligibility rule required under the Entitlement Table? … I would like to avoid duplicating the same
-    eligibility conditions in two different places." ANSWER IT BEFORE PLANNING ANYTHING — go and read
-    what the Leave Type's own eligibility fields actually drive (whether the type is offered/appliable)
-    versus what `entitlement_eligibility_rule` drives (which TABLE resolves, `buildTemplateEntitlementResolver`).
-    If they genuinely overlap, the honest plan may be to collapse one into the other rather than to
-    explain the duplication away.
-  - **`c1b14600` (NEW, open) — Replacement Leave in Lieu request + approval workflow.** Employees cannot
-    submit an in-lieu request today; it wants a pending entitlement, line-manager approval, then a banked
-    credit with its own approval date, expiry and remaining balance. Check `replacementLeaveLedger` /
-    `submitReplacementLeaveRequestAction` / `decideReplacementLeaveRequestAction` first — parts of this
-    already exist and the ticket may be narrower than it reads.
+⚠️ **THREE OF THE FOUR r211 PLANS SAY "ALREADY BUILT", AND THAT IS THE ROUND'S LESSON.** Rule 7 paid for
+itself three times in one pull:
+  - **`c1b14600` (Replacement Leave in Lieu) IS ITEM 296fc027, SHIPPED.** The whole workflow exists —
+    multi-row worked dates, per-request Hour/Day unit, pending until line-manager approval, credit minted
+    at approval with expiry counted FROM the approval, per-credit table (`REPLACEMENT_COLUMN_KEYS` =
+    requestDate/number/unit/approvalDate/expiredDate/remaining), the pending label "Replacement Leave in
+    Lieu", and the ticket's empty-state sentence VERBATIM. The reporter cannot reach it because only
+    **2 of their 9 companies have a `toil_policy` row at all** (Chin Hin Construction Engineering, Demo
+    Sdn Bhd); ISEDECOR BINA — where they test — has none, so `replacementRequestAvailability` returns
+    `not_enabled`. Their catalogue ALSO holds an **archived** "Replacement Leave (in lieu)" (code
+    REPLACEMENT, no role) beside the live "Replacement Leave" (RL, role `replacement`) — they have been
+    looking at the retired one. `expiry_unit` is `days`/90 while `expiry_months`=3 sits unused, which is
+    why their 15/08 + 3 months example does not match.
+  - **`8ebf77ae` was a PRODUCT QUESTION, not a defect**, and it has a real answer worth keeping:
+    `leave_type.eligibility` (`isLeaveEligible`, core/leave.ts ~1283) asks **may they take it** — a
+    yes/no. `entitlement_eligibility_rule` (`buildTemplateEntitlementResolver`) asks **which of the
+    sixteen Annual Leave tables do they get** — a choice. A yes/no cannot pick between tables, so the two
+    do not merge. Where a type has ONE table and no rule, the engine already applies it (`soleTableApplies`).
+    The genuine duplication is the shared criteria VOCABULARY, which the plan addresses.
+  - **`5206539f`: the reporter took the alternative the r210 plan offered** — no on-behalf for line
+    managers at all. Cheap finding recorded: `payroll_permission_grant.permission_key` is free text with
+    no enum or FK, so a `leave.apply_on_behalf` key needs **NO MIGRATION** — at the cost of that table's
+    name becoming a misnomer, which is its own ticket.
+  - **`e52ce9b6` is OURS** — the EPF RM5,000-step disclosure below, raised as a CLAUDE AI item so the
+    reporter can accept or redirect it. Its plan proposes no build.
 
 ⚠️ **THE r207 EPF DIAGNOSIS WAS WRONG; r210 FIXED THE REAL ONE. DO NOT RE-LITIGATE IT.**
 "`localization/my/multicycle.ts` is unwired, wire it" was NEVER the fix — `core/payroll.ts` already ran
