@@ -37,6 +37,7 @@ import {
   buildBorangAFile,
   describeBorangAFile,
   fileField,
+  borangAFileEmployeesFrom,
   parseBorangAFileTotals,
   type BorangAFileEmployee,
   type BorangAFileInput,
@@ -54,7 +55,34 @@ const FIXTURE = fs.readFileSync(path.join(ROOT, FIXTURE_PATH), 'latin1');
  * their leading zeros so the golden test also proves the padding, and the amounts are in ringgit because
  * that is what the rest of the system holds.
  */
-const GOLDEN_EMPLOYEES: BorangAFileEmployee[] = [
+/**
+ * ⚠️ ROW-SHAPED, AND MAPPED THROUGH `borangAFileEmployeesFrom` BELOW — not written straight into the
+ * file's own shape. That is the whole point: the mapping from a payroll row to the 02 record's three
+ * amount boxes is the one step nothing downstream can check (transposing the two contributions leaves
+ * the length, the header totals and the trailer totals all self-consistent), so the golden drives the
+ * SAME function the screen's download does. Written as literals here in the report's row shape.
+ */
+const GOLDEN_ROWS = [
+  { memberNo: '22039094', ic: '941128035179', name: 'AHMAD AZMER IZAT BIN MAT YAZID', staffNo: 'IDB010', employer: 708, employee: 649, wage: 5900 },
+  { memberNo: '22154734', ic: '970628105455', name: 'AHMAD MUHAIMIN BIN AZHAR', staffNo: '100502', employer: 672, employee: 616, wage: 5600 },
+  { memberNo: '14957564', ic: '810329105276', name: 'FAZLIANA BINTI ISMAIL', staffNo: 'IDB-240001', employer: 732, employee: 671, wage: 6052 },
+  { memberNo: '17712944', ic: '890714145496', name: 'HANISAH BINTI SHAMSUDIN', staffNo: 'IDB012', employer: 1044, employee: 957, wage: 8700 },
+  { memberNo: '11534752', ic: '700325025036', name: 'HASLIZA BINTI AHMAD', staffNo: 'IDB007', employer: 720, employee: 660, wage: 6000 },
+  { memberNo: '21278530', ic: '950604036119', name: 'JUKHAIRUL SYAFIQ BIN MOHD ZUKI', staffNo: 'IDB013', employer: 637, employee: 539, wage: 4900 },
+  { memberNo: '18846253', ic: '920530016467', name: 'MOHAMMAD FAIZ BIN ABDUL GHANI', staffNo: '100507', employer: 684, employee: 627, wage: 5650 },
+  { memberNo: '21482758', ic: '950102115175', name: 'MOHD ASRUL FARHAM BIN NOOR', staffNo: 'IDB002', employer: 622, employee: 526, wage: 4777.42 },
+  { memberNo: '16681328', ic: '860823295779', name: 'MOHD NOR HAMDAN BIN AWANG', staffNo: 'IDB011', employer: 984, employee: 902, wage: 8200 },
+  { memberNo: '20138513', ic: '870313035407', name: 'MOHD RIDHUAN BIN ISMAIL', staffNo: '100180', employer: 648, employee: 594, wage: 5325.81 },
+  { memberNo: '21729682', ic: '990830146005', name: 'MUHAMMAD FADZLIN BIN JAAFAR', staffNo: 'IDB006', employer: 492, employee: 416, wage: 3777.42 },
+  { memberNo: '18690645', ic: '901010146619', name: 'NOOR AZID SHAH BIN DAUD', staffNo: '100777', employer: 351, employee: 297, wage: 2700 },
+  { memberNo: '19807671', ic: '930508055434', name: 'NUR FARAH HANIM BINTI MOHAMED NAZIM', staffNo: '100009', employer: 900, employee: 825, wage: 7413 },
+  { memberNo: '19686732', ic: '891002095050', name: 'SHAMIMI MAZWANI BT SAMSUDIN', staffNo: 'KK028', employer: 1200, employee: 1100, wage: 10000 },
+];
+
+const GOLDEN_EMPLOYEES: BorangAFileEmployee[] = borangAFileEmployeesFrom(GOLDEN_ROWS);
+
+/** Kept as the literal restatement the mapper is checked against, one row deep. */
+const GOLDEN_EMPLOYEES_LITERAL: BorangAFileEmployee[] = [
   { epfMemberNo: '22039094', icNumber: '941128035179', name: 'AHMAD AZMER IZAT BIN MAT YAZID', staffNo: 'IDB010', employerContribution: 708, employeeContribution: 649, wages: 5900 },
   { epfMemberNo: '22154734', icNumber: '970628105455', name: 'AHMAD MUHAIMIN BIN AZHAR', staffNo: '100502', employerContribution: 672, employeeContribution: 616, wages: 5600 },
   { epfMemberNo: '14957564', icNumber: '810329105276', name: 'FAZLIANA BINTI ISMAIL', staffNo: 'IDB-240001', employerContribution: 732, employeeContribution: 671, wages: 6052 },
@@ -70,6 +98,29 @@ const GOLDEN_EMPLOYEES: BorangAFileEmployee[] = [
   { epfMemberNo: '19807671', icNumber: '930508055434', name: 'NUR FARAH HANIM BINTI MOHAMED NAZIM', staffNo: '100009', employerContribution: 900, employeeContribution: 825, wages: 7413 },
   { epfMemberNo: '19686732', icNumber: '891002095050', name: 'SHAMIMI MAZWANI BT SAMSUDIN', staffNo: 'KK028', employerContribution: 1200, employeeContribution: 1100, wages: 10000 },
 ];
+
+/**
+ * THE MAPPER IS THE GUARD. GOLDEN_EMPLOYEES above is built by borangAFileEmployeesFrom from row-shaped
+ * literals; GOLDEN_EMPLOYEES_LITERAL is the same fourteen people written directly in the file's shape,
+ * off the sample's own 02 records. If the mapper ever crosses the two contribution fields, these two
+ * stop matching AND the byte-for-byte golden below fails — the second is what makes this more than a
+ * restatement, because its expected bytes are a real KWSP file rather than anything written here.
+ * Every row has employer > employee, so a swap cannot hide behind equal values.
+ */
+describe('cc74dcb2 — the payroll row to 02 record mapping', () => {
+  it('maps employer, employee and wage into their own boxes, and never crosses them', () => {
+    expect(GOLDEN_EMPLOYEES).toEqual(GOLDEN_EMPLOYEES_LITERAL);
+    for (const e of GOLDEN_EMPLOYEES) {
+      expect(e.employerContribution).toBeGreaterThan(e.employeeContribution);
+    }
+    // The one call site that produces a downloadable file reads the same function, so the shape below is
+    // the shape the screen writes. Source-shape, because the call itself needs a request session.
+    const shared = read('app/payroll/borang-a/shared.ts');
+    expect(shared).toContain('employees: borangAFileEmployeesFrom(rows)');
+    expect(shared).not.toMatch(/employerContribution:\s*r\.employee/);
+    expect(shared).not.toMatch(/employeeContribution:\s*r\.employer/);
+  });
+});
 
 /** The sample's own header values: employer 016231193, short code DSK, period 02/2026, made on 20/08/2026. */
 const goldenInput: BorangAFileInput = {
@@ -261,7 +312,12 @@ describe('every field lands where the sample says it does', () => {
     expect(fileField(trailer, F.trailer.recordCount)).toBe('0000001');
     expect(fileField(trailer, F.trailer.totalEmployer)).toBe('000000000070800');
     expect(fileField(trailer, F.trailer.totalEmployee)).toBe('000000000064900');
-    expect(fileField(trailer, F.trailer.controlTotal)).toBe('22039094'.padStart(21, '0'));
+    // 12 zeros of filler, then a NINE-wide control total. The sample cannot tell that apart from one
+    // 21-wide field — its own hash fits in nine digits either way — and the module's header records why
+    // the narrow reading wins: the 00 record ends in exactly this shape, and 3aae0789's independent
+    // transcription said the same before this sample existed.
+    expect(fileField(trailer, F.trailer.filler)).toBe('0'.repeat(12));
+    expect(fileField(trailer, F.trailer.controlTotal)).toBe('022039094');
   });
 
   it('leaves no gap and no overlap: the declared fields plus the padding ARE the line', () => {
@@ -281,7 +337,7 @@ describe('every field lands where the sample says it does', () => {
   it('writes a supplied control number verbatim, and derives one otherwise', () => {
     const withControl = buildBorangAFile(input({ trailerControlNumber: '196562715' }));
     const F2 = BORANG_A_FILE_FIELDS.trailer.controlTotal;
-    expect(fileField(lines(withControl)[3], F2)).toBe('196562715'.padStart(21, '0'));
+    expect(fileField(lines(withControl)[3], F2)).toBe('196562715');
     // …and every other record is byte-identical, which is what "an override, not a rewrite" means: no
     // other field may move because this one changed.
     const derived = buildBorangAFile(input());
@@ -289,23 +345,31 @@ describe('every field lands where the sample says it does', () => {
     expect(fileField(lines(derived)[3], F2)).not.toBe(fileField(lines(withControl)[3], F2));
   });
 
-  it('holds a hash total far too big for the nine digits the old parameter assumed', () => {
-    // 21 digits is not decoration. Three nineteen-digit member numbers overflow 9 digits on their own,
-    // and the old field would have written the low nine of the sum without saying so.
+  /**
+   * A HASH TOTAL TOO BIG FOR THE FIELD IS WRITTEN AS ZEROS, NOT REFUSED AND NOT TRUNCATED — and this is
+   * the case where the sample stops being evidence. Nine digits runs out at roughly 46 employees on
+   * eight-digit member numbers, which is an ordinary employer, so refusing would stop them filing at all
+   * and truncating to the low nine would invent a rule. Zeros is what this file carried before the total
+   * was derivable, so it is the one option that cannot be newly wrong. The validation report says it
+   * happened; nothing else would tell the operator.
+   */
+  it('writes zeros, not a truncation, when the hash total will not fit the nine-digit field', () => {
     const big = ['9'.repeat(19), '9'.repeat(19), '9'.repeat(19)].map((m, i) => ({
       ...SAMPLE,
       name: `PERSON ${i}`,
       epfMemberNo: m,
     }));
-    const t = parseBorangAFileTotals(buildBorangAFile(input({ employees: big })));
-    expect(t.controlTotal).toBe('29999999999999999997');
-    expect(t.controlTotal).toBe(t.memberNoSum);
-    expect(t.controlTotal.length).toBeGreaterThan(9);
-  });
-
-  it('refuses a hash total that does not fit rather than writing its last 21 digits', () => {
-    const overflow = Array.from({ length: 200 }, (_, i) => ({ ...SAMPLE, name: `PERSON ${i}`, epfMemberNo: '9'.repeat(19) }));
-    expect(() => buildBorangAFile(input({ employees: overflow }))).toThrow(/the field holds 21/);
+    const text2 = buildBorangAFile(input({ employees: big }));
+    const t = parseBorangAFileTotals(text2);
+    expect(t.memberNoSum).toBe('29999999999999999997'); // the real sum, still reported
+    expect(t.controlTotal).toBe('0'); // …but the field could not carry it
+    expect(fileField(lines(text2)[5], BORANG_A_FILE_FIELDS.trailer.controlTotal)).toBe('000000000');
+    // NOT the low nine digits of the sum, which is the mistake this case exists to prevent.
+    expect(fileField(lines(text2)[5], BORANG_A_FILE_FIELDS.trailer.controlTotal)).not.toBe('999999997');
+    // And the file is still offered: a 46-employee employer must be able to file.
+    expect(() => buildBorangAFile(input({ employees: big }))).not.toThrow();
+    // The report is where the operator learns it.
+    expect(borangAFileReport(text2)).toContain('written as zeros');
   });
 });
 

@@ -53,6 +53,7 @@ import {
   type BorangARow,
 } from '@/lib/borang-a';
 import {
+  borangAFileEmployeesFrom,
   borangAFileReadiness,
   buildBorangAFile,
   BorangAFileError,
@@ -228,19 +229,13 @@ export async function loadBorangAFile(p: {
         periodMonth: Number(period.slice(5, 7)),
         periodYear: Number(period.slice(0, 4)),
       },
-      employees: rows.map((r) => ({
-        epfMemberNo: r.memberNo,
-        icNumber: r.ic,
-        name: r.name,
-        staffNo: r.staffNo,
-        // THREE AMOUNTS, NOT TWO, AND NEVER ADDED TOGETHER. cc74dcb2's sample file carries the employer's
-        // share, then the employee's, then the wage they were worked out from — 672.00 / 616.00 /
-        // 5,600.00 on one of its lines, which is 12% and 11% of 5,600. Summing the two shares into one
-        // box, as this used to, filed a number KWSP has no field for.
-        employerContribution: r.employer,
-        employeeContribution: r.employee,
-        wages: r.wage,
-      })),
+      // THREE AMOUNTS, NOT TWO, AND NEVER ADDED TOGETHER — employer, then employee, then the wage they
+      // were worked out from (672.00 / 616.00 / 5,600.00 on one of the sample's lines, which is 12% and
+      // 11% of 5,600). Summing the two shares into one box, as this used to, filed a number KWSP has no
+      // field for. The mapping itself lives in borangAFileEmployeesFrom and is NOT restated here: two
+      // adjacent nine-wide digit fields are transposable without anything downstream noticing, so there
+      // is exactly one copy of which share goes where, and the golden test drives that copy.
+      employees: borangAFileEmployeesFrom(rows),
       batchNo,
       trailerControlNumber: p.query.get('control') ?? '',
     });

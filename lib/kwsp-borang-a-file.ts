@@ -44,8 +44,22 @@
  * exactly 266,741,200. It is a hash total — a sum of identifiers that is not money and means nothing on
  * its own, whose only job is to prove no 02 line was lost or duplicated in transit. It is therefore
  * DERIVED here, from the very member numbers written into the 02 records, and summed in BigInt because
- * fourteen nineteen-digit numbers exceed what a double can carry exactly. The field is 21 digits wide, as
- * the sample's is, so a large employer cannot overflow it; a sum that still would not fit is a refusal.
+ * fourteen nineteen-digit numbers exceed what a double can carry exactly.
+ *
+ * ⚠️ HOW WIDE THE FIELD IS, THE SAMPLE CANNOT SETTLE, AND THIS IS THE HONEST ANSWER. The trailer's tail
+ * is `000000000000266741200` — twenty-one characters. That is equally consistent with ONE 21-wide field
+ * and with a 12-zero filler followed by a 9-wide control, because this sample's hash total happens to fit
+ * in nine digits. The two readings only diverge once the sum passes 999,999,999, at roughly 46 employees
+ * on eight-digit member numbers, where the 21-wide reading writes digits into columns 40-51 that the only
+ * real KWSP file we have shows as zeros. We take the NARROW reading, for two reasons that are evidence
+ * rather than preference: the 00 record ends in exactly that shape (a 12-zero filler at [63,12] then a
+ * 9-wide employer reference at [75,9]), and item 3aae0789's independent transcription of the layout —
+ * made before this sample existed — also had filler [39,12] + control [51,9].
+ *
+ * SO: derive the hash total when it fits in nine digits. When it does NOT, write zeros (which is what
+ * this file did before the total was derivable at all, and what KWSP has evidently accepted) and SAY SO
+ * in the validation report. We do not refuse the file — a 46-employee employer must still be able to
+ * file — and we do not truncate to the low nine digits, which would be inventing a rule.
  * `trailerControlNumber` remains as an override for the case where KWSP asks for something else.
  *
  * ── WHAT THIS REFUSES, AND WHY EACH REFUSAL IS A REFUSAL RATHER THAN A FIX-UP ─────────────────────
@@ -105,7 +119,10 @@ export const BORANG_A_FILE_FIELDS = {
     recordCount: [2, 7],
     totalEmployer: [9, 15],
     totalEmployee: [24, 15],
-    controlTotal: [39, 21],
+    // 12 zeros then a 9-wide control total — NOT one 21-wide field. See the header note: the sample
+    // cannot tell the two apart and this is the reading the 00 record's own shape supports.
+    filler: [39, 12],
+    controlTotal: [51, 9],
   },
 } as const;
 
@@ -141,6 +158,42 @@ export type BorangAFileEmployee = {
   /** RM, plain number — the EPF-liable wage the two shares were worked out from. */
   wages: number;
 };
+
+/**
+ * THE ONE PLACE A PAYROLL ROW BECOMES A FILE LINE, and the reason it is here rather than at the call
+ * site. The 02 record's three amounts are EMPLOYER, EMPLOYEE, WAGES, and the two contributions are
+ * adjacent nine-wide digit fields — so transposing them produces a file that is the right length, whose
+ * header and trailer totals still agree with the 02 lines (both sides are summed from the same swapped
+ * values), and which the portal accepts while filing every employee's two shares the wrong way round.
+ * NOTHING downstream can see that. It was written out by hand at two call sites and guarded at neither;
+ * the verifier swapped one of them and 214 tests stayed green.
+ *
+ * Structurally typed on purpose: this module stays free of the report's own types, and any row carrying
+ * these seven fields — `borangARows`' output does — can be mapped by it. The golden test builds the
+ * sample's fourteen employees THROUGH this function, so a swap here fails against the real KWSP file's
+ * bytes rather than against a restatement of them.
+ */
+export function borangAFileEmployeesFrom(
+  rows: readonly {
+    memberNo: string;
+    ic: string;
+    name: string;
+    staffNo?: string;
+    wage: number;
+    employer: number;
+    employee: number;
+  }[],
+): BorangAFileEmployee[] {
+  return rows.map((r) => ({
+    epfMemberNo: r.memberNo,
+    icNumber: r.ic,
+    name: r.name,
+    staffNo: r.staffNo,
+    employerContribution: r.employer,
+    employeeContribution: r.employee,
+    wages: r.wage,
+  }));
+}
 
 export type BorangAFileInput = {
   employer: {
@@ -302,12 +355,13 @@ export function buildBorangAFile(input: BorangAFileInput): string {
   // DERIVED: the hash total of the member numbers, which is what the sample's own trailer carries. An
   // override is honoured verbatim; a derived sum too big for the field is a refusal, never a truncation.
   const derivedControl = memberNoSum.toString();
-  if (derivedControl.length > controlWidth) {
-    fail(`Trailer control total: the member numbers sum to ${derivedControl}, which needs ${derivedControl.length} digits and the field holds ${controlWidth}.`);
-  }
+  // A sum too big for the nine-digit field is NOT a refusal — see the header. Zeros, exactly as this
+  // file wrote before the total was derivable, and the report says the total could not be carried.
   const controlTotal = controlRaw
     ? digitField(controlRaw, controlWidth, 'Trailer control number')
-    : derivedControl.padStart(controlWidth, '0');
+    : derivedControl.length > controlWidth
+      ? zeros(controlWidth)
+      : derivedControl.padStart(controlWidth, '0');
 
   const header = line(
     '00' +
@@ -335,9 +389,13 @@ export function buildBorangAFile(input: BorangAFileInput): string {
       numField(detail.length, BORANG_A_FILE_FIELDS.trailer.recordCount[1], 'Record count') +
       numField(totalEmployerCents, BORANG_A_FILE_FIELDS.trailer.totalEmployer[1], 'Total employer contribution') +
       numField(totalEmployeeCents, BORANG_A_FILE_FIELDS.trailer.totalEmployee[1], 'Total employee contribution') +
+      zeros(BORANG_A_FILE_FIELDS.trailer.filler[1]) +
       controlTotal,
   );
 
+  // NO TRAILING CRLF, and the sample is why: EPFORMA2 is 2,225 bytes, which is 17 x 131 MINUS 2 — the
+  // last record ends at its 129th character with no line ending after it. main wrote one; the plan's
+  // prose says "every line ... plus CRLF"; the real file KWSP accepted says otherwise, and the file wins.
   const text = [header, employerRecord, ...detail, trailer].join(BORANG_A_FILE_EOL);
   // THE FILE CHECKS ITSELF, from the bytes rather than from the intent. See the header comment.
   assertBorangAFileBalances(text);
@@ -579,10 +637,16 @@ export function borangAFileReport(text: string): string {
       `Employee contribution: RM ${ringgit(t.detailEmployeeCents)} on the employee lines, RM ${ringgit(t.headerEmployeeCents)} in the header, RM ${ringgit(t.trailerEmployeeCents)} in the trailer.`,
     );
     out.push(`Wages: RM ${ringgit(t.detailWageCents)} on the employee lines. No record in this format carries a wage total, so there is nothing to check that against.`);
+    // Three states, not two: derived, could-not-be-carried, or supplied. The middle one is the reason
+    // this report exists — it is the only place the operator can learn that the field went out as zeros.
+    const controlWidth = BORANG_A_FILE_FIELDS.trailer.controlTotal[1];
+    const sumTooWide = String(t.memberNoSum).length > controlWidth;
     out.push(
       t.controlTotal === t.memberNoSum
         ? `Control total: ${t.controlTotal}, which is the sum of the ${t.detailCount} EPF member numbers on the file.`
-        : `Control total: ${t.controlTotal}. It was supplied rather than derived - the ${t.detailCount} EPF member numbers on the file sum to ${t.memberNoSum}.`,
+        : sumTooWide && Number(t.controlTotal) === 0
+          ? `Control total: written as zeros. The ${t.detailCount} EPF member numbers sum to ${t.memberNoSum}, which needs ${String(t.memberNoSum).length} digits and this field holds ${controlWidth}. Zeros is what this file carried before the total could be derived at all; if KWSP rejects the file on this field, ask them what belongs in columns ${BORANG_A_FILE_FIELDS.trailer.controlTotal[0] + 1}-${BORANG_A_FILE_FIELDS.trailer.controlTotal[0] + controlWidth} for an employer of this size and supply it with the control parameter.`
+          : `Control total: ${t.controlTotal}. It was supplied rather than derived - the ${t.detailCount} EPF member numbers on the file sum to ${t.memberNoSum}.`,
     );
   } catch (e) {
     out.push('');
