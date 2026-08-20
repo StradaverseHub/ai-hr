@@ -43,6 +43,9 @@ import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
 // r212 (8ebf77ae) — the leave type's OWN conditions, worded from the SAME criteria vocabulary the rule
 // builder below is generated from, so the inherited list and the pickers beside it cannot drift apart.
 import { inheritedConditions, type LeaveTypeEligibility } from './leave-type-conditions';
+// r212 — the one-click "everyone" rule. A CLIENT island because it must show the reach count before it
+// lets anybody save; see its header for why a bare form was the wrong shape for this one write.
+import { EveryoneRuleForm } from './everyone-rule-form';
 // 4a1abc4a — the Entitlement Table is where day figures are TYPED, so it is the one screen where the
 // summary line and the editor cell beside it must agree digit for digit.
 import { DAY_DASH, formatDayInput, formatDays } from '@/lib/day-format';
@@ -897,43 +900,19 @@ export async function EntitlementTablesBlock({
             <>
               {/* ── r212 (8ebf77ae) · THE ONE-CLICK RULE SHAPE ────────────────────────────────────────
                   "Everyone this leave type is available to" — `createEligibilityRule` with criteria {}.
-                  EMPTY CRITERIA ALREADY MEANS EVERYONE (`resolveOrgCriteriaTargets`' own semantics, stated
-                  in its header); nothing about resolution changes here. What changes is that it becomes a
-                  NAMED, deliberate choice instead of something you get by leaving every box empty and
-                  hoping — which is exactly what the reporter did by hand for Examination Leave on
-                  2026-08-20. This form posts no criteria field at all, and `criteriaFrom` asks for axes BY
-                  NAME rather than sweeping the FormData, so what is stored is `{}` and not a near-miss.
+                  A CLIENT component, not a bare form, and the reason is the reach count: this is the one
+                  shape in the product that always means EVERYBODY, and two headers in this codebase say the
+                  screen must show that number before it lets anybody save (`countEligibilityTargetsAction`,
+                  `EligibilityRuleForm`). See everyone-rule-form.tsx.
                   Offered only while CREATING: an edit already has criteria on screen to clear. */}
               {!editingRule ? (
-                <form
+                <EveryoneRuleForm
                   action={createEligibilityRuleAction}
-                  className="mb-4 space-y-2 rounded-md border border-border p-3"
-                >
-                  {returnField}
-                  <p className="text-sm font-medium">{t('ruleEveryoneTitle')}</p>
-                  <p className="text-xs text-muted-foreground">{t('ruleEveryoneHelp')}</p>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Field label={t('ruleName')}>
-                      <input className={inputCls} name="name" defaultValue={t('ruleEveryoneDefaultName')} required />
-                    </Field>
-                    <Field label={t('ruleTemplate')}>
-                      <select className={inputCls} name="templateLineageId" defaultValue="" required>
-                        <option value="">{t('rulePickTemplate')}</option>
-                        {templateOptions.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label={t('effectiveFrom')}>
-                      <input className={inputCls} type="date" name="validFrom" defaultValue={today} required />
-                    </Field>
-                  </div>
-                  <button type="submit" className={btnPrimary}>
-                    {t('ruleEveryoneCreate')}
-                  </button>
-                </form>
+                  countAction={countEligibilityTargetsAction}
+                  templates={templateOptions}
+                  today={today}
+                  embeddedLeaveTypeId={leaveTypeId}
+                />
               ) : null}
 
               <EligibilityRuleForm

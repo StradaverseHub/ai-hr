@@ -6,7 +6,7 @@ import type { SessionContext } from '@/db/client';
 import { explainEntitlementEligibilityFor, eligibilityNoticeFrom } from '@/packs/leave/service';
 import { Card, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import type { EligibilityRuleNotice } from '@/lib/entitlement-status';
-import { criteriaAxisLabeller } from './leave-type-conditions';
+import { criteriaAxisLabeller, criteriaValueLabeller } from './leave-type-conditions';
 import type { EntitlementTablesData } from './entitlement-tables-block';
 
 /**
@@ -85,6 +85,25 @@ export async function EligibilityExplainPanel({
   const shown = matches.slice(0, MAX_MATCHES);
   const chosen = shown.find((e) => e.employmentId === params.explainEmployment) ?? null;
 
+  /** Carry the current selection through a link without losing the search that produced it. */
+  const linkFor = (employmentId: string) =>
+    `?explainQ=${encodeURIComponent(q)}&explainEmployment=${encodeURIComponent(employmentId)}` +
+    `&explainLeaveType=${encodeURIComponent(leaveTypeId)}&explainAsOf=${encodeURIComponent(asOf)}`;
+
+  // The SAME labels the rule editor's own pickers carry, for BOTH halves of "does not match X: yours is Y"
+  // — derived, never a second list (see leave-type-conditions.ts). The inherited-conditions block on this
+  // same screen labels the identical vocabulary through the identical two functions.
+  const axisLabel = criteriaAxisLabeller(data.criteriaSections);
+  const valueLabel = criteriaValueLabeller(data.criteriaSections);
+
+  /**
+   * ⚠️ ONLY A LINEAGE WITH A RUNNING VERSION IS LINKABLE. `?editRule=` is answered by the block above,
+   * which looks the lineage up in its RUNNING rules — so a link on an expired or retired lineage navigates,
+   * loses the explanation, and opens nothing. Those are precisely the rules a reader most wants to click,
+   * which is why this returns null for them rather than rendering a link that does nothing.
+   */
+  const runningRuleLineages = new Set(data.rules.filter((r) => r.validTo == null).map((r) => r.lineageId));
+
   const notice =
     chosen && leaveTypeId
       ? eligibilityNoticeFrom(
@@ -94,19 +113,16 @@ export async function EligibilityExplainPanel({
             asOf,
           }),
           {
-            // The SAME labels the rule editor's own pickers carry — derived, never a second list of axis
-            // names (see leave-type-conditions.ts).
-            axisLabel: criteriaAxisLabeller(data.criteriaSections),
-            href: (lineageId) => `?editRule=${encodeURIComponent(lineageId)}`,
+            // …and the answer is carried THROUGH the link, so opening a rule does not throw away the
+            // employee, the leave type and the date that produced the question.
+            href: (lineageId) =>
+              runningRuleLineages.has(lineageId)
+                ? `${linkFor(chosen.employmentId)}&editRule=${encodeURIComponent(lineageId)}`
+                : null,
           },
         )
       : null;
   const typeName = typeOptions.find((x) => x.id === leaveTypeId)?.name ?? '';
-
-  /** Carry the current selection through a link without losing the search that produced it. */
-  const linkFor = (employmentId: string) =>
-    `?explainQ=${encodeURIComponent(q)}&explainEmployment=${encodeURIComponent(employmentId)}` +
-    `&explainLeaveType=${encodeURIComponent(leaveTypeId)}&explainAsOf=${encodeURIComponent(asOf)}`;
 
   return (
     <Card>
@@ -169,19 +185,29 @@ export async function EligibilityExplainPanel({
               {t('explainFor', { employee: chosen.name, type: typeName, date: asOf })}
             </p>
             {/* THE ANSWER FIRST. A reader who came here because a balance reads 0.00 needs the verdict
-                before the working, and the sole-table case is a verdict of its own: the table applied and
-                no rule was consulted because none exists to consult (r193 fault 3). */}
+                before the working — and the verdict is the SHARED one (`eligibilityNoticeFrom`), not this
+                screen's own reading of the same fields. Both screens once re-derived it here and duly
+                disagreed about the same employee; see that function's header. */}
             <p className="text-sm">
-              {!notice.activeAtDate
-                ? t('explainNotActive', { date: asOf })
-                : notice.soleTableApplies
-                  ? t('explainWinnerSole', { table: notice.winningTableName ?? '' })
-                  : notice.winningRuleName
-                    ? t('explainWinner', { table: notice.winningTableName ?? '', rule: notice.winningRuleName })
+              {notice.verdict === 'sole_table'
+                ? t('explainWinnerSole', { table: notice.winningTableName ?? '' })
+                : notice.verdict === 'resolved'
+                  ? t('explainWinner', {
+                      table: notice.winningTableName ?? '',
+                      rule: notice.winningRuleName ?? '',
+                    })
+                  : notice.verdict === 'not_active'
+                    ? t('explainNotActive', { date: asOf })
                     : t('explainNoWinner')}
             </p>
+            {/* …and the employment window as a CAVEAT rather than a competing verdict, for the one case
+                where both are true: a sole table resolves for somebody outside their employment window,
+                because that shortcut deliberately consults no window (r193 fault 3). */}
+            {notice.activeAtDate || notice.verdict === 'not_active' ? null : (
+              <p className="text-xs text-muted-foreground">{t('explainNotActive', { date: asOf })}</p>
+            )}
 
-            {notice.rules.length === 0 ? (
+            {notice.verdict === 'no_rules' || notice.rules.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t('explainNoRules')}</p>
             ) : (
               <div className="overflow-x-auto">
@@ -196,7 +222,9 @@ export async function EligibilityExplainPanel({
                   </thead>
                   <tbody>
                     {notice.rules.map((r) => (
-                      <tr key={r.name} className="border-t align-top">
+                      /* KEYED ON THE LINEAGE, never on the name: nothing makes two rule names differ, and
+                         two rows sharing a React key render as one. */
+                      <tr key={r.id} className="border-t align-top">
                         <td className="px-2 py-1.5">
                           <span className="font-medium">{r.name}</span>
                           {r.tableName ? (
@@ -207,17 +235,34 @@ export async function EligibilityExplainPanel({
                           {t(STATE_KEY[r.state], { date: r.validTo ?? r.validFrom })}
                         </td>
                         <td className="px-2 py-1.5">
-                          {r.state === 'matched'
-                            ? t('explainWhyMatched')
-                            : r.state !== 'in_force'
-                              ? t('explainWhyNotTested')
-                              : r.failingAxisLabel
-                                ? r.failingAxisValue
-                                  ? t('explainWhyAxis', { axis: r.failingAxisLabel, value: r.failingAxisValue })
-                                  : t('explainWhyAxisNoValue', { axis: r.failingAxisLabel })
-                                : r.failsOnCombination
-                                  ? t('explainWhyCombination')
-                                  : ''}
+                          {/* ⚠️ "NOT TESTED" IS DECIDED BY `tested`, NOT BY THE STATE. A rule can be
+                              perfectly in force and still never have been compared against this employee —
+                              when the employment did not exist on the date, nothing below the employment
+                              window is consulted. Reading the state instead left "In force" beside an empty
+                              cell for every rule on that screen, which invites a hunt for a criterion that
+                              was never looked at. */}
+                          {r.state === 'matched' ? (
+                            t('explainWhyMatched')
+                          ) : !r.tested ? (
+                            t('explainWhyNotTested')
+                          ) : r.failingAxis ? (
+                            (() => {
+                              // Labelled through the SAME vocabulary the inherited-conditions block on this
+                              // screen uses — an axis the vocabulary cannot name is named not at all.
+                              const axis = axisLabel(r.failingAxis);
+                              if (!axis) return r.failsOnCombination ? t('explainWhyCombination') : '';
+                              return r.failingAxisValue
+                                ? t('explainWhyAxis', {
+                                    axis,
+                                    value: valueLabel(r.failingAxis, r.failingAxisValue),
+                                  })
+                                : t('explainWhyAxisNoValue', { axis });
+                            })()
+                          ) : r.failsOnCombination ? (
+                            t('explainWhyCombination')
+                          ) : (
+                            ''
+                          )}
                         </td>
                         <td className="px-2 py-1.5">
                           {r.href ? (

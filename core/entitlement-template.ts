@@ -83,7 +83,7 @@ import { compareEntitlementTables } from '../lib/entitlement-table-order';
 // r212 — the client-safe shape the two explaining screens render. Declared beside `EntitlementStatus`
 // (which is the thing being explained) so the employee's panel, a client island, can name it without
 // importing anything that touches `db/client`. Type-only: nothing at runtime crosses back.
-import type { EligibilityNotice, EligibilityRuleNotice } from '../lib/entitlement-status';
+import type { EligibilityNotice, EligibilityRuleNotice, EligibilityVerdict } from '../lib/entitlement-status';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import {
@@ -1073,6 +1073,12 @@ export type EligibilityRuleExplanation = {
   /** Did this employee match? Only ever asked (and only ever true) for a rule that is in force over a table
    *  in force, which is precisely the set the resolver tests. */
   matched: boolean;
+  /** WAS THE COMPARISON EVEN MADE? False for a rule that reaches nobody (not in force, or over a stopped
+   *  table) AND for EVERY rule when `activeAtDate` is false — the employment is out of scope before any
+   *  criterion is considered, so `matched: false` there says nothing about the rule's criteria. Carried
+   *  rather than left to be re-derived: a screen that reads `matched === false` as "you are not in it"
+   *  sends an administrator to edit criteria that were never consulted. */
+  tested: boolean;
   /** The FIRST axis of this rule the employee fails. Null when the rule matched, when it was never tested,
    *  or when `failsOnCombination` — never a guess. */
   firstFailure: EligibilityAxisFailure | null;
@@ -1089,9 +1095,11 @@ export type EntitlementEligibilityExplanation = {
   employmentId: string;
   leaveTypeId: string;
   asOf: string;
-  /** This employment exists, is hired by `asOf` and has not been terminated before it. FALSE makes every
-   *  rule below fail for one reason that has nothing to do with any rule, and the screen must say that
-   *  instead of blaming an axis. */
+  /** This employment exists, is hired by `asOf` and has not been terminated before it. FALSE leaves every
+   *  rule below UNTESTED (`tested: false`) for one reason that has nothing to do with any rule, so no axis
+   *  is ever blamed for it. ⚠️ It does NOT mean nothing resolved: the sole-table shortcut deliberately
+   *  consults no employment window, so `winner` can be non-null with this false — which is exactly the
+   *  combination `eligibilityNoticeFrom` had to be given a deliberate precedence for. */
   activeAtDate: boolean;
   /** r193 fault 3, read off the engine's own answer (`ResolvedEntitlement.viaSoleTemplate`): the leave type
    *  had exactly one table in force and no rule in force, so the table applied and NO RULE IS NEEDED. A
@@ -1220,11 +1228,21 @@ function employeeValueForAxis(
 
 export async function explainEntitlementEligibility(
   tx: Tx,
-  p: { employmentId: string; leaveTypeId: string; asOf: string },
+  p: {
+    employmentId: string;
+    leaveTypeId: string;
+    asOf: string;
+    /** THE ENGINE'S ANSWER, WHERE THE CALLER ALREADY HAS IT. `core/read.ts` builds the resolver for this
+     *  very pair before it can decide the entitlement STATUS, so re-resolving here would run the same query
+     *  twice on a screen that already runs one read per leave type. Passing it is not an override: it is
+     *  the same `winnerFor` this function would call. `undefined` ⇒ resolve; `null` ⇒ the caller resolved
+     *  and nothing won, which is exactly the state this explanation exists for. */
+    winner?: ResolvedEntitlement | null;
+  },
 ): Promise<EntitlementEligibilityExplanation> {
   // WHO WON — the existing delegate, not a second ranking. `viaSoleTemplate` is the r193 fault-3 gate's own
   // answer, so `soleTableApplies` below cannot drift from the engine that applied it.
-  const winner = await resolveEntitlementForEmployment(tx, p);
+  const winner = p.winner !== undefined ? p.winner : await resolveEntitlementForEmployment(tx, p);
 
   const allVersions = (
     await tx.select().from(entitlementTemplate).where(eq(entitlementTemplate.leaveTypeId, p.leaveTypeId))
@@ -1345,6 +1363,7 @@ export async function explainEntitlementEligibility(
       inForce,
       pointsAtTableInForce,
       matched,
+      tested: testable,
       firstFailure,
       failsOnCombination: testable && !matched && firstFailure === null,
       usesUndatedAxis: usesUndatedEligibilityAxis(rule.criteria),
@@ -1378,34 +1397,66 @@ export async function explainEntitlementEligibilityFor(
  * r212 — THE EXPLANATION AS A SCREEN READS IT. Pure, and the ONE place the mapping lives.
  *
  * Both consumers (the admin explain panel and the employee's own Leave Details side-sheet) need the same
- * five decisions made the same way — which of the five states a rule is in, which axis to name, whether to
- * quote a value at all — and making them twice is how the two screens start describing one configuration
- * two ways. The i18n and the href are injected because they belong to the caller's namespace and route,
- * not to this module.
+ * decisions made the same way — WHAT THE ANSWER IS, which of the five states each rule is in, whether this
+ * employee was even compared against it — and making them twice is how the two screens start describing one
+ * configuration two ways. The href is injected because it belongs to the caller's route, and the failing
+ * axis stays in the criteria vocabulary's own words because the two callers label it from different places
+ * (see `EligibilityRuleNotice` in lib/entitlement-status.ts).
  *
- * ⚠️ THE STATE ORDER IS NOT ARBITRARY. `matched` first (it is an answer, not a fault); then `not_yet` and
- * `expired`, which are about the RULE's own dates; then `table_stopped`, which is about the table it points
- * at; and only then `in_force`, which is the one that is genuinely about this employee. Reordering it would
- * report an expired rule as "you are not in it", which sends an administrator to edit criteria on a rule
- * that matches nobody whatever they type.
+ * ⚠️ AND THE TOP-LEVEL VERDICT IS DECIDED HERE, NOT BY THE SCREENS. It was not, and the two screens duly
+ * disagreed about the same object: for a leave type with one table and no rule (the reporter's
+ * Hospitalization) read at a date before the employee was hired, the engine RESOLVES that table —
+ * `activeAtDate: false`, `soleTableApplies: true`, `winner` non-null — and the admin panel printed "this
+ * employee was not employed on that date, so no rule can reach them" while the employee's panel printed
+ * "that table applies to everyone", each from its own `if` order.
+ *
+ * THE PRECEDENCE, AND WHY IT IS THIS WAY ROUND:
+ *
+ *   1. A WINNER OUTRANKS EVERYTHING. If the engine resolved a table, the verdict names it. "No rule can
+ *      reach them" is not a harmless simplification there — it is FALSE about the outcome, and it would be
+ *      printed beside a figure the same engine produced from the very table it claims nothing reached. Note
+ *      that the sole-table shortcut deliberately does NOT consult the employment window (r193 fault 3: one
+ *      table, no rule, the table applies), which is exactly why this combination exists at all.
+ *   2. `activeAtDate` is NOT dropped when a winner exists — it rides along as its own flag, and both screens
+ *      print it as an ADDITIONAL caveat. Both facts are true; only one of them is the answer.
+ *   3. With NOTHING resolved, "this employment did not exist on that date" outranks the rule list, because
+ *      it explains every rule at once and none of the per-rule reasons is about a criterion at all
+ *      (`tested` is false for all of them).
+ *   4. Then "there are no rules", then "no rule reaches you" — the state this whole type exists to explain.
  */
 export function eligibilityNoticeFrom(
   explanation: EntitlementEligibilityExplanation,
   opts: {
-    /** Criteria FIELD NAME → the label the rule editor's own picker carries for it. Return null (or omit
-     *  the axis) and the screen names no axis rather than printing a raw field name at a reader. */
-    axisLabel: (axis: string) => string | null;
-    /** Where an administrator opens a rule lineage. Omit on a screen with nowhere to send anybody. */
-    href?: (ruleLineageId: string) => string;
-  },
+    /** Where an administrator opens a rule lineage. Omit on a screen with nowhere to send anybody, and
+     *  return null for a lineage this screen cannot actually open — a link that lands on a screen with
+     *  nothing to show is worse than no link. */
+    href?: (ruleLineageId: string) => string | null;
+  } = {},
 ): EligibilityNotice {
+  const winner = explanation.winner;
+  const verdict: EligibilityVerdict = winner
+    ? explanation.soleTableApplies
+      ? 'sole_table'
+      : 'resolved'
+    : !explanation.activeAtDate
+      ? 'not_active'
+      : explanation.rules.length === 0
+        ? 'no_rules'
+        : 'no_match';
+
   return {
+    verdict,
     soleTableApplies: explanation.soleTableApplies,
     activeAtDate: explanation.activeAtDate,
-    winningRuleName: explanation.winner?.ruleName ?? null,
-    winningTableName: explanation.winner?.templateName ?? null,
+    winningRuleName: winner?.ruleName ?? null,
+    winningTableName: winner?.templateName ?? null,
     usesUndatedAxis: explanation.usesUndatedAxis,
     rules: explanation.rules.map((r) => {
+      // ⚠️ THE STATE ORDER IS NOT ARBITRARY EITHER. `matched` first (it is an answer, not a fault); then
+      // `not_yet` and `expired`, which are about the RULE's own dates; then `table_stopped`, which is about
+      // the table it points at; and only then `in_force`, which is the one that is genuinely about this
+      // employee. Reordering it would report an expired rule as "you are not in it", which sends an
+      // administrator to edit criteria on a rule that matches nobody whatever they type.
       const state: EligibilityRuleNotice['state'] = r.matched
         ? 'matched'
         : r.validFrom > explanation.asOf
@@ -1415,16 +1466,17 @@ export function eligibilityNoticeFrom(
             : !r.pointsAtTableInForce
               ? 'table_stopped'
               : 'in_force';
-      const label = r.firstFailure ? opts.axisLabel(r.firstFailure.axis) : null;
       return {
+        id: r.ruleLineageId,
         name: r.ruleName,
         state,
+        tested: r.tested,
         validFrom: r.validFrom,
         validTo: r.validTo,
         tableName: r.templateName,
-        failingAxisLabel: label,
+        failingAxis: r.firstFailure?.axis ?? null,
         // A value with no axis to hang it on is noise, so both fall together.
-        failingAxisValue: label ? (r.firstFailure?.employeeValue ?? null) : null,
+        failingAxisValue: r.firstFailure ? r.firstFailure.employeeValue : null,
         failsOnCombination: r.failsOnCombination,
         href: opts.href ? opts.href(r.ruleLineageId) : null,
       };

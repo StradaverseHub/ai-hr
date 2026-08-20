@@ -38,6 +38,7 @@ import {
   updateEligibilityRule,
 } from '../core/entitlement-template';
 import type { ServiceBand } from '../core/leave-compute';
+import { leaveEntitlementBreakdown } from '../core/read';
 import { withTenant } from '../db/client';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -190,9 +191,11 @@ describe('r212 — explaining why an employee resolves to no entitlement table',
     expect(x.winner).toBeNull();
 
     // …and the state a screen renders is `expired`, which is its own sentence.
-    const notice = eligibilityNoticeFrom(x, { axisLabel: () => 'Employment Type' });
+    const notice = eligibilityNoticeFrom(x);
+    expect(notice.verdict).toBe('no_match');
     expect(notice.rules[0].state).toBe('expired');
-    expect(notice.rules[0].failingAxisLabel).toBeNull();
+    expect(notice.rules[0].tested).toBe(false);
+    expect(notice.rules[0].failingAxis).toBeNull();
   });
 
   it('CASE 4 — ONE table and no rule: the table applies, and that is not a missing rule', async () => {
@@ -243,10 +246,57 @@ describe('r212 — explaining why an employee resolves to no entitlement table',
     expect(x.rules[0].matched).toBe(true);
     expect(x.soleTableApplies).toBe(false);
 
-    const notice = eligibilityNoticeFrom(x, { axisLabel: () => null });
+    const notice = eligibilityNoticeFrom(x);
+    expect(notice.verdict).toBe('resolved');
     expect(notice.rules[0].state).toBe('matched');
     expect(notice.winningRuleName).toBe('Everyone');
     expect(notice.winningTableName).toBe('Executive');
+  });
+
+  /**
+   * ⚠️ THE COMBINATION NO CASE ABOVE COVERED, AND THE ONE THE TWO SCREENS DISAGREED ABOUT.
+   *
+   * `activeAtDate: false` AND `soleTableApplies: true` at the same time, which is not a contrived pairing:
+   * the r193 fault-3 shortcut (one table in force, no rule in force ⇒ the table applies) deliberately does
+   * not consult the employment window, so ANY leaver read at today's date, or anyone read at a date before
+   * their hire, lands here on the reporter's own Hospitalization shape.
+   *
+   * The admin panel tested `!activeAtDate` first and printed "no rule can reach them"; the employee's panel
+   * tested `soleTableApplies` first and printed "that table applies to everyone" — from the IDENTICAL
+   * object. `eligibilityNoticeFrom` now decides the verdict once, and this pins WHICH way it decides: a
+   * winner outranks the window, because "no rule can reach them" is false about an outcome the same engine
+   * produced from the very table it claims nothing reached. The window survives as its own flag.
+   */
+  it('a SOLE TABLE that resolves for somebody outside their employment window has ONE verdict, not two', async () => {
+    const ctx = adminCtx(b);
+    const hosp = await createLeaveType(ctx, { code: 'HOSP2', name: 'Hospitalization Leave' });
+    await createEntitlementTemplate(ctx, {
+      leaveTypeId: hosp.id,
+      name: 'Hospitalization',
+      serviceBands: flat(60),
+      validFrom: '2026-01-01',
+    });
+    const emp = await hireEmployee(ctx, {
+      person: { fullName: 'Late Joiner', primaryEmail: uniqEmail() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-06-01',
+      gradeId: null,
+      grantLeaveTypes: [],
+    });
+
+    const x = await explain(emp.employmentId, hosp.id, '2026-01-01');
+    // Measured, not assumed: all three of these hold together.
+    expect(x.activeAtDate).toBe(false);
+    expect(x.soleTableApplies).toBe(true);
+    expect(x.winner?.templateName).toBe('Hospitalization');
+
+    const notice = eligibilityNoticeFrom(x);
+    // ONE answer, and it is the one the engine's own figure was produced from.
+    expect(notice.verdict).toBe('sole_table');
+    // …and the window is not lost — it rides alongside so both screens can caveat it.
+    expect(notice.activeAtDate).toBe(false);
   });
 
   it('an EMPLOYMENT that did not exist on the date is said so, instead of being blamed on an axis', async () => {
@@ -279,6 +329,29 @@ describe('r212 — explaining why an employee resolves to no entitlement table',
     expect(x.rules[0].matched).toBe(false);
     expect(x.rules[0].firstFailure).toBeNull();
     expect(x.rules[0].failsOnCombination).toBe(false);
+
+    // NOTHING RESOLVED here, so the window IS the verdict.
+    const notice = eligibilityNoticeFrom(x);
+    expect(notice.verdict).toBe('not_active');
+
+    // ⚠️ AND THE CASE THAT READ AS A BLANK CELL. Asked at a date where the rule IS in force but the
+    // employee is not yet hired, the rule's STATE is legitimately `in_force` — it is the EMPLOYEE who is
+    // out of scope. `tested` is what separates the two, and without it the screen showed "In force" beside
+    // an empty reason column, inviting an administrator to hunt for a criterion never consulted.
+    const later = await hireEmployee(ctx, {
+      person: { fullName: 'Not Yet Hired', primaryEmail: uniqEmail() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-06-01',
+      gradeId: null,
+      grantLeaveTypes: [],
+    });
+    const y = eligibilityNoticeFrom(await explain(later.employmentId, b.annualLeaveTypeId, '2026-01-01'));
+    expect(y.verdict).toBe('not_active');
+    expect(y.rules[0].state).toBe('in_force');
+    expect(y.rules[0].tested).toBe(false);
+    expect(y.rules[0].failingAxis).toBeNull();
   });
 
   it('a rule edited to take effect LATER is still reported as IN FORCE today, and still tested', async () => {
@@ -352,5 +425,90 @@ describe('r212 — explaining why an employee resolves to no entitlement table',
     const x = await explain(emp.employmentId);
     expect(x.usesUndatedAxis).toBe(true);
     expect(x.rules[0].usesUndatedAxis).toBe(true);
+  });
+});
+
+/**
+ * r212 — AND THE HALF THE APPROVED PLAN LED WITH: THE EMPLOYEE'S OWN SCREEN.
+ *
+ * The explanation is worth nothing while it is reachable only from the configuration screen. The plan's
+ * fourth bullet is the EMPLOYEE's: "when an employee's leave shows 'No eligibility rule reaches you', name
+ * the rules that exist, say which are in force, and for each one in force say the first thing about that
+ * employee which does not match."
+ *
+ * It reaches them by riding INSIDE `leaveEntitlementBreakdown`, which every screen that shows the side-sheet
+ * already loads (/leave, the employee balances screen, /admin/personnel/[id]) — so no host page had to be
+ * edited and none of them can forget. These cases pin that wiring at the READ, because a prop with no
+ * caller type-checks, passes every static guard and renders nowhere: that is exactly what shipped first.
+ */
+describe('r212 — the explanation reaches the employee\'s own breakdown', () => {
+  it('a no-eligibility-match pair carries the notice, with the rule NAMED and the failing axis on it', async () => {
+    const ctx = adminCtx(b);
+    const tpl = await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'CONTRACT - GRADE H - 18',
+      serviceBands: flat(18),
+      validFrom: '2026-01-01',
+    });
+    await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'PERMANENT',
+      serviceBands: flat(14),
+      validFrom: '2026-01-01',
+    });
+    await createEligibilityRule(ctx, {
+      name: 'CONTRACT - GRADE H - 18',
+      templateLineageId: tpl.lineageId,
+      criteria: { employmentTypes: ['contract'] },
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('full_time');
+
+    const breakdown = await leaveEntitlementBreakdown(ctx, emp.employmentId, b.annualLeaveTypeId, ASOF);
+    expect(breakdown, 'the employee has no breakdown for this type').not.toBeNull();
+    expect(breakdown!.entitlementStatus).toBe('no_eligibility_match');
+    const notice = breakdown!.eligibility;
+    expect(notice, 'the breakdown carries no eligibility notice — the panel prop has no caller again').toBeDefined();
+    expect(notice!.verdict).toBe('no_match');
+    expect(notice!.rules).toHaveLength(1);
+    expect(notice!.rules[0].name).toBe('CONTRACT - GRADE H - 18');
+    expect(notice!.rules[0].state).toBe('in_force');
+    expect(notice!.rules[0].tested).toBe(true);
+    // The criteria FIELD NAME, not a label: `core/read.ts` has no translator, so the panel names it.
+    expect(notice!.rules[0].failingAxis).toBe('employmentTypes');
+    // The lineage id, because a list keyed on the name collapses two identically-named rules into one row.
+    expect(notice!.rules[0].id).toBeTruthy();
+    // No href: an employee's own side-sheet has nowhere to send anybody.
+    expect(notice!.rules[0].href).toBeNull();
+  });
+
+  it('a pair that RESOLVES pays for no explanation at all', async () => {
+    // The gate is a cost decision as much as an editorial one: this read runs once PER LEAVE TYPE per
+    // screen, and the explanation costs a handful of queries plus one per rule tested.
+    const ctx = adminCtx(b);
+    const tpl = await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'Everyone',
+      serviceBands: flat(14),
+      validFrom: '2026-01-01',
+    });
+    await createEntitlementTemplate(ctx, {
+      leaveTypeId: b.annualLeaveTypeId,
+      name: 'Contract',
+      serviceBands: flat(10),
+      validFrom: '2026-01-01',
+    });
+    await createEligibilityRule(ctx, {
+      name: 'Everyone',
+      templateLineageId: tpl.lineageId,
+      criteria: {},
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('full_time');
+
+    const breakdown = await leaveEntitlementBreakdown(ctx, emp.employmentId, b.annualLeaveTypeId, ASOF);
+    expect(breakdown, 'the employee has no breakdown for this type').not.toBeNull();
+    expect(breakdown!.entitlementStatus).not.toBe('no_eligibility_match');
+    expect(breakdown!.eligibility).toBeUndefined();
   });
 });

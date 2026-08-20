@@ -34,6 +34,7 @@ import { DAY_DASH, formatDays } from '@/lib/day-format';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import {
   entitlementStatusNeedsNotice,
+  ELIGIBILITY_AXIS_LABEL_KEY,
   type EligibilityNotice,
   type EligibilityRuleNotice,
   type EntitlementStatus,
@@ -132,10 +133,15 @@ export function LeaveDetailsPanel({
    * `resolveOrgCriteriaTargets` calls the resolver decides with, never a second matcher. Nothing here
    * recomputes eligibility; this component only renders sentences.
    *
-   * OPTIONAL, and absent is a legitimate value: a caller that has not loaded the explanation shows exactly
-   * what it showed before. Deliberately NOT ESS-gated — an employee whose leave resolves to nothing is
-   * precisely the person these sentences are for, which is the same argument the status notice above is
-   * ungated on.
+   * WHERE IT COMES FROM: `leaveEntitlementBreakdown` (core/read.ts) attaches it to the breakdown — and only
+   * where the status is `no_eligibility_match`, which is the one state that means "tables exist and nothing
+   * reached you" — and `EntitlementBreakdown` hands it down here. So every caller of that adapter (/leave,
+   * the employee balances screen, /admin/personnel/[id]) gets it without knowing about it.
+   *
+   * OPTIONAL, and absent is a legitimate value: `components/leave/leave-cards.tsx` mounts this panel from a
+   * row that carries no breakdown of its own, and it shows exactly what it showed before. Deliberately NOT
+   * ESS-gated — an employee whose leave resolves to nothing is precisely the person these sentences are
+   * for, which is the same argument the status notice above is ungated on.
    */
   eligibility?: EligibilityNotice;
   /** Controlled-open mode (Leave View Dashboard 6d78f373): when `open`/`onOpenChange` are supplied the caller
@@ -147,6 +153,23 @@ export function LeaveDetailsPanel({
   hideTrigger?: boolean;
 }) {
   const t = useTranslations('leave.breakdown');
+  /**
+   * r212 — THE CRITERIA AXIS NAMES, READ FROM WHERE THEY ALREADY LIVE.
+   *
+   * "Employment Type", "Division", "Job Grade" are the rule editor's own picker labels and they are already
+   * shipped in six locales under these two namespaces. This panel resolves them through
+   * `ELIGIBILITY_AXIS_LABEL_KEY` — the map that `test/r212-leave-type-inherited-conditions.test.ts` pins,
+   * field by field, against `buildOrgCriteriaSections`'s real output. Minting a third set of axis names
+   * under `leave.breakdown` is how r127 shipped a screen that rendered entirely through `MISSING_MESSAGE`
+   * behind a green 200.
+   */
+  const tCriteria = useTranslations('admin.leave.adjustmentsCriteria');
+  const tOrgCategory = useTranslations('admin.profileOptions.category');
+  const axisLabel = (axis: string | null): string | null => {
+    const k = axis ? ELIGIBILITY_AXIS_LABEL_KEY[axis] : undefined;
+    if (!k) return null;
+    return k.ns === 'criteria' ? tCriteria(k.key) : tOrgCategory(k.key);
+  };
   const fmtDays = (n: number) => formatDays(n);
 
   // Info-icon per row (b8b665ff, reworked by 2bc2f2a3): the HR-authored explanation now shows as a HOVER
@@ -421,34 +444,39 @@ export function LeaveDetailsPanel({
                 {/* r212 (8ebf77ae) — the reporter's original ask: "No eligibility rule reaches you" naming
                     the rules that exist, saying which are in force, and for each one in force the FIRST
                     thing about this employee that does not match. Rendered inside the notice it explains,
-                    not as a section of its own: it is the reason for the figure, not a figure. */}
-                {eligibility && (
+                    not as a section of its own: it is the reason for the figure, not a figure.
+
+                    ⚠️ THE VERDICT IS READ, NOT RE-DERIVED. `eligibilityNoticeFrom` decides it once for both
+                    screens; this panel and the admin explain panel each testing their own `if` order over
+                    the same object is exactly how they came to describe one configuration two ways.
+                    `resolved` / `sole_table` render NOTHING here on purpose: `core/read.ts` attaches this
+                    notice only where the engine resolved nothing, so a verdict that names a winner belongs
+                    to a status this block is not explaining. */}
+                {eligibility && eligibility.verdict !== 'resolved' && eligibility.verdict !== 'sole_table' && (
                   <div className="mt-2 border-t border-current/20 pt-2">
-                    {eligibility.soleTableApplies ? (
-                      <p>{t('eligibilitySoleTable')}</p>
-                    ) : !eligibility.activeAtDate ? (
+                    {eligibility.verdict === 'not_active' ? (
                       <p>{t('eligibilityNotActive', { date: asOf })}</p>
-                    ) : eligibility.rules.length === 0 ? (
+                    ) : eligibility.verdict === 'no_rules' ? (
                       <p>{t('eligibilityNoRules')}</p>
                     ) : (
                       <>
                         <p className="font-medium">{t('eligibilityRulesTitle')}</p>
                         <ul className="mt-1 space-y-1">
                           {eligibility.rules.map((r) => (
-                            <li key={r.name}>
+                            /* KEYED ON THE LINEAGE, never on the name: nothing makes two rule names differ,
+                               and two rows sharing a React key render as one. */
+                            <li key={r.id}>
                               <span className="font-medium">{r.name}</span>
                               {' — '}
                               {t(RULE_STATE_COPY[r.state], { date: r.validTo ?? r.validFrom })}
-                              {/* The axis, and this employee's own value where it is one that can be named
-                                  honestly. A value with no axis is never printed — see `eligibilityNoticeFrom`. */}
-                              {r.failingAxisLabel && (
+                              {/* The axis this employee fails, named from the rule editor's own vocabulary.
+                                  The VALUE is deliberately not quoted here: it is the reader's own record,
+                                  and labelling a stored value needs the catalogue only the admin screen
+                                  holds — a raw `full_time` inside a translated sentence is worse than the
+                                  sentence without it. */}
+                              {r.tested && axisLabel(r.failingAxis) && (
                                 <span className="block opacity-90">
-                                  {r.failingAxisValue
-                                    ? t('eligibilityWhyAxis', {
-                                        axis: r.failingAxisLabel,
-                                        value: r.failingAxisValue,
-                                      })
-                                    : t('eligibilityWhyAxisNoValue', { axis: r.failingAxisLabel })}
+                                  {t('eligibilityWhyAxis', { axis: axisLabel(r.failingAxis)! })}
                                 </span>
                               )}
                               {r.failsOnCombination && (
@@ -457,9 +485,6 @@ export function LeaveDetailsPanel({
                             </li>
                           ))}
                         </ul>
-                        {eligibility.winningRuleName && (
-                          <p className="mt-1">{t('eligibilityWinner', { rule: eligibility.winningRuleName })}</p>
-                        )}
                       </>
                     )}
                     {/* AGENTS 28's spirit — say what the data cannot support rather than implying a precision

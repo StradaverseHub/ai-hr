@@ -35,6 +35,7 @@ import {
   criteriaValueLabeller,
   inheritedConditions,
 } from '../app/admin/leave/entitlements/templates/leave-type-conditions';
+import { ELIGIBILITY_AXIS_LABEL_KEY } from '../lib/entitlement-status';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -158,25 +159,57 @@ describe('r212 — the one-click "everyone" rule really does post no criteria', 
     'utf8',
   );
 
-  /** The one-click form's own source: from its create action to the submit label that closes it. */
-  function oneClickForm(): string {
-    const start = block.indexOf('{!editingRule ? (');
-    const end = block.indexOf("{t('ruleEveryoneCreate')}", start);
-    expect(start, 'the one-click rule form is gone from the rule editor').toBeGreaterThan(-1);
-    expect(end, 'the one-click rule form no longer submits').toBeGreaterThan(start);
-    return block.slice(start, end);
-  }
+  /** The one-click form's own source — its own file since the reach count made it a client island. */
+  const everyoneForm = readFileSync(
+    join(ROOT, 'app/admin/leave/entitlements/templates/everyone-rule-form.tsx'),
+    'utf8',
+  );
+
+  it('it is mounted only while CREATING — an edit already has criteria on screen to clear', () => {
+    const start = block.indexOf('{!editingRule ? (\n                <EveryoneRuleForm');
+    expect(start, 'the one-click rule form is gone from the rule editor, or is no longer create-only').toBeGreaterThan(-1);
+  });
 
   it('the form carries no criteria control, so `criteriaFrom` reads {} — which already means EVERYONE', () => {
-    const form = oneClickForm();
     for (const field of [...ORG_CRITERIA_FIELDS, ...ORG_CRITERIA_RANGE_FIELDS]) {
-      expect(form.includes(`name="${field}"`), `the one-click form posts the criteria axis ${field}`).toBe(false);
+      expect(
+        everyoneForm.includes(`name="${field}"`),
+        `the one-click form posts the criteria axis ${field}`,
+      ).toBe(false);
     }
     // It posts exactly the three fields a rule needs and nothing else.
-    expect(form).toContain('name="name"');
-    expect(form).toContain('name="templateLineageId"');
-    expect(form).toContain('name="validFrom"');
-    expect(form).toContain('action={createEligibilityRuleAction}');
+    expect(everyoneForm).toContain('name="name"');
+    expect(everyoneForm).toContain('name="templateLineageId"');
+    expect(everyoneForm).toContain('name="validFrom"');
+  });
+
+  /**
+   * ⚠️ THE OBLIGATION NOTHING PINNED, AND THE FIRST CUT OF THIS FORM BROKE.
+   *
+   * Two headers in this codebase say the same thing in almost the same words —
+   * `countEligibilityTargetsAction` ("THE SCREEN IS REQUIRED TO SHOW THIS BEFORE IT LETS ANYBODY SAVE …
+   * this count is the thing that stops 'no restrictions' becoming an accidental whole-company assignment")
+   * and `EligibilityRuleForm` ("the only thing standing between 'no restrictions' and a whole-company
+   * assignment"). The one-click shape ALWAYS means everybody, the service refuses nothing, and
+   * `createEligibilityRuleAction` runs `recomputeAfterSave` on the click — so it is the one write on this
+   * screen that must never be submittable unsighted. It shipped as a bare form with a plain submit.
+   *
+   * Asserted on the SOURCE because it is a structural obligation, not a rendering: a future edit that
+   * quietly drops the count action or swaps the confirm back for a `<button type="submit">` fails here.
+   */
+  it('the one-click form shows the reach COUNT and confirms before it writes', () => {
+    const form = everyoneForm;
+    // It asks the SAME count action the full rule editor asks, normalised through the same parser the save
+    // uses — a count from a differently-parsed object is worse than no count.
+    expect(form, 'the one-click form no longer counts who it reaches').toContain('countAction({ criteria: {}');
+    expect(form).toContain("t('ruleEveryoneCount', { count })");
+    // …and the submit is the confirm control, disabled until a number is on screen.
+    expect(form).toContain('<ConfirmSubmit');
+    expect(form).toContain('disabled={count == null}');
+    expect(form, 'a plain submit button bypasses the confirmation').not.toContain("type=\"submit\"");
+    // The block must hand it both actions; a mount that forgot either would render a form that cannot count.
+    expect(block).toContain('countAction={countEligibilityTargetsAction}');
+    expect(block).toContain('action={createEligibilityRuleAction}');
   });
 
   it('the sole-table line is READ from the health derivation, never recomputed beside it', () => {
@@ -250,3 +283,146 @@ describe('r212 — every key these server components ask for resolves, in all si
     });
   }
 });
+
+/**
+ * r212 — THE AXIS LABEL MAP CANNOT DRIFT FROM THE PICKER IT BORROWS FROM.
+ *
+ * The employee's own breakdown panel is a CLIENT island fed by `core/read.ts`, which has neither a
+ * translator nor a catalogue — so it cannot call `buildOrgCriteriaSections` (that module reaches
+ * `core/org-criteria.ts`, which imports `db/client`) and cannot be handed resolved labels either. It reads
+ * `ELIGIBILITY_AXIS_LABEL_KEY` instead. That is a second place naming the axes, and the ONLY thing that
+ * stops it becoming a second vocabulary is this test: the real builder is run with translators that echo
+ * their keys, and the two are compared field by field.
+ *
+ * An axis added, renamed or relabelled in the builder fails HERE, instead of painting a raw `orgDivision`
+ * or a `MISSING_MESSAGE` inside a translated sentence on a live screen (AGENTS rule 6).
+ */
+describe('r212 — the criteria axis labels the employee panel resolves', () => {
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const catalogues = Object.fromEntries(
+    LOCALES.map((l) => [l, JSON.parse(readFileSync(join(ROOT, 'messages', `${l}.json`), 'utf8'))]),
+  ) as Record<(typeof LOCALES)[number], Record<string, unknown>>;
+  const at = (obj: unknown, dotted: string): unknown =>
+    dotted
+      .split('.')
+      .reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj);
+
+  /** The two namespaces `buildOrgCriteriaSections` labels its FIELDS from — and the echo prefixes the
+   *  fixture above feeds it, so a mapped key can be compared against the label the builder produced. */
+  const NS = {
+    criteria: { path: 'admin.leave.adjustmentsCriteria', echo: 'crit:' },
+    orgCategory: { path: 'admin.profileOptions.category', echo: 'org:' },
+  } as const;
+
+  const fields = sections.flatMap((section) => section.fields);
+
+  it('every criteria field the real builder produces is in the map, pointing at the SAME key', () => {
+    const wrong: string[] = [];
+    for (const f of fields) {
+      const mapped = ELIGIBILITY_AXIS_LABEL_KEY[f.name];
+      if (!mapped) {
+        wrong.push(`${f.name}: absent from ELIGIBILITY_AXIS_LABEL_KEY`);
+        continue;
+      }
+      const expected = `${NS[mapped.ns].echo}${mapped.key}`;
+      if (expected !== f.label) wrong.push(`${f.name}: map says ${expected}, builder says ${f.label}`);
+    }
+    expect(wrong, wrong.join('\n')).toEqual([]);
+  });
+
+  it('the map names no axis the builder does not offer', () => {
+    // A stale entry is not harmless: it would keep resolving after the axis it named was removed, so the
+    // panel would go on printing a label for a criterion nothing can store any more.
+    const offered = new Set(fields.map((f) => f.name));
+    const extra = Object.keys(ELIGIBILITY_AXIS_LABEL_KEY).filter((k) => !offered.has(k));
+    expect(extra, `axes in the map that no criteria field offers: ${extra.join(', ')}`).toEqual([]);
+  });
+
+  it('every mapped key resolves in all six locales', () => {
+    const missing: string[] = [];
+    for (const [axis, k] of Object.entries(ELIGIBILITY_AXIS_LABEL_KEY)) {
+      for (const locale of LOCALES) {
+        const dotted = `${NS[k.ns].path}.${k.key}`;
+        if (typeof at(catalogues[locale], dotted) !== 'string') missing.push(`[${locale}] ${axis} → ${dotted}`);
+      }
+    }
+    expect(missing, missing.join('\n')).toEqual([]);
+  });
+});
+
+/**
+ * r212 — THE DYNAMIC-KEY PATH THE SOURCE SCAN ABOVE CANNOT SEE, AND WHY IT NEEDS ITS OWN CASE.
+ *
+ * The explain panel resolves each rule's status through `t(STATE_KEY[r.state], …)` — a key looked up in a
+ * map, not written as a literal — so neither `test/i18n-coverage.test.ts` case C nor the attribute-and-
+ * resolve scan above can attribute it. That is precisely the class AGENTS rule 6 is about: a missing one
+ * paints `MISSING_MESSAGE` in the browser and still returns 200. The panel is a SERVER component, so no DOM
+ * test can reach it either (the employee panel's own five-state map IS covered by a render, in
+ * `test/r212-eligibility-notice.dom.test.tsx`).
+ *
+ * ⚠️ THIS DOES NOT MAKE THE STATIC GUARDS A SUBSTITUTE FOR A RENDER IN GENERAL. It covers exactly the five
+ * keys named below, read out of the map's own source; a sixth state added with no copy fails at tsc (the
+ * map is typed `Record<EligibilityRuleNotice['state'], string>`) and then here.
+ */
+describe('r212 — the explain panel\'s five rule-state keys resolve, in all six locales', () => {
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const NAMESPACE = 'admin.entitlementTemplates';
+
+  it('every key in STATE_KEY exists in every catalogue', () => {
+    const src = readFileSync(
+      join(ROOT, 'app/admin/leave/entitlements/templates/eligibility-explain.tsx'),
+      'utf8',
+    );
+    const start = src.indexOf('const STATE_KEY');
+    expect(start, 'STATE_KEY is gone — has the explain panel stopped mapping rule states?').toBeGreaterThan(-1);
+    const body = src.slice(start, src.indexOf('};', start));
+    const keys = [...body.matchAll(/:\s*'([A-Za-z0-9_]+)'/g)].map((m) => m[1]);
+    expect(keys.length, 'STATE_KEY no longer lists the five rule states').toBe(5);
+
+    const missing: string[] = [];
+    for (const locale of LOCALES) {
+      const catalogue = JSON.parse(readFileSync(join(ROOT, 'messages', `${locale}.json`), 'utf8'));
+      for (const key of keys) {
+        const node = `${NAMESPACE}.${key}`
+          .split('.')
+          .reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), catalogue);
+        if (typeof node !== 'string') missing.push(`[${locale}] ${NAMESPACE}.${key}`);
+      }
+    }
+    expect(missing, missing.join('\n')).toEqual([]);
+  });
+});
+
+/**
+ * r212 — NEITHER SCREEN MAY DECIDE THE VERDICT FOR ITSELF AGAIN.
+ *
+ * `eligibilityNoticeFrom` hands both renderers one `verdict`. Before it did, each tested the SAME object's
+ * fields in its own order and they printed opposite sentences about one employee — the admin panel
+ * "not employed on that date, so no rule can reach them", the employee's panel "that table applies to
+ * everyone", for a leaver on a sole-table leave type. The engine tests pin what the verdict IS; only a
+ * source assertion can see a screen quietly re-deriving it, because one of the two is a server component
+ * no DOM test can render (AGENTS rule 17: a defect that lives in the CONTRACT between two files is
+ * invisible to a unit test of either half).
+ */
+describe('r212 — one verdict, read by both screens', () => {
+  const renderers = {
+    'app/admin/leave/entitlements/templates/eligibility-explain.tsx': 'notice.verdict',
+    'components/leave/LeaveDetailsPanel.tsx': 'eligibility.verdict',
+  } as const;
+
+  for (const [file, reader] of Object.entries(renderers)) {
+    it(`${file} reads the shared verdict and re-derives none of its own`, () => {
+      const src = readFileSync(join(ROOT, file), 'utf8');
+      expect(src, `${file} no longer reads the shared verdict`).toContain(reader);
+      // The two fields whose ORDER was the disagreement. Either may be READ (the window is a legitimate
+      // caveat beside a winner); neither may open a ternary chain that decides what the answer is.
+      expect(src, `${file} re-derives the verdict from soleTableApplies`).not.toMatch(
+        /soleTableApplies\s*\?/,
+      );
+      expect(src, `${file} re-derives the verdict from activeAtDate`).not.toMatch(
+        /!\s*\w+\.activeAtDate\s*\?/,
+      );
+    });
+  }
+});
+

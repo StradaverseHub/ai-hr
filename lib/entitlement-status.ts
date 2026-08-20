@@ -80,6 +80,12 @@
  */
 
 /** Why a leave type's entitlement figure is what it is, for one (employment, leave type, as-at date). */
+// r212 — the eight Organisation-Assignment axes carry their own i18n key in the ONE descriptor that
+// defines them, so `ELIGIBILITY_AXIS_LABEL_KEY` below derives them instead of listing them again.
+// Type-only dependencies all the way down (core/leave-org-criteria.ts is deliberately DB-free), so
+// this module stays importable by a client island.
+import { ORG_ASSIGNMENT_CRITERIA } from '../core/leave-org-criteria';
+
 export type EntitlementStatus =
   /** An accrual row exists inside this leave year — the figure on screen is the generated entitlement. */
   | 'granted'
@@ -226,60 +232,152 @@ export const ENTITLEMENT_STATUS_TIP_KEY: Partial<Record<EntitlementStatus, strin
  * exist for the leave type, whether each is in force, and — for one in force — the first thing about this
  * employee that does not match it.
  *
- * ⚠️ EVERY FIELD IS ALREADY-RESOLVED PLAIN DATA, INCLUDING `failingAxisLabel`. The failing AXIS is decided
- * by the engine (`explainEntitlementEligibility`, core/entitlement-template.ts) as a criteria FIELD NAME;
- * turning that name into "Employment Type" needs the criteria vocabulary the rule editor's own pickers are
- * built from (`buildOrgCriteriaSections`), which only a server component can read. So the server resolves
- * it and this carries the result — which is also what keeps the type client-safe and this module DB-free.
+ * ⚠️ EVERY FIELD IS ALREADY-RESOLVED DATA **EXCEPT THE TWO THAT NAME A CRITERIA AXIS**, and the exception
+ * is deliberate. `failingAxis` and `failingAxisValue` are the criteria FIELD NAME and the employee's own
+ * STORED value — the engine's own vocabulary, not display strings — because the two screens that render
+ * them resolve labels from different places and neither can do the other's job:
+ *   · the admin explain panel sits beside the rule editor and holds the real `CriteriaSection[]`, so it
+ *     labels BOTH through `criteriaAxisLabeller` / `criteriaValueLabeller` — the same call the inherited-
+ *     conditions block on that screen makes, which is what stops one screen printing "Employment Type" and
+ *     "Contract" where the other prints `employmentTypes` and `contract`;
+ *   · the employee's own breakdown panel is reached from `core/read.ts`, which has no translator and no
+ *     catalogue, so it labels the AXIS from `ELIGIBILITY_AXIS_LABEL_KEY` below and does not quote the value
+ *     at all.
+ * Resolving them server-side would have meant one of those two screens getting a raw field name; carrying
+ * the raw pair means each screen names it with the vocabulary it actually has.
  *
  * It is declared HERE, beside the status it explains, rather than in the entitlement module, for the same
  * reason `EntitlementStatus` is: the server read, the admin screen and the employee's own panel must all
  * name one shape, and the panel is a client island that cannot import anything touching `db/client`.
  */
 export type EligibilityRuleNotice = {
+  /** The rule LINEAGE id — the only stable identity a rule has. Names are free text and nothing makes two
+   *  of them differ, so a list keyed on the name collapses two rules into one React row. */
+  id: string;
   name: string;
   /** What this rule IS, before any question about this employee:
    *   - `matched`       — it reaches this employee (and, where several do, most-specific-wins picked one);
-   *   - `in_force`      — live over a live table, and this employee is not in it;
+   *   - `in_force`      — live over a live table;
    *   - `expired`       — its end date has passed, so it matches nobody at all;
    *   - `not_yet`       — its start date is in the future;
    *   - `table_stopped` — live, but the entitlement table it points at is not, so it can hand out nothing.
    * The last three are configuration faults with different remedies, and flattening them is what made the
    * production expiry invisible for six days. */
   state: 'matched' | 'in_force' | 'expired' | 'not_yet' | 'table_stopped';
+  /** WAS THIS EMPLOYEE ACTUALLY COMPARED AGAINST THIS RULE? False for a rule that reaches nobody (expired,
+   *  not yet, stopped table) AND — the case that read as a blank cell before — for EVERY rule when the
+   *  employee was not employed on the date at all. `state` cannot carry that second one: such a rule is
+   *  genuinely `in_force`; it is the EMPLOYEE who is out of scope, and a screen that shows "In force" beside
+   *  an empty reason invites an administrator to go hunting for a criterion that was never consulted. */
+  tested: boolean;
   validFrom: string;
   validTo: string | null;
   /** The entitlement table this rule points at, by name. Null only where the lineage has no version at all. */
   tableName: string | null;
-  /** The first criterion this employee fails, already labelled from the shared criteria vocabulary. Null
-   *  when the rule matched, was never tested, or fails only on a COMBINATION — see `failsOnCombination`. */
-  failingAxisLabel: string | null;
-  /** This employee's own value on that axis, where it is one that can be named honestly (a stored string,
-   *  not a UUID). Null ⇒ render the axis alone; NEVER render a guess. */
+  /** The first criterion this employee fails, as the criteria FIELD NAME (`employmentTypes`, `orgDivision`,
+   *  …) — a screen labels it, never prints it. Null when the rule matched, was never tested, or fails only
+   *  on a COMBINATION; see `failsOnCombination`. */
+  failingAxis: string | null;
+  /** This employee's own STORED value on that axis, where it is one that can be named honestly (a stored
+   *  string, not a UUID). Null ⇒ render the axis alone; NEVER render a guess. */
   failingAxisValue: string | null;
   /** Every axis passes on its own and the rule still does not match, because the axes that share one dated
    *  assignment row do not all hold on the SAME one. Stated rather than blamed on an innocent axis. */
   failsOnCombination: boolean;
-  /** Where an administrator opens this rule. Null on the employee's own panel, which links nowhere. */
+  /** Where an administrator opens this rule. Null on the employee's own panel, which links nowhere — and
+   *  null on the admin panel too for a lineage with no editable version, because a link that lands on a
+   *  screen with nothing to show is worse than no link. */
   href: string | null;
 };
 
+/**
+ * WHAT THE WHOLE ANSWER IS, IN ONE WORD — decided HERE and nowhere else.
+ *
+ * ⚠️ THIS FIELD EXISTS BECAUSE THE TWO SCREENS ONCE DISAGREED. Both were handed the identical notice and
+ * both re-derived the top-level verdict with their own `if` order: the admin panel tested `!activeAtDate`
+ * first and printed "this employee was not employed on that date, so no rule can reach them", while the
+ * employee's panel tested `soleTableApplies` first and printed "that table applies to everyone" — about the
+ * same object, for a leaver read at a date before their hire. `eligibilityNoticeFrom` makes the mapping
+ * once precisely so that cannot happen; leaving the precedence out of it left the important half behind.
+ */
+export type EligibilityVerdict =
+  /** A rule reached this employee and a table resolved. */
+  | 'resolved'
+  /** r193 fault 3 — one table in force, no rule in force, so the table applied and NO RULE IS NEEDED. */
+  | 'sole_table'
+  /** Nothing resolved AND this employment did not exist on the date (hired later / already terminated). */
+  | 'not_active'
+  /** Nothing resolved and the leave type has no eligibility rules at all. */
+  | 'no_rules'
+  /** Nothing resolved and every rule that could be tested excluded this employee. */
+  | 'no_match';
+
 /** The whole answer for one (employee, leave type, date). */
 export type EligibilityNotice = {
-  /** r193 fault 3 — one table in force, no rule in force, so the table applies and NO RULE IS NEEDED. A
-   *  screen must say "none is missing" rather than leaving a reader hunting for one. */
-  soleTableApplies: boolean;
-  /** This employment is hired by the date asked about and not already terminated. FALSE means every rule
-   *  below fails for a reason that has nothing to do with any rule. */
+  /** The one verdict both screens read. See `EligibilityVerdict`. */
+  verdict: EligibilityVerdict;
+  /** This employment is hired by the date asked about and not already terminated. Kept ALONGSIDE the
+   *  verdict rather than folded into it: when a sole table resolves for somebody outside their employment
+   *  window BOTH facts are true, the verdict names what resolved, and this is the caveat beside it. */
   activeAtDate: boolean;
+  /** r193 fault 3, as the engine's own `viaSoleTemplate`. Kept for a screen that words the sole-table
+   *  verdict differently from an ordinary win; `verdict === 'sole_table'` is the same fact. */
+  soleTableApplies: boolean;
   /** The rule that decided, when one did — so a matching employee reads WHY they get what they get. */
   winningRuleName: string | null;
   /** The entitlement table that decided, by name. Non-null WITHOUT `winningRuleName` in exactly one case:
-   *  `soleTableApplies`, where the table applied and no rule was consulted because none exists to consult. */
+   *  `sole_table`, where the table applied and no rule was consulted because none exists to consult. */
   winningTableName: string | null;
   rules: EligibilityRuleNotice[];
   /** Some rule narrows by grade, gender, nationality, religion or race — none of which is effective-dated
    *  in this schema, so it is read at TODAY'S value however far back the date reaches
    *  (`UNDATED_ELIGIBILITY_AXES`). Captioned rather than implied away. */
   usesUndatedAxis: boolean;
+};
+
+/**
+ * A CRITERIA AXIS → THE MESSAGE KEY THE RULE EDITOR'S OWN PICKER IS LABELLED FROM.
+ *
+ * ⚠️ THIS IS NOT A SECOND VOCABULARY, AND A TEST STOPS IT BECOMING ONE. `buildOrgCriteriaSections`
+ * (core/org-criteria-form.ts) is the one picker, but it is unreachable from a client component — it imports
+ * `CONFIRMATION_STATUSES` from `core/org-criteria.ts`, which imports `db/client`. So the employee's panel,
+ * which is a client island and gets its notice from `core/read.ts` (no translator, no catalogue), cannot
+ * call it. This map carries the same key each field is labelled from, and
+ * `test/r212-leave-type-inherited-conditions.test.ts` builds the real sections with key-returning
+ * translators and asserts, field by field, that the two agree — so an axis renamed, added or relabelled in
+ * the builder fails there instead of painting `MISSING_MESSAGE` on a live screen.
+ *
+ * The eight Organisation-Assignment axes are DERIVED from `ORG_ASSIGNMENT_CRITERIA` rather than listed,
+ * because that descriptor already carries the label key the builder uses for them.
+ */
+export type EligibilityAxisLabelKey = {
+  /** `criteria` ⇒ `admin.leave.adjustmentsCriteria`; `orgCategory` ⇒ `admin.profileOptions.category`. The
+   *  two namespaces `buildOrgCriteriaSections` labels its FIELDS from (its third translator labels option
+   *  VALUES, which nothing here quotes). */
+  ns: 'criteria' | 'orgCategory';
+  key: string;
+};
+
+export const ELIGIBILITY_AXIS_LABEL_KEY: Record<string, EligibilityAxisLabelKey> = {
+  companyIds: { ns: 'criteria', key: 'company' },
+  businessUnitIds: { ns: 'criteria', key: 'businessUnit' },
+  departmentIds: { ns: 'criteria', key: 'department' },
+  locationIds: { ns: 'criteria', key: 'location' },
+  employmentTypes: { ns: 'criteria', key: 'employmentType' },
+  employmentStatuses: { ns: 'criteria', key: 'employeeStatus' },
+  gradeIds: { ns: 'criteria', key: 'jobGrade' },
+  positionIds: { ns: 'criteria', key: 'position' },
+  costCenterIds: { ns: 'criteria', key: 'costCentre' },
+  genders: { ns: 'criteria', key: 'gender' },
+  nationalities: { ns: 'criteria', key: 'nationality' },
+  religions: { ns: 'criteria', key: 'religion' },
+  races: { ns: 'criteria', key: 'race' },
+  hiredFrom: { ns: 'criteria', key: 'hiredFrom' },
+  hiredTo: { ns: 'criteria', key: 'hiredTo' },
+  minYearsOfService: { ns: 'criteria', key: 'minYears' },
+  maxYearsOfService: { ns: 'criteria', key: 'maxYears' },
+  confirmationStatuses: { ns: 'criteria', key: 'confirmationStatus' },
+  ...Object.fromEntries(
+    ORG_ASSIGNMENT_CRITERIA.map((c) => [c.key, { ns: 'orgCategory', key: c.labelKey } as EligibilityAxisLabelKey]),
+  ),
 };
