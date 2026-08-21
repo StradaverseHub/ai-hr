@@ -120,6 +120,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     monthlyTaxDeduction: t('monthlyTaxDeduction'),
     cp38Deductions: t('cp38Deductions'),
     zakatViaSalary: t('zakatViaSalary'),
+    // da4fc817 — Section D's four missing lines, Section E's fund name and Section F's own heading.
+    donations: t('donations'),
+    tp1Relief: t('tp1Relief'),
+    zakatOther: t('zakatOther'),
+    childRelief: t('childRelief'),
+    sectionFExemptAllowances: t('sectionFExemptAllowances'),
+    fundName: t('fundName'),
     sectionEContributions: t('sectionEContributions'),
     epfKwsp: t('epfKwsp'),
     socso: t('socso'),

@@ -84,6 +84,12 @@ const labels: EaPdfLabels = {
   monthlyTaxDeduction: '1 Monthly tax deduction (MTD / PCB)',
   cp38Deductions: '2 CP38 deductions',
   zakatViaSalary: '3 Zakat via salary deduction',
+  donations: '4 Approved donations through salary',
+  tp1Relief: '5(a) Relief claimed on Form TP1',
+  zakatOther: '5(b) Zakat other than through salary',
+  childRelief: '6 Total child relief',
+  sectionFExemptAllowances: 'F. Total tax-exempt allowances',
+  fundName: 'Name of fund',
   sectionEContributions: "E · Contributions (employee's share)",
   epfKwsp: '1 EPF / KWSP',
   socso: '2 SOCSO',
@@ -127,8 +133,8 @@ const data: EaPdfData = {
     compensation: 0,
   },
   partC: { pension: 0, annuity: 0, total: 0 },
-  partD: { mtd: 4200, cp38: 0, zakat: 0 },
-  partE: { epf: 7810, socso: 297, eis: 118.8 },
+  partD: { mtd: 4200, cp38: 0, zakat: 0 , tp1Relief: 0, donations: 0, zakatOther: 0, childRelief: 0 },
+  partE: { epf: 7810, socso: 297, eis: 118.8 , fundName: 'KWSP' },
   statutoryVersion: '2026.3',
 };
 
@@ -154,7 +160,11 @@ const fullForm: EaPdfData = {
     compensation: 1500,
   },
   partC: { pension: 12000, annuity: 3000, total: 15000 },
-  partD: { mtd: 4200, cp38: 600, zakat: 240 },
+  // da4fc817 — ALL FOUR Section D boxes SET, because this fixture's whole job is to be the tallest
+  // document the renderer can produce and the four new lines print only when non-zero. Leaving them at 0
+  // would have let the one-page guard pass over a form that grows two lines the moment an employee has a
+  // TP1 relief and a zakat payment — which is an ordinary employee, not an edge case.
+  partD: { mtd: 4200, cp38: 600, zakat: 240, tp1Relief: 5200, donations: 350, zakatOther: 800, childRelief: 4000 },
   overrides: [{ field: 'gratuity', original: 0, amended: 7000, reason: 'ex-gratia on cessation' }],
 };
 
@@ -328,6 +338,12 @@ function bundleFor(locale: string): EaPdfLabels {
     monthlyTaxDeduction: L('monthlyTaxDeduction'),
     cp38Deductions: L('cp38Deductions'),
     zakatViaSalary: L('zakatViaSalary'),
+    donations: L('donations'),
+    tp1Relief: L('tp1Relief'),
+    zakatOther: L('zakatOther'),
+    childRelief: L('childRelief'),
+    sectionFExemptAllowances: L('sectionFExemptAllowances'),
+    fundName: L('fundName'),
     sectionEContributions: L('sectionEContributions'),
     epfKwsp: L('epfKwsp'),
     socso: L('socso'),

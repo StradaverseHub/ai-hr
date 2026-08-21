@@ -57,8 +57,24 @@ export type EaPdfData = {
   };
   /** 6036dab7 — Part C (Pencen dan Lain-lain), which this renderer did not draw at all. */
   partC: { pension: number; annuity: number; total: number };
-  partD: { mtd: number; cp38: number; zakat: number };
-  partE: { epf: number; socso: number; eis: number };
+  partD: {
+    mtd: number;
+    cp38: number;
+    zakat: number;
+    /** da4fc817 — the official form's D4, D5(a), D5(b) and D6. `tp1Relief` is derived from the year's
+     *  approved TP1 declarations; the other three are 0 until HR amends them, and print only when set. */
+    tp1Relief: number;
+    donations: number;
+    zakatOther: number;
+    childRelief: number;
+  };
+  partE: {
+    epf: number;
+    socso: number;
+    eis: number;
+    /** da4fc817 — E1's "Nama Kumpulan Wang": the fund, named before its amount, as the form asks. */
+    fundName: string;
+  };
   statutoryVersion: string;
   /** 1.2.6 EA Data Overwrite — EA-only amendments overlaid by HR; drives the footnote marker. Optional +
    *  defaults to [] so existing callers keep compiling. */
@@ -110,6 +126,13 @@ export type EaPdfLabels = {
   cp38Deductions: string;
   zakatViaSalary: string;
   sectionEContributions: string;
+  /** da4fc817 — Section D's four missing lines, Section E's fund name, and Section F's heading. */
+  tp1Relief: string;
+  donations: string;
+  zakatOther: string;
+  childRelief: string;
+  fundName: string;
+  sectionFExemptAllowances: string;
   epfKwsp: string;
   socso: string;
   eisSip: string;
@@ -205,13 +228,37 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
     text(label.toUpperCase(), M, 8.5, bold, muted);
     y -= 14;
   };
+  /**
+   * da4fc817 — a SECTION HEADING THAT CARRIES ITS OWN AMOUNT, for a section whose whole content is one
+   * figure (F: total tax-exempt allowances). Two lines — a header then a row — is what the other sections
+   * need because they have several lines each; spending two on a section with one figure is what pushed
+   * this form onto a second page, which its own guard refuses. Reads as the official form does: a titled
+   * line with an amount against it.
+   */
+  const sectionTotalLine = (label: string, value: string) => {
+    ensure(20);
+    y -= 6;
+    text(label.toUpperCase(), M, 8.5, bold, muted);
+    const w = bold.widthOfTextAtSize(value, 9);
+    text(value, right - w, 9, bold, ink);
+    y -= 14;
+  };
+  /**
+   * ⚠️ ROW_H IS 12.5, NOT 14, AND THAT IS A CORRECTNESS CONSTRAINT RATHER THAN A STYLE ONE. The official
+   * C.P.8A is ONE page and test/ea-pdf.test.ts refuses a second one in every locale. da4fc817 added the
+   * four Section D lines, Section E's fund name and Section F that the published form has and this
+   * renderer did not, and at 14pt leading the fully-populated form no longer fitted. The form is dense
+   * because the agency's own is dense; if a future round adds another box and the page guard goes red,
+   * the answer is the same arithmetic, not a second page.
+   */
+  const ROW_H = 12.5;
   const row = (label: string, value: string, opts: { bold?: boolean; color?: ReturnType<typeof rgb> } = {}) => {
-    ensure(16);
+    ensure(ROW_H + 2);
     const f = opts.bold ? bold : font;
     const c = opts.color ?? ink;
     text(label, M, 9.5, f, c);
     textR(value, right, 9.5, f, c);
-    y -= 16;
+    y -= ROW_H;
   };
   /** A section total: the rule above it and the bold line must not be split across a page break. */
   const totalRow = (label: string, value: string) => {
@@ -280,10 +327,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   optionalRow(t.esos, d.partB.esos);
   optionalRow(t.gratuity, d.partB.gratuity);
   optionalRow(t.arrears, d.partB.arrears);
-  // Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside the
-  // allowances figure above, so it is NOT one of the components that sum into the total; LHDN's EA
-  // reports exempt allowances in their own section).
-  row(t.exemptAllowances, rm(d.partB.exemptAllowances ?? 0), { color: muted });
+  // da4fc817 — the exempt-allowance figure MOVED to its own Section F, where the official form keeps it.
+  // It is deliberately NOT printed here any more: it is already inside the allowances figure above, so a
+  // second appearance in Part B read as another component of the total.
   optionalRow(t.benefitsInKind, d.partB.benefitsInKind);
   optionalRow(t.livingAccommodation, d.partB.livingAccommodation);
   optionalRow(t.unapprovedFundRefund, d.partB.unapprovedFundRefund);
@@ -302,11 +348,38 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   row(t.monthlyTaxDeduction, rm(d.partD.mtd));
   row(t.cp38Deductions, rm(d.partD.cp38));
   row(t.zakatViaSalary, rm(d.partD.zakat));
+  // da4fc817 — D4, D5(a), D5(b), D6. `optionalRow` for all four, and that is AGENTS 28 rather than a
+  // style choice: an absent box asserts nothing, a box reading 0.00 asserts the money does not exist.
+  // r209 shipped exactly that defect on this form — manual Part B boxes drawn at their derived value,
+  // always zero, so a director paid RM48,000 in commission got "Fees … RM 0.00" beside an Allowances
+  // figure carrying it. TP1 relief is derived and usually real; the other three appear only once HR
+  // enters them.
+  optionalRow(t.donations, d.partD.donations);
+  optionalRow(t.tp1Relief, d.partD.tp1Relief);
+  optionalRow(t.zakatOther, d.partD.zakatOther);
+  optionalRow(t.childRelief, d.partD.childRelief);
 
   // E — Contributions (employee's share)
   sectionHeader(t.sectionEContributions);
+  // da4fc817 — the official Section E asks WHICH fund before it asks how much, and carries exactly two
+  // amounts: the approved fund and PERKESO. EIS is NOT one of its lines — it is kept (an employee's own
+  // EIS deduction is a real figure they may need) but printed BELOW the section rather than inside it,
+  // so the form's own Section E matches the published one line for line.
+  row(t.fundName, d.partE.fundName);
   row(t.epfKwsp, rm(d.partE.epf));
   row(t.socso, rm(d.partE.socso));
+
+  // ── F — Jumlah elaun / perkuisit / pemberian / manfaat yang dikecualikan cukai ─────────────────────
+  // da4fc817 — ITS OWN SECTION AT LAST. This figure was computed and printed as a muted informational row
+  // INSIDE Part B, with a comment admitting "LHDN's EA reports exempt allowances in their own section".
+  // It does, and this is it. The figure is unchanged; only where it prints has moved.
+  // ⚠️ ONE LINE, NOT A HEADER PLUS A ROW, AND THE PAGE BUDGET IS WHY. test/ea-pdf.test.ts asserts the whole
+  // EA renders on ONE page in all six locales, which is a real property of the published form and not a
+  // preference — and it is what caught this section when it was first drawn as a heading with a row under
+  // it. Section F carries exactly one figure, so the heading carries it, which is also how the official
+  // form reads: a titled line with an amount against it.
+  sectionTotalLine(t.sectionFExemptAllowances, rm(d.partB.exemptAllowances ?? 0));
+  // EIS sits outside Section E for the reason given above, on the line beneath it.
   row(t.eisSip, rm(d.partE.eis));
 
   // ── Footnote band: the 1.2.6 "Amended" marker + the disclaimer ─────────────────────────────────────

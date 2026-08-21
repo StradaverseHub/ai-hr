@@ -127,6 +127,17 @@ function derivedField(ea: EaStatement, field: EaField): number {
       return ea.partC.pension;
     case 'annuity':
       return ea.partC.annuity;
+    // da4fc817 — Section D's four. `tp1Relief` has a real derived baseline (the year's approved TP1
+    // declarations through `tp1CountForYear`); the other three are 0 until HR enters one, exactly like
+    // the manual Part B boxes above, and are read off the statement where the pack resolved them.
+    case 'tp1Relief':
+      return ea.partD.tp1Relief;
+    case 'donations':
+      return ea.partD.donations;
+    case 'zakatOther':
+      return ea.partD.zakatOther;
+    case 'childRelief':
+      return ea.partD.childRelief;
   }
 }
 

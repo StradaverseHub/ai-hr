@@ -16,6 +16,7 @@ import {
   payslip,
   person,
   position,
+  tp1Relief,
 } from '../../db/schema';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
@@ -31,6 +32,10 @@ import { borangAReport } from './borang-a';
 // NOT a second catalogue entry: `cp39()` below merges these into the rows and meta it already returns,
 // so the LHDN shelf keeps ONE CP39 card with ONE readiness gate.
 import { cp39FormExtras, CP39_FORM_NOTES } from './cp39-form';
+
+/** da4fc817 — Section E's "Nama Kumpulan Wang". The approved fund an employee contributes to in Malaysia
+ *  is KWSP; a pack constant rather than a column because it is not a per-employee fact. */
+export const EA_FUND_NAME = 'KWSP';
 // The period-shape guard lives with the FORM MODEL (lib/cp39-form.ts), not with this read, because the
 // model is what refuses to print a month it cannot name. Imported here so the read degrades on the same
 // rule the model enforces, rather than on a second copy of the regex that could drift from it.
@@ -891,6 +896,15 @@ export const EA_FIELDS = [
   // Manual Part C boxes — no payroll source, derived baseline 0.
   'pension',
   'annuity',
+  // da4fc817 — SECTION D's missing lines. `tp1Relief` is DERIVED (core/tax-relief's tp1CountForYear, the
+  // same rule the payroll feed reads) and amendable for the reason `mtd` is: HR may need to reconcile the
+  // form against what was actually deducted. The other three have NO payroll source and stay at a derived
+  // baseline of 0 until HR enters them — which is why the renderer prints them with `optionalRow` and an
+  // absent box stays ABSENT rather than drawing 0.00 (AGENTS 28; r209 shipped exactly that defect here).
+  'tp1Relief',
+  'donations',
+  'zakatOther',
+  'childRelief',
 ] as const;
 export type EaField = (typeof EA_FIELDS)[number];
 
@@ -986,8 +1000,36 @@ export type EaStatement = {
   /** Total deduction — MTD/PCB, the LHDN/court CP38 instalment, and the year's zakat-via-salary (Z).
    *  6036dab7 — `cp38` is summed from payslip.statutory.cp38, the SAME scalar cp39() files; the EA
    *  surfaces printed the words "not tracked" for it long after payroll started stamping it. */
-  partD: { mtd: number; cp38: number; zakat: number };
-  partE: { epf: number; socso: number; eis: number }; // employee's share of EPF + SOCSO/EIS
+  partD: {
+    mtd: number;
+    cp38: number;
+    zakat: number;
+    /**
+     * da4fc817 — the four lines the official C.P.8A has and this statement did not.
+     *
+     * `tp1Relief` is REAL: `core/tax-relief`'s `tp1CountForYear` over the year's approved declarations —
+     * THE rule, not a second sum of `tp1_relief` (that file's header explains at length what a second
+     * spelling cost last time).
+     *
+     * `donations`, `zakatOther` and `childRelief` have NO payroll source: donations through salary are not
+     * a payroll deduction here, zakat paid outside the salary is by definition not on a payslip, and the
+     * child-relief TOTAL is a tax computation the employee claims rather than a figure the employer
+     * withholds. All three are 0 until HR enters one, and the renderer omits an unset box rather than
+     * printing 0.00 on a tax document.
+     */
+    tp1Relief: number;
+    donations: number;
+    zakatOther: number;
+    childRelief: number;
+  };
+  partE: {
+    epf: number;
+    socso: number;
+    eis: number;
+    /** da4fc817 — Section E asks WHICH fund before it asks how much ("Nama Kumpulan Wang"). Constant for
+     *  the MY pack: the approved fund an employee contributes to here is KWSP. */
+    fundName: string;
+  }; // employee's share of EPF + SOCSO/EIS
   statutoryVersion: string;
   /** EA-only amendments overlaid by HR (1.2.6). Empty = none. Additive + optional so existing consumers
    *  keep compiling; the PDF/HTML surfaces read it to badge amended lines. */
@@ -1063,6 +1105,9 @@ export async function eaStatement(
     const [info] = await tx
       .select({
         name: person.fullName,
+        // da4fc817 — TP1 is stored per PERSON, so Section D's relief line needs the person behind the
+        // employment. Already on a table this SELECT joins, so it costs nothing.
+        personId: person.id,
         ic: employeeStatutoryMy.icNumber,
         taxNo: employeeStatutoryMy.taxNumber,
         epfNo: employeeStatutoryMy.epfNumber,
@@ -1194,6 +1239,36 @@ export async function eaStatement(
     // override rows for (employment, year), apply each to its field, then recompute partB.gross from the
     // post-overlay components (so the printed Part B lines always sum to their total) UNLESS an explicit
     // `gross` override exists, in which case that wins. The merge appends NO event — it is a pure read.
+    // da4fc817 — the year's TP1 relief, through THE rule rather than a second sum of `tp1_relief`.
+    // `status = 'approved'` and the whole year's rows, exactly as core/payroll.ts reads them; the
+    // effective-from and one-row-per-month decisions live inside `tp1CountForYear` and stay there.
+    /**
+     * ⚠️ IMPORTED HERE, NOT AT MODULE SCOPE, AND THE REASON IS A REAL CYCLE THAT tsc CANNOT SEE.
+     * `core/tax-relief` imports `localization/registry`, the registry loads this pack, and this pack's
+     * index re-exports this file — so a top-level `import … from '../../core/tax-relief'` here throws
+     * `Cannot access '__vite_ssr_import_1__' before initialization` at RUN TIME, with a green typecheck.
+     * (That is how it was found: two EA suites failed to load at all.) `localization/my/leave.ts` is the
+     * only other pack file reaching into core and it uses `import type`, which is erased and cannot cycle.
+     *
+     * This still calls THE rule — the same `tp1CountForYear` the payroll feed and the limit check call —
+     * which is the invariant core/tax-relief's header actually demands. The tidier fix is to lift the pure
+     * counting rule into its own registry-free module and re-export it from core/tax-relief; that is a
+     * refactor of the TP1 money path and does not belong at the end of an unrelated build.
+     */
+    const { TP1_COUNTABLE_COLUMNS, tp1CountForYear } = await import('../../core/tax-relief');
+    const tp1Rows = await tx
+      .select({ personId: tp1Relief.personId, ...TP1_COUNTABLE_COLUMNS })
+      .from(tp1Relief)
+      .where(
+        and(
+          eq(tp1Relief.personId, info.personId),
+          eq(tp1Relief.assessmentYear, Number(p.year)),
+          eq(tp1Relief.status, 'approved'),
+        ),
+      );
+    // `throughMonth: null` — an EA covers the WHOLE year, where the payroll feed asks month by month.
+    const tp1ReliefTotal = tp1CountForYear(tp1Rows, { throughMonth: null }).total;
+
     const derived: Record<EaField, number> = {
       grossSalary: round2(grossSalary),
       bonus: round2(bonus),
@@ -1222,6 +1297,18 @@ export async function eaStatement(
       compensation: 0,
       pension: 0,
       annuity: 0,
+      // da4fc817 — Section D's four. `tp1Relief` is the one with a real source: the year's APPROVED
+      // declarations put through `tp1CountForYear`, which is the same rule the payroll feed reads (see
+      // core/tax-relief.ts's header on why a second sum is forbidden). No `throughMonth` — an EA covers
+      // the WHOLE year, where the feed asks month by month.
+      tp1Relief: round2(tp1ReliefTotal),
+      // The other three have no payroll source, exactly like the manual boxes above: donations through
+      // salary are not a payroll deduction in this system, zakat paid OUTSIDE the salary is by definition
+      // not on a payslip, and the child-relief total is a claim the employee makes rather than money the
+      // employer withheld.
+      donations: 0,
+      zakatOther: 0,
+      childRelief: 0,
     };
     // b7b22514 — AN AMENDMENT IS APPLIED TO EXACTLY ONE OF A TRANSFER YEAR'S FORMS.
     //
@@ -1295,8 +1382,16 @@ export async function eaStatement(
       // Part C's total is recomputed from the (possibly amended) lines for the same reason Part B's is:
       // a printed section total that does not equal its own printed lines is worse than no total.
       partC: { pension: merged.pension, annuity: merged.annuity, total: round2(merged.pension + merged.annuity) },
-      partD: { mtd: merged.mtd, cp38: merged.cp38, zakat: merged.zakat },
-      partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis },
+      partD: {
+        mtd: merged.mtd,
+        cp38: merged.cp38,
+        zakat: merged.zakat,
+        tp1Relief: merged.tp1Relief,
+        donations: merged.donations,
+        zakatOther: merged.zakatOther,
+        childRelief: merged.childRelief,
+      },
+      partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis, fundName: EA_FUND_NAME },
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),
       overrides,
     };
