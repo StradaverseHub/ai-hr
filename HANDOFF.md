@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-21 (r195–r215 SHIPPED · NOTHING IN FLIGHT · 2 BUILDABLE)
+## CURRENT STATE — snapshot 2026-08-21 (r195–r215 SHIPPED · NOTHING IN FLIGHT · 2 BUILDABLE · 3 PLANNED)
 
 **`main@433bbd3b` IS WHAT RUNS ON PRODUCTION (r215, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
@@ -34,11 +34,25 @@ ELSE in that dry run is an undeployed release.
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after r215 (2026-08-21): `deployed = 725` · `cancelled = 14` · `approved = 2` · everything else
-ZERO.** r215 shipped `18c1d92b` (the PERKESO SOCSO + EIS upload file) and closed `c1b14600` as the
-VERIFICATION it had turned into. **`da4fc817` (EA C.P.8A) and `e4b541c6` (CP39) were approved WHILE r215
-was building and are the next build** — both already planned against the customer's own documents.
-Mockup sources: `docs/mockups/*-r21*.html`.
+**Board after the r216 planning round (2026-08-21): `deployed = 725` · `cancelled = 14` ·
+`approved = 2` · `planned = 3` · open and contested ZERO.** Approved and buildable: `da4fc817` (EA
+C.P.8A) and `e4b541c6` (CP39). Planned this round: `7966ee35` (Replacement Leave in Lieu still
+unavailable), `ca7766ab` (entitlement table effective date), `5d3acdc2` (SOCSO file — a DUPLICATE of the
+shipped `18c1d92b`).
+
+⚠️⚠️ **THE `toil` MODULE IS NOT GRANTED TO THIS TENANT, AND IT IS WHY REPLACEMENT LEAVE IN LIEU HAS NEVER
+APPEARED.** `tenant_module` holds nine active rows — attendance, claims, country-my, multi_cycle_payroll,
+notifications, payroll, performance, system_explorer, typed_pay_components — and **no `toil` row**.
+`replacementRequestAvailability` (core/replacement-request.ts:175) returns `module_off` on its FIRST line
+before the policy is read, and `submitReplacementLeaveRequest` asserts the same module at :253. So every
+employee in every company is refused regardless of Leave Config. **r215's c1b14600 verification was right
+about the linkage and missed this, because it started at `resolvePolicyForTx` — one line BELOW the first
+gate.** Granting the module is provisioning and commercial; do NOT seed or migrate it.
+
+⚠️ **THE SAME DEFECT CLASS HAS NOW COST THREE ROUNDS: a surface computes a precise reason and renders
+silence.** `no_eligibility_match` (8ebf77ae), the leave on-behalf refusal (5206539f), and now
+`ReplacementRequestAvailability`'s `module_off` / `not_enabled` / `not_eligible` / `no_employment`, which
+app/leave/page.tsx discards to gate a button. When a read returns a discriminated reason, render it.
 
 ⚠️⚠️ **THE REPORTER'S REFERENCE DOCUMENTS COME FROM A SYSTEM WHOSE STAFF ARE NOT IN OURS. Read this before
 building any statutory file.** The KWSP `EPFORMA2`, the PERKESO `BRG8A` and the filed `CP39` all name the
