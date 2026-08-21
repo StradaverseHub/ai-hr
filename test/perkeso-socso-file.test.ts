@@ -118,6 +118,7 @@ describe('18c1d92b — what it refuses rather than filing', () => {
     employer: goldenInput.employer,
     employees: perkesoFileEmployeesFrom([{ ...GOLDEN_ROWS[0], ...over }]),
   });
+  type Built = Parameters<typeof buildPerkesoSocsoFile>[0];
 
   /**
    * THE REFUSAL THAT MATTERS MOST. `bases.socsoEis` arrived in r187 and 34 of the 109 payslips on
@@ -152,6 +153,25 @@ describe('18c1d92b — what it refuses rather than filing', () => {
 
   it('refuses a month outside 1-12, because MMYYYY has no room to be wrong quietly', () => {
     expect(() => buildPerkesoSocsoFile({ ...one(), employer: { ...goldenInput.employer, periodMonth: 13 } })).toThrow(/1-12/);
+  });
+
+  /**
+   * 5d3acdc2 — PERKESO's own spec, field 5: "Month due cannot be advanced date". A return for a month
+   * that has not happened yet is refused here rather than at the portal. `today` is injected so this
+   * case does not depend on when it runs — the golden above files January 2026 and must stay legal
+   * forever, which it does because its own `today` is the caller's.
+   */
+  it('refuses a contribution month that has not happened yet', () => {
+    const march = new Date(2026, 2, 15); // 15 March 2026
+    const inMarch = (m: number, y: number) => ({ ...one(), employer: { ...goldenInput.employer, periodMonth: m, periodYear: y }, today: march });
+    // February 2026 is past, March 2026 is the current month — both legal.
+    expect(() => buildPerkesoSocsoFile(inMarch(2, 2026))).not.toThrow();
+    expect(() => buildPerkesoSocsoFile(inMarch(3, 2026))).not.toThrow();
+    // April 2026 and anything in 2027 have not happened.
+    expect(() => buildPerkesoSocsoFile(inMarch(4, 2026))).toThrow(/has not happened yet/);
+    expect(() => buildPerkesoSocsoFile(inMarch(1, 2027))).toThrow(/has not happened yet/);
+    // The message names the month it refused, in the file's own MMYYYY form.
+    expect(() => buildPerkesoSocsoFile(inMarch(4, 2026))).toThrow(/042026/);
   });
 
   /** The shape check runs on the EMITTED bytes, so it catches a corruption the writer never intended. */

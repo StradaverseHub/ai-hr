@@ -1373,7 +1373,13 @@ export async function setIcAction(formData: FormData) {
   const icRaw = String(formData.get('icNumber') ?? '');
   try {
     if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setIc(s, { personId, icNumber: icRaw });
+    await pack.statutory.setIc(s, {
+      personId,
+      icNumber: icRaw,
+      // e4b541c6 — read by VALUE, not by presence: the field is always submitted, so an untouched blank
+      // must clear rather than be read as "keep" (the presence-is-a-value trap, AGENTS 17).
+      oldIcNumber: (formData.get('oldIcNumber') as string) ?? '',
+    });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1416,6 +1422,7 @@ export async function setPassportAction(formData: FormData) {
       passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,
       passportRemark: (formData.get('passportRemark') as string) || null,
       passportIssuingCountry: (formData.get('passportIssuingCountry') as string) || null,
+      passportIssuingCountryCode: (formData.get('passportIssuingCountryCode') as string) || null,
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

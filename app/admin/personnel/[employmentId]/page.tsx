@@ -995,7 +995,9 @@ export default async function EmployeePage({
           passportNumber={statutory?.passportNumber ?? ''}
           passportIssueDate={statutory?.passportIssueDate ?? ''}
           passportExpiryDate={statutory?.passportExpiryDate ?? ''}
+          oldIcNumber={statutory?.oldIcNumber ?? ''}
           passportIssuingCountry={statutory?.passportIssuingCountry ?? ''}
+          passportIssuingCountryCode={statutory?.passportIssuingCountryCode ?? ''}
           passportRemark={statutory?.passportRemark ?? ''}
           countryOptions={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
           setIcAction={setIcAction}

@@ -36,6 +36,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Field, btnPrimary, inputCls } from '@/components/ui';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
 import {
   IdentityNumberField,
   NationalityPicker,
@@ -112,7 +113,9 @@ export function IdentityFields({
   passportNumber,
   passportIssueDate,
   passportExpiryDate,
+  oldIcNumber,
   passportIssuingCountry,
+  passportIssuingCountryCode,
   passportRemark,
   countryOptions,
   setIcAction,
@@ -124,7 +127,11 @@ export function IdentityFields({
   passportNumber: string;
   passportIssueDate: string;
   passportExpiryDate: string;
+  /** e4b541c6 — CP39 `No. K/P Lama`. */
+  oldIcNumber: string;
   passportIssuingCountry: string;
+  /** e4b541c6 — CP39 `Kod Negara`, ISO alpha-2. Chosen, never derived from the line above. */
+  passportIssuingCountryCode: string;
   passportRemark: string;
   /** Item 55865c32 — the international country list for the passport's Issuing Country picker (the same
    *  catalog source the Nationality Combobox reads, passed down by the RSC page). */
@@ -157,6 +164,17 @@ export function IdentityFields({
             dobInputId="profile-dob-input"
             hintClassName="sm:col-span-3 sm:self-center"
           />
+          {/* e4b541c6 — the pre-1990 card, for the CP39's `No. K/P Lama` column. FREE TEXT: the old format
+              is not the 12-digit MyKad beside it and a validator would refuse genuine cards. Optional for
+              everybody; most employees will never have one. */}
+          <Field label={t('oldIcNumber')}>
+            <input
+              name="oldIcNumber"
+              defaultValue={oldIcNumber}
+              placeholder={t('oldIcNumberPlaceholder')}
+              className={inputCls}
+            />
+          </Field>
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveIc')}</button>
           </div>
@@ -184,6 +202,21 @@ export function IdentityFields({
             name="passportIssuingCountry"
             value={passportIssuingCountry}
             options={countryOptions}
+            placeholder={t('optionNotSet')}
+            searchPlaceholder={t('passportIssuingCountrySearchPlaceholder')}
+            noResultsLabel={t('passportIssuingCountryNoResults')}
+            legacySuffix={t('optionLegacySuffix')}
+          />
+        </Field>
+        {/* e4b541c6 — the ISO code the CP39's `Kod Negara` column wants. A SEPARATE field from the issuing
+            country above, which is fed from the tenant's nationality list and therefore holds a demonym:
+            "Malaysian" is not "MY", and deriving one from the other would print an invented code on a tax
+            document. HR picks it. */}
+        <Field label={t('passportIssuingCountryCode')}>
+          <Combobox
+            name="passportIssuingCountryCode"
+            value={passportIssuingCountryCode}
+            options={COUNTRY_CODE_OPTIONS}
             placeholder={t('optionNotSet')}
             searchPlaceholder={t('passportIssuingCountrySearchPlaceholder')}
             noResultsLabel={t('passportIssuingCountryNoResults')}

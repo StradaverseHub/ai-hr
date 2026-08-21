@@ -2831,6 +2831,20 @@ export const employeeStatutoryMy = pgTable(
     passportNumber: text('passport_number'),
     passportIssueDate: date('passport_issue_date'),
     passportExpiryDate: date('passport_expiry_date'),
+    /**
+     * e4b541c6 (migration 0450) — the two columns the CP39 has always had space for and the schema could
+     * not fill. `lib/cp39-form.ts` carried both as permanently-empty fields with headers explaining why.
+     *
+     * `oldIcNumber` is CP39's `No. K/P Lama`, free text because the pre-1990 format is not uniform and a
+     * validator would refuse valid cards.
+     *
+     * ⚠️ `passportIssuingCountryCode` IS NOT DERIVED FROM `passportIssuingCountry` ABOVE. That field is
+     * fed from the tenant's NATIONALITY option list, so it holds a demonym ("Malaysian"); lib/countries.ts
+     * maps ISO codes to country NAMES ("Malaysia"). Turning one into the other by guesswork would print an
+     * invented country code on a tax document. HR picks the code; nothing infers it.
+     */
+    oldIcNumber: text('old_ic_number'),
+    passportIssuingCountryCode: text('passport_issuing_country_code'),
     passportRemark: text('passport_remark'),
     // Item 55865c32 — the passport's issuing country (free text from the international country picker; the
     // Combobox's legacy-value tolerance renders any stored value). Optional — not part of the mandatory trio.

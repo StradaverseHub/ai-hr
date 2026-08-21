@@ -522,9 +522,10 @@ async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportRe
       personId: x?.personId ?? '',
       employeeNo: x?.employeeNo ?? '',
       passport: x?.passport ?? '',
-      // Blank because no column exists, not because a lookup came back empty. See localization/my/cp39-form.ts.
-      countryCode: '',
-      oldIc: '',
+      // e4b541c6 — both come off `cp39FormExtras` now that migration 0450 gave them columns. Empty here
+      // means the employee has none on file, which is the ordinary case and prints a blank column.
+      countryCode: x?.countryCode ?? '',
+      oldIc: x?.oldIc ?? '',
     };
   });
   return {

@@ -266,34 +266,51 @@ describe('Bilangan Pekerja is TWO counts, and they agree with the e-Data PCB fil
   });
 });
 
-describe('the two columns we cannot fill stay blank', () => {
+describe('the two columns that used to be unfillable, and the guess still refused', () => {
   /**
-   * THIS IS THE ASSERTION THAT PROTECTS A TAX DOCUMENT FROM A GUESS. There is no old-identity-card
-   * column in the schema, and the passport's issuing country is free text rather than the ISO-2 code
-   * Kod Negara wants. The approved plan says leave both blank. A later "improvement" that mapped country
-   * text to a code would put a WRONG statutory code beside somebody's tax reference number, and it would
-   * look completely normal on the page.
+   * ⚠️ HALF OF THIS CASE WAS REVERSED BY e4b541c6 (r217) AND HALF OF IT STILL STANDS. Read both before
+   * touching it.
+   *
+   * REVERSED: "there is no old-identity-card column and no code column" was true until migration 0450,
+   * which added `old_ic_number` and `passport_issuing_country_code`. The reporter asked for exactly that,
+   * so the read now carries both and a row can legitimately print either. The blank-when-absent case
+   * below replaces the never-populated one.
+   *
+   * STILL STANDS, and it is the important half: NOTHING MAY DERIVE THE CODE FROM THE COUNTRY TEXT. The
+   * `passport_issuing_country` column is fed from the tenant's NATIONALITY list ("Malaysian"); the CP39
+   * wants an ISO-2 ("MY"). A later "improvement" that mapped one to the other would put a WRONG statutory
+   * code beside somebody's tax reference and look completely normal on the page. HR picks the code.
    */
-  it('never populates No. K/P Lama or Kod Negara, whatever the read hands over', () => {
+  it('leaves both blank when the employee has neither on file, which is the ordinary case', () => {
     const form = cp39FormFrom({
       header: header(),
-      // Even if a read one day started supplying them, the READ is where that decision would have to be
-      // taken deliberately — this asserts today's read supplies neither.
+      // A read that supplies neither — an employee with no old card and no passport code.
       rows: [{ employmentId: 'x', name: 'X', tin: 'SG1', pcb: 1, cp38: 0 }],
     });
     expect(form.pages[0].rows[0].oldIc).toBe('');
     expect(form.pages[0].rows[0].countryCode).toBe('');
   });
 
-  it('is the READ that emits them blank, with the reason recorded beside it', () => {
+  it('prints what the read supplies, now that the columns exist', () => {
+    const form = cp39FormFrom({
+      header: header(),
+      rows: [{ employmentId: 'x', name: 'X', tin: 'SG1', pcb: 1, cp38: 0, oldIc: 'A 1234567', countryCode: 'MY' }],
+    });
+    expect(form.pages[0].rows[0].oldIc).toBe('A 1234567');
+    expect(form.pages[0].rows[0].countryCode).toBe('MY');
+  });
+
+  it('the READ takes them from their own columns, and still derives NEITHER from the country text', () => {
     // Source-shape, because the defect would live in the contract BETWEEN the read and the model, where
     // a unit test of either half passes throughout (AGENTS rule 17).
-    expect(READ_CODE).toContain("countryCode: ''");
-    expect(READ_CODE).toContain("oldIc: ''");
-    expect(REPORTS_CODE).toContain("countryCode: ''");
-    expect(REPORTS_CODE).toContain("oldIc: ''");
-    // …and no name→ISO-2 mapping was smuggled in anywhere on the path.
-    expect(READ_CODE).not.toContain('passportIssuingCountry');
+    expect(READ_CODE).toContain('oldIc: employeeStatutoryMy.oldIcNumber');
+    expect(READ_CODE).toContain('countryCode: employeeStatutoryMy.passportIssuingCountryCode');
+    expect(REPORTS_CODE).toContain("oldIc: x?.oldIc ?? ''");
+    expect(REPORTS_CODE).toContain("countryCode: x?.countryCode ?? ''");
+    // THE HALF THAT DID NOT CHANGE: the demonym column must not appear on this path at all, so no
+    // name→ISO-2 mapping can be smuggled in beside the code that is now stored properly.
+    expect(READ_CODE).not.toContain('passportIssuingCountry:');
+    expect(READ_CODE).not.toMatch(/passportIssuingCountry\b(?!Code)/);
   });
 
   it('says so on the page and in the text export, so a blank column does not read as a bug', () => {

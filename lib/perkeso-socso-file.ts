@@ -1,7 +1,23 @@
 /**
  * 18c1d92b — THE PERKESO ASSIST PORTAL UPLOAD FILE (combined SOCSO + EIS). PURE: no DB, no pack, no React.
  *
- * ⚠️ THE SPECIFICATION IS A REAL FILED FILE, NOT A DESCRIPTION OF ONE. Every width, offset and pad rule
+ * ⚠️ TWO SOURCES NOW AGREE, AND THAT IS WORTH MORE THAN EITHER ALONE. The layout was derived from a REAL
+ * FILED FILE and has since been checked, field for field, against PERKESO's own "Spesifikasi Format Text
+ * File Untuk SOCSO + EIS Contribution" v1.0 of 22 July 2022 (attached to item 5d3acdc2): all twelve rows
+ * agree — offsets, widths, alignment, both mandatory-N fillers, "cents, no decimal point".
+ *
+ * ⚠️ THE EMPLOYER CODE'S CHECK DIGIT IS NOT IMPLEMENTED, AND THAT IS DELIBERATE. The spec's field-1 remark
+ * says "Verify employer code using check digit checking" and does NOT publish the algorithm. An invented
+ * check would refuse VALID employer codes, which is worse than not checking: this module's whole design
+ * is that a refusal is trustworthy. Length and shape are checked; the check digit is not, and the next
+ * reader should know it was considered rather than missed. If the rule is ever obtained, it belongs in
+ * `idField`'s caller for the employer code, not in a route.
+ *
+ * ⚠️ THE PAD CHARACTER COMES FROM THE FILE, NOT THE SPEC. The spec says "right justified" and never says
+ * WHAT to pad with. The filed file uses SPACES, so spaces it is — the one place the two sources could
+ * diverge, recorded here because somebody will ask.
+ *
+ * Every width, offset and pad rule
  * below is read off `test/fixtures/perkeso-brg8a.txt` — the BRG8A.txt the customer attached to 18c1d92b,
  * decoded 2026-08-21: 14 records, each exactly 278 characters, CRLF BETWEEN records and NONE after the
  * last (3,918 bytes = 14 x 278 + 13 x 2). The reporter also wrote the field table out by hand and, unlike
@@ -96,6 +112,8 @@ export type PerkesoFileInput = {
     periodYear: number;
   };
   employees: readonly PerkesoFileEmployee[];
+  /** Defaults to now. Injectable ONLY so the future-month refusal can be tested without a clock. */
+  today?: Date;
 };
 
 /** Thrown by every refusal here, so a route can answer 422 without matching on a message. */
@@ -192,6 +210,17 @@ export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
   if (!Number.isInteger(year) || year < 1900 || year > 9999) fail(`Contribution year must be four digits, got ${employer.periodYear}`);
   // MMYYYY — the request is explicit that YYYYMM and MM/YY are both wrong, and the attached file agrees.
   const contributionMonth = `${String(month).padStart(2, '0')}${year}`;
+
+  // 5d3acdc2 — "Month due cannot be advanced date" (PERKESO spec v1.0, field 5 remark). A contribution
+  // month that has not happened yet is refused here rather than at the portal. `today` is injectable so
+  // the check is testable without a clock, and defaults to the caller's own date.
+  const today = input.today ?? new Date();
+  const currentKey = today.getFullYear() * 100 + (today.getMonth() + 1);
+  if (year * 100 + month > currentKey) {
+    fail(
+      `Contribution month ${contributionMonth} has not happened yet. PERKESO refuses a return filed for a future month.`,
+    );
+  }
 
   const employerCode = idField(employer.employerCode, F.employerCode[1], 'employer code', 'Employer');
   if (!String(employer.employerCode ?? '').trim()) fail('Employer: the PERKESO employer code is required and is not on file.');

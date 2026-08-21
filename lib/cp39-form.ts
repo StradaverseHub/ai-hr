@@ -75,11 +75,13 @@ export type Cp39FormRow = {
   /**
    * No. K/P Lama.
    *
-   * ⚠️ ALWAYS EMPTY, AND THAT IS A DATA FACT, NOT AN OVERSIGHT. There is no old-IC column anywhere in
-   * the schema — `employee_statutory_my` carries `ic_number` and a passport block and nothing else — and
-   * the approved plan says to leave it blank rather than invent one. The e-Data PCB file already leaves
-   * the same field blank (`cp39-file.ts`, `oldIc` is never passed). Kept as a FIELD rather than dropped
-   * so the printed column has something to render and the reason has somewhere to live.
+   * e4b541c6 — REAL SINCE MIGRATION 0450. `employee_statutory_my.old_ic_number` now holds the pre-1990
+   * card where an employee has one, entered on the Profile tab as free text (the old format is not the
+   * 12-digit MyKad and a validator would refuse genuine cards). Blank here means the employee has none
+   * on file, which is the ordinary case — most employees never had one.
+   *
+   * (Until 0450 this was permanently empty because no column existed. The e-Data PCB file still leaves
+   * it blank — `cp39-file.ts` does not pass it — which is a separate decision, not this one.)
    */
   oldIc: string;
   /** No. K/P Baru — `employee_statutory_my.ic_number`. */
@@ -91,11 +93,11 @@ export type Cp39FormRow = {
   /**
    * Kod Negara.
    *
-   * ⚠️ ALWAYS EMPTY, for the same reason and by the same approved decision. We store the passport's
-   * ISSUING COUNTRY as free text from an international picker (`passport_issuing_country`), never as the
-   * two-letter code this column wants, and there is no name→ISO-2 helper anywhere in the repo. Mapping
-   * free text to a statutory country code by guesswork would put a wrong code on a tax document; blank
-   * is the honest answer and is what the plan was approved with.
+   * e4b541c6 — REAL SINCE MIGRATION 0450, and stored as its OWN column rather than derived. The older
+   * `passport_issuing_country` beside it is fed from the tenant's NATIONALITY option list, so it holds a
+   * demonym ("Malaysian"); `lib/countries.ts` maps ISO codes to country NAMES ("Malaysia"). Turning one
+   * into the other by guesswork would print an invented country code on a tax document, so HR picks the
+   * code from the ISO list and nothing infers it. Blank means none on file.
    */
   countryCode: string;
   /** PCB (RM) — `payslip.statutory.pcb`, summed across the month's runs. */

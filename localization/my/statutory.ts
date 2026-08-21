@@ -864,13 +864,24 @@ export class NoIcYetError extends Error {
  * InvalidICError — the NRIC is optional for a non-Malaysian who has none. Any NON-blank value stays
  * strict-MyKad: this field is specifically the Malaysian NRIC, not a free-form "other ID".
  */
-export async function setIcProfileMY(ctx: SessionContext, p: { personId: string; icNumber: string }) {
-  if (!(p.icNumber ?? '').trim()) return { id: null };
-  if (!isValidIC(p.icNumber)) throw new InvalidICError();
-  const ic = normalizeIC(p.icNumber);
+export async function setIcProfileMY(
+  ctx: SessionContext,
+  p: { personId: string; icNumber: string; oldIcNumber?: string | null },
+) {
+  const ic = (p.icNumber ?? '').trim() ? normalizeIC(p.icNumber) : null;
+  /**
+   * e4b541c6 — the CP39's `No. K/P Lama`. FREE TEXT, and deliberately NOT put through `isValidIC`: the
+   * pre-1990 card is not the 12-digit MyKad this file validates, so the validator would refuse every
+   * genuine value. Trimmed, blanks become NULL, nothing else is enforced.
+   */
+  const oldIc = (p.oldIcNumber ?? '').trim() || null;
+  // Unchanged: a blank NRIC no-ops. It now no-ops only when there is NOTHING to save — an employee with
+  // no MyKad but an old card (or a correction that clears one) still has something to write.
+  if (!ic && !oldIc) return { id: null };
+  if (ic && !isValidIC(ic)) throw new InvalidICError();
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
-      .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber })
+      .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber, oldIcNumber: employeeStatutoryMy.oldIcNumber })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
@@ -878,13 +889,14 @@ export async function setIcProfileMY(ctx: SessionContext, p: { personId: string;
     if (existing) {
       await tx
         .update(employeeStatutoryMy)
-        .set({ icNumber: ic, updatedAt: sql`now()` })
+        // `ic ?? existing.icNumber` — a save that carries only the old card must not wipe the MyKad.
+        .set({ icNumber: ic ?? existing.icNumber, oldIcNumber: oldIc, updatedAt: sql`now()` })
         .where(eq(employeeStatutoryMy.id, existing.id));
       id = existing.id;
     } else {
       const [row] = await tx
         .insert(employeeStatutoryMy)
-        .values({ tenantId: ctx.tenantId, personId: p.personId, icNumber: ic })
+        .values({ tenantId: ctx.tenantId, personId: p.personId, icNumber: ic, oldIcNumber: oldIc })
         .returning({ id: employeeStatutoryMy.id });
       id = row.id;
     }
@@ -897,7 +909,11 @@ export async function setIcProfileMY(ctx: SessionContext, p: { personId: string;
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
       // IC is a government identity number (like the SOCSO/bank routing identifiers already recorded on the
       // sibling statutory events); before/after so an auditor can reconstruct a correction from the log alone.
-      payload: { personId: p.personId, before: { icNumber: existing?.icNumber ?? null }, after: { icNumber: ic } },
+      payload: {
+        personId: p.personId,
+        before: { icNumber: existing?.icNumber ?? null, oldIcNumber: existing?.oldIcNumber ?? null },
+        after: { icNumber: ic ?? existing?.icNumber ?? null, oldIcNumber: oldIc },
+      },
     });
     return { id };
   });
@@ -922,6 +938,9 @@ export type PassportInput = {
   passportRemark?: string | null;
   // Item 55865c32 — the passport's issuing country (optional; free text from the international country picker).
   passportIssuingCountry?: string | null;
+  /** e4b541c6 — ISO 3166-1 alpha-2 for the CP39's `Kod Negara`. Chosen by HR; never derived from the line
+   *  above, which holds a nationality demonym. */
+  passportIssuingCountryCode?: string | null;
 };
 
 /**
@@ -946,7 +965,11 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
   const remark = (p.passportRemark ?? '').trim() || null;
   const issuingCountry = (p.passportIssuingCountry ?? '').trim() || null;
-  const anyFieldPresent = Boolean(number || issue || expiry || remark || issuingCountry);
+  // e4b541c6 — the ISO alpha-2 the CP39's `Kod Negara` column wants. Uppercased because the column is a
+  // CODE and a lowercase one would not match a statutory list; NOT derived from `issuingCountry`, which
+  // holds a nationality demonym (see db/schema.ts and migration 0450).
+  const issuingCountryCode = ((p.passportIssuingCountryCode ?? '').trim() || null)?.toUpperCase() ?? null;
+  const anyFieldPresent = Boolean(number || issue || expiry || remark || issuingCountry || issuingCountryCode);
   const trioComplete = Boolean(number && issue && expiry);
   const values = {
     passportNumber: number,
@@ -954,6 +977,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
     passportExpiryDate: expiry,
     passportRemark: remark,
     passportIssuingCountry: issuingCountry,
+    passportIssuingCountryCode: issuingCountryCode,
   };
   return withTenant(ctx, async (tx) => {
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
@@ -974,6 +998,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
         passportExpiryDate: employeeStatutoryMy.passportExpiryDate,
         passportRemark: employeeStatutoryMy.passportRemark,
         passportIssuingCountry: employeeStatutoryMy.passportIssuingCountry,
+        passportIssuingCountryCode: employeeStatutoryMy.passportIssuingCountryCode,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -1014,6 +1039,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
               passportExpiryDate: existing.passportExpiryDate,
               passportRemark: existing.passportRemark,
               passportIssuingCountry: existing.passportIssuingCountry,
+              passportIssuingCountryCode: existing.passportIssuingCountryCode,
             }
           : null,
         after: values,

@@ -230,6 +230,10 @@ export function cp39FormExtras(
           personId: employment.personId,
           employeeNo: employment.employeeCode,
           passport: employeeStatutoryMy.passportNumber,
+          // e4b541c6 (migration 0450) — the two columns this file has carried as permanently empty since
+          // it was written. They exist now; the block comment on Cp39FormRowExtras has been corrected.
+          oldIc: employeeStatutoryMy.oldIcNumber,
+          countryCode: employeeStatutoryMy.passportIssuingCountryCode,
         })
         .from(employment)
         .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
@@ -239,9 +243,8 @@ export function cp39FormExtras(
           personId: r.personId,
           employeeNo: r.employeeNo ?? '',
           passport: r.passport ?? '',
-          // NOT a lookup that came back empty — a column that does not exist. See the block comment.
-          countryCode: '',
-          oldIc: '',
+          countryCode: r.countryCode ?? '',
+          oldIc: r.oldIc ?? '',
         });
       }
     }
