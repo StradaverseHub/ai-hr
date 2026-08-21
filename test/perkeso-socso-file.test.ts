@@ -304,27 +304,39 @@ describe('5dbce839 — the four things the reporter asked the report for, and th
 
   /**
    * ⚠️ THE TOTALS COME OUT OF THE FILE, NOT OUT OF THE ROWS — which is the only reason they are worth
-   * printing. Written into the wrong box, a figure would still add up to the same total if the total were
-   * taken from the input. Here the SOCSO employee share is moved into the EIS employer box on the way in,
-   * and the totals move with it: `socsoEmployee` loses 29.25 and `eisEmployer` gains it, against a golden
-   * whose two boxes are 29.25 and 11.70 apart. A total read from GOLDEN_ROWS could not tell.
+   * printing. A total added up from the payroll rows agrees with the payroll by construction, including
+   * when the writer has put a figure in the wrong box; only a total read back out of the emitted bytes can
+   * disagree with the payroll and so be worth checking against it.
+   *
+   * THE CASE IS BUILT SO THAT NOTHING ELSE COULD PRODUCE IT. Ten ringgit is moved from the SOCSO employee
+   * box into the EIS employer box IN THE TEXT, after the file has been written. No input row exists to
+   * read: `buildPerkesoSocsoFile` was called with the untouched golden. If these totals came from anywhere
+   * but the file, both figures below would be the golden's.
    */
-  it('reads the totals back out of the FILE, so a value in the wrong box changes them', () => {
-    const swapped = buildPerkesoSocsoFile({
-      employer: goldenInput.employer,
-      employees: perkesoFileEmployeesFrom([
-        { ...GOLDEN_ROWS[0], socsoEmployee: GOLDEN_ROWS[0].eisEmployer, eisEmployer: GOLDEN_ROWS[0].socsoEmployee },
-        ...GOLDEN_ROWS.slice(1),
-      ]),
-    });
-    const totals = perkesoFileTotals(swapped);
-    // 38,150 - 2,925 + 1,170 and 15,260 - 1,170 + 2,925, in sen.
-    expect(totals.sen.socsoEmployee).toBe(36_395);
-    expect(totals.sen.eisEmployer).toBe(17_015);
-    // The salary and the two untouched legs are unmoved — this is a transposition, not a loss.
+  it('reads the totals back out of the FILE — edit a box in the text and the total follows', () => {
+    const records = perkesoFileRecords(buildPerkesoSocsoFile(goldenInput));
+    const [seOffset, seWidth] = PERKESO_FILE_FIELDS.socsoEmployee;
+    const [erOffset, erWidth] = PERKESO_FILE_FIELDS.eisEmployer;
+    // Record 1 carries "  2925" and "  1170"; 1000 sen moves from the first box to the second.
+    expect(perkesoField(records[0], PERKESO_FILE_FIELDS.socsoEmployee)).toBe('  2925');
+    expect(perkesoField(records[0], PERKESO_FILE_FIELDS.eisEmployer)).toBe('  1170');
+    const edited = [
+      records[0].slice(0, seOffset) +
+        '1925'.padStart(seWidth, ' ') +
+        '2170'.padStart(erWidth, ' ') +
+        records[0].slice(erOffset + erWidth),
+      ...records.slice(1),
+    ].join(PERKESO_FILE_EOL);
+    expect(edited).toHaveLength(FIXTURE.length);
+
+    const totals = perkesoFileTotals(edited);
+    expect(totals.sen.socsoEmployee, 'ten ringgit left the SOCSO employee box').toBe(38_150 - 1_000);
+    expect(totals.sen.eisEmployer, 'and arrived in the EIS employer box').toBe(15_260 + 1_000);
+    // Everything else is where it was — this is a transposition, not a loss.
     expect(totals.sen.wage).toBe(8_784_565);
     expect(totals.sen.socsoEmployer).toBe(133_540);
     expect(totals.sen.eisEmployee).toBe(15_260);
+    expect(totals.excluded).toEqual([]);
   });
 
   it('names any record it could not validate, and leaves its figures out of the totals', () => {
