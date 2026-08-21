@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-21 (r195–r215 SHIPPED · NOTHING IN FLIGHT · 2 BUILDABLE · 3 PLANNED)
+## CURRENT STATE — snapshot 2026-08-21 (r195–r217 SHIPPED · NOTHING IN FLIGHT · 2 PLANNED)
 
-**`main@433bbd3b` IS WHAT RUNS ON PRODUCTION (r215, 2026-08-21)** — verified by an
+**`main@d1176b58` IS WHAT RUNS ON PRODUCTION (r217, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
@@ -33,12 +33,22 @@ ELSE in that dry run is an undeployed release.
 (the reissue of the dead `0444`/`0445`), both verified present on the live schema
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
-instead of by the watermark. **Next free is `0450`.**
-**Board after the r216 planning round (2026-08-21): `deployed = 725` · `cancelled = 14` ·
-`approved = 2` · `planned = 3` · open and contested ZERO.** Approved and buildable: `da4fc817` (EA
-C.P.8A) and `e4b541c6` (CP39). Planned this round: `7966ee35` (Replacement Leave in Lieu still
-unavailable), `ca7766ab` (entitlement table effective date), `5d3acdc2` (SOCSO file — a DUPLICATE of the
-shipped `18c1d92b`).
+instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
+`passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
+**Next free is `0451`.**
+**Board after r217 (2026-08-21): `deployed = 728` · `cancelled = 14` · `planned = 2` · everything else
+ZERO.** r217 shipped `da4fc817` (EA Sections D/E/F), `e4b541c6` (CP39's two identity columns, migration
+`0450`) and `5d3acdc2` (PERKESO spec conformance). Still planned, awaiting the reporter: `7966ee35`
+(Replacement Leave in Lieu — the `toil` module, below) and `ca7766ab` (entitlement effective date).
+
+⚠️ **THE PAYROLL PACK FACADE BIT TWICE IN ONE BUILD, AND THE FIX IS THE SAME BOTH TIMES.** r217 needed TP1
+counting from a pack file. A top-level import of the TP1 boundary module (a) CYCLES at run time — it loads
+the country registry, the registry loads the pack, the pack re-exports the file — with a GREEN typecheck
+and two EA suites failing to LOAD; and (b) trips `test/payroll-pack-drift.test.ts`, because TP1 sits inside
+the payroll boundary and that allowlist only shrinks. **The answer to both is a DEFERRED import of
+`packs/payroll/service`**, which re-exports the same symbols, so it is still THE rule. Reword the comment
+too: source-scanning guards do not strip comments (rule 27), so prose naming the boundary path trips the
+ratchet by itself.
 
 ⚠️⚠️ **THE `toil` MODULE IS NOT GRANTED TO THIS TENANT, AND IT IS WHY REPLACEMENT LEAVE IN LIEU HAS NEVER
 APPEARED.** `tenant_module` holds nine active rows — attendance, claims, country-my, multi_cycle_payroll,
@@ -130,7 +140,26 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**BUILD `da4fc817` (EA) AND `e4b541c6` (CP39) — both approved.** `improve:pull` returns nothing.
+**NOTHING IS BUILDABLE.** `improve:pull` and `improve:pull-approved` both return nothing; the two planned
+items sit with the reporter.
+
+⚠️ **THE FULL GATE CAUGHT A FORM GAINING BOXES NOBODY COULD FILL, and targeted runs could not.** r217's EA
+work added four Section D fields to the PDF only. `test/ea-form-boxes-contract.test.ts` pins that EVERY EA
+field reaches EVERY surface — and three of the four have NO payroll source, so without the amend panel they
+could never hold a number at all. Adding an EA box means ALL of: `EA_FIELDS`, the derived baseline, the
+exhaustive switch in `core/ea-override.ts` (no `default:`, deliberately), the PDF, the HTML statement, and
+the amend panel.
+
+⚠️ **THE EA IS ONE PAGE AND ITS GUARD MEANS IT.** Those lines did not fit at 14pt leading, so `ROW_H` is
+now 12.5. If a later round adds a box and the page guard goes red, tighten the arithmetic — the published
+C.P.8A is one page and a second page is not a fix. The `ea-pdf` fixture is deliberately the TALLEST form the
+renderer can produce; keep its `partD` populated or the guard measures the wrong maximum.
+
+⚠️ **A RED GATE IS NOT ALWAYS REAL, AND r217 SAW BOTH KINDS.** The first red was entirely real (the three
+findings above). The second was the harness: `deadlock detected` inside `resetDb`'s TRUNCATE, nine
+`Hook timed out in 30000ms`, **ZERO AssertionErrors in every chunk**, and ten failing files the round had
+never touched. Run the per-chunk cause tally BEFORE believing a red — and before re-running, check
+`pg_stat_activity` for a stray dev server or agent rather than simply rolling again.
 
 ⚠️ **r215's LESSON, CHEAP TO REUSE: A `method="get"` FORM DISCARDS ITS ACTION'S QUERY STRING.** The
 Borang 8A validation-report button was written `formAction=".../file?report=1"` — reads correctly, passes

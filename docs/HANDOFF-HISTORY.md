@@ -1,3 +1,40 @@
+## r217 (2026-08-21) — THREE STATUTORY ITEMS, AND THE GATE CATCHING A FORM NOBODY COULD FILL
+
+`d1176b58`. Three approved items, built by the parent alone and self-verified. Migration `0450`. 26 files,
++787/−62. Final gate 733 declared / 733 counted / every chunk exit=0 / 0 AssertionErrors at CHUNKS=5;
+`gate:shadow` PASS 365→366; `next build` clean; three changed screens rendered with 0 `MISSING_MESSAGE`
+and the new labels confirmed present in the HTML.
+
+Shipped: `da4fc817` (EA C.P.8A Sections D/E/F) · `e4b541c6` (CP39's two identity columns) · `5d3acdc2`
+(PERKESO spec conformance).
+
+**DECISIONS.**
+
+- **THE OFFICIAL PERKESO SPEC v1.0 CONFIRMED THE FILE WE BUILT FROM THEIR SAMPLE** — all twelve fields.
+  Added the future-month refusal it names. **The employer-code CHECK DIGIT is deliberately NOT
+  implemented**: the document says to verify one and does not publish the algorithm, and an invented check
+  would refuse valid codes. Recorded at the declaration so it reads as considered, not missed.
+- **CP39's `countryCode` IS ITS OWN COLUMN, NEVER DERIVED.** The existing `passport_issuing_country` is fed
+  from the tenant's NATIONALITY list, so it holds "Malaysian"; the form wants "MY". `lib/countries.ts` maps
+  codes to country NAMES, so a helpful mapping would print an invented code on a tax document.
+- **THE EA'S FOUR NEW SECTION D BOXES PRINT ONLY WHEN SET** (AGENTS 28). r209 shipped the opposite defect
+  on this same form. `tp1Relief` is derived through `tp1CountForYear` — THE rule, not a second sum.
+- **`updateEntitlementTemplate`-style guard reuse:** `cp39-form.test.ts` pinned "these two columns can
+  never be filled". Half of that reversed and half still stands (nothing may derive the code from the
+  demonym), so the case was UPDATED, not deleted (AGENTS 18).
+
+**PROCESS — three things worth more than the code.**
+
+- **THE FULL GATE CAUGHT A FORM GAINING BOXES NOBODY COULD FILL.** The EA work added four Section D fields
+  to the PDF only; three of them have no payroll source, so without the amend panel they could never hold
+  a number. Targeted runs were green throughout. `test/ea-form-boxes-contract.test.ts` is the guard.
+- **THE PACK FACADE BIT TWICE IN ONE BUILD** — first as a runtime import cycle tsc cannot see (two suites
+  failed to LOAD), then as a drift-ratchet failure. Same fix both times: a deferred import of
+  `packs/payroll/service`. The comment had to be reworded too, because the ratchet does not strip comments.
+- **BOTH KINDS OF RED GATE IN ONE SESSION.** The first was entirely real. The second was the harness —
+  `deadlock detected` in `resetDb`'s TRUNCATE, zero AssertionErrors anywhere, ten failing files the round
+  never touched. The cause tally is what tells them apart, and it costs seconds.
+
 ## r215 (2026-08-21) — THE PERKESO FILE, BUILT FROM A FILE THE AGENCY ACCEPTED
 
 `433bbd3b`. Two approved items, built by the parent alone (no workstream agents) and self-verified. No
