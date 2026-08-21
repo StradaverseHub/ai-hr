@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-21 (r195–r212 SHIPPED · NOTHING IN FLIGHT · 1 ITEM BLOCKED ON THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-21 (r195–r212 SHIPPED · NOTHING IN FLIGHT · 1 BUILDABLE · 1 PLANNED)
 
 **`main@682c5af5` IS WHAT RUNS ON PRODUCTION (r212, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
@@ -34,18 +34,22 @@ ELSE in that dry run is an undeployed release.
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after r212 (2026-08-21): `deployed = 723` · `cancelled = 14` · `blocked = 1` · everything else
-ZERO.** r210 shipped six items; r211 planned four; r212 shipped `8ebf77ae` (leave eligibility explain)
-and `5206539f` (leave apply-on-behalf permission), closed `e52ce9b6` (our own EPF disclosure — approved
-with a plan that proposed no build), and BLOCKED `c1b14600`. Mockup sources: `docs/mockups/*-r21*.html`.
+**Board after r212 + the r213 planning round (2026-08-21): `deployed = 723` · `cancelled = 14` ·
+`approved = 1` · `planned = 1` · everything else ZERO.** r210 shipped six; r211 planned four; r212 shipped
+`8ebf77ae` and `5206539f`, closed `e52ce9b6` and blocked `c1b14600`. r213 planned `18c1d92b` (the PERKESO
+SOCSO + EIS upload file). Mockup sources: `docs/mockups/*-r21*.html`.
 
-⚠️ **`c1b14600` IS BLOCKED ON A QUESTION ONLY THE REPORTER CAN ANSWER, and it is not a build.** The
-Replacement Leave in Lieu workflow is ALREADY BUILT (item 296fc027) — the reporter cannot reach it
-because only **2 of their 9 companies have a `toil_policy` row at all**. The block reason on the board
-asks two things: WHICH companies to switch it on for, and whether to move expiry from 90 days to 3
-months (their own worked example, 15/08 → 15/11, needs months). **Do not answer these for them** — the
-owner's explicit instruction on 2026-08-21 was to hand it back rather than choose. Their answers land in
-`block_trail`; `unblock` returns it to the queue.
+⚠️ **`c1b14600` IS UNBLOCKED AND APPROVED — AND THE REPORTER'S ANSWER CHANGED WHAT IT IS.** They did NOT
+name companies. They answered: *"I already have an existing configuration under Leave Config >
+Replacement Leave … please do not hardcode the companies or expiry period separately … Please check
+whether the existing settings are correctly linked to the Replacement Leave in Lieu workflow, rather than
+creating another separate company or expiry configuration."* So the deliverable is a VERIFICATION, not a
+build, and the answer is already largely known: the workflow reads `toil_policy` per company (`enabled`,
+`employee_request_enabled`) and `core/toil.ts` has exactly ONE function reading `expiryUnit` +
+`expiryDays` + `expiryMonths` together, with a header explaining that a caller cannot accidentally mix
+them. **Do not hardcode anything, and do not write their configuration.** Prove the link end to end,
+show them where the three settings live, and close it. The full question and answer are in the
+`feedback_block` row for that item.
 
 ⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
 be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
@@ -101,8 +105,21 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**NOTHING IS BUILDABLE AND NOTHING NEEDS PLANNING.** `improve:pull` and `improve:pull-approved` both
-return nothing; the only live item is `c1b14600`, blocked above on the reporter's answer.
+**PICK UP `c1b14600` (a verification, see above) — it is the one approved item.** `18c1d92b` sits
+`planned` awaiting the reporter.
+
+⚠️ **`18c1d92b` (PERKESO SOCSO + EIS upload file) — THE REAL WORK IS THE READ, NOT THE WRITER.** The file
+does not exist (`app/payroll/borang-8a` has pdf, preview and text but no `file/` route; the "text" one is
+the readable transcription for keying by hand — the same two-download confusion `cc74dcb2` had). Their
+attachment `BRG8A.txt` is a REAL 278-character file: 3,918 bytes = 14 × 278 + 13 × 2, so CRLF BETWEEN
+records and none after the last, exactly like EPFORMA2. Every position they listed matches it, and it
+settles the one ambiguity their own spec left open — they wrote "zeroes or spaces", the sample pads
+numerics with **SPACES**. The gap to close: `localization/my/borang-8a.ts:244-245` sums
+`socsoEmployee + socsoEmployer` and `eisEmployee + eisEmployer`, and `Borang8ARow` exposes only the one
+combined `contribution` the printed form's column 5 needs — the upload file needs the four legs
+SEPARATELY plus the SOCSO wage base, all already on `payslip.statutory`. **Carry r210's KWSP lesson: the
+row-to-record mapping lives in ONE place** — four of the six numeric fields here are 6 wide and adjacent,
+so a transposition yields a file of the right length whose totals agree with themselves.
 
 ⚠️ **TWO LESSONS FROM r212 THAT COST REAL AGENT TIME:**
 
