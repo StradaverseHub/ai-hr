@@ -5,6 +5,7 @@ import { BORANG_8A_STATUS_PARAM_PREFIX, money } from '@/lib/borang-8a';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { loadBorang8A } from '../shared';
+import { Borang8AMycoidNotice } from '../mycoid-notice';
 
 /**
  * 8ca344bf — the Borang 8A review screen: pick a processed payroll month, check the form, then download it.
@@ -380,6 +381,12 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
             ) : (
               <span className="text-xs italic text-muted-foreground">{t('downloadsBlocked')}</span>
             )}
+            {/* 5dbce839 — the MyCoID box, when it is going out empty. Beside the buttons that produce the
+                file and NOT a gate on them: the specification marks the field optional, so refusing the
+                download would be wrong, and `missingBorang8AHeader` keeps mycoid out of the blocking set
+                for exactly that reason. The whole condition lives in the component, which is what lets
+                both halves of it be a render rather than a source scan. */}
+            <Borang8AMycoidNotice mycoid={form.mycoid} title={t('mycoidNoticeTitle')} body={t('mycoidNoticeBody')} />
           </div>
         </form>
       </Card>
