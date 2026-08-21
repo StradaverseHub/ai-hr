@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-21 (r195–r212 SHIPPED · NOTHING IN FLIGHT · 1 BUILDABLE · 1 PLANNED)
+## CURRENT STATE — snapshot 2026-08-21 (r195–r215 SHIPPED · NOTHING IN FLIGHT · 2 BUILDABLE)
 
-**`main@682c5af5` IS WHAT RUNS ON PRODUCTION (r212, 2026-08-21)** — verified by an
+**`main@433bbd3b` IS WHAT RUNS ON PRODUCTION (r215, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
@@ -28,16 +28,17 @@ Service active, `GET localhost:3000/` → 401 ON THE BOX.
 production says `.next/types/…`, and each side is correct for its own build mode). DELETE the deploy's own
 `deploy-rNNN.log` off the box when you are done with it, or `--delete` will report it forever. Anything
 ELSE in that dry run is an undeployed release.
-**NEITHER r210 NOR r212 ADDED A MIGRATION** — r210 six items / 52 files; r212 two items / 30 files.
+**NO MIGRATION SINCE r209** — r210 six items / 52 files; r212 two / 30; r215 two / 16.
 **Production is on 365 migrations** — r209 added `0448` `tp1_status_values` and `0449` `tp1_approval`
 (the reissue of the dead `0444`/`0445`), both verified present on the live schema
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after the r214 planning round (2026-08-21): `deployed = 723` · `cancelled = 14` · `approved = 2`
-· `planned = 2` · open and contested ZERO.** Approved and buildable: `c1b14600` (a VERIFICATION, see
-below) and `18c1d92b` (the PERKESO SOCSO + EIS upload file). Planned, awaiting the reporter: `da4fc817`
-(EA C.P.8A gaps) and `e4b541c6` (CP39). Mockup sources: `docs/mockups/*-r21*.html`.
+**Board after r215 (2026-08-21): `deployed = 725` · `cancelled = 14` · `approved = 2` · everything else
+ZERO.** r215 shipped `18c1d92b` (the PERKESO SOCSO + EIS upload file) and closed `c1b14600` as the
+VERIFICATION it had turned into. **`da4fc817` (EA C.P.8A) and `e4b541c6` (CP39) were approved WHILE r215
+was building and are the next build** — both already planned against the customer's own documents.
+Mockup sources: `docs/mockups/*-r21*.html`.
 
 ⚠️⚠️ **THE REPORTER'S REFERENCE DOCUMENTS COME FROM A SYSTEM WHOSE STAFF ARE NOT IN OURS. Read this before
 building any statutory file.** The KWSP `EPFORMA2`, the PERKESO `BRG8A` and the filed `CP39` all name the
@@ -115,8 +116,16 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**TWO ITEMS ARE APPROVED AND BUILDABLE:** `c1b14600` (a verification — see CURRENT STATE) and
-`18c1d92b` (the PERKESO file, below). `da4fc817` and `e4b541c6` sit `planned` awaiting the reporter.
+**BUILD `da4fc817` (EA) AND `e4b541c6` (CP39) — both approved.** `improve:pull` returns nothing.
+
+⚠️ **r215's LESSON, CHEAP TO REUSE: A `method="get"` FORM DISCARDS ITS ACTION'S QUERY STRING.** The
+Borang 8A validation-report button was written `formAction=".../file?report=1"` — reads correctly, passes
+tsc, the suite and `next build`, and hands over THE FILE, because a GET submission rebuilds the query
+from the form's fields per the HTML spec. A hidden input is the OPPOSITE trap: every button in the form
+submits it, so both downloads would have returned the report. The one mechanism that works is the submit
+button's OWN `name`/`value`, sent by that button alone. Pinned on both halves in
+test/perkeso-socso-file.test.ts. **Both `borang-a/preview` and `borang-8a/preview` use GET download
+forms**, so this applies to any button added to either — including `da4fc817`'s, if the EA gains one.
 
 **`da4fc817` (EA C.P.8A Pin. 2024) — SECTIONS A, B AND C ARE COMPLETE; D, E AND F ARE NOT.** Compared
 field by field against the blank official form they attached. Missing: D4 approved donations, D5(a) TP1
