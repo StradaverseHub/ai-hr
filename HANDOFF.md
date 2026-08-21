@@ -204,7 +204,7 @@ r210 makes the Third Schedule lookup take normal + additional COMBINED, so A0001
 went 182/199 → **176/192, the figures the reporter demanded twice**. `multicycle.ts` is STILL not wired
 into the kernel and ADR-0024 §5 still gates it.
 
-⚠️ **THE ONE CORNER WHERE r210's EPF PROMISE DOES NOT HOLD, and the reporter has NOT been told yet.**
+⚠️ **THE ONE CORNER WHERE r210's EPF PROMISE DOES NOT HOLD. The reporter HAS been told — see below.**
 The plan promised, in plain words, that two runs in a month equal one run. Across the RM5,000 employer
 step the published table steps DOWN (13%→12%), so a small bonus can make the month's combined figure
 SMALLER than the regular run already contributed; `deltaStat` clamps the negative delta to 0, the bonus
@@ -212,7 +212,11 @@ payslip prints employer EPF 0.00, and the month sits up to **RM38** over the tab
 = 650 + 0 against a one-batch 612. Pinned in `test/epf-combined-month-bdf7d248.test.ts`
 (`twoRuns - oneRun === 38`). Nobody is short-paid — the excess is in the employee's own EPF account —
 and closing it needs a negative EPF line, i.e. the reversals ADR (§6), not a code change.
-**RAISE IT TO THE REPORTER as a CLAUDE AI board item rather than leaving it in a test.**
+**ALREADY RAISED AND CLOSED — do not raise it again.** It is board item `e52ce9b6` "EPF - the one case
+where a bonus cycle does not add up to the month (RM5,000 step)", raised as CLAUDE AI on 2026-08-20 and
+now `deployed` (`build_ref 1766c2b0`). The line that used to sit here said the reporter had NOT been
+told; checking the board before acting on it is what caught that — AGENTS rule 7 applies to this file as
+much as to a ticket.
 
 **PROVE THE DEPLOY CLAIM INDEPENDENTLY** rather than trusting the line above: `git for-each-ref
 refs/heads/build` plus a dry-run rsync FROM mainwt. **"Nothing in flight" is a claim about BRANCHES and
