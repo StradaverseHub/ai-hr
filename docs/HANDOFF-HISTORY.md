@@ -180,6 +180,48 @@ beside it.
 Fixed by slicing to the NEXT `screenKey` — the question it was really asking. Look for the other magic
 windows before one of them costs a round.
 
+## r209 (2026-08-20) — ELEVEN ITEMS, SEVEN WORKSTREAMS, migrations `0448`+`0449`, `main@ef343c93`
+
+
+Every approved item on the board, built as seven workstreams grouped so no two agents touched the same
+files: `7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7`+`70ac09ef`+`301d3f6b` leave entitlement ·
+`6b4ca488`+`5a29686c` payslip · `0bade264`+`6448574f` attendance · `7ad37961` TP1 · `bdf7d248` EPF
+worksheet. **The board is now completely clear for the first time.**
+
+**THE PROCESS LESSON IS NOW AGENTS RULES 23, 23b, 24-28** — all seven workstreams reported tsc-clean and
+test-green, and the adversarial verify then found 19 majors, 13 self-introduced. Read those rules; they
+are the durable half of this round.
+
+WHAT WAS WRONG AND IS NOW FIXED, kept here because each is a live behaviour someone may ask about:
+ - **TP1 `tp1CountForYear` collapsed newest-wins-per-month BEFORE narrowing to what was effective**, so a
+   correction keyed in August silently deleted the superseded row's money from every month between —
+   payroll fed 0 instead of RM 1,000, reachable through the shipped UI. r201 filtered first and did not
+   have this. **The order of those two steps is the whole correctness of that function.**
+ - **TP1's `reconcileTp1ForYear` `agrees` was an algebraic identity**, true for every input. `counted`
+   now comes from a set the function did not already collapse (only declarations that existed by that
+   month), so it can fail.
+ - **The EA printed `RM 0.00` for money it printed elsewhere** — see rule 28. Manual Part B boxes are now
+   drawn only when an `ea_override` supplies a figure.
+ - **CP39** stopped printing a false row-count assurance, stopped reporting one person with two
+   employments as a duplicate tax number, and gained the unfinished-name warning the plan promised.
+ - **The leave health card** measured the sole-table gate on a different set than the resolver does, so
+   it reported green for a type the engine grants to nobody; a pooled row printed "create an entitlement
+   table for it" over days the employee can actually spend.
+ - **The payslip statutory explanation** captioned EPF as "percentage of wage" when ≤RM20,000 is a Third
+   Schedule BAND lookup, and derived an "effective rate" on bonus runs by dividing a delta by the whole
+   month's base.
+ - **The EPF worksheet** aged employees at day 28 rather than PERIOD END (so anyone turning 60 on the
+   29th-31st was modelled a year young and printed a fabricated difference), and omitted `socsoSkbbk`,
+   an employee-deducted leg larger than the SOCSO employee share beside it.
+
+Gate: tsc 0 · **721/721 files green at CHUNKS=5** · next build 0 · shadow rehearsal PASS (363→365) ·
+i18n parity + base-aware audit CLEAN · zero-change `rsync --dry-run` · `0448`/`0449` columns verified on
+the live schema · service active · `GET /` → 401. The gate caught two things no targeted run could — a
+UTC "today" in the worksheet and a layout guard whose file had become a redirect — both now rules 27/18.
+
+Moved here from HANDOFF.md on 2026-08-21; the two live-behaviour warnings it carried (the EPF worksheet
+is a report not a switch, and EA employment income still folded into allowances) stayed in HANDOFF.md.
+
 ## r201–r204 (2026-08-18/19) — SIX ITEMS SHIPPED IN FOUR RELEASES, AND THE LOOP LEARNED WHEN TO STOP
 
 `df29af37` (`16f2aac1` Borang 8A) · `eb9a2e2f` (`cc9f9420` EPF Borang A, `5570c6a2`, `464b58e6`) ·

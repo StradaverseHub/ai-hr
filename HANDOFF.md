@@ -131,10 +131,9 @@ tells you anything about ai-hr; r191 chased both before establishing this.
 
 ## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
 
-**⚠️ THIS FILE IS ~1,085 LINES AGAINST A ~700 CAP.** r209 brought it down from 1,490 — r206/r207
-archived to `docs/HANDOFF-HISTORY.md`, the r209 entry halved once AGENTS rules 23-28 took its process
-half, this section rewritten for an empty board, a stale r194-era "nothing in flight" block removed, and
-three superseded sections compressed. **What remains is not round entries**: it is live warnings, product
+**⚠️ THIS FILE IS OVER ITS ~700-LINE CAP.** r209 brought it down from 1,490; r217 moved the r209 round
+entry wholesale to `docs/HANDOFF-HISTORY.md` behind a pointer and dropped three planning blocks the same
+round shipped. **What remains is not round entries**: it is live warnings, product
 facts nothing else records, and the loop's operating manual. Getting to 700 from here means DELETING LIVE
 KNOWLEDGE — so the next trim should move a block wholesale to history behind a pointer, or the cap should
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
@@ -170,34 +169,11 @@ button's OWN `name`/`value`, sent by that button alone. Pinned on both halves in
 test/perkeso-socso-file.test.ts. **Both `borang-a/preview` and `borang-8a/preview` use GET download
 forms**, so this applies to any button added to either — including `da4fc817`'s, if the EA gains one.
 
-**`da4fc817` (EA C.P.8A Pin. 2024) — SECTIONS A, B AND C ARE COMPLETE; D, E AND F ARE NOT.** Compared
-field by field against the blank official form they attached. Missing: D4 approved donations, D5(a) TP1
-relief (now a REAL figure — TP1 shipped r209/r210), D5(b) zakat outside salary, D6 total child relief;
-Section E's fund NAME; **Section F entirely** — `lib/ea-pdf.ts:283-286` prints `exemptAllowances` as a
-muted row inside Part B and its own comment already admits "LHDN's EA reports exempt allowances in their
-own section"; the header identifiers (employee TIN, employer E, No. Siri, LHDNM Negeri); and the
-certification box. Extend `ea_override`'s field list for the boxes payroll cannot source — do NOT build a
-second override path — and use `optionalRow`, because r209 shipped a rule-28 defect on this exact form by
-drawing derived-zero boxes.
-
-**`e4b541c6` (CP39) — ALREADY MATCHES THEIR FILED RETURN.** r209's work is visible in their own document
-(dashed ICs, the pcb>0-or-cp38>0 filter, the masthead and instruction panels). The only real gaps are
-SCHEMA: `oldIc` and `countryCode` are declared on the row and documented as permanently empty because
-`employee_statutory_my` stores neither an old IC nor an ISO country code — and both columns are blank in
-the reporter's own filed return too.
-
-⚠️ **`18c1d92b` (PERKESO SOCSO + EIS upload file) — THE REAL WORK IS THE READ, NOT THE WRITER.** The file
-does not exist (`app/payroll/borang-8a` has pdf, preview and text but no `file/` route; the "text" one is
-the readable transcription for keying by hand — the same two-download confusion `cc74dcb2` had). Their
-attachment `BRG8A.txt` is a REAL 278-character file: 3,918 bytes = 14 × 278 + 13 × 2, so CRLF BETWEEN
-records and none after the last, exactly like EPFORMA2. Every position they listed matches it, and it
-settles the one ambiguity their own spec left open — they wrote "zeroes or spaces", the sample pads
-numerics with **SPACES**. The gap to close: `localization/my/borang-8a.ts:244-245` sums
-`socsoEmployee + socsoEmployer` and `eisEmployee + eisEmployer`, and `Borang8ARow` exposes only the one
-combined `contribution` the printed form's column 5 needs — the upload file needs the four legs
-SEPARATELY plus the SOCSO wage base, all already on `payslip.statutory`. **Carry r210's KWSP lesson: the
-row-to-record mapping lives in ONE place** — four of the six numeric fields here are 6 wide and adjacent,
-so a transposition yields a file of the right length whose totals agree with themselves.
+**`da4fc817`, `e4b541c6` AND `5d3acdc2` (the EA, CP39 and PERKESO items planned here) ALL SHIPPED IN
+r217 — the planning detail is in `docs/HANDOFF-HISTORY.md` → r215 and r217.** The format facts that
+outlived them (BRG8A is 278 chars, CRLF BETWEEN records and none after the last, numerics SPACE-padded;
+the twelve-field table) live in `lib/perkeso-socso-file.ts` and `test/perkeso-socso-file.test.ts`, which
+are the authority now.
 
 ⚠️ **TWO LESSONS FROM r212 THAT COST REAL AGENT TIME:**
 
@@ -298,38 +274,10 @@ figure from the run and show the run's own total beside the form's.
 ⚠️ **`payslip.statutory.bases` IS ONLY ON PAYSLIPS FROM r187 ONWARD.** Pre-r187 rows must be FLAGGED,
 never silently fall back to gross. This bites every statutory form and the r209 statutory-explanation
 screen alike.
-### r209 (2026-08-20) — ELEVEN ITEMS, SEVEN WORKSTREAMS, migrations `0448`+`0449`, `main@ef343c93`
+### r209 (2026-08-20) — ELEVEN ITEMS, SEVEN WORKSTREAMS, `0448`+`0449`. Full entry in `docs/HANDOFF-HISTORY.md`.
 
-Every approved item on the board, built as seven workstreams grouped so no two agents touched the same
-files: `7ee14bbc` CP39 · `6036dab7` EA (BM) · `273e6fc7`+`70ac09ef`+`301d3f6b` leave entitlement ·
-`6b4ca488`+`5a29686c` payslip · `0bade264`+`6448574f` attendance · `7ad37961` TP1 · `bdf7d248` EPF
-worksheet. **The board is now completely clear for the first time.**
-
-**THE PROCESS LESSON IS NOW AGENTS RULES 23, 23b, 24-28** — all seven workstreams reported tsc-clean and
-test-green, and the adversarial verify then found 19 majors, 13 self-introduced. Read those rules; they
-are the durable half of this round.
-
-WHAT WAS WRONG AND IS NOW FIXED, kept here because each is a live behaviour someone may ask about:
- - **TP1 `tp1CountForYear` collapsed newest-wins-per-month BEFORE narrowing to what was effective**, so a
-   correction keyed in August silently deleted the superseded row's money from every month between —
-   payroll fed 0 instead of RM 1,000, reachable through the shipped UI. r201 filtered first and did not
-   have this. **The order of those two steps is the whole correctness of that function.**
- - **TP1's `reconcileTp1ForYear` `agrees` was an algebraic identity**, true for every input. `counted`
-   now comes from a set the function did not already collapse (only declarations that existed by that
-   month), so it can fail.
- - **The EA printed `RM 0.00` for money it printed elsewhere** — see rule 28. Manual Part B boxes are now
-   drawn only when an `ea_override` supplies a figure.
- - **CP39** stopped printing a false row-count assurance, stopped reporting one person with two
-   employments as a duplicate tax number, and gained the unfinished-name warning the plan promised.
- - **The leave health card** measured the sole-table gate on a different set than the resolver does, so
-   it reported green for a type the engine grants to nobody; a pooled row printed "create an entitlement
-   table for it" over days the employee can actually spend.
- - **The payslip statutory explanation** captioned EPF as "percentage of wage" when ≤RM20,000 is a Third
-   Schedule BAND lookup, and derived an "effective rate" on bonus runs by dividing a delta by the whole
-   month's base.
- - **The EPF worksheet** aged employees at day 28 rather than PERIOD END (so anyone turning 60 on the
-   29th-31st was modelled a year young and printed a fabricated difference), and omitted `socsoSkbbk`,
-   an employee-deducted leg larger than the SOCSO employee share beside it.
+Moved out on 2026-08-21. Its durable half is AGENTS rules 23, 23b and 24-28. The two warnings below
+are the only parts of it that are still LIVE BEHAVIOUR rather than round history.
 
 ⚠️ **THE EPF WORKSHEET IS A REPORT, NOT A SWITCH.** `computeMonthlyRuns` is STILL not wired into the
 payroll kernel and must not be until an accountant signs off the §7 worksheet (ADR-0024 §5). The
@@ -342,10 +290,6 @@ table, and `core/payroll.ts` folds every earning component into `payslip.allowan
 written. Doing it properly needs a new table, a migration, and a backfill that is impossible for slips
 already generated — plus the CP8D/Form E reconciliation.
 
-Gate: tsc 0 · **721/721 files green at CHUNKS=5** · next build 0 · shadow rehearsal PASS (363→365) ·
-i18n parity + base-aware audit CLEAN · zero-change `rsync --dry-run` · `0448`/`0449` columns verified on
-the live schema · service active · `GET /` → 401. The gate caught two things no targeted run could — a
-UTC "today" in the worksheet and a layout guard whose file had become a redirect — both now rules 27/18.
 ### r190 · r191 · r192 · r193 · r194 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
 Moved out on 2026-08-19 to keep this file near its ~700-line cap. What survived them lives in the
