@@ -54,6 +54,19 @@ export type Borang8ARow = {
   name: string;
   /** Column (5) Caruman, in RM. */
   contribution: number;
+  /**
+   * 18c1d92b — THE FOUR LEGS AND THE WAGE, for the PERKESO ASSIST upload file only. NOT printed on the
+   * paper form, which has one combined column and is unchanged by their presence.
+   *
+   * `contribution` stays the SOCSO pair added together because that is what column (5) is; these are the
+   * same figures kept apart. `wage` is `statutory.bases.socsoEis` and is NULL on a payslip written before
+   * r187 stamped it — the file refuses such an employee by name rather than substituting gross pay.
+   */
+  socsoEmployer: number;
+  socsoEmployee: number;
+  eisEmployer: number;
+  eisEmployee: number;
+  wage: number | null;
 };
 
 /** One printed sheet: its rows, its own "Jumlah muka surat ini", and its Lembaran n/N. */
@@ -255,6 +268,15 @@ export function borang8AFrom(p: {
     ic: str(r.ic),
     name: str(r.name),
     contribution: round2(Number(r.contribution) || 0),
+    // 18c1d92b — the upload file's four legs and the wage, carried through the same reconstruction the
+    // printed form uses. A row that predates them reads 0 for the legs, and `wage` stays NULL rather
+    // than becoming 0: null means "no wage was recorded", which the file refuses on, and 0 would mean
+    // "they earned nothing", which it would happily file.
+    socsoEmployer: round2(Number(r.socsoEmployer) || 0),
+    socsoEmployee: round2(Number(r.socsoEmployee) || 0),
+    eisEmployer: round2(Number(r.eisEmployer) || 0),
+    eisEmployee: round2(Number(r.eisEmployee) || 0),
+    wage: r.wage == null ? null : round2(Number(r.wage) || 0),
   }));
   const pages = paginateBorang8A(rows, p.perPage);
   return {

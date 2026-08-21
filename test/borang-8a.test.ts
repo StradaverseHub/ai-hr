@@ -89,6 +89,13 @@ const row = (p: Partial<Borang8ARow> & { employmentId: string; contribution: num
   status: '',
   ic: '860208105128',
   name: 'ANG PEI YEE',
+  // 18c1d92b — the upload file's fields. Defaulted here so every existing case keeps describing the
+  // PRINTED form (which does not carry them) without restating five zeros it does not care about.
+  socsoEmployer: 0,
+  socsoEmployee: 0,
+  eisEmployer: 0,
+  eisEmployee: 0,
+  wage: null,
   ...p,
 });
 

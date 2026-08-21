@@ -211,6 +211,26 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       socso: number;
       eis: number;
       skbbk: number;
+      /**
+       * 18c1d92b — THE FOUR LEGS, KEPT APART. The printed Borang 8A carries ONE combined figure per
+       * employee (column 5) and this read has always added the pairs before anybody downstream saw them.
+       * The PERKESO ASSIST upload file has a separate six-character box for each of the four, so the
+       * paper form's sum is not enough. Same payslip figures, not re-derived — only not collapsed.
+       */
+      socsoEmployer: number;
+      socsoEmployee: number;
+      eisEmployer: number;
+      eisEmployee: number;
+      /**
+       * The SOCSO/EIS WAGE the contributions were worked out from (`statutory.bases.socsoEis`), summed
+       * across the period's runs like every figure here.
+       *
+       * ⚠️ NULL WHEN NO RUN IN THE PERIOD STAMPED A BASE. `bases` arrived in r187 and 34 of the 109
+       * payslips on production predate it. The upload file has a mandatory salary box, so a missing base
+       * must REFUSE the file for that employee by name — never fall back to gross pay, which is a
+       * different number, and never write zero, which asserts the employee earned nothing.
+       */
+      wage: number | null;
     };
     const byEmp = new Map<string, Acc>();
     const versions = new Set<string>();
@@ -235,6 +255,11 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           socso: 0,
           eis: 0,
           skbbk: 0,
+          socsoEmployer: 0,
+          socsoEmployee: 0,
+          eisEmployer: 0,
+          eisEmployee: 0,
+          wage: null,
         };
         byEmp.set(s.employmentId, r);
       }
@@ -244,6 +269,19 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       r.socso = round2(r.socso + num(st.socsoEmployee) + num(st.socsoEmployer));
       r.eis = round2(r.eis + num(st.eisEmployee) + num(st.eisEmployer));
       r.skbbk = round2(r.skbbk + num(st.socsoSkbbk));
+      // 18c1d92b — the same four numbers the two lines above add in pairs, kept apart for the upload
+      // file. Deliberately summed from the SAME `st` in the SAME loop: a second pass over the slips
+      // could drift from the paper form's total, and the two must always describe one month.
+      r.socsoEmployer = round2(r.socsoEmployer + num(st.socsoEmployer));
+      r.socsoEmployee = round2(r.socsoEmployee + num(st.socsoEmployee));
+      r.eisEmployer = round2(r.eisEmployer + num(st.eisEmployer));
+      r.eisEmployee = round2(r.eisEmployee + num(st.eisEmployee));
+      // `bases.socsoEis` (r187 onward). Absent ⇒ stays null and the upload file refuses this employee by
+      // name; present on ANY run of the period ⇒ summed across the period's runs like everything else.
+      const socsoBase = (st as { bases?: Record<string, number> }).bases?.socsoEis;
+      if (socsoBase !== undefined && socsoBase !== null) {
+        r.wage = round2((r.wage ?? 0) + num(socsoBase));
+      }
     }
 
     const accs = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -261,6 +299,11 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         ic: a.ic ?? '',
         name: a.name,
         contribution: a.socso,
+        socsoEmployer: a.socsoEmployer,
+        socsoEmployee: a.socsoEmployee,
+        eisEmployer: a.eisEmployer,
+        eisEmployee: a.eisEmployee,
+        wage: a.wage,
       };
       return { ...row };
     });

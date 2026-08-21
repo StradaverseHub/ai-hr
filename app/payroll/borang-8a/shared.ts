@@ -20,6 +20,65 @@ import {
   statusOverridesFrom,
   type Borang8AForm,
 } from '@/lib/borang-8a';
+import { PerkesoFileError, buildPerkesoSocsoFile, perkesoFileEmployeesFrom } from '@/lib/perkeso-socso-file';
+
+/**
+ * 18c1d92b — THE PERKESO ASSIST UPLOAD FILE, gated by the paper form's own readiness and then by the
+ * file's stricter one.
+ *
+ * TWO REFUSALS, IN ORDER, BOTH BEFORE ANYTHING IS OFFERED: the paper form's gate (`loadBorang8A`), so a
+ * file cannot be produced from a form that could not itself be filed; then `buildPerkesoSocsoFile`'s own
+ * — a twelve-character identity number, an amount that fits its box, and a recorded SOCSO wage for every
+ * employee. A file that PERKESO would reject is never handed over; being told at the portal is a slower
+ * way to learn the same thing.
+ */
+export type Borang8AFileLoad =
+  | { ok: false; status: number; message: string }
+  | { ok: true; form: Borang8AForm; text: string };
+
+export async function loadBorang8AFile(p: {
+  companyId: string;
+  periodKey: string;
+  query: URLSearchParams;
+}): Promise<Borang8AFileLoad> {
+  const loaded = await loadBorang8A(p);
+  if (!loaded.ok) {
+    if (loaded.reason === 'not-found') return { ok: false, status: 404, message: 'Not found' };
+    if (loaded.reason === 'no-batch') {
+      return { ok: false, status: 422, message: 'No payroll run for this month — run payroll first.' };
+    }
+    const why = [
+      loaded.headerMissing.length ? `the company is missing: ${loaded.headerMissing.join(', ')}` : null,
+      loaded.missing.length ? `no identity card number on file for ${loaded.missing.map((m) => m.name).join(', ')}` : null,
+    ]
+      .filter(Boolean)
+      .join('; ');
+    return { ok: false, status: 422, message: `Cannot produce a PERKESO upload file: ${why}.` };
+  }
+
+  const form = loaded.form;
+  const period = form.contributionPeriodKey;
+  try {
+    const text = buildPerkesoSocsoFile({
+      employer: {
+        employerCode: form.employerCode,
+        myCoId: form.mycoid,
+        periodMonth: Number(period.slice(5, 7)),
+        periodYear: Number(period.slice(0, 4)),
+      },
+      // The mapping itself lives in perkesoFileEmployeesFrom and is NOT restated here: four of the six
+      // numeric boxes are six wide and adjacent, so a transposition would produce a file of exactly the
+      // right length carrying the wrong money. One copy, driven by the golden test.
+      employees: perkesoFileEmployeesFrom(form.pages.flatMap((pg) => pg.rows)),
+    });
+    return { ok: true, form, text };
+  } catch (e) {
+    if (e instanceof PerkesoFileError) {
+      return { ok: false, status: 422, message: `Cannot produce a PERKESO upload file: ${e.message}` };
+    }
+    throw e;
+  }
+}
 
 /** The catalog id this screen is the form for. One literal, shared, rather than three. */
 export const BORANG_8A_REPORT_ID = 'my.borang-8a';

@@ -21,7 +21,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setRestDay } from '../core/roster';
 import { checkIn, checkOut } from '../core/attendance';
-import { accrueToil, setToilPolicy, type ToilPolicyInput } from '../core/toil';
+import { accrueToil, resolveExpiry, setToilPolicy, type ToilPolicyInput } from '../core/toil';
 import {
   decideReplacementLeaveRequest,
   listReplacementLeaveRequests,
@@ -201,6 +201,80 @@ describe('The credit is granted on APPROVAL, and expires from that date (296fc02
     });
     const res = await decideReplacementLeaveRequest(ctx, { requestId, decision: 'approved', decidedAt: DECIDED_AT });
     expect(res.expiresOn).toBe('2026-10-25'); // 2026-07-25 + 3 calendar months
+  });
+
+  /**
+   * c1b14600 — NOTHING ABOUT THIS WORKFLOW IS HARDCODED, AND THIS IS THE CASE THAT SAYS SO.
+   *
+   * The reporter asked us to confirm that Replacement Leave in Lieu is driven by the existing
+   * Leave Config > Replacement Leave settings rather than by a separate company or expiry list of our
+   * own. Every other case in this file flips ONE company's switches and watches the behaviour follow.
+   * This one runs TWO companies in the SAME tenant with DIFFERENT settings at the SAME moment, which is
+   * the only shape that can tell "reads the company's own policy" apart from "reads a policy".
+   *
+   * Company A: enabled, employee requests on, expiry 3 MONTHS.
+   * Company B: enabled, employee requests OFF, expiry 90 DAYS.
+   * One approval date, two different answers, neither of them a constant in our code.
+   */
+  it('two companies in one tenant follow their OWN Leave Config settings, not a shared default', async () => {
+    // A second company alongside the seeded one, with its own department to hire into.
+    const [coB] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Second Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const [deptB] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: b.tenantId, companyId: coB.id, name: 'Second Ops' })
+      .returning({ id: schema.department.id });
+
+    await setToilPolicy(ctx, policy(b.companyId, { expiryUnit: 'months', expiryMonths: 3 }));
+    await setToilPolicy(ctx, policy(coB.id, { employeeRequestEnabled: false, expiryUnit: 'days', expiryDays: 90 }));
+
+    const inA = await hire();
+    const inB = await hireEmployee(ctx, {
+      person: { fullName: 'RL Second Co', primaryEmail: uniqEmail() },
+      companyId: coB.id,
+      departmentId: deptB.id,
+      employmentType: 'full_time',
+      hiredOn: '2024-01-01',
+    });
+    await setCompensation(ctx, {
+      employmentId: inB.employmentId,
+      basicSalary: 8000,
+      monthlyAllowance: 0,
+      effectiveFrom: '2024-01-01',
+    });
+
+    // 1. THE SELF-SUBMISSION SWITCH is read per company: A may, B may not.
+    expect((await replacementRequestAvailability(ctx, inA, TODAY)).allowed).toBe(true);
+    const bAvail = await replacementRequestAvailability(ctx, inB.employmentId, TODAY);
+    expect(bAvail.allowed).toBe(false);
+    expect(bAvail.reason).toBe('not_enabled');
+    // …and the refusal is the SERVICE's, not the screen's.
+    await expect(
+      submitReplacementLeaveRequest(ctx, {
+        employmentId: inB.employmentId,
+        unit: 'day',
+        lines: [{ workedDate: WORKED_A, days: 1 }],
+        today: TODAY,
+      }),
+    ).rejects.toBeInstanceOf(Error);
+
+    // 2. THE EXPIRY PERIOD is read per company, and anchored on the APPROVAL date in both.
+    const { requestId } = await submitReplacementLeaveRequest(ctx, {
+      employmentId: inA,
+      unit: 'day',
+      lines: [{ workedDate: WORKED_A, days: 1 }],
+      today: TODAY,
+    });
+    const a = await decideReplacementLeaveRequest(ctx, { requestId, decision: 'approved', decidedAt: DECIDED_AT });
+    expect(a.expiresOn).toBe('2026-10-25'); // company A: approval 2026-07-25 + 3 MONTHS
+
+    // Company B's own period applied to the same approval date is a different answer — 90 DAYS, not 3
+    // months. Asserted through the ONE function allowed to read the three columns together, because that
+    // is the thing a future hardcoding would have to go around.
+    expect(resolveExpiry('2026-07-25', { expiryUnit: 'days', expiryDays: 90 })).toBe('2026-10-23');
+    expect(resolveExpiry('2026-07-25', { expiryUnit: 'months', expiryDays: 90, expiryMonths: 3 })).toBe('2026-10-25');
   });
 
   it('an HOUR request banks the declared hours as a fraction of the standard day', async () => {

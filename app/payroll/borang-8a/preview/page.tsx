@@ -350,6 +350,25 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
                 <button className={btnGhost} formAction="/payroll/borang-8a/text" title={t('downloadTextTitle')}>
                   {t('downloadText')}
                 </button>
+                {/* 18c1d92b — the PERKESO ASSIST upload file. A THIRD button rather than a mode on the
+                    text one: the two produce different bytes for different readers, and an operator who
+                    downloads the wrong one finds out at the portal. The route refuses before it offers
+                    anything, so this is not gated separately here — the paper form's readiness gate above
+                    is the same gate the file's own loader starts from. */}
+                <button className={btnGhost} formAction="/payroll/borang-8a/file" title={t('downloadFileTitle')}>
+                  {t('downloadFile')}
+                </button>
+                {/* The same route with `report=1`: the field-by-field check, to read BEFORE downloading.
+                    A hidden input rather than a query on formAction, because this form posts its filters
+                    and a hand-built URL here would drop them. */}
+                <button
+                  className={btnGhost}
+                  formAction="/payroll/borang-8a/file?report=1"
+                  formTarget="_blank"
+                  title={t('checkFileTitle')}
+                >
+                  {t('checkFile')}
+                </button>
               </>
             ) : (
               <span className="text-xs italic text-muted-foreground">{t('downloadsBlocked')}</span>
