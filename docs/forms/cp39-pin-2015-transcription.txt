@@ -1,0 +1,180 @@
+BORANG CP 39 (Pin. 2015) — VERBATIM TRANSCRIPTION AND LAYOUT NOTES
+=================================================================
+
+SOURCE, AND WHAT IT IS NOT
+--------------------------
+Transcribed on 2026-08-21 from docs/forms/cp39-pin-2015-specimen.png, which is
+word/media/image2.png inside the attachment "CP39 sample.docx" on feedback item c99e8358
+(feedback_attachment 477f3fec-be6b-4659-b636-2859fbe7be83). The specimen is a FILLED CP39 Pin.2015
+produced by ANOTHER PAYROLL SYSTEM, populated with ISEDECOR BINA SDN BHD's own January 2026 figures.
+
+It is a TRACING SOURCE, not LHDN artwork. `public/forms/` holds exactly one genuine artwork
+(cp22-pin-1-2021.pdf) and this file deliberately does NOT go there — test/statutory-forms-page.test.ts
+pins that `public/forms` carries no drawn-from-a-vendor-specimen page. A form traced from this may
+declare `agency-layout` (drawn to the agency's arrangement on our own paper, like my.borang-8a and
+my.borang-a) and may NEVER declare `official`.
+
+docs/forms/cp39-our-output-2026-08-21.png is image1.png from the same attachment: OUR output as it
+stood before this work, kept so the change is legible to the next reader.
+
+The specimen's own figures (13 employees / RM 15,374.70) come from the reporter's other system and do
+NOT reconcile to this system's January 2026 run. Use it for LAYOUT AND WORDING ONLY.
+
+PAGE
+----
+Landscape. "Borang ini boleh difotokopi" sits above the top-left box, small. "CP39 Pin.2015" sits at
+the top right, on the same line.
+
+TOP BAND — three blocks side by side
+------------------------------------
+LEFT (a ruled box, roughly x 7%-51% of the page width), bold first two lines:
+
+    KETUA PENGARAH HASIL DALAM NEGERI
+    LEMBAGA HASIL DALAM NEGERI
+
+    Pusat Bayaran Kuala Lumpur
+    Kaunter Bayaran Dan Tingkat 1, Blok 8A
+    Kompleks Bangunan Kerajaan, Jalan Duta
+    50600 KUALA LUMPUR
+
+CENTRE (no box, centred text), first line bold:
+
+    CUKAI PENDAPATAN MALAYSIA
+    PENYATA POTONGAN CUKAI OLEH MAJIKAN
+    [SEKSYEN 107 AKTA CUKAI PENDAPATAN, 1967
+    KAEDAH CUKAI PENDAPATAN (POTONGAN DARIPADA
+    SARAAN), 1994]
+
+and beneath it, on one line, bold label with the two values in their own ruled boxes:
+
+    POTONGAN BAGI BULAN  [ JANUARI ]   TAHUN  [ 2026 ]
+
+RIGHT (a ruled box, roughly x 76%-96%), heading bold and centred:
+
+    UNTUK KEGUNAAN PEJABAT
+
+    No. Kelompok    ..............................
+    No. Resit       ..............................
+
+MIDDLE BAND — one ruled box divided into three panels
+-----------------------------------------------------
+Panel dividers fall at roughly 39% and 70% of the page width. Each panel has a bold, centred heading
+on a ruled row of its own:
+
+    BUTIR-BUTIR MAJIKAN | BUTIR-BUTIR PEMBAYARAN | PEGAWAI YANG MENYEDIAKAN MAKLUMAT
+
+PANEL 1 — BUTIR-BUTIR MAJIKAN. Label on the left, value on a dotted rule to its right. "No. Majikan"
+and the "E" that follows it are BOLD; the rest of the labels are not.
+
+    No. Majikan   E      <lhdn employer number, e.g. E0094573909>
+    No. Pendaftaran
+    Perniagaan           <ssm / business registration, e.g. 34111-U>
+    Nama Syarikat/
+    Perniagaan           <legal name>
+    Alamat Syarikat/
+    Perniagaan           <address line 1>
+                         <address line 2>
+                         <postcode city, state>
+                         <one further empty dotted rule>
+
+PANEL 2 — BUTIR-BUTIR PEMBAYARAN. A small table. Two columns headed PCB and CP 38 (both bold,
+centred); the row labels sit in a left column that is about half the panel.
+
+    (label column)        |   PCB              |   CP 38
+    Jumlah Potongan       |   RM  15,374.70    |   RM  0.00
+    Bilangan Pekerja      |            13      |          0
+
+Beneath those two rows the panel changes shape: one tall cell on the left carrying the wrapped label
+
+    Butir-butir / Cek /
+    Bank / Deraf /
+    Kiriman Wang /
+    Wang Pos
+
+against four rows on the right:
+
+    Amaun      |  RM  15,374.70
+    Nombor     |
+    Cawangan   |
+    Tarikh     |  21/08/2026
+
+PANEL 3 — PEGAWAI YANG MENYEDIAKAN MAKLUMAT. Label left, value on a dotted rule.
+
+    Tandatangan     ..............................
+    Nama Penuh      <preparer name>
+    No. Pengenalan  <preparer ic>
+    Jawatan         <preparer position>
+    No. Telefon     <preparer phone>
+
+BOTTOM BAND — A on the left, B and C on the right
+-------------------------------------------------
+Each heading is a two-cell ruled box: a narrow cell holding the letter, then a wide cell holding the
+title, e.g. [ A ][ BORANG CP 39 ]. A occupies the left half of the page; B sits at the top of the
+right half and C below it.
+
+VERBATIM TEXT FOLLOWS. Transcribe it EXACTLY — do not paraphrase, do not translate, do not correct
+the specimen's own punctuation or its doubled "CP38 -  CP38 -" in A.6. Malay on every locale, like
+every other drawn statutory form here.
+
+--- A ---------------------------------------------------------------------------------------------
+
+A   BORANG CP 39
+
+1.  Borang ini mesti diisi dengan lengkap dan betul.
+2.  Majikan digalakkan menghantar maklumat potongan melalui e-PCB/e-Data PCB/disket/cakera
+    padat/pemacu flash mengikut format yang ditentukan oleh LHDN bagi menggantikan Borang CP39.
+3.  No. Cukai Pendapatan:
+    3.1  Isikan nombor cukai pendapatan dalam ruangan yang telah disediakan.
+         Contoh: SG 2506203-00(0) boleh diisi sebagai SG 02506203000
+    3.2  Bagi pekerja yang layak dikenakan PCB tetapi tiada nombor cukai pendapatan,
+         pendaftaran boleh dibuat melalui :
+           i.  majikan atau pekerja boleh mendaftar secara atas talian melalui e-Daftar di
+               www.hasil.gov.my, atau
+           ii. Borang CP22 atau borang in lieu of CP39 dikemukakan ke cawangan LHDNM yang berdekatan.
+4.  Nama pekerja :
+    Isikan nama penuh pekerja seperti di kad pengenalan/pasport (Jangan senaraikan pekerja yang
+    tidak layak dikenakan potongan bagi bulan berkenaan).
+5.  Nombor Pengenalan : Isikan kedua-dua nombor kad pengenalan baru dan lama (sekiranya ada).
+    Contoh: 720403065235 atau A2172122
+6.  Jumlah Potongan Cukai:      PCB   -  Isikan amaun cukai mengikut Potongan Cukai Bulanan.
+                                CP38 -  CP38 - Isikan amaun potongan cukai mengikut arahan Borang
+                                        CP38 (jika ada).
+
+--- B ---------------------------------------------------------------------------------------------
+
+B   PEMBAYARAN
+
+1.  Bayaran dan Borang CP39 yang telah lengkap diisi mestilah sampai ke Pusat Bayaran LHDN selewat-
+    lewatnya pada hari kelima belas bulan berikutnya.
+    Contoh:  PCB/CP38 bagi bulan Januari 2015, tarikh akhirnya ialah pada 15 Februari 2015.
+2.  Sediakan borang CP39 beserta cek/bank draf/kiriman wang/wang pos (instrumen bayaran) yang
+    berasingan untuk bulan atau tahun berlainan.
+3.  Pastikan jumlah potongan PCB/CP38 adalah betul dan sama dengan nilai instrumen bayaran.
+4.  Instrumen bayaran hendaklah dibayar kepada Ketua Pengarah Hasil Dalam Negeri. Catatkan no.
+    majikan E, Nama Syarikat/Perniagaan dan alamat majikan di belakang instrumen bayaran.
+5.  Bayaran untuk Cukai Syarikat, Skim Ansurans (CP500), Penyelesaian Cukai (Pemberhentian Kerja)
+    dan Cukai Keuntungan Harta Tanah tidak boleh dibayar bersama dengan bayaran yang menggunakan
+    borang ini.
+6.  Untuk bayaran bagi Negeri Sabah, sila alamatkan ke:
+    Cawangan Pungutan Kota Kinabalu
+    Wisma Hasil
+    Jalan Tunku Abdul Rahman
+    88600 Kota Kinabalu, Sabah
+7.  Untuk bayaran bagi Negeri Sarawak, sila alamatkan ke:
+    Cawangan Pungutan Kuching,
+    Aras 1, Wisma Hasil,
+    No. 1, Jalan Padungan,
+    93100 Kuching, Sarawak
+8.  Sila hubungi talian 1-800-88-LHDN (5436) untuk sebarang pertanyaan lanjut.
+
+NOTE ON 6 AND 7: on the specimen these two sit SIDE BY SIDE — 6 in the left half of panel B and 7 in
+the right half, each with its four address lines beneath it — and 8 runs full width under both.
+
+--- C ---------------------------------------------------------------------------------------------
+
+C   PERINGATAN
+
+1.  Jika jumlah instrumen bayaran tidak sama dengan jumlah potongan, bayaran akan ditolak.
+2.  Sekiranya maklumat tidak lengkap dan tidak betul, majikan akan dikenakan kompaun.
+
+--- end -------------------------------------------------------------------------------------------
