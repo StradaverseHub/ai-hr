@@ -57,6 +57,23 @@ export const PERKESO_FILE_LINE_LENGTH = 278;
 export const PERKESO_FILE_EOL = '\r\n';
 
 /**
+ * WHICH DOCUMENT THIS FILE IS WRITTEN TO, named once so the report cannot claim a specification the
+ * module was not built from.
+ *
+ * The reporter asked for "format/version used" at the top of the validation report and they are right to:
+ * every other line of that report is a measurement, and a measurement is only worth something once you
+ * know what it was measured against. ASCII spelling deliberately — the report is us-ascii.
+ *
+ * ⚠️ DO NOT EDIT THESE THREE STRINGS to describe a newer PERKESO document unless the field table above
+ * has ALSO been re-derived from it. The version line is a claim about the layout, not a label on it.
+ */
+export const PERKESO_FILE_SPEC = {
+  name: 'Spesifikasi Format Text File Untuk SOCSO + EIS Contribution',
+  version: 'v1.0',
+  dated: '22 July 2022',
+} as const;
+
+/**
  * The layout of the attached file, transcribed ONCE. `[offset, width]`, both 0-based, so a field occupies
  * `[offset, offset + width)`. The writer, the shape check, the report and the tests all read THESE
  * numbers; nothing below restates an offset.
@@ -282,44 +299,143 @@ export function assertPerkesoFileShape(text: string): void {
   const records = perkesoFileRecords(text);
   if (records.length === 0) fail('the file has no records');
   for (const [i, r] of records.entries()) {
-    const at = `record ${i + 1}`;
-    if (r.length !== PERKESO_FILE_LINE_LENGTH) {
-      fail(`${at} is ${r.length} characters and every record must be ${PERKESO_FILE_LINE_LENGTH}`);
-    }
-    for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
-      const v = perkesoField(r, PERKESO_FILE_FIELDS[key]);
-      if (!/^ *\d+$/.test(v)) fail(`${at}: ${key} reads "${v}", which is not a right-justified number`);
-    }
-    for (const key of ['filler1', 'filler2'] as const) {
-      const v = perkesoField(r, PERKESO_FILE_FIELDS[key]);
-      if (v !== spaces(PERKESO_FILE_FIELDS[key][1])) fail(`${at}: ${key} must be blank, got "${v}"`);
-    }
+    const problems = perkesoRecordProblems(r, `record ${i + 1}`);
+    if (problems.length > 0) fail(problems[0]);
   }
 }
 
+/**
+ * EVERYTHING WRONG WITH ONE RECORD, as sentences, rather than the first thing wrong with it as a throw.
+ *
+ * ONE DEFINITION OF "VALID", read by two callers with opposite jobs. `assertPerkesoFileShape` above stops
+ * the download on the first problem; the validation report has to NAME the records it could not validate
+ * and leave their figures out of the totals, which a throw cannot do. Writing the rules out twice is how
+ * a report comes to reassure somebody about a file the writer would have refused — so they are written
+ * once, here, and the refusal messages are exactly the sentences this returns.
+ *
+ * `at` is the caller's name for the record ("record 3"), so the same sentence reads correctly in a thrown
+ * message and in a list.
+ */
+export function perkesoRecordProblems(record: string, at: string): string[] {
+  const problems: string[] = [];
+  if (record.length !== PERKESO_FILE_LINE_LENGTH) {
+    problems.push(`${at} is ${record.length} characters and every record must be ${PERKESO_FILE_LINE_LENGTH}`);
+  }
+  for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
+    const v = perkesoField(record, PERKESO_FILE_FIELDS[key]);
+    if (!/^ *\d+$/.test(v)) problems.push(`${at}: ${key} reads "${v}", which is not a right-justified number`);
+  }
+  for (const key of ['filler1', 'filler2'] as const) {
+    const v = perkesoField(record, PERKESO_FILE_FIELDS[key]);
+    if (v !== spaces(PERKESO_FILE_FIELDS[key][1])) problems.push(`${at}: ${key} must be blank, got "${v}"`);
+  }
+  return problems;
+}
+
 export type PerkesoFieldView = { name: string; position: string; length: number; value: string };
-export type PerkesoRecordView = { recordNo: number; length: number; ok: boolean; fields: PerkesoFieldView[] };
+export type PerkesoRecordView = {
+  recordNo: number;
+  length: number;
+  /** Nothing wrong with this record — see `problems`. */
+  ok: boolean;
+  /** Every reason this record could not be validated, in the shape check's own words. Empty when `ok`. */
+  problems: string[];
+  fields: PerkesoFieldView[];
+};
 
 /**
  * The validation report the request asks for: every record, field by field, with the 1-based character
  * positions a person can count against a PERKESO sample. Reads the SAME field table the writer used.
  */
 export function describePerkesoFile(text: string): PerkesoRecordView[] {
-  return perkesoFileRecords(text).map((r, i) => ({
-    recordNo: i + 1,
-    length: r.length,
-    ok: r.length === PERKESO_FILE_LINE_LENGTH,
-    fields: (Object.keys(PERKESO_FILE_FIELDS) as (keyof typeof PERKESO_FILE_FIELDS)[]).map((name) => {
-      const [offset, width] = PERKESO_FILE_FIELDS[name];
-      return { name, position: `${offset + 1}-${offset + width}`, length: width, value: perkesoField(r, [offset, width]) };
-    }),
-  }));
+  return perkesoFileRecords(text).map((r, i) => {
+    const problems = perkesoRecordProblems(r, `record ${i + 1}`);
+    return {
+      recordNo: i + 1,
+      length: r.length,
+      ok: problems.length === 0,
+      problems,
+      fields: (Object.keys(PERKESO_FILE_FIELDS) as (keyof typeof PERKESO_FILE_FIELDS)[]).map((name) => {
+        const [offset, width] = PERKESO_FILE_FIELDS[name];
+        return { name, position: `${offset + 1}-${offset + width}`, length: width, value: perkesoField(r, [offset, width]) };
+      }),
+    };
+  });
 }
 
-/** The report as plain ASCII, for reading beside a PERKESO sample. ASCII only, deliberately: it describes
- *  a us-ascii file and a curly quote in a document about byte positions would be its own joke. */
+export type PerkesoAmountField = (typeof PERKESO_FILE_AMOUNT_FIELDS)[number];
+
+export type PerkesoFileTotals = {
+  /** How many records the figures below were added up over. */
+  records: number;
+  /** Records left OUT because they did not validate. Naming them is the point — see below. */
+  excluded: number[];
+  /** Integer sen per money box, exactly as the file carries them: no decimal point, no separator. */
+  sen: Record<PerkesoAmountField, number>;
+};
+
+/**
+ * ⚠️ THE TOTALS ARE READ BACK OUT OF THE FILE, AND THAT IS THE WHOLE VALUE OF THEM.
+ *
+ * The obvious implementation is to add up the payroll rows the file was written from. It would be shorter,
+ * it would always agree with the payslips — and it would agree with itself just as happily if the writer
+ * had put the EIS employer share into the SOCSO employee box, which is the exact failure this report
+ * exists to catch (four of the six money boxes here are six characters wide and adjacent; the KWSP file
+ * shipped precisely that transposition in r210). So the input is the emitted TEXT, the values come out of
+ * `describePerkesoFile`'s own field views — the same views the field-by-field dump prints — and a
+ * misplaced value shows up as a total that does not match the payroll.
+ *
+ * A record that did not validate contributes NOTHING and is named instead. Its bytes have moved, so the
+ * digits standing in a money box are not evidence of anything; adding them in would produce a confident
+ * total from a file we have just said we could not read.
+ */
+export function perkesoFileTotals(text: string): PerkesoFileTotals {
+  const sen = Object.fromEntries(PERKESO_FILE_AMOUNT_FIELDS.map((k) => [k, 0])) as Record<PerkesoAmountField, number>;
+  const excluded: number[] = [];
+  let records = 0;
+  for (const view of describePerkesoFile(text)) {
+    if (!view.ok) {
+      excluded.push(view.recordNo);
+      continue;
+    }
+    records += 1;
+    for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
+      const field = view.fields.find((f) => f.name === key);
+      sen[key] += Number((field?.value ?? '').trim());
+    }
+  }
+  return { records, excluded, sen };
+}
+
+/** Integer sen as RM with two decimals, from the integer itself — never through a float. */
+function rm(cents: number): string {
+  const sign = cents < 0 ? '-' : '';
+  const n = Math.abs(cents);
+  return `${sign}${Math.floor(n / 100)}.${String(n % 100).padStart(2, '0')}`;
+}
+
+/** What each money box is called in a sentence, rather than in the field table's camelCase. */
+const AMOUNT_LABEL: Record<PerkesoAmountField, string> = {
+  wage: 'Salary (the SOCSO/EIS wage)',
+  socsoEmployer: 'SOCSO employer contribution',
+  socsoEmployee: 'SOCSO employee contribution',
+  eisEmployer: 'EIS employer contribution',
+  eisEmployee: 'EIS employee contribution',
+};
+
+/**
+ * The report as plain ASCII, for reading beside a PERKESO sample. ASCII only, deliberately: it describes
+ * a us-ascii file and a curly quote in a document about byte positions would be its own joke.
+ *
+ * ⚠️ THERE IS NO SKBBK / LINDUNG 24 JAM TOTAL HERE AND THERE MUST NOT BE ONE. The request asks for it;
+ * the specification this file is written to has no such field, so this file carries no such contribution.
+ * A line reading "SKBBK: RM 0.00" would be a statement about money on a return that does not mention it —
+ * an assurance nobody can stand behind, which is worse than the gap it fills. If PERKESO publishes a
+ * format that adds the column, the FIELD TABLE gains it first and this report follows.
+ */
 export function perkesoFileReport(text: string): string {
   const views = describePerkesoFile(text);
+  const totals = perkesoFileTotals(text);
   const out: string[] = [];
   out.push('PERKESO SOCSO + EIS UPLOAD FILE - RECORD BY RECORD CHECK');
   out.push('');
@@ -327,14 +443,50 @@ export function perkesoFileReport(text: string): string {
   out.push('every value is read back out of the file itself. Hold it beside a PERKESO sample and check that');
   out.push('each value sits in the same columns.');
   out.push('');
-  out.push(`Records: ${views.length}. Characters including line endings: ${text.length}.`);
-  const wrong = views.filter((v) => !v.ok);
+  out.push(`Specification: PERKESO "${PERKESO_FILE_SPEC.name}",`);
   out.push(
-    wrong.length === 0
+    `${PERKESO_FILE_SPEC.version} of ${PERKESO_FILE_SPEC.dated}. One record per employee, ` +
+      `${PERKESO_FILE_LINE_LENGTH} characters per record, no header, no trailer.`,
+  );
+  out.push('');
+  out.push(`Records: ${views.length}. Characters including line endings: ${text.length}.`);
+  const wrongLength = views.filter((v) => v.length !== PERKESO_FILE_LINE_LENGTH);
+  out.push(
+    wrongLength.length === 0
       ? `Record length: every record is ${PERKESO_FILE_LINE_LENGTH} characters.`
-      : `Record length: ${wrong.length} record(s) are NOT ${PERKESO_FILE_LINE_LENGTH}: ${wrong.map((v) => `record ${v.recordNo} is ${v.length}`).join(', ')}.`,
+      : `Record length: ${wrongLength.length} record(s) are NOT ${PERKESO_FILE_LINE_LENGTH}: ${wrongLength.map((v) => `record ${v.recordNo} is ${v.length}`).join(', ')}.`,
   );
   out.push(`Line endings: CRLF between records, ${text.endsWith(PERKESO_FILE_EOL) ? 'and one after the last.' : 'none after the last.'}`);
+
+  // NAMED, NOT COUNTED. "12 of 14 records validated" tells a reader that something is wrong and gives them
+  // nothing to go and look at; the record number and the reason send them to a line they can count.
+  const failed = views.filter((v) => !v.ok);
+  if (failed.length === 0) {
+    out.push('Records that could not be validated: none.');
+  } else {
+    out.push(`Records that could not be validated: ${failed.length} of ${views.length}.`);
+    for (const v of failed) for (const p of v.problems) out.push(`  - ${p}`);
+    out.push('Their figures are NOT included in the totals below.');
+  }
+
+  const notice = perkesoFileMycoidNotice(views);
+  if (notice.length > 0) {
+    out.push('');
+    for (const line of notice) out.push(line);
+  }
+
+  out.push('');
+  out.push('TOTALS, ADDED UP FROM THE VALUES READ BACK OUT OF THIS FILE');
+  out.push('Not from the payroll figures the file was written from. A total taken from the input would');
+  out.push('agree with itself even if a value had been written into the wrong box, which is the one thing');
+  out.push('these totals exist to catch.');
+  out.push('The file carries every amount as CENTS WITH NO DECIMAL POINT, so the digits it actually holds');
+  out.push('are printed beside each RM figure. Check both.');
+  for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
+    out.push(`  ${AMOUNT_LABEL[key].padEnd(28)} RM ${rm(totals.sen[key]).padStart(11)}   in the file: ${totals.sen[key]}`);
+  }
+  out.push(`Added up over ${totals.records} record(s) of ${views.length}.`);
+
   for (const v of views) {
     out.push('');
     out.push(`Record ${v.recordNo} (${v.length} characters)`);
@@ -343,4 +495,30 @@ export function perkesoFileReport(text: string): string {
     }
   }
   return out.join('\n') + '\n';
+}
+
+/**
+ * THE ONE BOX THAT GOES OUT EMPTY WITHOUT ANYBODY BEING TOLD, said out loud — in the report, and in the
+ * same words the preview screen says it in.
+ *
+ * MyCoID is Mandatory = N in the specification, so a blank one does NOT stop the file and this is
+ * deliberately a notice and not a refusal (`missingBorang8AHeader` excludes it for the same reason). But
+ * the reporter's own accepted file carries a number there and ours would not, and an empty fixed-width box
+ * looks exactly like a full one from outside. Read out of the FILE rather than off the form, so it can
+ * only ever describe the bytes that were actually written.
+ *
+ * Empty array when every record carries a number — there is nothing to say, and a reassuring line saying
+ * so is a line a future reader has to check.
+ */
+export function perkesoFileMycoidNotice(views: readonly PerkesoRecordView[]): string[] {
+  const blank = views.filter((v) => !(v.fields.find((f) => f.name === 'myCoId')?.value ?? '').trim());
+  if (blank.length === 0) return [];
+  const [offset, width] = PERKESO_FILE_FIELDS.myCoId;
+  const where = blank.length === views.length ? 'on every record' : `on ${blank.map((v) => `record ${v.recordNo}`).join(', ')}`;
+  return [
+    `MyCoID / business registration number: positions ${offset + 1}-${offset + width} are EMPTY ${where}.`,
+    'PERKESO marks this field as not mandatory, so the file is valid without it and the portal should',
+    'accept it. If the file you filed before carries a number in that box, set it under Organization ->',
+    'the company -> Statutory identity, then download the file again.',
+  ];
 }

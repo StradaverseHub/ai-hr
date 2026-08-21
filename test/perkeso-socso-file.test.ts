@@ -18,8 +18,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  PERKESO_FILE_EOL,
   PERKESO_FILE_FIELDS,
   PERKESO_FILE_LINE_LENGTH,
+  PERKESO_FILE_SPEC,
   PerkesoFileError,
   assertPerkesoFileShape,
   buildPerkesoSocsoFile,
@@ -28,6 +30,7 @@ import {
   perkesoFileEmployeesFrom,
   perkesoFileRecords,
   perkesoFileReport,
+  perkesoFileTotals,
 } from '../lib/perkeso-socso-file';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -233,5 +236,215 @@ describe('18c1d92b — the validation report', () => {
     expect(report).toContain('AHMAD AZMER IZAT BIN MAT YAZID');
     // ASCII only — it describes a us-ascii file.
     expect(/^[\x20-\x7E\n]*$/.test(report)).toBe(true);
+  });
+});
+
+/**
+ * 5dbce839 — WHAT THE REPORTER ASKED THE REPORT FOR, AND WHAT IT MUST NOT INVENT.
+ *
+ * Their request lists twelve things a validation report should say. The report already said five of them
+ * (record count, character count, the per-record width check, one-record-per-employee, and every field
+ * with its positions). Four more are honest to add and are pinned below; the twelfth — a SKBBK / Lindung
+ * 24 Jam total — is NOT, and its ABSENCE is pinned too. The specification this file is written to has no
+ * such field, so the file carries no such contribution, and a line reading "SKBBK: RM 0.00" would be a
+ * statement about money on a return that never mentions it (AGENTS 28: an absent box asserts nothing, a
+ * box reading 0.00 asserts the money does not exist).
+ */
+describe('5dbce839 — the four things the reporter asked the report for, and the one it must not invent', () => {
+  it('names the specification it was written to, by name, version and date', () => {
+    const report = perkesoFileReport(FIXTURE);
+    expect(report).toContain('Spesifikasi Format Text File Untuk SOCSO + EIS Contribution');
+    expect(report).toContain('v1.0');
+    expect(report).toContain('22 July 2022');
+    // The line is built from the module's own constant, so the report cannot name a specification the
+    // field table was not derived from.
+    expect(report).toContain(`${PERKESO_FILE_SPEC.version} of ${PERKESO_FILE_SPEC.dated}`);
+    expect(report).toContain(`${PERKESO_FILE_LINE_LENGTH} characters per record`);
+  });
+
+  /**
+   * THE FIVE TOTALS, ADDED UP BY HAND FROM THE FIXTURE so a reader can check them without running
+   * anything. Each line below is the fourteen GOLDEN_ROWS in file order, in RM:
+   *
+   *   salary        5900 + 5600 + 6052 + 8700 + 6000 + 4900 + 5650 + 4777.42 + 8200 + 5325.81
+   *                      + 6627.42 + 2700 + 7413 + 10000                              = 87,845.65
+   *   socso er      102.35 + 97.15 + 104.15 + 104.15 + 104.15 + 84.85 + 98.85 + 83.15
+   *                      + 104.15 + 93.65 + 104.15 + 46.35 + 104.15 + 104.15          =  1,335.40
+   *   socso ee      29.25 + 27.75 + 29.75 + 29.75 + 29.75 + 24.25 + 28.25 + 23.75
+   *                      + 29.75 + 26.75 + 29.75 + 13.25 + 29.75 + 29.75              =    381.50
+   *   eis er        11.70 + 11.10 + 11.90 + 11.90 + 11.90 + 9.70 + 11.30 + 9.50
+   *                      + 11.90 + 10.70 + 11.90 + 5.30 + 11.90 + 11.90               =    152.60
+   *   eis ee        the same fourteen figures as the employer leg, which is the EIS rule =  152.60
+   *
+   * The file carries cents with no decimal point, so those are 8784565, 133540, 38150, 15260, 15260.
+   */
+  it('totals the five money boxes, and the figures are the ones you get by adding the fixture up', () => {
+    const totals = perkesoFileTotals(FIXTURE);
+    expect(totals.records).toBe(14);
+    expect(totals.excluded).toEqual([]);
+    expect(totals.sen).toEqual({
+      wage: 8_784_565,
+      socsoEmployer: 133_540,
+      socsoEmployee: 38_150,
+      eisEmployer: 15_260,
+      eisEmployee: 15_260,
+    });
+
+    // …and the report prints each of them in RM with two decimals AND as the digits the file holds, so a
+    // reader can check the file with a calculator and with their eyes.
+    const report = perkesoFileReport(FIXTURE);
+    expect(report).toMatch(/Salary \(the SOCSO\/EIS wage\)\s+RM\s+87845\.65\s+in the file: 8784565/);
+    expect(report).toMatch(/SOCSO employer contribution\s+RM\s+1335\.40\s+in the file: 133540/);
+    expect(report).toMatch(/SOCSO employee contribution\s+RM\s+381\.50\s+in the file: 38150/);
+    expect(report).toMatch(/EIS employer contribution\s+RM\s+152\.60\s+in the file: 15260/);
+    expect(report).toMatch(/EIS employee contribution\s+RM\s+152\.60\s+in the file: 15260/);
+    expect(report).toContain('CENTS WITH NO DECIMAL POINT');
+    expect(report).toContain('Added up over 14 record(s) of 14.');
+  });
+
+  /**
+   * ⚠️ THE TOTALS COME OUT OF THE FILE, NOT OUT OF THE ROWS — which is the only reason they are worth
+   * printing. A total added up from the payroll rows agrees with the payroll by construction, including
+   * when the writer has put a figure in the wrong box; only a total read back out of the emitted bytes can
+   * disagree with the payroll and so be worth checking against it.
+   *
+   * THE CASE IS BUILT SO THAT NOTHING ELSE COULD PRODUCE IT. Ten ringgit is moved from the SOCSO employee
+   * box into the EIS employer box IN THE TEXT, after the file has been written. No input row exists to
+   * read: `buildPerkesoSocsoFile` was called with the untouched golden. If these totals came from anywhere
+   * but the file, both figures below would be the golden's.
+   */
+  it('reads the totals back out of the FILE — edit a box in the text and the total follows', () => {
+    const records = perkesoFileRecords(buildPerkesoSocsoFile(goldenInput));
+    const [seOffset, seWidth] = PERKESO_FILE_FIELDS.socsoEmployee;
+    const [erOffset, erWidth] = PERKESO_FILE_FIELDS.eisEmployer;
+    // Record 1 carries "  2925" and "  1170"; 1000 sen moves from the first box to the second.
+    expect(perkesoField(records[0], PERKESO_FILE_FIELDS.socsoEmployee)).toBe('  2925');
+    expect(perkesoField(records[0], PERKESO_FILE_FIELDS.eisEmployer)).toBe('  1170');
+    const edited = [
+      records[0].slice(0, seOffset) +
+        '1925'.padStart(seWidth, ' ') +
+        '2170'.padStart(erWidth, ' ') +
+        records[0].slice(erOffset + erWidth),
+      ...records.slice(1),
+    ].join(PERKESO_FILE_EOL);
+    expect(edited).toHaveLength(FIXTURE.length);
+
+    const totals = perkesoFileTotals(edited);
+    expect(totals.sen.socsoEmployee, 'ten ringgit left the SOCSO employee box').toBe(38_150 - 1_000);
+    expect(totals.sen.eisEmployer, 'and arrived in the EIS employer box').toBe(15_260 + 1_000);
+    // Everything else is where it was — this is a transposition, not a loss.
+    expect(totals.sen.wage).toBe(8_784_565);
+    expect(totals.sen.socsoEmployer).toBe(133_540);
+    expect(totals.sen.eisEmployee).toBe(15_260);
+    expect(totals.excluded).toEqual([]);
+  });
+
+  it('names any record it could not validate, and leaves its figures out of the totals', () => {
+    const records = perkesoFileRecords(FIXTURE);
+    const shortened = [records[0].slice(0, 277), ...records.slice(1)].join(PERKESO_FILE_EOL);
+    const report = perkesoFileReport(shortened);
+    expect(report).toContain('Records that could not be validated: 1 of 14.');
+    expect(report).toContain('record 1 is 277 characters and every record must be 278');
+    expect(report).toContain('Their figures are NOT included in the totals below.');
+    // 87,845.65 less the first record's 5,900.00.
+    expect(perkesoFileTotals(shortened).sen.wage).toBe(8_194_565);
+    expect(perkesoFileTotals(shortened).excluded).toEqual([1]);
+    expect(report).toContain('Added up over 13 record(s) of 14.');
+    // …and on a clean file it says so rather than staying silent, which would read the same as "not checked".
+    expect(perkesoFileReport(FIXTURE)).toContain('Records that could not be validated: none.');
+  });
+
+  /**
+   * THE LINE THAT MUST NOT BE THERE. The reporter's item 12 asks for a "Total SKBBK/LINDUNG 24 Jam
+   * contribution, if applicable" — and it is not applicable: the twelve fields of this format have no
+   * such box. Adding a zero would answer their question and be false.
+   */
+  it('prints no SKBBK / Lindung 24 Jam total, because the format has no such field', () => {
+    for (const report of [perkesoFileReport(FIXTURE), perkesoFileReport(buildPerkesoSocsoFile(goldenInput))]) {
+      expect(report).not.toMatch(/SKBBK/i);
+      expect(report).not.toMatch(/lindung/i);
+      expect(report).not.toMatch(/24 jam/i);
+    }
+    // Nor does the field table, which is where such a box would have to exist first.
+    expect(Object.keys(PERKESO_FILE_FIELDS)).not.toContain('skbbk');
+  });
+});
+
+/**
+ * 5dbce839 — THE MYCOID BOX, SAID OUT LOUD IN THE REPORT.
+ *
+ * The customer's own accepted file carries "34111U" in positions 13-32; ours would carry twenty spaces,
+ * because the number has never been entered for their company. The specification marks the field
+ * Mandatory = N, so this is a NOTICE and never a refusal — and it is read out of the emitted FILE, not off
+ * the form, so it can only ever describe the bytes that were actually written.
+ */
+describe('5dbce839 — the MyCoID notice, on both halves', () => {
+  const withMyCoId = buildPerkesoSocsoFile(goldenInput);
+  const withoutMyCoId = buildPerkesoSocsoFile({ ...goldenInput, employer: { ...goldenInput.employer, myCoId: null } });
+
+  it('appears when the box is empty, naming the positions and where to set the number', () => {
+    const report = perkesoFileReport(withoutMyCoId);
+    expect(report).toContain('MyCoID / business registration number: positions 13-32 are EMPTY on every record.');
+    expect(report).toContain('not mandatory');
+    expect(report).toContain('Statutory identity');
+  });
+
+  it('does NOT appear when the number is set', () => {
+    const report = perkesoFileReport(withMyCoId);
+    expect(report).not.toContain('are EMPTY');
+    expect(report).not.toMatch(/MyCoID \/ business registration number:/);
+    // The value is still there to read in the field dump — the notice is gone, not the field.
+    expect(report).toContain('myCoId             [34111U              ]');
+  });
+
+  /** A blank MyCoID is not a refusal, and must never become one: the file is produced either way. */
+  it('does not stop the file, and does not move a single byte of the other fields', () => {
+    expect(perkesoFileRecords(withoutMyCoId)).toHaveLength(14);
+    for (const r of perkesoFileRecords(withoutMyCoId)) expect(r.length).toBe(PERKESO_FILE_LINE_LENGTH);
+    expect(perkesoField(perkesoFileRecords(withoutMyCoId)[0], PERKESO_FILE_FIELDS.myCoId)).toBe(' '.repeat(20));
+    // Everything after the MyCoID box is identical, record by record, to the file that carries one — the
+    // twenty spaces do not shift a single field that follows them.
+    const cut = PERKESO_FILE_FIELDS.identityNo[0];
+    const withOne = perkesoFileRecords(withMyCoId);
+    perkesoFileRecords(withoutMyCoId).forEach((r, i) => {
+      expect(r.slice(cut), `record ${i + 1} after the MyCoID box`).toBe(withOne[i].slice(cut));
+      expect(r.slice(0, cut - PERKESO_FILE_FIELDS.myCoId[1])).toBe(withOne[i].slice(0, cut - PERKESO_FILE_FIELDS.myCoId[1]));
+    });
+  });
+});
+
+/**
+ * 5dbce839 — THE FORMAT WAS NEVER THE DEFECT, AND THIS ROUND DID NOT TOUCH IT.
+ *
+ * The reporter's request is to "correct" the file format. It is already correct: the golden at the top of
+ * this file rebuilds their own filed BRG8A.txt byte for byte. Everything this round added is a REPORT
+ * about the file and a notice on the screen. This case is the cheap, explicit statement of that — the
+ * field table, the record length and the line ending, pinned as literals, so an edit to any offset, width
+ * or pad rule fails here and says why rather than only failing the golden.
+ */
+describe('5dbce839 — the writer and the field table come out of this round unchanged', () => {
+  it('keeps the twelve fields at exactly the offsets and widths read off the filed file', () => {
+    expect(PERKESO_FILE_FIELDS).toEqual({
+      employerCode: [0, 12],
+      myCoId: [12, 20],
+      identityNo: [32, 12],
+      name: [44, 150],
+      contributionMonth: [194, 6],
+      wage: [200, 14],
+      socsoEmployer: [214, 6],
+      socsoEmployee: [220, 6],
+      eisEmployer: [226, 6],
+      eisEmployee: [232, 6],
+      filler1: [238, 20],
+      filler2: [258, 20],
+    });
+    expect(PERKESO_FILE_LINE_LENGTH).toBe(278);
+    expect(PERKESO_FILE_EOL).toBe('\r\n');
+  });
+
+  it('still writes the customer\'s own file byte for byte, through the same mapper', () => {
+    expect(buildPerkesoSocsoFile({ employer: goldenInput.employer, employees: perkesoFileEmployeesFrom(GOLDEN_ROWS) })).toBe(
+      FIXTURE,
+    );
   });
 });
