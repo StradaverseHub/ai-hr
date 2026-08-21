@@ -36,10 +36,13 @@ ELSE in that dry run is an undeployed release.
 instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
 `passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
 **Next free is `0451`.**
-**Board after r217 (2026-08-21): `deployed = 728` · `cancelled = 14` · `planned = 2` · everything else
-ZERO.** r217 shipped `da4fc817` (EA Sections D/E/F), `e4b541c6` (CP39's two identity columns, migration
-`0450`) and `5d3acdc2` (PERKESO spec conformance). Still planned, awaiting the reporter: `7966ee35`
-(Replacement Leave in Lieu — the `toil` module, below) and `ca7766ab` (entitlement effective date).
+**Board after r218's planning round (2026-08-21): `deployed = 728` · `cancelled = 14` · `planned = 4` ·
+everything else ZERO.** r217 shipped `da4fc817` (EA Sections D/E/F), `e4b541c6` (CP39's two identity
+columns, migration `0450`) and `5d3acdc2` (PERKESO spec conformance). r218 planned the two items the
+reporter opened the next morning — `c99e8358` (redraw the CP39 to the official Pin.2015 layout) and
+`5dbce839` (the PERKESO upload file "does not upload"). Also planned and older: `7966ee35` (Replacement
+Leave in Lieu — the `toil` module, below) and `ca7766ab` (entitlement effective date). All four await
+the reporter.
 
 ⚠️ **THE PAYROLL PACK FACADE BIT TWICE IN ONE BUILD, AND THE FIX IS THE SAME BOTH TIMES.** r217 needed TP1
 counting from a pack file. A top-level import of the TP1 boundary module (a) CYCLES at run time — it loads
@@ -139,8 +142,48 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**NOTHING IS BUILDABLE.** `improve:pull` and `improve:pull-approved` both return nothing; the two planned
-items sit with the reporter.
+**NOTHING IS BUILDABLE.** `improve:pull` and `improve:pull-approved` both return nothing; all four planned
+items sit with the reporter. Two of them were planned in r218 and their findings are below.
+
+⚠️ **THE CP39 SPECIMEN IS FINALLY IN HAND, AND `lib/cp39-form-pdf.ts`'s OWN HEADER SAYS THAT WAS THE ONLY
+BLOCKER.** `c99e8358`'s attachment `CP39 sample.docx` (`feedback_attachment` id `477f3fec`) is a Word file
+holding TWO images: `word/media/image1.png` is OUR current output, `word/media/image2.png` is a fully
+populated **CP39 Pin.2015 at 1210px, legible to the last line of the A / B / C panels**. `unzip` the docx
+and it is right there. The renderer's 7ee14bbc paragraph says in as many words that the masthead and the
+instruction panels are undrawn because "the specimen is not in this repository" — so step one of that
+build is committing the image, not redesigning anything. **`fidelity` still stays `figures`**: it is a
+vendor rendering (the DXperience family again), a tracing source, not LHDN's page.
+
+⚠️ **THE REPORTER'S "large blue WRONG FORMAT box" IS OUR OWN ON-SCREEN HONESTY NOTICE**
+(`app/payroll/cp39/preview/page.tsx:225`, `bg-blue-50`, "Our layout, not LHDN's page"). It is NOT printed
+on the document. An AI summarising a screenshot of the review screen read it as part of the form. Worth
+knowing before the next item that quotes a box back at us.
+
+⚠️ **r217 LEFT A FALSE SENTENCE PRINTED ON A TAX DOCUMENT — FIX IT WITH `c99e8358`.** `0450` gave
+`No. K/P Lama` and `Kod Negara` real columns and the CP39 mapper already reads them, but FOUR places still
+assert they can never be filled: `lib/cp39-form-pdf.ts:461` (in Malay, ON THE PDF), `lib/cp39-form.ts:865`
+(text export), `app/payroll/cp39/preview/page.tsx:318` + `blankColumnsHint` in six locales, and
+`localization/my/cp39-form.ts:33`. AGENTS 18 applies: the half still true (never derive `Kod Negara` from
+the nationality text) stays; the reversed half goes.
+
+⚠️ **`5dbce839` IS NOT A FORMAT DEFECT, AND THE PROOF WAS ALREADY IN THE REPO.**
+`test/perkeso-socso-file.test.ts` asserts our writer reproduces the customer's own filed `BRG8A.txt` BYTE
+FOR BYTE, and the official spec (attached to `5d3acdc2`) agrees field for field. The request's "employee
+split across two lines" example mixes ONE person's identity number with ANOTHER's contributions and doubles
+the salary — it comes from no record of their own file. The likely cause is the READABLE `.txt` download
+being uploaded instead of the fixed-width one; both sit on the same screen. **The one real difference is
+`company_statutory_my.ssm_registration_no`, NULL for ISEDECOR**, so our MyCoID box is 20 spaces where the
+accepted file carries `34111U` — and the same empty column blanks `No. Pendaftaran Perniagaan` on the
+CP39. It is typeable at `components/company-panel.tsx:865`. The spec marks MyCoID **Mandatory = N** and
+has **no SKBBK / Lindung 24 Jam field at all**, so neither is a build.
+
+**MEASURED ON PRODUCTION FOR BOTH PLANS (2026-08-21), so the build does not re-derive it:** ISEDECOR's
+`2026-01` batch is `processed` with 38 payslips, **19 carrying a SOCSO/EIS contribution**, ZERO missing or
+malformed ICs, and `statutory.bases.socsoEis` present on every one — a file is produced today, unrefused.
+Their filed file has 14 people and their CP39 sample says 13 / RM 15,374.70 against our 17-of-19 /
+RM 6,919.45. Those are DIFFERENT EMPLOYEE SETS (r215: their reference documents name people who do not
+exist in `person`), which is why both plans say in plain words that this is format work and reconciles
+nothing.
 
 ⚠️ **THE FULL GATE CAUGHT A FORM GAINING BOXES NOBODY COULD FILL, and targeted runs could not.** r217's EA
 work added four Section D fields to the PDF only. `test/ea-form-boxes-contract.test.ts` pins that EVERY EA
