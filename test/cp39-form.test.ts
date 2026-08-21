@@ -41,7 +41,20 @@ import {
   withPreparer,
   type Cp39FormRow,
 } from '../lib/cp39-form';
-import { CP39_HEADING_SIZE, CP39_ROW_SIZE, CP39_TABLE_COLUMNS, renderCp39FormPdf } from '../lib/cp39-form-pdf';
+import {
+  CP39_COVER,
+  CP39_COVER_HEADING_SIZE,
+  CP39_HEADING_SIZE,
+  CP39_NOTE_A,
+  CP39_NOTE_B,
+  CP39_NOTE_B_SABAH,
+  CP39_NOTE_B_SARAWAK,
+  CP39_NOTE_B_TAIL,
+  CP39_NOTE_C,
+  CP39_ROW_SIZE,
+  CP39_TABLE_COLUMNS,
+  renderCp39FormPdf,
+} from '../lib/cp39-form-pdf';
 // The OTHER CP39 output, imported rather than restated — see the joint assertion below.
 import { buildCp39File } from '../localization/my/cp39-file';
 // The NEIGHBOURING form's rule, imported rather than restated — the two must never agree.
@@ -313,13 +326,31 @@ describe('the two columns that used to be unfillable, and the guess still refuse
     expect(READ_CODE).not.toMatch(/passportIssuingCountry\b(?!Code)/);
   });
 
-  it('says so on the page and in the text export, so a blank column does not read as a bug', () => {
+  /**
+   * ⚠️ c99e8358 REVERSED THE OTHER HALF OF THIS CASE, AND THE CASE IS UPDATED RATHER THAN DELETED.
+   *
+   * The printed note used to read "No. K/P Lama dan Kod Negara dibiarkan kosong: tiada medan kad
+   * pengenalan lama dalam rekod pekerja" — a statement in Malay, on a tax document, that stopped being
+   * true when migration 0450 gave both columns a home. It is now the opposite claim: both PRINT from the
+   * staff record, and blank means the record has none. The surfaces are still pinned, because a blank
+   * column with NO explanation is what invites somebody to guess a country code onto a filing.
+   */
+  it('says on the page and in the text export where the two columns come from', () => {
     const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a' })] });
     const txt = cp39FormTextExport(form);
     expect(txt).toContain('No. K/P Lama');
     expect(txt).toContain('Kod Negara');
-    expect(PDF_CODE).toContain('No. K/P Lama dan Kod Negara dibiarkan kosong');
+    // The retired half must not survive on ANY printed surface: it is a false claim about a filing.
+    expect(PDF_CODE).not.toContain('tiada medan kad pengenalan lama');
+    expect(txt).not.toContain('no old-identity-card field exists');
+    expect(txt).not.toContain('Columns we cannot fill');
+    // …and the half that still governs is stated on both, and on the screen.
+    expect(PDF_CODE).toContain('tidak pernah diterbitkan daripada teks kewarganegaraan');
+    expect(txt).toContain('NEVER derived');
     expect(PREVIEW_CODE).toContain("t('blankColumnsHint')");
+    const ns = (en.payroll as Record<string, unknown>).cp39Form as Record<string, string>;
+    expect(ns.blankColumnsHint).toContain('never derived');
+    expect(ns.blankColumnsHint).not.toContain('there is no old identity card field');
   });
 });
 
@@ -464,15 +495,26 @@ describe('the payment instrument', () => {
     expect(blankFooter.slice(blankFooter.indexOf('Left blank on purpose'))).toContain('No. Cek');
   });
 
+  /**
+   * ⚠️ c99e8358 RETIRED THE SOURCE-SHAPE HALF OF THIS CASE AND KEPT THE RULE. It used to pin the two
+   * literals `if (form.paymentRef)` / `if (form.paymentBranch)`, and the redraw put both boxes on ONE
+   * table-driven loop over the instrument rows, so those literals are gone while nothing about the
+   * behaviour moved. The rule is now asserted on the DRAWN PAGE, which the source shape never could:
+   * see also the positional case further down, which pins the cell each one lands in.
+   */
   it('draws the typed value on the page rather than always a ruled line', async () => {
-    // Source-shape on the renderer, because a PDF's own bytes will not tell us which branch ran…
-    expect(PDF_CODE).toContain('if (form.paymentRef)');
-    expect(PDF_CODE).toContain('if (form.paymentBranch)');
-    // …and a real render, because a drawing call with a wrong argument count throws at run time only.
+    expect(PDF_CODE).toContain('form.paymentRef');
+    expect(PDF_CODE).toContain('form.paymentBranch');
+
     const typed = withPaymentInstrument(form, { paymentRef: 'CHQ 004417', paymentBranch: 'CIMB IPOH' });
     const bytes = await renderCp39FormPdf(typed);
     expect(bytes.byteLength).toBeGreaterThan(1000);
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(2);
+    expect(await drawnText(bytes)).toEqual(expect.arrayContaining(['CHQ 004417', 'CIMB IPOH']));
+    // An untyped one prints NEITHER — the specimen prints a rule there and so do we.
+    const blank = await drawnText(await renderCp39FormPdf(form));
+    expect(blank).not.toContain('CHQ 004417');
+    expect(blank).not.toContain('CIMB IPOH');
   });
 
   /**
@@ -515,21 +557,30 @@ describe('the catalog entry', () => {
   });
 
   /**
-   * ⚠️ THE FIDELITY CLAIM, AND WHY IT DID NOT GO UP.
+   * ⚠️ THE FIDELITY CLAIM MOVED ONCE, IN c99e8358, AND ONLY THE FIRST HALF OF IT MOVED.
    *
-   * `agency-layout` asserts that every box is where the AGENCY's form puts it. Borang A and Borang 8A
-   * can say that because we were at least given completed specimens of those pages. For CP39 there is
-   * NOTHING on disk — `public/forms/` holds one file and it is the CP22 — so every box on the drawn
-   * statement is placed from the ticket's PROSE list of fields, which is exactly what `figures` means.
-   * Understating is safe. Overstating is the single failure the whole vocabulary exists to prevent, and
-   * HANDOFF records that two earlier "agency reference" attachments in this repo turned out to be
-   * another vendor's output rather than the agency's page.
+   * WHAT MOVED: `figures` → `agency-layout`. `agency-layout` asserts that every box is where the
+   * AGENCY's form puts it, on our own paper. That was untrue while every box was placed from the
+   * ticket's prose list of fields; it is true now that page one is drawn to
+   * `docs/forms/cp39-pin-2015-specimen.png` via the hand transcription beside it, masthead, payment
+   * panel and A / B / C notes included. `my.borang-8a` and `my.borang-a` already carry that value for
+   * exactly the same reason, and this is the third member of the set, not a fourth status.
+   *
+   * WHAT DID NOT MOVE, and is the half worth keeping: `official` is a claim about GOVERNMENT ARTWORK,
+   * it belongs to `my.cp22` alone, and the specimen is another payroll vendor's rendering rather than
+   * LHDN's page — which is why it lives in `docs/forms/` and not in `public/forms/`. Understating is
+   * safe. Overstating is the single failure the whole vocabulary exists to prevent.
    */
-  it('claims `figures` — not `official`, and not even `agency-layout`, because there is no artwork', () => {
-    expect(def!.fidelity).toBe('figures');
-    // The evidence, asserted rather than asserted-about: there is no CP39 page in public/forms to have
-    // been drawn onto. The day somebody adds one, this fails and the claim gets reconsidered on purpose.
+  it('claims `agency-layout` now that the page is drawn to the specimen — and never `official`', () => {
+    expect(def!.fidelity).toBe('agency-layout');
+    // The evidence for the ceiling, asserted rather than asserted-about: there is still no CP39 page in
+    // public/forms. The day somebody puts LHDN's own artwork there, this fails and `official` gets
+    // reconsidered on purpose — and only then.
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /cp\W?39/i.test(f))).toEqual([]);
+    // The evidence for the floor: the specimen and its transcription ARE in the repository, so the
+    // arrangement was copied rather than remembered.
+    expect(fs.existsSync(path.join(ROOT, 'docs/forms/cp39-pin-2015-specimen.png'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'docs/forms/cp39-pin-2015-transcription.txt'))).toBe(true);
     // `official` belongs to `my.cp22` alone and to no ReportDef at all.
     expect(MY_REPORTS.filter((r) => r.fidelity === 'official').map((r) => r.id)).toEqual([]);
     // And the drawn page and its text twin both say so on their face rather than only in a comment.
@@ -1158,22 +1209,40 @@ describe('7ee14bbc — a tax number filed against two people is NAMED, and still
   });
 });
 
-describe('7ee14bbc — the specimen has a name now, and the fidelity claim did not move', () => {
-  it('records the new source and its provenance WITHOUT deleting the old refusal', () => {
-    // The plan's own instruction: update the comment, do not remove it. The reason the LHDN masthead and
-    // the A/B/C panels are still not drawn CHANGED — from "we have never read this text" to "the
-    // specimen is not in this repository" — and both halves have to survive, or the next person
-    // rediscovers the wrong one and transcribes a government instruction panel from memory.
-    expect(PDF_SRC).toContain('DXperience v23.2.5');
+describe('7ee14bbc / c99e8358 — the specimen’s provenance, and the one claim it did and did not move', () => {
+  /**
+   * ⚠️ THIS CASE USED TO ASSERT "the fidelity claim did not move", AND c99e8358 MOVED IT. Read what
+   * follows before touching either half.
+   *
+   * RETIRED: "the masthead and the A/B/C panels are still not drawn, because the specimen is not in this
+   * repository". The specimen IS in the repository now (`docs/forms/`), transcribed by hand, and page
+   * one is drawn to it — which is what took the catalogue entry from `figures` to `agency-layout`.
+   *
+   * STILL STANDS, and it is why the paragraph is edited rather than deleted: the PRINCIPLE that kept it
+   * undrawn. Printing a government office address, or a statutory instruction panel, FROM MEMORY is
+   * inventing a fact about a filing. It stayed undrawn for as long as there was nothing to copy from,
+   * and the day somebody deletes that reasoning is the day the next round writes an LHDN panel out of
+   * its own head. So the file must still carry it, and must still record that the specimen is another
+   * vendor's rendering rather than the agency's artwork.
+   */
+  it('keeps the refusal that governs every word, and records where the words actually came from', () => {
+    // The principle. Not one of these may be deleted just because the panels are drawn now.
     expect(PDF_SRC).toContain('inventing a fact about a filing');
     expect(PDF_SRC).toContain('fabricating the content of a government document');
+    // The provenance: a vendor's rendering of the agency's page, named, in both files.
+    expect(PDF_SRC).toContain('DXperience v23.2.5');
     expect(read('lib/cp39-form.ts')).toContain('DXperience v23.2.5');
+    // And the source that replaced memory, named on the file that draws from it.
+    expect(PDF_SRC).toContain('docs/forms/cp39-pin-2015-transcription.txt');
+    expect(PDF_SRC).toContain('docs/forms/cp39-pin-2015-specimen.png');
   });
 
-  it('did NOT raise fidelity: a vendor’s drawing of the agency’s page is not the agency’s page', () => {
-    // Same signature as the EPF and SOCSO "agency reference" attachments HANDOFF already records. The
-    // figures on it were acted on; the CLAIM about whose artwork this is was not.
-    expect(MY_REPORTS.find((r) => r.id === 'my.cp39')!.fidelity).toBe('figures');
+  it('raised fidelity exactly one step, and left the ceiling where it was', () => {
+    // A vendor's drawing of the agency's page is still not the agency's page. `agency-layout` is what
+    // that earns — the same value the Borang A and Borang 8A specimens earned, for the same reason —
+    // and `official` remains unreachable while `public/forms/` holds no CP39.
+    expect(MY_REPORTS.find((r) => r.id === 'my.cp39')!.fidelity).toBe('agency-layout');
+    expect(MY_REPORTS.filter((r) => r.fidelity === 'official')).toEqual([]);
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /cp\W?39/i.test(f))).toEqual([]);
     expect(PDF_CODE).toContain('bukan borang rasmi LHDN');
   });
@@ -1424,5 +1493,371 @@ describe('r209 — unfinished employee names are warned about before filing, as 
         );
       }
     }
+  });
+});
+
+/**
+ * ── c99e8358 — PAGE ONE, MEASURED ────────────────────────────────────────────────────────────────
+ *
+ * The cover is now a drawn FORM rather than a stack of headings, and a drawn form fails in a way no
+ * unit test of the model can see: pdf-lib does not clip, so a caption one point too wide prints into the
+ * panel beside it and the page still renders, still returns 200 and still downloads. Worse on this
+ * particular page, PCB and CP 38 are two adjacent columns of nearly equal width carrying two different
+ * amounts — the transposition that shipped a wrong KWSP file in an earlier round — and no assertion
+ * about the totals object can tell them apart. So these read the POSITIONS off the drawn page.
+ */
+type CoverRun = { text: string; x: number; y: number; size: number; bold: boolean };
+
+/**
+ * Every text run on the ONE content stream that carries `marker`, WITH the position it was drawn at.
+ *
+ * `drawnText` above answers "does this string appear anywhere in the document", which cannot tell a
+ * figure in the PCB column from the same figure in the CP 38 column beside it. pdf-lib writes each run
+ * as `/<font> <size> Tf … 1 0 0 1 <x> <y> Tm <hex> Tj`, so the operators carry the font, the size and
+ * the origin. The page is found by its marker rather than by index, so inserting a page ahead of it
+ * cannot silently make these assertions measure a different sheet.
+ */
+async function drawnRunsOn(bytes: Uint8Array, marker: string): Promise<CoverRun[]> {
+  const doc = await PDFDocument.load(bytes);
+  const re =
+    /\/(Helvetica[A-Za-z0-9-]*)\s+([\d.]+)\s+Tf|1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm\s*<([0-9A-Fa-f]+)>\s*Tj/g;
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const raw = (obj as unknown as { contents?: Uint8Array }).contents;
+    if (!raw) continue;
+    let stream: string;
+    try {
+      stream = zlib.inflateSync(Buffer.from(raw)).toString('latin1');
+    } catch {
+      stream = Buffer.from(raw).toString('latin1');
+    }
+    const runs: CoverRun[] = [];
+    let size = 0;
+    let bold = false;
+    for (const m of stream.matchAll(re)) {
+      if (m[1] !== undefined) {
+        bold = m[1].includes('Bold');
+        size = Number(m[2]);
+        continue;
+      }
+      runs.push({
+        text: Buffer.from(m[5], 'hex').toString('latin1'),
+        x: Number(m[3]),
+        y: Number(m[4]),
+        size,
+        bold,
+      });
+    }
+    if (runs.some((r) => r.text.includes(marker))) return runs;
+  }
+  throw new Error(`no content stream carries "${marker}"`);
+}
+
+describe('c99e8358 — page one is the Borang CP39 (Pin.2015) arrangement, drawn from the specimen', () => {
+  const X = CP39_COVER.x;
+  const Y = CP39_COVER.yTop;
+
+  /**
+   * FOUR FIGURES THAT ARE ALL DIFFERENT, WHICH IS THE ONLY WAY A TRANSPOSITION IS VISIBLE. PCB
+   * 15,374.70 over three people, CP38 250.00 over one. Swap either pair and the page still adds up.
+   */
+  const split: Cp39FormRow[] = [
+    row({ employmentId: 'a', personId: 'p1', name: 'SATU', tin: 'SG1', pcb: 15000, cp38: 0 }),
+    row({ employmentId: 'b', personId: 'p2', name: 'DUA', tin: 'SG2', pcb: 300, cp38: 0 }),
+    row({ employmentId: 'c', personId: 'p3', name: 'TIGA', tin: 'SG3', pcb: 74.7, cp38: 250 }),
+  ];
+
+  /** Runs on the cover, each carrying its width and its distance from the TOP edge. */
+  type Measured = CoverRun & { top: number; w: number };
+  async function cover(form: Parameters<typeof renderCp39FormPdf>[0]): Promise<Measured[]> {
+    const d = await PDFDocument.create();
+    const reg = await d.embedFont(StandardFonts.Helvetica);
+    const bld = await d.embedFont(StandardFonts.HelveticaBold);
+    const runs = await drawnRunsOn(await renderCp39FormPdf(form), 'BUTIR-BUTIR MAJIKAN');
+    return runs.map((r) => ({
+      ...r,
+      // CP39_COVER is written from the top edge, the way the specimen reads; pdf-lib draws from the foot.
+      top: CP39_COVER.H - r.y,
+      w: (r.bold ? bld : reg).widthOfTextAtSize(r.text, r.size),
+    }));
+  }
+  /** The three panels of the middle band, as the drawn page tiles them. */
+  const panels = [
+    { key: 'BUTIR-BUTIR MAJIKAN', x0: X.left, x1: X.panel1Right },
+    { key: 'BUTIR-BUTIR PEMBAYARAN', x0: X.panel1Right, x1: X.panel2Right },
+    { key: 'PEGAWAI YANG MENYEDIAKAN MAKLUMAT', x0: X.panel2Right, x1: X.right },
+  ];
+  /** Everything drawn strictly inside the rectangle (x0, x1] x (t0, t1] — i.e. inside one CELL. */
+  const cell = (runs: Measured[], x0: number, x1: number, t0: number, t1: number) =>
+    runs
+      .filter((r) => r.top > t0 && r.top <= t1 && r.x >= x0 - 0.5 && r.x + r.w <= x1 + 0.5)
+      .map((r) => r.text);
+  const flat = (runs: Measured[]) => runs.map((r) => r.text).join(' ').replace(/\s+/g, ' ');
+
+  it('is exactly ONE landscape page, and the employee schedule stays A4 portrait behind it', async () => {
+    const form = cp39FormFrom({ header: header(), rows: split, perPage: 2 });
+    expect(form.pages).toHaveLength(2);
+    const doc = await PDFDocument.load(await renderCp39FormPdf(form));
+    expect(doc.getPageCount()).toBe(1 + form.pages.length);
+
+    const one = doc.getPage(0).getSize();
+    expect(one.width).toBeCloseTo(CP39_COVER.W, 2);
+    expect(one.height).toBeCloseTo(CP39_COVER.H, 2);
+    expect(one.width, 'the cover is landscape').toBeGreaterThan(one.height);
+    // …and NOTHING else turned landscape with it. Ten columns were tiled for portrait.
+    for (let i = 1; i < doc.getPageCount(); i += 1) {
+      const s = doc.getPage(i).getSize();
+      expect(s.width, `sheet ${i} must stay portrait`).toBeLessThan(s.height);
+      expect(s.width).toBeCloseTo(595.28, 2);
+      expect(s.height).toBeCloseTo(841.89, 2);
+    }
+  });
+
+  /** Fails the named panel when a run straddles a divider or hangs outside the band entirely. */
+  const everyRunInItsOwnPanel = (runs: Measured[]) => {
+    const inBand = runs.filter((r) => r.top >= Y.bandTop && r.top <= Y.bandBottom + 2);
+    expect(inBand.length, 'the band must actually carry the employer, payment and preparer boxes').toBeGreaterThan(25);
+    for (const r of inBand) {
+      const home = panels.filter((p) => r.x >= p.x0 - 0.5 && r.x + r.w <= p.x1 + 0.5);
+      expect(
+        home.map((p) => p.key),
+        `"${r.text}" spans ${r.x.toFixed(1)}..${(r.x + r.w).toFixed(1)} and is not inside one panel`,
+      ).toHaveLength(1);
+    }
+  };
+
+  it('tiles the band into three panels, and every caption in it is inside its own panel', async () => {
+    expect(panels[0].x0).toBeGreaterThanOrEqual(0);
+    expect(panels[2].x1).toBeLessThanOrEqual(CP39_COVER.W);
+    for (let i = 1; i < panels.length; i += 1) {
+      expect(panels[i].x0, `${panels[i].key} overlaps ${panels[i - 1].key}`).toBeGreaterThanOrEqual(
+        panels[i - 1].x1,
+      );
+    }
+
+    const d = await PDFDocument.create();
+    const bld = await d.embedFont(StandardFonts.HelveticaBold);
+    for (const p of panels) {
+      expect(
+        bld.widthOfTextAtSize(p.key, CP39_COVER_HEADING_SIZE),
+        `the "${p.key}" heading does not fit its own panel`,
+      ).toBeLessThanOrEqual(p.x1 - p.x0 - 4);
+    }
+
+    everyRunInItsOwnPanel(await cover(cp39FormFrom({ header: header(), rows: split })));
+  });
+
+  /**
+   * ⚠️ THE VALUE THAT DOES NOT FIT — the failure a panelled form has and a full-width sheet does not.
+   *
+   * pdf-lib does not clip. 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR' measures 231pt at the
+   * cover's value size and the Nama Syarikat rule is 173pt wide, so an unshrunk legal name prints 58pt
+   * through the divider and lands ON TOP of the PCB figures in the panel beside it. The fix is to shrink
+   * and never to truncate: a clean truncation would satisfy every geometry assertion here and be far
+   * worse than an overprint, because a shorter company name reads as the company's name.
+   */
+  it('shrinks a long name, title or amount rather than printing it into the next panel', async () => {
+    const long = header({
+      employerName: 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR',
+      registrationNo: '199801012345 (123456-X) CAWANGAN SABAH',
+      preparerName: 'NURUL SYAFIQAH BINTI MOHAMMED ZULKARNAIN ABDULLAH',
+      preparerPosition: 'ASSISTANT PAYROLL MANAGER, HUMAN RESOURCES SHARED SERVICES',
+      employerAddress: [
+        'Tingkat 12, Menara Perbadanan Pembangunan Pertanian',
+        'Jalan Sultan Salahuddin Abdul Aziz Shah',
+        'Seksyen 14, Bandar Baru',
+        '40000 Shah Alam, Selangor Darul Ehsan',
+      ].join('\n'),
+    });
+    // A payroll big enough that the amounts are long too — they are right-aligned, so an unshrunk one
+    // backs OUT of its cell leftwards into the column beside it, which is the same defect mirrored.
+    const big = [row({ employmentId: 'a', pcb: 12345678.9, cp38: 987654.32 })];
+    const runs = await cover(cp39FormFrom({ header: long, rows: big }));
+    everyRunInItsOwnPanel(runs);
+
+    // …and every one of them is printed WHOLE. Nothing here may reach the page as a shorter company.
+    const drawn = runs.map((r) => r.text);
+    expect(drawn).toContain('PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR');
+    expect(drawn).toContain('NURUL SYAFIQAH BINTI MOHAMMED ZULKARNAIN ABDULLAH');
+    expect(drawn).toContain('ASSISTANT PAYROLL MANAGER, HUMAN RESOURCES SHARED SERVICES');
+    expect(drawn).toContain('Tingkat 12, Menara Perbadanan Pembangunan Pertanian');
+    expect(drawn).toContain('12,345,678.90');
+    expect(drawn).toContain('987,654.32');
+    // The shrink is real rather than the values happening to fit: the name is set smaller than the box.
+    const name = runs.find((r) => r.text === 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR')!;
+    expect(name.size).toBeLessThan(7.5);
+    expect(name.size, 'shrunk to invisible is silent loss too').toBeGreaterThanOrEqual(1);
+  });
+
+  it('never draws a single run off the edge of the sheet', async () => {
+    const runs = await cover(cp39FormFrom({ header: header(), rows: split }));
+    for (const r of runs) {
+      expect(r.x, `"${r.text}" starts left of the sheet`).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w, `"${r.text}" runs off the right edge`).toBeLessThanOrEqual(CP39_COVER.W);
+      expect(r.y, `"${r.text}" falls off the foot of the sheet`).toBeGreaterThanOrEqual(0);
+      expect(r.y + r.size, `"${r.text}" is drawn above the head of the sheet`).toBeLessThanOrEqual(CP39_COVER.H);
+    }
+  });
+
+  /**
+   * ⚠️ THE ONE THAT MATTERS. Not "do the totals add up" — they always did — but WHICH CELL each figure
+   * landed in. Two adjacent columns of nearly equal width, four figures, and a page that reads as
+   * perfectly normal whichever way round they go.
+   */
+  it('puts each amount and each count in its OWN column of the payment panel', async () => {
+    const form = cp39FormFrom({ header: header(), rows: split });
+    expect(form.totalPcb).toBe(15374.7);
+    expect(form.totalCp38).toBe(250);
+    expect(form.pcbEmployees).toBe(3);
+    expect(form.cp38Employees).toBe(1);
+    expect(form.totalAmount).toBe(15624.7);
+
+    const runs = await cover(form);
+    const pcbCol = [X.payLabelRight, X.payPcbRight] as const;
+    const cp38Col = [X.payPcbRight, X.panel2Right] as const;
+    const jumlah = [Y.payHeadBottom, Y.payJumlahBottom] as const;
+    const bilangan = [Y.payJumlahBottom, Y.payBilanganBottom] as const;
+
+    // Jumlah Potongan: the PCB figure under PCB, the CP38 figure under CP 38, and NEITHER under the other.
+    expect(cell(runs, ...pcbCol, ...jumlah)).toContain('15,374.70');
+    expect(cell(runs, ...pcbCol, ...jumlah), 'the CP38 total is in the PCB column').not.toContain('250.00');
+    expect(cell(runs, ...cp38Col, ...jumlah)).toContain('250.00');
+    expect(cell(runs, ...cp38Col, ...jumlah), 'the PCB total is in the CP 38 column').not.toContain('15,374.70');
+
+    // Bilangan Pekerja: 3 under PCB and 1 under CP 38, which is the same trap one row down.
+    expect(cell(runs, ...pcbCol, ...bilangan)).toContain('3');
+    expect(cell(runs, ...pcbCol, ...bilangan), 'the CP38 headcount is in the PCB column').not.toContain('1');
+    expect(cell(runs, ...cp38Col, ...bilangan)).toContain('1');
+    expect(cell(runs, ...cp38Col, ...bilangan), 'the PCB headcount is in the CP 38 column').not.toContain('3');
+
+    // And the column headings are over the columns they name, not the other way round.
+    expect(cell(runs, ...pcbCol, Y.bandHeadBottom, Y.payHeadBottom)).toEqual(['PCB']);
+    expect(cell(runs, ...cp38Col, Y.bandHeadBottom, Y.payHeadBottom)).toEqual(['CP 38']);
+  });
+
+  it('carries Amaun and Tarikh, and a rule rather than a figure where the operator writes', async () => {
+    const form = cp39FormFrom({ header: header(), rows: split });
+    const runs = await cover(form);
+    const val = [X.payInstrLabelRight, X.panel2Right] as const;
+    const rowH = (Y.bandBottom - Y.payBilanganBottom) / 4;
+    const at = (i: number) => [Y.payBilanganBottom + i * rowH, Y.payBilanganBottom + (i + 1) * rowH] as const;
+
+    expect(cell(runs, ...val, ...at(0))).toContain('15,624.70');
+    // AGENTS rule 28: Nombor and Cawangan are the operator's to write. An empty rule asserts nothing;
+    // a printed 0.00 or a placeholder there would assert something about the payment that is not true.
+    expect(cell(runs, ...val, ...at(1)), 'Nombor must be a rule to write on, not a printed value').toEqual([]);
+    expect(cell(runs, ...val, ...at(2)), 'Cawangan must be a rule to write on, not a printed value').toEqual([]);
+    expect(cell(runs, ...val, ...at(3))).toContain('18/08/2026');
+
+    // …and when the operator HAS typed the instrument in, it prints in those same two rows.
+    const typed = await cover(withPaymentInstrument(form, { paymentRef: 'CHQ 004512', paymentBranch: 'MAYBANK PJ' }));
+    expect(cell(typed, ...val, ...at(1))).toContain('CHQ 004512');
+    expect(cell(typed, ...val, ...at(2))).toContain('MAYBANK PJ');
+  });
+
+  it('prints 0.00 for a month with no CP38, because that is what the specimen prints there', async () => {
+    // The specimen's own employer had no CP38 instalments and its CP 38 cell reads RM 0.00. Here the
+    // figure IS zero and the form derives it, so printing it states something true — which is the other
+    // half of rule 28, and the reason the Nombor rule above stays empty instead.
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', pcb: 110.5, cp38: 0 })] });
+    expect(form.totalCp38).toBe(0);
+    const runs = await cover(form);
+    const cp38Col = [X.payPcbRight, X.panel2Right] as const;
+    expect(cell(runs, ...cp38Col, Y.payHeadBottom, Y.payJumlahBottom)).toContain('0.00');
+    expect(cell(runs, ...cp38Col, Y.payJumlahBottom, Y.payBilanganBottom)).toContain('0');
+  });
+
+  it('draws the masthead, the citations and the period boxes in the specimen’s own words', async () => {
+    const runs = await cover(cp39FormFrom({ header: header(), rows: split }));
+    const page = flat(runs);
+    for (const s of [
+      'Borang ini boleh difotokopi',
+      'CP39 Pin.2015',
+      'KETUA PENGARAH HASIL DALAM NEGERI',
+      'LEMBAGA HASIL DALAM NEGERI',
+      'Pusat Bayaran Kuala Lumpur',
+      'Kaunter Bayaran Dan Tingkat 1, Blok 8A',
+      'Kompleks Bangunan Kerajaan, Jalan Duta',
+      '50600 KUALA LUMPUR',
+      'CUKAI PENDAPATAN MALAYSIA',
+      'PENYATA POTONGAN CUKAI OLEH MAJIKAN',
+      '[SEKSYEN 107 AKTA CUKAI PENDAPATAN, 1967',
+      'KAEDAH CUKAI PENDAPATAN (POTONGAN DARIPADA',
+      'SARAAN), 1994]',
+      'UNTUK KEGUNAAN PEJABAT',
+      'POTONGAN BAGI BULAN',
+      'TAHUN',
+    ]) {
+      expect(page, `the cover must carry "${s}"`).toContain(s);
+    }
+    // The month is Malay and upper case IN ITS OWN BOX, whatever language the operator reads the screen
+    // in — and the year is in the box beside it, not folded into the same run.
+    const period = runs.filter((r) => r.top > Y.mastheadBottom - 18 && r.top <= Y.mastheadBottom);
+    expect(period.map((r) => r.text)).toEqual(
+      expect.arrayContaining(['POTONGAN BAGI BULAN', 'JANUARI', 'TAHUN', '2026']),
+    );
+    // UNTUK KEGUNAAN PEJABAT is the AGENCY's box: two ruled lines and not one character we supplied.
+    const office = runs.filter((r) => r.x >= X.officeLeft && r.top >= Y.boxTop && r.top <= Y.officeBottom);
+    expect(office.map((r) => r.text).sort()).toEqual(['No. Kelompok', 'No. Resit', 'UNTUK KEGUNAAN PEJABAT']);
+  });
+
+  /**
+   * THE NON-FABRICATION GUARD. Every sentence checked here must appear BOTH on the drawn page AND in
+   * `docs/forms/cp39-pin-2015-transcription.txt` — which is what "transcribed, not remembered" means in
+   * a form a test can hold. If somebody later "tidies" the specimen's own doubled "CP38 - CP38 -" or its
+   * "borang in lieu of CP39", the two sides stop matching and this fails.
+   */
+  it('reproduces the A / B / C panels verbatim from the transcription in the repository', async () => {
+    const transcript = read('docs/forms/cp39-pin-2015-transcription.txt').replace(/\s+/g, ' ');
+    const page = flat(await cover(cp39FormFrom({ header: header(), rows: split })));
+    for (const s of [
+      'Borang ini mesti diisi dengan lengkap dan betul.',
+      'Contoh: SG 2506203-00(0) boleh diisi sebagai SG 02506203000',
+      'Borang CP22 atau borang in lieu of CP39 dikemukakan ke cawangan LHDNM yang berdekatan.',
+      'Nombor Pengenalan : Isikan kedua-dua nombor kad pengenalan baru dan lama (sekiranya ada).',
+      'CP38 - CP38 - Isikan amaun potongan cukai mengikut arahan Borang CP38 (jika ada).',
+      'Pastikan jumlah potongan PCB/CP38 adalah betul dan sama dengan nilai instrumen bayaran.',
+      'Untuk bayaran bagi Negeri Sabah, sila alamatkan ke:',
+      '88600 Kota Kinabalu, Sabah',
+      '93100 Kuching, Sarawak',
+      'Sila hubungi talian 1-800-88-LHDN (5436) untuk sebarang pertanyaan lanjut.',
+      'Jika jumlah instrumen bayaran tidak sama dengan jumlah potongan, bayaran akan ditolak.',
+      'Sekiranya maklumat tidak lengkap dan tidak betul, majikan akan dikenakan kompaun.',
+    ]) {
+      expect(transcript, `"${s}" must come from the transcription, not from memory`).toContain(s);
+      expect(page, `"${s}" must be printed on the page`).toContain(s);
+    }
+    // The panels' own headings, and the letters that index them.
+    for (const s of ['BORANG CP 39', 'PEMBAYARAN', 'PERINGATAN']) expect(page).toContain(s);
+    // Malay on EVERY locale — the notes are constants, not messages, and there is nothing to translate.
+    expect(PDF_CODE).not.toContain('useTranslations');
+    expect([...CP39_NOTE_A, ...CP39_NOTE_B, ...CP39_NOTE_B_SABAH, ...CP39_NOTE_B_SARAWAK, ...CP39_NOTE_B_TAIL,
+      ...CP39_NOTE_C].every((l) => l.length > 0)).toBe(true);
+  });
+
+  it('keeps A out of the B/C column, and the whole notes band on the sheet', async () => {
+    const runs = await cover(cp39FormFrom({ header: header(), rows: split }));
+    const notes = runs.filter((r) => r.top >= Y.noteHeadTop - 1 && r.top < Y.footTop - 6);
+    expect(notes.length, 'the A / B / C panels must actually be on the page').toBeGreaterThan(40);
+    for (const r of notes) {
+      if (r.x < X.noteBLeft) {
+        expect(r.x, `"${r.text}" starts left of the A column`).toBeGreaterThanOrEqual(X.left - 0.5);
+        expect(r.x + r.w, `"${r.text}" runs out of the A column into B`).toBeLessThanOrEqual(X.noteBLeft - 2);
+      } else {
+        expect(r.x + r.w, `"${r.text}" runs off the right edge of the B / C column`).toBeLessThanOrEqual(
+          X.right + 0.5,
+        );
+      }
+    }
+    // C's heading sits below B's last line and above the provenance strip — the r205 Borang A failure is
+    // a caption drawn at whatever y a loop left behind, and only a measurement or a picture sees it.
+    const cHead = notes.find((r) => r.text === 'PERINGATAN')!;
+    const bLast = Math.max(...notes.filter((r) => r.x >= X.noteBLeft && r.top < Y.noteCHeadTop - 4).map((r) => r.top));
+    expect(cHead.top).toBeGreaterThan(bLast);
+    expect(Math.max(...notes.map((r) => r.top)), 'the notes must not run into the provenance strip').toBeLessThan(
+      Y.footTop - 6,
+    );
+    expect(Math.max(...runs.map((r) => r.top)), 'nothing may print past the foot margin').toBeLessThan(
+      CP39_COVER.H - 8,
+    );
   });
 });

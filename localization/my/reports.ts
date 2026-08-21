@@ -147,17 +147,29 @@ export type ReportSubmission = {
  *
  * 8ca344bf ADDS A FOURTH, AND IT SITS BETWEEN `official` AND `figures`:
  *
- *   `agency-layout` — the AGENCY'S OWN LAYOUT, drawn by us, because the agency publishes no blank page
- *                     to print onto. Every box, column and heading is where the agency's form puts it,
+ *   `agency-layout` — the AGENCY'S OWN LAYOUT, drawn by us, because we hold no blank page of theirs to
+ *                     print onto. Every box, column and heading is where the agency's form puts it,
  *                     but the paper is ours.
+ *
+ *                     ⚠️ r218 NARROWED THIS DEFINITION WHEN `my.cp39` JOINED THE STATUS. It used to
+ *                     read "because the AGENCY publishes no blank page", which is true and sourced for
+ *                     PERKESO and KWSP and NOT established for LHDN — whose own specimen carries
+ *                     "Borang ini boleh difotokopi". The status is about what WE hold (`public/forms`
+ *                     answers that, and is guarded); an agency's publishing decisions belong in that
+ *                     form's own module, where the evidence is.
  *
  * WHY IT HAD TO EXIST RATHER THAN REUSING EITHER NEIGHBOUR. `official` is a claim about GOVERNMENT
  * ARTWORK and is `my.cp22`'s alone — the specimen Borang 8A we built against is another payroll vendor's
  * DevExpress output, not a PERKESO page, and PERKESO publishes no blank one; claiming `official` for it
  * would be the exact untrue claim this whole vocabulary exists to prevent. `figures` is equally wrong in
  * the other direction: its hint says "laid out our way, not on the agency's own document", and a Borang
- * 8A drawn line for line to the agency's form is not laid out our way. Two forms share this value — this
- * one and the EPF Borang A that follows it — so the union gains exactly one member for the pair.
+ * 8A drawn line for line to the agency's form is not laid out our way.
+ *
+ * c99e8358 (2026-08-21) — `my.cp39` JOINED THEM, WHICH IS THE POINT OF THE VALUE. It started as the pair
+ * `my.borang-8a` + `my.borang-a`; the CP39's page one is now drawn to a transcribed Pin.2015 specimen
+ * (docs/forms/), so it belongs in exactly the same box. The set grows; the vocabulary does not. A form
+ * that gets an agency arrangement moves INTO this value rather than earning a status of its own, and
+ * nothing moves up to `official` without government artwork in `public/forms/`.
  *
  * A fifth status, "not built yet", is deliberately NOT in this union: it belongs to `PlannedFormDef`,
  * which has no href and no action key at all, so the type itself makes an action impossible.
@@ -1403,26 +1415,31 @@ export async function eaStatement(
 export const MY_REPORTS: ReportDef[] = [
   // No `submission`: an internal reconciliation view, not a form anybody files.
   { id: 'my.contributions', label: 'Monthly statutory contributions (overview)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: contributions },
-  // `fidelity: 'figures'` on all four submissions and `official` on none of them: not one of these comes
-  // out on the agency's own page. `outputs` includes `file` for the two that also emit a prescribed
-  // agency upload file — those files carry their own draft chip, because neither has yet been accepted
-  // by the portal it is built for (localization/my/cp39-file.ts, localization/my/socso-eis-file.ts).
+  // `official` on NONE of these: not one of them comes out on the agency's own artwork. Some are drawn
+  // to the agency's arrangement on our paper (`agency-layout`) and the rest carry the figures in our own
+  // (`figures`). `outputs` includes `file` for the two that also emit a prescribed agency upload file —
+  // those files carry their own draft chip, because neither has yet been accepted by the portal it is
+  // built for (localization/my/cp39-file.ts, localization/my/socso-eis-file.ts).
   //
-  // e0cd4583 — THIS ENTRY NOW ALSO HAS A PRINTED FORM (app/payroll/cp39/preview), AND IT KEEPS
-  // `fidelity: 'figures'` ANYWAY. THAT IS THE DECISION, NOT AN OVERSIGHT.
+  // c99e8358 (2026-08-21) — `my.cp39` MOVED FROM `figures` TO `agency-layout`, AND THAT IS THE THIRD
+  // MEMBER OF THAT SET RATHER THAN A NEW STATUS. `agency-layout` is the claim that every box, column and
+  // heading is where the AGENCY's form puts it, on our own paper, with no agency artwork on disk —
+  // exactly what `my.borang-8a` and `my.borang-a` already say for the same reason.
   //
-  // `agency-layout` is a claim that every box, column and heading is where the AGENCY's form puts it.
-  // Borang A and Borang 8A can make it because we were at least given completed specimens of those
-  // pages. For CP39 there is nothing: `public/forms/` holds one file and it is the CP22, the ticket's
-  // reference is a filled sample from another payroll system, and the two earlier "agency reference"
-  // attachments in this repo turned out to be exactly that (HANDOFF, statutory forms). Every box on the
-  // drawn CP39 is placed from the ticket's PROSE list of fields — which is the definition of `figures`:
-  // every number the form needs, complete, in OUR layout rather than the agency's page. The drawn page
-  // and its text twin both say so on their face, and LHDN's own printed A/B/C notes are NOT reproduced
-  // because we have never read them. Upgrade this the day the real artwork lands in public/forms/ —
-  // understating is safe, and overstating is the single failure this vocabulary exists to prevent.
+  // WHAT EARNED IT: a legible filled Borang CP39 (Pin.2015) is now in the repository at
+  // `docs/forms/cp39-pin-2015-specimen.png`, transcribed word for word into
+  // `docs/forms/cp39-pin-2015-transcription.txt`, and `lib/cp39-form-pdf.ts` draws page one to it —
+  // masthead, statutory citations, UNTUK KEGUNAAN PEJABAT, the three-panel band and the A / B / C
+  // instruction panels, in the specimen's positions and its own words. `figures` (every number the form
+  // needs, complete, in OUR layout) now understates what comes off the printer.
+  //
+  // ⚠️ AND NOT ONE STEP FURTHER. The specimen is another payroll system's rendering of the agency's
+  // page, not LHDN's own artwork; it is deliberately NOT in `public/forms/`, which still holds one file
+  // and it is the CP22. `official` stays `my.cp22` alone. The drawn page and its text twin both say on
+  // their face that the paper is ours. Understating is safe; overstating is the single failure this
+  // vocabulary exists to prevent.
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
-    descriptionKey: 'desc_cp39', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
+    descriptionKey: 'desc_cp39', fidelity: 'agency-layout', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
   // NOT "Borang A", and it never becomes Borang A by being renamed. What this produces is a contributions
   // listing whose wage column is GROSS PAY; Borang A wants the EPF-liable wage and is a different document

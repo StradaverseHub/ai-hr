@@ -48,7 +48,7 @@ const EA_LANGS = ['en', 'ms'] as const;
 type EaLang = (typeof EA_LANGS)[number];
 const FIDELITY_KEY: Record<string, string> = {
   official: 'fidelity_official',
-  // 8ca344bf — the agency's own layout, drawn by us because the agency publishes no blank page.
+  // 8ca344bf — the agency's own layout, drawn by us because we hold no blank page of theirs (r218).
   'agency-layout': 'fidelity_agency_layout',
   figures: 'fidelity_figures',
   'draft-file': 'fidelity_draft_file',

@@ -2,7 +2,7 @@
  * e0cd4583 — THE CP39 PRINTED FORM'S READ, AGAINST A REAL DATABASE.
  *
  * `test/cp39-form.test.ts` pins the RULES with no database at all — the dating rule, the pagination, the
- * two blank columns, the fidelity claim — which is what makes them cheap to assert and impossible to get
+ * two staff-record columns, the fidelity claim — which is what makes them cheap to assert and impossible to get
  * wrong by accident. NONE of it executes a single line of `localization/my/cp39-form.ts`. This file pins
  * that half: that the four queries join what they claim to join, that the employer header comes off the
  * company's own statutory row, that the preparer block resolves the signatory's CURRENT job title, that
@@ -282,11 +282,16 @@ describe('the per-employee extras', () => {
   });
 
   /**
-   * THE TWO COLUMNS THE SCHEMA CANNOT FILL, asserted where the decision actually lives. `cp39FormFrom`
-   * reads them off the row rather than hardcoding them, precisely so a later read that started guessing a
-   * country code would be visible HERE rather than nowhere.
+   * THE TWO COLUMNS THE READ TAKES FROM THE STAFF RECORD — asserted where the decision actually lives.
+   *
+   * ⚠️ c99e8358: these are no longer "columns the schema cannot fill". Migration 0450 gave
+   * `employee_statutory_my` its own `old_ic_number` and `passport_issuing_country_code` and the read
+   * selects both, so this employee — hired with neither on file — is the BLANK-WHEN-ABSENT case rather
+   * than the never-populated one. `cp39FormFrom` reads them off the row rather than hardcoding them,
+   * precisely so a later read that started guessing a country code from the nationality text would be
+   * visible HERE rather than nowhere.
    */
-  it('emits No. K/P Lama and Kod Negara as explicit blanks, from the read itself', async () => {
+  it('emits No. K/P Lama and Kod Negara as blanks for an employee who has neither on file', async () => {
     await hire({ name: 'ANG PEI YEE', salary: 4000 });
     const r = await run('2026-07');
     expect(r.rows[0].oldIc).toBe('');

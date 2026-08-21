@@ -658,12 +658,19 @@ describe('the four pins', () => {
     // 9c8dad7a — AND BORANG A, WHICH IS THE SECOND MEMBER OF `agency-layout` AND NOT A THIRD STATUS.
     // Same argument, different agency: the reporter's EPF specimen is the same vendor's DevExpress output
     // and KWSP publishes no blank Borang A either, so there is no artwork on disk for it to have been
-    // drawn onto. The pair sharing ONE value is what stops the vocabulary growing a status per form.
+    // drawn onto. Forms sharing ONE value is what stops the vocabulary growing a status per form.
     expect(MY_REPORTS.find((r) => r.id === 'my.borang-a')!.fidelity).toBe('agency-layout');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /borang/i.test(f))).toEqual([]);
+    // c99e8358 — AND THE CP39, WHICH IS THE THIRD MEMBER. This line used to read
+    // `['my.borang-8a', 'my.borang-a']`, and that is the decision this change reverses: page one of the
+    // CP39 is now drawn to the Borang CP39 (Pin.2015) arrangement, transcribed from a filled specimen at
+    // `docs/forms/cp39-pin-2015-specimen.png`. The specimen is a VENDOR's rendering and is deliberately
+    // not in `public/forms/`, which is exactly why the CP39 joins this value and not the line above it.
+    expect(MY_REPORTS.find((r) => r.id === 'my.cp39')!.fidelity).toBe('agency-layout');
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /cp\W?39/i.test(f))).toEqual([]);
     expect(
       [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'agency-layout').map((e) => e.id).sort(),
-    ).toEqual(['my.borang-8a', 'my.borang-a']);
+    ).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39']);
   });
 
   /**

@@ -22,28 +22,26 @@
  * identity lives in ONE named exported function, `cp39DeductionPeriodFor`, with somewhere for a reviewer
  * to see it — and test/cp39-form.test.ts imports Borang A's rule to assert the two NEVER agree.
  *
- * ── WHY THIS FORM IS `figures` AND NOT `agency-layout`, LET ALONE `official` ──────────────────────
- * WE HAVE NEVER SEEN THE BORANG CP39 (Pin.2015) ARTWORK. There is no CP39 page in `public/forms/` (the
- * only file there is `cp22-pin-1-2021.pdf`), the ticket's reference PDF is a FILLED SAMPLE from another
- * payroll system, and the two earlier "agency reference" attachments in this repo turned out to be
- * exactly that — DevExpress output from another vendor, not KWSP's or PERKESO's page (HANDOFF, statutory
- * forms). Even those two only earned `agency-layout`. Here there is not even a completed specimen on
- * disk, so every box below is placed from the TICKET'S OWN PROSE list of fields and nothing else.
+ * ── WHY THIS FORM IS `agency-layout`, AND WHY IT MAY NEVER BE `official` ─────────────────────────
+ * c99e8358 (2026-08-21) MOVED THIS CLAIM, AND THE HALF THAT DID NOT MOVE IS THE IMPORTANT ONE.
  *
- * ⚠️ 7ee14bbc, MEASURED 2026-08-19 — THE SPECIMEN NOW HAS A NAME, AND IT CHANGES NOTHING ABOUT THE
- * CLAIM. The reference attached to that item, "Income Tax CP39.pdf", carries Producer = Developer
- * Express Inc. DXperience v23.2.5 and was created 2026-08-14: the SAME vendor signature as the EPF and
- * SOCSO "agency reference" attachments HANDOFF already records as another payroll system's output. It
- * is a faithful CP39 (Pin.2015) rendering — legible masthead, legible A/B/C panels, 13 rows against a
- * Bilangan Pekerja of 13, identity cards printed `941128-03-5179` — and those FIGURES are what r209
- * acted on. But it is a VENDOR'S DRAWING OF the agency's page, not the agency's page, and it is not in
- * this repository at all. So `fidelity` stays `figures`: the day the blank Borang CP39 from LHDN lands
- * in `public/forms/`, and not before, is the day this is reconsidered.
+ * WHAT CHANGED: a legible filled Borang CP39 (Pin.2015) is now IN THIS REPOSITORY —
+ * `docs/forms/cp39-pin-2015-specimen.png`, with every word on it transcribed by hand into
+ * `docs/forms/cp39-pin-2015-transcription.txt` together with the measured proportions of its rules.
+ * `lib/cp39-form-pdf.ts` draws page one to that arrangement: the LHDN masthead, the centred title block
+ * and its two statutory citations, UNTUK KEGUNAAN PEJABAT, the three-panel band and the A / B / C
+ * instruction panels, all in the specimen's own positions and its own words. That is exactly what
+ * `agency-layout` means — drawn to the agency's own arrangement, on our own paper, with no agency
+ * artwork on disk — and it is the value `my.borang-8a` and `my.borang-a` already carry for the same
+ * reason. `figures` (every number the form needs, complete, in OUR layout) understates it now.
  *
- * That is the definition of `figures`: every number the form needs, complete, in OUR layout rather than
- * the agency's page. `my.cp39` therefore KEEPS `fidelity: 'figures'` and the drawn page says so on its
- * face. Understating is safe; overstating is the failure the whole fidelity vocabulary exists to stop.
- * Upgrade it the day somebody puts the real artwork in `public/forms/` — not before.
+ * ⚠️ WHAT DID NOT CHANGE: THE SPECIMEN IS NOT LHDN ARTWORK AND NOTHING HERE MAY CLAIM `official`. It is
+ * another payroll system's rendering of the agency's page — the same provenance as the earlier CP39
+ * reference "Income Tax CP39.pdf" (Producer = Developer Express Inc. DXperience v23.2.5, created
+ * 2026-08-14), and the same as the EPF and SOCSO "agency reference" attachments HANDOFF records. It is
+ * deliberately NOT in `public/forms/`, which still holds exactly one genuine artwork,
+ * `cp22-pin-1-2021.pdf`, and `my.cp22` is still the only entry in the whole catalogue that says
+ * `official`. Understating is safe; overstating is the failure the whole vocabulary exists to stop.
  *
  * ── AND IT IS NOT A SUBMISSION ────────────────────────────────────────────────────────────────────
  * LHDN stopped accepting paper CP39 in September 2019; the filing goes through e-PCB / e-Data PCB /
@@ -617,8 +615,9 @@ export function cp39FormFrom(p: {
     personId: str(r.personId),
     tin: str(r.tin ?? r.taxNo),
     name: str(r.name),
-    // Read, not hardcoded, so the read stays the single source of the blank and this file has no opinion
-    // about WHY it is blank — but see the field docs above: nothing can currently populate either.
+    // Read, not hardcoded, so the read stays the single source of the value and this file has no opinion
+    // about where it came from. Both columns are REAL since migration 0450; blank here means the staff
+    // record has none, not that the system cannot hold one. See the field docs above.
     oldIc: str(r.oldIc),
     newIc: str(r.newIc ?? r.ic),
     employeeNo: str(r.employeeNo),
@@ -761,10 +760,10 @@ export function cp39FormTextExport(form: Cp39Form): string {
   L.push('CP39 — PENYATA POTONGAN CUKAI BULANAN (PCB) OLEH MAJIKAN');
   L.push('Seksyen 107, Akta Cukai Pendapatan 1967');
   L.push('');
-  L.push('OUR OWN LAYOUT, NOT LHDN ARTWORK. We hold no copy of the Borang CP39 (Pin.2015) page, so the');
-  L.push('boxes below are placed from the field list, not from the agency form. FOR INTERNAL RECORDS AND');
-  L.push('AS A PAYMENT COVER DOCUMENT ONLY — LHDN does not accept a paper CP39; file through e-PCB /');
-  L.push('e-Data PCB / e-CP39. The agency’s own printed A / B / C notes are NOT reproduced here.');
+  L.push('DRAWN TO THE AGENCY’S ARRANGEMENT, ON OUR OWN PAPER — NOT LHDN ARTWORK. The printed page follows');
+  L.push('the Borang CP39 (Pin.2015) layout, masthead and A / B / C notes included; this plain-text twin');
+  L.push('carries the same figures without the ruling. FOR INTERNAL RECORDS AND AS A PAYMENT COVER DOCUMENT');
+  L.push('ONLY — LHDN does not accept a paper CP39; file through e-PCB / e-Data PCB / e-CP39.');
   L.push('');
   L.push('BUTIR-BUTIR MAJIKAN');
   L.push(`  No. Majikan (E)              : ${form.employerNo || '—'}`);
@@ -861,8 +860,13 @@ export function cp39FormTextExport(form: Cp39Form): string {
   L.push('Left blank on purpose — these are yours to complete by hand, never payroll-derived:');
   L.push(`  ${stillBlank.join(' · ')}`);
   L.push('');
-  L.push('Columns we cannot fill and do not guess:');
-  L.push('  No. K/P Lama — no old-identity-card field exists on the staff record.');
-  L.push('  Kod Negara   — the passport’s issuing country is stored as free text, not a 2-letter code.');
+  // e4b541c6 / c99e8358 — THESE TWO USED TO BE LISTED AS COLUMNS NOTHING COULD EVER FILL. Migration 0450
+  // gave `employee_statutory_my` its own `old_ic_number` and `passport_issuing_country_code`, so that
+  // sentence became false on a tax document and had to go. The half that stands is why Kod Negara is a
+  // column of its own rather than something derived.
+  L.push('Columns taken from the staff record, and never guessed:');
+  L.push('  No. K/P Lama — the pre-1990 card where the employee has one. Blank means none is on file.');
+  L.push('  Kod Negara   — the passport’s issuing country as a 2-letter code, chosen by HR. NEVER derived');
+  L.push('                 from the nationality text beside it: “Malaysian” is not “MY”.');
   return L.join('\n') + '\n';
 }
