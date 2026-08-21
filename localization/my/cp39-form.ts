@@ -29,12 +29,20 @@
  *     `employee_statutory_my.passport_number` — No. Pasport.
  *   • `company_statutory_authority` for authority `lhdn` — the preparer block's defaults.
  *
- * ⚠️ TWO COLUMNS ON THE FORM HAVE NO SOURCE AND ARE LEFT BLANK, WHICH IS WHAT THE PLAN WAS APPROVED
- * WITH. There is no old-identity-card column anywhere in the schema (No. K/P Lama), and the passport's
- * issuing country is stored as FREE TEXT from an international picker rather than the two-letter code
- * Kod Negara wants — with no name→ISO-2 helper in the repo to convert it. Guessing either onto a tax
- * document is worse than an empty box, and the e-Data PCB file already leaves both blank. They are
- * emitted as explicit empty strings rather than omitted so the printed column has something to render.
+ * ⚠️ TWO COLUMNS THAT USED TO HAVE NO SOURCE NOW HAVE THEIR OWN, AND ONE HALF OF THE OLD ARGUMENT
+ * STILL STANDS. Migration 0450 (e4b541c6, deployed) added `employee_statutory_my.old_ic_number` and
+ * `employee_statutory_my.passport_issuing_country_code`, both typed by an admin on the Profile tab, and
+ * the select below reads them. So No. K/P Lama and Kod Negara PRINT whatever is on the staff record and
+ * are blank only when the record has none — blank means "none on file", never "the system cannot hold
+ * one". They are still emitted as explicit empty strings rather than omitted so the printed column has
+ * something to render.
+ *
+ * THE HALF THAT DID NOT MOVE, and the reason Kod Negara is a stored column rather than something
+ * derived: `passport_issuing_country` beside it is fed from the tenant's NATIONALITY option list, so it
+ * holds a demonym ("Malaysian"), and the CP39 wants an ISO-2 ("MY"). There is no name→ISO-2 helper in
+ * this repo and there must not become one on this path: a mapping that looked right would put a WRONG
+ * statutory code beside somebody's tax reference number and read as completely normal on the page.
+ * test/cp39-form.test.ts pins that the demonym column never appears in this select at all.
  *
  * ── THE PREPARER BLOCK DEFAULTS FROM THE COMPANY, NOT FROM WHOEVER IS LOGGED IN ───────────────────
  * The ticket asks for it to default from the logged-in HR user's profile. It defaults from
@@ -76,8 +84,8 @@ import type { ReportParams } from './reports';
  * that is precisely the failure the fidelity vocabulary exists to prevent.
  */
 export const CP39_FORM_NOTES = [
-  'The printed CP39 is OUR layout of the form’s fields, not LHDN’s own page — we hold no copy of the ' +
-    'Borang CP39 (Pin.2015) artwork, and the agency’s printed A / B / C notes are not reproduced. ' +
+  'The printed CP39 follows the Borang CP39 (Pin.2015) arrangement — masthead, payment panel and the ' +
+    'A / B / C notes — but it is printed on our own paper and is not LHDN artwork. ' +
     'Check every figure before you key or pay it.',
   'LHDN has not accepted a paper CP39 since September 2019. Use the printed form for your own records ' +
     'and as a payment cover document; the filing itself goes through e-PCB / e-Data PCB / e-CP39, which ' +
@@ -110,9 +118,12 @@ export type Cp39FormRowExtras = {
   personId: string;
   employeeNo: string;
   passport: string;
-  /** Always ''. See the block comment above — no ISO-2 column exists and none is guessed. */
+  /**
+   * Kod Negara — `employee_statutory_my.passport_issuing_country_code`, an ISO-2 the admin PICKS.
+   * '' when the record has none. NEVER derived from `passport_issuing_country`; see the block comment.
+   */
   countryCode: string;
-  /** Always ''. See the block comment above — no old-identity-card column exists. */
+  /** No. K/P Lama — `employee_statutory_my.old_ic_number`. '' when the employee has no pre-1990 card. */
   oldIc: string;
 };
 

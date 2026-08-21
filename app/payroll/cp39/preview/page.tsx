@@ -154,10 +154,12 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
   );
 
   // THE PROVENANCE NOTICE, above everything and never in a tooltip: what comes off this screen looks like
-  // a government form and is not one — and unlike the EPF and PERKESO forms beside it, we do not even
-  // hold a completed specimen of the agency's page to have drawn from. That is the single claim the
-  // statutory-forms fidelity vocabulary exists to keep honest, and the screen that produces the document
-  // is where it has to be said.
+  // a government form and is not one. c99e8358 REWORDED IT RATHER THAN REMOVING IT — the old wording said
+  // we held no specimen and did not reproduce LHDN's A / B / C notes, and page one now IS drawn to the
+  // Pin.2015 arrangement with those notes on it, so the sentence had stopped being true. What has not
+  // changed is the claim the notice exists for: the arrangement is the agency's, the PAPER is ours, and
+  // `agency-layout` is as far as this goes. That is the single claim the statutory-forms fidelity
+  // vocabulary exists to keep honest, and the screen that produces the document is where it is said.
   const provenance = (
     <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
       <span className="font-medium">{t('notArtworkTitle')}</span>{' '}
@@ -315,8 +317,11 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
         </div>
       )}
 
-      {/* THE TWO COLUMNS WE CANNOT FILL, SAID ONCE, HERE. A blank column with no explanation reads as a
-          bug and invites somebody to "fix" it by guessing a country code onto a tax document. */}
+      {/* THE TWO COLUMNS, SAID ONCE, HERE — AND WHAT THEY MEAN CHANGED WITH MIGRATION 0450. They are no
+          longer unfillable: `old_ic_number` and `passport_issuing_country_code` are real columns an admin
+          types on the Profile tab, so a blank one means the staff record has none. The half that did not
+          change is why Kod Negara is typed rather than derived — guessing a country code onto a tax
+          document from the nationality text beside it is the failure this notice exists to prevent. */}
       <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <p className="font-medium">{t('blankColumnsTitle')}</p>
         <p className="mt-1">{t('blankColumnsHint')}</p>
