@@ -34,10 +34,20 @@ ELSE in that dry run is an undeployed release.
 (`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **Next free is `0450`.**
-**Board after r212 + the r213 planning round (2026-08-21): `deployed = 723` · `cancelled = 14` ·
-`approved = 1` · `planned = 1` · everything else ZERO.** r210 shipped six; r211 planned four; r212 shipped
-`8ebf77ae` and `5206539f`, closed `e52ce9b6` and blocked `c1b14600`. r213 planned `18c1d92b` (the PERKESO
-SOCSO + EIS upload file). Mockup sources: `docs/mockups/*-r21*.html`.
+**Board after the r214 planning round (2026-08-21): `deployed = 723` · `cancelled = 14` · `approved = 2`
+· `planned = 2` · open and contested ZERO.** Approved and buildable: `c1b14600` (a VERIFICATION, see
+below) and `18c1d92b` (the PERKESO SOCSO + EIS upload file). Planned, awaiting the reporter: `da4fc817`
+(EA C.P.8A gaps) and `e4b541c6` (CP39). Mockup sources: `docs/mockups/*-r21*.html`.
+
+⚠️⚠️ **THE REPORTER'S REFERENCE DOCUMENTS COME FROM A SYSTEM WHOSE STAFF ARE NOT IN OURS. Read this before
+building any statutory file.** The KWSP `EPFORMA2`, the PERKESO `BRG8A` and the filed `CP39` all name the
+same fourteen people — AHMAD AZMER IZAT, AHMAD MUHAIMIN, SHAMIMI MAZWANI, FAZLIANA BINTI ISMAIL and the
+rest — and **not one of them exists in `person` on production** (checked 2026-08-21). Meanwhile ISEDECOR
+BINA's 2026-01 payroll here holds nineteen people named `TEST0001`…`TEST0014` and `ISMAIL`, with PCB of
+RM6,919.45 against the RM15,374.70 their filed CP39 declares. **The documents are authoritative for
+FORMAT and worthless for RECONCILIATION.** Any test asserting our output equals theirs fails for a reason
+that has nothing to do with the file. Loading their real staff is its own piece of work and nobody has
+asked for it yet.
 
 ⚠️ **`c1b14600` IS UNBLOCKED AND APPROVED — AND THE REPORTER'S ANSWER CHANGED WHAT IT IS.** They did NOT
 name companies. They answered: *"I already have an existing configuration under Leave Config >
@@ -105,8 +115,24 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**PICK UP `c1b14600` (a verification, see above) — it is the one approved item.** `18c1d92b` sits
-`planned` awaiting the reporter.
+**TWO ITEMS ARE APPROVED AND BUILDABLE:** `c1b14600` (a verification — see CURRENT STATE) and
+`18c1d92b` (the PERKESO file, below). `da4fc817` and `e4b541c6` sit `planned` awaiting the reporter.
+
+**`da4fc817` (EA C.P.8A Pin. 2024) — SECTIONS A, B AND C ARE COMPLETE; D, E AND F ARE NOT.** Compared
+field by field against the blank official form they attached. Missing: D4 approved donations, D5(a) TP1
+relief (now a REAL figure — TP1 shipped r209/r210), D5(b) zakat outside salary, D6 total child relief;
+Section E's fund NAME; **Section F entirely** — `lib/ea-pdf.ts:283-286` prints `exemptAllowances` as a
+muted row inside Part B and its own comment already admits "LHDN's EA reports exempt allowances in their
+own section"; the header identifiers (employee TIN, employer E, No. Siri, LHDNM Negeri); and the
+certification box. Extend `ea_override`'s field list for the boxes payroll cannot source — do NOT build a
+second override path — and use `optionalRow`, because r209 shipped a rule-28 defect on this exact form by
+drawing derived-zero boxes.
+
+**`e4b541c6` (CP39) — ALREADY MATCHES THEIR FILED RETURN.** r209's work is visible in their own document
+(dashed ICs, the pcb>0-or-cp38>0 filter, the masthead and instruction panels). The only real gaps are
+SCHEMA: `oldIc` and `countryCode` are declared on the row and documented as permanently empty because
+`employee_statutory_my` stores neither an old IC nor an ISO country code — and both columns are blank in
+the reporter's own filed return too.
 
 ⚠️ **`18c1d92b` (PERKESO SOCSO + EIS upload file) — THE REAL WORK IS THE READ, NOT THE WRITER.** The file
 does not exist (`app/payroll/borang-8a` has pdf, preview and text but no `file/` route; the "text" one is
