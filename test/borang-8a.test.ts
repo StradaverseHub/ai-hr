@@ -14,7 +14,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { Borang8AMycoidNotice } from '../app/payroll/borang-8a/mycoid-notice';
 import {
   BORANG_8A_HEADER_KEYS,
   BORANG_8A_STATUS_PARAM_PREFIX,
@@ -816,5 +819,122 @@ describe('the review screen’s own words', () => {
     expect(hint).not.toMatch(/\bofficial\b|\bvalidated\b|ready to file|approved by|government/i);
     expect(hint).toMatch(/no blank/i);
     expect((en.payroll.borang8a as Record<string, string>).notArtwork).toMatch(/PERKESO publishes no blank/i);
+  });
+});
+
+/**
+ * 5dbce839 — THE MYCOID BOX GOES OUT EMPTY, AND THE SCREEN HAS TO SAY SO.
+ *
+ * `company_statutory_my.ssm_registration_no` is NULL for the reporter's company, so positions 13-32 of
+ * every record in the PERKESO upload file carry twenty spaces, where the file they successfully filed
+ * carries "34111U". The specification marks the field Mandatory = N, so this must NOT become a refusal —
+ * `missingBorang8AHeader` excludes mycoid on purpose and that stays. The fix is to stop handing over a
+ * quietly empty box.
+ *
+ * BOTH HALVES ARE A RENDER, NOT A SOURCE SCAN, and that is why the notice is its own module. A source
+ * check can see that a conditional exists; it cannot see which way round the condition is, so it would
+ * pass just as happily on a notice that appears when the number IS set. These two cases render the real
+ * component with the real English words and read the markup.
+ */
+describe('5dbce839 — the MyCoID notice on the Borang 8A preview', () => {
+  const ns = en.payroll.borang8a as Record<string, string>;
+  const render = (mycoid: string | null | undefined) =>
+    renderToStaticMarkup(
+      createElement(Borang8AMycoidNotice, { mycoid, title: ns.mycoidNoticeTitle, body: ns.mycoidNoticeBody }),
+    );
+
+  it('APPEARS when the MyCoID / business registration number is blank', () => {
+    for (const blank of ['', '   ', null, undefined]) {
+      const html = render(blank);
+      expect(html, `mycoid ${JSON.stringify(blank)}`).toContain(ns.mycoidNoticeTitle);
+      expect(html, `mycoid ${JSON.stringify(blank)}`).toContain(ns.mycoidNoticeBody);
+    }
+  });
+
+  it('does NOT appear when the number is set', () => {
+    // The reporter's own number, and an arbitrary one — neither produces any markup at all.
+    for (const set of ['34111U', '202301001234']) {
+      expect(render(set), `mycoid ${set}`).toBe('');
+    }
+  });
+
+  /** A NOTICE, NEVER A GATE: the specification says the field is optional, so nothing may hide a button. */
+  it('says the file is still produced, and names where to set the number', () => {
+    expect(ns.mycoidNoticeBody).toMatch(/not mandatory/i);
+    expect(ns.mycoidNoticeBody).toMatch(/Statutory identity/);
+    // The download gate is unchanged — mycoid is still out of the blocking set.
+    expect(missingBorang8AHeader({ employerCode: 'E1100007357Y', employerName: 'ISEDECOR BINA SDN BHD' })).not.toContain(
+      'mycoid',
+    );
+    expect(PREVIEW).toContain('const ready = missing.length === 0 && headerMissing.length === 0');
+  });
+
+  /** The component is rendered by the screen, with the two keys, or it is a module nobody reaches. */
+  it('is rendered on the preview screen beside the download buttons', () => {
+    expect(PREVIEW).toContain("import { Borang8AMycoidNotice } from '../mycoid-notice'");
+    expect(PREVIEW).toContain("<Borang8AMycoidNotice mycoid={form.mycoid}");
+    expect(PREVIEW).toContain("title={t('mycoidNoticeTitle')}");
+    expect(PREVIEW).toContain("body={t('mycoidNoticeBody')}");
+  });
+});
+
+/**
+ * 5dbce839 — THE TWO .TXT DOWNLOADS MUST NOT BE CONFUSABLE.
+ *
+ * The screen offers two files whose names both end in .txt: a readable transcription for keying by hand
+ * (`borang-8a-<code>-<period>.txt`) and the fixed-width PERKESO file (`perkeso-socso-<code>-<period>.txt`).
+ * The reporter's request describes a two-line record that does not exist in either file — the likeliest
+ * explanation, given the labels were "Download as text" and "Download upload file", is that they uploaded
+ * the readable one. Both labels now say which is which in the label itself, in every locale.
+ */
+describe('5dbce839 — one .txt is for reading, one is for uploading, in every locale', () => {
+  const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+  const nsOf = (l: string) =>
+    (JSON.parse(read(`messages/${l}.json`)) as { payroll: { borang8a: Record<string, string> } }).payroll.borang8a;
+
+  /**
+   * THE ONE TOKEN THAT SURVIVES TRANSLATION. "ASSIST" is the portal's name and is left untranslated in all
+   * six locales, so it is the thing a reader in any language can look for. It belongs on the upload button
+   * and nowhere near the readable one — which is the whole distinction, in one grep.
+   */
+  it.each(LOCALES)('%s names the ASSIST portal on the upload button and NOT on the readable one', (l) => {
+    const ns = nsOf(l);
+    expect(ns.downloadFile, `${l} downloadFile`).toContain('ASSIST');
+    expect(ns.downloadFileTitle, `${l} downloadFileTitle`).toContain('ASSIST');
+    expect(ns.downloadText, `${l} downloadText`).not.toContain('ASSIST');
+    // …and the two labels are not merely different by a word neither of them explains.
+    expect(ns.downloadText).not.toBe(ns.downloadFile);
+    expect(ns.downloadTextTitle).not.toBe(ns.downloadFileTitle);
+  });
+
+  it('says in English which one is read and which one is uploaded', () => {
+    const ns = en.payroll.borang8a as Record<string, string>;
+    expect(ns.downloadText).toMatch(/readable/i);
+    expect(ns.downloadText).toMatch(/not for upload/i);
+    expect(ns.downloadTextTitle).toMatch(/READ/);
+    expect(ns.downloadTextTitle).toMatch(/NOT the file the portal accepts/i);
+    expect(ns.downloadFile).toMatch(/upload file/i);
+    expect(ns.downloadFileTitle).toMatch(/THE FILE YOU UPLOAD/);
+    expect(ns.downloadFileTitle).toContain('278 characters');
+  });
+
+  /**
+   * ⚠️ THE BUTTON MECHANISM IS UNTOUCHED, AND MUST BE. This form is method="get", so the browser rebuilds
+   * the query string from the fields and DISCARDS one written on the action URL: `formAction=".../file?
+   * report=1"` would silently hand over the file. A hidden input is the opposite trap — every button in
+   * the form submits it. Only a submit button's own name/value is sent by that button alone.
+   * test/perkeso-socso-file.test.ts pins both halves; this repeats the half that lives on this screen,
+   * beside the labels this round reworded, because rewording a button is exactly when somebody
+   * "tidies up" the attribute soup underneath it.
+   */
+  it('rewords the labels without touching how the report button asks for the report', () => {
+    expect(PREVIEW).toMatch(/name="report"\s*\n?\s*value="1"/);
+    expect(PREVIEW).not.toContain('/payroll/borang-8a/file?report');
+    expect(PREVIEW_CODE).not.toMatch(/<input[^>]*name="report"/);
+    // Three download buttons and the report button, each still its own formAction on the same form.
+    expect(PREVIEW).toContain('formAction="/payroll/borang-8a/text"');
+    expect(PREVIEW).toContain('formAction="/payroll/borang-8a/file"');
+    expect(PREVIEW).toContain("{t('downloadText')}");
+    expect(PREVIEW).toContain("{t('downloadFile')}");
   });
 });
