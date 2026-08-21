@@ -358,13 +358,20 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
                 <button className={btnGhost} formAction="/payroll/borang-8a/file" title={t('downloadFileTitle')}>
                   {t('downloadFile')}
                 </button>
-                {/* The same route with `report=1`: the field-by-field check, to read BEFORE downloading.
-                    A hidden input rather than a query on formAction, because this form posts its filters
-                    and a hand-built URL here would drop them. */}
+                {/* The same route asked for the field-by-field check instead of the file.
+                    ⚠️ `report=1` IS THE BUTTON'S OWN name/value, NOT a query string on formAction and NOT
+                    a hidden input, and both alternatives are wrong here for opposite reasons. This form is
+                    method="get", so per the HTML spec the browser DISCARDS the action URL's query string
+                    and rebuilds it from the fields — `formAction=".../file?report=1"` would silently hand
+                    over the FILE. And a hidden input is submitted by every button in the form (the
+                    presence-is-a-value trap), so the two download buttons above would start returning the
+                    report. A submit button's name/value pair is sent only when THAT button submits. */}
                 <button
                   className={btnGhost}
-                  formAction="/payroll/borang-8a/file?report=1"
+                  formAction="/payroll/borang-8a/file"
                   formTarget="_blank"
+                  name="report"
+                  value="1"
                   title={t('checkFileTitle')}
                 >
                   {t('checkFile')}

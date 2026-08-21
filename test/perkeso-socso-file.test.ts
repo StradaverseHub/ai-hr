@@ -173,6 +173,26 @@ describe('18c1d92b — the mapping lives in ONE place', () => {
    * 214 tests green. Here the download's call site must DELEGATE, and the golden above drives the same
    * function — so a swap has nowhere to hide.
    */
+  /**
+   * THE CONTRACT BETWEEN THE PAGE AND THE ROUTE, pinned on BOTH sides (AGENTS 17), because a unit test of
+   * either half passes throughout. The download form is method="get", so per the HTML spec the browser
+   * DISCARDS a query string on the action URL and rebuilds it from the fields — a `formAction` carrying
+   * `?report=1` hands over the FILE while looking correct in the source. A hidden input is the opposite
+   * trap: it is submitted by EVERY button in the form. Only a submit button's own name/value is sent by
+   * that button alone, and that is what the route reads.
+   */
+  it('the report is requested by the button own name/value, not a query string or a hidden input', () => {
+    const page = fs.readFileSync(path.join(ROOT, 'app/payroll/borang-8a/preview/page.tsx'), 'utf8');
+    expect(page).toContain('formAction="/payroll/borang-8a/file"');
+    expect(page).toMatch(/name="report"\s*\n?\s*value="1"/);
+    // The two shapes that would break it, refused in the page's own source.
+    expect(page).not.toContain('/payroll/borang-8a/file?report');
+    expect(page).not.toMatch(/<input[^>]*name="report"/);
+    // …and the route reads exactly that field.
+    const route = fs.readFileSync(path.join(ROOT, 'app/payroll/borang-8a/file/route.ts'), 'utf8');
+    expect(route).toContain("q.get('report') === '1'");
+  });
+
   it('the download delegates to perkesoFileEmployeesFrom instead of restating the fields', () => {
     const shared = fs.readFileSync(path.join(ROOT, 'app/payroll/borang-8a/shared.ts'), 'utf8');
     expect(shared).toContain('employees: perkesoFileEmployeesFrom(');
