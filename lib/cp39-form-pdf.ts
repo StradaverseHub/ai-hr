@@ -1,61 +1,336 @@
 /**
- * e0cd4583 — draw a CP39 monthly PCB statement, A4 portrait, with pdf-lib (pure JS, no WASM/native, so
- * no Next bundler friction). Mirrors lib/borang-a-pdf.ts and lib/borang-8a-pdf.ts, which are the house
- * pattern for a form we draw from scratch.
+ * e0cd4583 — draw a CP39 monthly PCB statement with pdf-lib (pure JS, no WASM/native, so no Next
+ * bundler friction). Mirrors lib/borang-a-pdf.ts and lib/borang-8a-pdf.ts, which are the house pattern
+ * for a form we draw from scratch.
  *
- * ⚠️⚠️ THERE IS NO BORANG CP39 (Pin.2015) ARTWORK IN THIS REPOSITORY AND WE HAVE NEVER SEEN ONE.
- * `public/forms/` holds exactly one file, `cp22-pin-1-2021.pdf`. The ticket's reference is a FILLED
- * SAMPLE produced by another payroll system, and the two earlier "agency reference" attachments in this
- * repo turned out to be exactly that as well — vendor output, not the agency's page (HANDOFF, statutory
- * forms). So every box, rule and heading below is placed from the TICKET'S OWN PROSE list of fields.
- * That is why `my.cp39` keeps `fidelity: 'figures'` and why this page says so on its face. See the
- * header of lib/cp39-form.ts for the full argument.
+ * ── TWO PAGE SIZES IN ONE DOCUMENT, WHICH IS THE FIRST THING TO KNOW ──────────────────────────────
+ * PAGE ONE IS A4 LANDSCAPE and is drawn to the Borang CP39 (Pin.2015) arrangement. The employee
+ * schedule from page two onward stays A4 PORTRAIT, because ten columns of names and identity card
+ * numbers were laid out for portrait and re-tiling them is a different change with a different risk.
+ * pdf-lib takes a size per `addPage`, so the two live side by side in one file: `drawCover` calls
+ * `addPage([CW, CH])` and `drawTableSheet` calls `addPage([W, H])`. Neither `paginateCp39` nor
+ * `CP39_TABLE_COLUMNS` knows or cares.
  *
- * ── WHAT IS DELIBERATELY NOT DRAWN, AND WHY ───────────────────────────────────────────────────────
- *   • The LHDN masthead address block. We do not hold it. Printing a government office address from
- *     memory onto something that looks like a tax form is inventing a fact about a filing.
- *   • The "A BORANG CP39 / B PEMBAYARAN / C PERINGATAN" instructions panel. The request asks for it to
- *     be reproduced "as-is", and reproducing statutory instruction text we have never read would be
- *     fabricating the content of a government document. The page says the notes are not reproduced and
- *     where to read them instead, which is the honest version of the same box.
- *   • The signature. Manual by definition — the request says to leave it blank for physical signing, so
- *     it is drawn as a box to sign in.
+ * ── c99e8358 — THE MASTHEAD AND THE A / B / C PANELS ARE NOW DRAWN, AND WHERE THE WORDS CAME FROM ──
+ * `docs/forms/cp39-pin-2015-specimen.png` is a FILLED Borang CP39 (Pin.2015) — legible masthead,
+ * legible A / B / C instruction panels — and `docs/forms/cp39-pin-2015-transcription.txt` is a
+ * hand-made, word-for-word transcription of it together with the measured proportions of every rule on
+ * the page. `CP39_NOTE_A`, `CP39_NOTE_B*` and `CP39_NOTE_C` below are that transcription, verbatim,
+ * including the specimen's own doubled "CP38 - CP38 -" in A.6 and its own "borang in lieu of CP39".
+ * `docs/forms/cp39-our-output-2026-08-21.png` is what this file produced BEFORE the redraw, kept so the
+ * change stays legible to the next reader.
  *
- * ⚠️ 7ee14bbc (2026-08-19) — THE FIRST TWO ARE STILL NOT DRAWN, BUT THE REASON HAS MOVED AND THE NEW
- * ONE IS RECORDED HERE RATHER THAN LEFT TO BE REDISCOVERED. A legible specimen now EXISTS: the
- * reference attached to that board item, "Income Tax CP39.pdf" (Producer = Developer Express Inc.
- * DXperience v23.2.5, created 2026-08-14 — the same vendor signature as the EPF and SOCSO "agency
- * reference" attachments HANDOFF records), is a faithful CP39 Pin.2015 rendering whose masthead and
- * A/B/C panels can be read off it. The approved plan calls for transcribing them FROM THAT SPECIMEN.
+ * ⚠️ THE PRINCIPLE THAT KEPT THEM UNDRAWN UNTIL NOW STILL GOVERNS EVERY WORD ON THIS PAGE, AND IT IS
+ * THE REASON THIS PARAGRAPH IS NOT DELETED. Printing a government office address from memory is
+ * inventing a fact about a filing; writing out a statutory instruction panel from memory is
+ * fabricating the content of a government document. Neither is any less true than it was. What changed
+ * is only the input: there is now a transcription in this repository to copy FROM, so nothing here is
+ * remembered. Anything this page cannot read off that transcription still does not get printed —
+ * a Sabah or Sarawak address that is not on the specimen, a receipt number, a signature.
  *
- * It has NOT been transcribed here, and the reason is not the old one. The old reason was "we have
- * never read this text". The new one is "the specimen is not in this repository" — it lives on the
- * feedback board, `public/forms/` still holds only `cp22-pin-1-2021.pdf`, and the build that would have
- * copied it had no access to the file. Transcribing a government instruction panel FROM MEMORY instead
- * is the precise failure the paragraph above exists to prevent, and it would be worse than the gap,
- * because a fabricated panel reads as authoritative. Put the specimen (better: the blank LHDN form) in
- * `public/forms/`, then transcribe, and only then reconsider `fidelity` — which stays `figures` in any
- * case while the source is a vendor's drawing of the agency's page rather than the agency's page.
+ * ⚠️ AND THE SPECIMEN IS STILL NOT LHDN ARTWORK. It is another payroll system's rendering of the
+ * agency's page — the same provenance as the earlier CP39 reference "Income Tax CP39.pdf"
+ * (Producer = Developer Express Inc. DXperience v23.2.5), and the same as the EPF and SOCSO "agency
+ * reference" attachments HANDOFF records. `public/forms/` still holds exactly one genuine artwork,
+ * `cp22-pin-1-2021.pdf`, and the specimen deliberately does NOT go there. So `my.cp39` declares
+ * `agency-layout` — drawn to the agency's own arrangement, on our own paper, with no agency artwork on
+ * disk, exactly like `my.borang-8a` and `my.borang-a` — and it may NEVER declare `official`. The page
+ * says so on its own face in the strip along the bottom.
  *
- * The payment instrument (cheque / bank draft / postal order number and branch) is manual in the same
- * sense — never payroll-derived — but it IS typeable on the review screen, because this page doubles as
- * the payment cover document and the operator normally has the instrument in front of them when they
- * print it. Typed, it prints; untyped, it prints the same ruled line it always did.
+ * The signature stays a rule to write on: manual by definition. The payment instrument (cheque / bank
+ * draft / postal order number and its branch) is manual in the same sense — never payroll-derived — but
+ * it IS typeable on the review screen, because this page doubles as the payment cover document and the
+ * operator normally has the instrument in front of them when they print it. Typed, it prints; untyped,
+ * it prints the same ruled line the specimen prints there.
  *
  * ── PAGINATION IS THE PART THAT GOES WRONG SILENTLY ───────────────────────────────────────────────
- * Page 1 is the cover — employer, period, payment summary and preparer. The employee table starts on
+ * Page 1 is the cover — employer, period, payment panel and preparer. The employee table starts on
  * page 2 and runs as many sheets as it needs, each closing with its own JUMLAH and the last also
  * carrying JUMLAH BESAR. The arithmetic lives in `paginateCp39`, where it is asserted at one, two and
  * three sheets without a PDF in sight.
  */
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { cp39ScheduleScopeNote, formatMyIc, money, type Cp39Form, type Cp39FormPage } from './cp39-form';
 
-/** A4 portrait, in points. */
+/** A4 portrait, in points — the employee schedule sheets, page two onward. */
 const W = 595.28;
 const H = 841.89;
 const M = 28;
 const RIGHT = W - M;
+
+/** A4 LANDSCAPE, in points — page one only. */
+const CW = 841.89;
+const CH = 595.28;
+
+/**
+ * ── THE COVER'S GEOMETRY, MEASURED OFF THE SPECIMEN RATHER THAN GUESSED ───────────────────────────
+ *
+ * Every number here is a rule that was measured on `docs/forms/cp39-pin-2015-specimen.png` (1212 x 829)
+ * and mapped onto A4 landscape by holding the LEFT and RIGHT margins at 36pt and scaling the interior:
+ * `36 + (px - 52) * (770 / 1122)` horizontally, `30 + (px - 42) * 0.715` vertically. The percentages in
+ * `docs/forms/cp39-pin-2015-transcription.txt` are the same rules stated as fractions of the page.
+ *
+ * `x` is points from the LEFT edge. `yTop` is points from the TOP edge, because that is how the
+ * specimen reads and how a form is described; `at()` inside the renderer turns one into a pdf-lib y.
+ *
+ * Exported so test/cp39-form.test.ts measures WHAT IS ACTUALLY DRAWN — the r193 Borang 8A lesson,
+ * brought up to the cover: a caption is not clipped by pdf-lib, so one wider than its panel prints
+ * straight into its neighbour and the page still renders, still returns 200 and still downloads.
+ */
+export const CP39_COVER = {
+  W: CW,
+  H: CH,
+  x: {
+    left: 36,
+    /** KETUA PENGARAH … box: the left masthead block. */
+    mastheadRight: 260.4,
+    /** UNTUK KEGUNAAN PEJABAT box. */
+    officeLeft: 609,
+    right: 806,
+    /** BUTIR-BUTIR MAJIKAN | BUTIR-BUTIR PEMBAYARAN. */
+    panel1Right: 323.6,
+    /** BUTIR-BUTIR PEMBAYARAN | PEGAWAI YANG MENYEDIAKAN MAKLUMAT. */
+    panel2Right: 585.7,
+    /** Inside the payment panel: its own row-label column. */
+    payLabelRight: 402.5,
+    /** Inside the payment panel: PCB column | CP 38 column. THE TRANSPOSITION LINE. */
+    payPcbRight: 496.5,
+    /** Inside the payment panel's instrument block: the Amaun/Nombor/Cawangan/Tarikh label column. */
+    payInstrLabelRight: 462.2,
+    /** The notes band: A fills the left half, B and C stack in the right half. */
+    noteBLeft: 415.5,
+    /** The [ A ] letter cell and the [ BORANG CP 39 ] title cell beside it. */
+    noteLetterRight: 53.8,
+    noteTitleRight: 173.9,
+  },
+  yTop: {
+    photocopy: 22,
+    boxTop: 30,
+    officeBottom: 120.1,
+    mastheadBottom: 123,
+    bandTop: 139.4,
+    /** Bottom of the three panel HEADINGS row. */
+    bandHeadBottom: 153.7,
+    /** Bottom of the PCB / CP 38 column-heading row inside the payment panel. */
+    payHeadBottom: 168.7,
+    payJumlahBottom: 182.3,
+    payBilanganBottom: 200.9,
+    bandBottom: 276.7,
+    noteHeadTop: 286,
+    noteHeadBottom: 303.1,
+    noteBodyTop: 314.6,
+    /**
+     * C SITS ~20pt HIGHER THAN ON THE SPECIMEN, AND THAT IS THE ONE DELIBERATE DEPARTURE.
+     * The specimen runs C down to the foot of the sheet because it has nothing else to print there;
+     * ours carries the provenance strip below it, which the agency's page has no reason to have. The
+     * alternative was to overprint C's second line with it, which is how a caption ends up underneath
+     * its own box.
+     */
+    noteCHeadTop: 492,
+    noteCHeadBottom: 509.1,
+    /** The provenance strip: small type along the foot of the cover. */
+    footTop: 545,
+  },
+} as const;
+
+/** Type size of a panel heading on the cover (BUTIR-BUTIR MAJIKAN, UNTUK KEGUNAAN PEJABAT, …). */
+export const CP39_COVER_HEADING_SIZE = 7.5;
+/** Type size of a printed value on the cover — an employer name, an amount, a preparer's IC. */
+export const CP39_COVER_VALUE_SIZE = 7.5;
+/** Type size of the A / B / C instruction panels. */
+export const CP39_NOTE_SIZE = 6.5;
+/** Baseline-to-baseline distance in the A / B / C panels. */
+export const CP39_NOTE_LEADING = 10.2;
+
+/**
+ * One printed line of an instruction panel, as a list of runs on ONE baseline.
+ *
+ * `dx` is the offset from the panel's own left edge, so a numbered item is `[{dx:0,'1.'},{dx:14,…}]`
+ * and its continuation is `[{dx:14,…}]` — the marker keeps its own gutter and the prose hangs beside it,
+ * which is how the specimen sets them. Only the LAST run wraps; its continuation lines resume at that
+ * run's own `dx`. A.6 needs three runs on one baseline, which is why this is a list rather than a
+ * (marker, text) pair.
+ */
+export type Cp39NoteRun = { dx: number; text: string };
+export type Cp39NoteLine = readonly Cp39NoteRun[];
+
+/**
+ * ── PANEL A, VERBATIM ─────────────────────────────────────────────────────────────────────────────
+ *
+ * Copied word for word from `docs/forms/cp39-pin-2015-transcription.txt`, which was transcribed by hand
+ * from the specimen. NOT paraphrased, NOT translated, NOT corrected: "borang in lieu of CP39" in 3.2(ii)
+ * and the doubled "CP38 - CP38 -" in item 6 are the specimen's own and stay. Malay on every locale, like
+ * every other drawn statutory form here — the viewer's language never changes a Malaysian tax form.
+ *
+ * The only thing that is not preserved is RUNS OF SPACES: the specimen aligns "PCB" and "CP38" in item 6
+ * with padding, and this file aligns them with `dx` instead, which is the same alignment expressed in
+ * points rather than in spaces.
+ */
+export const CP39_NOTE_A_TITLE = 'BORANG CP 39';
+export const CP39_NOTE_A: readonly Cp39NoteLine[] = [
+  [{ dx: 0, text: '1.' }, { dx: 15, text: 'Borang ini mesti diisi dengan lengkap dan betul.' }],
+  [
+    { dx: 0, text: '2.' },
+    {
+      dx: 15,
+      text:
+        'Majikan digalakkan menghantar maklumat potongan melalui e-PCB/e-Data PCB/disket/cakera ' +
+        'padat/pemacu flash mengikut format yang ditentukan oleh LHDN bagi menggantikan Borang CP39.',
+    },
+  ],
+  [{ dx: 0, text: '3.' }, { dx: 15, text: 'No. Cukai Pendapatan:' }],
+  [
+    { dx: 15, text: '3.1' },
+    { dx: 35, text: 'Isikan nombor cukai pendapatan dalam ruangan yang telah disediakan.' },
+  ],
+  [{ dx: 35, text: 'Contoh: SG 2506203-00(0) boleh diisi sebagai SG 02506203000' }],
+  [
+    { dx: 15, text: '3.2' },
+    {
+      dx: 35,
+      text:
+        'Bagi pekerja yang layak dikenakan PCB tetapi tiada nombor cukai pendapatan, ' +
+        'pendaftaran boleh dibuat melalui :',
+    },
+  ],
+  [
+    { dx: 45, text: 'i.' },
+    {
+      dx: 58,
+      text: 'majikan atau pekerja boleh mendaftar secara atas talian melalui e-Daftar di www.hasil.gov.my, atau',
+    },
+  ],
+  [
+    { dx: 45, text: 'ii.' },
+    { dx: 58, text: 'Borang CP22 atau borang in lieu of CP39 dikemukakan ke cawangan LHDNM yang berdekatan.' },
+  ],
+  [{ dx: 0, text: '4.' }, { dx: 15, text: 'Nama pekerja :' }],
+  [
+    {
+      dx: 15,
+      text:
+        'Isikan nama penuh pekerja seperti di kad pengenalan/pasport (Jangan senaraikan pekerja yang ' +
+        'tidak layak dikenakan potongan bagi bulan berkenaan).',
+    },
+  ],
+  [
+    { dx: 0, text: '5.' },
+    {
+      dx: 15,
+      text: 'Nombor Pengenalan : Isikan kedua-dua nombor kad pengenalan baru dan lama (sekiranya ada).',
+    },
+  ],
+  [{ dx: 15, text: 'Contoh: 720403065235 atau A2172122' }],
+  [
+    { dx: 0, text: '6.' },
+    { dx: 15, text: 'Jumlah Potongan Cukai:' },
+    { dx: 108, text: 'PCB   -  Isikan amaun cukai mengikut Potongan Cukai Bulanan.' },
+  ],
+  [{ dx: 108, text: 'CP38 -  CP38 - Isikan amaun potongan cukai mengikut arahan Borang CP38 (jika ada).' }],
+];
+
+/** ── PANEL B, VERBATIM — items 1 to 5, then the two addresses side by side, then item 8. ─────────── */
+export const CP39_NOTE_B_TITLE = 'PEMBAYARAN';
+export const CP39_NOTE_B: readonly Cp39NoteLine[] = [
+  [
+    { dx: 0, text: '1.' },
+    {
+      dx: 15,
+      text:
+        'Bayaran dan Borang CP39 yang telah lengkap diisi mestilah sampai ke Pusat Bayaran LHDN ' +
+        'selewat-lewatnya pada hari kelima belas bulan berikutnya.',
+    },
+  ],
+  [{ dx: 15, text: 'Contoh:  PCB/CP38 bagi bulan Januari 2015, tarikh akhirnya ialah pada 15 Februari 2015.' }],
+  [
+    { dx: 0, text: '2.' },
+    {
+      dx: 15,
+      text:
+        'Sediakan borang CP39 beserta cek/bank draf/kiriman wang/wang pos (instrumen bayaran) yang ' +
+        'berasingan untuk bulan atau tahun berlainan.',
+    },
+  ],
+  [
+    { dx: 0, text: '3.' },
+    { dx: 15, text: 'Pastikan jumlah potongan PCB/CP38 adalah betul dan sama dengan nilai instrumen bayaran.' },
+  ],
+  [
+    { dx: 0, text: '4.' },
+    {
+      dx: 15,
+      text:
+        'Instrumen bayaran hendaklah dibayar kepada Ketua Pengarah Hasil Dalam Negeri. Catatkan no. ' +
+        'majikan E, Nama Syarikat/Perniagaan dan alamat majikan di belakang instrumen bayaran.',
+    },
+  ],
+  [
+    { dx: 0, text: '5.' },
+    {
+      dx: 15,
+      text:
+        'Bayaran untuk Cukai Syarikat, Skim Ansurans (CP500), Penyelesaian Cukai (Pemberhentian Kerja) ' +
+        'dan Cukai Keuntungan Harta Tanah tidak boleh dibayar bersama dengan bayaran yang menggunakan ' +
+        'borang ini.',
+    },
+  ],
+];
+
+/**
+ * B.6 and B.7 sit SIDE BY SIDE on the specimen — 6 in the left half of panel B, 7 in the right half,
+ * each with its four address lines beneath it — and B.8 runs full width under both. Modelling them as
+ * two lists rather than as eight sequential lines is what keeps that arrangement.
+ */
+export const CP39_NOTE_B_SABAH: readonly Cp39NoteLine[] = [
+  [{ dx: 0, text: '6.' }, { dx: 15, text: 'Untuk bayaran bagi Negeri Sabah, sila alamatkan ke:' }],
+  [{ dx: 15, text: 'Cawangan Pungutan Kota Kinabalu' }],
+  [{ dx: 15, text: 'Wisma Hasil' }],
+  [{ dx: 15, text: 'Jalan Tunku Abdul Rahman' }],
+  [{ dx: 15, text: '88600 Kota Kinabalu, Sabah' }],
+];
+export const CP39_NOTE_B_SARAWAK: readonly Cp39NoteLine[] = [
+  [{ dx: 0, text: '7.' }, { dx: 15, text: 'Untuk bayaran bagi Negeri Sarawak, sila alamatkan ke:' }],
+  [{ dx: 15, text: 'Cawangan Pungutan Kuching,' }],
+  [{ dx: 15, text: 'Aras 1, Wisma Hasil,' }],
+  [{ dx: 15, text: 'No. 1, Jalan Padungan,' }],
+  [{ dx: 15, text: '93100 Kuching, Sarawak' }],
+];
+export const CP39_NOTE_B_TAIL: readonly Cp39NoteLine[] = [
+  [
+    { dx: 0, text: '8.' },
+    { dx: 15, text: 'Sila hubungi talian 1-800-88-LHDN (5436) untuk sebarang pertanyaan lanjut.' },
+  ],
+];
+
+/** ── PANEL C, VERBATIM. ───────────────────────────────────────────────────────────────────────────── */
+export const CP39_NOTE_C_TITLE = 'PERINGATAN';
+export const CP39_NOTE_C: readonly Cp39NoteLine[] = [
+  [
+    { dx: 0, text: '1.' },
+    { dx: 15, text: 'Jika jumlah instrumen bayaran tidak sama dengan jumlah potongan, bayaran akan ditolak.' },
+  ],
+  [
+    { dx: 0, text: '2.' },
+    { dx: 15, text: 'Sekiranya maklumat tidak lengkap dan tidak betul, majikan akan dikenakan kompaun.' },
+  ],
+];
+
+/** The LHDN payment-centre block in the top-left box, verbatim from the specimen. Bold first two lines. */
+export const CP39_MASTHEAD_BOLD = ['KETUA PENGARAH HASIL DALAM NEGERI', 'LEMBAGA HASIL DALAM NEGERI'] as const;
+export const CP39_MASTHEAD_ADDRESS = [
+  'Pusat Bayaran Kuala Lumpur',
+  'Kaunter Bayaran Dan Tingkat 1, Blok 8A',
+  'Kompleks Bangunan Kerajaan, Jalan Duta',
+  '50600 KUALA LUMPUR',
+] as const;
+/** The centred title block. First line bold; the last three are the statutory citation, in brackets. */
+export const CP39_TITLE_BLOCK = [
+  'CUKAI PENDAPATAN MALAYSIA',
+  'PENYATA POTONGAN CUKAI OLEH MAJIKAN',
+  '[SEKSYEN 107 AKTA CUKAI PENDAPATAN, 1967',
+  'KAEDAH CUKAI PENDAPATAN (POTONGAN DARIPADA',
+  'SARAAN), 1994]',
+] as const;
 
 /** Heading type size. Exported so the geometry test measures what is actually drawn. */
 export const CP39_HEADING_SIZE = 6;
@@ -117,18 +392,13 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
       .replace(/…/g, '...');
   const safe = (s: string) => fold(s).replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
 
-  const newPage = () => {
-    const page = doc.addPage([W, H]);
-    return page;
-  };
-
-  /** Wrap to the full printable width. An unwrapped English sentence runs off A4 and no check sees it. */
-  const wrap = (s: string, size: number, maxW = RIGHT - M): string[] => {
+  /** Wrap to an arbitrary width. An unwrapped sentence runs off the sheet and no check sees it. */
+  const wrapAt = (s: string, size: number, maxW: number, f: PDFFont = font): string[] => {
     const out: string[] = [];
     let cur = '';
     for (const w of safe(s).split(/\s+/)) {
       const trial = cur ? `${cur} ${w}` : w;
-      if (font.widthOfTextAtSize(trial, size) > maxW && cur) {
+      if (f.widthOfTextAtSize(trial, size) > maxW && cur) {
         out.push(cur);
         cur = w;
       } else {
@@ -138,198 +408,361 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     if (cur) out.push(cur);
     return out;
   };
+  /** Wrap to the SCHEDULE sheet's full printable width. */
+  const wrap = (s: string, size: number, maxW = RIGHT - M): string[] => wrapAt(s, size, maxW);
 
-  // ── Page 1: the cover — employer, period, payment summary, preparer ─────────────────────────────
-  {
-    const page = newPage();
-    let y = H - M;
-    const text = (s: string, x: number, size: number, f = font, color = ink) =>
-      page.drawText(safe(s), { x, y, size, font: f, color });
-    const textR = (s: string, xr: number, size: number, f = font, color = ink) =>
-      page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color });
-    const line = (yy: number, thickness = 0.7, color = rule) =>
-      page.drawLine({ start: { x: M, y: yy }, end: { x: RIGHT, y: yy }, thickness, color });
-    const box = (x: number, yy: number, w: number, h: number) =>
-      page.drawRectangle({ x, y: yy, width: w, height: h, borderColor: rule, borderWidth: 0.7 });
-    /** A blank rule to write on. Used everywhere the request says "leave this for manual completion". */
-    const blank = (x: number, w: number, dy = -2) =>
-      page.drawLine({ start: { x, y: y + dy }, end: { x: x + w, y: y + dy }, thickness: 0.5, color: hair });
-
-    // ── Masthead ──────────────────────────────────────────────────────────────────────────────────
-    // Deliberately NO LHDN address block: we do not hold it, and printing one from memory would invent
-    // a fact about a filing.
-    text('PENYATA POTONGAN CUKAI BULANAN (PCB) OLEH MAJIKAN', M, 11, bold);
-    textR('CP 39', RIGHT, 16, bold);
-    y -= 12;
-    text('Seksyen 107, Akta Cukai Pendapatan 1967', M, 8, font, muted);
-    textR('Cukai Pendapatan Malaysia', RIGHT, 8, font, muted);
-    y -= 12;
-    line(y, 1.1);
-    y -= 18;
-
-    // ── BUTIR-BUTIR MAJIKAN ───────────────────────────────────────────────────────────────────────
-    text('BUTIR-BUTIR MAJIKAN', M, 8, bold, muted);
-    y -= 14;
-    const field = (label: string, value: string, x: number, labelW = 150) => {
-      page.drawText(safe(label), { x, y, size: 7.5, font, color: muted });
-      if (value) {
-        page.drawText(safe(value), { x: x + labelW, y, size: 9, font: bold, color: ink });
-      } else {
-        page.drawLine({
-          start: { x: x + labelW, y: y - 2 },
-          end: { x: x + labelW + 200, y: y - 2 },
-          thickness: 0.5,
-          color: hair,
-        });
-      }
-    };
-    field('No. Majikan (E)', form.employerNo, M);
-    y -= 14;
-    field('No. Pendaftaran Perniagaan', form.registrationNo, M);
-    y -= 14;
-    field('Nama Syarikat / Perniagaan', form.employerName, M);
-    y -= 14;
-    page.drawText(safe('Alamat Syarikat / Perniagaan'), { x: M, y, size: 7.5, font, color: muted });
-    if (form.employerAddress.length === 0) {
-      page.drawLine({ start: { x: M + 150, y: y - 2 }, end: { x: M + 350, y: y - 2 }, thickness: 0.5, color: hair });
-      y -= 14;
-    } else {
-      for (const l of form.employerAddress) {
-        page.drawText(safe(l), { x: M + 150, y, size: 8.5, font, color: ink });
-        y -= 11;
-      }
-      y -= 3;
-    }
-    y -= 6;
-    line(y, 0.9);
-    y -= 18;
-
-    // ── POTONGAN BAGI BULAN … TAHUN … ─────────────────────────────────────────────────────────────
-    // THE MONTH IS THE PAYROLL MONTH, UNSHIFTED. The EPF Borang A beside this one is payroll + 1; the
-    // two rules are different on purpose and `cp39DeductionPeriodFor` is where that is stated once.
-    text(`POTONGAN BAGI BULAN ${form.deductionMonth} TAHUN ${form.deductionYear}`, M, 11, bold);
-    textR(`Tarikh: ${form.printedOn}`, RIGHT, 9, font, muted);
-    y -= 20;
-
-    // ── BUTIR-BUTIR PEMBAYARAN ────────────────────────────────────────────────────────────────────
-    text('BUTIR-BUTIR PEMBAYARAN', M, 8, bold, muted);
-    y -= 8;
-    const summaryTop = y;
-    box(M, y - 74, RIGHT - M, 74);
-    y -= 14;
-    text('Jenis Potongan', M + 8, 7, bold, muted);
-    textR('Bilangan Pekerja', M + 330, 7, bold, muted);
-    textR('Amaun (RM)', RIGHT - 10, 7, bold, muted);
-    y -= 14;
-    text('Jumlah Potongan PCB', M + 8, 9);
-    textR(String(form.pcbEmployees), M + 330, 9);
-    textR(money(form.totalPcb), RIGHT - 10, 9);
-    y -= 14;
-    text('Jumlah Potongan CP38', M + 8, 9);
-    textR(String(form.cp38Employees), M + 330, 9);
-    textR(money(form.totalCp38), RIGHT - 10, 9);
-    y -= 6;
-    page.drawLine({ start: { x: M + 8, y }, end: { x: RIGHT - 8, y }, thickness: 0.5, color: rule });
-    y -= 14;
-    text('AMAUN', M + 8, 10, bold);
-    textR(money(form.totalAmount), RIGHT - 10, 10, bold);
-    y = summaryTop - 74 - 18;
-
-    // ── 7ee14bbc: WHY THE SCHEDULE IS SHORTER THAN THE PAYROLL ────────────────────────────────────
-    // Said ON THE DOCUMENT, immediately under the two Bilangan Pekerja figures it explains. Whoever
-    // reconciles this against a payroll summary otherwise counts a shorter list with nothing to tell
-    // them why — which is the reporter's own complaint in reverse.
-    //
-    // ⚠️ THE SENTENCE IS NOT WRITTEN HERE. `cp39ScheduleScopeNote` owns it and the text export prints
-    // the same call, because it is a claim about the document's own arithmetic and the first build of
-    // this shipped a copy of that claim that was FALSE — "bilangan baris sepadan dengan Bilangan
-    // Pekerja", which stops being true the moment one person has PCB and another has CP38.
-    for (const l of wrap(cp39ScheduleScopeNote(form), 6.8)) {
-      text(l, M, 6.8, font, muted);
-      y -= 9;
-    }
-    y -= 8;
-
-    // The payment instrument — TYPED ON THE REVIEW SCREEN when the operator has it, a ruled line to
-    // write on when they do not. This page is a payment cover document, so the cheque, bank draft or
-    // postal order number is usually known at the moment it is printed; the request lists these as
-    // manual fields, which is a statement about where the value comes from, not a ban on typing it.
-    // Same rule as the preparer block below: a value prints, an empty one prints a rule.
-    text('No. Cek / Draf Bank / Wang Pos', M, 7.5, font, muted);
-    if (form.paymentRef) text(form.paymentRef, M + 160, 9, bold);
-    else blank(M + 160, 150);
-    text('Cawangan', M + 330, 7.5, font, muted);
-    if (form.paymentBranch) text(form.paymentBranch, M + 385, 9, bold);
-    else blank(M + 385, RIGHT - (M + 385));
-    y -= 22;
-    line(y, 0.9);
-    y -= 18;
-
-    // ── PEGAWAI YANG MENYEDIAKAN MAKLUMAT ─────────────────────────────────────────────────────────
-    text('PEGAWAI YANG MENYEDIAKAN MAKLUMAT', M, 8, bold, muted);
-    y -= 8;
-    const prepTop = y;
-    box(M, y - 82, 330, 82);
-    // The signature box sits BESIDE the preparer block, and it is drawn NOW rather than after the loop
-    // below — the Borang A lesson: a caption drawn with whatever `y` a loop left behind lands underneath
-    // its own box, and only rasterising the page can see it.
-    text('Tandatangan', M + 344, 7.5, bold, muted);
-    box(M + 344, prepTop - 82, RIGHT - (M + 344), 74);
-    y -= 16;
-    const prep: [string, string][] = [
-      ['Nama Penuh', form.preparerName],
-      ['No. Pengenalan', form.preparerIc],
-      ['Jawatan', form.preparerPosition],
-      ['No. Telefon', form.preparerPhone],
-    ];
-    for (const [l, v] of prep) {
-      text(`${l}:`, M + 8, 8, font, muted);
-      // A BLANK LINE RATHER THAN AN INVENTED ONE. The block defaults from the company's LHDN statutory
-      // authority record; a company that has not filled it in prints a rule to write on.
-      if (v) text(v, M + 110, 8, bold);
-      else blank(M + 110, 200);
-      y -= 16;
-    }
-    y = prepTop - 82 - 20;
-
-    // ── Where the agency's own A / B / C notes would be ───────────────────────────────────────────
-    // NOT REPRODUCED, and the page says so rather than leaving a silent gap. Inventing LHDN's printed
-    // instruction text would be fabricating the content of a government document.
-    line(y + 10, 0.7, hair);
-    for (const l of wrap(
-      'NOTA: Panduan bercetak LHDN (A Borang CP39 / B Pembayaran / C Peringatan) tidak disalin di sini - ' +
-        'kami tidak memiliki salinan borang rasmi tersebut. Sila rujuk borang CP39 LHDN atau portal e-PCB.',
-      7,
-    )) {
-      text(l, M, 7, font, muted);
-      y -= 9;
-    }
-
-    // ── Provenance band ───────────────────────────────────────────────────────────────────────────
-    y = M + 34;
-    line(y + 12, 0.7, hair);
-    const band = [
-      'Susun atur kami sendiri - bukan borang rasmi LHDN. Untuk rekod dalaman dan dokumen iringan bayaran sahaja.',
-      'Our own layout. We hold no copy of the Borang CP39 (Pin.2015) page, so these boxes are placed from the ' +
-        'field list rather than from the agency form. LHDN does not accept a paper CP39 - file through e-PCB, ' +
-        'e-Data PCB or e-CP39. Check every figure before you key or pay it.',
-      `Bulan potongan ${form.deductionMonth} ${form.deductionYear} - sama dengan bulan gaji, tiada anjakan.`,
-    ];
-    for (const paragraph of band) {
-      for (const l of wrap(paragraph, 6.8)) {
-        text(l, M, 6.8, font, muted);
-        y -= 9;
-      }
-    }
-  }
+  drawCover();
 
   // ── Page 2 onward: the employee table ────────────────────────────────────────────────────────────
   for (const pageData of form.pages) {
     drawTableSheet(pageData);
   }
 
+  /**
+   * ── PAGE ONE, IN THE OFFICIAL ARRANGEMENT ───────────────────────────────────────────────────────
+   *
+   * Read this beside `docs/forms/cp39-pin-2015-specimen.png`. Every coordinate comes from `CP39_COVER`,
+   * which is measured off that image, and every caption is drawn RELATIVE TO ITS OWN BOX rather than to
+   * whatever `y` the previous block left behind — the r205 Borang A lesson, which is the one failure a
+   * geometry check written in font metrics cannot see and only a rasterised page shows.
+   */
+  function drawCover() {
+    const page = doc.addPage([CW, CH]);
+    const { x: X, yTop: Y } = CP39_COVER;
+    /** Points from the top edge → pdf-lib's y. The specimen is described from the top; so is this. */
+    const at = (t: number) => CH - t;
+
+    const put = (s: string, x: number, t: number, size: number, f: PDFFont = font, color = ink) =>
+      page.drawText(safe(s), { x, y: at(t), size, font: f, color });
+    const putR = (s: string, xr: number, t: number, size: number, f: PDFFont = font, color = ink) =>
+      page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y: at(t), size, font: f, color });
+    const putC = (s: string, cx: number, t: number, size: number, f: PDFFont = font, color = ink) =>
+      page.drawText(safe(s), { x: cx - f.widthOfTextAtSize(safe(s), size) / 2, y: at(t), size, font: f, color });
+    /** A ruled box, given in top-edge coordinates: (left, top, right, bottom). */
+    const box = (x0: number, t0: number, x1: number, t1: number, thickness = 0.8) =>
+      page.drawRectangle({
+        x: x0,
+        y: at(t1),
+        width: x1 - x0,
+        height: t1 - t0,
+        borderColor: rule,
+        borderWidth: thickness,
+      });
+    const hRule = (x0: number, x1: number, t: number, thickness = 0.8, color = rule) =>
+      page.drawLine({ start: { x: x0, y: at(t) }, end: { x: x1, y: at(t) }, thickness, color });
+    const vRule = (x: number, t0: number, t1: number, thickness = 0.8, color = rule) =>
+      page.drawLine({ start: { x, y: at(t0) }, end: { x, y: at(t1) }, thickness, color });
+    /** The dotted rule the specimen writes its values on. */
+    const dotted = (x0: number, x1: number, t: number) => {
+      for (let x = x0; x < x1; x += 3) {
+        page.drawLine({ start: { x, y: at(t) }, end: { x: Math.min(x + 1.4, x1), y: at(t) }, thickness: 0.5, color: rule });
+      }
+    };
+    /**
+     * A VALUE, OR THE RULE THE SPECIMEN PRINTS INSTEAD OF ONE (AGENTS rule 28).
+     *
+     * Never a placeholder, never "0.00" standing in for "we do not know". A figure the form derives is
+     * printed; a box that is the operator's to complete by hand gets the dotted rule and nothing else,
+     * because an empty rule asserts nothing while a printed zero asserts that the money does not exist.
+     */
+    const valueOrRule = (v: string, x0: number, x1: number, t: number, size = CP39_COVER_VALUE_SIZE) => {
+      dotted(x0, x1, t + 2.5);
+      if (v) put(v, x0 + 3, t, size, font, ink);
+    };
+
+    // ── Top line: the photocopy permission and the form's own name ────────────────────────────────
+    put('Borang ini boleh difotokopi', X.left, Y.photocopy, 6.8, font, muted);
+    putR('CP39 Pin.2015', X.right, Y.photocopy, 6.8, font, muted);
+
+    // ── Top-left box: the LHDN payment centre ─────────────────────────────────────────────────────
+    box(X.left, Y.boxTop, X.mastheadRight, Y.mastheadBottom);
+    {
+      let t = Y.boxTop + 16;
+      for (const l of CP39_MASTHEAD_BOLD) {
+        put(l, X.left + 10, t, 8, bold);
+        t += 10.5;
+      }
+      t += 6;
+      for (const l of CP39_MASTHEAD_ADDRESS) {
+        put(l, X.left + 10, t, 7, font);
+        t += 9.5;
+      }
+    }
+
+    // ── Centre: the title block and its two statutory citations, then the period boxes ────────────
+    {
+      const cx = (X.mastheadRight + X.officeLeft) / 2;
+      let t = Y.boxTop + 14;
+      CP39_TITLE_BLOCK.forEach((l, i) => {
+        putC(l, cx, t, i === 0 ? 9 : 8, i === 0 ? bold : font);
+        t += i === 0 ? 13 : 11;
+      });
+      // POTONGAN BAGI BULAN [ JANUARI ] TAHUN [ 2026 ] — one line, the two values in their own boxes.
+      // Laid out from the CENTRE outward so it stays under the title block whatever the month is called.
+      const label1 = 'POTONGAN BAGI BULAN';
+      const label2 = 'TAHUN';
+      const monthW = 62;
+      const yearW = 46;
+      const gap = 8;
+      const bt = Y.mastheadBottom - 17;
+      const bb = Y.mastheadBottom - 1;
+      const w1 = bold.widthOfTextAtSize(label1, 9);
+      const w2 = bold.widthOfTextAtSize(label2, 9);
+      const total = w1 + gap + monthW + gap + w2 + gap + yearW;
+      let x = cx - total / 2;
+      put(label1, x, bb - 5, 9, bold);
+      x += w1 + gap;
+      box(x, bt, x + monthW, bb);
+      putC(form.deductionMonth, x + monthW / 2, bb - 5, 8, bold);
+      x += monthW + gap;
+      put(label2, x, bb - 5, 9, bold);
+      x += w2 + gap;
+      box(x, bt, x + yearW, bb);
+      putC(form.deductionYear, x + yearW / 2, bb - 5, 8, bold);
+    }
+
+    // ── Top-right box: UNTUK KEGUNAAN PEJABAT ─────────────────────────────────────────────────────
+    // Two ruled lines and NOT ONE PRINTED CHARACTER between them. A batch number and a receipt number
+    // are the agency's to write; anything we put there would be a fact about a filing we invented.
+    box(X.officeLeft, Y.boxTop, X.right, Y.officeBottom);
+    putC('UNTUK KEGUNAAN PEJABAT', (X.officeLeft + X.right) / 2, Y.boxTop + 17, 8.5, bold);
+    {
+      const lx = X.officeLeft + 14;
+      const rx0 = X.officeLeft + 78;
+      const rx1 = X.right - 14;
+      put('No. Kelompok', lx, Y.boxTop + 44, CP39_COVER_VALUE_SIZE, font);
+      dotted(rx0, rx1, Y.boxTop + 46.5);
+      put('No. Resit', lx, Y.boxTop + 68, CP39_COVER_VALUE_SIZE, font);
+      dotted(rx0, rx1, Y.boxTop + 70.5);
+    }
+
+    // ── The three-panel band ──────────────────────────────────────────────────────────────────────
+    box(X.left, Y.bandTop, X.right, Y.bandBottom);
+    hRule(X.left, X.right, Y.bandHeadBottom);
+    vRule(X.panel1Right, Y.bandTop, Y.bandBottom);
+    vRule(X.panel2Right, Y.bandTop, Y.bandBottom);
+    const headBase = Y.bandHeadBottom - 4.5;
+    putC('BUTIR-BUTIR MAJIKAN', (X.left + X.panel1Right) / 2, headBase, CP39_COVER_HEADING_SIZE, bold);
+    putC('BUTIR-BUTIR PEMBAYARAN', (X.panel1Right + X.panel2Right) / 2, headBase, CP39_COVER_HEADING_SIZE, bold);
+    putC(
+      'PEGAWAI YANG MENYEDIAKAN MAKLUMAT',
+      (X.panel2Right + X.right) / 2,
+      headBase,
+      CP39_COVER_HEADING_SIZE,
+      bold,
+    );
+
+    // ── Panel 1: BUTIR-BUTIR MAJIKAN ──────────────────────────────────────────────────────────────
+    // Label on the left, value on a dotted rule. "No. Majikan" and the "E" beside it are BOLD on the
+    // specimen and the rest of the labels are not; that is the specimen's emphasis, not ours.
+    {
+      const lx = X.left + 10;
+      const vx0 = X.left + 100;
+      const vx1 = X.panel1Right - 12;
+      put('No. Majikan', lx, 174, CP39_COVER_VALUE_SIZE, bold);
+      put('E', lx + 62, 174, CP39_COVER_VALUE_SIZE, bold);
+      valueOrRule(form.employerNo, vx0, vx1, 174);
+
+      put('No. Pendaftaran', lx, 190, CP39_COVER_VALUE_SIZE, font);
+      put('Perniagaan', lx, 199, CP39_COVER_VALUE_SIZE, font);
+      valueOrRule(form.registrationNo, vx0, vx1, 195);
+
+      put('Nama Syarikat/', lx, 213, CP39_COVER_VALUE_SIZE, font);
+      put('Perniagaan', lx, 222, CP39_COVER_VALUE_SIZE, font);
+      valueOrRule(form.employerName, vx0, vx1, 218);
+
+      put('Alamat Syarikat/', lx, 236, CP39_COVER_VALUE_SIZE, font);
+      put('Perniagaan', lx, 245, CP39_COVER_VALUE_SIZE, font);
+      // FOUR RULES, ALWAYS — the specimen prints four and a short address leaves the tail of them empty
+      // rather than closing the box up. A company with five address lines gets the fifth folded into the
+      // fourth rather than a line drawn outside the panel.
+      const addr = [...form.employerAddress];
+      const printed = addr.length > 4 ? [...addr.slice(0, 3), addr.slice(3).join(', ')] : addr;
+      for (let i = 0; i < 4; i += 1) {
+        // The LAST rule has to clear the band's own bottom edge — `valueOrRule` draws it 2.5pt below the
+        // baseline, so the fourth baseline is 271 and not "whatever the step lands on".
+        const t = 238 + i * 11;
+        valueOrRule(printed[i] ?? '', vx0, vx1, t, 7);
+      }
+    }
+
+    // ── Panel 2: BUTIR-BUTIR PEMBAYARAN — THE PART THAT CARRIES MONEY ─────────────────────────────
+    //
+    // ⚠️ PCB AND CP38 ARE TWO ADJACENT COLUMNS OF NEARLY EQUAL WIDTH CARRYING TWO DIFFERENT AMOUNTS.
+    // That is the transposition trap that shipped a wrong KWSP file in an earlier round: swapping the
+    // two draws a page that renders, totals correctly and is wrong in a way nobody reading it can see.
+    // So each figure is drawn through `payCell`, which takes the COLUMN and the value together, and
+    // test/cp39-form.test.ts asserts which amount landed in which column by reading the drawn page's
+    // text-positioning operators — not by re-adding the totals object, which cannot tell them apart.
+    //
+    // Every figure here comes off the SAME `Cp39Form` the schedule sheets and the text export use.
+    // Nothing on this panel is recomputed, and there is no second source for any of them.
+    {
+      const p2 = { l: X.panel1Right, r: X.panel2Right };
+      vRule(X.payLabelRight, Y.bandHeadBottom, Y.bandBottom);
+      hRule(p2.l, p2.r, Y.payHeadBottom);
+      hRule(p2.l, p2.r, Y.payJumlahBottom);
+      hRule(p2.l, p2.r, Y.payBilanganBottom);
+      vRule(X.payPcbRight, Y.bandHeadBottom, Y.payBilanganBottom);
+
+      const cols = {
+        pcb: { x0: X.payLabelRight, x1: X.payPcbRight },
+        cp38: { x0: X.payPcbRight, x1: p2.r },
+      } as const;
+      putC('PCB', (cols.pcb.x0 + cols.pcb.x1) / 2, Y.payHeadBottom - 5, CP39_COVER_HEADING_SIZE, bold);
+      putC('CP 38', (cols.cp38.x0 + cols.cp38.x1) / 2, Y.payHeadBottom - 5, CP39_COVER_HEADING_SIZE, bold);
+
+      /** ONE call site per figure, and the column is an argument rather than a coordinate. */
+      const payCell = (which: 'pcb' | 'cp38', t: number, value: string, prefix = '') => {
+        const c = cols[which];
+        if (prefix) put(prefix, c.x0 + 6, t, CP39_COVER_VALUE_SIZE, font);
+        putR(value, c.x1 - 6, t, CP39_COVER_VALUE_SIZE, font);
+      };
+
+      put('Jumlah Potongan', p2.l + 8, Y.payJumlahBottom - 5, CP39_COVER_VALUE_SIZE, font);
+      payCell('pcb', Y.payJumlahBottom - 5, money(form.totalPcb), 'RM');
+      payCell('cp38', Y.payJumlahBottom - 5, money(form.totalCp38), 'RM');
+
+      put('Bilangan Pekerja', p2.l + 8, Y.payBilanganBottom - 6, CP39_COVER_VALUE_SIZE, font);
+      payCell('pcb', Y.payBilanganBottom - 6, String(form.pcbEmployees));
+      payCell('cp38', Y.payBilanganBottom - 6, String(form.cp38Employees));
+
+      // The instrument block: one tall wrapped label against four rows.
+      vRule(X.payInstrLabelRight, Y.payBilanganBottom, Y.bandBottom);
+      const rows = 4;
+      const rowH = (Y.bandBottom - Y.payBilanganBottom) / rows;
+      for (let i = 1; i < rows; i += 1) hRule(X.payInstrLabelRight, p2.r, Y.payBilanganBottom + i * rowH);
+      {
+        const label = ['Butir-butir / Cek /', 'Bank / Deraf /', 'Kiriman Wang /', 'Wang Pos'];
+        const cx = (p2.l + X.payLabelRight) / 2;
+        const block = label.length * 9;
+        let t = Y.payBilanganBottom + (Y.bandBottom - Y.payBilanganBottom - block) / 2 + 7;
+        for (const l of label) {
+          putC(l, cx, t, 6.6, font);
+          t += 9;
+        }
+      }
+      const instr: [string, string, boolean][] = [
+        // [label, value, is it ours to print?] — Amaun and Tarikh are derived, so they print. Nombor
+        // and Cawangan are the operator's: typed on the review screen when they have the instrument in
+        // hand, and otherwise a rule to write on. Never a zero, never a placeholder.
+        ['Amaun', money(form.totalAmount), true],
+        ['Nombor', form.paymentRef, false],
+        ['Cawangan', form.paymentBranch, false],
+        ['Tarikh', form.printedOn, true],
+      ];
+      instr.forEach(([label, value, derived], i) => {
+        const t = Y.payBilanganBottom + i * rowH + rowH - 6;
+        put(label, X.payLabelRight + 8, t, CP39_COVER_VALUE_SIZE, font);
+        if (derived) {
+          if (label === 'Amaun') put('RM', X.payInstrLabelRight + 6, t, CP39_COVER_VALUE_SIZE, font);
+          putR(value, p2.r - 6, t, CP39_COVER_VALUE_SIZE, font);
+        } else if (value) {
+          put(value, X.payInstrLabelRight + 6, t, CP39_COVER_VALUE_SIZE, font);
+        } else {
+          dotted(X.payInstrLabelRight + 6, p2.r - 6, t + 2.5);
+        }
+      });
+    }
+
+    // ── Panel 3: PEGAWAI YANG MENYEDIAKAN MAKLUMAT ────────────────────────────────────────────────
+    {
+      const lx = X.panel2Right + 10;
+      const vx0 = X.panel2Right + 78;
+      const vx1 = X.right - 12;
+      const fields: [string, string][] = [
+        // Tandatangan is manual by definition and gets the rule, never a name.
+        ['Tandatangan', ''],
+        ['Nama Penuh', form.preparerName],
+        ['No. Pengenalan', form.preparerIc],
+        ['Jawatan', form.preparerPosition],
+        ['No. Telefon', form.preparerPhone],
+      ];
+      const first = Y.bandHeadBottom + 21;
+      const step = (Y.bandBottom - 8 - first) / (fields.length - 1);
+      fields.forEach(([label, value], i) => {
+        const t = first + i * step;
+        put(label, lx, t, CP39_COVER_VALUE_SIZE, font);
+        valueOrRule(value, vx0, vx1, t);
+      });
+    }
+
+    // ── The A / B / C instruction panels ──────────────────────────────────────────────────────────
+    /** [ A ][ BORANG CP 39 ] — a narrow letter cell and a wide title cell beside it. */
+    const noteHead = (letter: string, title: string, x0: number, t0: number, t1: number) => {
+      const lw = X.noteLetterRight - X.left;
+      const tw = X.noteTitleRight - X.noteLetterRight;
+      box(x0, t0, x0 + lw, t1);
+      box(x0 + lw, t0, x0 + lw + tw, t1);
+      putC(letter, x0 + lw / 2, t1 - 5.5, 8, bold);
+      putC(title, x0 + lw + tw / 2, t1 - 5.5, 8, bold);
+    };
+    /** Draw one panel's lines and answer the y (from the top) the NEXT line would occupy. */
+    const drawNotes = (lines: readonly Cp39NoteLine[], x0: number, width: number, t0: number): number => {
+      let t = t0;
+      for (const line of lines) {
+        for (let i = 0; i < line.length; i += 1) {
+          const runIsLast = i === line.length - 1;
+          const run = line[i];
+          if (!runIsLast) {
+            put(run.text, x0 + run.dx, t, CP39_NOTE_SIZE, font);
+            continue;
+          }
+          const wrapped = wrapAt(run.text, CP39_NOTE_SIZE, width - run.dx);
+          wrapped.forEach((w, k) => {
+            put(w, x0 + run.dx, t + k * CP39_NOTE_LEADING, CP39_NOTE_SIZE, font);
+          });
+          t += (wrapped.length - 1) * CP39_NOTE_LEADING;
+        }
+        t += CP39_NOTE_LEADING;
+      }
+      return t;
+    };
+
+    const aWidth = X.noteBLeft - 14 - X.left;
+    const bWidth = X.right - X.noteBLeft;
+    noteHead('A', CP39_NOTE_A_TITLE, X.left, Y.noteHeadTop, Y.noteHeadBottom);
+    drawNotes(CP39_NOTE_A, X.left, aWidth, Y.noteBodyTop);
+
+    noteHead('B', CP39_NOTE_B_TITLE, X.noteBLeft, Y.noteHeadTop, Y.noteHeadBottom);
+    {
+      let t = drawNotes(CP39_NOTE_B, X.noteBLeft, bWidth, Y.noteBodyTop);
+      // 6 and 7 SIDE BY SIDE, exactly as the specimen sets them, and 8 full width beneath both.
+      const half = bWidth / 2;
+      const left = drawNotes(CP39_NOTE_B_SABAH, X.noteBLeft, half - 8, t);
+      const right = drawNotes(CP39_NOTE_B_SARAWAK, X.noteBLeft + half, half, t);
+      t = Math.max(left, right);
+      drawNotes(CP39_NOTE_B_TAIL, X.noteBLeft, bWidth, t);
+    }
+
+    noteHead('C', CP39_NOTE_C_TITLE, X.noteBLeft, Y.noteCHeadTop, Y.noteCHeadBottom);
+    drawNotes(CP39_NOTE_C, X.noteBLeft, bWidth, Y.noteCHeadBottom + 11.5);
+
+    // ── The provenance strip along the foot ───────────────────────────────────────────────────────
+    // What comes off this screen is drawn to the agency's arrangement and is still printed on our own
+    // paper, so it says so — the single claim the statutory-forms fidelity vocabulary exists to keep
+    // honest. `cp39ScheduleScopeNote` rides here too: it is a statement about the SCHEDULE's own
+    // arithmetic, and it lives in one exported function so this page and the text export cannot drift.
+    {
+      let t = Y.footTop;
+      hRule(X.left, X.right, t - 8, 0.6, hair);
+      const strip = [
+        `Susun atur mengikut Borang CP39 (Pin.2015), dicetak di atas kertas kami sendiri - bukan borang ` +
+          `rasmi LHDN. Bulan potongan ${form.deductionMonth} ${form.deductionYear} - sama dengan bulan ` +
+          `gaji, tiada anjakan. LHDN tidak menerima CP39 bercetak: hantar melalui e-PCB / e-Data PCB / e-CP39.`,
+        cp39ScheduleScopeNote(form),
+      ];
+      for (const paragraph of strip) {
+        for (const l of wrapAt(paragraph, 6, X.right - X.left)) {
+          put(l, X.left, t, 6, font, muted);
+          t += 8.4;
+        }
+      }
+    }
+  }
+
   function drawTableSheet(pageData: Cp39FormPage) {
-    const page = doc.addPage([W, H]);
+    const page: PDFPage = doc.addPage([W, H]);
     let y = H - M;
     const last = pageData.sheet === pageData.of;
 
@@ -452,15 +885,20 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     y -= 8;
     line(y, 1.1);
 
-    // ── The two columns we cannot fill, named on the sheet that has them ──────────────────────────
-    // A blank column with no explanation reads as a bug. Saying it here, beside the empty boxes, is
-    // what stops somebody "fixing" it by guessing an old IC or a country code onto a tax document.
+    // ── e4b541c6 / c99e8358: THE TWO COLUMNS, AND THE HALF OF THE OLD NOTE THAT IS STILL TRUE ──────
+    // Migration 0450 gave `employee_statutory_my` its own `old_ic_number` and
+    // `passport_issuing_country_code`, so both columns now PRINT whatever is on the staff record — the
+    // old sentence here ("there is no such field") became a false statement on a tax document and had to
+    // go. What did NOT change is the reason Kod Negara is a column of its own: the nationality text
+    // beside it is a demonym from the tenant's own option list, "Malaysian" is not "MY", and deriving
+    // one from the other would put a wrong statutory code beside somebody's tax reference.
     y = M + 26;
     line(y + 12, 0.7, hair);
     for (const l of wrap(
-      'No. K/P Lama dan Kod Negara dibiarkan kosong: tiada medan kad pengenalan lama dalam rekod pekerja, ' +
-        'dan negara pengeluaran pasport disimpan sebagai teks bebas, bukan kod dua huruf. ' +
-        'Susun atur kami sendiri - bukan borang rasmi LHDN.',
+      'No. K/P Lama dan Kod Negara dicetak daripada rekod pekerja apabila ada, dan dibiarkan kosong ' +
+        'apabila tiada - kosong bermakna tiada dalam rekod, bukan tiada dalam sistem. Kod Negara mesti ' +
+        'dipilih sebagai kod dua huruf dan tidak pernah diterbitkan daripada teks kewarganegaraan. ' +
+        'Helaian jadual ini susun atur kami sendiri - bukan borang rasmi LHDN.',
       6.8,
     )) {
       text(l, M, 6.8, font, muted);
