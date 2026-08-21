@@ -1243,19 +1243,21 @@ export async function eaStatement(
     // `status = 'approved'` and the whole year's rows, exactly as core/payroll.ts reads them; the
     // effective-from and one-row-per-month decisions live inside `tp1CountForYear` and stay there.
     /**
-     * ⚠️ IMPORTED HERE, NOT AT MODULE SCOPE, AND THE REASON IS A REAL CYCLE THAT tsc CANNOT SEE.
-     * `core/tax-relief` imports `localization/registry`, the registry loads this pack, and this pack's
-     * index re-exports this file — so a top-level `import … from '../../core/tax-relief'` here throws
-     * `Cannot access '__vite_ssr_import_1__' before initialization` at RUN TIME, with a green typecheck.
-     * (That is how it was found: two EA suites failed to load at all.) `localization/my/leave.ts` is the
-     * only other pack file reaching into core and it uses `import type`, which is erased and cannot cycle.
+     * ⚠️ TWO THINGS ARE DELIBERATE HERE: WHERE this comes from, and WHEN it is loaded.
      *
-     * This still calls THE rule — the same `tp1CountForYear` the payroll feed and the limit check call —
-     * which is the invariant core/tax-relief's header actually demands. The tidier fix is to lift the pure
-     * counting rule into its own registry-free module and re-export it from core/tax-relief; that is a
-     * refactor of the TP1 money path and does not belong at the end of an unrelated build.
+     * WHERE — the payroll pack FACADE, never the boundary module behind it. TP1 counting sits inside the
+     * payroll pack's boundary (ADR-0080 D9), and a pack file reaching straight past the facade is exactly
+     * what test/payroll-pack-drift.test.ts refuses. The facade re-exports the same symbols, so this calls
+     * THE rule the payroll feed and the limit check call — the invariant that matters — through the seam
+     * the ADR defines. Do not "simplify" this to the boundary path: the ratchet is not a formality, and
+     * its allowlist only ever shrinks.
+     *
+     * WHEN — at the call, not at module scope, because there is a real cycle tsc cannot see: the boundary
+     * module loads the country registry, the registry loads this pack, and this pack's index re-exports
+     * this file. A top-level version throws `Cannot access '__vite_ssr_import_1__' before initialization`
+     * at RUN TIME with a green typecheck; it was found by two EA suites failing to load at all.
      */
-    const { TP1_COUNTABLE_COLUMNS, tp1CountForYear } = await import('../../core/tax-relief');
+    const { TP1_COUNTABLE_COLUMNS, tp1CountForYear } = await import('../../packs/payroll/service');
     const tp1Rows = await tx
       .select({ personId: tp1Relief.personId, ...TP1_COUNTABLE_COLUMNS })
       .from(tp1Relief)

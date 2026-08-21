@@ -106,7 +106,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     esos: t('esos'),
     gratuity: t('gratuity'),
     arrears: t('arrears'),
-    exemptAllowances: t('exemptAllowances'),
     benefitsInKind: t('benefitsInKind'),
     livingAccommodation: t('livingAccommodation'),
     unapprovedFundRefund: t('unapprovedFundRefund'),

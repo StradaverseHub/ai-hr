@@ -167,6 +167,12 @@ export default async function EaStatementPage({
       'epf',
       'socso',
       'eis',
+      // da4fc817 — Section D's four. Three have no payroll source at all, so the amend panel is the ONLY
+      // way they are ever entered; `tp1Relief` is derived and amendable for the reason `mtd` is.
+      'tp1Relief',
+      'donations',
+      'zakatOther',
+      'childRelief',
     ] as const
   ).map((field) => ({
     field,
@@ -305,14 +311,35 @@ export default async function EaStatementPage({
           <Row label={t('cp38Deductions')} value={rm(ea.partD.cp38)} amended={ovByField.has('cp38')} amendedLabel={amendedBadge} />
           {/* 1.2.4 Zakat — the year's accumulated zakat-via-salary (Z), now sourced from the payslips. */}
           <Row label={t('zakatViaSalary')} value={rm(ea.partD.zakat)} amended={ovByField.has('zakat')} amendedLabel={amendedBadge} />
+          {/* da4fc817 — D4, D5(a), D5(b), D6, in the official form's order. Shown only when set OR amended,
+              which mirrors the PDF's `optionalRow`: an absent box asserts nothing, a box reading 0.00
+              asserts the money does not exist (AGENTS 28). `tp1Relief` is derived from the year's approved
+              TP1 declarations, so it is usually real; the other three appear once HR enters them. */}
+          {(ea.partD.donations !== 0 || ovByField.has('donations')) && (
+            <Row label={t('donations')} value={rm(ea.partD.donations)} amended={ovByField.has('donations')} amendedLabel={amendedBadge} />
+          )}
+          {(ea.partD.tp1Relief !== 0 || ovByField.has('tp1Relief')) && (
+            <Row label={t('tp1Relief')} value={rm(ea.partD.tp1Relief)} amended={ovByField.has('tp1Relief')} amendedLabel={amendedBadge} />
+          )}
+          {(ea.partD.zakatOther !== 0 || ovByField.has('zakatOther')) && (
+            <Row label={t('zakatOther')} value={rm(ea.partD.zakatOther)} amended={ovByField.has('zakatOther')} amendedLabel={amendedBadge} />
+          )}
+          {(ea.partD.childRelief !== 0 || ovByField.has('childRelief')) && (
+            <Row label={t('childRelief')} value={rm(ea.partD.childRelief)} amended={ovByField.has('childRelief')} amendedLabel={amendedBadge} />
+          )}
         </section>
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('sectionEContributions')}
           </h2>
+          {/* da4fc817 — the official Section E names the fund before its amount and carries exactly two
+              figures. EIS is kept but printed below the section, exactly as the PDF does, so the two
+              surfaces cannot describe one form two ways. */}
+          <Row label={t('fundName')} value={ea.partE.fundName} />
           <Row label={t('epfKwsp')} value={rm(ea.partE.epf)} amended={ovByField.has('epf')} amendedLabel={amendedBadge} />
           <Row label={t('socso')} value={rm(ea.partE.socso)} amended={ovByField.has('socso')} amendedLabel={amendedBadge} />
+          <Row label={t('sectionFExemptAllowances')} value={rm(ea.partB.exemptAllowances ?? 0)} />
           <Row label={t('eisSip')} value={rm(ea.partE.eis)} amended={ovByField.has('eis')} amendedLabel={amendedBadge} />
         </section>
 

@@ -49,8 +49,12 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
     expect(reports).toContain('throughMonth: null');
     // The deferred import is load-bearing: at module scope it cycles through the pack registry. Pin the
     // shape so a tidy-up does not "fix" it back into a top-level import and break two suites at load.
-    expect(reports).toContain("await import('../../core/tax-relief')");
+    // …through the payroll pack FACADE, and deferred to the call. Both halves are load-bearing: the
+    // boundary path trips test/payroll-pack-drift.test.ts (ADR-0080 D9, and its allowlist only shrinks),
+    // and a module-scope import cycles through the country registry at run time with a green typecheck.
+    expect(reports).toContain("await import('../../packs/payroll/service')");
     expect(reports).not.toMatch(/^import .*from '\.\.\/\.\.\/core\/tax-relief'/m);
+    expect(reports).not.toMatch(/^import .*from '\.\.\/\.\.\/packs\/payroll\/service'/m);
   });
 
   it('adding an EA box without deciding its derived baseline stays a COMPILE error', () => {

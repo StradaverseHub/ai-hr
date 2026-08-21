@@ -111,7 +111,10 @@ export type EaPdfLabels = {
   esos: string;
   gratuity: string;
   arrears: string;
-  exemptAllowances: string;
+  // da4fc817 — there is no `exemptAllowances` ROW label any more. Section F is a heading that carries its
+  // own amount (`sectionTotalLine`), so nothing draws a separate label beside it, and
+  // test/ea-form-boxes-contract.test.ts refuses a declared label that nothing prints — including a
+  // placeholder, which is how this comment came to be a comment rather than a key.
   benefitsInKind: string;
   livingAccommodation: string;
   unapprovedFundRefund: string;
