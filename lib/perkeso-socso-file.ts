@@ -51,6 +51,8 @@
  * free text in a 150-character box — and at 150 characters that is a legal name, not a data error.
  */
 
+import { isUnfinishedPersonName } from './unfinished-name';
+
 /** Every record is exactly this wide, before the CRLF. */
 export const PERKESO_FILE_LINE_LENGTH = 278;
 /** CRLF between records. NOT after the last one — see the header. */
@@ -475,6 +477,20 @@ export function perkesoFileReport(text: string): string {
     for (const line of notice) out.push(line);
   }
 
+  // THE NAMES, NAMED. Same standing as the MyCoID notice above: it does not stop the file and it does not
+  // change a byte of it. See `perkesoFileUnfinishedNames` for why this is here at all.
+  const unfinished = perkesoFileUnfinishedNames(text);
+  if (unfinished.length > 0) {
+    out.push('');
+    out.push(`EMPLOYEE NAMES THAT DO NOT LOOK FINISHED: ${unfinished.length} of ${views.length}.`);
+    out.push('PERKESO field 4 is "Name as per IC or passport". These are the names on the staff records, so');
+    out.push('the file carries them as they are - it does not invent or shorten anybody. Uploading as they');
+    out.push('stand files these contributions under these names. Nothing here stops the file.');
+    for (const u of unfinished) {
+      out.push(`  - record ${u.recordNo}, identity number ${u.identityNo}: name reads "${u.name}"`);
+    }
+  }
+
   out.push('');
   out.push('TOTALS, ADDED UP FROM THE VALUES READ BACK OUT OF THIS FILE');
   out.push('Not from the payroll figures the file was written from. A total taken from the input would');
@@ -495,6 +511,34 @@ export function perkesoFileReport(text: string): string {
     }
   }
   return out.join('\n') + '\n';
+}
+
+/**
+ * NAMES THAT ARE NOT YET NAMES, READ BACK OUT OF THE FILE.
+ *
+ * r218 generated this file from the customer's own January 2026 run and FOURTEEN of the nineteen records
+ * carried `TEST0001` … `TEST0014` in field 4, with a fifteenth reading `ISMAIL` where their filed file
+ * says `MOHD RIDHUAN BIN ISMAIL`. The format was right to the character; the names were placeholders.
+ * PERKESO's field 4 is "Name as per IC or passport", so uploading that files real contributions under
+ * test names — and nothing in a fixed-width file can tell you so, because a placeholder pads exactly
+ * like a person.
+ *
+ * ⚠️ REPORTED, NEVER REPAIRED, NEVER BLOCKING — the same standing this warning has on the CP39, and for
+ * the same reasons: it is the operator's own data, the file carries what the staff record says, and the
+ * correction belongs on the staff record. The identity number rides along because a placeholder name
+ * leaves nothing else to find the person by, and it is the one field here that is certainly theirs.
+ *
+ * Read out of the FILE rather than from the input rows, like the totals: the point is what PERKESO will
+ * receive.
+ */
+export function perkesoFileUnfinishedNames(text: string): { recordNo: number; identityNo: string; name: string }[] {
+  const out: { recordNo: number; identityNo: string; name: string }[] = [];
+  perkesoFileRecords(text).forEach((r, i) => {
+    const name = perkesoField(r, PERKESO_FILE_FIELDS.name).trim();
+    if (!isUnfinishedPersonName(name)) return;
+    out.push({ recordNo: i + 1, identityNo: perkesoField(r, PERKESO_FILE_FIELDS.identityNo).trim(), name });
+  });
+  return out;
 }
 
 /**

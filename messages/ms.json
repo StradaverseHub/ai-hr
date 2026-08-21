@@ -5551,7 +5551,9 @@
       "headerMissingTitle": "Syarikat ini belum boleh menghasilkan Borang 8A:",
       "headerMissingHint": "Tetapkan di bawah Organisasi → Identiti berkanun, kemudian kembali ke sini. Tanpanya setiap muka surat borang mempunyai kekosongan di kotak yang sama.",
       "headerField_employerCode": "Kod majikan PERKESO (No. Kod Majikan)",
-      "headerField_employerName": "Nama sah syarikat"
+      "headerField_employerName": "Nama sah syarikat",
+      "unfinishedNameTitle": "Sesetengah nama pekerja kelihatan belum lengkap.",
+      "unfinishedNameHint": "Ruangan nama PERKESO ialah “nama seperti dalam kad pengenalan atau pasport”. Ini nama yang tersimpan dalam rekod pekerja — fail membawanya sebagaimana adanya dan tidak sesekali memendekkan atau mereka-reka nama. Jika dimuat naik begini, caruman ini difailkan atas nama tersebut. Betulkan pada rekod pekerja, kemudian kembali ke sini. Tiada apa-apa di sini yang menghalang muat turun."
     },
     "borangA": {
       "title": "Borang A — borang caruman bulanan (KWSP)",

@@ -5,7 +5,8 @@ import { BORANG_8A_STATUS_PARAM_PREFIX, money } from '@/lib/borang-8a';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { loadBorang8A } from '../shared';
-import { Borang8AMycoidNotice } from '../mycoid-notice';
+import { Borang8AMycoidNotice, Borang8AUnfinishedNames } from '../notices';
+import { isUnfinishedPersonName } from '@/lib/unfinished-name';
 
 /**
  * 8ca344bf — the Borang 8A review screen: pick a processed payroll month, check the form, then download it.
@@ -387,6 +388,18 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
                 for exactly that reason. The whole condition lives in the component, which is what lets
                 both halves of it be a render rather than a source scan. */}
             <Borang8AMycoidNotice mycoid={form.mycoid} title={t('mycoidNoticeTitle')} body={t('mycoidNoticeBody')} />
+            {/* r218 — and the names those records carry. Same place, same standing, same reason: what
+                goes INTO the file is as much a filing question as whether the boxes line up, and a
+                placeholder name pads exactly like a person's. The CP39 has carried this warning since
+                7ee14bbc; the rule is shared so the two screens cannot disagree. */}
+            <Borang8AUnfinishedNames
+              people={form.pages
+                .flatMap((pg) => pg.rows)
+                .filter((r) => isUnfinishedPersonName(r.name))
+                .map((r) => ({ ic: r.ic, name: r.name }))}
+              title={t('unfinishedNameTitle')}
+              hint={t('unfinishedNameHint')}
+            />
           </div>
         </form>
       </Card>

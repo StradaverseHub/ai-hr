@@ -5551,7 +5551,9 @@
       "headerMissingTitle": "本公司暂时无法生成 Borang 8A：",
       "headerMissingHint": "请在 组织 → 法定身份 中设置后再回到此页。缺少它，表单每一页都会在同一个格子上留空。",
       "headerField_employerCode": "PERKESO 雇主代码（No. Kod Majikan）",
-      "headerField_employerName": "公司法定名称"
+      "headerField_employerName": "公司法定名称",
+      "unfinishedNameTitle": "部分员工姓名看起来尚未填写完整。",
+      "unfinishedNameHint": "PERKESO 的姓名栏要求“与身份证或护照一致的姓名”。这些是员工档案中保存的姓名——文件原样带出，不会截短也不会自行编造。照此上传，这些缴款就会以这些姓名申报。请先在员工档案中更正，然后再回到此页。此处不会阻止下载。"
     },
     "borangA": {
       "title": "Borang A — 月度缴款表（公积金局 KWSP）",

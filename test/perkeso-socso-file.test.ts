@@ -31,6 +31,7 @@ import {
   perkesoFileRecords,
   perkesoFileReport,
   perkesoFileTotals,
+  perkesoFileUnfinishedNames,
 } from '../lib/perkeso-socso-file';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -422,6 +423,62 @@ describe('5dbce839 — the MyCoID notice, on both halves', () => {
  * field table, the record length and the line ending, pinned as literals, so an edit to any offset, width
  * or pad rule fails here and says why rather than only failing the golden.
  */
+/**
+ * r218 — THE NAMES IN FIELD 4, WHICH IS WHERE THIS FILE STOPPED BEING A FORMAT QUESTION.
+ *
+ * The approved plan's first step was to generate the customer's own January 2026 file from production
+ * and compare it against the BRG8A.txt they filed. It came out format-perfect — 19 records, every one
+ * 278 characters, CRLF between records and none after the last — and carrying `TEST0001` … `TEST0014`
+ * in the name box, plus one record reading `ISMAIL` where their filed file says `MOHD RIDHUAN BIN
+ * ISMAIL`. PERKESO's field 4 is "Name as per IC or passport".
+ *
+ * These cases use the fixture (whose fourteen names ARE real) and overwrite the name box in place, so a
+ * reader can see that the check reads the FILE rather than the rows it was written from — the same
+ * property the totals have, and for the same reason.
+ */
+describe('r218 — unfinished names, read back out of the file', () => {
+  /** Overwrite one record's 150-character name box, leaving every other position untouched. */
+  const withName = (text: string, recordNo: number, name: string) => {
+    const rows = perkesoFileRecords(text);
+    const [off, width] = PERKESO_FILE_FIELDS.name;
+    const r = rows[recordNo - 1];
+    rows[recordNo - 1] = r.slice(0, off) + name.padEnd(width, ' ').slice(0, width) + r.slice(off + width);
+    return rows.join(PERKESO_FILE_EOL);
+  };
+
+  it('the customer’s filed file has none — the check is not firing on real names', () => {
+    expect(perkesoFileUnfinishedNames(FIXTURE)).toEqual([]);
+  });
+
+  it('names the record, the identity number and the name, for a placeholder and for a blank', () => {
+    const mutated = withName(withName(FIXTURE, 2, 'TEST0001'), 5, '');
+    expect(perkesoFileUnfinishedNames(mutated)).toEqual([
+      { recordNo: 2, identityNo: '970628105455', name: 'TEST0001' },
+      { recordNo: 5, identityNo: '700325025036', name: '' },
+    ]);
+    // Every record is still exactly the right width: the check reads, it does not rewrite.
+    expect(perkesoFileRecords(mutated).every((r) => r.length === PERKESO_FILE_LINE_LENGTH)).toBe(true);
+  });
+
+  it('leaves a real name that merely begins with those letters alone', () => {
+    expect(perkesoFileUnfinishedNames(withName(FIXTURE, 1, 'TESTA BINTI OSMAN'))).toEqual([]);
+  });
+
+  it('the report names them, says the file is still produced, and does not say it when there are none', () => {
+    const clean = perkesoFileReport(FIXTURE);
+    expect(clean).not.toMatch(/DO NOT LOOK FINISHED/);
+
+    const report = perkesoFileReport(withName(FIXTURE, 3, 'TEST0002'));
+    expect(report).toMatch(/EMPLOYEE NAMES THAT DO NOT LOOK FINISHED: 1 of 14\./);
+    expect(report).toContain('record 3, identity number 810329105276: name reads "TEST0002"');
+    expect(report).toMatch(/Name as per IC or passport/);
+    expect(report).toMatch(/Nothing here stops the file\./);
+    // AGENTS 28's other half: the report must not claim we corrected anything.
+    expect(report).toMatch(/does not invent or shorten anybody/);
+  });
+});
+
+
 describe('5dbce839 — the writer and the field table come out of this round unchanged', () => {
   it('keeps the twelve fields at exactly the offsets and widths read off the filed file', () => {
     expect(PERKESO_FILE_FIELDS).toEqual({

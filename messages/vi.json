@@ -5551,7 +5551,9 @@
       "headerMissingTitle": "Công ty này chưa thể xuất Borang 8A:",
       "headerMissingHint": "Hãy đặt tại Tổ chức → Định danh theo luật rồi quay lại. Thiếu nó thì mọi trang của biểu mẫu đều trống ở cùng một ô.",
       "headerField_employerCode": "Mã người sử dụng lao động PERKESO (No. Kod Majikan)",
-      "headerField_employerName": "Tên pháp lý của công ty"
+      "headerField_employerName": "Tên pháp lý của công ty",
+      "unfinishedNameTitle": "Một số tên nhân viên trông chưa hoàn chỉnh.",
+      "unfinishedNameHint": "Ô tên của PERKESO là “tên theo CMND/CCCD hoặc hộ chiếu”. Đây là tên đang lưu trong hồ sơ nhân viên — tệp mang đúng như vậy, không rút gọn và không tự đặt. Nếu tải lên như hiện tại, các khoản đóng này sẽ được nộp dưới những tên đó. Hãy sửa trên hồ sơ nhân viên rồi quay lại. Không có gì ở đây ngăn việc tải xuống."
     },
     "borangA": {
       "title": "Borang A — biểu mẫu đóng góp hằng tháng (KWSP)",

@@ -1,5 +1,11 @@
 /**
- * 5dbce839 — THE MYCOID BOX GOES OUT EMPTY, AND THE SCREEN SAYS SO BEFORE THE DOWNLOAD DOES NOT.
+ * THE TWO THINGS THE BORANG 8A SCREEN SAYS BEFORE IT HANDS OVER A PERKESO UPLOAD FILE.
+ *
+ * Both are ADVISORY and neither hides a button: a file PERKESO's own specification accepts must not be
+ * withheld over a judgement this screen is not entitled to make. What they buy is that nothing goes out
+ * quietly — a fixed-width record looks identical whether the box behind it was filled in or not.
+ *
+ * ── 5dbce839 — THE MYCOID BOX GOES OUT EMPTY, AND THE SCREEN SAYS SO BEFORE THE DOWNLOAD DOES NOT.
  *
  * The reporter's own accepted BRG8A.txt carries "34111U" in positions 13-32; ours carries twenty spaces,
  * because `company_statutory_my.ssm_registration_no` has never been filled in for their company. PERKESO's
@@ -36,6 +42,44 @@ export function Borang8AMycoidNotice({
     <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
       <p className="font-medium">{title}</p>
       <p className="mt-1">{body}</p>
+    </div>
+  );
+}
+
+/**
+ * r218 — EMPLOYEE NAMES THAT ARE NOT YET NAMES, beside the same buttons and with the same standing.
+ *
+ * Generated from the customer's own January 2026 run, fourteen of nineteen records went out named
+ * `TEST0001` … `TEST0014`. PERKESO's field 4 is "Name as per IC or passport", so the format being right
+ * to the character does not make the file filable. ADVISORY, NEVER BLOCKING — it is their data, the file
+ * carries what the staff record says, and the fix is on the staff record. The identity number is shown
+ * because a placeholder name leaves nothing else to find the person by.
+ *
+ * The rule itself is `lib/unfinished-name.ts`, shared with the CP39's identical warning, so the two
+ * screens cannot come to disagree about whether a name is finished.
+ */
+export function Borang8AUnfinishedNames({
+  people,
+  title,
+  hint,
+}: {
+  people: readonly { ic: string; name: string }[];
+  title: string;
+  hint: string;
+}) {
+  if (people.length === 0) return null;
+  return (
+    <div className="basis-full rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+      <p className="font-medium">{title}</p>
+      <ul className="mt-1 space-y-0.5">
+        {people.map((p) => (
+          <li key={`${p.ic}:${p.name}`}>
+            <span className="font-mono">{p.name || '—'}</span>
+            {p.ic ? ` — ${p.ic}` : ''}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1">{hint}</p>
     </div>
   );
 }

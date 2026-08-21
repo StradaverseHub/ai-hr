@@ -5551,7 +5551,9 @@
       "headerMissingTitle": "This company cannot produce a Borang 8A yet:",
       "headerMissingHint": "Set it under Organization → Statutory identity, then come back. Without it every page of the form has a gap in the same box.",
       "headerField_employerCode": "SOCSO employer code (No. Kod Majikan)",
-      "headerField_employerName": "Company legal name"
+      "headerField_employerName": "Company legal name",
+      "unfinishedNameTitle": "Some employee names do not look finished.",
+      "unfinishedNameHint": "PERKESO’s name box is “name as per IC or passport”. These are the names saved on the staff records — the file carries them exactly as they are and never shortens or invents one. Uploading as they stand files these contributions under these names. Correct them on the staff record, then come back. Nothing here stops the download."
     },
     "borangA": {
       "title": "Borang A — monthly contribution form (KWSP)",

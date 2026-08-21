@@ -48,6 +48,7 @@
  * e-CP39. This page is for internal record-keeping and as a payment cover document, which is what the
  * request asks for, and the page and the text export both say it in as many words.
  */
+import { isUnfinishedPersonName } from './unfinished-name';
 
 /** One employee's line on the statement — the ticket's own columns, in its own order. */
 export type Cp39FormRow = {
@@ -474,20 +475,18 @@ function cp39PersonKey(r: Cp39FormRow): string {
  * followed by a number; those are the names stored on the staff records, so — exactly like a shared tax
  * number — this is REPORTED, NEVER REPAIRED and NEVER BLOCKING. The statement prints the name on file.
  *
- * ⚠️ DELIBERATELY NARROW, because it accuses a staff record of being unfinished in front of the person
- * who keyed it. `TEST`, `TEST0001`, `TEST_1`, `Test User` — the leading token has to BE the word "test",
- * so `TESTA BINTI OSMAN` and `Testani` are names and are left alone. A blank name is unfinished by any
- * reading: Nama Penuh Pekerja is a box on the form. Nothing else is guessed at; a false accusation here
- * costs more than a missed placeholder, which the operator can still see in the table right beside it.
+ * ⚠️ THE RULE ITSELF NOW LIVES IN `lib/unfinished-name.ts`, and the argument for how narrow it is lives
+ * there with it. r218 needed the same test on the PERKESO ASSIST upload file — the same fourteen people,
+ * the same placeholder names, a different form — and two copies of a rule are two rules that can come to
+ * disagree about whether a given staff record is finished.
  */
-const UNFINISHED_NAME = /^test(?![a-z])/i;
 
 export function unfinishedCp39Names(rows: readonly Cp39FormRow[]): Cp39UnfinishedName[] {
   const out: Cp39UnfinishedName[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
     const name = str(r.name).trim();
-    if (name && !UNFINISHED_NAME.test(name)) continue;
+    if (!isUnfinishedPersonName(name)) continue;
     const who = cp39PersonKey(r);
     if (seen.has(who)) continue;
     seen.add(who);

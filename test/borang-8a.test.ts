@@ -17,7 +17,8 @@ import path from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Borang8AMycoidNotice } from '../app/payroll/borang-8a/mycoid-notice';
+import { Borang8AMycoidNotice, Borang8AUnfinishedNames } from '../app/payroll/borang-8a/notices';
+import { isUnfinishedPersonName } from '../lib/unfinished-name';
 import {
   BORANG_8A_HEADER_KEYS,
   BORANG_8A_STATUS_PARAM_PREFIX,
@@ -883,10 +884,77 @@ describe('5dbce839 — the MyCoID notice on the Borang 8A preview', () => {
 
   /** The component is rendered by the screen, with the two keys, or it is a module nobody reaches. */
   it('is rendered on the preview screen beside the download buttons', () => {
-    expect(PREVIEW).toContain("import { Borang8AMycoidNotice } from '../mycoid-notice'");
+    // r218 renamed the module when it gained a second notice; the assertion is that the SCREEN imports
+    // this component, not what else travels with it on the line.
+    expect(PREVIEW).toMatch(/import \{[^}]*\bBorang8AMycoidNotice\b[^}]*\} from '\.\.\/notices'/);
     expect(PREVIEW).toContain("<Borang8AMycoidNotice mycoid={form.mycoid}");
     expect(PREVIEW).toContain("title={t('mycoidNoticeTitle')}");
     expect(PREVIEW).toContain("body={t('mycoidNoticeBody')}");
+  });
+});
+
+/**
+ * r218 — NAMES THAT ARE NOT YET NAMES, ON THE FILE THE PORTAL ACTUALLY RECEIVES.
+ *
+ * The upload file was generated from the customer's own January 2026 run to close the approved plan's
+ * first step. Format: perfect — nineteen records, every one 278 characters, CRLF between and none after
+ * the last. Content: FOURTEEN of the nineteen carried `TEST0001` … `TEST0014` in field 4, and a
+ * fifteenth read `ISMAIL` where their own filed file says `MOHD RIDHUAN BIN ISMAIL`. PERKESO's field 4
+ * is "Name as per IC or passport". A placeholder pads exactly like a person, so nothing about the file
+ * itself can tell the operator — which is what this notice is for.
+ *
+ * SAME STANDING AS THE MYCOID NOTICE ABOVE: advisory, never blocking, never printed on the document, and
+ * both halves proved by RENDERING rather than by scanning the source, because a source scan cannot see
+ * which way round a condition is. The rule lives in lib/unfinished-name.ts, shared with the CP39's
+ * identical warning, so the two screens cannot come to disagree about whether a name is finished.
+ */
+describe('r218 — the unfinished-name notice on the Borang 8A preview', () => {
+  const ns = en.payroll.borang8a as Record<string, string>;
+  const render = (people: { ic: string; name: string }[]) =>
+    renderToStaticMarkup(
+      createElement(Borang8AUnfinishedNames, { people, title: ns.unfinishedNameTitle, hint: ns.unfinishedNameHint }),
+    );
+
+  it('APPEARS, and names the person by identity number, when a name is a placeholder or blank', () => {
+    const html = render([
+      { ic: '930508055412', name: 'TEST0001' },
+      { ic: '870313035407', name: '' },
+    ]);
+    expect(html).toContain(ns.unfinishedNameTitle);
+    expect(html).toContain(ns.unfinishedNameHint);
+    // The identity number is the half that is certainly theirs — a placeholder name finds nobody.
+    expect(html).toContain('930508055412');
+    expect(html).toContain('870313035407');
+    expect(html).toContain('TEST0001');
+  });
+
+  it('does NOT appear when every name is a name', () => {
+    expect(render([])).toBe('');
+  });
+
+  /** The narrowness is the whole safety of the rule: it accuses a staff record in front of whoever keyed it. */
+  it('leaves real names that merely begin with those letters alone', () => {
+    for (const name of ['TESTA BINTI OSMAN', 'Testani a/p Raju', 'MOHD RIDHUAN BIN ISMAIL']) {
+      expect(isUnfinishedPersonName(name), name).toBe(false);
+    }
+    for (const name of ['TEST', 'TEST0001', 'test_1', 'Test User', '', '   ']) {
+      expect(isUnfinishedPersonName(name), JSON.stringify(name)).toBe(true);
+    }
+  });
+
+  /** A NOTICE, NEVER A GATE — and the words must say so, because an operator who cannot file is worse off. */
+  it('says the download still works and that the fix is on the staff record', () => {
+    expect(ns.unfinishedNameHint).toMatch(/staff record/i);
+    expect(ns.unfinishedNameHint).toMatch(/stops the download|does not stop/i);
+    expect(ns.unfinishedNameHint).toMatch(/never shortens or invents/i);
+  });
+
+  it('is rendered on the preview screen, filtered by the shared rule', () => {
+    expect(PREVIEW).toMatch(/import \{[^}]*\bBorang8AUnfinishedNames\b[^}]*\} from '\.\.\/notices'/);
+    expect(PREVIEW).toContain("import { isUnfinishedPersonName } from '@/lib/unfinished-name'");
+    expect(PREVIEW).toContain('<Borang8AUnfinishedNames');
+    expect(PREVIEW).toContain('.filter((r) => isUnfinishedPersonName(r.name))');
+    expect(PREVIEW).toContain("title={t('unfinishedNameTitle')}");
   });
 });
 
