@@ -1580,6 +1580,12 @@ describe('c99e8358 — page one is the Borang CP39 (Pin.2015) arrangement, drawn
       w: (r.bold ? bld : reg).widthOfTextAtSize(r.text, r.size),
     }));
   }
+  /** The three panels of the middle band, as the drawn page tiles them. */
+  const panels = [
+    { key: 'BUTIR-BUTIR MAJIKAN', x0: X.left, x1: X.panel1Right },
+    { key: 'BUTIR-BUTIR PEMBAYARAN', x0: X.panel1Right, x1: X.panel2Right },
+    { key: 'PEGAWAI YANG MENYEDIAKAN MAKLUMAT', x0: X.panel2Right, x1: X.right },
+  ];
   /** Everything drawn strictly inside the rectangle (x0, x1] x (t0, t1] — i.e. inside one CELL. */
   const cell = (runs: Measured[], x0: number, x1: number, t0: number, t1: number) =>
     runs
@@ -1606,12 +1612,20 @@ describe('c99e8358 — page one is the Borang CP39 (Pin.2015) arrangement, drawn
     }
   });
 
+  /** Fails the named panel when a run straddles a divider or hangs outside the band entirely. */
+  const everyRunInItsOwnPanel = (runs: Measured[]) => {
+    const inBand = runs.filter((r) => r.top >= Y.bandTop && r.top <= Y.bandBottom + 2);
+    expect(inBand.length, 'the band must actually carry the employer, payment and preparer boxes').toBeGreaterThan(25);
+    for (const r of inBand) {
+      const home = panels.filter((p) => r.x >= p.x0 - 0.5 && r.x + r.w <= p.x1 + 0.5);
+      expect(
+        home.map((p) => p.key),
+        `"${r.text}" spans ${r.x.toFixed(1)}..${(r.x + r.w).toFixed(1)} and is not inside one panel`,
+      ).toHaveLength(1);
+    }
+  };
+
   it('tiles the band into three panels, and every caption in it is inside its own panel', async () => {
-    const panels = [
-      { key: 'BUTIR-BUTIR MAJIKAN', x0: X.left, x1: X.panel1Right },
-      { key: 'BUTIR-BUTIR PEMBAYARAN', x0: X.panel1Right, x1: X.panel2Right },
-      { key: 'PEGAWAI YANG MENYEDIAKAN MAKLUMAT', x0: X.panel2Right, x1: X.right },
-    ];
     expect(panels[0].x0).toBeGreaterThanOrEqual(0);
     expect(panels[2].x1).toBeLessThanOrEqual(CP39_COVER.W);
     for (let i = 1; i < panels.length; i += 1) {
@@ -1629,16 +1643,49 @@ describe('c99e8358 — page one is the Borang CP39 (Pin.2015) arrangement, drawn
       ).toBeLessThanOrEqual(p.x1 - p.x0 - 4);
     }
 
-    const runs = await cover(cp39FormFrom({ header: header(), rows: split }));
-    const inBand = runs.filter((r) => r.top >= Y.bandTop && r.top <= Y.bandBottom + 2);
-    expect(inBand.length, 'the band must actually carry the employer, payment and preparer boxes').toBeGreaterThan(25);
-    for (const r of inBand) {
-      const home = panels.filter((p) => r.x >= p.x0 - 0.5 && r.x + r.w <= p.x1 + 0.5);
-      expect(
-        home.map((p) => p.key),
-        `"${r.text}" spans ${r.x.toFixed(1)}..${(r.x + r.w).toFixed(1)} and is not inside one panel`,
-      ).toHaveLength(1);
-    }
+    everyRunInItsOwnPanel(await cover(cp39FormFrom({ header: header(), rows: split })));
+  });
+
+  /**
+   * ⚠️ THE VALUE THAT DOES NOT FIT — the failure a panelled form has and a full-width sheet does not.
+   *
+   * pdf-lib does not clip. 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR' measures 231pt at the
+   * cover's value size and the Nama Syarikat rule is 173pt wide, so an unshrunk legal name prints 58pt
+   * through the divider and lands ON TOP of the PCB figures in the panel beside it. The fix is to shrink
+   * and never to truncate: a clean truncation would satisfy every geometry assertion here and be far
+   * worse than an overprint, because a shorter company name reads as the company's name.
+   */
+  it('shrinks a long name, title or amount rather than printing it into the next panel', async () => {
+    const long = header({
+      employerName: 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR',
+      registrationNo: '199801012345 (123456-X) CAWANGAN SABAH',
+      preparerName: 'NURUL SYAFIQAH BINTI MOHAMMED ZULKARNAIN ABDULLAH',
+      preparerPosition: 'ASSISTANT PAYROLL MANAGER, HUMAN RESOURCES SHARED SERVICES',
+      employerAddress: [
+        'Tingkat 12, Menara Perbadanan Pembangunan Pertanian',
+        'Jalan Sultan Salahuddin Abdul Aziz Shah',
+        'Seksyen 14, Bandar Baru',
+        '40000 Shah Alam, Selangor Darul Ehsan',
+      ].join('\n'),
+    });
+    // A payroll big enough that the amounts are long too — they are right-aligned, so an unshrunk one
+    // backs OUT of its cell leftwards into the column beside it, which is the same defect mirrored.
+    const big = [row({ employmentId: 'a', pcb: 12345678.9, cp38: 987654.32 })];
+    const runs = await cover(cp39FormFrom({ header: long, rows: big }));
+    everyRunInItsOwnPanel(runs);
+
+    // …and every one of them is printed WHOLE. Nothing here may reach the page as a shorter company.
+    const drawn = runs.map((r) => r.text);
+    expect(drawn).toContain('PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR');
+    expect(drawn).toContain('NURUL SYAFIQAH BINTI MOHAMMED ZULKARNAIN ABDULLAH');
+    expect(drawn).toContain('ASSISTANT PAYROLL MANAGER, HUMAN RESOURCES SHARED SERVICES');
+    expect(drawn).toContain('Tingkat 12, Menara Perbadanan Pembangunan Pertanian');
+    expect(drawn).toContain('12,345,678.90');
+    expect(drawn).toContain('987,654.32');
+    // The shrink is real rather than the values happening to fit: the name is set smaller than the box.
+    const name = runs.find((r) => r.text === 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR')!;
+    expect(name.size).toBeLessThan(7.5);
+    expect(name.size, 'shrunk to invisible is silent loss too').toBeGreaterThanOrEqual(1);
   });
 
   it('never draws a single run off the edge of the sheet', async () => {

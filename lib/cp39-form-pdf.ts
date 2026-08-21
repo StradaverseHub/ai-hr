@@ -459,6 +459,31 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
       }
     };
     /**
+     * SHRINK TO FIT, NEVER CLIP AND NEVER OVERPRINT — r205's Borang A lesson, and it bites HARDER on a
+     * landscape form divided into panels than it did on a full-width sheet.
+     *
+     * pdf-lib does not clip. 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR' is 231pt at 7.5pt and
+     * the Nama Syarikat rule is 173pt wide, so an unshrunk legal name prints 58pt straight through the
+     * panel divider and lands ON TOP of the PCB figures in BUTIR-BUTIR PEMBAYARAN. Truncating instead
+     * would be worse, not better: a clean truncation READS AS THE VALUE. So the size comes down, floored
+     * to 0.1pt so the drawn string is strictly inside `maxW`, and clamped at 1pt so an absurd input can
+     * never shrink to invisible.
+     */
+    const fitSize = (v: string, maxW: number, size: number, f: PDFFont = font) => {
+      const w = f.widthOfTextAtSize(v, size);
+      if (w <= maxW || w <= 0) return size;
+      return Math.max(1, Math.floor((size * maxW * 10) / w) / 10);
+    };
+    const putFit = (s: string, x: number, maxW: number, t: number, size: number, f: PDFFont = font) => {
+      const v = safe(s);
+      page.drawText(v, { x, y: at(t), size: fitSize(v, maxW, size, f), font: f, color: ink });
+    };
+    const putRFit = (s: string, xr: number, maxW: number, t: number, size: number, f: PDFFont = font) => {
+      const v = safe(s);
+      const sz = fitSize(v, maxW, size, f);
+      page.drawText(v, { x: xr - f.widthOfTextAtSize(v, sz), y: at(t), size: sz, font: f, color: ink });
+    };
+    /**
      * A VALUE, OR THE RULE THE SPECIMEN PRINTS INSTEAD OF ONE (AGENTS rule 28).
      *
      * Never a placeholder, never "0.00" standing in for "we do not know". A figure the form derives is
@@ -467,7 +492,7 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
      */
     const valueOrRule = (v: string, x0: number, x1: number, t: number, size = CP39_COVER_VALUE_SIZE) => {
       dotted(x0, x1, t + 2.5);
-      if (v) put(v, x0 + 3, t, size, font, ink);
+      if (v) putFit(v, x0 + 3, x1 - x0 - 3, t, size);
     };
 
     // ── Top line: the photocopy permission and the form's own name ────────────────────────────────
@@ -612,11 +637,20 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
       putC('PCB', (cols.pcb.x0 + cols.pcb.x1) / 2, Y.payHeadBottom - 5, CP39_COVER_HEADING_SIZE, bold);
       putC('CP 38', (cols.cp38.x0 + cols.cp38.x1) / 2, Y.payHeadBottom - 5, CP39_COVER_HEADING_SIZE, bold);
 
-      /** ONE call site per figure, and the column is an argument rather than a coordinate. */
+      /**
+       * ONE call site per figure, and the COLUMN is an argument rather than a coordinate — which is what
+       * makes the transposition assertable at all. The figure is right-aligned in its own cell and
+       * shrunk to whatever the cell leaves after the RM, so a very large amount cannot back out of it
+       * leftwards into the column beside it.
+       */
       const payCell = (which: 'pcb' | 'cp38', t: number, value: string, prefix = '') => {
         const c = cols[which];
-        if (prefix) put(prefix, c.x0 + 6, t, CP39_COVER_VALUE_SIZE, font);
-        putR(value, c.x1 - 6, t, CP39_COVER_VALUE_SIZE, font);
+        let from = c.x0 + 6;
+        if (prefix) {
+          put(prefix, from, t, CP39_COVER_VALUE_SIZE, font);
+          from += font.widthOfTextAtSize(prefix, CP39_COVER_VALUE_SIZE) + 4;
+        }
+        putRFit(value, c.x1 - 6, c.x1 - 6 - from, t, CP39_COVER_VALUE_SIZE);
       };
 
       put('Jumlah Potongan', p2.l + 8, Y.payJumlahBottom - 5, CP39_COVER_VALUE_SIZE, font);
@@ -654,13 +688,17 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
       instr.forEach(([label, value, derived], i) => {
         const t = Y.payBilanganBottom + i * rowH + rowH - 6;
         put(label, X.payLabelRight + 8, t, CP39_COVER_VALUE_SIZE, font);
+        let from = X.payInstrLabelRight + 6;
         if (derived) {
-          if (label === 'Amaun') put('RM', X.payInstrLabelRight + 6, t, CP39_COVER_VALUE_SIZE, font);
-          putR(value, p2.r - 6, t, CP39_COVER_VALUE_SIZE, font);
+          if (label === 'Amaun') {
+            put('RM', from, t, CP39_COVER_VALUE_SIZE, font);
+            from += font.widthOfTextAtSize('RM', CP39_COVER_VALUE_SIZE) + 4;
+          }
+          putRFit(value, p2.r - 6, p2.r - 6 - from, t, CP39_COVER_VALUE_SIZE);
         } else if (value) {
-          put(value, X.payInstrLabelRight + 6, t, CP39_COVER_VALUE_SIZE, font);
+          putFit(value, from, p2.r - 6 - from, t, CP39_COVER_VALUE_SIZE);
         } else {
-          dotted(X.payInstrLabelRight + 6, p2.r - 6, t + 2.5);
+          dotted(from, p2.r - 6, t + 2.5);
         }
       });
     }
