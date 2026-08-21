@@ -1,3 +1,56 @@
+## r218 (2026-08-21) — THE CP39 IN THE AGENCY'S OWN LAYOUT, AND A FILE THAT WAS RIGHT ALL ALONG
+
+`6cfa4053`. Two approved items, built as two workstreams in their own worktrees with four adversarial
+verifiers, then hand-fixed by the parent. No migration. Gate: **733 declared / 733 counted / every chunk
+exit=0 / 10,460 tests passed**, tsc 0, i18n parity PASS, `next build` clean, four screens rendered on a dev
+server with **0 MISSING_MESSAGE**, zero-change verifying rsync.
+
+Shipped: `c99e8358` (CP39 redrawn to Borang CP39 Pin.2015) · `5dbce839` (PERKESO validation report, MyCoID
+notice, unmistakable downloads, and the unfinished-name warning the verification turned up).
+
+**THE ROUND'S ONE BIG FINDING.** `5dbce839` asked us to rewrite the PERKESO upload file, "employee
+information split across two lines". Generating THEIR January 2026 file from production settled it: 19
+records, every one 278 characters, CRLF between and none after the last — and the example in the request
+was **our record 1, verbatim**, with runs of spaces collapsed by whatever they pasted it into. The real
+defect is the DATA: fourteen of nineteen names are `TEST0001`…`TEST0014`, a fifteenth is `ISMAIL` against
+their filed `MOHD RIDHUAN BIN ISMAIL`, several ICs are one or two digits off. Raised back to them as
+`68147833`, **including a plain correction of the plan we had already pushed**, which had told them the
+example did not come from their file.
+
+**DECISIONS.**
+
+- **The CP39 specimen was in the reporter's own attachment all along** — `image2.png` inside a .docx, a
+  legible Pin.2015 at 1212x829. `lib/cp39-form-pdf.ts`'s header had said for two rounds that the ONLY
+  blocker was "the specimen is not in this repository". It is now `docs/forms/`, with a hand-verified
+  transcription beside it, and deliberately NOT `public/forms/`, which holds agency artwork only.
+- **`my.cp39` moved `figures` → `agency-layout`**, joining `my.borang-8a` and `my.borang-a`. The four-pins
+  guard was UPDATED, not deleted, and `official` stays `my.cp22` alone.
+- **The cover page is landscape and the schedule pages stay portrait** (pdf-lib takes a size per page), so
+  `paginateCp39` and the ten-column table are untouched.
+- **r217's false sentence is gone from SEVEN places**, including a Malay line printed ON THE PDF asserting
+  that two columns could never be filled — which `0450` had made untrue.
+- **The MyCoID box stays optional.** The spec marks it Mandatory = N, so the download must not refuse; the
+  screen and the report say it is empty instead.
+
+**PROCESS — three things worth more than the diff.**
+
+- **THE ADVERSARIAL VERIFY FOUND WHAT A GREEN GATE COULD NOT, AGAIN.** Three majors, all on the CP39
+  workstream, all invisible to tsc and the suite: a seventh surviving copy of the retired claim; a header
+  asserting the transcription's percentages matched the measured rules (two of the parent's were eyeballed
+  and wrong by up to 20 points of page width); and **an invented fact about LHDN** — "publishes no blank one
+  to print onto" — in six locales, which promoting into `agency-layout` had also put on the shared status
+  chip and the vocabulary definition. That claim is sourced for PERKESO and KWSP and NOT for LHDN, whose own
+  specimen says "Borang ini boleh difotokopi". Shared surfaces now say only what is true of all three and
+  checkable: WE hold no blank. All three hand-fixed (rule 23b), and the chip guard now forbids the recurrence.
+- **THE PARENT'S OWN BRIEF DROPPED A STEP THE PLAN HAD PROMISED THE REPORTER.** The plan called the
+  production comparison "the deliverable"; the brief listed five other things and not that one. The agent
+  said so in `notBuilt` rather than quietly skipping it, which is the only reason it got done. Diff the
+  approved plan against the brief before launching.
+- **A KILLED GATE POISONS THE CLUSTER, AND THE RESULT LOOKS LIKE CODE.** Killing `gate-chunked.sh` mid-rebuild
+  left `<ramdisk>/data/data → <ramdisk>/data`, so every later `initdb` refused and the gate ran the chunk on
+  the STALE cluster: 48 failures, ZERO AssertionErrors, 107 `does not exist`. Fixed by removing the symlink
+  and re-running `dev-db-rebuild.sh`. Start gates with the harness's background flag, never a bare `&`.
+
 ## r217 (2026-08-21) — THREE STATUTORY ITEMS, AND THE GATE CATCHING A FORM NOBODY COULD FILL
 
 `d1176b58`. Three approved items, built by the parent alone and self-verified. Migration `0450`. 26 files,

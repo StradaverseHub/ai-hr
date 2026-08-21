@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-21 (r195–r217 SHIPPED · NOTHING IN FLIGHT · 2 PLANNED)
+## CURRENT STATE — snapshot 2026-08-21 (r195–r218 SHIPPED · NOTHING IN FLIGHT · 2 PLANNED · 1 RAISED BY US)
 
-**`main@d1176b58` IS WHAT RUNS ON PRODUCTION (r217, 2026-08-21)** — verified by an
+**`main@6cfa4053` IS WHAT RUNS ON PRODUCTION (r218, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
@@ -35,14 +35,13 @@ ELSE in that dry run is an undeployed release.
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
 `passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
-**Next free is `0451`.**
-**Board after r218's planning round (2026-08-21): `deployed = 728` · `cancelled = 14` · `planned = 4` ·
-everything else ZERO.** r217 shipped `da4fc817` (EA Sections D/E/F), `e4b541c6` (CP39's two identity
-columns, migration `0450`) and `5d3acdc2` (PERKESO spec conformance). r218 planned the two items the
-reporter opened the next morning — `c99e8358` (redraw the CP39 to the official Pin.2015 layout) and
-`5dbce839` (the PERKESO upload file "does not upload"). Also planned and older: `7966ee35` (Replacement
-Leave in Lieu — the `toil` module, below) and `ca7766ab` (entitlement effective date). All four await
-the reporter.
+**r218 added NONE — next free is still `0451`.**
+**Board after r218 (2026-08-21): `deployed = 730` · `cancelled = 14` · `planned = 2` · `open = 1` ·
+everything else ZERO.** r218 shipped `c99e8358` (CP39 redrawn to the official Pin.2015 layout) and
+`5dbce839` (the PERKESO upload file — which turned out not to be a format defect at all, below). Still
+planned and awaiting the reporter: `7966ee35` (Replacement Leave in Lieu — the `toil` module, below) and
+`ca7766ab` (entitlement effective date). **`68147833` is OPEN and we raised it** — the TEST0001 names,
+below; it needs the reporter to fix staff records, not a build.
 
 ⚠️ **THE PAYROLL PACK FACADE BIT TWICE IN ONE BUILD, AND THE FIX IS THE SAME BOTH TIMES.** r217 needed TP1
 counting from a pack file. A top-level import of the TP1 boundary module (a) CYCLES at run time — it loads
@@ -142,8 +141,35 @@ KNOWLEDGE — so the next trim should move a block wholesale to history behind a
 be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
 READING, never by age.**
 
-**NOTHING IS BUILDABLE.** `improve:pull` and `improve:pull-approved` both return nothing; all four planned
-items sit with the reporter. Two of them were planned in r218 and their findings are below.
+**NOTHING IS BUILDABLE.** `improve:pull-approved` returns nothing. `improve:pull` returns the ONE item we
+raised ourselves (`68147833`), which is a request TO the reporter and must not be planned as a build.
+
+⚠️⚠️ **r218's DECISIVE FINDING: THE PERKESO FILE WAS NEVER A FORMAT DEFECT, AND ONLY GENERATING IT FROM
+PRODUCTION FOUND THAT OUT.** The item said records were "split across two lines" and asked for a rewrite
+against the official spec. Generating their own January 2026 file on the box gave **19 records, every one
+278 characters, CRLF between and none after the last** — and the reporter's pasted example turned out to be
+**our record 1, verbatim**, with the runs of spaces collapsed by whatever they pasted it into. The real
+defect was in the DATA: **fourteen of the nineteen carry `TEST0001`…`TEST0014` in the name box**, a
+fifteenth reads `ISMAIL` where their filed file says `MOHD RIDHUAN BIN ISMAIL`, and several ICs are one or
+two digits off the filed ones (records copied, not keyed). **The plan we had already pushed told them the
+example did not come from their file. It did.** `68147833` carries the correction in plain words — say it
+plainly when a verification contradicts something you have already told the reporter.
+
+⚠️ **A KILLED `gate-chunked.sh` POISONS EVERY LATER RUN, AND THE FAILURE LOOKS LIKE CODE.** Interrupting
+the gate between `dev-db-rebuild.sh`'s `rm -f $DATA` and its `ln -s` leaves a SELF-REFERENTIAL symlink —
+`/opt/homebrew/var/aihr-pg16-ram/data/data → …/aihr-pg16-ram/data` — so the data directory is never empty
+again and every later `initdb` dies with "exists but is not empty". The gate prints
+`cluster rebuild FAILED` and then **runs the chunk against the STALE cluster anyway**: 48 failures, **ZERO
+AssertionErrors**, 107 `does not exist`. Tell: `grep "rebuild FAILED"` before believing a red, then
+`rm -f <ramdisk>/data/data` and re-run `./scripts/dev-db-rebuild.sh` (rule 10 — wipe, don't theorise).
+**Start a gate with the harness's own background flag, never a bare `&`** — the shell `&` job dies with
+the tool call that spawned it, which is what caused this.
+
+⚠️ **THE VERIFYING DRY-RUN RSYNC WILL ALWAYS REPORT `next-env.d.ts` IF YOUR LAST LOCAL RUN WAS `pnpm dev`.**
+Next regenerates it per build mode: dev writes `./.next/dev/types/routes.d.ts`, the server's production
+build writes `./.next/types/routes.d.ts`. Both are correct for their own side. Zero-change proof means
+zero-change APART from that file — diff its CONTENT before calling it a real difference, and never force
+the dev-flavoured copy onto the server.
 
 ⚠️ **THE CP39 SPECIMEN IS FINALLY IN HAND, AND `lib/cp39-form-pdf.ts`'s OWN HEADER SAYS THAT WAS THE ONLY
 BLOCKER.** `c99e8358`'s attachment `CP39 sample.docx` (`feedback_attachment` id `477f3fec`) is a Word file
