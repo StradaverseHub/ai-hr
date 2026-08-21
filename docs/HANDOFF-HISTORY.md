@@ -1,3 +1,34 @@
+## r215 (2026-08-21) — THE PERKESO FILE, BUILT FROM A FILE THE AGENCY ACCEPTED
+
+`433bbd3b`. Two approved items, built by the parent alone (no workstream agents) and self-verified. No
+migration. 16 files, +862/−1. Gate 731 declared / 731 counted / every chunk exit=0 / 0 AssertionErrors at
+CHUNKS=5; `next build` clean; three changed screens rendered with 0 `MISSING_MESSAGE`.
+
+**DECISIONS.**
+
+- **THE GOLDEN IS THE CUSTOMER'S OWN FILED FILE, and it passed first run.** `BRG8A.txt` is committed as
+  `test/fixtures/perkeso-brg8a.txt`; the test rebuilds its fourteen employees THROUGH
+  `perkesoFileEmployeesFrom` and asserts byte-for-byte equality. Their written spec left the padding open
+  ("zeroes or spaces") — the file says SPACES, and the file wins.
+- **THE WAGE IS A REFUSAL, NOT A ZERO.** `bases.socsoEis` arrived in r187 and 34 of 109 production
+  payslips predate it. No recorded SOCSO wage ⇒ the file stops and names the employee. Gross pay is a
+  different number; zero would tell PERKESO they earned nothing (AGENTS 28).
+- **THE WORK WAS THE READ.** `localization/my/borang-8a.ts` summed the SOCSO pair and the EIS pair before
+  anything downstream saw them. The four legs are now kept apart in the SAME loop — not a second pass,
+  which could drift from the paper form's total.
+- **ONE MAPPER, because r210 paid for that lesson.** Four of the six numeric boxes are six wide and
+  ADJACENT. Non-vacuity: swapping two of them fails the golden on the bytes.
+- **`c1b14600` CLOSED AS A VERIFICATION.** The reporter's unblock answer asked us to prove the workflow
+  is driven by their existing Leave Config rather than hardcoded. It already was, and every one of their
+  three settings was already pinned by an existing test. What was missing was the property that states it
+  directly — TWO companies in ONE tenant, different settings, same moment. Added; proved non-vacuous by
+  making the service ignore the per-company switch.
+
+**PROCESS — the one defect found, and how.** Reading, not testing. `formAction=".../file?report=1"` on a
+`method="get"` form silently hands over the file: a GET submission discards the action's query string.
+Green under tsc, the suite and `next build`. Fixed as the button's own name/value and pinned on both
+halves of the page/route contract (AGENTS 17).
+
 ## r211–r212 (2026-08-20/21) — FOUR PLANS, TWO SHIPPED, ONE HANDED BACK, AND THREE "ALREADY BUILT"
 
 `682c5af5`. r211 planned the four items waiting after r210; the reporter approved all four the same day;
