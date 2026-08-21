@@ -20,6 +20,21 @@ stood before this work, kept so the change is legible to the next reader.
 The specimen's own figures (13 employees / RM 15,374.70) come from the reporter's other system and do
 NOT reconcile to this system's January 2026 run. Use it for LAYOUT AND WORDING ONLY.
 
+MEASURED RULES — USE THESE, NOT AN EYEBALLED FRACTION
+-----------------------------------------------------
+The first version of this file quoted the two masthead boxes at "roughly 7%-51%" and "roughly 76%-96%".
+Both were EYEBALLED off a scaled crop and both were wrong — the left box is 27 points of page width
+narrower than that, and a redraw trusting the prose would have run the masthead straight through the
+centred title block. r218 measured them instead, by scanning the PNG for columns dark down the whole
+band, and corrected this file from the scan:
+
+    top band (masthead boxes)   vertical rules at  4.4%   31.3%   73.2%   96.9%
+    three-panel band            vertical rules at  4.3%   38.9%   48.3%   70.4%   96.9%
+    three-panel band            horizontal rules at 23.5%  25.9%  28.5%  30.8%  33.9%  46.7% of height
+
+48.3% is the divider INSIDE the payment panel, between its label column and the PCB / CP 38 columns.
+If prose and scan ever disagree again, THE SCAN WINS: re-run it rather than trusting this paragraph.
+
 PAGE
 ----
 Landscape. "Borang ini boleh difotokopi" sits above the top-left box, small. "CP39 Pin.2015" sits at
@@ -27,7 +42,7 @@ the top right, on the same line.
 
 TOP BAND — three blocks side by side
 ------------------------------------
-LEFT (a ruled box, roughly x 7%-51% of the page width), bold first two lines:
+LEFT (a ruled box, x 4.4%-31.3% of the page width — see MEASURED RULES below), bold first two lines:
 
     KETUA PENGARAH HASIL DALAM NEGERI
     LEMBAGA HASIL DALAM NEGERI
@@ -49,7 +64,7 @@ and beneath it, on one line, bold label with the two values in their own ruled b
 
     POTONGAN BAGI BULAN  [ JANUARI ]   TAHUN  [ 2026 ]
 
-RIGHT (a ruled box, roughly x 76%-96%), heading bold and centred:
+RIGHT (a ruled box, x 73.2%-96.9%), heading bold and centred:
 
     UNTUK KEGUNAAN PEJABAT
 
@@ -58,7 +73,7 @@ RIGHT (a ruled box, roughly x 76%-96%), heading bold and centred:
 
 MIDDLE BAND — one ruled box divided into three panels
 -----------------------------------------------------
-Panel dividers fall at roughly 39% and 70% of the page width. Each panel has a bold, centred heading
+Panel dividers fall at 38.9% and 70.4% of the page width, inside an outer box running 4.3%-96.9%. Each panel has a bold, centred heading
 on a ruled row of its own:
 
     BUTIR-BUTIR MAJIKAN | BUTIR-BUTIR PEMBAYARAN | PEGAWAI YANG MENYEDIAKAN MAKLUMAT

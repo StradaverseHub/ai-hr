@@ -67,8 +67,14 @@ const CH = 595.28;
  *
  * Every number here is a rule that was measured on `docs/forms/cp39-pin-2015-specimen.png` (1212 x 829)
  * and mapped onto A4 landscape by holding the LEFT and RIGHT margins at 36pt and scaling the interior:
- * `36 + (px - 52) * (770 / 1122)` horizontally, `30 + (px - 42) * 0.715` vertically. The percentages in
- * `docs/forms/cp39-pin-2015-transcription.txt` are the same rules stated as fractions of the page.
+ * `36 + (px - 52) * (770 / 1122)` horizontally, `30 + (px - 42) * 0.715` vertically.
+ *
+ * MEASURED, NOT READ OFF THE PROSE. The rules were found by scanning the PNG for columns that are dark
+ * down the whole band, which is how the top band's verticals came out at 4.4 / 31.3 / 73.2 / 96.9 % and
+ * the three-panel band's at 4.3 / 38.9 / 48.3 / 70.4 / 96.9 %. The percentages first written into
+ * `docs/forms/cp39-pin-2015-transcription.txt` for the two masthead boxes were EYEBALLED and were wrong
+ * by up to 20 points of page width; they have since been corrected from this scan. If the two ever
+ * disagree again, the SCAN wins and the prose is what needs fixing.
  *
  * `x` is points from the LEFT edge. `yTop` is points from the TOP edge, because that is how the
  * specimen reads and how a form is described; `at()` inside the renderer turns one into a pdf-lib y.
@@ -465,9 +471,11 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
      * pdf-lib does not clip. 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI SELANGOR' is 231pt at 7.5pt and
      * the Nama Syarikat rule is 173pt wide, so an unshrunk legal name prints 58pt straight through the
      * panel divider and lands ON TOP of the PCB figures in BUTIR-BUTIR PEMBAYARAN. Truncating instead
-     * would be worse, not better: a clean truncation READS AS THE VALUE. So the size comes down, floored
-     * to 0.1pt so the drawn string is strictly inside `maxW`, and clamped at 1pt so an absurd input can
-     * never shrink to invisible.
+     * would be worse, not better: a clean truncation READS AS THE VALUE. So the size comes down, rounded
+     * DOWN to 0.1pt so the drawn string stays inside `maxW`, and clamped at 1pt. The clamp is the one
+     * case where it can still exceed its rule — a value needing under 1pt would be invisible, and an
+     * overprint gets queried while an invisible value does not. Both halves are deliberate; neither is
+     * an invariant the geometry guard can assume.
      */
     const fitSize = (v: string, maxW: number, size: number, f: PDFFont = font) => {
       const w = f.widthOfTextAtSize(v, size);
@@ -818,8 +826,9 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
      * still looks entirely normal beside somebody's tax reference. An overprint gets queried; a
      * truncation does not. Clipping is also exactly how you HIDE an overprint from a geometry check.
      *
-     * So the size is shrunk instead, floored to 0.1pt so the drawn string is strictly inside `maxW` and
-     * clamped at 1pt so an absurd input can never shrink to invisible — invisible is silent loss too.
+     * So the size is shrunk instead, rounded DOWN to 0.1pt so the drawn string stays inside `maxW`, and
+     * clamped at 1pt — below which a value would be invisible, and invisible is silent loss too. At that
+     * clamp, and only there, the string can still exceed its column.
      * Applied to EVERY text column, not just the name: a cut tax reference number is the same defect.
      */
     const fitSize = (v: string, maxW: number, size: number, f = font) => {

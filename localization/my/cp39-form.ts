@@ -78,10 +78,13 @@ import type { ReportParams } from './reports';
  * What the CP39 card and the review screen both say about the printed page, in the operator's face
  * rather than in a tooltip.
  *
- * THE FIRST NOTE IS THE ONE THAT MATTERS AND IT IS NOT DECORATION. We hold no copy of the Borang CP39
- * (Pin.2015) artwork — `public/forms/` contains one file and it is the CP22 — so what comes out is our
- * layout of the agency's fields, and `my.cp39` keeps `fidelity: 'figures'` because of it. Overstating
- * that is precisely the failure the fidelity vocabulary exists to prevent.
+ * THE FIRST NOTE IS THE ONE THAT MATTERS AND IT IS NOT DECORATION. Since r218 the page follows the
+ * agency's own ARRANGEMENT — traced from the filled specimen at `docs/forms/cp39-pin-2015-specimen.png`
+ * — but the ARTWORK is still not ours to print: `public/forms/` contains one file and it is the CP22.
+ * That is why `my.cp39` declares `fidelity: 'agency-layout'` and never `official`. Overstating it is
+ * precisely the failure the fidelity vocabulary exists to prevent, and under-stating it (this comment
+ * said `figures` for a day after the catalog said otherwise) invites the next reader to "correct" the
+ * catalog back.
  */
 export const CP39_FORM_NOTES = [
   'The printed CP39 follows the Borang CP39 (Pin.2015) arrangement — masthead, payment panel and the ' +

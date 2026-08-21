@@ -147,9 +147,16 @@ export type ReportSubmission = {
  *
  * 8ca344bf ADDS A FOURTH, AND IT SITS BETWEEN `official` AND `figures`:
  *
- *   `agency-layout` — the AGENCY'S OWN LAYOUT, drawn by us, because the agency publishes no blank page
- *                     to print onto. Every box, column and heading is where the agency's form puts it,
+ *   `agency-layout` — the AGENCY'S OWN LAYOUT, drawn by us, because we hold no blank page of theirs to
+ *                     print onto. Every box, column and heading is where the agency's form puts it,
  *                     but the paper is ours.
+ *
+ *                     ⚠️ r218 NARROWED THIS DEFINITION WHEN `my.cp39` JOINED THE STATUS. It used to
+ *                     read "because the AGENCY publishes no blank page", which is true and sourced for
+ *                     PERKESO and KWSP and NOT established for LHDN — whose own specimen carries
+ *                     "Borang ini boleh difotokopi". The status is about what WE hold (`public/forms`
+ *                     answers that, and is guarded); an agency's publishing decisions belong in that
+ *                     form's own module, where the evidence is.
  *
  * WHY IT HAD TO EXIST RATHER THAN REUSING EITHER NEIGHBOUR. `official` is a claim about GOVERNMENT
  * ARTWORK and is `my.cp22`'s alone — the specimen Borang 8A we built against is another payroll vendor's

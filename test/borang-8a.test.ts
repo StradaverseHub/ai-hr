@@ -810,11 +810,23 @@ describe('the review screen’s own words', () => {
   /**
    * The status chip must not claim more than the form is. `agency-layout` says the LAYOUT is the agency's;
    * it must never read as the agency's own page, nor as validated or accepted anywhere.
+   *
+   * ⚠️ r218 SPLIT THIS IN TWO, and the split is the point. The chip is SHARED by every `agency-layout`
+   * form, so it may only say what is true of ALL of them — that WE hold no blank to print onto, which
+   * `public/forms` proves. "The agency publishes none" is a claim about a government body: true and
+   * sourced for PERKESO and KWSP, where it lives in their own modules and in the assertion below, and
+   * NOT established for LHDN. r218's first build put it on the shared chip while promoting my.cp39 into
+   * this status, which extended an unsourced claim to a third agency on two surfaces at once. The
+   * negative assertion is what stops that happening again.
    */
   it('describes the new status honestly', () => {
     const hint = (en.payroll.statutoryForms as Record<string, string>).fidelity_agency_layout_hint;
     expect(hint).not.toMatch(/\bofficial\b|\bvalidated\b|ready to file|approved by|government/i);
-    expect(hint).toMatch(/no blank/i);
+    // What is true of every form in this status, and checkable: OUR shelf is empty.
+    expect(hint).toMatch(/we hold no blank/i);
+    // …and the shared chip does not speak for any agency's publishing decisions.
+    expect(hint).not.toMatch(/agency publishes|publishes no blank/i);
+    // The per-form message may still make the stronger claim, because there it is sourced.
     expect((en.payroll.borang8a as Record<string, string>).notArtwork).toMatch(/PERKESO publishes no blank/i);
   });
 });
