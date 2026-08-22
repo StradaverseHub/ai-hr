@@ -30,7 +30,8 @@ Never let `isolation: 'worktree'` cut an agent's tree from the root HEAD — cre
 yourself, with an ABSOLUTE path (rule 24).
 
 **The mistakes this repo keeps re-making** (details in HANDOFF.md → Environment/Traps). Rules 13-22
-were added on 2026-08-12/13 and 23-28 on 2026-08-20, each after it cost a real round:
+were added on 2026-08-12/13, 23-28 on 2026-08-20 and 10b + 28b + 29-31 on 2026-08-21, each after it cost
+a real round:
 
 1. **One vitest at a time.** A second run wipes the first's worker DBs. Parallel agents get their own
    `TEST_DB_NAMESPACE`; otherwise never invent one.
@@ -60,6 +61,15 @@ were added on 2026-08-12/13 and 23-28 on 2026-08-20, each after it cost a real r
     CREATE/DROP from >5 minutes to 0.47s. If the cluster ever misbehaves, run
     `./scripts/dev-db-rebuild.sh` (<1 min, applies the settings and the `NOBYPASSRLS` role) rather
     than waiting, killing, or theorising.
+    **10b (r218) — A KILLED GATE POISONS EVERY LATER RUN, AND THE RESULT READS AS A CODE FAILURE.**
+    Interrupting `gate-chunked.sh` between `dev-db-rebuild.sh`'s `rm -f $DATA` and its `ln -s` leaves a
+    SELF-REFERENTIAL symlink — `<ramdisk>/data/data → <ramdisk>/data` — so the data directory is never
+    empty again and every later `initdb` dies with "exists but is not empty". The gate prints
+    `cluster rebuild FAILED` and **then runs the chunk against the STALE cluster anyway**: 48 failures,
+    ZERO AssertionErrors, 107 `does not exist`. `grep "rebuild FAILED"` before believing a red, then
+    `rm -f <ramdisk>/data/data` and re-run the rebuild script. **Start a gate with the harness's own
+    background flag, NEVER a bare `&`** — a `&` job dies with the tool call that spawned it, which is
+    what caused this.
 11. **COMMIT A WIP CHECKPOINT BEFORE ANY COMMAND THAT CAN UNDO A FILE.** Two agents lost work this way
     on 2026-08-05, by different mechanisms with one cause — uncommitted work has no undo.
     - `git stash` is REPO-GLOBAL, not per-worktree: an agent ran `git stash pop` and got a DIFFERENT
@@ -196,6 +206,40 @@ were added on 2026-08-12/13 and 23-28 on 2026-08-20, each after it cost a real r
     printed sentence asserting the row count matched Bilangan Pekerja, which is false whenever the PCB
     and CP38 sets differ. **Adding a box or a caption can make a form WORSE than the gap it filled** —
     incomplete becomes affirmatively false, and on a tax document that is the more expensive failure.
+
+28b. **AND NEVER ASSERT A FACT ABOUT AN AGENCY YOU CANNOT SOURCE — INCLUDING BY MOVING A FORM INTO A
+    STATUS WHOSE SHARED WORDING ALREADY ASSERTS ONE.** r218 reworded the CP39's provenance notice to say
+    "because LHDN publishes no blank one to print onto" in six locales. Nothing supports it; LHDN's own
+    specimen carries "Borang ini boleh difotokopi". The claim is true and sourced for PERKESO and KWSP,
+    where it lives in their own modules. Worse, promoting `my.cp39` into `agency-layout` put the SAME
+    unsourced claim onto the shared status chip and the vocabulary definition — **a shared string acquires
+    a new subject the moment a new member joins the set, and nothing warns you.** So: a shared caption may
+    only say what is true of EVERY member and checkable from this repository ("WE hold no blank" —
+    `public/forms` answers that); anything stronger belongs in the one form's own module beside its
+    evidence. When you promote a form into a status, re-read every string that status renders.
+
+29. **DIFF THE APPROVED PLAN AGAINST THE BRIEF BEFORE YOU LAUNCH AN AGENT.** r218's plan told the reporter,
+    in its build notes, that the verification WAS the deliverable — generate their own file from production
+    and compare it character by character. The brief the parent then wrote listed five other things and not
+    that one. The agent said so in `notBuilt` instead of quietly skipping it, which is the only reason it
+    happened at all — and it changed the round's answer completely. **A plan is a promise to the reporter;
+    a brief is an instruction to an agent, and nothing checks that the second contains the first.** Read
+    them side by side, and brief every agent to report what it did NOT do.
+
+30. **CHECK THE ITEM'S ATTACHMENTS BEFORE RECORDING SOMETHING AS UNOBTAINABLE.** Two rounds of `lib/cp39-form-pdf.ts`
+    said the LHDN masthead and the A / B / C panels could not be drawn because no legible specimen existed
+    in this repository. It had been sitting on the board the whole time — inside a `.docx` attachment, as
+    `word/media/image2.png`, a full CP39 Pin.2015 at 1212x829. `unzip` the attachment and look. This is
+    rule 7's family: verify the premise, including your own file's stated blocker, before repeating it.
+    Attachments live in `feedback_attachment`; pull one with
+    `psql -tAc "select encode(content,'base64') from feedback_attachment where id='…'" | base64 -d`.
+
+31. **WHEN A VERIFICATION CONTRADICTS SOMETHING YOU HAVE ALREADY TOLD THE REPORTER, SAY SO IN PLAIN WORDS.**
+    r218's pushed plan told them their pasted example "does not come from your file". Generating the file
+    from production showed it was our record 1, verbatim, with the runs of spaces collapsed by whatever
+    they pasted it into. The board has no edit-in-place for a plan already approved (pushing one resets the
+    status), so the correction goes in the item you raise back to them — `68147833` carries it — and it
+    goes near the TOP, not buried under the good news.
 
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round

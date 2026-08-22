@@ -155,15 +155,10 @@ two digits off the filed ones (records copied, not keyed). **The plan we had alr
 example did not come from their file. It did.** `68147833` carries the correction in plain words — say it
 plainly when a verification contradicts something you have already told the reporter.
 
-⚠️ **A KILLED `gate-chunked.sh` POISONS EVERY LATER RUN, AND THE FAILURE LOOKS LIKE CODE.** Interrupting
-the gate between `dev-db-rebuild.sh`'s `rm -f $DATA` and its `ln -s` leaves a SELF-REFERENTIAL symlink —
-`/opt/homebrew/var/aihr-pg16-ram/data/data → …/aihr-pg16-ram/data` — so the data directory is never empty
-again and every later `initdb` dies with "exists but is not empty". The gate prints
-`cluster rebuild FAILED` and then **runs the chunk against the STALE cluster anyway**: 48 failures, **ZERO
-AssertionErrors**, 107 `does not exist`. Tell: `grep "rebuild FAILED"` before believing a red, then
-`rm -f <ramdisk>/data/data` and re-run `./scripts/dev-db-rebuild.sh` (rule 10 — wipe, don't theorise).
-**Start a gate with the harness's own background flag, never a bare `&`** — the shell `&` job dies with
-the tool call that spawned it, which is what caused this.
+⚠️ **A KILLED `gate-chunked.sh` POISONS EVERY LATER RUN — now AGENTS rule 10b, with the symptom and the
+one-line fix.** The short version so nobody has to look it up mid-red: `grep "rebuild FAILED"` in the gate
+log BEFORE believing a failing chunk, and start a gate with the harness's own background flag, never a
+bare `&`.
 
 ⚠️ **THE VERIFYING DRY-RUN RSYNC WILL ALWAYS REPORT `next-env.d.ts` IF YOUR LAST LOCAL RUN WAS `pnpm dev`.**
 Next regenerates it per build mode: dev writes `./.next/dev/types/routes.d.ts`, the server's production
