@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-21 (r195–r218 SHIPPED · NOTHING IN FLIGHT · 2 PLANNED · 1 RAISED BY US)
+## CURRENT STATE — snapshot 2026-08-22 (r195–r218 SHIPPED · NOTHING IN FLIGHT · 6 PLANNED)
 
 **`main@6cfa4053` IS WHAT RUNS ON PRODUCTION (r218, 2026-08-21)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
@@ -36,113 +36,32 @@ ELSE in that dry run is an undeployed release.
 instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
 `passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
 **r218 added NONE — next free is still `0451`.**
-**Board after r218 (2026-08-21): `deployed = 730` · `cancelled = 14` · `planned = 2` · `open = 1` ·
-everything else ZERO.** r218 shipped `c99e8358` (CP39 redrawn to the official Pin.2015 layout) and
-`5dbce839` (the PERKESO upload file — which turned out not to be a format defect at all, below). Still
-planned and awaiting the reporter: `7966ee35` (Replacement Leave in Lieu — the `toil` module, below) and
-`ca7766ab` (entitlement effective date). **`68147833` is OPEN and we raised it** — the TEST0001 names,
-below; it needs the reporter to fix staff records, not a build.
+**Board after r219's planning round (2026-08-22): `deployed = 730` · `cancelled = 14` · `planned = 6` ·
+everything else ZERO.** r218 shipped `c99e8358` (CP39 front page) and `5dbce839` (PERKESO report + notices).
+r219 planned FOUR: `0fea5cc9` (CP39 page 2 — the schedule, in the official ruled layout), `64c09b0e`
+(SOCSO text file AGAIN, and its field map is wrong — below), `ece6d75d` (EA C.P.8A Pin. 2024 layout) and
+`68147833` (the TEST names — OUR item, and it needed a plan like any other: **an item with no plan has no
+approve button**, which is the trap this file already warns about further down). Still planned and older:
+`7966ee35` (Replacement Leave in Lieu — the `toil` module, below) and `ca7766ab` (entitlement effective
+date).
 
-⚠️ **THE PAYROLL PACK FACADE BIT TWICE IN ONE BUILD, AND THE FIX IS THE SAME BOTH TIMES.** r217 needed TP1
-counting from a pack file. A top-level import of the TP1 boundary module (a) CYCLES at run time — it loads
-the country registry, the registry loads the pack, the pack re-exports the file — with a GREEN typecheck
-and two EA suites failing to LOAD; and (b) trips `test/payroll-pack-drift.test.ts`, because TP1 sits inside
-the payroll boundary and that allowlist only shrinks. **The answer to both is a DEFERRED import of
-`packs/payroll/service`**, which re-exports the same symbols, so it is still THE rule. Reword the comment
-too: source-scanning guards do not strip comments (rule 27), so prose naming the boundary path trips the
-ratchet by itself.
+⚠️⚠️ **`64c09b0e` ASKS US TO MOVE MONEY BETWEEN BOXES ON A STATUTORY FILE, AND THE PLAN SAYS NO.** It
+renames the last four amount columns — 215-220 as a "wage class", 221-226 as a "contribution component",
+227-238 as employer/employee share. PERKESO's own spec (the one THEY attached to `5d3acdc2`) says those
+four are SOCSO employer, SOCSO employee, EIS employer, EIS employee, and their filed file agrees. Following
+it would credit every SOCSO amount to EIS with the file still 278 characters and the totals still adding
+up. **Their reading is explicable and still wrong**: `34111U` is six characters inside a TWENTY-character
+MyCoID field (13-32), which is why they think 13-18 is a staff number, and their EIS pair happens to be
+equal (1170/1170), which is why the last two boxes look like an employer/employee pair. Both attachments
+are screenshots of an editor with WORD WRAP ON — that is the whole "split across two lines" story, twice.
 
-⚠️⚠️ **THE `toil` MODULE IS NOT GRANTED TO THIS TENANT, AND IT IS WHY REPLACEMENT LEAVE IN LIEU HAS NEVER
-APPEARED.** `tenant_module` holds nine active rows — attendance, claims, country-my, multi_cycle_payroll,
-notifications, payroll, performance, system_explorer, typed_pay_components — and **no `toil` row**.
-`replacementRequestAvailability` (core/replacement-request.ts:175) returns `module_off` on its FIRST line
-before the policy is read, and `submitReplacementLeaveRequest` asserts the same module at :253. So every
-employee in every company is refused regardless of Leave Config. **r215's c1b14600 verification was right
-about the linkage and missed this, because it started at `resolvePolicyForTx` — one line BELOW the first
-gate.** Granting the module is provisioning and commercial; do NOT seed or migrate it.
-
-⚠️ **THE SAME DEFECT CLASS HAS NOW COST THREE ROUNDS: a surface computes a precise reason and renders
-silence.** `no_eligibility_match` (8ebf77ae), the leave on-behalf refusal (5206539f), and now
-`ReplacementRequestAvailability`'s `module_off` / `not_enabled` / `not_eligible` / `no_employment`, which
-app/leave/page.tsx discards to gate a button. When a read returns a discriminated reason, render it.
-
-⚠️⚠️ **THE REPORTER'S REFERENCE DOCUMENTS COME FROM A SYSTEM WHOSE STAFF ARE NOT IN OURS. Read this before
-building any statutory file.** The KWSP `EPFORMA2`, the PERKESO `BRG8A` and the filed `CP39` all name the
-same fourteen people — AHMAD AZMER IZAT, AHMAD MUHAIMIN, SHAMIMI MAZWANI, FAZLIANA BINTI ISMAIL and the
-rest — and **not one of them exists in `person` on production** (checked 2026-08-21). Meanwhile ISEDECOR
-BINA's 2026-01 payroll here holds nineteen people named `TEST0001`…`TEST0014` and `ISMAIL`, with PCB of
-RM6,919.45 against the RM15,374.70 their filed CP39 declares. **The documents are authoritative for
-FORMAT and worthless for RECONCILIATION.** Any test asserting our output equals theirs fails for a reason
-that has nothing to do with the file. Loading their real staff is its own piece of work and nobody has
-asked for it yet.
-
-⚠️ **`c1b14600` IS UNBLOCKED AND APPROVED — AND THE REPORTER'S ANSWER CHANGED WHAT IT IS.** They did NOT
-name companies. They answered: *"I already have an existing configuration under Leave Config >
-Replacement Leave … please do not hardcode the companies or expiry period separately … Please check
-whether the existing settings are correctly linked to the Replacement Leave in Lieu workflow, rather than
-creating another separate company or expiry configuration."* So the deliverable is a VERIFICATION, not a
-build, and the answer is already largely known: the workflow reads `toil_policy` per company (`enabled`,
-`employee_request_enabled`) and `core/toil.ts` has exactly ONE function reading `expiryUnit` +
-`expiryDays` + `expiryMonths` together, with a header explaining that a caller cannot accidentally mix
-them. **Do not hardcode anything, and do not write their configuration.** Prove the link end to end,
-show them where the three settings live, and close it. The full question and answer are in the
-`feedback_block` row for that item.
-
-⚠️ **MIGRATION NUMBERS: `0444` AND `0445` ARE DEAD.** They sit on `build/r201-tp1`, which is HELD and must
-be re-planned, and `0446` has now shipped past them — drizzle's watermark is the last applied `when`, so a
-later merge carrying either would be SILENTLY SKIPPED (rule 14). Reissue fresh numbers when TP1 is reworked.
-`0442` was the same trap and was caught: it was reissued as `0446` in the merge commit that shipped it.
-**`0448` and `0449` shipped in r209; next free is `0450`.**
-
-⚠️ **THE GATE NEEDS `CHUNKS=5`.** The suite is 721 files (r209) and the default 3 chunks exhausts the 8GB RAM disk
-mid-run: 77 files fail with **zero AssertionErrors** and `No space left on device` in the chunk log — an
-environment failure wearing a red gate's clothes. ALWAYS run the per-chunk cause tally before believing a
-red. The machine has 18GB, so a bigger RAM disk is not the way out. The real fix is the harness: `resetDb`
-TRUNCATEs 107 tables per file, ~453 times a run (`gate-chunked.sh`'s own header names it). **UNLOGGED test
-tables have never been tried and are the obvious first experiment**; 236 of the 706 files never touch the
-database and could be a separate fast project.
-
-⚠️⚠️ **RUN THE DRY RUN FROM `mainwt`, WITH `cd` IN THE SAME COMMAND.** The shell's cwd resets to the repo
-ROOT (`local/root-scratch`, far behind main) between tool calls, and a dry run from there reports thousands
-of bogus differences and invents a crisis. This cost a full diagnostic pass on 2026-08-17 — the fourth time
-the wrong-tree trap has landed.
-
-**⚠️ SOMETHING OUTSIDE THIS REPO RELEASED r195 TO PRODUCTION ON 2026-08-17 ~22:05 AND IT IS STILL
-UNIDENTIFIED.** `deploy-r195.log` on the box records the build; `0253dc7c`, `a6da1387` and `46afcc48` were
-marked deployed at 22:09 with `build_ref = 004b098a`, **a commit that exists in no worktree here and in no
-other clone on this machine**; the three build-started→completed→deployed triples land 1–2 seconds apart, so
-nothing was built at that moment — they were *marked*. The local peer session confirmed it was not them;
-there are no scheduled jobs. The WORK is real and in this repo's idiom (its comments cite the item ids).
-**It has been recovered into main as `6bd2d99d` (merge `3b7238d5`)** by taking production's copy of the 15
-differing files — all six catalogues verified strict supersets first, so nothing on main was lost — gated
-tsc 0 / i18n-check PASS / 36 tests green. **Had a release gone out from main first, `rsync --delete` would
-have reverted all three items silently.** If that actor runs again, expect the same shape.
-
-**⚠️ THE LOCAL CLUSTER WAS GONE, NOT WEDGED, ON 2026-08-17** — `/opt/homebrew/var/aihr-pg16` was a BROKEN
-symlink to an unmounted RAM disk (`…-ram/data`), so 5433 refused connections. Uptime showed no reboot, so
-something unmounted it. `./scripts/dev-db-rebuild.sh` restored it in under a minute (8GB RAM disk,
-`fsync=off`, `ai_hr_app` NOBYPASSRLS confirmed). Check for the broken symlink before theorising.
-
-⚠️ **AI-HR IS NOT PUBLICLY EXPOSED — DO NOT "VERIFY" IT THROUGH A BROWSER.** It listens on
-**127.0.0.1:3000 only**, and **nothing in nginx proxies to :3000** (checked r191:
-`grep -rlE 'proxy_pass.*:3000' /etc/nginx/` returns nothing). The health check is
-`curl localhost:3000/` **ON THE BOX** → **401**, the password gate, plus `systemctl is-active aihr`.
-`https://203.142.6.241/` returns **403** and `sfm.stradaprop.com` is a **DIFFERENT APPLICATION** —
-it redirects to `/odoo` and lands on an Odoo login (Odoo listens on 8069 on the same host). Neither
-tells you anything about ai-hr; r191 chased both before establishing this.
-
-## ▶ START HERE — WHAT THE NEXT SESSION SHOULD PICK UP
-
-**⚠️ THIS FILE IS OVER ITS ~700-LINE CAP.** r209 brought it down from 1,490; r217 moved the r209 round
-entry wholesale to `docs/HANDOFF-HISTORY.md` behind a pointer and dropped three planning blocks the same
-round shipped. **What remains is not round entries**: it is live warnings, product
-facts nothing else records, and the loop's operating manual. Getting to 700 from here means DELETING LIVE
-KNOWLEDGE — so the next trim should move a block wholesale to history behind a pointer, or the cap should
-be revisited honestly rather than met by dropping things that each cost a round to learn. **Trim by
-READING, never by age.**
-
-**NOTHING IS BUILDABLE.** `improve:pull-approved` returns nothing. `improve:pull` returns the ONE item we
-raised ourselves (`68147833`), which is a request TO the reporter and must not be planned as a build.
+⚠️ **THE REPORTER CONFIRMED r218's CP39 FRONT PAGE IS RIGHT** ("the format of CP39 page 1 is accurate") and
+came straight back for page 2, WITH the official reverse attached. Four of the five things `0fea5cc9` asks
+for are already true (Bil runs across the whole statement, the header repeats per sheet, the ten columns
+are already those ten, JUMLAH/JUMLAH BESAR are already totals). **The one real defect is the page number**:
+`Muka surat {sheet}/{of}` counts SCHEDULE sheets only, so the first reads "1/1" where the official form
+calls that same sheet "Muka Surat 2" — which is exactly their "page 2 is a continuation, not a new
+document" complaint, arrived at from the other end.
 
 ⚠️⚠️ **r218's DECISIVE FINDING: THE PERKESO FILE WAS NEVER A FORMAT DEFECT, AND ONLY GENERATING IT FROM
 PRODUCTION FOUND THAT OUT.** The item said records were "split across two lines" and asked for a rewrite
