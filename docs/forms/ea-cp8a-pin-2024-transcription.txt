@@ -130,6 +130,17 @@ THE FOOT — a ruled box on the RIGHT, and a date on the LEFT outside it
     as the agency's form has it and do NOT silently correct it; note it here so the next reader knows it
     was read, not mistyped. "Nama dan Alamat Majikan" gets TWO rules, for two address lines.
 
+WHAT WE DREW FROM IT (r219, 2026-08-23)
+--------------------------------------
+`docs/forms/ea-cp8a-our-output-2026-08-23.png` is what `lib/ea-pdf.ts` produces after the redraw, from a
+fully-populated fixture, kept beside the specimen so the two can be held up against each other without
+running anything. Every coordinate in `EA_FORM` (lib/ea-pdf.ts) was MEASURED off the specimen PNG by
+scanning it for rules — the banner box at 77.3/90.2 pt, the money column at 504.5 -> 572.2, the JUMLAH
+double rule at 425.8/435.4, the officer box at 640.8 -> 730.6 — rather than eyeballed, which is the CP39
+lesson. The one deliberate departure is the LEFT margin: the specimen sets its rules 16.8 pt from the
+paper edge, inside the unprintable margin of most office printers, so everything left-anchored moved to
+24 pt. The money column did not move.
+
 WHAT THIS SYSTEM ALREADY HOLDS FOR EVERY BOX
 --------------------------------------------
 Section A comes from the staff record; B, C, D, E and F are already derived by `localization/my/reports.ts`

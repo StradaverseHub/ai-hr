@@ -402,10 +402,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
     if (w <= maxW || w <= 0) return size;
     return Math.max(1, Math.floor((size * maxW * 10) / w) / 10);
   };
+  /** Returns the x the drawn string ENDS at, so the next run (a cue word, an inline rule) can start from
+   *  what was actually drawn rather than from a guess at its width. */
   const putFit = (s: string, x: number, maxW: number, tt: number, size: number, f: PDFFont = font, color = ink) => {
     const v = safe(s);
-    page.drawText(v, { x, y: at(tt), size: fitSize(v, maxW, size, f), font: f, color });
-    return x + f.widthOfTextAtSize(v, fitSize(v, maxW, size, f));
+    const sz = fitSize(v, maxW, size, f);
+    page.drawText(v, { x, y: at(tt), size: sz, font: f, color });
+    return x + f.widthOfTextAtSize(v, sz);
   };
 
   /** Greedy word-wrap at `size`, so the footnote strip can be MEASURED before it is placed. */
@@ -440,7 +443,8 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
     dotted(x0, x1, tt + 2.5);
     if (v) {
       const s = safe(v);
-      page.drawText(s, { x: x1 - 2 - font.widthOfTextAtSize(s, fitSize(s, x1 - x0 - 4, size, font)), y: at(tt), size: fitSize(s, x1 - x0 - 4, size, font), font, color: ink });
+      const sz = fitSize(s, x1 - x0 - 4, size, font);
+      page.drawText(s, { x: x1 - 2 - font.widthOfTextAtSize(s, sz), y: at(tt), size: sz, font, color: ink });
     }
   };
   /** One numbered money line: the caption at `x`, its amount on the RM column's rule. */
