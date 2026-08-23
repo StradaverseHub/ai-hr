@@ -17,6 +17,13 @@ import {
   entitlementStatusNeedsNotice,
 } from '@/lib/entitlement-status';
 import { otherContributors } from '@/lib/shared-leave-balance';
+// r219 (7966ee35) — HR's half of "why is Replacement Leave in Lieu not available for this person". The
+// employee's own screen gained the same notice from the same read and the same component, which is the
+// point: an employee ringing HR about a missing button and the HR admin looking that person up must be
+// given ONE cause, not two descriptions of one configuration (8ebf77ae's lesson, third occurrence).
+import { isReplacementLeaveType } from '@/core/ess-view';
+import { replacementRequestAvailability } from '@/packs/leave/service';
+import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
 import { employeeBalanceRows } from './rows';
 
 /**
@@ -69,16 +76,36 @@ export default async function EmployeeBalancesPage({
   const selected = pickInquiryEmployee(employees, sp.emp);
 
   const asOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : todayInKualaLumpur();
+  // r219 — TODAY, kept as its own value rather than folded into the line above. The as-at fallback is a
+  // pinned contract with the export route (test/leave-balance-as-at-date.test.ts: both sides must validate
+  // and fall back identically, or an export link resolves to a different date than the page it was clicked
+  // from), and the availability read below deliberately does NOT use `asOf` — see its own note.
+  const today = todayInKualaLumpur();
   const q = sp.q?.trim() || undefined;
   const typeIds = arr(sp.type);
   const dir: 'asc' | 'desc' = sp.dir === 'desc' ? 'desc' : 'asc';
 
-  const [rows, leaveTypes] = await Promise.all([
+  const [rows, leaveTypes, replacementRequest] = await Promise.all([
     selected
       ? employeeBalanceRows(session, selected.employmentId, asOf, locale, { q, typeIds, dir })
       : Promise.resolve([]),
     listLeaveTypes(session, { locale }),
+    // r219 — may THIS employee ask to be credited for time they already worked, and if not, why not.
+    //
+    // ⚠️ ASKED AS OF TODAY, NOT AS OF THE AS-AT DATE, and that asymmetry with every figure on this screen
+    // is deliberate. The columns answer "where did this person stand on `asOf`"; this answers "can they
+    // press the button now", which is a question about the present whatever date HR has typed above. An
+    // eligibility verdict resolved against a back-date would be a true sentence about the wrong day, and
+    // the screen has nothing that could tell the reader which of the two it was reading.
+    selected
+      ? replacementRequestAvailability(session, selected.employmentId, today)
+      : Promise.resolve({ allowed: false } as const),
   ]);
+  // Same scope as the employee's own page: a tenant with no replacement leave type in its catalogue has
+  // nothing to explain, so it is shown nothing. Read off the full catalogue by ROLE (`isReplacementLeaveType`),
+  // not off `rows` — those are narrowed by the leave-type filter above, and a notice that disappeared
+  // because HR ticked "Annual Leave" would be worse than one that was never there.
+  const tenantHasReplacementLeave = leaveTypes.some(isReplacementLeaveType);
 
   // Every column still renders through this ONE formatter — no per-column rounding, and a null figure
   // stays an em dash rather than becoming a "0.00" HR would read as a real zero balance.
@@ -250,6 +277,14 @@ export default async function EmployeeBalancesPage({
           </div>
 
           <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
+
+          {/* r219 (7966ee35) — why Replacement Leave in Lieu is not available to the employee named on the
+              card below. Directly above that card so it is unambiguously about THIS person, and phrased
+              for an administrator ("this employee") by the same component that phrases it for the employee
+              themselves — one map, one cause, two subjects. Nothing renders when they can submit. */}
+          {selected && tenantHasReplacementLeave && (
+            <ReplacementAvailabilityNotice availability={replacementRequest} audience="admin" />
+          )}
 
           <Card className="overflow-hidden">
             <div className="border-b border-border px-4 py-3 text-sm font-medium">

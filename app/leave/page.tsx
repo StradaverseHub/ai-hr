@@ -41,6 +41,10 @@ import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
 // read that decides whether to offer it, and the action it posts to.
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
+// r219 (7966ee35) — …and, when that availability read says NO, the sentence saying why. The read has always
+// carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
+// round changing Leave config settings against a cause that sits above Leave config.
+import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
 import { listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
@@ -353,6 +357,15 @@ export default async function LeavePage({
   // read exists so the button is not offered where the submission would be refused. Hiding it is the
   // courtesy, refusing the POST is the control.
   const replacementRequest = ess && me ? await replacementRequestAvailability(session, me.employmentId, today) : { allowed: false };
+  // r219 — WHO IS SHOWN THE REASON, and why it is not simply everyone whose read said no.
+  //
+  // A tenant that has never had a Replacement Leave type in its catalogue has nothing to explain: the
+  // request option was never on offer, and a banner saying "not part of this plan" on every employee's
+  // leave page would be an answer to a question nobody asked. Scoped to tenants whose catalogue HAS one,
+  // read off the unfiltered `leaveTypes` above rather than the eligible/visible subsets — the notice must
+  // survive the very configuration it is explaining, and BY ROLE with the seeded code as the fallback
+  // (`isReplacementLeaveType`), because production's own replacement type is coded `RL` (5ff7daff).
+  const tenantHasReplacementLeave = leaveTypes.some(isReplacementLeaveType);
   const breakdownAsOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : today;
   const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale) : [];
   const selfRequests = ess && me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
@@ -880,6 +893,18 @@ export default async function LeavePage({
           }
         />
       </div>
+
+      {/* r219 (7966ee35) — WHERE THE "+ Replacement Leave Request" BUTTON WOULD BE, THE REASON IT IS NOT.
+          Directly under the header that carries the button, because that is where the employee looked for
+          it. NOT inside the header's action row: this is two sentences, and a wrapped paragraph inside a
+          row of buttons reads as a broken control rather than an explanation.
+
+          It renders nothing when the employee may submit — except for the one allowed state worth naming,
+          the First Schedule consent the form is about to ask for (see the component). So the page in its
+          normal condition is byte-identical to before this item. */}
+      {ess && tenantHasReplacementLeave && (
+        <ReplacementAvailabilityNotice availability={replacementRequest} audience="self" />
+      )}
 
       {sp.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
