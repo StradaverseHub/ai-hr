@@ -34,9 +34,13 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
    */
   it('prints the three unsourced boxes ONLY when set — never as a derived 0.00', () => {
     const pdf = read('lib/ea-pdf.ts');
+    // r219 — the SHAPE moved with the C.P.8A redraw and the RULE did not. `optionalRow` used to drop the
+    // whole line; the form's caption and rule are now always printed (that is what the blank agency page
+    // carries) and the conditional narrowed to the AMOUNT, which is `manual()`. What must stay true is
+    // that none of these four can reach the page as a derived 0.00.
     for (const f of ['donations', 'zakatOther', 'childRelief', 'tp1Relief']) {
-      expect(pdf, `${f} must use optionalRow`).toContain(`optionalRow(t.${f}, d.partD.${f})`);
-      expect(pdf, `${f} must not be drawn unconditionally`).not.toContain(`row(t.${f}, rm(d.partD.${f}))`);
+      expect(pdf, `${f} must go through manual()`).toContain(`manual(d.partD.${f})`);
+      expect(pdf, `${f} must not be drawn as a derived figure`).not.toContain(`derived(d.partD.${f})`);
     }
   });
 
@@ -76,20 +80,30 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
 describe('da4fc817 — Sections E and F match the published form', () => {
   it('Section E names the fund before its amount, and no longer carries EIS', () => {
     const pdf = read('lib/ea-pdf.ts');
-    const e = pdf.slice(pdf.indexOf('sectionHeader(t.sectionEContributions)'), pdf.indexOf('sectionTotalLine(t.sectionFExemptAllowances'));
-    expect(e).toContain('row(t.fundName, d.partE.fundName)');
-    expect(e).toContain('row(t.epfKwsp');
-    expect(e).toContain('row(t.socso');
-    // The official Section E has exactly two amounts. EIS is kept as a figure but printed outside it.
+    const e = pdf.slice(pdf.indexOf('putFit(t.sectionEContributions'), pdf.indexOf('putFit(t.sectionFExemptAllowances'));
+    // The fund is NAMED before it is quantified, exactly as the form asks ("Nama Kumpulan Wang" first).
+    expect(e).toContain('putFit(t.fundName');
+    expect(e).toContain('d.partE.fundName');
+    expect(e).toContain('derived(d.partE.epf)');
+    expect(e).toContain('derived(d.partE.socso)');
+    // The official Section E has exactly two amounts. EIS is kept as a figure but printed outside it —
+    // r219 moved it the rest of the way out, below the officer box in our own strip, so that no line
+    // inside the drawn form claims a box the C.P.8A does not have.
     expect(e).not.toContain('eisSip');
+    const strip = pdf.slice(pdf.indexOf('let y: number = EA_FORM.footStripT'));
+    expect(strip, 'the EIS figure must still be printed somewhere').toContain('t.eisSip');
+    expect(strip).toContain('d.partE.eis');
   });
 
   it('Section F exists as its own section, and the exempt figure left Part B', () => {
     const pdf = read('lib/ea-pdf.ts');
-    expect(pdf).toContain('sectionTotalLine(t.sectionFExemptAllowances');
-    // It used to print inside Part B as a muted row. That line must not come back — it read as another
-    // component of the Part B total, which it is not.
-    expect(pdf).not.toContain("row(t.exemptAllowances, rm(d.partB.exemptAllowances ?? 0), { color: muted })");
+    // ONE LINE whose title IS the item, with its own RM before the rule — the form's own arrangement.
+    expect(pdf).toContain('putFit(t.sectionFExemptAllowances');
+    expect(pdf).toContain('derived(d.partB.exemptAllowances ?? 0)');
+    // It must not come back inside Part B, where it read as another component of that total, which it is
+    // not: it is the tax-exempt PORTION of the allowances already printed on 1(c).
+    const b = pdf.slice(pdf.indexOf('putFit(t.sectionBEmploymentIncome'), pdf.indexOf('putFit(t.sectionCPensionOther'));
+    expect(b).not.toContain('exemptAllowances');
   });
 
   it('the fund name is a pack constant, not a per-employee column invented for one form', () => {
