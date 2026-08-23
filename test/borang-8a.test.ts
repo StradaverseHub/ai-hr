@@ -17,7 +17,7 @@ import path from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Borang8AMycoidNotice, Borang8AUnfinishedNames } from '../app/payroll/borang-8a/notices';
+import { Borang8AMycoidNotice, Borang8AOneLineNotice, Borang8AUnfinishedNames } from '../app/payroll/borang-8a/notices';
 import { isUnfinishedPersonName } from '../lib/unfinished-name';
 import {
   BORANG_8A_HEADER_KEYS,
@@ -54,6 +54,7 @@ import {
   renderBorang8APdf,
   wrapTo,
 } from '../lib/borang-8a-pdf';
+import { PERKESO_FILE_LINE_LENGTH } from '../lib/perkeso-socso-file';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import en from '../messages/en.json';
 
@@ -955,6 +956,92 @@ describe('r218 — the unfinished-name notice on the Borang 8A preview', () => {
     expect(PREVIEW).toContain('<Borang8AUnfinishedNames');
     expect(PREVIEW).toContain('.filter((r) => isUnfinishedPersonName(r.name))');
     expect(PREVIEW).toContain("title={t('unfinishedNameTitle')}");
+  });
+});
+/**
+ * 64c09b0e — THE FILE IS ONE LINE PER EMPLOYEE, AND THE SCREEN SAYS SO BEFORE THE FILE IS OPENED.
+ *
+ * TWO ITEMS, ONE NON-DEFECT, AND A REQUEST THAT WOULD HAVE MOVED MONEY. 18c1d92b reported records "split
+ * across two lines"; 64c09b0e reported it again and asked us to re-configure the format — 13-18 as a staff
+ * number, and 215-238 renamed so that SOCSO's employer and employee shares became a "wage class" and a
+ * "contribution component" with the employer/employee pair on 227-238. PERKESO's own specification (v1.0,
+ * 22 July 2022) and the reporter's own filed BRG8A.txt both say those four boxes are SOCSO employer, SOCSO
+ * employee, EIS employer, EIS employee. Following the request would have credited every SOCSO amount to
+ * EIS in a file that still measured 278 characters and whose totals still added up.
+ *
+ * Both items arrived as screenshots of a text editor with WORD WRAP ON. That is the whole story, and this
+ * notice is where it gets said — beside the button, before the file is opened, rather than in a reply
+ * after the operator has already concluded the file is broken.
+ *
+ * BOTH HALVES ARE A RENDER, for the reason the two notices above are: a source scan can see that a
+ * conditional exists but not which way round it is, so it would pass just as happily on a notice that
+ * appeared only when the downloads were blocked.
+ */
+describe('64c09b0e — the one-long-line notice on the Borang 8A preview', () => {
+  const ns = en.payroll.borang8a as Record<string, string>;
+  /** The screen interpolates the writer's own record length; this stands in for next-intl's formatting. */
+  const body = ns.oneLineNoticeBody.replace('{length}', String(PERKESO_FILE_LINE_LENGTH));
+  const render = (ready: boolean) =>
+    renderToStaticMarkup(createElement(Borang8AOneLineNotice, { ready, title: ns.oneLineNoticeTitle, body }));
+
+  it('APPEARS when there is a file to download', () => {
+    const html = render(true);
+    expect(html).toContain(ns.oneLineNoticeTitle);
+    expect(html).toContain(body);
+    // The number in it is the writer's, not a typed 278 that could drift away from the file.
+    expect(html).toContain(String(PERKESO_FILE_LINE_LENGTH));
+  });
+
+  it('does NOT appear while the downloads are being withheld', () => {
+    // No file, no editor, nothing to fold — and the sentence that matters there is downloadsBlocked.
+    expect(render(false)).toBe('');
+  });
+
+  /**
+   * THE WORDS HAVE TO SAY THE RIGHT THING OR THE NOTICE IS WORSE THAN NOTHING (AGENTS 28). It must name
+   * the cause — word wrap — and must NOT tell the operator anything is wrong with the file, because
+   * nothing is: this is what a correct 278-character record looks like in a wrapping editor.
+   */
+  it('names word wrap as the cause and never says the file is faulty, in every locale', () => {
+    for (const l of ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const) {
+      const nsL = (JSON.parse(read(`messages/${l}.json`)) as { payroll: { borang8a: Record<string, string> } })
+        .payroll.borang8a;
+      expect(nsL.oneLineNoticeTitle, l).toBeTruthy();
+      expect(nsL.oneLineNoticeBody, l).toBeTruthy();
+      // The record length arrives as the argument, never typed into the sentence in any locale.
+      expect(nsL.oneLineNoticeBody, l).toContain('{length}');
+      expect(nsL.oneLineNoticeBody, l).not.toContain(String(PERKESO_FILE_LINE_LENGTH));
+    }
+    // English carries the reasoning in full; the other five are checked for shape above.
+    expect(ns.oneLineNoticeBody).toMatch(/word wrap/i);
+    expect(ns.oneLineNoticeBody).toMatch(/not a break in the file/i);
+    expect(ns.oneLineNoticeBody).not.toMatch(/\berror\b|\bwrong\b|\binvalid\b|\bcorrupt/i);
+  });
+
+  it('is rendered on the preview screen, and takes its length from the writer', () => {
+    expect(PREVIEW).toMatch(/import \{[^}]*\bBorang8AOneLineNotice\b[^}]*\} from '\.\.\/notices'/);
+    expect(PREVIEW).toContain("import { PERKESO_FILE_LINE_LENGTH } from '@/lib/perkeso-socso-file'");
+    expect(PREVIEW).toContain('<Borang8AOneLineNotice');
+    expect(PREVIEW).toContain('ready={ready}');
+    expect(PREVIEW).toContain("title={t('oneLineNoticeTitle')}");
+    expect(PREVIEW).toContain("body={t('oneLineNoticeBody', { length: PERKESO_FILE_LINE_LENGTH })}");
+  });
+
+  /**
+   * ⚠️ THE DOWNLOAD FORM WAS NOT RESTRUCTURED WHILE THE NOTICE WAS ADDED, and this is the case that says
+   * so. The form is method="get": a `formAction` carrying `?report=1` is DISCARDED by the browser, and a
+   * hidden input is submitted by every button in the form. Only the report button's own name/value works.
+   * Pinned here as well as in test/perkeso-socso-file.test.ts because this is the round that edited the
+   * lines around it (r215's lesson, re-pinned by 64c09b0e).
+   */
+  it('leaves the GET download form exactly as it was — the report button keeps its own name/value', () => {
+    expect(PREVIEW).toMatch(/name="report"\s*\n?\s*value="1"/);
+    expect(PREVIEW).not.toContain('/payroll/borang-8a/file?report');
+    expect(PREVIEW).not.toMatch(/<input[^>]*name="report"/);
+    // The three download buttons and the report button all still post to the one route, by formAction.
+    expect(PREVIEW.match(/formAction="\/payroll\/borang-8a\/file"/g)).toHaveLength(2);
+    expect(PREVIEW).toContain('formAction="/payroll/borang-8a/pdf"');
+    expect(PREVIEW).toContain('formAction="/payroll/borang-8a/text"');
   });
 });
 

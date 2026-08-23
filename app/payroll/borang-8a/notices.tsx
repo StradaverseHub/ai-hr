@@ -1,9 +1,10 @@
 /**
- * THE TWO THINGS THE BORANG 8A SCREEN SAYS BEFORE IT HANDS OVER A PERKESO UPLOAD FILE.
+ * THE THINGS THE BORANG 8A SCREEN SAYS BEFORE IT HANDS OVER A PERKESO UPLOAD FILE.
  *
- * Both are ADVISORY and neither hides a button: a file PERKESO's own specification accepts must not be
- * withheld over a judgement this screen is not entitled to make. What they buy is that nothing goes out
- * quietly — a fixed-width record looks identical whether the box behind it was filled in or not.
+ * Every one of them is ADVISORY and none hides a button: a file PERKESO's own specification accepts must
+ * not be withheld over a judgement this screen is not entitled to make. What they buy is that nothing goes
+ * out quietly — a fixed-width record looks identical whether the box behind it was filled in or not, and
+ * looks broken in an editor that folds it.
  *
  * ── 5dbce839 — THE MYCOID BOX GOES OUT EMPTY, AND THE SCREEN SAYS SO BEFORE THE DOWNLOAD DOES NOT.
  *
@@ -80,6 +81,52 @@ export function Borang8AUnfinishedNames({
         ))}
       </ul>
       <p className="mt-1">{hint}</p>
+    </div>
+  );
+}
+
+/**
+ * 64c09b0e — THE FILE IS ONE LONG LINE PER EMPLOYEE, SAID BEFORE THE FILE IS OPENED RATHER THAN AFTER.
+ *
+ * TWO ITEMS IN A ROW REPORTED THE SAME NON-DEFECT. 18c1d92b said records were "split across two lines";
+ * 64c09b0e said it again and asked for the format to be re-configured against a field map that would have
+ * moved every SOCSO amount into the boxes PERKESO reads as EIS. Both arrived as screenshots — and both
+ * screenshots are a text editor with word wrap turned ON, folding a 278-character line. r218 read the
+ * bytes of the reporter's own January 2026 file: nineteen records, every one 278 characters, CRLF between
+ * records and none after the last. There was never a line break inside a record.
+ *
+ * So the sentence goes HERE, beside the button that produces the file, because by the time somebody has
+ * opened it in Notepad they have already formed the belief this notice exists to prevent. The same
+ * sentence heads the "Check the file" report (`perkesoFileReport`), for the reader who got there first.
+ *
+ * ⚠️ NOT A WARNING AND NOT A GATE. Nothing is wrong when this shows: it is how the format works. It is
+ * styled as information rather than as the amber the two notices above use, because dressing a correct
+ * file as a problem is its own way of misleading somebody.
+ *
+ * SHOWN ONLY WHEN THERE IS A FILE TO DOWNLOAD. While the screen is withholding the download buttons —
+ * somebody is missing an identity card number, or the company has no employer code — there is no file to
+ * open and no editor to open it in, and a paragraph about word wrap is noise in front of the sentence
+ * that actually tells the operator what to fix. Both halves are a RENDER, like the two above: pass
+ * `ready` and the markup carries the sentence, pass false and there is no markup at all.
+ *
+ * The words arrive already translated, so the page keeps one `t('…')` call site per key — which is what
+ * test/borang-8a.test.ts scans to prove every key this screen renders exists in every locale.
+ */
+export function Borang8AOneLineNotice({
+  ready,
+  title,
+  body,
+}: {
+  /** Whether the downloads are on offer at all. No file, no notice. */
+  ready: boolean;
+  title: string;
+  body: string;
+}) {
+  if (!ready) return null;
+  return (
+    <div className="basis-full rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <p className="font-medium text-foreground">{title}</p>
+      <p className="mt-1">{body}</p>
     </div>
   );
 }

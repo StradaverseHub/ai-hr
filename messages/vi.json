@@ -5568,7 +5568,9 @@
       "headerField_employerCode": "Mã người sử dụng lao động PERKESO (No. Kod Majikan)",
       "headerField_employerName": "Tên pháp lý của công ty",
       "unfinishedNameTitle": "Một số tên nhân viên trông chưa hoàn chỉnh.",
-      "unfinishedNameHint": "Ô tên của PERKESO là “tên theo CMND/CCCD hoặc hộ chiếu”. Đây là tên đang lưu trong hồ sơ nhân viên — tệp mang đúng như vậy, không rút gọn và không tự đặt. Nếu tải lên như hiện tại, các khoản đóng này sẽ được nộp dưới những tên đó. Hãy sửa trên hồ sơ nhân viên rồi quay lại. Không có gì ở đây ngăn việc tải xuống."
+      "unfinishedNameHint": "Ô tên của PERKESO là “tên theo CMND/CCCD hoặc hộ chiếu”. Đây là tên đang lưu trong hồ sơ nhân viên — tệp mang đúng như vậy, không rút gọn và không tự đặt. Nếu tải lên như hiện tại, các khoản đóng này sẽ được nộp dưới những tên đó. Hãy sửa trên hồ sơ nhân viên rồi quay lại. Không có gì ở đây ngăn việc tải xuống.",
+      "oneLineNoticeTitle": "Trong tệp tải lên, mỗi nhân viên là một dòng dài.",
+      "oneLineNoticeBody": "Mỗi bản ghi là một dòng duy nhất gồm {length} ký tự, không có ngắt dòng nào ở giữa. Nếu bạn mở tệp bằng Notepad hoặc trình soạn thảo khác đang bật tự động xuống dòng, một nhân viên sẽ trông như bị tách thành hai dòng — đó là trình soạn thảo gấp một dòng dài cho vừa cửa sổ, không phải ngắt dòng trong tệp. Hãy tắt tự động xuống dòng thì mỗi nhân viên sẽ nằm trên một dòng. “Kiểm tra tệp” liệt kê từng trường theo đúng cách đánh số trường của PERKESO."
     },
     "borangA": {
       "title": "Borang A — biểu mẫu đóng góp hằng tháng (KWSP)",

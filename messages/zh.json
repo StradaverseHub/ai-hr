@@ -5568,7 +5568,9 @@
       "headerField_employerCode": "PERKESO 雇主代码（No. Kod Majikan）",
       "headerField_employerName": "公司法定名称",
       "unfinishedNameTitle": "部分员工姓名看起来尚未填写完整。",
-      "unfinishedNameHint": "PERKESO 的姓名栏要求“与身份证或护照一致的姓名”。这些是员工档案中保存的姓名——文件原样带出，不会截短也不会自行编造。照此上传，这些缴款就会以这些姓名申报。请先在员工档案中更正，然后再回到此页。此处不会阻止下载。"
+      "unfinishedNameHint": "PERKESO 的姓名栏要求“与身份证或护照一致的姓名”。这些是员工档案中保存的姓名——文件原样带出，不会截短也不会自行编造。照此上传，这些缴款就会以这些姓名申报。请先在员工档案中更正，然后再回到此页。此处不会阻止下载。",
+      "oneLineNoticeTitle": "上传文件中，每位员工占一整行。",
+      "oneLineNoticeBody": "每条记录都是一行 {length} 个字符，中间没有任何换行。如果用记事本或其他开启了自动换行的编辑器打开，某位员工看起来会像是被拆成了两行——那是编辑器为了适应窗口而折行，并不是文件里有换行。关闭自动换行，每位员工就会回到一行上。“检查文件”会按 PERKESO 自己的字段编号逐项列出。"
     },
     "borangA": {
       "title": "Borang A — 月度缴款表（公积金局 KWSP）",
