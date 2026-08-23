@@ -364,6 +364,19 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
    */
   const derived = (n: number): string => amt(n);
   const manual = (n: number): string => (Math.round((Number(n) || 0) * 100) !== 0 ? amt(n) : '');
+  /**
+   * ⚠️ A BOX THAT IS ONE AGENCY BOX OVER TWO OF OUR FIGURES, ONE DERIVED AND ONE NOT — 1(b) and 1(c).
+   *
+   * The form's 1(b) is "Fi (termasuk fi pengarah), komisen atau bonus": our `bonus` is payroll-derived,
+   * our `directorFee` has no payroll source at all and only an `ea_override` can supply it. Printing the
+   * SUM through `derived` prints 0.00 for an ordinary salary-only employee — which asserts "no fees, no
+   * director's fees, no commission", and the second half of that we cannot stand behind. It is r209's
+   * defect wearing the agency's own caption, which makes it read MORE authoritative, not less.
+   *
+   * So a mixed box prints only when it has something to say, exactly like a manual one. A non-zero sum
+   * is still printed in full: it is at least the derived half, and it is what HR has recorded.
+   */
+  const mixed = (derivedPart: number, manualPart: number): string => manual((Number(derivedPart) || 0) + (Number(manualPart) || 0));
 
   /** 'YYYY-MM-DD' → 'DD/MM/YYYY', which is how a Malaysian form is dated. Anything else passes through. */
   const formDate = (iso: string | null): string =>
@@ -549,9 +562,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // hati atau elaun-elaun lain" — so the box carries the sum, and printing only half of it would leave
   // taxable money off the line the agency asks for it on. The finer split stays visible where it is
   // useful: the HTML statement and the amend panel keep a row each.
-  moneyLine(t.feesCommissionBonus, A.itemLabel, 234.2, derived(d.partB.bonus + d.partB.directorFee));
+  moneyLine(t.feesCommissionBonus, A.itemLabel, 234.2, mixed(d.partB.bonus, d.partB.directorFee));
   captionWithInlineRule(t.tipsPerquisitesOther, t.paymentDetail, A.itemLabel, 248.2, 481);
-  amountOrRule(derived(d.partB.allowances + d.partB.tipsPerquisites), MX, R, 248.2);
+  amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, R, 248.2);
   moneyLine(t.taxBorneByEmployer, A.itemLabel, 261.6, manual(d.partB.taxBorneByEmployer));
   moneyLine(t.esos, A.itemLabel, 275, manual(d.partB.esos));
   // 1(f) — "Ganjaran bagi tempoh dari … hingga …". The period is not a fact this system holds, so both

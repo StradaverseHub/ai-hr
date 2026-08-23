@@ -379,3 +379,65 @@ describe('r219 — an unsourced box prints the blank form’s rule, never 0.00',
     }
   });
 });
+
+/**
+ * r219 FIX PASS — THE CAPTIONS THEMSELVES, AGAINST THE TRANSCRIPTION IN THIS REPOSITORY.
+ *
+ * ⚠️ THIS IS THE GUARD THAT WAS MISSING, AND ITS ABSENCE SHIPPED A DEFECT INSIDE THIS SAME ROUND.
+ * `EA_FORM_WORDS` pins the Malay FURNITURE the renderer owns, but the box captions live in
+ * `messages/ms.json`, and one of them — D.5(a) — kept its r217 wording ("Pelepasan dituntut melalui
+ * Borang TP1") while gaining the form's "5(a)" prefix. It then LOOKED like the agency's box while
+ * saying something the agency's page does not say, which is worse than an obviously-ours label: a
+ * reader checking a C.P.8A against the blank form has no reason to doubt a numbered caption.
+ *
+ * So every Malay caption the drawn form uses must appear VERBATIM in
+ * docs/forms/ea-cp8a-pin-2024-transcription.txt — the hand transcription of the specimen. The numbering
+ * prefix is ours (the form prints the number in its own column), so it is stripped before the check;
+ * everything after it is the agency's and must match. A caption cannot be reworded without the
+ * transcription being changed too, and the transcription cannot be changed without reading the image.
+ */
+describe('r219 — every Malay box caption is the agency’s own, checked against the transcription', () => {
+  const TRANSCRIPTION = read('docs/forms/ea-cp8a-pin-2024-transcription.txt');
+  const ms = JSON.parse(read('messages/ms.json')).payroll.ea as Record<string, string>;
+
+  /** The keys whose value IS an agency caption. Anything not here is ours and may be worded freely. */
+  const AGENCY_CAPTIONS = [
+    'grossSalary',
+    'feesCommissionBonus',
+    'tipsPerquisitesOther',
+    'taxBorneByEmployer',
+    'esos',
+    'gratuity',
+    'arrears',
+    'benefitsInKind',
+    'livingAccommodation',
+    'unapprovedFundRefund',
+    'compensationLossOfEmployment',
+    'pension',
+    'annuity',
+    'mtd',
+    'cp38',
+    'zakat',
+    'donations',
+    'tp1ClaimHeading',
+    'tp1Relief',
+    'zakatOther',
+    'childRelief',
+  ].filter((k) => typeof ms[k] === 'string');
+
+  /** Strip OUR numbering prefix — "1(b) ", "5(a) ", "4. " — and keep the agency's own words. */
+  const caption = (v: string) => v.replace(/^\d+(\([a-z]\))?[.)]?\s+/, '').trim();
+
+  it('appears verbatim in the transcription of the specimen', () => {
+    expect(AGENCY_CAPTIONS.length).toBeGreaterThan(15);
+    const missing = AGENCY_CAPTIONS.filter((k) => !TRANSCRIPTION.includes(caption(ms[k])));
+    expect(missing, `these Malay captions are not in docs/forms/ea-cp8a-pin-2024-transcription.txt: ${missing.map((k) => `${k}=${JSON.stringify(ms[k])}`).join(', ')}`).toEqual([]);
+  });
+
+  it('D.5(a) is the form’s own one-word caption — the case this guard exists for', () => {
+    expect(ms.tp1Relief).toBe('5(a) Pelepasan');
+    expect(TRANSCRIPTION).toContain('(a) Pelepasan');
+    // …and NOT the r217 wording it carried into this round.
+    expect(ms.tp1Relief).not.toMatch(/dituntut melalui/);
+  });
+});

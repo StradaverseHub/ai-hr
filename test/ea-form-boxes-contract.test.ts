@@ -139,15 +139,29 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     // fact we can stand behind. Suppressing these would hide a real "you were paid no bonus".
     //
     // `directorFee` and `tipsPerquisites` are the two manual boxes that are NOT in the list above: the
-    // form's 1(b) and 1(c) are each ONE box covering one derived figure and one manual one, so they are
-    // printed together, and the derived half is what makes the line printable at all.
+    // form's 1(b) and 1(c) are each ONE box covering one derived figure and one manual one.
+    //
+    // ⚠️ r219's FIX PASS REVERSED HALF OF THIS CASE, AND THE HALF THAT SURVIVES IS THE POINT. Printing
+    // that pair through `derived` — which prints at 0.00 — made an ordinary salary-only C.P.8A state
+    // "no fees, no director's fees, no commission" and "no tips, perquisites or awards", and the second
+    // half of each of those we cannot stand behind: nothing in payroll derives a director's fee, and
+    // only an `ea_override` can supply one. Under the agency's own numbered caption that reads MORE
+    // authoritative, not less. So a MIXED box prints only when it has something to say, exactly like a
+    // manual one — `mixed(derivedHalf, manualHalf)` — while a wholly-derived box still prints at zero,
+    // because there a zero is a fact. What did NOT move: each is still ONE box over TWO of our figures,
+    // in that order, and neither half may be drawn on a line of its own (AGENTS 18, AGENTS 28).
     expect(src, 'gross salary must still print unconditionally').toContain('derived(d.partB.grossSalary)');
     expect(src, "the form's 1(b) is bonus + director's fees, printed as one box").toContain(
-      'derived(d.partB.bonus + d.partB.directorFee)',
+      'mixed(d.partB.bonus, d.partB.directorFee)',
     );
     expect(src, "the form's 1(c) is allowances + tips/perquisites, printed as one box").toContain(
-      'derived(d.partB.allowances + d.partB.tipsPerquisites)',
+      'mixed(d.partB.allowances, d.partB.tipsPerquisites)',
     );
+    // …and the pair may not go back to printing a derived zero over a box half of which has no source.
+    expect(src, '1(b) is drawn as a derived figure again').not.toContain('derived(d.partB.bonus + d.partB.directorFee)');
+    expect(src, '1(c) is drawn as a derived figure again').not.toContain('derived(d.partB.allowances + d.partB.tipsPerquisites)');
+    // The mixed helper is what makes that true, so it must exist and must suppress a zero sum.
+    expect(src).toMatch(/const mixed = \(derivedPart: number, manualPart: number\): string => manual\(/);
     for (const field of ['mtd', 'cp38', 'zakat']) {
       expect(src, `${field} must still print unconditionally`).toContain(`derived(d.partD.${field})`);
     }
