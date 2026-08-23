@@ -407,5 +407,23 @@ describe('r219: nothing about this workflow is hardcoded (the plan promised the 
       .where(eq(schema.toilAccrual.tenantId, b.tenantId));
     expect(accruals.find((a) => a.employmentId === inA)?.expiresOn).toBe('2026-10-25');
     expect(accruals.find((a) => a.employmentId === inB)?.expiresOn).toBe('2026-10-23');
+
+    // 4. THE ENABLE SWITCH is each company's own too — the third of the three settings the plan named to
+    //    the reporter (Enable, self-submission, expiry period). Switched off for B ONLY: B's employee is
+    //    refused with B's own reason while A's is untouched, which a shared or hardcoded read cannot do.
+    await setToilPolicy(
+      ctx,
+      policy(coB.companyId, {
+        enabled: false,
+        expiryUnit: 'days',
+        expiryDays: 90,
+        requestEligibility: { employmentIds: [inB, lowB] },
+        allowFirstScheduleEligible: true,
+      }),
+    );
+    const bOff = await replacementRequestAvailability(ctx, inB, TODAY);
+    expect(bOff.allowed).toBe(false);
+    expect(bOff.reason).toBe('not_enabled');
+    expect((await replacementRequestAvailability(ctx, inA, TODAY)).allowed).toBe(true);
   });
 });
