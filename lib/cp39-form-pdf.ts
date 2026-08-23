@@ -348,8 +348,9 @@ export const CP39_ROW_SIZE = 7.5;
  * lesson: a heading is not clipped, so one wider than its column prints straight into its neighbour.
  *
  * TEN COLUMNS ON A4 PORTRAIT IS THE WHOLE DIFFICULTY. Borang A has seven and still needed its clip
- * allowance widened after somebody rasterised the page and looked at it. Here the narrow headings are
- * split over TWO LINES ("No. K/P" / "Baru") so each line fits its own column, and
+ * allowance widened after somebody rasterised the page and looked at it. The captions are the
+ * specimen's own, upper case and centred; where one does not fit our narrower portrait column it is
+ * broken over lines that do ("KOD" / "NEGARA", where the specimen sets "KOD NEGARA" on one), and
  * test/cp39-form.test.ts asserts exactly that with pdf-lib's own font metrics — the columns tile the
  * printable width with no overlap, and no heading line is wider than the column it sits in.
  *
@@ -357,19 +358,126 @@ export const CP39_ROW_SIZE = 7.5;
  * the column's own space in both cases.
  */
 export const CP39_TABLE_COLUMNS = [
-  { key: 'bil', x: 28, width: 16, align: 'left', head: ['Bil'] },
-  { key: 'tin', x: 44, width: 74, align: 'left', head: ['No. Cukai', 'Pendapatan'] },
-  { key: 'name', x: 118, width: 118, align: 'left', head: ['Nama Penuh Pekerja'] },
-  { key: 'oldIc', x: 236, width: 50, align: 'left', head: ['No. K/P', 'Lama'] },
-  { key: 'newIc', x: 286, width: 58, align: 'left', head: ['No. K/P', 'Baru'] },
-  { key: 'employeeNo', x: 344, width: 44, align: 'left', head: ['No.', 'Pekerja'] },
-  { key: 'passport', x: 388, width: 48, align: 'left', head: ['No.', 'Pasport'] },
-  { key: 'countryCode', x: 436, width: 29, align: 'left', head: ['Kod', 'Negara'] },
-  { key: 'pcb', x: 513, width: 48, align: 'right', head: ['PCB', '(RM)'] },
-  { key: 'cp38', x: 567, width: 54, align: 'right', head: ['CP38', '(RM)'] },
+  { key: 'bil', x: 28, width: 16, align: 'left', head: ['BIL'] },
+  { key: 'tin', x: 44, width: 74, align: 'left', head: ['NO. CUKAI', 'PENDAPATAN'] },
+  {
+    key: 'name',
+    x: 118,
+    width: 118,
+    align: 'left',
+    head: ['NAMA PENUH PEKERJA', '(SEPERTI DI KAD PENGENALAN', 'ATAU PASPORT)'],
+  },
+  { key: 'oldIc', x: 236, width: 50, align: 'left', head: ['NO. K/P LAMA'] },
+  { key: 'newIc', x: 286, width: 58, align: 'left', head: ['NO. K/P BARU'] },
+  { key: 'employeeNo', x: 344, width: 44, align: 'left', head: ['NO.', 'PEKERJA'] },
+  { key: 'passport', x: 388, width: 48, align: 'left', head: ['NO. PASPORT'] },
+  { key: 'countryCode', x: 436, width: 29, align: 'left', head: ['KOD', 'NEGARA'] },
+  { key: 'pcb', x: 513, width: 48, align: 'right', head: ['PCB (RM)'] },
+  { key: 'cp38', x: 567, width: 54, align: 'right', head: ['CP38 (RM)'] },
 ] as const;
 
-const ROW_H = 13;
+export type Cp39TableColumn = (typeof CP39_TABLE_COLUMNS)[number];
+
+/**
+ * A column's own span on the sheet, in points from the left edge.
+ *
+ * `x` is the LEFT edge of a left-aligned column and the RIGHT edge of a right-aligned one, which is
+ * convenient to draw with and useless to rule a table with. Exported so the renderer and the geometry
+ * test read the same spans out of the same declaration rather than each re-deriving them.
+ */
+export const cp39ColumnSpan = (c: Cp39TableColumn): { left: number; right: number } =>
+  c.align === 'right' ? { left: c.x - c.width, right: c.x } : { left: c.x, right: c.x + c.width };
+
+/**
+ * ── THE TWO-LEVEL HEADINGS, WHICH ARE THE PART A FLAT ROW OF CAPTIONS CANNOT SAY ──────────────────
+ *
+ * The specimen groups four of the ten columns under two spanning captions: NO. PASPORT and KOD NEGARA
+ * both belong to BAGI PEKERJA ASING (they are asked for a FOREIGN employee), and PCB (RM) and CP38 (RM)
+ * are the two halves of JUMLAH POTONGAN CUKAI. Drawn flat, "NO. PASPORT" beside "NO. K/P BARU" reads as
+ * one more identity column for everybody, which is a different instruction to whoever fills it in.
+ *
+ * `from`/`to` are column KEYS and the members are the columns between them INCLUSIVE, so a group cannot
+ * silently pick up a column that moved: test/cp39-form.test.ts asserts the members are contiguous, that
+ * the caption fits the SUM of their widths at pdf-lib's own metrics, and that the group's span is
+ * exactly its children's.
+ */
+export const CP39_TABLE_GROUPS = [
+  { text: 'BAGI PEKERJA ASING', from: 'passport', to: 'countryCode' },
+  { text: 'JUMLAH POTONGAN CUKAI', from: 'pcb', to: 'cp38' },
+] as const;
+
+/** The columns a group spans, in printed order. Empty is impossible — the test pins that too. */
+export function cp39GroupColumns(g: (typeof CP39_TABLE_GROUPS)[number]): Cp39TableColumn[] {
+  const keys = CP39_TABLE_COLUMNS.map((c) => c.key as string);
+  return CP39_TABLE_COLUMNS.slice(keys.indexOf(g.from), keys.indexOf(g.to) + 1) as unknown as Cp39TableColumn[];
+}
+
+/**
+ * The agency's OWN footer line, verbatim from `docs/forms/cp39-pin-2015-page2-transcription.txt`.
+ *
+ * Transcribed, never remembered — the same rule the A / B / C panels on the cover are held to. It is a
+ * statement about where LHDN publishes the form, and this repository can point at the specimen it was
+ * read off; nothing else about the agency gets printed here.
+ */
+export const CP39_AGENCY_FOOTER = 'Borang CP39 boleh diperolehi di laman web : http://www.hasil.gov.my';
+
+/**
+ * ── THE SCHEDULE SHEET'S GEOMETRY ─────────────────────────────────────────────────────────────────
+ *
+ * Read this beside `docs/forms/cp39-pin-2015-page2-specimen.png`. Like `CP39_COVER`, `yTop` is points
+ * from the TOP edge because that is how a form is described and how the specimen reads; `at()` inside
+ * the renderer turns one into a pdf-lib y. Exported so test/cp39-form.test.ts measures WHAT IS ACTUALLY
+ * DRAWN rather than restating the arithmetic — pdf-lib does not clip, so a caption one point too wide
+ * for its cell prints into the cell beside it and the page still renders and still downloads.
+ *
+ * THE FOOT BAND FOLLOWS THE TABLE, AND STOPS. On the specimen the totals box and the agency's footer
+ * line sit immediately under a table that happens to fill the page, so "under the table" and "at the
+ * foot of the sheet" are the same place there — and only one of them can stay true here, because our
+ * sheet holds 26 rows and a real statement rarely fills one. The box follows the last ruled row, which
+ * is what the specimen's own renderer does and what keeps a total beside the figures it totals; `footMax`
+ * is the clamp that stops a full sheet's band from ever reaching the provenance strip below it.
+ */
+export const CP39_SHEET = {
+  W,
+  H,
+  x: {
+    left: M,
+    /** The table's right edge — the CP38 column's right edge, not the paper's right margin. */
+    tableRight: 567,
+    /** The totals box's label cell starts on an existing column rule, so it reads as part of the grid. */
+    totalsLabelLeft: 388,
+    /** The money block: PCB's left edge, and the PCB | CP38 rule inside it. */
+    moneyLeft: 465,
+    moneySplit: 513,
+    right: RIGHT,
+  },
+  yTop: {
+    /** Baseline of the `No. Majikan  E  <number>` / `Muka Surat  <n>` line. */
+    header: 36,
+    /** The dotted rule the employer number and the page number are written on. */
+    headerRule: 39.5,
+    /** The table's top border. */
+    tableTop: 54,
+    /** Bottom of the GROUP heading row — the rule under BAGI PEKERJA ASING / JUMLAH POTONGAN CUKAI. */
+    headGroupBottom: 72,
+    /** Bottom of the whole heading band: where the first data row starts. */
+    headBottom: 106,
+    /** The table body may never run past here — 26 rows at `rowH` land exactly on it. */
+    bodyLimit: 704,
+    /** The lowest the foot band (agency line left, totals box right) may start. */
+    footMax: 710,
+    /** The hairline above our own provenance strip, and the strip's first baseline. */
+    stripRule: 774,
+    stripTop: 786,
+  },
+  /** One data row. 26 of them (`CP39_FORM_ROWS_PER_PAGE`) fill the body without reaching `bodyLimit`. */
+  rowH: 23,
+  /** One row of the totals box. */
+  totalsRowH: 17,
+} as const;
+
+/** Type size of a label or a figure in the totals box at the foot of the schedule. */
+export const CP39_TOTALS_SIZE = 8;
 
 export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -807,15 +915,72 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     }
   }
 
+  /**
+   * ── PAGE TWO ONWARD, AS THE RULED SCHEDULE THE SPECIMEN DRAWS ───────────────────────────────────
+   *
+   * Read this beside `docs/forms/cp39-pin-2015-page2-specimen.png`, with
+   * `docs/forms/cp39-our-page2-2026-08-22.png` for what it replaced. Every coordinate comes from
+   * `CP39_SHEET` and every caption is drawn RELATIVE TO ITS OWN CELL rather than to whatever `y` the
+   * previous block left behind — the r205 Borang A lesson, which is the one failure a geometry check
+   * written in font metrics cannot see and only a rasterised page shows.
+   *
+   * WHAT CHANGED AND WHY, IN ONE PLACE:
+   *  • The schedule is RULED. Every cell is bordered and the four foreign-worker / tax-deduction columns
+   *    sit under their two spanning headings, because a flat row of captions says something different:
+   *    "NO. PASPORT" beside "NO. K/P BARU" reads as one more identity column for everybody.
+   *  • The page number counts the WHOLE DOCUMENT, cover included. `Muka surat {sheet}/{of}` counted
+   *    SCHEDULE sheets only, so the first schedule sheet printed "1/1" where the official form calls
+   *    that same sheet "Muka Surat 2" — which is exactly the "page 2 is a continuation, not a new
+   *    document" the reporter came back with, arrived at from the other end.
+   *  • AMAUN (PCB + CP38) is GONE from here. It belongs to BUTIR-BUTIR PEMBAYARAN on the cover, which
+   *    prints it; the figure itself is not lost, because the specimen's JUMLAH BESAR spans both money
+   *    columns and IS that same total. Two copies of one figure are two figures that can disagree.
+   *
+   * The sheet stays A4 PORTRAIT. Only the cover is landscape.
+   */
   function drawTableSheet(pageData: Cp39FormPage) {
     const page: PDFPage = doc.addPage([W, H]);
-    let y = H - M;
+    const { x: X, yTop: Y } = CP39_SHEET;
+    /** Points from the top edge → pdf-lib's y. The specimen is described from the top; so is this. */
+    const at = (t: number) => H - t;
     const last = pageData.sheet === pageData.of;
+    /**
+     * THE DOCUMENT's page number, which is the defect this round exists to fix. The cover is page 1, so
+     * the first schedule sheet is 2 — what the specimen prints in this very box.
+     */
+    const muka = pageData.sheet + 1;
 
-    const text = (s: string, x: number, size: number, f = font, color = ink) =>
-      page.drawText(safe(s), { x, y, size, font: f, color });
-    const textR = (s: string, xr: number, size: number, f = font, color = ink) =>
-      page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color });
+    const put = (s: string, x: number, t: number, size: number, f: PDFFont = font, color = ink) =>
+      page.drawText(safe(s), { x, y: at(t), size, font: f, color });
+    const putR = (s: string, xr: number, t: number, size: number, f: PDFFont = font, color = ink) =>
+      page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y: at(t), size, font: f, color });
+    const putC = (s: string, cx: number, t: number, size: number, f: PDFFont = font, color = ink) =>
+      page.drawText(safe(s), { x: cx - f.widthOfTextAtSize(safe(s), size) / 2, y: at(t), size, font: f, color });
+    const hRule = (x0: number, x1: number, t: number, thickness = 0.7, color = rule) =>
+      page.drawLine({ start: { x: x0, y: at(t) }, end: { x: x1, y: at(t) }, thickness, color });
+    const vRule = (x: number, t0: number, t1: number, thickness = 0.7, color = rule) =>
+      page.drawLine({ start: { x, y: at(t0) }, end: { x, y: at(t1) }, thickness, color });
+    /** A ruled box, given in top-edge coordinates: (left, top, right, bottom). */
+    const box = (x0: number, t0: number, x1: number, t1: number, thickness = 0.7) =>
+      page.drawRectangle({
+        x: x0,
+        y: at(t1),
+        width: x1 - x0,
+        height: t1 - t0,
+        borderColor: rule,
+        borderWidth: thickness,
+      });
+    /** The dotted rule the specimen writes the employer number and the page number on. */
+    const dotted = (x0: number, x1: number, t: number) => {
+      for (let x = x0; x < x1; x += 3) {
+        page.drawLine({
+          start: { x, y: at(t) },
+          end: { x: Math.min(x + 1.4, x1), y: at(t) },
+          thickness: 0.5,
+          color: rule,
+        });
+      }
+    };
     /**
      * SHRINK TO FIT, NEVER CLIP — r205's Borang A lesson, brought here by 7ee14bbc point 5.
      *
@@ -831,106 +996,155 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
      * clamp, and only there, the string can still exceed its column.
      * Applied to EVERY text column, not just the name: a cut tax reference number is the same defect.
      */
-    const fitSize = (v: string, maxW: number, size: number, f = font) => {
+    const fitSize = (v: string, maxW: number, size: number, f: PDFFont = font) => {
       const w = f.widthOfTextAtSize(v, size);
       if (w <= maxW || w <= 0) return size;
       return Math.max(1, Math.floor((size * maxW * 10) / w) / 10);
     };
-    const textFit = (s: string, x: number, maxW: number, size: number, f = font, color = ink) => {
+    const putFit = (s: string, x: number, maxW: number, t: number, size: number, f: PDFFont = font) => {
       const v = safe(s);
-      page.drawText(v, { x, y, size: fitSize(v, maxW, size, f), font: f, color });
+      page.drawText(v, { x, y: at(t), size: fitSize(v, maxW, size, f), font: f, color: ink });
     };
-    const line = (yy: number, thickness = 0.7, color = rule) =>
-      page.drawLine({ start: { x: M, y: yy }, end: { x: RIGHT, y: yy }, thickness, color });
+    const putRFit = (s: string, xr: number, maxW: number, t: number, size: number, f: PDFFont = font) => {
+      const v = safe(s);
+      const sz = fitSize(v, maxW, size, f);
+      page.drawText(v, { x: xr - f.widthOfTextAtSize(v, sz), y: at(t), size: sz, font: f, color: ink });
+    };
+    /** A stack of centred caption lines, vertically centred in its own CELL rather than at a running y. */
+    const captionBlock = (lines: readonly string[], x0: number, x1: number, t0: number, t1: number) => {
+      const leading = CP39_HEADING_SIZE + 2.2;
+      let t = (t0 + t1) / 2 - (lines.length * leading) / 2 + leading - 1.6;
+      for (const l of lines) {
+        putC(l, (x0 + x1) / 2, t, CP39_HEADING_SIZE, bold);
+        t += leading;
+      }
+    };
 
+    // ── The sheet header: the employer number left, the DOCUMENT page number right ─────────────────
     // The employer and the period repeat on EVERY sheet. A loose page of a statutory schedule with no
     // employer number on it cannot be filed back with the rest of the bundle.
-    text('CP39 - PENYATA POTONGAN CUKAI BULANAN (PCB)', M, 9, bold);
-    textR(`Muka surat ${pageData.sheet}/${pageData.of}`, RIGHT, 8, font, muted);
-    y -= 11;
-    text(
-      `No. Majikan ${form.employerNo || '-'}  ·  ${form.employerName || '-'}  ·  ` +
-        `${form.deductionMonth} ${form.deductionYear}`,
-      M,
-      8,
+    put('No. Majikan', X.left, Y.header, 9, bold);
+    put('E', X.left + 62, Y.header, 9, bold);
+    dotted(X.left + 76, X.left + 246, Y.headerRule);
+    putFit(form.employerNo || '', X.left + 80, 162, Y.header, 8.5);
+    putR('Muka Surat', X.right - 96, Y.header, 9, bold);
+    dotted(X.right - 90, X.right, Y.headerRule);
+    putR(String(muka), X.right - 4, Y.header, 9);
+    // The period and the legal name are ours, not the specimen's — it has no box for them and a sheet
+    // that names only an employer number is a sheet you cannot match to a month.
+    putFit(
+      `${form.employerName || '-'}  ·  POTONGAN BAGI BULAN ${form.deductionMonth} ${form.deductionYear}`,
+      X.left,
+      X.right - X.left - 120,
+      Y.tableTop - 5,
+      7,
       font,
-      muted,
     );
-    y -= 8;
-    line(y, 1.1);
-    y -= 12;
 
-    // ── Column headings, up to two lines each ─────────────────────────────────────────────────────
-    const headTop = y;
-    for (const c of CP39_TABLE_COLUMNS) {
-      c.head.forEach((h, i) => {
-        const yy = headTop - i * 8;
-        if (c.align === 'right') {
-          page.drawText(safe(h), {
-            x: c.x - bold.widthOfTextAtSize(safe(h), CP39_HEADING_SIZE),
-            y: yy,
-            size: CP39_HEADING_SIZE,
-            font: bold,
-            color: muted,
-          });
-        } else {
-          page.drawText(safe(h), { x: c.x, y: yy, size: CP39_HEADING_SIZE, font: bold, color: muted });
-        }
-      });
+    // ── The table ─────────────────────────────────────────────────────────────────────────────────
+    const spans = CP39_TABLE_COLUMNS.map((c) => ({ c, ...cp39ColumnSpan(c) }));
+    const span = (key: string) => spans.find((s) => s.c.key === key)!;
+    const groups = CP39_TABLE_GROUPS.map((g) => {
+      const members = cp39GroupColumns(g).map((c) => c.key as string);
+      return { g, members, left: span(g.from).left, right: span(g.to).right };
+    });
+    const grouped = new Set(groups.flatMap((g) => g.members));
+    /**
+     * A row NEVER shrinks below legibility and NEVER runs off the sheet. `CP39_FORM_ROWS_PER_PAGE` rows
+     * fit at the declared height with room to spare; a caller passing a bigger `perPage` gets tighter
+     * rows rather than a table drawn over the totals box.
+     */
+    const rowCount = pageData.rows.length;
+    const rowH = rowCount > 0 ? Math.min(CP39_SHEET.rowH, (Y.bodyLimit - Y.headBottom) / rowCount) : CP39_SHEET.rowH;
+    const bodyBottom = Y.headBottom + rowCount * rowH;
+
+    box(X.left, Y.tableTop, X.tableRight, bodyBottom, 1);
+    // Every column rule runs the full height of the table EXCEPT the one INSIDE a group, which starts
+    // below the group's own caption — that is what makes the caption read as spanning its two columns.
+    for (const s of spans) {
+      if (s.left === X.left) continue;
+      const insideGroup = groups.some((g) => s.left > g.left && s.left < g.right);
+      vRule(s.left, insideGroup ? Y.headGroupBottom : Y.tableTop, bodyBottom);
     }
-    y = headTop - 8 - 6;
-    line(y, 0.9);
-    y -= 12;
+    for (const g of groups) hRule(g.left, g.right, Y.headGroupBottom);
+    hRule(X.left, X.tableRight, Y.headBottom, 1);
+    // EVERY row is ruled, not merely separated by a hairline: the specimen's schedule is a table of
+    // bordered cells, and a hairline reads as a list with lines under it.
+    for (let i = 1; i < rowCount; i += 1) hRule(X.left, X.tableRight, Y.headBottom + i * rowH, 0.5);
+
+    // ── Column headings: two levels, every caption centred in its OWN cell ─────────────────────────
+    for (const s of spans) {
+      const top = grouped.has(s.c.key) ? Y.headGroupBottom : Y.tableTop;
+      captionBlock(s.c.head, s.left, s.right, top, Y.headBottom);
+    }
+    for (const g of groups) captionBlock([g.g.text], g.left, g.right, Y.tableTop, Y.headGroupBottom);
 
     // ── Rows ──────────────────────────────────────────────────────────────────────────────────────
     // Bil runs across the WHOLE statement, not per sheet: it is the numbering read down the schedule.
     let bil = form.pages.slice(0, pageData.sheet - 1).reduce((a, p) => a + p.rows.length, 0);
-    const col = (key: string) => CP39_TABLE_COLUMNS.find((c) => c.key === key)!;
-    for (const r of pageData.rows) {
+    const PAD = 4;
+    pageData.rows.forEach((r, i) => {
       bil += 1;
-      text(String(bil), col('bil').x, CP39_ROW_SIZE);
-      textFit(r.tin, col('tin').x, col('tin').width - 4, CP39_ROW_SIZE);
-      textFit(r.name, col('name').x, col('name').width - 4, CP39_ROW_SIZE);
-      textFit(r.oldIc, col('oldIc').x, col('oldIc').width - 4, CP39_ROW_SIZE);
+      const t = Y.headBottom + (i + 0.5) * rowH + CP39_ROW_SIZE * 0.36;
+      const left = (key: string, v: string) => {
+        const s = span(key);
+        putFit(v, s.left + PAD, s.right - s.left - PAD * 2, t, CP39_ROW_SIZE);
+      };
+      const right = (key: string, v: string) => {
+        const s = span(key);
+        putRFit(v, s.right - PAD, s.right - s.left - PAD * 2, t, CP39_ROW_SIZE);
+      };
+      left('bil', String(bil));
+      left('tin', r.tin);
+      left('name', r.name);
+      left('oldIc', r.oldIc);
       // 7ee14bbc — THE ONLY PLACE THE DASHES ARE ADDED IS HERE, ON THE WAY TO THE PAGE. The stored value
       // is untouched and the e-Data PCB upload file is untouched: its identity-card field is twelve
       // characters wide and two dashes would make fourteen. See `formatMyIc`.
-      textFit(formatMyIc(r.newIc), col('newIc').x, col('newIc').width - 4, CP39_ROW_SIZE);
-      textFit(r.employeeNo, col('employeeNo').x, col('employeeNo').width - 4, CP39_ROW_SIZE);
-      textFit(r.passport, col('passport').x, col('passport').width - 4, CP39_ROW_SIZE);
-      textFit(r.countryCode, col('countryCode').x, col('countryCode').width - 4, CP39_ROW_SIZE);
-      textR(money(r.pcb), col('pcb').x, CP39_ROW_SIZE);
-      textR(money(r.cp38), col('cp38').x, CP39_ROW_SIZE);
-      y -= 4;
-      page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.4, color: hair });
-      y -= ROW_H - 4;
-    }
-    if (pageData.rows.length === 0) {
-      text('Tiada pekerja bagi bulan ini / no employees for this month', M, 8.5, font, muted);
-      y -= ROW_H;
+      left('newIc', formatMyIc(r.newIc));
+      left('employeeNo', r.employeeNo);
+      left('passport', r.passport);
+      left('countryCode', r.countryCode);
+      right('pcb', money(r.pcb));
+      right('cp38', money(r.cp38));
+    });
+    if (rowCount === 0) {
+      put('Tiada pekerja bagi bulan ini / no employees for this month', X.left, bodyBottom + 14, 8, font, muted);
     }
 
-    // ── JUMLAH for this sheet, and JUMLAH BESAR on the last ───────────────────────────────────────
-    y -= 2;
-    line(y, 0.9);
-    y -= 13;
-    text(`JUMLAH (muka surat ${pageData.sheet})`, col('name').x, 8.5, bold);
-    textR(money(pageData.pagePcb), col('pcb').x, 8.5, bold);
-    textR(money(pageData.pageCp38), col('cp38').x, 8.5, bold);
+    // ── The foot: the agency's own line at the left, the totals box at the right ───────────────────
+    // Both follow the last ruled row, as they do on the specimen, and stop at `footMax` so a full sheet
+    // can never push them into the provenance strip.
+    const footTop = Math.min(bodyBottom + (rowCount === 0 ? 26 : 6), Y.footMax);
+    put(CP39_AGENCY_FOOTER, X.left, footTop + 11, 6.8);
+
+    /**
+     * JUMLAH is THIS SHEET's total, split across the two money columns. JUMLAH BESAR is the whole
+     * statement's and SPANS BOTH, which is why the AMAUN line that used to sit under this box is gone:
+     * that box is the same figure, in the place the form puts it.
+     *
+     * JUMLAH BESAR still prints on the LAST sheet only. Repeating it is how a multi-page statement gets
+     * filed with a page total mistaken for the grand total.
+     */
+    const jumlahBottom = footTop + CP39_SHEET.totalsRowH;
+    const boxBottom = last ? jumlahBottom + CP39_SHEET.totalsRowH : jumlahBottom;
+    const midline = (t0: number, t1: number) => (t0 + t1) / 2 + CP39_TOTALS_SIZE * 0.36;
+    box(X.totalsLabelLeft, footTop, X.tableRight, boxBottom, 1);
+    vRule(X.moneyLeft, footTop, jumlahBottom, 1);
+    vRule(X.moneySplit, footTop, jumlahBottom, 1);
+    putC('JUMLAH', (X.totalsLabelLeft + X.moneyLeft) / 2, midline(footTop, jumlahBottom), CP39_TOTALS_SIZE, bold);
+    putRFit(money(pageData.pagePcb), X.moneySplit - PAD, X.moneySplit - X.moneyLeft - PAD * 2,
+      midline(footTop, jumlahBottom), CP39_TOTALS_SIZE, bold);
+    putRFit(money(pageData.pageCp38), X.tableRight - PAD, X.tableRight - X.moneySplit - PAD * 2,
+      midline(footTop, jumlahBottom), CP39_TOTALS_SIZE, bold);
     if (last) {
-      y -= 14;
-      // JUMLAH BESAR ON THE LAST SHEET ONLY: repeating it is how a multi-page statement gets filed with
-      // a page total mistaken for the grand total.
-      text('JUMLAH BESAR', col('name').x, 9.5, bold);
-      textR(money(form.totalPcb), col('pcb').x, 9.5, bold);
-      textR(money(form.totalCp38), col('cp38').x, 9.5, bold);
-      y -= 6;
-      line(y, 1.1);
-      y -= 13;
-      text(`AMAUN (PCB + CP38): RM ${money(form.totalAmount)}`, col('name').x, 9.5, bold);
+      hRule(X.totalsLabelLeft, X.tableRight, jumlahBottom, 1);
+      vRule(X.moneyLeft, jumlahBottom, boxBottom, 1);
+      putC('JUMLAH BESAR', (X.totalsLabelLeft + X.moneyLeft) / 2, midline(jumlahBottom, boxBottom),
+        CP39_TOTALS_SIZE, bold);
+      putRFit(money(form.totalAmount), X.tableRight - PAD, X.tableRight - X.moneyLeft - PAD * 2,
+        midline(jumlahBottom, boxBottom), CP39_TOTALS_SIZE, bold);
     }
-    y -= 8;
-    line(y, 1.1);
 
     // ── e4b541c6 / c99e8358: THE TWO COLUMNS, AND THE HALF OF THE OLD NOTE THAT IS STILL TRUE ──────
     // Migration 0450 gave `employee_statutory_my` its own `old_ic_number` and
@@ -939,8 +1153,8 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
     // go. What did NOT change is the reason Kod Negara is a column of its own: the nationality text
     // beside it is a demonym from the tenant's own option list, "Malaysian" is not "MY", and deriving
     // one from the other would put a wrong statutory code beside somebody's tax reference.
-    y = M + 26;
-    line(y + 12, 0.7, hair);
+    hRule(X.left, X.right, Y.stripRule, 0.7, hair);
+    let strip = Y.stripTop;
     for (const l of wrap(
       'No. K/P Lama dan Kod Negara dicetak daripada rekod pekerja apabila ada, dan dibiarkan kosong ' +
         'apabila tiada - kosong bermakna tiada dalam rekod, bukan tiada dalam sistem. Kod Negara mesti ' +
@@ -948,8 +1162,8 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
         'Helaian jadual ini susun atur kami sendiri - bukan borang rasmi LHDN.',
       6.8,
     )) {
-      text(l, M, 6.8, font, muted);
-      y -= 9;
+      put(l, X.left, strip, 6.8, font, muted);
+      strip += 9;
     }
   }
 
