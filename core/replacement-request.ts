@@ -62,6 +62,10 @@ import { packFor } from '../localization/registry';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 import { isReplacementRequestEligibleTx } from './replacement-eligibility';
 import { accrueSelfDeclaredToilTx, ToilAlreadyAccruedError } from './toil';
+// r219 — the reason union lives in lib/ so the service and the screens that EXPLAIN it share one list. A
+// reason this file can return that the notice map has no entry for fails to typecheck; see that file's
+// header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
+import type { ReplacementUnavailableReason } from '../lib/replacement-availability';
 
 const STD_DAY_MINUTES = 480; // 8h — the same standard-day convention core/toil.ts and payroll use
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -147,17 +151,34 @@ export function totalsFor(
 /**
  * What the employee's My Leave surface needs to decide whether to render the request button at all.
  *
- * Returns `allowed: false` with a REASON rather than a bare boolean, because the three reasons are
- * genuinely different things to tell someone: the add-on is not bought, the company has not switched
- * employee requests on, or this particular employee is outside the criteria. The page currently only
- * needs the boolean, but a caller that wanted to explain the absence has the answer without a second read.
+ * Returns `allowed: false` with a REASON rather than a bare boolean, because the reasons are genuinely
+ * different things to tell someone: the add-on is not bought, the company has not switched employee
+ * requests on, this particular employee is outside the criteria, or the statutory overtime floor protects
+ * them and their company has not recorded that it may be traded for banked time. Each one names a
+ * DIFFERENT thing to go and change, and several of them are not changeable on the same screen — or on any
+ * screen at all.
  *
- * THIS IS NOT THE ENFORCEMENT. `submitReplacementLeaveRequest` re-derives all three server-side; this
+ * ⚠️ r219 (7966ee35) — AND EVERY CALLER MUST SAY WHICH. The reporter's tenant had this function returning
+ * `module_off` for every employee in every company, and `app/leave/page.tsx` rendered the boolean and threw
+ * the reason away, so the screen was silent and the customer spent a round turning Leave Config switches on
+ * and off. That is the third time a surface in this repo computed a precise cause and rendered nothing
+ * (`no_eligibility_match`, 8ebf77ae, was the second). `components/leave/replacement-availability-notice.tsx`
+ * is the one place the reasons are put into words; a NEW reason added here without an entry in that map
+ * fails `test/r219-replacement-availability-reason.test.ts` rather than rendering silence.
+ *
+ * THIS IS NOT THE ENFORCEMENT. `submitReplacementLeaveRequest` re-derives all of them server-side; this
  * exists so the UI does not offer a button that would be refused.
  */
 export type ReplacementRequestAvailability = {
   allowed: boolean;
-  reason?: 'module_off' | 'not_enabled' | 'not_eligible' | 'no_employment';
+  /**
+   * `first_schedule_protected` is SEPARATE from `not_eligible` (r219) and the split is the point: an
+   * employee outside the company's eligibility criteria is a configuration choice someone can widen, while
+   * an employee at or below the statutory overtime wage ceiling is protected by law and the only lawful
+   * remedy is the company's own recorded override plus that employee's agreement. Collapsing them told
+   * an administrator to go and edit a criteria list that was never the cause.
+   */
+  reason?: ReplacementUnavailableReason;
   /**
    * The employee is within the First Schedule AND their company allows banking, so the form must ASK for
    * their agreement. False when they are above the wage ceiling (no statutory floor to protect) — and note
@@ -188,7 +209,11 @@ export async function replacementRequestAvailability(
     // switched the override on, whether the button appears at all. Asking here rather than letting the
     // employee fill in a form that submit would refuse.
     const firstSchedule = await isFirstScheduleTx(tx, { employmentId, country: resolved.country, asOf });
-    if (firstSchedule && !policy.allowFirstScheduleEligible) return { allowed: false, reason: 'not_eligible' as const };
+    // r219 — its OWN reason, not `not_eligible`. `assertFirstScheduleSubmissionAllowedTx` below already
+    // throws a distinct message for this at submit time; the availability read was the half that flattened
+    // it, so a screen explaining the absence would have sent an administrator to the criteria list.
+    if (firstSchedule && !policy.allowFirstScheduleEligible)
+      return { allowed: false, reason: 'first_schedule_protected' as const };
     return { allowed: true, requiresFirstScheduleConsent: firstSchedule };
   });
 }

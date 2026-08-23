@@ -10858,7 +10858,26 @@
     "cancel": "Cancel",
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
-    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
+    "unavailable": {
+      "moduleOffTitle": "Cuti gantian bukan sebahagian daripada pelan ini",
+      "moduleOffBody": "Cuti gantian ialah bahagian sistem yang berlesen dan ia tidak dihidupkan untuk akaun ini, jadi pilihan permohonan tidak ditawarkan kepada sesiapa pun, dalam mana-mana syarikat. Ia disemak sebelum sebarang tetapan syarikat, sebab itulah tiada apa-apa dalam {config} yang mengubahnya.",
+      "noEmploymentTitle": "Tiada rekod pekerjaan untuk mengkreditkan masa",
+      "noEmploymentBody": "Cuti gantian dikreditkan kepada satu rekod pekerjaan, dan tiada rekod sedemikian ditemui di sini.",
+      "notEnabledTitle": "Cuti gantian dimatikan untuk syarikat ini",
+      "notEnabledBody": "Dua suis di bawah {config} › {screen} perlu dihidupkan kedua-duanya: “{enableSwitch}” dan “{requestSwitch}”. Sekurang-kurangnya satu daripadanya dimatikan.",
+      "notEligibleTitle": "Di luar kriteria pada dasar cuti gantian syarikat ini",
+      "notEligibleBody": "Syarikat anda menetapkan siapa yang boleh menghantar permohonan di bawah {config} › {screen}, dalam “{eligibilitySection}”, dan pekerjaan anda tidak sepadan dengannya. Pentadbir boleh meluaskannya di sana.",
+      "notEligibleBodyAdmin": "Syarikat ini menetapkan siapa yang boleh menghantar permohonan di bawah {config} › {screen}, dalam “{eligibilitySection}”, dan pekerja ini tidak sepadan dengannya. Luaskan tetapan di sana untuk memasukkannya.",
+      "firstScheduleTitle": "Bayaran kerja lebih masa berkanun dikenakan, bukan masa yang disimpan sebagai cuti",
+      "firstScheduleBody": "Gaji anda berada pada atau di bawah siling gaji kerja lebih masa berkanun, jadi anda berhak menerima bayaran kerja lebih masa dan bukannya masa yang disimpan sebagai cuti. Syarikat anda boleh membenarkan penyimpanan itu dengan menghidupkan “{allowSwitch}” di bawah {config} › {screen}; anda kemudiannya merekodkan persetujuan anda sendiri pada setiap permohonan.",
+      "firstScheduleBodyAdmin": "Gaji pekerja ini berada pada atau di bawah siling gaji kerja lebih masa berkanun, jadi dia berhak menerima bayaran kerja lebih masa dan bukannya masa yang disimpan sebagai cuti. Menghidupkan “{allowSwitch}” di bawah {config} › {screen} membolehkan masa itu disimpan sebagai cuti, dengan persetujuannya sendiri direkodkan pada setiap permohonan."
+    },
+    "consentNotice": {
+      "title": "Peraturan perlindungan kerja lebih masa terpakai di sini",
+      "body": "Gaji anda berada pada atau di bawah siling gaji kerja lebih masa berkanun, jadi setiap permohonan meminta persetujuan anda untuk menyimpan masa itu sebagai cuti dan bukannya menerima wang kerja lebih masa berkanun bagi hari-hari tersebut. Kredit yang tidak digunakan akan dibayar apabila tamat tempoh dan bukannya luput begitu sahaja.",
+      "bodyAdmin": "Gaji pekerja ini berada pada atau di bawah siling gaji kerja lebih masa berkanun, jadi setiap permohonan meminta persetujuannya untuk menyimpan masa itu sebagai cuti dan bukannya menerima wang kerja lebih masa berkanun bagi hari-hari tersebut. Kredit yang tidak digunakan akan dibayar apabila tamat tempoh dan bukannya luput begitu sahaja."
+    }
   },
   "notices": {
     "pageTitle": "Papan Notis",

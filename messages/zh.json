@@ -10858,7 +10858,26 @@
     "cancel": "Cancel",
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
-    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
+    "unavailable": {
+      "moduleOffTitle": "补休不在此账户的套餐内",
+      "moduleOffBody": "补休是系统中需要单独授权的部分，此账户尚未启用，因此任何公司的任何员工都看不到申请入口。系统会在读取公司设置之前先检查这一项，所以在{config}中做任何更改都不会改变结果。",
+      "noEmploymentTitle": "没有可用于记入补休的任职记录",
+      "noEmploymentBody": "补休需要记入某条任职记录，而此处未能找到任何任职记录。",
+      "notEnabledTitle": "此公司已关闭补休",
+      "notEnabledBody": "{config} › {screen}下的两个开关都必须打开：“{enableSwitch}”和“{requestSwitch}”。其中至少有一个处于关闭状态。",
+      "notEligibleTitle": "不在此公司补休政策的适用范围内",
+      "notEligibleBody": "贵公司在{config} › {screen}的“{eligibilitySection}”中设定谁可以提交申请，而您的任职记录不符合该设定。管理员可在该处放宽条件。",
+      "notEligibleBodyAdmin": "此公司在{config} › {screen}的“{eligibilitySection}”中设定谁可以提交申请，而该员工不符合该设定。请在该处放宽条件以纳入此员工。",
+      "firstScheduleTitle": "此处适用法定加班工资，而非折算为假期",
+      "firstScheduleBody": "您的工资等于或低于法定加班工资上限，因此您有权获得加班工资，而不是把时间折算为假期。贵公司可在{config} › {screen}下打开“{allowSwitch}”以允许折算；届时您需要在每一次申请中记录本人的同意。",
+      "firstScheduleBodyAdmin": "该员工的工资等于或低于法定加班工资上限，因此其有权获得加班工资，而不是把时间折算为假期。在{config} › {screen}下打开“{allowSwitch}”即可允许折算，并在每一次申请中记录该员工本人的同意。"
+    },
+    "consentNotice": {
+      "title": "此处适用加班保护规则",
+      "body": "您的工资等于或低于法定加班工资上限，因此每一次申请都会请您确认：同意将这些天的时间折算为假期，而不领取法定加班工资。未使用的额度在到期时会折算成工资发放，而不会作废。",
+      "bodyAdmin": "该员工的工资等于或低于法定加班工资上限，因此每一次申请都会请其确认：同意将这些天的时间折算为假期，而不领取法定加班工资。未使用的额度在到期时会折算成工资发放，而不会作废。"
+    }
   },
   "notices": {
     "pageTitle": "公告栏",
