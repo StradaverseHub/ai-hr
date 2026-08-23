@@ -1942,6 +1942,43 @@ async function drawnSegmentsOn(bytes: Uint8Array, marker: string): Promise<Segme
   throw new Error(`no content stream carries "${marker}"`);
 }
 
+/**
+ * r219 FIX PASS — THE COLUMN CAPTIONS THEMSELVES, AGAINST THE TRANSCRIPTION IN THIS REPOSITORY.
+ *
+ * ⚠️ THE SAME GUARD WAS MISSING ON THE EA IN THIS ROUND AND A CAPTION DRIFTED THROUGH IT. Every geometry
+ * case here measures whether a heading FITS its column; not one of them checks what the heading SAYS, so
+ * an invented or reworded caption reaches a tax document with the whole file green. The words on this
+ * table are the agency's, so they are checked against the hand transcription of the specimen — a caption
+ * cannot be reworded without the transcription being changed too, and the transcription cannot be changed
+ * without reading the image.
+ *
+ * A caption we BREAK OVER LINES to fit our narrower portrait column is still the agency's caption: the
+ * lines are joined with a space before the check, so 'NO. CUKAI' + 'PENDAPATAN' is compared as
+ * 'NO. CUKAI PENDAPATAN'.
+ */
+describe('r219 — every column and group caption is the agency’s own', () => {
+  const TRANSCRIPTION = read('docs/forms/cp39-pin-2015-page2-transcription.txt');
+
+  it('appears verbatim in the transcription of the specimen', () => {
+    const missing: string[] = [];
+    for (const c of CP39_TABLE_COLUMNS) {
+      const caption = c.head.join(' ');
+      if (!TRANSCRIPTION.includes(caption)) missing.push(`${c.key}=${JSON.stringify(caption)}`);
+    }
+    for (const g of CP39_TABLE_GROUPS) {
+      if (!TRANSCRIPTION.includes(g.text)) missing.push(`group ${JSON.stringify(g.text)}`);
+    }
+    expect(missing, `not found in docs/forms/cp39-pin-2015-page2-transcription.txt: ${missing.join(', ')}`).toEqual([]);
+    // The check is only worth having if it is looking at all ten columns and both groups.
+    expect(CP39_TABLE_COLUMNS).toHaveLength(10);
+    expect(CP39_TABLE_GROUPS).toHaveLength(2);
+  });
+
+  it('and the agency’s own footer line is in the transcription too, not just in the code', () => {
+    expect(TRANSCRIPTION).toContain(CP39_AGENCY_FOOTER);
+  });
+});
+
 describe('0fea5cc9 — page two is the specimen’s ruled schedule, and its page number counts the document', () => {
   const X = CP39_SHEET.x;
   const Y = CP39_SHEET.yTop;

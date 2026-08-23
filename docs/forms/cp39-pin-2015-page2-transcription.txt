@@ -28,6 +28,25 @@ JUMLAH POTONGAN CUKAI over (PCB (RM), CP38 (RM)). Every other heading spans the 
 All headings are UPPERCASE and centred; the NAMA PENUH PEKERJA caption carries its parenthetical on the
 second and third lines.
 
+THE CAPTIONS, ONE PER LINE, EXACTLY AS THE SPECIMEN SETS THEM
+------------------------------------------------------------
+Read off the image and listed here so a guard can check the drawn page against the agency's WORDS rather
+than against the geometry alone. Our portrait columns are narrower than the specimen's, so some of these
+are BROKEN OVER LINES on our page; the words and their order are what must match, not the line breaks.
+
+    BIL
+    NO. CUKAI PENDAPATAN
+    NAMA PENUH PEKERJA (SEPERTI DI KAD PENGENALAN ATAU PASPORT)
+    NO. K/P LAMA
+    NO. K/P BARU
+    NO. PEKERJA
+    BAGI PEKERJA ASING          (group, spanning the next two)
+    NO. PASPORT
+    KOD NEGARA
+    JUMLAH POTONGAN CUKAI       (group, spanning the next two)
+    PCB (RM)
+    CP38 (RM)
+
 Row values: the two money columns right-aligned; everything else — BIL INCLUDED — left-aligned.
 
   CORRECTED 2026-08-23 (r219a). This line first read "BIL and the two money columns right-aligned".
@@ -36,9 +55,8 @@ Row values: the two money columns right-aligned; everything else — BIL INCLUDE
   the page-one geometry note in lib/cp39-form-pdf.ts states: when the prose and the image disagree, THE
   IMAGE WINS and the prose is what needs fixing.
 
-The new identity
-card number prints WITH dashes (941128-03-5179). Empty is empty — a person with no passport gets an
-empty cell, never a dash and never a zero (AGENTS 28).
+The new identity card number prints WITH dashes (941128-03-5179). Empty is empty — a person with no
+passport gets an empty cell, never a dash and never a zero (AGENTS 28).
 
 THE FOOT
 
