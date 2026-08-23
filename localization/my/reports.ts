@@ -8,6 +8,7 @@ import { withTenant, type SessionContext } from '../../db/client';
 import {
   assignment,
   company,
+  companyStatutoryAuthority,
   companyStatutoryMy,
   eaOverride,
   employeeStatutoryMy,
@@ -958,7 +959,37 @@ export type EaStatement = {
   /** b7b22514 — WHICH employer this form speaks for. A transfer year has one form per employer, and
    *  the screen needs the id to mark the selected one; the name alone cannot be compared safely. */
   employerId: string;
-  employer: { name: string; eNumber: string | null };
+  /**
+   * The employer, as the C.P.8A's own boxes ask for it.
+   *
+   * r219 — `name` and `eNumber` are the two this read has always carried (Nama Majikan and the "TIN
+   * Majikan E" box at the head of the form). The five after them are what the printed form's FOOT asks
+   * for and nothing produced until the redraw: the ruled officer box carries Name Pegawai / Jawatan /
+   * Nama dan Alamat Majikan / No. Telefon Majikan, and the header carries LHDNM Negeri.
+   *
+   * WHERE EACH COMES FROM, and it is the same place the printed CP39 reads its preparer block
+   * (localization/my/cp39-form.ts) — one answer per question, not a second one for this form:
+   *   • address / phone → `company` (Organization → General's Contact Information).
+   *   • lhdnState / officerName / officerPosition → `company_statutory_authority` where
+   *     `authority = 'lhdn'`: the branch state the employer's tax file sits with, and the signatory
+   *     that record names, with their CURRENT job title.
+   *
+   * Every one of them may be absent, and an absent one prints the form's own empty rule — never a
+   * placeholder and never a plausible-looking guess (AGENTS 28).
+   */
+  employer: {
+    name: string;
+    eNumber: string | null;
+    /** Alamat Majikan, one entry per printed line. Empty array = nothing on file. */
+    address: string[];
+    /** No. Telefon Majikan. */
+    phone: string | null;
+    /** LHDNM Negeri — the LHDN branch state on the employer's own statutory record. */
+    lhdnState: string | null;
+    /** "Name Pegawai" (the form's own spelling — see lib/ea-pdf.ts) and their Jawatan. */
+    officerName: string | null;
+    officerPosition: string | null;
+  };
   employee: {
     name: string;
     ic: string | null;
@@ -1109,6 +1140,28 @@ export async function eaCompaniesInYear(
  * the old behaviour for everyone who has never transferred. Use eaCompaniesInYear + one call per company
  * to produce the full set of forms a transferred employee is owed.
  */
+/**
+ * r219 — the employer address as the C.P.8A's foot prints it: the three free lines, then postcode/town
+ * and state on one tail line. Blank parts are dropped rather than printed as gaps, so a company with one
+ * address line gets one line and the remaining rules stay empty.
+ *
+ * A SECOND SPELLING OF cp39-form.ts's `addressLines`, deliberately NOT shared: that one is private to the
+ * CP39 read and lives behind that form's own module, and exporting it to reach across two form modules
+ * would make one form's layout change the other's. The rule itself is four lines of composition and is
+ * asserted here on its own; if a third form needs it, that is when it earns a home of its own.
+ */
+function eaEmployerAddressLines(c: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  postcode: string | null;
+  city: string | null;
+  state: string | null;
+}): string[] {
+  const tail = [[c.postcode, c.city].filter(Boolean).join(' '), c.state].filter(Boolean).join(', ');
+  return [c.addressLine1, c.addressLine2, c.addressLine3, tail].map((s) => (s ?? '').trim()).filter(Boolean);
+}
+
 export async function eaStatement(
   ctx: SessionContext,
   p: { employmentId: string; year: string; companyId?: string },
@@ -1175,21 +1228,58 @@ export async function eaStatement(
     // in a transfer year it is that company, and the name + E number must BOTH come from it — a form
     // carrying one company's name and another's employer number is worse than either alone.
     const employerId = p.companyId ?? info.companyId;
-    let employerName = info.companyName;
-    if (employerId !== info.companyId) {
-      const [co] = await tx
-        .select({ legalName: company.legalName })
-        .from(company)
-        .where(eq(company.id, employerId))
-        .limit(1);
-      if (!co) return null;
-      employerName = co.legalName;
-    }
+    // r219 — ONE read of the employer row, for the employer this form speaks for, whether or not that is
+    // where the employment sits today. It used to be conditional (only a transfer year re-queried) and
+    // returned the legal name alone; the printed C.P.8A's foot also needs the address and the telephone
+    // number, and those must come from the SAME company as the name — a form carrying one company's name
+    // and another's address is worse than either alone.
+    const [co] = await tx
+      .select({
+        legalName: company.legalName,
+        addressLine1: company.addressLine1,
+        addressLine2: company.addressLine2,
+        addressLine3: company.addressLine3,
+        postcode: company.postcode,
+        city: company.city,
+        state: company.state,
+        phone: company.phone,
+      })
+      .from(company)
+      .where(eq(company.id, employerId))
+      .limit(1);
+    if (!co) return null;
+    const employerName = co.legalName;
+    const employerAddress = eaEmployerAddressLines(co);
     const [stat] = await tx
       .select({ eNumber: companyStatutoryMy.lhdnEmployerNo })
       .from(companyStatutoryMy)
       .where(eq(companyStatutoryMy.companyId, employerId))
       .limit(1);
+    // The foot's officer block and the header's LHDNM Negeri. `authority = 'lhdn'` is the row the
+    // Organization screen already maintains and the printed CP39 already reads for its preparer block —
+    // deliberately the same source, so the two LHDN documents cannot name different officers. A company
+    // with no row simply leaves those boxes as the empty rules the blank form prints.
+    const [auth] = await tx
+      .select({ state: companyStatutoryAuthority.state, signatoryPersonId: companyStatutoryAuthority.signatoryPersonId })
+      .from(companyStatutoryAuthority)
+      .where(and(eq(companyStatutoryAuthority.companyId, employerId), eq(companyStatutoryAuthority.authority, 'lhdn')))
+      .limit(1);
+    let officerName: string | null = null;
+    let officerPosition: string | null = null;
+    if (auth?.signatoryPersonId) {
+      const [rep] = await tx
+        .select({ name: person.fullName, title: position.title })
+        .from(person)
+        // LEFT joined throughout, exactly as cp39FormExtras does it: a signatory who is not an employee
+        // of this company still prints their name, with no Jawatan beside it.
+        .leftJoin(employment, and(eq(employment.personId, person.id), eq(employment.companyId, employerId)))
+        .leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
+        .leftJoin(position, eq(position.id, assignment.positionId))
+        .where(eq(person.id, auth.signatoryPersonId))
+        .limit(1);
+      officerName = rep?.name ?? null;
+      officerPosition = rep?.title ?? null;
+    }
     const slips = await tx
       .select({
         basic: payslip.basicSalary,
@@ -1361,7 +1451,15 @@ export async function eaStatement(
     return {
       year: p.year,
       employerId,
-      employer: { name: employerName, eNumber: stat?.eNumber ?? null },
+      employer: {
+        name: employerName,
+        eNumber: stat?.eNumber ?? null,
+        address: employerAddress,
+        phone: co.phone ?? null,
+        lhdnState: auth?.state ?? null,
+        officerName,
+        officerPosition,
+      },
       employee: {
         name: info.name,
         ic: info.ic,
