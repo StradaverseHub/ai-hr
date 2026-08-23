@@ -1,0 +1,51 @@
+BORANG CP 39 (Pin. 2015) — PAGE 2, THE EMPLOYEE SCHEDULE
+========================================================
+
+SOURCE: docs/forms/cp39-pin-2015-page2-specimen.png — image2.png inside "CP39 page 2 sample.docx" on
+feedback item 0fea5cc9 (feedback_attachment 7a177e83-8a9a-42e3-bd08-51cec7be5077), a FILLED official
+page 2 with thirteen employees, produced by the same vendor renderer as every other reference here.
+docs/forms/cp39-our-page2-2026-08-22.png is OUR schedule sheet as it stood before this work, for the
+before/after. Tracing source only — `agency-layout`, never `official` (AGENTS 28b).
+
+THE SHEET HEADER — one line above the table
+
+    No. Majikan   E   <employer number on a dotted rule>                      Muka Surat   <n>
+
+"No. Majikan" and "E" are bold; the page number sits at the far right with a rule under it. **The number
+is the DOCUMENT's page number — the front sheet is page 1, so the first schedule sheet is 2.**
+
+THE TABLE — every cell ruled, two-level headings
+
+    ┌─────┬───────────────┬──────────────────────────┬──────────┬──────────┬─────────┬─────────────────────┬─────────────────────┐
+    │     │               │                          │          │          │         │  BAGI PEKERJA ASING │ JUMLAH POTONGAN CUKAI│
+    │ BIL │ NO. CUKAI     │ NAMA PENUH PEKERJA        │ NO. K/P  │ NO. K/P  │  NO.    ├──────────┬──────────┼──────────┬──────────┤
+    │     │ PENDAPATAN    │ (SEPERTI DI KAD PENGENALAN│  LAMA    │  BARU    │ PEKERJA │ NO.      │   KOD    │ PCB (RM) │ CP38 (RM)│
+    │     │               │  ATAU PASPORT)            │          │          │         │ PASPORT  │  NEGARA  │          │          │
+    └─────┴───────────────┴──────────────────────────┴──────────┴──────────┴─────────┴──────────┴──────────┴──────────┴──────────┘
+
+Two group headings span two columns each — BAGI PEKERJA ASING over (NO. PASPORT, KOD NEGARA), and
+JUMLAH POTONGAN CUKAI over (PCB (RM), CP38 (RM)). Every other heading spans the full header height.
+All headings are UPPERCASE and centred; the NAMA PENUH PEKERJA caption carries its parenthetical on the
+second and third lines.
+
+Row values: BIL and the two money columns right-aligned; everything else left-aligned. The new identity
+card number prints WITH dashes (941128-03-5179). Empty is empty — a person with no passport gets an
+empty cell, never a dash and never a zero (AGENTS 28).
+
+THE FOOT
+
+Bottom LEFT, small, outside the table:
+
+    Borang CP39 boleh diperolehi di laman web : http://www.hasil.gov.my
+
+Bottom RIGHT, a ruled box of two rows aligned to the two money columns:
+
+    ┌──────────────────┬──────────────┬──────────────┐
+    │      JUMLAH      │  <page pcb>  │  <page cp38> │
+    ├──────────────────┼──────────────┴──────────────┤
+    │   JUMLAH BESAR   │      <grand total>          │
+    └──────────────────┴─────────────────────────────┘
+
+JUMLAH is this SHEET's total, split across the two money columns. JUMLAH BESAR is the whole statement's
+and spans both. **AMAUN (PCB + CP38) does NOT appear on this page** — it belongs to BUTIR-BUTIR
+PEMBAYARAN on the front sheet, where r218 now prints it.

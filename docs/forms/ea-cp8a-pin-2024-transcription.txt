@@ -1,0 +1,137 @@
+BORANG C.P.8A (Pin. 2024) — "EA" — VERBATIM TRANSCRIPTION AND LAYOUT NOTES
+=========================================================================
+
+SOURCE, AND WHAT IT IS NOT
+--------------------------
+Transcribed on 2026-08-23 from docs/forms/ea-cp8a-pin-2024-specimen.png, which is the attachment
+"Income Tax EA (2) (2).pdf" on feedback item ece6d75d (feedback_attachment
+9c080805-6b93-40ab-ba99-1d00d961b38b), rasterised at 150dpi. The PDF is a BLANK C.P.8A Pin. 2024, one
+page — and its Producer is "Developer Express Inc. DXperience (tm) v23.2.5", i.e. ANOTHER PAYROLL
+SYSTEM'S rendering of the agency's page, the sixth such "agency reference" this reporter has sent.
+
+It is a TRACING SOURCE, not LHDN artwork. A form drawn from it may declare `agency-layout` and may NEVER
+declare `official`; `public/forms/` holds agency artwork only and this does not go there. See AGENTS 28b.
+
+PAGE
+----
+A4 portrait, one page, no borders except the black banner and the officer box at the foot.
+
+HEADER BAND — three blocks
+--------------------------
+LEFT (small, top-left corner):
+
+    (C.P.8A - Pin. 2024)
+
+    No. Siri              <dotted rule>
+    TIN Majikan E         <dotted rule>
+
+CENTRE (centred; line 2 is the large bold one):
+
+    MALAYSIA
+    CUKAI PENDAPATAN
+    PENYATA SARAAN DARIPADA PENGGAJIAN
+    BAGI TAHUN BERAKHIR 31 DISEMBER
+
+RIGHT (right-aligned; "EA" is the largest type on the page):
+
+    Penyata Gaji Pekerja SWASTA        EA
+    No. Pengenalan Cukai (TIN) Pekerja
+    <dotted rule>
+    LHDNM Negeri           <dotted rule>
+
+THE BANNER — a single ruled box the full width, bold, centred:
+
+    BORANG EA INI PERLU DISEDIAKAN UNTUK DISERAHKAN KEPADA PEKERJA BAGI TUJUAN CUKAI PENDAPATAN
+
+SECTIONS. Each letter and title is bold on its own line. Money lines carry a dotted rule at the RIGHT
+margin, under a bold "RM" heading that appears once, at the top of section B's column.
+
+A   BUTIRAN PEKERJA
+
+    1.  Nama Penuh Pekerja / Pesara (Encik/Cik/Puan)   <rule runs to the right margin>
+    2.  Jawatan                          3. No. Kakitangan / No. Gaji
+    4.  No. K.P. Baru                    5. No. Pasport
+    6.  No. KWSP                         7. No. PERKESO
+    8.  Bilangan anak yang layak         9. Jika bekerja tidak genap setahun, nyatakan:
+        untuk pelepasan cukai                (a) Tarikh mula bekerja
+                                             (b) Tarikh berhenti kerja
+
+    Items 2-9 are TWO COLUMNS: 2, 4, 6, 8 on the left half; 3, 5, 7, 9 on the right half, each with its
+    own dotted rule. 8's caption wraps to a second line; 9's (a) and (b) are indented under it.
+
+B   PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN
+    (Tidak Termasuk Elaun / Perkuisit / Pemberian / Manfaat Yang Dikecualikan Cukai)      RM
+
+    1.  (a) Gaji kasar, upah atau gaji cuti (termasuk gaji lebih masa)
+        (b) Fi (termasuk fi pengarah), komisen atau bonus
+        (c) Tip kasar, perkuisit, penerimaan sagu hati atau elaun-elaun lain (Perihal pembayaran: ____ )
+        (d) Cukai pendapatan yang dibayar oleh majikan bagi pihak pekerja
+        (e) Manfaat Skim Opsyen Saham Pekerja (ESOS)
+        (f) Ganjaran bagi tempoh dari ______ hingga ______
+    2.  Butiran bayaran tunggakan dan lain-lain bagi tahun-tahun terdahulu dalam tahun semasa
+        Jenis pendapatan     (a) ______
+                             (b) ______
+    3.  Manfaat berupa barangan (Nyatakan: ______ )
+    4.  Nilai tempat kediaman (Alamat: ______ )
+    5.  Bayaran balik daripada Kumpulan Wang Simpanan / Pencen yang tidak diluluskan
+    6.  Pampasan kerana kehilangan pekerjaan
+
+    "(Tidak Termasuk …)" is a bold sub-caption under the section title. The bold "RM" sits above the
+    right-hand column of rules and is printed ONCE for the whole form. B.1(c), B.1(f), B.2(a)/(b), B.3
+    and B.4 carry an inline dotted rule INSIDE the caption for the description, plus the money rule at
+    the right; B.2's two lines have the description rule only, and the amount rule belongs to item 2.
+
+C   PENCEN DAN LAIN-LAIN
+
+    1.  Pencen
+    2.  Anuiti atau bayaran berkala yang lain
+        JUMLAH                                        <double rule, bold>
+
+    JUMLAH is bold, indented to the item column, and its amount is closed with a DOUBLE rule (two
+    parallel lines) rather than a dotted one. It totals B and C together.
+
+D   JUMLAH POTONGAN
+
+    1.  Potongan cukai bulanan (PCB) yang dibayar kepada LHDNM
+    2.  Arahan potongan CP38 yang dibayar kepada LHDNM
+    3.  Zakat yang dibayar melalui potongan gaji
+    4.  Derma / hadiah / sumbangan diluluskan yang dibayar melalui potongan gaji
+    5.  Jumlah tuntutan potongan oleh pekerja melalui Borang TP1 berkaitan:
+        (a) Pelepasan                                              RM ______
+        (b) Zakat selain yang dibayar melalui potongan gaji bulanan RM ______
+    6.  Jumlah pelepasan bagi anak yang layak
+
+    D.5(a) and D.5(b) print their own "RM" and rule at MID-PAGE, not at the right margin — they are
+    sub-amounts of item 5 and the right-hand column stays empty on those two lines.
+
+E   CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO
+
+    1.  Nama Kumpulan Wang   <rule runs to the right margin>
+        Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)      RM ______
+    2.  PERKESO:  Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)   RM ______
+
+    Both amounts print "RM" immediately before the rule, right-aligned, rather than under B's column.
+
+F   JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI        RM ______
+
+    One line: the title IS the item. "RM" is bold and sits just before the rule.
+
+THE FOOT — a ruled box on the RIGHT, and a date on the LEFT outside it
+
+    Tarikh:  <rule>          ┌──────────────────────────────────────────────┐
+                             │ Name Pegawai        <rule>                   │
+                             │ Jawatan             <rule>                   │
+                             │ Nama dan Alamat Majikan  <rule>              │
+                             │                          <rule>              │
+                             │ No. Telefon Majikan      <rule>              │
+                             └──────────────────────────────────────────────┘
+
+    ⚠️ "Name Pegawai" is spelled that way ON THE SPECIMEN — Malay would be "Nama". Reproduce the caption
+    as the agency's form has it and do NOT silently correct it; note it here so the next reader knows it
+    was read, not mistyped. "Nama dan Alamat Majikan" gets TWO rules, for two address lines.
+
+WHAT THIS SYSTEM ALREADY HOLDS FOR EVERY BOX
+--------------------------------------------
+Section A comes from the staff record; B, C, D, E and F are already derived by `localization/my/reports.ts`
+(EA_FIELDS) and already amendable through `ea_override`. This transcription changes WHERE they print, not
+whether they are known. Do not blank them: see the approved plan on item ece6d75d.
