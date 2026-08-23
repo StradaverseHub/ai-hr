@@ -794,7 +794,11 @@ export function cp39FormTextExport(form: Cp39Form): string {
   L.push('');
 
   for (const page of form.pages) {
-    L.push(`Muka surat ${page.sheet}/${page.of}`);
+    // 0fea5cc9 — THE DOCUMENT's page number, not the schedule sheet's. The front sheet is page 1, so the
+    // first schedule sheet is 2 — which is what the official page 2 prints in its own `Muka Surat` box,
+    // and what the drawn page now prints. Counting schedule sheets only made the first one read "1/1",
+    // i.e. a one-page document that is really page 2 of two. The denominator counts the cover too.
+    L.push(`Muka surat ${page.sheet + 1}/${page.of + 1}`);
     L.push(
       pad('BIL', 5) +
         pad('NO. CUKAI', 15) +
@@ -828,20 +832,27 @@ export function cp39FormTextExport(form: Cp39Form): string {
     L.push('-'.repeat(141));
     L.push(
       pad('', 5) +
-        pad(`JUMLAH (muka surat ${page.sheet})`, 112) +
+        pad(`JUMLAH (muka surat ${page.sheet + 1})`, 112) +
         padL(money(page.pagePcb), 12) +
         padL(money(page.pageCp38), 12),
     );
     // JUMLAH BESAR ON THE LAST SHEET ONLY: repeating it is how a multi-page statement gets filed with a
     // page total mistaken for the grand total.
+    //
+    // 0fea5cc9 — AND IT SPANS BOTH MONEY COLUMNS, because that is what it is on the official page 2: the
+    // whole statement's PCB AND CP38 together, which is the figure the payment instrument is written
+    // for. It used to print the two column totals here and then repeat their sum on a separate
+    // `AMAUN (PCB + CP38)` line below the schedule; that line is gone, because two copies of one figure
+    // are two figures that can disagree and BUTIR-BUTIR PEMBAYARAN above already carries all three —
+    // Jumlah Potongan PCB, Jumlah Potongan CP38 and AMAUN. Nothing was lost, and the drawn page and this
+    // text twin now say the same thing under the same label.
     if (page.sheet === page.of) {
-      L.push(pad('', 5) + pad('JUMLAH BESAR', 112) + padL(money(form.totalPcb), 12) + padL(money(form.totalCp38), 12));
+      L.push(pad('', 5) + pad('JUMLAH BESAR', 124) + padL(money(form.totalAmount), 12));
     }
     L.push('');
   }
 
-  L.push(`AMAUN (PCB + CP38) : RM ${money(form.totalAmount)}`);
-  L.push('');
+
   L.push('PEGAWAI YANG MENYEDIAKAN MAKLUMAT:');
   L.push(`  Nama Penuh     : ${form.preparerName || '—'}`);
   L.push(`  No. Pengenalan : ${form.preparerIc || '—'}`);

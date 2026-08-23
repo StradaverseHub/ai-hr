@@ -42,6 +42,7 @@ import {
   type Cp39FormRow,
 } from '../lib/cp39-form';
 import {
+  CP39_AGENCY_FOOTER,
   CP39_COVER,
   CP39_COVER_HEADING_SIZE,
   CP39_HEADING_SIZE,
@@ -52,7 +53,11 @@ import {
   CP39_NOTE_B_TAIL,
   CP39_NOTE_C,
   CP39_ROW_SIZE,
+  CP39_SHEET,
   CP39_TABLE_COLUMNS,
+  CP39_TABLE_GROUPS,
+  cp39ColumnSpan,
+  cp39GroupColumns,
   renderCp39FormPdf,
 } from '../lib/cp39-form-pdf';
 // The OTHER CP39 output, imported rather than restated — see the joint assertion below.
@@ -1859,5 +1864,450 @@ describe('c99e8358 — page one is the Borang CP39 (Pin.2015) arrangement, drawn
     expect(Math.max(...runs.map((r) => r.top)), 'nothing may print past the foot margin').toBeLessThan(
       CP39_COVER.H - 8,
     );
+  });
+});
+
+/**
+ * ── 0fea5cc9 — PAGE TWO ONWARD, MEASURED ─────────────────────────────────────────────────────────
+ *
+ * The reporter confirmed r218's front page and came straight back with the official REVERSE attached.
+ * Four of the five things they asked for were already true (Bil runs across the whole statement, the
+ * employer and period repeat on every sheet, the ten columns are already those ten in order, and
+ * JUMLAH / JUMLAH BESAR were already totals rather than rows) — the cases below pin those where they
+ * were not pinned, and measure the four that were NOT true:
+ *
+ *  1. the schedule is RULED, with two-level headings over the four grouped columns;
+ *  2. `Muka Surat` counts the WHOLE DOCUMENT, so the first schedule sheet is 2 and not "1/1";
+ *  3. JUMLAH and JUMLAH BESAR are a bordered totals box, the second spanning both money columns;
+ *  4. the agency's own footer line is printed, and AMAUN (PCB + CP38) is not.
+ *
+ * These read the DRAWN PAGE — its text runs AND its rules — because a ruled form fails in ways no
+ * assertion about the model can see: pdf-lib does not clip, so a caption one point too wide for its cell
+ * prints into the cell beside it and the page still renders, still returns 200 and still downloads.
+ */
+type Segment = { x0: number; x1: number; t0: number; t1: number };
+
+/**
+ * Every straight segment on the ONE content stream that carries `marker`, in TOP-EDGE coordinates.
+ *
+ * `drawnRunsOn` reads the TEXT, and a ruled form is mostly not text. pdf-lib writes a line as
+ * `<x> <y> m … <x> <y> l S` and a rectangle as a `cm` translation followed by a path relative to it, so
+ * both reduce to one list of endpoints once the translation is carried; `h` closes the path back to its
+ * first point. Degenerate segments are dropped — pdf-lib repeats the opening `m`. Without this, "every
+ * cell is bordered" and "the group heading spans two columns" are claims only a picture can check, and a
+ * picture is not in the suite.
+ */
+async function drawnSegmentsOn(bytes: Uint8Array, marker: string): Promise<Segment[]> {
+  const doc = await PDFDocument.load(bytes);
+  const hex = Buffer.from(marker, 'latin1').toString('hex').toUpperCase();
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const raw = (obj as unknown as { contents?: Uint8Array }).contents;
+    if (!raw) continue;
+    let stream: string;
+    try {
+      stream = zlib.inflateSync(Buffer.from(raw)).toString('latin1');
+    } catch {
+      stream = Buffer.from(raw).toString('latin1');
+    }
+    if (!stream.toUpperCase().includes(hex)) continue;
+    const out: Segment[] = [];
+    for (const block of stream.split(/\bq\b/)) {
+      let dx = 0;
+      let dy = 0;
+      for (const m of block.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) cm/g)) {
+        dx += Number(m[1]);
+        dy += Number(m[2]);
+      }
+      const pts: [number, number][] = [];
+      for (const m of block.matchAll(/(-?[\d.]+) (-?[\d.]+) (?:m|l)\b/g)) {
+        pts.push([Number(m[1]) + dx, Number(m[2]) + dy]);
+      }
+      if (/\bh\b/.test(block) && pts.length > 2) pts.push(pts[0]);
+      for (let i = 1; i < pts.length; i += 1) {
+        const [ax, ay] = pts[i - 1];
+        const [bx, by] = pts[i];
+        if (Math.abs(ax - bx) < 0.01 && Math.abs(ay - by) < 0.01) continue;
+        const ta = CP39_SHEET.H - ay;
+        const tb = CP39_SHEET.H - by;
+        out.push({
+          x0: Math.min(ax, bx),
+          x1: Math.max(ax, bx),
+          t0: Math.min(ta, tb),
+          t1: Math.max(ta, tb),
+        });
+      }
+    }
+    return out;
+  }
+  throw new Error(`no content stream carries "${marker}"`);
+}
+
+/**
+ * r219 FIX PASS — THE COLUMN CAPTIONS THEMSELVES, AGAINST THE TRANSCRIPTION IN THIS REPOSITORY.
+ *
+ * ⚠️ THE SAME GUARD WAS MISSING ON THE EA IN THIS ROUND AND A CAPTION DRIFTED THROUGH IT. Every geometry
+ * case here measures whether a heading FITS its column; not one of them checks what the heading SAYS, so
+ * an invented or reworded caption reaches a tax document with the whole file green. The words on this
+ * table are the agency's, so they are checked against the hand transcription of the specimen — a caption
+ * cannot be reworded without the transcription being changed too, and the transcription cannot be changed
+ * without reading the image.
+ *
+ * A caption we BREAK OVER LINES to fit our narrower portrait column is still the agency's caption: the
+ * lines are joined with a space before the check, so 'NO. CUKAI' + 'PENDAPATAN' is compared as
+ * 'NO. CUKAI PENDAPATAN'.
+ */
+describe('r219 — every column and group caption is the agency’s own', () => {
+  const TRANSCRIPTION = read('docs/forms/cp39-pin-2015-page2-transcription.txt');
+
+  it('appears verbatim in the transcription of the specimen', () => {
+    const missing: string[] = [];
+    for (const c of CP39_TABLE_COLUMNS) {
+      const caption = c.head.join(' ');
+      if (!TRANSCRIPTION.includes(caption)) missing.push(`${c.key}=${JSON.stringify(caption)}`);
+    }
+    for (const g of CP39_TABLE_GROUPS) {
+      if (!TRANSCRIPTION.includes(g.text)) missing.push(`group ${JSON.stringify(g.text)}`);
+    }
+    expect(missing, `not found in docs/forms/cp39-pin-2015-page2-transcription.txt: ${missing.join(', ')}`).toEqual([]);
+    // The check is only worth having if it is looking at all ten columns and both groups.
+    expect(CP39_TABLE_COLUMNS).toHaveLength(10);
+    expect(CP39_TABLE_GROUPS).toHaveLength(2);
+  });
+
+  it('and the agency’s own footer line is in the transcription too, not just in the code', () => {
+    expect(TRANSCRIPTION).toContain(CP39_AGENCY_FOOTER);
+  });
+});
+
+describe('0fea5cc9 — page two is the specimen’s ruled schedule, and its page number counts the document', () => {
+  const X = CP39_SHEET.x;
+  const Y = CP39_SHEET.yTop;
+
+  /**
+   * FOUR FIGURES THAT ARE ALL DIFFERENT ON THE LAST SHEET, which is the only way a transposition or a
+   * mis-labelled total is visible: sheet 2 totals 74.70 PCB and 250.00 CP38, and the statement totals
+   * 15,374.70 / 250.00 / 15,624.70. Every one of them adds up whichever way round it is printed.
+   */
+  const three: Cp39FormRow[] = [
+    row({ employmentId: 'a', personId: 'p1', name: 'SATU', tin: 'SG1', pcb: 15000, cp38: 0 }),
+    row({ employmentId: 'b', personId: 'p2', name: 'DUA', tin: 'SG2', pcb: 300, cp38: 0 }),
+    row({ employmentId: 'c', personId: 'p3', name: 'TIGA', tin: 'SG3', pcb: 74.7, cp38: 250 }),
+  ];
+  const twoSheet = () => cp39FormFrom({ header: header(), rows: three, perPage: 2 });
+
+  type Measured = CoverRun & { top: number; w: number };
+  /** The runs on the ONE schedule sheet carrying `marker`, with their width and distance from the top. */
+  async function sheetRuns(bytes: Uint8Array, marker: string): Promise<Measured[]> {
+    const d = await PDFDocument.create();
+    const reg = await d.embedFont(StandardFonts.Helvetica);
+    const bld = await d.embedFont(StandardFonts.HelveticaBold);
+    return (await drawnRunsOn(bytes, marker)).map((r) => ({
+      ...r,
+      top: CP39_SHEET.H - r.y,
+      w: (r.bold ? bld : reg).widthOfTextAtSize(r.text, r.size),
+    }));
+  }
+  const flatOf = (runs: Measured[]) => runs.map((r) => r.text).join(' ').replace(/\s+/g, ' ');
+  /** Is there a rule at `t` running from at least `x0` to at least `x1`? */
+  const hasH = (segs: Segment[], t: number, x0: number, x1: number) =>
+    segs.some(
+      (s) => Math.abs(s.t0 - t) < 0.6 && Math.abs(s.t1 - t) < 0.6 && s.x0 <= x0 + 0.6 && s.x1 >= x1 - 0.6,
+    );
+  /** Is there a rule at `x` running from at least `t0` down to at least `t1`? */
+  const hasV = (segs: Segment[], x: number, t0: number, t1: number) =>
+    segs.some(
+      (s) => Math.abs(s.x0 - x) < 0.6 && Math.abs(s.x1 - x) < 0.6 && s.t0 <= t0 + 0.6 && s.t1 >= t1 - 0.6,
+    );
+  const spanOf = (key: string) => cp39ColumnSpan(CP39_TABLE_COLUMNS.find((c) => c.key === key)!);
+  const groupSpan = (g: (typeof CP39_TABLE_GROUPS)[number]) => {
+    const members = cp39GroupColumns(g).map(cp39ColumnSpan);
+    return { left: Math.min(...members.map((s) => s.left)), right: Math.max(...members.map((s) => s.right)) };
+  };
+  const bodyBottomFor = (rows: number) => Y.headBottom + rows * CP39_SHEET.rowH;
+
+  it('declares two groups, each exactly its own children wide and carrying a caption that fits', async () => {
+    const d = await PDFDocument.create();
+    const bld = await d.embedFont(StandardFonts.HelveticaBold);
+    expect(CP39_TABLE_GROUPS.map((g) => g.text)).toEqual(['BAGI PEKERJA ASING', 'JUMLAH POTONGAN CUKAI']);
+    expect(cp39GroupColumns(CP39_TABLE_GROUPS[0]).map((c) => c.key)).toEqual(['passport', 'countryCode']);
+    expect(cp39GroupColumns(CP39_TABLE_GROUPS[1]).map((c) => c.key)).toEqual(['pcb', 'cp38']);
+    for (const g of CP39_TABLE_GROUPS) {
+      const members = cp39GroupColumns(g);
+      const { left, right } = groupSpan(g);
+      // Contiguous: the children TILE the group, so the caption cannot be over a gap or over a column
+      // that has drifted out from under it.
+      expect(members.reduce((a, c) => a + c.width, 0), `${g.text}'s columns do not tile it`).toBeCloseTo(
+        right - left,
+        6,
+      );
+      // THE ASSERTION THE REQUEST ASKS FOR BY NAME: a group heading must fit the SUM of its children's
+      // widths, at pdf-lib's own metrics — pdf-lib does not clip, so one point too wide prints into the
+      // column beside it and the page still downloads.
+      expect(
+        bld.widthOfTextAtSize(g.text, CP39_HEADING_SIZE),
+        `"${g.text}" does not fit the columns it spans`,
+      ).toBeLessThanOrEqual(right - left - 2);
+    }
+  });
+
+  it('draws both group captions over their own two columns, and nothing else in that row', async () => {
+    const runs = await sheetRuns(await renderCp39FormPdf(twoSheet()), 'SATU');
+    const groupRow = runs.filter((r) => r.top > Y.tableTop && r.top <= Y.headGroupBottom);
+    expect(groupRow.map((r) => r.text).sort()).toEqual(['BAGI PEKERJA ASING', 'JUMLAH POTONGAN CUKAI']);
+    for (const g of CP39_TABLE_GROUPS) {
+      const drawn = groupRow.find((r) => r.text === g.text)!;
+      const { left, right } = groupSpan(g);
+      expect(drawn.x, `"${g.text}" starts left of the columns it spans`).toBeGreaterThanOrEqual(left);
+      expect(drawn.x + drawn.w, `"${g.text}" runs out of the columns it spans`).toBeLessThanOrEqual(right);
+    }
+  });
+
+  /**
+   * ⚠️ THE RULE THAT MAKES A GROUP HEADING A GROUP HEADING. Between NO. PASPORT and KOD NEGARA there is
+   * a vertical rule BELOW the group row and NONE inside it; if that rule ran the full height, the page
+   * would carry the caption "BAGI PEKERJA ASING" over one column and a stray one beside it, which is a
+   * different instruction to whoever fills the form in. No text assertion can see this.
+   */
+  it('rules every cell, and stops the in-group rules below the group caption', async () => {
+    const bytes = await renderCp39FormPdf(twoSheet());
+    const segs = await drawnSegmentsOn(bytes, 'SATU');
+    const bodyBottom = bodyBottomFor(2);
+
+    expect(hasH(segs, Y.tableTop, X.left, X.tableRight), 'the table has no top border').toBe(true);
+    expect(hasH(segs, bodyBottom, X.left, X.tableRight), 'the table has no bottom border').toBe(true);
+    expect(hasV(segs, X.left, Y.tableTop, bodyBottom), 'the table has no left border').toBe(true);
+    expect(hasV(segs, X.tableRight, Y.tableTop, bodyBottom), 'the table has no right border').toBe(true);
+    expect(hasH(segs, Y.headBottom, X.left, X.tableRight), 'the heading band is not closed').toBe(true);
+    // Both rows of a two-row sheet are ruled off from each other.
+    expect(hasH(segs, Y.headBottom + CP39_SHEET.rowH, X.left, X.tableRight), 'row 1 is not ruled').toBe(true);
+
+    const insideAGroup = new Set(
+      CP39_TABLE_GROUPS.flatMap((g) => cp39GroupColumns(g).slice(1).map((c) => cp39ColumnSpan(c).left)),
+    );
+    for (const c of CP39_TABLE_COLUMNS) {
+      const { left } = cp39ColumnSpan(c);
+      if (left === X.left) continue;
+      expect(hasV(segs, left, Y.headBottom, bodyBottom), `no rule left of ${c.key}`).toBe(true);
+      if (insideAGroup.has(left)) {
+        expect(hasV(segs, left, Y.tableTop, Y.headGroupBottom), `${c.key} splits its own group caption`).toBe(
+          false,
+        );
+        expect(hasV(segs, left, Y.headGroupBottom, bodyBottom), `${c.key} is not ruled off below the caption`).toBe(
+          true,
+        );
+      } else {
+        expect(hasV(segs, left, Y.tableTop, bodyBottom), `${c.key}'s rule does not run the whole table`).toBe(true);
+      }
+    }
+    // The rule UNDER a group caption spans that group and nothing more — it does not run the full width.
+    for (const g of CP39_TABLE_GROUPS) {
+      const { left, right } = groupSpan(g);
+      expect(hasH(segs, Y.headGroupBottom, left, right), `${g.text} has no rule under it`).toBe(true);
+    }
+    expect(
+      hasH(segs, Y.headGroupBottom, X.left, X.tableRight),
+      'the group rule runs the whole width, which would cut the single-level headings in half',
+    ).toBe(false);
+  });
+
+  it('keeps every heading line and every printed value inside its own column', async () => {
+    const runs = await sheetRuns(await renderCp39FormPdf(twoSheet()), 'SATU');
+    const spans = CP39_TABLE_COLUMNS.map((c) => ({ key: c.key as string, ...cp39ColumnSpan(c) }));
+    const groupCaptions = CP39_TABLE_GROUPS.map((g) => g.text as string);
+    const inTable = runs.filter(
+      (r) => r.top > Y.tableTop && r.top <= bodyBottomFor(2) && !groupCaptions.includes(r.text),
+    );
+    expect(inTable.length, 'the table must actually carry headings and rows').toBeGreaterThan(15);
+    for (const r of inTable) {
+      const home = spans.filter((s) => r.x >= s.left - 0.5 && r.x + r.w <= s.right + 0.5);
+      expect(
+        home.map((s) => s.key),
+        `"${r.text}" spans ${r.x.toFixed(1)}..${(r.x + r.w).toFixed(1)} and is not inside one column`,
+      ).toHaveLength(1);
+    }
+  });
+
+  /**
+   * ⚠️ THE REAL DEFECT THIS ROUND EXISTS TO FIX. `Muka surat {sheet}/{of}` counted SCHEDULE sheets only,
+   * so the first schedule sheet printed "1/1" — a one-page document — where the official form calls that
+   * same sheet "Muka Surat 2". That is the reporter's "page 2 is a continuation, not a new document",
+   * arrived at from the other end.
+   */
+  it('numbers every sheet against the whole document, cover included', async () => {
+    const form = twoSheet();
+    expect(form.pages).toHaveLength(2);
+    const bytes = await renderCp39FormPdf(form);
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(3);
+
+    const headerRight = (runs: Measured[]) =>
+      runs.filter((r) => r.top <= Y.tableTop && r.x > 400).map((r) => r.text);
+    expect(headerRight(await sheetRuns(bytes, 'SATU'))).toEqual(['Muka Surat', '2']);
+    expect(headerRight(await sheetRuns(bytes, 'TIGA'))).toEqual(['Muka Surat', '3']);
+    // The sheet-of-sheets numbering is gone from the drawn page, not merely overwritten somewhere else.
+    expect(flatOf(await sheetRuns(bytes, 'SATU'))).not.toContain('1/1');
+    expect(PDF_CODE).not.toContain('${pageData.sheet}/${pageData.of}');
+    // …and the plain-text twin counts the same document, so the two cannot be read against each other.
+    const txt = cp39FormTextExport(form);
+    expect(txt).toContain('Muka surat 2/3');
+    expect(txt).toContain('Muka surat 3/3');
+    expect(txt).not.toContain('Muka surat 1/2');
+  });
+
+  it('repeats the employer number, the name and the period on EVERY sheet, beside the page number', async () => {
+    const bytes = await renderCp39FormPdf(twoSheet());
+    for (const marker of ['SATU', 'TIGA']) {
+      const runs = await sheetRuns(bytes, marker);
+      const head = runs.filter((r) => r.top <= Y.tableTop);
+      const text = head.map((r) => r.text).join(' ');
+      expect(text, `sheet carrying ${marker} lost its employer number`).toContain('No. Majikan');
+      expect(text).toContain('E0094573909');
+      expect(text).toContain('ISEDECOR BINA SDN BHD');
+      expect(text).toContain('POTONGAN BAGI BULAN JANUARI 2026');
+      // `No. Majikan E <number>` sits at the LEFT of the same line the page number closes at the right.
+      const majikan = head.find((r) => r.text === 'No. Majikan')!;
+      const muka = head.find((r) => r.text === 'Muka Surat')!;
+      expect(majikan.top).toBeCloseTo(muka.top, 1);
+      expect(majikan.x).toBeLessThan(muka.x);
+    }
+  });
+
+  /**
+   * ⚠️ WHICH CELL EACH FIGURE LANDED IN, not whether the totals add up — they always did. JUMLAH is THIS
+   * SHEET's, split across the two money columns; JUMLAH BESAR is the whole statement's and SPANS BOTH,
+   * which is the box that used to be a separate `AMAUN (PCB + CP38)` line underneath.
+   */
+  it('draws JUMLAH split across the money columns and JUMLAH BESAR across both, on the last sheet only', async () => {
+    const form = twoSheet();
+    expect(form.pages[1].pagePcb).toBe(74.7);
+    expect(form.pages[1].pageCp38).toBe(250);
+    expect(form.totalPcb).toBe(15374.7);
+    expect(form.totalCp38).toBe(250);
+    expect(form.totalAmount).toBe(15624.7);
+
+    const bytes = await renderCp39FormPdf(form);
+    const runs = await sheetRuns(bytes, 'TIGA');
+    const jumlah = runs.find((r) => r.text === 'JUMLAH')!;
+    const besar = runs.find((r) => r.text === 'JUMLAH BESAR')!;
+    expect(besar.top, 'JUMLAH BESAR belongs UNDER the sheet total').toBeGreaterThan(jumlah.top);
+    expect(jumlah.x, 'the totals box sits at the foot RIGHT').toBeGreaterThanOrEqual(X.totalsLabelLeft);
+
+    const onLine = (t: number) => runs.filter((r) => Math.abs(r.top - t) < 0.5);
+    const inCell = (t: number, x0: number, x1: number) =>
+      onLine(t)
+        .filter((r) => r.x >= x0 - 0.5 && r.x + r.w <= x1 + 0.5)
+        .map((r) => r.text);
+    // 74.70 under PCB and 250.00 under CP38, and NEITHER under the other.
+    expect(inCell(jumlah.top, X.moneyLeft, X.moneySplit)).toEqual(['74.70']);
+    expect(inCell(jumlah.top, X.moneySplit, X.tableRight)).toEqual(['250.00']);
+    // ONE figure on the JUMLAH BESAR line, and it is PCB + CP38 for the WHOLE statement — not this
+    // sheet's, and not either column's grand total on its own.
+    const besarFigures = onLine(besar.top).filter((r) => r.text !== 'JUMLAH BESAR').map((r) => r.text);
+    expect(besarFigures).toEqual(['15,624.70']);
+    expect(besarFigures).not.toContain('15,374.70');
+    expect(besarFigures).not.toContain('250.00');
+
+    // The box is bordered, and the PCB | CP38 rule stops at the JUMLAH row — that is what "spans both"
+    // is drawn as, and no assertion about the text can see it.
+    const segs = await drawnSegmentsOn(bytes, 'TIGA');
+    const below = segs.filter((s) => s.t0 > bodyBottomFor(1) + 1);
+    const at = (x: number) => below.filter((s) => Math.abs(s.x0 - x) < 0.6 && Math.abs(s.x1 - x) < 0.6);
+    const split = at(X.moneySplit);
+    expect(split, 'the PCB | CP38 rule must appear exactly once in the totals box').toHaveLength(1);
+    expect(
+      Math.max(...at(X.moneyLeft).map((s) => s.t1)),
+      'the label | money rule must run on past the PCB | CP38 rule, which is what makes JUMLAH BESAR span both',
+    ).toBeGreaterThan(split[0].t1);
+    expect(hasH(below, split[0].t1, X.totalsLabelLeft, X.tableRight), 'JUMLAH is not ruled off').toBe(true);
+
+    // …and JUMLAH BESAR is on the LAST sheet only. Repeating it is how a page total gets filed as the
+    // grand total.
+    const first = await sheetRuns(bytes, 'SATU');
+    expect(first.map((r) => r.text)).toContain('JUMLAH');
+    expect(first.map((r) => r.text), 'sheet 1 of 2 must not carry JUMLAH BESAR').not.toContain('JUMLAH BESAR');
+  });
+
+  /**
+   * THE NON-FABRICATION GUARD FOR THIS PAGE, the same one the cover's A / B / C panels are held to: the
+   * agency's line must appear BOTH on the drawn page AND in the transcription in this repository.
+   */
+  it('prints the agency’s own footer at the bottom left, verbatim from the transcription', async () => {
+    const transcript = read('docs/forms/cp39-pin-2015-page2-transcription.txt').replace(/\s+/g, ' ');
+    expect(transcript, 'the footer must come from the transcription, not from memory').toContain(
+      CP39_AGENCY_FOOTER,
+    );
+    const runs = await sheetRuns(await renderCp39FormPdf(twoSheet()), 'TIGA');
+    const foot = runs.find((r) => r.text === CP39_AGENCY_FOOTER)!;
+    expect(foot, 'the agency footer is not on the sheet').toBeTruthy();
+    expect(foot.x).toBeCloseTo(X.left, 1);
+    expect(foot.x + foot.w, 'the footer runs into the totals box').toBeLessThan(X.totalsLabelLeft);
+    const jumlah = runs.find((r) => r.text === 'JUMLAH')!;
+    expect(foot.top, 'the footer belongs at the foot, under the table').toBeGreaterThan(jumlah.top - 20);
+  });
+
+  /**
+   * ⚠️ ONE FIGURE, ONE PLACE. `AMAUN (PCB + CP38)` used to print under the schedule as well as in
+   * BUTIR-BUTIR PEMBAYARAN on the cover. Two copies of one figure are two figures that can disagree, and
+   * the official page 2 has no such line: its JUMLAH BESAR IS that total. The assertion has MOVED to the
+   * cover rather than been deleted — `carries Amaun and Tarikh` above pins it there.
+   */
+  it('carries AMAUN on the cover and nowhere on the schedule', async () => {
+    const form = twoSheet();
+    const bytes = await renderCp39FormPdf(form);
+    const coverText = (await drawnRunsOn(bytes, 'BUTIR-BUTIR MAJIKAN')).map((r) => r.text);
+    expect(coverText, 'the cover is where the payable amount lives').toContain('Amaun');
+    expect(coverText).toContain('15,624.70');
+    for (const marker of ['SATU', 'TIGA']) {
+      const text = flatOf(await sheetRuns(bytes, marker));
+      expect(text, `sheet carrying ${marker} still prints AMAUN`).not.toContain('AMAUN');
+      expect(text).not.toContain('PCB + CP38');
+    }
+    expect(PDF_CODE).not.toContain('AMAUN (PCB + CP38)');
+    // The plain-text twin drops it for the same reason, and still carries the figure once, up top.
+    const txt = cp39FormTextExport(form);
+    expect(txt).not.toContain('AMAUN (PCB + CP38)');
+    expect(txt).toContain('AMAUN');
+    expect(txt.match(/15,624\.70/g), 'the payable amount is stated twice in the text twin').toHaveLength(2);
+  });
+
+  it('numbers Bil down the WHOLE statement rather than restarting on each sheet', async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => row({ employmentId: `e${i}`, name: `ORANG ${i}` }));
+    const form = cp39FormFrom({ header: header(), rows, perPage: 2 });
+    expect(form.pages.map((p) => p.rows.length)).toEqual([2, 2, 1]);
+    const bytes = await renderCp39FormPdf(form);
+    const bilOf = async (marker: string) => {
+      const runs = await sheetRuns(bytes, marker);
+      const bil = cp39ColumnSpan(CP39_TABLE_COLUMNS[0]);
+      return runs
+        .filter((r) => r.top > CP39_SHEET.yTop.headBottom && r.x >= bil.left - 0.5 && r.x + r.w <= bil.right + 0.5)
+        .sort((a, b) => a.top - b.top)
+        .map((r) => r.text);
+    };
+    expect(await bilOf('ORANG 0')).toEqual(['1', '2']);
+    expect(await bilOf('ORANG 2')).toEqual(['3', '4']);
+    expect(await bilOf('ORANG 4')).toEqual(['5']);
+  });
+
+  it('never draws a run off the sheet, on a full sheet or an empty one', async () => {
+    const many = Array.from({ length: CP39_FORM_ROWS_PER_PAGE }, (_, i) =>
+      row({ employmentId: `e${i}`, name: `PEKERJA ${i}`, pcb: 1234.56, cp38: 78.9 }),
+    );
+    for (const [form, marker] of [
+      [cp39FormFrom({ header: header(), rows: many }), 'PEKERJA 0'],
+      [cp39FormFrom({ header: header(), rows: [] }), 'Tiada pekerja'],
+    ] as const) {
+      const runs = await sheetRuns(await renderCp39FormPdf(form), marker);
+      for (const r of runs) {
+        expect(r.x, `"${r.text}" starts left of the sheet`).toBeGreaterThanOrEqual(0);
+        expect(r.x + r.w, `"${r.text}" runs off the right edge`).toBeLessThanOrEqual(CP39_SHEET.W);
+        expect(r.top, `"${r.text}" is drawn above the head of the sheet`).toBeGreaterThanOrEqual(0);
+        expect(r.top, `"${r.text}" falls off the foot of the sheet`).toBeLessThanOrEqual(CP39_SHEET.H);
+      }
+      // A FULL sheet's table may never reach the foot band, or the totals box prints over the last row.
+      const jumlah = runs.find((r) => r.text === 'JUMLAH')!;
+      expect(jumlah.top).toBeGreaterThan(CP39_SHEET.yTop.headBottom);
+      expect(jumlah.top, 'the totals box has run into the provenance strip').toBeLessThan(
+        CP39_SHEET.yTop.stripRule,
+      );
+    }
   });
 });
