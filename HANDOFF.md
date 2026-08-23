@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-22 (r195–r218 SHIPPED · NOTHING IN FLIGHT · 6 PLANNED)
+## CURRENT STATE — snapshot 2026-08-23 (r195–r219 SHIPPED · NOTHING IN FLIGHT · THE BOARD IS EMPTY)
 
-**`main@6cfa4053` IS WHAT RUNS ON PRODUCTION (r218, 2026-08-21)** — verified by an
+**`main@f72cdba3` IS WHAT RUNS ON PRODUCTION (r219, 2026-08-23)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
@@ -35,33 +35,56 @@ ELSE in that dry run is an undeployed release.
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
 `passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
-**r218 added NONE — next free is still `0451`.**
-**Board after r219's planning round (2026-08-22): `deployed = 730` · `cancelled = 14` · `planned = 6` ·
-everything else ZERO.** r218 shipped `c99e8358` (CP39 front page) and `5dbce839` (PERKESO report + notices).
-r219 planned FOUR: `0fea5cc9` (CP39 page 2 — the schedule, in the official ruled layout), `64c09b0e`
-(SOCSO text file AGAIN, and its field map is wrong — below), `ece6d75d` (EA C.P.8A Pin. 2024 layout) and
-`68147833` (the TEST names — OUR item, and it needed a plan like any other: **an item with no plan has no
-approve button**, which is the trap this file already warns about further down). Still planned and older:
-`7966ee35` (Replacement Leave in Lieu — the `toil` module, below) and `ca7766ab` (entitlement effective
-date).
+**r218 and r219 added NONE — next free is still `0451`.**
+**Board after r219 (2026-08-23): `deployed = 736` · `cancelled = 14` · EVERYTHING ELSE ZERO — the board
+is completely clear for the second time in its life.** r219 shipped five: `0fea5cc9` (CP39 page 2 in the
+official ruled layout), `ece6d75d` (the EA redrawn as the C.P.8A Pin. 2024), `64c09b0e` (PERKESO report in
+the agency's own field names), `ca7766ab` (editing an entitlement version that has not taken effect) and
+`7966ee35` (the replacement-leave reason). `68147833` — ours — was closed with `build_ref` saying
+**no-code-change**: approving it meant the reporter accepting the recommendation.
 
-⚠️⚠️ **`64c09b0e` ASKS US TO MOVE MONEY BETWEEN BOXES ON A STATUTORY FILE, AND THE PLAN SAYS NO.** It
-renames the last four amount columns — 215-220 as a "wage class", 221-226 as a "contribution component",
-227-238 as employer/employee share. PERKESO's own spec (the one THEY attached to `5d3acdc2`) says those
-four are SOCSO employer, SOCSO employee, EIS employer, EIS employee, and their filed file agrees. Following
-it would credit every SOCSO amount to EIS with the file still 278 characters and the totals still adding
-up. **Their reading is explicable and still wrong**: `34111U` is six characters inside a TWENTY-character
-MyCoID field (13-32), which is why they think 13-18 is a staff number, and their EIS pair happens to be
-equal (1170/1170), which is why the last two boxes look like an employer/employee pair. Both attachments
-are screenshots of an editor with WORD WRAP ON — that is the whole "split across two lines" story, twice.
+⚠️⚠️ **`7966ee35` IS SHIPPED BUT THE FEATURE IS STILL OFF, AND THAT IS DELIBERATE.** What shipped is the
+SCREEN SAYING WHY. Replacement Leave in Lieu stays unavailable until `toil` is granted to this tenant, and
+that grant is COMMERCIAL PROVISIONING, not a migration or a seed — the owner has it. Until then `/leave`
+reads "Replacement Leave in Lieu is not part of this plan" instead of showing nothing, which is verified
+on a dev server, not inferred.
 
-⚠️ **THE REPORTER CONFIRMED r218's CP39 FRONT PAGE IS RIGHT** ("the format of CP39 page 1 is accurate") and
-came straight back for page 2, WITH the official reverse attached. Four of the five things `0fea5cc9` asks
-for are already true (Bil runs across the whole statement, the header repeats per sheet, the ten columns
-are already those ten, JUMLAH/JUMLAH BESAR are already totals). **The one real defect is the page number**:
-`Muka surat {sheet}/{of}` counts SCHEDULE sheets only, so the first reads "1/1" where the official form
-calls that same sheet "Muka Surat 2" — which is exactly their "page 2 is a continuation, not a new
-document" complaint, arrived at from the other end.
+**NOTHING IS BUILDABLE AND NOTHING IS WAITING** — `improve:pull` and `improve:pull-approved` both return
+`[]`, and every status except `deployed` and `cancelled` is ZERO. The next round starts with whatever the
+reporter opens next.
+
+⚠️ **THE ONE THING THAT NEEDS A HUMAN: GRANT `toil` TO THIS TENANT, OR REPLACEMENT LEAVE STAYS OFF.**
+`tenant_module` has no `toil` row, so `replacementRequestAvailability` returns `module_off` on its first
+line for every employee in every company. r219 shipped the screen that SAYS so — `/leave` now reads
+"Replacement Leave in Lieu is not part of this plan" instead of showing nothing, verified on a dev server.
+The grant itself is COMMERCIAL PROVISIONING and must NOT be written as a migration, a seed or a fixture.
+
+⚠️⚠️ **r219's LESSON IS ABOUT THE PARENT, NOT THE AGENTS: MARKING ITEMS `building` BEFORE LAUNCHING MAKES
+THE APPROVED PLAN UNREADABLE TO EVERY AGENT.** `improve:pull-approved` returns only `approved` rows, and
+all five briefs said "read your plan there first". Five agents found nothing; ONE said so in `notBuilt` and
+the others built from the brief alone. **The plan is the promise to the reporter; the brief is only the
+parent's summary of it** (AGENTS 29). Either mark `building` AFTER the agents have read their plans, or
+paste the plan text into the brief. The parent's hand-done plan-vs-build diff then found two real gaps —
+the EA's derived `0.00` and the entitlement's half-built "backwards" — both fixed before the merge.
+
+⚠️ **A CLUSTER REBUILD WIPES `ai_hr_dev`, AND THE RENDER CHECK THEN FAILS IN A WAY THAT LOOKS LIKE THE
+CHANGE.** After `dev-db-rebuild.sh` every screen answered 500 with "No valid dev principal … run
+`pnpm db:seed`". Nothing was wrong with the code. Run `pnpm db:migrate && pnpm db:seed` before any render
+check in a session where the cluster was rebuilt, and READ THE DEV LOG rather than the status code — it
+named the cause on its first line.
+
+⚠️ **THE SAME MISSING GUARD BIT TWO STATUTORY FORMS IN ONE ROUND: EVERY GEOMETRY CASE MEASURES WHETHER A
+CAPTION FITS, NONE CHECK WHAT IT SAYS.** The EA shipped `5(a) Pelepasan dituntut melalui Borang TP1` where
+the agency's form says `(a) Pelepasan` — r217 wording that gained the form's numbering, so it LOOKED like
+the agency's box while saying something the page does not. Both forms now check every caption against the
+hand transcription beside the specimen (`docs/forms/*-transcription.txt`), which is the artifact that makes
+that checkable at all. **When you trace a form, write the caption list into the transcription and pin it.**
+
+⚠️ **THE REPLACEMENT-LEAVE NOTICE QUOTES SWITCH CAPTIONS THAT ARE ENGLISH IN ALL SIX LOCALES, AND THAT IS
+CORRECT.** `admin.replacementLeave.*` is untranslated everywhere, so the notice naming "{enableSwitch}"
+reads English in every language — because it interpolates the SETTINGS SCREEN'S OWN key. Translating the
+quote while the screen it points at stays English would be the actual defect. The debt is the settings
+screen's; do not "fix" it in the notice.
 
 ⚠️⚠️ **r218's DECISIVE FINDING: THE PERKESO FILE WAS NEVER A FORMAT DEFECT, AND ONLY GENERATING IT FROM
 PRODUCTION FOUND THAT OUT.** The item said records were "split across two lines" and asked for a rewrite

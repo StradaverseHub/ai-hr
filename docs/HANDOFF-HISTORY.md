@@ -1,3 +1,49 @@
+## r219 (2026-08-23) — FIVE ITEMS, TWO FORMS REDRAWN TO THE AGENCY'S OWN PAGE, AND AN EMPTY BOARD
+
+`f72cdba3`. Five approved items built as five workstreams in their own worktrees with nine adversarial
+verifiers, then hand-fixed by the parent. No migration. Gate: **737 declared / 737 counted / every chunk
+exit=0 / 10,576 tests passed**, tsc 0, i18n parity PASS, `next build` clean, five screens rendered with
+0 MISSING_MESSAGE, zero-change verifying rsync. **The board is now completely clear — the second time.**
+
+Shipped: `0fea5cc9` (CP39 page 2) · `ece6d75d` (the EA as C.P.8A Pin. 2024) · `64c09b0e` (PERKESO report
+field names) · `ca7766ab` (entitlement effective date) · `7966ee35` (replacement-leave reason).
+`68147833` — ours — closed with `build_ref` = no-code-change.
+
+**THE VERIFY PASS FOUND SEVEN MAJORS AND THE TWO WORST WERE ON TAX DOCUMENTS.**
+
+- **The EA printed a derived `0.00` on 1(b) and 1(c).** Each is ONE agency box over one payroll-derived
+  figure and one that only an `ea_override` can supply, so a salary-only employee's C.P.8A stated "no
+  fees, no director's fees, no commission". That is r209's defect wearing the agency's own numbered
+  caption, which reads MORE authoritative, not less — and the approved plan had promised the reporter that
+  unsourced boxes stay empty rules. Fixed with a `mixed()` helper; the contract guard that pinned the old
+  expression was UPDATED, keeping the half still true.
+- **D.5(a) said "Pelepasan dituntut melalui Borang TP1" where the form says "(a) Pelepasan"** — r217
+  wording that gained the form's numbering. **The guard whose absence allowed it now exists on BOTH traced
+  forms**: every caption is checked against the hand transcription beside the specimen. Every geometry case
+  measures whether a caption FITS; not one checked what it SAYS.
+- **Two entitlement captions shipped false.** `editInPlaceNote` promised "no past figure moves" on a form
+  that accepts a past date; `supersedeNote` promised "nothing is overwritten" on the exact save this item
+  makes overwrite. Rewritten in six locales and pinned so neither can promise either thing again.
+- **The plan's "forwards or backwards" was half-built.** Any lineage superseded once could move its future
+  head FORWARD only — the retie had already extended the predecessor over the span being reclaimed — so a
+  mis-keyed forward move was irreversible, which is the correction the whole item exists to make. One
+  overlap is now not a conflict: the lineage's own CONTIGUOUS predecessor, while its boundary AND the new
+  date are both still in the future. A predecessor whose window has elapsed is a closed year and refuses.
+
+**PROCESS — the parent's own two mistakes, which are the durable half.**
+
+- **MARKING THE ITEMS `building` BEFORE LAUNCHING MADE EVERY APPROVED PLAN UNREADABLE TO THE AGENTS.**
+  `improve:pull-approved` returns only `approved` rows. One agent disclosed it in `notBuilt`; the rest
+  built from the brief alone. AGENTS 29 was written one round earlier and this is the failure it names,
+  arrived at from the other end — the parent did the plan-vs-build diff by hand and it found two of the
+  seven majors.
+- **A CLUSTER REBUILD WIPES `ai_hr_dev` AND THE RENDER CHECK THEN LOOKS LIKE A BROKEN CHANGE** — five
+  screens at 500 with "No valid dev principal". `pnpm db:migrate && pnpm db:seed`, and read the dev log
+  rather than the status code.
+- **ONE FINDING WAS DELIBERATELY NOT FIXED, AND SAYING SO IS THE POINT.** The replacement-leave notice
+  quotes switch captions that are English in all six locales — because it interpolates the settings
+  screen's own key. Translating the quote while the screen stays English would be the real defect.
+
 ## r218 (2026-08-21) — THE CP39 IN THE AGENCY'S OWN LAYOUT, AND A FILE THAT WAS RIGHT ALL ALONG
 
 `6cfa4053`. Two approved items, built as two workstreams in their own worktrees with four adversarial
