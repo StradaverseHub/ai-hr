@@ -311,6 +311,21 @@ export async function EntitlementTablesBlock({
 
   const editingTemplate = running.find((x) => x.lineageId === editTemplate);
   const editingRule = runningRules.find((x) => x.lineageId === editRule);
+  /**
+   * r219 (ca7766ab) — HAS THE VERSION BEING EDITED STARTED YET? The service asks exactly this question and
+   * takes a different write on each answer (`entitlementEditMode`, core/entitlement-template.ts): a
+   * version that has not started is UPDATED, its effective date included; one that has been in force is
+   * superseded. The three places below that used to promise a supersede unconditionally now read this,
+   * because a caption that says a save "closes the running version and starts a new one" is untrue on the
+   * half of the screen where the save does nothing of the sort.
+   *
+   * The date box follows for the same reason. It defaulted to TODAY on every edit, which on a future-dated
+   * version meant pressing Save silently moved its start date back to today — harmless while the service
+   * refused that save outright, and a data change now that it does not. A version already in force keeps
+   * today as its default: there the save IS a supersede, and today is when the new figures start.
+   */
+  const templateNotStarted = !!editingTemplate && editingTemplate.validFrom > today;
+  const ruleNotStarted = !!editingRule && editingRule.validFrom > today;
 
   /**
    * r209 — THE HEALTH OF WHAT IS ON SCREEN, computed from the slice already in hand.
@@ -646,7 +661,13 @@ export async function EntitlementTablesBlock({
                 )}
               </Field>
               <Field label={t('effectiveFrom')}>
-                <input className={inputCls} type="date" name="validFrom" defaultValue={today} required />
+                <input
+                  className={inputCls}
+                  type="date"
+                  name="validFrom"
+                  defaultValue={templateNotStarted ? editingTemplate!.validFrom : today}
+                  required
+                />
               </Field>
             </div>
             {/* ⚠️ THE `key` IS THE FIX FOR A DATA-LOSS DEFECT, NOT A LIST-RENDERING HABIT (4a1abc4a).
@@ -669,12 +690,23 @@ export async function EntitlementTablesBlock({
               initial={editingTemplate ? toEditable(editingTemplate.serviceBands) : []}
               maxBands={MAX_SERVICE_BANDS}
             />
-            {/* Stated where it is acted on: an edit does not overwrite, it closes the running version and
-                starts a successor. Three readers answer for a past date and only versions can serve them. */}
-            <p className="text-xs text-muted-foreground">{t('supersedeNote')}</p>
+            {/* Stated where it is acted on, and it says which of the two writes this save is. An edit of a
+                version already in force does not overwrite: it closes the running version and starts a
+                successor, because three readers answer for a past date and only versions can serve them.
+                An edit of a version that has not started changes that version. On the CREATE form neither
+                sentence is true — there is no running version to close — so neither is shown. */}
+            {editingTemplate ? (
+              <p className="text-xs text-muted-foreground">
+                {templateNotStarted ? t('editInPlaceNote') : t('supersedeNote')}
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <button type="submit" className={btnPrimary}>
-                {editingTemplate ? t('saveNewVersion') : t('createTemplate')}
+                {editingTemplate
+                  ? templateNotStarted
+                    ? t('saveThisVersion')
+                    : t('saveNewVersion')
+                  : t('createTemplate')}
               </button>
               {editingTemplate ? (
                 <Link href={href('?')} className="text-sm underline">
@@ -925,14 +957,19 @@ export async function EntitlementTablesBlock({
                 archivedMemberGrades={archivedMemberGrades}
                 today={today}
                 embeddedLeaveTypeId={leaveTypeId}
-                submitLabel={editingRule ? t('saveNewVersion') : t('createRule')}
+                submitLabel={
+                  editingRule ? (ruleNotStarted ? t('saveThisVersion') : t('saveNewVersion')) : t('createRule')
+                }
                 initial={
                   editingRule
                     ? {
                         lineageId: editingRule.lineageId,
                         name: editingRule.name,
                         templateLineageId: editingRule.templateLineageId,
-                        validFrom: today,
+                        // A rule that has not started is edited in place, so the box shows the date it
+                        // actually holds; one already in force is superseded from today. See the note on
+                        // `ruleNotStarted`.
+                        validFrom: ruleNotStarted ? editingRule.validFrom : today,
                         criteria: editingRule.criteria as Record<string, string[] | string>,
                       }
                     : undefined
