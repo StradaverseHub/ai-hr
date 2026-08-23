@@ -285,7 +285,7 @@ function overlappingSibling(
   versions: readonly DatedVersion[],
   openId: string,
   newValidFrom: string,
-): { validFrom: string; validTo: string } | null {
+): { id: string; validFrom: string; validTo: string } | null {
   const clashes = versions.filter(
     (v): v is DatedVersion & { validTo: string } =>
       v.id !== openId && v.validTo !== null && v.validTo > newValidFrom,
@@ -336,19 +336,29 @@ export async function updateEntitlementTemplate(
       );
     }
     if (mode === 'in-place') {
+      const prevContiguous = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
       const clash = overlappingSibling(versions, open.id, p.validFrom);
-      if (clash) {
+      // The one overlap that is not a conflict: our own contiguous predecessor, with both its boundary and
+      // the new date still ahead of us. See `overlappingSibling`.
+      const reclaimable =
+        clash !== null &&
+        prevContiguous !== undefined &&
+        clash.id === prevContiguous.id &&
+        p.validFrom > today &&
+        (prevContiguous.validTo ?? '') > today;
+      if (clash && !reclaimable) {
         throw new Error(
           `An earlier version of this table runs from ${clash.validFrom} until ${clash.validTo}, so this version cannot start on ${p.validFrom}. Give it a date on or after ${clash.validTo}.`,
         );
       }
       // ⚠️ KEEP THE LINEAGE CONTIGUOUS. A supersede closes the predecessor at exactly this version's
       // `validFrom`, so moving the start date without moving that end date would leave a stretch with no
-      // version of this table in force at all — a hole close-then-insert has never produced. Both dates
-      // are in the future whenever this runs (a date change here requires `open.validFrom > today`, and
-      // the overlap check above has already established the new date is not before the old one), so
-      // nothing that has already been resolved moves.
-      const prev = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
+      // version of this table in force at all — a hole close-then-insert has never produced. The boundary
+      // moves in BOTH directions and the guards above are what keep that safe: a date change here requires
+      // `open.validFrom > today`, and a BACKWARDS move past the predecessor's end is only allowed when that
+      // end and the new date are both still in the future. So the boundary being rewritten has never been
+      // resolved against.
+      const prev = prevContiguous;
       if (prev && p.validFrom !== open.validFrom) {
         await tx
           .update(entitlementTemplate)
@@ -519,14 +529,23 @@ export async function updateEligibilityRule(
       );
     }
     if (mode === 'in-place') {
+      const prevContiguous = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
       const clash = overlappingSibling(versions, open.id, p.validFrom);
-      if (clash) {
+      // The same single exception the template half makes, for the same reason and by the same test:
+      // our own contiguous predecessor, with its boundary and the new date both still in the future.
+      const reclaimable =
+        clash !== null &&
+        prevContiguous !== undefined &&
+        clash.id === prevContiguous.id &&
+        p.validFrom > today &&
+        (prevContiguous.validTo ?? '') > today;
+      if (clash && !reclaimable) {
         throw new Error(
           `An earlier version of this rule runs from ${clash.validFrom} until ${clash.validTo}, so this version cannot start on ${p.validFrom}. Give it a date on or after ${clash.validTo}.`,
         );
       }
       // Keep the lineage contiguous — see the note in `updateEntitlementTemplate`.
-      const prev = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
+      const prev = prevContiguous;
       if (prev && p.validFrom !== open.validFrom) {
         await tx
           .update(entitlementEligibilityRule)

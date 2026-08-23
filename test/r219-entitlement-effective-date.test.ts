@@ -305,6 +305,65 @@ describe('§D r219 · an in-place date change is checked against the lineage\'s 
     ]);
     expect(rows[1].serviceBands).toEqual(flat(20));
   });
+
+  /**
+   * r219 FIX PASS — THE MIS-KEY MUST BE REVERSIBLE, WHICH IS THE WHOLE POINT OF THE ITEM.
+   *
+   * The forward move above retied v1's end to the head's new start. Before this pass, that made the move
+   * ONE-WAY: pulling the head back again overlapped the predecessor it had just extended, and the operator
+   * who typed 2027 for 2026 could never get back. The reporter's own words were "correct or backdate an
+   * entitlement table when the original effective date was entered incorrectly".
+   *
+   * The exception is exactly one sibling wide — the lineage's own CONTIGUOUS predecessor — and only while
+   * BOTH its boundary and the new date are still in the future. Nothing that has been resolved moves,
+   * because nothing has been resolved against a window that has not happened yet.
+   */
+  it('a mis-keyed forward move can be pulled BACK, reclaiming the boundary it extended', async () => {
+    const { v1, v2 } = await supersededThenFuture();
+    await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: v2.lineageId,
+      serviceBands: flat(20),
+      validFrom: '2027-06-01', // the mis-key
+      today: TODAY,
+    });
+    const corrected = await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: v2.lineageId,
+      serviceBands: flat(20),
+      validFrom: '2027-01-01', // …and back to what was meant
+      today: TODAY,
+    });
+    expect(corrected.validFrom).toBe('2027-01-01');
+    const rows = await versionsOf(v1.lineageId);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => [r.validFrom, r.validTo])).toEqual([
+      ['2026-01-01', '2027-01-01'],
+      ['2027-01-01', null],
+    ]);
+  });
+
+  it('but NOT back past a predecessor whose window has already elapsed — that is a closed year', async () => {
+    // v1 in force from 2026-01-01, superseded from 2026-08-01 — a boundary in the PAST relative to TODAY.
+    const v1 = await makeTemplate('2026-01-01', 14);
+    const v2 = await updateEntitlementTemplate(adminCtx(b), {
+      lineageId: v1.lineageId,
+      serviceBands: flat(18),
+      validFrom: '2026-08-01',
+      today: '2026-07-01',
+    });
+    await expect(
+      updateEntitlementTemplate(adminCtx(b), {
+        lineageId: v2.lineageId,
+        serviceBands: flat(20),
+        validFrom: '2026-05-01',
+        today: '2026-07-15',
+      }),
+    ).rejects.toThrow(/runs from 2026-01-01 until 2026-08-01/);
+    const rows = await versionsOf(v1.lineageId);
+    expect(rows.map((r) => [r.validFrom, r.validTo])).toEqual([
+      ['2026-01-01', '2026-08-01'],
+      ['2026-08-01', null],
+    ]);
+  });
 });
 
 // ── §E eligibility rules — the same four ─────────────────────────────────────────────────────────────
@@ -418,6 +477,27 @@ describe('§F r219 · the form says which of the two saves it is about to make',
     expect(block).toContain('const templateNotStarted =');
     expect(block).toContain('const ruleNotStarted =');
     expect(block).toContain("templateNotStarted ? t('editInPlaceNote') : t('supersedeNote')");
+  });
+
+  /**
+   * r219 FIX PASS — THE TWO SENTENCES HAVE TO BE TRUE OF THE WRITE THEY SIT ON, and both shipped false.
+   *
+   * `editInPlaceNote` said "Nothing has been worked out from it, so no past figure moves" — on a form
+   * that accepts a PAST effective date, which is precisely a past figure moving. `supersedeNote` said
+   * "Nothing is overwritten" — on a version that IS overwritten the moment the operator saves without
+   * changing the date, which is this item's own headline behaviour. A caption is an assurance; an
+   * assurance that is false on the button it labels is worse than no caption at all (AGENTS 28).
+   */
+  it('neither caption promises something the save it labels can break', () => {
+    for (const loc of LOCALES) {
+      const ns = (JSON.parse(readFileSync(resolve(ROOT, `messages/${loc}.json`), 'utf8')) as Record<string, any>).admin.entitlementTemplates as Record<string, string>;
+      expect(ns.editInPlaceNote, `${loc} editInPlaceNote`).not.toMatch(/no past figure moves|nothing has been worked out/i);
+      expect(ns.supersedeNote, `${loc} supersedeNote`).not.toMatch(/nothing is overwritten|no past figure moves/i);
+    }
+    // English carries the two conditions in words, so the operator knows which save this is.
+    const en = (JSON.parse(readFileSync(resolve(ROOT, 'messages/en.json'), 'utf8')) as Record<string, any>).admin.entitlementTemplates as Record<string, string>;
+    expect(en.editInPlaceNote).toMatch(/date in the past/i);
+    expect(en.supersedeNote).toMatch(/without changing the date/i);
     expect(block).toContain("t('saveThisVersion')");
     // …and the date box defaults to the version's OWN date while that version has not started, instead of
     // to today, which on a future-dated version would have moved its start date on a plain Save.
