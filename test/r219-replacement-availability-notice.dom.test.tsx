@@ -94,10 +94,18 @@ describe('r219: every reason says something, in every locale, to both audiences'
       const notEnabled = renderNotice(locale, { allowed: false, reason: 'not_enabled' }, 'admin');
       const offText = screen.getByRole('status').textContent ?? '';
       expect(offText, `${locale} enable switch`).toContain(p.enabledLabel);
-      expect(offText, `${locale} employee-request switch`).toContain(p.employeeRequestLabel);
       expect(offText, `${locale} menu path`).toContain(nav.leaveConfig);
       expect(offText, `${locale} screen name`).toContain(nav.leaveReplacement);
+      // …and NOT the other switch. r219 split these two states apart precisely so each sentence points at
+      // ONE control; naming both again would restore the "one of these is off" guess it replaced.
+      expect(offText, `${locale} not_enabled names the wrong switch too`).not.toContain(p.employeeRequestLabel);
       notEnabled.unmount();
+
+      const requestsOff = renderNotice(locale, { allowed: false, reason: 'employee_requests_off' }, 'admin');
+      const requestsOffText = screen.getByRole('status').textContent ?? '';
+      expect(requestsOffText, `${locale} employee-request switch`).toContain(p.employeeRequestLabel);
+      expect(requestsOffText, `${locale} menu path`).toContain(nav.leaveConfig);
+      requestsOff.unmount();
 
       const fs = renderNotice(locale, { allowed: false, reason: 'first_schedule_protected' }, 'admin');
       const fsText = screen.getByRole('status').textContent ?? '';
@@ -137,7 +145,7 @@ describe('r219: every reason says something, in every locale, to both audiences'
   });
 
   it('the account-level reasons say the SAME thing to both, and it is one sentence to keep in step', () => {
-    for (const reason of ['module_off', 'not_enabled', 'no_employment'] as const) {
+    for (const reason of ['module_off', 'not_enabled', 'employee_requests_off', 'no_employment'] as const) {
       const self = renderNotice('en', { allowed: false, reason }, 'self');
       const selfText = screen.getByRole('status').textContent ?? '';
       self.unmount();

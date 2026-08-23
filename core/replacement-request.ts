@@ -198,7 +198,14 @@ export async function replacementRequestAvailability(
     const resolved = await resolvePolicyForTx(tx, employmentId);
     if (!resolved) return { allowed: false, reason: 'no_employment' as const };
     const { policy } = resolved;
-    if (!policy || !policy.enabled || !policy.employeeRequestEnabled) return { allowed: false, reason: 'not_enabled' as const };
+    // r219 — THE TWO COMPANY SWITCHES ARE TWO REASONS, not one. The approved plan enumerates them
+    // separately to the reporter ("not enabled for this company" and "employee submission switched off")
+    // and they genuinely are: with the first off nothing about replacement leave works at all, while with
+    // only the second off the company banks credits off the roster and merely does not let employees ask.
+    // Collapsed, a screen could only name both switches and say one of them was off, which is the same
+    // guess the reporter was already making by hand.
+    if (!policy || !policy.enabled) return { allowed: false, reason: 'not_enabled' as const };
+    if (!policy.employeeRequestEnabled) return { allowed: false, reason: 'employee_requests_off' as const };
     const eligible = await isReplacementRequestEligibleTx(tx, {
       employmentId,
       asOf,

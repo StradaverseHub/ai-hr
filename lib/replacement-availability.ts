@@ -32,8 +32,16 @@ export type ReplacementUnavailableReason =
   | 'module_off'
   /** No employment could be resolved for this person, so there is nothing to bank time against. */
   | 'no_employment'
-  /** The company's own Enable / employee-submission switches, or no policy row for the company at all. */
+  /** The company's own Enable switch is off, or it has no replacement-leave policy row at all. */
   | 'not_enabled'
+  /**
+   * Replacement leave IS on for the company; only employee-submitted requests are switched off. A separate
+   * reason from `not_enabled` because the two are separate switches with separate consequences — with this
+   * one off the company still banks credits off the roster — and because the approved plan enumerates them
+   * separately. Named together, a screen could only say "one of these two is off", which is the guess the
+   * reporter was already making by hand.
+   */
+  | 'employee_requests_off'
   /** This employee is outside the eligibility criteria the company's policy lists. */
   | 'not_eligible'
   /**
@@ -64,6 +72,10 @@ export const REPLACEMENT_UNAVAILABLE_COPY: Record<
   module_off: { title: 'unavailable.moduleOffTitle', body: 'unavailable.moduleOffBody' },
   no_employment: { title: 'unavailable.noEmploymentTitle', body: 'unavailable.noEmploymentBody' },
   not_enabled: { title: 'unavailable.notEnabledTitle', body: 'unavailable.notEnabledBody' },
+  employee_requests_off: {
+    title: 'unavailable.employeeRequestsOffTitle',
+    body: 'unavailable.employeeRequestsOffBody',
+  },
   not_eligible: {
     title: 'unavailable.notEligibleTitle',
     body: 'unavailable.notEligibleBody',

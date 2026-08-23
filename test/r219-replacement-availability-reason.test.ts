@@ -147,11 +147,39 @@ describe('r219: every refusal names its own cause', () => {
     expect(avail.reason).toBe('no_employment');
   });
 
-  it('the company switch off ⇒ not_enabled', async () => {
+  it("the company's Enable switch off ⇒ not_enabled", async () => {
     await setModule(b.tenantId, 'toil', 'active');
     ctx = await entitledCtx(b);
     const employmentId = await hire({ companyId: b.companyId, departmentId: b.deptA });
-    await setToilPolicy(ctx, policy(b.companyId, { employeeRequestEnabled: false }));
+    // Enable OFF while employee submission is ON, so the two switches cannot be confused for each other.
+    await setToilPolicy(ctx, policy(b.companyId, { enabled: false, employeeRequestEnabled: true }));
+    const avail = await replacementRequestAvailability(ctx, employmentId, TODAY);
+    expect(avail.allowed).toBe(false);
+    expect(avail.reason).toBe('not_enabled');
+  });
+
+  it('THE OTHER COMPANY SWITCH — employee submission off ⇒ employee_requests_off, not not_enabled', async () => {
+    // The approved plan enumerates these to the reporter as two separate causes and they are: with
+    // `enabled` off nothing about replacement leave works, while with only this one off the company still
+    // banks credits off the roster and merely does not let employees ask. One name for both would have
+    // left the screen saying "one of these two switches is off" — the guess they were already making.
+    await setModule(b.tenantId, 'toil', 'active');
+    ctx = await entitledCtx(b);
+    const employmentId = await hire({ companyId: b.companyId, departmentId: b.deptA });
+    await setToilPolicy(ctx, policy(b.companyId, { enabled: true, employeeRequestEnabled: false }));
+    const avail = await replacementRequestAvailability(ctx, employmentId, TODAY);
+    expect(avail.allowed).toBe(false);
+    expect(avail.reason).toBe('employee_requests_off');
+    expect(avail.reason).not.toBe('not_enabled');
+  });
+
+  it('a company with NO replacement-leave policy row at all ⇒ not_enabled', async () => {
+    // The third state the old single name covered, and the one with no switch to point at yet. It shares
+    // `not_enabled` on purpose: the remedy is the same first switch, which does not exist until the
+    // company's policy is saved for the first time.
+    await setModule(b.tenantId, 'toil', 'active');
+    ctx = await entitledCtx(b);
+    const employmentId = await hire({ companyId: b.companyId, departmentId: b.deptA });
     const avail = await replacementRequestAvailability(ctx, employmentId, TODAY);
     expect(avail.allowed).toBe(false);
     expect(avail.reason).toBe('not_enabled');
@@ -207,6 +235,7 @@ describe('r219: no reason can reach a screen without a sentence', () => {
     // there fails tsc here rather than rendering an empty box. This case pins the count as well, so a
     // reason DELETED from the map without being deleted from the union cannot pass unnoticed.
     expect(Object.keys(REPLACEMENT_UNAVAILABLE_COPY).sort()).toEqual([
+      'employee_requests_off',
       'first_schedule_protected',
       'module_off',
       'no_employment',
@@ -238,6 +267,7 @@ describe('r219: no reason can reach a screen without a sentence', () => {
     expect(REPLACEMENT_UNAVAILABLE_COPY.first_schedule_protected.bodyAdmin).toBeTruthy();
     expect(REPLACEMENT_UNAVAILABLE_COPY.module_off.bodyAdmin).toBeUndefined();
     expect(REPLACEMENT_UNAVAILABLE_COPY.not_enabled.bodyAdmin).toBeUndefined();
+    expect(REPLACEMENT_UNAVAILABLE_COPY.employee_requests_off.bodyAdmin).toBeUndefined();
     expect(REPLACEMENT_UNAVAILABLE_COPY.no_employment.bodyAdmin).toBeUndefined();
   });
 });
