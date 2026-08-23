@@ -144,7 +144,17 @@ describe('entitlement templates — the reporter\'s named service-band tables', 
     expect(at2026.map((r) => r.serviceBands[0].days)).toEqual([18]);
   });
 
-  it('refuses a successor that does not start after the version it supersedes', async () => {
+  /**
+   * ⚠️ r219 (ca7766ab) UPDATED THIS CASE RATHER THAN DELETING IT, and the two halves are worth keeping
+   * apart. STILL TRUE: a version that HAS been in force cannot be given an EARLIER start date — changing
+   * the start of a table that was in force would quietly change what a closed leave year says an employee
+   * was entitled to, and that is the one thing the versioning exists to prevent. RETIRED: the SAME date
+   * used to be refused too, by `open.validFrom >= p.validFrom` comparing the running version against
+   * ITSELF, and the message told the operator to "edit that version instead" of a version they had no way
+   * to reach. Saving a version with its own date is now an in-place save, pinned in
+   * test/r219-entitlement-effective-date.test.ts along with the rest of the new rule.
+   */
+  it('refuses an EARLIER date once the running version has been in force — and names that version\'s date', async () => {
     const ctx = adminCtx(b);
     const v1 = await createEntitlementTemplate(ctx, {
       leaveTypeId: b.annualLeaveTypeId,
@@ -153,8 +163,13 @@ describe('entitlement templates — the reporter\'s named service-band tables', 
       validFrom: '2026-01-01',
     });
     await expect(
-      updateEntitlementTemplate(ctx, { lineageId: v1.lineageId, serviceBands: flat(18), validFrom: '2026-01-01' }),
-    ).rejects.toThrow(/edit that version instead/i);
+      updateEntitlementTemplate(ctx, {
+        lineageId: v1.lineageId,
+        serviceBands: flat(18),
+        validFrom: '2025-12-31',
+        today: '2026-06-30', // the running version started six months ago
+      }),
+    ).rejects.toThrow(/in force since 2026-01-01/i);
   });
 
   it('refuses a band table the RESOLVER would reject — the writer and the resolver share one ceiling', async () => {

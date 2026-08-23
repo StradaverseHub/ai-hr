@@ -80,6 +80,10 @@
 import { and, asc, eq, gte, inArray, isNull, lt, lte, or, gt, sql } from 'drizzle-orm';
 
 import { compareEntitlementTables } from '../lib/entitlement-table-order';
+// r219 — the product's business-day clock. "Has this version started yet" is a comparison against
+// the MYT calendar day, the same one SQL `current_date` names on this deployment; computing it any
+// other way disagrees with the database for the eight hours between UTC and MYT midnight.
+import { todayInKualaLumpur } from '../lib/hr-date';
 // r212 — the client-safe shape the two explaining screens render. Declared beside `EntitlementStatus`
 // (which is the thing being explained) so the employee's panel, a client island, can name it without
 // importing anything that touches `db/client`. Type-only: nothing at runtime crosses back.
@@ -216,37 +220,169 @@ export async function createEntitlementTemplate(
 }
 
 /**
- * Edit a named table GOING FORWARD: close the running version at `validFrom` and insert a successor.
+ * ── r219 · WHICH WRITE AN EDIT IS ────────────────────────────────────────────────────────────────────
  *
- * NOT an in-place UPDATE, and this is the whole reason both tables are dated. Three readers resolve
- * entitlement at a PAST date — the Carry Forward report at each employee's own cycle open, the year sweep
- * in expireCarriedLeave, and the /me + admin balance breakdown. Overwriting the row would make every one
- * of them report a closed year against today's figures, which contradicts the request's own "maintaining
- * all existing calculation capabilities". Identical shape to `createLeavePolicy`'s supersede loop.
+ * The one decision `updateEntitlementTemplate` and `updateEligibilityRule` share, kept here as a pure
+ * function so the two cannot drift and so it can be exercised without a database.
+ *
+ *   · the running version HAS NOT STARTED YET          ⇒ 'in-place'
+ *   · the start date is not moving at all              ⇒ 'in-place' (it is the same version, re-saved)
+ *   · it HAS been in force and the new date is later   ⇒ 'supersede'
+ *   · anything else                                    ⇒ 'refuse'
+ *
+ * ⚠️ THIS IS A DATE TEST, NOT A USAGE TEST, and the difference is the reason this note exists. "Has
+ * anything been calculated from this version" HAS NO ANSWER in this schema: `leave_ledger` records
+ * employment, leave type, entry type, days and effective date and carries NO reference to the entitlement
+ * table or the eligibility rule that produced a row (the r210 paragraph in this file's header sets that
+ * out in full). All that can be asked here is whether the version has STARTED — `validFrom > today` —
+ * and nothing in this file should be read as, or widened into, a claim that nothing was ever computed
+ * from a version this test calls not-yet-started.
+ *
+ * WHAT THE 'supersede' ARM PROTECTS, stated once: three readers resolve entitlement at a PAST date (the
+ * Carry Forward report at each employee's own cycle open, the year sweep in expireCarriedLeave, and the
+ * /me + admin balance breakdown). Changing the start date of a version that has been in force would
+ * quietly change what a closed leave year says an employee was entitled to. A version that has not
+ * started has no such year behind it, so editing it in place takes nothing away.
+ *
+ * THE RETIRED HALF: this used to be `open.validFrom >= p.validFrom` in both writers, which compared the
+ * running version against ITSELF — saving the version you were editing with its own date was refused,
+ * and the message sent the operator to "edit that version instead" when these two functions are the only
+ * edit entry points there are.
+ */
+export type EntitlementEditMode = 'in-place' | 'supersede' | 'refuse';
+
+export function entitlementEditMode(p: {
+  openValidFrom: string;
+  newValidFrom: string;
+  today: string;
+}): EntitlementEditMode {
+  if (p.openValidFrom > p.today || p.newValidFrom === p.openValidFrom) return 'in-place';
+  return p.newValidFrom > p.openValidFrom ? 'supersede' : 'refuse';
+}
+
+/** One version of a lineage, reduced to the only three columns the window arithmetic below needs. */
+type DatedVersion = { id: string; validFrom: string; validTo: string | null };
+
+/**
+ * The sibling version an IN-PLACE start-date change would collide with, or null.
+ *
+ * ⚠️ THE TWO PARTIAL-UNIQUE INDEXES ARE NOT WHAT THIS GUARDS. They police "one running version per
+ * lineage" and "one running NAME per leave type"; an in-place UPDATE creates no second running row, so it
+ * touches neither. What it CAN do is move the running version's start date into a window a SUPERSEDED
+ * sibling already claims, and nothing in the database refuses that — the CHECK constraint only compares a
+ * row against itself.
+ *
+ * The running version runs to infinity, so it overlaps every sibling that has not already ended by the
+ * new date. That single comparison covers both shapes at once: the new date landing INSIDE a superseded
+ * window, and the new date sitting BEFORE a superseded version even starts. Its practical effect on a
+ * lineage with history is that the running version can only be moved FORWARD — backwards would always
+ * land inside its own predecessor, which is exactly the closed year the supersede arm exists to protect.
+ *
+ * Every non-running version of a lineage is closed, because the open partial-unique index allows exactly
+ * one row with a NULL `valid_to`, so `validTo` is a real date on all of them.
+ */
+function overlappingSibling(
+  versions: readonly DatedVersion[],
+  openId: string,
+  newValidFrom: string,
+): { id: string; validFrom: string; validTo: string } | null {
+  const clashes = versions.filter(
+    (v): v is DatedVersion & { validTo: string } =>
+      v.id !== openId && v.validTo !== null && v.validTo > newValidFrom,
+  );
+  if (clashes.length === 0) return null;
+  // The latest-ending one is the binding constraint, and its end date is the date the operator has to
+  // clear — so it is the one the refusal names.
+  return clashes.reduce((a, b) => (b.validTo > a.validTo ? b : a));
+}
+
+/**
+ * Edit a named table. TWO WRITES, and `entitlementEditMode` above decides which.
+ *
+ *  · SUPERSEDE — the version has been in force: close the running version at `validFrom` and insert a
+ *    successor. NOT an in-place UPDATE, and this is the whole reason both tables are dated; see
+ *    `entitlementEditMode` for what the three past-date readers depend on. Identical shape to
+ *    `createLeavePolicy`'s supersede loop.
+ *  · IN PLACE — the version has not started yet, or its date is not moving: UPDATE the row, its own start
+ *    date included, forwards or backwards.
+ *
+ * `today` is a parameter only so a test can pin the clock; every caller in the app omits it, and no form
+ * posts it.
  *
  * The LEAVE TYPE is deliberately not editable: an eligibility rule that pointed at "the Executive ANNUAL
  * table" would silently start handing out SICK days. Retype it as a new table instead.
  */
 export async function updateEntitlementTemplate(
   ctx: SessionContext,
-  p: { lineageId: string; name?: string; serviceBands?: ServiceBand[]; validFrom: string },
+  p: { lineageId: string; name?: string; serviceBands?: ServiceBand[]; validFrom: string; today?: string },
 ): Promise<EntitlementTemplateRow> {
   if (p.serviceBands !== undefined) validateServiceBands(p.serviceBands);
   const name = p.name !== undefined ? cleanName(p.name) : undefined;
+  const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    const [open] = await tx
+    // EVERY version of the lineage, not just the running one: an in-place start-date change has to be
+    // checked against the superseded siblings' windows before anything is written.
+    const versions = await tx
       .select()
       .from(entitlementTemplate)
-      .where(and(eq(entitlementTemplate.lineageId, p.lineageId), isNull(entitlementTemplate.validTo)))
-      .limit(1);
+      .where(eq(entitlementTemplate.lineageId, p.lineageId));
+    const open = versions.find((v) => v.validTo === null);
     if (!open) throw new Error('That entitlement table has no running version to edit.');
-    // Editing a version that has not started yet is an EDIT of that version, not a supersession — a
-    // successor starting on or before its predecessor is a window that was never in force (and the DB
-    // CHECK would refuse it anyway). Say so plainly rather than let the constraint speak.
-    if (open.validFrom >= p.validFrom) {
+
+    const mode = entitlementEditMode({ openValidFrom: open.validFrom, newValidFrom: p.validFrom, today });
+    if (mode === 'refuse') {
       throw new Error(
-        'A version starting on or after that date already exists for this table — edit that version instead.',
+        `This entitlement table has been in force since ${open.validFrom}, so a new version has to start after ${open.validFrom}.`,
       );
+    }
+    if (mode === 'in-place') {
+      const prevContiguous = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
+      const clash = overlappingSibling(versions, open.id, p.validFrom);
+      // The one overlap that is not a conflict: our own contiguous predecessor, with both its boundary and
+      // the new date still ahead of us. See `overlappingSibling`.
+      const reclaimable =
+        clash !== null &&
+        prevContiguous !== undefined &&
+        clash.id === prevContiguous.id &&
+        p.validFrom > today &&
+        (prevContiguous.validTo ?? '') > today;
+      if (clash && !reclaimable) {
+        throw new Error(
+          `An earlier version of this table runs from ${clash.validFrom} until ${clash.validTo}, so this version cannot start on ${p.validFrom}. Give it a date on or after ${clash.validTo}.`,
+        );
+      }
+      // ⚠️ KEEP THE LINEAGE CONTIGUOUS. A supersede closes the predecessor at exactly this version's
+      // `validFrom`, so moving the start date without moving that end date would leave a stretch with no
+      // version of this table in force at all — a hole close-then-insert has never produced. The boundary
+      // moves in BOTH directions and the guards above are what keep that safe: a date change here requires
+      // `open.validFrom > today`, and a BACKWARDS move past the predecessor's end is only allowed when that
+      // end and the new date are both still in the future. So the boundary being rewritten has never been
+      // resolved against.
+      const prev = prevContiguous;
+      if (prev && p.validFrom !== open.validFrom) {
+        await tx
+          .update(entitlementTemplate)
+          .set({ validTo: p.validFrom })
+          .where(eq(entitlementTemplate.id, prev.id));
+      }
+      const [row] = await tx
+        .update(entitlementTemplate)
+        .set({
+          name: name ?? open.name,
+          serviceBands: (p.serviceBands ?? open.serviceBands) as ServiceBand[],
+          validFrom: p.validFrom,
+        })
+        .where(eq(entitlementTemplate.id, open.id))
+        .returning();
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'entitlement_template',
+        aggregateId: open.id,
+        eventType: 'entitlement-template.updated',
+        payload: { lineageId: p.lineageId, validFrom: p.validFrom, previousValidFrom: open.validFrom },
+        actor: actorOf(ctx),
+      });
+      return toTemplateRow(row);
     }
     // ⚠️ CLOSE FIRST, THEN INSERT — not the other way round. Two partial-unique indexes police this table
     // (one running version per lineage; one running NAME per leave type), and inserting the successor while
@@ -358,26 +494,83 @@ export async function createEligibilityRule(
   });
 }
 
-/** Edit a rule GOING FORWARD — close the running version, insert a successor. See `updateEntitlementTemplate`. */
+/**
+ * Edit a rule. The SAME two writes as `updateEntitlementTemplate`, decided by the same
+ * `entitlementEditMode` — a rule that has not started yet is edited in place, start date included; one
+ * that has been in force is superseded, exactly as before. Read that function's notes for both halves;
+ * the restriction existed here for the same reason and was self-referential in the same way.
+ */
 export async function updateEligibilityRule(
   ctx: SessionContext,
-  p: { lineageId: string; name?: string; templateLineageId?: string; criteria?: OrgCriteria; validFrom: string },
+  p: {
+    lineageId: string;
+    name?: string;
+    templateLineageId?: string;
+    criteria?: OrgCriteria;
+    validFrom: string;
+    today?: string;
+  },
 ): Promise<EligibilityRuleRow> {
   const name = p.name !== undefined ? cleanName(p.name) : undefined;
+  const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     if (p.templateLineageId !== undefined) await assertTemplateLineageExists(tx, p.templateLineageId);
-    const [open] = await tx
+    const versions = await tx
       .select()
       .from(entitlementEligibilityRule)
-      .where(
-        and(eq(entitlementEligibilityRule.lineageId, p.lineageId), isNull(entitlementEligibilityRule.validTo)),
-      )
-      .limit(1);
+      .where(eq(entitlementEligibilityRule.lineageId, p.lineageId));
+    const open = versions.find((v) => v.validTo === null);
     if (!open) throw new Error('That eligibility rule has no running version to edit.');
-    if (open.validFrom >= p.validFrom) {
+
+    const mode = entitlementEditMode({ openValidFrom: open.validFrom, newValidFrom: p.validFrom, today });
+    if (mode === 'refuse') {
       throw new Error(
-        'A version starting on or after that date already exists for this rule — edit that version instead.',
+        `This eligibility rule has been in force since ${open.validFrom}, so a new version has to start after ${open.validFrom}.`,
       );
+    }
+    if (mode === 'in-place') {
+      const prevContiguous = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
+      const clash = overlappingSibling(versions, open.id, p.validFrom);
+      // The same single exception the template half makes, for the same reason and by the same test:
+      // our own contiguous predecessor, with its boundary and the new date both still in the future.
+      const reclaimable =
+        clash !== null &&
+        prevContiguous !== undefined &&
+        clash.id === prevContiguous.id &&
+        p.validFrom > today &&
+        (prevContiguous.validTo ?? '') > today;
+      if (clash && !reclaimable) {
+        throw new Error(
+          `An earlier version of this rule runs from ${clash.validFrom} until ${clash.validTo}, so this version cannot start on ${p.validFrom}. Give it a date on or after ${clash.validTo}.`,
+        );
+      }
+      // Keep the lineage contiguous — see the note in `updateEntitlementTemplate`.
+      const prev = prevContiguous;
+      if (prev && p.validFrom !== open.validFrom) {
+        await tx
+          .update(entitlementEligibilityRule)
+          .set({ validTo: p.validFrom })
+          .where(eq(entitlementEligibilityRule.id, prev.id));
+      }
+      const [row] = await tx
+        .update(entitlementEligibilityRule)
+        .set({
+          name: name ?? open.name,
+          templateLineageId: p.templateLineageId ?? open.templateLineageId,
+          criteria: (p.criteria ?? open.criteria) as OrgCriteria,
+          validFrom: p.validFrom,
+        })
+        .where(eq(entitlementEligibilityRule.id, open.id))
+        .returning();
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'entitlement_eligibility_rule',
+        aggregateId: open.id,
+        eventType: 'entitlement-eligibility.updated',
+        payload: { lineageId: p.lineageId, validFrom: p.validFrom, previousValidFrom: open.validFrom },
+        actor: actorOf(ctx),
+      });
+      return toRuleRow(row);
     }
     // Close first, then insert — see the note in `updateEntitlementTemplate`.
     await tx
