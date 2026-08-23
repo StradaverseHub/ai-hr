@@ -967,12 +967,16 @@ export type EaStatement = {
    * for and nothing produced until the redraw: the ruled officer box carries Name Pegawai / Jawatan /
    * Nama dan Alamat Majikan / No. Telefon Majikan, and the header carries LHDNM Negeri.
    *
-   * WHERE EACH COMES FROM, and it is the same place the printed CP39 reads its preparer block
-   * (localization/my/cp39-form.ts) — one answer per question, not a second one for this form:
-   *   • address / phone → `company` (Organization → General's Contact Information).
+   * WHERE EACH COMES FROM:
+   *   • address / phone → `company` (Organization → General's Contact Information). The form's box is
+   *     "No. Telefon Majikan" — the EMPLOYER's number. Note that the printed CP39 puts a different
+   *     number in a different box: its preparer panel carries `company_statutory_authority.phone`, the
+   *     number recorded against the LHDN row. Two boxes asking two questions, deliberately not merged.
    *   • lhdnState / officerName / officerPosition → `company_statutory_authority` where
    *     `authority = 'lhdn'`: the branch state the employer's tax file sits with, and the signatory
-   *     that record names, with their CURRENT job title.
+   *     that record names, with their CURRENT job title. THE SIGNATORY IS THE SAME ROW THE PRINTED CP39
+   *     reads for its preparer block (localization/my/cp39-form.ts) — one answer per question, because
+   *     two LHDN documents naming different officers for one company is what costs a filing.
    *
    * Every one of them may be absent, and an absent one prints the form's own empty rule — never a
    * placeholder and never a plausible-looking guess (AGENTS 28).
