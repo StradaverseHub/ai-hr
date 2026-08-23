@@ -918,8 +918,9 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
   /**
    * ── PAGE TWO ONWARD, AS THE RULED SCHEDULE THE SPECIMEN DRAWS ───────────────────────────────────
    *
-   * Read this beside `docs/forms/cp39-pin-2015-page2-specimen.png`, with
-   * `docs/forms/cp39-our-page2-2026-08-22.png` for what it replaced. Every coordinate comes from
+   * Read this beside `docs/forms/cp39-pin-2015-page2-specimen.png` — the FILLED official reverse the
+   * reporter attached — with `docs/forms/cp39-our-page2-2026-08-22.png` for what this replaced and
+   * `docs/forms/cp39-our-page2-2026-08-23.png` for what it now prints. Every coordinate comes from
    * `CP39_SHEET` and every caption is drawn RELATIVE TO ITS OWN CELL rather than to whatever `y` the
    * previous block left behind — the r205 Borang A lesson, which is the one failure a geometry check
    * written in font metrics cannot see and only a rasterised page shows.

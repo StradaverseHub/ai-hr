@@ -28,7 +28,15 @@ JUMLAH POTONGAN CUKAI over (PCB (RM), CP38 (RM)). Every other heading spans the 
 All headings are UPPERCASE and centred; the NAMA PENUH PEKERJA caption carries its parenthetical on the
 second and third lines.
 
-Row values: BIL and the two money columns right-aligned; everything else left-aligned. The new identity
+Row values: the two money columns right-aligned; everything else — BIL INCLUDED — left-aligned.
+
+  CORRECTED 2026-08-23 (r219a). This line first read "BIL and the two money columns right-aligned".
+  Checked against a 3x crop of the BIL column on the specimen, the numbers 1 to 13 all start at the SAME
+  left edge, so BIL is LEFT-aligned and the renderer (which already drew it left) was right. Same rule
+  the page-one geometry note in lib/cp39-form-pdf.ts states: when the prose and the image disagree, THE
+  IMAGE WINS and the prose is what needs fixing.
+
+The new identity
 card number prints WITH dashes (941128-03-5179). Empty is empty — a person with no passport gets an
 empty cell, never a dash and never a zero (AGENTS 28).
 
