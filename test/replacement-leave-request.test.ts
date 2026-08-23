@@ -249,7 +249,13 @@ describe('The credit is granted on APPROVAL, and expires from that date (296fc02
     expect((await replacementRequestAvailability(ctx, inA, TODAY)).allowed).toBe(true);
     const bAvail = await replacementRequestAvailability(ctx, inB.employmentId, TODAY);
     expect(bAvail.allowed).toBe(false);
-    expect(bAvail.reason).toBe('not_enabled');
+    // r219 UPDATED THIS ASSERTION, IT DID NOT RETIRE IT (AGENTS rule 18). The property it defends — the
+    // self-submission switch is read PER COMPANY, so B's employee is refused where A's is not — is
+    // unchanged and is the line above. What changed is the NAME of the refusal: `not_enabled` used to
+    // cover both company switches at once, and r219 split it because the screen now says which one to go
+    // and turn on. Company B has replacement leave ENABLED and only employee submission off, which is
+    // exactly the case the second name exists for.
+    expect(bAvail.reason).toBe('employee_requests_off');
     // …and the refusal is the SERVICE's, not the screen's.
     await expect(
       submitReplacementLeaveRequest(ctx, {
@@ -326,7 +332,10 @@ describe('The employee-request switch is enforced SERVER-SIDE (296fc027)', () =>
     // The button: the page branches on exactly this.
     const avail = await replacementRequestAvailability(ctx, employmentId, TODAY);
     expect(avail.allowed).toBe(false);
-    expect(avail.reason).toBe('not_enabled');
+    // r219 UPDATED, NOT RETIRED (AGENTS rule 18): the refusal is unchanged, its NAME is narrower. This
+    // policy is `enabled` with only `employeeRequestEnabled` off, and the screen now tells an
+    // administrator which of the two switches that is — so the two states cannot share one name.
+    expect(avail.reason).toBe('employee_requests_off');
 
     // …and the POST, which is the control that actually matters — hiding a button stops nobody who can
     // send a form.

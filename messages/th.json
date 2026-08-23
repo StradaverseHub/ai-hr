@@ -10877,7 +10877,28 @@
     "cancel": "Cancel",
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
-    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
+    "unavailable": {
+      "moduleOffTitle": "การลาชดเชยไม่ได้อยู่ในแพ็กเกจของบัญชีนี้",
+      "moduleOffBody": "การลาชดเชยเป็นส่วนเสริมที่ต้องเปิดสิทธิ์ และยังไม่ได้เปิดใช้สำหรับบัญชีนี้ ตัวเลือกยื่นคำขอจึงไม่ปรากฏกับใครเลยในทุกบริษัท ระบบตรวจสอบเรื่องนี้ก่อนการตั้งค่าของบริษัท การแก้ไขใด ๆ ใน {config} จึงไม่เปลี่ยนผลลัพธ์",
+      "noEmploymentTitle": "ไม่มีระเบียนการจ้างงานสำหรับบันทึกเวลา",
+      "noEmploymentBody": "การลาชดเชยจะถูกบันทึกเข้าระเบียนการจ้างงาน และไม่พบระเบียนดังกล่าวที่นี่",
+      "notEnabledTitle": "การลาชดเชยถูกปิดไว้สำหรับบริษัทนี้",
+      "notEnabledBody": "เปิด “{enableSwitch}” สำหรับบริษัทนี้ใน {config} › {screen} จนกว่าจะเปิด จะไม่มีฟังก์ชันการลาชดเชยใด ๆ ให้ใช้ที่นี่",
+      "employeeRequestsOffTitle": "พนักงานที่นี่ยื่นคำขอลาชดเชยด้วยตนเองไม่ได้",
+      "employeeRequestsOffBody": "การลาชดเชยเปิดใช้สำหรับบริษัทนี้แล้ว แต่คำขอที่พนักงานยื่นเองยังปิดอยู่ โปรดเปิด “{requestSwitch}” ใน {config} › {screen}",
+      "notEligibleTitle": "อยู่นอกเกณฑ์ในนโยบายการลาชดเชยของบริษัทนี้",
+      "notEligibleBody": "บริษัทของคุณกำหนดว่าใครยื่นคำขอได้ใน {config} › {screen} หัวข้อ “{eligibilitySection}” และการจ้างงานของคุณไม่ตรงกับเกณฑ์นั้น ผู้ดูแลระบบสามารถขยายเกณฑ์ได้ที่นั่น",
+      "notEligibleBodyAdmin": "บริษัทนี้กำหนดว่าใครยื่นคำขอได้ใน {config} › {screen} หัวข้อ “{eligibilitySection}” และพนักงานคนนี้ไม่ตรงกับเกณฑ์นั้น โปรดขยายเกณฑ์ที่นั่นเพื่อรวมพนักงานคนนี้",
+      "firstScheduleTitle": "ใช้ค่าล่วงเวลาตามกฎหมายแทนการเก็บเวลาเป็นวันลา",
+      "firstScheduleBody": "ค่าจ้างของคุณเท่ากับหรือต่ำกว่าเพดานค่าจ้างสำหรับค่าล่วงเวลาตามกฎหมาย คุณจึงมีสิทธิได้รับค่าล่วงเวลาเป็นเงิน ไม่ใช่การเก็บเวลาไว้เป็นวันลา บริษัทของคุณอนุญาตให้เก็บเป็นวันลาได้โดยเปิด “{allowSwitch}” ใน {config} › {screen} จากนั้นคุณจะต้องบันทึกความยินยอมของคุณเองในทุกคำขอ",
+      "firstScheduleBodyAdmin": "ค่าจ้างของพนักงานคนนี้เท่ากับหรือต่ำกว่าเพดานค่าจ้างสำหรับค่าล่วงเวลาตามกฎหมาย จึงมีสิทธิได้รับค่าล่วงเวลาเป็นเงิน ไม่ใช่การเก็บเวลาไว้เป็นวันลา การเปิด “{allowSwitch}” ใน {config} › {screen} จะทำให้เก็บเป็นวันลาได้ โดยบันทึกความยินยอมของพนักงานเองในทุกคำขอ"
+    },
+    "consentNotice": {
+      "title": "กฎคุ้มครองค่าล่วงเวลามีผลกับกรณีนี้",
+      "body": "ค่าจ้างของคุณเท่ากับหรือต่ำกว่าเพดานค่าจ้างสำหรับค่าล่วงเวลาตามกฎหมาย ทุกคำขอจึงจะถามความยินยอมของคุณที่จะเก็บเวลานั้นเป็นวันลาแทนการรับค่าล่วงเวลาตามกฎหมายสำหรับวันดังกล่าว วันลาที่ไม่ได้ใช้จะจ่ายเป็นเงินเมื่อหมดอายุ ไม่ใช่หมดสิทธิ์ไป",
+      "bodyAdmin": "ค่าจ้างของพนักงานคนนี้เท่ากับหรือต่ำกว่าเพดานค่าจ้างสำหรับค่าล่วงเวลาตามกฎหมาย ทุกคำขอจึงจะถามความยินยอมของพนักงานที่จะเก็บเวลานั้นเป็นวันลาแทนการรับค่าล่วงเวลาตามกฎหมายสำหรับวันดังกล่าว วันลาที่ไม่ได้ใช้จะจ่ายเป็นเงินเมื่อหมดอายุ ไม่ใช่หมดสิทธิ์ไป"
+    }
   },
   "notices": {
     "pageTitle": "กระดานประกาศ",

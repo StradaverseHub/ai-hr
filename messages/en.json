@@ -10877,7 +10877,28 @@
     "cancel": "Cancel",
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
-    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
+    "unavailable": {
+      "moduleOffTitle": "Replacement Leave in Lieu is not part of this plan",
+      "moduleOffBody": "Replacement leave is a licensed part of the system and it is not switched on for this account, so the request option is not offered to anyone, in any company. It is checked before any company setting, which is why nothing in {config} changes it.",
+      "noEmploymentTitle": "There is no employment record to bank time against",
+      "noEmploymentBody": "Replacement leave is credited against an employment record, and none could be found here.",
+      "notEnabledTitle": "Replacement leave is switched off for this company",
+      "notEnabledBody": "Turn on “{enableSwitch}” for this company under {config} › {screen}. Until that is on, nothing about replacement leave is available here.",
+      "employeeRequestsOffTitle": "Employees here cannot submit their own replacement leave requests",
+      "employeeRequestsOffBody": "Replacement leave is switched on for this company, but employee-submitted requests are not. Turn on “{requestSwitch}” under {config} › {screen}.",
+      "notEligibleTitle": "Outside the criteria on this company's replacement leave policy",
+      "notEligibleBody": "Your company sets who may submit a request under {config} › {screen}, in “{eligibilitySection}”, and your employment does not match it. An administrator can widen it there.",
+      "notEligibleBodyAdmin": "This company sets who may submit a request under {config} › {screen}, in “{eligibilitySection}”, and this employee does not match it. Widen it there to include them.",
+      "firstScheduleTitle": "Statutory overtime pay applies instead of banked time",
+      "firstScheduleBody": "Your wages are at or below the statutory overtime wage ceiling, so you are entitled to overtime pay rather than time banked as leave. Your company can allow banking instead by switching on “{allowSwitch}” under {config} › {screen}; you would then record your own agreement on each request.",
+      "firstScheduleBodyAdmin": "This employee's wages are at or below the statutory overtime wage ceiling, so they are entitled to overtime pay rather than time banked as leave. Switching on “{allowSwitch}” under {config} › {screen} lets them bank it instead, with their own agreement recorded on each request."
+    },
+    "consentNotice": {
+      "title": "The overtime protection rule applies here",
+      "body": "Your wages are at or below the statutory overtime wage ceiling, so each request asks you to agree to bank the time instead of taking the statutory overtime cash for those days. Unused credit is paid out when it expires rather than lapsing.",
+      "bodyAdmin": "This employee's wages are at or below the statutory overtime wage ceiling, so each request asks them to agree to bank the time instead of taking the statutory overtime cash for those days. Unused credit is paid out when it expires rather than lapsing."
+    }
   },
   "notices": {
     "pageTitle": "Notice Board",

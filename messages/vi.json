@@ -10877,7 +10877,28 @@
     "cancel": "Cancel",
     "submit": "Submit request",
     "submittedToast": "Replacement leave request submitted.",
-    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing."
+    "firstScheduleConsent": "Statutory overtime pay normally applies to me. I agree to bank replacement leave instead of receiving the statutory overtime cash for these days. Any unused credit will be paid out when it expires rather than lapsing.",
+    "unavailable": {
+      "moduleOffTitle": "Nghỉ bù không nằm trong gói của tài khoản này",
+      "moduleOffBody": "Nghỉ bù là phần có bản quyền riêng của hệ thống và chưa được bật cho tài khoản này, nên tùy chọn gửi yêu cầu không hiển thị với bất kỳ ai, ở bất kỳ công ty nào. Hệ thống kiểm tra điều này trước mọi thiết lập của công ty, vì vậy không thao tác nào trong {config} thay đổi được kết quả.",
+      "noEmploymentTitle": "Không có hồ sơ lao động để ghi nhận thời gian",
+      "noEmploymentBody": "Nghỉ bù được ghi nhận vào một hồ sơ lao động, và không tìm thấy hồ sơ nào ở đây.",
+      "notEnabledTitle": "Nghỉ bù đang tắt đối với công ty này",
+      "notEnabledBody": "Bật “{enableSwitch}” cho công ty này trong {config} › {screen}. Khi chưa bật, không có chức năng nghỉ bù nào dùng được ở đây.",
+      "employeeRequestsOffTitle": "Nhân viên ở đây không thể tự gửi yêu cầu nghỉ bù",
+      "employeeRequestsOffBody": "Nghỉ bù đã bật cho công ty này, nhưng yêu cầu do nhân viên tự gửi thì chưa. Hãy bật “{requestSwitch}” trong {config} › {screen}.",
+      "notEligibleTitle": "Nằm ngoài tiêu chí trong chính sách nghỉ bù của công ty này",
+      "notEligibleBody": "Công ty của bạn quy định ai được gửi yêu cầu trong {config} › {screen}, ở mục “{eligibilitySection}”, và hồ sơ lao động của bạn không khớp với quy định đó. Quản trị viên có thể mở rộng tiêu chí tại đó.",
+      "notEligibleBodyAdmin": "Công ty này quy định ai được gửi yêu cầu trong {config} › {screen}, ở mục “{eligibilitySection}”, và nhân viên này không khớp với quy định đó. Hãy mở rộng tiêu chí tại đó để bao gồm nhân viên này.",
+      "firstScheduleTitle": "Áp dụng tiền làm thêm giờ theo luật thay vì quy đổi thành ngày nghỉ",
+      "firstScheduleBody": "Tiền lương của bạn bằng hoặc thấp hơn mức trần lương làm thêm giờ theo luật, nên bạn được hưởng tiền làm thêm giờ thay vì quy đổi thời gian thành ngày nghỉ. Công ty có thể cho phép quy đổi bằng cách bật “{allowSwitch}” trong {config} › {screen}; khi đó bạn sẽ ghi nhận sự đồng ý của chính mình trên từng yêu cầu.",
+      "firstScheduleBodyAdmin": "Tiền lương của nhân viên này bằng hoặc thấp hơn mức trần lương làm thêm giờ theo luật, nên họ được hưởng tiền làm thêm giờ thay vì quy đổi thời gian thành ngày nghỉ. Bật “{allowSwitch}” trong {config} › {screen} sẽ cho phép quy đổi, với sự đồng ý của chính họ được ghi nhận trên từng yêu cầu."
+    },
+    "consentNotice": {
+      "title": "Quy định bảo vệ tiền làm thêm giờ được áp dụng ở đây",
+      "body": "Tiền lương của bạn bằng hoặc thấp hơn mức trần lương làm thêm giờ theo luật, nên mỗi yêu cầu sẽ hỏi bạn có đồng ý quy đổi thời gian đó thành ngày nghỉ thay vì nhận tiền làm thêm giờ theo luật cho những ngày đó hay không. Phần chưa dùng sẽ được trả bằng tiền khi hết hạn thay vì bị mất.",
+      "bodyAdmin": "Tiền lương của nhân viên này bằng hoặc thấp hơn mức trần lương làm thêm giờ theo luật, nên mỗi yêu cầu sẽ hỏi họ có đồng ý quy đổi thời gian đó thành ngày nghỉ thay vì nhận tiền làm thêm giờ theo luật cho những ngày đó hay không. Phần chưa dùng sẽ được trả bằng tiền khi hết hạn thay vì bị mất."
+    }
   },
   "notices": {
     "pageTitle": "Bảng thông báo",
