@@ -2,10 +2,11 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { listCompanies } from '@/core/read';
 import { scopedAdmin } from '@/lib/scope';
 import { BORANG_8A_STATUS_PARAM_PREFIX, money } from '@/lib/borang-8a';
+import { PERKESO_FILE_LINE_LENGTH } from '@/lib/perkeso-socso-file';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { loadBorang8A } from '../shared';
-import { Borang8AMycoidNotice, Borang8AUnfinishedNames } from '../notices';
+import { Borang8AMycoidNotice, Borang8AOneLineNotice, Borang8AUnfinishedNames } from '../notices';
 import { isUnfinishedPersonName } from '@/lib/unfinished-name';
 
 /**
@@ -399,6 +400,17 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
                 .map((r) => ({ ic: r.ic, name: r.name }))}
               title={t('unfinishedNameTitle')}
               hint={t('unfinishedNameHint')}
+            />
+            {/* 64c09b0e — WHAT THE FILE LOOKS LIKE WHEN IT IS OPENED, said before it is opened. Two items
+                in a row reported records "split across two lines" and attached a screenshot of an editor
+                with word wrap on; the bytes were right both times, and the second item asked us to move
+                four money boxes on the strength of it. The record length comes from the writer's own
+                constant, so this sentence cannot come to disagree with the file. Information, not amber:
+                nothing is wrong when it shows. */}
+            <Borang8AOneLineNotice
+              ready={ready}
+              title={t('oneLineNoticeTitle')}
+              body={t('oneLineNoticeBody', { length: PERKESO_FILE_LINE_LENGTH })}
             />
           </div>
         </form>

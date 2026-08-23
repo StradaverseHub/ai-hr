@@ -5553,7 +5553,9 @@
       "headerField_employerCode": "Kod majikan PERKESO (No. Kod Majikan)",
       "headerField_employerName": "Nama sah syarikat",
       "unfinishedNameTitle": "Sesetengah nama pekerja kelihatan belum lengkap.",
-      "unfinishedNameHint": "Ruangan nama PERKESO ialah “nama seperti dalam kad pengenalan atau pasport”. Ini nama yang tersimpan dalam rekod pekerja — fail membawanya sebagaimana adanya dan tidak sesekali memendekkan atau mereka-reka nama. Jika dimuat naik begini, caruman ini difailkan atas nama tersebut. Betulkan pada rekod pekerja, kemudian kembali ke sini. Tiada apa-apa di sini yang menghalang muat turun."
+      "unfinishedNameHint": "Ruangan nama PERKESO ialah “nama seperti dalam kad pengenalan atau pasport”. Ini nama yang tersimpan dalam rekod pekerja — fail membawanya sebagaimana adanya dan tidak sesekali memendekkan atau mereka-reka nama. Jika dimuat naik begini, caruman ini difailkan atas nama tersebut. Betulkan pada rekod pekerja, kemudian kembali ke sini. Tiada apa-apa di sini yang menghalang muat turun.",
+      "oneLineNoticeTitle": "Setiap pekerja ialah satu baris panjang dalam fail muat naik.",
+      "oneLineNoticeBody": "Setiap rekod ialah satu baris sepanjang {length} aksara, tanpa apa-apa pemisah di tengahnya. Jika anda membuka fail itu dalam Notepad atau editor lain yang menghidupkan lilit perkataan, seorang pekerja akan kelihatan seolah-olah terbelah kepada dua baris — itu editor melipat baris panjang supaya muat pada tetingkap, bukan pemisah dalam fail. Matikan lilit perkataan dan setiap pekerja akan berada pada satu baris. “Semak fail” memaparkan setiap medan dengan penomboran PERKESO sendiri."
     },
     "borangA": {
       "title": "Borang A — borang caruman bulanan (KWSP)",

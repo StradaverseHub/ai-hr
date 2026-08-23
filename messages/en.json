@@ -5553,7 +5553,9 @@
       "headerField_employerCode": "SOCSO employer code (No. Kod Majikan)",
       "headerField_employerName": "Company legal name",
       "unfinishedNameTitle": "Some employee names do not look finished.",
-      "unfinishedNameHint": "PERKESO’s name box is “name as per IC or passport”. These are the names saved on the staff records — the file carries them exactly as they are and never shortens or invents one. Uploading as they stand files these contributions under these names. Correct them on the staff record, then come back. Nothing here stops the download."
+      "unfinishedNameHint": "PERKESO’s name box is “name as per IC or passport”. These are the names saved on the staff records — the file carries them exactly as they are and never shortens or invents one. Uploading as they stand files these contributions under these names. Correct them on the staff record, then come back. Nothing here stops the download.",
+      "oneLineNoticeTitle": "Each employee is one long line in the upload file.",
+      "oneLineNoticeBody": "Every record is a single line of {length} characters, with nothing in the middle of it. If you open the file in Notepad or another editor with word wrap turned on, one employee will look as though they have been split over two lines — that is the editor folding a long line to fit the window, not a break in the file. Turn word wrap off and each employee sits on one line. “Check the file” shows every field with PERKESO’s own numbering."
     },
     "borangA": {
       "title": "Borang A — monthly contribution form (KWSP)",
