@@ -496,7 +496,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
 
   // ── A — BUTIRAN PEKERJA ────────────────────────────────────────────────────────────────────────────
   const A = EA_FORM;
-  put(t.sectionAEmployeeParticulars, L, 99.5, 8.5, bold);
+  putFit(t.sectionAEmployeeParticulars, L, R - L, 99.5, 8.5, bold);
   putFit(t.name, L + 6, 165, 114, 7.5);
   valueOrRule(d.employee.name, 197.3, R, 114);
 
@@ -538,7 +538,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   valueOrRule(inYear(d.employee.terminatedOn), A.aRightRule[0], A.aRightRule[1], 186.6);
 
   // ── B — PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN ─────────────────────────────────────────
-  put(t.sectionBEmploymentIncome, L, 197.5, 8.5, bold);
+  putFit(t.sectionBEmploymentIncome, L, R - L, 197.5, 8.5, bold);
   putFit(t.sectionBExcluding, L + 6, 430, 208, 7.5, bold);
   // The bold RM heading, printed ONCE for the whole form, over the right-hand column.
   putC(W.rm, (MX + R) / 2, 208, 9, bold);
@@ -581,7 +581,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   moneyLine(t.compensation, A.itemLabel, 380, manual(d.partB.compensation));
 
   // ── C — PENCEN DAN LAIN-LAIN, closed by the form's single JUMLAH ───────────────────────────────────
-  put(t.sectionCPensionOther, L, 391.5, 8.5, bold);
+  putFit(t.sectionCPensionOther, L, R - L, 391.5, 8.5, bold);
   moneyLine(t.pension, A.itemLabel, 405.6, manual(d.partC.pension));
   moneyLine(t.annuity, A.itemLabel, 418.6, manual(d.partC.annuity));
   /**
@@ -597,13 +597,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // no figure to place there. Ours does, so the amount's baseline is 433.5 — 1.5 pt of clearance under the
   // upper rule for the digits' cap height — and the lower rule moves 2 pt down to clear the commas'
   // descenders. Drawn at the specimen's spacing, the upper rule struck straight through the total.
-  put(t.formTotal, A.itemLabel, 433.5, 8.5, bold);
+  putFit(t.formTotal, A.itemLabel, 200, 433.5, 8.5, bold);
   hRule(MX, R, 425.8, 0.8, ink);
   putR(derived(d.partB.gross + d.partC.total), R - 2, 433.5, 8.5, bold);
   hRule(MX, R, 437.5, 1.4, ink);
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
-  put(t.sectionDTotalDeductions, L, 447.5, 8.5, bold);
+  putFit(t.sectionDTotalDeductions, L, R - L, 447.5, 8.5, bold);
   moneyLine(t.monthlyTaxDeduction, A.itemLabel, 461.3, derived(d.partD.mtd));
   moneyLine(t.cp38Deductions, A.itemLabel, 474.7, derived(d.partD.cp38));
   moneyLine(t.zakatViaSalary, A.itemLabel, 487.7, derived(d.partD.zakat));
@@ -621,8 +621,6 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   moneyLine(t.childRelief, A.itemLabel, 551.4, manual(d.partD.childRelief));
 
   // ── E — CARUMAN ... KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO ────────────────────
-  // The section title is the longest line on the form; it is shrunk to the page width rather than allowed
-  // to run off it.
   putFit(t.sectionEContributions, L, R - L, 567.8, 8.5, bold);
   putFit(t.fundName, A.itemLabel, 100, 581.5, 8);
   valueOrRule(d.partE.fundName, 148, R, 581.5, 8);

@@ -342,6 +342,29 @@ describe('r219 — the boxes the C.P.8A does not have stay OFF the drawn page', 
   });
 });
 
+describe('r219 — a caption can never overprint its neighbour', () => {
+  /**
+   * r205's Borang A lesson, and a fixed-geometry form makes it sharper: pdf-lib does NOT clip, so a
+   * caption wider than its slot prints straight through whatever is beside it and the page still renders,
+   * still returns 200 and still downloads. One renderer serving two languages guarantees the situation —
+   * an English caption is routinely wider than its Malay original, and four more locales reach this
+   * renderer through test/ea-pdf.test.ts's one-page case.
+   *
+   * So every LABEL drawn inside the form goes through `putFit`, which shrinks rather than clips. The two
+   * exceptions are deliberate and both sit in OUR strip below the officer box, where the full page width
+   * is free and there is no neighbour to run into.
+   */
+  it('every label drawn inside the form goes through the shrink-to-fit path', () => {
+    const src = read('lib/ea-pdf.ts');
+    const form = src.slice(src.indexOf('const W = EA_FORM_WORDS;'), src.indexOf('let y: number = EA_FORM.footStripT'));
+    const unbounded = [...form.matchAll(/\bput[RC]?\(t\.[a-zA-Z0-9]+/g)].map((m) => m[0]);
+    expect(unbounded, `labels drawn without a width bound: ${unbounded.join(', ')}`).toEqual([]);
+    // …and the shrink is a real one: it rounds DOWN so the drawn string stays inside its slot, and it
+    // clamps rather than vanishing.
+    expect(src).toMatch(/return Math\.max\(1, Math\.floor\(\(size \* maxW \* 10\) \/ w\) \/ 10\);/);
+  });
+});
+
 describe('r219 — an unsourced box prints the blank form’s rule, never 0.00', () => {
   it('a statement with nothing manual entered prints no 0.00 for any manual box', async () => {
     const printed = await textsOf(EMPTY);
