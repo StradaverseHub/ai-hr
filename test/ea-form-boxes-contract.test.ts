@@ -105,31 +105,51 @@ describe('6036dab7 — every EA box reaches every surface', () => {
   it('the manual Part B boxes are drawn only when HR has entered a figure', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../lib/ea-pdf.ts'), 'utf8');
 
-    // The guard exists and is a real zero test, not a truthiness check (0 and '' differ here).
-    expect(src).toMatch(/const optionalRow = \(label: string, v: number\) => \{/);
-    expect(src).toMatch(/if \(Math\.round\(\(Number\(v\) \|\| 0\) \* 100\) !== 0\) row\(label, rm\(v\)\);/);
+    // r219 — THE DECISION IS UNCHANGED; THE SHAPE THAT EXPRESSES IT MOVED. Before the C.P.8A redraw this
+    // was `optionalRow(...)`, which OMITTED the whole line when nothing was entered. The form's own
+    // caption and rule are now printed whether or not there is a figure — that is what the blank agency
+    // page carries — so the conditional narrowed to the AMOUNT: `manual()` yields the figure or an empty
+    // string, and an empty string leaves `amountOrRule` drawing the rule and nothing on it.
+    //
+    // The half that has NOT changed, and is the reason this case exists: a box with no payroll source
+    // must never print 0.00 (AGENTS 28; r209 shipped that defect on this exact form).
+    expect(src).toMatch(/const derived = \(n: number\): string => amt\(n\);/);
+    // A real zero test, not a truthiness check — 0 and '' differ here.
+    expect(src).toMatch(
+      /const manual = \(n: number\): string =>\s*\(Math\.round\(\(Number\(n\) \|\| 0\) \* 100\) !== 0 \? amt\(n\) : ''\);/,
+    );
+    // …and an empty amount draws the rule with nothing on it, rather than a placeholder.
+    expect(src).toMatch(/const amountOrRule = [\s\S]{0,200}?dotted\(x0, x1, tt \+ 2\.5\);\s*\n\s*if \(v\) \{/);
 
-    // Every box whose ONLY source is an override goes through it…
+    // Every box whose ONLY source is an override goes through `manual`…
     for (const box of [
-      'directorFee', 'tipsPerquisites', 'taxBorneByEmployer', 'esos', 'gratuity', 'arrears',
+      'taxBorneByEmployer', 'esos', 'gratuity', 'arrears',
       'benefitsInKind', 'livingAccommodation', 'unapprovedFundRefund', 'compensation',
     ]) {
-      expect(src, `${box} still prints unconditionally`).toContain(`optionalRow(t.${box}, d.partB.${box});`);
-      expect(src, `${box} is also drawn unconditionally somewhere`).not.toContain(
-        `row(t.${box}, rm(d.partB.${box}));`,
-      );
+      expect(src, `${box} no longer goes through manual()`).toContain(`manual(d.partB.${box})`);
+      expect(src, `${box} is also drawn as a derived figure somewhere`).not.toContain(`derived(d.partB.${box})`);
+    }
+    // Part C's two boxes are manual for the same reason (this product pays no pensions).
+    for (const box of ['pension', 'annuity']) {
+      expect(src, `${box} no longer goes through manual()`).toContain(`manual(d.partC.${box})`);
+      expect(src, `${box} is also drawn as a derived figure somewhere`).not.toContain(`derived(d.partC.${box})`);
     }
 
     // …and the boxes that ARE payroll-derived keep printing even at zero, because there a zero is a
     // fact we can stand behind. Suppressing these would hide a real "you were paid no bonus".
-    for (const [label, field] of [
-      ['grossSalary', 'grossSalary'],
-      ['bonus', 'bonus'],
-      ['allowancesPerquisites', 'allowances'],
-    ]) {
-      expect(src, `${field} must still print unconditionally`).toContain(
-        `row(t.${label}, rm(d.partB.${field}));`,
-      );
+    //
+    // `directorFee` and `tipsPerquisites` are the two manual boxes that are NOT in the list above: the
+    // form's 1(b) and 1(c) are each ONE box covering one derived figure and one manual one, so they are
+    // printed together, and the derived half is what makes the line printable at all.
+    expect(src, 'gross salary must still print unconditionally').toContain('derived(d.partB.grossSalary)');
+    expect(src, "the form's 1(b) is bonus + director's fees, printed as one box").toContain(
+      'derived(d.partB.bonus + d.partB.directorFee)',
+    );
+    expect(src, "the form's 1(c) is allowances + tips/perquisites, printed as one box").toContain(
+      'derived(d.partB.allowances + d.partB.tipsPerquisites)',
+    );
+    for (const field of ['mtd', 'cp38', 'zakat']) {
+      expect(src, `${field} must still print unconditionally`).toContain(`derived(d.partD.${field})`);
     }
   });
 

@@ -1626,6 +1626,20 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // the screen happened to be set to. The route now takes a `lang` param (en/ms, defaulting to the
   // request locale) and these two entries carry it. There is still exactly ONE EA renderer (lib/ea-pdf.ts)
   // and one EA statement read — the split is a translation locale, not a second implementation.
+  //
+  // r219 (item ece6d75d) — `fidelity` MOVED FROM `figures` TO `agency-layout`, FOR BOTH ENTRIES.
+  // lib/ea-pdf.ts now draws the statement to the C.P.8A (Pin. 2024) arrangement — the masthead, No. Siri
+  // and TIN Majikan E, the ruled banner, Section A's two-column numbering, B to F in the form's own order
+  // with the RM column down the right, and the ruled officer box at the foot — traced from
+  // `docs/forms/ea-cp8a-pin-2024-specimen.png` and its hand transcription. That is what `agency-layout`
+  // means, and `figures` (every number the form needs, complete, in OUR layout) now understates it.
+  //
+  // ⚠️ AND IT MAY NEVER BE `official`. The specimen is a VENDOR's rendering (Producer = Developer Express
+  // DXperience v23.2.5), not LHDN artwork; it is deliberately not in `public/forms/`, which still holds
+  // exactly one genuine artwork, and `my.cp22` is still the only entry in this catalogue that says
+  // `official`. The shared `agency-layout` chip says "we hold no blank from the agency to print onto",
+  // which `public/forms/` answers for the C.P.8A too — nothing here claims what LHDN publishes
+  // (AGENTS 28b).
   {
     id: 'my.ea.en',
     labelKey: 'link_ea_en',
@@ -1635,7 +1649,7 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=en',
     actionLabelKey: 'openEmployeeList',
-    fidelity: 'figures',
+    fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 3,
   },
@@ -1648,7 +1662,7 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=ms',
     actionLabelKey: 'openEmployeeList',
-    fidelity: 'figures',
+    fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 4,
   },

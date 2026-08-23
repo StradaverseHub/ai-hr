@@ -26,6 +26,8 @@ import { setPassportProfileMY, setStatutoryProfileMY } from '../localization/my/
 import { setCp38 } from '../core/cp38';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { employeeEaStatement } from '../core/reporting';
+import { updateCompany } from '../core/admin';
+import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 import { setEaOverride } from '../core/ea-override';
 import { EA_FIELDS, EA_PART_B_COMPONENTS } from '../localization/my/reports';
 
@@ -185,6 +187,66 @@ describe('6036dab7 — EA statement against the customer field mapping', () => {
     // The two particulars that never broke, asserted alongside so a regression is attributable.
     expect(after!.employee.employeeNo).toBe('EA-0007');
     expect(after!.employee.passport).toBe('A12345678');
+  });
+
+  /**
+   * r219 — THE FOOT OF THE PRINTED C.P.8A, AND WHERE EACH BOX COMES FROM.
+   *
+   * The form's ruled officer box asks for Name Pegawai / Jawatan / Nama dan Alamat Majikan / No. Telefon
+   * Majikan, and its header asks for LHDNM Negeri. None of that was on the read before this round, so
+   * this case is the one place the SOURCE of each is asserted rather than assumed — and it is the same
+   * source the printed CP39 uses for its preparer block, deliberately: two LHDN documents naming
+   * different officers for one company is the failure that costs a filing.
+   */
+  it('the employer block carries the address, phone, LHDN branch state and the LHDN signatory', async () => {
+    const a = adminCtx(base);
+    const E = await seedEmployee(base);
+
+    await updateCompany(a, {
+      id: base.companyId,
+      legalName: 'Acme Sdn Bhd',
+      addressLine1: 'No. 12, Jalan Raja Chulan',
+      addressLine2: 'Bukit Ceylon',
+      city: 'Kuala Lumpur',
+      state: 'Wilayah Persekutuan',
+      postcode: '50200',
+      phone: '03-2000 1234',
+    });
+    // The signatory is the person behind THIS employment, whose assignment titles them 'Executive'.
+    await upsertCompanyStatutoryAuthority(a, {
+      companyId: base.companyId,
+      authority: 'lhdn',
+      state: 'W.P. Kuala Lumpur',
+      signatoryPersonId: E.personId,
+    });
+
+    const ea = await employeeEaStatement(a, { employmentId: E.employmentId, year: '2026' });
+    expect(ea!.employer.phone).toBe('03-2000 1234');
+    // Three free lines collapse to two here (line 3 is empty) plus the postcode/town, state tail.
+    expect(ea!.employer.address).toEqual([
+      'No. 12, Jalan Raja Chulan',
+      'Bukit Ceylon',
+      '50200 Kuala Lumpur, Wilayah Persekutuan',
+    ]);
+    // LHDNM Negeri is the LHDN row's state, NOT the company's postal state — they are different columns
+    // on different tables and a company may file with a branch outside its own postal state.
+    expect(ea!.employer.lhdnState).toBe('W.P. Kuala Lumpur');
+    expect(ea!.employer.officerName).toBe('Aisyah Rahman');
+    expect(ea!.employer.officerPosition).toBe('Executive');
+  });
+
+  it('a company with no LHDN authority row and no address leaves every one of those boxes empty', async () => {
+    const a = adminCtx(base);
+    const E = await seedEmployee(base);
+    const ea = await employeeEaStatement(a, { employmentId: E.employmentId, year: '2026' });
+    // NULL, not '' and not a placeholder: the renderer prints the blank form's rule for each (AGENTS 28).
+    expect(ea!.employer.address).toEqual([]);
+    expect(ea!.employer.phone).toBeNull();
+    expect(ea!.employer.lhdnState).toBeNull();
+    expect(ea!.employer.officerName).toBeNull();
+    expect(ea!.employer.officerPosition).toBeNull();
+    // …while the two boxes that were always there keep working.
+    expect(ea!.employer.name).toBe('Acme Sdn Bhd');
   });
 
   it('every field in the EA vocabulary can be amended and read back off the statement', async () => {

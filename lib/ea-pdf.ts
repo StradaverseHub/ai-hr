@@ -471,9 +471,12 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // for the statements it issues — so it prints the blank form's rule, which is what the agency's page
   // carries there.
   put(W.serialNo, L + 6, 52, 7.5);
-  valueOrRule('', 92, 218, 52);
+  // The rules STOP at 200, short of the centred masthead: "PENYATA SARAAN DARIPADA PENGGAJIAN" is 168 pt
+  // wide centred on 297.6, so its left edge is 213.6 and a rule run any further collides with it. The
+  // specimen's own rules stop even shorter.
+  valueOrRule('', 92, 200, 52);
   put(W.employerTin, L + 6, 66, 7.5);
-  valueOrRule(d.employer.eNumber ?? '', 92, 218, 66);
+  valueOrRule(d.employer.eNumber ?? '', 92, 200, 66);
 
   // RIGHT: the "EA" is the largest type on the page, and the employee's own TIN sits under it.
   const eaW = bold.widthOfTextAtSize(W.ea, 17);
@@ -482,7 +485,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   putR(W.employeeTin, R, 36, 7.5);
   valueOrRule(d.employee.taxNo ?? '', 438, R, 47);
   put(W.lhdnState, 440, 66, 7.5);
-  valueOrRule(d.employer.lhdnState ?? '', 505, R, 66);
+  valueOrRule(d.employer.lhdnState ?? '', 495, R, 66);
 
   box(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);
   putC(W.banner, CX, 86.5, 8, bold);
@@ -586,10 +589,14 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
    * B lines (EA_PART_B_COMPONENTS, recomputed after any override) and `partC.total` is pension + annuity,
    * so this is those two figures added, not a third arithmetic.
    */
-  put(t.formTotal, A.itemLabel, 431.5, 8.5, bold);
+  // The specimen's two rules sit at 425.8 and 435.4 with nothing between them, because the blank form has
+  // no figure to place there. Ours does, so the amount's baseline is 433.5 — 1.5 pt of clearance under the
+  // upper rule for the digits' cap height — and the lower rule moves 2 pt down to clear the commas'
+  // descenders. Drawn at the specimen's spacing, the upper rule struck straight through the total.
+  put(t.formTotal, A.itemLabel, 433.5, 8.5, bold);
   hRule(MX, R, 425.8, 0.8, ink);
-  putR(derived(d.partB.gross + d.partC.total), R - 2, 431.5, 8.5, bold);
-  hRule(MX, R, 435.4, 1.4, ink);
+  putR(derived(d.partB.gross + d.partC.total), R - 2, 433.5, 8.5, bold);
+  hRule(MX, R, 437.5, 1.4, ink);
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
   put(t.sectionDTotalDeductions, L, 447.5, 8.5, bold);

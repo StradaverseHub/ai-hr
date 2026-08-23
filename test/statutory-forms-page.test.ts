@@ -668,9 +668,19 @@ describe('the four pins', () => {
     // not in `public/forms/`, which is exactly why the CP39 joins this value and not the line above it.
     expect(MY_REPORTS.find((r) => r.id === 'my.cp39')!.fidelity).toBe('agency-layout');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /cp\W?39/i.test(f))).toEqual([]);
+    // r219 — AND THE TWO EA ENTRIES, WHICH ARE THE FOURTH AND FIFTH MEMBERS, for exactly the same reason
+    // and off exactly the same kind of source. `lib/ea-pdf.ts` now draws the C.P.8A (Pin. 2024)
+    // arrangement traced from `docs/forms/ea-cp8a-pin-2024-specimen.png` — another vendor's DevExpress
+    // rendering of the agency's page, deliberately NOT in `public/forms/`. Both entries move together:
+    // they are one renderer in two languages, so a split between them would be a claim that the form is
+    // more faithful in one language than the other, which is not a thing that can be true here.
+    for (const id of ['my.ea.en', 'my.ea.ms']) {
+      expect(MY_STATUTORY_LINKS.find((l) => l.id === id)!.fidelity, id).toBe('agency-layout');
+    }
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /(cp\W?8a|\bea\b)/i.test(f))).toEqual([]);
     expect(
       [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'agency-layout').map((e) => e.id).sort(),
-    ).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39']);
+    ).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.ea.en', 'my.ea.ms']);
   });
 
   /**
