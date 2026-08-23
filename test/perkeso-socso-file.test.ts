@@ -186,7 +186,9 @@ describe('18c1d92b — what it refuses rather than filing', () => {
     const shortened = [records[0].slice(0, 277), ...records.slice(1)].join('\r\n');
     expect(() => assertPerkesoFileShape(shortened)).toThrow(/277 characters/);
     const filthyFiller = [records[0].slice(0, 238) + '0'.repeat(20) + records[0].slice(258), ...records.slice(1)].join('\r\n');
-    expect(() => assertPerkesoFileShape(filthyFiller)).toThrow(/filler1 must be blank/);
+    // 64c09b0e — the refusal names the field the agency's way, since this same sentence is what the
+    // report lists for a record it could not validate.
+    expect(() => assertPerkesoFileShape(filthyFiller)).toThrow(/Field 11 Filler 1 must be blank/);
   });
 });
 
@@ -232,8 +234,13 @@ describe('18c1d92b — the validation report', () => {
     expect(report).toContain('Records: 14');
     expect(report).toContain(`Record length: every record is ${PERKESO_FILE_LINE_LENGTH} characters.`);
     expect(report).toContain('none after the last');
-    expect(report).toContain('201-214  wage');
-    expect(report).toContain('215-220  socsoEmployer');
+    // 64c09b0e — the positions are unchanged; the NAME beside each one is now the agency's, not ours.
+    expect(report).toContain('201-214  Field 6 Employee Salary');
+    expect(report).toContain('215-220  Field 7 Contribution Amount SOCSO (Employer share)');
+    // …and the internal keys have left the report entirely, which is the half that retired.
+    expect(report).not.toMatch(/\bsocsoEmployer\b/);
+    expect(report).not.toMatch(/\beisEmployee\b/);
+    expect(report).not.toMatch(/\bmyCoId\b/);
     expect(report).toContain('AHMAD AZMER IZAT BIN MAT YAZID');
     // ASCII only — it describes a us-ascii file.
     expect(/^[\x20-\x7E\n]*$/.test(report)).toBe(true);
@@ -294,11 +301,13 @@ describe('5dbce839 — the four things the reporter asked the report for, and th
     // …and the report prints each of them in RM with two decimals AND as the digits the file holds, so a
     // reader can check the file with a calculator and with their eyes.
     const report = perkesoFileReport(FIXTURE);
-    expect(report).toMatch(/Salary \(the SOCSO\/EIS wage\)\s+RM\s+87845\.65\s+in the file: 8784565/);
-    expect(report).toMatch(/SOCSO employer contribution\s+RM\s+1335\.40\s+in the file: 133540/);
-    expect(report).toMatch(/SOCSO employee contribution\s+RM\s+381\.50\s+in the file: 38150/);
-    expect(report).toMatch(/EIS employer contribution\s+RM\s+152\.60\s+in the file: 15260/);
-    expect(report).toMatch(/EIS employee contribution\s+RM\s+152\.60\s+in the file: 15260/);
+    // 64c09b0e — the FIGURES are exactly as they were; the label beside each is now the specification's
+    // own row, so the five money lines can be ticked off against fields 6 to 10 without translation.
+    expect(report).toMatch(/Field 6 Employee Salary\s+RM\s+87845\.65\s+in the file: 8784565/);
+    expect(report).toMatch(/Field 7 Contribution Amount SOCSO \(Employer share\)\s+RM\s+1335\.40\s+in the file: 133540/);
+    expect(report).toMatch(/Field 8 Contribution Amount SOCSO \(Employee share\)\s+RM\s+381\.50\s+in the file: 38150/);
+    expect(report).toMatch(/Field 9 Contribution Amount EIS \(Employer share\)\s+RM\s+152\.60\s+in the file: 15260/);
+    expect(report).toMatch(/Field 10 Contribution Amount EIS \(Employee share\)\s+RM\s+152\.60\s+in the file: 15260/);
     expect(report).toContain('CENTS WITH NO DECIMAL POINT');
     expect(report).toContain('Added up over 14 record(s) of 14.');
   });
@@ -316,8 +325,8 @@ describe('5dbce839 — the four things the reporter asked the report for, and th
    */
   it('reads the totals back out of the FILE — edit a box in the text and the total follows', () => {
     const records = perkesoFileRecords(buildPerkesoSocsoFile(goldenInput));
-    const [seOffset, seWidth] = PERKESO_FILE_FIELDS.socsoEmployee;
-    const [erOffset, erWidth] = PERKESO_FILE_FIELDS.eisEmployer;
+    const { offset: seOffset, width: seWidth } = PERKESO_FILE_FIELDS.socsoEmployee;
+    const { offset: erOffset, width: erWidth } = PERKESO_FILE_FIELDS.eisEmployer;
     // Record 1 carries "  2925" and "  1170"; 1000 sen moves from the first box to the second.
     expect(perkesoField(records[0], PERKESO_FILE_FIELDS.socsoEmployee)).toBe('  2925');
     expect(perkesoField(records[0], PERKESO_FILE_FIELDS.eisEmployer)).toBe('  1170');
@@ -395,7 +404,7 @@ describe('5dbce839 — the MyCoID notice, on both halves', () => {
     expect(report).not.toContain('are EMPTY');
     expect(report).not.toMatch(/MyCoID \/ business registration number:/);
     // The value is still there to read in the field dump — the notice is gone, not the field.
-    expect(report).toContain('myCoId             [34111U              ]');
+    expect(report).toMatch(/Field 2 MyCoID\/SSM Number\s+\[34111U {14}\]/);
   });
 
   /** A blank MyCoID is not a refusal, and must never become one: the file is produced either way. */
@@ -405,11 +414,12 @@ describe('5dbce839 — the MyCoID notice, on both halves', () => {
     expect(perkesoField(perkesoFileRecords(withoutMyCoId)[0], PERKESO_FILE_FIELDS.myCoId)).toBe(' '.repeat(20));
     // Everything after the MyCoID box is identical, record by record, to the file that carries one — the
     // twenty spaces do not shift a single field that follows them.
-    const cut = PERKESO_FILE_FIELDS.identityNo[0];
+    const cut = PERKESO_FILE_FIELDS.identityNo.offset;
     const withOne = perkesoFileRecords(withMyCoId);
     perkesoFileRecords(withoutMyCoId).forEach((r, i) => {
       expect(r.slice(cut), `record ${i + 1} after the MyCoID box`).toBe(withOne[i].slice(cut));
-      expect(r.slice(0, cut - PERKESO_FILE_FIELDS.myCoId[1])).toBe(withOne[i].slice(0, cut - PERKESO_FILE_FIELDS.myCoId[1]));
+      const beforeMyCoId = cut - PERKESO_FILE_FIELDS.myCoId.width;
+      expect(r.slice(0, beforeMyCoId)).toBe(withOne[i].slice(0, beforeMyCoId));
     });
   });
 });
@@ -440,7 +450,7 @@ describe('r218 — unfinished names, read back out of the file', () => {
   /** Overwrite one record's 150-character name box, leaving every other position untouched. */
   const withName = (text: string, recordNo: number, name: string) => {
     const rows = perkesoFileRecords(text);
-    const [off, width] = PERKESO_FILE_FIELDS.name;
+    const { offset: off, width } = PERKESO_FILE_FIELDS.name;
     const r = rows[recordNo - 1];
     rows[recordNo - 1] = r.slice(0, off) + name.padEnd(width, ' ').slice(0, width) + r.slice(off + width);
     return rows.join(PERKESO_FILE_EOL);
@@ -479,9 +489,86 @@ describe('r218 — unfinished names, read back out of the file', () => {
 });
 
 
+/**
+ * 64c09b0e — THE REPORT IS NOW READABLE AGAINST PERKESO'S OWN TABLE, AND SAYS WHY THE FILE LOOKS FOLDED.
+ *
+ * The item asked us to re-configure the format: to treat 13-18 as a staff number and to rename 215-238 so
+ * that SOCSO's two shares became a wage class and a contribution component, with the employer/employee
+ * pair moved onto 227-238. Following it would have credited every SOCSO amount to EIS in a file that still
+ * measured 278 characters and whose totals still added up — nothing would have looked wrong until PERKESO
+ * had the money in the wrong scheme.
+ *
+ * NOTHING IN THE FILE MOVED. What changed is that the report no longer speaks our language: every field
+ * carries the agency's NO. and FIELD NAME (EN), so the reader can put this report beside the specification
+ * instead of interpreting `socsoEmployer`. And the report says, at the top, the one thing that produced
+ * BOTH items — every record is a single line, and an editor with word wrap on shows it folded.
+ */
+describe('64c09b0e — the report speaks the specification\'s language', () => {
+  const REPORT = perkesoFileReport(FIXTURE);
+
+  it('says at the top that a record is ONE line, and that word wrap is what folds it', () => {
+    expect(REPORT).toContain(`EVERY RECORD IS A SINGLE LINE OF ${PERKESO_FILE_LINE_LENGTH} CHARACTERS.`);
+    expect(REPORT).toMatch(/word wrap turned ON/);
+    expect(REPORT).toMatch(/not a line break in the file/);
+    // AT THE TOP: before the first record's field dump, or a reader who already believes the file is
+    // broken will never reach it. Both items arrived with a screenshot of a wrapping editor.
+    expect(REPORT.indexOf('EVERY RECORD IS A SINGLE LINE')).toBeLessThan(REPORT.indexOf('Record 1 ('));
+    expect(REPORT.indexOf('EVERY RECORD IS A SINGLE LINE')).toBeLessThan(REPORT.indexOf('TOTALS,'));
+    // …and it is true of this very file: no record contains a line break.
+    for (const r of perkesoFileRecords(FIXTURE)) expect(r).not.toMatch(/[\r\n]/);
+  });
+
+  it('prints every field with the agency\'s number and name, for every record', () => {
+    for (const view of describePerkesoFile(FIXTURE)) {
+      for (const f of view.fields) {
+        const spec = PERKESO_FILE_FIELDS[f.name as keyof typeof PERKESO_FILE_FIELDS];
+        expect(f.no, f.name).toBe(spec.no);
+        expect(f.label, f.name).toBe(spec.label);
+        expect(REPORT, `record ${view.recordNo} ${f.name}`).toContain(`${f.position}  Field ${f.no} ${f.label}`);
+      }
+    }
+  });
+
+  /**
+   * THE INTERNAL KEYS ARE GONE FROM THE REPORT — every one of the twelve, not just the ones a spot check
+   * would name. `filler1` survived the first pass of this change because it lives in a refusal sentence
+   * rather than in the field dump, which is exactly the kind of half-done rename this case exists to stop.
+   */
+  it('prints no internal key anywhere, including in a refusal sentence', () => {
+    const records = perkesoFileRecords(FIXTURE);
+    const filthyFiller = [records[0].slice(0, 238) + '0'.repeat(20) + records[0].slice(258), ...records.slice(1)].join(
+      PERKESO_FILE_EOL,
+    );
+    for (const report of [REPORT, perkesoFileReport(filthyFiller)]) {
+      for (const key of Object.keys(PERKESO_FILE_FIELDS)) {
+        expect(report, key).not.toMatch(new RegExp(`\\b${key}\\b`));
+      }
+    }
+    // …and the refusal it now prints instead names the row of the specification.
+    expect(perkesoFileReport(filthyFiller)).toContain('Field 11 Filler 1 must be blank');
+  });
+
+  /** Still us-ascii, with the new lines in it — the report describes a us-ascii file. */
+  it('stays pure ASCII', () => {
+    expect(/^[\x20-\x7E\n]*$/.test(REPORT)).toBe(true);
+  });
+});
+
 describe('5dbce839 — the writer and the field table come out of this round unchanged', () => {
+  /**
+   * ⚠️ 64c09b0e UPDATED THIS CASE RATHER THAN REPLACING IT, and the distinction is the whole point.
+   *
+   * The case was written to pin that 5dbce839 changed no offset. 64c09b0e is the SECOND round to change
+   * no offset — and it arrived asking for four money boxes to be renamed, which would have moved every
+   * SOCSO amount into the boxes PERKESO reads as EIS. So the twelve offset/width pairs below are
+   * UNCHANGED, character for character, from what this case has always asserted; what is new is that each
+   * row also carries the agency's own NO. and FIELD NAME (EN), which are LABELS and are asserted here
+   * beside the numbers so that renaming a box and moving one are the same test failure.
+   */
   it('keeps the twelve fields at exactly the offsets and widths read off the filed file', () => {
-    expect(PERKESO_FILE_FIELDS).toEqual({
+    // The offsets and widths, unchanged — written as the pairs the case has always pinned, then checked
+    // against the table, so this half stays readable as the assertion it was before the labels arrived.
+    const OFFSETS: Record<string, readonly [number, number]> = {
       employerCode: [0, 12],
       myCoId: [12, 20],
       identityNo: [32, 12],
@@ -494,9 +581,74 @@ describe('5dbce839 — the writer and the field table come out of this round unc
       eisEmployee: [232, 6],
       filler1: [238, 20],
       filler2: [258, 20],
-    });
+    };
+    expect(
+      Object.fromEntries(Object.entries(PERKESO_FILE_FIELDS).map(([k, f]) => [k, [f.offset, f.width]])),
+    ).toEqual(OFFSETS);
     expect(PERKESO_FILE_LINE_LENGTH).toBe(278);
     expect(PERKESO_FILE_EOL).toBe('\r\n');
+  });
+
+  /**
+   * 64c09b0e — THE AGENCY'S OWN NO. AND FIELD NAME (EN), transcribed from the specification's table.
+   *
+   * The four amount rows are the ones the item got wrong, so they are spelled out in full: 7 and 8 are
+   * SOCSO employer/employee, 9 and 10 are EIS employer/employee. Pinned as literals because this is what
+   * the report now prints, and a report that names a money box after the wrong scheme is worse than one
+   * that names it `socsoEmployer`.
+   */
+  it('names every field with PERKESO\'s own number and English name', () => {
+    expect(
+      Object.fromEntries(Object.entries(PERKESO_FILE_FIELDS).map(([k, f]) => [k, [f.no, f.label]])),
+    ).toEqual({
+      employerCode: [1, 'Employer Code'],
+      myCoId: [2, 'MyCoID/SSM Number'],
+      identityNo: [3, 'Identification Number / SOCSO Foreign Worker Number'],
+      name: [4, 'Employee Name'],
+      contributionMonth: [5, 'Month Contribution'],
+      wage: [6, 'Employee Salary'],
+      socsoEmployer: [7, 'Contribution Amount SOCSO (Employer share)'],
+      socsoEmployee: [8, 'Contribution Amount SOCSO (Employee share)'],
+      eisEmployer: [9, 'Contribution Amount EIS (Employer share)'],
+      eisEmployee: [10, 'Contribution Amount EIS (Employee share)'],
+      filler1: [11, 'Filler 1'],
+      filler2: [12, 'Filler 2'],
+    });
+  });
+
+  /**
+   * The numbers are 1..12, once each, in the order the record lays the fields out.
+   *
+   * A gap or a duplicate would not fail the literal case above in any way a reader would notice — two
+   * rows both numbered 8 read perfectly well — and it is exactly what a careless edit produces. Checked
+   * against the OFFSET order, so a field numbered out of sequence fails here rather than being carried
+   * into a report that claims to be readable against the agency's table.
+   */
+  it('numbers them 1 to 12, with no gaps, no duplicates, and in the record\'s own order', () => {
+    const byOffset = Object.values(PERKESO_FILE_FIELDS)
+      .slice()
+      .sort((a, b) => a.offset - b.offset);
+    expect(byOffset.map((f) => f.no)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(new Set(Object.values(PERKESO_FILE_FIELDS).map((f) => f.label)).size).toBe(12);
+    for (const f of Object.values(PERKESO_FILE_FIELDS)) {
+      expect(f.label.trim(), `field ${f.no}`).toBe(f.label);
+      expect(f.label.length, `field ${f.no}`).toBeGreaterThan(0);
+    }
+    // The declared position of every field is the specification's own 1-based POSITION column.
+    expect(byOffset.map((f) => `${f.offset + 1}-${f.offset + f.width}`)).toEqual([
+      '1-12',
+      '13-32',
+      '33-44',
+      '45-194',
+      '195-200',
+      '201-214',
+      '215-220',
+      '221-226',
+      '227-232',
+      '233-238',
+      '239-258',
+      '259-278',
+    ]);
   });
 
   it('still writes the customer\'s own file byte for byte, through the same mapper', () => {

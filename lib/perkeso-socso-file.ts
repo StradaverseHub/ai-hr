@@ -75,25 +75,63 @@ export const PERKESO_FILE_SPEC = {
   dated: '22 July 2022',
 } as const;
 
+/** One row of the specification's own table, as this module holds it. */
+export type PerkesoFileField = {
+  /** The agency's field NO., 1-12, exactly as its table numbers the rows. */
+  readonly no: number;
+  /** The agency's own FIELD NAME (EN), verbatim from its table. Not our words for it. */
+  readonly label: string;
+  /** 0-based start. The specification prints POSITION 1-based; `offset + 1` is that number. */
+  readonly offset: number;
+  /** The specification's LENGTH. */
+  readonly width: number;
+};
+
 /**
- * The layout of the attached file, transcribed ONCE. `[offset, width]`, both 0-based, so a field occupies
- * `[offset, offset + width)`. The writer, the shape check, the report and the tests all read THESE
- * numbers; nothing below restates an offset.
+ * The layout of the attached file, transcribed ONCE — and, since 64c09b0e, carrying the agency's own NO.
+ * and FIELD NAME (EN) for each row beside the numbers. `offset` is 0-based, so a field occupies
+ * `[offset, offset + width)` and the specification's 1-based POSITION column is `offset + 1`-`offset + width`.
+ * The writer, the shape check, the report and the tests all read THESE numbers; nothing below restates an
+ * offset.
+ *
+ * ⚠️ `no` AND `label` ARE LABELS, NOT A SECOND SOURCE OF POSITIONS. They exist so a line of the validation
+ * report can be laid beside PERKESO's table without anybody translating our camelCase keys into the
+ * agency's wording — which is precisely how 64c09b0e came to propose renaming four money boxes. Nothing
+ * reads a position out of `no`, and `no` never orders anything: `offset` does.
+ *
+ * ⚠️ THE FOUR AMOUNT ROWS ARE THE ONES A READER GETS WRONG, so their labels are the agency's in full:
+ * 7 and 8 are SOCSO employer/employee, 9 and 10 are EIS employer/employee. 64c09b0e asked for 215-220 to
+ * become a "wage class" and 227-238 to become the employer/employee pair; the specification (v1.0, 22 July
+ * 2022) and the customer's own filed BRG8A.txt both say otherwise, and following the request would have
+ * credited every SOCSO amount to EIS in a file that still measured 278 characters. DO NOT MOVE THESE.
  */
 export const PERKESO_FILE_FIELDS = {
-  employerCode: [0, 12],
-  myCoId: [12, 20],
-  identityNo: [32, 12],
-  name: [44, 150],
-  contributionMonth: [194, 6],
-  wage: [200, 14],
-  socsoEmployer: [214, 6],
-  socsoEmployee: [220, 6],
-  eisEmployer: [226, 6],
-  eisEmployee: [232, 6],
-  filler1: [238, 20],
-  filler2: [258, 20],
-} as const;
+  employerCode: { no: 1, label: 'Employer Code', offset: 0, width: 12 },
+  myCoId: { no: 2, label: 'MyCoID/SSM Number', offset: 12, width: 20 },
+  identityNo: { no: 3, label: 'Identification Number / SOCSO Foreign Worker Number', offset: 32, width: 12 },
+  name: { no: 4, label: 'Employee Name', offset: 44, width: 150 },
+  contributionMonth: { no: 5, label: 'Month Contribution', offset: 194, width: 6 },
+  wage: { no: 6, label: 'Employee Salary', offset: 200, width: 14 },
+  socsoEmployer: { no: 7, label: 'Contribution Amount SOCSO (Employer share)', offset: 214, width: 6 },
+  socsoEmployee: { no: 8, label: 'Contribution Amount SOCSO (Employee share)', offset: 220, width: 6 },
+  eisEmployer: { no: 9, label: 'Contribution Amount EIS (Employer share)', offset: 226, width: 6 },
+  eisEmployee: { no: 10, label: 'Contribution Amount EIS (Employee share)', offset: 232, width: 6 },
+  filler1: { no: 11, label: 'Filler 1', offset: 238, width: 20 },
+  filler2: { no: 12, label: 'Filler 2', offset: 258, width: 20 },
+} as const satisfies Record<string, PerkesoFileField>;
+
+/** The field table's own keys — the internal names, which the report no longer prints. */
+export type PerkesoFieldKey = keyof typeof PERKESO_FILE_FIELDS;
+
+/**
+ * How a field is named ANYWHERE a person reads it: the agency's number and the agency's words.
+ *
+ * ONE definition, because the report's field dump, its totals block and its refusal sentences all name
+ * fields and must not come to name them differently. "socsoEmployer" is a variable; "Field 7 Contribution
+ * Amount SOCSO (Employer share)" is a row in a document the reporter can hold up beside it.
+ */
+export const perkesoFieldName = (f: { readonly no: number; readonly label: string }): string =>
+  `Field ${f.no} ${f.label}`;
 
 /** The six boxes that carry money, in the order the record writes them. Named once so the shape check and
  *  the report cannot disagree with the writer about which fields are numeric. */
@@ -183,9 +221,9 @@ function idField(raw: string, width: number, field: string, who: string): string
 
 const spaces = (n: number) => ' '.repeat(n);
 
-/** `slice` by a `[offset, width]` entry from PERKESO_FILE_FIELDS. One reader, so no offset is restated. */
-export function perkesoField(record: string, spec: readonly [number, number]): string {
-  return record.slice(spec[0], spec[0] + spec[1]);
+/** `slice` by an entry from PERKESO_FILE_FIELDS. One reader, so no offset is restated. */
+export function perkesoField(record: string, spec: PerkesoFileField): string {
+  return record.slice(spec.offset, spec.offset + spec.width);
 }
 
 /**
@@ -241,9 +279,9 @@ export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
     );
   }
 
-  const employerCode = idField(employer.employerCode, F.employerCode[1], 'employer code', 'Employer');
+  const employerCode = idField(employer.employerCode, F.employerCode.width, 'employer code', 'Employer');
   if (!String(employer.employerCode ?? '').trim()) fail('Employer: the PERKESO employer code is required and is not on file.');
-  const myCoId = idField(employer.myCoId ?? '', F.myCoId[1], 'MyCoID / SSM number', 'Employer');
+  const myCoId = idField(employer.myCoId ?? '', F.myCoId.width, 'MyCoID / SSM number', 'Employer');
 
   if (employees.length === 0) fail('There is nobody to file for in this period.');
 
@@ -252,9 +290,9 @@ export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
     // The identity box is twelve characters and the request is explicit that it must not be treated as a
     // number: dashes are removed, everything else is written as given and must FIT.
     const identity = String(e.identityNo ?? '').replace(/[-\s]/g, '');
-    if (identity.length !== F.identityNo[1]) {
+    if (identity.length !== F.identityNo.width) {
       fail(
-        `${who}: the identity number must be exactly ${F.identityNo[1]} characters once dashes are removed, got "${e.identityNo}" (${identity.length}).`,
+        `${who}: the identity number must be exactly ${F.identityNo.width} characters once dashes are removed, got "${e.identityNo}" (${identity.length}).`,
       );
     }
     // ⚠️ THE WAGE IS A REFUSAL, NOT A ZERO. See the module header: a payslip written before the wage base
@@ -268,15 +306,15 @@ export function buildPerkesoSocsoFile(input: PerkesoFileInput): string {
       employerCode +
       myCoId +
       identity +
-      textField(e.name, F.name[1]) +
+      textField(e.name, F.name.width) +
       contributionMonth +
-      amountField(sen(e.wage, 'wage', who), F.wage[1], 'wage', who) +
-      amountField(sen(e.socsoEmployer, 'SOCSO employer contribution', who), F.socsoEmployer[1], 'SOCSO employer contribution', who) +
-      amountField(sen(e.socsoEmployee, 'SOCSO employee contribution', who), F.socsoEmployee[1], 'SOCSO employee contribution', who) +
-      amountField(sen(e.eisEmployer, 'EIS employer contribution', who), F.eisEmployer[1], 'EIS employer contribution', who) +
-      amountField(sen(e.eisEmployee, 'EIS employee contribution', who), F.eisEmployee[1], 'EIS employee contribution', who) +
-      spaces(F.filler1[1]) +
-      spaces(F.filler2[1])
+      amountField(sen(e.wage, 'wage', who), F.wage.width, 'wage', who) +
+      amountField(sen(e.socsoEmployer, 'SOCSO employer contribution', who), F.socsoEmployer.width, 'SOCSO employer contribution', who) +
+      amountField(sen(e.socsoEmployee, 'SOCSO employee contribution', who), F.socsoEmployee.width, 'SOCSO employee contribution', who) +
+      amountField(sen(e.eisEmployer, 'EIS employer contribution', who), F.eisEmployer.width, 'EIS employer contribution', who) +
+      amountField(sen(e.eisEmployee, 'EIS employee contribution', who), F.eisEmployee.width, 'EIS employee contribution', who) +
+      spaces(F.filler1.width) +
+      spaces(F.filler2.width)
     );
   });
 
@@ -323,18 +361,36 @@ export function perkesoRecordProblems(record: string, at: string): string[] {
   if (record.length !== PERKESO_FILE_LINE_LENGTH) {
     problems.push(`${at} is ${record.length} characters and every record must be ${PERKESO_FILE_LINE_LENGTH}`);
   }
+  // 64c09b0e — NAMED THE AGENCY'S WAY, not ours. These same sentences are what a refusal says and what
+  // the report lists, and "socsoEmployer" sends a reader to our source where "Field 7 Contribution Amount
+  // SOCSO (Employer share)" sends them to the row of the specification that settles it.
   for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
-    const v = perkesoField(record, PERKESO_FILE_FIELDS[key]);
-    if (!/^ *\d+$/.test(v)) problems.push(`${at}: ${key} reads "${v}", which is not a right-justified number`);
+    const field = PERKESO_FILE_FIELDS[key];
+    const v = perkesoField(record, field);
+    if (!/^ *\d+$/.test(v)) {
+      problems.push(`${at}: ${perkesoFieldName(field)} reads "${v}", which is not a right-justified number`);
+    }
   }
   for (const key of ['filler1', 'filler2'] as const) {
-    const v = perkesoField(record, PERKESO_FILE_FIELDS[key]);
-    if (v !== spaces(PERKESO_FILE_FIELDS[key][1])) problems.push(`${at}: ${key} must be blank, got "${v}"`);
+    const field = PERKESO_FILE_FIELDS[key];
+    const v = perkesoField(record, field);
+    if (v !== spaces(field.width)) problems.push(`${at}: ${perkesoFieldName(field)} must be blank, got "${v}"`);
   }
   return problems;
 }
 
-export type PerkesoFieldView = { name: string; position: string; length: number; value: string };
+export type PerkesoFieldView = {
+  /** The field table's INTERNAL key. Kept because the totals and the MyCoID notice look fields up by it;
+   *  it is not what the report prints — see `no` / `label`. */
+  name: string;
+  /** 64c09b0e — the agency's own NO., so a report line can be found in its table by number. */
+  no: number;
+  /** 64c09b0e — the agency's own FIELD NAME (EN). */
+  label: string;
+  position: string;
+  length: number;
+  value: string;
+};
 export type PerkesoRecordView = {
   recordNo: number;
   length: number;
@@ -357,9 +413,16 @@ export function describePerkesoFile(text: string): PerkesoRecordView[] {
       length: r.length,
       ok: problems.length === 0,
       problems,
-      fields: (Object.keys(PERKESO_FILE_FIELDS) as (keyof typeof PERKESO_FILE_FIELDS)[]).map((name) => {
-        const [offset, width] = PERKESO_FILE_FIELDS[name];
-        return { name, position: `${offset + 1}-${offset + width}`, length: width, value: perkesoField(r, [offset, width]) };
+      fields: (Object.keys(PERKESO_FILE_FIELDS) as PerkesoFieldKey[]).map((name) => {
+        const field = PERKESO_FILE_FIELDS[name];
+        return {
+          name,
+          no: field.no,
+          label: field.label,
+          position: `${field.offset + 1}-${field.offset + field.width}`,
+          length: field.width,
+          value: perkesoField(r, field),
+        };
       }),
     };
   });
@@ -416,14 +479,12 @@ function rm(cents: number): string {
   return `${sign}${Math.floor(n / 100)}.${String(n % 100).padStart(2, '0')}`;
 }
 
-/** What each money box is called in a sentence, rather than in the field table's camelCase. */
-const AMOUNT_LABEL: Record<PerkesoAmountField, string> = {
-  wage: 'Salary (the SOCSO/EIS wage)',
-  socsoEmployer: 'SOCSO employer contribution',
-  socsoEmployee: 'SOCSO employee contribution',
-  eisEmployer: 'EIS employer contribution',
-  eisEmployee: 'EIS employee contribution',
-};
+/**
+ * 64c09b0e — THE WIDEST THING THE REPORT PRINTS A FIELD NAME INTO, so the totals block and the per-record
+ * dump line up as columns instead of ragging. Derived from the labels themselves rather than typed, so a
+ * label can never outgrow its column silently. (Field 3's name is the long one, at 51 characters.)
+ */
+const LABEL_COLUMN = Math.max(...Object.values(PERKESO_FILE_FIELDS).map((f) => perkesoFieldName(f).length));
 
 /**
  * The report as plain ASCII, for reading beside a PERKESO sample. ASCII only, deliberately: it describes
@@ -442,8 +503,17 @@ export function perkesoFileReport(text: string): string {
   out.push('PERKESO SOCSO + EIS UPLOAD FILE - RECORD BY RECORD CHECK');
   out.push('');
   out.push('Every position below is read out of the one field table this system writes the file with, and');
-  out.push('every value is read back out of the file itself. Hold it beside a PERKESO sample and check that');
-  out.push('each value sits in the same columns.');
+  out.push('every value is read back out of the file itself. Every field is named with PERKESO\'s own NO. and');
+  out.push('FIELD NAME (EN), so a line of this report can be laid straight beside the specification\'s table.');
+  out.push('');
+  // 64c09b0e — THE SENTENCE THIS WHOLE ROUND EXISTS FOR, and it goes at the TOP. Two items in a row
+  // reported records "split across two lines" and attached screenshots of an editor with word wrap on.
+  // The bytes were right both times. Said here before any field position, because a reader who believes
+  // the file is broken will not read a table that says it is not.
+  out.push(`EVERY RECORD IS A SINGLE LINE OF ${PERKESO_FILE_LINE_LENGTH} CHARACTERS.`);
+  out.push('A text editor with word wrap turned ON will show one record folded over two lines on screen.');
+  out.push('That is the editor wrapping a long line, not a line break in the file: there is no line break');
+  out.push('inside a record. Turn word wrap off and each employee sits on one line.');
   out.push('');
   out.push(`Specification: PERKESO "${PERKESO_FILE_SPEC.name}",`);
   out.push(
@@ -499,15 +569,18 @@ export function perkesoFileReport(text: string): string {
   out.push('The file carries every amount as CENTS WITH NO DECIMAL POINT, so the digits it actually holds');
   out.push('are printed beside each RM figure. Check both.');
   for (const key of PERKESO_FILE_AMOUNT_FIELDS) {
-    out.push(`  ${AMOUNT_LABEL[key].padEnd(28)} RM ${rm(totals.sen[key]).padStart(11)}   in the file: ${totals.sen[key]}`);
+    // 64c09b0e — the agency's number and the agency's words, the same ones the dump below prints, so the
+    // five money lines can be checked off against the specification's rows 6 to 10 without translation.
+    const name = perkesoFieldName(PERKESO_FILE_FIELDS[key]);
+    out.push(`  ${name.padEnd(LABEL_COLUMN)}  RM ${rm(totals.sen[key]).padStart(11)}   in the file: ${totals.sen[key]}`);
   }
   out.push(`Added up over ${totals.records} record(s) of ${views.length}.`);
 
   for (const v of views) {
     out.push('');
-    out.push(`Record ${v.recordNo} (${v.length} characters)`);
+    out.push(`Record ${v.recordNo} (${v.length} characters, one line)`);
     for (const f of v.fields) {
-      out.push(`  ${f.position.padStart(7)}  ${f.name.padEnd(18)} [${f.value}]`);
+      out.push(`  ${f.position.padStart(7)}  ${perkesoFieldName(f).padEnd(LABEL_COLUMN)}  [${f.value}]`);
     }
   }
   return out.join('\n') + '\n';
@@ -557,7 +630,7 @@ export function perkesoFileUnfinishedNames(text: string): { recordNo: number; id
 export function perkesoFileMycoidNotice(views: readonly PerkesoRecordView[]): string[] {
   const blank = views.filter((v) => !(v.fields.find((f) => f.name === 'myCoId')?.value ?? '').trim());
   if (blank.length === 0) return [];
-  const [offset, width] = PERKESO_FILE_FIELDS.myCoId;
+  const { offset, width } = PERKESO_FILE_FIELDS.myCoId;
   const where = blank.length === views.length ? 'on every record' : `on ${blank.map((v) => `record ${v.recordNo}`).join(', ')}`;
   return [
     `MyCoID / business registration number: positions ${offset + 1}-${offset + width} are EMPTY ${where}.`,
