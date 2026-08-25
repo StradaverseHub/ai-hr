@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { renderEaPdf, type EaPdfData, type EaPdfLabels } from '../lib/ea-pdf';
+import { blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels } from '../lib/ea-pdf';
 
 /**
  * 6036dab7 — READ THE DRAWN TEXT BACK OUT OF THE PDF, WITH ITS COORDINATES.
@@ -405,5 +405,123 @@ describe('EA PDF renderer — the real message bundle', () => {
     for (let p = 0; p < pageHeights.length; p++) {
       expect(items.some((it) => it.page === p), `page ${p} must carry text`).toBe(true);
     }
+  });
+});
+
+/**
+ * ⚠️ r220 (item 61c2e30f) — THE BLANK FORM, AND THE ONE WAY IT CAN GO WRONG WITHOUT ANYTHING NOTICING.
+ *
+ * The reporter asked to see the EA empty first, so the arrangement can be held against LHDN's own page
+ * before a filled one is trusted. Every partB/partC/partD/partE amount on `EaPdfData` is a REQUIRED number,
+ * so an "empty" statement is a statement of ZEROS — and zeros print. A blank C.P.8A with `0.00` down the
+ * whole money column is not a blank form at all: it asserts, on every line at once, that none of that money
+ * exists (AGENTS 28, which r209 shipped on this exact form one box at a time).
+ *
+ * Nothing else in this file can see that. The document is one page, every line is inside it, every caption
+ * is present, it opens, it is bigger than 1000 bytes and it starts with %PDF. So the assertions are: the
+ * blank is ONE page in every locale the app has, NO amount appears anywhere on it, and it still draws every
+ * caption the filled form draws — a "blank" that quietly lost half the form would satisfy the first two.
+ */
+describe('r220 — the blank C.P.8A', () => {
+  const blankBundle = (locale: string): EaPdfLabels => ({
+    ...bundleFor(locale),
+    disclaimer: JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).payroll.ea
+      .blankDisclaimer,
+  });
+
+  it.each(LOCALES)('%s: is ONE page, with every line inside it', async (locale) => {
+    const { items, pageHeights } = await drawnText(
+      await renderEaPdf(blankEaPdfData(), blankBundle(locale), { blank: true }),
+    );
+    expect(items.length, `${locale}: the whole form was drawn, not an early return`).toBeGreaterThan(40);
+    expect(pageHeights.length, `${locale}: the blank EA must be a single page`).toBe(1);
+    const off = items.filter((it) => it.y < 0 || it.y > pageHeights[it.page]);
+    expect(off.map((it) => `p${it.page} y=${it.y} ${it.text}`), `${locale}: every line inside its page`).toEqual([]);
+  });
+
+  it.each(LOCALES)('%s: carries no 0.00 and no figure of any kind', async (locale) => {
+    const { items } = await drawnText(await renderEaPdf(blankEaPdfData(), blankBundle(locale), { blank: true }));
+    const printed = items.map((it) => it.text);
+
+    // The headline assertion, named on its own so a regression says exactly this.
+    expect(printed.filter((s) => s === '0.00'), `${locale}: a blank form printed 0.00`).toEqual([]);
+    expect(printed.filter((s) => s === 'RM 0.00'), `${locale}: a blank form printed RM 0.00`).toEqual([]);
+
+    // …and the wider one, because a sentinel or a placeholder would pass the line above. Nothing drawn on
+    // a blank form may be an amount, a bare number, a dash or an "N/A": the form prints its own rules and
+    // NOTHING on them, which is what the agency's blank page looks like.
+    const amounts = printed.filter((s) => /^-?[\d,]+\.\d\d$/.test(s) || /^RM\s/.test(s));
+    expect(amounts, `${locale}: amounts printed on a blank form`).toEqual([]);
+    const counts = printed.filter((s) => /^\d+$/.test(s));
+    expect(counts, `${locale}: bare numbers printed on a blank form (item 8 is the usual suspect)`).toEqual([]);
+    expect(printed.filter((s) => s === '\u2014' || s === '-' || s === 'N/A')).toEqual([]);
+  });
+
+  /**
+   * THE OTHER HALF, and the one a "no figures" test cannot see: a renderer that returned an early empty
+   * page would pass every assertion above. The blank must draw EVERY caption the filled form draws — the
+   * masthead, the banner, all six section titles, every numbered box, the officer box and the signature
+   * area — because that is the whole point of holding it up against the agency's page.
+   */
+  it('draws every caption the filled form draws, and differs from it only in the figures', async () => {
+    const filled = (await drawnText(await renderEaPdf(fullForm, bundleFor('ms')))).items.map((it) => it.text);
+    const blank = (await drawnText(await renderEaPdf(blankEaPdfData(), blankBundle('ms'), { blank: true }))).items.map(
+      (it) => it.text,
+    );
+
+    const real = bundleFor('ms');
+    // Named individually, so a regression says WHICH part of the form left rather than "a caption is gone".
+    for (const caption of [
+      real.sectionAEmployeeParticulars,
+      real.sectionBEmploymentIncome,
+      real.sectionCPensionOther,
+      real.sectionDTotalDeductions,
+      real.sectionEContributions,
+      real.sectionFExemptAllowances,
+      real.formTotal,
+      real.grossSalary,
+      real.gratuity,
+      real.compensation,
+      real.childRelief,
+      real.contributionAmount,
+      real.partYearNote,
+      real.eisSip,
+    ]) {
+      expect(blank, `the blank form is missing: ${caption}`).toContain(winAnsi(caption));
+    }
+
+    // …and the sweep behind those, so a caption nobody thought to name here cannot go missing either. What
+    // the FILLED form draws and the blank does not must be exactly: figures, the employee's and employer's
+    // own details, the year appended to the masthead, and the footnote strip (which says something else on
+    // a blank, deliberately — "Generated from payroll for YA 2026" is false on a page with nothing in it).
+    const onlyOnFilled = filled.filter((t) => !blank.includes(t));
+    const isFigureOrDetail = (t: string) =>
+      /^-?[\d,]+\.\d\d$/.test(t) || /^RM\s/.test(t) || /^\d+$/.test(t) || /^\d\d\/\d\d\/\d{4}$/.test(t);
+    const fixtureDetails = new Set<string>([
+      fullForm.employee.name,
+      fullForm.employee.ic!,
+      fullForm.employee.taxNo!,
+      fullForm.employee.epfNo!,
+      fullForm.employee.socsoNo!,
+      fullForm.employee.employeeNo!,
+      fullForm.employee.jobTitle!,
+      fullForm.employee.passport!,
+      fullForm.employer.name,
+      fullForm.employer.eNumber!,
+      fullForm.employer.phone!,
+      fullForm.employer.lhdnState!,
+      fullForm.employer.officerName!,
+      fullForm.employer.officerPosition!,
+      fullForm.employer.address.join(', '),
+      fullForm.partE.fundName,
+      `${'BAGI TAHUN BERAKHIR 31 DISEMBER'} ${fullForm.year}`,
+    ]);
+    const disclaimerLines = new Set(filled.slice(filled.indexOf(winAnsi(real.amendedNote)) + 1));
+    const unexplained = onlyOnFilled.filter(
+      (t) => !isFigureOrDetail(t) && !fixtureDetails.has(t) && !disclaimerLines.has(t) && t !== winAnsi(real.amendedNote),
+    );
+    expect(unexplained, `these are drawn on the filled form and missing from the blank: ${unexplained.join(' | ')}`).toEqual(
+      [],
+    );
   });
 });

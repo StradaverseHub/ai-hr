@@ -215,11 +215,34 @@ export type StatutoryFormLink = {
   actionLabelKey?: string;
   /**
    * d3a9383c — a SECOND action on the row, when one exists. Today: the blank fillable CP22, for a late
-   * filing or a notice the operator would rather complete by hand. Both optional and read together; a row
-   * with neither renders exactly one action, as every row did before.
+   * filing or a notice the operator would rather complete by hand, and the blank C.P.8A beside each EA
+   * row. Both optional and read together; a row with neither renders exactly one action, as every row did
+   * before.
    */
   secondaryHref?: string;
   secondaryLabelKey?: string;
+  /**
+   * r220 — the TOOLTIP on the second action, from THIS screen's own `payroll.statutoryForms` namespace.
+   *
+   * d3a9383c gave the blank CP22 its tooltip from `payroll.cp22`, arguing that the sentence describes a
+   * FORM rather than this screen. That is still true of the CP22's, so it is left exactly where it is and
+   * an entry that declares no key still gets it — the CP22 row is byte-identical. A row that names its own
+   * key gets that instead, which is what the two EA rows need: the blank C.P.8A's caveat is not the blank
+   * CP22's, and the alternative (this screen mapping ids to namespaces) is the screen naming forms again.
+   */
+  secondaryTitleKey?: string;
+  /**
+   * r220 — a THIRD action, for the one row that has three.
+   *
+   * The two EA rows each offer their language's blank form AND the field register — every box on the
+   * C.P.8A with its official wording and what feeds it, which is the document that makes the blank form
+   * checkable box by box rather than merely printable. Naming it explicitly, like the second action, keeps
+   * the shape of a row something you can read off the type: an action list would let a later edit grow a
+   * row four buttons without anybody deciding to.
+   */
+  tertiaryHref?: string;
+  tertiaryLabelKey?: string;
+  tertiaryTitleKey?: string;
 };
 
 export type ReportDef = {
@@ -1644,6 +1667,18 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // `official`. The shared `agency-layout` chip says "we hold no blank from the agency to print onto",
   // which `public/forms/` answers for the C.P.8A too — nothing here claims what LHDN publishes
   // (AGENTS 28b).
+  //
+  // r220 (item 61c2e30f) — EACH EA ROW NOW OFFERS THE FORM WITH NOTHING IN IT, AND THE REGISTER OF ITS
+  // BOXES. Until this round an EA could only be produced for a NAMED employee, for a year that already had
+  // payroll behind it, so there was no way to open the form on its own and check the arrangement against
+  // LHDN's page before trusting a filled one — which is exactly what the reporter asked for first.
+  // `/payroll/ea/blank` renders THE SAME renderer over an empty statement with the money column
+  // suppressed (never 0.00 — AGENTS 28), in this row's own language; `/payroll/ea/field-register` is the
+  // box-by-box list that makes the blank checkable rather than merely printable, and it is one document
+  // for both rows because it describes the FORM, not a language.
+  //
+  // The fidelity is UNCHANGED and stays `agency-layout` for both: a blank copy of our rendering is still
+  // our rendering. Nothing here moves toward `official`, which needs agency artwork in `public/forms/`.
   {
     id: 'my.ea.en',
     labelKey: 'link_ea_en',
@@ -1653,6 +1688,12 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=en',
     actionLabelKey: 'openEmployeeList',
+    secondaryHref: '/payroll/ea/blank?lang=en',
+    secondaryLabelKey: 'link_ea_blank_en',
+    secondaryTitleKey: 'link_ea_blank_title',
+    tertiaryHref: '/payroll/ea/field-register',
+    tertiaryLabelKey: 'link_ea_register',
+    tertiaryTitleKey: 'link_ea_register_title',
     fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 3,
@@ -1666,6 +1707,12 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=ms',
     actionLabelKey: 'openEmployeeList',
+    secondaryHref: '/payroll/ea/blank?lang=ms',
+    secondaryLabelKey: 'link_ea_blank_ms',
+    secondaryTitleKey: 'link_ea_blank_title',
+    tertiaryHref: '/payroll/ea/field-register',
+    tertiaryLabelKey: 'link_ea_register',
+    tertiaryTitleKey: 'link_ea_register_title',
     fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 4,

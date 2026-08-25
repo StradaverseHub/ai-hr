@@ -20,17 +20,33 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EA_FIELDS, EA_PART_B_COMPONENTS } from '../localization/my/reports';
+import { EA_FORM_WORDS } from '../lib/ea-pdf';
+import { EA_REGISTER, EA_REGISTER_NOTHING_FEEDS, renderEaFieldRegisterMarkdown } from '../lib/ea-field-register';
 
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 const PAGE = read('app/payroll/reports/ea/[employmentId]/page.tsx');
 const RENDERER = read('lib/ea-pdf.ts');
-const ROUTE = read('app/me/ea/[employmentId]/pdf/route.ts');
+// r220 — the fifty-odd `payroll.ea` captions moved out of the /me route into a bundle both EA PDF routes
+// call (the blank C.P.8A is the second). See test/ea-pdf-i18n-keys.test.ts for why.
+const LABELS = read('lib/ea-pdf-labels.ts');
 
 /** The keys declared on `EaPdfLabels` — read off the type declaration, since types are erased at runtime. */
 function eaPdfLabelKeys(): string[] {
   const block = RENDERER.match(/export type EaPdfLabels = \{([\s\S]*?)\n\};/);
   expect(block, 'EaPdfLabels declaration not found in lib/ea-pdf.ts').toBeTruthy();
   return [...block![1].matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*)\??:/gm)].map((m) => m[1]);
+}
+
+/**
+ * r220 — one property of the object `eaPdfLabels()` returns, as source text.
+ *
+ * The properties are one per line at four spaces of indent, so the object splits on the next such line;
+ * a property whose value spans several lines (a ternary, a call with options) comes back whole.
+ */
+function labelProperty(key: string): string {
+  const body = LABELS.slice(LABELS.indexOf('  return {'));
+  const chunks = body.split(/\n    (?=[a-zA-Z][a-zA-Z0-9]*:)/);
+  return chunks.find((c) => new RegExp(`^\\s*${key}:`).test(c)) ?? '';
 }
 
 /** The field ids listed in the page's `amendFields` array literal — the panel HR actually sees. */
@@ -73,8 +89,14 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     // tsc already refuses a route that omits a required key; this catches the other direction — a key
     // wired through `t('…')` under a name the `payroll.ea` namespace does not have would fail
     // test/ea-pdf-i18n-keys.test.ts, and one supplied from a literal would fail here.
-    const notFromNamespace = keys.filter((k) => !ROUTE.includes(`${k}: t('`));
-    expect(notFromNamespace, `EaPdfLabels keys the route does not resolve from payroll.ea: ${notFromNamespace.join(', ')}`).toEqual([]);
+    //
+    // r220 — READ THE PROPERTY, NOT A SUBSTRING. This used to be `includes(`${k}: t('`)`, which cannot see
+    // a key resolved on a BRANCH — and `disclaimer` is now one: a blank C.P.8A gets `blankDisclaimer`,
+    // because "Generated from payroll for YA 2026" is false on a page with nothing in it. Splitting the
+    // returned object into its properties and requiring a `t(` inside each one is strictly stronger than
+    // the substring was: it also catches a key whose value came from somewhere else entirely.
+    const notFromNamespace = keys.filter((k) => !/\bt\(['"]/.test(labelProperty(k)));
+    expect(notFromNamespace, `EaPdfLabels keys the bundle does not resolve from payroll.ea: ${notFromNamespace.join(', ')}`).toEqual([]);
   });
 
   it('every Part B component that sums into the total is itself a printed line', () => {
@@ -167,4 +189,194 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     }
   });
 
+});
+
+/**
+ * ⚠️ r220 (item 61c2e30f) — THE FIELD REGISTER IS THE FIFTH SURFACE, AND IT IS THE ONE A HUMAN READS.
+ *
+ * `docs/forms/ea-cp8a-field-register.md` is the box-by-box list the reporter asked for: every box on the
+ * C.P.8A with its official section, its official box number, the agency's own wording, the kind of value it
+ * takes and what feeds it today. It is the document somebody holds beside the blank form to answer "is the
+ * EA right?", and it is worth exactly as much as it is CURRENT.
+ *
+ * A hand-written register would have been right on the day it was written. So it is generated from
+ * `lib/ea-field-register.ts` and pinned to the renderer in BOTH directions here — a row naming a caption
+ * nothing draws fails, and a caption or a figure the renderer draws that no row names fails. Neither
+ * direction is visible to tsc: the register is data, and the renderer is drawing calls.
+ */
+describe('r220 — the field register and the drawn form describe the same page', () => {
+  const REGISTER_DOC = 'docs/forms/ea-cp8a-field-register.md';
+
+  /** The register's caption keys, split by where the caption comes from. */
+  const labelCaptions: string[] = EA_REGISTER.filter((r) => r.caption.from === 'label').map((r) => r.caption.key);
+  const agencyCaptions: string[] = EA_REGISTER.filter((r) => r.caption.from === 'agency').map((r) => r.caption.key);
+
+  it('every row names a caption the renderer actually draws', () => {
+    // A `label` row must be a real `EaPdfLabels` key the renderer reads…
+    const declared = eaPdfLabelKeys();
+    const unknown = labelCaptions.filter((k) => !declared.includes(k));
+    expect(unknown, `register rows naming a label that is not on EaPdfLabels: ${unknown.join(', ')}`).toEqual([]);
+    const undrawn = labelCaptions.filter((k) => !new RegExp(`\\bt\\.${k}\\b`).test(RENDERER));
+    expect(undrawn, `register rows whose caption nothing draws: ${undrawn.join(', ')}`).toEqual([]);
+    // …and an `agency` row must be a real EA_FORM_WORDS key the renderer draws through `W.`.
+    const unknownAgency = agencyCaptions.filter((k) => !(k in EA_FORM_WORDS));
+    expect(unknownAgency, `register rows naming agency words that do not exist: ${unknownAgency.join(', ')}`).toEqual([]);
+    const undrawnAgency = agencyCaptions.filter((k) => !new RegExp(`\\bW\\.${k}\\b`).test(RENDERER));
+    expect(undrawnAgency, `register rows whose agency caption nothing draws: ${undrawnAgency.join(', ')}`).toEqual([]);
+  });
+
+  it('every caption the renderer draws has a row in the register', () => {
+    const missingLabels = eaPdfLabelKeys().filter((k) => !labelCaptions.includes(k));
+    expect(missingLabels, `captions drawn on the form with no register row: ${missingLabels.join(', ')}`).toEqual([]);
+    const missingAgency = Object.keys(EA_FORM_WORDS).filter((k) => !agencyCaptions.includes(k));
+    expect(missingAgency, `agency words drawn on the form with no register row: ${missingAgency.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * The other direction, on the FIGURES rather than the captions: the register claims to say what feeds
+   * each box, so a value the renderer reads off `EaPdfData` that no row names is a box whose source the
+   * register is silent about — which is the state the whole mapping was in before this item.
+   */
+  it('every EaPdfData value the renderer reads is named as some row’s source', () => {
+    const body = RENDERER.slice(RENDERER.indexOf('export async function renderEaPdf'));
+    const drawnPaths = new Set(
+      // `[a-zA-Z0-9]` and not `[a-zA-Z]`: `partD.cp38` and `partD.tp1Relief` carry digits, and a letters-only
+      // class silently drops exactly those two — a register that stopped naming CP38 would have passed.
+      [...body.matchAll(/\bd\.((?:employer|employee|partB|partC|partD|partE)\.[a-zA-Z0-9]+|year|overrides)\b/g)].map((m) => m[1]),
+    );
+    expect(drawnPaths.size, 'sanity: the renderer body was found and scanned').toBeGreaterThan(30);
+    const registered = new Set(EA_REGISTER.flatMap((r) => r.sources));
+    const unlisted = [...drawnPaths].filter((p) => !registered.has(p)).sort();
+    expect(unlisted, `values the form draws that the register does not account for: ${unlisted.join(', ')}`).toEqual([]);
+    // …and nothing in the register points at a value the renderer never reads.
+    const phantom = [...registered].filter((p) => !drawnPaths.has(p)).sort();
+    expect(phantom, `register sources the renderer never reads: ${phantom.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * ⚠️ THE PROMISE THE REGISTER MAKES ABOUT AN UNFED BOX, AND IT IS AGENTS 28 IN DOCUMENT FORM. A box the
+   * agency asks for that this system holds nothing for must SAY SO — "nothing feeds this yet" — rather than
+   * carry an empty cell a reader takes for an oversight, or a cell describing a source that does not exist.
+   */
+  it('a value box with no source says “nothing feeds this yet”, and one with a source does not', () => {
+    // `heading` and `note` take no value at all — a section title, the column's RM, our own footnote strip —
+    // so the rule is about the boxes somebody would actually write in.
+    const lying = EA_REGISTER.filter((r) => !['heading', 'note'].includes(r.value) && r.sources.length === 0 && r.feed !== 'none');
+    expect(lying.map((r) => `${r.section}${r.box}`), 'value boxes with no source that claim one').toEqual([]);
+    const silent = EA_REGISTER.filter((r) => r.sources.length > 0 && r.feed === 'none');
+    expect(silent.map((r) => `${r.section}${r.box}`), 'boxes with a source that claim nothing feeds them').toEqual([]);
+    // The exact wording is a promise made to the reporter in the approved plan, so it is pinned.
+    expect(EA_REGISTER_NOTHING_FEEDS).toBe('nothing feeds this yet');
+    expect(renderEaFieldRegisterMarkdown()).toContain(EA_REGISTER_NOTHING_FEEDS);
+    // …and at least one box really is in that state, so the case cannot pass vacuously.
+    expect(EA_REGISTER.filter((r) => r.feed === 'none').length).toBeGreaterThan(4);
+  });
+
+  /**
+   * r219's lesson, applied to the register: a caption that LOOKS like the agency's box while saying
+   * something the agency's page does not say is worse than an obviously-ours label, because a reader
+   * checking a C.P.8A against the blank form has no reason to doubt a numbered caption. So every wording in
+   * the register must appear in the hand transcription of the specimen.
+   *
+   * Whitespace is normalised (the transcription wraps its longer captions) and runs of underscores are
+   * collapsed (it draws the form's fill-in rules as `______`). Nothing else is relaxed.
+   */
+  it('every official wording in the register appears in the transcription of the specimen', () => {
+    const norm = (v: string) => v.replace(/_+/g, '_').replace(/\s+/g, ' ').trim();
+    const transcription = norm(read('docs/forms/ea-cp8a-pin-2024-transcription.txt'));
+    const worded = EA_REGISTER.filter((r) => r.wording !== '');
+    expect(worded.length).toBeGreaterThan(55); // sanity: nearly every row carries agency wording
+    const missing = worded.filter((r) => !transcription.includes(norm(r.wording)));
+    expect(
+      missing.map((r) => `${r.section}${r.box ? ` ${r.box}` : ''}: ${JSON.stringify(r.wording)}`),
+      'register wordings that are not in docs/forms/ea-cp8a-pin-2024-transcription.txt',
+    ).toEqual([]);
+    // The only rows allowed to carry no agency wording are the ones that are not the agency's boxes.
+    const wordless = EA_REGISTER.filter((r) => r.wording === '');
+    expect([...new Set(wordless.map((r) => r.section))].sort()).toEqual(['BELOW', 'META']);
+  });
+
+  /**
+   * ⚠️ THE CHAIN THE PLAN PROMISED, AND THE LINK THAT WAS MISSING FROM IT.
+   *
+   * The case above holds the register's `wording` column to the transcription — but that column is a THIRD
+   * hand-typed copy of each caption. The page draws `messages/ms.json` → `payroll.ea.<key>`, and nothing
+   * joined the two. Row A/1 could go on carrying `wording: 'Nama Penuh Pekerja / Pesara (Encik/Cik/Puan)'`
+   * while the form printed something else entirely, and every other case in this file would stay green: the
+   * register would be a document describing a form that does not exist, which is worse than no register at
+   * all, because it is the document somebody TRUSTS while checking a C.P.8A.
+   *
+   * So this closes the chain — PRINTED CAPTION → REGISTER WORDING → TRANSCRIPTION — and it subsumes the
+   * hardcoded twenty-one-key list in test/r219-ea-cp8a-form.test.ts, because the register names EVERY drawn
+   * caption (the two cases at the top of this describe prove that in both directions). The six section
+   * titles, `sectionBExcluding`, every numbered Part A item, the description cues, 1(f)'s two period rules,
+   * `fundName`, `contributionAmount` and `formTotal` are all checked here and none of them was on that list.
+   *
+   * OUR NUMBERING IS STRIPPED FIRST. The form prints its item numbers in its own column, so the caption
+   * carries "1(b) ", "5(a) ", "9. ", "(a) " or the section letter "A  " as OUR prefix; everything after it
+   * is the agency's and must equal the register's wording exactly.
+   */
+  it('every register wording is the Malay caption the form actually prints', () => {
+    const ms = JSON.parse(read('messages/ms.json')).payroll.ea as Record<string, string>;
+    /** OUR prefixes: a section letter, "9. ", "1(f) ", "5(a) ", or a bare "(a) " under item 9. */
+    const OURS = /^(?:[A-F] {2}|\d+(?:\([a-z]\))?[.)]?\s+|\([a-z]\)\s+)/;
+    const printed = (v: string) => v.replace(OURS, '').trim();
+
+    /**
+     * The ONE row whose register wording is deliberately LONGER than the printed caption. 1(f) prints
+     * “Ganjaran bagi tempoh” and then draws the form's own `dari ___ hingga ___` rules as two further
+     * captions, so the register states the whole box on one row. Those two rules are themselves register
+     * rows (`periodFrom` / `periodTo`) and are checked like everything else, so this exception leaves
+     * nothing unverified — the printed caption must still be the START of the register's wording.
+     */
+    const INLINE_RULES = new Set(['gratuity']);
+
+    const rows = EA_REGISTER.filter((r) => r.caption.from === 'label' && r.wording !== '');
+    expect(rows.length, 'sanity: the register carries agency wording on its label rows').toBeGreaterThan(40);
+    // Resolution is ASSERTED, never filtered. A silently dropped key is exactly how four captions in
+    // test/r219-ea-cp8a-form.test.ts went unchecked for a whole round while their guard looked green.
+    const unresolved = rows.filter((r) => typeof ms[r.caption.key] !== 'string');
+    expect(
+      unresolved.map((r) => r.caption.key),
+      'register captions with no payroll.ea key in messages/ms.json',
+    ).toEqual([]);
+
+    const drifted = rows.filter((r) => {
+      const caption = printed(ms[r.caption.key]);
+      return INLINE_RULES.has(r.caption.key) ? !r.wording.startsWith(caption) : caption !== r.wording;
+    });
+    expect(
+      drifted.map(
+        (r) =>
+          `${r.section}${r.box ? ` ${r.box}` : ''} (${r.caption.key}): the form prints ${JSON.stringify(printed(ms[r.caption.key]))}, the register says ${JSON.stringify(r.wording)}`,
+      ),
+      'captions the form prints that the register does not carry — the transcription of the specimen is the authority for both',
+    ).toEqual([]);
+  });
+
+  /**
+   * The checked-in document is what a reviewer reads in a diff and what the shelf hands an operator, so it
+   * cannot lag the data. Regenerate with `pnpm tsx scripts/gen-ea-field-register.ts`.
+   */
+  it('the shipped register document is up to date with the register data', () => {
+    expect(fs.existsSync(path.resolve(__dirname, '..', REGISTER_DOC)), `${REGISTER_DOC} is missing`).toBe(true);
+    expect(read(REGISTER_DOC), `${REGISTER_DOC} is stale — run scripts/gen-ea-field-register.ts`).toBe(
+      renderEaFieldRegisterMarkdown(),
+    );
+  });
+
+  /**
+   * The blank form and the register are the two halves of what was asked for, and each is reachable from
+   * the shelf. Pinned here rather than only in test/statutory-forms-page.test.ts because a route file that
+   * disappears takes the register with it and the catalog entry would still look fine.
+   */
+  it('both downloads exist as routes, and the register is served from the constant rather than from docs/', () => {
+    const root = path.resolve(__dirname, '..');
+    expect(fs.existsSync(path.join(root, 'app/payroll/ea/blank/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'app/payroll/ea/field-register/route.ts'))).toBe(true);
+    const route = read('app/payroll/ea/field-register/route.ts');
+    expect(route).toContain('renderEaFieldRegisterMarkdown()');
+    // Reading docs/ at request time would 404 the download on any deploy that did not carry the folder.
+    expect(route).not.toContain('readFileSync');
+  });
 });

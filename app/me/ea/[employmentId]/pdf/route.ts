@@ -3,10 +3,11 @@
 // returns null unless the caller may see the employment (own, a report's/subordinate's via
 // can_see_employment, or admin via is_admin_for — db/migrations 0010/0016/0017). So an employee can only
 // pull their own (or a subordinate's, or — as admin — their company's) EA. Mirrors the payslip-pdf route.
-import { getLocale, getTranslations } from 'next-intl/server';
+import { getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';
 import { renderEaPdf, type EaPdfData } from '@/lib/ea-pdf';
+import { eaPdfLabels } from '@/lib/ea-pdf-labels';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
 
@@ -59,7 +60,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   const langParam = new URL(req.url).searchParams.get('lang');
   const lang: EaLang | null = EA_LANGS.includes(langParam as EaLang) ? (langParam as EaLang) : null;
   const locale = lang ?? (await getLocale());
-  const t = await getTranslations({ locale, namespace: 'payroll.ea' });
   const data: EaPdfData = {
     year: ea.year,
     employer: ea.employer,
@@ -77,67 +77,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     // footnote. Built field-by-field here, so this line is REQUIRED or the marker silently drops.
     overrides: ea.overrides,
   };
+  // r220 — the label bundle is built in lib/ea-pdf-labels.ts, because the blank C.P.8A
+  // (app/payroll/ea/blank) needs the identical fifty-odd captions and two hand-maintained copies of one
+  // statutory form's wording is how the blank and the filled version stop being the same page.
+  //
   // r219 — the label set is the C.P.8A's own boxes, and it is SHORTER than it was: the form's masthead,
   // banner and officer-box captions are the agency's Malay words and are drawn from lib/ea-pdf.ts's own
   // constants in both languages, while `mtdCategory`, the three MTD categories, `employmentPeriod`,
   // `present`, `yearEnded` and the two subtotals have no box on the printed form at all. Every one of
   // them still exists in `payroll.ea` for the HTML statement; see the EaPdfLabels block comment for why
   // each left. test/ea-form-boxes-contract.test.ts fails on a declared label nothing prints.
-  const bytes = await renderEaPdf(data, {
-    title: t('title'),
-    sectionAEmployeeParticulars: t('sectionAEmployeeParticulars'),
-    name: t('name'),
-    jobTitle: t('jobTitle'),
-    employeeNo: t('employeeNo'),
-    icNo: t('icNo'),
-    passportNo: t('passportNo'),
-    epfNo: t('epfNo'),
-    socsoNo: t('socsoNo'),
-    childrenTaxRelief: t('childrenTaxRelief'),
-    partYearNote: t('partYearNote'),
-    startedOn: t('startedOn'),
-    leftOn: t('leftOn'),
-    sectionBEmploymentIncome: t('sectionBEmploymentIncome'),
-    sectionBExcluding: t('sectionBExcluding'),
-    grossSalary: t('grossSalary'),
-    feesCommissionBonus: t('feesCommissionBonus'),
-    tipsPerquisitesOther: t('tipsPerquisitesOther'),
-    paymentDetail: t('paymentDetail'),
-    stateWhat: t('stateWhat'),
-    addressCue: t('addressCue'),
-    taxBorneByEmployer: t('taxBorneByEmployer'),
-    esos: t('esos'),
-    gratuity: t('gratuity'),
-    periodFrom: t('periodFrom'),
-    periodTo: t('periodTo'),
-    incomeType: t('incomeType'),
-    arrears: t('arrears'),
-    benefitsInKind: t('benefitsInKind'),
-    livingAccommodation: t('livingAccommodation'),
-    unapprovedFundRefund: t('unapprovedFundRefund'),
-    compensation: t('compensation'),
-    sectionCPensionOther: t('sectionCPensionOther'),
-    pension: t('pension'),
-    annuity: t('annuity'),
-    formTotal: t('formTotal'),
-    sectionDTotalDeductions: t('sectionDTotalDeductions'),
-    monthlyTaxDeduction: t('monthlyTaxDeduction'),
-    cp38Deductions: t('cp38Deductions'),
-    zakatViaSalary: t('zakatViaSalary'),
-    // da4fc817 — Section D's four missing lines, Section E's fund name and Section F's own heading.
-    donations: t('donations'),
-    tp1ClaimHeading: t('tp1ClaimHeading'),
-    tp1Relief: t('tp1Relief'),
-    zakatOther: t('zakatOther'),
-    childRelief: t('childRelief'),
-    sectionFExemptAllowances: t('sectionFExemptAllowances'),
-    fundName: t('fundName'),
-    contributionAmount: t('contributionAmount'),
-    sectionEContributions: t('sectionEContributions'),
-    eisSip: t('eisSip'),
-    disclaimer: t('disclaimer', { year: ea.year, version: ea.statutoryVersion }),
-    amendedNote: t('override.amendedNote'),
-  });
+  const bytes = await renderEaPdf(data, await eaPdfLabels(locale, { year: ea.year, version: ea.statutoryVersion }));
 
   // Substrate: this is a read-only render (no state change), so it appends NO domain event — same as the
   // payslip-pdf route. Deliberate skip.

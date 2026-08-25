@@ -37,6 +37,23 @@
 // page cannot grow with the data. Only the footnote strip below the officer box flows, and it has the
 // ~110 points the specimen leaves empty under its own foot. test/ea-pdf.test.ts refuses a second page in
 // every locale.
+//
+// ── r220 (item 61c2e30f) — THE FORM WITH NOTHING IN IT, OFF THE SAME RENDERER ────────────────────────
+// The reporter asked to see the EA empty first, so it can be held up against LHDN's own page before any
+// filled one is trusted. `renderEaPdf(blankEaPdfData(), labels, { blank: true })` is that document, and it
+// is THIS renderer — a second "blank version" code path would be a second form to keep in step with the
+// arrangement, which is the duplication the file's opening note exists to prevent (and exactly what
+// app/payroll/cp22/blank/route.ts refused to do for the CP22).
+//
+// WHY A FLAG AND NOT AN EMPTY VALUE. Every partB/partC/partD/partE amount on `EaPdfData` is a REQUIRED
+// number, deliberately (see the type's own comments: an optional money field is one a caller can forget,
+// and the form then prints an empty rule that reads as "nothing on file" rather than "nobody wired it").
+// An "empty" statement is therefore a statement of zeros, and zeros print — a blank C.P.8A with 0.00 down
+// the whole money column asserts that none of that money exists, on every line at once, which is AGENTS 28
+// at full width. A sentinel amount (NaN, -1) would be worse again: it is a number a real caller can reach
+// by accident. So the caller says `{ blank: true }` in as many words, and the renderer suppresses THE
+// MONEY COLUMN — `amountOrRule` draws its rule and nothing on it — while every caption, box, heading,
+// note, rule and signature area is drawn at exactly the position it occupies on a filled form.
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 
 /** Mirrors EaStatement (localization/my/reports.ts). year is a STRING end-to-end (the read filters
@@ -127,6 +144,89 @@ export type EaPdfData = {
    *  defaults to [] so existing callers keep compiling. */
   overrides?: { field: string; original: number; amended: number; reason: string }[];
 };
+
+/**
+ * r220 (item 61c2e30f) — how the page is drawn, as opposed to WHAT is on it.
+ *
+ * One member today, and it is deliberately a separate argument rather than a field on `EaPdfData`: the
+ * route builds `EaPdfData` by SPREADING the `employeeEaStatement` read, and a rendering mode that can
+ * arrive through a spread of somebody's payroll figures is a mode a real statement can be handed by
+ * accident. Nothing in the read is named `blank`, so nothing can turn a real employee's C.P.8A into an
+ * empty one without a caller typing it here.
+ */
+export type EaRenderOptions = {
+  /**
+   * Draw the FORM and nothing else: every caption, box, heading, cue, note, rule and signature area at
+   * its fixed position, with the whole money column left as empty rules and no employee or employer
+   * detail anywhere on the page. See the r220 block at the top of this file for why this is an explicit
+   * flag and never a sentinel amount.
+   */
+  blank?: boolean;
+};
+
+/**
+ * r220 — the empty statement the blank form is drawn over.
+ *
+ * A FACTORY, not a frozen constant and not a literal in the route: `EaPdfData` requires every Part B/C/D/E
+ * amount, so the day a box is added to the form tsc fails HERE, in one place, rather than in whichever
+ * route happened to hand-write its own empty object. The zeros are never printed — `{ blank: true }`
+ * suppresses the money column — they exist because the type requires a number and `blank` is what decides
+ * whether a number reaches the page.
+ *
+ * `year` is EMPTY, not the current year: the blank C.P.8A leaves "BAGI TAHUN BERAKHIR 31 DISEMBER" open
+ * for whoever completes it, and stamping this year onto a blank form would be us filling in a box that is
+ * not ours to fill.
+ */
+export function blankEaPdfData(): EaPdfData {
+  return {
+    year: '',
+    employer: {
+      name: '',
+      eNumber: null,
+      address: [],
+      phone: null,
+      lhdnState: null,
+      officerName: null,
+      officerPosition: null,
+    },
+    employee: {
+      name: '',
+      ic: null,
+      taxNo: null,
+      epfNo: null,
+      socsoNo: null,
+      category: 0,
+      children: 0,
+      hiredOn: '',
+      terminatedOn: null,
+      employeeNo: null,
+      jobTitle: null,
+      passport: null,
+    },
+    partB: {
+      grossSalary: 0,
+      bonus: 0,
+      allowances: 0,
+      gross: 0,
+      exemptAllowances: 0,
+      directorFee: 0,
+      tipsPerquisites: 0,
+      taxBorneByEmployer: 0,
+      esos: 0,
+      gratuity: 0,
+      arrears: 0,
+      benefitsInKind: 0,
+      livingAccommodation: 0,
+      unapprovedFundRefund: 0,
+      compensation: 0,
+    },
+    partC: { pension: 0, annuity: 0, total: 0 },
+    partD: { mtd: 0, cp38: 0, zakat: 0, tp1Relief: 0, donations: 0, zakatOther: 0, childRelief: 0 },
+    partE: { epf: 0, socso: 0, eis: 0, fundName: '' },
+    statutoryVersion: '',
+    overrides: [],
+  };
+}
 
 /**
  * Localized labels (resolved from the `payroll.ea` namespace in the route). Mirrors the HTML EA page.
@@ -309,9 +409,11 @@ export const EA_FORM_WORDS = {
   date: 'Tarikh:',
 } as const;
 
-export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Array> {
+export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOptions = {}): Promise<Uint8Array> {
+  /** r220 — see `EaRenderOptions`. Read once, so every suppression below reads off one name. */
+  const blank = opts.blank === true;
   const doc = await PDFDocument.create();
-  doc.setTitle(`${t.title} — ${d.year}`);
+  doc.setTitle(d.year ? `${t.title} — ${d.year}` : t.title);
   doc.setProducer('AI HR');
   const first = doc.addPage(A4);
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -451,8 +553,21 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
     dotted(x0, x1, tt + 2.5);
     if (v) putFit(v, x0 + 3, x1 - x0 - 6, tt, size);
   };
-  /** The same, right-aligned — which is how every amount on this form sits on its rule. */
-  const amountOrRule = (v: string, x0: number, x1: number, tt: number, size = 8) => {
+  /**
+   * The same, right-aligned — which is how every amount on this form sits on its rule.
+   *
+   * ⚠️ r220 — THIS IS THE ONE PLACE THE MONEY COLUMN IS SUPPRESSED ON A BLANK FORM, and it is deliberately
+   * the choke point rather than fifty call sites: every amount the C.P.8A prints (B's column, C's, D's,
+   * D5's mid-page pair, E's two contributions and F's single line) arrives here. On a blank the rule is
+   * still drawn — the agency's page has it — and nothing is written on it. `derived()` and `manual()` are
+   * untouched, because what they decide (is this a figure we can stand behind?) is a different question
+   * from whether ANY figure belongs on this page at all.
+   *
+   * The two amounts that do NOT come through here — the JUMLAH and the EIS line in our own strip — are
+   * suppressed explicitly at their own sites, each with a note saying so.
+   */
+  const amountOrRule = (value: string, x0: number, x1: number, tt: number, size = 8) => {
+    const v = blank ? '' : value;
     dotted(x0, x1, tt + 2.5);
     if (v) {
       const s = safe(v);
@@ -482,7 +597,10 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   putC(W.masthead1, CX, 22, 9.5);
   putC(W.masthead2, CX, 37, 13.5, bold);
   putC(W.masthead3, CX, 50, 9);
-  putC(`${W.masthead4} ${d.year}`, CX, 62, 9);
+  // r220 — `.trim()` is what the BLANK form needs and what a filled one never notices: the year of
+  // assessment is completed on the agency's line, so with no year there is nothing to complete and the
+  // line is the agency's own caption, exactly as the specimen prints it.
+  putC(`${W.masthead4} ${d.year}`.trim(), CX, 62, 9);
 
   // LEFT: No. Siri has NO source in this system and never will — it is the employer's own running number
   // for the statements it issues — so it prints the blank form's rule, which is what the agency's page
@@ -527,7 +645,10 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // Item 8's caption wraps to a second line on the form, and its rule sits on that second line.
   const childLines = wrapped(t.childrenTaxRelief, 7.5, 105).slice(0, 2);
   childLines.forEach((line, i) => put(line, A.aLeftLabel + (i ? 6 : 0), 160.8 + i * 9.6, 7.5));
-  valueOrRule(String(d.employee.children), 135, A.aLeftRule[1], 173.2);
+  // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
+  // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
+  // relief" is a claim about a person the blank form does not have.
+  valueOrRule(blank ? '' : String(d.employee.children), 135, A.aLeftRule[1], 173.2);
 
   /**
    * ⚠️ ITEM 9 IS CONDITIONAL ON THE YEAR, NOT ON A DATE EXISTING — and that distinction is the whole
@@ -612,7 +733,11 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // descenders. Drawn at the specimen's spacing, the upper rule struck straight through the total.
   putFit(t.formTotal, A.itemLabel, 200, 433.5, 8.5, bold);
   hRule(MX, R, 425.8, 0.8, ink);
-  putR(derived(d.partB.gross + d.partC.total), R - 2, 433.5, 8.5, bold);
+  // r220 — the JUMLAH is the one amount that does NOT go through `amountOrRule`: the form closes it with
+  // its own double rule instead of a dotted one, so it is drawn directly. Both rules are still drawn on a
+  // blank — they are the agency's page — and only the figure between them is withheld.
+  const jumlah = derived(d.partB.gross + d.partC.total);
+  if (!blank) putR(jumlah, R - 2, 433.5, 8.5, bold);
   hRule(MX, R, 437.5, 1.4, ink);
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
@@ -683,7 +808,10 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   // strip, with the RM spelled out so it cannot be read as one of the form's own boxes.
   let y: number = EA_FORM.footStripT;
   put(t.eisSip, L, y, 7, font, muted);
-  putR(rm(d.partE.eis), R, y, 7, font, muted);
+  // r220 — the second amount outside `amountOrRule`, and the only one that spells "RM" out. The CAPTION
+  // stays on a blank form (it is a line this document has, and the reader comparing it against LHDN's page
+  // should see that we print one) while the figure goes, like every other figure.
+  if (!blank) putR(rm(d.partE.eis), R, y, 7, font, muted);
   y += 10;
 
   const discLines = wrapped(t.disclaimer, 7, R - L);
