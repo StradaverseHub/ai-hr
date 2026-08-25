@@ -1,0 +1,160 @@
+# EA (C.P.8A Pin. 2024) — field register
+
+Every box on the EA form as this system draws it: the form’s own section, the form’s own box
+number, the agency’s own wording, the kind of value the box takes, and what feeds it today —
+or “nothing feeds this yet”, said in as many words.
+
+**Hold this beside a blank C.P.8A and work down it.** The blank copy this system produces is on
+the Statutory Forms screen, beside each of the two EA rows (“Download blank EA form”).
+
+**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2024) arrangement on paper of
+ours — we hold no blank C.P.8A from LHDN to print onto — so this register describes our
+rendering of that arrangement, not agency artwork. The wording in the third column is taken from
+`docs/forms/ea-cp8a-pin-2024-transcription.txt`, the hand transcription of the specimen.
+
+**This file is generated.** Edit `lib/ea-field-register.ts` and run
+`pnpm tsx scripts/gen-ea-field-register.ts`. `test/ea-form-boxes-contract.test.ts` fails if a row
+here names a caption nothing draws, if the renderer draws a box no row here names, or if this
+file is out of date.
+
+The last column is the internal name of the caption, so a wording that needs changing can be
+pointed at exactly. `payroll.ea.*` captions are translated into every language the product has;
+`form.*` captions are the agency’s own Malay words and are printed in Malay whatever language
+the reader has chosen.
+
+## Header band
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| HEADER |  | (C.P.8A - Pin. 2024) | heading (takes no value) | The form itself — printed on every copy, nothing goes in it | The edition this page is drawn to. Changing it means re-tracing the form. | `form.formNo` |
+| HEADER |  | No. Siri | text | nothing feeds this yet | The employer’s own running number for the statements it issues. Nothing in this system holds it, and the rule is printed empty. | `form.serialNo` |
+| HEADER |  | TIN Majikan E | text | The employer’s company record (employer.eNumber) |  | `form.employerTin` |
+| HEADER |  | MALAYSIA | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.masthead1` |
+| HEADER |  | CUKAI PENDAPATAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.masthead2` |
+| HEADER |  | PENYATA SARAAN DARIPADA PENGGAJIAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.masthead3` |
+| HEADER |  | BAGI TAHUN BERAKHIR 31 DISEMBER | year | Filled in by this system (year) | The one masthead line that is COMPLETED rather than printed: the year of assessment is appended. The blank copy leaves it open. | `form.masthead4` |
+| HEADER |  | Penyata Gaji Pekerja SWASTA | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.privateStatement` |
+| HEADER |  | EA | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.ea` |
+| HEADER |  | No. Pengenalan Cukai (TIN) Pekerja | text | The employee’s staff record (employee.taxNo) |  | `form.employeeTin` |
+| HEADER |  | LHDNM Negeri | text | The employer’s company record (employer.lhdnState) |  | `form.lhdnState` |
+| HEADER |  | BORANG EA INI PERLU DISEDIAKAN UNTUK DISERAHKAN KEPADA PEKERJA BAGI TUJUAN CUKAI PENDAPATAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.banner` |
+
+## A — Butiran Pekerja (employee particulars)
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | A | BUTIRAN PEKERJA | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionAEmployeeParticulars` |
+| A | 1 | Nama Penuh Pekerja / Pesara (Encik/Cik/Puan) | text | The employee’s staff record (employee.name) |  | `payroll.ea.name` |
+| A | 2 | Jawatan | text | The employee’s staff record (employee.jobTitle) | The title on the assignment in force at the END of the employment’s year — a leaver has one, an open assignment is not required. | `payroll.ea.jobTitle` |
+| A | 3 | No. Kakitangan / No. Gaji | text | The employee’s staff record (employee.employeeNo) |  | `payroll.ea.employeeNo` |
+| A | 4 | No. K.P. Baru | text | The employee’s staff record (employee.ic) |  | `payroll.ea.icNo` |
+| A | 5 | No. Pasport | text | The employee’s staff record (employee.passport) |  | `payroll.ea.passportNo` |
+| A | 6 | No. KWSP | text | The employee’s staff record (employee.epfNo) |  | `payroll.ea.epfNo` |
+| A | 7 | No. PERKESO | text | The employee’s staff record (employee.socsoNo) |  | `payroll.ea.socsoNo` |
+| A | 8 | Bilangan anak yang layak untuk pelepasan cukai | whole number | The employee’s staff record (employee.children) |  | `payroll.ea.childrenTaxRelief` |
+| A | 9 | Jika bekerja tidak genap setahun, nyatakan: | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.partYearNote` |
+| A | 9(a) | Tarikh mula bekerja | date | The employee’s staff record (employee.hiredOn) | Printed ONLY when the date falls inside the selected year of assessment — the form asks for it only when the employment did not run the whole year. | `payroll.ea.startedOn` |
+| A | 9(b) | Tarikh berhenti kerja | date | The employee’s staff record (employee.terminatedOn) | Same condition as 9(a), decided on its own date: a leaver hired years ago shows a leaving date and an empty commencement rule. | `payroll.ea.leftOn` |
+
+## B — Pendapatan Penggajian, Manfaat dan Tempat Kediaman (employment income, benefits, accommodation)
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| B | B | PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionBEmploymentIncome` |
+| B |  | (Tidak Termasuk Elaun / Perkuisit / Pemberian / Manfaat Yang Dikecualikan Cukai) | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionBExcluding` |
+| B |  | RM | heading (takes no value) | The form itself — printed on every copy, nothing goes in it | Printed ONCE, over the right-hand money column, for the whole form. | `form.rm` |
+| B | 1(a) | Gaji kasar, upah atau gaji cuti (termasuk gaji lebih masa) | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.grossSalary) |  | `payroll.ea.grossSalary` |
+| B | 1(b) | Fi (termasuk fi pengarah), komisen atau bonus | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.bonus, partB.directorFee) | ONE agency box over TWO of our figures: bonus (payroll) plus director’s fees / commission (amendment only). Prints only when the sum is non-zero, because half of it has no payroll source. | `payroll.ea.feesCommissionBonus` |
+| B | 1(c) | Tip kasar, perkuisit, penerimaan sagu hati atau elaun-elaun lain | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.allowances, partB.tipsPerquisites) | ONE agency box over TWO of our figures: allowances (payroll) plus tips / perquisites (amendment only). Same rule as 1(b). | `payroll.ea.tipsPerquisitesOther` |
+| B | 1(c) | Perihal pembayaran: | free text the form asks for | nothing feeds this yet | The description rule inside 1(c). Writing a description we do not hold would be inventing a fact about somebody’s pay, so the rule stays empty. | `payroll.ea.paymentDetail` |
+| B | 1(d) | Cukai pendapatan yang dibayar oleh majikan bagi pihak pekerja | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.taxBorneByEmployer) |  | `payroll.ea.taxBorneByEmployer` |
+| B | 1(e) | Manfaat Skim Opsyen Saham Pekerja (ESOS) | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.esos) |  | `payroll.ea.esos` |
+| B | 1(f) | Ganjaran bagi tempoh dari _ hingga _ | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.gratuity) |  | `payroll.ea.gratuity` |
+| B | 1(f) | dari | date | nothing feeds this yet | The first of 1(f)’s two period rules. The gratuity period is not a fact this system holds. | `payroll.ea.periodFrom` |
+| B | 1(f) | hingga | date | nothing feeds this yet | The second of 1(f)’s two period rules. | `payroll.ea.periodTo` |
+| B | 2 | Butiran bayaran tunggakan dan lain-lain bagi tahun-tahun terdahulu dalam tahun semasa | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.arrears) |  | `payroll.ea.arrears` |
+| B | 2 | Jenis pendapatan | free text the form asks for | nothing feeds this yet | Item 2’s sub-line, with a rule at (a) and (b). Both carry a description and no money; the amount belongs to item 2 itself. | `payroll.ea.incomeType` |
+| B | 3 | Manfaat berupa barangan | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.benefitsInKind) |  | `payroll.ea.benefitsInKind` |
+| B | 3 | Nyatakan: | free text the form asks for | nothing feeds this yet | The description rule inside item 3. | `payroll.ea.stateWhat` |
+| B | 4 | Nilai tempat kediaman | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.livingAccommodation) |  | `payroll.ea.livingAccommodation` |
+| B | 4 | Alamat: | free text the form asks for | nothing feeds this yet | The address rule inside item 4. | `payroll.ea.addressCue` |
+| B | 5 | Bayaran balik daripada Kumpulan Wang Simpanan / Pencen yang tidak diluluskan | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.unapprovedFundRefund) |  | `payroll.ea.unapprovedFundRefund` |
+| B | 6 | Pampasan kerana kehilangan pekerjaan | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.compensation) |  | `payroll.ea.compensation` |
+
+## C — Pencen dan Lain-lain (pension and others)
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| C | C | PENCEN DAN LAIN-LAIN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionCPensionOther` |
+| C | 1 | Pencen | amount (RM) | Only “Amend EA figures” — no payroll source exists (partC.pension) | This product pays no pensions, so there is no payroll source and never has been. | `payroll.ea.pension` |
+| C | 2 | Anuiti atau bayaran berkala yang lain | amount (RM) | Only “Amend EA figures” — no payroll source exists (partC.annuity) |  | `payroll.ea.annuity` |
+| C |  | JUMLAH | amount (RM) | Added up from the boxes above it on this form (partB.gross, partC.total) | The form’s ONLY total, closed with a double rule. It totals B and C together — the two subtotals our own earlier layout had are not on the agency’s page. | `payroll.ea.formTotal` |
+
+## D — Jumlah Potongan (total deductions)
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| D | D | JUMLAH POTONGAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionDTotalDeductions` |
+| D | 1 | Potongan cukai bulanan (PCB) yang dibayar kepada LHDNM | amount (RM) | Payroll, and amendable under “Amend EA figures” (partD.mtd) |  | `payroll.ea.monthlyTaxDeduction` |
+| D | 2 | Arahan potongan CP38 yang dibayar kepada LHDNM | amount (RM) | Payroll, and amendable under “Amend EA figures” (partD.cp38) |  | `payroll.ea.cp38Deductions` |
+| D | 3 | Zakat yang dibayar melalui potongan gaji | amount (RM) | Payroll, and amendable under “Amend EA figures” (partD.zakat) |  | `payroll.ea.zakatViaSalary` |
+| D | 4 | Derma / hadiah / sumbangan diluluskan yang dibayar melalui potongan gaji | amount (RM) | Only “Amend EA figures” — no payroll source exists (partD.donations) |  | `payroll.ea.donations` |
+| D | 5 | Jumlah tuntutan potongan oleh pekerja melalui Borang TP1 berkaitan: | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.tp1ClaimHeading` |
+| D | 5(a) | Pelepasan | amount (RM) | Payroll, and amendable under “Amend EA figures” (partD.tp1Relief) | Derived from the year’s APPROVED TP1 declarations. Prints its own “RM” and rule at mid-page; the right-hand column stays empty on this line. | `payroll.ea.tp1Relief` |
+| D | 5(b) | Zakat selain yang dibayar melalui potongan gaji bulanan | amount (RM) | Only “Amend EA figures” — no payroll source exists (partD.zakatOther) | Mid-page “RM” and rule, like 5(a). | `payroll.ea.zakatOther` |
+| D | 6 | Jumlah pelepasan bagi anak yang layak | amount (RM) | Only “Amend EA figures” — no payroll source exists (partD.childRelief) |  | `payroll.ea.childRelief` |
+
+## E — Caruman … Kumpulan Wang Simpanan / Pencen yang Diluluskan dan PERKESO (contributions)
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| E | E | CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionEContributions` |
+| E | 1 | Nama Kumpulan Wang | text | Payroll — the year’s payslips (partE.fundName) |  | `payroll.ea.fundName` |
+| E | 1 | Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja) | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.epf) | The employee’s share only. The same caption is printed again on item 2, after the agency’s “2. PERKESO:”. | `payroll.ea.contributionAmount` |
+| E | 2 | 2. PERKESO: | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.socso) | The item number and the word PERKESO are the agency’s and are printed in Malay in both languages; the caption after them is item 1’s. | `form.perkeso` |
+
+## F — Jumlah Elaun … yang Dikecualikan Cukai (total exempt allowances)
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| F | F | JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI | amount (RM) | Payroll — the year’s payslips (partB.exemptAllowances) | ONE line: the section title IS the item. The figure is the year’s tax-exempt allowance portions, which are a PART of 1(c) and not an addition to it. | `payroll.ea.sectionFExemptAllowances` |
+
+## The foot — signing date and officer box
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| FOOT |  | Tarikh: | date | nothing feeds this yet | The date the employer SIGNS the statement. Theirs to write, not ours to invent, so the rule prints empty on a filled form too. | `form.date` |
+| FOOT |  | Name Pegawai | text | The employer’s company record (employer.officerName) | “Name Pegawai” is the SPECIMEN’S own spelling — Malay would be “Nama”. Reproduced as the agency’s form has it and deliberately not corrected. | `form.officerName` |
+| FOOT |  | Jawatan | text | The employer’s company record (employer.officerPosition) |  | `form.officerPosition` |
+| FOOT |  | Nama dan Alamat Majikan | text | The employer’s company record (employer.name, employer.address) | TWO rules: the employer’s name on the first, the address folded onto the second. The form has no third rule. | `form.employerNameAddress` |
+| FOOT |  | No. Telefon Majikan | text | The employer’s company record (employer.phone) |  | `form.employerPhone` |
+
+## Below the form — our own strip
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| BELOW |  | — | amount (RM) | Payroll — the year’s payslips (partE.eis) | NOT a box on the C.P.8A: the official Section E carries exactly two amounts and EIS is not one of them. The employee’s own EIS deduction is real and they may need it, so it is printed below the form with “RM” spelled out. | `payroll.ea.eisSip` |
+| BELOW |  | — | sentence | Filled in by this system | Ours. Names the year of assessment and the statutory table version, says which boxes payroll fed, and says the page is our rendering of the agency’s arrangement. The blank copy carries a different sentence, because none of that is true of a blank. | `payroll.ea.disclaimer` |
+| BELOW |  | — | sentence | Filled in by this system (overrides) | Printed only when HR has amended at least one figure on this statement. | `payroll.ea.amendedNote` |
+
+## Not drawn on the page
+
+| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| --- | --- | --- | --- | --- | --- | --- |
+| META |  | — | sentence | Filled in by this system (year) | The PDF’s document title — the browser tab and the file’s properties. Nothing is drawn from it. | `payroll.ea.title` |
+
+## Boxes nothing feeds yet
+
+8 of the 71 entries in this register take a value the agency asks
+for and this system holds nothing for. Each prints the blank form’s own rule and nothing on it —
+never a placeholder, never `0.00`, never a plausible guess. They are listed again here because
+they are the shortest answer to “what is still missing from the EA?”.
+
+- **HEADER** — No. Siri — The employer’s own running number for the statements it issues. Nothing in this system holds it, and the rule is printed empty.
+- **B 1(c)** — Perihal pembayaran: — The description rule inside 1(c). Writing a description we do not hold would be inventing a fact about somebody’s pay, so the rule stays empty.
+- **B 1(f)** — dari — The first of 1(f)’s two period rules. The gratuity period is not a fact this system holds.
+- **B 1(f)** — hingga — The second of 1(f)’s two period rules.
+- **B 2** — Jenis pendapatan — Item 2’s sub-line, with a rule at (a) and (b). Both carry a description and no money; the amount belongs to item 2 itself.
+- **B 3** — Nyatakan: — The description rule inside item 3.
+- **B 4** — Alamat: — The address rule inside item 4.
+- **FOOT** — Tarikh: — The date the employer SIGNS the statement. Theirs to write, not ours to invent, so the rule prints empty on a filled form too.

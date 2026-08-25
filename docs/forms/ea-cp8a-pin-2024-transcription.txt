@@ -59,6 +59,14 @@ A   BUTIRAN PEKERJA
     Items 2-9 are TWO COLUMNS: 2, 4, 6, 8 on the left half; 3, 5, 7, 9 on the right half, each with its
     own dotted rule. 8's caption wraps to a second line; 9's (a) and (b) are indented under it.
 
+    ⚠️ BECAUSE OF THAT TWO-COLUMN LAYOUT, ITEM 8's CAPTION IS BROKEN ACROSS TWO LINES ABOVE WITH ITEM 9's
+    TEXT BETWEEN THEM, so it cannot be read off this block as one string. In full it is:
+
+        8.  Bilangan anak yang layak untuk pelepasan cukai
+
+    Written out here on one line so a caption check has something to match; the wrap above is what the
+    specimen prints, and neither is a correction of the other.
+
 B   PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN
     (Tidak Termasuk Elaun / Perkuisit / Pemberian / Manfaat Yang Dikecualikan Cukai)      RM
 

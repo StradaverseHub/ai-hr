@@ -563,10 +563,68 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(en.payroll.statutoryForms.link_cp22_blank).toBe('Download blank CP22');
     expect(PAGE).toContain('l.secondaryHref');
     expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/blank/route.ts'))).toBe(true);
-    // No other row grows a second action by accident.
-    for (const l of MY_STATUTORY_LINKS.filter((x) => x.id !== 'my.cp22')) {
+    // The CP22 row's tooltip stays in `payroll.cp22`, beside the form it describes, and the row declares
+    // no title key of its own — so r220's `secondaryTitleKey` left this row byte-identical.
+    expect(cp22.secondaryTitleKey).toBeUndefined();
+    expect(PAGE).toContain("tCp22('blankTitle')");
+    // r220 — THE EA ROWS NOW HAVE ONE TOO, so the old "no other row grows a second action" sweep would
+    // now be asserting the opposite of a decision the reporter approved (AGENTS 18). The half of it that
+    // is still right is kept: a row that has NOT been given a second action must not sprout one.
+    for (const l of MY_STATUTORY_LINKS.filter((x) => !['my.cp22', 'my.ea.en', 'my.ea.ms'].includes(x.id))) {
       expect(l.secondaryHref, `${l.id} must have one action`).toBeUndefined();
+      expect(l.tertiaryHref, `${l.id} must have one action`).toBeUndefined();
     }
+  });
+
+  /**
+   * r220 (item 61c2e30f) — THE EA ROWS HAND YOU THE FORM ITSELF, AND THE LIST OF ITS BOXES.
+   *
+   * Until this round an EA could only be produced for a NAMED employee, for a year that already had
+   * payroll behind it, so there was no way to open the form on its own and check the arrangement against
+   * the agency's page before trusting a filled one — which is what the reporter asked for first. The blank
+   * is per LANGUAGE (each row produces its own, whatever language the screen is set to, which is the whole
+   * reason there are two EA rows); the field register is ONE document for both, because it describes the
+   * FORM rather than a language.
+   */
+  it('offers the blank EA and the field register from both EA rows, in each row’s own language', () => {
+    const en_ = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea.en')!;
+    const ms_ = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea.ms')!;
+
+    expect(en_.secondaryHref).toBe('/payroll/ea/blank?lang=en');
+    expect(ms_.secondaryHref).toBe('/payroll/ea/blank?lang=ms');
+    expect(en_.secondaryLabelKey).toBe('link_ea_blank_en');
+    expect(ms_.secondaryLabelKey).toBe('link_ea_blank_ms');
+    expect(en.payroll.statutoryForms.link_ea_blank_en).toBe('Download blank EA form (English)');
+    expect(en.payroll.statutoryForms.link_ea_blank_ms).toBe('Download blank EA form (Bahasa Malaysia)');
+
+    // ONE register, offered from both rows, and it is the same href on each.
+    expect(en_.tertiaryHref).toBe('/payroll/ea/field-register');
+    expect(ms_.tertiaryHref).toBe('/payroll/ea/field-register');
+    expect(en_.tertiaryLabelKey).toBe('link_ea_register');
+    expect(ms_.tertiaryLabelKey).toBe('link_ea_register');
+
+    // Both routes exist, and the screen renders the third action from the catalog rather than by name.
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/ea/blank/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/ea/field-register/route.ts'))).toBe(true);
+    expect(PAGE).toContain('l.tertiaryHref');
+    expect(PAGE).toContain('[c.secondary, c.tertiary]');
+
+    // Each EA row declares its OWN tooltip key, so the blank C.P.8A's caveat is not the blank CP22's.
+    expect(en_.secondaryTitleKey).toBe('link_ea_blank_title');
+    expect(ms_.secondaryTitleKey).toBe('link_ea_blank_title');
+    expect(en_.tertiaryTitleKey).toBe('link_ea_register_title');
+  });
+
+  /**
+   * ⚠️ AND IT MAY NEVER BE `official`. A blank copy of OUR rendering is still our rendering: `public/forms/`
+   * holds exactly one genuine agency artwork and it is the CP22's. The pair of EA rows keeps saying
+   * `agency-layout`, and the blank download does not move them.
+   */
+  it('the blank EA does not promote either EA row’s fidelity', () => {
+    for (const id of ['my.ea.en', 'my.ea.ms']) {
+      expect(MY_STATUTORY_LINKS.find((l) => l.id === id)!.fidelity, id).toBe('agency-layout');
+    }
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /(cp\W?8a|\bea\b)/i.test(f))).toEqual([]);
   });
 
   /**
@@ -693,6 +751,8 @@ describe('the four pins', () => {
       expect(p.href, `${p.id} must have no href`).toBeUndefined();
       expect(p.actionLabelKey, `${p.id} must have no action key`).toBeUndefined();
       expect(p.secondaryHref, `${p.id} must have no second action`).toBeUndefined();
+      // r220 added a third slot; an unbuilt form must not reach an action through it either.
+      expect(p.tertiaryHref, `${p.id} must have no third action`).toBeUndefined();
       expect(p.generate, `${p.id} must not be generatable`).toBeUndefined();
     }
     // The screen's own half of it: a card with no action renders the "no action available" sentence,
@@ -810,13 +870,29 @@ describe('what the shelves say about the forms that are not built', () => {
     // Both open the SAME screen — the year's employee list — so there is no second EA route either.
     expect(new Set(eas.map((l) => l.href.split('?')[0])).size).toBe(1);
 
-    // ONE renderer, and the route resolves the namespace for the language it was asked for rather than
-    // for the viewer. `getTranslations('payroll.ea')` — the bare string form — is the bug this replaced.
+    // ONE renderer, and the labels are resolved for the language that was ASKED FOR rather than for the
+    // viewer. `getTranslations('payroll.ea')` — the bare string form — is the bug this replaced.
+    //
+    // r220 — THE BUNDLE MOVED AND THE ASSERTION FOLLOWED IT. It used to be built inline in the /me route;
+    // a second route now prints the same form (the blank C.P.8A at app/payroll/ea/blank), and two
+    // hand-maintained copies of one statutory form's captions is how the blank and the filled version stop
+    // being the same page. Both routes call `eaPdfLabels()`, which is where the namespace is resolved.
+    const EA_LABELS = read('lib/ea-pdf-labels.ts');
+    expect(EA_LABELS).toContain("getTranslations({ locale, namespace: 'payroll.ea' })");
+    expect(EA_LABELS).not.toContain("getTranslations('payroll.ea')");
     const EA_ROUTE = read('app/me/ea/[employmentId]/pdf/route.ts');
-    expect(EA_ROUTE).toContain("getTranslations({ locale, namespace: 'payroll.ea' })");
-    expect(EA_ROUTE).not.toContain("getTranslations('payroll.ea')");
     expect(EA_ROUTE).toContain("EA_LANGS = ['en', 'ms']");
-    expect(fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => /^ea-.*pdf/.test(f))).toEqual(['ea-pdf.ts']);
+    // …and the blank copy allowlists the SAME two languages, off the same one renderer.
+    expect(read('app/payroll/ea/blank/route.ts')).toContain("EA_LANGS = ['en', 'ms']");
+
+    // The half that has NOT changed, and is what this case is for: exactly ONE file draws an EA. r220 puts
+    // a LABEL module beside it, which draws nothing — so the check is now "which of these files exports a
+    // renderer" rather than "which files are named ea-*pdf", which is the stronger question anyway.
+    const eaPdfFiles = fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => /^ea-.*pdf/.test(f)).sort();
+    expect(eaPdfFiles).toEqual(['ea-pdf-labels.ts', 'ea-pdf.ts']);
+    expect(eaPdfFiles.filter((f) => read(`lib/${f}`).includes('export async function renderEaPdf'))).toEqual([
+      'ea-pdf.ts',
+    ]);
 
     // …and the override has somewhere to land. i18n/request.ts used to ignore the requested locale and
     // read the cookie unconditionally, which would have made `lang=ms` return a 200 in the wrong language.

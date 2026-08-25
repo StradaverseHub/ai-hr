@@ -151,8 +151,16 @@ type ShelfCard = {
   draftFile: boolean;
   due: { dueBy: string | null; status: string } | null;
   action: { href: string; label: string } | null;
-  secondary: { href: string; label: string; title: string } | null;
+  /**
+   * d3a9383c — the row's second action, when the catalog entry declares one. r220 gives the two EA rows a
+   * THIRD (the blank form and the field register beside it), and makes the tooltip optional: not every
+   * extra action has a caveat worth a hover, and a shared one would say the wrong thing on some row.
+   */
+  secondary: ShelfExtraAction | null;
+  tertiary: ShelfExtraAction | null;
 };
+
+type ShelfExtraAction = { href: string; label: string; title: string | null };
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 
@@ -243,6 +251,29 @@ export default async function StatutoryFormsPage({
       : `/payroll/statutory-forms/${encodeURIComponent(reportId)}?${qs}`;
   const linkHref = (href: string) =>
     href.replace('{companyId}', encodeURIComponent(companyId)).replace('{year}', year);
+  /**
+   * r220 — one extra action on a row, built from the catalog entry and nothing else.
+   *
+   * Both halves are read TOGETHER: an href without a label would render a button with no words on it, and
+   * a label without an href would render words that do nothing, so either alone renders neither. That was
+   * d3a9383c's rule for the second action and it is now the rule for both.
+   *
+   * `fallbackTitle` exists for exactly one row — the blank CP22, whose tooltip lives in `payroll.cp22`
+   * beside the form it describes rather than in this screen's namespace.
+   */
+  const extraAction = (
+    href: string | undefined,
+    labelKey: string | undefined,
+    titleKey: string | undefined,
+    fallbackTitle: string | null,
+  ): ShelfExtraAction | null =>
+    href && labelKey
+      ? {
+          href: linkHref(href),
+          label: t(labelKey as 'link_cp22_blank'),
+          title: titleKey ? t(titleKey as 'link_cp22_blank') : fallbackTitle,
+        }
+      : null;
 
   // ── 587ee719: one shelf's cards, from three catalog collections, in the reporter's own order ───────
   //
@@ -288,6 +319,7 @@ export default async function StatutoryFormsPage({
         due,
         action: { href: formHref(r.id, r.periodKind), label: t('openForm') },
         secondary: null,
+        tertiary: null,
       });
     }
 
@@ -306,16 +338,18 @@ export default async function StatutoryFormsPage({
         // does not open a form; the two EA entries open an employee list. Everything else falls back to
         // the shared label, which is why rewording either one never touches the other.
         action: { href: linkHref(l.href), label: t((l.actionLabelKey ?? 'openForm') as 'openForm') },
-        // d3a9383c — a second action, when the catalog entry declares one (today: the blank fillable
-        // CP22). Rendered from the SAME data as the action beside it.
-        secondary:
-          l.secondaryHref && l.secondaryLabelKey
-            ? {
-                href: linkHref(l.secondaryHref),
-                label: t(l.secondaryLabelKey as 'link_cp22_blank'),
-                title: tCp22('blankTitle'),
-              }
-            : null,
+        // d3a9383c — a second action, when the catalog entry declares one (the blank fillable CP22; r220
+        // added the blank C.P.8A to both EA rows). Rendered from the SAME data as the action beside it.
+        //
+        // r220 — THE TOOLTIP IS THE ENTRY'S OWN WHEN IT NAMES ONE. d3a9383c took it from `payroll.cp22`
+        // because the sentence describes a FORM rather than this screen, and that is still true of the
+        // CP22's — so an entry that declares no key still gets exactly that string, and the CP22 row is
+        // unchanged. The blank C.P.8A's caveat is not the blank CP22's, and a screen that mapped ids to
+        // namespaces would be the screen naming forms again, which is what the catalog exists to prevent.
+        secondary: extraAction(l.secondaryHref, l.secondaryLabelKey, l.secondaryTitleKey, tCp22('blankTitle')),
+        // r220 — the third: the EA field register, offered beside the blank form because a blank page you
+        // cannot check box by box is only half of what was asked for.
+        tertiary: extraAction(l.tertiaryHref, l.tertiaryLabelKey, l.tertiaryTitleKey, null),
       });
     }
 
@@ -334,6 +368,7 @@ export default async function StatutoryFormsPage({
         due: null,
         action: null,
         secondary: null,
+        tertiary: null,
       });
     }
 
@@ -552,15 +587,18 @@ export default async function StatutoryFormsPage({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                      {c.secondary && (
+                      {/* d3a9383c's second action and r220's third, rendered from the same shape so a row
+                          with two extras cannot look like two different kinds of control. */}
+                      {[c.secondary, c.tertiary].filter((x): x is ShelfExtraAction => x !== null).map((x) => (
                         <Link
-                          href={c.secondary.href}
-                          title={c.secondary.title}
+                          key={x.href}
+                          href={x.href}
+                          title={x.title ?? undefined}
                           className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent"
                         >
-                          {c.secondary.label}
+                          {x.label}
                         </Link>
-                      )}
+                      ))}
                       {/* NO ACTION ELEMENT AT ALL for a form that was never built — not a disabled button,
                           which is still a button and still gets clicked at. A plain sentence, and nothing
                           to press. `c.action` is null for exactly one reason: the entry came from a
