@@ -5704,8 +5704,8 @@
       "downloadPdfTitle": "The drawn CP39: a cover page with the employer, the payment summary and the preparer block, then the employee schedule paginated with a total per page.",
       "downloadText": "Download readable copy (not for upload)",
       "downloadTextTitle": "The same content as plain text, laid out to READ from while you key the figures into LHDN’s e-PCB portal by hand. This is NOT the e-Data PCB file LHDN ingests — that is the button beside it.",
-      "downloadFile": "Download the e-Data PCB upload file",
-      "downloadFileTitle": "THE FILE YOU UPLOAD to LHDN’s e-PCB / e-Data PCB portal: fixed width, 136 characters per employee line, no separators, zero-padded amounts. Every line is checked before it is offered. It is not laid out to be read — use the readable copy for that.",
+      "downloadFile": "Download the e-Data PCB upload file — DRAFT",
+      "downloadFileTitle": "The file LHDN’s e-PCB / e-Data PCB portal ingests (Exhibit 4): fixed width, 136 characters per employee line, no separators, zero-padded amounts. Every line is checked before it is offered. It is not laid out to be read — use the readable copy for that. DRAFT until verified against e-PCB Plus.",
       "downloadsBlocked": "Downloads are blocked until every row above is complete."
     },
     "pcbDetail": {

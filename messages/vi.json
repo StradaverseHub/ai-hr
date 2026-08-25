@@ -5704,8 +5704,8 @@
       "downloadPdfTitle": "Bản CP39 được vẽ: trang bìa gồm thông tin người sử dụng lao động, tóm tắt thanh toán và khối người lập, tiếp theo là danh sách nhân viên chia trang kèm tổng cộng từng trang.",
       "downloadText": "Tải bản để đọc (không dùng để tải lên)",
       "downloadTextTitle": "Cùng nội dung dưới dạng văn bản thuần, trình bày để ĐỌC trong khi bạn nhập số liệu vào cổng e-PCB của LHDN bằng tay. Đây KHÔNG phải tệp e-Data PCB mà LHDN nhận — tệp đó là nút ngay bên cạnh.",
-      "downloadFile": "Tải tệp tải lên e-Data PCB",
-      "downloadFileTitle": "ĐÂY LÀ TỆP BẠN TẢI LÊN cổng e-PCB / e-Data PCB của LHDN: cố định độ rộng, 136 ký tự cho mỗi dòng nhân viên, không có ký tự phân tách, số tiền được đệm số 0. Mỗi dòng được kiểm tra trước khi được cung cấp. Tệp này không trình bày để đọc — hãy dùng bản để đọc.",
+      "downloadFile": "Tải tệp tải lên e-Data PCB — NHÁP",
+      "downloadFileTitle": "Tệp mà cổng e-PCB / e-Data PCB của LHDN nhận (Exhibit 4): cố định độ rộng, 136 ký tự cho mỗi dòng nhân viên, không có ký tự phân tách, số tiền được đệm số 0. Mỗi dòng được kiểm tra trước khi được cung cấp. Tệp này không trình bày để đọc — hãy dùng bản để đọc. NHÁP cho đến khi được xác minh với e-PCB Plus.",
       "downloadsBlocked": "Việc tải xuống bị chặn cho tới khi mọi dòng ở trên đầy đủ."
     },
     "pcbDetail": {

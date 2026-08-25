@@ -223,3 +223,69 @@ describe('00806b4c — no identity number of any kind is a refusal, and it names
     expect(box(line, 'newIc')).toBe(' '.repeat(12));
   });
 });
+
+/**
+ * 00806b4c (gap close) — THE OPPOSITE FAILURE THE SAME CHANGE MADE REACHABLE.
+ *
+ * The refusal above is for an EMPTY identity block. This one is for an identity number that does not FIT
+ * the box Exhibit 4 gives it: old K/P 12, passport 12, Kod Negara 2, all three filled from unbounded
+ * `text` columns, two of them free-text inputs with no maxLength. `alpha()` hard-truncates to width, so
+ * before this gate a 14-character passport went to LHDN as its first twelve characters — a well-formed
+ * 136-character line carrying an identifier that belongs to somebody else or to nobody, indistinguishable
+ * from a correct one. Refuse and name the record, exactly as feedback de2823cc decided for the employee
+ * number: a silently truncated identifier in a statutory file is worse than a refusal.
+ */
+describe('00806b4c — an identity number that does not fit its box is refused, never filed cut short', () => {
+  it('refuses when a stored passport is longer than the CP39 field, naming the person and the value', async () => {
+    const ok = await hire('Fits The Box', 'IG 100000008');
+    await setIcProfileMY(a, { personId: ok.personId, icNumber: '900101016666' });
+
+    const long = await hire('Passport Too Long', 'IG 100000009');
+    await setPassportProfileMY(a, {
+      personId: long.personId,
+      passportNumber: 'A1234567890123', // 14 characters; the box holds 12
+      passportIssueDate: '2024-01-01',
+      passportExpiryDate: '2030-01-01',
+    });
+
+    const b = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+    await generatePayslips(a, { batchId: b.batchId });
+    const err: unknown = await cp39FileForBatch(a, { companyId: base.companyId, periodKey: PERIOD }).catch(
+      (e: unknown) => e,
+    );
+
+    // A READINESS refusal, not a builder crash — the download route turns this into a 422 carrying the
+    // sentence below. The builder's own guard behind it would be a 500: true, but useless to the operator.
+    expect(err).toBeInstanceOf(Cp39NotReadyError);
+    const message = (err as Error).message;
+    expect(message).toContain('Passport Too Long');
+    expect(message).toContain('A1234567890123'); // the value, so HR can see WHAT does not fit
+    expect(message).toMatch(/passport number/i); // and WHICH box, since three of them are fixed width
+    // …and not the colleague whose record is fine: naming them sends HR to the wrong screen.
+    expect(message).not.toContain('Fits The Box');
+  });
+
+  it('lifts the moment the number is corrected, and then files it whole', async () => {
+    const e = await hire('Corrected Passport', 'IG 100000010');
+    const passport = (n: string) =>
+      setPassportProfileMY(a, {
+        personId: e.personId,
+        passportNumber: n,
+        passportIssueDate: '2024-01-01',
+        passportExpiryDate: '2030-01-01',
+      });
+    await passport('A1234567890123');
+
+    const b = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+    await generatePayslips(a, { batchId: b.batchId });
+    await expect(cp39FileForBatch(a, { companyId: base.companyId, periodKey: PERIOD })).rejects.toThrow(
+      Cp39NotReadyError,
+    );
+
+    await passport('A12345678901'); // 12 — at the limit, and it must arrive UNCUT
+    const f = await cp39FileForBatch(a, { companyId: base.companyId, periodKey: PERIOD });
+    const line = lineFor(f.content, 'Corrected Passport');
+    expect(box(line, 'passport')).toBe('A12345678901');
+    expect(line).toHaveLength(136);
+  });
+});

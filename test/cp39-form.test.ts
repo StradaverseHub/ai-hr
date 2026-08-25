@@ -61,7 +61,7 @@ import {
   renderCp39FormPdf,
 } from '../lib/cp39-form-pdf';
 // The OTHER CP39 output, imported rather than restated — see the joint assertion below.
-import { buildCp39File } from '../localization/my/cp39-file';
+import { buildCp39File, type Cp39Row } from '../localization/my/cp39-file';
 // The NEIGHBOURING form's rule, imported rather than restated — the two must never agree.
 import { epfContributionPeriodFor } from '../lib/borang-a';
 import { MY_REPORTS } from '../localization/my/reports';
@@ -434,9 +434,158 @@ describe('00806b4c — the e-Data PCB file carries every identity box, at Exhibi
     expect(ns.downloadText).toBe('Download readable copy (not for upload)');
     expect(ns.downloadTextTitle).toMatch(/NOT the e-Data PCB/);
     expect(ns.downloadFile).toMatch(/e-Data PCB/);
+    // …AND IT SAYS DRAFT, because the file it downloads is one. See the whole-locale case below.
+    expect(ns.downloadFile).toMatch(/DRAFT/);
+    expect(ns.downloadFileTitle).toMatch(/DRAFT until verified against e-PCB Plus/);
     // Still two forms, never three: a nested form is invalid HTML and browsers drop the inner one, which
     // would turn these buttons back into a "Show".
     expect((PREVIEW.match(/<form /g) ?? []).length).toBe(2);
+  });
+
+  /**
+   * ⚠️ HOW TO TELL THE TWO DOWNLOADS APART FROM THE BYTES ALONE.
+   *
+   * This whole item rests on a premise — that the file the reporter compared against LHDN's specification
+   * was the READABLE copy, not the e-Data file. That premise is settled by diffing their attachment
+   * against a file generated from their own month, and only by that. What this case provides is the
+   * fingerprint to diff WITH: two properties either file has or has not, needing no context to apply.
+   */
+  it('the readable copy is mechanically distinguishable from the upload file', () => {
+    const readable = cp39FormTextExport(cp39FormFrom({ header: header(), rows: rs }));
+    const upload = build().content;
+    // The e-Data file: every line is one of exactly two fixed widths, and nothing else.
+    expect(new Set(upload.split('\r\n').filter(Boolean).map((l) => l.length))).toEqual(new Set([57, 136]));
+    expect(upload.split('\r\n')[1].startsWith('D')).toBe(true);
+    // The readable copy: laid out for a person, and carrying no 136-character record anywhere in it.
+    expect(readable.split('\n').some((l) => l.length === 136)).toBe(false);
+    expect(readable).toMatch(/e-PCB/);
+  });
+
+  /**
+   * ⚠️ THE DRAFT QUALIFICATION TRAVELS WITH THE FILE, ONTO EVERY SCREEN THAT OFFERS IT.
+   *
+   * These exact bytes were already downloadable from two screens — Reports and the statutory-forms
+   * screen — and BOTH label them "CP39 .txt — DRAFT, not for submission", because the format has never
+   * been through the live e-PCB Plus portal (the CRLF terminator in particular is our reading of a spec
+   * that does not state one). That qualification is a promise to the reporter, not decoration.
+   *
+   * This item added a THIRD button for the same artefact, on the screen the operator actually works
+   * from. A button there making a STRONGER claim than the other two would retire the qualification
+   * precisely where it matters most — and the screen's own provenance notice (`notArtwork`) covers the
+   * PRINTED page, not this file. So: the same word, in the same six locales, on all three surfaces.
+   */
+  it('names the upload file a DRAFT in every locale, exactly as the two older screens do', () => {
+    /** Each locale's own word for "draft" — the one it ALREADY uses for these bytes on the Reports and
+     *  statutory-forms screens, so one operator does not meet three different claims about one file. */
+    const DRAFT_WORD: Record<string, RegExp> = {
+      en: /DRAFT/,
+      ms: /DRAF/,
+      ta: /DRAFT/,
+      th: /ฉบับร่าง/,
+      vi: /NHÁP/,
+      zh: /草稿/,
+    };
+    for (const [loc, word] of Object.entries(DRAFT_WORD)) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as {
+        payroll: {
+          cp39Form: Record<string, string>;
+          reports: Record<string, string>;
+          statutoryForms: Record<string, string>;
+        };
+      };
+      // The two surfaces that already offered this file say DRAFT — if this ever stops being true the
+      // wording below has nothing to mirror, and the mismatch should fail here rather than ship.
+      expect(m.payroll.reports.cp39DownloadLabel, `${loc}: reports label`).toMatch(word);
+      expect(m.payroll.statutoryForms.cp39DownloadLabel, `${loc}: statutoryForms label`).toMatch(word);
+      // …and so does the button this item added, in the label AND in the tooltip.
+      expect(m.payroll.cp39Form.downloadFile, `${loc}: cp39Form.downloadFile must say DRAFT`).toMatch(word);
+      expect(
+        m.payroll.cp39Form.downloadFileTitle,
+        `${loc}: cp39Form.downloadFileTitle must say DRAFT`,
+      ).toMatch(word);
+      // The READABLE copy is NOT a draft of anything — it is a finished reading aid, and marking it
+      // DRAFT would blur the very distinction this item exists to draw.
+      expect(m.payroll.cp39Form.downloadText, `${loc}: the readable copy is not a draft`).not.toMatch(word);
+    }
+  });
+
+  /**
+   * ⚠️ THE THREE NEW BOXES ARE FIXED WIDTH, AND `alpha()` HARD-TRUNCATES.
+   *
+   * Old K/P 12, passport 12, Kod Negara 2. Before this item those boxes were always blank, so no
+   * truncation was reachable; filling them from three unbounded `text` columns — two of them free-text
+   * inputs with no maxLength, the old card deliberately so because the pre-1990 format is not uniform —
+   * makes it reachable on the first over-long value HR types. A cut passport number is not "most of an
+   * identity": it is a well-formed line carrying somebody else's identifier, or nobody's, with nothing
+   * anywhere to say so. Same call as feedback de2823cc made for the employee number: REFUSE, name the
+   * person and the box, never truncate.
+   */
+  describe('an identity number that does not fit its box is refused, never filed cut short', () => {
+    const idRow = (over: Partial<Cp39Row>): Cp39Row => ({
+      tin: '531367080',
+      name: 'LONG ID LEE',
+      mtd: 110,
+      employeeNo: 'EMP001',
+      ...over,
+    });
+    const build = (over: Partial<Cp39Row>) =>
+      buildCp39File({ employerNo: '908915-10', year: 2026, month: 1, rows: [idRow(over)] });
+
+    it('refuses a passport longer than the 12-character box, naming the employee and the value', () => {
+      expect(() => build({ passport: 'A1234567890123' })).toThrow(
+        /passport number .*A1234567890123.*14 characters; the CP39 box holds 12/,
+      );
+      expect(() => build({ passport: 'A1234567890123' })).toThrow(/LONG ID LEE/);
+    });
+
+    it('refuses an over-long old identity card the same way', () => {
+      expect(() => build({ oldIc: 'A 1234567/8901' })).toThrow(/old identity card number/);
+    });
+
+    /**
+     * THE ONE THE AUTHOR OF test/r220-cp39-file-identity.test.ts ALREADY SAW COMING: a two-character box
+     * cannot hold "SINGAPOREAN", but it CAN hold "SI" — a code that exists (Slovenia, alpha-2 "SI"), on a
+     * tax filing, silently. Refusing is the only honest answer.
+     */
+    it('refuses a country code longer than two characters rather than filing its first two', () => {
+      expect(() => build({ countryCode: 'SINGAPOREAN' })).toThrow(/passport country code/);
+      expect(() => build({ countryCode: 'IDN' })).toThrow(/the CP39 box holds 2/);
+    });
+
+    it('names EVERY over-long box and every affected employee in one message, not just the first', () => {
+      expect(() =>
+        buildCp39File({
+          employerNo: '908915-10',
+          year: 2026,
+          month: 1,
+          rows: [
+            idRow({ name: 'FIRST PERSON', passport: 'P123456789012345' }),
+            idRow({ name: 'SECOND PERSON', countryCode: 'MYS' }),
+          ],
+        }),
+      ).toThrow(/FIRST PERSON[\s\S]*SECOND PERSON/);
+    });
+
+    it('accepts a value AT the limit, untruncated, and still builds a 136-character line', () => {
+      const f = build({ passport: 'A12345678901', countryCode: 'ID', oldIc: 'A1234567' });
+      const detail = f.content.split('\r\n')[1];
+      expect(detail).toHaveLength(136);
+      expect(detail.slice(96, 108)).toBe('A12345678901');
+      expect(detail.slice(108, 110)).toBe('ID');
+    });
+
+    /**
+     * SURROUNDING SPACE IS NOT LENGTH — and it must not be POSITION either. A value typed with a leading
+     * space would otherwise pass a "12 after trimming" check and still lose its last character to the
+     * slice, which is the same silent truncation by another route. The box carries the value, trimmed.
+     */
+    it('trims the value it files, so a stray space neither fails the check nor shifts the box', () => {
+      const f = build({ passport: '  A12345678901  ', countryCode: ' id ' });
+      const detail = f.content.split('\r\n')[1];
+      expect(detail).toHaveLength(136);
+      expect(detail.slice(96, 108)).toBe('A12345678901');
+      expect(detail.slice(108, 110)).toBe('ID');
+    });
   });
 });
 

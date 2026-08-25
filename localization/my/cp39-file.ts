@@ -68,6 +68,58 @@ const cents = (rm: number) => Math.round(rm * 100);
  *  truncate an identifier — over-long codes REFUSE generation, listing the employees (fail-loud). */
 export const CP39_EMPLOYEE_NO_LEN = 10;
 
+/**
+ * 00806b4c — THE SAME FAIL-LOUD RULE, FOR THE THREE IDENTITY BOXES THIS FILE NOW FILLS.
+ *
+ * Exhibit 4 fixes the widths: `No. K/P Lama` 12, `No. Passport` 12, `Kod Negara` 2. `alpha()` HARD-
+ * TRUNCATES to width, so a 14-character passport would be filed as its first twelve characters — a
+ * perfectly well-formed 136-character line carrying an identity number that belongs to NOBODY. That is
+ * strictly worse than the blank box it replaced: a blank is visibly incomplete, an invented number
+ * matches the wrong taxpayer or none, and neither the operator nor the portal is told anything.
+ *
+ * Before 00806b4c these boxes were permanently empty, so no truncation was reachable. Filling them makes
+ * it reachable: `old_ic_number`, `passport_number` and `passport_issuing_country_code` are all unbounded
+ * `text` (db/schema.ts), and the first two are FREE-TEXT inputs with no maxLength
+ * (components/personnel-identity.tsx) — the old card deliberately so, because the pre-1990 format is not
+ * uniform and a validator would refuse genuine cards. So the guard belongs here, at the file, exactly
+ * where feedback de2823cc put the employee-number guard: refuse and name the people, never truncate.
+ */
+export const CP39_OLD_IC_LEN = 12;
+export const CP39_PASSPORT_LEN = 12;
+export const CP39_COUNTRY_CODE_LEN = 2;
+
+/** The identity value AS IT IS FILED — trimmed, so the gate below measures exactly the characters
+ *  `alpha()` will place in the box. Without the trim a leading space would let a 13-character passport
+ *  pass a "12 after trimming" check and still lose its last character to the slice. */
+const idValue = (v: string | null | undefined) => (v ?? '').trim();
+
+type Cp39IdentityRow = {
+  name: string;
+  oldIc?: string | null;
+  passport?: string | null;
+  countryCode?: string | null;
+};
+
+/** Every identity value that would not survive its fixed-width box, described so HR knows what to fix:
+ *  who, which box, and the value that does not fit. Empty array = nothing would be truncated. */
+export function overlongCp39Identities(rows: Cp39IdentityRow[]): string[] {
+  const boxes = [
+    ['oldIc', 'old identity card number', CP39_OLD_IC_LEN],
+    ['passport', 'passport number', CP39_PASSPORT_LEN],
+    ['countryCode', 'passport country code', CP39_COUNTRY_CODE_LEN],
+  ] as const;
+  const out: string[] = [];
+  for (const r of rows) {
+    for (const [key, label, len] of boxes) {
+      const v = idValue(r[key]);
+      if (v.length > len) {
+        out.push(`${r.name} — ${label} “${v}” (${v.length} characters; the CP39 box holds ${len})`);
+      }
+    }
+  }
+  return out;
+}
+
 /** Employer E-number → 10-digit form (Exhibit 5: "E 908915-10" → "0090891510"). */
 export const normalizeEmployerNo = (e: string): string => {
   const d = digits(e);
@@ -99,6 +151,16 @@ export function buildCp39File(p: {
         overlongNos.map((r) => `${r.name} (${(r.employeeNo ?? '').trim()})`).join(', '),
     );
   }
+  // 00806b4c — the same refusal for the three identity boxes, for the same reason (see the widths above).
+  // Here at the pure builder so every caller is covered, including tests and any future direct use; the
+  // DB path refuses one step earlier with a Cp39NotReadyError so the download answers 422 and not 500.
+  const overlongIds = overlongCp39Identities(p.rows);
+  if (overlongIds.length) {
+    throw new Error(
+      'Identity number does not fit its fixed-width CP39 field and must not be filed truncated: ' +
+        overlongIds.join('; '),
+    );
+  }
   const lines: string[] = [];
   let mtdCents = 0;
   let mtdRecords = 0;
@@ -118,10 +180,10 @@ export function buildCp39File(p: {
       'D' +
       num(tin, 11, `TIN (${r.name})`) +
       alpha(r.name, 60) +
-      alpha(r.oldIc, 12) +
+      alpha(idValue(r.oldIc), CP39_OLD_IC_LEN) +
       alpha(r.newIc ? digits(r.newIc) : '', 12) +
-      alpha(r.passport, 12) +
-      alpha(r.countryCode, 2) +
+      alpha(idValue(r.passport), CP39_PASSPORT_LEN) +
+      alpha(idValue(r.countryCode), CP39_COUNTRY_CODE_LEN) +
       num(rowMtd, 8, `MTD (${r.name})`) +
       num(rowCp38, 8, `CP38 (${r.name})`) +
       alpha(r.employeeNo, CP39_EMPLOYEE_NO_LEN);
@@ -270,6 +332,21 @@ export function cp39FileForBatch(
       throw new Cp39NotReadyError(
         'An identity number (identity card or passport) is required on every CP39 line — none on file for: ' +
           noIdentity.join(', '),
+      );
+    }
+    // 00806b4c — AND IT MUST FIT THE BOX IT IS FILED IN. The refusal above catches an EMPTY identity
+    // block; this one catches the opposite failure the same change makes reachable. The three columns are
+    // unbounded `text` and two of them are free-text inputs, so a value longer than Exhibit 4's 12/12/2
+    // is enterable today — and `alpha()` would file its first characters silently. A half passport number
+    // is not "most of an identity"; it is a different identity, on a tax filing, with nothing to say so.
+    // Refuse, naming the person AND the box, so HR can correct the record (feedback de2823cc, same call
+    // as the employee number below). A Cp39NotReadyError, so the download answers 422 with this sentence
+    // rather than the builder's 500.
+    const overlongIds = overlongCp39Identities(empRows);
+    if (overlongIds.length) {
+      throw new Cp39NotReadyError(
+        'An identity number is longer than the CP39 file allows and must not be filed cut short — correct it for: ' +
+          overlongIds.join('; '),
       );
     }
     // Fail-closed pre-check (feedback de2823cc): the CP39 employee-no field is fixed at 10 characters.
