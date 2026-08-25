@@ -487,6 +487,26 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                 <button className={btnGhost} formAction="/payroll/cp39/text" title={t('downloadTextTitle')}>
                   {t('downloadText')}
                 </button>
+                {/* 00806b4c — THE FILE LHDN ACTUALLY INGESTS, BESIDE THE COPY THAT ONLY LOOKS LIKE IT.
+                    The reporter compared the readable text export against LHDN's e-Data PCB specification
+                    and reported it as non-conforming; it never could conform, because it is laid out for a
+                    person to read. The conforming file existed all along, on a different screen. Two
+                    downloads a click apart, one of them named "…not for upload", is what stops that
+                    confusion recurring — the same arrangement Borang A and Borang 8A already have.
+
+                    A PLAIN SUBMIT BUTTON ON THE EXISTING FORM, not a third <form>: a nested form is
+                    invalid HTML and browsers drop the inner one. `formAction` retargets THIS submit only,
+                    and the route reads companyId + periodKey from the query the GET form already carries.
+                    Its own refusals are stricter than this screen's (mandatory TIN, a 10-character
+                    employee number, an identity number of some kind), so a file that cannot be produced
+                    answers 422 naming the employees rather than downloading something incomplete. */}
+                <button
+                  className={btnGhost}
+                  formAction="/payroll/reports/cp39-file"
+                  title={t('downloadFileTitle')}
+                >
+                  {t('downloadFile')}
+                </button>
               </>
             ) : (
               <span className="text-xs italic text-muted-foreground">{t('downloadsBlocked')}</span>

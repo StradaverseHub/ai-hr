@@ -12,6 +12,15 @@
  *                     country 2 | MTD cents 8N | CP38 cents 8N | employee no 10A
  *
  * Line terminator: CRLF — ⚠ not specified by Exhibit 4; confirm on first live upload.
+ *
+ * ── THE FOUR IDENTITY BOXES, AND WHY THREE OF THEM WERE EMPTY UNTIL 00806b4c ─────────────────────
+ * `buildCp39File` has accepted `oldIc`, `passport` and `countryCode` since it was written, and places
+ * them at 73–84, 97–108 and 109–110. `cp39FileForBatch` did not FETCH them, so every line LHDN received
+ * carried the new identity card and nothing else — and a foreign employee holding only a passport went
+ * out with an empty identity block that no upload error would ever mention. The read now carries all
+ * three, and refuses (naming the employees) when a person has no identity number of any kind on file.
+ * The layout, the field positions, the padding and the totals are unchanged and stay golden-tested
+ * against Exhibit 5.
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
@@ -177,6 +186,19 @@ export function cp39FileForBatch(
         name: person.fullName,
         tin: employeeStatutoryMy.taxNumber,
         ic: employeeStatutoryMy.icNumber,
+        // 00806b4c — THE THREE IDENTITY BOXES THAT USED TO GO OUT EMPTY ON EVERY LINE.
+        // `buildCp39File` has always placed old IC at 73–84, passport at 97–108 and the country code at
+        // 109–110; this read simply never fetched them, so a foreign employee holding only a passport was
+        // filed with NO identity number at all — a line LHDN cannot match to a taxpayer, and nothing on any
+        // screen said so. Migration 0450 (r217) gave `old_ic_number` and `passport_issuing_country_code`
+        // their columns; `passport_number` predates it. Same three columns the PRINTED form reads
+        // (localization/my/cp39-form.ts) — the two modules share the source, never code.
+        // ⚠️ `passportIssuingCountryCode`, NEVER `passportIssuingCountry`: the latter is fed from the
+        // tenant's NATIONALITY list and holds a demonym ("Malaysian"), not the ISO-2 ("MY") this file's
+        // Kod Negara box wants. Deriving one from the other would file an invented country code.
+        oldIc: employeeStatutoryMy.oldIcNumber,
+        passport: employeeStatutoryMy.passportNumber,
+        countryCode: employeeStatutoryMy.passportIssuingCountryCode,
         employeeNo: employment.employeeCode,
         statutory: payslip.statutory,
       })
@@ -187,7 +209,17 @@ export function cp39FileForBatch(
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
     // One CP39 row per employee: sum MTD across the period's runs (= the month's total MTD).
-    type Agg = { name: string; tin: string | null; ic: string | null; employeeNo: string | null; mtd: number; cp38: number };
+    type Agg = {
+      name: string;
+      tin: string | null;
+      ic: string | null;
+      oldIc: string | null;
+      passport: string | null;
+      countryCode: string | null;
+      employeeNo: string | null;
+      mtd: number;
+      cp38: number;
+    };
     const byEmp = new Map<string, Agg>();
     const versionSet = new Set<string>();
     for (const s of slips) {
@@ -195,7 +227,17 @@ export function cp39FileForBatch(
       if (v) versionSet.add(v);
       let r = byEmp.get(s.employmentId);
       if (!r) {
-        r = { name: s.name, tin: s.tin, ic: s.ic, employeeNo: s.employeeNo, mtd: 0, cp38: 0 };
+        r = {
+          name: s.name,
+          tin: s.tin,
+          ic: s.ic,
+          oldIc: s.oldIc,
+          passport: s.passport,
+          countryCode: s.countryCode,
+          employeeNo: s.employeeNo,
+          mtd: 0,
+          cp38: 0,
+        };
         byEmp.set(s.employmentId, r);
       }
       r.mtd = Math.round((r.mtd + Number((s.statutory as { pcb?: number } | null)?.pcb ?? 0)) * 100) / 100;
@@ -208,6 +250,26 @@ export function cp39FileForBatch(
     if (missing.length) {
       throw new Cp39NotReadyError(
         `TIN is mandatory for the CP39 file — missing for: ${missing.join(', ')}`,
+      );
+    }
+    // 00806b4c — AN IDENTITY NUMBER OF SOME KIND IS MANDATORY, AND ITS ABSENCE MUST BE LOUD.
+    // Exhibit 4 gives the detail record three identity boxes — old K/P, new K/P and passport. An employee
+    // who fills NONE of them produces a perfectly well-formed 136-character line with an empty identity
+    // block: LHDN cannot match it to a taxpayer, the upload does not fail in any way the operator sees, and
+    // the deduction goes unattributed. Refuse instead, naming the people, exactly as the TIN and
+    // employee-no gates above do — the operator can then enter the passport or the card and try again.
+    //
+    // ⚠️ THE TEST OF READINESS IS "ANY IDENTITY NUMBER", NOT "A MyKad". A foreign employee legitimately
+    // holds only a passport, and a passport line is a complete line; so is one carrying only a pre-1990
+    // old card. Narrowing this to `!ic` would refuse an entire month's filing for employees whose records
+    // are correct and complete — far worse than the blank box it replaces.
+    const hasIdentity = (r: Agg) =>
+      Boolean((r.ic ?? '').trim() || (r.passport ?? '').trim() || (r.oldIc ?? '').trim());
+    const noIdentity = empRows.filter((r) => !hasIdentity(r)).map((r) => r.name);
+    if (noIdentity.length) {
+      throw new Cp39NotReadyError(
+        'An identity number (identity card or passport) is required on every CP39 line — none on file for: ' +
+          noIdentity.join(', '),
       );
     }
     // Fail-closed pre-check (feedback de2823cc): the CP39 employee-no field is fixed at 10 characters.
@@ -228,7 +290,12 @@ export function cp39FileForBatch(
       rows: empRows.map((r) => ({
         tin: r.tin!,
         name: r.name,
+        // 00806b4c — all four identity boxes, from the employee record. `oldIc` and `countryCode` are free
+        // text/ISO-2 and go through `alpha()`; `newIc` is digit-stripped by the builder.
+        oldIc: r.oldIc,
         newIc: r.ic,
+        passport: r.passport,
+        countryCode: r.countryCode,
         mtd: r.mtd,
         cp38: r.cp38,
         employeeNo: r.employeeNo,

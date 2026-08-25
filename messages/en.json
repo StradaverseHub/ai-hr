@@ -5702,8 +5702,10 @@
       "grandTotal": "JUMLAH BESAR",
       "downloadPdf": "Download the statement",
       "downloadPdfTitle": "The drawn CP39: a cover page with the employer, the payment summary and the preparer block, then the employee schedule paginated with a total per page.",
-      "downloadText": "Download as text",
-      "downloadTextTitle": "The same content as plain text, for reading while you key into LHDN’s own portal. This is NOT the e-Data PCB upload file — that has its own button on the figures screen.",
+      "downloadText": "Download readable copy (not for upload)",
+      "downloadTextTitle": "The same content as plain text, laid out to READ from while you key the figures into LHDN’s e-PCB portal by hand. This is NOT the e-Data PCB file LHDN ingests — that is the button beside it.",
+      "downloadFile": "Download the e-Data PCB upload file",
+      "downloadFileTitle": "THE FILE YOU UPLOAD to LHDN’s e-PCB / e-Data PCB portal: fixed width, 136 characters per employee line, no separators, zero-padded amounts. Every line is checked before it is offered. It is not laid out to be read — use the readable copy for that.",
       "downloadsBlocked": "Downloads are blocked until every row above is complete."
     },
     "pcbDetail": {
