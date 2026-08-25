@@ -5702,8 +5702,10 @@
       "grandTotal": "JUMLAH BESAR",
       "downloadPdf": "Muat turun penyata",
       "downloadPdfTitle": "CP39 yang dilukis: muka surat hadapan dengan butiran majikan, ringkasan bayaran dan blok pegawai, kemudian jadual pekerja bermuka surat dengan jumlah bagi setiap muka surat.",
-      "downloadText": "Muat turun sebagai teks",
-      "downloadTextTitle": "Kandungan yang sama dalam teks biasa, untuk dibaca semasa anda kunci masuk ke portal LHDN. Ini BUKAN fail muat naik e-Data PCB — fail itu ada butangnya sendiri di skrin angka.",
+      "downloadText": "Muat turun salinan untuk dibaca (bukan untuk dimuat naik)",
+      "downloadTextTitle": "Kandungan yang sama dalam teks biasa, disusun untuk DIBACA sambil anda mengunci masuk angka ke portal e-PCB LHDN secara manual. Ini BUKAN fail e-Data PCB yang diterima LHDN — fail itu ada butangnya di sebelah.",
+      "downloadFile": "Muat turun fail muat naik e-Data PCB — DRAF",
+      "downloadFileTitle": "Fail yang diterima portal e-PCB / e-Data PCB LHDN (Exhibit 4): lebar tetap, 136 aksara bagi setiap baris pekerja, tanpa pemisah, jumlah berpad sifar. Setiap baris disemak sebelum ditawarkan. Ia tidak disusun untuk dibaca — gunakan salinan untuk dibaca bagi tujuan itu. DRAF sehingga disahkan dengan e-PCB Plus.",
       "downloadsBlocked": "Muat turun dihalang sehingga setiap baris di atas lengkap."
     },
     "pcbDetail": {

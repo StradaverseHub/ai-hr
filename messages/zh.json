@@ -5702,8 +5702,10 @@
       "grandTotal": "JUMLAH BESAR（总计）",
       "downloadPdf": "下载报表",
       "downloadPdfTitle": "绘制的 CP39：首页含雇主资料、付款摘要与填表人栏，其后是分页的员工明细，每页附小计。",
-      "downloadText": "下载为文本",
-      "downloadTextTitle": "相同内容的纯文本，便于在 LHDN 门户录入时对照阅读。这不是 e-Data PCB 上传文件 — 那个文件在数据页面有自己的按钮。",
+      "downloadText": "下载可阅读副本（不可用于上传）",
+      "downloadTextTitle": "同样内容的纯文本，排版用于在手工录入 LHDN e-PCB 门户时阅读。这不是 LHDN 接收的 e-Data PCB 文件 — 那个文件就是旁边的按钮。",
+      "downloadFile": "下载 e-Data PCB 上传文件 — 草稿",
+      "downloadFileTitle": "LHDN e-PCB / e-Data PCB 门户接收的文件（附件 4）：定宽，每名员工一行 136 个字符，无分隔符，金额前补零。每一行在提供前都会先行校验。它并非为阅读排版——阅读请用可阅读副本。在通过 e-PCB Plus 验证前为草稿。",
       "downloadsBlocked": "在上方每一行完整之前，下载被禁用。"
     },
     "pcbDetail": {

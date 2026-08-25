@@ -79,8 +79,9 @@ export type Cp39FormRow = {
    * 12-digit MyKad and a validator would refuse genuine cards). Blank here means the employee has none
    * on file, which is the ordinary case — most employees never had one.
    *
-   * (Until 0450 this was permanently empty because no column existed. The e-Data PCB file still leaves
-   * it blank — `cp39-file.ts` does not pass it — which is a separate decision, not this one.)
+   * (Until 0450 this was permanently empty because no column existed. 00806b4c then took the separate
+   * decision this note used to defer: the e-Data PCB file carries the same column too, so the printed
+   * page and the uploaded file now show the same identity for the same person.)
    */
   oldIc: string;
   /** No. K/P Baru — `employee_statutory_my.ic_number`. */
