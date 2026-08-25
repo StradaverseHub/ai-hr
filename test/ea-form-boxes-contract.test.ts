@@ -297,6 +297,64 @@ describe('r220 — the field register and the drawn form describe the same page'
   });
 
   /**
+   * ⚠️ THE CHAIN THE PLAN PROMISED, AND THE LINK THAT WAS MISSING FROM IT.
+   *
+   * The case above holds the register's `wording` column to the transcription — but that column is a THIRD
+   * hand-typed copy of each caption. The page draws `messages/ms.json` → `payroll.ea.<key>`, and nothing
+   * joined the two. Row A/1 could go on carrying `wording: 'Nama Penuh Pekerja / Pesara (Encik/Cik/Puan)'`
+   * while the form printed something else entirely, and every other case in this file would stay green: the
+   * register would be a document describing a form that does not exist, which is worse than no register at
+   * all, because it is the document somebody TRUSTS while checking a C.P.8A.
+   *
+   * So this closes the chain — PRINTED CAPTION → REGISTER WORDING → TRANSCRIPTION — and it subsumes the
+   * hardcoded twenty-one-key list in test/r219-ea-cp8a-form.test.ts, because the register names EVERY drawn
+   * caption (the two cases at the top of this describe prove that in both directions). The six section
+   * titles, `sectionBExcluding`, every numbered Part A item, the description cues, 1(f)'s two period rules,
+   * `fundName`, `contributionAmount` and `formTotal` are all checked here and none of them was on that list.
+   *
+   * OUR NUMBERING IS STRIPPED FIRST. The form prints its item numbers in its own column, so the caption
+   * carries "1(b) ", "5(a) ", "9. ", "(a) " or the section letter "A  " as OUR prefix; everything after it
+   * is the agency's and must equal the register's wording exactly.
+   */
+  it('every register wording is the Malay caption the form actually prints', () => {
+    const ms = JSON.parse(read('messages/ms.json')).payroll.ea as Record<string, string>;
+    /** OUR prefixes: a section letter, "9. ", "1(f) ", "5(a) ", or a bare "(a) " under item 9. */
+    const OURS = /^(?:[A-F] {2}|\d+(?:\([a-z]\))?[.)]?\s+|\([a-z]\)\s+)/;
+    const printed = (v: string) => v.replace(OURS, '').trim();
+
+    /**
+     * The ONE row whose register wording is deliberately LONGER than the printed caption. 1(f) prints
+     * “Ganjaran bagi tempoh” and then draws the form's own `dari ___ hingga ___` rules as two further
+     * captions, so the register states the whole box on one row. Those two rules are themselves register
+     * rows (`periodFrom` / `periodTo`) and are checked like everything else, so this exception leaves
+     * nothing unverified — the printed caption must still be the START of the register's wording.
+     */
+    const INLINE_RULES = new Set(['gratuity']);
+
+    const rows = EA_REGISTER.filter((r) => r.caption.from === 'label' && r.wording !== '');
+    expect(rows.length, 'sanity: the register carries agency wording on its label rows').toBeGreaterThan(40);
+    // Resolution is ASSERTED, never filtered. A silently dropped key is exactly how four captions in
+    // test/r219-ea-cp8a-form.test.ts went unchecked for a whole round while their guard looked green.
+    const unresolved = rows.filter((r) => typeof ms[r.caption.key] !== 'string');
+    expect(
+      unresolved.map((r) => r.caption.key),
+      'register captions with no payroll.ea key in messages/ms.json',
+    ).toEqual([]);
+
+    const drifted = rows.filter((r) => {
+      const caption = printed(ms[r.caption.key]);
+      return INLINE_RULES.has(r.caption.key) ? !r.wording.startsWith(caption) : caption !== r.wording;
+    });
+    expect(
+      drifted.map(
+        (r) =>
+          `${r.section}${r.box ? ` ${r.box}` : ''} (${r.caption.key}): the form prints ${JSON.stringify(printed(ms[r.caption.key]))}, the register says ${JSON.stringify(r.wording)}`,
+      ),
+      'captions the form prints that the register does not carry — the transcription of the specimen is the authority for both',
+    ).toEqual([]);
+  });
+
+  /**
    * The checked-in document is what a reviewer reads in a diff and what the shelf hands an operator, so it
    * cannot lag the data. Regenerate with `pnpm tsx scripts/gen-ea-field-register.ts`.
    */

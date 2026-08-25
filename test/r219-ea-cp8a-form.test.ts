@@ -400,7 +400,18 @@ describe('r219 — every Malay box caption is the agency’s own, checked agains
   const TRANSCRIPTION = read('docs/forms/ea-cp8a-pin-2024-transcription.txt');
   const ms = JSON.parse(read('messages/ms.json')).payroll.ea as Record<string, string>;
 
-  /** The keys whose value IS an agency caption. Anything not here is ours and may be worded freely. */
+  /**
+   * The keys whose value IS an agency caption. Anything not here is ours and may be worded freely.
+   *
+   * ⚠️ r220 FIX — THIS LIST USED TO LIE BY FOUR ENTRIES. It named `compensationLossOfEmployment`,
+   * `mtd`, `cp38` and `zakat`, none of which exist under `payroll.ea`; the trailing
+   * `.filter((k) => typeof ms[k] === 'string')` dropped them WITHOUT A WORD, and the
+   * `toBeGreaterThan(15)` floor was satisfied by the seventeen survivors, so nothing reported the
+   * loss. Part B item 6 and the whole top of Section D were drawn on the form with their agency
+   * wording unverified while a guard named after them looked green. The keys are now the real ones
+   * (`compensation`, `monthlyTaxDeduction`, `cp38Deductions`, `zakatViaSalary`) and the resolution
+   * is ASSERTED rather than filtered — a renamed or deleted key fails here instead of vanishing.
+   */
   const AGENCY_CAPTIONS = [
     'grossSalary',
     'feesCommissionBonus',
@@ -412,25 +423,34 @@ describe('r219 — every Malay box caption is the agency’s own, checked agains
     'benefitsInKind',
     'livingAccommodation',
     'unapprovedFundRefund',
-    'compensationLossOfEmployment',
+    'compensation',
     'pension',
     'annuity',
-    'mtd',
-    'cp38',
-    'zakat',
+    'monthlyTaxDeduction',
+    'cp38Deductions',
+    'zakatViaSalary',
     'donations',
     'tp1ClaimHeading',
     'tp1Relief',
     'zakatOther',
     'childRelief',
-  ].filter((k) => typeof ms[k] === 'string');
+  ];
 
   /** Strip OUR numbering prefix — "1(b) ", "5(a) ", "4. " — and keep the agency's own words. */
   const caption = (v: string) => v.replace(/^\d+(\([a-z]\))?[.)]?\s+/, '').trim();
 
+  it('every key this guard names really is a caption in the Malay bundle', () => {
+    // The check that the guard is checking anything at all. A silent `.filter` here is how four of
+    // these went unverified for a whole round.
+    const unresolved = AGENCY_CAPTIONS.filter((k) => typeof ms[k] !== 'string');
+    expect(unresolved, `AGENCY_CAPTIONS names keys that are not in messages/ms.json → payroll.ea: ${unresolved.join(', ')}`).toEqual([]);
+  });
+
   it('appears verbatim in the transcription of the specimen', () => {
     expect(AGENCY_CAPTIONS.length).toBeGreaterThan(15);
-    const missing = AGENCY_CAPTIONS.filter((k) => !TRANSCRIPTION.includes(caption(ms[k])));
+    // `?? <<unresolved>>` and not `?? ''`: `includes('')` is true, so a key that stopped resolving
+    // would have passed this case too — exactly the way the old `.filter` let four of them through.
+    const missing = AGENCY_CAPTIONS.filter((k) => !TRANSCRIPTION.includes(caption(ms[k] ?? `<<unresolved:${k}>>`)));
     expect(missing, `these Malay captions are not in docs/forms/ea-cp8a-pin-2024-transcription.txt: ${missing.map((k) => `${k}=${JSON.stringify(ms[k])}`).join(', ')}`).toEqual([]);
   });
 

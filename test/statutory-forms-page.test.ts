@@ -228,6 +228,19 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       expect(ns[l.labelKey], `${l.id} labelKey ${l.labelKey}`).toBeTruthy();
       expect(ns[l.hintKey], `${l.id} hintKey ${l.hintKey}`).toBeTruthy();
       if (l.descriptionKey) expect(ns[l.descriptionKey], `${l.id} descriptionKey`).toBeTruthy();
+      // r220 — THE SECOND AND THIRD ACTIONS RESOLVE THEIR WORDS THROUGH A CAST LOOKUP on this screen
+      // (`t(labelKey as 'link_cp22_blank')`), so tsc checks nothing about them and a key that is not in
+      // the namespace throws MISSING_MESSAGE at RENDER time while the route still answers 200 (AGENTS 6).
+      // The individual r220 cases below pin the key NAMES the EA and CP22 rows declare; this is the only
+      // guard that says those names resolve, and it covers any row that grows an extra action later.
+      for (const [field, key] of [
+        ['secondaryLabelKey', l.secondaryLabelKey],
+        ['secondaryTitleKey', l.secondaryTitleKey],
+        ['tertiaryLabelKey', l.tertiaryLabelKey],
+        ['tertiaryTitleKey', l.tertiaryTitleKey],
+      ] as const) {
+        if (key) expect(ns[key], `${l.id} ${field} ${key}`).toBeTruthy();
+      }
     }
     for (const p of MY_PLANNED_FORMS) {
       expect(ns[p.labelKey], `${p.id} labelKey ${p.labelKey}`).toBeTruthy();
@@ -268,6 +281,8 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     const INTERPOLATED = new Set(['chipMonth', 'chipYear', 'shelfReady']);
     const rendered = [
       ...MY_STATUTORY_LINKS.flatMap((l) => [l.labelKey, l.hintKey, l.descriptionKey]),
+      // r220 — the extra actions' words and tooltips are rendered with no arguments too.
+      ...MY_STATUTORY_LINKS.flatMap((l) => [l.secondaryLabelKey, l.secondaryTitleKey, l.tertiaryLabelKey, l.tertiaryTitleKey]),
       ...MY_PLANNED_FORMS.flatMap((p) => [p.labelKey, p.hintKey]),
       ...MY_REPORTS.map((r) => r.descriptionKey),
       ...['official', 'agency_layout', 'figures', 'draft_file', 'planned'].flatMap((s) => [`fidelity_${s}`, `fidelity_${s}_hint`]),
