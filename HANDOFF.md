@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-23 (r195–r219 SHIPPED · NOTHING IN FLIGHT · THE BOARD IS EMPTY)
+## CURRENT STATE — snapshot 2026-08-25 (r195–r220 SHIPPED · NOTHING IN FLIGHT · THE BOARD IS EMPTY)
 
-**`main@f72cdba3` IS WHAT RUNS ON PRODUCTION (r219, 2026-08-23)** — verified by an
+**`main@3ac9294b` IS WHAT RUNS ON PRODUCTION (r220, 2026-08-25)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
@@ -35,13 +35,41 @@ ELSE in that dry run is an undeployed release.
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
 `passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
-**r218 and r219 added NONE — next free is still `0451`.**
-**Board after r219 (2026-08-23): `deployed = 736` · `cancelled = 14` · EVERYTHING ELSE ZERO — the board
-is completely clear for the second time in its life.** r219 shipped five: `0fea5cc9` (CP39 page 2 in the
-official ruled layout), `ece6d75d` (the EA redrawn as the C.P.8A Pin. 2024), `64c09b0e` (PERKESO report in
-the agency's own field names), `ca7766ab` (editing an entitlement version that has not taken effect) and
-`7966ee35` (the replacement-leave reason). `68147833` — ours — was closed with `build_ref` saying
-**no-code-change**: approving it meant the reporter accepting the recommendation.
+**r218, r219 and r220 added NONE — next free is still `0451`.**
+**Board after r220 (2026-08-25): `deployed = 738` · `cancelled = 14` · EVERYTHING ELSE ZERO — the board
+is completely clear for the THIRD time in its life.** r220 shipped two: `00806b4c` (the CP39 e-Data PCB
+file fills all four identity boxes, refuses an over-long one, and the two downloads are named apart) and
+`61c2e30f` (the blank C.P.8A Pin. 2024 in both languages, plus the EA field register). r219 shipped five
+(`0fea5cc9`, `ece6d75d`, `64c09b0e`, `ca7766ab`, `7966ee35`) — details in `docs/HANDOFF-HISTORY.md`.
+
+⚠️⚠️ **r220's DECISIVE FINDING, AND IT IS THE SECOND TIME: THE REPORTER'S "WRONG FORMAT" WAS THE WRONG
+BUTTON, NOT A WRONG FORMAT.** `00806b4c` sent a full LHDN fixed-width specification and asked for the CP39
+text file to be rebuilt to it. Generating **ISEDECOR's own January 2026 file from production** (19
+employees, aggregated per employment exactly as `cp39FileForBatch` does) produced
+`009457390901_2026.txt` — **the filename in their own ticket, byte for byte** — with a 57-character header,
+nineteen 136-character detail lines, no other line length present, CRLF between and after the last, and no
+delimiter anywhere. It already met every clause they sent. What they had almost certainly downloaded was
+**"Download as text"**, the READABLE COPY on the review screen, whose own tooltip already said it is not
+the upload file. r218 was the same shape (PERKESO). **Generate the tenant's own file before agreeing that
+a format is wrong.**
+
+⚠️ **AND THE REAL DEFECT WAS UNDERNEATH IT: THREE OF THE FOUR IDENTITY BOXES WENT OUT EMPTY ON EVERY
+LINE.** `buildCp39File` has always placed old K/P at 73–84, passport at 97–108 and Kod Negara at 109–110;
+`cp39FileForBatch` simply never fetched them. Now it does. **Filling them made silent truncation reachable
+for the first time** — the three columns are unbounded `text` and two are free-text inputs, and `alpha()`
+hard-truncates — so `overlongCp39Identities` refuses and names the person and the box instead. A half
+passport number is not most of an identity; it is a different identity, on a tax filing.
+
+⚠️ **r220 CHANGES NOTHING VISIBLE FOR THIS TENANT YET, AND THAT IS A DATA FACT, NOT A BUG.** All 33
+employees in `employee_statutory_my` have a new IC; **ZERO have an old IC, a passport or a country code**,
+so the three newly-filled boxes are still blank in their file and the new "no identity at all" refusal
+fires for NOBODY (verified against production before release: `would_refuse = 0`). Building r220's output
+and pre-r220's output from the same rows gives **byte-identical files**. The value lands when HR enters a
+passport. Two employees still have no TIN and are blocked by the older, unchanged gate.
+
+⚠️ **THE JANUARY DATA IS STILL WRONG IN THE WAY r218 FOUND, AND NOBODY HAS FIXED IT.** ISEDECOR's January
+rows still carry `TEST0001`…`TEST0014` in the name box and `ISMAIL` where the filed file says
+`MOHD RIDHUAN BIN ISMAIL`. r218 reported it in `68147833`; it is a DATA correction only they can make.
 
 ⚠️⚠️ **`7966ee35` IS SHIPPED BUT THE FEATURE IS STILL OFF, AND THAT IS DELIBERATE.** What shipped is the
 SCREEN SAYING WHY. Replacement Leave in Lieu stays unavailable until `toil` is granted to this tenant, and

@@ -1,3 +1,38 @@
+## r220 — 2026-08-25 · the CP39 identity boxes, and the blank C.P.8A
+
+**Shipped:** `main@3ac9294b`. Two approved items, one worktree each off `main@14646e3b`, merged after an
+adversarial plan-versus-build pass. No migration; next free is still `0451`.
+
+**`00806b4c` — CP39 e-Data PCB file.** The reporter sent LHDN's fixed-width specification and asked for a
+rebuild. Their own January file, generated from production, already met it — `009457390901_2026.txt`,
+57/136, CRLF, no delimiters. The real defect was that `cp39FileForBatch` never fetched `old_ic_number`,
+`passport_number` or `passport_issuing_country_code` (migration 0450, r217), so three of Exhibit 4's four
+identity boxes were empty on every line. Now carried, plus two refusals: no identity of any kind, and an
+identity too long for its box. The readable copy was relabelled in six locales and the real upload file
+gained a button on the review screen.
+
+**`61c2e30f` — the blank C.P.8A and the field register.** `/payroll/ea/blank?lang=en|ms` renders the
+Pin. 2024 form through the SAME renderer with `{ blank: true }`, which suppresses the money column;
+verified on a dev server as one page in both locales with no amount of any kind on it. The 72-box field
+register (`lib/ea-field-register.ts`) GENERATES `docs/forms/ea-cp8a-field-register.md`, and the contract
+test binds register and renderer in both directions.
+
+**Decisions the tickets did not settle:**
+
+- **An old identity card counts as an identity.** The brief said refuse when new IC and passport are both
+  blank; because the file now actually carries the old card, an old-card-only employee's line is complete,
+  and the strict rule would have refused a whole month's filing for a correct record.
+- **The blank needed an explicit flag, not an empty object.** Every Part B–E amount is a required number,
+  so an "empty" statement is a statement of zeros and zeros print. `{ blank: true }` is said in as many
+  words so a real employee's C.P.8A can never fall into blank mode by accident.
+- **The upload-file download is a `formAction` submit on the review screen's existing form.** A nested
+  form is invalid HTML and browsers drop the inner one.
+- **Two gate lessons.** Three chunks is no longer enough for a 738-file suite: chunk 2 hit 99% on the RAM
+  disk, Postgres died, and 25 unrelated files "failed" in 6–16ms with `ECONNREFUSED`. At `CHUNKS=6` the
+  same tree was green — 738 files, 10,623 tests, peak disk 64%. A killed gate is not a red gate; read the
+  error signature before believing either.
+
+
 ## r219 (2026-08-23) — FIVE ITEMS, TWO FORMS REDRAWN TO THE AGENCY'S OWN PAGE, AND AN EMPTY BOARD
 
 `f72cdba3`. Five approved items built as five workstreams in their own worktrees with nine adversarial
