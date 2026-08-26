@@ -15,10 +15,30 @@
 import { anthropicAdapter } from './providers/anthropic';
 import { googleAdapter } from './providers/google';
 import { openaiAdapter } from './providers/openai';
-import { AiGatewayError, type AiAdapter, type AiProvider, type GenerateArgs, type ResolvedAiConfig } from './types';
+import {
+  AiGatewayError,
+  type AiAdapter,
+  type AiProvider,
+  type ConverseArgs,
+  type ConverseResult,
+  type GenerateArgs,
+  type ResolvedAiConfig,
+} from './types';
 
-export { AiGatewayError } from './types';
+export { AiGatewayError, normaliseStop } from './types';
 export type { AiProvider, ResolvedAiConfig, GenerateArgs, ValidateResult } from './types';
+export type {
+  AiJsonSchema,
+  AiToolSpec,
+  AiToolCall,
+  AiToolResult,
+  AiProviderState,
+  AiTurn,
+  AiStop,
+  AiUsage,
+  ConverseArgs,
+  ConverseResult,
+} from './types';
 export { PROVIDERS, PROVIDER_META, isProvider, defaultModelFor, envFallbackConfig, hasEnvFallback } from './registry';
 export { isSecretStorable, SecretConfigError } from './crypto';
 
@@ -46,6 +66,41 @@ export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): 
 /** Cheapest credential+model probe. Returns ok/false + a generic reason; never throws. */
 export function validateConfig(cfg: ResolvedAiConfig) {
   return adapterFor(cfg.provider).validate(cfg);
+}
+
+/** Whether this provider can run the assistant loop (ADR-0082). A cheap UI gate that mirrors
+ *  isAiConfigured — "this provider cannot converse" is a state a screen can render, not a crash. */
+export function supportsConverse(provider: AiProvider): boolean {
+  return typeof ADAPTERS[provider]?.converse === 'function';
+}
+
+/**
+ * ONE non-streaming, tool-aware exchange against the resolved provider/model (ADR-0082). Generic errors
+ * only. This is the assistant's transport; it is NOT a loop — the caller owns the turn cap, the budget
+ * re-check, the audit row and the whole-exchange deadline.
+ *
+ * Deliberately does NOT throw on empty text. With tools, `stop === 'tool_use'` with an empty `text` is
+ * the normal, correct shape — unlike generateDraft above, where empty means failure. The loop decides
+ * what an empty answer means.
+ *
+ * `generateDraft` is NOT reimplemented on top of this, and must not be. Three test files mock `lib/ai`
+ * as `{ ...importActual, generateDraft: vi.fn() }`; an intra-module call from generateDraft into
+ * converse would NOT be intercepted, so those suites would make real network calls with a real key.
+ * The two share adapters, error mapping and the per-call client factory — and share no call path.
+ *
+ * redactPII is deliberately NOT applied here. The drafting callers wrap every free-text field at the
+ * call site because employee PII is leaving the tenant for a model. The assistant's tool results are
+ * rows the caller is already entitled to read, fetched under its own RLS-scoped session — redacting
+ * them produces an assistant that answers "[email]" for an address the user can see on screen. The
+ * caller applies an untrusted-content fence to tool results instead. Do not copy the drafting pattern
+ * here.
+ */
+export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
+  const adapter = adapterFor(cfg.provider);
+  if (!adapter.converse) throw new AiGatewayError('This AI provider does not support the assistant.');
+  // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
+  // and inherit a server-side default nobody chose.
+  return adapter.converse(cfg, { ...args, maxTokens: args.maxTokens ?? 2048, timeoutMs: args.timeoutMs ?? 120_000 });
 }
 
 /**
