@@ -306,19 +306,39 @@ something.
 - **Fail closed on configuration**, reusing ADR-0023's precedence exactly: active tenant config →
   platform env fallback → **off**. A present-but-undecryptable config errors rather than falling
   through to the platform key.
+- **A per-user grant on top of the module (§8 decision 1).** Access is `isModuleEnabled('assistant')`
+  **AND** an `assistant_grant` row for this user — the HR admin assigns and removes it per person.
+  Both gates fail closed. Note this is a **new mechanism**: the only stored grant precedent here
+  (`payroll_permission_grant`) is keyed by role, and no per-user screen access is persisted anywhere
+  today, so there is nothing to extend and the table is genuinely additive.
 - Individual tools are gated by their own module: no `attendance` module, no attendance tool in the
   spec list. This also keeps the cached prefix stable per (tenant, role) rather than per user.
 - **`app/assistant/page.tsx` needs a column in `lib/permissions.ts`'s `SCREENS`** or
   `test/function-access.test.ts`'s reverse-completeness case fails and the route becomes a screen
   nobody can grant or revoke (AGENTS rule 20).
-- Six locales — `en`, `ms`, `ta`, `th`, `vi`, `zh`. The UI strings are ordinary i18n work. **Whether
-  the model answers in the user's language is a separate question and is untested here** (§8).
+- Six locales — `en`, `ms`, `ta`, `th`, `vi`, `zh`. The UI strings are ordinary i18n work. **The model
+  answers in the user's own locale (§8 decision 5)**, which makes §7's per-language factuality cases and
+  the never-originate-a-statutory-figure rule load-bearing rather than advisory.
+- **Every user-facing string the gateway can produce must be localised, including the ones that "cannot
+  happen".** `lib/ai/index.ts`'s capability guard and the three adapters' error strings are raw English
+  today; they were reachable only by an admin before, and an employee-facing assistant in six languages
+  changes that.
 
 ---
 
 ## 3. Data model
 
-Three tables. None touches the money path.
+Four tables. None touches the money path.
+
+**`assistant_grant`** — who the HR admin has switched the assistant on for (§8 decision 1)
+```
+id, tenant_id, app_user_id FK, allowed boolean NOT NULL DEFAULT true,
+granted_by_user_id FK, granted_at, revoked_at NULL
+UNIQUE (tenant_id, app_user_id) WHERE revoked_at IS NULL
+```
+RLS: tenant-scoped read (a user may see whether they hold it), **admin-only write**. Composed with the
+module gate, not a substitute for it — both must pass. Revocation is a `revoked_at` stamp rather than a
+delete, so "who could ask the assistant last March" stays answerable.
 
 **`assistant_exchange`** — the transcript, self-scoped
 ```
@@ -446,24 +466,46 @@ around, and factuality is the metric that catches it.
 
 ---
 
-## 8. Open decisions (needed before build)
+## 8. Decisions (settled 2026-08-26) and what remains open
 
-1. **Audience at launch.** Employee-facing, or HR/admin-first? *Recommendation: HR/admin-first* — the
-   valuable questions ("who is away next week", "why is this person's PCB this figure") are theirs, the
-   population is small enough to price, and the blast radius of a bad answer is a colleague rather than
-   3,000 employees. Employee ESS follows once the evaluation numbers exist.
-2. **Tool scope for v1** — §4's ten, or narrower? A narrower set is cheaper (smaller cached prefix) and
-   easier to evaluate.
-3. **Budget ceiling and behaviour at the cap** — refuse, or degrade to `claude-sonnet-5`? Degrading is
-   friendlier and changes answer quality silently; refusing is honest and annoying.
-4. **Transcript retention** — how long, and does the user get a delete? PDPA argues for both a bound and
-   a right to erase; ADR-0030 is the frame.
-5. **Answer language.** Six locales are supported in the UI. Model quality in Malay, Tamil, Thai and
-   Vietnamese for HR terminology is **untested here** — deciding to answer in-locale without measuring
-   it risks confidently wrong Malay on a statutory question. *Recommendation: English answers in v1,
-   with the locale question folded into §7's harness.*
-6. **Whose key.** BYOK means the tenant pays their own provider bill; the platform fallback means we do.
-   That is a commercial call ADR-0023 left open and the assistant is the feature that makes it material.
+Four of the six were settled by the owner on 2026-08-26. Two of those went **against** the
+recommendation recorded above them, and both are kept visible here rather than quietly overwritten —
+the reasoning that lost is the part a later reader needs in order to reopen the question intelligently.
+
+1. **Audience — DECIDED: neither. It is a per-user grant the HR admin assigns and removes.**
+   The choice offered was employee-first or admin-first; the answer was to make it *configurable*, which
+   is better than both and is why the option list was wrong. **This is a mechanism this codebase does
+   not have.** `payroll_permission_grant` (`db/schema.ts:5540`) is the only stored grant precedent and
+   it is keyed by **role**, not user — `permissionKey × role × companyId × allowed`; `lib/permissions.ts`
+   `SCREENS` is a static matrix with no backing table, and nothing persists per-user screen access
+   today. So §3 gains an `assistant_grant` table (tenant, `app_user_id`, allowed, granted_by,
+   granted_at), admin-only write under RLS, **composed with** the ADR-0077 module gate: the tenant must
+   hold the module *and* the user must hold a grant. Fail closed on either.
+   *Costs nothing per question:* tools are gated by module and role, so per-user access does not vary
+   the cacheable prefix — it stays stable per (tenant, role) exactly as §2.2 requires.
+2. **Tool scope — DECIDED: the full §4 catalogue**, including `my_payslip_summary` (`pay`) and
+   `employee_profile` (`identity`). RLS covers both, and the payslip tool inherits the ESS release gate,
+   so an unreleased payslip is invisible to the assistant because it is invisible to the employee.
+   This also commits `search_handbook`, the one tool that is **not** a wrapper over an existing read:
+   there is no full-text search anywhere in this codebase, so it is a `tsvector` column, a GIN index and
+   a migration.
+3. **Behaviour at the ceiling — DECIDED: refuse, and say so.** As specified in §2.6; no change.
+4. **Transcript retention — STILL OPEN.** How long, and does the user get a delete? PDPA argues for both
+   a bound and a right to erase; ADR-0030 is the frame.
+5. **Answer language — DECIDED: answer in the user's locale, all six.** This went against the
+   recommendation directly above, which was English-only in v1. The concern was not that in-locale
+   answers are wrong to want; it is that model quality in Malay, Tamil, Thai and Vietnamese for
+   *statutory* HR terminology is unmeasured here, and a confidently wrong Malay answer about EPF is
+   worse than a plain English one.
+   **The decision therefore promotes one guardrail from optional to load-bearing, and it is not
+   negotiable within this design:** the assistant must never *originate* a statutory figure or
+   interpretation in any language. Every number in an answer is interpolated from a tool result (§7's
+   factuality invariant, already binding), and a statutory question is answered by citing the tool or
+   the handbook rather than from model knowledge. §7's harness gains per-language factuality cases so
+   the residual risk is **measured rather than assumed**. If those numbers come back poor for a given
+   locale, the fallback is that locale answering in English — not silently shipping a bad answer.
+6. **Whose key — STILL OPEN.** BYOK means the tenant pays their own provider bill; the platform fallback
+   means we do. A commercial call ADR-0023 left open, which the assistant makes material.
 
 ---
 
