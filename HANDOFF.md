@@ -18,11 +18,60 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-26 (r221 + r222 SHIPPED · THE BOARD IS EMPTY · ADR-0082 IS THE ACTIVE WORKSTREAM)
+## CURRENT STATE — snapshot 2026-08-26 (r221-r223 SHIPPED · THE BOARD IS EMPTY · ADR-0082 IS THE ACTIVE WORKSTREAM)
 
-**`main@a9f70b1f` IS WHAT RUNS ON PRODUCTION (r222, 2026-08-26)** — verified by an
+**`main@b85d2528` IS WHAT RUNS ON PRODUCTION (r223, 2026-08-26)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
+
+### r223 (2026-08-26) — ADR-0082 slice 2: the assistant substrate + the access-scoped tool registry. `0451`.
+
+Four tables, the billable `assistant` module, the per-user grant service, and **nine tools** each
+wrapping an existing `core/read.ts` function inside the CALLER'S OWN `SessionContext`, so RLS scopes
+them. `search_handbook` is deliberately held for its own slice — it is the one tool that is not a
+wrapper (no full-text search exists here) and **Postgres FTS stems per language**, which collides with
+the six-locale answer decision. Nine tools, not ten, is the shipped state.
+
+⚠️⚠️ **THE BUILD AGENT DIED MID-RESPONSE AND THE VERIFICATION WAS BETTER FOR IT.** The tool-registry
+agent wrote its files and then died before reporting, so the three verifiers ran against a NULL build
+report — with no builder claims to anchor on they read the code directly, and the completeness critic
+returned "slice 2 is NOT done". It was right. **A build report is a claim, not evidence; its absence
+cost nothing.**
+
+⚠️ **THE DEFECT THAT GENERALISES PAST THIS ROUND: A READ BEING RLS-SAFE DOES NOT MAKE IT ANSWER-SAFE.**
+ADR-0082 §4 mapped `upcoming_holidays` to `upcomingHolidays` (`core/read.ts:1886`), which filters on the
+DATE ALONE — no company, no state, no holiday group — because its only caller is a dashboard card
+already inside a company-scoped page. Pointed at "when is my next public holiday" it names days the
+asker does not observe. Fixed with `holidayDatesForEmployment` over the ADR-0054 resolver. **Ask both
+questions separately for every tool that is ever added.**
+
+⚠️ **AND THE ONE THAT ALMOST SHIPPED UNGUARDED: `leave_entitlement_explain` BOUND TO `emps[0]`.**
+`leave_type` is TENANT-scoped, so a leaveTypeId from `my_leave_balances` cannot say which employment it
+came from — a shared-services employee asking about Company B was answered with Company A's figures,
+silently. Now one block per employment with every figure INSIDE its block: a single top-level
+`cycleStart` beside a list reads as "the" answer and gets quoted for the wrong company. **The
+non-vacuity check is what caught that the fix was unguarded** — the existing test had ONE employment,
+where `emps` and `emps.slice(0,1)` are the same list, so reverting the fix broke nothing. A
+concurrent-employment fixture now guards it.
+
+⚠️ **TWO MODEL-INPUT DEFECTS OF ONE FAMILY: EVERY IDENTIFIER AND DATE A TOOL RECEIVES IS
+MODEL-SUPPLIED.** `Date.parse('2026-02-30')` does NOT fail — it ROLLS OVER to 2026-03-02 and returns a
+finite timestamp — so 30 February reached Postgres and came back as `22008` thrown OUT of the tool
+instead of the refusal it declares; and three tools passed a model-supplied id into a uuid comparison
+behind only a non-empty check, so a hallucinated `"E12345"` raised `22P02`. Both now refuse. This is the
+ordinary case for a tool registry, not the edge one.
+
+⚠️ **THE MISSING SECURITY TEST NOW EXISTS, AND 0451 ALREADY CITED IT.** The migration named
+`test/assistant-grant-rls.test.ts` in the PRESENT TENSE as the guard for its REVOKEs; the file did not
+exist. It pins the critic's highest-value gap: **`assistant_grant_read` ORs in `app.is_admin()`, so RLS
+hands an admin EVERY grant row in the tenant** — only the explicit `app_user_id` comparison in
+`mayUseAssistant` stops an admin resolving `allowed: true` off SOMEBODY ELSE'S grant. A companion case
+asserts RLS really does return that row, so the first cannot pass vacuously. Verified on production:
+DELETE revoked on grant/budget/usage, KEPT on `assistant_exchange` (a user erasing their own history is
+the PDPA right), RLS on all four.
+
+**THE SLICE STILL HAS NO LOOP, NO BUDGET ENFORCEMENT AND NO SCREEN** — `converse()` (r221) and the
+registry (r223) exist and still have no caller between them. Next: `core/assistant.ts`.
 
 ### r222 (2026-08-26) — the shell is branded "Kingdee AI HR". NO MIGRATION. Owner request, not a board item.
 
@@ -119,7 +168,10 @@ ELSE in that dry run is an undeployed release.
 (`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
 instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
 `passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
-**r218, r219 and r220 added NONE — next free is still `0451`.**
+**r218-r222 added NONE. r223 ADDED `0451`** (`assistant_substrate` — the four ADR-0082 tables),
+verified on production by its EFFECT: all four tables present, RLS on all four, and the DELETE
+asymmetry intact (`assistant_exchange` keeps DELETE for PDPA erasure; grant/budget/usage do not).
+**Next free is `0452`.**
 **Board after r220 (2026-08-25): `deployed = 738` · `cancelled = 14` · EVERYTHING ELSE ZERO — the board
 is completely clear for the THIRD time in its life.** r220 shipped two: `00806b4c` (the CP39 e-Data PCB
 file fills all four identity boxes, refuses an over-long one, and the two downloads are named apart) and
