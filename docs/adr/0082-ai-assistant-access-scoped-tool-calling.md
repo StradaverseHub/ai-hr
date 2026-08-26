@@ -332,13 +332,33 @@ Four tables. None touches the money path.
 
 **`assistant_grant`** — who the HR admin has switched the assistant on for (§8 decision 1)
 ```
-id, tenant_id, app_user_id FK, allowed boolean NOT NULL DEFAULT true,
-granted_by_user_id FK, granted_at, revoked_at NULL
+id, tenant_id, app_user_id FK,
+granted_by_user_id FK, granted_at, revoked_by_user_id FK, revoked_at NULL
 UNIQUE (tenant_id, app_user_id) WHERE revoked_at IS NULL
 ```
 RLS: tenant-scoped read (a user may see whether they hold it), **admin-only write**. Composed with the
 module gate, not a substitute for it — both must pass. Revocation is a `revoked_at` stamp rather than a
 delete, so "who could ask the assistant last March" stays answerable.
+
+> **Built in r223 with three departures from this section — recorded here so the next reader does not
+> "restore" them.**
+> - **There is no `allowed` boolean.** An earlier draft of this table (and §8 decision 1) named one.
+>   Two ways to express the same fact is one too many: `allowed = false` and a `revoked_at` stamp would
+>   disagree eventually, and the partial unique index already makes "live grant" a single well-defined
+>   state. Liveness is `revoked_at IS NULL`.
+> - **`at_ceiling` on `assistant_budget` admits only `'refuse'`.** §2.6 and §8 decision 3 settled the
+>   behaviour as refuse; a CHECK admitting a `'degrade'` value that no code implements is worse than a
+>   missing one, because it lets an admin select a mode that silently does nothing. Widen the CHECK in
+>   the same change that builds degradation, not before.
+> - **`DELETE` is revoked on `assistant_grant`, `assistant_budget` and `assistant_usage`, and
+>   deliberately KEPT on `assistant_exchange`.** The three stamps are only stamps if the database says
+>   so — production's `ALTER DEFAULT PRIVILEGES` grants the app role full CRUD, so "revocation is a
+>   stamp" and "the usage counter cannot be reset" are otherwise conventions, not facts. The transcript
+>   keeps DELETE because a user erasing their own history is the PDPA right and RLS scopes it to their
+>   own rows. Retention *length* is §8 decision 4 and is still open.
+> The asymmetry is pinned by `test/assistant-grant-rls.test.ts`, which this migration cites by name —
+> because `ALTER DEFAULT PRIVILEGES` makes a dropped REVOKE invisible to the cleanroom and to the rest
+> of the suite alike.
 
 **`assistant_exchange`** — the transcript, self-scoped
 ```
@@ -399,6 +419,24 @@ visible to their assistant either, because it is not visible to them.
 `search_handbook` is the only tool needing new machinery: there is no full-text search in this
 codebase. A `tsvector` column on `kb_document` with a GIN index is the cheap answer; similarity search
 is not needed and would reintroduce the derived-store problem §1 rejects.
+
+> **r223 shipped the other NINE and deliberately held `search_handbook` back — it is its own slice.**
+> Two reasons, and the second only became visible after §8 decision 5. It is the one tool that is not a
+> wrapper over an existing read, so it carries a column, a GIN index and a migration of its own. And
+> **Postgres full-text search stems per language**: `to_tsvector('english', …)` does nothing useful for
+> Malay, Tamil, Thai, Vietnamese or Chinese, and the tenant now answers in all six. Which configuration
+> a document is indexed under, and what happens when the handbook and the question are in different
+> languages, is a real design question that should not be settled in passing beside nine trivial
+> wrappers. The registry is built so the tenth tool is a registry entry and nothing else.
+
+> ⚠️ **A MAPPING IN THIS TABLE DID NOT SURVIVE CONTACT WITH THE CODE, AND IT WOULD HAVE ANSWERED
+> CONFIDENTLY WRONG.** `upcoming_holidays` was mapped to `upcomingHolidays` (`core/read.ts:1886`), which
+> filters on the DATE and nothing else — no company, no state, no holiday group — because its only
+> caller is a dashboard card already inside a company-scoped page. Pointed at "when is my next public
+> holiday" it names days the asker does not observe. r223 added `holidayDatesForEmployment`, a ctx-first
+> wrapper over the per-employment resolver that has existed since ADR-0054. **The lesson generalises to
+> every row of this table: a read being RLS-safe does not make it ANSWER-safe**, and the two questions
+> have to be asked separately for each tool.
 
 ---
 
