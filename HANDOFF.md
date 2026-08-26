@@ -18,11 +18,41 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-26 (r221 SHIPPED · THE BOARD IS EMPTY · ADR-0082 IS THE ACTIVE WORKSTREAM)
+## CURRENT STATE — snapshot 2026-08-26 (r221 + r222 SHIPPED · THE BOARD IS EMPTY · ADR-0082 IS THE ACTIVE WORKSTREAM)
 
-**`main@72306018` IS WHAT RUNS ON PRODUCTION (r221, 2026-08-26)** — verified by an
+**`main@a9f70b1f` IS WHAT RUNS ON PRODUCTION (r222, 2026-08-26)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
+
+### r222 (2026-08-26) — the shell is branded "Kingdee AI HR". NO MIGRATION. Owner request, not a board item.
+
+`components/kingdee-mark.tsx` (new) draws the Kingdee four-dot symbol as inline SVG; the sidebar's old
+`bg-primary` "HR" tile now carries it, and the wordmark reads `common.appName` — **"Kingdee AI HR" in all
+six locales**, plus the document title.
+
+⚠️ **THE MARK IS DRAWN, NOT IMPORTED, AND THAT WAS NOT A PREFERENCE.** The supplied asset is a 1200x675
+JPEG on a flat `#f7f7f7` ground — no transparency — which in a 40px rounded badge renders as a grey tile
+in light mode and a bright grey box in dark. Geometry and colours were MEASURED off the artwork by
+connected-component analysis (centres, radii, modal fills `#0085d0` `#00b1c3` `#00b7f0` `#c170aa`),
+normalised into a 100x100 viewBox. **The mark is taller than wide — that is the artwork's proportion,
+not a bug to stretch out.** The badge is WHITE in both themes: those four colours only read on a light
+ground, and a logo that re-tints with the colour scheme is no longer the logo.
+
+⚠️ **`common.appName` HAD NO CONSUMER** — the sidebar carried a literal and the key was dead in all six
+locales. Wiring it up needed a SECOND translator: the key is under `common`, the sidebar's `t` is bound
+to `nav`, and `t('appName')` would have resolved `nav.appName` and thrown **MISSING_MESSAGE — which
+passes tsc, the suite AND `next build`** (rule 6). `app/layout.tsx` keeps a literal because `metadata`
+is evaluated outside locale scope.
+
+**NOT CHANGED, DELIBERATELY: `setProducer('AI HR')` in the EIGHT PDF generators.** That string is
+metadata on statutory documents (EA, CP39, Borang A/8A, TP1, payslips, review letters, report exports).
+Re-stamping filings is not a sidebar change and is the owner's call.
+
+⚠️ **THE GATE WENT RED ONCE ON PURE ENVIRONMENT AND THE TALLY IS WHY WE KNEW.** Chunk 1 failed 11 files
+/ 14 tests at **38% disk** — so NOT the WAL ceiling — with **ZERO AssertionError, ZERO MISSING_MESSAGE,
+107 `does not exist`, NINE `Hook timed out`**, and it took 421s against a 107s baseline for the same 124
+files. No stray process was found afterwards. **Re-running the identical code gave 124/124 in 112s.**
+Rule 12's signature exactly; run the cause tally and re-run before believing a red.
 
 ### r221 (2026-08-26) — ADR-0082 slice 1: the AI gateway learns to converse. NO MIGRATION.
 
