@@ -35,5 +35,6 @@ decision, add a new ADR that supersedes the old one.
 | [0070](0070-clocking-locations-geofencing.md) | Clocking locations & geofencing: separate `clocking_location` catalog, tenant-catalog RLS, blocked attempts as domain events (not attendance rows) | Accepted |
 | [0079](0079-operator-console-tenant-provisioning.md) | Operator console: request-queue tenant provisioning (owner-role runner), `operator` tier, reveal-once activation link | Accepted |
 | [0081](0081-tp1-2026-full-form.md) | LHDN TP1 (1/2026) as a complete e-form: C1–C17 catalogue in the country pack, per-month records, employer consent gating the payroll feed (with backfill), drawn PDF | Accepted |
+| [0082](0082-ai-assistant-access-scoped-tool-calling.md) | The AI Assistant (north-star Phase B): read-only tool calling over the governed read layer inside the caller's own session — RLS is the retrieval filter, not a vector store | Proposed |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
