@@ -40,8 +40,11 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
+// A literal, not common.appName: `metadata` is evaluated outside the request/locale scope, so there is
+// no translator here. The brand name is the same string in all six locales anyway — it is a name, not
+// copy — so the sidebar reading it from `common.appName` and this reading it from source stay in step.
 export const metadata: Metadata = {
-  title: 'AI HR',
+  title: 'Kingdee AI HR',
   description: 'AI-native HR platform',
 };
 

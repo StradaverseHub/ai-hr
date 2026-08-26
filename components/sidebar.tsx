@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { KingdeeMark } from './kingdee-mark';
 import {
   ArrowLeftRight,
   BarChart3,
@@ -390,6 +391,10 @@ export function Sidebar({
   const searchParams = useSearchParams();
   const search = searchParams.toString();
   const t = useTranslations('nav');
+  // `common`, NOT `nav`: the brand name lives at common.appName. Reading it off `t` would resolve
+  // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`
+  // alike, so nothing would have told us until the screen rendered.
+  const tCommon = useTranslations('common');
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   // Single-open flyout state (fdc20776): the labelKey of the open module, or null. Clicking a
   // parent sets it (replacing any other open module); clicking the same parent again closes.
@@ -486,12 +491,16 @@ export function Sidebar({
             collapsed ? 'justify-center' : 'px-1 py-0.5',
           )}
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]">
-            HR
+          {/* The badge is WHITE in both themes, not `bg-primary` as the old "HR" tile was: the mark's
+              four colours are the brand's own and read correctly only on a light ground. A logo that
+              re-tints with the colour scheme has stopped being the logo. The ring keeps it from
+              dissolving into a light background. */}
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white p-1.5 ring-1 ring-border shadow-[var(--shadow-sm)]">
+            <KingdeeMark className="size-full" />
           </span>
           {!collapsed && (
             <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-foreground">
-              AI HR
+              {tCommon('appName')}
             </span>
           )}
         </Link>
