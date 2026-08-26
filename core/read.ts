@@ -74,6 +74,8 @@ import type { SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import { leaveTypeInUseSqlText } from './leave-type-refs';
 // 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
 import { primaryEmergencyContactSql } from './emergency-contacts';
+// ADR-0082 §6 C4 — the per-employment holiday resolver behind `holidayDatesForEmployment` below.
+import { holidayDatesFor } from './holidays';
 import {
   appUser,
   assignment,
@@ -1891,6 +1893,34 @@ export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limi
       .where(gte(holiday.holidayDate, opts.from))
       .orderBy(holiday.holidayDate)
       .limit(opts.limit ?? 5),
+  );
+}
+
+/**
+ * ADR-0082 §6 C4 — the holiday DATES this employment actually observes in a window, resolved business
+ * group -> state -> national.
+ *
+ * WHY IT EXISTS. `upcomingHolidays` directly above filters on the DATE and nothing else: no company, no
+ * state, no country, no holiday group — because its one caller is a dashboard card that already sits
+ * inside a company-scoped page. Answering "when is my next public holiday" from it alone therefore names
+ * days the asker does not get, which is a wrong answer stated confidently rather than a missing one.
+ *
+ * The real per-employee resolution has existed since ADR-0054 in `holidayDatesFor` (core/holidays.ts),
+ * but that takes a `Tx`, not a ctx. This is the ctx-first wrapper, added so a caller that may not open
+ * its own transaction can still ask the question. Sorted, so the caller gets a stable order.
+ */
+export function holidayDatesForEmployment(
+  ctx: SessionContext,
+  p: { employmentId: string; from: string; to: string },
+): Promise<string[]> {
+  return withTenant(ctx, async (tx) =>
+    [
+      ...(await holidayDatesFor(tx, {
+        employmentId: p.employmentId,
+        startDate: p.from,
+        endDate: p.to,
+      })),
+    ].sort(),
   );
 }
 

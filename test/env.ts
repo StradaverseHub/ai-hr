@@ -68,3 +68,8 @@ delete process.env.FEEDBACK_AI_PLANNING_ENABLED; // ADR-0043 FB-3 operator tooli
 // assertion, which names every tracked gate individually, would then fail on one developer's machine
 // with a message pointing at this file.
 delete process.env.SYSTEM_EXPLORER_ENABLED;
+// ADR-0082 — the assistant's gate. RESERVED (see LEGACY_MODULE_ENV_GATES): no tracked env file sets it
+// and no application code reads it, so this delete is defensive. It is here because test/env.ts loads
+// the untracked .env.local, and the drift test's final assertion names every gate individually — one
+// developer exporting it would fail the suite with a message pointing at this file.
+delete process.env.ASSISTANT_ENABLED;

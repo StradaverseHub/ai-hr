@@ -8053,3 +8053,138 @@ export const employeeImportRun = pgTable(
   },
   (t) => [index('employee_import_run_tenant_created_idx').on(t.tenantId, t.createdAt)],
 );
+
+// ── ADR-0082 slice 2 — the AI assistant's substrate. None of these tables is on the money path.
+//
+// The assistant does not retrieve; it calls the reads the screens already call inside the CALLER'S
+// SessionContext, so these four tables hold only WHO may ask, WHAT was asked, and WHAT IT COST. No
+// tenant business data is copied here and nothing here is a derived index of anything.
+
+/** Who the HR admin has switched the assistant on for (ADR-0082 §8 decision 1).
+ *
+ *  Revocation is a `revoked_at` STAMP, never a delete — "who could ask the assistant last March" has
+ *  to stay answerable — and 0451 REVOKEs DELETE from ai_hr_app so that is enforced by the database
+ *  rather than by service discipline. There is deliberately NO `allowed` boolean: see 0451's header. */
+export const assistantGrant = pgTable(
+  'assistant_grant',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    appUserId: uuid('app_user_id')
+      .notNull()
+      .references(() => appUser.id),
+    grantedByUserId: uuid('granted_by_user_id').references(() => appUser.id),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
+    revokedByUserId: uuid('revoked_by_user_id').references(() => appUser.id),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('assistant_grant_live_uq').on(t.tenantId, t.appUserId).where(sql`revoked_at IS NULL`),
+    index('assistant_grant_tenant_granted_idx').on(t.tenantId, t.grantedAt),
+  ],
+);
+
+/** The transcript. SELF-SCOPED AND ADMIN-INVISIBLE (ADR-0082 §2.7) — an HR admin browsing what
+ *  employees asked the assistant is a surveillance surface nobody asked for, so the RLS policy in 0451
+ *  has no admin branch at all. It is also the per-user daily-question COUNTER: `assistant_usage` is
+ *  per-tenant-per-month and cannot answer "has this user asked ten times today". */
+export const assistantExchange = pgTable(
+  'assistant_exchange',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    appUserId: uuid('app_user_id')
+      .notNull()
+      .references(() => appUser.id),
+    askedAt: timestamp('asked_at', { withTimezone: true }).defaultNow().notNull(),
+    question: text('question').notNull(),
+    /** NULL when refused, errored, or still in flight. */
+    answer: text('answer'),
+    /** [{ name, input, rowCount }] — the tool INPUTS and how many rows came back, never the rows. */
+    toolCalls: jsonb('tool_calls')
+      .$type<{ name: string; input: unknown; rowCount: number | null; refusal?: string }[]>()
+      .notNull()
+      .default([]),
+    turnCount: integer('turn_count').notNull().default(0),
+    hitTurnCap: boolean('hit_turn_cap').notNull().default(false),
+    /** The neutral AiStop from lib/ai/types.ts — FIVE members, not four. Pinned by a CHECK so a
+     *  provider that grows a sixth cannot be silently written here as if it were 'end'. */
+    stop: text('stop'),
+    provider: text('provider'),
+    model: text('model'),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    cachedInputTokens: integer('cached_input_tokens').notNull().default(0),
+    /** GENERIC reason only — never a provider body, never an SDK message. */
+    error: text('error'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // `.desc()` mirrors 0451, which creates this index with `asked_at DESC` — it serves a newest-first
+    // history list and the per-user daily cap. Declared ASC here it read as a different index from the
+    // one the database actually has, which is the drift a later `db:generate` turns into a spurious
+    // migration.
+    index('assistant_exchange_user_asked_idx').on(t.tenantId, t.appUserId, t.askedAt.desc()),
+    check(
+      'assistant_exchange_stop_ck',
+      sql`${t.stop} IS NULL OR ${t.stop} IN ('end', 'tool_use', 'max_tokens', 'refusal', 'other')`,
+    ),
+  ],
+);
+
+/** Thresholds as DATA, per tenant — tuning a ceiling during a client's first live month must be a
+ *  config change, not a deploy (same reasoning as payroll_anomaly_config). */
+export const assistantBudget = pgTable(
+  'assistant_budget',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    monthlyTokenCeiling: bigint('monthly_token_ceiling', { mode: 'number' }).notNull(),
+    perUserDailyQuestions: integer('per_user_daily_questions').notNull(),
+    /** §8 decision 3 settled this as REFUSE. 'degrade' is NOT admitted by the CHECK in 0451 — see
+     *  that file's header for why an unimplemented value is worse than a missing one. */
+    atCeiling: text('at_ceiling').notNull().default('refuse'),
+    effectiveFrom: date('effective_from').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('assistant_budget_live_uq')
+      .on(t.tenantId, t.effectiveFrom)
+      .where(sql`archived_at IS NULL`),
+    check('assistant_budget_at_ceiling_ck', sql`${t.atCeiling} IN ('refuse')`),
+    check(
+      'assistant_budget_nonneg_ck',
+      sql`${t.monthlyTokenCeiling} >= 0 AND ${t.perUserDailyQuestions} >= 0`,
+    ),
+  ],
+);
+
+/** The counter the ceiling is checked against. Written by an ORDINARY EMPLOYEE'S session at the end of
+ *  every exchange, which is why its RLS policy is tenant-wide FOR ALL rather than admin-only-write, and
+ *  why 0451 REVOKEs DELETE: deleting the period row is how you reset a budget. */
+export const assistantUsage = pgTable(
+  'assistant_usage',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** 'YYYY-MM', pinned by a CHECK. */
+    period: text('period').notNull(),
+    inputTokens: bigint('input_tokens', { mode: 'number' }).notNull().default(0),
+    outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
+    cachedInputTokens: bigint('cached_input_tokens', { mode: 'number' }).notNull().default(0),
+    exchangeCount: integer('exchange_count').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('assistant_usage_period_uq').on(t.tenantId, t.period),
+    check('assistant_usage_period_ck', sql`${t.period} ~ '^[0-9]{4}-[0-9]{2}$'`),
+    check(
+      'assistant_usage_nonneg_ck',
+      sql`${t.inputTokens} >= 0 AND ${t.outputTokens} >= 0 AND ${t.cachedInputTokens} >= 0 AND ${t.exchangeCount} >= 0`,
+    ),
+  ],
+);

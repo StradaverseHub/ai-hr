@@ -133,6 +133,11 @@ const ALL_TABLES = [
   // here would empty the catalog on the first resetDb() and every later FK insert would fail.
   'tenant_module', 'tenant_setting', 'subscription', 'subscription_line', 'usage_snapshot',
   'platform_user', 'tenant_provision_request_module',
+  // ADR-0082 slice 2 — the assistant substrate (migration 0451). Listed explicitly per the convention
+  // above rather than left to the CASCADE from `tenant`: a leaked assistant_grant row would silently
+  // grant a later test file's user the assistant, and a leaked assistant_usage row would make a budget
+  // test see a ceiling already consumed.
+  'assistant_grant', 'assistant_exchange', 'assistant_budget', 'assistant_usage',
 ];
 
 /**

@@ -130,6 +130,25 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
    * default means that decision is a switch at provisioning time, not a code change under pressure.
    */
   { code: 'system_explorer', name: 'System Analysis & Dependency Explorer', category: 'platform', description: 'Admin reference for how the product is built — which record types point at which, and which module owns each.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 240 },
+  /**
+   * ADR-0082 — the AI assistant. `platform`, not `hr`: it owns no HR process; it answers questions
+   * over reads that belong to other modules, which is exactly the cross-cutting shape `notifications`
+   * and `system_explorer` occupy.
+   *
+   * `packBacked: false` — it owns no pack. Its tables (0451) are declared as no pack's satellites, so
+   * core/schema-explorer.ts:159-178 will render them as owned by no module in the Dependency Explorer.
+   * That is a consequence accepted deliberately, not a bug to fix by registering a pack: registering
+   * one forces packBacked:true and the correspondence assertion cuts both ways.
+   *
+   * `billable: true` — it spends provider money, often the TENANT'S own key under ADR-0023's BYOK.
+   * That also means the module-change runner refuses activation without a `subscription_line`
+   * (scripts/module-change-runner.ts:105-116), which is correct: the grant must correspond to
+   * something sold. It also means a suspended tenant loses it, which is likewise correct.
+   *
+   * `dependsOn: ['employees']` gates nothing at runtime — `employees` is core and answers TRUE without
+   * a snapshot — but it states the truth: with no employment records there is nothing to ask about.
+   */
+  { code: 'assistant', name: 'AI Assistant', category: 'platform', description: 'In-product AI assistant that answers questions over the employee and HR record the user can already see.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 250 },
 ];
 
 /**
@@ -262,6 +281,20 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
    * it cannot later become a real deployment flag that outranks what a customer bought.
    */
   system_explorer: 'SYSTEM_EXPLORER_ENABLED',
+  /**
+   * ADR-0082 — same idiom as `system_explorer` above, and for the same mechanical reason. `assistant`
+   * is NEW and never had a legacy gate; `ASSISTANT_ENABLED` is a RESERVED name that no tracked env file
+   * sets and no application source reads.
+   *
+   * `null` WOULD BE WRONG. It means "no whole-module gate anywhere — on for everyone", which forces the
+   * code into LEGACY_ENABLED_MODULE_CODES, which the drift test pins character-for-character against the
+   * literals inside db/migrations/0313_module_entitlements.sql — a migration that HAS ALREADY RUN on
+   * production, so widening it there is a silent skip on the deployed box AND would hand the assistant
+   * to every existing tenant. Naming an unset variable is the only way this map spells "OFF for
+   * everyone", and it keeps the row out of DEFAULT_PROVISION_MODULE_CODES so the provisioning form does
+   * not pre-tick it.
+   */
+  assistant: 'ASSISTANT_ENABLED',
   /**
    * ADR-0077 slice 6 — same idiom as `system_explorer` directly above, and for the same mechanical
    * reason. `null` would force `country-my` into LEGACY_ENABLED_MODULE_CODES, which the drift test pins
