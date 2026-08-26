@@ -86,7 +86,8 @@ export const googleAdapter: AiAdapter = {
       });
       return readResponse(response);
     } catch (e) {
-      throw mapError(e);
+      // withTools: on THIS path a 400 is as likely to be the tool schema as the key. See reason().
+      throw mapError(e, { withTools: true });
     }
   },
 };
@@ -148,6 +149,9 @@ function requestContents(turns: AiTurn[]): Content[] {
       if (parts.length > 0) out.push({ role: 'model', parts });
       continue;
     }
+    // Empty results would send a content whose parts array is empty — a request error, and a caller bug
+    // rather than a state worth transmitting. Dropped, matching the assistant arm above.
+    if (turn.results.length === 0) continue;
     // ONE content carrying every functionResponse, in the SAME ORDER as the functionCall parts — with no
     // model-supplied id, position and `name` are the only correlation Google has. And the role is
     // `user`, not a dedicated tool role.
@@ -203,16 +207,33 @@ function readResponse(response: GenerateContentResponse): ConverseResult {
     calls.push({ id: fc.id ?? `${SYNTHETIC_ID_PREFIX}${name}#${calls.length}`, name, input: fc.args ?? {} });
   }
 
-  const signed = parts.some((p) => typeof p.thoughtSignature === 'string');
   const { stop, toolCalls } = normaliseStop(stopFor(candidate.finishReason), calls);
+
+  // WHEN normaliseStop SUPPRESSED THE CALLS, THE functionCall PARTS MUST NOT BE REPLAYED.
+  //
+  // `refusal` and `max_tokens` both return `toolCalls: []` — the gateway is deliberately refusing to
+  // hand the caller a call it should not run (a truncated argument list, or one the safety filter
+  // stopped). The state carried here is replayed VERBATIM by requestContents() on the next request, so
+  // shipping the functionCall part anyway presents that refused call to the model as an outstanding
+  // tool request with no functionResponse closing it — and it re-issues the call or invents its result.
+  // Nothing errors. Anthropic cannot reach this because its state is filtered to thinking blocks alone;
+  // Google's is the whole parts array, which is why the guard has to be here.
+  //
+  // The functionCall parts are dropped rather than the whole state: a thoughtSignature on a surviving
+  // part is still worth carrying, and `signed` is recomputed over what actually survives so a state
+  // holding nothing useful is not emitted at all.
+  const suppressed = calls.length > 0 && toolCalls.length === 0;
+  const blocks = suppressed ? parts.filter((p) => !p.functionCall) : parts;
+  const signed = blocks.some((p) => typeof p.thoughtSignature === 'string');
+
   return {
     text,
     toolCalls,
     stop,
     usage,
-    // The WHOLE parts array, not just the signature-bearing parts: a signature belongs to its part, and
-    // that part is usually the one carrying the functionCall.
-    ...(signed ? { providerState: { provider: 'google' as const, blocks: parts } } : {}),
+    // The WHOLE surviving parts array, not just the signature-bearing parts: a signature belongs to its
+    // part, and that part is usually the one carrying the functionCall.
+    ...(signed ? { providerState: { provider: 'google' as const, blocks } } : {}),
   };
 }
 
@@ -220,7 +241,14 @@ function readResponse(response: GenerateContentResponse): ConverseResult {
  *  'other' rather than throwing. STOP is ALSO what Google returns when it wants a tool — `normaliseStop`
  *  is what turns that into 'tool_use' on the evidence of a parsed call. */
 function stopFor(raw: unknown): AiStop {
-  switch (String(raw ?? 'STOP')) {
+  // AN ABSENT finishReason IS NOT 'STOP'. The SDK documents it as "if empty, the model has NOT stopped
+  // generating the tokens" (genai.d.ts, Candidate.finishReason) — so defaulting it to STOP reports a
+  // half-written answer as a finished one, and the caller's loop terminates on a truncated sentence.
+  // Anthropic (null stop_reason) and OpenAI (undefined finish_reason) both send this case to 'other';
+  // Google now agrees. A genuine tool call is unaffected: normaliseStop promotes any parsed call to
+  // 'tool_use' regardless of the raw label.
+  if (raw == null) return 'other';
+  switch (String(raw)) {
     case 'STOP':
       return 'end';
     case 'MAX_TOKENS':
@@ -257,14 +285,29 @@ function usageFor(u: GenerateContentResponseUsageMetadata | undefined): AiUsage 
   };
 }
 
-function reason(e: unknown): string {
+/**
+ * 400 IS AMBIGUOUS ON GOOGLE, AND UNIQUELY SO — which is why this takes the path as an argument.
+ *
+ * The Gemini Developer API answers a BAD KEY with 400 INVALID_ARGUMENT ("API key not valid"), not the
+ * 401 that Anthropic and OpenAI use. That is why `validate()` and `generate()` read 400 as an auth
+ * fault, and they are right to: their request shape is fixed and trivial, so nothing else about it can
+ * be invalid. A test pins that branch deliberately — do not "simplify" it away.
+ *
+ * `converse()` broke the assumption by making the request shape variable. A tool schema this model will
+ * not accept, or a functionResponse that fails to correlate, is also a 400 — so on that path "Invalid
+ * API key" sends the tenant admin to rotate a key that works, while the Test-connection button (which
+ * probes WITHOUT tools) keeps answering ok and contradicts it. On that path alone the message names
+ * both causes instead of asserting the wrong one.
+ */
+function reason(e: unknown, opts?: { withTools?: boolean }): string {
   const s = e instanceof ApiError ? e.status : undefined;
+  if (s === 400 && opts?.withTools) return 'Invalid API key, or a request this model will not accept';
   if (s === 400 || s === 401 || s === 403) return 'Invalid API key';
   if (s === 404) return 'Model not available for this key';
   if (s === 429) return 'Rate limited — try again shortly';
   return 'Could not reach Google';
 }
 
-function mapError(e: unknown): AiGatewayError {
-  return new AiGatewayError(reason(e));
+function mapError(e: unknown, opts?: { withTools?: boolean }): AiGatewayError {
+  return new AiGatewayError(reason(e, opts));
 }

@@ -151,6 +151,10 @@ function requestMessages(turns: AiTurn[]): Anthropic.MessageParam[] {
       if (blocks.length > 0) out.push({ role: 'assistant', content: blocks });
       return;
     }
+    // A tool turn with no results would send a message whose content array is empty, which is a request
+    // error. It is a caller bug rather than a state worth transmitting, so it is dropped here — the same
+    // guard the assistant arm above applies, and google.ts applies to its parts array.
+    if (turn.results.length === 0) return;
     // ONE user message carrying EVERY tool_result for the preceding assistant turn. Splitting them does
     // not error — it silently stops the model issuing parallel calls (ADR-0082 §2.2 mechanic 1).
     const results: Anthropic.ToolResultBlockParam[] = turn.results.map((r, i) => ({

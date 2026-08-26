@@ -128,6 +128,15 @@ function requestMessages(turns: AiTurn[]): OpenAI.ChatCompletionMessageParam[] {
     }
     if (turn.role === 'assistant') {
       const calls = turn.toolCalls ?? [];
+      // An assistant message with neither content nor tool_calls is a REQUEST ERROR, not an empty turn:
+      // the SDK documents content as "required unless tool_calls or function_call is specified". Such a
+      // turn is reachable — readCompletion yields text '' whenever message.content is null (a refusal
+      // puts its prose on `message.refusal`, which is deliberately not surfaced), and normaliseStop
+      // empties toolCalls on refusal and max_tokens. It carries no information either way, so it is
+      // dropped rather than sent. anthropic.ts and google.ts both guard the identical case; without
+      // this, one ConverseArgs built a legal request on two providers and a 400 on the third, surfaced
+      // as "Could not reach OpenAI" — a network message for a request-shape bug.
+      if (!turn.content && calls.length === 0) continue;
       out.push({
         role: 'assistant',
         content: turn.content ? turn.content : null,

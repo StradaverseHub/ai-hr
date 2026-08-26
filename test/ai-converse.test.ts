@@ -716,11 +716,26 @@ describe('ADR-0082 — error mapping keeps the provider body on the far side of 
     expect(known).not.toContain(netErr.message);
   });
 
-  it('Google keeps its 400 -> invalid key branch (the SDK returns 400 for a bad key)', async () => {
+  /**
+   * 400 IS AMBIGUOUS ON GOOGLE AND THE ANSWER DIFFERS BY PATH — both halves are pinned here on purpose.
+   *
+   * This case used to assert one thing: converse() maps 400 to "Invalid API key". The premise was
+   * right — the Gemini Developer API really does answer a bad key with 400, not the 401 Anthropic and
+   * OpenAI use — but it stopped being the WHOLE truth once converse() made the request shape variable,
+   * because a tool schema the model rejects is also a 400. So the half that is still true (the fixed,
+   * trivial request shapes of generate/validate) stays, and only the half converse() invalidated moves.
+   */
+  it('Google reads 400 as a bad key on the fixed-shape paths, and names both causes once tools are in play', async () => {
+    // THE SURVIVING HALF. generate() cannot send an invalid request shape, so 400 IS the key.
+    sdk.google.error = new ApiError({ message: LEAK, status: 400 });
+    await expect(generateDraft(GOOGLE, { system: 'sys', prompt: 'p' })).rejects.toThrow('Invalid API key');
+
+    // THE RETIRED HALF. On converse() a 400 is as likely to be the tool schema, and telling the admin to
+    // rotate a working key contradicts the Test-connection button, which probes without tools.
     sdk.google.error = new ApiError({ message: LEAK, status: 400 });
     await expect(
       converse(GOOGLE, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: [] }),
-    ).rejects.toThrow('Invalid API key');
+    ).rejects.toThrow('Invalid API key, or a request this model will not accept');
   });
 });
 
@@ -759,5 +774,124 @@ describe('ADR-0082 — generateDraft is untouched (the I11 tripwire)', () => {
     });
     await converse(ANTHROPIC, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: TOOLS });
     expect(sdk.anthropic.requests).toHaveLength(1);
+  });
+});
+
+/* ================================================================================================ */
+
+/**
+ * The r221 verification round. Every case below is a regression test for a defect the adversarial pass
+ * found in the first build, or for a path the completeness critic showed had no coverage at all. Each
+ * one failed before its fix and none of them is reachable from the happy path — which is why 40 green
+ * cases sat on top of them.
+ */
+describe('ADR-0082 — r221 verification findings', () => {
+  it('Anthropic extracts thinking AND redacted_thinking off a reply as providerState, and keeps them out of the answer', async () => {
+    // THE REFERENCE PROVIDER'S RESPONSE LEG HAD NO TEST. The request leg was covered with a hand-built
+    // state, so a wrong filter predicate here would lose reasoning continuity across every tool turn
+    // while all 40 existing cases stayed green.
+    sdk.anthropic.reply = anthropicReply({
+      content: [
+        { type: 'thinking', thinking: 'She is in Finance.', signature: 'sig-1' },
+        { type: 'redacted_thinking', data: 'ENCRYPTED' },
+        { type: 'text', text: 'Ann is on leave.' },
+      ],
+    });
+    const r = await converse(ANTHROPIC, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: TOOLS });
+
+    expect(r.text).toBe('Ann is on leave.');
+    expect(r.providerState?.provider).toBe('anthropic');
+    expect(blocks(r.providerState?.blocks).map((b) => b.type)).toEqual(['thinking', 'redacted_thinking']);
+  });
+
+  it('Google reports an ABSENT finishReason as "other", not as a finished answer', async () => {
+    // genai.d.ts: "If empty, the model has NOT stopped generating the tokens." The old `?? 'STOP'`
+    // default rendered a truncated sentence as the assistant's completed answer, and the caller's loop
+    // terminated on it. Anthropic and OpenAI both send the same missing-label case to 'other'.
+    sdk.google.reply = googleReply({
+      candidates: [{ content: { role: 'model', parts: [{ text: 'Employees in Finance are' }] } }],
+    });
+    const r = await converse(GOOGLE, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: TOOLS });
+
+    expect(r.stop).toBe('other');
+    expect(r.text).toBe('Employees in Finance are');
+  });
+
+  it('Google does not replay a functionCall the gateway suppressed, but still carries the surviving signature', async () => {
+    // normaliseStop empties toolCalls on max_tokens, so the caller never runs the half-parsed call —
+    // but providerState carried the whole parts array, functionCall included, and requestContents
+    // replays it VERBATIM. The model saw an outstanding tool request with no functionResponse closing
+    // it and re-issued it or invented the result. Nothing errored.
+    sdk.google.reply = googleReply({
+      candidates: [
+        {
+          finishReason: 'MAX_TOKENS',
+          content: {
+            role: 'model',
+            parts: [
+              { text: 'Let me check', thoughtSignature: 'sig-a' },
+              { functionCall: { name: 'leave_balance', args: { employeeId: 'e-1' } }, thoughtSignature: 'sig-b' },
+            ],
+          },
+        },
+      ],
+    });
+    const r = await converse(GOOGLE, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: TOOLS });
+
+    expect(r.stop).toBe('max_tokens');
+    expect(r.toolCalls).toEqual([]);
+    const kept = blocks(r.providerState?.blocks);
+    expect(kept.some((p) => p.functionCall != null)).toBe(false);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].thoughtSignature).toBe('sig-a');
+  });
+
+  it('OpenAI drops an information-free assistant turn instead of sending content:null with no tool_calls', async () => {
+    // The SDK documents content as "required unless tool_calls or function_call is specified". The turn
+    // is reachable: a refusal puts its prose on message.refusal (never surfaced) so text is '', and
+    // normaliseStop empties toolCalls. Anthropic and Google both guarded it; OpenAI did not, so one
+    // ConverseArgs built a legal request on two providers and a 400 on the third — surfaced to the user
+    // as "Could not reach OpenAI", a network message for a request-shape bug.
+    const turns: AiTurn[] = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '' },
+      { role: 'user', content: 'and?' },
+    ];
+    await converse(OPENAI, { system: SYSTEM, turns, tools: TOOLS });
+
+    const messages = lastOpenAiRequest().messages ?? [];
+    expect(messages.some((m) => m.role === 'assistant')).toBe(false);
+    expect(messages.filter((m) => m.role === 'user')).toHaveLength(2);
+  });
+
+  it.each([
+    ['anthropic', ANTHROPIC, () => (lastAnthropicRequest().messages ?? []).map((m) => m.content)],
+    ['google', GOOGLE, () => lastGoogleRequest().contents.map((c) => c.parts)],
+  ] as const)('%s drops a tool turn carrying no results rather than sending an empty content array', async (_label, cfg, sent) => {
+    const turns: AiTurn[] = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'Looking.', toolCalls: [{ id: 'call_1', name: 'leave_balance', input: { employeeId: 'e-1' } }] },
+      { role: 'tool', results: [] },
+    ];
+    await converse(cfg, { system: SYSTEM, turns, tools: TOOLS });
+
+    // An empty content/parts array is a request error on both providers.
+    expect(sent().some((c) => Array.isArray(c) && c.length === 0)).toBe(false);
+  });
+
+  it('Google does not assert an auth fault for a 400 raised while tools are in play, and still leaks nothing', async () => {
+    // The counterpart to the split pinned above: on the converse path a 400 is as likely to be the tool
+    // schema as the key, so the message may not assert one cause — and must still keep the provider's
+    // own body on the far side of the boundary.
+    sdk.google.error = new ApiError({ message: 'Invalid JSON payload at tools[0]', status: 400 });
+    let message = '';
+    try {
+      await converse(GOOGLE, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: TOOLS });
+    } catch (e) {
+      expect(e).toBeInstanceOf(AiGatewayError);
+      message = (e as Error).message;
+    }
+    expect(message).toBe('Invalid API key, or a request this model will not accept');
+    expect(message).not.toContain('Invalid JSON payload');
   });
 });
