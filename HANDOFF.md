@@ -18,11 +18,65 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-25 (r195–r220 SHIPPED · NOTHING IN FLIGHT · THE BOARD IS EMPTY)
+## CURRENT STATE — snapshot 2026-08-26 (r221 SHIPPED · THE BOARD IS EMPTY · ADR-0082 IS THE ACTIVE WORKSTREAM)
 
-**`main@3ac9294b` IS WHAT RUNS ON PRODUCTION (r220, 2026-08-25)** — verified by an
+**`main@72306018` IS WHAT RUNS ON PRODUCTION (r221, 2026-08-26)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
+
+### r221 (2026-08-26) — ADR-0082 slice 1: the AI gateway learns to converse. NO MIGRATION.
+
+**THE ROUND DID NOT COME FROM THE BOARD.** The owner asked to start "the real AI part". `lib/ai` was a
+governed gateway with four single-shot drafting callers and nothing else; the north star's Phase B
+(assistant) had never been started. **ADR-0082** designs it and **slice 1 is now deployed**.
+
+⚠️ **THE ASSISTANT DOES NOT RETRIEVE, AND THAT IS THE WHOLE DESIGN.** ADR-0007 §3 rejects naive RAG
+over tenant data, and this repo makes the reason concrete: access control is **per-row and in the
+database** — `db/client.ts:186-190` sets `app.tenant_id/user_id/roles/grants` as transaction GUCs and
+**128 migrations carry `CREATE POLICY`** against them (`payslip_rls` → `app.can_see_employment`,
+`compensation` → admin-or-self). A vector store is a DERIVED store and inherits none of it: you would
+re-implement `can_see_employment` as index-time ACL tags and re-index on every reporting-line change,
+delegation, transfer and termination — a second authorization system that must agree with the first
+forever. So the assistant calls the reads the SCREENS already call, inside the caller's own
+`SessionContext`. ~40 functions on `core/read.ts` already take `ctx` first; that signature is the seam.
+
+⚠️ **SLICE 1 HAS ZERO CALLERS AND THE ROUND SAYS SO.** `converse()` + the three adapters are ~1,800
+lines no production path reaches. Deployed because main-ahead-of-production is its own hazard (r159),
+NOT because it does anything yet. Every defect below was latent, never live.
+
+⚠️⚠️ **THE ADVERSARIAL PASS FOUND 3 MAJORS UNDER 58 GREEN TESTS, ALL THE SAME SHAPE: ANTHROPIC (the
+reference) WAS RIGHT AND THE OTHER TWO DIVERGED SILENTLY.** (a) Google's `providerState` replayed
+`functionCall` parts even when `normaliseStop` had SUPPRESSED those calls on refusal/`max_tokens`, so
+the next request showed the model a refused call as an outstanding request with no result closing it;
+(b) `String(raw ?? 'STOP')` read an ABSENT `finishReason` as `end`, though the SDK documents empty as
+"has NOT stopped generating" — a truncated answer reported as finished; (c) OpenAI emitted
+`{role:'assistant', content:null}` with no `tool_calls`, which the SDK documents as invalid — one
+`ConverseArgs`, legal on two providers, a 400 on the third surfaced as "Could not reach OpenAI".
+**Hand-fixed, not sent back for a second agent pass (rule 23b), and each fix PROVEN non-vacuous** by
+reverting it from a `cp` copy and watching exactly its own named test fail.
+
+⚠️ **ONE OF THOSE FIXES WAS WRONG AND AN EXISTING TEST CAUGHT IT — RULE 18, EXACTLY.** Routing Google's
+400 away from "Invalid API key" broke a deliberately-pinned behaviour whose premise was RIGHT: **the
+Gemini Developer API answers a bad key with 400, not the 401 Anthropic and OpenAI use.** 400 only became
+ambiguous once `converse()` made the request shape variable (a rejected tool schema is also a 400). So
+`reason()` now takes the PATH: `generate`/`validate` keep "Invalid API key" (fixed shapes — nothing else
+CAN be invalid), `converse` names both causes. The half still true stayed.
+
+**FOUR ADR-0082 §8 DECISIONS ARE SETTLED (2026-08-26), TWO AGAINST THE RECOMMENDATION** — both kept
+visible in the ADR rather than overwritten. (1) Audience is **a per-user grant the HR admin assigns and
+removes** — neither option offered, and a mechanism this codebase DOES NOT HAVE:
+`payroll_permission_grant` is keyed by ROLE, `lib/permissions.ts SCREENS` is static with no backing
+table, and no per-user screen access is persisted anywhere. (2) The **full §4 tool catalogue**, which
+commits `search_handbook` — the one tool that is not a wrapper over an existing read, since **there is
+no full-text search in this codebase at all**. (3) Refuse at the ceiling. (5) **Answers in all six
+locales**, which promotes one guardrail to load-bearing: the assistant may never ORIGINATE a statutory
+figure or interpretation in any language, because model quality in ms/ta/th/vi for statutory HR
+terminology is UNMEASURED here. Still open: transcript retention, and whose API key pays.
+
+**STILL NOT DONE IN SLICE 1, deliberately:** the cache-read assertion ADR §2.2 says the build MUST make
+(needs a live key); the `claude-opus-5` default in `lib/ai/registry.ts:16` (still `claude-opus-4-8` —
+valid, just behind, and moving it changes behaviour for FOUR shipped drafting callers, so it is the
+owner's call); and localising the gateway's raw-English error strings, which decision 5 makes overdue.
 **THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
 `next-env.d.ts` (UNTRACKED and generated — a tree that has run `pnpm dev` says `.next/dev/types/…`,
 production says `.next/types/…`, and each side is correct for its own build mode). DELETE the deploy's own
@@ -77,9 +131,12 @@ that grant is COMMERCIAL PROVISIONING, not a migration or a seed — the owner h
 reads "Replacement Leave in Lieu is not part of this plan" instead of showing nothing, which is verified
 on a dev server, not inferred.
 
-**NOTHING IS BUILDABLE AND NOTHING IS WAITING** — `improve:pull` and `improve:pull-approved` both return
-`[]`, and every status except `deployed` and `cancelled` is ZERO. The next round starts with whatever the
-reporter opens next.
+**THE BOARD IS STILL EMPTY, BUT THE NEXT ROUND IS ALREADY CHOSEN** — `improve:pull` and
+`improve:pull-approved` both return `[]`, and every status except `deployed` and `cancelled` is ZERO.
+**That no longer means "nothing to build":** ADR-0082 is the active workstream and slices 2–7 are
+specified and decided (see the r221 entry above). Slice 2 is the tool registry
+(`core/assistant-tools.ts`) over the existing `core/read.ts` functions, plus the `assistant_grant`
+table and the module entry. **Next free migration is `0451`** — slice 1 added none.
 
 ⚠️ **THE ONE THING THAT NEEDS A HUMAN: GRANT `toil` TO THIS TENANT, OR REPLACEMENT LEAVE STAYS OFF.**
 `tenant_module` has no `toil` row, so `replacementRequestAvailability` returns `module_off` on its first
