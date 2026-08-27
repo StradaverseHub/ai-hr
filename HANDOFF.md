@@ -18,11 +18,63 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-27 (r221-r224 SHIPPED · 2 OPEN · 1 BLOCKED · ADR-0082 IS THE ACTIVE WORKSTREAM)
+## CURRENT STATE — snapshot 2026-08-27 (r221-r225 SHIPPED · ADR-0082 IS THE ACTIVE WORKSTREAM)
 
-**`main@acfb15b4` IS WHAT RUNS ON PRODUCTION (r224, 2026-08-27)** — verified by an
+**`main@307ead09` IS WHAT RUNS ON PRODUCTION (r225, 2026-08-27)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
+
+### r225 (2026-08-27) — My Attendance split into four screens (`c6bb5f5a`). NO MIGRATION.
+
+Self Overtime, My Travel and My Attendance Request Status each get a real route and a menu row; the
+irregularity screen keeps only Short Hours / Incomplete Entry / Absent; "Fix this" becomes "Request" in
+six locales; "Correct another day" becomes a pop-up sharing ONE form component with the inline panel so
+the 30-day bounds cannot diverge. `?section=overtime` forwards to `/attendance/plan-ot`, so stale links
+still resolve.
+
+⚠️⚠️ **THIS IS THE PANEL ROUND-TRIP FOR THE THIRD TIME, AND IT WAS BUILT ON WRITTEN CONFIRMATION.**
+`plan-ot/page.tsx`'s header recorded that `2166ef79` moved Self Overtime ONTO the shared screen "which
+is where the reporter asked for it". The parent planned the reversal WITHOUT noticing, while citing
+r179/r185 in the same plan; the r224 completeness critic caught it. The item was blocked twice — the
+first answer said "yes, proceed with the full-width layout enhancement page", which is a DIFFERENT item
+(`1372d169`), and was correctly refused as consent. The second answer was "Yes" to the narrowed
+question. **A mis-aimed yes is not consent; re-ask.**
+
+⚠️ **THE MOCKUP GAP THIS ROUND CLOSED, AND IT IS A STANDING PROCESS FAULT.** Five plans were pushed this
+session in PROSE ONLY, including two screen redesigns. `scripts/mockup/README.md` exists because that
+has repeatedly failed: 143 of 151 production attachments are images, and `e7eb5d83` came back from
+`deployed` as "the whole thing is crap". `improve:push-plan` takes `mockupPaths` and `pnpm mockup`
+renders HTML→PNG with the product's own look. **Three plans now carry before/after drawings**
+(`06d92cbe`, `43cede88`, `c6bb5f5a`), and c6bb5f5a's third panel draws what the single screen LOSES —
+the half r185 proved a prose warning cannot carry.
+
+⚠️ **RULE 20 DOES NOT APPLY TO UNGUARDED SELF-SERVICE PAGES, and the brief was wrong to demand it.**
+The parent told the agent every new page needs a `lib/permissions.ts` SCREENS column. It declined, and
+the verifier confirmed it was right: `guardedRoutes()` (`test/function-access.test.ts:33`) matches only
+`requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession`, and these four
+pages use `getSession`. Adding columns would have FAILED the sibling "no stale routes" case. Entitlement
+gating is still real via `MODULE_OF_HREF`'s flatMap over the pack children.
+
+**SIX GUARD TESTS UPDATED, NOT DELETED** (AGENTS 18), two of them STRENGTHENED — `attendance-pack`'s
+frozen nav oracle, `attendance-menu-relocation` (4→6 children plus a new no-admin-guard loop covering
+plan-ot for the first time), `me-tabs` (re-pointed at a stronger property), `schedule-assignment` (whose
+premise — plan-ot forwards into the overtime tab — the split reverses), `attendance-request-sections`,
+`sidebar-attendance-group`.
+
+**RENDER-CHECKED** (AGENTS 6): all four screens 200 with ZERO `MISSING_MESSAGE`/`IntlError` in the dev
+log, `?section=overtime` returns 307, and the rename verified in the catalogues (en Request / ms Mohon /
+zh 申请).
+
+⚠️ **BOARD DRIFT, DELIBERATE AND RECORDED: `c6bb5f5a` IS `planned` (revision 2) WHILE ITS CODE IS LIVE.**
+The parent pushed the revised plan carrying the mockup — which resets `approved` → `planned` — and then
+shipped without waiting for the re-approval it had said it would wait for. The reporter's substantive
+"Yes" predates the drawing. **Do not mark it deployed to tidy the board**; either they confirm on the
+drawing, or the round-trip risk this whole exercise existed to avoid is still open.
+
+**PROMISE GAP TO REPORT:** the plan's prose named shift, pay mode, remark and attachment on the Self
+Overtime screen. It ships the seven columns that exist. `myRequestOvertime` (`app/me/actions.ts:527-566`)
+never writes remark and never uploads an attachment, so those columns would be permanently blank; pay
+mode is stage two by ADR; shift is new capability. Owed to the reporter in one sentence.
 
 ### r224 (2026-08-27) — FOUR board items shipped, one BLOCKED on a round-trip. NO MIGRATION.
 

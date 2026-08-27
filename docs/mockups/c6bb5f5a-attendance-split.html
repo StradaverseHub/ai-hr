@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<title>c6bb5f5a — My Attendance: one screen today, four screens after</title>
+<!--
+  Mockup for c6bb5f5a ("My Attendance: Redesign Attendance Irregularity, Self Overtime and Request
+  Status"), drawn AFTER the reporter confirmed the reversal in writing.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW is the real screen. app/attendance/requests carries Self Overtime, Short Hours, Incomplete Entry
+    and Absent as tabs keyed on flagOf/statusOf, with the "My attendance requests" history card beneath
+    them and "Correct another day" as the empty state of the Fix panel. /attendance/plan-ot is already a
+    nav row but the route is a one-line redirect INTO this screen, not a page.
+  · THIS DRAWING EXISTS BECAUSE IT IS A REVERSAL. plan-ot/page.tsx's own header records that 2166ef79
+    moved Self Overtime ONTO this shared screen "which is where the reporter asked for it: one screen
+    with Self Overtime, Short Hours, Incomplete Entry and Absent". This request moves it back off. The
+    reporter has now confirmed that in writing. The middle panel is drawn so the thing being given up is
+    visible, which is the half that was missing when this product reversed a layout twice before.
+  · THE LOSS PANEL IS NOT AN ARGUMENT AGAINST THE CHANGE. It is what four screens costs, stated plainly
+    so it is a decision rather than a surprise.
+  · Travel Request is a complete working feature today with no menu row of its own — the split gives it
+    one. The history card is complete too; it moves rather than being built.
+  · The four guard tests named in the plan pin the current four-row menu and the plan-ot redirect. They
+    will be updated, not deleted.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .loss{background:color-mix(in srgb,var(--warn) 12%,white);color:var(--warn)}
+  .nav{border:1px solid var(--border);border-radius:11px;overflow:hidden;font-size:12.5px}
+  .nav .nh{background:var(--muted);padding:7px 11px;font-weight:650;font-size:11.5px;color:var(--mf)}
+  .nav .ni{padding:8px 11px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
+  .nav .ni.on{font-weight:650;box-shadow:inset 3px 0 0 var(--primary)}
+  .nav .ni .t{font-size:10.5px;color:var(--mf)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:12px 0 10px;flex-wrap:wrap}
+  .tab{padding:6px 12px;font-size:12px;border-radius:9px 9px 0 0;color:var(--mf)}
+  .tab.on{background:var(--muted);color:var(--fg);font-weight:650;box-shadow:inset 0 -2px 0 var(--primary)}
+  .blk{border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:8px;font-size:12px}
+  .blk .bt{font-weight:650}
+  .blk .bd{font-size:11px;color:var(--mf)}
+  .btn{display:inline-block;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:650;
+       background:var(--primary);color:#fff}
+  .btn.gh{background:var(--muted);color:var(--mf)}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:10px}
+  .three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+  .three > *{min-width:0}
+  del{color:var(--bad);text-decoration:none;font-weight:650}
+  ins{color:var(--primary);text-decoration:none;font-weight:650}
+</style>
+
+<div class="three">
+  <div class="card">
+    <h2>Today — one screen<span class="chip now">NOW</span></h2>
+    <p class="sub">My Attendance has four menu rows. Everything below lives on ONE of them.</p>
+    <div class="nav">
+      <div class="nh">MY ATTENDANCE</div>
+      <div class="ni">Clock in/out</div>
+      <div class="ni on">Attendance Irregularity</div>
+      <div class="ni">Records</div>
+      <div class="ni">Self Overtime <span class="t">opens the same screen</span></div>
+    </div>
+    <div class="tabs"><div class="tab on">Self Overtime</div><div class="tab">Short Hours</div><div class="tab">Incomplete Entry</div><div class="tab">Absent</div></div>
+    <div class="blk"><div class="bt">Correct another day</div><div class="bd">sits open on the page</div></div>
+    <div class="blk"><div class="bt">My attendance requests</div><div class="bd">history, underneath everything else</div></div>
+    <div class="blk"><div class="bt">Travel Request</div><div class="bd">works, but has no menu row of its own</div></div>
+    <div class="blk"><span class="btn gh">Fix this</span></div>
+  </div>
+
+  <div class="card">
+    <h2>After — four screens<span class="chip new">AFTER</span></h2>
+    <p class="sub">Six menu rows. Each function opens its own page.</p>
+    <div class="nav">
+      <div class="nh">MY ATTENDANCE</div>
+      <div class="ni">Clock in/out</div>
+      <div class="ni on">Attendance Irregularity <span class="t">exceptions only</span></div>
+      <div class="ni">Self Overtime <span class="t">its own page</span></div>
+      <div class="ni">My Travel <span class="t">new row</span></div>
+      <div class="ni">My Attendance Request Status <span class="t">new row</span></div>
+      <div class="ni">Records</div>
+    </div>
+    <div class="tabs"><div class="tab on">Short Hours</div><div class="tab">Incomplete Entry</div><div class="tab">Absent</div></div>
+    <div class="blk"><div class="bt">Correct another day</div><div class="bd">opens as a pop-up instead</div></div>
+    <div class="blk"><div class="bt">The button on each row</div>
+      <div class="bd" style="margin-top:5px"><span class="btn gh" style="text-decoration:line-through">Fix this</span>
+      <span style="margin:0 6px;color:var(--mf)">becomes</span>
+      <span class="btn">Request</span></div>
+      <div class="bd" style="margin-top:5px">It reads better beside the “Requested” state that already follows it.</div></div>
+    <p class="sub" style="margin:10px 0 0">Self Overtime, Travel and the request history are no longer on
+      this page. Each has its own.</p>
+  </div>
+
+  <div class="card">
+    <h2>What the one screen loses<span class="chip loss">THE TRADE</span></h2>
+    <p class="sub">This is what you are giving up, so it is a decision and not a surprise.</p>
+    <div class="blk"><div class="bt">One place to see everything</div><div class="bd">Today an employee opens one screen and sees overtime, short hours, incomplete entries and absences together. After, that is four visits.</div></div>
+    <div class="blk"><div class="bt">Requests beside the thing they came from</div><div class="bd">The history card sits directly under the exceptions that produced it. On its own page it is one more step away.</div></div>
+    <div class="blk"><div class="bt">A longer menu</div><div class="bd">Four rows become six. The menu supports one level only, so they sit side by side rather than nested.</div></div>
+    <div class="warn"><b>Why we are showing you this.</b> This request moves Self Overtime back to its own
+      page. It was on its own page before, and it was moved onto the shared screen because that is what
+      was asked for at the time. You have confirmed you want it moved back, and we will build it — we are
+      drawing the trade because the last time this product reversed a screen layout, the plan described
+      the change in words and nobody saw what was being given up until it shipped.</div>
+  </div>
+</div>
