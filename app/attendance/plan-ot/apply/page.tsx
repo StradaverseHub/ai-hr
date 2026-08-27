@@ -83,11 +83,13 @@ export default async function ApplyOtPlanPage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        {/* 2166ef79 — back to the Self Overtime SECTION of My Attendance, which is where the Plan OT list
-            now lives. Pointing straight at it rather than at /attendance/plan-ot (which forwards here
-            anyway) saves the employee a redirect on the one link they press most on this screen. */}
+        {/* c6bb5f5a — back to Self Overtime, which is a screen of its own again. 2166ef79 pointed this at
+            `/attendance/requests?section=overtime` because the list lived in that tab and /attendance/plan-ot
+            merely forwarded there; the list is back on its own route, so the link is the route. (That old
+            address still resolves — the irregularity screen forwards it here — but a link should not spend
+            a redirect on purpose.) */}
         <Link
-          href="/attendance/requests?section=overtime"
+          href="/attendance/plan-ot"
           className="text-xs font-medium text-primary underline-offset-2 hover:underline"
         >
           ← {t('backToPlanOt')}

@@ -381,14 +381,28 @@ describe('6448574f + 0bade264 — every renamed label is renamed in every locale
     }
   });
 
-  it('6448574f: the menu row and the section it opens read the SAME words, in every locale', () => {
-    // /attendance/plan-ot forwards to /attendance/requests?section=overtime, so the row and the tab it
-    // lands on are the same destination under two labels. They were "Plan OT" and "Self Overtime"; a
-    // rename that fixed only one of them would leave the employee looking for a screen by its old name.
+  it('6448574f: the menu row and the screen it opens read the SAME words, in every locale', () => {
+    // WHY THIS STILL HOLDS AFTER c6bb5f5a, WHICH REVERSED THE PREMISE. It used to read: /attendance/plan-ot
+    // FORWARDS to /attendance/requests?section=overtime, so the row and the tab it lands on are one
+    // destination under two labels. The forward is gone — Self Overtime is a screen of its own again, at
+    // the reporter's confirmed request — but the half that made the assertion worth having is untouched: a
+    // menu row and the screen it opens must not have two different names, or the employee goes looking for
+    // a screen that (as far as they can see) is not there. So the pairs are re-pointed at the page TITLES.
+    //
+    // `me.planOtTitle` is that page's own title key, revived by c6bb5f5a — it had been orphaned since the
+    // list moved into a tab, and a title key that no page renders is exactly how the two drift apart.
     for (const loc of LOCALES) {
       const c = cat(loc);
-      expect(c.nav.planOvertime, `${loc}: nav row vs the section it opens`).toBe(c.me.maSectionOvertime);
+      expect(c.nav.planOvertime, `${loc}: Self Overtime row vs its page title`).toBe(c.me.planOtTitle);
+      // The section heading on that page reads the same words as its title and its row — three names for
+      // one thing is the state this assertion exists to prevent.
+      expect(c.nav.planOvertime, `${loc}: Self Overtime row vs the list heading`).toBe(c.me.maSectionOvertime);
       expect(c.nav.attendanceRequest, `${loc}: nav row vs the screen title key`).toBe(c.me.attendanceRequest);
+      // c6bb5f5a's two new rows, held to the same rule from the day they shipped.
+      expect(c.nav.myTravel, `${loc}: My Travel row vs its page title`).toBe(c.me.myTravel);
+      expect(c.nav.myAttendanceRequestStatus, `${loc}: request-status row vs its page title`).toBe(
+        c.me.myAttendanceRequestStatus,
+      );
     }
   });
 

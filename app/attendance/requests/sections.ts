@@ -176,14 +176,25 @@ export function groupExceptions(rows: ExceptionDayInput[]): {
 /**
  * Which section to open on. The reporter's own principle — "employees should only see the records that
  * require their action" — so the screen opens on the first section that HAS something in it, in the order
- * a missing punch (which zeroes the whole day) matters most. Self Overtime is the fallback because it is
- * the one section that is never an exception: it is a thing you go and ask for.
+ * a missing punch (which zeroes the whole day) matters most.
+ *
+ * c6bb5f5a CHANGED THE FALLBACK, because the thing it used to fall back TO is no longer on the screen.
+ * Self Overtime was the answer for "nothing is flagged" — it is the one section that is never an
+ * exception, so it was the safe landing — and it now has a page of its own (/attendance/plan-ot). A
+ * screen with nothing wrong on it therefore opens on Incomplete Entry, the section whose empty state
+ * ("no day is missing a punch") is the one an employee most wants confirmed. `overtime` stays in
+ * AttendanceSection and in KIND_OF_SECTION: it is still a stored request_kind, it is simply no longer a
+ * tab here.
  */
-export function defaultSection(counts: { incomplete: number; short: number; absent: number }): AttendanceSection {
+export function defaultSection(counts: {
+  incomplete: number;
+  short: number;
+  absent: number;
+}): Exclude<AttendanceSection, 'overtime'> {
   if (counts.incomplete > 0) return 'incomplete';
   if (counts.short > 0) return 'short';
   if (counts.absent > 0) return 'absent';
-  return 'overtime';
+  return 'incomplete';
 }
 
 /** Shape-check a section from the query string; anything else is not a section. */

@@ -18,12 +18,14 @@ import {
   CalendarClock,
   CalendarDays,
   CalendarRange,
+  ClipboardList,
   Clock,
   FilePen,
   FileUp,
   HandCoins,
   Hourglass,
   MapPin,
+  Plane,
   SlidersHorizontal,
   Users,
 } from 'lucide-react';
@@ -113,6 +115,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // SCREEN is new; the arrangement it lists is not, and neither is the editor its View / Edit opens
     // (the personnel profile's Shift arrangement card). adminOnly like every sibling in that node.
     { href: '/admin/attendance/schedule-assignment', labelKey: 'scheduleAssignment', icon: Users, adminOnly: true },
+    // c6bb5f5a — My Travel and My Attendance Request Status, the fifth and sixth self-service rows.
+    // NEITHER FUNCTION IS NEW; both were reachable only by scrolling down the shared /attendance/requests
+    // screen, which is why the reporter read them as missing. Declared here for the same reason every row
+    // above is: growth has to be deliberate, and an undeclared row still fails the parity assertions.
+    // Ungated like their four siblings — each screen shows the caller their OWN requests.
+    { href: '/attendance/travel', labelKey: 'myTravel', icon: Plane },
+    { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
   ] as const;
 
   /**
@@ -134,6 +143,28 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/admin/holidays', to: 'components/sidebar.tsx SYSTEM_SETTINGS_NODE' },
   ] as const;
   const movedOutHrefs: string[] = MOVED_OUT.map((r) => r.href);
+
+  /**
+   * The My Attendance node's rows, in order — stated ONCE and asserted from two cases below, which used
+   * to carry two hand-typed copies of the same list.
+   *
+   * c6bb5f5a TOOK IT FROM FOUR ROWS TO SIX, and that is a deliberate reversal of what the fourth row's
+   * comment used to describe. 2166ef79 had folded Self Overtime, Travel Request and the request history
+   * onto ONE screen (/attendance/requests) — Plan OT's route was left forwarding into a tab on it. The
+   * reporter has since asked for the opposite, in writing and confirmed: four functions, four screens.
+   * So plan-ot renders its own list again, and Travel and the request history get the rows they never
+   * had. Clock in/out and Records are untouched, in their original positions.
+   */
+  const SELF_SERVICE_ROWS = [
+    '/attendance/clock',
+    '/attendance',
+    '/attendance/requests',
+    // 1e9145d4 — Plan OT lands after Attendance Request, exactly where the reporter's screenshot put it.
+    '/attendance/plan-ot',
+    // c6bb5f5a — the two rows this round added, after the four that were already here.
+    '/attendance/travel',
+    '/attendance/request-status',
+  ];
 
   // 0bb0e303 split the node three ways and a324a4b3 rev2 merged two of the three back, so parity is
   // no longer "one node with ten rows in order" and no longer "three nodes by audience" either.
@@ -188,14 +219,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // Self-service keeps Clock in/out first (5249d43f) with Records beside it, and Attendance Request
     // third (0bb0e303 rev2) — the reporter's order: clock in and out, look at your record, file a request.
     const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.map((c) => c.href)).toEqual([
-      '/attendance/clock',
-      '/attendance',
-      '/attendance/requests',
-      // 1e9145d4 — Plan OT lands LAST, after Attendance Request, exactly where the reporter's screenshot
-      // put it. Overtime moved off Attendance Request onto this row, which is why the two are adjacent.
-      '/attendance/plan-ot',
-    ]);
+    expect(mine.children.map((c) => c.href)).toEqual(SELF_SERVICE_ROWS);
   });
 
   it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
@@ -339,14 +363,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // so it is pinned here: a gate on it would take the request forms away from the staff who file them,
     // which is the opposite of what the item asked for.
     const mine = NODES.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.map((c) => c.href)).toEqual([
-      '/attendance/clock',
-      '/attendance',
-      '/attendance/requests',
-      // 1e9145d4 — Plan OT lands LAST, after Attendance Request, exactly where the reporter's screenshot
-      // put it. Overtime moved off Attendance Request onto this row, which is why the two are adjacent.
-      '/attendance/plan-ot',
-    ]);
+    expect(mine.children.map((c) => c.href)).toEqual(SELF_SERVICE_ROWS);
     // The invariant that has held through every regrouping: nothing gated lives in the ungated node.
     expect(mine.children.every((c) => !c.adminOnly && !c.managerUp)).toBe(true);
   });
