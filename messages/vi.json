@@ -8167,7 +8167,7 @@
       "healthNoEarningMethod": "Chưa chọn phương thức tích lũy, nên không cấp ngày nào dù các bảng có đầy đủ đến đâu.",
       "healthNoEntitlementTable": "Chưa thiết lập bảng định mức, nên không có số ngày nào để cấp.",
       "healthNoRuleInForce": "Có {tables} bảng định mức và không có quy tắc đủ điều kiện nào đang hiệu lực, nên không nhân viên nào được trỏ tới bảng nào.",
-      "healthConfiguredVsActual": "Đã cấu hình: {configured} ngày trên {tables} bảng quyền lợi đang hiệu lực. Thực tế được cấp: 0.00 — không có quy tắc điều kiện nào đang hiệu lực nên không nhân viên nào khớp với bảng nào, đợt cấp quyền lợi không ghi gì cả. Số ngày đã có trong hồ sơ nhân viên đến từ cấu hình cũ hoặc được nhập tay.",
+      "healthConfiguredVsActual": "Đã cấu hình: {configured} ngày trên {tables} bảng quyền lợi đang có hiệu lực. Không bảng nào đến được với ai, vì không có quy tắc điều kiện nào đang hiệu lực trỏ tới chúng - nên đợt tính quyền lợi không cấp gì từ cấu hình này. Số ngày đã có trên hồ sơ nhân viên đến từ cấu hình trước đó hoặc được nhập thủ công.",
       "healthTableWithoutRule": "Không có quy tắc đủ điều kiện nào trỏ tới: {tables}. Không ai có thể nhận được chúng.",
       "healthRuleExpired": "Quy tắc đủ điều kiện đã hết hạn nên không khớp với ai: {rules}",
       "healthRuleExpiring": "Quy tắc đủ điều kiện sắp hết hạn: {rules}",

@@ -8167,7 +8167,7 @@
       "healthNoEarningMethod": "No earning method chosen, so nothing is granted however complete the tables are.",
       "healthNoEntitlementTable": "No entitlement table has been set up, so there is no number of days to grant.",
       "healthNoRuleInForce": "{tables} entitlement tables and no eligibility rule in force, so no employee resolves to any of them.",
-      "healthConfiguredVsActual": "Configured: {configured} days across {tables} entitlement tables in force. Actually granted: 0.00 — with no eligibility rule in force nobody resolves to any of them, so the entitlement run writes nothing at all. Days already on an employee's record came from an earlier configuration or were entered by hand.",
+      "healthConfiguredVsActual": "Configured: {configured} days across {tables} entitlement tables in force. None of them reaches anybody, because no eligibility rule in force points at them - so the entitlement run grants nothing from this configuration. Days already on an employee's record came from an earlier configuration or were entered by hand.",
       "healthTableWithoutRule": "No eligibility rule points at: {tables}. Nobody can receive them.",
       "healthRuleExpired": "Eligibility rule expired, so it matches nobody: {rules}",
       "healthRuleExpiring": "Eligibility rule ends soon: {rules}",

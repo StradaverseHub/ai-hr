@@ -8167,7 +8167,7 @@
       "healthNoEarningMethod": "Tiada kaedah perolehan dipilih, jadi tiada apa-apa diberikan walau selengkap mana jadualnya.",
       "healthNoEntitlementTable": "Tiada jadual kelayakan disediakan, jadi tiada bilangan hari untuk diberikan.",
       "healthNoRuleInForce": "{tables} jadual kelayakan dan tiada peraturan kelayakan berkuat kuasa, jadi tiada pekerja yang terhubung kepada mana-mana daripadanya.",
-      "healthConfiguredVsActual": "Ditetapkan: {configured} hari merentas {tables} jadual kelayakan yang berkuat kuasa. Sebenarnya diberikan: 0.00 — tanpa peraturan kelayakan yang berkuat kuasa tiada sesiapa terikat kepada mana-mana jadual, jadi proses kelayakan tidak menulis apa-apa. Hari yang sudah ada dalam rekod pekerja datang daripada tetapan lama atau dimasukkan secara manual.",
+      "healthConfiguredVsActual": "Ditetapkan: {configured} hari merentasi {tables} jadual kelayakan yang berkuat kuasa. Tiada satu pun sampai kepada sesiapa, kerana tiada peraturan kelayakan berkuat kuasa yang menunjuk kepadanya - jadi proses kelayakan tidak memberi apa-apa daripada tetapan ini. Hari yang sudah ada pada rekod pekerja datang daripada tetapan terdahulu atau dimasukkan secara manual.",
       "healthTableWithoutRule": "Tiada peraturan kelayakan menghala ke: {tables}. Tiada sesiapa boleh menerimanya.",
       "healthRuleExpired": "Peraturan kelayakan telah tamat tempoh, jadi ia tidak sepadan dengan sesiapa: {rules}",
       "healthRuleExpiring": "Peraturan kelayakan akan tamat tidak lama lagi: {rules}",

@@ -8167,7 +8167,7 @@
       "healthNoEarningMethod": "未选择累积方式，因此无论额度表多完整都不会发放任何天数。",
       "healthNoEntitlementTable": "尚未设置额度表，因此没有可发放的天数。",
       "healthNoRuleInForce": "有 {tables} 张额度表，但没有生效的资格规则，因此没有员工能对应到其中任何一张。",
-      "healthConfiguredVsActual": "已配置：生效中的 {tables} 个权益表共设定 {configured} 天。实际发放：0.00——没有生效中的适用规则，没有员工会对应到任何一个表，因此权益运行不会写入任何记录。员工记录上已有的天数来自旧配置或人工录入。",
+      "healthConfiguredVsActual": "已配置：{tables} 个生效的权益表中共 {configured} 天。其中没有任何一个能触及任何员工，因为没有生效的资格规则指向它们 — 因此权益运行不会依据此配置发放任何天数。员工记录上已有的天数来自更早的配置或由人工录入。",
       "healthTableWithoutRule": "没有资格规则指向：{tables}。没有人能获得这些额度表。",
       "healthRuleExpired": "资格规则已过期，因此不匹配任何人：{rules}",
       "healthRuleExpiring": "资格规则即将到期：{rules}",
