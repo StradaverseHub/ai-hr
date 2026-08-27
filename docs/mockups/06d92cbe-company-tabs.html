@@ -1,0 +1,141 @@
+<meta charset="utf-8">
+<title>06d92cbe — Company tabs today, what the request asks, and what we propose</title>
+<!--
+  Mockup for 06d92cbe ("Organization / Company Details: Redesign Bank Account and Statutory Settings").
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW is the real screen. components/company-panel.tsx:37 declares exactly three tabs
+    ('general' | 'statutory' | 'other') and :692-702 draws them in that order. The four sections listed
+    under Other are the real ones and in the real order: Bank disbursement profiles (:938-990), Default
+    Payroll Cycle (:993-1035), Group parent (:1040-1060), Archive / Delete (:1062-1088).
+  · THE REQUEST AS WRITTEN is drawn honestly, including its consequence. "Rename Other to Bank Account"
+    is drawn with Delete this company still inside it, because that is what a rename produces. We are
+    not caricaturing the request — we are showing the part of it that has no good answer.
+  · A Bank Account tab in exactly this slot EXISTED (94ae7e1f) and was removed last round by 3c2f55d7
+    rev 2 on this reporter's own instruction. The unused key tabBankAccount is still in all six locales
+    (messages/en.json:6142) and test/company-panel-bank-statutory-layout.test.ts:104-111 currently FAILS
+    THE BUILD if the tab comes back. That is why the plan asks for one confirmation.
+  · The statutory cards drawn under PROPOSED are not new. company-panel.tsx:381-575 already draws one
+    card per body with icon, name, description and a Configured / Not set up badge, and :478-484 already
+    puts that body's own "Employer account / reference no." inside the card. Only the identity block
+    above them is flat.
+  · The two-numbers-per-body note is the real ambiguity: company_statutory_my.epf_employer_no (the
+    FILING identity) and company_statutory_authority.account_no (the PAYMENT reference) are different
+    numbers, documented as distinct at db/schema.ts:3136-3139, and no on-screen copy says so today.
+  · SSM and MyInvois have no card and cannot get one for free: SSM is read by Borang 8A
+    (localization/my/borang-8a.ts:145) and the PERKESO file (localization/my/socso-eis-file.ts:140).
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .ask{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:0 0 14px}
+  .tab{padding:7px 14px;font-size:12.5px;border-radius:9px 9px 0 0;color:var(--mf)}
+  .tab.on{background:var(--muted);color:var(--fg);font-weight:650;box-shadow:inset 0 -2px 0 var(--primary)}
+  .rows{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;
+       border-bottom:1px solid var(--border);font-size:12.5px}
+  .row:last-child{border-bottom:0}
+  .row .lbl{font-weight:600}
+  .row .note{font-size:11px;color:var(--mf)}
+  .flag{color:var(--bad);font-weight:650}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .auth{border:1px solid var(--border);border-radius:11px;padding:11px 12px;background:#fff}
+  .auth .an{font-weight:650;font-size:12.5px}
+  .auth .ad{font-size:11px;color:var(--mf);margin:1px 0 8px}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:600}
+  .ok{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .no{background:var(--muted);color:var(--mf)}
+  .fld{display:flex;justify-content:space-between;font-size:11.5px;padding:3px 0;border-top:1px dashed var(--border)}
+  .fld span:last-child{color:var(--mf)}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .warn b{color:#7c4a03}
+  .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .two > *{min-width:0}
+</style>
+
+<div class="two">
+  <div class="card">
+    <h2>Company details — today<span class="chip now">NOW</span></h2>
+    <p class="sub">Organization → Company → select a company. Three tabs, in this order.</p>
+    <div class="tabs"><div class="tab on">General</div><div class="tab">Statutory</div><div class="tab">Other</div></div>
+    <p class="sub" style="margin-bottom:7px"><b>What is actually inside “Other”</b></p>
+    <div class="rows">
+      <div class="row"><span class="lbl">Bank disbursement profiles</span><span class="note">the bank details</span></div>
+      <div class="row"><span class="lbl">Default Payroll Cycle</span><span class="note">not bank</span></div>
+      <div class="row"><span class="lbl">Group parent</span><span class="note">not bank</span></div>
+      <div class="row"><span class="lbl flag">Archive / Delete this company</span><span class="note flag">not bank</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>The request, drawn as written<span class="chip ask">WOULD NOT WORK</span></h2>
+    <p class="sub">“Rename the Other tab to Bank Account and move it to second.”</p>
+    <div class="tabs"><div class="tab">General</div><div class="tab on">Bank Account</div><div class="tab">Statutory</div></div>
+    <p class="sub" style="margin-bottom:7px">Renaming the tab does not move what is in it:</p>
+    <div class="rows">
+      <div class="row"><span class="lbl">Bank disbursement profiles</span><span class="note">belongs here</span></div>
+      <div class="row"><span class="lbl flag">Default Payroll Cycle</span><span class="note flag">now filed under “Bank Account”</span></div>
+      <div class="row"><span class="lbl flag">Group parent</span><span class="note flag">now filed under “Bank Account”</span></div>
+      <div class="row"><span class="lbl flag">Archive / Delete this company</span><span class="note flag">now filed under “Bank Account”</span></div>
+    </div>
+    <div class="warn"><b>This is the part we need one answer on.</b> A tab called Bank Account that also
+      deletes the company is worse than the one you have. So we would move those three elsewhere rather
+      than rename — see the proposal below.</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What we propose<span class="chip new">AFTER</span></h2>
+  <p class="sub">General | Bank Account | Statutory, with the three non-bank sections moved to General.</p>
+  <div class="tabs"><div class="tab">General</div><div class="tab">Bank Account</div><div class="tab on">Statutory</div></div>
+
+  <p class="sub" style="margin-bottom:7px"><b>Statutory today</b> — one flat identity list, then the body cards below it</p>
+  <div class="rows" style="margin-bottom:12px">
+    <div class="row"><span class="lbl">Statutory identity (MY)</span><span class="note">EPF no. · SOCSO no. · LHDN no. · MyInvois TIN · SSM no. · HRD Corp status</span></div>
+  </div>
+
+  <p class="sub" style="margin-bottom:7px"><b>The body cards, which already pair each number with its own setup</b></p>
+  <div class="grid">
+    <div class="auth"><div class="an">EPF / KWSP</div><div class="ad">Employees Provident Fund</div>
+      <span class="badge ok">Configured</span>
+      <div class="fld"><span>Employer account / reference no.</span><span>on this card today</span></div>
+      <div class="fld"><span>Paid from · address · signatory</span><span>on this card today</span></div>
+      <div class="fld"><span>EPF employer no. (filing identity)</span><span style="color:var(--primary)">moves here</span></div>
+    </div>
+    <div class="auth"><div class="an">SOCSO / PERKESO</div><div class="ad">Social Security Organisation</div>
+      <span class="badge ok">Configured</span>
+      <div class="fld"><span>Employer account / reference no.</span><span>on this card today</span></div>
+      <div class="fld"><span>SOCSO employer no. (filing identity)</span><span style="color:var(--primary)">moves here</span></div>
+    </div>
+    <div class="auth"><div class="an">LHDN</div><div class="ad">Inland Revenue Board</div>
+      <span class="badge no">Not set up</span>
+      <div class="fld"><span>Employer account / reference no.</span><span>on this card today</span></div>
+      <div class="fld"><span>LHDN employer no. (filing identity)</span><span style="color:var(--primary)">moves here</span></div>
+    </div>
+    <div class="auth"><div class="an">HRD Corp</div><div class="ad">Human Resources Development</div>
+      <span class="badge no">Not set up</span>
+      <div class="fld"><span>Registration status</span><span style="color:var(--primary)">moves here</span></div>
+    </div>
+  </div>
+
+  <div class="warn"><b>Two numbers per body, and this is the likely reason for the request.</b> Each body
+    already holds an “Employer account / reference no.” — the number on the payment slip. The identity
+    list holds a different number for the same body — the one that goes on the filed form. They are not
+    duplicates, nothing today says so, and after this change each card will say which is which.
+    <br><br><b>Not moving:</b> SSM registration number and MyInvois TIN stay in the identity list. Neither
+    is a body you pay, and the SSM number is read by two statutory files, so it is not ours to relocate
+    into a payment card.</div>
+</div>

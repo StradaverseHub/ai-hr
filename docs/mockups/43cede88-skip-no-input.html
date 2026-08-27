@@ -1,0 +1,115 @@
+<meta charset="utf-8">
+<title>43cede88 — Skipping employees with no input, and the zero that must not be skipped</title>
+<!--
+  Mockup for 43cede88 ("Payroll Process: Skip Employees with No Payroll Transaction/Input").
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW (left) is the real behaviour. Nothing between the employee selection (core/payroll.ts:3092) and
+    the payslip insert (:5208) filters on whether the run pays this person anything, so a Bonus run over
+    a whole company writes a zero payslip for everyone without a bonus.
+  · THE PENDING-MONEY CARD IS REAL AND ALREADY SHIPS on every draft batch
+    (app/payroll/[batchId]/page.tsx:758-845, fed by pendingBatchMoney core/payroll-view.ts:2252). It
+    already lists, per employee, which money doors have something in them. That is drawn as it exists —
+    it is the reason this is Moderate and not Large: the predicate does not have to be invented.
+  · AFTER is what we would build. The two result rows and the reason wording are the proposal, not the
+    current screen. The "Failed to process" stat is drawn in its CURRENT form on the left because
+    core/payroll-run-group.ts:120 computes it as selected minus succeeded — which is exactly why skipped
+    people would be counted as failures until that is changed.
+  · THE UNPAID-LEAVE ROW IS THE POINT OF THIS PICTURE. core/payroll.ts:4754 drives wagesExOt to zero for
+    a full month of unpaid leave and still produces a real payslip with real statutory bases. It must
+    NOT be skipped, and no rule based on "net pay is zero" can tell the two apart.
+  · Employee names and codes are illustrative, not from your data.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .zero{color:var(--bad);font-weight:650}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:650}
+  .p-ok{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .p-skip{background:var(--muted);color:var(--mf)}
+  .p-bad{background:color-mix(in srgb,var(--bad) 12%,white);color:var(--bad)}
+  .stats{display:flex;gap:10px;margin-bottom:12px}
+  .stat{flex:1;border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+  .stat .k{font-size:10.5px;color:var(--mf)}
+  .stat .v{font-size:18px;font-weight:700}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .two > *{min-width:0}
+  .reason{font-size:11px;color:var(--mf);padding-left:2px}
+</style>
+
+<div class="two">
+  <div class="card">
+    <h2>January 2026 · BONUS run — today<span class="chip now">NOW</span></h2>
+    <p class="sub">Every employee in the company is processed, whether or not they have a bonus.</p>
+    <div class="stats">
+      <div class="stat"><div class="k">Selected</div><div class="v">4</div></div>
+      <div class="stat"><div class="k">Processed</div><div class="v">4</div></div>
+      <div class="stat"><div class="k">Failed</div><div class="v">0</div></div>
+    </div>
+    <table>
+      <tr><th>Employee</th><th class="r">Bonus</th><th class="r">Net pay</th><th>Payslip</th></tr>
+      <tr><td>A0001 Ahmad</td><td class="r">2,000.00</td><td class="r">1,780.00</td><td><span class="pill p-ok">Issued</span></td></tr>
+      <tr><td>A0002 Siti</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td><span class="pill p-ok">Issued</span></td></tr>
+      <tr><td>A0003 Kumar</td><td class="r zero">0.00</td><td class="r zero">0.00</td><td><span class="pill p-ok">Issued</span></td></tr>
+      <tr><td>A0004 Mei Ling <span class="reason">— full month unpaid leave</span></td><td class="r">—</td><td class="r zero">0.00</td><td><span class="pill p-ok">Issued</span></td></tr>
+    </table>
+    <p class="sub" style="margin:11px 0 0">Three zero payslips, and nothing on the screen tells you that
+      two of them are noise and one of them is real.</p>
+  </div>
+
+  <div class="card">
+    <h2>The same run, after<span class="chip new">AFTER</span></h2>
+    <p class="sub">Only the people this run actually pays are processed, and the rest are named.</p>
+    <div class="stats">
+      <div class="stat"><div class="k">Selected</div><div class="v">4</div></div>
+      <div class="stat"><div class="k">Processed</div><div class="v">2</div></div>
+      <div class="stat"><div class="k">Skipped</div><div class="v">2</div></div>
+    </div>
+    <table>
+      <tr><th>Employee</th><th class="r">Bonus</th><th class="r">Net pay</th><th>Outcome</th></tr>
+      <tr><td>A0001 Ahmad</td><td class="r">2,000.00</td><td class="r">1,780.00</td><td><span class="pill p-ok">Processed</span></td></tr>
+      <tr><td>A0002 Siti<div class="reason">No transaction entry for this payroll cycle</div></td><td class="r">—</td><td class="r">—</td><td><span class="pill p-skip">Skipped</span></td></tr>
+      <tr><td>A0003 Kumar<div class="reason">No transaction entry for this payroll cycle</div></td><td class="r">—</td><td class="r">—</td><td><span class="pill p-skip">Skipped</span></td></tr>
+      <tr><td>A0004 Mei Ling <span class="reason">— full month unpaid leave</span></td><td class="r">—</td><td class="r zero">0.00</td><td><span class="pill p-ok">Processed</span></td></tr>
+    </table>
+    <p class="sub" style="margin:11px 0 0">Two skipped and named. Mei Ling is still processed, because
+      her zero is a real zero.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>The zero that must not be skipped<span class="chip now">WHY THIS IS NOT A ONE-LINE CHANGE</span></h2>
+  <p class="sub">These two rows look identical on a payslip. Only one of them should disappear.</p>
+  <table>
+    <tr><th>Employee</th><th>What happened</th><th class="r">Net pay</th><th>Correct outcome</th></tr>
+    <tr><td>A0002 Siti</td><td>No bonus was entered for her in this cycle</td><td class="r zero">0.00</td><td><span class="pill p-skip">Skip — nothing to pay</span></td></tr>
+    <tr><td>A0004 Mei Ling</td><td>Took a full month of unpaid leave; her pay really is zero</td><td class="r zero">0.00</td><td><span class="pill p-bad">Must still be processed</span></td></tr>
+  </table>
+  <div class="warn"><b>So the rule cannot be “net pay is zero”.</b> It has to be “this run has nothing to
+    pay this person”, which is a different question and is asked before the pay is worked out, not after.
+    The good news is that the system already asks it: the draft run screen has a Pending money card that
+    lists exactly who has something waiting in this cycle. We would use that same answer to decide who
+    to skip, so the screen and the run cannot disagree.
+    <br><br><b>And it applies to extra runs only.</b> On a normal monthly run an ordinary salaried employee
+    has no transactions at all — their pay comes from their salary record. Skipping on “no transaction”
+    there would stop paying almost everyone, so this behaviour is for Bonus, Claim, Overtime and other
+    additional cycles, and the normal monthly run is untouched.</div>
+</div>
