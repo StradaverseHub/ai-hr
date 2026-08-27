@@ -222,7 +222,28 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       // 1e9145d4 — Plan OT joined the node as the fourth self-service row when overtime moved off the
       // Attendance Request screen. Ungated for the same reason, and pinned by its own describe below.
       '/attendance/plan-ot',
+      // c6bb5f5a — SIX rows, not four, and the case is UPDATED rather than re-typed as a new one: what it
+      // has always guarded is that this node's membership is written down and that nothing gated slips in.
+      // 2166ef79 had stacked Travel Request and the request history onto /attendance/requests; the
+      // reporter has since asked for each function to have its own row and its own screen, and confirmed
+      // it. Both new rows are ungated for the same reason as the four above — the caller's own requests.
+      '/attendance/travel',
+      '/attendance/request-status',
     ]);
+    // plan-ot joins the loop this round: until c6bb5f5a it was a one-line redirect with nothing to guard,
+    // and it now renders the employee's own overtime plans like the two beside it.
+    for (const href of ['/attendance/plan-ot', '/attendance/travel', '/attendance/request-status']) {
+      const added = mine.children.find((c) => c.href === href)!;
+      expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
+        adminOnly: undefined,
+        managerUp: undefined,
+      });
+      // …and their pages must not acquire a page guard either, for the reason this describe exists: a
+      // self-service request screen behind an approval-side gate is a capability taken away, not secured.
+      const src = read(`app${href}/page.tsx`);
+      expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
+      expect(src, `${href} resolves the caller’s own employment`).toContain('myEmployment(s)');
+    }
     const row = mine.children.find((c) => c.href === '/attendance/requests')!;
     expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }).toEqual({
       adminOnly: undefined,

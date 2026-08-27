@@ -274,7 +274,12 @@ export default async function MePage({
               0bb0e303 rev2: the three request forms that used to sit below moved to My Attendance >
               Attendance Request, because burying them in a fold-out on the profile page was the very
               complaint the item was raised about. A link, not a copy — two sets of the same form on two
-              screens is how they drift apart. */}
+              screens is how they drift apart.
+              c6bb5f5a: that ONE screen became four, so this link's WORDS changed while its target did not.
+              It used to promise "an attendance, overtime or travel request"; overtime and travel now have
+              menu rows and screens of their own, and a link that still promised all three would land the
+              employee on a screen carrying only the first. The key is unchanged — the string names what
+              this link actually opens. */}
           <div className="mt-5 space-y-2 border-t border-border pt-4">
             <Link
               href="/attendance"

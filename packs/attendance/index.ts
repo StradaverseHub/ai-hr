@@ -56,12 +56,14 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarRange,
+  ClipboardList,
   Clock,
   FilePen,
   FileUp,
   HandCoins,
   Hourglass,
   MapPin,
+  Plane,
   SlidersHorizontal,
   Users,
 } from 'lucide-react';
@@ -134,8 +136,9 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     { href: '/attendance/requests', labelKey: 'attendanceRequest', icon: FilePen },
     // 1e9145d4 — Plan OT, the FOURTH self-service row, exactly where the reporter's screenshot puts it:
     // beside Clock in/out, Records and Attendance Request. Overtime MOVED here off the Attendance Request
-    // screen (which keeps clock-time corrections and travel and carries a link across), so overtime is
-    // filed in one place rather than two that drift apart.
+    // screen, so overtime is filed in one place rather than two that drift apart. (2166ef79 moved it back
+    // onto that screen and left this row forwarding into a tab; c6bb5f5a — the reversal declared below —
+    // put the list back on this route, which is where it is now.)
     //
     // UNGATED, like its three siblings, and for the same reason: an overtime plan is the caller's OWN
     // request. A gate here would take the form away from precisely the staff it exists for.
@@ -145,6 +148,30 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // Time off in lieu, which is a DIFFERENT fly-out with no row in common, so no collapsed rail ever shows
     // the two side by side. (It is also the right picture: time set aside in advance.)
     { href: '/attendance/plan-ot', labelKey: 'planOvertime', icon: Hourglass },
+    /**
+     * c6bb5f5a — the FIFTH and SIXTH self-service rows, and a DELIBERATE REVERSAL of what the row above
+     * them says. 2166ef79 folded Self Overtime, Travel Request and the request-history list onto ONE
+     * screen (/attendance/requests) as tabs and a stack of cards, because that is what the reporter asked
+     * for then; /attendance/plan-ot became a redirect into a tab. They have since asked for the opposite,
+     * in writing and confirmed: four functions, four rows, four screens. So plan-ot renders its own list
+     * again and these two give Travel and the request history the homes they never had — Travel Request
+     * has been complete since ADR-0069 with no menu entry at all, and the history sat below four tabs
+     * about something else.
+     *
+     * UNGATED, like their four siblings, and for the same reason: every one of these is the caller's OWN
+     * request. A gate here would take the screens away from precisely the staff they exist for.
+     *
+     * Glyphs, not decoration: the collapsed rail renders icons ONLY, so no row may repeat a sibling's.
+     * Plane (travel) and ClipboardList (a list of requests and their outcomes) are unused elsewhere in
+     * this node. MapPin was the obvious pick for travel and is deliberately NOT used — it is the Clocking
+     * location row in the Attendance settings node, and "off-site work window" and "where you may clock
+     * in" are exactly the two things that must not read as one thing.
+     *
+     * ⚠️ ONE LEVEL ONLY. NavChildDescriptor has no `children` field and components/nav-flyout.tsx renders
+     * a single level, so these are six rows side by side — not rows with sub-rows underneath.
+     */
+    { href: '/attendance/travel', labelKey: 'myTravel', icon: Plane },
+    { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
   ],
 };
 

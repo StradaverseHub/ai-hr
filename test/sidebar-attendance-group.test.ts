@@ -307,6 +307,34 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
 
     expect(countQuoted(SRC, '/attendance/requests')).toBe(1);
   });
+
+  // c6bb5f5a — the fifth and sixth staff rows. DECLARED here for the same reason the third one is: this
+  // guard's whole value is that the membership of the self-service node is written down, so a row that
+  // arrives without a line here is still a failure. Both are reversals of 2166ef79, which had folded
+  // Travel Request and the request history onto the Attendance Irregularity screen; the reporter asked
+  // for each function to have its own row and its own screen, and confirmed it.
+  it('carries My Travel and My Attendance Request Status, ungated, exactly once across the rail', () => {
+    const requestsIdx = node.indexOf(`'/attendance/requests'`);
+    for (const [href, labelKey] of [
+      ['/attendance/travel', 'myTravel'],
+      ['/attendance/request-status', 'myAttendanceRequestStatus'],
+    ] as const) {
+      const idx = node.indexOf(`'${href}'`);
+      expect(idx, `${href} is a child of My Attendance`).toBeGreaterThan(-1);
+      expect(requestsIdx, `${href} comes after Attendance Irregularity`).toBeLessThan(idx);
+
+      // NOT in the config node: it sits in the group-gated Administration section, where a self-service
+      // row renders for administrators and nobody else — a silent removal, not a menu tidy-up.
+      expect(nodeBlock('ATTENDANCE_NAV').indexOf(`'${href}'`), `${href} not in the config node`).toBe(-1);
+
+      const line = node.split('\n').find((l) => l.includes(`'${href}'`));
+      expect(line, `${href} row exists`).toBeDefined();
+      expect(line, `${href} carries no visibility gate`).not.toMatch(/adminOnly|managerUp/);
+      expect(line, `${href} labelled by its own nav key`).toContain(`labelKey: '${labelKey}'`);
+
+      expect(countQuoted(SRC, href), `${href} appears exactly once across the rail`).toBe(1);
+    }
+  });
 });
 
 describe('sidebar Attendance labels (f60cd403 rename)', () => {

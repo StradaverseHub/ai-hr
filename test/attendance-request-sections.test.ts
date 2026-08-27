@@ -201,11 +201,22 @@ describe('2166ef79 — which section opens, and what the request is filed as', (
     expect(defaultSection({ incomplete: 1, short: 1, absent: 1 })).toBe('incomplete');
     expect(defaultSection({ incomplete: 0, short: 2, absent: 1 })).toBe('short');
     expect(defaultSection({ incomplete: 0, short: 0, absent: 3 })).toBe('absent');
-    // Nothing wrong: Self Overtime, the one section that is never an exception — it is a thing you ask for.
-    expect(defaultSection({ incomplete: 0, short: 0, absent: 0 })).toBe('overtime');
+    // Nothing wrong: Incomplete Entry.
+    //
+    // ⚠️ THIS ANSWER CHANGED AT c6bb5f5a, AND THE CASE IS UPDATED RATHER THAN DELETED. The fallback used to
+    // be `overtime` — the one section that is never an exception, so the safe landing for a screen with
+    // nothing flagged on it. Self Overtime now has a page of its own (/attendance/plan-ot) at the
+    // reporter's confirmed request and is no longer a tab here, so falling back to it would open a tab
+    // that does not exist. Incomplete Entry is the exception whose empty state ("no day is missing a
+    // punch") is the one an employee most wants confirmed. Worst-first among the three that DO have
+    // something in them is unchanged, which is what the three lines above pin.
+    expect(defaultSection({ incomplete: 0, short: 0, absent: 0 })).toBe('incomplete');
   });
 
   it('each section files under its own stored request_kind', () => {
+    // UNCHANGED by c6bb5f5a, deliberately: `overtime` stops being a TAB on the irregularity screen but
+    // stays a stored request_kind (db/schema ATTENDANCE_REQUEST_KINDS) — Self Overtime requests are still
+    // filed, read and labelled by it, from the screen of their own that they moved to.
     expect(KIND_OF_SECTION).toEqual({
       overtime: 'self_overtime',
       short: 'short_hours',
