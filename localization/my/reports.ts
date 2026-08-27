@@ -1708,7 +1708,14 @@ export const MY_REPORTS: ReportDef[] = [
   // reporter names a different portal, this string is the whole fix.
   { id: 'my.hrd-levy', label: 'HRD Corp levy (PSMB)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: hrdLevy,
     descriptionKey: 'desc_hrd_levy', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 1,
-    submission: { body: 'other', agency: 'HRD Corp', channel: 'HRD Corp e-TRiS', dueDayOfNextMonth: 15 } },
+    // NO `dueDayOfNextMonth`, DELIBERATELY. A due day makes the shelf compute a deadline and colour it
+    // overdue/due-soon for EVERY company on the filter — but the HRD levy is only owed by a company
+    // registered with PSMB, and `company_statutory_my.hrdf_status` DEFAULTS to `not_registered`. So a
+    // hard 15th would have printed a red "Overdue" statutory deadline at every tenant that has never
+    // registered, which is a legal assertion we cannot stand behind (AGENTS rule 28: an absent box
+    // asserts nothing, a red one asserts a missed filing). The card still populates the `other` shelf,
+    // which is what the approved plan promised; the deadline waits for a per-company registration read.
+    submission: { body: 'other', agency: 'HRD Corp', channel: 'HRD Corp e-TRiS', dueDayOfNextMonth: null } },
 ];
 
 /**
