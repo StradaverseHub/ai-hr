@@ -220,45 +220,23 @@ export async function createEntitlementTemplate(
 }
 
 /**
- * ── r219 · WHICH WRITE AN EDIT IS ────────────────────────────────────────────────────────────────────
+ * ── r219 · WHICH WRITE AN EDIT IS — DEFINED IN lib/entitlement-edit-mode.ts, RE-EXPORTED HERE ──────────
  *
- * The one decision `updateEntitlementTemplate` and `updateEligibilityRule` share, kept here as a pure
- * function so the two cannot drift and so it can be exercised without a database.
+ * The decision `updateEntitlementTemplate` and `updateEligibilityRule` below both take (in-place ·
+ * supersede · refuse) is a pure function of three dates, and its full reasoning lives with it in
+ * `lib/entitlement-edit-mode.ts`. It MOVED there in r224 for one reason: the two editor forms now label
+ * their own Save button with the write it is about to make, which depends on what is in the date box at
+ * this instant, so the deciding function has to run in the CLIENT bundle — and this module cannot, because
+ * it pulls `db/client`, drizzle and the schema in with it.
  *
- *   · the running version HAS NOT STARTED YET          ⇒ 'in-place'
- *   · the start date is not moving at all              ⇒ 'in-place' (it is the same version, re-saved)
- *   · it HAS been in force and the new date is later   ⇒ 'supersede'
- *   · anything else                                    ⇒ 'refuse'
- *
- * ⚠️ THIS IS A DATE TEST, NOT A USAGE TEST, and the difference is the reason this note exists. "Has
- * anything been calculated from this version" HAS NO ANSWER in this schema: `leave_ledger` records
- * employment, leave type, entry type, days and effective date and carries NO reference to the entitlement
- * table or the eligibility rule that produced a row (the r210 paragraph in this file's header sets that
- * out in full). All that can be asked here is whether the version has STARTED — `validFrom > today` —
- * and nothing in this file should be read as, or widened into, a claim that nothing was ever computed
- * from a version this test calls not-yet-started.
- *
- * WHAT THE 'supersede' ARM PROTECTS, stated once: three readers resolve entitlement at a PAST date (the
- * Carry Forward report at each employee's own cycle open, the year sweep in expireCarriedLeave, and the
- * /me + admin balance breakdown). Changing the start date of a version that has been in force would
- * quietly change what a closed leave year says an employee was entitled to. A version that has not
- * started has no such year behind it, so editing it in place takes nothing away.
- *
- * THE RETIRED HALF: this used to be `open.validFrom >= p.validFrom` in both writers, which compared the
- * running version against ITSELF — saving the version you were editing with its own date was refused,
- * and the message sent the operator to "edit that version instead" when these two functions are the only
- * edit entry points there are.
+ * Re-exported rather than re-pointed at every call site so no import path changed with the move.
  */
-export type EntitlementEditMode = 'in-place' | 'supersede' | 'refuse';
-
-export function entitlementEditMode(p: {
-  openValidFrom: string;
-  newValidFrom: string;
-  today: string;
-}): EntitlementEditMode {
-  if (p.openValidFrom > p.today || p.newValidFrom === p.openValidFrom) return 'in-place';
-  return p.newValidFrom > p.openValidFrom ? 'supersede' : 'refuse';
-}
+export {
+  entitlementEditMode,
+  entitlementInPlaceChangesThePast,
+  type EntitlementEditMode,
+} from '../lib/entitlement-edit-mode';
+import { entitlementEditMode } from '../lib/entitlement-edit-mode';
 
 /** One version of a lineage, reduced to the only three columns the window arithmetic below needs. */
 type DatedVersion = { id: string; validFrom: string; validTo: string | null };

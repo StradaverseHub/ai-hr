@@ -1296,24 +1296,36 @@ grep — an empty result is a parser gap, not proof of no callers.
   caught it before writing. Removing a `Promise.all` element without its destructuring slot silently
   shifts every later variable.
 
-## Entitlement facts — read before touching leave (re-verified on production 2026-07-31)
+## Entitlement facts — read before touching leave (corrected r224, 2026-08-26)
 
 **r85 MOVED THE RULES. Anything (including old history entries) saying `leave_policy` owns earning
 method or carry-forward is WRONG.**
 
 - **Rules live on `leave_type`** (columns `0325`, engines repointed `0334`). `applyLeaveTypeRules`
-  (`core/leave-compute.ts:489`) overlays them onto the resolved policy — a **whole-set** overlay
-  gated on `hasAnyLeaveTypeRule`. 10 leave types carry type-level rules.
-- **`leave_policy` still supplies DAYS** and is the rules fallback for types carrying none. 67 policy
-  rows, 57 `earned_monthly`. **Zeroing `leave_policy` wholesale would stop accrual for every type
-  that falls through** — removing the band SURFACE is safe; emptying the TABLE is not the same act.
-- **DAYS precedence:** `entitledDays = max(floorDays, schemeDays ?? policyDays)`; `schemeBandDays`
-  returning **null — not zero** — triggers the fallback.
-- **`leave_policy` has no `updated_at`** — date a change via `leave-policy.updated` events, never
-  `created_at`.
-- **Coverage gap that bites at reset time:** 12 of 41 benefit schemes have zero entitlement rows;
-  ISEDECOR BINA + Demo Group Holdings have no schemes at all. After a reset those employees drop to
-  the statutory floor.
+  (`core/leave-compute.ts`) overlays them onto the resolved policy — a **whole-set** overlay gated on
+  `hasAnyLeaveTypeRule`.
+- **⚠️ `leave_policy`, `benefit_scheme` and `scheme_leave_entitlement` ARE GONE, and the lines that
+  stood here saying `leave_policy` "still supplies DAYS as the fallback" were STALE.** The entitlement
+  redesign's release three removed every reader, and production's `information_schema` lists only
+  `entitlement_template`, `entitlement_eligibility_rule` and `entitlement_reset_archive`. There is no
+  policy-row fallback to zero out, and no scheme coverage gap to plan a reset around.
+- **DAYS come from ONE place:** the winning `entitlement_template` band, composed by
+  `composeEntitlement` (`core/leave-compute.ts`). Nothing resolves ⇒ `noOpinion` ⇒ the caller posts
+  **nothing at all** (delta exactly 0), which is what stops an empty configuration clawing back days
+  people already hold.
+- **The statutory floor is ADVISORY (fa3f4ccb), NOT a fallback.** `belowStatutoryFloor` is a warning
+  flag; the floor "no longer participates in the arithmetic anywhere". So a leave type whose tables
+  reach nobody grants **0.00** — `openLeaveYear` records the pair as `no_entitlement` and writes no
+  accrual row. Do not describe the gap below as employees "receiving the statutory minimum": that was
+  the pre-fa3f4ccb composition, and any ledger row showing it predates the change.
+- **The coverage gap, tables in force vs eligibility rules in force (production 2026-08-26):** Annual
+  16/0 · Graduation 3/0 · Marriage 3/0 · Caregiver 3/0 · Paternity 3/0 · Study 3/0 · Maternity 3/0 ·
+  Compassionate 3/0 · Hospitalization 1/0 · Medical 6/1 · Examination 3/1. **Hospitalization's 1/0 is
+  NOT a gap** — one table in force with no rule applies to everybody (r193 fault 3, mirrored in
+  `soleTableApplies`), so its reported zero automatic accrual has a DIFFERENT cause and the missing
+  rule is not it. The other eight resolve to nothing. r224 surfaces this on the leave-configuration
+  landing screen and at create time; it deliberately creates no rules (who receives which table is a
+  policy decision, and guessing a criteria object silently widens or narrows who a table reaches).
 
 ## Carried debt — none of it blocking, all of it real
 

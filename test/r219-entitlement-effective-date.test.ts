@@ -464,19 +464,57 @@ describe('§E r219 · eligibility rules carry the identical rule, for the identi
 
 // ── §F the screen's words ────────────────────────────────────────────────────────────────────────────
 
-describe('§F r219 · the form says which of the two saves it is about to make', () => {
+describe('§F r219 → r224 · the form says which of the two saves it is about to make', () => {
   const block = readFileSync(
     resolve(ROOT, 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx'),
     'utf8',
   );
+  const ruleForm = readFileSync(resolve(ROOT, 'components/leave/eligibility-rule-form.tsx'), 'utf8');
+  const saveMode = readFileSync(resolve(ROOT, 'components/leave/entitlement-save-mode.tsx'), 'utf8');
 
-  it('the note and the button are chosen from the same question the service asks', () => {
-    // The derivation exists, and BOTH captions hang off it. A form that always promised a supersede would
-    // be telling the operator their save closes a version and starts a new one, on the half of the screen
-    // where it does neither.
-    expect(block).toContain('const templateNotStarted =');
-    expect(block).toContain('const ruleNotStarted =');
-    expect(block).toContain("templateNotStarted ? t('editInPlaceNote') : t('supersedeNote')");
+  /**
+   * ⚠️ r224 REPLACED THE ASSERTIONS THAT USED TO STAND HERE, AND THE REASON IS THE DEFECT ITSELF.
+   *
+   * r219 pinned `templateNotStarted ? t('editInPlaceNote') : t('supersedeNote')` and
+   * `templateNotStarted ? editingTemplate!.validFrom : today` as SOURCE STRINGS — and both of those lines
+   * were the bug. The second pre-filled TODAY into the date box of every version already in force, which
+   * made `newValidFrom !== openValidFrom` true before the operator touched anything, so every ordinary
+   * edit superseded and in-place saving (proved to work in §B above) could not be asked for from the
+   * screen. The first then described that supersede accurately, which is why it read as correct.
+   *
+   * So this section now pins the SHAPE that cannot have the defect: neither editor computes the caption or
+   * the date on the server at all. Both read the CURRENT contents of the date box through
+   * `entitlementEditMode`, in the client, and the render itself is asserted in
+   * test/r224-entitlement-save-mode.dom.test.tsx — a source scan can see that the derivation is wired, and
+   * only a render can see what the button actually says.
+   */
+  it('r224 — neither form pre-fills TODAY over the version being edited', () => {
+    // The template form's date box is the client island's, whose default is the version's own date.
+    expect(block).toContain('<EntitlementEffectiveFromField />');
+    expect(block).not.toContain('templateNotStarted');
+    // The rule form is handed the rule's OWN date, unconditionally.
+    expect(block).toContain('validFrom: editingRule.validFrom,');
+    expect(block).not.toContain('ruleNotStarted');
+  });
+
+  it('r224 — the label and the note are resolved from the same function the service decides with', () => {
+    expect(saveMode).toContain("from '@/lib/entitlement-edit-mode'");
+    expect(saveMode).toContain('entitlementEditMode(dates)');
+    expect(saveMode).toContain('entitlementInPlaceChangesThePast(dates)');
+    // Both forms take their submit label from that resolution rather than from a server-computed prop.
+    expect(block).toContain('<EntitlementSaveModeSubmit createLabel={t(\'createTemplate\')} />');
+    expect(block).toContain("submitLabel={t('createRule')}");
+    expect(ruleForm).toContain('useEntitlementSaveMode(');
+    expect(ruleForm).toContain('{save.label}');
+    // …and the rule editor finally carries a note at all (r224 change 3).
+    expect(ruleForm).toContain('<EntitlementSaveModeCaption save={save} />');
+  });
+
+  it('r224 — the service still reads the one definition, through the module the client shares', () => {
+    const core = readFileSync(resolve(ROOT, 'core/entitlement-template.ts'), 'utf8');
+    expect(core).toContain("from '../lib/entitlement-edit-mode'");
+    // Both writers still ask it; a second copy in either is how the button and the write come apart.
+    expect(core.match(/entitlementEditMode\(\{/g) ?? []).toHaveLength(2);
   });
 
   /**
@@ -498,24 +536,30 @@ describe('§F r219 · the form says which of the two saves it is about to make',
     const en = (JSON.parse(readFileSync(resolve(ROOT, 'messages/en.json'), 'utf8')) as Record<string, any>).admin.entitlementTemplates as Record<string, string>;
     expect(en.editInPlaceNote).toMatch(/date in the past/i);
     expect(en.supersedeNote).toMatch(/without changing the date/i);
-    expect(block).toContain("t('saveThisVersion')");
-    // …and the date box defaults to the version's OWN date while that version has not started, instead of
-    // to today, which on a future-dated version would have moved its start date on a plain Save.
-    expect(block).toContain('templateNotStarted ? editingTemplate!.validFrom : today');
-    expect(block).toContain('validFrom: ruleNotStarted ? editingRule.validFrom : today');
+    // r224 — and the note for the save that DOES reach backwards names the consequence rather than
+    // implying it away. See `entitlementInPlaceChangesThePast`.
+    expect(en.inPlaceStartedWarning).toMatch(/closed leave years/i);
+    expect(en.inPlaceStartedWarning).toContain('{from}');
   });
 
   it('both new captions exist in all six locales, and none is left as the English string', () => {
+    const KEYS = [
+      'editInPlaceNote',
+      'saveThisVersion',
+      // r224's four.
+      'inPlaceInForceNote',
+      'inPlaceStartedWarning',
+      'refuseNote',
+      'saveDateRefused',
+    ] as const;
+    const en = JSON.parse(readFileSync(resolve(ROOT, 'messages/en.json'), 'utf8')).admin.entitlementTemplates;
     for (const loc of LOCALES) {
       const msgs = JSON.parse(readFileSync(resolve(ROOT, `messages/${loc}.json`), 'utf8')) as Record<string, any>;
       const ns = msgs.admin.entitlementTemplates as Record<string, string>;
-      expect(typeof ns.editInPlaceNote, `${loc} editInPlaceNote`).toBe('string');
-      expect(typeof ns.saveThisVersion, `${loc} saveThisVersion`).toBe('string');
-      expect(ns.editInPlaceNote.length, `${loc} editInPlaceNote`).toBeGreaterThan(0);
-      if (loc !== 'en') {
-        const en = JSON.parse(readFileSync(resolve(ROOT, 'messages/en.json'), 'utf8')).admin.entitlementTemplates;
-        expect(ns.editInPlaceNote, `${loc} editInPlaceNote is untranslated`).not.toBe(en.editInPlaceNote);
-        expect(ns.saveThisVersion, `${loc} saveThisVersion is untranslated`).not.toBe(en.saveThisVersion);
+      for (const k of KEYS) {
+        expect(typeof ns[k], `${loc} ${k}`).toBe('string');
+        expect(ns[k].length, `${loc} ${k}`).toBeGreaterThan(0);
+        if (loc !== 'en') expect(ns[k], `${loc} ${k} is untranslated`).not.toBe(en[k]);
       }
     }
   });
@@ -525,5 +569,7 @@ describe('§F r219 · the form says which of the two saves it is about to make',
     // The half that is still true stays; the unconditional claim goes.
     expect(en.datedNote).toContain('already in force');
     expect(en.datedNote).toContain('has not started yet');
+    // r224 — and it now states the arm that made the reporter raise this: an unchanged date overwrites.
+    expect(en.datedNote).toMatch(/updated in place/i);
   });
 });

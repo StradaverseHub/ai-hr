@@ -16,6 +16,21 @@ export type LeaveTypeWorkspaceItem = {
   /** Visual config (639fdf77): colour token + icon key for the list entry's dot/icon. null = default. */
   color: string | null;
   icon: string | null;
+  /**
+   * r224 — "this leave type's entitlement tables reach nobody", as a SHORT TRANSLATED STRING prepared by
+   * the server page, or null when there is nothing to say.
+   *
+   * ⚠️ IT IS A STRING, NOT A BOOLEAN, and that is the boundary rule rather than a style choice: this is a
+   * client component and the page that mounts it is a server one, so a flag would force this file to own a
+   * second copy of the wording and a `useTranslations` for a namespace it otherwise never reads. Only plain
+   * data crosses (test/server-client-boundary.test.ts).
+   *
+   * WHY IT IS ON THE LIST AT ALL. The finding itself has been derived since r209 and rendered inside each
+   * type's own Entitlement step — which is precisely the reporter's complaint: nine of eleven leave types
+   * were reaching nobody and you had to open each one, on the right step, to find out. The list is the one
+   * surface where every type is visible at once, so this is where "which of these is not working" belongs.
+   */
+  alert?: string | null;
 };
 
 /**
@@ -138,8 +153,10 @@ export function LeaveTypeWorkspace({
             className={`${inputCls} w-full`}
           >
             {items.map((item) => (
+              /* The mobile control is a native <select>, which can hold no badge — the alert rides in the
+                 option text so the dropdown says the same thing the desktop list does. */
               <option key={item.id} value={item.id}>
-                {item.name}
+                {item.alert ? `${item.name} — ${item.alert}` : item.name}
               </option>
             ))}
           </select>
@@ -196,6 +213,16 @@ export function LeaveTypeWorkspace({
                     )}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  {/* r224 — the flag, on the row. Amber rather than red: the leave type is misconfigured,
+                      not broken, and red is already spoken for by the blocking findings inside the step. */}
+                  {item.alert ? (
+                    <span
+                      className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200"
+                      title={item.alert}
+                    >
+                      {item.alert}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             );

@@ -41,7 +41,7 @@ import {
 } from './templates/entitlement-tables-block';
 // r209 — the traffic-light listing. Derived from the SAME page-level `entitlementTablesData` the panels
 // below are sliced from, so the card and each type's own Entitlement step can never disagree.
-import { leaveConfigHealthAll } from '@/lib/leave-config-health';
+import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
 import {
   archiveLeaveTypeAction,
@@ -462,6 +462,15 @@ export default async function LeaveEntitlementsPage({
             archived: !!lt.archivedAt,
             color: lt.color ?? null,
             icon: lt.icon ?? null,
+            /* r224 — WHICH LEAVE TYPES ARE NOT REACHING ANYBODY, ON THE LIST YOU PICK THEM FROM.
+               `tablesReachNobody` is the r209 finding this page already renders on the card below, read
+               rather than recomputed: the badge and the card are one derivation, so the list cannot flag a
+               type the card calls healthy. Archived types resolve to no health row and so carry no badge —
+               `leaveConfigHealthAll` excludes them deliberately (a permanent red row nobody can clear is
+               how a signal stops being read). */
+            alert: configHealth.some((h) => h.leaveTypeId === lt.id && tablesReachNobody(h))
+              ? t('workspaceReachesNobody')
+              : null,
           }))}
           panels={Object.fromEntries(
             types.map((lt) => [
