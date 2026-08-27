@@ -1311,12 +1311,25 @@ method or carry-forward is WRONG.**
   `entitlement_template`, `entitlement_eligibility_rule` and `entitlement_reset_archive`. The old text
   here quoted "67 policy rows, 57 earned_monthly" and a `schemeDays ?? policyDays` precedence; both
   describe tables that no longer exist, and it is the FIRST thing an agent doing entitlement work reads.
-- **WHAT ACTUALLY HAPPENS WHEN NOTHING RESOLVES: the STATUTORY FLOOR.** With no eligibility rule
-  pointing at a template, accrual does not fail — it falls back to the Employment Act minimum. Measured
-  on production 2026-08-27: Annual Leave accrued 307.26 days across 85 entries to 27 employees (~11.4
-  each) while the sixteen configured tables specify 12–24 days by grade. **A silent downgrade, not an
-  outage**, which is exactly why nobody had noticed. Hospitalization Leave accrues 0.00 and its 2,100
-  days are all manual `adjustment` rows. Board item `41330484` carries this.
+- ⚠️ **WHAT ACTUALLY HAPPENS WHEN NOTHING RESOLVES: NOTHING IS GRANTED — AND THE "STATUTORY FLOOR"
+  ANSWER THAT SAT HERE FOR TWENTY-FIVE MINUTES WAS WRONG.** Feedback `fa3f4ccb` REMOVED the floor from
+  the arithmetic: `core/leave-compute.ts:928-947` says it in as many words — the composition used to be
+  `max(statutoryFloor, configured)`, **"the reporter asked twice for that override to go and approved
+  the change in writing"**, and **"the floor no longer participates in the arithmetic anywhere."** It is
+  still computed, only to warn (`belowStatutoryFloor`). So `composeEntitlement` returns
+  `days = templateDays ?? 0` with `noOpinion`, `openLeaveYear` records `no_entitlement` and writes NO
+  accrual row: a leave type whose tables reach nobody grants **0.00**, not the EA minimum.
+- ⚠️ **THE TRAP THAT PRODUCED THE WRONG ANSWER, because it will catch the next reader too:** production's
+  ledger shows Annual Leave accruing 307.26 days across 85 rows to 27 employees (~11.4 each), which looks
+  exactly like a floor fallback and is why it was read as one. **Those rows were granted under the OLDER
+  composition, before `fa3f4ccb`.** A ledger records what WAS granted, not what the current code would
+  grant — never infer live behaviour from historical rows without checking whether the composition moved.
+- ⚠️ **AND IT IS EIGHT LEAVE TYPES, NOT NINE.** Hospitalization Leave has ONE table in force and zero
+  rules, which is the **r193 sole-table fallback** shape (`viaSoleTemplate`,
+  `core/entitlement-template.ts:1571`): a single table applies to everybody, so the derivation calls it
+  healthy. Its zero automatic accrual has a different cause. Board item `41330484` and its approved plan
+  both say nine, and both tell the reporter to "look at Hospitalization first" — the one type the product
+  calls healthy. **Both corrections still owe the reporter a reply.**
 - **Coverage gap that bites at reset time:** 12 of 41 benefit schemes have zero entitlement rows;
   ISEDECOR BINA + Demo Group Holdings have no schemes at all. After a reset those employees drop to
   the statutory floor.
