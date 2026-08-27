@@ -18,13 +18,36 @@ import { payrollProcessBack } from '../back';
 /**
  * Payroll → Statutory Forms: the shelf, by the authority you file with (6babf4f6, redesigning 956cec85).
  *
- * THE REQUEST'S PREMISE IS WRONG, AND THE SCREEN SAYS SO BY WHAT IT DOES NOT DRAW. The item asks for a
- * redesign on the grounds that "the current module contains the required functionality" — it does not.
- * The pack registers FIVE reports (my.contributions, my.cp39, my.epf, my.socso-eis, my.cp8d) plus the
+ * THE REQUEST'S PREMISE WAS WRONG, AND THE SCREEN SAID SO BY WHAT IT DID NOT DRAW. The item asked for a
+ * redesign on the grounds that "the current module contains the required functionality" — it did not.
+ * The pack registered FIVE reports (my.contributions, my.cp39, my.epf, my.socso-eis, my.cp8d) plus the
  * per-employee EA and the CP22/CP22A worklist. Borang BBCB, PERKESO 8B, SIP 2 / 2A, TP3, PCB 2(II),
  * CP21, CP39A and every Other-Statutory report on the reporter's list were NEVER BUILT. A greyed-out row
- * for each would read as broken software rather than as an unbuilt form, so there are none: the catalog's
- * five are the five, and the Other shelf says plainly that nothing is filed there yet.
+ * for each would read as broken software rather than as an unbuilt form, so there were none.
+ *
+ * ⚠️ r224 — THE PARAGRAPH ABOVE IS HISTORY NOW, AND IT IS PAST TENSE BECAUSE THREE OF ITS FACTS EXPIRED
+ * WHILE IT STILL READ AS PRESENT. It is kept because it records why the shelves are catalog-driven, and
+ * corrected because a reader who trusts it is wrong about the screen in front of them. What has changed:
+ *
+ *   • The pack now registers EIGHT reports, not five. `my.borang-a` (r217) and `my.borang-8a` (r219)
+ *     joined as KWSP's and PERKESO's own contribution forms, and `my.hrd-levy` (r224) joined as the
+ *     first entry the Other shelf has ever carried. The header used to name the five and say "the
+ *     catalog's five are the five"; the count is deliberately no longer written down, because a number
+ *     in prose beside a list is a number that goes stale the next time the list moves.
+ *   • The Other shelf is NO LONGER EMPTY. It held a heading, a hint and an empty state over zero
+ *     entries, which reads as broken software rather than as an authority nothing is filed with — so
+ *     the HRD Corp levy, whose figures every payslip has stamped since Wave 2A, is registered against
+ *     `body: 'other'` and appears there. The empty state stays for the shelves and searches that are
+ *     genuinely empty, and for a jurisdiction whose pack registers nothing.
+ *   • TP1 is BUILT and its card now opens. It was on the shelf marked "not built yet" while the
+ *     declaration screen (/payroll/transactions/tp1) and the drawn form (lib/tp1-pdf.ts) had both
+ *     shipped — the shelf's one job is to tell the truth about what it can produce, and on that row it
+ *     was not. It is a LINK rather than a report for the reason the EA rows are: a TP1 is one person's
+ *     declaration for one deduction month, so there is no company-wide table to generate.
+ *
+ * THE UNBUILT FORMS NAMED ABOVE ARE STILL UNBUILT, minus TP1, and still carry their honest "not built
+ * yet" mark: see MY_PLANNED_FORMS, whose type makes an action on one impossible rather than merely
+ * unwritten.
  *
  * WHAT WAS ACTUALLY WRONG. The forms were one flat list; nothing said which authority a form belonged to
  * unless you read across to "Submitted to"; and "Open form" took you OFF this screen to the general
@@ -55,9 +78,13 @@ import { payrollProcessBack } from '../back';
  * screen's discipline — is what stops the failure the whole item guards against: a button labelled
  * "Borang A" that emits the EPF contributions spreadsheet.
  *
- * STILL NO RENAMES. The EPF contributions listing is not relabelled "Borang A" and the SOCSO + EIS
- * listing is not relabelled "Borang 8A", because what they produce is not those forms. Both names sit on
- * the same shelf as unbuilt entries instead.
+ * STILL NO RENAMES, AND THAT REFUSAL OUTLIVED THE THING IT WAS PROTECTING. The EPF contributions listing
+ * is not relabelled "Borang A" and the SOCSO + EIS listing is not relabelled "Borang 8A", because what
+ * they produce is not those forms — `my.epf`'s wage column is gross pay where Borang A needs the
+ * EPF-liable wage. r224 corrects the second half of this paragraph, which said both names "sit on the
+ * same shelf as unbuilt entries instead": they are BUILT (r217 / r219) and sit on the same shelf as
+ * SEPARATE, generatable forms beside the listings they were never allowed to rename. The refusal is what
+ * made that possible rather than what stood in for it.
  *
  * THE SEARCH BOX IS A `q` SEARCH PARAM ON THE SAME GET FORM, filtered server-side, for the same reason
  * the body pills are links: the view stays in the address, so it survives a refresh and can be sent to
