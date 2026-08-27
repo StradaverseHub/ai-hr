@@ -98,10 +98,15 @@ export type ReportParams = { companyId: string; periodKey: string };
  *
  * The vocabulary is deliberately COARSER than lib/statutory-authorities.ts, and lines up with it rather
  * than competing: `perkeso` is the one body that administers both `socso` and `eis` — the reporter's own
- * "SOCSO / EIS (PERKESO)" shelf — and the authorities that have no form yet (hrdf, zakat, ptptn,
- * tabung_haji, koperasi) all land under `other`, which is exactly the shelf the reporter called "Other
- * Statutory". When one of those grows a real form, it declares `other` and appears there with no screen
- * change; if it ever earns its own shelf, that is one key and one heading.
+ * "SOCSO / EIS (PERKESO)" shelf — and the smaller authorities (hrdf, zakat, ptptn, tabung_haji, koperasi)
+ * all land under `other`, which is exactly the shelf the reporter called "Other Statutory". When one of
+ * them grows a real form, it declares `other` and appears there with no screen change; if it ever earns
+ * its own shelf, that is one key and one heading.
+ *
+ * r224 — AND ONE OF THEM NOW HAS. `my.hrd-levy` declares `other`, which is what turned that shelf from a
+ * heading with an empty state under it into a shelf with a form on it — no edit to the screen, which is
+ * the property this key exists to have. The sentence above used to read "the authorities that have no
+ * form yet (hrdf, …)"; hrdf is no longer one of them.
  */
 export type StatutoryBodyKey = 'epf' | 'perkeso' | 'lhdn' | 'other';
 
@@ -636,6 +641,58 @@ async function socsoEis(ctx: SessionContext, params: ReportParams): Promise<Repo
     rows,
     totals: sumTotals(rows, ['socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer']),
     readiness: readinessFor(b.rows, [{ field: 'socsoNo', label: 'SOCSO no' }]),
+    meta: meta(b),
+  };
+}
+
+const HRD_LEVY_COLS: ReportColumn[] = [
+  { key: 'name', label: 'Employee' },
+  { key: 'levy', label: 'HRD Corp levy', numeric: true },
+];
+
+/**
+ * r224 — HRD CORP (HRDF) LEVY, the month's employer-only levy per employee, and the first form the
+ * "Other statutory" shelf has ever carried.
+ *
+ * WHY IT EXISTS AT ALL. The shelf was a heading with an empty state under it: `body_other` and its hint
+ * rendered, and not one catalog entry declared `body: 'other'`, so the section read as broken software
+ * rather than as an authority we file nothing with. The levy figure has been computed and stamped on
+ * every payslip since Wave 2A — `st.hrdf` — so the honest fix was to publish the figures that already
+ * exist, not to delete the heading.
+ *
+ * IT RECALCULATES NOTHING, which is the same rule every report on this shelf follows. `st.hrdf` is what
+ * the payroll run actually charged, summed across the month's runs by `loadBatchRows`. A bonus or
+ * off-cycle run stamps `hrdf: 0` (core/payroll.ts — the levy rides the normal wage only), so summing the
+ * period's runs yields the month's one levy rather than a second charge on the bonus.
+ *
+ * ⚠️ THERE IS DELIBERATELY NO WAGE-BASE COLUMN, AND IT IS NOT AN OVERSIGHT. The obvious next column is
+ * the HRDF wage the levy was charged on, and the payslip does stamp it (`st.bases.hrdf`). But that base
+ * is stamped for EVERY employee, including the ones `hrdfSubject()` excludes from the levy entirely and
+ * every employee of a company whose registration band is `not_registered` — for all of whom the levy is
+ * correctly 0. Printing a wage beside a zero levy asserts a levied wage that was never levied, on a
+ * document an employer reconciles against what they pay HRD Corp. The subjectivity flag that would make
+ * the column truthful is a BOOLEAN on the payslip blob, and `loadBatchRows` carries numbers only. So the
+ * report states the levy — the figure that is actually owed — and says nothing it cannot stand behind.
+ *
+ * EVERY EMPLOYEE IS LISTED, INCLUDING THE ZEROES. A statutory return covers everyone the company must
+ * report for; dropping the zero rows would turn "excluded from the levy" and "not on the payroll this
+ * month" into the same absence, and the total would still be right while the list quietly stopped being
+ * the month's list.
+ *
+ * `readiness` IS EMPTY BY DESIGN. Every other readiness gate here names an agency IDENTIFIER a filing
+ * would omit — an EPF number, a SOCSO number, a tax number. The HRD Corp levy is remitted as the
+ * employer's own total; no employee identifier goes up with it, so there is no per-person field whose
+ * absence would produce a short file. An invented gate would refuse a return that is complete.
+ */
+async function hrdLevy(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
+  const b = await loadBatchRows(ctx, params);
+  if (!b.hasBatch) return empty(HRD_LEVY_COLS, b);
+  const rows: ReportRow[] = b.rows.map((r) => ({ name: r.name, levy: num(r.st.hrdf) }));
+  return {
+    columns: HRD_LEVY_COLS,
+    rows,
+    totals: sumTotals(rows, ['levy']),
+    readiness: [],
     meta: meta(b),
   };
 }
@@ -1630,6 +1687,35 @@ export const MY_REPORTS: ReportDef[] = [
   { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d,
     descriptionKey: 'desc_cp8d', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 13,
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-Filing (Form E)', dueDayOfNextMonth: null } },
+  // r224 — THE FIRST ENTRY ON THE "OTHER STATUTORY" SHELF, which until now was a heading over an empty
+  // state. See `hrdLevy` for what it does and does not print.
+  //
+  // `fidelity: 'figures'` AND IT MAY NOT MOVE. We hold no HRD Corp form, blank or filled, and nothing
+  // here is drawn to an agency arrangement: this is the levy in OUR layout, which is exactly what
+  // `figures` means. `agency-layout` would be a claim that the page matches a document nobody here has
+  // ever seen — the overstatement this vocabulary exists to prevent, not the understatement.
+  //
+  // `dueDayOfNextMonth: 15` IS SOURCED, NOT ASSUMED: docs/wave2-payroll-design.md line 47 records
+  // "Monthly, due by the 15th of the following month" against hrdcorp.gov.my/faq, alongside the rates and
+  // the wage base the kernel already computes from. That is the same standard of evidence the other three
+  // deadlines on this screen carry, and it is why this one is a number rather than the null Form E and
+  // Borang 8A correctly hold.
+  //
+  // ⚠️ `channel` IS THE ONE FIELD HERE THAT DID NOT COME FROM THE REPORTER. The EPF, PERKESO and LHDN
+  // channels are quoted from their own answer (block_trail, 2026-07-30); nobody has told us which portal
+  // they remit the levy through, and e-TRiS is HRD Corp's employer portal as we understand it. It is
+  // display text under the agency name on the form screen and nothing files against it — but if the
+  // reporter names a different portal, this string is the whole fix.
+  { id: 'my.hrd-levy', label: 'HRD Corp levy (PSMB)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: hrdLevy,
+    descriptionKey: 'desc_hrd_levy', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 1,
+    // NO `dueDayOfNextMonth`, DELIBERATELY. A due day makes the shelf compute a deadline and colour it
+    // overdue/due-soon for EVERY company on the filter — but the HRD levy is only owed by a company
+    // registered with PSMB, and `company_statutory_my.hrdf_status` DEFAULTS to `not_registered`. So a
+    // hard 15th would have printed a red "Overdue" statutory deadline at every tenant that has never
+    // registered, which is a legal assertion we cannot stand behind (AGENTS rule 28: an absent box
+    // asserts nothing, a red one asserts a missed filing). The card still populates the `other` shelf,
+    // which is what the approved plan promised; the deadline waits for a per-company registration read.
+    submission: { body: 'other', agency: 'HRD Corp', channel: 'HRD Corp e-TRiS', dueDayOfNextMonth: null } },
 ];
 
 /**
@@ -1734,6 +1820,51 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     outputs: ['pdf', 'xlsx', 'csv', 'print'],
     shelfOrder: 7,
   },
+  /**
+   * r224 — FORM TP1, BUILT. It LEFT MY_PLANNED_FORMS and joined this list at the same shelfOrder 1 it
+   * held there, which is the third time a form has made that journey (after `perkeso.borang-8a` and
+   * `epf.borang-a`) and the first time the destination is a LINK rather than a ReportDef.
+   *
+   * WHY A LINK AND NOT A REPORT. Every ReportDef on this shelf produces ONE table for the WHOLE COMPANY
+   * for a period. A TP1 is one employee's own declaration for one deduction month — there is no
+   * company-wide TP1 to generate, exactly as there is no company-wide EA statement, so it takes the same
+   * shape the two EA rows take: a door onto the screen that already lists the people.
+   *
+   * THE ID CHANGED FROM `lhdn.tp1` TO `my.tp1`, following the two forms that migrated before it: a
+   * planned form is keyed by the AUTHORITY it is planned for, and a built one is keyed by the PACK that
+   * owns it, which is why every entry in this list and in MY_REPORTS reads `my.*`.
+   *
+   * ⚠️ THE HREF IS THE LIST, NOT `tp1/[year]/[month]`, AND THAT IS NOT A SHORTCUT. The month page 404s
+   * without an `?employmentId=` (it resolves the employment against the admin's own scoped list and
+   * `notFound()`s a miss), so a shelf card pointing straight at it would be a card that opens nothing —
+   * the precise failure this promotion exists to fix. `/payroll/transactions/tp1` is the screen an
+   * operator actually starts from: choose a person, choose a month, open or download their declaration.
+   * `?year=` is already an accepted param there and the shelf's own year selects it.
+   *
+   * `cadence: 'annual'` IS THE HREF'S GRAIN, NOT A CLAIM THAT THE FORM IS ANNUAL. The declarations
+   * themselves are per deduction month (the 1/2026 form has a DEDUCTION MONTH box, which is why the
+   * record's grain moved in 7ad37961); the screen this opens is the ASSESSMENT YEAR's list, and the card
+   * carries the year chip to match what you land on. It is unchanged from the planned descriptor.
+   *
+   * `fidelity: 'agency-layout'`, never 'official'. lib/tp1-pdf.ts draws the form from scratch to LHDN's
+   * own wording, numbering (Sections A–F, C1–C17, D1), legal references and column order — which is what
+   * this value means. The specimen it was checked against is the reporter's attachment, whose PDF
+   * Producer is Microsoft Word 2019 rather than an agency press, and it is not in `public/forms/`, which
+   * still holds exactly one genuine artwork and it is the CP22's.
+   */
+  {
+    id: 'my.tp1',
+    labelKey: 'link_tp1',
+    hintKey: 'link_tp1_hint',
+    descriptionKey: 'desc_tp1',
+    body: 'lhdn',
+    cadence: 'annual',
+    href: '/payroll/transactions/tp1?year={year}',
+    actionLabelKey: 'openEmployeeList',
+    fidelity: 'agency-layout',
+    outputs: ['pdf'],
+    shelfOrder: 1,
+  },
   // CP22 / CP22A are event-driven (a hire, a cessation), not period-driven, so they are a worklist
   // rather than a form you pick a month for. It renders on the Statutory Forms landing page itself.
   // d3a9383c: the row now says "Open worklist" (which is what the href does) and carries a second action —
@@ -1765,8 +1896,14 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
 ];
 
 /**
- * 587ee719 — THE THIRTEEN FORMS THE REPORTER NAMED THAT HAVE NEVER BEEN BUILT, in the reporter's own
- * order, on the reporter's own shelves. See `PlannedFormDef` for why these are a separate type.
+ * 587ee719 — THE FORMS THE REPORTER NAMED THAT HAVE NEVER BEEN BUILT, in the reporter's own order, on
+ * the reporter's own shelves. See `PlannedFormDef` for why these are a separate type.
+ *
+ * r224 — THIS COMMENT USED TO OPEN "THE THIRTEEN FORMS" AND THE LIST HELD TEN, which is the kind of
+ * staleness that makes a reader trust the rest of the file less. Thirteen was true the day it was
+ * written; three of them have since been built and left (`perkeso.borang-8a`, `epf.borang-a`,
+ * `lhdn.tp1`). The count is deliberately no longer written down here — it is the length of the array
+ * below, and a number in prose beside a list is a number that goes stale the next time the list moves.
  *
  * WHY THIS EXISTS AT ALL. 6babf4f6 drew none of them and explained why in a source comment — which meant
  * an operator opening EPF (KWSP) looking for Borang A saw one unrelated row and could not tell "not built
@@ -1793,7 +1930,10 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   { id: 'perkeso.borang-8b', labelKey: 'planned_perkeso_borang_8b', hintKey: 'planned_perkeso_borang_8b_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 3 },
   { id: 'perkeso.sip', labelKey: 'planned_perkeso_sip', hintKey: 'planned_perkeso_sip_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 4 },
   { id: 'perkeso.employee-registration', labelKey: 'planned_perkeso_employee_registration', hintKey: 'planned_perkeso_employee_registration_hint', body: 'perkeso', cadence: 'event', shelfOrder: 5 },
-  { id: 'lhdn.tp1', labelKey: 'planned_lhdn_tp1', hintKey: 'planned_lhdn_tp1_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 1 },
+  // r224 — `lhdn.tp1` STOOD HERE and is deliberately gone: it was BUILT (the declaration screen at
+  // /payroll/transactions/tp1 and the drawn form at lib/tp1-pdf.ts), so it left this list and joined
+  // MY_STATUTORY_LINKS as `my.tp1` at the same shelfOrder 1, exactly as the two Borangs did before it.
+  // Its two message keys went with it.
   { id: 'lhdn.tp3', labelKey: 'planned_lhdn_tp3', hintKey: 'planned_lhdn_tp3_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 2 },
   { id: 'lhdn.pcb2ii-en', labelKey: 'planned_lhdn_pcb2ii_en', hintKey: 'planned_lhdn_pcb2ii_en_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 5 },
   { id: 'lhdn.pcb2ii-ms', labelKey: 'planned_lhdn_pcb2ii_ms', hintKey: 'planned_lhdn_pcb2ii_ms_hint', body: 'lhdn', cadence: 'annual', shelfOrder: 6 },

@@ -123,6 +123,24 @@ export type LeaveConfigHealth = {
    *  of whichever of its tables that rule points at), so the table applies to everyone with no rule needed.
    *  The second half is the engine's `leaveTypeIdsWithEligibilityRulesAt` join, not `ruleCount`. */
   soleTableApplies: boolean;
+  /**
+   * r224 — NO ELIGIBILITY RULE IS IN FORCE ON THIS LEAVE TYPE AT ALL, measured on the WIDER set the engine's
+   * sole-table gate is measured on (every version of every lineage this type owns, in force or not — see
+   * `rulesInForce` below). Distinct from `ruleCount === 0`, which drops a rule pointing at a stopped table.
+   *
+   * It answers a question `ruleCount` cannot: what happens to the NEXT table created here. With no rule in
+   * force, one table applies to everybody and a second ends that — so this is the flag the create form
+   * warns from, and it must not be collapsed into the narrower count.
+   */
+  noRuleInForce: boolean;
+  /**
+   * r224 — WHAT THE TABLES IN FORCE ACTUALLY SPECIFY, lowest and highest band figure across all of them;
+   * null when no table is in force. This is the "configured" half of configured-versus-actual: the operator
+   * reads 12–24 days on this screen while the leave type grants nothing, and until now the two numbers were
+   * never put side by side. Days only — the carry and cap figures answer different questions.
+   */
+  configuredDaysMin: number | null;
+  configuredDaysMax: number | null;
   findings: LeaveConfigFinding[];
   /** Named so the screen can say WHICH, never just "some". */
   tablesWithoutRule: string[];
@@ -263,6 +281,10 @@ export function leaveTypeConfigHealth(p: {
   if (gradesWithoutTable.length > 0) findings.push('grades_without_table');
   if (zeroMaxBalanceTables.length > 0) findings.push('max_balance_zero');
 
+  // r224 — the configured day figures, across every band of every table in force. `days` is the granted
+  // figure and the only one that is comparable with what an employee is actually credited.
+  const bandDays = liveTemplates.flatMap((t) => t.serviceBands.map((b) => b.days));
+
   return {
     leaveTypeId: leaveType.id,
     leaveTypeName: leaveType.name,
@@ -271,6 +293,9 @@ export function leaveTypeConfigHealth(p: {
     templateCount: liveTemplates.length,
     ruleCount: liveRules.length,
     soleTableApplies,
+    noRuleInForce: rulesInForce.length === 0,
+    configuredDaysMin: bandDays.length ? Math.min(...bandDays) : null,
+    configuredDaysMax: bandDays.length ? Math.max(...bandDays) : null,
     findings,
     tablesWithoutRule,
     expiredRules,
@@ -283,6 +308,36 @@ export function leaveTypeConfigHealth(p: {
 /** True for the findings that make the figure 0.00 for EVERYBODY today, as opposed to for some. */
 export function isBlockingFinding(f: LeaveConfigFinding): boolean {
   return BLOCKING.has(f);
+}
+
+/**
+ * r224 — "THE TABLES ON THIS LEAVE TYPE REACH NOBODY", as ONE predicate with one definition.
+ *
+ * It is `no_rule_in_force` and nothing else — deliberately the finding this module already derives rather
+ * than a second expression over the same counts. Three surfaces now read it (the type list on the leave
+ * configuration landing screen, the health card's configured-versus-actual line, and the r209 findings list
+ * that has always rendered it), and a second definition is how one of them comes to disagree with the
+ * banner sitting a click away. The sole-table fallback is already inside it: a leave type with one table
+ * and no rule hands that table to everybody and is NOT this.
+ */
+export function tablesReachNobody(h: LeaveConfigHealth): boolean {
+  return h.findings.includes('no_rule_in_force');
+}
+
+/**
+ * r224 — WOULD A TABLE CREATED ON THIS LEAVE TYPE RIGHT NOW REACH ANYBODY?
+ *
+ * Not the same question as `tablesReachNobody`, and the difference is the FIRST table. A leave type with no
+ * table and no rule gets the r193 fault-3 fallback the moment its first table is saved — that single table
+ * applies to everyone, which is the commonest healthy shape in the product (Hospitalization Leave is
+ * exactly it). Warning there would cry wolf over the one create that works.
+ *
+ * From the SECOND table on, with no rule in force, the answer flips: the new table reaches nobody, and if
+ * the type was living on the sole-table fallback that table stops reaching anybody too. Both are cases this
+ * returns true for; the screen says which, because the remedies differ.
+ */
+export function newTableReachesNobody(h: LeaveConfigHealth): boolean {
+  return h.noRuleInForce && h.templateCount >= 1;
 }
 
 /**

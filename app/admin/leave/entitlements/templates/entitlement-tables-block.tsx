@@ -29,11 +29,21 @@ import {
   addDaysIso,
   leaveConfigHealthAll,
   leaveTypeConfigHealth,
+  newTableReachesNobody,
   RULE_EXPIRY_WARNING_DAYS,
   type HealthLeaveType,
 } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard, LeaveConfigHealthNotice } from '@/components/leave/leave-config-health';
-import { Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+// r224 — the Save button, the note under it and the Effective from box, as ONE client island: the label has
+// to follow the date the operator has typed, which only the browser knows. See that file's header for what
+// the pre-filled date was doing to every ordinary edit.
+import {
+  EntitlementEffectiveFromField,
+  EntitlementSaveModeNote,
+  EntitlementSaveModeProvider,
+  EntitlementSaveModeSubmit,
+} from '@/components/leave/entitlement-save-mode';
+import { Card, Field, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
 import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
@@ -312,20 +322,25 @@ export async function EntitlementTablesBlock({
   const editingTemplate = running.find((x) => x.lineageId === editTemplate);
   const editingRule = runningRules.find((x) => x.lineageId === editRule);
   /**
-   * r219 (ca7766ab) — HAS THE VERSION BEING EDITED STARTED YET? The service asks exactly this question and
-   * takes a different write on each answer (`entitlementEditMode`, core/entitlement-template.ts): a
-   * version that has not started is UPDATED, its effective date included; one that has been in force is
-   * superseded. The three places below that used to promise a supersede unconditionally now read this,
-   * because a caption that says a save "closes the running version and starts a new one" is untrue on the
-   * half of the screen where the save does nothing of the sort.
+   * r219 (ca7766ab) → r224 — WHICH WRITE AN EDIT IS, AND WHY THIS SERVER COMPONENT NO LONGER ANSWERS IT.
    *
-   * The date box follows for the same reason. It defaulted to TODAY on every edit, which on a future-dated
-   * version meant pressing Save silently moved its start date back to today — harmless while the service
-   * refused that save outright, and a data change now that it does not. A version already in force keeps
-   * today as its default: there the save IS a supersede, and today is when the new figures start.
+   * The service takes a different write depending on three dates (`entitlementEditMode`,
+   * lib/entitlement-edit-mode.ts): a version that has not started is UPDATED, its effective date included;
+   * one in force is superseded UNLESS the date is not moving, in which case it too is updated in place.
+   *
+   * r219 made both captions read the FIRST of those conditions — has this version started — which was an
+   * improvement and still wrong, because it is the middle arm that the operator meets every day. A version
+   * in force was told its save would close it and start a successor even where the save overwrites it.
+   *
+   * ⚠️ AND THE DATE BOX WAS THE ACTUAL DEFECT. It pre-filled TODAY for any version already in force, which
+   * made `newValidFrom !== openValidFrom` true before the operator touched anything, so every ordinary
+   * edit superseded. r224 fills it with the version's OWN date, which is r224's whole fix; the button and
+   * the note then have to follow the box rather than the render, so both moved into
+   * `components/leave/entitlement-save-mode.tsx` and read `entitlementEditMode` in the browser over the
+   * date currently on screen. The two has-it-started booleans this block used to keep are gone with them —
+   * a derivation left behind here would be a second opinion about the same save, and the r219 §F guard now
+   * asserts their ABSENCE by name, so do not reintroduce one under the old name to "document" it.
    */
-  const templateNotStarted = !!editingTemplate && editingTemplate.validFrom > today;
-  const ruleNotStarted = !!editingRule && editingRule.validFrom > today;
 
   /**
    * r209 — THE HEALTH OF WHAT IS ON SCREEN, computed from the slice already in hand.
@@ -618,103 +633,127 @@ export async function EntitlementTablesBlock({
           <h3 className="mb-3 text-sm font-medium">
             {editingTemplate ? t('editTemplateTitle') : t('newTemplateTitle')}
           </h3>
-          <form
-            action={editingTemplate ? updateEntitlementTemplateAction : createEntitlementTemplateAction}
-            className="space-y-4"
+          {/* r224 — THE DATE BOX, THE NOTE AND THE SUBMIT SHARE ONE PIECE OF STATE, so they sit under one
+              provider even though the form's layout puts them in three different places. Keyed on the
+              record being edited for the same reason `EntitlementBandsEditor` below is: reaching this form
+              is a client-side navigation, and `useState` reads its initial value once per instance. */}
+          <EntitlementSaveModeProvider
+            key={editingTemplate?.lineageId ?? 'new'}
+            openValidFrom={editingTemplate?.validFrom ?? null}
+            today={today}
           >
-            {returnField}
-            {editingTemplate ? <input type="hidden" name="lineageId" value={editingTemplate.lineageId} /> : null}
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label={t('templateName')}>
-                <input className={inputCls} name="name" defaultValue={editingTemplate?.name ?? ''} required />
-              </Field>
-              <Field label={t('templateLeaveType')}>
-                {/* Not editable on an existing lineage: a rule pointing at "the Executive ANNUAL table"
-                    that quietly started handing out SICK days is not an edit anybody would spot.
-                    ee6b7c69 — and not CHOOSABLE on the embedded mount either: the step already knows which
-                    type HR is on, so the id is posted hidden and the name shown read-only. Asking somebody
-                    standing inside Annual Leave which leave type they mean is a question with one right
-                    answer and one way to get it wrong. */}
-                {editingTemplate ? (
-                  <input
-                    className={inputCls}
-                    value={typeNameById.get(editingTemplate.leaveTypeId) ?? ''}
-                    readOnly
-                    aria-label={t('templateLeaveType')}
-                  />
-                ) : scoped ? (
-                  <>
-                    <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
-                    <input className={inputCls} value={scopedTypeName} readOnly aria-label={t('templateLeaveType')} />
-                  </>
-                ) : (
-                  <select className={inputCls} name="leaveTypeId" required defaultValue="">
-                    <option value="">{t('pickLeaveType')}</option>
-                    {leaveTypes
-                      .filter((x) => !x.archived)
-                      .map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.name}
-                        </option>
-                      ))}
-                  </select>
-                )}
-              </Field>
-              <Field label={t('effectiveFrom')}>
-                <input
-                  className={inputCls}
-                  type="date"
-                  name="validFrom"
-                  defaultValue={templateNotStarted ? editingTemplate!.validFrom : today}
-                  required
-                />
-              </Field>
-            </div>
-            {/* ⚠️ THE `key` IS THE FIX FOR A DATA-LOSS DEFECT, NOT A LIST-RENDERING HABIT (4a1abc4a).
-                `EntitlementBandsEditor` seeds its rows with `useState(initial)`, and useState reads its
-                argument ONLY on the first mount. The Edit control above is a next/link `Link`, so reaching
-                this form is a CLIENT-SIDE navigation: React re-renders the same component instance, the new
-                `initial` is discarded, and the blank new-table row stays on screen over a saved template.
-                Saving from there posted days 0 with a green toast — an 18-day table became 0. Keying on the
-                template being edited makes a different target a different instance, so it remounts and
-                re-reads `initial`; 'new' keeps the create form its own instance. Loading the URL directly
-                always worked (a fresh mount), which is why this survived a page-level check. `EligibilityRuleForm`
-                below has carried the same key since it was written — the two forms had drifted apart, and
-                only the one without it could lose a table.
-                ⚠️ ee6b7c69 — EMBEDDING MAKES THIS KEY MATTER MORE, NOT LESS. The Entitlement step is
-                conditionally mounted (`activeStep === 'entitlement'`), so changing type or step remounts the
-                editor and re-seeds it correctly, while clicking Edit while already standing on the step does
-                not. Without the key the failure would be intermittent instead of reproducible. */}
-            <EntitlementBandsEditor
-              key={editingTemplate?.lineageId ?? 'new'}
-              initial={editingTemplate ? toEditable(editingTemplate.serviceBands) : []}
-              maxBands={MAX_SERVICE_BANDS}
-            />
-            {/* Stated where it is acted on, and it says which of the two writes this save is. An edit of a
-                version already in force does not overwrite: it closes the running version and starts a
-                successor, because three readers answer for a past date and only versions can serve them.
-                An edit of a version that has not started changes that version. On the CREATE form neither
-                sentence is true — there is no running version to close — so neither is shown. */}
-            {editingTemplate ? (
-              <p className="text-xs text-muted-foreground">
-                {templateNotStarted ? t('editInPlaceNote') : t('supersedeNote')}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="submit" className={btnPrimary}>
-                {editingTemplate
-                  ? templateNotStarted
-                    ? t('saveThisVersion')
-                    : t('saveNewVersion')
-                  : t('createTemplate')}
-              </button>
-              {editingTemplate ? (
-                <Link href={href('?')} className="text-sm underline">
-                  {t('cancel')}
-                </Link>
+            <form
+              action={editingTemplate ? updateEntitlementTemplateAction : createEntitlementTemplateAction}
+              className="space-y-4"
+            >
+              {returnField}
+              {editingTemplate ? <input type="hidden" name="lineageId" value={editingTemplate.lineageId} /> : null}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label={t('templateName')}>
+                  <input className={inputCls} name="name" defaultValue={editingTemplate?.name ?? ''} required />
+                </Field>
+                <Field label={t('templateLeaveType')}>
+                  {/* Not editable on an existing lineage: a rule pointing at "the Executive ANNUAL table"
+                      that quietly started handing out SICK days is not an edit anybody would spot.
+                      ee6b7c69 — and not CHOOSABLE on the embedded mount either: the step already knows which
+                      type HR is on, so the id is posted hidden and the name shown read-only. Asking somebody
+                      standing inside Annual Leave which leave type they mean is a question with one right
+                      answer and one way to get it wrong. */}
+                  {editingTemplate ? (
+                    <input
+                      className={inputCls}
+                      value={typeNameById.get(editingTemplate.leaveTypeId) ?? ''}
+                      readOnly
+                      aria-label={t('templateLeaveType')}
+                    />
+                  ) : scoped ? (
+                    <>
+                      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+                      <input className={inputCls} value={scopedTypeName} readOnly aria-label={t('templateLeaveType')} />
+                    </>
+                  ) : (
+                    <select className={inputCls} name="leaveTypeId" required defaultValue="">
+                      <option value="">{t('pickLeaveType')}</option>
+                      {leaveTypes
+                        .filter((x) => !x.archived)
+                        .map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </Field>
+                {/* r224 — THE BOX OPENS ON THE VERSION'S OWN START DATE, WHICH IS THE WHOLE DEFECT.
+                    It used to be pre-filled with TODAY for any version already in force, so pressing Save
+                    without touching anything moved the date — and a moved date is exactly what asks for a new
+                    version. In-place saving was built and unreachable. The field is CONTROLLED now because
+                    the submit below labels itself from what is in it. See entitlement-save-mode.tsx. */}
+                <EntitlementEffectiveFromField />
+              </div>
+              {/* ⚠️ THE `key` IS THE FIX FOR A DATA-LOSS DEFECT, NOT A LIST-RENDERING HABIT (4a1abc4a).
+                  `EntitlementBandsEditor` seeds its rows with `useState(initial)`, and useState reads its
+                  argument ONLY on the first mount. The Edit control above is a next/link `Link`, so reaching
+                  this form is a CLIENT-SIDE navigation: React re-renders the same component instance, the new
+                  `initial` is discarded, and the blank new-table row stays on screen over a saved template.
+                  Saving from there posted days 0 with a green toast — an 18-day table became 0. Keying on the
+                  template being edited makes a different target a different instance, so it remounts and
+                  re-reads `initial`; 'new' keeps the create form its own instance. Loading the URL directly
+                  always worked (a fresh mount), which is why this survived a page-level check. `EligibilityRuleForm`
+                  below has carried the same key since it was written — the two forms had drifted apart, and
+                  only the one without it could lose a table.
+                  ⚠️ ee6b7c69 — EMBEDDING MAKES THIS KEY MATTER MORE, NOT LESS. The Entitlement step is
+                  conditionally mounted (`activeStep === 'entitlement'`), so changing type or step remounts the
+                  editor and re-seeds it correctly, while clicking Edit while already standing on the step does
+                  not. Without the key the failure would be intermittent instead of reproducible. */}
+              <EntitlementBandsEditor
+                key={editingTemplate?.lineageId ?? 'new'}
+                initial={editingTemplate ? toEditable(editingTemplate.serviceBands) : []}
+                maxBands={MAX_SERVICE_BANDS}
+              />
+              {/* r224 — STATED WHERE IT IS ACTED ON, AND CHOSEN BY THE DATE IN THE BOX RATHER THAN BY WHICH
+                  version this is. The note used to branch on whether the version had STARTED, so a version in
+                  force was promised a supersede even in the case — an unchanged date — where the service
+                  overwrites it.
+                  Both the note and the button below now read `entitlementEditMode`, the same function the
+                  service takes the decision with, over the CURRENT contents of the field above. On the CREATE
+                  form nothing is shown: there is no running version to close.
+                  ⚠️ r224 also added the warning this renders when an in-force version is overwritten. See the
+                  note on `entitlementInPlaceChangesThePast` — three readers answer for a past date, so that
+                  save changes what a closed leave year reports. It is allowed and it is said out loud. */}
+              {editingTemplate ? <EntitlementSaveModeNote /> : null}
+              {/* ── r224 · CREATE-TIME REACH WARNING ──────────────────────────────────────────────────────
+                  Said AT THE MOMENT the table is typed, not afterwards. Until now the only notice that a
+                  table reaches nobody was the health panel above, which is read once a whole set of tables
+                  has already been built — the reporter's nine leave types are exactly that shape.
+
+                  ⚠️ TWO DIFFERENT WARNINGS, because the answer for the FIRST table is the opposite of the
+                  answer for the second. A leave type with ONE table in force and no rule hands that table to
+                  everybody (the r193 fault-3 fallback, mirrored in `soleTableApplies`), so creating the first
+                  table is healthy and is not warned about. Creating a SECOND one ENDS that fallback: from the
+                  save, neither table resolves for anyone until a rule points at them. Flattening the two into
+                  one sentence would either cry wolf over the commonest healthy shape in the product or stay
+                  silent on the change that quietly switches a working leave type off.
+
+                  Scoped mount only — the unfiltered screen cannot know which leave type the picker below is
+                  about to name. */}
+              {!editingTemplate && scoped && scopedHealth && newTableReachesNobody(scopedHealth) ? (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-500">
+                  {scopedHealth.soleTableApplies
+                    ? t('createEndsSoleTableWarning', { type: scopedTypeName })
+                    : t('createNoRuleWarning', { type: scopedTypeName })}
+                </p>
               ) : null}
-            </div>
-          </form>
+              <div className="flex flex-wrap items-center gap-3">
+                <EntitlementSaveModeSubmit createLabel={t('createTemplate')} />
+                {editingTemplate ? (
+                  <Link href={href('?')} className="text-sm underline">
+                    {t('cancel')}
+                  </Link>
+                ) : null}
+              </div>
+            </form>
+          </EntitlementSaveModeProvider>
 
           {/* r210 — THE STOP FORM THAT STOOD HERE IS ON THE ROW NOW, and is not also left here. Two copies
               of one destructive control drift the first time either is touched, and the copy that lives
@@ -957,19 +996,24 @@ export async function EntitlementTablesBlock({
                 archivedMemberGrades={archivedMemberGrades}
                 today={today}
                 embeddedLeaveTypeId={leaveTypeId}
-                submitLabel={
-                  editingRule ? (ruleNotStarted ? t('saveThisVersion') : t('saveNewVersion')) : t('createRule')
-                }
+                /* r224 — the CREATE label only. While editing, the form labels its own submit from
+                   `entitlementEditMode` over the date currently in its box; see entitlement-save-mode.tsx.
+                   Passing a label computed here would be a second opinion about which write the save is,
+                   resolved at render time against a date the operator can change afterwards. */
+                submitLabel={t('createRule')}
+                /* The running version's own start date, so the form can resolve the mode. */
+                openValidFrom={editingRule?.validFrom ?? null}
                 initial={
                   editingRule
                     ? {
                         lineageId: editingRule.lineageId,
                         name: editingRule.name,
                         templateLineageId: editingRule.templateLineageId,
-                        // A rule that has not started is edited in place, so the box shows the date it
-                        // actually holds; one already in force is superseded from today. See the note on
-                        // `ruleNotStarted`.
-                        validFrom: ruleNotStarted ? editingRule.validFrom : today,
+                        // ⚠️ r224 — THE RULE'S OWN DATE, ALWAYS. This used to be `today` for a rule already
+                        // in force, and pressing Save without touching the box therefore moved the date and
+                        // superseded the rule. Correcting an eligibility rule in place was unreachable for
+                        // exactly the same reason it was unreachable on the table above it.
+                        validFrom: editingRule.validFrom,
                         criteria: editingRule.criteria as Record<string, string[] | string>,
                       }
                     : undefined

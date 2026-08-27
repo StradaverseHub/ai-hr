@@ -5,6 +5,10 @@ import { useTranslations } from 'next-intl';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { Button, Field, btnPrimary, inputCls } from '@/components/ui';
+// r224 — the same save-mode derivation the entitlement table form above this one uses, so a rule and a
+// table cannot describe the identical write in two different ways. See that file's header: the note this
+// form ships with is the one it has never had, and the label now follows the date box.
+import { EntitlementSaveModeCaption, useEntitlementSaveMode } from '@/components/leave/entitlement-save-mode';
 import type { CriteriaOption, CriteriaSection } from '@/core/org-criteria-form';
 import {
   applyGradeGroupSelection,
@@ -71,6 +75,7 @@ export function EligibilityRuleForm({
   initial,
   today,
   submitLabel,
+  openValidFrom = null,
   embeddedLeaveTypeId,
 }: {
   action: (formData: FormData) => Promise<void>;
@@ -88,7 +93,15 @@ export function EligibilityRuleForm({
   archivedMemberGrades?: { id: string; name: string }[];
   initial?: EligibilityRuleInitial;
   today: string;
+  /** The CREATE button's text. While editing, the label is resolved from `openValidFrom` + the date box —
+   *  a label computed by the server would be an opinion about a save whose date the operator can still
+   *  change. */
   submitLabel: string;
+  /** r224 — the running version's own start date while EDITING, null while creating. It is what makes the
+   *  three-way save mode resolvable here, and it is the reason this form finally carries a note at all:
+   *  until now it ended at a bare submit and said nothing about which of the two writes it was about to
+   *  make, on a screen where that difference is whether a closed leave year's figures move. */
+  openValidFrom?: string | null;
   /** ee6b7c69 — set only when this form is mounted INSIDE a leave type's Entitlement step. Posted as a
    *  hidden field so the save returns to that step (with its `#type-<id>` selection intact) rather than
    *  bouncing HR onto the standalone Entitlement Tables screen the embed exists to make unnecessary. A
@@ -236,6 +249,16 @@ export function EligibilityRuleForm({
       : withStored(f.options ?? [], storedFor(f.name));
 
   const unrestricted = Object.keys(criteria).length === 0;
+
+  /**
+   * r224 — WHICH WRITE THIS SAVE IS, resolved from the date CURRENTLY in the box above.
+   *
+   * `initial.validFrom` used to arrive as TODAY for a rule already in force, so an operator who changed a
+   * criterion and pressed Save superseded the rule without ever touching a date — the identical defect the
+   * entitlement table form carried, from the identical pre-fill. The block now passes the rule's own date;
+   * this line is the half that keeps the button honest afterwards.
+   */
+  const save = useEntitlementSaveMode({ openValidFrom, validFrom, today, createLabel: submitLabel });
 
   return (
     <form action={action} className="space-y-4">
@@ -390,9 +413,17 @@ export function EligibilityRuleForm({
         )}
         {unrestricted ? <span className="text-sm font-medium">{t('ruleEveryoneWarning')}</span> : null}
         <button type="submit" className={btnPrimary}>
-          {submitLabel}
+          {save.label}
         </button>
       </div>
+
+      {/* r224 — THE NOTE THIS EDITOR HAS NEVER HAD. The table form next door has said which of the two
+          writes a save is since r219; this one ended at a bare submit, so an operator editing an
+          eligibility rule got no statement at all about whether their save would close the running version.
+          Same derivation, same sentences, and the past-changing warning when the save overwrites a rule
+          that has been in force — a rule decides WHO resolved to a table, so overwriting one moves the same
+          closed-year figures an entitlement table does. */}
+      <EntitlementSaveModeCaption save={save} />
 
       {/* The residual the plan requires be stated on screen rather than implied away: a rule narrowed by
           grade, gender, nationality, religion or race is resolved at TODAY'S value however far back a

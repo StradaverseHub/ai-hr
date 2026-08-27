@@ -3,7 +3,7 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { and, desc, eq, getTableName, inArray, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
+import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -161,6 +161,26 @@ export class DuplicateError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'DuplicateError';
+  }
+}
+
+/**
+ * r224 — the grade code being created is ALREADY HELD BY AN ARCHIVED GRADE.
+ *
+ * Deliberately NOT a DuplicateError: a duplicate is a dead end ("pick another code"), whereas this one has
+ * a correct answer the operator can take — restore the grade that is already there. It therefore carries
+ * `archivedId`, so the caller can OFFER that restore rather than just refusing. `job_grade_code_uq` is a
+ * PARTIAL index (`WHERE archived_at IS NULL`), so nothing in the database raises 23505 here: without this
+ * class the insert simply succeeds and the tenant ends up with two grades sharing one code, which is the
+ * duplicate historical record the reporter asked us to prevent.
+ */
+export class ArchivedGradeCodeError extends Error {
+  constructor(
+    message: string,
+    readonly archivedId: string,
+  ) {
+    super(message);
+    this.name = 'ArchivedGradeCodeError';
   }
 }
 
@@ -743,6 +763,42 @@ export async function createJobGrade(
   // the database rather than one storing '' and the other NULL.
   const description = p.description?.trim() ? p.description.trim() : null;
   return withTenant(ctx, async (tx) => {
+    // r224 — RESTORE INSTEAD OF DUPLICATE. Both grade uniqueness indexes are PARTIAL —
+    // job_grade_code_uq (0090) and job_grade_name_uq (0183) are `... WHERE archived_at IS NULL` — so an
+    // archived grade does NOT hold its code and this insert would SUCCEED, leaving the tenant with two
+    // rows carrying one code: the new empty one the operator is looking at, and the archived one that
+    // every historical reader (employment.grade_id, an eligibility rule's `criteria -> 'gradeIds'`,
+    // grade_group_member) still points at. The index will never stop that — releasing the code on archive
+    // is the whole point of the partial predicate — so the guard has to be here, in the writer.
+    //
+    // It is raised BEFORE the insert rather than mapped from a constraint failure for the same reason:
+    // there is no constraint to fail. The error carries the archived row's id so the grid can offer the
+    // restore, and restoring reuses that id, which is what keeps the history attached.
+    // AN ACTIVE TWIN OUTRANKS AN ARCHIVED ONE, and this order is the whole guard. Because both indexes
+    // are partial, a tenant can legally hold an ACTIVE grade and an ARCHIVED grade on the same code —
+    // archive G1, create G1 again, and both rows exist. Looking for the archived twin first offered
+    // "restore that grade instead" for a code that is already live, which is both wrong and unactionable:
+    // restoring would then collide with the active row on the partial index and fail. The active
+    // duplicate is the real error and must be reported as one, so it is tested for first.
+    const [activeTwin] = await tx
+      .select({ id: jobGrade.id })
+      .from(jobGrade)
+      .where(and(eq(jobGrade.code, code), isNull(jobGrade.archivedAt)))
+      .limit(1);
+    if (activeTwin) {
+      throw new DuplicateError(`A grade with code “${code}” already exists.`);
+    }
+    const [archivedTwin] = await tx
+      .select({ id: jobGrade.id, name: jobGrade.name })
+      .from(jobGrade)
+      .where(and(eq(jobGrade.code, code), isNotNull(jobGrade.archivedAt)))
+      .limit(1);
+    if (archivedTwin) {
+      throw new ArchivedGradeCodeError(
+        `Code “${code}” belongs to an archived grade (“${archivedTwin.name}”). Restore that grade instead of creating a second one with the same code.`,
+        archivedTwin.id,
+      );
+    }
     const [row] = await tx
       .insert(jobGrade)
       .values({ tenantId: ctx.tenantId, code, name, rank, description })
@@ -896,6 +952,12 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
   });
 }
 
+/**
+ * Archive / restore — ONE toggle on archived_at, so "restore" has never needed a service of its own. r224
+ * leans on that: the restore offered when a create hits an archived code calls this with archived:false,
+ * which clears archived_at IN PLACE and therefore keeps the grade's id, its history and every reference
+ * that was already pointing at it.
+ */
 export async function archiveJobGrade(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
     await tx

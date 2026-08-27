@@ -151,12 +151,19 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
   it('carries the non-generatable entries as catalog data rather than hardcoded rows', () => {
     expect(myPack.statutoryLinks).toBe(MY_STATUTORY_LINKS);
     // 587ee719 — the EA split in two (a language apiece) and Borang E joined as an ALIAS onto the CP8D
-    // generator. Still four DOORS and still no second generator behind any of them.
+    // generator. Still DOORS and still no second generator behind any of them.
+    //
+    // r224 — `my.tp1` JOINED THEM, and it is the first entry here that arrived from MY_PLANNED_FORMS
+    // rather than being born a link. It is a door for the same reason the two EA rows are: a TP1 is one
+    // person's declaration for one deduction month, so there is no company-wide table for a ReportDef to
+    // generate. The count is asserted as the list rather than as a number, which is what lets this line
+    // fail loudly when an entry appears or leaves.
     expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
       'my.borang-e',
       'my.cp22',
       'my.ea.en',
       'my.ea.ms',
+      'my.tp1',
     ]);
     for (const l of MY_STATUTORY_LINKS) {
       expect(l.body, `${l.id} needs a shelf`).toBeTruthy();
@@ -177,12 +184,18 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // 9c8dad7a — `epf.borang-a` LEFT IT THE SAME WAY one round later, to MY_REPORTS at its own shelfOrder
     // 2 on the epf shelf. TWO forms have now made that journey, which is what turns the migration path
     // from a claim in a doc-comment into a thing the catalog demonstrably supports.
+    //
+    // r224 — `lhdn.tp1` IS THE THIRD, AND THE FIRST TO LAND IN MY_STATUTORY_LINKS RATHER THAN MY_REPORTS.
+    // That is the half of the migration path the two Borangs could not demonstrate: a built form joins
+    // whichever collection matches its SHAPE — a company-wide table becomes a ReportDef, a per-person
+    // document becomes a link — and either way it leaves this list, keeps its shelfOrder, and the screen
+    // is not touched. It is pinned by name below, so deleting an entry from here without building it
+    // cannot pass as this same migration.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
       'epf.borang-bbcb',
       'perkeso.borang-8b',
       'perkeso.sip',
       'perkeso.employee-registration',
-      'lhdn.tp1',
       'lhdn.tp3',
       'lhdn.pcb2ii-en',
       'lhdn.pcb2ii-ms',
@@ -557,12 +570,17 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     // 587ee719 — each entry still names its OWN action or falls back, which is the mechanism this test
     // exists to protect. "Open worklist" stays CP22's alone; the two EA entries open an employee list,
     // which is what their href does; Borang E declares none and renders the shared label.
+    //
+    // r224 — `my.tp1` REUSES `openEmployeeList` RATHER THAN GROWING A KEY OF ITS OWN, because it is the
+    // same act: its href opens a list of people, and the form belongs to one of them. A fourth wording
+    // for the third screen that does this is how a shared label stops being shared.
     expect(
       MY_STATUTORY_LINKS.map((l) => [l.id, l.actionLabelKey ?? null]),
     ).toEqual([
       ['my.ea.en', 'openEmployeeList'],
       ['my.ea.ms', 'openEmployeeList'],
       ['my.borang-e', null],
+      ['my.tp1', 'openEmployeeList'],
       ['my.cp22', 'openWorklist'],
     ]);
     expect(PAGE).toContain("t((l.actionLabelKey ?? 'openForm')");
@@ -751,9 +769,23 @@ describe('the four pins', () => {
       expect(MY_STATUTORY_LINKS.find((l) => l.id === id)!.fidelity, id).toBe('agency-layout');
     }
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /(cp\W?8a|\bea\b)/i.test(f))).toEqual([]);
+    // r224 — AND THE TP1, WHICH IS THE SIXTH MEMBER AND THE WEAKEST-SOURCED OF THEM, RECORDED AS SUCH.
+    // lib/tp1-pdf.ts draws LHDN's own wording, its numbering (Sections A–F, C1–C17, D1), its legal
+    // references and its column order — the agency's arrangement on our page, which is what this value
+    // means. The specimen it was checked against is the reporter's attachment, whose PDF Producer is
+    // Microsoft Word 2019 (r202 measured it) rather than an agency press, and it is NOT on disk in
+    // either forms directory: `public/forms/` still holds exactly one genuine artwork and it is the
+    // CP22's, so `official` is refused here for the same reason it is refused everywhere else.
+    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.tp1')!.fidelity).toBe('agency-layout');
+    expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /tp\W?1/i.test(f))).toEqual([]);
+    expect(read('lib/tp1-pdf.ts')).toContain('described as the official form');
+    // r224 — AND THE HRD CORP LEVY IS DELIBERATELY *NOT* A MEMBER. It is `figures`: we hold no HRD Corp
+    // form, blank or filled, so there is no arrangement for it to have been drawn to. Understating is
+    // safe; the failure this vocabulary exists to prevent runs the other way.
+    expect(MY_REPORTS.find((r) => r.id === 'my.hrd-levy')!.fidelity).toBe('figures');
     expect(
       [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'agency-layout').map((e) => e.id).sort(),
-    ).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.ea.en', 'my.ea.ms']);
+    ).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.ea.en', 'my.ea.ms', 'my.tp1']);
   });
 
   /**
@@ -828,6 +860,19 @@ describe('what the shelves say about the forms that are not built', () => {
    * catalog and the message catalog, which is what makes the next form a data change rather than a
    * screen change. (This is what remains of 6babf4f6's "never drawn" test — the mechanism it protected
    * is unchanged; only the conclusion moved from "absent" to "named without an action".)
+   *
+   * ── r224: THIS LIST IS UNCHANGED, AND 'HRDF Contribution' STAYING ON IT IS A DECISION ─────────────
+   *
+   * Not an oversight, now that the Other shelf carries a form. The next reader will want to delete it.
+   *
+   * 'HRDF Contribution' is the REPORTER'S NAME FOR AN HRD CORP FORM, and no such form was built.
+   * `my.hrd-levy` publishes the LEVY FIGURES in our own layout under its own honest name — 'HRD Corp
+   * levy (PSMB)', `fidelity: 'figures'` — which is why it does not trip the label sweep below. A label
+   * claiming to be the reporter's contribution form is exactly the overstatement the four pins above
+   * exist to prevent, and it would still be one on a shelf that is no longer empty.
+   *
+   * (TP1 was never on this list: its DECLARATION has been captured in payroll for rounds, and what was
+   * missing — the printable form — shipped in 7ad37961. r224 only stopped the shelf saying otherwise.)
    */
   const NEVER_BUILT = [
     'BBCB', 'Borang 8B', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
@@ -845,11 +890,121 @@ describe('what the shelves say about the forms that are not built', () => {
     }
   });
 
-  it('leaves the Other shelf genuinely empty, with an empty state rather than placeholder rows', () => {
-    expect(MY_REPORTS.filter((r) => r.submission?.body === 'other')).toEqual([]);
-    expect(MY_STATUTORY_LINKS.filter((l) => l.body === 'other')).toEqual([]);
+  /**
+   * r224 — THE OTHER SHELF IS NO LONGER EMPTY, AND THIS TEST ASSERTS THE OPPOSITE OF WHAT IT USED TO.
+   *
+   * It used to pin `MY_REPORTS.filter(body === 'other') === []` and read as a design decision. It was
+   * not one: the shelf drew a heading, a hint naming five authorities, and an empty state under zero
+   * entries, which is what a broken section looks like. The levy figure has been stamped on every
+   * payslip since Wave 2A, so the honest answer was to publish the figures that already existed.
+   *
+   * The half that IS a design decision is kept and still pinned: no PLANNED form was parked on this
+   * shelf to make it look populated, and the empty state is still in the page for the shelves, searches
+   * and jurisdictions that are genuinely empty.
+   */
+  it('fills the Other shelf from the catalog, and keeps the empty state for shelves that are empty', () => {
+    const other = MY_REPORTS.filter((r) => r.submission?.body === 'other');
+    expect(other.map((r) => r.id)).toEqual(['my.hrd-levy']);
+    // A real filing: it names an agency, which is what earns it the shelf and the suspended-tenant
+    // override. See test/suspended-statutory-filing.test.ts for the other half.
+    expect(other[0].submission!.agency).toBe('HRD Corp');
+    // The 15th is still SOURCED and still true of HRD Corp — that half of the original case is kept.
+    expect(read('docs/wave2-payroll-design.md')).toContain('due by the **15th of the following month**');
+    // ⚠️ BUT THE CATALOG DELIBERATELY CARRIES NULL, and this is a reversal of the assertion that stood
+    // here. `dueDayOfNextMonth` is not "when is this due" — it is "compute a deadline for EVERY company
+    // on the filter and colour it overdue". The levy is owed only by a company registered with PSMB, and
+    // `company_statutory_my.hrdf_status` DEFAULTS to `not_registered`, so a hard 15 printed a red
+    // "Overdue" missed-statutory-filing at every tenant that never registered — the majority case. This
+    // page's own note on the line above `submissionDueFor` states the principle it breaks: "An invented
+    // deadline is worse than an absent one: somebody files against it." The date returns the day the
+    // shelf can read registration status per company; until then it is not asserted.
+    expect(other[0].submission!.dueDayOfNextMonth).toBeNull();
+    // `figures`, and it may not move: HRD Corp publishes no blank levy form and nothing here is drawn to
+    // an agency arrangement, so `agency-layout` would claim a page we have never seen.
+    expect(other[0].fidelity).toBe('figures');
+
+    // Monthly, on the payroll batch — so the card carries the month chip the two selects at the top of
+    // the screen drive, and not a year chip over a month's figures.
+    expect(other[0].cadence).toBe('monthly');
+    expect(other[0].periodKind).toBe('month');
+    expect(other[0].scope).toBe('batch');
+
+    // Nothing was quietly parked here to avoid choosing a shelf — the pin that predates this round.
     expect(MY_PLANNED_FORMS.filter((p) => p.body === 'other')).toEqual([]);
+    expect(MY_STATUTORY_LINKS.filter((l) => l.body === 'other')).toEqual([]);
+    // The empty state is still what an empty shelf renders; it was never the Other shelf's alone.
     expect(PAGE).toContain("t('shelfEmpty')");
+  });
+
+  /**
+   * r224 — WHAT THE LEVY REPORT PRINTS, AND THE ONE COLUMN IT REFUSES TO.
+   *
+   * The obvious second column is the HRDF wage the levy was charged on, and the payslip does stamp it
+   * (`st.bases.hrdf`). It is NOT printed, and this is the guard on that decision, because the next
+   * reader will see a two-column report and reach for it.
+   *
+   * The base is stamped for EVERY employee — including the ones `hrdfSubject()` excludes from the levy
+   * and every employee of a company whose registration band is `not_registered`, for all of whom the
+   * levy is correctly zero. A wage printed beside a zero levy asserts a levied wage that was never
+   * levied, on a document an employer reconciles against what they actually pay HRD Corp. The flag that
+   * would make the column truthful is a BOOLEAN on the payslip blob, and `loadBatchRows` carries numbers
+   * only — so the column cannot be made honest without changing a loader six reports share.
+   */
+  it('prints the stamped levy and nothing it would have to infer', () => {
+    // `code()`, not `read()`: this generator's own doc-comment names the column it refuses to print and
+    // says why, so scanning the raw text would fail the test on the explanation the test exists to
+    // reinforce — the hazard the `code()` helper at the top of this file was written for.
+    const src = code('localization/my/reports.ts');
+    const fn = src.slice(src.indexOf('const HRD_LEVY_COLS'), src.indexOf('async function loadYearRows'));
+    expect(fn, 'the levy report must exist in this file').toContain('async function hrdLevy');
+    // Two columns, and the money one is numeric so the shared panel totals it rather than left-aligning.
+    expect(fn).toContain("{ key: 'levy', label: 'HRD Corp levy', numeric: true }");
+    expect(fn).not.toMatch(/key: 'base'|hrdfWage|bases\.hrdf/);
+    // It reads the figure the payroll run STAMPED. Calling the pack's calculator here would be a second
+    // implementation of a statutory amount — the duplication 241817ef spent two rounds undoing.
+    expect(fn).toContain('num(r.st.hrdf)');
+    expect(fn).not.toContain('hrdfLevy(');
+    // Everyone in the month's batch is listed, zeroes included: dropping the zero rows would make
+    // "excluded from the levy" and "not on the payroll this month" the same absence.
+    expect(fn).toContain('b.rows.map(');
+    expect(fn).not.toMatch(/\.filter\(\(r\) => [^)]*hrdf/);
+    // No readiness gate, and the comment says why: no employee identifier goes up with the levy, so
+    // there is no per-person field whose absence could produce a short file.
+    expect(fn).toContain('readiness: []');
+  });
+
+  /**
+   * r224 — FORM TP1 WAS ON THIS SHELF MARKED "NOT BUILT YET" WHILE IT WAS BUILT, which is the exact
+   * failure the shelf exists to prevent, running in the other direction: the four pins below stop an
+   * unbuilt form claiming to produce a document, and nothing stopped a built one claiming it could not.
+   *
+   * The card is now a door onto the screen that already existed. What this pins is the thing that makes
+   * it a WORKING door: the href is the TP1 LIST, not the month page. `tp1/[year]/[month]` resolves the
+   * employment against the acting admin's own scoped list and `notFound()`s a miss, so it 404s without
+   * an `?employmentId=` — a shelf card pointing there would open nothing at all.
+   */
+  it('opens TP1 on the list that can reach it, not on the month page that 404s without an employee', () => {
+    const tp1 = MY_STATUTORY_LINKS.find((l) => l.id === 'my.tp1')!;
+    expect(tp1.body).toBe('lhdn');
+    expect(tp1.href).toBe('/payroll/transactions/tp1?year={year}');
+    // The screen it opens, and the two things behind it that make the promotion true.
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/transactions/tp1/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'lib/tp1-pdf.ts'))).toBe(true);
+    // …and the reason the href stops at the list: the month page refuses an employment it cannot resolve.
+    expect(read('app/payroll/transactions/tp1/[year]/[month]/page.tsx')).toContain('if (!emp) notFound()');
+    // `{year}` is the ONLY placeholder this screen substitutes for a link besides `{companyId}`; a
+    // `{month}` in an href would ship verbatim into the address bar.
+    expect(PAGE).toContain("href.replace('{companyId}', encodeURIComponent(companyId)).replace('{year}', year)");
+    expect(tp1.href).not.toContain('{month}');
+    // It is no longer marked unbuilt anywhere, and its planned strings went with it.
+    expect(MY_PLANNED_FORMS.map((p) => p.id)).not.toContain('lhdn.tp1');
+    const ns = en.payroll.statutoryForms as Record<string, string>;
+    expect(ns.planned_lhdn_tp1).toBeUndefined();
+    expect(ns.planned_lhdn_tp1_hint).toBeUndefined();
+    // The hint an operator reads must not still tell them the printable form does not exist.
+    expect(ns[tp1.hintKey!]).not.toMatch(/not built/i);
+    expect(ns[tp1.descriptionKey!]).not.toMatch(/not built/i);
   });
 
   /**

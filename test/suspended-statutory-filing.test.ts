@@ -52,8 +52,14 @@ describe('the submission field is what decides the override', () => {
     // filing. They are LISTED here rather than the list being loosened: this assertion exists to fail when
     // a future edit quietly drops `submission` from a real filing, which would silently withdraw its
     // override, and a loosened list could not see that.
+    // r224 added `my.hrd-levy` — the HRD Corp levy, the first form on the "Other statutory" shelf. It is
+    // listed here for the same reason and on the same test: the levy is a monthly filing obligation with
+    // a statutory deadline (the 15th of the following month, sourced in docs/wave2-payroll-design.md),
+    // so r104's carve-out applies to it exactly as it applies to EPF, PERKESO and LHDN. A suspended
+    // tenant must still be able to meet it. If a later edit drops `submission` from this entry to keep
+    // it off some other list, this line is what says the override went with it.
     const filed = MY_REPORTS.filter((r) => r.submission).map((r) => r.id).sort();
-    expect(filed).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.cp8d', 'my.epf', 'my.socso-eis']);
+    expect(filed).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.cp8d', 'my.epf', 'my.hrd-levy', 'my.socso-eis']);
 
     const internal = MY_REPORTS.filter((r) => !r.submission).map((r) => r.id);
     expect(internal).toEqual(['my.contributions']);
