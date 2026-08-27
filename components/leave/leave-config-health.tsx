@@ -1,7 +1,15 @@
 import { getTranslations } from 'next-intl/server';
 
-import { isBlockingFinding, type LeaveConfigFinding, type LeaveConfigHealth } from '@/lib/leave-config-health';
+import {
+  isBlockingFinding,
+  tablesReachNobody,
+  type LeaveConfigFinding,
+  type LeaveConfigHealth,
+} from '@/lib/leave-config-health';
 import { Card, SectionHeader } from '@/components/ui';
+// r224 — day figures print through the shared formatter, so the range this line quotes matches the table
+// rows it is quoting from, digit for digit (4a1abc4a).
+import { formatDays } from '@/lib/day-format';
 
 /**
  * r209 — THE CAUSES, ON THE SCREEN, INSTEAD OF IN THE DATABASE.
@@ -97,6 +105,40 @@ function FindingList({ t, h }: { t: T; h: LeaveConfigHealth }) {
   );
 }
 
+/**
+ * r224 — WHAT YOU CONFIGURED, BESIDE WHAT IS ACTUALLY GRANTED, on the leave types where those two are not
+ * the same number.
+ *
+ * The reporter's account has sixteen Annual Leave tables specifying 12 to 24 days and no eligibility rule,
+ * and every screen in the product showed the first of those figures. Nothing showed the second. The
+ * findings list above already says nobody can receive the tables; this line says what that COSTS, which is
+ * the sentence that makes it urgent rather than tidy.
+ *
+ * ⚠️ THE "ACTUALLY GRANTED" FIGURE IS 0.00, AND IT IS NOT A GUESS. With no eligibility rule in force
+ * `buildTemplateEntitlementResolver` resolves no band, `composeEntitlement` returns 0 days with
+ * `noOpinion` set, and `openLeaveYear` records the pair as `no_entitlement` and writes no accrual row.
+ * It is deliberately NOT described as "the statutory minimum": fa3f4ccb made the Employment Act floor
+ * ADVISORY — it is computed for the below-minimum warning and no longer participates in the arithmetic
+ * anywhere — so a screen claiming employees receive it would be describing a composition this codebase
+ * removed. Whatever days already sit on a record came from an earlier configuration or from a manual
+ * adjustment, which is what the sentence says.
+ *
+ * Rendered ONLY for `tablesReachNobody`, and from the derivation's own predicate rather than a second
+ * expression over the same counts.
+ */
+function ConfiguredVsActual({ t, h }: { t: T; h: LeaveConfigHealth }) {
+  if (!tablesReachNobody(h) || h.configuredDaysMin == null || h.configuredDaysMax == null) return null;
+  const configured =
+    h.configuredDaysMin === h.configuredDaysMax
+      ? formatDays(h.configuredDaysMin)
+      : `${formatDays(h.configuredDaysMin)}–${formatDays(h.configuredDaysMax)}`;
+  return (
+    <p className="text-xs font-medium">
+      {t('healthConfiguredVsActual', { configured, tables: h.templateCount })}
+    </p>
+  );
+}
+
 function StatusPill({ t, status }: { t: T; status: LeaveConfigHealth['status'] }) {
   return (
     <span
@@ -139,6 +181,7 @@ export async function LeaveConfigHealthNotice({ health }: { health: LeaveConfigH
       </div>
       <HealthCounts t={t} h={health} />
       <FindingList t={t} h={health} />
+      <ConfiguredVsActual t={t} h={health} />
     </div>
   );
 }
@@ -178,6 +221,7 @@ export async function LeaveConfigHealthCard({ rows }: { rows: LeaveConfigHealth[
                     </td>
                     <td className="px-3 py-2">
                       <FindingList t={t} h={h} />
+                      <ConfiguredVsActual t={t} h={h} />
                       <HealthCounts t={t} h={h} />
                     </td>
                   </tr>
