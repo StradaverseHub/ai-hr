@@ -18,11 +18,69 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-26 (r221-r223 SHIPPED · THE BOARD IS EMPTY · ADR-0082 IS THE ACTIVE WORKSTREAM)
+## CURRENT STATE — snapshot 2026-08-27 (r221-r224 SHIPPED · 2 OPEN · 1 BLOCKED · ADR-0082 IS THE ACTIVE WORKSTREAM)
 
-**`main@b85d2528` IS WHAT RUNS ON PRODUCTION (r223, 2026-08-26)** — verified by an
+**`main@acfb15b4` IS WHAT RUNS ON PRODUCTION (r224, 2026-08-27)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
+
+### r224 (2026-08-27) — FOUR board items shipped, one BLOCKED on a round-trip. NO MIGRATION.
+
+`5a1f97b0` the entitlement Save defect · `41330484` eligibility-coverage visibility · `d0ed304c`
+Statutory Forms corrections · `d9123867` Job Grade permanent delete. Built in four isolated worktrees
+off main, each agent carrying its APPROVED PLAN VERBATIM (r219's lesson: `improve:pull-approved`
+returns only `approved` rows, so marking `building` first makes the plan unreadable to every agent).
+
+⚠️⚠️ **THREE OF THE FOUR ITEMS WERE "ALREADY BUILT" OR "MISLABELLED" ON THE PREMISE LADDER, AND THE
+FOURTH'S DIAGNOSIS WAS INVERTED.** The reporter describes symptoms accurately and diagnoses causes
+confidently, and the diagnosis has now been wrong FOUR TIMES RUNNING (CP39 button r220, PERKESO format
+r218, and both August 26 items). Reproducing before agreeing changed the answer every single time.
+
+⚠️⚠️ **THE ENTITLEMENT SAVE DEFECT WAS THE DATE BOX, NOT THE BUTTON.** The reporter said Edit forces
+"Save as a new version"; the parent first concluded the behaviour already existed and it was only a
+label. Both were wrong. `entitlement-tables-block.tsx:668` pre-filled Effective from with TODAY, so a
+plain Save always moved the date and always superseded — in-place saving was UNREACHABLE from the
+screen for any version that started before today. Fixed as four coordinated changes; the date default
+could not ship alone, because on its own it silently flips every operator's habitual Save from "new
+version" to "overwrite".
+
+⚠️⚠️ **THE STATUTORY-FLOOR ANSWER WAS WRONG TWICE IN ONE DAY — ONCE INTO A BOARD PLAN AND ONCE INTO
+THIS FILE.** See the entitlement section below for the full correction. `fa3f4ccb` removed the floor
+from the arithmetic; a leave type whose tables reach nobody grants **0.00**. The ledger rows that
+looked like a floor fallback were granted under the OLDER composition. **A ledger records what WAS
+granted, never what today's code would grant.** And it is EIGHT leave types, not nine — Hospitalization
+is the r193 sole-table fallback and is healthy. **Board item `41330484` and its approved plan still say
+nine and still tell the reporter to start with Hospitalization. THAT CORRECTION IS STILL OWED.**
+
+⚠️ **`c6bb5f5a` IS BLOCKED, AND IT IS THE PANEL ROUND-TRIP FOR THE THIRD TIME.**
+`app/attendance/plan-ot/page.tsx`'s own header records that `2166ef79` moved Self Overtime ONTO the
+shared screen "which is where the reporter asked for it". This item moves it back off. The parent
+planned that reversal without checking, while citing r179/r185 in the same plan. Four guard tests pin
+the current arrangement. **The reporter answered the block with "yes, proceed with the full-width
+layout enhancement page" — a DIFFERENT request (`1372d169`) — so the reversal is NOT yet consented to
+and the item is blocked again.** Do not build it on that answer.
+
+⚠️ **TWO CLI CALLS REPORTED SUCCESS WITHOUT DOING ANYTHING.** `improve:block` prints "status → blocked"
+unconditionally, but `markBlockedSql` is `WHERE id = … AND status = 'approved'` — blocking an item
+already marked `building` matched zero rows and silently no-opped. Same family as rule 26: **verify
+board changes by reading the ROW, never the command's output.** Block BEFORE `build-start`, not after.
+
+⚠️ **THE VERIFY PASS CAUGHT A FABRICATED FIGURE AND A FALSE STATUTORY DEADLINE.** (1) The
+configured-versus-actual copy baked a literal "Actually granted: 0.00" into six locale strings — a
+measured-looking number nothing measured, rendered beside employees visibly holding ~11.4 accrued days
+(AGENTS 28). (2) The new HRD levy card declared `dueDayOfNextMonth: 15`, which makes the shelf colour a
+deadline overdue for EVERY company on the filter — including the ones whose `hrdf_status` is
+`not_registered`, **the column default**. The 15th is real and sourced; the defect was asserting it to
+companies that owe nothing. Now `null`, per the page's own note: "An invented deadline is worse than an
+absent one: somebody files against it."
+
+⚠️ **AND TWO GUARD TESTS THEN FAILED THE GATE BECAUSE THEY PINNED THOSE DEFECTS** (AGENTS 18). Updated,
+not deleted — the sourced-15th document assertion was KEPT while the catalog assertion moved.
+
+**RENDER-CHECKED, not merely 200'd** (AGENTS 6): the entl work introduces a client-island/context
+pattern new to those pages. `/admin/leave/entitlements`, `/payroll/statutory-forms` and
+`/admin/settings/system-labels` all rendered with ZERO `MISSING_MESSAGE`/`IntlError` in the dev log, and
+the new health line was read out of the served HTML.
 
 ### r223 (2026-08-26) — ADR-0082 slice 2: the assistant substrate + the access-scoped tool registry. `0451`.
 
