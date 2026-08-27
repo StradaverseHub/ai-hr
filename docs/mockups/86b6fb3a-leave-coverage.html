@@ -1,0 +1,98 @@
+<meta charset="utf-8">
+<title>86b6fb3a — Leave entitlement coverage, as it actually stands</title>
+<!--
+  Mockup for 86b6fb3a ("Correction to item 41330484").
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · EVERY FIGURE HERE IS MEASURED, from production on 2026-08-27. Tables and rules are counted with
+    valid_to IS NULL; employees and days come from leave_ledger. Nothing is illustrative.
+  · Annual Leave's two rules were created on 2026-08-26 at 17:53 and 17:58, named "Everyone" and
+    "Testing" — i.e. AFTER item 41330484 was raised. That is why the count moved from eight to seven,
+    and it is drawn as their change, not ours.
+  · A rule EXISTING is not proof it MATCHES anybody. Annual Leave is drawn as "now has rules", not as
+    "now resolves for everyone" — we have not re-run the resolver per employee and must not imply we did.
+  · Hospitalization is drawn HEALTHY on the evidence: 1 table in force with no rule is the r193
+    sole-table shape (viaSoleTemplate), its table grants 60 days to everyone from year 0, and the ledger
+    holds exactly 35 employees x 60.00 = 2,100 days as upfront adjustments. Its 35 accrual rows at 0.00
+    are correct — a full upfront grant does not accrue monthly.
+  · Medical Leave's single rule is named "CONTRACT - GARDE H - 18", a narrow grade. It is drawn as a
+    PARTIAL, not as covered, and the zero ledger is stated as a fact without a diagnosis attached.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+     padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:650;white-space:nowrap}
+  .p-bad{background:color-mix(in srgb,var(--bad) 12%,white);color:var(--bad)}
+  .p-ok{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .p-warn{background:color-mix(in srgb,var(--warn) 14%,white);color:#7c4a03}
+  .p-new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .note{font-size:10.5px;color:var(--mf)}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .strike{text-decoration:line-through;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h2>Leave entitlement coverage — measured on 27 August 2026</h2>
+  <p class="sub">Every figure below is counted from your live system. “Reaches nobody” means the leave
+    type has entitlement tables set up but no eligibility rule in force pointing employees at them.</p>
+  <table>
+    <tr>
+      <th>Leave type</th><th class="r">Tables</th><th class="r">Rules</th>
+      <th class="r">Employees with days</th><th class="r">Days held</th><th>Status</th>
+    </tr>
+    <tr><td>Annual Leave</td><td class="r">16</td><td class="r">2</td><td class="r">27</td><td class="r">283.6</td>
+        <td><span class="pill p-new">You added rules on 26 Aug</span></td></tr>
+    <tr><td>Hospitalization Leave</td><td class="r">1</td><td class="r">0</td><td class="r">35</td><td class="r">2,100.0</td>
+        <td><span class="pill p-ok">Working</span></td></tr>
+    <tr><td>Examination Leave</td><td class="r">3</td><td class="r">1</td><td class="r">3</td><td class="r">0.0</td>
+        <td><span class="pill p-warn">Has a rule</span></td></tr>
+    <tr><td>Medical Leave</td><td class="r">6</td><td class="r">1</td><td class="r">0</td><td class="r">0.0</td>
+        <td><span class="pill p-warn">Rule covers one grade only</span></td></tr>
+    <tr><td>Maternity Leave</td><td class="r">3</td><td class="r">0</td><td class="r">4</td><td class="r">392.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+    <tr><td>Paternity Leave</td><td class="r">3</td><td class="r">0</td><td class="r">4</td><td class="r">28.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+    <tr><td>Compassionate Leave</td><td class="r">3</td><td class="r">0</td><td class="r">3</td><td class="r">9.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+    <tr><td>Caregiver Leave</td><td class="r">3</td><td class="r">0</td><td class="r">3</td><td class="r">9.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+    <tr><td>Graduation Leave</td><td class="r">3</td><td class="r">0</td><td class="r">3</td><td class="r">0.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+    <tr><td>Marriage Leave</td><td class="r">3</td><td class="r">0</td><td class="r">3</td><td class="r">0.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+    <tr><td>Study Leave</td><td class="r">3</td><td class="r">0</td><td class="r">3</td><td class="r">0.0</td>
+        <td><span class="pill p-bad">Reaches nobody</span></td></tr>
+  </table>
+
+  <div class="warn">
+    <b>The count we gave you has moved twice, and this table replaces it.</b>
+    We first said <span class="strike">nine</span> leave types. It was
+    <span class="strike">eight</span> — Hospitalization was counted wrongly. It is now
+    <b>seven</b>, because you added two Annual Leave rules on 26 August. A number in a sentence goes
+    stale; this table is measured, so read it rather than the count.
+    <br><br>
+    <b>Hospitalization is working, and that is the one we told you to look at first.</b> It has one
+    table and no rule, and that is fine: when a leave type has exactly one table, it applies to
+    everybody. All 35 employees hold their full 60 days. Its automatic figure is zero because those
+    60 days are granted once, upfront, rather than building up month by month — so nothing accrues,
+    and nothing is wrong.
+    <br><br>
+    <b>Two worth a look that were not in the original report.</b> Medical Leave has six tables but its
+    only rule names a single grade, so most of your people still resolve to nothing — and no employee
+    holds any medical leave at all today. Examination Leave has a rule and three employees, but no days.
+  </div>
+</div>
