@@ -774,6 +774,20 @@ export async function createJobGrade(
     // It is raised BEFORE the insert rather than mapped from a constraint failure for the same reason:
     // there is no constraint to fail. The error carries the archived row's id so the grid can offer the
     // restore, and restoring reuses that id, which is what keeps the history attached.
+    // AN ACTIVE TWIN OUTRANKS AN ARCHIVED ONE, and this order is the whole guard. Because both indexes
+    // are partial, a tenant can legally hold an ACTIVE grade and an ARCHIVED grade on the same code —
+    // archive G1, create G1 again, and both rows exist. Looking for the archived twin first offered
+    // "restore that grade instead" for a code that is already live, which is both wrong and unactionable:
+    // restoring would then collide with the active row on the partial index and fail. The active
+    // duplicate is the real error and must be reported as one, so it is tested for first.
+    const [activeTwin] = await tx
+      .select({ id: jobGrade.id })
+      .from(jobGrade)
+      .where(and(eq(jobGrade.code, code), isNull(jobGrade.archivedAt)))
+      .limit(1);
+    if (activeTwin) {
+      throw new DuplicateError(`A grade with code “${code}” already exists.`);
+    }
     const [archivedTwin] = await tx
       .select({ id: jobGrade.id, name: jobGrade.name })
       .from(jobGrade)
