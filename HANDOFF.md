@@ -1304,13 +1304,19 @@ method or carry-forward is WRONG.**
 - **Rules live on `leave_type`** (columns `0325`, engines repointed `0334`). `applyLeaveTypeRules`
   (`core/leave-compute.ts:489`) overlays them onto the resolved policy — a **whole-set** overlay
   gated on `hasAnyLeaveTypeRule`. 10 leave types carry type-level rules.
-- **`leave_policy` still supplies DAYS** and is the rules fallback for types carrying none. 67 policy
-  rows, 57 `earned_monthly`. **Zeroing `leave_policy` wholesale would stop accrual for every type
-  that falls through** — removing the band SURFACE is safe; emptying the TABLE is not the same act.
-- **DAYS precedence:** `entitledDays = max(floorDays, schemeDays ?? policyDays)`; `schemeBandDays`
-  returning **null — not zero** — triggers the fallback.
-- **`leave_policy` has no `updated_at`** — date a change via `leave-policy.updated` events, never
-  `created_at`.
+- ⚠️ **`leave_policy` IS GONE, AND THE THREE BULLETS THAT USED TO SIT HERE DESCRIBED IT AS LIVE.**
+  `db/schema.ts:1673-1675` says it plainly: release three dropped the benefit-scheme entitlement layer
+  and **`benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` and `employment.benefit_scheme_id`
+  are all gone.** Confirmed on production 2026-08-27 — `information_schema` lists only
+  `entitlement_template`, `entitlement_eligibility_rule` and `entitlement_reset_archive`. The old text
+  here quoted "67 policy rows, 57 earned_monthly" and a `schemeDays ?? policyDays` precedence; both
+  describe tables that no longer exist, and it is the FIRST thing an agent doing entitlement work reads.
+- **WHAT ACTUALLY HAPPENS WHEN NOTHING RESOLVES: the STATUTORY FLOOR.** With no eligibility rule
+  pointing at a template, accrual does not fail — it falls back to the Employment Act minimum. Measured
+  on production 2026-08-27: Annual Leave accrued 307.26 days across 85 entries to 27 employees (~11.4
+  each) while the sixteen configured tables specify 12–24 days by grade. **A silent downgrade, not an
+  outage**, which is exactly why nobody had noticed. Hospitalization Leave accrues 0.00 and its 2,100
+  days are all manual `adjustment` rows. Board item `41330484` carries this.
 - **Coverage gap that bites at reset time:** 12 of 41 benefit schemes have zero entitlement rows;
   ISEDECOR BINA + Demo Group Holdings have no schemes at all. After a reset those employees drop to
   the statutory floor.
