@@ -204,7 +204,14 @@ describe('§C r224 · the three surfaces read the derivation rather than recompu
     const en = (JSON.parse(read('messages/en.json')) as Record<string, any>).admin
       .entitlementTemplates as Record<string, string>;
     expect(en.healthConfiguredVsActual).not.toMatch(/statutory|minimum/i);
-    expect(en.healthConfiguredVsActual).toMatch(/0\.00/);
+    // ⚠️ AND IT MUST NOT PRINT A FIGURE EITHER — this half REPLACES an assertion that required the
+    // literal "0.00" in the copy. Both halves of that original case were about honesty and only one
+    // survived contact with AGENTS rule 28: the string is a static translation, so a "0.00" in it is
+    // not a measurement of anything, and it rendered beside employees whose records visibly show ~11.4
+    // accrued days (granted under the pre-fa3f4ccb composition). An absent figure asserts nothing; a
+    // 0.00 asserts the days do not exist. The copy states the CONDITION instead, so this pins that no
+    // digits are quoted outside the two interpolations the screen actually supplies.
+    expect(en.healthConfiguredVsActual.replace(/\{configured\}|\{tables\}/g, '')).not.toMatch(/\d/);
     expect(read('core/leave-compute.ts')).toContain('ADVISORY since fa3f4ccb — flagged, never applied');
   });
 

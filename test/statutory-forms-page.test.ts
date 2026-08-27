@@ -905,12 +905,20 @@ describe('what the shelves say about the forms that are not built', () => {
   it('fills the Other shelf from the catalog, and keeps the empty state for shelves that are empty', () => {
     const other = MY_REPORTS.filter((r) => r.submission?.body === 'other');
     expect(other.map((r) => r.id)).toEqual(['my.hrd-levy']);
-    // A real filing: it names an agency and a deadline, which is what earns it the shelf and the
-    // suspended-tenant override. See test/suspended-statutory-filing.test.ts for the other half.
+    // A real filing: it names an agency, which is what earns it the shelf and the suspended-tenant
+    // override. See test/suspended-statutory-filing.test.ts for the other half.
     expect(other[0].submission!.agency).toBe('HRD Corp');
-    expect(other[0].submission!.dueDayOfNextMonth).toBe(15);
-    // …and the deadline is SOURCED rather than assumed, from the same design note the rates came from.
+    // The 15th is still SOURCED and still true of HRD Corp — that half of the original case is kept.
     expect(read('docs/wave2-payroll-design.md')).toContain('due by the **15th of the following month**');
+    // ⚠️ BUT THE CATALOG DELIBERATELY CARRIES NULL, and this is a reversal of the assertion that stood
+    // here. `dueDayOfNextMonth` is not "when is this due" — it is "compute a deadline for EVERY company
+    // on the filter and colour it overdue". The levy is owed only by a company registered with PSMB, and
+    // `company_statutory_my.hrdf_status` DEFAULTS to `not_registered`, so a hard 15 printed a red
+    // "Overdue" missed-statutory-filing at every tenant that never registered — the majority case. This
+    // page's own note on the line above `submissionDueFor` states the principle it breaks: "An invented
+    // deadline is worse than an absent one: somebody files against it." The date returns the day the
+    // shelf can read registration status per company; until then it is not asserted.
+    expect(other[0].submission!.dueDayOfNextMonth).toBeNull();
     // `figures`, and it may not move: HRD Corp publishes no blank levy form and nothing here is drawn to
     // an agency arrangement, so `agency-layout` would claim a page we have never seen.
     expect(other[0].fidelity).toBe('figures');
