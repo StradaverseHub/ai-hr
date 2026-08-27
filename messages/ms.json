@@ -6291,7 +6291,9 @@
       "cancel": "Batal",
       "apply": "Guna",
       "origin": "asal",
-      "gradeInUseHint": "Gred jawatan ini sedang digunakan oleh pekerja, dasar cuti, peraturan kelulusan, had tuntutan atau kumpulan gred, jadi ia tidak boleh dipadam. Arkibkan ia sebaliknya.",
+      "gradeInUseHint": "Gred jawatan ini masih digunakan oleh pekerja, peraturan kelayakan hak cuti, peraturan kelulusan, had tuntutan, kadar perbatuan atau kumpulan gred, jadi ia tidak boleh dipadam secara kekal.",
+      "deletePermanently": "Padam secara kekal",
+      "gradeRestored": "Gred {code} telah dipulihkan.",
       "deleteGradeTitle": "Padam gred jawatan?",
       "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },

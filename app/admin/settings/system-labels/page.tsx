@@ -27,6 +27,7 @@ import {
   assignLabelCompaniesAction,
   copyLabelsToCompaniesAction,
   removeJobGradeGridAction,
+  restoreJobGradeGridAction,
   saveJobGradesGridAction,
   saveLabelsGridAction,
   setCompanySharedLabelsAction,
@@ -179,7 +180,13 @@ export default async function SystemLabelsPage({
   const gradesSlot = (
     <GradeLabelsGrid
       data={grades}
-      actions={{ save: saveJobGradesGridAction, remove: removeJobGradeGridAction }}
+      // r224 — `restore` is the third action: it takes the offer the save returns when a typed code turns
+      // out to belong to an archived grade, bringing that grade back in place instead of duplicating it.
+      actions={{
+        save: saveJobGradesGridAction,
+        remove: removeJobGradeGridAction,
+        restore: restoreJobGradeGridAction,
+      }}
     />
   );
 

@@ -6291,7 +6291,9 @@
       "cancel": "Cancel",
       "apply": "Apply",
       "origin": "origin",
-      "gradeInUseHint": "This job grade is in use by employees, leave policies, approval rules, claim limits or a grade group, so it cannot be deleted. Archive it instead.",
+      "gradeInUseHint": "This job grade is still in use by employees, entitlement eligibility rules, approval rules, claim limits, mileage rates or a grade group, so it cannot be deleted permanently.",
+      "deletePermanently": "Delete permanently",
+      "gradeRestored": "Grade {code} restored.",
       "deleteGradeTitle": "Delete job grade?",
       "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
     },

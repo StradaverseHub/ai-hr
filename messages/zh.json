@@ -6291,7 +6291,9 @@
       "cancel": "取消",
       "apply": "应用",
       "origin": "来源",
-      "gradeInUseHint": "此职级正被员工、休假政策、审批规则、报销限额或职级组使用，因此无法删除。请改为归档。",
+      "gradeInUseHint": "此职级仍被员工、假期资格规则、审批规则、报销限额、里程费率或职级组使用，因此无法永久删除。",
+      "deletePermanently": "永久删除",
+      "gradeRestored": "已恢复职级 {code}。",
       "deleteGradeTitle": "删除职级？",
       "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
     },

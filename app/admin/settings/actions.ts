@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { requireAdmin } from '@/lib/authz';
 import {
+  ArchivedGradeCodeError,
   archiveBusinessUnit,
   archiveCostCenter,
   archiveDepartment,
@@ -38,6 +39,9 @@ import {
   setLabelGlobal,
   unassignLabelFromCompanies,
 } from '@/core/system-labels';
+// r224 — the restore action reads the grade back through the SAME projection the page renders from, so
+// the row it hands the grid (inUse included) cannot disagree with the one a reload would produce.
+import { listJobGrades } from '@/core/read';
 
 // Route-scoped actions for the System Labels admin page. These wrap the SAME core catalog functions the
 // Organization page used to call, but every ok()/fail() targets SYSTEM_LABELS — NOT '/admin/organization'
@@ -387,9 +391,33 @@ export async function setCompanySharedLabelsAction(
 // and WITH CHECK does not apply to DELETE — so DELETE on job_grade is gated by tenant membership alone.
 // Server actions are addressable, so these get their own explicit gate. (Tightening the policy itself is a
 // separate security item; it is NOT bundled here, which keeps this change migration-free.)
+/**
+ * r224 — `restoreArchivedId` is the one addition to the row-error shape. It is set ONLY when the create
+ * was refused because the typed code belongs to an archived grade, and it names that grade so the grid can
+ * render "restore it instead" as a button rather than as advice. Every other row error leaves it undefined,
+ * so the grid's existing handling is unchanged.
+ */
+export type GradeGridRowError = { key: string; field?: string; message: string; restoreArchivedId?: string };
+
 export type GradeGridSaveResult =
   | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
-  | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string };
+  | { ok: false; rowErrors: GradeGridRowError[]; message?: string };
+
+/** The grade row the grid re-renders after a restore — exactly core/read.ts `listJobGrades`' shape. */
+export type GradeGridRestoreResult =
+  | {
+      ok: true;
+      row: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        rank: number;
+        archivedAt: Date | null;
+        inUse: boolean;
+      };
+    }
+  | { ok: false; message: string };
 
 export type GradeGridCreate = { key: string; code: string; name: string; description: string; rank: string };
 export type GradeGridUpdate = {
@@ -424,7 +452,7 @@ export async function saveJobGradesGridAction(payload: {
   updates: GradeGridUpdate[];
 }): Promise<GradeGridSaveResult> {
   const s = await requireAdmin();
-  const rowErrors: { key: string; field?: string; message: string }[] = [];
+  const rowErrors: GradeGridRowError[] = [];
   const createdIds: { key: string; id: string }[] = [];
   let created = 0;
   let updated = 0;
@@ -443,6 +471,14 @@ export async function saveJobGradesGridAction(payload: {
       createdIds.push({ key: c.key, id });
       created += 1;
     } catch (e) {
+      // r224 — the archived-code refusal is matched by CLASS, before fieldOfGradeError's message regexes
+      // get a look at it. Its message names the archived grade, and fieldOfGradeError's "message contains
+      // the row's name ⇒ blame the name cell" arm would mis-highlight whenever the draft happens to be
+      // named after the grade it collides with. It is a code clash; it highlights the code cell.
+      if (e instanceof ArchivedGradeCodeError) {
+        rowErrors.push({ key: c.key, field: 'code', message: e.message, restoreArchivedId: e.archivedId });
+        continue;
+      }
       rowErrors.push({ key: c.key, field: fieldOfGradeError(e, c.name), message: (e as Error).message });
     }
   }
@@ -469,6 +505,37 @@ export async function saveJobGradesGridAction(payload: {
   if (rowErrors.length > 0) return { ok: false, rowErrors };
   revalidateGrades();
   return { ok: true, created, updated, createdIds };
+}
+
+/**
+ * r224 — RESTORE INSTEAD OF DUPLICATE, the second half.
+ *
+ * `createJobGrade` refuses a code that belongs to an archived grade and hands back that grade's id; this is
+ * what the grid calls when the operator takes the offer. It is `archiveJobGrade(archived:false)` — the same
+ * toggle the grid's own Restore icon batches into Save — so the grade comes back IN PLACE: same id, same
+ * history, same employment / eligibility-rule / grade-group references, which is exactly what creating a
+ * second row would have thrown away.
+ *
+ * It returns the restored ROW, not just ok, because the draft the operator typed has to become that grade
+ * on screen. Read back through `listJobGrades` rather than assembled here so `inUse` and the projection
+ * cannot drift from what a page reload would show.
+ *
+ * requireAdmin, like its two siblings: 0090's job_grade policy gates writes on `app.is_admin()`, but a
+ * server action is addressable and gets its own explicit gate rather than trusting RLS alone.
+ */
+export async function restoreJobGradeGridAction(id: string): Promise<GradeGridRestoreResult> {
+  const s = await requireAdmin();
+  try {
+    await archiveJobGrade(s, { id, archived: false });
+    const row = (await listJobGrades(s, { includeArchived: true })).find((r) => r.id === id);
+    // No row ⇒ the id did not resolve in this tenant (archiveJobGrade updates zero rows rather than
+    // throwing, so this is the only place that can notice).
+    if (!row) return { ok: false, message: 'That grade no longer exists.' };
+    revalidateGrades();
+    return { ok: true, row };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
 }
 
 /** Delete one grade from the grid's row action. Blocked server-side when the grade is referenced. */
