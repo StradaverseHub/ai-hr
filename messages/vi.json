@@ -6291,7 +6291,9 @@
       "cancel": "Hủy",
       "apply": "Áp dụng",
       "origin": "gốc",
-      "gradeInUseHint": "Cấp bậc này đang được nhân viên, chính sách nghỉ phép, quy tắc phê duyệt, hạn mức yêu cầu chi trả hoặc một nhóm ngạch bậc sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
+      "gradeInUseHint": "Cấp bậc này vẫn đang được nhân viên, quy tắc điều kiện hưởng phép, quy tắc phê duyệt, hạn mức yêu cầu chi trả, định mức chi phí theo quãng đường hoặc một nhóm ngạch bậc sử dụng nên không thể xóa vĩnh viễn.",
+      "deletePermanently": "Xóa vĩnh viễn",
+      "gradeRestored": "Đã khôi phục cấp bậc {code}.",
       "deleteGradeTitle": "Xóa cấp bậc?",
       "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
     },

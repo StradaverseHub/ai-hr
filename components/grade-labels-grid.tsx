@@ -34,13 +34,26 @@
  * the sharing wiring is imported here.
  *
  * Archive/restore batches into Save and is undoable via Discard, so it carries no confirm
- * dialog of its own; hard Delete keeps one, and is disabled with an explanatory tooltip when the grade is
- * still referenced by an employee, leave policy, approval rule, claim limit or grade group.
+ * dialog of its own; hard Delete keeps one, and is refused when the grade is still referenced by an
+ * employee, an entitlement eligibility rule, an approval rule, a claim limit, a mileage rate or a grade
+ * group.
+ *
+ * r224 — THE ARCHIVED VIEW STOPS WHISPERING. Everything the reporter asked for here already existed; it
+ * was all hidden behind a `title` attribute, which is why it read as absent. Three changes, and only the
+ * third is new behaviour:
+ *   1. On an ARCHIVED row the permanent delete is a LABELLED button ("Delete permanently"), not the same
+ *      unlabelled cross the drafts use to discard themselves. Same action, same confirm dialog.
+ *   2. When that delete is refused, the reason renders as text under the row instead of only on hover.
+ *      It is the ONE string (`gradeInUseHint`), corrected to name the six things deleteJobGrade actually
+ *      checks — the old copy still said "leave policies", a table 0405 dropped, and omitted entitlement
+ *      eligibility rules and mileage rates, which is exactly the drift a second hand-written list causes.
+ *   3. Typing a code that belongs to an archived grade no longer creates a silent duplicate. The save
+ *      comes back with a row error carrying that grade's id, and the offer to restore it in place.
  *
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Filter, Trash2, X } from 'lucide-react';
@@ -74,15 +87,20 @@ type RowState = {
   dirty: boolean;
 };
 
+/** A row error from the save fan-out. `restoreArchivedId` (r224) is set only on the archived-code refusal. */
+type GridRowError = { key: string; field?: string; message: string; restoreArchivedId?: string };
+
 export type GradeGridActions = {
   save: (payload: {
     creates: { key: string; code: string; name: string; description: string; rank: string }[];
     updates: { key: string; id: string; code: string; name: string; description: string; rank: string; setArchived: boolean | null }[];
   }) => Promise<
     | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
-    | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string }
+    | { ok: false; rowErrors: GridRowError[]; message?: string }
   >;
   remove: (id: string) => Promise<{ ok: true } | { ok: false; message: string }>;
+  /** r224 — take the restore offer: clears archived_at on the named grade and returns it as it now reads. */
+  restore: (id: string) => Promise<{ ok: true; row: GradeGridRecord } | { ok: false; message: string }>;
 };
 
 type SortField = 'code' | 'name' | 'rank' | 'archived';
@@ -112,7 +130,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   const [showFilters, setShowFilters] = useState(false);
   const [sortField, setSortField] = useState<SortField | null>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [rowErrors, setRowErrors] = useState<Record<string, { field?: string; message: string }>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, Omit<GridRowError, 'key'>>>({});
   // Split messaging (house pattern): errors stay persistent and in-page via the shared ErrorBanner until
   // resolved; success confirmations are the transient corner toast (sonner), same as the sibling grids.
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +190,38 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
     });
   }
 
+  /**
+   * r224 — take the restore offer on a draft whose code belongs to an archived grade.
+   *
+   * The draft BECOMES the restored grade rather than sitting beside it: that is the whole point, and it is
+   * why the row is replaced with what the server read back (id, code, name, description, rank, inUse)
+   * instead of keeping whatever half-typed name the operator had in the draft. Keeping the typed values
+   * would quietly claim an edit was saved when nothing was written.
+   */
+  function restoreArchived(draftKey: string, archivedId: string) {
+    startTransition(async () => {
+      const res = await actions.restore(archivedId);
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      const restored = toRow(res.row);
+      setRows((prev) =>
+        // The restored grade may ALREADY be on screen (the Archived / All filters list it), so drop that
+        // copy before the draft turns into it — otherwise two rows share one React key and one of them
+        // silently stops updating.
+        prev.filter((r) => r.key !== restored.key).map((r) => (r.key === draftKey ? restored : r)),
+      );
+      setRowErrors((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+      setError(null);
+      toast.success(t('gradeRestored', { code: restored.code }));
+    });
+  }
+
   function save() {
     setError(null);
     const creates = drafts.map((r) => ({
@@ -220,8 +270,10 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         // Fan-out save: the GOOD rows already committed in their own transactions. Reconcile them so a
         // repeat Save cannot re-insert a created draft, and leave only the offending rows highlighted.
         const failed = new Set(res.rowErrors.map((e) => e.key));
-        const map: Record<string, { field?: string; message: string }> = {};
-        for (const e of res.rowErrors) map[e.key] = { field: e.field, message: e.message };
+        const map: Record<string, Omit<GridRowError, 'key'>> = {};
+        for (const e of res.rowErrors) {
+          map[e.key] = { field: e.field, message: e.message, restoreArchivedId: e.restoreArchivedId };
+        }
         setRowErrors(map);
         setRows((prev) =>
           prev.map((r) => (!r.isNew && updatedKeys.has(r.key) && !failed.has(r.key) ? { ...r, dirty: false } : r)),
@@ -408,8 +460,18 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
             )}
             {view.map((r, rowIdx) => {
               const err = rowErrors[r.key];
+              // r224 — the two things that used to be readable ONLY by hovering. `restoreOffer` is the
+              // archived-code refusal (server message + the grade to restore); `inUseNotice` is the
+              // refusal reason for a permanent delete. The in-use reason is shown for ARCHIVED rows only:
+              // that is the view the labelled "Delete permanently" lives in, and an explanatory line under
+              // every in-use ACTIVE grade would be noise on the screen's default view.
+              const restoreOffer = err?.restoreArchivedId
+                ? { id: err.restoreArchivedId, message: err.message }
+                : null;
+              const inUseNotice = !restoreOffer && !r.isNew && r.archived && r.inUse;
               return (
-                <tr key={r.key} className={`${r.archived ? 'opacity-60' : ''} ${err ? 'bg-destructive/5' : ''}`}>
+                <Fragment key={r.key}>
+                <tr className={`${r.archived ? 'opacity-60' : ''} ${err ? 'bg-destructive/5' : ''}`}>
                   <td className="px-2 py-1.5"></td>
                   <td className="px-3 py-1.5">
                     {/* 728a7db6 made grade codes editable, so unlike Profile Options the Code cell stays
@@ -495,18 +557,68 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                               <Trash2 className="size-3.5" aria-hidden />
                             )}
                           </RowIconButton>
-                          <RowIconButton
-                            title={r.inUse ? t('gradeInUseHint') : t('deleteRow')}
-                            disabled={r.inUse}
-                            onClick={() => setConfirmDelete(r)}
-                          >
-                            <X className="size-3.5" aria-hidden />
-                          </RowIconButton>
+                          {/* r224 — LABEL THE PERMANENT DELETE. On an archived row this is the only
+                              destructive control left (Archive has already happened), and it is the one
+                              action on this grid that cannot be undone — so it says what it does instead
+                              of borrowing the drafts' unlabelled cross. Keyed on the ROW being archived
+                              rather than on the filter, so it reads the same under Archived and All.
+                              Active rows keep the icon: there the cross sits beside Archive, and a full
+                              text button on every row would swamp a grid people scan. */}
+                          {r.archived ? (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(r)}
+                              disabled={r.inUse}
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-input px-2 text-xs font-medium transition hover:bg-accent disabled:opacity-40"
+                            >
+                              <X className="size-3.5" aria-hidden />
+                              {t('deletePermanently')}
+                            </button>
+                          ) : (
+                            <RowIconButton
+                              title={r.inUse ? t('gradeInUseHint') : t('deleteRow')}
+                              disabled={r.inUse}
+                              onClick={() => setConfirmDelete(r)}
+                            >
+                              <X className="size-3.5" aria-hidden />
+                            </RowIconButton>
+                          )}
                         </>
                       )}
                     </div>
                   </td>
                 </tr>
+                {/* r224 — the notices, in plain sight. A second <tr> rather than text crammed into the
+                    right-aligned actions cell: the reason names six referrer categories and the restore
+                    offer names a grade, and neither survives a 7rem column. */}
+                {restoreOffer && (
+                  <tr className="bg-destructive/5">
+                    <td className="px-2"></td>
+                    <td colSpan={7} className="px-3 pb-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="text-destructive">{restoreOffer.message}</span>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => restoreArchived(r.key, restoreOffer.id)}
+                          className="inline-flex h-7 items-center gap-1 rounded-md border border-input bg-background px-2 font-medium transition hover:bg-accent disabled:opacity-40"
+                        >
+                          <ArchiveRestore className="size-3.5" aria-hidden />
+                          {t('unarchive')}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {inUseNotice && (
+                  <tr>
+                    <td className="px-2"></td>
+                    <td colSpan={7} className="px-3 pb-2">
+                      <p className="text-xs text-amber-600 dark:text-amber-400">{t('gradeInUseHint')}</p>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -517,7 +629,9 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         <ConfirmDialog
           title={t('deleteGradeTitle')}
           description={t('deleteGradeDescription', { name: confirmDelete.name || confirmDelete.code })}
-          confirmLabel={t('deleteRow')}
+          // Same dialog, same action — but its Confirm button matches the control that opened it, so the
+          // archived row's "Delete permanently" does not become a bare "Delete row" at the last step.
+          confirmLabel={confirmDelete.archived ? t('deletePermanently') : t('deleteRow')}
           onConfirm={() => deleteExisting(confirmDelete)}
           onCancel={() => setConfirmDelete(null)}
         />
