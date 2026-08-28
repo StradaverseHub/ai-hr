@@ -1,0 +1,137 @@
+<meta charset="utf-8">
+<title>c6bb5f5a rev 3 — Attendance Irregularity: full width, and Request as a pop-up</title>
+<!--
+  Mockup for c6bb5f5a as CONTESTED after r225 shipped the four-screen split. This is not the split
+  again — the split is live and accepted. This is the two follow-up changes.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · NOW is the real screen after r225. app/attendance/requests/page.tsx:178 opens
+    `mx-auto max-w-6xl` (a 72rem centred column) and :236 splits that column again into
+    `lg:grid-cols-[minmax(0,1fr)_22rem]`, so on a wide monitor the table gets roughly half the content
+    area and the rest is margin plus the side panel.
+  · FULL WIDTH IS A SETTLED CONVENTION HERE, not an invention: `pageWideCls` (components/ui.tsx:34) is
+    used by 40 screens, and feedback 026e16b9 made this exact change to /leave for this exact complaint.
+    No test pins the width of this page.
+  · THE POP-UP ALREADY EXISTS AND IS ALREADY DAY-AWARE. r225's CorrectAnotherDayDialog spreads its props
+    straight into the shared CorrectionForm, and `day`, `section` and `requestKind` are already among
+    them — the page simply only ever passes `day={null}`. Passing a real day makes it the per-row face
+    with no change inside the dialog. Drawn accordingly.
+  · THE THIRD PANEL IS WHAT THE CHANGE COSTS, and it is drawn because the last two rounds on this screen
+    turned on something nobody saw until it shipped. The `?fix=YYYY-MM-DD` address really is shareable
+    today, and the "Also waiting for you" rows really do rely on it to switch section as they open.
+  · "Save/Submit" is drawn as ONE confirm button. There is no draft state for an attendance correction
+    (the status list is pending / approved / rejected / cancelled), so a Save that is not a submit would
+    be a new concept, not a button. The plan says so rather than the picture implying it.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .loss{background:color-mix(in srgb,var(--warn) 14%,white);color:#7c4a03}
+  .screen{border:1px solid var(--border);border-radius:11px;background:#fbfbfe;padding:9px;position:relative}
+  .screen.tall{min-height:250px}
+  .band{background:repeating-linear-gradient(45deg,#eceef8,#eceef8 5px,#f6f7fc 5px,#f6f7fc 10px);
+        border-radius:7px}
+  .col{background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;color:var(--mf);padding:4px 5px;border-bottom:1px solid var(--border)}
+  td{padding:5px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .btn{display:inline-block;padding:2px 9px;border-radius:7px;background:var(--primary);color:#fff;font-size:10px;font-weight:650}
+  .side{background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:10.5px}
+  .modal{position:absolute;left:50%;top:60px;transform:translateX(-50%);width:250px;background:#fff;
+         border:1px solid var(--border);border-radius:11px;box-shadow:0 14px 34px rgba(20,20,40,.2);padding:11px;font-size:11px;z-index:3}
+  .scrim{position:absolute;inset:0;background:rgba(20,20,40,.16);border-radius:11px;z-index:2}
+  .fld{border:1px solid var(--border);border-radius:7px;padding:4px 6px;margin:5px 0;color:var(--mf);font-size:10px}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:10px}
+  .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .two > *{min-width:0}
+  .blk{border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:7px;font-size:11.5px}
+  .blk .bt{font-weight:650}
+  .blk .bd{font-size:10.5px;color:var(--mf)}
+</style>
+
+<div class="two">
+  <div class="card">
+    <h2>Today<span class="chip now">NOW</span></h2>
+    <p class="sub">A centred column with wide empty margins, and the form opens beside the list, taking a
+      third of what is left.</p>
+    <div class="screen">
+      <div style="display:grid;grid-template-columns:34px 1fr 92px 34px;gap:5px">
+        <div class="band" style="height:118px"></div>
+        <div class="col">
+          <table>
+            <tr><th>Date</th><th>Type</th><th></th></tr>
+            <tr><td>25 Aug</td><td>Short hours</td><td><span class="btn">Request</span></td></tr>
+            <tr><td>24 Aug</td><td>Incomplete</td><td><span class="btn">Request</span></td></tr>
+            <tr><td>22 Aug</td><td>Absent</td><td><span class="btn">Request</span></td></tr>
+          </table>
+        </div>
+        <div class="side"><b>Fix 25 Aug</b><div class="fld">Clock in</div><div class="fld">Reason</div><span class="btn">Submit</span></div>
+        <div class="band" style="height:118px"></div>
+      </div>
+    </div>
+    <p class="sub" style="margin:9px 0 0">The striped areas are unused margin. The form is the narrow
+      column on the right.</p>
+  </div>
+
+  <div class="card">
+    <h2>After<span class="chip new">AFTER</span></h2>
+    <p class="sub">The list uses the whole width, and Request opens a pop-up over it.</p>
+    <div class="screen tall">
+      <div class="col">
+        <table>
+          <tr><th>Date</th><th>Type</th><th>Details</th><th>Goes to</th><th></th></tr>
+          <tr><td>25 Aug</td><td>Short hours</td><td>30 minutes</td><td>Manager</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>24 Aug</td><td>Incomplete</td><td>Missing clock-out</td><td>Manager</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>22 Aug</td><td>Absent</td><td>No attendance</td><td>Manager</td><td><span class="btn">Request</span></td></tr>
+        </table>
+      </div>
+      <div class="scrim"></div>
+      <div class="modal">
+        <b>Request a correction — 25 Aug</b>
+        <div class="fld">Clock in &nbsp; 09:12</div>
+        <div class="fld">Clock out &nbsp; 17:40</div>
+        <div class="fld">Reason</div>
+        <div style="margin-top:7px;display:flex;gap:6px;justify-content:flex-end">
+          <span class="btn" style="background:var(--muted);color:var(--mf)">Cancel</span>
+          <span class="btn">Submit</span>
+        </div>
+      </div>
+    </div>
+    <p class="sub" style="margin:9px 0 0">More columns fit, and the form is closed with Cancel or
+      submitted and returns you to the list.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What the change costs<span class="chip loss">THE TRADE</span></h2>
+  <p class="sub">Small, but real, and we would rather draw it than have you find it.</p>
+  <div class="blk"><div class="bt">The address stops being shareable</div>
+    <div class="bd">Today the open form has its own web address, so a link to “fix 25 August” can be
+      bookmarked or sent. A pop-up has no address of its own. We keep the old link working so nothing
+      already saved breaks, but new ones will not be created.</div></div>
+  <div class="blk"><div class="bt">The “also waiting for you” rows need care</div>
+    <div class="bd">Those rows come from other sections, and today the link both opens the form and
+      switches section so the request is filed under the right kind. That has to be carried across
+      deliberately, or a request lands under the wrong heading.</div></div>
+  <div class="blk"><div class="bt">The absent-day route must come with it</div>
+    <div class="bd">On an absent day the screen offers two answers — request a correction, or apply for
+      leave for that date. The leave option sits outside the form today, so it has to move into the
+      pop-up, or it quietly disappears.</div></div>
+  <div class="warn"><b>One thing we are reading as a wording choice rather than a feature.</b> The request
+    says “Save/Submit”. There is no draft state for an attendance request — it is pending, approved,
+    rejected or cancelled — so a Save that does not submit would be a new concept rather than a second
+    button. We are building one confirm button beside Cancel. If you did mean a saved draft you can come
+    back to, reject this plan and say so, and we will price it separately.</div>
+</div>

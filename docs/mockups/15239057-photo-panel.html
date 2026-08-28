@@ -1,0 +1,123 @@
+<meta charset="utf-8">
+<title>15239057 — The photo panel is being cut off, not covered up</title>
+<!--
+  Mockup for 15239057 ("Fix Upload Photo Interface Overlapping in Personnel Management").
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · THE DIAGNOSIS IN THE TICKET IS INVERTED and the drawing says so. The panel is not drawn on top of
+    other elements; it is CLIPPED by an ancestor. app/layout.tsx:223 gives <main> `overflow-y-auto`, and
+    per CSS Overflow 3 a non-visible overflow on one axis forces the other axis to `auto` too — so the
+    absolutely-positioned panel is cut at the scroll container's edge. Raising z-index changes nothing;
+    the panel is already z-50 and nothing competes with it.
+  · THIS EXACT TRAP HAS BEEN FIXED HERE ONCE BEFORE — r206, item 65e2d5de, app/payroll/row-actions.tsx,
+    whose docblock states the rule verbatim. The fix drawn on the right is that same fix.
+  · The trigger is a pencil labelled "Edit photo". Nothing on the screen is labelled "Upload Photo" —
+    that is the submit INSIDE the panel, and only when the employee has no photo yet. Drawn as it is.
+  · The clipping is drawn at a narrow window because that is where it bites: the photo column is the
+    FIRST flex item in a left-anchored header, and the panel is centre-anchored on it.
+  · components/photo-edit-menu.tsx is SHARED with the company-logo editor, so the fix lands in both.
+    That is stated in the plan, not hidden.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .now{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .win{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  .winbar{background:var(--muted);padding:5px 10px;font-size:10.5px;color:var(--mf);display:flex;justify-content:space-between}
+  .stage{position:relative;height:250px;overflow:hidden;padding:14px}
+  .hdr{display:flex;gap:14px;align-items:flex-start}
+  .ava{width:74px;height:74px;border-radius:12px;background:linear-gradient(135deg,#c7d2fe,#a5b4fc);flex:0 0 auto}
+  .who{font-size:13px;font-weight:650}
+  .whos{font-size:11px;color:var(--mf)}
+  .pencil{margin-top:7px;display:inline-block;padding:2px 9px;border-radius:8px;border:1px solid var(--border);
+          font-size:10.5px;color:var(--mf);background:#fff}
+  .panel{position:absolute;width:238px;border:1px solid var(--border);border-radius:11px;background:#fff;
+         box-shadow:0 10px 26px rgba(20,20,40,.16);padding:11px;font-size:11.5px}
+  .panel .pt{font-weight:650;margin-bottom:6px}
+  .drop{border:1px dashed var(--border);border-radius:9px;padding:12px;text-align:center;color:var(--mf);font-size:11px}
+  .btn{display:block;margin-top:8px;padding:5px 0;border-radius:8px;background:var(--primary);color:#fff;
+       font-size:11px;font-weight:650;text-align:center}
+  .cutline{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--bad)}
+  .cutlbl{position:absolute;font-size:10px;font-weight:700;color:var(--bad);background:#fff;padding:1px 5px;
+          border:1px solid color-mix(in srgb,var(--bad) 40%,white);border-radius:6px}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .two > *{min-width:0}
+</style>
+
+<div class="two">
+  <div class="card">
+    <h2>Today, on a narrow window<span class="chip now">THE FAULT</span></h2>
+    <p class="sub">Click the pencil and part of the panel is missing — the right edge is simply gone.</p>
+    <div class="win">
+      <div class="winbar"><span>Personnel → employee</span><span>narrow window</span></div>
+      <div class="stage">
+        <div class="hdr">
+          <div class="ava"></div>
+          <div><div class="who">Nurul Ain binti Hassan</div><div class="whos">A0002 · Finance</div></div>
+        </div>
+        <div class="pencil">✎ Edit photo</div>
+        <div class="panel" style="left:6px;top:104px;width:300px">
+          <div class="pt">Employee photo</div>
+          <div class="drop">Drag a picture here, or choose a file</div>
+          <div class="btn">Upload photo</div>
+        </div>
+        <div class="cutline" style="left:252px"></div>
+        <div class="cutlbl" style="left:150px;top:214px">everything past here is cut off</div>
+      </div>
+    </div>
+    <p class="sub" style="margin:10px 0 0">The panel is not sitting on top of anything. It is being
+      <b>trimmed</b> at the edge of the scrolling area, so the part that would hold the buttons is not
+      drawn at all.</p>
+  </div>
+
+  <div class="card">
+    <h2>After<span class="chip new">THE FIX</span></h2>
+    <p class="sub">The panel is lifted out of the scrolling area and kept inside the window.</p>
+    <div class="win">
+      <div class="winbar"><span>Personnel → employee</span><span>narrow window</span></div>
+      <div class="stage">
+        <div class="hdr">
+          <div class="ava"></div>
+          <div><div class="who">Nurul Ain binti Hassan</div><div class="whos">A0002 · Finance</div></div>
+        </div>
+        <div class="pencil">✎ Edit photo</div>
+        <div class="panel" style="left:6px;top:104px;width:238px">
+          <div class="pt">Employee photo</div>
+          <div class="drop">Drag a picture here, or choose a file</div>
+          <div class="btn">Upload photo</div>
+        </div>
+      </div>
+    </div>
+    <p class="sub" style="margin:10px 0 0">Whole panel, every button reachable, at any window width.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Why the wording in the request matters<span class="chip now">READ THIS BEFORE APPROVING</span></h2>
+  <div class="warn">
+    <b>The request says the panel “overlaps other screens or UI elements”. It does not.</b> Nothing is
+    drawn over anything — the panel is being cut off by the edge of the area the page scrolls inside.
+    That distinction decides the fix: making the panel sit “higher” than its neighbours would change
+    nothing at all, because nothing is competing with it. It has to be lifted out of the scrolling area
+    instead, and then clamped so it can never run past the window edge.
+    <br><br>
+    <b>We have fixed this exact thing once before</b>, on the payroll row menu, and the note left behind
+    on that fix describes the same cause. So this is a known trap with a known remedy rather than a new
+    investigation.
+    <br><br>
+    <b>Two things worth knowing.</b> Nothing on the screen is labelled “Upload Photo” — the button you
+    press is a pencil marked “Edit photo”, and “Upload photo” is inside the panel it opens. And the same
+    panel is used by the company logo editor, so this fix improves both screens, not just Personnel.
+  </div>
+</div>

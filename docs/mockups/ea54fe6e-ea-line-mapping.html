@@ -1,0 +1,116 @@
+<meta charset="utf-8">
+<title>ea54fe6e — EA line mapping: the setting exists, and the year does not</title>
+<!--
+  Mockup for ea54fe6e ("Pay Items EA Line Mapping for C.P.8A").
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · THE SETTING ALREADY EXISTS. pay_component.ea_form_line shipped in migration 0080, is validated
+    against EA_FORM_LINES (core/pay-components.ts:83), is written by the save action
+    (app/admin/pay-components/actions.ts:85), is audit-diffed, and is already printed as an "EA form
+    line" column on the Pay Items list. The Pay Items redesign (4994a48f) removed the CONTROL from the
+    form, leaving a hidden passthrough — so the value survives a save but cannot be set. Drawn as such.
+  · THE MISSING HALF IS THE READ. Nothing routes a mapped pay item into an EA box:
+    localization/my/reports.ts:1406 sums payslip.allowance, and no EA surface reads pay_component at all.
+  · THE MONTHS PANEL IS THE POINT AND IT IS MEASURED, NOT ILLUSTRATIVE. Per-component line stamping
+    began 2026-08-01 (862ed0ad). Payslips before that carry aggregate scalars only, so no mapping can
+    itemise them retrospectively. For assessment year 2026 the EA covers January to December.
+  · THE FIGURES IN THE THIRD PANEL ARE A WORKED EXAMPLE, not this tenant's data — they exist to show the
+    SHAPE of the error (a partial year printed as if whole), which is the thing that must not ship.
+  · No EA box is drawn holding a routed number, because none can be promised yet: EA_FORM_LINES has 9
+    values against EA_FIELDS' 26, and there is no value at all for director's fee — the most likely case.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .bad{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border:1px solid var(--border);
+       border-radius:9px;margin-bottom:6px;font-size:12px;align-items:center}
+  .row .lb{font-weight:600}
+  .sel{border:1px solid var(--border);border-radius:8px;padding:3px 9px;font-size:11px;background:#fff;color:var(--mf)}
+  .sel.on{border-color:var(--primary);color:var(--primary);font-weight:650}
+  .months{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin:10px 0 4px}
+  .m{border-radius:5px;padding:5px 0;text-align:center;font-size:9.5px;font-weight:650}
+  .m.no{background:color-mix(in srgb,var(--bad) 12%,white);color:var(--bad)}
+  .m.yes{background:color-mix(in srgb,var(--good) 14%,white);color:var(--good)}
+  .lgd{font-size:10.5px;color:var(--mf)}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--mf);padding:5px 7px;border-bottom:1px solid var(--border)}
+  td{padding:6px 7px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .two > *{min-width:0}
+</style>
+
+<div class="two">
+  <div class="card">
+    <h2>The setting already exists<span class="chip now">NOW</span></h2>
+    <p class="sub">Payroll → Settings → Pay Items. Every pay item already carries an EA form line, and the
+      list already has a column for it. What was removed is the box to change it in.</p>
+    <div class="row"><span class="lb">DIRECTOR FEE</span><span class="sel">not set</span></div>
+    <div class="row"><span class="lb">HANDPHONE ALLOWANCE</span><span class="sel">Allowance (taxable)</span></div>
+    <div class="row"><span class="lb">PERFORMANCE BONUS</span><span class="sel">Bonus</span></div>
+    <div class="row"><span class="lb">TRAVEL CLAIM</span><span class="sel">Allowance (exempt)</span></div>
+    <p class="sub" style="margin:10px 0 0">The value is stored, checked and recorded in the audit trail.
+      It simply has no effect on the EA form, and no screen lets you change it.</p>
+  </div>
+
+  <div class="card">
+    <h2>What we would add<span class="chip new">AFTER</span></h2>
+    <p class="sub">The box comes back on each pay item, and the EA form starts reading it.</p>
+    <div class="row"><span class="lb">DIRECTOR FEE</span><span class="sel on">Director's fee ▾</span></div>
+    <div class="row"><span class="lb">HANDPHONE ALLOWANCE</span><span class="sel on">Allowance (taxable) ▾</span></div>
+    <div class="row"><span class="lb">PERFORMANCE BONUS</span><span class="sel on">Bonus ▾</span></div>
+    <div class="row"><span class="lb">TRAVEL CLAIM</span><span class="sel on">Allowance (exempt) ▾</span></div>
+    <p class="sub" style="margin:10px 0 0">Set it once per pay item, and every future payroll run puts
+      that money in the right box on the EA form.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>The reason this cannot simply be switched on for 2026<span class="chip bad">READ THIS FIRST</span></h2>
+  <p class="sub">The EA form covers a whole year. We only started recording which pay item produced which
+    figure in August.</p>
+
+  <div class="months">
+    <div class="m no">JAN</div><div class="m no">FEB</div><div class="m no">MAR</div><div class="m no">APR</div>
+    <div class="m no">MAY</div><div class="m no">JUN</div><div class="m no">JUL</div>
+    <div class="m yes">AUG</div><div class="m yes">SEP</div><div class="m yes">OCT</div>
+    <div class="m yes">NOV</div><div class="m yes">DEC</div>
+  </div>
+  <p class="lgd">Green — we know which pay item each amount came from. Red — we only have the monthly
+    totals, so the detail cannot be recovered.</p>
+
+  <table>
+    <tr><th>Director's fee on the 2026 EA form</th><th class="r">Amount</th><th>Correct?</th></tr>
+    <tr><td>What the employee was actually paid across the year</td><td class="r">48,000.00</td><td>the truth</td></tr>
+    <tr><td>What routing would print, using only the months we can itemise</td><td class="r" style="color:var(--bad);font-weight:650">20,000.00</td><td style="color:var(--bad);font-weight:650">wrong, on a tax form</td></tr>
+  </table>
+
+  <div class="warn">
+    <b>A box holding five months of the year, printed as if it were twelve, is worse than a box we leave
+    alone.</b> The employee files their tax return from this form. An empty box tells them nothing; a box
+    with a confident, wrong number tells them something false, and they act on it.
+    <br><br>
+    <b>So the mapping is worth building, and switching it on for a past year is not.</b> We would put the
+    setting back now and have it take effect from a year where we have the detail for every month, rather
+    than produce a 2026 form that is part-itemised and part-guessed.
+    <br><br>
+    <b>One more thing to settle before we build.</b> The list of EA lines we can currently choose from has
+    nine entries, and the EA form has twenty-six boxes — with no entry at all for director's fee, which
+    we suspect is the case you have in mind. Widening that list is part of this work, and we would rather
+    agree which boxes matter to you than guess at twenty-six.
+  </div>
+</div>
