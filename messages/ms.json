@@ -6226,7 +6226,9 @@
       "actionView": "Lihat",
       "actionEdit": "Sunting",
       "actionArchive": "Arkibkan",
-      "actionUnarchive": "Nyaharkib"
+      "actionUnarchive": "Nyaharkib",
+      "authorityRegistrationSection": "Pendaftaran",
+      "authorityRegistrationHint": "Sama ada syarikat ini berdaftar dengan HRD Corp. Ia menentukan sama ada levi dikenakan langsung - ia bukan nombor rujukan."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

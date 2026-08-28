@@ -6226,7 +6226,9 @@
       "actionView": "Xem",
       "actionEdit": "Sửa",
       "actionArchive": "Lưu trữ",
-      "actionUnarchive": "Bỏ lưu trữ"
+      "actionUnarchive": "Bỏ lưu trữ",
+      "authorityRegistrationSection": "Đăng ký",
+      "authorityRegistrationHint": "Công ty này có đăng ký với HRD Corp hay không. Nó quyết định khoản thu có được tính hay không - đây không phải là số tham chiếu."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

@@ -6226,7 +6226,9 @@
       "actionView": "ดู",
       "actionEdit": "แก้ไข",
       "actionArchive": "จัดเก็บถาวร",
-      "actionUnarchive": "ยกเลิกการจัดเก็บ"
+      "actionUnarchive": "ยกเลิกการจัดเก็บ",
+      "authorityRegistrationSection": "การลงทะเบียน",
+      "authorityRegistrationHint": "บริษัทนี้ลงทะเบียนกับ HRD Corp หรือไม่ ซึ่งกำหนดว่าจะเรียกเก็บเงินสมทบหรือไม่ - ไม่ใช่หมายเลขอ้างอิง"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",

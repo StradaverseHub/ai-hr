@@ -6226,7 +6226,9 @@
       "actionView": "காண்க",
       "actionEdit": "திருத்து",
       "actionArchive": "காப்பகப்படுத்து",
-      "actionUnarchive": "காப்பகத்திலிருந்து மீட்டெடு"
+      "actionUnarchive": "காப்பகத்திலிருந்து மீட்டெடு",
+      "authorityRegistrationSection": "பதிவு",
+      "authorityRegistrationHint": "இந்த நிறுவனம் HRD Corp இல் பதிவு செய்யப்பட்டுள்ளதா என்பது. இது வரி விதிக்கப்படுமா என்பதைத் தீர்மானிக்கிறது - இது ஒரு குறிப்பு எண் அல்ல."
     },
     "systemLabels": {
       "pageTitle": "அமைப்பு லேபிள்கள்",

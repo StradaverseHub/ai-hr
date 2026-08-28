@@ -6226,7 +6226,9 @@
       "actionView": "查看",
       "actionEdit": "编辑",
       "actionArchive": "归档",
-      "actionUnarchive": "取消归档"
+      "actionUnarchive": "取消归档",
+      "authorityRegistrationSection": "注册状态",
+      "authorityRegistrationHint": "本公司是否已在 HRD Corp 注册。它决定是否征收该项征费 — 这不是一个参考编号。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",

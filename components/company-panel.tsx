@@ -543,33 +543,39 @@ function StatutoryAuthorityCard({
               the authority's postal address, and a collision there would post a country NAME into the
               statutory-pack lookup. It is rendered only inside this block, so a card with no filing field
               posts nothing at all towards the identity row. */}
-          {(filing || showHrdf) && (
+          {/* TWO BLOCKS, NOT ONE, AND THE SPLIT IS THE POINT. `authorityFilingHint` says in as many words
+              that this is "the number that goes on this body's filed form". HRD Corp's control is not a
+              number — it is a registration BAND (not registered / mandatory / optional) that drives
+              whether the levy is charged at all. Rendering it under a caption promising a filed-form
+              number told the operator something untrue about the box they were filling in, which is the
+              same class of fault as printing a figure we cannot stand behind (AGENTS 28). Each block now
+              carries the caption that matches its own control, and `filingCountry` is emitted once for
+              whichever of the two is present. */}
+          {(filing || showHrdf) && <input type="hidden" name="filingCountry" value={filingCountry} />}
+          {filing && (
             <div className="space-y-2 rounded-md bg-muted/40 p-2.5 sm:col-span-3">
-              <input type="hidden" name="filingCountry" value={filingCountry} />
               <SubHeader>{t('authorityFilingSection')}</SubHeader>
               <p className="text-xs text-muted-foreground">{t('authorityFilingHint')}</p>
-              {filing && (
-                <Field label={t(filing.labelKey as never)}>
-                  <input
-                    name={filing.name}
-                    defaultValue={statutory?.[filing.name] ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-              )}
-              {showHrdf && (
-                <Field label={t('hrdfStatusLabel')}>
-                  <select
-                    name="hrdfStatus"
-                    defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
-                    className={inputCls}
-                  >
-                    <option value="not_registered">{t('hrdfNotRegistered')}</option>
-                    <option value="mandatory">{t('hrdfMandatory')}</option>
-                    <option value="optional">{t('hrdfOptional')}</option>
-                  </select>
-                </Field>
-              )}
+              <Field label={t(filing.labelKey as never)}>
+                <input name={filing.name} defaultValue={statutory?.[filing.name] ?? ''} className={inputCls} />
+              </Field>
+            </div>
+          )}
+          {showHrdf && (
+            <div className="space-y-2 rounded-md bg-muted/40 p-2.5 sm:col-span-3">
+              <SubHeader>{t('authorityRegistrationSection')}</SubHeader>
+              <p className="text-xs text-muted-foreground">{t('authorityRegistrationHint')}</p>
+              <Field label={t('hrdfStatusLabel')}>
+                <select
+                  name="hrdfStatus"
+                  defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
+                  className={inputCls}
+                >
+                  <option value="not_registered">{t('hrdfNotRegistered')}</option>
+                  <option value="mandatory">{t('hrdfMandatory')}</option>
+                  <option value="optional">{t('hrdfOptional')}</option>
+                </select>
+              </Field>
             </div>
           )}
           {/* EIS has no filing box because it has no filing number of its own — it is filed under SOCSO's
