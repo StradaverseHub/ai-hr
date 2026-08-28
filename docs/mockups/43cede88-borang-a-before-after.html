@@ -1,0 +1,84 @@
+<meta charset="utf-8">
+<title>43cede88 — Your January EPF Borang A, before and after</title>
+<!--
+  Mockup for 43cede88 revision 3 — the before/after the plan promised before this ships.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · EVERY FIGURE IS MEASURED FROM PRODUCTION on 2026-08-28, not modelled. Query: payslip joined to
+    payroll_batch on pay_period '2026-01', summing statutory->'bases'->>'epf' plus 'epfAdditional' per
+    employment, which is exactly what localization/my/borang-a.ts:298 sums into the Upah column.
+       regular run  23 payslips, 0 zero-value, EPF base 132,499.51
+       bonus run    19 payslips, 16 zero-value, EPF base 111,731.84, of which 92,068.13 is zero-value
+       23 employees, 16 affected, total today 244,231.35 -> after 152,163.22, removed 92,068.13
+  · "AFTER" IS WHAT THE BUILT CHANGE WOULD PRODUCE — it is a projection of the skip applied to the same
+    January data, not a run that has happened. Nothing has been released.
+  · The direction is a REDUCTION. We are not claiming the new figure is the one LHDN expects, only that
+    the current one counts a month's wage twice for anybody who received an empty bonus payslip.
+  · No employee names are shown. The 16 affected are not identified here because the point is the column
+    total on a filed form, and the reporter can see the people on their own screen.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .now{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  .new{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .big{display:flex;gap:16px;margin:4px 0 12px}
+  .b{flex:1;border:1px solid var(--border);border-radius:12px;padding:13px}
+  .b .k{font-size:11px;color:var(--mf)}
+  .b .v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .b.after{border-color:color-mix(in srgb,var(--good) 45%,white);background:color-mix(in srgb,var(--good) 5%,white)}
+  .b.today{border-color:color-mix(in srgb,var(--bad) 40%,white);background:color-mix(in srgb,var(--bad) 4%,white)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--mf);padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .warn{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .bar{height:16px;border-radius:5px;background:var(--muted);overflow:hidden;margin-top:5px}
+  .bar > i{display:block;height:100%;border-radius:5px}
+</style>
+
+<div class="card">
+  <h2>Your EPF Borang A wage column, January 2026<span class="chip now">MEASURED FROM YOUR LIVE SYSTEM</span></h2>
+  <p class="sub">This is the figure the form reports as total wages for the month. We promised you would
+    see it change before anything was filed, so here it is.</p>
+
+  <div class="big">
+    <div class="b today"><div class="k">As the form reads today</div><div class="v">244,231.35</div>
+      <div class="bar"><i style="width:100%;background:color-mix(in srgb,var(--bad) 55%,white)"></i></div></div>
+    <div class="b after"><div class="k">If empty bonus payslips are skipped</div><div class="v">152,163.22</div>
+      <div class="bar"><i style="width:62.3%;background:color-mix(in srgb,var(--good) 55%,white)"></i></div></div>
+  </div>
+
+  <table>
+    <tr><th>January 2026</th><th class="r">Payslips</th><th class="r">Of those, empty</th><th class="r">Counted toward wages</th></tr>
+    <tr><td>Monthly run</td><td class="r">23</td><td class="r">0</td><td class="r">132,499.51</td></tr>
+    <tr><td>Bonus run</td><td class="r">19</td><td class="r" style="color:var(--bad);font-weight:650">16</td><td class="r">111,731.84</td></tr>
+    <tr><td style="font-weight:650">Of the bonus run, the part from empty payslips</td><td class="r"></td><td class="r"></td>
+        <td class="r" style="color:var(--bad);font-weight:700">92,068.13</td></tr>
+  </table>
+
+  <div class="warn">
+    <b>Sixteen of your nineteen bonus payslips paid nobody anything, and they still added RM 92,068.13 to
+    the wage column.</b> Those sixteen people each had a full month's wage counted a second time, because
+    an empty extra payslip still carries the month's wage in the figures the form reads. Sixteen of your
+    twenty-three employees are affected.
+    <br><br>
+    <b>That is a 38% reduction to a filed figure, and it is why we stopped before releasing.</b> We told
+    you in the earlier plan that skipping would leave your statutory files alone. That was wrong, we
+    corrected it, and this is the size of the thing we got wrong — not a rounding difference.
+    <br><br>
+    <b>We believe the smaller figure is the correct one</b>, because nobody's wage should be counted twice
+    in one month. But it is your form and your filing, so we would rather you approved this number than
+    discovered it. Nothing has been released; the work is built and waiting on your word.
+  </div>
+</div>
