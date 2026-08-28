@@ -12,7 +12,16 @@
  * bug this file exists to keep fixed. It also pins the caption's wording contract: the caption must name
  * the submit button that is actually rendered (Upload logo / Replace logo), never a phantom "Save".
  *
- * Scope note: jsdom applies no CSS, so nothing here says anything about how the popover is positioned.
+ * r227 — THE POPOVER IS NOW PORTALLED TO document.body (it was being clipped by <main>'s overflow; see
+ * components/photo-edit-menu.tsx). Every assertion below still holds and none is weakened, but the panel
+ * is no longer a DESCENDANT of this component's render container, so the two queries that reached into
+ * `view.container` for it now scan the document instead. `screen` already did. THE PORTAL IS PART OF WHAT
+ * THIS FILE PINS: if a future edit un-portals the panel these queries keep passing (a descendant is also
+ * in the document), so the portal itself is asserted here as well — a preview whose form has been
+ * clipped off-screen is the same unusable state as one whose form has unmounted.
+ *
+ * Scope note: jsdom applies no CSS and computes no layout, so nothing here can see the CLIPPING itself or
+ * the viewport clamp — those are pinned as source assertions in test/photo-edit-menu.test.ts.
  * Storage, the PNG/JPG rule and the 2 MB limit are server-side and covered by test/company-logo.test.ts.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -58,11 +67,14 @@ function renderEdit(hasLogo: boolean) {
     />,
   );
   const trigger = () => screen.getByRole('button', { name: ORG.logoEdit });
-  const fileInput = () => view.container.querySelector('input[type="file"]') as HTMLInputElement | null;
+  // r227: the popover (backdrop + panel + the forms inside it) is portalled to document.body, so it is
+  // NOT under `view.container` any more — these two scan the document. The preview img still is under
+  // the container, and stays queried there, because that is the half of the contract that did not move.
+  const fileInput = () => document.body.querySelector('input[type="file"]') as HTMLInputElement | null;
   const previewImg = () => view.container.querySelector('[data-logo-preview]');
-  // The popover's click-catcher: a fixed inset-0 sibling that closes the menu when anything outside it
+  // The popover's click-catcher: a fixed inset-0 element that closes the menu when anything outside it
   // is clicked. Clicking it IS "the reader clicked away".
-  const backdrop = () => view.container.querySelector('div.fixed.inset-0') as HTMLElement | null;
+  const backdrop = () => document.body.querySelector('div.fixed.inset-0') as HTMLElement | null;
   return { ...view, trigger, fileInput, previewImg, backdrop, setAction, removeAction };
 }
 
@@ -143,6 +155,29 @@ describe('CompanyLogoEdit · the preview never outlives the control that consume
     expect(v.fileInput()).toBeInTheDocument();
     expect(v.fileInput()!.files?.length ?? 0).toBe(0);
     expect(v.previewImg()).toBeNull();
+  });
+
+  it('the popover is portalled out of the component, so <main>\'s overflow cannot clip it', async () => {
+    // r227. The panel used to be an `absolute` child of the trigger's wrapper, inside <main
+    // className="… overflow-y-auto">; a non-visible overflow on one axis makes the other `auto` too, so
+    // the panel was TRIMMED at that scroll container's edge — measured at ~43px off its LEFT end, at
+    // every width where the header lays out as a row. jsdom sees no clipping: it applies no CSS and
+    // computes no layout. But it does see the TREE, and "the panel is not a descendant of the scrolling
+    // subtree" is the structural half of the fix, which is exactly what this asserts.
+    const user = userEvent.setup();
+    const v = renderEdit(true);
+    await user.click(v.trigger());
+
+    const panel = document.body.querySelector('div.fixed.z-50') as HTMLElement | null;
+    expect(panel, 'the open panel exists and is position:fixed').not.toBeNull();
+    expect(v.container.contains(panel), 'and it lives OUTSIDE the component container').toBe(false);
+    expect(document.body.contains(panel!)).toBe(true);
+    // The forms travelled with it — this is why the two queries above scan the document.
+    expect(panel!.querySelector('input[type="file"]')).not.toBeNull();
+    // The click-catcher went with it too, so clicking away still closes.
+    expect(v.container.contains(v.backdrop())).toBe(false);
+    await user.click(v.backdrop()!);
+    expect(v.fileInput()).toBeNull();
   });
 
   it('the preview is local only — nothing is submitted by picking or by walking away', async () => {
