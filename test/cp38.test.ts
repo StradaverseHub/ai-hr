@@ -14,7 +14,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
-import { createBatch, createAdditionalRun, generatePayslips } from '../core/payroll';
+import { createBatch, createAdditionalRun, generatePayslips, setPayrollInput } from '../core/payroll';
 import { cp39FileForBatch } from '../localization/my/cp39-file';
 import {
   listCp38,
@@ -243,6 +243,12 @@ describe('1.2.3 CP38 Deduction', () => {
     const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: reg.batchId });
     const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    // r226 — THE BONUS RUN NOW NEEDS A REASON TO PROCESS THIS PERSON. An additional run skips anybody it
+    // has nothing to do for, so without a keyed bonus there would be no bonus payslip at all and this
+    // test would be asserting CP38 is not re-charged on a payslip that was never written — which passes
+    // for the wrong reason. RM1,000 keeps the employee IN the run, which is what makes "regular=200,
+    // bonus=0" a statement about the CP38 rule rather than about the employee's absence.
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: 1000 });
     await generatePayslips(a, { batchId: bonus.batchId });
 
     // Read the two payslips of the period for this employment.

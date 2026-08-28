@@ -10,7 +10,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { createAdditionalRun, createBatch, defaultPaymentDate, generatePayslips } from '../core/payroll';
+import { createAdditionalRun, createBatch, defaultPaymentDate, generatePayslips, setPayrollInput } from '../core/payroll';
 import { listEmployeesForPayrollRun } from '../core/read';
 import { setCompensation } from '../core/comp';
 import { hireEmployee, terminateEmployment } from '../core/org';
@@ -93,10 +93,16 @@ describe('Payroll Process wizard — engine + population (DB)', () => {
     expect(row.batchDate).toBe('2026-05-10');
     expect(row.scope).toEqual({ employmentIds: [e1.employmentId] });
 
-    await generatePayslips(a, { batchId });
+    // r226 — the ADDITIONAL run also skips anybody it has nothing to pay, so e1 needs a figure of their
+    // own or this would assert "one payslip" against a run that wrote none. The scope half is what this
+    // case is about and it is unchanged: e2 is outside the scope and never reaches the run at all —
+    // which is a different thing from being skipped, and the returned skip list says so by being empty.
+    await setPayrollInput(a, { batchId, employmentId: e1.employmentId, overtimeAmount: 0, bonusAmount: 750 });
+    const gen = await generatePayslips(a, { batchId });
     const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     expect(slips).toHaveLength(1);
     expect(slips[0].employmentId).toBe(e1.employmentId);
+    expect('skipped' in gen ? gen.skipped : []).toEqual([]);
   });
 
   it('listEmployeesForPayrollRun: includes a mid-period leaver, excludes a pre-period leaver and a post-period hire', async () => {

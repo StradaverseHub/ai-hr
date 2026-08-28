@@ -3505,6 +3505,7 @@
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped: no transaction entry for this payroll cycle",
       "preChecksConfirmRequired": "Please confirm the pre-processing warnings before generating payslips.",
       "preConfirmTitle": "Process payroll with warnings?",
       "preConfirmDescription": "{n} pre-processing check(s) are unresolved (missing statutory profile or bank details). Affected employees may get default statutory treatment and be missing from the payment file.",
@@ -4987,6 +4988,8 @@
       "companiesSplit": "{ok} succeeded · {failed} failed",
       "totalEmployeesSelected": "Total employees selected",
       "totalEmployeesSucceeded": "Successfully processed",
+      "totalEmployeesSkipped": "Skipped — nothing to pay",
+      "skippedNotAFailure": "Not a failure",
       "totalEmployeesFailed": "Failed to process",
       "startedAt": "Started at",
       "endedAt": "Ended at",
@@ -4994,6 +4997,7 @@
       "colCompany": "Company",
       "colSelected": "Selected",
       "colSucceeded": "Succeeded",
+      "colSkipped": "Skipped",
       "colStatus": "Status",
       "colDetail": "Detail",
       "companySucceeded": "Succeeded",
@@ -5004,6 +5008,13 @@
       "colEmployeeName": "Employee Name",
       "colFailureReason": "Failure Reason",
       "employeeFailed": "Failed",
+      "skippedEmployeesTitle": "Employees skipped by this run",
+      "skippedEmployeesNote": "This is an additional run, so employees with nothing to be paid in this cycle were not processed. They have no payslip and no payroll record for this run, and none of their transactions were used up.",
+      "colSkipReason": "Reason",
+      "employeeSkipped": "Skipped",
+      "skipReason": {
+        "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle"
+      },
       "overall": {
         "succeeded": "Succeeded",
         "partial": "Partially succeeded",

@@ -14,6 +14,12 @@ import { payrollProcessBack } from '../../back';
  * appended by the orchestrator; a refresh loses this in-request payload by design, per plan §"Run-group
  * record"). Shows the requested header counts, a per-company outcome table with friendly failure reasons,
  * and — as the Phase-1 failed-employee signal — the pre-flight "missing salary" employees who were in scope.
+ *
+ * r226 adds the THIRD outcome: employees an ADDITIONAL run (Bonus / Off-cycle / Adjustment) did not process
+ * because it had nothing to pay them in that cycle. They are counted in their own stat, listed BY NAME in
+ * their own card, and are deliberately NOT in the red "Failed to process" figure — `summarize` subtracts
+ * them there, and the card below carries a neutral badge rather than a danger one, because a skip is a
+ * correct decision by the run and not something that went wrong.
  */
 export default async function PayrollProcessResultPage({
   searchParams,
@@ -60,6 +66,13 @@ export default async function PayrollProcessResultPage({
     : [];
   const missingSalary = scopeRows.filter((e) => !e.hasCurrentCompensation);
 
+  // r226 — every skipped employee, flattened across the run's companies and carrying the company name so
+  // a multi-company bonus run reads as one list. Sorted by company then name, so two runs of the same
+  // shape print in the same order.
+  const skippedRows = result.perCompany
+    .flatMap((c) => (c.employeesSkipped ?? []).map((e) => ({ ...e, companyId: c.companyId, companyName: c.companyName })))
+    .sort((a, b) => a.companyName.localeCompare(b.companyName) || a.name.localeCompare(b.name));
+
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
@@ -79,6 +92,11 @@ export default async function PayrollProcessResultPage({
           <Stat label={t('totalCompanies')} value={`${result.totalCompanies}`} sub={t('companiesSplit', { ok: result.companiesSucceeded, failed: result.companiesFailed })} />
           <Stat label={t('totalEmployeesSelected')} value={`${result.totalEmployeesSelected}`} />
           <Stat label={t('totalEmployeesSucceeded')} value={`${result.totalEmployeesSucceeded}`} />
+          {/* r226 — shown only when there is something to say. A payload written before this shipped has
+              no `totalEmployeesSkipped` at all, so `?? 0` keeps the old result URLs rendering. */}
+          {(result.totalEmployeesSkipped ?? 0) > 0 && (
+            <Stat label={t('totalEmployeesSkipped')} value={`${result.totalEmployeesSkipped}`} sub={t('skippedNotAFailure')} />
+          )}
           <Stat label={t('totalEmployeesFailed')} value={`${result.totalEmployeesFailed}`} />
           <Stat label={t('startedAt')} value={fmtTime(result.startedAt)} />
           <Stat label={t('endedAt')} value={fmtTime(result.endedAt)} />
@@ -94,6 +112,7 @@ export default async function PayrollProcessResultPage({
                 <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
                 <th className="px-4 py-2 font-medium">{t('colSelected')}</th>
                 <th className="px-4 py-2 font-medium">{t('colSucceeded')}</th>
+                <th className="px-4 py-2 font-medium">{t('colSkipped')}</th>
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                 <th className="px-4 py-2 font-medium">{t('colDetail')}</th>
               </tr>
@@ -104,6 +123,7 @@ export default async function PayrollProcessResultPage({
                   <td className="px-4 py-2 font-medium text-foreground">{c.companyName}</td>
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSelected}</td>
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSucceeded}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{c.employeesSkipped?.length ?? 0}</td>
                   <td className="px-4 py-2">
                     {c.status === 'succeeded' ? (
                       <Badge variant="success">{t('companySucceeded')}</Badge>
@@ -128,6 +148,40 @@ export default async function PayrollProcessResultPage({
           </table>
         </div>
       </Card>
+
+      {skippedRows.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-4 py-3">
+            <div className="text-sm font-medium">{t('skippedEmployeesTitle')}</div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('skippedEmployeesNote')}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">{t('colEmployeeId')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colEmployeeName')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colSkipReason')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {skippedRows.map((e) => (
+                  <tr key={`${e.companyId}:${e.employmentId}`} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2"><EmployeeCode code={e.employeeCode} /></td>
+                    <td className="px-4 py-2 text-foreground">{e.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{e.companyName}</td>
+                    {/* NEUTRAL, never danger: nothing went wrong for this person. */}
+                    <td className="px-4 py-2"><Badge variant="default">{t('employeeSkipped')}</Badge></td>
+                    <td className="px-4 py-2 text-muted-foreground">{t(`skipReason.${e.reason}`)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {missingSalary.length > 0 && (
         <Card className="overflow-hidden">

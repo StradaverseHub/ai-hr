@@ -7,10 +7,17 @@
  * was before. The only new behaviour is the loop, the per-company authorization + failure handling, and the
  * run-group summary that feeds the Step-3 result page.
  *
- * Engine reality (see plan §3): `generatePayslips` is all-or-nothing PER BATCH — it throws wholesale on a
- * hard failure and never returns a per-employee failure list. So Phase 1 reports failure at COMPANY
- * granularity (the caught throw, mapped to a reason code) plus the pre-flight "missing salary" signal that
- * already exists on the Step-2 employee row (`hasCurrentCompensation`). Per-employee reasons are Phase 2.
+ * Engine reality (see plan §3): `generatePayslips` is all-or-nothing PER BATCH for FAILURE — it throws
+ * wholesale on a hard failure and never returns a per-employee failure list. So Phase 1 reports failure at
+ * COMPANY granularity (the caught throw, mapped to a reason code) plus the pre-flight "missing salary"
+ * signal that already exists on the Step-2 employee row (`hasCurrentCompensation`). Per-employee failure
+ * reasons are Phase 2.
+ *
+ * r226 AMENDS THAT IN EXACTLY ONE DIRECTION, AND IT IS NOT THE FAILURE DIRECTION. The kernel now returns a
+ * per-employee SKIP list from an additional run — the people it had nothing to pay in that cycle. Skipped
+ * is a third outcome beside succeeded and failed: it is counted separately, subtracted out of
+ * `totalEmployeesFailed`, and must never be rendered as a failure. The all-or-nothing constraint on
+ * FAILURE is untouched.
  *
  * Sequential, not parallel: each `generatePayslips` is its own transaction, so companies are processed one
  * at a time and presented to the user as a single run. HAZARD DISCIPLINE (both covered by tests):
@@ -23,7 +30,7 @@
 import { withTenant, type SessionContext } from '../db/client';
 import { randomUUID } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
-import { createAdditionalRun, createBatch, generatePayslips } from './payroll';
+import { createAdditionalRun, createBatch, generatePayslips, type SkippedEmployee } from './payroll';
 import { getActivePayrollCycle, listPayrollCycles } from './payroll-cycle';
 import { allowedCompanies, listEmployees } from './read';
 
@@ -55,6 +62,16 @@ export type CompanyOutcome = {
   employeesSelected: number;
   /** Payslips actually generated (the engine's own count of paid employees). */
   employeesSucceeded: number;
+  /**
+   * r226 — THE THIRD OUTCOME, AND IT IS NOT A FAILURE. On an ADDITIONAL run (Bonus / Off-cycle /
+   * Adjustment) the kernel does not process an employee it has nothing to pay in that cycle, and names
+   * each one. Absent on a regular run and on every run that skipped nobody, so a payload written before
+   * this shipped decodes unchanged and reads as "nobody skipped".
+   *
+   * It exists as a LIST rather than a count because the whole ask was to account for the missing forty
+   * BY NAME; the count is derived from it, never carried twice.
+   */
+  employeesSkipped?: SkippedEmployee[];
   /** Set on a failed company. */
   reason?: RunGroupReasonCode;
   /** Organization Module (361e3b15) — on an INVALID_CYCLE failure, the run TYPE that had no active cycle in
@@ -73,6 +90,8 @@ export type RunGroupResult = {
   companiesFailed: number;
   totalEmployeesSelected: number;
   totalEmployeesSucceeded: number;
+  /** r226 — skipped is its OWN outcome, counted apart from processed and never reported as a failure. */
+  totalEmployeesSkipped: number;
   totalEmployeesFailed: number;
   perCompany: CompanyOutcome[];
 };
@@ -105,6 +124,7 @@ export function summarize(
   const companiesSucceeded = perCompany.filter((c) => c.status === 'succeeded').length;
   const totalEmployeesSelected = perCompany.reduce((n, c) => n + c.employeesSelected, 0);
   const totalEmployeesSucceeded = perCompany.reduce((n, c) => n + c.employeesSucceeded, 0);
+  const totalEmployeesSkipped = perCompany.reduce((n, c) => n + (c.employeesSkipped?.length ?? 0), 0);
   return {
     payPeriod,
     startedAt,
@@ -115,9 +135,15 @@ export function summarize(
     companiesFailed: perCompany.length - companiesSucceeded,
     totalEmployeesSelected,
     totalEmployeesSucceeded,
+    totalEmployeesSkipped,
     // Every selected employee in a wholesale-failed company counts as failed, plus any per-company gap
     // (comp-less hires the engine silently dropped) in a succeeded company.
-    totalEmployeesFailed: totalEmployeesSelected - totalEmployeesSucceeded,
+    //
+    // r226 — MINUS THE SKIPPED, and this subtraction is the whole reason the count exists. Without it
+    // every employee an additional run deliberately left out would land in this figure and render RED on
+    // the result page as "Failed to process" — the system reporting its own correct decision as forty
+    // failures. A run that skipped nobody subtracts 0 and is arithmetically unchanged.
+    totalEmployeesFailed: totalEmployeesSelected - totalEmployeesSucceeded - totalEmployeesSkipped,
     perCompany,
   };
 }
@@ -280,6 +306,9 @@ export async function runMultiCompanyPayroll(
       // fall back to 0 to satisfy the union return type of generatePayslips.
       const genResult = await generatePayslips(ctx, { batchId: created.batchId });
       const payslips = 'payslips' in genResult && typeof genResult.payslips === 'number' ? genResult.payslips : 0;
+      // r226 — the kernel's own skip list, carried through untouched. Same union-return guard as
+      // `payslips`: the subset-reprocess branch has no `skipped` key and this path never takes it.
+      const skipped = 'skipped' in genResult && Array.isArray(genResult.skipped) ? genResult.skipped : [];
       perCompany.push({
         companyId,
         companyName,
@@ -287,6 +316,7 @@ export async function runMultiCompanyPayroll(
         batchId: created.batchId,
         employeesSelected,
         employeesSucceeded: payslips,
+        ...(skipped.length > 0 ? { employeesSkipped: skipped } : {}),
       });
     } catch (e) {
       // HAZARD 2 — catch PER COMPANY. One company's failure never aborts the others in the run.
@@ -330,6 +360,11 @@ export async function runMultiCompanyPayroll(
           reason: c.reason ?? null,
           employeesSelected: c.employeesSelected,
           employeesSucceeded: c.employeesSucceeded,
+          // r226 — the run-group event is the DURABLE record (the `?r=` payload dies with the redirect),
+          // so the skip has to be inspectable here too. Ids + reason only: names are re-resolvable and a
+          // domain event is not the place to snapshot personal data it does not need.
+          employeesSkipped: c.employeesSkipped?.length ?? 0,
+          skipped: (c.employeesSkipped ?? []).map((s) => ({ employmentId: s.employmentId, reason: s.reason })),
         })),
       },
     }),
