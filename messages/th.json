@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "ทุกคำขอด้านการลงเวลาที่คุณยื่น และผลของคำขอนั้น",
     "maSeeRequestStatus": "ดูสถานะคำขอของฉัน",
     "maClose": "ปิด",
+    "maCancel": "ยกเลิก",
     "sharedLeaveGroups": {
       "heading": "ยอดวันลาแบบใช้ร่วมกัน",
       "ofLimit": "จาก {limit} วันที่ใช้ร่วมกัน",

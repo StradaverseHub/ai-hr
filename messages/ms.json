@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "Setiap permohonan kehadiran yang anda hantar, dan keputusannya.",
     "maSeeRequestStatus": "Lihat status permohonan saya",
     "maClose": "Tutup",
+    "maCancel": "Batal",
     "sharedLeaveGroups": {
       "heading": "Baki cuti dikongsi",
       "ofLimit": "daripada {limit} hari dikongsi",

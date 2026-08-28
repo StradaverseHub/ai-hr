@@ -1,13 +1,24 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { CalendarPlus } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { myEmployment, reportingLinesFor } from '@/core/read';
 import { attendanceForEmploymentRange, myAttendanceCorrections } from '@/packs/attendance/service';
-import { Button, Card, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
+import {
+  Button,
+  Card,
+  ErrorBanner,
+  PageHeader,
+  pageWideCls,
+  tableWrapCls,
+  tbodyCls,
+  theadCls,
+  thCls,
+} from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myRequestCorrection } from '@/app/me/actions';
-import { CorrectAnotherDayDialog, CorrectionForm, type CorrectionCopy } from './correction-form';
+import { CorrectionDialog, CorrectionForm, LeaveInsteadNote, type CorrectionCopy } from './correction-form';
 import {
   KIND_OF_SECTION,
   defaultSection,
@@ -47,6 +58,22 @@ import {
  * "CORRECT ANOTHER DAY" IS A POP-UP NOW, not the empty state of the Fix panel. Both faces of that form are
  * one component (./correction-form) so they cannot disagree about the 30-day bounds or the locked half of
  * an incomplete punch.
+ *
+ * r227 — THE SCREEN IS FULL WIDTH AND EVERY REQUEST IS THAT SAME POP-UP. Two complaints, one shape: the
+ * page was capped at `max-w-6xl` and then split AGAIN into a list column and a 22rem Fix column, so the
+ * table the employee came to read got about half of a wide monitor. The Fix column is gone — Request on a
+ * row opens the pop-up that "Correct another day" already opened, handed that row's day — and the wrapper
+ * is `pageWideCls`. THREE THINGS HAD TO TRAVEL WITH THE FORM, and losing any one is the defect:
+ *   1. `?fix=YYYY-MM-DD` is no longer GENERATED, but the branch that renders it is kept below: links and
+ *      bookmarks written while it was the only way in must still open the form for that day.
+ *   2. An "Also waiting for you" row belongs to a DIFFERENT section from the open tab. The old link
+ *      switched section on the way in, which is how the request got the right `request_kind`; the pop-up
+ *      is handed `d.section` / KIND_OF_SECTION[d.section] off the row instead.
+ *   3. `maRequestLeaveHelp` + the `/leave?apply=1&start=` button sat OUTSIDE the form, under it, and are
+ *      the second of the two routes `maAbsentTwoRoutes` promises out loud. They travel into the pop-up as
+ *      LeaveInsteadNote — the same component the kept inline panel renders.
+ * No DRAFT state was built and none was implied: attendance_correction_status is
+ * pending|approved|rejected|cancelled, so there is ONE confirm button, with Cancel beside it.
  *
  * THE WINDOW IS THE CUT-OFF, and they are deliberately the same number. Stage one runs on fixed rules
  * until the Attendance Request Settings screen exists (stage two), and one of them is that a correction
@@ -90,7 +117,11 @@ export default async function AttendanceIrregularityPage({
 
   if (!me) {
     return (
-      <div className="mx-auto max-w-2xl">
+      // A one-sentence notice, so it stays centred and narrow while the SCREEN below is full width
+      // (r227). `max-w-md` rather than `max-w-2xl` deliberately: test/attendance-screens-layout.test.ts
+      // reads this file for a page-level `mx-auto` + `max-w-…xl` cap, which is exactly the shape the
+      // reporter asked us to take off this screen — and a lone sentence needs no more room than this.
+      <div className="mx-auto max-w-md">
         <Card className="p-8 text-center">
           <h1 className="text-lg font-semibold">{t('attendanceRequest')}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{t('notLinked')}</p>
@@ -168,8 +199,23 @@ export default async function AttendanceIrregularityPage({
     submit: t('maSubmitRequest'),
   };
 
+  // Everything a row's pop-up needs that is NOT about the day. The day itself — and, crucially, the
+  // section and request_kind it files under — comes off the ROW inside ExceptionTable, so an "Also
+  // waiting for you" row from another section still files under its own kind (r227).
+  const request: CorrectionRequest = {
+    copy,
+    approver,
+    submitAction: myRequestCorrection,
+    minDate: from,
+    maxDate: to,
+  };
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    // FULL WIDTH (r227). This was `mx-auto max-w-6xl`, which left a wide monitor with empty margins either
+    // side of the one table the employee came to read — the same complaint 026e16b9 answered on /leave and
+    // af7a8eb4 on the five admin Attendance screens. `pageWideCls` rather than a hand-written class so the
+    // screens that went wide did it by ONE means; <body> already carries the gutters (app/layout.tsx).
+    <div className={pageWideCls}>
       <PageHeader
         title={t('attendanceRequest')}
         description={
@@ -188,13 +234,15 @@ export default async function AttendanceIrregularityPage({
             <Button asChild size="sm" variant="ghost">
               <Link href="/attendance/request-status">{t('maSeeRequestStatus')}</Link>
             </Button>
-            {/* "Correct another day" — a day that is NOT flagged above. A pop-up now, at the reporter's
-                request; the same form, the same bounds, the same action as the panel beside the rows.
+            {/* "Correct another day" — a day that is NOT flagged above. The SAME pop-up every row opens
+                now (r227), with `day={null}`, which is the only thing that makes it the free-date face.
                 The stored kind is `other`, which is what that fifth value has always been for. */}
-            <CorrectAnotherDayDialog
+            <CorrectionDialog
               title={t('maFixAnotherHeading')}
               triggerLabel={t('maFixAnotherHeading')}
+              triggerIcon={<CalendarPlus className="size-3.5" />}
               closeLabel={t('maClose')}
+              cancelLabel={t('maCancel')}
               copy={copy}
               approver={approver}
               submitAction={myRequestCorrection}
@@ -236,81 +284,18 @@ export default async function AttendanceIrregularityPage({
         })}
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="space-y-4">
-          {/* ── Short Hours · Incomplete Entry · Absent — the days found FOR the employee ──────────── */}
-          <Card className="overflow-hidden">
-            <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-              {t('maFoundForYou', { section: TABS.find((x) => x.key === section)!.label })}
-            </div>
-            {!onClocking ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoClockingRecords')}</p>
-            ) : sectionDays.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {section === 'incomplete'
-                  ? t('maEmptyIncomplete')
-                  : section === 'short'
-                    ? t('maEmptyShort')
-                    : t('maEmptyAbsent')}
-              </p>
-            ) : (
-              <ExceptionTable
-                days={sectionDays}
-                t={t}
-                openDate={sp.fix}
-                pendingDates={pendingDates}
-                fixHref={(d) => href({ fix: d })}
-              />
-            )}
-            {section === 'absent' && sectionDays.length > 0 && (
-              <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-                {t('maAbsentTwoRoutes')}
-              </p>
-            )}
-          </Card>
-
-          {/* ── "Also waiting for you" — the OTHER sections' days, in view. ──────────────────────────
-              The counts on the tabs already say a section is not empty; this says WHAT is in it, so a
-              missing clock-out and a late arrival do not need two visits to be seen. Only the first
-              few rows, with a link into the section for the rest — an Absent section with twenty days
-              would otherwise bury the tab the employee chose. */}
-          {onClocking &&
-            OTHER_SECTIONS[section].map((other) => {
-              const days = other === 'incomplete' ? found.incomplete : other === 'short' ? found.short : found.absent;
-              if (days.length === 0) return null;
-              const label = TABS.find((x) => x.key === other)!.label;
-              return (
-                <Card key={other} className="overflow-hidden">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-                    <span className="text-sm font-semibold">{t('maAlsoWaiting', { section: label })}</span>
-                    {days.length > ALSO_ROWS && (
-                      <Link
-                        href={href({ section: other, fix: null })}
-                        className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-                      >
-                        {t('maSeeAllInSection', { count: days.length })}
-                      </Link>
-                    )}
-                  </div>
-                  <ExceptionTable
-                    days={days.slice(0, ALSO_ROWS)}
-                    t={t}
-                    openDate={undefined}
-                    pendingDates={pendingDates}
-                    // Fixing from here SWITCHES to that section, so the panel beside it files the request
-                    // under the right kind — the stored kind is what the request list reads.
-                    fixHref={(d) => href({ section: other, fix: d })}
-                  />
-                </Card>
-              );
-            })}
-        </div>
-
-        {/* ── The Fix panel · the request, already filled in ───────────────────────────────────────
-            Rendered only for a day the employee picked. The free-date face of this form is the pop-up in
-            the header now, which is what the reporter asked for: the panel is about THIS day. */}
+      {/* ONE COLUMN (r227). This was a two-column grid whose right-hand 22rem held the Fix panel — the
+          split that made a table on a 1920px monitor about half as wide as the screen it sat on. The
+          request opens in a pop-up now, so there is nothing left to make room for and the table takes the
+          whole width. */}
+      <div className="space-y-4">
+        {/* ── The Fix panel · a `?fix=YYYY-MM-DD` LINK, and nothing else ──────────────────────────────
+            NOTHING GENERATES THIS ADDRESS ANY MORE — the rows open the pop-up. It is kept because the
+            address was real for two rounds: a bookmark, or a link already sent to somebody, must still
+            open the form for that day rather than land on a screen that ignores half of it. Capped to a
+            form's reading width because the page around it is now full width. */}
         {fixDay && (
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden sm:max-w-md">
             <div className="border-b border-border px-4 py-3 text-sm font-semibold">
               {t('maFixHeading', { date: fixDay.date })}
             </div>
@@ -331,17 +316,78 @@ export default async function AttendanceIrregularityPage({
             />
             {section === 'absent' && (
               /* The reporter's second route for an absent day: don't correct the clock, ask for leave —
-                 with the date carried across so it does not have to be typed again. The existing Request
-                 Leave dialog on /leave opens itself from the query string; no second dialog is built. */
-              <div className="border-t border-border px-4 py-3">
-                <p className="text-[11px] text-muted-foreground">{t('maRequestLeaveHelp')}</p>
-                <Button asChild size="sm" variant="outline" className="mt-2">
-                  <Link href={`/leave?apply=1&start=${fixDay.date}`}>{t('maRequestLeaveInstead')}</Link>
-                </Button>
-              </div>
+                 with the date carried across so it does not have to be typed again. The same note the
+                 pop-up carries (LeaveInsteadNote), so the two faces cannot offer different routes. */
+              <LeaveInsteadNote
+                href={`/leave?apply=1&start=${fixDay.date}`}
+                help={t('maRequestLeaveHelp')}
+                label={t('maRequestLeaveInstead')}
+              />
             )}
           </Card>
         )}
+
+        {/* ── Short Hours · Incomplete Entry · Absent — the days found FOR the employee ──────────── */}
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+            {t('maFoundForYou', { section: TABS.find((x) => x.key === section)!.label })}
+          </div>
+          {!onClocking ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoClockingRecords')}</p>
+          ) : sectionDays.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              {section === 'incomplete'
+                ? t('maEmptyIncomplete')
+                : section === 'short'
+                  ? t('maEmptyShort')
+                  : t('maEmptyAbsent')}
+            </p>
+          ) : (
+            <ExceptionTable days={sectionDays} t={t} openDate={sp.fix} pendingDates={pendingDates} request={request} />
+          )}
+          {section === 'absent' && sectionDays.length > 0 && (
+            <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+              {t('maAbsentTwoRoutes')}
+            </p>
+          )}
+        </Card>
+
+        {/* ── "Also waiting for you" — the OTHER sections' days, in view. ──────────────────────────
+            The counts on the tabs already say a section is not empty; this says WHAT is in it, so a
+            missing clock-out and a late arrival do not need two visits to be seen. Only the first
+            few rows, with a link into the section for the rest — an Absent section with twenty days
+            would otherwise bury the tab the employee chose. */}
+        {onClocking &&
+          OTHER_SECTIONS[section].map((other) => {
+            const days = other === 'incomplete' ? found.incomplete : other === 'short' ? found.short : found.absent;
+            if (days.length === 0) return null;
+            const label = TABS.find((x) => x.key === other)!.label;
+            return (
+              <Card key={other} className="overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                  <span className="text-sm font-semibold">{t('maAlsoWaiting', { section: label })}</span>
+                  {days.length > ALSO_ROWS && (
+                    <Link
+                      href={href({ section: other, fix: null })}
+                      className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                    >
+                      {t('maSeeAllInSection', { count: days.length })}
+                    </Link>
+                  )}
+                </div>
+                {/* No section switch on the way in any more: the row's pop-up is handed ITS OWN day's
+                    section and kind (ExceptionTable reads `d.section`), which is what the navigation used
+                    to be for. Lose that and a cross-section request files under the open tab's kind. */}
+                <ExceptionTable
+                  days={days.slice(0, ALSO_ROWS)}
+                  t={t}
+                  openDate={undefined}
+                  pendingDates={pendingDates}
+                  request={request}
+                />
+              </Card>
+            );
+          })}
       </div>
     </div>
   );
@@ -375,27 +421,44 @@ const OTHER_SECTIONS: Record<ExceptionSection, ExceptionSection[]> = {
 
 type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
 
+/** The day-INDEPENDENT half of a correction request, handed down to every row's pop-up. Split out so the
+ *  day-dependent half (date, section, request_kind, prefills, and the absent day's leave route) is read
+ *  off the row and cannot be taken from the open tab by accident. */
+type CorrectionRequest = {
+  copy: CorrectionCopy;
+  approver: string;
+  submitAction: (formData: FormData) => void | Promise<void>;
+  minDate: string;
+  maxDate: string;
+};
+
 /**
  * The days-we-found table, stated ONCE and rendered in two places (the open section, and the "Also
  * waiting for you" cards). A second copy would be the fastest way for the two to start describing the
  * same day differently.
  *
  * A plain function taking `t` rather than a `<Component>` boundary: this is server-rendered throughout,
- * so there is no serialisation to respect — and passing `t` or `fixHref` across a real client boundary is
- * exactly the closure-from-a-server-component 500 that test/server-client-boundary.test.ts exists for.
+ * so there is no serialisation to respect — and passing `t` across a real client boundary is exactly the
+ * closure-from-a-server-component 500 that test/server-client-boundary.test.ts exists for.
+ *
+ * ⚠️ IT MUST STAY THAT WAY (r227). The Request control is a CLIENT pop-up now, and the temptation is to
+ * put `'use client'` at the top of this file to reach it. Don't: this function takes `t`, and the moment
+ * it becomes a client component that `t` is a closure crossing the boundary — the r123 shape, which types,
+ * `next build` and the whole suite all pass while the page returns 500. The dialog is mounted INSIDE the
+ * cell instead, and every prop it is handed is a string, a plain object or the server action itself.
  */
 function ExceptionTable({
   days,
   t,
   openDate,
   pendingDates,
-  fixHref,
+  request,
 }: {
   days: ExceptionDay[];
   t: T;
   openDate: string | undefined;
   pendingDates: Set<string>;
-  fixHref: (date: string) => string;
+  request: CorrectionRequest;
 }) {
   return (
     <div className={tableWrapCls}>
@@ -410,35 +473,73 @@ function ExceptionTable({
           </tr>
         </thead>
         <tbody className={tbodyCls}>
-          {days.map((d) => (
-            <tr key={d.date} className={d.date === openDate ? 'bg-accent/40' : undefined}>
-              <td className="px-3 py-2.5">
-                <div className="tabular-nums">{d.date}</div>
-                <div className="text-[11px] text-muted-foreground">{dayName(d.date)}</div>
-              </td>
-              <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
-                {d.scheduledFrom && d.scheduledTo ? `${d.scheduledFrom} – ${d.scheduledTo}` : '—'}
-              </td>
-              <td className="px-3 py-2.5">
-                <span className="font-medium text-amber-700 dark:text-amber-400">{foundText(d, t)}</span>
-              </td>
-              <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
-                {t('maHaveInOut', { in: d.actualIn ?? '—', out: d.actualOut ?? '—' })}
-              </td>
-              <td className="px-3 py-2.5 text-right">
-                {/* A date that already has a request WAITING cannot take a second one (the partial unique
-                    index), so it says so rather than offering a button the service would refuse. The pair
-                    reads Request / Requested since c6bb5f5a — "Fix this" beside "Requested" did not. */}
-                {pendingDates.has(d.date) ? (
-                  <span className="text-xs text-muted-foreground">{t('maAlreadyRequested')}</span>
-                ) : (
-                  <Button asChild size="sm" variant={d.date === openDate ? 'default' : 'outline'}>
-                    <Link href={fixHref(d.date)}>{t('maFixThis')}</Link>
-                  </Button>
-                )}
-              </td>
-            </tr>
-          ))}
+          {days.map((d) => {
+            // The absent day's OTHER route, carried into the pop-up with the form (r227). It used to sit
+            // in the Card below the inline panel; the form moved and this had to move with it, or
+            // `maAbsentTwoRoutes` under the list would name a second route the screen no longer offers.
+            const leave =
+              d.section === 'absent'
+                ? {
+                    href: `/leave?apply=1&start=${d.date}`,
+                    help: t('maRequestLeaveHelp'),
+                    label: t('maRequestLeaveInstead'),
+                  }
+                : null;
+            return (
+              <tr key={d.date} className={d.date === openDate ? 'bg-accent/40' : undefined}>
+                <td className="px-3 py-2.5">
+                  <div className="tabular-nums">{d.date}</div>
+                  <div className="text-[11px] text-muted-foreground">{dayName(d.date)}</div>
+                </td>
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
+                  {d.scheduledFrom && d.scheduledTo ? `${d.scheduledFrom} – ${d.scheduledTo}` : '—'}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="font-medium text-amber-700 dark:text-amber-400">{foundText(d, t)}</span>
+                </td>
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
+                  {t('maHaveInOut', { in: d.actualIn ?? '—', out: d.actualOut ?? '—' })}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {/* A date that already has a request WAITING cannot take a second one (the partial unique
+                      index), so it says so rather than offering a button the service would refuse. The pair
+                      reads Request / Requested since c6bb5f5a — "Fix this" beside "Requested" did not. */}
+                  {pendingDates.has(d.date) ? (
+                    <span className="text-xs text-muted-foreground">{t('maAlreadyRequested')}</span>
+                  ) : (
+                    /* r227 — Request OPENS THE POP-UP rather than navigating to `?fix=`. Every label is
+                       resolved here, server-side, including the title: `t` may not cross into the client
+                       module. `d.section` (not the open tab) decides the kind this files under. */
+                    <CorrectionDialog
+                      title={t('maFixHeading', { date: d.date })}
+                      triggerLabel={t('maFixThis')}
+                      // The solid button on the row a legacy `?fix=` link opened, kept exactly as it was —
+                      // that row is highlighted and its control should still read as the live one.
+                      triggerVariant={d.date === openDate ? 'default' : 'outline'}
+                      closeLabel={t('maClose')}
+                      cancelLabel={t('maCancel')}
+                      copy={request.copy}
+                      approver={request.approver}
+                      submitAction={request.submitAction}
+                      section={d.section}
+                      requestKind={KIND_OF_SECTION[d.section]}
+                      day={{
+                        date: d.date,
+                        missing: d.missing,
+                        prefillIn: d.prefillIn,
+                        prefillOut: d.prefillOut,
+                      }}
+                      minDate={request.minDate}
+                      maxDate={request.maxDate}
+                      leaveHref={leave?.href}
+                      leaveHelp={leave?.help}
+                      leaveLabel={leave?.label}
+                    />
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

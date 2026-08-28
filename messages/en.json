@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "Every attendance request you have filed, and what happened to it.",
     "maSeeRequestStatus": "See my request status",
     "maClose": "Close",
+    "maCancel": "Cancel",
     "sharedLeaveGroups": {
       "heading": "Shared leave balances",
       "ofLimit": "of {limit} shared days",

@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "你提交过的每一项考勤申请及其结果。",
     "maSeeRequestStatus": "查看我的申请状态",
     "maClose": "关闭",
+    "maCancel": "取消",
     "sharedLeaveGroups": {
       "heading": "共享假期余额",
       "ofLimit": "共享额度 {limit} 天",

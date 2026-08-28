@@ -7,10 +7,15 @@
  *
  * What is pinned, and why each one:
  *
- *  A. The five LIST screens in the Attendance admin menu use `pageWideCls` and carry no page-level width
- *     cap. On a 1920px window the old `mx-auto max-w-4xl` left about 745px — 45 percent of the content
- *     area — as empty margin either side of the table. `/admin/toil` is DELIBERATELY not in the list: it
- *     is a short settings summary with no list and gains nothing from the extra width.
+ *  A. The LIST screens in the Attendance menu use `pageWideCls` and carry no page-level width cap. On a
+ *     1920px window the old `mx-auto max-w-4xl` left about 745px — 45 percent of the content area — as
+ *     empty margin either side of the table. `/admin/toil` is DELIBERATELY not in the list: it is a short
+ *     settings summary with no list and gains nothing from the extra width.
+ *
+ *     r227 ADDED THE EMPLOYEE'S OWN SCREEN to that list, on the identical complaint from the identical
+ *     reporter: /attendance/requests was `mx-auto max-w-6xl` AND then split again into a list column plus
+ *     a 22rem correction panel, so the table got about half a wide monitor. It is the first non-admin
+ *     screen here — the property is a property of the SCREEN, not of who may open it.
  *
  *  B. The FORM pages are deliberately still capped, so a future "make everything wide" sweep cannot take
  *     them with it. A form spread across a very wide screen is harder to fill in, not easier.
@@ -50,6 +55,9 @@ const WIDE_LIST_SCREENS = [
   'app/admin/holidays/page.tsx',
   'app/admin/attendance-allowance/page.tsx',
   'app/admin/locations/page.tsx',
+  // r227 — Attendance Irregularity, the EMPLOYEE's own list. Not an admin screen and deliberately in the
+  // same list anyway: it is a list screen that was capped, and the reporter raised it as the same fault.
+  'app/attendance/requests/page.tsx',
 ];
 
 // The form pages, which keep a comfortable reading width on purpose.
@@ -74,6 +82,17 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(NARROW_FORM_SCREENS)('%s keeps its reading-width cap', (file) => {
     const capped = classNameLiterals(read(file)).filter(capsPage);
     expect(capped.length, `${file} is a FORM page and must stay capped, not stretch edge to edge`).toBeGreaterThan(0);
+  });
+
+  it('r227 — Attendance Irregularity does not re-acquire the correction column beside its table', () => {
+    // Full width alone would not have fixed it: the page ALSO split its own column to make room for the
+    // inline Fix panel. The request opens in a pop-up now, so there is nothing to make room for — and a
+    // future "put the form back beside the list" is the exact regression the reporter asked us to undo.
+    const src = read('app/attendance/requests/page.tsx');
+    expect(src, 'the list/panel two-column split must not come back').not.toContain('lg:grid-cols-[minmax(0,1fr)_22rem]');
+    // …and Request opens the shared pop-up rather than a second column. (The `?fix=` branch is KEPT for
+    // links written before r227 — see test/me-tabs.test.ts, which pins that half.)
+    expect(src).toContain('<CorrectionDialog');
   });
 
   it('/admin/toil is left alone — a short summary gains nothing from full width', () => {
