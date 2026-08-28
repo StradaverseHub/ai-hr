@@ -243,23 +243,44 @@ export async function setCompanyParentAction(formData: FormData) {
   ok(ORG);
 }
 
+/**
+ * r226 — read a statutory-identity field ONLY if the submitted form actually carried it.
+ *
+ * This tiny distinction is what lets the identity row be edited from five different forms without one
+ * save blanking the others. `undefined` (the key is absent) means "this form does not own that field —
+ * leave the stored value alone"; `''` (the key is present and empty) means "the operator cleared it".
+ * `(formData.get(k) as string) || undefined` collapses those two into one, which is exactly the bug:
+ * under the old full-row writer it blanked four columns, and under the new partial-patch writer it would
+ * make a field impossible to CLEAR. See localization/my/company-statutory.ts.
+ */
+function postedField(formData: FormData, key: string): string | undefined {
+  return formData.has(key) ? String(formData.get(key) ?? '') : undefined;
+}
+
+/** The HRDF rate as posted, or undefined when the form did not carry the select at all. */
+function postedHrdfStatus(formData: FormData): 'not_registered' | 'mandatory' | 'optional' | undefined {
+  const raw = String(formData.get('hrdfStatus') ?? '');
+  return raw === 'not_registered' || raw === 'mandatory' || raw === 'optional' ? raw : undefined;
+}
+
 export async function setCompanyStatutoryAction(formData: FormData) {
   const s = await getSession();
   const country = String(formData.get('country') ?? 'MY');
   try {
     const pack = packFor(country);
     if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${country}`);
-    const hrdfRaw = String(formData.get('hrdfStatus') ?? '');
-    const hrdfStatus =
-      hrdfRaw === 'not_registered' || hrdfRaw === 'mandatory' || hrdfRaw === 'optional' ? hrdfRaw : undefined;
+    // Every field is read through postedField, so this action now writes exactly the boxes the form in
+    // front of the operator actually had. r226 left only MyInvois + SSM on the Statutory tab's identity
+    // list (the rest moved onto their own body's card) — and this action still serves BOTH shapes, which
+    // is why it keeps reading all five names rather than shrinking to two.
     await pack.companyStatutory.set(s, {
       companyId: String(formData.get('companyId')),
-      epfEmployerNo: (formData.get('epfEmployerNo') as string) || undefined,
-      socsoEmployerCode: (formData.get('socsoEmployerCode') as string) || undefined,
-      lhdnEmployerNo: (formData.get('lhdnEmployerNo') as string) || undefined,
-      myinvoisTin: (formData.get('myinvoisTin') as string) || undefined,
-      ssmRegistrationNo: (formData.get('ssmRegistrationNo') as string) || undefined,
-      hrdfStatus,
+      epfEmployerNo: postedField(formData, 'epfEmployerNo'),
+      socsoEmployerCode: postedField(formData, 'socsoEmployerCode'),
+      lhdnEmployerNo: postedField(formData, 'lhdnEmployerNo'),
+      myinvoisTin: postedField(formData, 'myinvoisTin'),
+      ssmRegistrationNo: postedField(formData, 'ssmRegistrationNo'),
+      hrdfStatus: postedHrdfStatus(formData),
     });
   } catch (e) {
     fail(ORG, e);
@@ -331,6 +352,27 @@ export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
       email: (formData.get('email') as string) || null,
       signatoryPersonId: (formData.get('signatoryPersonId') as string) || null,
     });
+
+    // r226 — the card is ONE body, so it saves with ONE button, and that means this action writes the
+    // body's two halves into their two tables: the payment setup above (company_statutory_authority) and
+    // the number that goes on the body's FILED FORM below (company_statutory_my, via the country pack).
+    //
+    // `filingCountry` is a hidden input the card renders only when it actually has a filing field, and it
+    // is deliberately NOT called `country` — that name is already taken on this form by the authority's
+    // postal address. Nothing is written unless the form carried a filing field, and the identity write
+    // is a PARTIAL PATCH, so saving the EPF card cannot touch SOCSO's, LHDN's, MyInvois's or SSM's number.
+    const filingCountry = String(formData.get('filingCountry') ?? '');
+    const filing = {
+      epfEmployerNo: postedField(formData, 'epfEmployerNo'),
+      socsoEmployerCode: postedField(formData, 'socsoEmployerCode'),
+      lhdnEmployerNo: postedField(formData, 'lhdnEmployerNo'),
+      hrdfStatus: postedHrdfStatus(formData),
+    };
+    if (filingCountry && Object.values(filing).some((v) => v !== undefined)) {
+      const pack = packFor(filingCountry);
+      if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${filingCountry}`);
+      await pack.companyStatutory.set(s, { companyId: String(formData.get('companyId')), ...filing });
+    }
   } catch (e) {
     fail(ORG, e);
   }

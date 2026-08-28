@@ -94,23 +94,43 @@ describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
     expect(en.admin.organization.bankAccountCollapse).toBeUndefined();
   });
 
-  it('KEEPS the tabs — the fix flattens the folds, it does not flatten the screen', () => {
-    // Tabs group a large screen; they do not gate it, and every tab stays mounted (hidden by CSS) so
-    // an in-progress edit survives a tab switch. Collapsing these into one long scroll would be a
-    // different, unrequested change.
-    //
-    // 3c2f55d7 rev 2 — the SET changed, on the reporter's instruction: General | Statutory | Other.
-    // "Bank Account" stops being a tab of its own and becomes a section of Other, next to the default
-    // payroll cycle, the group parent and archive/delete. (`tabBankAccount` stays in the six catalogues
-    // unused, the way `tabPayroll` did after 94ae7e1f renamed that tab — the area still exists.)
+  /**
+   * ⚠️ UPDATED BY r226 — NOT deleted (AGENTS.md rule 18).
+   *
+   * STILL TRUE, and still the point of this case: the panel is TABBED, the tabs are not a disclosure,
+   * every tab stays mounted, and the bank editor is never cut down — wherever it lives, it lives WHOLE.
+   * Those assertions are unchanged.
+   *
+   * REVERSED, on the reporter's written instruction: the tab SET. 94ae7e1f shipped General | Bank
+   * Account | Statutory; 3c2f55d7 rev 2 removed the Bank Account tab and folded the bank details into an
+   * "Other" tab, and this case pinned that removal (`not.toContain("t('tabBankAccount')")`). r226 puts
+   * the tab back in slot two and retires "Other" rather than renaming it — "Other" held four unrelated
+   * things, and a tab called "Bank Account" containing "Delete this company" is worse than the problem.
+   * The three non-bank sections moved to General, and this case now pins THAT, so the next round cannot
+   * quietly lose them in the shuffle. (`tabOther` stays in the six catalogues unused, the way
+   * `tabPayroll` and `tabBankAccount` each did in their turn.)
+   */
+  it('KEEPS the tabs — General | Bank Account | Statutory (r226 restored slot two)', () => {
     expect(panel).toContain('role="tablist"');
     expect(panel).toContain('role="tab"');
-    for (const k of ['tabGeneral', 'tabStatutory', 'tabOther']) {
+    for (const k of ['tabGeneral', 'tabBankAccount', 'tabStatutory']) {
       expect(panel, k).toContain(`t('${k}')`);
     }
-    expect(panel, 'Bank Account is a SECTION now, not a tab').not.toContain("t('tabBankAccount')");
-    // The bank editor did not go anywhere — it moved under Other, in full.
+    expect(panel, '"Other" is retired, not renamed').not.toContain("t('tabOther')");
+    // The bank editor did not go anywhere — it moved back onto its own tab, in full.
     expect(panel).toContain("t('bankProfilesTitle')");
+    // …and the three things that were never bank are on GENERAL now, not filed under a bank heading.
+    // Matched on the PANE opener, not the bare `tab === 'x'`, which also occurs up in the tab bar.
+    const paneOf = (k: string) => panel.indexOf(`cn('space-y-4', tab === '${k}'`);
+    const general = paneOf('general');
+    const endGeneral = panel.indexOf('{/* end General tab */}');
+    expect(general).toBeGreaterThan(-1);
+    expect(endGeneral).toBeGreaterThan(general);
+    expect(paneOf('bank'), 'Bank Account is a pane of its own again').toBeGreaterThan(endGeneral);
+    const generalPane = panel.slice(general, endGeneral);
+    for (const k of ['defaultPayrollCycle', 'groupParent', 'deleteCompanyTitle']) {
+      expect(generalPane, `${k} moved to General`).toContain(`t('${k}')`);
+    }
   });
 
   it('keeps every heading the folds used to carry, so nothing readable became unreadable', () => {
@@ -231,6 +251,101 @@ describe('Statutory tab: per-authority payment setup', () => {
     for (const a of STATUTORY_AUTHORITIES) {
       expect(en.admin.organization[`authority_${a}`], `authority_${a}`).toBeTruthy();
     }
+  });
+});
+
+/**
+ * r226 — each body's FILING identity moved onto that body's own card, and the move is guarded at the
+ * point where it can silently go wrong.
+ *
+ * The hazard this whole block exists for: `company_statutory_my` is ONE row holding five numbers, and it
+ * used to be written by ONE form as a full-row overwrite. Splitting it across five forms without changing
+ * the writer would have made saving the EPF card blank SOCSO, LHDN, MyInvois and SSM — with no error, a
+ * 200, and a green suite, because nothing renders the four values it just destroyed. So the partial-patch
+ * writer and the presence-checked reads are pinned here alongside the layout.
+ */
+describe('Statutory tab: one body, one card, both of its numbers (r226)', () => {
+  const CS = read('localization/my/company-statutory.ts');
+  const ACTIONS = read('app/admin/actions.ts');
+
+  it('puts EPF, SOCSO and LHDN filing numbers on their own card, and nobody else', () => {
+    const map = panel.slice(panel.indexOf('const MY_FILING_FIELD'), panel.indexOf('function StatutoryAuthorityCard'));
+    expect(map).toContain("epf: { name: 'epfEmployerNo'");
+    expect(map).toContain("socso: { name: 'socsoEmployerCode'");
+    expect(map).toContain("lhdn: { name: 'lhdnEmployerNo'");
+    // SSM and MyInvois are NOT bodies you pay a contribution to and are not in STATUTORY_AUTHORITIES.
+    // The plan told the reporter they would stay in the identity list; this is that promise, asserted.
+    expect(map, 'SSM gets no card').not.toContain('ssmRegistrationNo');
+    expect(map, 'MyInvois gets no card').not.toContain('myinvoisTin');
+    for (const a of ['ssm', 'myinvois']) {
+      expect(STATUTORY_AUTHORITIES as readonly string[]).not.toContain(a);
+    }
+  });
+
+  it('keeps SSM and MyInvois on the Statutory tab, where the two files that read SSM expect them', () => {
+    expect(panel).toContain("t('statutoryIdentityMY')");
+    expect(panel).toContain('name="ssmRegistrationNo"');
+    expect(panel).toContain('name="myinvoisTin"');
+    // The reason SSM may not be filed under a payment card: two statutory files read it.
+    expect(read('localization/my/borang-8a.ts')).toContain('companyStatutoryMy.ssmRegistrationNo');
+    expect(read('localization/my/socso-eis-file.ts')).toContain('companyStatutoryMy.ssmRegistrationNo');
+  });
+
+  it('labels the two numbers so the card says which is which', () => {
+    // The reporter's complaint was that a body had one number on its card and a different number for the
+    // same body in a list above it, with nothing on screen saying they were different things.
+    expect(CARD_SRC).toContain("t('authorityFilingSection')");
+    expect(CARD_SRC).toContain("t('authorityFilingHint')");
+    expect(CARD_SRC).toContain("t('authorityPaymentSection')");
+    expect(CARD_SRC).toContain("t('authorityAccountNo')");
+    for (const loc of LOCALES) {
+      const org = orgOf(loc);
+      for (const k of [
+        'authorityFilingSection',
+        'authorityFilingHint',
+        'authorityPaymentSection',
+        'authorityEisSharesSocso',
+      ]) {
+        expect(org[k], `${loc}: ${k}`).toBeTruthy();
+      }
+    }
+  });
+
+  it('says out loud that EIS files under the SOCSO code rather than showing an empty box', () => {
+    // Two inputs writing socsoEmployerCode would be two controls fighting over one column, and the card
+    // saved second would win. An empty EIS box would read as a number somebody forgot. So: a sentence.
+    expect(CARD_SRC).toContain("t('authorityEisSharesSocso')");
+    const map = panel.slice(panel.indexOf('const MY_FILING_FIELD'), panel.indexOf('function StatutoryAuthorityCard'));
+    expect(map, 'EIS gets no second input on the same column').not.toMatch(/\beis:/);
+  });
+
+  it('HRD Corp keeps its rate select — moved onto its card, not duplicated', () => {
+    expect(CARD_SRC).toContain('name="hrdfStatus"');
+    // Exactly one hrdfStatus control in the panel: the old flat identity form must not still carry one.
+    expect(panel.match(/name="hrdfStatus"/g) ?? [], 'one HRDF control, on the HRD Corp card').toHaveLength(1);
+  });
+
+  /**
+   * THE DATA-LOSS GUARD. Everything above is layout; this is the part that loses customer data if it is
+   * undone. Do not "simplify" the writer back to `p.x ?? null` — see localization/my/company-statutory.ts.
+   */
+  it('the identity writer is a PARTIAL PATCH, so one card cannot blank another body’s number', () => {
+    expect(CS, 'the full-row overwrite is gone').not.toMatch(/epfEmployerNo:\s*p\.epfEmployerNo \?\? null/);
+    expect(CS, 'only the fields the caller named are written').toContain('if (p[f] !== undefined) values[f]');
+    // The action half: a key the form did not carry must arrive as undefined, not as ''.
+    expect(ACTIONS).toContain('function postedField(formData: FormData, key: string)');
+    expect(ACTIONS).toContain('formData.has(key)');
+    expect(ACTIONS, 'the collapsing read is gone from the statutory action').not.toContain(
+      "epfEmployerNo: (formData.get('epfEmployerNo') as string) || undefined",
+    );
+  });
+
+  it('the card posts its filing field under a name that cannot collide with the address country', () => {
+    // `country` is already taken on this form by the authority's postal address (a country NAME from the
+    // ISO list). Reusing it for the statutory-pack lookup would post "Malaysia" into packFor().
+    expect(CARD_SRC).toContain('name="filingCountry"');
+    expect(ACTIONS).toContain("formData.get('filingCountry')");
+    expect(CARD_SRC).toContain('name="country"'); // the address field, untouched
   });
 });
 

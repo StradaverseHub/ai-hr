@@ -27,14 +27,23 @@ import { EmployeeSearchField, type EmployeeSearchOption } from './employee-searc
 // r79a — company.currency is now the salary-form default currency, so it uses the same ISO 4217 picker.
 import { CurrencySelect } from './currency-select';
 
-// 3c2f55d7 rev 2 — the company config panel is THREE tabs: General / Statutory / Other.
+// r226 — the company config panel is THREE tabs: General / Bank Account / Statutory.
 //
-// 94ae7e1f had split it into General / Bank Account / Statutory. The reporter's card redesign asks for
-// General | Statutory | Other, so the Bank Account tab becomes a SECTION of "Other" alongside the other
-// company-administration bits that are neither identity nor statutory (default payroll cycle, group
-// parent, archive/delete). Pure relocation — the bank-profile and statutory data/logic are unchanged, and
-// every field stays mounted, so an in-progress edit still survives a tab switch.
-type TabKey = 'general' | 'statutory' | 'other';
+// ⚠️ THIS IS A REVERT, AND IT IS DELIBERATE. 94ae7e1f shipped exactly this tab set. 3c2f55d7 rev 2 deleted
+// the Bank Account tab on the reporter's own instruction and folded the bank details into an "Other" tab
+// alongside the default payroll cycle, the group parent and archive/delete. The reporter has since asked,
+// in writing, for Bank Account back in slot two — so it comes back, and "Other" GOES rather than being
+// renamed around it: "Other" was never a bank tab, it was four unrelated things, and calling it "Bank
+// Account" would have filed "Delete this company" under a friendly heading. The three non-bank sections
+// move to General, where company administration belongs.
+//
+// Pure relocation: the bank-profile and statutory data/logic are unchanged, and every tab's content stays
+// MOUNTED (hidden by CSS), so an in-progress edit still survives a tab switch.
+//
+// The guard that pinned the REMOVAL (test/company-panel-bank-statutory-layout.test.ts) was updated with
+// this change, not deleted — the half of it that is still true (Bank Account content stays whole, wherever
+// it lives) is still asserted.
+type TabKey = 'general' | 'bank' | 'statutory';
 
 /**
  * The visual mark on each statutory-body card (3c2f55d7 rev 2).
@@ -347,6 +356,41 @@ function BankAccountForm({
 }
 
 /**
+ * WHICH FILING NUMBER BELONGS TO WHICH BODY (r226).
+ *
+ * There are TWO numbers per statutory body, and until this round nothing on screen said so:
+ *
+ *   • the EMPLOYER ACCOUNT / REFERENCE number — the one on the payment slip. It has always lived on the
+ *     body's own card (company_statutory_authority.accountNo, `name="accountNo"` below).
+ *   • the FILING number — the one that goes on the body's filed form. It lived in a single flat list
+ *     above the cards (company_statutory_my), which is what made the two look like duplicates.
+ *
+ * They are not duplicates. This map moves the second one onto the same card as the first, and both are
+ * now labelled so a reader can tell them apart.
+ *
+ * ⚠️ WHAT IS DELIBERATELY ABSENT, because "add the missing ones" is the obvious next edit and it is wrong:
+ *
+ *   • SSM and MyInvois get NO entry and no card. Neither is a body an employer pays a contribution to,
+ *     neither is in STATUTORY_AUTHORITIES, and the SSM number is read by two statutory files we produce
+ *     (localization/my/borang-8a.ts:145, localization/my/socso-eis-file.ts:140) — filing it under a
+ *     payment card would be actively misleading. They stay in the identity list on the Statutory tab.
+ *   • EIS gets no entry either: it files under the SAME PERKESO employer code as SOCSO. A second input
+ *     writing socsoEmployerCode would be two controls fighting over one column, and whichever card was
+ *     saved second would win. The EIS card says so in words instead (`authorityEisSharesSocso`).
+ *   • HRD Corp's filing identity is not a number but a registration STATUS (the levy rate), so it is
+ *     handled separately in the card as the same three-value select it has always been.
+ *
+ * Each card posts ONLY its own field, and the writer is a partial patch, so one card's save cannot blank
+ * another's number — see localization/my/company-statutory.ts and setCompanyStatutoryAuthorityAction.
+ */
+type MyFilingKey = 'epfEmployerNo' | 'socsoEmployerCode' | 'lhdnEmployerNo';
+const MY_FILING_FIELD: Record<string, { name: MyFilingKey; labelKey: string }> = {
+  epf: { name: 'epfEmployerNo', labelKey: 'epfEmployerNo' },
+  socso: { name: 'socsoEmployerCode', labelKey: 'socsoEmployerCode' },
+  lhdn: { name: 'lhdnEmployerNo', labelKey: 'lhdnENumber' },
+};
+
+/**
  * One statutory body, as a CARD (item 3c2f55d7 rev 2).
  *
  * ── WHAT THE CARD SHOWS AND WHY IT EXPANDS ────────────────────────────────────────────────────────
@@ -381,6 +425,8 @@ function BankAccountForm({
 function StatutoryAuthorityCard({
   authority,
   row,
+  statutory,
+  filingCountry,
   companyId,
   bankProfiles,
   signatories,
@@ -390,6 +436,12 @@ function StatutoryAuthorityCard({
 }: {
   authority: string;
   row: PanelStatutoryAuthority | null;
+  // r226 — the company's statutory IDENTITY row, so the card can show this body's filing number next to
+  // its payment setup. The whole row is passed and the card picks its own field (MY_FILING_FIELD); it
+  // posts only that one field, never the others.
+  statutory: PanelStatutory;
+  /** ISO code of the company. 'MY' is the only pack with a filing identity today. */
+  filingCountry: string;
   companyId: string;
   bankProfiles: PanelBankProfile[];
   signatories: PanelSignatory[];
@@ -403,6 +455,11 @@ function StatutoryAuthorityCard({
   const r = row;
   const configured = !!r;
   const Icon = AUTHORITY_ICON[authority] ?? Landmark;
+  // r226 — this body's FILING identity (the number on its filed form), where it has one. Distinct from
+  // `accountNo` below, which is the employer account on the PAYMENT SLIP. See MY_FILING_FIELD.
+  const filing = filingCountry === 'MY' ? MY_FILING_FIELD[authority] : undefined;
+  const showHrdf = filingCountry === 'MY' && authority === 'hrdf';
+  const sharesSocsoCode = filingCountry === 'MY' && authority === 'eis';
 
   // The searchable option list: this company's active employees, plus — only when the saved signatory is
   // no longer among them — the stored person, so the hidden input keeps posting the id already on record.
@@ -475,6 +532,57 @@ function StatutoryAuthorityCard({
         <form action={setAction} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input type="hidden" name="companyId" value={companyId} />
           <input type="hidden" name="authority" value={authority} />
+          {/* ── FILING IDENTITY (r226) ─────────────────────────────────────────────────────────────
+              The number that goes on THIS body's filed form. It lives in a different table from
+              everything else on this card (company_statutory_my, not company_statutory_authority), but
+              it is one body, so it saves with the one button — setCompanyStatutoryAuthorityAction writes
+              both halves.
+
+              `filingCountry` is the hidden flag that tells the action a filing field is on this form at
+              all, and it is deliberately NOT called `country`: that name is already taken further down by
+              the authority's postal address, and a collision there would post a country NAME into the
+              statutory-pack lookup. It is rendered only inside this block, so a card with no filing field
+              posts nothing at all towards the identity row. */}
+          {(filing || showHrdf) && (
+            <div className="space-y-2 rounded-md bg-muted/40 p-2.5 sm:col-span-3">
+              <input type="hidden" name="filingCountry" value={filingCountry} />
+              <SubHeader>{t('authorityFilingSection')}</SubHeader>
+              <p className="text-xs text-muted-foreground">{t('authorityFilingHint')}</p>
+              {filing && (
+                <Field label={t(filing.labelKey as never)}>
+                  <input
+                    name={filing.name}
+                    defaultValue={statutory?.[filing.name] ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+              )}
+              {showHrdf && (
+                <Field label={t('hrdfStatusLabel')}>
+                  <select
+                    name="hrdfStatus"
+                    defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
+                    className={inputCls}
+                  >
+                    <option value="not_registered">{t('hrdfNotRegistered')}</option>
+                    <option value="mandatory">{t('hrdfMandatory')}</option>
+                    <option value="optional">{t('hrdfOptional')}</option>
+                  </select>
+                </Field>
+              )}
+            </div>
+          )}
+          {/* EIS has no filing box because it has no filing number of its own — it is filed under SOCSO's
+              PERKESO employer code. Saying so is the whole point: an empty EIS card otherwise reads as a
+              number somebody forgot to fill in. */}
+          {sharesSocsoCode && (
+            <p className="rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground sm:col-span-3">
+              {t('authorityEisSharesSocso')}
+            </p>
+          )}
+          <div className="sm:col-span-3">
+            <SubHeader>{t('authorityPaymentSection')}</SubHeader>
+          </div>
           <Field label={t('authorityAccountNo')}>
             <input
               name="accountNo"
@@ -693,11 +801,13 @@ export function CompanyPanel({
           <TabButton active={tab === 'general'} onClick={() => setTab('general')}>
             {t('tabGeneral')}
           </TabButton>
+          {/* Slot two, restored by r226. `tabBankAccount` had been sitting unused in all six catalogues
+              since 3c2f55d7 rev 2 removed the tab; it is the same string, back in the same place. */}
+          <TabButton active={tab === 'bank'} onClick={() => setTab('bank')}>
+            {t('tabBankAccount')}
+          </TabButton>
           <TabButton active={tab === 'statutory'} onClick={() => setTab('statutory')}>
             {t('tabStatutory')}
-          </TabButton>
-          <TabButton active={tab === 'other'} onClick={() => setTab('other')}>
-            {t('tabOther')}
           </TabButton>
         </div>
 
@@ -833,161 +943,13 @@ export function CompanyPanel({
             </Button>
           </div>
         </form>
-        </div>
-        {/* end General tab */}
 
-        {/* Statutory: statutory identity (94ae7e1f — the old "Payroll" tab, renamed; it only ever held
-            statutory configuration). Country-pack section (ADR-0008). */}
-        <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
-        {isMY ? (
-          <>
-          <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
-            <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
-            <input type="hidden" name="companyId" value={c.id} />
-            <input type="hidden" name="country" value="MY" />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Field label={t('epfEmployerNo')}>
-                <input name="epfEmployerNo" defaultValue={statutory?.epfEmployerNo ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('socsoEmployerCode')}>
-                <input
-                  name="socsoEmployerCode"
-                  defaultValue={statutory?.socsoEmployerCode ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('lhdnENumber')}>
-                <input name="lhdnEmployerNo" defaultValue={statutory?.lhdnEmployerNo ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('myinvoisTin')}>
-                <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('ssmRegistrationNo')}>
-                <input
-                  name="ssmRegistrationNo"
-                  defaultValue={statutory?.ssmRegistrationNo ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('hrdfStatusLabel')}>
-                <select
-                  name="hrdfStatus"
-                  defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
-                  className={inputCls}
-                >
-                  <option value="not_registered">{t('hrdfNotRegistered')}</option>
-                  <option value="mandatory">{t('hrdfMandatory')}</option>
-                  <option value="optional">{t('hrdfOptional')}</option>
-                </select>
-              </Field>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t('statutoryFilingsHint')}
-            </p>
-            {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
-                HRDF eligibility is a free company choice, not a headcount rule. */}
-            <Button type="submit" size="sm">
-              {t('saveStatutoryIdentity')}
-            </Button>
-          </form>
-
-          {/* R46 orgbank (84719377) — per-authority PAYMENT setup. The form above holds the employer
-              IDENTITY (one flat row per company); this section holds, per statutory body, which company
-              bank account pays it, its address/contact, and the authorised signatory. Every authority in
-              the controlled set is listed whether configured or not, so nothing is silently missing.
-              3c2f55d7 rev 2 — they are a GRID OF CARDS (icon, name, description, status, Open/Edit)
-              instead of a stack of identical form blocks. */}
-          <div className="space-y-2.5 rounded-lg bg-background p-3">
-            <SubHeader>{t('authoritiesTitle')}</SubHeader>
-            <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
-            {bankProfiles.length === 0 && (
-              <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
-            )}
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {STATUTORY_AUTHORITIES.map((a) => (
-                <StatutoryAuthorityCard
-                  key={a}
-                  authority={a}
-                  row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
-                  companyId={c.id}
-                  bankProfiles={bankProfiles}
-                  signatories={signatories}
-                  stateOptions={stateOptions}
-                  setAction={actions.setStatutoryAuthority}
-                  removeAction={actions.removeStatutoryAuthority}
-                />
-              ))}
-            </ul>
-          </div>
-          </>
-        ) : (
-          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
-            {t('noStatutoryPack', { country: c.country })}
-          </p>
-        )}
-        </div>
-        {/* end Statutory tab */}
-
-        {/* Other: everything about administering the entity that is neither its identity nor its statutory
-            configuration — bank accounts (94ae7e1f moved these out of the old Payroll tab; 3c2f55d7 rev 2
-            moves the tab itself under "Other"), the default payroll cycle, the group parent, and
-            archive/delete. Data/logic (core/bank-profile) unchanged. */}
-        <div className={cn('space-y-4', tab === 'other' ? '' : 'hidden')}>
-        {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
-        {isMY ? (
-          <div className="space-y-3 rounded-lg bg-background p-3">
-            <SubHeader>{t('bankProfilesTitle')}</SubHeader>
-            {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
-                saved account is its own editable form (identity is the row id) rather than one upsert box. */}
-            {bankProfiles.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t('noBankProfiles')}</p>
-            ) : (
-              <ul className="space-y-2">
-                {bankProfiles.map((bp) => (
-                  // 3c2f55d7 — each saved account was a closed disclosure; the identity line is now a
-                  // heading over an editor that is simply open. rev 2 — and the account number on that
-                  // heading is no longer masked (see the note on the "Paid from" picker).
-                  <li key={bp.id} className="rounded-md border border-border/60">
-                    <div className="flex items-center justify-between gap-2 px-3 py-2">
-                      <span className="min-w-0 text-sm">
-                        <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
-                        {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {myBankLabel(bp.bank)} · {bp.debitAccountNo} · {bp.currency}
-                        </span>
-                      </span>
-                    </div>
-                    <div className="border-t border-border/60 px-3 py-3">
-                      <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
-                      <form action={actions.removeBankProfile} className="mt-2">
-                        <input type="hidden" name="id" value={bp.id} />
-                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-                          {t('bankProfileRemove')}
-                        </button>
-                      </form>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {/* 3c2f55d7 — the blank "add an account" form was itself a fold. A company with no bank
-                account saw an empty list and a closed row, i.e. the one thing it needed to do was
-                hidden. The dashed border still marks it as the ADD form rather than a saved one. */}
-            <div className="rounded-md border border-dashed border-border">
-              <div className="px-3 py-2 text-sm font-medium text-primary">{t('bankAccountAdd')}</div>
-              <div className="border-t border-border/60 px-3 py-3">
-                <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
-            <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
-          </div>
-        ) : (
-          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
-            {t('bankAccountNonMY', { country: c.country })}
-          </p>
-        )}
-
+        {/* ── Relocated here by r226 ──────────────────────────────────────────────────────────
+            The default payroll cycle, the group parent and archive/delete used to sit on an "Other"
+            tab next to the bank details. That tab is gone: the reporter asked for Bank Account back
+            as a tab of its own, and renaming "Other" to "Bank Account" would have filed "Delete this
+            company" under a friendly heading. These three are company administration, so they land on
+            General. Nothing about them changed — same forms, same actions, same audit trail. */}
         {/* Organization Module (361e3b15) — Default Payroll Cycle. Lists THIS company's ACTIVE cycles with
             the saved default pre-selected. Changing it affects FUTURE runs only (batches snapshot their run
             type at creation) and is audit-trailed. If the saved default is no longer active (archived or
@@ -1093,7 +1055,156 @@ export function CompanyPanel({
           </div>
         </div>
         </div>
-        {/* end Other tab */}
+        {/* end General tab */}
+
+        {/* Bank Account: the company's bank disbursement profiles, and nothing else.
+
+            ⚠️ RESTORED BY r226. 94ae7e1f gave this its own tab in slot two; 3c2f55d7 rev 2 removed the
+            tab and folded the bank details into "Other" on the reporter's instruction; the reporter has
+            since asked for the tab back, in writing. The bank-profile data and logic (core/bank-profile)
+            never moved and are unchanged — this is a tab boundary, not a rewrite. */}
+        <div className={cn('space-y-4', tab === 'bank' ? '' : 'hidden')}>
+        {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
+        {isMY ? (
+          <div className="space-y-3 rounded-lg bg-background p-3">
+            <SubHeader>{t('bankProfilesTitle')}</SubHeader>
+            {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
+                saved account is its own editable form (identity is the row id) rather than one upsert box. */}
+            {bankProfiles.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('noBankProfiles')}</p>
+            ) : (
+              <ul className="space-y-2">
+                {bankProfiles.map((bp) => (
+                  // 3c2f55d7 — each saved account was a closed disclosure; the identity line is now a
+                  // heading over an editor that is simply open. rev 2 — and the account number on that
+                  // heading is no longer masked (see the note on the "Paid from" picker).
+                  <li key={bp.id} className="rounded-md border border-border/60">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      <span className="min-w-0 text-sm">
+                        <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
+                        {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {myBankLabel(bp.bank)} · {bp.debitAccountNo} · {bp.currency}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="border-t border-border/60 px-3 py-3">
+                      <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
+                      <form action={actions.removeBankProfile} className="mt-2">
+                        <input type="hidden" name="id" value={bp.id} />
+                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                          {t('bankProfileRemove')}
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* 3c2f55d7 — the blank "add an account" form was itself a fold. A company with no bank
+                account saw an empty list and a closed row, i.e. the one thing it needed to do was
+                hidden. The dashed border still marks it as the ADD form rather than a saved one. */}
+            <div className="rounded-md border border-dashed border-border">
+              <div className="px-3 py-2 text-sm font-medium text-primary">{t('bankAccountAdd')}</div>
+              <div className="border-t border-border/60 px-3 py-3">
+                <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
+            <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
+          </div>
+        ) : (
+          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+            {t('bankAccountNonMY', { country: c.country })}
+          </p>
+        )}
+        </div>
+        {/* end Bank Account tab */}
+
+        {/* Statutory: statutory identity (94ae7e1f — the old "Payroll" tab, renamed; it only ever held
+            statutory configuration). Country-pack section (ADR-0008). */}
+        <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
+        {isMY ? (
+          <>
+          {/* ── COMPANY REGISTRATIONS ────────────────────────────────────────────────────────────────
+              What is LEFT of the old flat identity list, and what is left is the point.
+
+              r226 moved EPF's, SOCSO's and LHDN's filing numbers, and HRD Corp's contribution rate, onto
+              their own body's card below, so that everything about one body is in one place. These two
+              did NOT move, deliberately: neither the SSM registration number nor the MyInvois TIN belongs
+              to a body an employer pays a contribution to, neither is in STATUTORY_AUTHORITIES, and the
+              SSM number is read by two statutory files we produce (localization/my/borang-8a.ts,
+              localization/my/socso-eis-file.ts). Giving either one a payment card would have been a
+              tidier screen making a false claim.
+
+              This form now posts only the two boxes it renders. That is safe because the writer is a
+              PARTIAL PATCH (localization/my/company-statutory.ts): before r226 it was a full-row
+              overwrite, and a form this shape would have silently NULLed EPF, SOCSO and LHDN. */}
+          <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
+            <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
+            <input type="hidden" name="companyId" value={c.id} />
+            <input type="hidden" name="country" value="MY" />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Field label={t('ssmRegistrationNo')}>
+                <input
+                  name="ssmRegistrationNo"
+                  defaultValue={statutory?.ssmRegistrationNo ?? ''}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label={t('myinvoisTin')}>
+                <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
+              </Field>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('statutoryFilingsHint')}
+            </p>
+            {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
+                HRDF eligibility is a free company choice, not a headcount rule. It now lives on the HRD
+                Corp card as that body's filing identity. */}
+            <Button type="submit" size="sm">
+              {t('saveStatutoryIdentity')}
+            </Button>
+          </form>
+
+          {/* R46 orgbank (84719377) — per-authority PAYMENT setup. The form above holds the employer
+              IDENTITY (one flat row per company); this section holds, per statutory body, which company
+              bank account pays it, its address/contact, and the authorised signatory. Every authority in
+              the controlled set is listed whether configured or not, so nothing is silently missing.
+              3c2f55d7 rev 2 — they are a GRID OF CARDS (icon, name, description, status, Open/Edit)
+              instead of a stack of identical form blocks. */}
+          <div className="space-y-2.5 rounded-lg bg-background p-3">
+            <SubHeader>{t('authoritiesTitle')}</SubHeader>
+            <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
+            {bankProfiles.length === 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
+            )}
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {STATUTORY_AUTHORITIES.map((a) => (
+                <StatutoryAuthorityCard
+                  key={a}
+                  authority={a}
+                  row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
+                  statutory={statutory}
+                  filingCountry={c.country}
+                  companyId={c.id}
+                  bankProfiles={bankProfiles}
+                  signatories={signatories}
+                  stateOptions={stateOptions}
+                  setAction={actions.setStatutoryAuthority}
+                  removeAction={actions.removeStatutoryAuthority}
+                />
+              ))}
+            </ul>
+          </div>
+          </>
+        ) : (
+          <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+            {t('noStatutoryPack', { country: c.country })}
+          </p>
+        )}
+        </div>
+        {/* end Statutory tab */}
       </div>
     </div>
   );

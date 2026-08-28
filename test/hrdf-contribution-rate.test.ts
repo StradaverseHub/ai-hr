@@ -55,7 +55,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 import { describePayload } from '../lib/audit-format';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
-import { setCompanyStatutoryAction } from '../app/admin/actions';
+import { setCompanyStatutoryAction, setCompanyStatutoryAuthorityAction } from '../app/admin/actions';
 import { savePayrollConfigAction } from '../app/admin/payroll-config/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -200,6 +200,130 @@ describe('HRDF Contribution Rate — the single editable surface audits the chan
     expect(row?.hrdfStatus).toBe('optional');
     expect(row?.epfEmployerNo ?? null).not.toBe('HIJACK-1');
     expect(await latestEventPayload(base.tenantId, id, 'company.statutory.my.updated')).toEqual(before);
+  });
+});
+
+/**
+ * r226 — THE DATA-LOSS GUARD FOR THE PER-BODY CARDS. This is the most important block in this file.
+ *
+ * `company_statutory_my` is ONE row holding five numbers. Until r226 exactly one form on one screen owned
+ * it, and the writer was a FULL-ROW OVERWRITE (`epfEmployerNo: p.epfEmployerNo ?? null`, for all five).
+ * r226 moves each statutory body's filing number onto that body's own card, so several forms now write
+ * into that one row — and under the old writer, saving the EPF card would have set SOCSO, LHDN, MyInvois
+ * and SSM to NULL. Silently: no error, a 200, and a green suite, because nothing on the EPF card renders
+ * the four values it just destroyed. A customer would have found out at filing time.
+ *
+ * These post through the ACTIONS the forms actually submit to, not through the service, because half of
+ * the collapse lived in the action's reads: `(formData.get(k) as string) || undefined` turned "this form
+ * does not carry that field" and "the operator cleared that field" into the same instruction.
+ */
+describe('Statutory identity — one card cannot blank another body\u2019s number (r226)', () => {
+  const seedAllFive = () =>
+    setCompanyStatutoryMY(adminCtx(base), {
+      companyId: base.companyId,
+      epfEmployerNo: 'E-OLD',
+      socsoEmployerCode: 'S-KEEP',
+      lhdnEmployerNo: 'L-KEEP',
+      myinvoisTin: 'T-KEEP',
+      ssmRegistrationNo: 'R-KEEP',
+    });
+
+  it('saving the EPF card writes EPF and leaves the other four exactly as they were', async () => {
+    await seedAllFive();
+
+    // Exactly what the EPF card posts: its authority fields, plus its ONE filing field and the flag that
+    // says a filing field is present. `filingCountry`, not `country` — `country` is the postal address.
+    await captureRedirect(() =>
+      setCompanyStatutoryAuthorityAction(
+        fd({
+          companyId: base.companyId,
+          authority: 'epf',
+          accountNo: 'PAY-EPF-1',
+          filingCountry: 'MY',
+          epfEmployerNo: 'E-NEW',
+        }),
+      ),
+    );
+
+    const row = await getCompanyStatutoryMY(adminCtx(base), base.companyId);
+    expect(row?.epfEmployerNo, 'the card saved its own number').toBe('E-NEW');
+    expect(row?.socsoEmployerCode, 'SOCSO untouched').toBe('S-KEEP');
+    expect(row?.lhdnEmployerNo, 'LHDN untouched').toBe('L-KEEP');
+    expect(row?.myinvoisTin, 'MyInvois untouched').toBe('T-KEEP');
+    expect(row?.ssmRegistrationNo, 'SSM untouched').toBe('R-KEEP');
+  });
+
+  it('a card with no filing field of its own (EIS) writes nothing to the identity row', async () => {
+    // EIS files under SOCSO's PERKESO employer code, so its card renders no filing box and posts no
+    // `filingCountry`. Saving it must not touch the identity row at all.
+    await seedAllFive();
+    await captureRedirect(() =>
+      setCompanyStatutoryAuthorityAction(
+        fd({ companyId: base.companyId, authority: 'eis', accountNo: 'PAY-EIS-1' }),
+      ),
+    );
+    const row = await getCompanyStatutoryMY(adminCtx(base), base.companyId);
+    expect(row?.epfEmployerNo).toBe('E-OLD');
+    expect(row?.socsoEmployerCode).toBe('S-KEEP');
+    expect(row?.lhdnEmployerNo).toBe('L-KEEP');
+  });
+
+  it('the trimmed identity form (SSM + MyInvois only) leaves the three body numbers alone', async () => {
+    // What is LEFT on the Statutory tab after r226: the two registrations that are not a contribution
+    // body. It posts two fields, so it must write two columns.
+    await seedAllFive();
+    await captureRedirect(() =>
+      setCompanyStatutoryAction(
+        fd({
+          country: 'MY',
+          companyId: base.companyId,
+          ssmRegistrationNo: 'R-NEW',
+          myinvoisTin: 'T-NEW',
+        }),
+      ),
+    );
+    const row = await getCompanyStatutoryMY(adminCtx(base), base.companyId);
+    expect(row?.ssmRegistrationNo).toBe('R-NEW');
+    expect(row?.myinvoisTin).toBe('T-NEW');
+    expect(row?.epfEmployerNo, 'EPF is not on this form and must survive it').toBe('E-OLD');
+    expect(row?.socsoEmployerCode).toBe('S-KEEP');
+    expect(row?.lhdnEmployerNo).toBe('L-KEEP');
+  });
+
+  it('an EMPTIED box still clears — "leave it alone" and "blank it" stay different instructions', async () => {
+    // The failure mode on the other side of the partial patch: make absence mean "no change" too
+    // aggressively and a number becomes impossible to delete. The form posts '' for a box the operator
+    // emptied, and that must still reach NULL.
+    await seedAllFive();
+    await captureRedirect(() =>
+      setCompanyStatutoryAuthorityAction(
+        fd({ companyId: base.companyId, authority: 'lhdn', filingCountry: 'MY', lhdnEmployerNo: '' }),
+      ),
+    );
+    const row = await getCompanyStatutoryMY(adminCtx(base), base.companyId);
+    expect(row?.lhdnEmployerNo, 'cleared on purpose').toBeNull();
+    expect(row?.epfEmployerNo, 'and only that one').toBe('E-OLD');
+    expect(row?.socsoEmployerCode).toBe('S-KEEP');
+  });
+
+  it('the HRD Corp card persists the contribution rate and still audits it old \u2192 new', async () => {
+    // The rate moved from the flat identity form onto the HRD Corp card, so the surface that writes it
+    // changed. The audit convention (b) this file exists for did not.
+    const a = adminCtx(base);
+    const { id } = await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
+
+    await captureRedirect(() =>
+      setCompanyStatutoryAuthorityAction(
+        fd({ companyId: base.companyId, authority: 'hrdf', filingCountry: 'MY', hrdfStatus: 'optional' }),
+      ),
+    );
+
+    const row = await getCompanyStatutoryMY(a, base.companyId);
+    expect(row?.hrdfStatus).toBe('optional');
+    expect(await latestEventPayload(base.tenantId, id, 'company.statutory.my.updated')).toMatchObject({
+      before: { hrdfStatus: 'not_registered' },
+      after: { hrdfStatus: 'optional' },
+    });
   });
 });
 
