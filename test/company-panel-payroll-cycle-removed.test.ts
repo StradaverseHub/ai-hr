@@ -23,17 +23,27 @@ describe('company-panel Payroll tab — payroll-cycle cross-link removed', () =>
     expect(src).toContain('function CrossLinkTab(');
   });
 
+  /**
+   * ⚠️ UPDATED BY r226 — NOT deleted (AGENTS.md rule 18).
+   *
+   * STILL TRUE, and the whole reason this case is worded the way it is: the bank and statutory forms are
+   * asserted by NAME, never by which tab happens to hold them this round. They have now moved three
+   * times (94ae7e1f → own Bank Account tab, 3c2f55d7 rev 2 → "Other", r226 → back to Bank Account) and
+   * these four assertions have never needed to change.
+   *
+   * REVERSED: only the tab MARKER. "Other" is retired by r226 — its bank half became the Bank Account tab
+   * again and its three non-bank sections moved to General — so the marker to look for is the Bank
+   * Account tab's. The Payroll half of this case is untouched and still the point of the file.
+   */
   it('retains the statutory identity + bank disbursement forms', () => {
-    // bank disbursement form fields (94ae7e1f put them on a Bank Account tab; 3c2f55d7 rev 2 moved that
-    // tab's contents into "Other" — the forms themselves never moved and are asserted by NAME, not by
-    // which tab happens to hold them this round)
     expect(src).toContain("t('bankProfileSave')");
     expect(src).toContain("t('bankProfilesHint')");
     // statutory identity form (94ae7e1f: the old "Payroll" tab, renamed Statutory)
     expect(src).toContain("t('statutoryIdentityMY')");
     // The Payroll tab is gone and has not come back under any of its successors' names.
     expect(src).toContain('{/* end Statutory tab */}');
-    expect(src).toContain('{/* end Other tab */}');
+    expect(src).toContain('{/* end Bank Account tab */}');
+    expect(src).not.toContain('{/* end Other tab */}');
     expect(src).not.toContain('{/* end Payroll tab */}');
   });
 });

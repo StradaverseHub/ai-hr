@@ -711,16 +711,48 @@ describe('Slice A — company hierarchy + statutory identity', () => {
     expect(msg).toMatch(/cycle/i);
   });
 
-  it('upserts MY company statutory identity', async () => {
+  /**
+   * ⚠️ UPDATED BY r226 — NOT deleted (AGENTS.md rule 18: a guard may pin the very decision you are
+   * reversing; update the case, never drop it).
+   *
+   * STILL TRUE, and still the point of the test: the upsert REPLACES a named field, and the second call
+   * is an update of the same row rather than a second row.
+   *
+   * REVERSED, deliberately: an UNNAMED field used to be blanked. `setCompanyStatutoryMY` was a full-row
+   * overwrite (`epfEmployerNo: p.epfEmployerNo ?? null` for all five text fields), and this assertion
+   * pinned exactly that — `lhdnEmployerNo` went to NULL because the second call did not mention it. That
+   * rule was only ever safe while ONE form owned the whole row. r226 puts each statutory body's filing
+   * number on that body's own card, so five forms write here; under the old rule saving the EPF card
+   * would have silently NULLed SOCSO, LHDN, MyInvois and SSM. The writer is now a PARTIAL PATCH.
+   *
+   * The clearing behaviour is not lost — it moved to an EXPLICIT instruction, and is asserted below.
+   */
+  it('patches MY company statutory identity — a field it does not name is left alone', async () => {
     const a = adminCtx(base);
     const { id: companyId } = await createCompany(a, { legalName: 'StatCo Sdn Bhd' });
     await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: 'A1', lhdnEmployerNo: 'E9' });
     expect((await getCompanyStatutoryMY(a, companyId))?.epfEmployerNo).toBe('A1');
 
-    await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: 'A2' }); // upsert replaces
+    await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: 'A2' }); // named ⇒ replaced
     const prof = await getCompanyStatutoryMY(a, companyId);
     expect(prof?.epfEmployerNo).toBe('A2');
-    expect(prof?.lhdnEmployerNo).toBeNull();
+    expect(prof?.lhdnEmployerNo, 'unnamed ⇒ untouched (was NULLed before r226)').toBe('E9');
+  });
+
+  it('clears a statutory identity number only when the caller SAYS to', async () => {
+    // The other half of the partial patch, and the reason it is safe to split the row across five forms:
+    // "leave it alone" and "blank it" are now different instructions instead of the same one. An empty
+    // string is what the server action posts for a box the operator emptied; `null` says the same thing.
+    const a = adminCtx(base);
+    const { id: companyId } = await createCompany(a, { legalName: 'ClearCo Sdn Bhd' });
+    await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: 'A1', lhdnEmployerNo: 'E9' });
+
+    await setCompanyStatutoryMY(a, { companyId, lhdnEmployerNo: '' });
+    expect((await getCompanyStatutoryMY(a, companyId))?.lhdnEmployerNo).toBeNull();
+
+    await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: null });
+    const prof = await getCompanyStatutoryMY(a, companyId);
+    expect(prof?.epfEmployerNo).toBeNull();
   });
 });
 

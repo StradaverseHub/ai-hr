@@ -6068,7 +6068,7 @@
       "lhdnENumber": "LHDN E-number",
       "myinvoisTin": "MyInvois TIN",
       "ssmRegistrationNo": "SSM registration no.",
-      "statutoryFilingsHint": "Used by the statutory filings (CP39, EPF, SOCSO/EIS, EA, Form E).",
+      "statutoryFilingsHint": "Company-wide registrations that are not a body you pay a contribution to. Each statutory body's own filing number is on its card below.",
       "saveStatutoryIdentity": "Save statutory identity",
       "bankProfilesTitle": "Bank disbursement profiles",
       "noBankProfiles": "No bank profiles yet. Add the bank-issued corporate ID + debit account for each disbursing bank.",
@@ -6174,6 +6174,10 @@
       "authorityNotConfigured": "Not set up",
       "authorityAccountNo": "Employer account / reference no.",
       "authorityAccountNoHint": "As it appears on the payment slip",
+      "authorityFilingSection": "Filing identity",
+      "authorityFilingHint": "The number that goes on this body's filed form. It is not the employer account number on the payment slip below.",
+      "authorityPaymentSection": "Payment setup",
+      "authorityEisSharesSocso": "EIS has no filing number of its own — it is filed under the same PERKESO employer code as SOCSO.",
       "authorityBankAccount": "Paid from",
       "authorityBankAccountNone": "— No account chosen —",
       "authorityEmail": "Email",
@@ -6222,7 +6226,9 @@
       "actionView": "View",
       "actionEdit": "Edit",
       "actionArchive": "Archive",
-      "actionUnarchive": "Unarchive"
+      "actionUnarchive": "Unarchive",
+      "authorityRegistrationSection": "Registration",
+      "authorityRegistrationHint": "Whether this company is registered with HRD Corp. It decides if the levy is charged at all - it is not a reference number."
     },
     "systemLabels": {
       "pageTitle": "System Labels",

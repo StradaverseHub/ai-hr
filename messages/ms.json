@@ -6068,7 +6068,7 @@
       "lhdnENumber": "Nombor E LHDN",
       "myinvoisTin": "TIN MyInvois",
       "ssmRegistrationNo": "No. pendaftaran SSM",
-      "statutoryFilingsHint": "Digunakan oleh pemfailan berkanun (CP39, EPF, SOCSO/EIS, EA, Form E).",
+      "statutoryFilingsHint": "Pendaftaran seluruh syarikat yang bukan badan caruman. Nombor pemfailan setiap badan berkanun berada pada kadnya di bawah.",
       "saveStatutoryIdentity": "Simpan identiti berkanun",
       "bankProfilesTitle": "Profil pembayaran bank",
       "noBankProfiles": "Belum ada profil bank. Tambah ID korporat terbitan bank + akaun debit bagi setiap bank pembayar.",
@@ -6174,6 +6174,10 @@
       "authorityNotConfigured": "Belum ditetapkan",
       "authorityAccountNo": "No. akaun / rujukan majikan",
       "authorityAccountNoHint": "Seperti tertera pada slip pembayaran",
+      "authorityFilingSection": "Identiti pemfailan",
+      "authorityFilingHint": "Nombor yang tertera pada borang yang difailkan bagi badan ini. Ia bukan nombor akaun majikan pada slip pembayaran di bawah.",
+      "authorityPaymentSection": "Tetapan pembayaran",
+      "authorityEisSharesSocso": "SIP tiada nombor pemfailan tersendiri — ia difailkan di bawah kod majikan PERKESO yang sama seperti SOCSO.",
       "authorityBankAccount": "Dibayar daripada",
       "authorityBankAccountNone": "— Tiada akaun dipilih —",
       "authorityEmail": "E-mel",
@@ -6222,7 +6226,9 @@
       "actionView": "Lihat",
       "actionEdit": "Sunting",
       "actionArchive": "Arkibkan",
-      "actionUnarchive": "Nyaharkib"
+      "actionUnarchive": "Nyaharkib",
+      "authorityRegistrationSection": "Pendaftaran",
+      "authorityRegistrationHint": "Sama ada syarikat ini berdaftar dengan HRD Corp. Ia menentukan sama ada levi dikenakan langsung - ia bukan nombor rujukan."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

@@ -6068,7 +6068,7 @@
       "lhdnENumber": "เลข LHDN E-number",
       "myinvoisTin": "MyInvois TIN",
       "ssmRegistrationNo": "เลขทะเบียน SSM",
-      "statutoryFilingsHint": "ใช้โดยการยื่นตามกฎหมาย (CP39, EPF, SOCSO/EIS, EA, Form E)",
+      "statutoryFilingsHint": "การจดทะเบียนระดับบริษัทที่ไม่ใช่หน่วยงานที่ต้องนำส่งเงินสมทบ เลขที่ใช้ยื่นแบบของแต่ละหน่วยงานตามกฎหมายอยู่บนการ์ดของหน่วยงานนั้นด้านล่าง",
       "saveStatutoryIdentity": "บันทึกตัวตนตามกฎหมาย",
       "bankProfilesTitle": "โปรไฟล์การจ่ายเงินผ่านธนาคาร",
       "noBankProfiles": "ยังไม่มีโปรไฟล์ธนาคาร เพิ่มรหัสองค์กรที่ธนาคารออกให้ + บัญชีหักเงินสำหรับแต่ละธนาคารที่จ่ายเงิน",
@@ -6174,6 +6174,10 @@
       "authorityNotConfigured": "ยังไม่ได้ตั้งค่า",
       "authorityAccountNo": "เลขบัญชี / เลขอ้างอิงนายจ้าง",
       "authorityAccountNoHint": "ตามที่ปรากฏบนใบชำระเงิน",
+      "authorityFilingSection": "เลขที่ใช้ยื่นแบบ",
+      "authorityFilingHint": "เลขที่ปรากฏบนแบบที่ยื่นต่อหน่วยงานนี้ ไม่ใช่เลขบัญชีนายจ้างบนใบชำระเงินด้านล่าง",
+      "authorityPaymentSection": "การตั้งค่าการชำระเงิน",
+      "authorityEisSharesSocso": "EIS ไม่มีเลขที่ใช้ยื่นแบบของตนเอง — ใช้รหัสนายจ้าง PERKESO เดียวกับ SOCSO",
       "authorityBankAccount": "ชำระจาก",
       "authorityBankAccountNone": "— ยังไม่ได้เลือกบัญชี —",
       "authorityEmail": "อีเมล",
@@ -6222,7 +6226,9 @@
       "actionView": "ดู",
       "actionEdit": "แก้ไข",
       "actionArchive": "จัดเก็บถาวร",
-      "actionUnarchive": "ยกเลิกการจัดเก็บ"
+      "actionUnarchive": "ยกเลิกการจัดเก็บ",
+      "authorityRegistrationSection": "การลงทะเบียน",
+      "authorityRegistrationHint": "บริษัทนี้ลงทะเบียนกับ HRD Corp หรือไม่ ซึ่งกำหนดว่าจะเรียกเก็บเงินสมทบหรือไม่ - ไม่ใช่หมายเลขอ้างอิง"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",

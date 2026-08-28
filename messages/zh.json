@@ -6068,7 +6068,7 @@
       "lhdnENumber": "LHDN E 号码",
       "myinvoisTin": "MyInvois TIN",
       "ssmRegistrationNo": "SSM 注册号",
-      "statutoryFilingsHint": "用于法定申报（CP39、EPF、SOCSO/EIS、EA、Form E）。",
+      "statutoryFilingsHint": "不属于缴款机构的公司整体注册号。各法定机构自己的申报编号在下方对应的卡片上。",
       "saveStatutoryIdentity": "保存法定身份",
       "bankProfilesTitle": "银行发放档案",
       "noBankProfiles": "尚无银行档案。请为每家发放银行添加银行核发的企业 ID 与扣账账户。",
@@ -6174,6 +6174,10 @@
       "authorityNotConfigured": "未设置",
       "authorityAccountNo": "雇主账户／参考号",
       "authorityAccountNoHint": "以缴款单上所示为准",
+      "authorityFilingSection": "申报编号",
+      "authorityFilingHint": "填写在该机构申报表上的编号。它与下方缴款单上的雇主账号不同。",
+      "authorityPaymentSection": "付款设置",
+      "authorityEisSharesSocso": "EIS 没有自己的申报编号——它使用与 SOCSO 相同的 PERKESO 雇主代码申报。",
       "authorityBankAccount": "付款账户",
       "authorityBankAccountNone": "— 未选择账户 —",
       "authorityEmail": "电子邮件",
@@ -6222,7 +6226,9 @@
       "actionView": "查看",
       "actionEdit": "编辑",
       "actionArchive": "归档",
-      "actionUnarchive": "取消归档"
+      "actionUnarchive": "取消归档",
+      "authorityRegistrationSection": "注册状态",
+      "authorityRegistrationHint": "本公司是否已在 HRD Corp 注册。它决定是否征收该项征费 — 这不是一个参考编号。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",

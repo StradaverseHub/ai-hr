@@ -6068,7 +6068,7 @@
       "lhdnENumber": "Số E của LHDN",
       "myinvoisTin": "TIN MyInvois",
       "ssmRegistrationNo": "Số đăng ký SSM",
-      "statutoryFilingsHint": "Được dùng bởi các bản nộp pháp lý (CP39, EPF, SOCSO/EIS, EA, Form E).",
+      "statutoryFilingsHint": "Các đăng ký cấp công ty không thuộc cơ quan thu đóng góp. Mã số khai nộp của từng cơ quan luật định nằm trên thẻ của cơ quan đó bên dưới.",
       "saveStatutoryIdentity": "Lưu danh tính pháp lý",
       "bankProfilesTitle": "Hồ sơ chi trả ngân hàng",
       "noBankProfiles": "Chưa có hồ sơ ngân hàng. Thêm ID doanh nghiệp do ngân hàng cấp + tài khoản ghi nợ cho mỗi ngân hàng chi trả.",
@@ -6174,6 +6174,10 @@
       "authorityNotConfigured": "Chưa thiết lập",
       "authorityAccountNo": "Số tài khoản / mã tham chiếu của người sử dụng lao động",
       "authorityAccountNoHint": "Như hiển thị trên phiếu nộp tiền",
+      "authorityFilingSection": "Mã số khai nộp",
+      "authorityFilingHint": "Số ghi trên biểu mẫu khai nộp của cơ quan này. Đây không phải số tài khoản chủ sử dụng lao động trên phiếu nộp tiền bên dưới.",
+      "authorityPaymentSection": "Thiết lập thanh toán",
+      "authorityEisSharesSocso": "EIS không có mã số khai nộp riêng — được khai theo cùng mã chủ sử dụng lao động PERKESO như SOCSO.",
       "authorityBankAccount": "Chi trả từ",
       "authorityBankAccountNone": "— Chưa chọn tài khoản —",
       "authorityEmail": "Email",
@@ -6222,7 +6226,9 @@
       "actionView": "Xem",
       "actionEdit": "Sửa",
       "actionArchive": "Lưu trữ",
-      "actionUnarchive": "Bỏ lưu trữ"
+      "actionUnarchive": "Bỏ lưu trữ",
+      "authorityRegistrationSection": "Đăng ký",
+      "authorityRegistrationHint": "Công ty này có đăng ký với HRD Corp hay không. Nó quyết định khoản thu có được tính hay không - đây không phải là số tham chiếu."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

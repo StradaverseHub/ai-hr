@@ -6068,7 +6068,7 @@
       "lhdnENumber": "LHDN E-எண்",
       "myinvoisTin": "MyInvois TIN",
       "ssmRegistrationNo": "SSM பதிவு எண்.",
-      "statutoryFilingsHint": "சட்டபூர்வ தாக்கல்களால் (CP39, EPF, SOCSO/EIS, EA, Form E) பயன்படுத்தப்படுகிறது.",
+      "statutoryFilingsHint": "பங்களிப்பு செலுத்தும் அமைப்பு அல்லாத நிறுவன அளவிலான பதிவுகள். ஒவ்வொரு சட்டப்பூர்வ அமைப்பின் தாக்கல் எண்ணும் கீழே அதன் அட்டையில் உள்ளது.",
       "saveStatutoryIdentity": "சட்டபூர்வ அடையாளத்தைச் சேமி",
       "bankProfilesTitle": "வங்கி வழங்கல் சுயவிவரங்கள்",
       "noBankProfiles": "இன்னும் வங்கி சுயவிவரங்கள் இல்லை. ஒவ்வொரு வழங்கல் வங்கிக்கும் வங்கி வழங்கிய நிறுவன ID + பற்று கணக்கைச் சேர்க்கவும்.",
@@ -6174,6 +6174,10 @@
       "authorityNotConfigured": "அமைக்கப்படவில்லை",
       "authorityAccountNo": "முதலாளியின் கணக்கு / குறிப்பு எண்",
       "authorityAccountNoHint": "கட்டணச் சீட்டில் தோன்றுவது போல",
+      "authorityFilingSection": "தாக்கல் அடையாள எண்",
+      "authorityFilingHint": "இந்த அமைப்பின் தாக்கல் படிவத்தில் இடம்பெறும் எண். இது கீழே உள்ள கட்டணச் சீட்டில் உள்ள முதலாளி கணக்கு எண் அல்ல.",
+      "authorityPaymentSection": "கட்டண அமைப்பு",
+      "authorityEisSharesSocso": "EIS-க்கு தனித் தாக்கல் எண் இல்லை — SOCSO-வின் அதே PERKESO முதலாளி குறியீட்டின் கீழ் தாக்கல் செய்யப்படுகிறது.",
       "authorityBankAccount": "இதிலிருந்து செலுத்தப்படும்",
       "authorityBankAccountNone": "— கணக்கு தேர்ந்தெடுக்கப்படவில்லை —",
       "authorityEmail": "மின்னஞ்சல்",
@@ -6222,7 +6226,9 @@
       "actionView": "காண்க",
       "actionEdit": "திருத்து",
       "actionArchive": "காப்பகப்படுத்து",
-      "actionUnarchive": "காப்பகத்திலிருந்து மீட்டெடு"
+      "actionUnarchive": "காப்பகத்திலிருந்து மீட்டெடு",
+      "authorityRegistrationSection": "பதிவு",
+      "authorityRegistrationHint": "இந்த நிறுவனம் HRD Corp இல் பதிவு செய்யப்பட்டுள்ளதா என்பது. இது வரி விதிக்கப்படுமா என்பதைத் தீர்மானிக்கிறது - இது ஒரு குறிப்பு எண் அல்ல."
     },
     "systemLabels": {
       "pageTitle": "அமைப்பு லேபிள்கள்",
