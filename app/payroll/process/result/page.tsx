@@ -3,6 +3,8 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
 import { listEmployeesForPayrollRun } from '@/core/read';
+// r227 — the skipped are read from the run's own durable event, not carried in the redirect. See below.
+import { listSkippedEmployees } from '@/core/payroll-view';
 import { decodeRunGroupResult, type RunGroupReasonCode } from '@/core/payroll-run-group';
 import { payrollProcessBack } from '../../back';
 
@@ -20,6 +22,15 @@ import { payrollProcessBack } from '../../back';
  * their own card, and are deliberately NOT in the red "Failed to process" figure — `summarize` subtracts
  * them there, and the card below carries a neutral badge rather than a danger one, because a skip is a
  * correct decision by the run and not something that went wrong.
+ *
+ * r227 MOVED THE NAMES OFF THE REDIRECT. r226 carried the whole skipped list inside `?r=`, which took the
+ * payload from O(companies) to O(headcount): 40 skipped = 9,298 bytes, 80 = 18,018, 245 = 54,136, against
+ * a 16,384-byte header budget. This page therefore failed to load at around seventy skipped employees —
+ * on exactly the runs the skip exists for, and AFTER the payroll had already been committed. The payload
+ * now carries a COUNT and this page reads the names from each batch's `payroll-batch.processed` event
+ * (`listSkippedEmployees`), which the kernel already wrote. Two consequences worth knowing: the card now
+ * survives a refresh, and a reader who cannot see those events (they are admin-only under ADR-0015) sees
+ * the counts with no name list rather than a page that claims nobody was skipped.
  */
 export default async function PayrollProcessResultPage({
   searchParams,
@@ -66,12 +77,23 @@ export default async function PayrollProcessResultPage({
     : [];
   const missingSalary = scopeRows.filter((e) => !e.hasCurrentCompensation);
 
-  // r226 — every skipped employee, flattened across the run's companies and carrying the company name so
-  // a multi-company bonus run reads as one list. Sorted by company then name, so two runs of the same
-  // shape print in the same order.
-  const skippedRows = result.perCompany
-    .flatMap((c) => (c.employeesSkipped ?? []).map((e) => ({ ...e, companyId: c.companyId, companyName: c.companyName })))
-    .sort((a, b) => a.companyName.localeCompare(b.companyName) || a.name.localeCompare(b.name));
+  // r226/r227 — every skipped employee, flattened across the run's companies and carrying the company
+  // name so a multi-company bonus run reads as one list. Sorted by company then name, so two runs of the
+  // same shape print in the same order.
+  //
+  // Only the batches whose outcome says somebody was skipped are queried, so a run that skipped nobody —
+  // every regular run — costs no query at all.
+  const skippedCompanies = result.perCompany.filter((c) => (c.employeesSkipped ?? 0) > 0 && c.batchId);
+  const companyOfBatch = new Map(skippedCompanies.map((c) => [c.batchId as string, c]));
+  const skippedRows = skippedCompanies.length
+    ? (await listSkippedEmployees(s, skippedCompanies.map((c) => c.batchId as string)))
+        .map((e) => ({
+          ...e,
+          companyId: companyOfBatch.get(e.batchId)?.companyId ?? '',
+          companyName: companyOfBatch.get(e.batchId)?.companyName ?? '',
+        }))
+        .sort((a, b) => a.companyName.localeCompare(b.companyName) || a.name.localeCompare(b.name))
+    : [];
 
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
@@ -123,7 +145,7 @@ export default async function PayrollProcessResultPage({
                   <td className="px-4 py-2 font-medium text-foreground">{c.companyName}</td>
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSelected}</td>
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSucceeded}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{c.employeesSkipped?.length ?? 0}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{c.employeesSkipped ?? 0}</td>
                   <td className="px-4 py-2">
                     {c.status === 'succeeded' ? (
                       <Badge variant="success">{t('companySucceeded')}</Badge>
@@ -149,37 +171,47 @@ export default async function PayrollProcessResultPage({
         </div>
       </Card>
 
-      {skippedRows.length > 0 && (
+      {(result.totalEmployeesSkipped ?? 0) > 0 && (
         <Card className="overflow-hidden">
           <div className="border-b border-border px-4 py-3">
             <div className="text-sm font-medium">{t('skippedEmployeesTitle')}</div>
             <p className="mt-1 text-xs text-muted-foreground">{t('skippedEmployeesNote')}</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">{t('colEmployeeId')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colEmployeeName')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colSkipReason')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {skippedRows.map((e) => (
-                  <tr key={`${e.companyId}:${e.employmentId}`} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2"><EmployeeCode code={e.employeeCode} /></td>
-                    <td className="px-4 py-2 text-foreground">{e.name}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{e.companyName}</td>
-                    {/* NEUTRAL, never danger: nothing went wrong for this person. */}
-                    <td className="px-4 py-2"><Badge variant="default">{t('employeeSkipped')}</Badge></td>
-                    <td className="px-4 py-2 text-muted-foreground">{t(`skipReason.${e.reason}`)}</td>
+          {/* r227 — the count comes from the run, the names from its durable event. A reader without
+              access to that event (admin-only, ADR-0015) gets the count and this sentence, never a
+              silently empty card that would read as "nobody was skipped after all". */}
+          {skippedRows.length === 0 && (
+            <p className="px-4 py-4 text-sm text-muted-foreground">
+              {t('skippedNamesUnavailable', { n: result.totalEmployeesSkipped })}
+            </p>
+          )}
+          {skippedRows.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="px-4 py-2 font-medium">{t('colEmployeeId')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colEmployeeName')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colSkipReason')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {skippedRows.map((e) => (
+                    <tr key={`${e.batchId}:${e.employmentId}`} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2"><EmployeeCode code={e.employeeCode} /></td>
+                      <td className="px-4 py-2 text-foreground">{e.name}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{e.companyName}</td>
+                      {/* NEUTRAL, never danger: nothing went wrong for this person. */}
+                      <td className="px-4 py-2"><Badge variant="default">{t('employeeSkipped')}</Badge></td>
+                      <td className="px-4 py-2 text-muted-foreground">{t(`skipReason.${e.reason}`)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
 

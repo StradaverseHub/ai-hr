@@ -3505,7 +3505,16 @@
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
-      "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped: no transaction entry for this payroll cycle",
+      "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
+      "skipped": {
+        "title": "Employees skipped by this run",
+        "note": "This is an additional run, so employees it had nothing to pay were not processed. They have no payslip on this run and none of their transactions were used up.",
+        "colReason": "Reason",
+        "reason": {
+          "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run"
+        }
+      },
       "preChecksConfirmRequired": "Please confirm the pre-processing warnings before generating payslips.",
       "preConfirmTitle": "Process payroll with warnings?",
       "preConfirmDescription": "{n} pre-processing check(s) are unresolved (missing statutory profile or bank details). Affected employees may get default statutory treatment and be missing from the payment file.",
@@ -5010,10 +5019,12 @@
       "employeeFailed": "Failed",
       "skippedEmployeesTitle": "Employees skipped by this run",
       "skippedEmployeesNote": "This is an additional run, so employees with nothing to be paid in this cycle were not processed. They have no payslip and no payroll record for this run, and none of their transactions were used up.",
+      "skippedNamesUnavailable": "{n} employee(s) were skipped. The list of names is not available to your account.",
       "colSkipReason": "Reason",
       "employeeSkipped": "Skipped",
       "skipReason": {
-        "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle"
+        "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run"
       },
       "overall": {
         "succeeded": "Succeeded",

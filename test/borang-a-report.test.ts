@@ -15,14 +15,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { BORANG_A_HEADER_KEYS, borangAFrom } from '../lib/borang-a';
 import { borangAFileReadiness, buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
@@ -311,5 +311,126 @@ describe('the read feeds both outputs', () => {
     expect(t.headerEmployeeCents).toBe(t.trailerEmployeeCents);
     // The hash total counts the very member numbers on the file, so a lost 02 line would change it.
     expect(t.controlTotal).toBe(t.memberNoSum);
+  });
+});
+
+
+/**
+ * ─────────────── r227 — WHAT AN ADDITIONAL RUN DOES TO THE UPAH COLUMN ───────────────
+ *
+ * THIS COVERAGE DID NOT EXIST, and its absence is why a change to a FILED STATUTORY FORM nearly shipped
+ * unmeasured. `createAdditionalRun` appeared ZERO times in test/borang-a.test.ts, test/borang-8a.test.ts,
+ * test/kwsp-borang-a-file.test.ts, test/socso-eis-file.test.ts and test/cp39-form.test.ts — counted, not
+ * assumed. Every statutory-form guard in this repository ran a SINGLE regular run, so the whole suite was
+ * green whatever an extra run did to the figures on the paper.
+ *
+ * THE MECHANISM, AND IT IS NOT AN EDGE CASE. `statutory.bases.epf` is stamped from `wagesExOt`
+ * (core/payroll.ts) — the FULL month's wage — on EVERY payslip, including an additional run's, because on
+ * an additional run the bases are deliberately the CUMULATIVE month (r187: they must match the `now` side
+ * of the statutory delta the run charges). The Borang A read then SUMS `bases.epf + bases.epfAdditional`
+ * across every payslip in the month (ADR-0024: a month may hold several runs and the statutory legs are
+ * deltas). Summing cumulative bases counts the month's wage once per run.
+ *
+ * So a bonus run that produces a ZERO-VALUE payslip for somebody with no bonus does NOT contribute
+ * nothing to this form, which is what the approved plan told the reporter. It contributes a second full
+ * month's wage to the Upah column. Skipping that employee (r226) removes the second count.
+ *
+ * WHAT IS PINNED HERE IS THE FACT, NOT A FIX. Nothing in r226/r227 changes how `bases` are stamped or how
+ * this form sums them; the reporter is being shown the change before it is filed, and that decision is
+ * theirs. The point of these cases is that the number can no longer move without a test saying so.
+ */
+describe('r227 — an additional run and the Upah column', () => {
+  const salary = 4000;
+
+  /** The regular run, then a bonus run that pays NOBODY in it — the shape the reported case produces. */
+  async function twoRuns(period: string) {
+    // `multi_cycle_payroll` is granted BEFORE the snapshot is taken; a synthetic adminCtx snapshot is
+    // point-in-time and would read the grant off (the discipline every multi-cycle test here follows).
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
+    const reg = await createBatch(a, { companyId: b.companyId, payPeriod: period });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const extra = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: period, runType: 'bonus' });
+    return { a, reg, extra };
+  }
+
+  const preview = (a: Awaited<ReturnType<typeof entitledCtx>>, period: string) =>
+    reportPreview(a, { companyId: b.companyId, reportId: 'my.borang-a', periodKey: period });
+  const wageOf = (r: Awaited<ReturnType<typeof preview>>, name: string) =>
+    Number(r.rows.find((row) => row.name === name)!.wage);
+
+  /**
+   * ONE RUN, TWO EMPLOYEES, IDENTICAL IN EVERY RESPECT EXCEPT WHETHER THE BONUS RUN PROCESSED THEM. That
+   * is the before/after: KEPT is what every employee looked like before r226, SKIPPED is what they look
+   * like after.
+   *
+   * KEPT is held in the run by an OVERTIME figure keyed on the bonus run — a door the skip counts
+   * (r226: a keyed transaction always keeps its owner, so the reason printed is never false) and that an
+   * additional run does not actually PAY (`slipOvertime` is forced to 0). So the kernel itself produces
+   * the genuine article: a payslip worth nothing, carrying a full month's wage in its EPF basis. No
+   * surgery on any row.
+   */
+  it('a zero-value bonus payslip adds a SECOND month’s wage to Upah — and a skip is what removes it', async () => {
+    const kept = await hire({ name: 'AAA KEPT', hiredOn: '2024-03-01', salary, ic: '900101015555', epfNumber: '18690645' });
+    await hire({ name: 'BBB SKIPPED', hiredOn: '2024-03-01', salary, ic: '880808085555', epfNumber: '19807671' });
+    const { a, extra } = await twoRuns('2026-07');
+
+    // BEFORE the extra run: one payslip each, one month's wage each. This is the figure that would be filed.
+    const before = await preview(a, '2026-07');
+    const oneMonth = wageOf(before, 'AAA KEPT');
+    expect(oneMonth).toBeGreaterThan(0);
+    expect(wageOf(before, 'BBB SKIPPED')).toBe(oneMonth);
+
+    await setPayrollInput(a, { batchId: extra.batchId, employmentId: kept.employmentId, overtimeAmount: 500 });
+    const gen = await generatePayslips(a, { batchId: extra.batchId });
+    expect('skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.map((x) => x.name) : []).toEqual([
+      'BBB SKIPPED',
+    ]);
+
+    // The extra run wrote ONE payslip and it is worth NOTHING — a zero-value row, exactly the reported case.
+    const extraSlips = await owner.db
+      .select({ gross: schema.payslip.grossPay, statutory: schema.payslip.statutory })
+      .from(schema.payslip)
+      .where(eq(schema.payslip.batchId, extra.batchId));
+    expect(extraSlips).toHaveLength(1);
+    // `grossPay = round2(bonus)` on an additional run, and there is no bonus — so this is structurally a
+    // zero-value payslip, not one that merely happens to total nothing. Net is deliberately NOT asserted:
+    // it is the statutory DELTA against the earlier run, which is a different claim from "worth nothing".
+    expect(Number(extraSlips[0].gross)).toBe(0);
+
+    const after = await preview(a, '2026-07');
+    // THE DEFECT, STATED AS A NUMBER. The person the run kept now has TWO months' wage on a one-month form.
+    expect(wageOf(after, 'AAA KEPT')).toBeCloseTo(oneMonth * 2, 2);
+    // THE SKIP, STATED AS A NUMBER. The person it left out is untouched — one month, as filed.
+    expect(wageOf(after, 'BBB SKIPPED')).toBeCloseTo(oneMonth, 2);
+    // …and the second count really is the zero-value payslip's own EPF basis, not a rounding artefact.
+    const basesEpf = (extraSlips[0].statutory as { bases?: Record<string, number> }).bases!.epf;
+    expect(Number(basesEpf)).toBeCloseTo(oneMonth, 2);
+  });
+
+  /**
+   * THE OTHER HALF, AND THE ONE THE SKIP DOES NOT FIX. Somebody who IS paid on the bonus run also gets a
+   * second full month's wage in Upah — the doubling is a property of the bases, not of the zero-value
+   * payslip, so it survives for everybody the run has something to pay. Pinned so the round's answer to
+   * the reporter is complete rather than only the half that improved.
+   */
+  it('the doubling is NOT removed for somebody the bonus run actually pays', async () => {
+    const paid = await hire({ name: 'AAA PAID', hiredOn: '2024-03-01', salary, ic: '900101015555', epfNumber: '18690645' });
+    const { a, extra } = await twoRuns('2026-07');
+    const before = await preview(a, '2026-07');
+    const oneMonth = wageOf(before, 'AAA PAID');
+
+    await setPayrollInput(a, {
+      batchId: extra.batchId,
+      employmentId: paid.employmentId,
+      overtimeAmount: 0,
+      bonusAmount: 1000,
+    });
+    await generatePayslips(a, { batchId: extra.batchId });
+
+    const after = await preview(a, '2026-07');
+    // At LEAST twice the month's wage: the second `bases.epf` plus whatever the bonus put in
+    // `bases.epfAdditional`, which the same column sums. Never one month.
+    expect(wageOf(after, 'AAA PAID')).toBeGreaterThanOrEqual(oneMonth * 2);
   });
 });

@@ -246,9 +246,11 @@ export async function resumeRunAction(formData: FormData) {
     // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present; the
     // fallback satisfies the union return type, exactly as in runMultiCompanyPayroll.
     const payslips = 'payslips' in gen && typeof gen.payslips === 'number' ? gen.payslips : 0;
-    // r226 — the additional-run skip list, carried onto the result payload exactly as the multi-company
+    // r226 — the additional-run skip, carried onto the result payload exactly as the multi-company
     // orchestrator does. Same guard, same shape: the single-company path is the SAME result screen and
-    // must not be the one that loses the account of who was left out.
+    // must not be the one that loses the account of who was left out. r227 carries the COUNT only — the
+    // names are read back from this batch's own `payroll-batch.processed` event by the result page, so
+    // the redirect stays O(companies) whatever the headcount (see CompanyOutcome.employeesSkipped).
     const skipped = 'skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped : [];
     outcome = {
       companyId: batch.companyId,
@@ -257,7 +259,7 @@ export async function resumeRunAction(formData: FormData) {
       batchId,
       employeesSelected,
       employeesSucceeded: payslips,
-      ...(skipped.length > 0 ? { employeesSkipped: skipped } : {}),
+      ...(skipped.length > 0 ? { employeesSkipped: skipped.length } : {}),
     };
   } catch (e) {
     outcome = {

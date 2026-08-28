@@ -431,13 +431,21 @@ export type SkippedEmployee = {
 };
 
 /**
- * Why an employee was left out of a run. ONE member today, and it is a value rather than a boolean so a
- * second cause (a future "already paid on an earlier run of this cycle", say) can be added without every
- * reader having to change shape. It is deliberately NOT a member of `RunGroupReasonCode`
- * (core/payroll-run-group.ts): that union is a COMPANY-level FAILURE, rendered in red on the result page,
- * and a skip is neither a failure nor company-level.
+ * Why an employee was left out of a run. A value rather than a boolean so a second cause can be added
+ * without every reader having to change shape — and r227 is that second cause arriving. It is
+ * deliberately NOT a member of `RunGroupReasonCode` (core/payroll-run-group.ts): that union is a
+ * COMPANY-level FAILURE, rendered in red on the result page, and a skip is neither a failure nor
+ * company-level.
+ *
+ *   • NO_TRANSACTION_FOR_CYCLE   — nothing is keyed for this person on this run, and the draft screen's
+ *                                  "what will this run pay" card lists them nowhere either.
+ *   • NO_ADDITIONAL_PAY_THIS_RUN — the card DOES list them (a standing monthly pay item), but none of it
+ *                                  is additional remuneration, which is all an additional run pays. r227
+ *                                  exists because printing the first sentence about this person
+ *                                  contradicts the screen the operator just read. See the reason block
+ *                                  in `generatePayslips` for why the fix is the sentence, not the skip.
  */
-export type PayrollSkipReason = 'NO_TRANSACTION_FOR_CYCLE';
+export type PayrollSkipReason = 'NO_TRANSACTION_FOR_CYCLE' | 'NO_ADDITIONAL_PAY_THIS_RUN';
 
 /**
  * ADR-0033 — a worked day already banked as time-in-lieu contributes NO overtime. Cash XOR leave.
@@ -4824,10 +4832,88 @@ export async function generatePayslips(
         return false;
       };
 
+      // ── r227 GATE 2 — WHICH REASON IS TRUE OF THIS PERSON ────────────────────────────────────────
+      //
+      // r226 printed ONE reason for every skip: "No transaction entry for this payroll cycle". For most
+      // of the skipped that is exactly right. For one population it is FALSE ON SCREEN, and the plan the
+      // reporter approved promised it could not be.
+      //
+      // THE POPULATION. `hasWork` counts a RECURRING pay item only when it routes to the bonus bucket
+      // (the one door trimmed above — see (c)). So somebody whose only pending money is a standing
+      // monthly allowance is skipped. But the draft screen's "what will this run pay" card
+      // (`pendingBatchMoney`, core/payroll-view.ts) lists that same allowance BY NAME under its
+      // `fixedComponent` door. The operator therefore reads "Ada Lim — Monthly allowance RM400" on the
+      // run they are about to process, and then "Ada Lim — No transaction entry for this payroll cycle"
+      // on its result. One of those two sentences is a lie, and it is this one.
+      //
+      // THE FIX IS THE REASON, NOT THE SKIP. Skipping them is correct — an additional run's gross IS the
+      // bonus bucket, and a standing allowance lands in the allowance line it forces to 0, so processing
+      // them would write back exactly the zero payslip this whole change exists to remove. What has to
+      // change is the sentence printed beside their name. `PayrollSkipReason` was made a VALUE rather
+      // than a boolean in r226 for precisely this: a second cause costs the readers nothing.
+      //
+      // MIRRORED ON THE CARD'S OWN GATE, DELIBERATELY. `recurringByEmp` is populated only when
+      // TYPED_PAY_COMPONENTS_ENABLED is on, and the card's `fixedComponent` door is gated on the SAME
+      // flag — with the flag off it reports those rows as a bare `inertRows` COUNT and names nobody, so
+      // there is no named contradiction to answer and the original reason stands. Reading the table
+      // directly here (as `hasRunRow` does, and for good reason) would answer a contradiction the screen
+      // never made, and would say "not additional remuneration" about a bonus-routing item that only the
+      // flag is holding back. The two must agree about what the OPERATOR WAS SHOWN, not about what rows
+      // exist — so this reads the same flag-gated map the skip predicate itself reads.
+      //
+      // A ZERO amount is not on the card either (`push` drops it), hence the same `> 0` filter; a ruled
+      // item stored as 0 never reaches here at all, because `paysOnAdditionalRun` already kept its owner.
+      const standingPayNotPaidHere = (employmentId: string): boolean =>
+        (recurringByEmp.get(employmentId) ?? []).some(
+          (c) => c.code !== 'BASIC' && Math.abs(Number(c.amount)) > 0,
+        );
+
       const working = emps.filter((e) => hasWork(e.employmentId));
       if (working.length !== emps.length) {
         const workingIds = new Set(working.map((e) => e.employmentId));
         const skippedIds = emps.filter((e) => !workingIds.has(e.employmentId)).map((e) => e.employmentId);
+
+        // ── r227 — THE FAIL-CLOSED GUARD THE SKIP WAS SWALLOWING ─────────────────────────────────
+        //
+        // `UnsupportedPayComponentError` (ADR-0025 §5) is the last line of defence against a pay item
+        // v1 cannot compute correctly — a PCB-taxable BIK, or a PCB-only earning that is neither EPF nor
+        // SOCSO. It is thrown from INSIDE the per-employee component loop, which for a skipped employee
+        // no longer runs. And the two unsupported shapes are exactly the shapes `paysOnAdditionalRun`
+        // answers "pays nothing" for (a non-payable row is rejected outright; a not-EPF-not-SOCSO row
+        // fails the flag inference), so the skip does not merely *sometimes* hide this error — it hides
+        // it in every case it can occur. A misconfigured item that used to abort the run would instead
+        // produce a quietly short run, which is the precise failure mode the guard exists to prevent.
+        //
+        // So the classification is checked for everyone about to be dropped, BEFORE `emps` is narrowed
+        // and therefore before any payslip is written. The condition below is the throw's own condition
+        // read term for term, including the three `continue`s that precede it in the loop (BASIC is
+        // inert; an optional_deduction is consumed earlier; a deduction returns earlier), and it reads
+        // no amount at all — neither does the throw.
+        //
+        // BATCH components are checked too even though a non-zero one keeps its owner in the run: a
+        // ZERO-amount batch component row is excluded by `hasRunRow`'s `ne(amount, '0')`, so its owner
+        // CAN be skipped, and the loop would have validated it.
+        const unsupported = (c: {
+          code: string;
+          kind: string;
+          nonPayable: boolean;
+          epf: boolean;
+          socso: boolean;
+          pcb: boolean;
+          pcbRemunerationType: 'normal' | 'additional' | 'optional_deduction' | null;
+        }): boolean =>
+          c.code !== 'BASIC' &&
+          c.pcbRemunerationType !== 'optional_deduction' &&
+          c.kind !== 'deduction' &&
+          c.pcb &&
+          c.pcbRemunerationType == null &&
+          (c.nonPayable || (!c.epf && !c.socso));
+        for (const id of skippedIds) {
+          for (const c of [...(recurringByEmp.get(id) ?? []), ...(batchCompByEmp.get(id) ?? [])]) {
+            if (unsupported(c)) throw new UnsupportedPayComponentError(c.code);
+          }
+        }
+
         emps = working;
 
         // NAME THEM. A count is not an account of who was left out — the whole ask was to be able to check
@@ -4844,7 +4930,7 @@ export async function generatePayslips(
             employmentId: id,
             name: row?.name ?? id,
             employeeCode: row?.employeeCode ?? null,
-            reason: 'NO_TRANSACTION_FOR_CYCLE',
+            reason: standingPayNotPaidHere(id) ? 'NO_ADDITIONAL_PAY_THIS_RUN' : 'NO_TRANSACTION_FOR_CYCLE',
           });
         }
         skippedEmployees.sort((a, b) => a.name.localeCompare(b.name));

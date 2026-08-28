@@ -30,7 +30,7 @@
 import { withTenant, type SessionContext } from '../db/client';
 import { randomUUID } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
-import { createAdditionalRun, createBatch, generatePayslips, type SkippedEmployee } from './payroll';
+import { createAdditionalRun, createBatch, generatePayslips } from './payroll';
 import { getActivePayrollCycle, listPayrollCycles } from './payroll-cycle';
 import { allowedCompanies, listEmployees } from './read';
 
@@ -64,14 +64,26 @@ export type CompanyOutcome = {
   employeesSucceeded: number;
   /**
    * r226 — THE THIRD OUTCOME, AND IT IS NOT A FAILURE. On an ADDITIONAL run (Bonus / Off-cycle /
-   * Adjustment) the kernel does not process an employee it has nothing to pay in that cycle, and names
-   * each one. Absent on a regular run and on every run that skipped nobody, so a payload written before
-   * this shipped decodes unchanged and reads as "nobody skipped".
+   * Adjustment) the kernel does not process an employee it has nothing to pay in that cycle. Absent on a
+   * regular run and on every run that skipped nobody, so a payload written before this shipped decodes
+   * unchanged and reads as "nobody skipped".
    *
-   * It exists as a LIST rather than a count because the whole ask was to account for the missing forty
-   * BY NAME; the count is derived from it, never carried twice.
+   * r227 MADE THIS A COUNT, AND IT WAS A LIST OF NAMED EMPLOYEES. This struct is JSON-encoded into the
+   * result page's query string (`encodeRunGroupResult` → `?r=`), so it must stay O(companies); as a list
+   * it was O(HEADCOUNT), and the runs this feature exists for are exactly the ones with a long list.
+   * Measured on the r226 shape: 40 skipped = 9,298 bytes, 80 = 18,018, 245 = 54,136 — against Node's
+   * 16,384-byte default header budget (deploy/aihr.service:29 starts `next start` with no
+   * `--max-http-header-size`), shared with the request line and the session cookies, behind a cloudflared
+   * tunnel with a similar cap. The result screen therefore failed to load at roughly seventy skipped
+   * employees — AFTER the payroll had already committed, on the runs it was built for.
+   *
+   * THE NAMES DID NOT GO ANYWHERE. They are read from the DURABLE record instead — the
+   * `payroll-batch.processed` domain event, which the kernel already writes with every skipped
+   * employment id and reason — by `listSkippedEmployees` (core/payroll-view.ts), keyed off `batchId`
+   * below. That is strictly better than the payload was: it also survives a refresh, which the one-shot
+   * `?r=` string never did.
    */
-  employeesSkipped?: SkippedEmployee[];
+  employeesSkipped?: number;
   /** Set on a failed company. */
   reason?: RunGroupReasonCode;
   /** Organization Module (361e3b15) — on an INVALID_CYCLE failure, the run TYPE that had no active cycle in
@@ -124,7 +136,7 @@ export function summarize(
   const companiesSucceeded = perCompany.filter((c) => c.status === 'succeeded').length;
   const totalEmployeesSelected = perCompany.reduce((n, c) => n + c.employeesSelected, 0);
   const totalEmployeesSucceeded = perCompany.reduce((n, c) => n + c.employeesSucceeded, 0);
-  const totalEmployeesSkipped = perCompany.reduce((n, c) => n + (c.employeesSkipped?.length ?? 0), 0);
+  const totalEmployeesSkipped = perCompany.reduce((n, c) => n + (c.employeesSkipped ?? 0), 0);
   return {
     payPeriod,
     startedAt,
@@ -306,8 +318,9 @@ export async function runMultiCompanyPayroll(
       // fall back to 0 to satisfy the union return type of generatePayslips.
       const genResult = await generatePayslips(ctx, { batchId: created.batchId });
       const payslips = 'payslips' in genResult && typeof genResult.payslips === 'number' ? genResult.payslips : 0;
-      // r226 — the kernel's own skip list, carried through untouched. Same union-return guard as
-      // `payslips`: the subset-reprocess branch has no `skipped` key and this path never takes it.
+      // r226 — the kernel's own skip list. Same union-return guard as `payslips`: the subset-reprocess
+      // branch has no `skipped` key and this path never takes it. r227 carries only its LENGTH onto the
+      // outcome (see `employeesSkipped`) — the names ride the durable event, not the redirect.
       const skipped = 'skipped' in genResult && Array.isArray(genResult.skipped) ? genResult.skipped : [];
       perCompany.push({
         companyId,
@@ -316,7 +329,7 @@ export async function runMultiCompanyPayroll(
         batchId: created.batchId,
         employeesSelected,
         employeesSucceeded: payslips,
-        ...(skipped.length > 0 ? { employeesSkipped: skipped } : {}),
+        ...(skipped.length > 0 ? { employeesSkipped: skipped.length } : {}),
       });
     } catch (e) {
       // HAZARD 2 — catch PER COMPANY. One company's failure never aborts the others in the run.
@@ -361,10 +374,11 @@ export async function runMultiCompanyPayroll(
           employeesSelected: c.employeesSelected,
           employeesSucceeded: c.employeesSucceeded,
           // r226 — the run-group event is the DURABLE record (the `?r=` payload dies with the redirect),
-          // so the skip has to be inspectable here too. Ids + reason only: names are re-resolvable and a
-          // domain event is not the place to snapshot personal data it does not need.
-          employeesSkipped: c.employeesSkipped?.length ?? 0,
-          skipped: (c.employeesSkipped ?? []).map((s) => ({ employmentId: s.employmentId, reason: s.reason })),
+          // so the skip has to be inspectable here too. A COUNT only: the per-employee ids and reasons
+          // are on each batch's own `payroll-batch.processed` event, written by the kernel, which is
+          // where the result screen reads them from (r227). Recording them twice would let two durable
+          // records of the same fact disagree.
+          employeesSkipped: c.employeesSkipped ?? 0,
         })),
       },
     }),

@@ -1,6 +1,16 @@
 /**
  * 9c8dad7a / 3aae0789 — BORANG A (KWSP monthly contribution form).
  *
+ * ⚠️ WHAT THIS FILE CANNOT SEE, NAMED HERE BECAUSE ITS ABSENCE NEARLY FILED A WRONG FORM (r227). Every
+ * assertion below is DB-FREE — it pins the rules against hand-built rows — so nothing here exercises a
+ * payroll run, and until r227 nothing anywhere exercised a SECOND run of the same month against this
+ * form. `createAdditionalRun` appeared zero times in this file, test/borang-8a.test.ts,
+ * test/kwsp-borang-a-file.test.ts, test/socso-eis-file.test.ts and test/cp39-form.test.ts. A bonus run's
+ * zero-value payslip carries a full month's wage in `bases.epf`, and the read SUMS the bases across the
+ * month's runs — so an extra run puts the month's wage in the Upah column TWICE, and a fully green suite
+ * said nothing. That case now lives in test/borang-a-report.test.ts ("an additional run and the Upah
+ * column"), which is where it can run a kernel; it cannot live here, and that is the point of the note.
+ *
  * WHAT THIS FILE IS FOR, IN ONE SENTENCE: the +1 dating rule, the carried-forward totals, the wage
  * PROVENANCE, and the places the form could quietly stop being the form. Every one of them fails SILENTLY
  * in production — a Borang A stamped with the wrong month, or whose page totals double-count, or whose
