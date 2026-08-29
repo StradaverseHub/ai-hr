@@ -8886,7 +8886,7 @@
     "colEaLine": "EA form line",
     "colRounding": "Rounding",
     "sectionEaForm": "EA form reporting",
-    "sectionEaFormHint": "Where this pay item's money is reported on the C.P.8A (EA). It changes no calculation and no statutory flag. Mapped amounts print in their own box from assessment year {year}; before that the form reports them as it does today.",
+    "sectionEaFormHint": "Where this pay item's money is reported on the C.P.8A (EA). It changes no calculation and no statutory flag. The EA form itself says which years a mapping is not yet in effect for.",
     "eaLineNone": "— (unmapped)",
     "eaLineUnmapped": "Not mapped",
     "eaLine_gross_salary": "Gross salary / wages",

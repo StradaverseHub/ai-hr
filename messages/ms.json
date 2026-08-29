@@ -8886,7 +8886,7 @@
     "colEaLine": "Baris borang EA",
     "colRounding": "Pembundaran",
     "sectionEaForm": "Pelaporan borang EA",
-    "sectionEaFormHint": "Di mana wang item gaji ini dilaporkan pada C.P.8A (EA). Ia tidak mengubah sebarang pengiraan atau bendera statutori. Jumlah yang dipetakan dicetak dalam kotaknya sendiri mulai tahun taksiran {year}; sebelum itu borang melaporkannya seperti hari ini.",
+    "sectionEaFormHint": "Di mana wang item gaji ini dilaporkan pada C.P.8A (EA). Ia tidak mengubah sebarang pengiraan atau bendera statutori. Borang EA sendiri menyatakan tahun yang pemetaannya belum berkuat kuasa.",
     "eaLineNone": "— (tidak dipetakan)",
     "eaLineUnmapped": "Tidak dipetakan",
     "eaLine_gross_salary": "Gaji / upah kasar",

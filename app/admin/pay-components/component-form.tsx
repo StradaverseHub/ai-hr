@@ -8,8 +8,6 @@ import {
   PAY_DISPLAY_CATEGORIES,
   ROUNDING_METHODS,
 } from '@/core/pay-components';
-// The year routing switches on — shown in the hint so the operator knows when a mapping starts printing.
-import { EA_ROUTING_FROM_YEAR } from '@/localization/my/reports';
 import { isStatutoryComponent } from '@/core/pay-rule';
 import { requireAdmin } from '@/lib/authz';
 import type { PayRule } from '@/core/pay-rule';
@@ -197,7 +195,12 @@ export async function ComponentForm({
             and silently nulls anything it does not recognise, so the empty option is a real "unmapped". */}
         <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('sectionEaForm')}</h2>
-          <p className="text-xs text-muted-foreground">{t('sectionEaFormHint', { year: EA_ROUTING_FROM_YEAR })}</p>
+          {/* The year a mapping starts printing is a MY-pack fact, and Pay Items is a GENERIC admin
+              screen: importing localization/my here is what the ADR-0080 D7 ratchet refuses (and its
+              allowlist only ever shrinks). The EA statement carries that year instead, out of the
+              statement DATA rather than an import — which is also where an operator is looking when the
+              answer matters. */}
+          <p className="text-xs text-muted-foreground">{t('sectionEaFormHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colEaLine')}>
               <select name="eaFormLine" defaultValue={component?.eaFormLine ?? ''} className={inputCls}>

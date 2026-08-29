@@ -8886,7 +8886,7 @@
     "colEaLine": "EA 表项目",
     "colRounding": "舍入",
     "sectionEaForm": "EA 表申报",
-    "sectionEaFormHint": "此薪资项目的金额在 C.P.8A（EA）表上的申报位置。不影响任何计算，也不影响法定标志。已对应的金额自 {year} 课税年度起印在各自的栏位；在此之前，表格按现行方式申报。",
+    "sectionEaFormHint": "此薪资项目的金额在 C.P.8A（EA）表上的申报位置。不影响任何计算，也不影响法定标志。EA 表本身会说明对应尚未生效的年度。",
     "eaLineNone": "—（未对应）",
     "eaLineUnmapped": "未对应",
     "eaLine_gross_salary": "总薪金／工资",

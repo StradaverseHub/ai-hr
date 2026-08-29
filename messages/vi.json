@@ -8886,7 +8886,7 @@
     "colEaLine": "Dòng mẫu EA",
     "colRounding": "Làm tròn",
     "sectionEaForm": "Báo cáo mẫu EA",
-    "sectionEaFormHint": "Nơi khoản tiền của mục lương này được báo cáo trên C.P.8A (EA). Không thay đổi bất kỳ phép tính hay cờ luật định nào. Các khoản đã ánh xạ được in vào ô riêng từ năm tính thuế {year}; trước đó mẫu vẫn báo cáo như hiện nay.",
+    "sectionEaFormHint": "Nơi khoản tiền của mục lương này được báo cáo trên C.P.8A (EA). Không thay đổi bất kỳ phép tính hay cờ luật định nào. Chính mẫu EA sẽ cho biết những năm mà ánh xạ chưa có hiệu lực.",
     "eaLineNone": "— (chưa ánh xạ)",
     "eaLineUnmapped": "Chưa ánh xạ",
     "eaLine_gross_salary": "Lương / tiền công gộp",
