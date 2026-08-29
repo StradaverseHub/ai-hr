@@ -222,6 +222,38 @@ export default async function EaStatementPage({
         </div>
       )}
 
+      {/* ea54fe6e §7/§8 — PAY ITEMS THAT PUT MONEY ON THIS FORM AND ARE NOT MAPPED TO AN EA LINE.
+          Shown whatever the year, on purpose: the mapping has to be finished BEFORE the first year that
+          routes it, and an operator who only sees this on the form that needed it has already missed.
+          It names the items rather than counting them — "3 pay items are unmapped" sends someone hunting
+          through the catalogue. Not a failure state: the form is correct either way, the amounts simply
+          stay in the summary boxes, and the wording says exactly that rather than implying a lost figure. */}
+      {ea.routing.unmapped.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 print:hidden">
+          <p className="font-medium text-amber-900 dark:text-amber-200">{t('eaMapping.title')}</p>
+          <p className="mt-1 text-amber-800 dark:text-amber-300/90">{t('eaMapping.body')}</p>
+          <ul className="mt-2 space-y-0.5 text-amber-800 dark:text-amber-300/90">
+            {ea.routing.unmapped.map((u) => (
+              <li key={u.code} className="font-mono text-xs">
+                {u.code} · <span className="font-sans">{u.name}</span>
+              </li>
+            ))}
+          </ul>
+          {/* Only say "not yet in effect" when that is true, so the notice never contradicts the form. */}
+          {!ea.routing.active && (
+            <p className="mt-2 text-xs text-amber-800 dark:text-amber-300/90">
+              {t('eaMapping.pending', { year: ea.routing.fromYear })}
+            </p>
+          )}
+          <Link
+            href="/admin/pay-components"
+            className="mt-3 inline-block rounded-md border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:bg-transparent dark:text-amber-200"
+          >
+            {t('eaMapping.action')}
+          </Link>
+        </div>
+      )}
+
       <Card className="space-y-5 p-6">
         <div className="border-b border-border pb-4">
           <h1 className="text-lg font-semibold tracking-tight">{t('title')}</h1>

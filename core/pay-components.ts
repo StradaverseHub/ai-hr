@@ -80,16 +80,37 @@ export { PAY_DISPLAY_CATEGORIES, cleanDisplayCategory, type PayDisplayCategory }
 
 // ADR-0035 1A — constrained config vocabularies (stored as text, validated app-side).
 // EA-form lines map a component to a Borang EA / C.P.8A Part B line so EA totals reconcile (#14).
+// ea54fe6e — WIDENED FROM NINE TO FIFTEEN, and `gratuity_compensation` SPLIT IN TWO.
+//
+// The reporter listed the fourteen boxes they actually map pay items to; this is that list, plus the
+// gratuity/compensation split their "Gratuity / Compensation" row collapses. Every value here routes to
+// exactly one `EaField` — the table is `EA_LINE_TO_FIELD` in localization/my/reports.ts, and
+// test/ea-line-routing.test.ts pins that this vocabulary and that table stay in step, in BOTH directions.
+//
+// SPLITTING `gratuity_compensation` WAS SAFE ONLY BECAUSE NOTHING CARRIED IT. Measured on production
+// 2026-08-29: all 25 pay_component rows have ea_form_line = NULL, so there is no stored value to migrate
+// and no backfill. Re-check that before changing or removing a value here again — `cleanEaLine` silently
+// nulls anything it does not recognise, so a retired value would erase an operator's mapping with no error.
+//
+// WHY `commission` AND `director_fee` SHARE ONE BOX. They are not a duplicate: the form's own caption for
+// that box is "1(b) Fees (including directors' fees), commission or bonus" (messages `ea.directorFee` /
+// `ea.feesCommissionBonus`). Two vocabulary words, one printed line, because the FORM groups them.
 export const EA_FORM_LINES = [
-  'gross_salary',          // B.1(a) salary, wages, leave pay
-  'bonus',                 // B.1(a) bonus / incentive (cash)
-  'commission',            // B.1(a) fees, commission
-  'allowance_taxable',     // B.1(a) taxable allowances
-  'allowance_exempt',      // tax-exempt allowance (reported, not taxed)
-  'bik',                   // B.2 benefit-in-kind / perquisite
-  'vola',                  // B.3 value of living accommodation
-  'esos',                  // B.1(c) ESOS / share scheme benefit
-  'gratuity_compensation', // B.1(d)/B.5 gratuity / compensation for loss of employment
+  'gross_salary',           // B.1(a) salary, wages, leave pay
+  'bonus',                  // B.1(b) bonus / incentive (cash)
+  'commission',             // B.1(b) fees, commission — same printed box as director_fee
+  'director_fee',           // B.1(b) directors' fees
+  'allowance_taxable',      // B.1(c) taxable allowances
+  'allowance_exempt',       // tax-exempt allowance (reported inside allowances, printed "included above")
+  'tips_perquisites',       // B.1(c) gross tips, perquisites, awards or other allowances
+  'tax_borne_by_employer',  // B.1(d) income tax paid by the employer on the employee's behalf
+  'esos',                   // B.1(e) ESOS / share scheme benefit
+  'gratuity',               // B.1(f) gratuity for the period
+  'arrears',                // B.2 arrears and other payments for previous years paid in the current year
+  'bik',                    // B.3 benefit-in-kind / perquisite
+  'vola',                   // B.4 value of living accommodation
+  'unapproved_fund_refund', // B.5 refund from an unapproved provident / pension fund
+  'compensation',           // B.6 compensation for loss of employment
 ] as const;
 export type EaFormLine = (typeof EA_FORM_LINES)[number];
 

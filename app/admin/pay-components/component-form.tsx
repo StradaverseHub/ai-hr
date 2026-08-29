@@ -2,11 +2,14 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listPayComponents } from '@/core/pay-components';
 import {
+  EA_FORM_LINES,
   listPayComponents as loadPayComponents,
   listPayRulePreviewCandidates,
   PAY_DISPLAY_CATEGORIES,
   ROUNDING_METHODS,
 } from '@/core/pay-components';
+// The year routing switches on — shown in the hint so the operator knows when a mapping starts printing.
+import { EA_ROUTING_FROM_YEAR } from '@/localization/my/reports';
 import { isStatutoryComponent } from '@/core/pay-rule';
 import { requireAdmin } from '@/lib/authz';
 import type { PayRule } from '@/core/pay-rule';
@@ -73,9 +76,10 @@ export async function ComponentForm({
       <ErrorBanner message={error} />
 
       <form action={editing ? updateComponentAction : createComponentAction} className="space-y-6">
-        {/* EA-form-line passthrough: the control left this screen (dedicated statutory module later);
-            re-submitting the stored value keeps existing mappings intact on every save. */}
-        <input type="hidden" name="eaFormLine" value={component?.eaFormLine ?? ''} />
+        {/* ea54fe6e — the EA-form-line CONTROL IS BACK. It was replaced by a hidden passthrough in the
+            4994a48f redesign, pending "a dedicated statutory module later" that never came: the column
+            kept saving, validating and auditing, the list kept a column for it, and nobody could set it.
+            The card sits below, beside the statutory configuration it belongs with. */}
 
         <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('sectionBasic')}</h2>
@@ -184,6 +188,27 @@ export async function ComponentForm({
               pcbExemptionCode={component?.pcbExemptionCode ?? null}
             />
             <p className="text-xs text-muted-foreground sm:col-span-3">{t('flagsHint')}</p>
+          </div>
+        </Card>
+
+        {/* ea54fe6e — EA FORM REPORTING. One control, deliberately: where this item's money is REPORTED on
+            the C.P.8A. It changes no calculation and no statutory flag, which is why it is its own card
+            rather than a fourth column in the statutory grid above. `cleanEaLine` re-validates server-side
+            and silently nulls anything it does not recognise, so the empty option is a real "unmapped". */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('sectionEaForm')}</h2>
+          <p className="text-xs text-muted-foreground">{t('sectionEaFormHint', { year: EA_ROUTING_FROM_YEAR })}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('colEaLine')}>
+              <select name="eaFormLine" defaultValue={component?.eaFormLine ?? ''} className={inputCls}>
+                <option value="">{t('eaLineNone')}</option>
+                {EA_FORM_LINES.map((l) => (
+                  <option key={l} value={l}>
+                    {t(`eaLine_${l}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
         </Card>
 

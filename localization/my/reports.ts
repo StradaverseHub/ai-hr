@@ -13,12 +13,16 @@ import {
   eaOverride,
   employeeStatutoryMy,
   employment,
+  payComponent,
   payrollBatch,
   payslip,
   person,
   position,
   tp1Relief,
 } from '../../db/schema';
+// ea54fe6e — read the itemised lines STRUCTURALLY (by shape), which is what lets this file consume the
+// kernel's stamp without importing core/payroll and dragging the whole engine into every EA caller.
+import { storedComponentLines } from '../../core/payslip-earning-lines';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
 // 8ca344bf — Borang 8A's read lives in its own file (it needs hire/termination dates and the employer
@@ -1031,6 +1035,64 @@ export const EA_PART_B_COMPONENTS = [
   'unapprovedFundRefund',
   'compensation',
 ] as const satisfies readonly EaField[];
+/**
+ * ea54fe6e — PAY ITEM → EA BOX. The table that finally joins `pay_component.ea_form_line` (stored since
+ * ADR-0035 1A, wave 1) to the box this form prints. Until r228 nothing read it: the EA summed
+ * `payslip.allowance` into one lump and no EA surface looked at pay_component at all.
+ *
+ * `allowance_exempt` IS DELIBERATELY ABSENT, AND THAT IS A STATUTORY DECISION, NOT AN OMISSION.
+ * The exempt figure is a MEMO line — the tax-exempt PORTION of `allowances`, printed muted as "(included
+ * above)" and excluded from EA_PART_B_COMPONENTS so it cannot double-count. It already has ONE defined
+ * derivation: the PCB exemption ledger (`statutory.exemptionUsed`, PCB_* codes). Feeding it a SECOND
+ * source would mean an item counted by both mechanisms is reported twice on a tax form, and neither
+ * source knows about the other. So mapping a pay item to `allowance_exempt` marks it as mapped (it stops
+ * being flagged unmapped) and leaves its money in `allowances` where the kernel put it. AGENTS 28: a memo
+ * box that overstates exempt income is a confident wrong number, which is worse than the lump it replaced.
+ * Reported to the reporter as the one line of their fourteen that does not move a figure.
+ */
+export const EA_LINE_TO_FIELD = {
+  gross_salary: 'grossSalary',
+  bonus: 'bonus',
+  // Both, and not a bug — the printed box is "1(b) Fees (including directors' fees), commission or bonus".
+  commission: 'directorFee',
+  director_fee: 'directorFee',
+  allowance_taxable: 'allowances',
+  tips_perquisites: 'tipsPerquisites',
+  tax_borne_by_employer: 'taxBorneByEmployer',
+  esos: 'esos',
+  gratuity: 'gratuity',
+  arrears: 'arrears',
+  bik: 'benefitsInKind',
+  vola: 'livingAccommodation',
+  unapproved_fund_refund: 'unapprovedFundRefund',
+  compensation: 'compensation',
+} as const satisfies Record<string, EaField>;
+
+/**
+ * WHICH SUMMARY FIGURE A ROUTED AMOUNT LEAVES. Routing MOVES money between boxes; it never adds any.
+ * The kernel's bucket already decided which EA figure the amount reached, so taking it out of that figure
+ * and putting it in the mapped one keeps `partB.gross` byte-identical — pinned by ea-line-routing's
+ * "the total is unchanged" case. `reimburse` and `deduct` are absent on purpose: neither is Part B income,
+ * so a pay item mapped to an EA line but paid through those buckets routes NOTHING rather than inventing
+ * income. (`wage` → allowances and `ot` → grossSalary mirror the loop below: grossSalary = basic + overtime.)
+ */
+export const EA_BUCKET_SOURCE_FIELD = { wage: 'allowances', ot: 'grossSalary', bonus: 'bonus' } as const;
+
+/**
+ * THE YEAR ROUTING SWITCHES ON, AND THE REASON IS THE WHOLE RISK OF THIS FEATURE.
+ *
+ * Per-component line stamping began 2026-08-01 (862ed0ad). An EA covers January to December, so routing
+ * assessment year 2026 would print an August-to-December subtotal in a box captioned as the full year: a
+ * director paid 48,000 across 2026 would show ~20,000 against fees/director's fee. AGENTS 28 — a box left
+ * alone tells the employee nothing, a box with a confident wrong number tells them something false and
+ * they file a tax return on it. The earlier months CANNOT be recovered: those payslips hold monthly
+ * totals only, and re-deriving the split from today's settings would disagree with the payslips already
+ * issued (argued and rejected against 862ed0ad).
+ *
+ * 2027 is the first year whose January is stamped. Raise this ONLY with a real reason; never lower it.
+ */
+export const EA_ROUTING_FROM_YEAR = 2027;
+
 /** One amended EA field, surfaced so the UI/PDF can render "original vs amended" + an "Amended" badge. */
 export type EaOverrideEntry = { field: EaField; original: number; amended: number; reason: string };
 
@@ -1161,6 +1223,23 @@ export type EaStatement = {
   /** EA-only amendments overlaid by HR (1.2.6). Empty = none. Additive + optional so existing consumers
    *  keep compiling; the PDF/HTML surfaces read it to badge amended lines. */
   overrides: EaOverrideEntry[];
+  /**
+   * ea54fe6e — the state of pay-item routing FOR THIS FORM, so the screen can say why a box reads as it
+   * does instead of leaving the operator to guess.
+   *
+   * `unmapped` is the reporter's §7/§8: pay items that put Part B money on THIS form and carry no EA
+   * line, which is precisely the set that would go on being lumped into allowances. It is computed
+   * whatever the year, so the warning is useful BEFORE routing switches on — an operator can finish the
+   * mapping during 2026 and have it take effect correctly in 2027, rather than discovering the gap on
+   * the first form that needed it.
+   */
+  routing: {
+    /** False for any year before EA_ROUTING_FROM_YEAR — the boxes are then derived exactly as before. */
+    active: boolean;
+    fromYear: number;
+    /** Pay items with Part B money on this form and no EA line, by code. Empty = nothing to warn about. */
+    unmapped: { code: string; name: string }[];
+  };
 };
 
 /**
@@ -1457,10 +1536,60 @@ export async function eaStatement(
     // `throughMonth: null` — an EA covers the WHOLE year, where the payroll feed asks month by month.
     const tp1ReliefTotal = tp1CountForYear(tp1Rows, { throughMonth: null }).total;
 
+    // ── ea54fe6e — PAY ITEM → EA BOX ROUTING ────────────────────────────────────────────────────────
+    // Reads each payslip's itemised `componentLines`, looks up that pay item's configured `ea_form_line`,
+    // and MOVES the amount out of the summary figure the kernel's bucket put it in and into the mapped
+    // box. Three properties make this safe to ship:
+    //
+    //   1. IT MOVES, NEVER ADDS. `partB.gross` is arithmetically identical before and after, so a form
+    //      that reconciled yesterday still reconciles. Pinned by test/ea-line-routing.test.ts.
+    //   2. IT IS INERT UNTIL CONFIGURED. Every pay_component on production carries ea_form_line = NULL
+    //      (measured 2026-08-29), so nothing routes until an admin maps an item deliberately.
+    //   3. IT IS OFF FOR EVERY YEAR WE CANNOT STAND BEHIND — see EA_ROUTING_FROM_YEAR.
+    //
+    // Applied to `derived` BEFORE the override merge below, so a hand amendment still wins: the reporter
+    // asked for exactly that precedence (Pay Item mapping → auto amount → manual amendment → final).
+    const routed: Partial<Record<EaField, number>> = {};
+    const routingActive = Number(p.year) >= EA_ROUTING_FROM_YEAR;
+    /** Pay items whose money reached this form but which no one has mapped — the reporter's §7/§8. */
+    const unmappedPayItems = new Map<string, string>();
+    if (slips.length) {
+      const catalogue = await tx
+        .select({ code: payComponent.code, name: payComponent.name, eaLine: payComponent.eaFormLine })
+        .from(payComponent);
+      const lineOf = new Map(catalogue.map((c) => [c.code, c.eaLine]));
+      const nameOf = new Map(catalogue.map((c) => [c.code, c.name]));
+      for (const s of slips) {
+        for (const line of storedComponentLines(s.statutory)) {
+          const code = (line.code ?? '').trim();
+          if (!code) continue;
+          const mapped = lineOf.get(code) ?? null;
+          for (const b of line.buckets ?? []) {
+            const source = EA_BUCKET_SOURCE_FIELD[(b?.bucket ?? '') as keyof typeof EA_BUCKET_SOURCE_FIELD];
+            // Not Part B income (reimbursement, deduction) — never routed, and never counted as an
+            // unmapped omission either: mapping it would not have printed anything.
+            if (!source) continue;
+            const amount = num(b?.amount);
+            if (!amount) continue;
+            if (!mapped) {
+              unmappedPayItems.set(code, nameOf.get(code) ?? code);
+              continue;
+            }
+            // `allowance_exempt` is mapped but routes no figure, by the decision on EA_LINE_TO_FIELD.
+            const target = EA_LINE_TO_FIELD[mapped as keyof typeof EA_LINE_TO_FIELD] as EaField | undefined;
+            if (!target || !routingActive || target === source) continue;
+            routed[source] = (routed[source] ?? 0) - amount;
+            routed[target] = (routed[target] ?? 0) + amount;
+          }
+        }
+      }
+    }
+    const withRouting = (field: EaField, base: number) => round2(base + (routed[field] ?? 0));
+
     const derived: Record<EaField, number> = {
-      grossSalary: round2(grossSalary),
-      bonus: round2(bonus),
-      allowances: round2(allowances),
+      grossSalary: withRouting('grossSalary', grossSalary),
+      bonus: withRouting('bonus', bonus),
+      allowances: withRouting('allowances', allowances),
       gross: round2(gross),
       mtd: round2(mtd),
       cp38: round2(cp38),
@@ -1468,21 +1597,25 @@ export async function eaStatement(
       epf: round2(epf),
       socso: round2(socso),
       eis: round2(eis),
-      // 6036dab7 — the manual boxes. ZERO IS THEIR DERIVED VALUE, not a missing lookup: payroll holds no
-      // director's fee, share-option benefit, gratuity, accommodation value, unapproved-fund refund,
-      // compensation, pension or annuity, and inventing a source for one is how a tax document acquires a
-      // figure nobody can trace. They become non-zero only through an ea_override, which carries the
-      // amender, the reason and the event trail with it.
-      directorFee: 0,
-      tipsPerquisites: 0,
-      taxBorneByEmployer: 0,
-      esos: 0,
-      gratuity: 0,
-      arrears: 0,
-      benefitsInKind: 0,
-      livingAccommodation: 0,
-      unapprovedFundRefund: 0,
-      compensation: 0,
+      // 6036dab7 — these had NO payroll source and zero was their derived value, because inventing a
+      // source for one is how a tax document acquires a figure nobody can trace.
+      //
+      // ea54fe6e GIVES TEN OF THEM A TRACEABLE SOURCE, AND ONLY A TRACEABLE ONE. `withRouting` adds
+      // nothing unless an admin mapped a pay item to that box AND the year is one we hold every month
+      // for; the money then comes from that item's own stamped line, so the figure traces to a payslip.
+      // Zero remains the value for every unmapped box, and an ea_override still overrides.
+      directorFee: withRouting('directorFee', 0),
+      tipsPerquisites: withRouting('tipsPerquisites', 0),
+      taxBorneByEmployer: withRouting('taxBorneByEmployer', 0),
+      esos: withRouting('esos', 0),
+      gratuity: withRouting('gratuity', 0),
+      arrears: withRouting('arrears', 0),
+      benefitsInKind: withRouting('benefitsInKind', 0),
+      livingAccommodation: withRouting('livingAccommodation', 0),
+      unapprovedFundRefund: withRouting('unapprovedFundRefund', 0),
+      compensation: withRouting('compensation', 0),
+      // Part C. NOT routable — no EA_FORM_LINES value targets them, and a pension or annuity is not
+      // employment income a pay item can produce.
       pension: 0,
       annuity: 0,
       // da4fc817 — Section D's four. `tp1Relief` is the one with a real source: the year's APPROVED
@@ -1590,6 +1723,14 @@ export async function eaStatement(
       partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis, fundName: EA_FUND_NAME },
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),
       overrides,
+      routing: {
+        active: routingActive,
+        fromYear: EA_ROUTING_FROM_YEAR,
+        // Sorted by code so the warning lists the same items in the same order on every render.
+        unmapped: [...unmappedPayItems.entries()]
+          .map(([code, name]) => ({ code, name }))
+          .sort((a, b) => a.code.localeCompare(b.code)),
+      },
     };
   });
 }
