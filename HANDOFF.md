@@ -18,200 +18,127 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-27 (r221-r225 SHIPPED · ADR-0082 IS THE ACTIVE WORKSTREAM)
+## CURRENT STATE — snapshot 2026-08-29 (r226 + r227 SHIPPED · BOARD HAS ONE APPROVED ITEM, NOTHING BUILDING)
 
-**`main@307ead09` IS WHAT RUNS ON PRODUCTION (r225, 2026-08-27)** — verified by an
+**`main@550c5d3f` IS WHAT RUNS ON PRODUCTION (r227, 2026-08-29)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX.
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-29 19:54:53 +0800.
+(Commits after `550c5d3f` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
 
-### r225 (2026-08-27) — My Attendance split into four screens (`c6bb5f5a`). NO MIGRATION.
+**BOARD: ONE approved item, unbuilt — `ea54fe6e` "Payroll – Pay Items EA Line Mapping for C.P.8A".**
+Nothing is `building`, nothing is `blocked`, and no `build/*` branch is unmerged. Next free migration is
+still `0451` — r226 and r227 both shipped WITHOUT one.
 
-Self Overtime, My Travel and My Attendance Request Status each get a real route and a menu row; the
-irregularity screen keeps only Short Hours / Incomplete Entry / Absent; "Fix this" becomes "Request" in
-six locales; "Correct another day" becomes a pop-up sharing ONE form component with the inline panel so
-the 30-day bounds cannot diverge. `?section=overtime` forwards to `/attendance/plan-ot`, so stale links
-still resolve.
+⚠️ **TWO THINGS THE REPORTER IS STILL OWED, BOTH FROM `c6bb5f5a` — see the r227 entry for the detail.**
+Their refutation of rev 2 asked for four things; the approved rev-3 plan and the shipped code cover two.
+The consolidated "Also Waiting for You" screen and the My Attendance Request Status redesign are
+undelivered and recorded on no board item.
 
-⚠️⚠️ **THIS IS THE PANEL ROUND-TRIP FOR THE THIRD TIME, AND IT WAS BUILT ON WRITTEN CONFIRMATION.**
-`plan-ot/page.tsx`'s header recorded that `2166ef79` moved Self Overtime ONTO the shared screen "which
-is where the reporter asked for it". The parent planned the reversal WITHOUT noticing, while citing
-r179/r185 in the same plan; the r224 completeness critic caught it. The item was blocked twice — the
-first answer said "yes, proceed with the full-width layout enhancement page", which is a DIFFERENT item
-(`1372d169`), and was correctly refused as consent. The second answer was "Yes" to the narrowed
-question. **A mis-aimed yes is not consent; re-ask.**
+### r227 (2026-08-29) — the round that was BUILT ON 2026-08-28 AND NEVER SHIPPED. `c6bb5f5a`, `15239057`, `43cede88`. NO MIGRATION.
 
-⚠️ **THE MOCKUP GAP THIS ROUND CLOSED, AND IT IS A STANDING PROCESS FAULT.** Five plans were pushed this
-session in PROSE ONLY, including two screen redesigns. `scripts/mockup/README.md` exists because that
-has repeatedly failed: 143 of 151 production attachments are images, and `e7eb5d83` came back from
-`deployed` as "the whole thing is crap". `improve:push-plan` takes `mockupPaths` and `pnpm mockup`
-renders HTML→PNG with the product's own look. **Three plans now carry before/after drawings**
-(`06d92cbe`, `43cede88`, `c6bb5f5a`), and c6bb5f5a's third panel draws what the single screen LOSES —
-the half r185 proved a prose warning cannot carry.
+Three branches were committed on 2026-08-28 between 16:50 and 16:58 and then nothing happened to them:
+no gate, no merge, no deploy, no `build-complete`. The session ended mid-round. This entry closes it.
 
-⚠️ **RULE 20 DOES NOT APPLY TO UNGUARDED SELF-SERVICE PAGES, and the brief was wrong to demand it.**
-The parent told the agent every new page needs a `lib/permissions.ts` SCREENS column. It declined, and
-the verifier confirmed it was right: `guardedRoutes()` (`test/function-access.test.ts:33`) matches only
-`requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession`, and these four
-pages use `getSession`. Adding columns would have FAILED the sibling "no stale routes" case. Entitlement
-gating is still real via `MODULE_OF_HREF`'s flatMap over the pack children.
+⚠️⚠️ **A ROUND CAN LOOK EXACTLY LIKE NO ROUND, AND THIS FILE IS WHY IT STAYED INVISIBLE FOR A DAY.**
+r226 shipped AND was marked deployed on the board, and r227 was fully built — and NEITHER appeared here,
+so `CURRENT STATE` still named `main@307ead09` (r225) as production while the box had been running r226
+since 12:54. The two checks in "How this project is actually run" are the ones that found it, and they
+found different halves: the dry-run rsync showed main was NOT ahead by any app code (r226 was live), and
+`git for-each-ref refs/heads/build` showed three unmerged r227 branches. **Neither check alone would have
+told the story.** The board is what surfaced it at all — two items sat in `building`, which `improve:pull`
+deliberately hides.
 
-**SIX GUARD TESTS UPDATED, NOT DELETED** (AGENTS 18), two of them STRENGTHENED — `attendance-pack`'s
-frozen nav oracle, `attendance-menu-relocation` (4→6 children plus a new no-admin-guard loop covering
-plan-ot for the first time), `me-tabs` (re-pointed at a stronger property), `schedule-assignment` (whose
-premise — plan-ot forwards into the overtime tab — the split reverses), `attendance-request-sections`,
-`sidebar-attendance-group`.
+**What shipped.** `15239057` the clipped photo panel · `c6bb5f5a` rev 3 the Attendance Irregularity width
+and the Request pop-up · `43cede88` the additional-run skip (built as r226, held back by its own gate).
 
-**RENDER-CHECKED** (AGENTS 6): all four screens 200 with ZERO `MISSING_MESSAGE`/`IntlError` in the dev
-log, `?section=overtime` returns 307, and the rename verified in the catalogues (en Request / ms Mohon /
-zh 申请).
+⚠️ **THE PHOTO PANEL WAS CLIPPED, NOT OVERLAPPED — AND IT WAS THE LEFT EDGE, NOT THE RIGHT.** The ticket
+said the panel overlaps other elements on a narrow window. `app/layout.tsx` gives `<main>`
+`overflow-y-auto`, and per CSS Overflow 3 a non-visible overflow on one axis computes the other to `auto`
+too, so the absolutely-positioned panel was TRIMMED at that scroll container's edge. z-index was never
+involved (it was already `z-50`). Measured in Chromium against the shipped classes: the panel starts ~43px
+LEFT of `<main>`'s content edge and ~43px is never painted — the left end of every full-width button in it
+— at EVERY width where the profile header lays out as a row (≥640px), not only narrow ones. Fixed the r206
+way (`app/payroll/row-actions.tsx`, whose docblock states the rule verbatim): `createPortal` to
+`document.body`, `fixed` coords measured from the trigger rect and clamped to the viewport, a flip above
+the trigger near the bottom, and a CAPTURE-phase scroll+resize listener. **Rule 7 again: the reported
+fault was not the real one, and the obvious remedy — raise the z-index — would have changed nothing.**
 
-⚠️ **BOARD DRIFT, DELIBERATE AND RECORDED: `c6bb5f5a` IS `planned` (revision 2) WHILE ITS CODE IS LIVE.**
-The parent pushed the revised plan carrying the mockup — which resets `approved` → `planned` — and then
-shipped without waiting for the re-approval it had said it would wait for. The reporter's substantive
-"Yes" predates the drawing. **Do not mark it deployed to tidy the board**; either they confirm on the
-drawing, or the round-trip risk this whole exercise existed to avoid is still open.
+⚠️ **`c6bb5f5a` REV 3 IS A NARROWER PROMISE THAN THE REPORTER'S OWN WORDS, AND THAT GAP IS STILL OPEN.**
+Their refutation of rev 2 asked for FOUR things: (1) full width, (2) Request opens a modal, (3) "Also
+Waiting for You" consolidated into ONE screen, (4) My Attendance Request Status redesigned with status
+indicators. **The approved rev-3 plan covers only (1) and (2)**, and so does the code. Shipping is
+legitimate — they approved that plan at 16:04 on 2026-08-28, after refuting rev 2 — but (3) and (4) are
+undelivered and are recorded NOWHERE on the board. Raise them, or say plainly that they were dropped.
 
-**PROMISE GAP TO REPORT:** the plan's prose named shift, pay mode, remark and attachment on the Self
-Overtime screen. It ships the seven columns that exist. `myRequestOvertime` (`app/me/actions.ts:527-566`)
-never writes remark and never uploads an attachment, so those columns would be permanently blank; pay
-mode is stage two by ADR; shift is new capability. Owed to the reporter in one sentence.
+**The consent question r225 left open is CLOSED, and the trail is the reason.** r225 shipped
+`c6bb5f5a`'s code while the item sat `planned` on a revision the reporter had not answered, and this file
+said not to tidy that away. `feedback_plan_revision` now shows rev 1 approved then superseded, rev 2
+approved then REFUTED in the reporter's own words, rev 3 drafted 15:57 and approved 16:04 — a real,
+current approval on the plan that carries the mockup. **Read the revision table, not the item's status:**
+`approved_at` / `outcome` / `outcome_reason` per revision is the only place the negotiation survives.
 
-### r224 (2026-08-27) — FOUR board items shipped, one BLOCKED on a round-trip. NO MIGRATION.
+⚠️⚠️ **THE GATE WAS RED AND ONLY HALF OF IT WAS REAL — AND THIS FILE ALREADY HELD THE ANSWER, IN A LINE
+THAT CONTRADICTED ITS OWN HEADLINE RECIPE.** The gate was run as `bash scripts/gate-chunked.sh`, exactly
+as "THE GATE, IN FULL" wrote it. That defaults to `CHUNKS=3`, which put 248 files in chunk 3, drove
+`peak-disk` to **99%** and killed the cluster: 48 failed FILES, 126 failed tests, **zero AssertionErrors**,
+all `ECONNREFUSED 127.0.0.1:5433` / "the database system is in recovery mode" / `CONNECTION_CLOSED`.
+The Environment section has said **"`CHUNKS=6`, NOT the default 3"** since 2026-08-10 — 250 lines below
+the recipe that omitted it. Re-run at `CHUNKS=6` (124 files each): GREEN across all six, peak-disk ≤66%.
+**The headline recipe now carries `CHUNKS=6` too.** The diagnostic rule that made this cheap is the one
+already written down: *a red gate with no AssertionErrors is an environment problem* — `grep -c
+AssertionError` before reading a single failure. It has now paid out five times.
+**The suite is 745 files / 10,843 tests, not the 558 / 6612 this file recorded**; that line is corrected.
 
-`5a1f97b0` the entitlement Save defect · `41330484` eligibility-coverage visibility · `d0ed304c`
-Statutory Forms corrections · `d9123867` Job Grade permanent delete. Built in four isolated worktrees
-off main, each agent carrying its APPROVED PLAN VERBATIM (r219's lesson: `improve:pull-approved`
-returns only `approved` rows, so marking `building` first makes the plan unreadable to every agent).
+⚠️ **THE ONE REAL RED WAS A FIXTURE, AND IT WAS IN THE NEW TEST FILE'S OWN MONEY-SAFETY CASES.**
+`test/payroll-additional-run-skip-r226.test.ts` failed two tests with `ComponentRequiredError`. `runCtx`
+turns `payroll.individual_txn_pay_enabled` ON, and under that flag `assertTxnComponents`
+(`core/payroll-individual-txn.ts:343`) refuses a NEW payable row with no component on EVERY create path —
+so both tests threw before reaching a single assertion. Componentless payable rows survive on production
+only as LEGACY rows keyed before the flag. Fixed by keying both earnings through **HOUSING**, which is
+EPF+SOCSO ⇒ the normal WAGE bucket that an additional run zeroes — so "the run has nothing to pay them"
+still holds and neither premise is weakened. The sibling standing-pay test at `:408` already documents
+HOUSING in exactly those words. **A test file that has never survived a full gate is not a tested file**:
+this one shipped its branch on 2026-08-28 with two of its fourteen cases unable to run.
 
-⚠️⚠️ **THREE OF THE FOUR ITEMS WERE "ALREADY BUILT" OR "MISLABELLED" ON THE PREMISE LADDER, AND THE
-FOURTH'S DIAGNOSIS WAS INVERTED.** The reporter describes symptoms accurately and diagnoses causes
-confidently, and the diagnosis has now been wrong FOUR TIMES RUNNING (CP39 button r220, PERKESO format
-r218, and both August 26 items). Reproducing before agreeing changed the answer every single time.
+**RENDER-CHECKED** (rule 6): ten routes on a dev server, `MISSING_MESSAGE`/`IntlError`/RSC-boundary count
+**zero** — all four attendance screens, `/payroll`, `/payroll/process`, and BOTH `PhotoEditMenu` call
+sites (`/admin/personnel/[employmentId]` and `/admin/organization/[companyId]`, which reaches it through
+`components/company-logo.tsx` — the photo fix touches the company logo too, which the ticket never
+mentioned). 23 new i18n keys, present and symmetric in all six catalogues.
 
-⚠️⚠️ **THE ENTITLEMENT SAVE DEFECT WAS THE DATE BOX, NOT THE BUTTON.** The reporter said Edit forces
-"Save as a new version"; the parent first concluded the behaviour already existed and it was only a
-label. Both were wrong. `entitlement-tables-block.tsx:668` pre-filled Effective from with TODAY, so a
-plain Save always moved the date and always superseded — in-place saving was UNREACHABLE from the
-screen for any version that started before today. Fixed as four coordinated changes; the date default
-could not ship alone, because on its own it silently flips every operator's habitual Save from "new
-version" to "overwrite".
+⚠️ **`app/payroll/process/result/page.tsx` CARRIED A LIVE BUG THAT r227 FIXED BEFORE IT EVER SHIPPED.**
+r226 put the whole skipped-employee list inside the `?r=` redirect payload, taking it from O(companies) to
+O(headcount): 40 skipped = 9,298 bytes, 80 = 18,018, 245 = 54,136, against a 16,384-byte header budget.
+The page would have failed to load at ~70 skipped — on exactly the runs the skip exists for, and AFTER the
+payroll had been committed. The payload now carries a COUNT and the page reads names from each batch's
+`payroll-batch.processed` event. Two consequences: the card survives a refresh, and a reader who cannot
+see those events (admin-only under ADR-0015) sees counts with no names rather than "nobody was skipped".
 
-⚠️⚠️ **THE STATUTORY-FLOOR ANSWER WAS WRONG TWICE IN ONE DAY — ONCE INTO A BOARD PLAN AND ONCE INTO
-THIS FILE.** See the entitlement section below for the full correction. `fa3f4ccb` removed the floor
-from the arithmetic; a leave type whose tables reach nobody grants **0.00**. The ledger rows that
-looked like a floor fallback were granted under the OLDER composition. **A ledger records what WAS
-granted, never what today's code would grant.** And it is EIGHT leave types, not nine — Hospitalization
-is the r193 sole-table fallback and is healthy. **Board item `41330484` and its approved plan still say
-nine and still tell the reporter to start with Hospitalization. THAT CORRECTION IS STILL OWED.**
+### r226 (2026-08-28) — Company Details: Bank Account back in slot two, filing numbers on their own cards (`06d92cbe`). NO MIGRATION.
 
-⚠️ **`c6bb5f5a` IS BLOCKED, AND IT IS THE PANEL ROUND-TRIP FOR THE THIRD TIME.**
-`app/attendance/plan-ot/page.tsx`'s own header records that `2166ef79` moved Self Overtime ONTO the
-shared screen "which is where the reporter asked for it". This item moves it back off. The parent
-planned that reversal without checking, while citing r179/r185 in the same plan. Four guard tests pin
-the current arrangement. **The reporter answered the block with "yes, proceed with the full-width
-layout enhancement page" — a DIFFERENT request (`1372d169`) — so the reversal is NOT yet consented to
-and the item is blocked again.** Do not build it on that answer.
+Shipped as `ee1c0401` and deployed at 12:54; the board item was marked `deployed` at 12:55. **It was never
+recorded here** — see r227 above for what that cost.
 
-⚠️ **TWO CLI CALLS REPORTED SUCCESS WITHOUT DOING ANYTHING.** `improve:block` prints "status → blocked"
-unconditionally, but `markBlockedSql` is `WHERE id = … AND status = 'approved'` — blocking an item
-already marked `building` matched zero rows and silently no-opped. Same family as rule 26: **verify
-board changes by reading the ROW, never the command's output.** Block BEFORE `build-start`, not after.
+⚠️ **THE DATA-LOSS HAZARD WAS THE WHOLE JOB, NOT THE TABS.** `company_statutory_my` is ONE row of five
+numbers and `setCompanyStatutoryMY` was a FULL-ROW OVERWRITE (`p.epfEmployerNo ?? null` for all five).
+Moving each body's filing number onto its own card means several forms write that row — so under the old
+writer, saving the EPF card would have NULLed SOCSO, LHDN, MyInvois and SSM, silently, behind a 200 and a
+green suite. The writer is now a PARTIAL PATCH (unnamed field = untouched, named = written, `''`/null =
+cleared) and the actions read through `postedField`, which keeps "this form does not carry that field"
+and "the operator cleared it" as different instructions.
 
-⚠️ **THE VERIFY PASS CAUGHT A FABRICATED FIGURE AND A FALSE STATUTORY DEADLINE.** (1) The
-configured-versus-actual copy baked a literal "Actually granted: 0.00" into six locale strings — a
-measured-looking number nothing measured, rendered beside employees visibly holding ~11.4 accrued days
-(AGENTS 28). (2) The new HRD levy card declared `dueDayOfNextMonth: 15`, which makes the shelf colour a
-deadline overdue for EVERY company on the filter — including the ones whose `hrdf_status` is
-`not_registered`, **the column default**. The 15th is real and sourced; the defect was asserting it to
-companies that owe nothing. Now `null`, per the page's own note: "An invented deadline is worse than an
-absent one: somebody files against it."
+**The Bank Account tab is a REVERT the reporter asked for in writing** — it shipped as `94ae7e1f`, was
+deleted by `3c2f55d7` rev 2 on this same reporter's instruction, and is now back. "Other" is RETIRED
+rather than renamed: a tab called "Bank Account" containing "Delete this company" is worse than the
+problem it solves. SSM and MyInvois deliberately get no card (neither is a body you pay a contribution
+to); EIS gets no input because it files under SOCSO's PERKESO code.
 
-⚠️ **AND TWO GUARD TESTS THEN FAILED THE GATE BECAUSE THEY PINNED THOSE DEFECTS** (AGENTS 18). Updated,
-not deleted — the sourced-15th document assertion was KEPT while the catalog assertion moved.
-
-**RENDER-CHECKED, not merely 200'd** (AGENTS 6): the entl work introduces a client-island/context
-pattern new to those pages. `/admin/leave/entitlements`, `/payroll/statutory-forms` and
-`/admin/settings/system-labels` all rendered with ZERO `MISSING_MESSAGE`/`IntlError` in the dev log, and
-the new health line was read out of the served HTML.
-
-### r223 (2026-08-26) — ADR-0082 slice 2: the assistant substrate + the access-scoped tool registry. `0451`.
-
-Four tables, the billable `assistant` module, the per-user grant service, and **nine tools** each
-wrapping an existing `core/read.ts` function inside the CALLER'S OWN `SessionContext`, so RLS scopes
-them. `search_handbook` is deliberately held for its own slice — it is the one tool that is not a
-wrapper (no full-text search exists here) and **Postgres FTS stems per language**, which collides with
-the six-locale answer decision. Nine tools, not ten, is the shipped state.
-
-⚠️⚠️ **THE BUILD AGENT DIED MID-RESPONSE AND THE VERIFICATION WAS BETTER FOR IT.** The tool-registry
-agent wrote its files and then died before reporting, so the three verifiers ran against a NULL build
-report — with no builder claims to anchor on they read the code directly, and the completeness critic
-returned "slice 2 is NOT done". It was right. **A build report is a claim, not evidence; its absence
-cost nothing.**
-
-⚠️ **THE DEFECT THAT GENERALISES PAST THIS ROUND: A READ BEING RLS-SAFE DOES NOT MAKE IT ANSWER-SAFE.**
-ADR-0082 §4 mapped `upcoming_holidays` to `upcomingHolidays` (`core/read.ts:1886`), which filters on the
-DATE ALONE — no company, no state, no holiday group — because its only caller is a dashboard card
-already inside a company-scoped page. Pointed at "when is my next public holiday" it names days the
-asker does not observe. Fixed with `holidayDatesForEmployment` over the ADR-0054 resolver. **Ask both
-questions separately for every tool that is ever added.**
-
-⚠️ **AND THE ONE THAT ALMOST SHIPPED UNGUARDED: `leave_entitlement_explain` BOUND TO `emps[0]`.**
-`leave_type` is TENANT-scoped, so a leaveTypeId from `my_leave_balances` cannot say which employment it
-came from — a shared-services employee asking about Company B was answered with Company A's figures,
-silently. Now one block per employment with every figure INSIDE its block: a single top-level
-`cycleStart` beside a list reads as "the" answer and gets quoted for the wrong company. **The
-non-vacuity check is what caught that the fix was unguarded** — the existing test had ONE employment,
-where `emps` and `emps.slice(0,1)` are the same list, so reverting the fix broke nothing. A
-concurrent-employment fixture now guards it.
-
-⚠️ **TWO MODEL-INPUT DEFECTS OF ONE FAMILY: EVERY IDENTIFIER AND DATE A TOOL RECEIVES IS
-MODEL-SUPPLIED.** `Date.parse('2026-02-30')` does NOT fail — it ROLLS OVER to 2026-03-02 and returns a
-finite timestamp — so 30 February reached Postgres and came back as `22008` thrown OUT of the tool
-instead of the refusal it declares; and three tools passed a model-supplied id into a uuid comparison
-behind only a non-empty check, so a hallucinated `"E12345"` raised `22P02`. Both now refuse. This is the
-ordinary case for a tool registry, not the edge one.
-
-⚠️ **THE MISSING SECURITY TEST NOW EXISTS, AND 0451 ALREADY CITED IT.** The migration named
-`test/assistant-grant-rls.test.ts` in the PRESENT TENSE as the guard for its REVOKEs; the file did not
-exist. It pins the critic's highest-value gap: **`assistant_grant_read` ORs in `app.is_admin()`, so RLS
-hands an admin EVERY grant row in the tenant** — only the explicit `app_user_id` comparison in
-`mayUseAssistant` stops an admin resolving `allowed: true` off SOMEBODY ELSE'S grant. A companion case
-asserts RLS really does return that row, so the first cannot pass vacuously. Verified on production:
-DELETE revoked on grant/budget/usage, KEPT on `assistant_exchange` (a user erasing their own history is
-the PDPA right), RLS on all four.
-
-**THE SLICE STILL HAS NO LOOP, NO BUDGET ENFORCEMENT AND NO SCREEN** — `converse()` (r221) and the
-registry (r223) exist and still have no caller between them. Next: `core/assistant.ts`.
-
-### r222 (2026-08-26) — the shell is branded "Kingdee AI HR". NO MIGRATION. Owner request, not a board item.
-
-`components/kingdee-mark.tsx` (new) draws the Kingdee four-dot symbol as inline SVG; the sidebar's old
-`bg-primary` "HR" tile now carries it, and the wordmark reads `common.appName` — **"Kingdee AI HR" in all
-six locales**, plus the document title.
-
-⚠️ **THE MARK IS DRAWN, NOT IMPORTED, AND THAT WAS NOT A PREFERENCE.** The supplied asset is a 1200x675
-JPEG on a flat `#f7f7f7` ground — no transparency — which in a 40px rounded badge renders as a grey tile
-in light mode and a bright grey box in dark. Geometry and colours were MEASURED off the artwork by
-connected-component analysis (centres, radii, modal fills `#0085d0` `#00b1c3` `#00b7f0` `#c170aa`),
-normalised into a 100x100 viewBox. **The mark is taller than wide — that is the artwork's proportion,
-not a bug to stretch out.** The badge is WHITE in both themes: those four colours only read on a light
-ground, and a logo that re-tints with the colour scheme is no longer the logo.
-
-⚠️ **`common.appName` HAD NO CONSUMER** — the sidebar carried a literal and the key was dead in all six
-locales. Wiring it up needed a SECOND translator: the key is under `common`, the sidebar's `t` is bound
-to `nav`, and `t('appName')` would have resolved `nav.appName` and thrown **MISSING_MESSAGE — which
-passes tsc, the suite AND `next build`** (rule 6). `app/layout.tsx` keeps a literal because `metadata`
-is evaluated outside locale scope.
-
-**NOT CHANGED, DELIBERATELY: `setProducer('AI HR')` in the EIGHT PDF generators.** That string is
-metadata on statutory documents (EA, CP39, Borang A/8A, TP1, payslips, review letters, report exports).
-Re-stamping filings is not a sidebar change and is the owner's call.
-
-⚠️ **THE GATE WENT RED ONCE ON PURE ENVIRONMENT AND THE TALLY IS WHY WE KNEW.** Chunk 1 failed 11 files
-/ 14 tests at **38% disk** — so NOT the WAL ceiling — with **ZERO AssertionError, ZERO MISSING_MESSAGE,
-107 `does not exist`, NINE `Hook timed out`**, and it took 421s against a 107s baseline for the same 124
-files. No stray process was found afterwards. **Re-running the identical code gave 124/124 in 112s.**
-Rule 12's signature exactly; run the cause tally and re-run before believing a red.
+⚠️ **A CONTROL MUST NOT INHERIT A CAPTION THAT DESCRIBES SOMETHING ELSE.** The verify pass caught the HRDF
+status dropdown rendering under the "Filing identity" header, whose hint says the box is "the number that
+goes on this body's filed form". It is not a number — it is a registration band (not registered /
+mandatory / optional) that decides whether the levy is charged at all. Split into two blocks, each with
+its own caption. Same class as AGENTS rule 28: telling an operator the wrong thing about the box they are
+filling in is the fault, not the missing box.
 
 ### r221 (2026-08-26) — ADR-0082 slice 1: the AI gateway learns to converse. NO MIGRATION.
 
@@ -976,8 +903,12 @@ Leave draws from Annual Leave on production. Configure it; do not build a second
 **Deploy is automatic after a green gate** (owner's override of ADR-0045; AGENTS.md carries the rule).
 
 **THE GATE, IN FULL — and the middle line is the one that keeps being got wrong:**
-`pnpm exec tsc --noEmit` · **`bash scripts/gate-chunked.sh`** · `pnpm exec next build` ·
+`pnpm exec tsc --noEmit` · **`CHUNKS=6 bash scripts/gate-chunked.sh`** · `pnpm exec next build` ·
 `pnpm gate:shadow` whenever a migration is involved.
+⚠️ **`CHUNKS=6` IS PART OF THE COMMAND, NOT A TUNING KNOB — this line omitted it until r227 and that
+omission cost a whole false-red gate cycle.** The Environment section has said "CHUNKS=6, NOT the
+default 3" since 2026-08-10; this headline recipe contradicted it, and the headline is the one people
+copy. The default 3 now puts ~248 files in a chunk, which fills the RAM disk and kills the cluster.
 **NOT `pnpm vitest run`.** A bare full run exhausts the RAM disk and kills the cluster mid-suite — it
 produced two false red gates on 2026-08-06 alone (293 and 9 failed files, zero assertion failures both
 times). The shadow rehearsal is the one that catches a journal `when` collision, which is a SILENT SKIP.
@@ -1179,7 +1110,10 @@ grep — an empty result is a parser gap, not proof of no callers.
         -c "select count(*) from pg_stat_activity where datname like 'ai_hr_test%'"
 
   Healthy mid-run is ~16–22 with several `active`. Genuine hang = no `Duration` AND zero connections.
-  A full suite now takes **~950 s** (558 files / 6612 tests), longer than the 761 s recorded earlier.
+  A full suite is **745 files / 10,843 tests** (measured r227, 2026-08-29 — it was 558 / 6612). At
+  `CHUNKS=6` that is ~124 files a chunk, ~80–128 s each, **~12 min end to end including the six cluster
+  rebuilds**; peak disk stayed ≤66%. At the default `CHUNKS=3` the third chunk hit 99% and the cluster
+  died. The old "~950 s" figure was for the smaller suite; re-measure it when the file count jumps again.
 - **Never `pgrep -f` a string your own waiter contains** — `until [ "$(pgrep -f 'vitest.mjs run' …`
   matches itself and waits forever.
 - **Read vitest's EXIT CODE and file count, never just the summary.** A file whose worker fails to
