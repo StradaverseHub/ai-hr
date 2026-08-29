@@ -1,0 +1,136 @@
+<meta charset="utf-8">
+<title>b36a8a91 — where the filled EA form already is</title>
+<!--
+  Mockup for b36a8a91 revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · THE ROW IS DRAWN FROM THE REAL CATALOGUE ENTRY, not invented. localization/my/reports.ts:1910
+    ('my.ea.ms') declares exactly three actions: href -> /payroll/statutory-forms/my.cp8d?...&lang=ms
+    with actionLabelKey 'openEmployeeList'; secondaryHref -> /payroll/ea/blank?lang=ms
+    (link_ea_blank_ms = "Download blank EA form (Bahasa Malaysia)"); tertiaryHref ->
+    /payroll/ea/field-register. The order and the labels are those, not a redesign.
+  · THE CLAIM THAT THE EMPLOYEE LIST GIVES A COMPLETED FORM IS THE CODE'S OWN. The comment at
+    app/payroll/statutory-forms/[formId]/page.tsx:270-279 says an employee name "opens that person's EA
+    statement for the year — the ONLY route to a per-employee EA", and when the list was opened from an
+    EA shelf entry the names hand you that person's statement in the chosen language, as a PDF.
+  · THE TEN FIELDS ARE THE REPORTER'S OWN LIST, checked one by one against what the statement already
+    reads (localization/my/reports.ts eaStatement's employee block: fullName, position title, employee
+    code, IC, passport, EPF no, SOCSO no, number of children, hired on, terminated on).
+  · FIELD COVERAGE IS MEASURED ON PRODUCTION, 2026-08-29, over 40 employments: employee code 40/40,
+    hired on 40/40, IC 34/40, children 34/40, EPF 30/40, SOCSO 14/40, terminated 9/40 (leavers only),
+    passport 0/40, salutation 9/40. Blank cells are MISSING DATA on those people, not a missing feature —
+    that distinction is the whole point of the middle column and it is not blurred here.
+  · THE ONLY THING BEING BUILT IS THE SALUTATION. Everything else on this page is drawn as it already
+    behaves today. Nothing here is a projection of new work except the one row marked "to build".
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .good{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .warnc{background:color-mix(in srgb,var(--warn) 13%,white);color:var(--warn)}
+  .row{border:1px solid var(--border);border-radius:12px;padding:13px 14px;background:#fff}
+  .rowhead{font-size:13px;font-weight:600;margin-bottom:2px}
+  .rowhint{font-size:11px;color:var(--mf);margin-bottom:11px}
+  .acts{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .btn{border-radius:9px;padding:7px 13px;font-size:11.5px;font-weight:600;border:1px solid var(--border);background:#fff}
+  .btn.p{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .btn.link{border:0;background:transparent;color:var(--primary);text-decoration:underline;text-underline-offset:2px;padding-left:2px}
+  .call{position:relative;margin-top:11px;display:flex;gap:10px;align-items:flex-start}
+  .call .pin{flex:0 0 auto;width:19px;height:19px;border-radius:999px;color:#fff;font-size:11px;font-weight:700;
+             display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .pin.a{background:var(--good)} .pin.b{background:var(--bad)}
+  .calltx{font-size:11.5px;line-height:1.5}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--mf);padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .tick{color:var(--good);font-weight:700}
+  .build{color:var(--warn);font-weight:700}
+  .note{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .small{font-size:11px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h2>1 · The row you are already on — Statutory Forms, Form C.P.8A (EA)</h2>
+  <p class="sub">This is the EA row as it is today. It offers three things, and the difference between the
+    first two is the whole of this request.</p>
+
+  <div class="row">
+    <div class="rowhead">Form C.P.8A (EA) — Bahasa Malaysia</div>
+    <div class="rowhint">LHDN · annual</div>
+    <div class="acts">
+      <span class="btn p">Open employee list</span>
+      <span class="btn">Download blank EA form (Bahasa Malaysia)</span>
+      <span class="btn link">EA field register</span>
+    </div>
+
+    <div class="call">
+      <span class="pin a">1</span>
+      <span class="calltx"><b>This one already does what you asked.</b> It lists your employees; clicking a
+        name produces that person&rsquo;s <b>completed</b> EA as a PDF in Bahasa Malaysia, with their
+        details already filled in from the employee records.</span>
+    </div>
+    <div class="call">
+      <span class="pin b">2</span>
+      <span class="calltx"><b>This one is the empty form on purpose.</b> It exists so you can check our
+        layout against LHDN&rsquo;s own page before trusting a filled one. It will never contain anybody&rsquo;s
+        details &mdash; that is what it is for.</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>2 · Your ten fields, against what the completed form already reads</h2>
+  <p class="sub">Every field on your list, checked one by one. Nine are already retrieved and printed. One is not.</p>
+
+  <table>
+    <thead>
+      <tr><th style="width:38%">EA form field</th><th style="width:34%">Where it comes from</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1. Nama Penuh Pekerja / Pesara</td><td>Employee full name</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td style="padding-left:22px" class="small">&mdash; the Encik / Cik / Puan in front of it</td><td class="small">Salutation on the employee record</td><td><span class="build">to build</span></td></tr>
+      <tr><td>2. Jawatan</td><td>Job title held on the last day of the year</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>3. No. Kakitangan / No. Gaji</td><td>Employee number</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>4. No. K.P. Baru</td><td>IC number</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>5. No. Pasport</td><td>Passport number</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>6. No. KWSP</td><td>EPF number</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>7. No. PERKESO</td><td>SOCSO number</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>8. Bilangan anak</td><td>Number of eligible children</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>9(a). Tarikh mula bekerja</td><td>Start date</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+      <tr><td>9(b). Tarikh berhenti kerja</td><td>Termination date, where there is one</td><td><span class="tick">&#10003;</span> printed today</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>A blank box on a real form is usually a blank record, not a missing feature.</b> Counted across your
+    40 employees on 29 August: employee number and start date are filled for all 40, IC for 34,
+    children for 34, EPF for 30, SOCSO for 14, and nobody has a passport number recorded. Where the record
+    is empty the form prints nothing, which is correct &mdash; we would rather leave a box empty than print
+    something we cannot stand behind on a tax document.
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 · The one change</h2>
+  <p class="sub">Field 1 asks for the name <i>with</i> a title in front of it. We hold that title on the
+    employee record &mdash; today the EA prints the name without it.</p>
+  <table>
+    <thead><tr><th style="width:22%">&nbsp;</th><th>Nama Penuh Pekerja / Pesara</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip warnc">today</span></td><td style="font-size:13px">SITI NURHALIZA BINTI ABDULLAH</td></tr>
+      <tr><td><span class="chip good">after</span></td><td style="font-size:13px"><b>Puan</b> SITI NURHALIZA BINTI ABDULLAH</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:11px">Where no title is recorded for someone, the name prints exactly
+    as it does now. Nothing else on the form changes, and no figure anywhere is touched.</p>
+</div>

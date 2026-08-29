@@ -25,10 +25,29 @@ any of them):**
 Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-29 21:05:11 +0800.
 (Commits after `7df709ee` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
 
-**BOARD: EMPTY.** Nothing open, planned, approved, contested, blocked, building or done-awaiting-release.
-No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
-`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** — r226, r227
-and r228 all shipped WITHOUT one.
+**BOARD: FIVE ITEMS, NOTHING BUILDING.** One `planned` and awaiting the reporter; four `open`, all raised
+by CLAUDE AI. No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`,
+`r154`, `r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** —
+r226, r227 and r228 all shipped WITHOUT one.
+
+  - `b36a8a91` **planned rev 1, with a mockup** — "C.P.8A (EA form) Mapping", the reporter's own. Verdict
+    is *mislabelled*: they used the EA row's SECONDARY action ("Download blank EA form"), which is empty
+    BY DESIGN, while the PRIMARY action on the same row ("Open employee list") already hands back a
+    completed per-employee EA as a PDF in the chosen language. Nine of their ten fields are already read
+    and printed; the one real gap is the **salutation** (`person.salutation`, migration 0300, held for 9
+    of 40 employments and read by no EA surface). **Do NOT build the "AI field matching" step their
+    workflow names** — the employee-record→EA-box mapping is fixed by the form and already written down
+    in `lib/ea-field-register.ts`; an inference step would put a guess on a tax document (AGENTS 28).
+  - `afc29d75` / `568b8f0b` **open, NOT planned ON PURPOSE** — the two halves of `c6bb5f5a` that r227 did
+    not deliver, now recorded instead of lost.
+  - `a8f525cf` / `3cbfe5e2` **open, and they are QUESTIONS, not work.** Each carries one thing only the
+    reporter can settle, with our recommendation stated so a one-word reply unblocks it. **Plan the two
+    items above only after these are answered.** (1) Does "waiting for the user's action/approval" mean
+    the employee's own days, or their team's requests awaiting their approval — the second is the
+    Approvals screen and changes who may see what; and do the three tabs stay as a filter? (2) Their
+    status list names **Completed**, and `attendance_correction_status` is only
+    `pending|approved|rejected|cancelled` — is Completed a synonym for Approved, or a real new state
+    after approval?
 
 ⚠️ **THREE ROUNDS SHIPPED IN ONE SESSION AND TWO OF THEM WERE ALREADY BUILT WHEN IT STARTED.** r226 was
 merged and deployed but unrecorded; r227 was built on three branches and never gated. **The board was
@@ -36,23 +55,19 @@ the only thing that surfaced it** — two items sat in `building`, which `improv
 Run the two checks in "How this project is actually run" AND look at `building` before believing the
 board is quiet.
 
-⚠️⚠️ **FIVE THINGS THE REPORTER IS OWED, AND THE BOARD BEING EMPTY IS EXACTLY WHY THEY ARE EASY TO LOSE.**
-Nothing below is a defect; each is a gap between what they asked for and what shipped, and none of it is
-recorded on any board item. Raise them or say them plainly — an empty board reads as "nothing outstanding".
-
-From **`c6bb5f5a`** (r227) — their rev-2 refutation asked for FOUR things; the approved rev-3 plan and the
-shipped code cover two:
-  1. the consolidated "Also Waiting for You" screen — NOT built;
-  2. the My Attendance Request Status redesign with status indicators — NOT built.
-
-From **`ea54fe6e`** (r228):
-  3. `allowance_exempt` is one of their fourteen EA lines and it MAPS BUT MOVES NO FIGURE, deliberately —
+⚠️ **THREE THINGS ABOUT `ea54fe6e` (r228) THE REPORTER HAS NOT BEEN TOLD. These are a DELIVERY MESSAGE,
+not work** — there is no board item to carry them, because the item is already `deployed`:
+  1. `allowance_exempt` is one of their fourteen EA lines and it MAPS BUT MOVES NO FIGURE, deliberately —
      the exempt box is a memo line with one derivation and must not gain a second;
-  4. nothing routes before assessment year **2027**, so mapping items today changes no form they can
+  2. nothing routes before assessment year **2027**, so mapping items today changes no form they can
      generate today (they agreed this in the block trail, but it is worth restating on delivery);
-  5. their §10 request for an amendment audit trail is **ALREADY MET** by `ea_override` (amender, reason,
+  3. their §10 request for an amendment audit trail is **ALREADY MET** by `ea_override` (amender, reason,
      timestamp, and now the routed figure kept as `original`) — confirm it rather than leave it reading
      as outstanding work.
+
+**The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
+questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
+silently, which is what this block used to record.
 
 ### r228 (2026-08-29) — the EA form reads the pay-item mapping it has stored all along (`ea54fe6e`). NO MIGRATION.
 
