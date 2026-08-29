@@ -37,7 +37,15 @@ import { employmentStatusSql } from './employment-status-sql';
 // import each other freely under ADR-0080 D9. No cycle: core/payroll does not import this module.)
 // c11e81aa — and the ONE rule that says which period-keyed transactions a run may collect, so this
 // module's "what will this run pay?" card cannot drift from what attach-on-generate actually does.
-import { collectableCycleIds, intendedCycleFilter, resolveBatchScopeFilter, type BatchScope } from './payroll';
+// r227 — and the skip reason the kernel stamped, so the screen that renders it and the kernel that
+// chose it name the same union rather than two copies of one string list.
+import {
+  collectableCycleIds,
+  intendedCycleFilter,
+  resolveBatchScopeFilter,
+  type BatchScope,
+  type PayrollSkipReason,
+} from './payroll';
 // 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
 import { payslipDisplayEarnings } from './pay-display-category';
 // 169e3c24 — the PCB drill-down's relief fallback (pure type; the explainer itself lives beside it).
@@ -2533,5 +2541,110 @@ export function listBatchProcessedDates(
       )
       .groupBy(domainEvent.aggregateId);
     return new Map(rows.map((r) => [r.batchId, r.processedOn]));
+  });
+}
+
+// ─────────────── 9b. Who an additional run left out (r227 — read from the durable event) ───────────────
+
+/** One employee an additional run did not process, resolved for a screen. */
+export type SkippedEmployeeRow = {
+  batchId: string;
+  employmentId: string;
+  name: string;
+  employeeCode: string | null;
+  reason: PayrollSkipReason;
+};
+
+/**
+ * r227 — THE PEOPLE AN ADDITIONAL RUN SKIPPED, FOR A SET OF BATCHES.
+ *
+ * WHY THIS EXISTS AT ALL: r226 carried the skipped employees BY VALUE on the run-group result, which is
+ * JSON-encoded into the Step-3 result page's query string (`encodeRunGroupResult` → `?r=`). That made the
+ * payload O(HEADCOUNT) where it had always been O(companies) — 40 skipped = 9,298 bytes, 80 = 18,018,
+ * 245 = 54,136 — against the 16,384-byte header budget Node defaults to (deploy/aihr.service:29 runs
+ * `next start` with no `--max-http-header-size`), shared with the request line and the session cookies,
+ * behind a cloudflared tunnel with a similar cap. So the result screen broke at roughly SEVENTY skipped
+ * employees, on precisely the runs the skip was built for, and it broke AFTER the payroll had committed.
+ * The redirect now carries a count; the names come from here.
+ *
+ * THERE IS NO NEW RECORD, AND THAT IS THE POINT. `generatePayslips` already appends every skipped
+ * employment id and its reason to the `payroll-batch.processed` event. This reads that. Writing a second
+ * durable copy of the same fact would let the two disagree, and this one is the one the kernel wrote at
+ * the moment it decided.
+ *
+ * LATEST EVENT PER BATCH, NEVER THE UNION. A run can be processed, reset back to draft (feedback
+ * a03b2d9b) and processed again, and each pass appends its own event with its own skip list. The screen
+ * must describe the CURRENT payslips, which are the last pass's — a union would name people the live run
+ * did process. Same rule and the same reason as `listBatchProcessedDates`' MAX above; done in JS rather
+ * than in SQL only because the payload, not the timestamp, is what is wanted.
+ *
+ * DEGRADES, NEVER FLIPS. `payroll-batch.processed` carries no `subject_employment_id`, so under ADR-0015
+ * it is admin-only: a payroll_partner reads no events here and gets an EMPTY list. The callers show the
+ * COUNT from the run outcome regardless, so that reads as "names not available to you", never as
+ * "nobody was skipped". Read-only — no domain event (substrate rule).
+ */
+export function listSkippedEmployees(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+): Promise<SkippedEmployeeRow[]> {
+  if (batchIds.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async (tx) => {
+    const events = await tx
+      .select({
+        batchId: domainEvent.aggregateId,
+        occurredAt: domainEvent.occurredAt,
+        payload: domainEvent.payload,
+      })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.aggregateType, 'payroll-batch'),
+          eq(domainEvent.eventType, 'payroll-batch.processed'),
+          inArray(domainEvent.aggregateId, batchIds as string[]),
+        ),
+      )
+      .orderBy(asc(domainEvent.occurredAt));
+    // Ascending order + last-write-wins == the latest pass for each batch.
+    const latest = new Map<string, unknown>();
+    for (const e of events) latest.set(e.batchId, e.payload);
+
+    const pending: { batchId: string; employmentId: string; reason: PayrollSkipReason }[] = [];
+    for (const [batchId, payload] of latest) {
+      const raw = (payload as { skipped?: unknown } | null)?.skipped;
+      if (!Array.isArray(raw)) continue;
+      for (const r of raw) {
+        const employmentId = (r as { employmentId?: unknown })?.employmentId;
+        const reason = (r as { reason?: unknown })?.reason;
+        if (typeof employmentId !== 'string') continue;
+        pending.push({
+          batchId,
+          employmentId,
+          // An event written by an older build carries only the one reason this union then had; anything
+          // unrecognised falls back to it rather than reaching a translation lookup that has no key.
+          reason: reason === 'NO_ADDITIONAL_PAY_THIS_RUN' ? 'NO_ADDITIONAL_PAY_THIS_RUN' : 'NO_TRANSACTION_FOR_CYCLE',
+        });
+      }
+    }
+    if (pending.length === 0) return [];
+
+    const named = await tx
+      .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(inArray(employment.id, [...new Set(pending.map((p) => p.employmentId))]));
+    const byId = new Map(named.map((r) => [r.id, r]));
+
+    return pending
+      .map((p) => ({
+        batchId: p.batchId,
+        employmentId: p.employmentId,
+        // An employment the reader cannot see (RLS) or that has since been deleted keeps its row rather
+        // than vanishing: the count on the screen beside it came from the run, and a list shorter than
+        // the count with no explanation is the shape that reads as data loss.
+        name: byId.get(p.employmentId)?.name ?? p.employmentId,
+        employeeCode: byId.get(p.employmentId)?.employeeCode ?? null,
+        reason: p.reason,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   });
 }

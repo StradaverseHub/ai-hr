@@ -3971,6 +3971,16 @@
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
+      "generatedWithSkipped": "已生成工资单 — 跳过 {n} 名员工。下方列表列出姓名与原因。",
+      "skipped": {
+        "title": "本次运行已跳过的员工",
+        "note": "这是一次附加薪资运行，因此没有任何应付款项的员工不会被处理。他们在本次运行中没有工资单，其交易记录也未被占用。",
+        "colReason": "原因",
+        "reason": {
+          "NO_TRANSACTION_FOR_CYCLE": "本薪资周期没有交易记录",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "本次运行类型无款项 — 其固定月薪由常规薪资运行发放"
+        }
+      },
       "preChecksConfirmRequired": "生成工资单前，请先确认处理前检查警告。",
       "preConfirmTitle": "带警告处理薪资？",
       "preConfirmDescription": "{n} 项处理前检查未解决（缺少法定资料或银行资料）。相关员工可能按默认法定方式处理，并可能不在付款文件中。",
@@ -4988,6 +4998,8 @@
       "companiesSplit": "{ok} 成功 · {failed} 失败",
       "totalEmployeesSelected": "已选择员工总数",
       "totalEmployeesSucceeded": "成功处理",
+      "totalEmployeesSkipped": "已跳过 — 无款项需发放",
+      "skippedNotAFailure": "并非失败",
       "totalEmployeesFailed": "处理失败",
       "startedAt": "开始于",
       "endedAt": "结束于",
@@ -4995,6 +5007,7 @@
       "colCompany": "公司",
       "colSelected": "已选择",
       "colSucceeded": "成功",
+      "colSkipped": "已跳过",
       "colStatus": "状态",
       "colDetail": "详情",
       "companySucceeded": "成功",
@@ -5005,6 +5018,15 @@
       "colEmployeeName": "员工姓名",
       "colFailureReason": "失败原因",
       "employeeFailed": "失败",
+      "skippedEmployeesTitle": "本次运行已跳过的员工",
+      "skippedEmployeesNote": "这是一次附加薪资运行，因此本周期内没有任何应付款项的员工不会被处理。他们在本次运行中没有工资单、没有薪资记录，其交易记录也未被占用。",
+      "skippedNamesUnavailable": "已跳过 {n} 名员工。您的账号无法查看姓名列表。",
+      "colSkipReason": "原因",
+      "employeeSkipped": "已跳过",
+      "skipReason": {
+        "NO_TRANSACTION_FOR_CYCLE": "本薪资周期没有交易记录",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "本次运行类型无款项 — 其固定月薪由常规薪资运行发放"
+      },
       "overall": {
         "succeeded": "成功",
         "partial": "部分成功",

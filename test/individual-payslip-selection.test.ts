@@ -46,7 +46,7 @@ vi.mock('next-intl/server', () => ({
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
+import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { createMovementEvent } from '../core/movement';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
@@ -296,6 +296,10 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     const me = await hire(a, 'Bonus Beside', 'bonus.beside@acme.test');
     await payRegular(a, '2026-06');
     const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-06', runType: 'bonus' });
+    // r226 — an additional run skips anybody it has nothing to pay, so a bonus run with no keyed
+    // figure now writes NO payslip and there would be no second cycle option to tell apart. The
+    // keyed bonus is what keeps this a test about the run PICKER rather than about the skip.
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: me.employmentId, overtimeAmount: 0, bonusAmount: 1000 });
     await generatePayslips(a, { batchId: bonus.batchId });
 
     const opened = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
@@ -354,6 +358,9 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
         payPeriod: '2026-10',
         runType: 'bonus',
       });
+      // r226 — see the note in the case above: both re-issues need a figure of their own, or the run
+      // that pays nothing skips this employee and one of the two options never exists.
+      await setPayrollInput(a, { batchId: extra.batchId, employmentId: me.employmentId, overtimeAmount: 0, bonusAmount: 500 });
       await generatePayslips(a, { batchId: extra.batchId });
     }
 
@@ -388,6 +395,10 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     const me = await hire(a, 'Legacy Link', 'legacy.link@acme.test');
     await payRegular(a, '2026-07');
     const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-07', runType: 'bonus' });
+    // r226 — an additional run skips anybody it has nothing to pay, so a bonus run with no keyed
+    // figure now writes NO payslip and there would be no second cycle option to tell apart. The
+    // keyed bonus is what keeps this a test about the run PICKER rather than about the skip.
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: me.employmentId, overtimeAmount: 0, bonusAmount: 1000 });
     await generatePayslips(a, { batchId: bonus.batchId });
 
     const tree = await IndividualPayslipPage({

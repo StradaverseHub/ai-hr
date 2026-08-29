@@ -14,13 +14,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { BORANG_8A_HEADER_KEYS, borang8AFrom } from '../lib/borang-8a';
 
@@ -226,5 +226,103 @@ describe('the Borang 8A read', () => {
     await expect(
       reportPreview(adminCtx(b), { companyId: b.companyId, reportId: 'my.borang-8a', periodKey: '2026-13' }),
     ).rejects.toThrow(/YYYY-MM/);
+  });
+});
+
+
+/**
+ * ─────────────── r227 — WHAT AN ADDITIONAL RUN DOES TO THE SALARY (UPAH) COLUMN ───────────────
+ *
+ * THE SAME DEFECT AS THE BORANG A ONE, THROUGH THE OTHER AGENCY'S BASE, AND THE SAME REASON IT WAS
+ * INVISIBLE: `createAdditionalRun` appeared ZERO times in this repository's statutory-form guards, so
+ * every one of them ran a single regular run and the suite was green whatever a second run did to a
+ * filed figure.
+ *
+ * `statutory.bases.socsoEis` is stamped from `wagesExOt + statOvertime` (core/payroll.ts) on EVERY
+ * payslip, and on an additional run those are the CUMULATIVE month figures by design (r187 — they must
+ * match the `now` side of the delta the run charges). This read then SUMS `bases.socsoEis` across the
+ * period's runs (ADR-0024). Summing cumulative bases counts the month once per run, so a bonus run's
+ * zero-value payslip puts a second full month's wage in the salary box the PERKESO upload file requires.
+ *
+ * Pinned, not fixed: nothing in r226/r227 changes the stamp or the sum. The reporter sees the change to
+ * their own filed figures before it is filed, and the number can no longer move unobserved.
+ */
+describe('r227 — an additional run and the SOCSO salary column', () => {
+  const salary = 4000;
+
+  async function twoRuns(period: string) {
+    // Granted BEFORE the snapshot is taken: a point-in-time synthetic snapshot would read it off.
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
+    const reg = await createBatch(a, { companyId: b.companyId, payPeriod: period });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const extra = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: period, runType: 'bonus' });
+    return { a, reg, extra };
+  }
+
+  const preview = (a: Awaited<ReturnType<typeof entitledCtx>>, period: string) =>
+    reportPreview(a, { companyId: b.companyId, reportId: 'my.borang-8a', periodKey: period });
+  const wageOf = (r: Awaited<ReturnType<typeof preview>>, name: string) =>
+    Number(r.rows.find((row) => row.name === name)!.wage);
+
+  /**
+   * Two employees identical in every respect except whether the bonus run processed them. KEPT is held in
+   * the run by an OVERTIME figure keyed against it — a door the skip counts (so the reason it prints is
+   * never false) and that an additional run does not PAY (`slipOvertime` is forced to 0), which is how
+   * the kernel itself produces a genuine zero-value payslip with no surgery on any row.
+   */
+  it('a zero-value bonus payslip adds a SECOND month’s wage to the salary box — the skip removes it', async () => {
+    const kept = await hire({ name: 'AAA KEPT', hiredOn: '2024-03-01', salary, ic: '900101015555' });
+    await hire({ name: 'BBB SKIPPED', hiredOn: '2024-03-01', salary, ic: '880808085555' });
+    const { a, extra } = await twoRuns('2026-07');
+
+    const before = await preview(a, '2026-07');
+    const oneMonth = wageOf(before, 'AAA KEPT');
+    expect(oneMonth).toBeGreaterThan(0);
+    expect(wageOf(before, 'BBB SKIPPED')).toBe(oneMonth);
+
+    await setPayrollInput(a, { batchId: extra.batchId, employmentId: kept.employmentId, overtimeAmount: 500 });
+    const gen = await generatePayslips(a, { batchId: extra.batchId });
+    expect('skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.map((x) => x.name) : []).toEqual([
+      'BBB SKIPPED',
+    ]);
+
+    const extraSlips = await owner.db
+      .select({ gross: schema.payslip.grossPay, statutory: schema.payslip.statutory })
+      .from(schema.payslip)
+      .where(eq(schema.payslip.batchId, extra.batchId));
+    expect(extraSlips).toHaveLength(1);
+    expect(Number(extraSlips[0].gross)).toBe(0);
+
+    const after = await preview(a, '2026-07');
+    // The person the bonus run kept: TWO months' wage in a one-month salary box.
+    expect(wageOf(after, 'AAA KEPT')).toBeCloseTo(oneMonth * 2, 2);
+    // The person it skipped: untouched.
+    expect(wageOf(after, 'BBB SKIPPED')).toBeCloseTo(oneMonth, 2);
+    // …and the second count is that zero-value payslip's own SOCSO/EIS basis.
+    const bases = (extraSlips[0].statutory as { bases?: Record<string, number> }).bases!;
+    expect(Number(bases.socsoEis)).toBeCloseTo(oneMonth, 2);
+  });
+
+  /**
+   * The half the skip does NOT fix: the doubling belongs to the bases, not to the zero-value payslip, so
+   * anybody the additional run has something to pay keeps both counts.
+   */
+  it('the doubling is NOT removed for somebody the bonus run actually pays', async () => {
+    const paid = await hire({ name: 'AAA PAID', hiredOn: '2024-03-01', salary, ic: '900101015555' });
+    const { a, extra } = await twoRuns('2026-07');
+    const oneMonth = wageOf(await preview(a, '2026-07'), 'AAA PAID');
+
+    await setPayrollInput(a, {
+      batchId: extra.batchId,
+      employmentId: paid.employmentId,
+      overtimeAmount: 0,
+      bonusAmount: 1000,
+    });
+    await generatePayslips(a, { batchId: extra.batchId });
+
+    // A bonus is outside the SOCSO/EIS base by law, so this one is EXACTLY twice — the month's wage,
+    // counted once per run, with nothing of the bonus in it.
+    expect(wageOf(await preview(a, '2026-07'), 'AAA PAID')).toBeCloseTo(oneMonth * 2, 2);
   });
 });

@@ -15,7 +15,7 @@ import { payrollListReturnTo } from '@/lib/return-to';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
-import { listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
+import { listSkippedEmployees, listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
 import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — payslip boxes + the employer-borne disclosure, both read from each payslip's own snapshot.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
@@ -108,6 +108,14 @@ export default async function BatchPage({
   // the inputs grid below reads payroll_input only. Draft-only: once processed, the payslips ARE the
   // record and this card would be a second, weaker account of the same figures.
   const pendingMoney = batch.status === 'draft' ? await pendingBatchMoney(s, { batchId }) : null;
+  // r227 — WHO THIS RUN LEFT OUT, BY NAME, ON THE SCREEN THAT RAN IT. r226 gave this screen's Generate
+  // button a toast carrying a bare COUNT ("… 40 employee(s) skipped"), which is the shape the whole
+  // change existed to stop being: forty people accounted for by a number. The wizard's Step-3 result page
+  // listed them; this screen — the one an operator actually presses Generate on — did not, and a toast is
+  // gone on the next navigation anyway. Read from the run's own `payroll-batch.processed` event, so it is
+  // still here tomorrow. Processed runs only: a draft has no decision yet, and on a run that skipped
+  // nobody (every regular run) this is an empty list and renders nothing.
+  const skippedEmployees = batch.status === 'draft' ? [] : await listSkippedEmployees(s, [batchId]);
   // Feedback 64fb5e48 — blockers are the salary-record gaps (missing/period-miss/zero); the old
   // BASIC-pay-item existence blocker is gone. A stale BASIC pay item is a confirm-to-proceed warning.
   const preBlockers = preChecks.missingCompensation.length + (preChecks.zeroBasic?.length ?? 0);
@@ -948,6 +956,33 @@ export default async function BatchPage({
             </div>
           );
         })()}
+
+      {skippedEmployees.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('skipped.title')} count={skippedEmployees.length} />
+          <p className="px-4 pt-3 text-xs text-muted-foreground">{t('skipped.note')}</p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">{t('colCode')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="px-4 py-2 font-medium">{t('skipped.colReason')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {skippedEmployees.map((e) => (
+                  <tr key={e.employmentId} className="border-t border-border">
+                    <td className="px-4 py-2"><EmployeeCode code={e.employeeCode} /></td>
+                    <td className="px-4 py-2 text-foreground">{e.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{t(`skipped.reason.${e.reason}`)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('payslipsTitle')} count={slips.length} />

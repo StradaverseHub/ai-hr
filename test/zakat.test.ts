@@ -418,6 +418,12 @@ describe('1.2.4 Zakat Deduction', () => {
     const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
     await generatePayslips(a, { batchId: reg.batchId });
     const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-06', runType: 'bonus' });
+    // r226 — THE BONUS RUN NOW NEEDS A REASON TO PROCESS THIS PERSON. An additional run skips anybody it
+    // has nothing to do for in the cycle, so without a keyed figure there would be no bonus payslip at
+    // all and the assertion below would be about a slip that was never written — passing for the wrong
+    // reason. The keyed bonus keeps the employee IN the run, which is what makes the run-type rule
+    // asserted below a statement about the rule rather than about the employee's absence.
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: 1000 });
     await generatePayslips(a, { batchId: bonus.batchId });
 
     const slips = await withTenant(a, (tx) =>

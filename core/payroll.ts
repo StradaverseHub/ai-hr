@@ -356,6 +356,97 @@ export class IndividualTxnRequiresTypedComponentsError extends Error {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// r226 — WHAT AN ADDITIONAL RUN ACTUALLY PAYS, AS A ROUTING TEST ON ONE PAY ITEM
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// A Bonus / Off-cycle / Adjustment run used to process EVERY employee of the company, so a run where
+// five people had a bonus wrote forty-five payslips, forty of them entirely zero. `generatePayslips`
+// now skips the people such a run has nothing to do for, and this is the one question that skip cannot
+// answer from the raw data alone: EVERY employee has recurring pay items, and no additional run pays a
+// single one of them unless it routes to additional remuneration.
+//
+// AN ADDITIONAL RUN'S GROSS IS THE BONUS BUCKET AND NOTHING ELSE. `grossPay = round2(bonus)`:
+// `slipBasic`, `slipAllowance`, `slipOvertime` and `slipUnpaid` are forced to 0, the one-off OT and
+// unpaid ledger rows fold to 0 (`txnOt` / `txnUnpaid`), the manual deduction, CP38 and the loan
+// instalment are 0, and a prefilled claim rides the allowance line that is zeroed. So "will this item
+// be paid by this run" reduces to "does it land in `bonus`", which is what this answers.
+//
+// IT IS NEVER A COMPUTED ZERO, and that limit is structural rather than careful: this reads a pay
+// item's CLASSIFICATION, never a worked-out figure. A full month of unpaid leave legitimately earns
+// zero and still has a real payslip with real statutory bases (`wagesExOt`'s Math.max in
+// generatePayslips); nothing here can reach that number.
+//
+// THE BIAS IS ONE-WAY. When it cannot answer with certainty it says PAYS. A false "pays" costs one zero
+// payslip — exactly today's behaviour. A false "pays nothing" costs somebody their money. Hence a pay
+// item carrying a RULE (its amount is resolved later, against a scope this has no access to) counts as
+// paying, and an exemption code that might route the whole amount into the untaxed `reimburse` bucket
+// is still treated as reaching the bonus box.
+
+/** The pay-item facts `paysOnAdditionalRun` reads. Structurally satisfied by generatePayslips' CompRow. */
+export type AdditionalRunPayRow = {
+  code: string;
+  kind: string;
+  amount: number;
+  nonPayable: boolean;
+  epf: boolean;
+  socso: boolean;
+  epfBonus2012: boolean;
+  pcbRemunerationType: 'normal' | 'additional' | 'optional_deduction' | null;
+  rule: PayRule | null;
+};
+
+/**
+ * Would this ONE pay-component row put money in the bucket an additional run actually pays (`bonus`)?
+ *
+ * Term for term the routing `earningsOf` performs, read in the same order, so the two cannot drift:
+ *   • BASIC is inert in the engine (the Personnel compensation record is the basic-pay source);
+ *   • a deduction never reaches gross, and an additional run's `rawManual` is 0, so it pays nothing;
+ *   • an `optional_deduction` classification lands in `lpDeclared` (zeroed on an additional run) and its
+ *     cash in `reimburse`/`deduct` (both zeroed) — nothing of it reaches the bonus box;
+ *   • a non-payable (BIK) row is a record line and never cash;
+ *   • the DECLARED stream then decides: 'additional' (or the epfBonus2012 forcing) rides the bonus box,
+ *     'normal' rides the Y1 wage box which an additional run zeroes;
+ *   • with no declaration the legacy flag inference applies, and `epf && !socso` is the bonus box.
+ */
+export function paysOnAdditionalRun(c: AdditionalRunPayRow): boolean {
+  if (c.code === 'BASIC') return false;
+  if (c.kind === 'deduction') return false;
+  if (c.pcbRemunerationType === 'optional_deduction') return false;
+  if (c.nonPayable) return false;
+  const stream = c.epfBonus2012 ? 'additional' : c.pcbRemunerationType;
+  if (stream === 'normal') return false;
+  if (stream !== 'additional' && !(c.epf && !c.socso)) return false;
+  // It routes to the bonus box. A ruled item's amount is resolved later, against a scope this predicate
+  // does not build — so it counts as paying (the one-way bias above). A stored amount speaks for itself.
+  return c.rule != null || Math.abs(Number(c.amount)) > 0;
+}
+
+/** One employee an additional run did not process, named for the result screen. */
+export type SkippedEmployee = {
+  employmentId: string;
+  name: string;
+  employeeCode: string | null;
+  reason: PayrollSkipReason;
+};
+
+/**
+ * Why an employee was left out of a run. A value rather than a boolean so a second cause can be added
+ * without every reader having to change shape — and r227 is that second cause arriving. It is
+ * deliberately NOT a member of `RunGroupReasonCode` (core/payroll-run-group.ts): that union is a
+ * COMPANY-level FAILURE, rendered in red on the result page, and a skip is neither a failure nor
+ * company-level.
+ *
+ *   • NO_TRANSACTION_FOR_CYCLE   — nothing is keyed for this person on this run, and the draft screen's
+ *                                  "what will this run pay" card lists them nowhere either.
+ *   • NO_ADDITIONAL_PAY_THIS_RUN — the card DOES list them (a standing monthly pay item), but none of it
+ *                                  is additional remuneration, which is all an additional run pays. r227
+ *                                  exists because printing the first sentence about this person
+ *                                  contradicts the screen the operator just read. See the reason block
+ *                                  in `generatePayslips` for why the fix is the sentence, not the skip.
+ */
+export type PayrollSkipReason = 'NO_TRANSACTION_FOR_CYCLE' | 'NO_ADDITIONAL_PAY_THIS_RUN';
+
 /**
  * ADR-0033 — a worked day already banked as time-in-lieu contributes NO overtime. Cash XOR leave.
  *
@@ -662,6 +753,14 @@ export async function clearBatchRecalc(
  * overtime row on an additional run folds to zero, but both were INCLUDED in the payslip this run wrote —
  * they appear on it as named provenance lines. "Included" is the claim the marker makes, and the marker
  * only ever stops the SAME line being included by a DIFFERENT run, which is never right for any kind.
+ *
+ * r226 — AND "INCLUDED IN THE PAYSLIP THIS RUN WROTE" IS NOW LOAD-BEARING RATHER THAN DESCRIPTIVE. An
+ * additional run skips an employee it has nothing to pay, so `employmentIds` is the list of people who
+ * actually got a payslip, NOT the list the run selected. The caller passes `emps` and `emps` has already
+ * been narrowed to the paid set — which is the entire reason the skip is implemented as a narrowing of
+ * `emps` rather than as a filter at the insert. Pass this a selected-but-unpaid employment and its
+ * one-off rows are stamped consumed by a run that paid nothing: the amount then disappears from every
+ * future run's fold with no payslip anywhere and no error.
  */
 async function markIndividualTxnsConsumed(
   tx: Tx,
@@ -3021,7 +3120,13 @@ export async function generatePayslips(
 
     // Anyone employed for at least part of the period: hired on/before period end AND not
     // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.
-    const emps = await tx
+    //
+    // r226 — `let`, not `const`: an ADDITIONAL run narrows this list once the run's money is known (see
+    // the skip block just above the payslip loop). Everything downstream that is keyed off `emps` —
+    // `markIndividualTxnsConsumed`, the claim-paid set, `employeeCount`, the processed event's `count`
+    // and the returned `payslips` — is then keyed off the people this run actually pays, which is the
+    // whole money-safety half of the change.
+    let emps = await tx
       .select({
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
@@ -4628,6 +4733,210 @@ export async function generatePayslips(
       return { capped: d.capped, excess: d.excess };
     };
 
+    // ══════════════════════════════════════════════════════════════════════════════════════════════
+    // r226 — AN ADDITIONAL RUN PROCESSES ONLY THE PEOPLE IT HAS SOMETHING TO DO FOR
+    // ══════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // THE WHOLE OF THE SKIP IS THIS ONE REASSIGNMENT OF `emps`, and that is the point rather than a
+    // shortcut. Everything a run does to a person downstream of here — the payslip insert, the CONSUMED
+    // marker on their one-off transactions, the claim-paid set, `employeeCount`, the processed event's
+    // `count`, the returned `payslips` — is already keyed off `emps`. Narrowing the list is therefore the
+    // only way to skip somebody that cannot leave a side effect behind for a person with no payslip. A
+    // filter applied at the insert alone would have stamped their bonus CONSUMED by a run that never paid
+    // it, and the amount would have disappeared with no payslip anywhere and no error.
+    //
+    // WHY IT IS ASKED HERE AND NOWHERE EARLIER: every input this run could pay has now been read — the
+    // recurring and batch pay components, the one-off transaction ledger (including the rows
+    // attach-on-generate stamped onto this run moments ago), payroll_input, and the manual statutory
+    // overrides. Nothing between here and the payslip loop adds money.
+    //
+    // REGULAR RUNS ARE NEVER ASKED. A salaried employee has zero rows in the transaction tables — their
+    // money IS the compensation record — so "skip anyone with no transaction" on a regular run would stop
+    // paying almost the whole company. Nor is a SUBSET reprocess asked: it recomputes payslips that
+    // already exist on a processed run, and taking somebody OFF a processed run is
+    // `removeEmployeesFromBatch`'s job, with its own reason, audit trail and ledger release.
+    //
+    // ── WHERE THE LINE IS DRAWN, AND WHY IT IS NOT DRAWN AT "WILL THIS RUN PAY A RINGGIT" ──────────
+    //
+    // An additional run's gross IS the bonus bucket and nothing else (`grossPay = round2(bonus)`; basic,
+    // allowance, overtime and the unpaid deduction are forced to 0, the one-off OT and unpaid rows fold to
+    // 0, the manual deduction / CP38 / loan are 0, and a prefilled claim rides the allowance line that is
+    // zeroed). So the STRICTEST possible predicate is "does anything route to the bonus bucket" — and that
+    // is deliberately NOT what is asked of the rows keyed against this run. Two reasons, the second decisive:
+    //
+    //   • THE REASON WE PRINT HAS TO BE TRUE. A skipped employee is reported as "No transaction entry for
+    //     this payroll cycle". Skipping somebody who DOES have a transaction on this run — an operator keys
+    //     a one-off earning for the Bonus cycle, and the kernel routes an uncomponented one-off into the
+    //     wage bucket that an additional run zeroes — would print that sentence beside a transaction they
+    //     can see on the screen they keyed it on. That reads as the system having lost their entry, which
+    //     is a worse failure than the zero payslip this change exists to remove.
+    //   • THE BIAS MUST POINT AT PROCESSING. A false "has something" costs one zero payslip, which is
+    //     exactly today's behaviour. A false "has nothing" costs somebody their money.
+    //
+    // What IS trimmed is the one door every employee has and no additional run pays: the RECURRING pay
+    // components (`employment_pay_component` — the Pending money card's `fixedComponent` door). Those are
+    // standing monthly pay, re-folded by every run and paid by the regular one; on an additional run they
+    // land in the allowance line that is forced to 0. Counting them would keep every employee in every run
+    // and the feature would skip nobody. They count ONLY when they route to the bonus bucket. That single
+    // trim is the modification the plan's build note demands — the raw doors OVERSTATE what an additional
+    // run pays, and this is the door where the overstatement is total.
+    const skippedEmployees: SkippedEmployee[] = [];
+    if (!subset && isAdditionalRun) {
+      // Rows keyed AGAINST THIS RUN, read from the tables rather than from the flag-gated maps above.
+      // Deliberate: "does this person have a transaction on this run" is a fact about the data, not about
+      // whether TYPED_PAY_COMPONENTS_ENABLED / INDIVIDUAL_TXN_PAY_ENABLED happen to be on. A row that
+      // exists but is inert under today's flags is still a transaction the operator keyed and can see —
+      // the pending-money card counts exactly those as `inertRows` — so it must never be answered with
+      // "no transaction entry for this payroll cycle".
+      const batchCompEmps = await tx
+        .select({ employmentId: payrollBatchComponent.employmentId })
+        .from(payrollBatchComponent)
+        .where(and(eq(payrollBatchComponent.batchId, p.batchId), ne(payrollBatchComponent.amount, '0')));
+      const batchTxnEmps = await tx
+        .select({ employmentId: payrollIndividualTxn.employmentId })
+        .from(payrollIndividualTxn)
+        .where(and(eq(payrollIndividualTxn.batchId, p.batchId), ne(payrollIndividualTxn.amount, '0')));
+      // A row attach-on-generate stamped onto this batch a few statements ago is ON this batch by the time
+      // this reads it, so its owner is always found here and can never be skipped. That is why the attach
+      // needs no undo: this run cannot park a period-keyed transaction on itself and then walk away from
+      // the person who owns it, leaving a row `batch_id IS NULL` collection can never claim again.
+      const hasRunRow = new Set([...batchCompEmps, ...batchTxnEmps].map((r) => r.employmentId));
+
+      /** Does this run have anything at all to do for this employee? */
+      const hasWork = (employmentId: string): boolean => {
+        // (a) A pay component or a one-off transaction keyed against THIS run.
+        if (hasRunRow.has(employmentId)) return true;
+        // (b) Any of the six payroll_input doors carrying a figure on this run. Four of them (overtime,
+        //     claim, loan, and — with typed components on — bonus) are not paid by an additional run and
+        //     are counted anyway, under the "the reason has to be true" rule above. TP1 and zakat ARE
+        //     charged on an additional run (they ride `lp` and `effectiveZakat` into the statutory delta),
+        //     so they would have to be here in any case. payroll_input holds one row per employment on the
+        //     batch, so these six maps are that whole table.
+        if (
+          Math.abs(round2(overtimeByEmp.get(employmentId) ?? 0)) > 0 ||
+          Math.abs(round2(bonusByEmp.get(employmentId) ?? 0)) > 0 ||
+          Math.abs(round2(claimAllowanceByEmp.get(employmentId) ?? 0)) > 0 ||
+          Math.abs(round2(loanByEmp.get(employmentId) ?? 0)) > 0 ||
+          Math.abs(round2(tp1ByEmp.get(employmentId) ?? 0)) > 0 ||
+          Math.abs(round2(zakatByEmp.get(employmentId) ?? 0)) > 0
+        ) {
+          return true;
+        }
+        // (c) A RECURRING pay item, and ONLY when it routes to the bucket this run actually pays — the one
+        //     trimmed door. `paysOnAdditionalRun` mirrors `earningsOf`'s routing term for term, and is a
+        //     shared function precisely so the two cannot drift.
+        if ((recurringByEmp.get(employmentId) ?? []).some((c) => paysOnAdditionalRun(c))) return true;
+        // (d) A manual statutory override keyed against THIS run is an explicit instruction to it: it
+        //     changes a figure on the payslip it is stamped on, so that payslip has to exist.
+        if (statutoryAdjustmentByEmp.has(employmentId)) return true;
+        return false;
+      };
+
+      // ── r227 GATE 2 — WHICH REASON IS TRUE OF THIS PERSON ────────────────────────────────────────
+      //
+      // r226 printed ONE reason for every skip: "No transaction entry for this payroll cycle". For most
+      // of the skipped that is exactly right. For one population it is FALSE ON SCREEN, and the plan the
+      // reporter approved promised it could not be.
+      //
+      // THE POPULATION. `hasWork` counts a RECURRING pay item only when it routes to the bonus bucket
+      // (the one door trimmed above — see (c)). So somebody whose only pending money is a standing
+      // monthly allowance is skipped. But the draft screen's "what will this run pay" card
+      // (`pendingBatchMoney`, core/payroll-view.ts) lists that same allowance BY NAME under its
+      // `fixedComponent` door. The operator therefore reads "Ada Lim — Monthly allowance RM400" on the
+      // run they are about to process, and then "Ada Lim — No transaction entry for this payroll cycle"
+      // on its result. One of those two sentences is a lie, and it is this one.
+      //
+      // THE FIX IS THE REASON, NOT THE SKIP. Skipping them is correct — an additional run's gross IS the
+      // bonus bucket, and a standing allowance lands in the allowance line it forces to 0, so processing
+      // them would write back exactly the zero payslip this whole change exists to remove. What has to
+      // change is the sentence printed beside their name. `PayrollSkipReason` was made a VALUE rather
+      // than a boolean in r226 for precisely this: a second cause costs the readers nothing.
+      //
+      // MIRRORED ON THE CARD'S OWN GATE, DELIBERATELY. `recurringByEmp` is populated only when
+      // TYPED_PAY_COMPONENTS_ENABLED is on, and the card's `fixedComponent` door is gated on the SAME
+      // flag — with the flag off it reports those rows as a bare `inertRows` COUNT and names nobody, so
+      // there is no named contradiction to answer and the original reason stands. Reading the table
+      // directly here (as `hasRunRow` does, and for good reason) would answer a contradiction the screen
+      // never made, and would say "not additional remuneration" about a bonus-routing item that only the
+      // flag is holding back. The two must agree about what the OPERATOR WAS SHOWN, not about what rows
+      // exist — so this reads the same flag-gated map the skip predicate itself reads.
+      //
+      // A ZERO amount is not on the card either (`push` drops it), hence the same `> 0` filter; a ruled
+      // item stored as 0 never reaches here at all, because `paysOnAdditionalRun` already kept its owner.
+      const standingPayNotPaidHere = (employmentId: string): boolean =>
+        (recurringByEmp.get(employmentId) ?? []).some(
+          (c) => c.code !== 'BASIC' && Math.abs(Number(c.amount)) > 0,
+        );
+
+      const working = emps.filter((e) => hasWork(e.employmentId));
+      if (working.length !== emps.length) {
+        const workingIds = new Set(working.map((e) => e.employmentId));
+        const skippedIds = emps.filter((e) => !workingIds.has(e.employmentId)).map((e) => e.employmentId);
+
+        // ── r227 — THE FAIL-CLOSED GUARD THE SKIP WAS SWALLOWING ─────────────────────────────────
+        //
+        // `UnsupportedPayComponentError` (ADR-0025 §5) is the last line of defence against a pay item
+        // v1 cannot compute correctly — a PCB-taxable BIK, or a PCB-only earning that is neither EPF nor
+        // SOCSO. It is thrown from INSIDE the per-employee component loop, which for a skipped employee
+        // no longer runs. And the two unsupported shapes are exactly the shapes `paysOnAdditionalRun`
+        // answers "pays nothing" for (a non-payable row is rejected outright; a not-EPF-not-SOCSO row
+        // fails the flag inference), so the skip does not merely *sometimes* hide this error — it hides
+        // it in every case it can occur. A misconfigured item that used to abort the run would instead
+        // produce a quietly short run, which is the precise failure mode the guard exists to prevent.
+        //
+        // So the classification is checked for everyone about to be dropped, BEFORE `emps` is narrowed
+        // and therefore before any payslip is written. The condition below is the throw's own condition
+        // read term for term, including the three `continue`s that precede it in the loop (BASIC is
+        // inert; an optional_deduction is consumed earlier; a deduction returns earlier), and it reads
+        // no amount at all — neither does the throw.
+        //
+        // BATCH components are checked too even though a non-zero one keeps its owner in the run: a
+        // ZERO-amount batch component row is excluded by `hasRunRow`'s `ne(amount, '0')`, so its owner
+        // CAN be skipped, and the loop would have validated it.
+        const unsupported = (c: {
+          code: string;
+          kind: string;
+          nonPayable: boolean;
+          epf: boolean;
+          socso: boolean;
+          pcb: boolean;
+          pcbRemunerationType: 'normal' | 'additional' | 'optional_deduction' | null;
+        }): boolean =>
+          c.code !== 'BASIC' &&
+          c.pcbRemunerationType !== 'optional_deduction' &&
+          c.kind !== 'deduction' &&
+          c.pcb &&
+          c.pcbRemunerationType == null &&
+          (c.nonPayable || (!c.epf && !c.socso));
+        for (const id of skippedIds) {
+          for (const c of [...(recurringByEmp.get(id) ?? []), ...(batchCompByEmp.get(id) ?? [])]) {
+            if (unsupported(c)) throw new UnsupportedPayComponentError(c.code);
+          }
+        }
+
+        emps = working;
+
+        // NAME THEM. A count is not an account of who was left out — the whole ask was to be able to check
+        // the absent forty against the five that were expected, by name.
+        const named = await tx
+          .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+          .from(employment)
+          .innerJoin(person, eq(person.id, employment.personId))
+          .where(inArray(employment.id, skippedIds));
+        const nameById = new Map(named.map((r) => [r.id, r]));
+        for (const id of skippedIds) {
+          const row = nameById.get(id);
+          skippedEmployees.push({
+            employmentId: id,
+            name: row?.name ?? id,
+            employeeCode: row?.employeeCode ?? null,
+            reason: standingPayNotPaidHere(id) ? 'NO_ADDITIONAL_PAY_THIS_RUN' : 'NO_TRANSACTION_FOR_CYCLE',
+          });
+        }
+        skippedEmployees.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    }
+
     for (const e of emps) {
       // 2.1.1 (ADR-0064) — the resolved policy config for this employment (null ⇒ legacy path unchanged).
       const cfg = policyConfigByEmp.get(e.employmentId) ?? null;
@@ -5752,6 +6061,10 @@ export async function generatePayslips(
       };
     }
 
+    // r226 — `emps.length` IS THE PAYSLIP COUNT, and after the skip block above that is no longer a
+    // restatement of "everyone selected". `employeeCount` is the run's headcount on every screen and in
+    // the dashboard timeline, so it has to be what the run actually paid; a skipped employee is reported
+    // separately (see `skipped` on the return) and never counted here.
     await tx
       .update(payrollBatch)
       .set({ status: 'processed', employeeCount: emps.length, totals })
@@ -5771,6 +6084,16 @@ export async function generatePayslips(
     // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
     // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.
     // Placed beside the claim-paid block so every irreversible loan mutation ties to a written payslip.
+    //
+    // r226 AUDITED THIS AND DELIBERATELY LEFT IT KEYED OFF THE RESERVATIONS, NOT OFF `emps`. It is the one
+    // remaining side effect on this path that is not keyed off the written rows, and it is safe for the
+    // skip for an arithmetic reason rather than a hopeful one: `rawLoan` is forced to 0 on EVERY
+    // additional run, so `appliedLoanCentsByEmp` is 0 for the skipped and the paid alike and the applied
+    // amount is 0 either way — a skipped employee's loan cannot move because there is nothing to move.
+    // Narrowing this to the paid set would be strictly WORSE: the reservation would stay 'reserved'
+    // against a now-processed batch, and `prefillLoansForBatch` only ever picks up 'scheduled' rows, so
+    // it would be stranded until the run was reset. Left alone, the existing shortfall path re-schedules
+    // the full due and the instalment survives to the next cycle.
     await applyLoansForBatch(tx, ctx, p.batchId, appliedLoanCentsByEmp);
 
     // Money-safety fix (Payroll Process wizard plan): taxable claims prefilled into this batch are marked
@@ -5781,6 +6104,10 @@ export async function generatePayslips(
     // nothing actually disbursed. Claims whose employment got no payslip here are UNLINKED (payrollBatchId
     // reset to null, status stays 'approved') so `prefillClaimsForBatch`'s isNull(payrollBatchId) filter
     // re-queues them on the next batch instead of stranding them forever.
+    // r226 — and the additional-run skip is the third population this filter now covers: a skipped
+    // employee is not in `emps`, so a claim reserved against this batch for them is REQUEUED rather than
+    // marked paid, exactly as for a comp-less or out-of-scope employment. No new code — this is the
+    // existing money-safety filter continuing to be right because `emps` means "who was paid".
     const paidEmploymentIds = new Set(emps.map((e) => e.employmentId));
     const reservedClaims = await tx
       .select({ id: claimRequest.id, employmentId: claimRequest.employmentId })
@@ -5836,15 +6163,27 @@ export async function generatePayslips(
       eventType: 'payroll-batch.processed',
       actor: actorOf(ctx),
       payload: {
+        // r226 — payslips written, which after the additional-run skip is not the same as employees
+        // selected. The people the run left out are named beside it so the durable audit record answers
+        // "why are there five payslips and forty-five employees" without the one-shot result payload.
         count: emps.length,
         totalNet: totals.net,
+        ...(skippedEmployees.length > 0
+          ? {
+              skippedCount: skippedEmployees.length,
+              skipped: skippedEmployees.map((s) => ({ employmentId: s.employmentId, reason: s.reason })),
+            }
+          : {}),
         // c7fdfcf6 gap-fix — the resolved payroll frequency + generated cut-off periods for this run. When the
         // frequency is weekly/biweekly (`disbursedPerCycle`), each payslip carries a per-cycle disbursement
         // schedule (statutory.paymentSchedule) so the run is FUNCTIONALLY processed per cycle, not audit-only.
         cutOffSchedule: { frequency: runFrequency, periods: runSchedule.periods, disbursedPerCycle: perCycle },
       },
     });
-    return { payslips: emps.length, totalNet: totals.net };
+    // r226 — `payslips` is the number of payslips WRITTEN (it always was; the skip is what made the
+    // distinction visible), and `skipped` names everyone this run had nothing to pay. The subset-reprocess
+    // branch returns its own shape above and never carries a skip: it recomputes existing payslips.
+    return { payslips: emps.length, totalNet: totals.net, skipped: skippedEmployees };
   });
 }
 
