@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "Mọi đề nghị chấm công bạn đã gửi, và kết quả của chúng.",
     "maSeeRequestStatus": "Xem trạng thái đề nghị của tôi",
     "maClose": "Đóng",
+    "maCancel": "Huỷ",
     "sharedLeaveGroups": {
       "heading": "Số dư phép dùng chung",
       "ofLimit": "trên {limit} ngày dùng chung",

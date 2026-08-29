@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "நீங்கள் சமர்ப்பித்த ஒவ்வொரு வருகைக் கோரிக்கையும், அதன் முடிவும்.",
     "maSeeRequestStatus": "எனது கோரிக்கை நிலையைப் பார்க்க",
     "maClose": "மூடு",
+    "maCancel": "ரத்து",
     "sharedLeaveGroups": {
       "heading": "பகிர்ந்த விடுப்பு இருப்பு",
       "ofLimit": "பகிர்ந்த {limit} நாட்களில்",
