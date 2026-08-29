@@ -171,6 +171,10 @@ export default async function PayComponentsPage({
                 <th className="px-4 py-2 font-medium">{t('colName')}</th>
                 <th className="px-4 py-2 font-medium">{t('colKind')}</th>
                 <th className="px-4 py-2 font-medium">{t('colInputType')}</th>
+                {/* ea54fe6e §7 — the EA line was in the CSV export and nowhere on the screen, so the one
+                    question the reporter asked ("which items are still unmapped?") could only be answered
+                    by downloading the file. */}
+                <th className="px-4 py-2 font-medium">{t('colEaLine')}</th>
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -204,6 +208,21 @@ export default async function PayComponentsPage({
                     </Link>
                     {wordsOf(c.rule) && (
                       <span className="mt-0.5 block text-xs text-muted-foreground">{wordsOf(c.rule)}</span>
+                    )}
+                  </td>
+                  {/* ea54fe6e §7 — "Mapped / Not mapped" at a glance. An UNMAPPED item is not an error and
+                      is not styled as one: its money still reports, just inside a summary box. A DEDUCTION
+                      is not flagged at all — no EA_FORM_LINES value targets a Part B box it could reach, so
+                      an amber pip beside every deduction would be a warning nobody can ever clear. */}
+                  <td className="px-4 py-2.5">
+                    {c.eaFormLine ? (
+                      <span className="text-muted-foreground">{t(`eaLine_${c.eaFormLine}`)}</span>
+                    ) : c.kind === 'deduction' ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="inline-block rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                        {t('eaLineUnmapped')}
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -268,7 +287,7 @@ export default async function PayComponentsPage({
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">{t('empty')}</td>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">{t('empty')}</td>
                 </tr>
               )}
             </tbody>
