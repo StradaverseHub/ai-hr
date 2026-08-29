@@ -274,12 +274,16 @@ describe('r226 — the additional run itself', () => {
 
     // `waiting` has RM300 keyed for the month with NO cycle named — every row on production today. It
     // belongs to the month's REGULAR run and to nobody else. `paid` has a bonus on the bonus run.
+    // HOUSING because `runCtx` turns payroll.individual_txn_pay_enabled ON, and a NEW payable row keyed
+    // under that flag MUST carry a component (assertTxnComponents / ComponentRequiredError). It is also
+    // the right pick rather than merely a legal one: HOUSING is EPF+SOCSO ⇒ the normal WAGE bucket, which
+    // an additional run zeroes, so the bonus run still has nothing to pay `waiting` and still skips them.
     const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
     const { ids } = await createIndividualTxnsBulk(a, {
       companyId: base.companyId,
       payPeriod: '2026-06',
       employmentIds: [waiting.employmentId],
-      rows: [{ kind: 'earning', txnDate: '2026-06-10', amount: 300 }],
+      rows: [{ kind: 'earning', txnDate: '2026-06-10', amount: 300, componentId: await componentId('HOUSING') }],
     });
     expect((await txnRow(ids[0])).batchId).toBeNull();
 
@@ -312,11 +316,18 @@ describe('r226 — the additional run itself', () => {
   });
 
   it('a keyed transaction the run will NOT pay still keeps its owner in the run — the reason must be true', async () => {
-    // An uncomponented one-off EARNING is routed to the Y1 wage bucket, which an additional run forces to
-    // 0 — so this run pays nothing for `keyed`. It must still be processed: reporting "No transaction
-    // entry for this payroll cycle" beside a transaction the operator can see on the screen they keyed it
-    // on reads as the system having lost their entry, which is worse than the zero payslip. The bias
-    // points at processing.
+    // A one-off EARNING on the Y1 wage bucket is forced to 0 by an additional run — so this run pays
+    // nothing for `keyed`. It must still be processed: reporting "No transaction entry for this payroll
+    // cycle" beside a transaction the operator can see on the screen they keyed it on reads as the system
+    // having lost their entry, which is worse than the zero payslip. The bias points at processing.
+    //
+    // The bucket is reached with HOUSING (EPF+SOCSO ⇒ wage bucket — the same pick, and the same stated
+    // reason, as the standing-pay test below), NOT by leaving the row componentless. `runCtx` turns
+    // payroll.individual_txn_pay_enabled ON, and under that flag a componentless payable row cannot be
+    // created at all: assertTxnComponents throws ComponentRequiredError on every create path. Componentless
+    // rows survive on production only as LEGACY rows keyed before the flag, which is a different fixture
+    // from the one this test needs. What is under test — a transaction the run will not pay must keep its
+    // owner in the run — is unchanged, and is now reached through a shape a tenant can actually key today.
     const a = await runCtx();
     await seedPayComponentCatalog(a);
     const keyed = await hire(a, 'Kay Keyed', '900101010021');
@@ -329,7 +340,7 @@ describe('r226 — the additional run itself', () => {
     await createIndividualTxnsBulk(a, {
       batchId: bonus.batchId,
       employmentIds: [keyed.employmentId],
-      rows: [{ kind: 'earning', txnDate: '2026-07-10', amount: 250 }],
+      rows: [{ kind: 'earning', txnDate: '2026-07-10', amount: 250, componentId: await componentId('HOUSING') }],
     });
     const gen = await generatePayslips(a, { batchId: bonus.batchId });
 
