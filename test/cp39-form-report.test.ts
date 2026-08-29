@@ -36,7 +36,7 @@ import { setPassportProfileMY, setStatutoryProfileMY } from '../localization/my/
 import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 import { setCp38 } from '../core/cp38';
-import { createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
+import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { CP39_FORM_HEADER_KEYS, cp39FormFrom, missingCp39FormHeader } from '../lib/cp39-form';
 
@@ -360,6 +360,10 @@ describe('CP38, which is not PCB', () => {
     const reg = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: reg.batchId });
     const bonus = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    // r226 — the bonus run has to have something to pay this employee or it skips them, and "one month,
+    // two runs, one instalment" would silently become "one month, one run". The keyed bonus is what makes
+    // the two-payslip precondition below real rather than incidental.
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: E.employmentId, overtimeAmount: 0, bonusAmount: 1000 });
     await generatePayslips(a, { batchId: bonus.batchId });
 
     // Two payslips for the period, one employee, one CP39 line.

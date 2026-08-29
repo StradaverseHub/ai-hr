@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "Mọi đề nghị chấm công bạn đã gửi, và kết quả của chúng.",
     "maSeeRequestStatus": "Xem trạng thái đề nghị của tôi",
     "maClose": "Đóng",
+    "maCancel": "Huỷ",
     "sharedLeaveGroups": {
       "heading": "Số dư phép dùng chung",
       "ofLimit": "trên {limit} ngày dùng chung",
@@ -3970,6 +3971,16 @@
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
+      "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
+      "skipped": {
+        "title": "Nhân viên bị bỏ qua trong lần chạy này",
+        "note": "Đây là kỳ chạy bổ sung, nên những nhân viên không có khoản nào phải trả đã không được xử lý. Họ không có phiếu lương trong lần chạy này và không giao dịch nào của họ bị sử dụng.",
+        "colReason": "Lý do",
+        "reason": {
+          "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường"
+        }
+      },
       "preChecksConfirmRequired": "Vui lòng xác nhận các cảnh báo kiểm tra trước khi tạo phiếu lương.",
       "preConfirmTitle": "Xử lý lương dù có cảnh báo?",
       "preConfirmDescription": "{n} mục kiểm tra trước khi xử lý chưa được giải quyết (thiếu hồ sơ pháp định hoặc thông tin ngân hàng). Nhân viên liên quan có thể bị áp dụng mặc định pháp định và thiếu trong tệp thanh toán.",
@@ -4987,6 +4998,8 @@
       "companiesSplit": "{ok} thành công · {failed} thất bại",
       "totalEmployeesSelected": "Tổng số nhân viên đã chọn",
       "totalEmployeesSucceeded": "Xử lý thành công",
+      "totalEmployeesSkipped": "Bỏ qua — không có khoản phải trả",
+      "skippedNotAFailure": "Không phải lỗi",
       "totalEmployeesFailed": "Xử lý thất bại",
       "startedAt": "Bắt đầu lúc",
       "endedAt": "Kết thúc lúc",
@@ -4994,6 +5007,7 @@
       "colCompany": "Công ty",
       "colSelected": "Đã chọn",
       "colSucceeded": "Thành công",
+      "colSkipped": "Bỏ qua",
       "colStatus": "Trạng thái",
       "colDetail": "Chi tiết",
       "companySucceeded": "Thành công",
@@ -5004,6 +5018,15 @@
       "colEmployeeName": "Tên Nhân viên",
       "colFailureReason": "Lý do Thất bại",
       "employeeFailed": "Thất bại",
+      "skippedEmployeesTitle": "Nhân viên bị bỏ qua trong lần chạy này",
+      "skippedEmployeesNote": "Đây là kỳ chạy bổ sung, nên những nhân viên không có khoản nào phải trả trong kỳ này đã không được xử lý. Họ không có phiếu lương và không có bản ghi lương cho lần chạy này, và không giao dịch nào của họ bị sử dụng.",
+      "skippedNamesUnavailable": "Đã bỏ qua {n} nhân viên. Tài khoản của bạn không xem được danh sách tên.",
+      "colSkipReason": "Lý do",
+      "employeeSkipped": "Bỏ qua",
+      "skipReason": {
+        "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường"
+      },
       "overall": {
         "succeeded": "Thành công",
         "partial": "Thành công một phần",

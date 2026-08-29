@@ -37,7 +37,7 @@ const REQUEST_STATUS_SRC = fs.readFileSync(
   path.resolve(__dirname, '../app/attendance/request-status/page.tsx'),
   'utf8',
 );
-// The ONE correction form, mounted twice (inline panel + "Correct another day" pop-up).
+// The ONE correction form, mounted twice (the pop-up every Request opens + the kept `?fix=` inline panel).
 const CORRECTION_FORM = fs.readFileSync(
   path.resolve(__dirname, '../app/attendance/requests/correction-form.tsx'),
   'utf8',
@@ -107,8 +107,9 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
   // 1e9145d4 SPLIT this list, and c6bb5f5a SPLIT IT AGAIN — each time the same way, and each time because
   // the reporter asked for a function to have a screen of its own. All three forms left /me together;
   // where each one lives NOW is what this list records, so "the capability vanished" still fails:
-  //   • myRequestCorrection — /attendance/requests, the Attendance Irregularity screen (inline for a
-  //     flagged day, in a pop-up for any other day; ONE form component serves both faces).
+  //   • myRequestCorrection — /attendance/requests, the Attendance Irregularity screen (a pop-up from
+  //     every flagged row AND from "Correct another day"; the inline panel survives only for a legacy
+  //     `?fix=` link. ONE form component serves every face — r227).
   //   • myRequestTravel — /attendance/travel, its own screen since c6bb5f5a.
   //   • myRequestOvertime — /attendance/plan-ot/apply, its own screen since 1e9145d4.
   const MOVED_ACTIONS = ['myRequestCorrection', 'myRequestTravel'];
@@ -119,6 +120,11 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
    * inline panel and the "Correct another day" pop-up), so the page hands the action to that component
    * and the component binds it. Both halves are asserted below — a page that stopped mounting the form,
    * and a form that stopped binding what it was given, are the same lost capability.
+   *
+   * r227 RENAMED the pop-up `CorrectAnotherDayDialog` → `CorrectionDialog`, because it is what every
+   * row's Request opens now and not only the free-date face. The assertion follows the rename rather than
+   * being dropped: the property it pins — the page mounts the pop-up, and the pop-up is where the action
+   * lands — is unchanged.
    */
   const BINDINGS: [string, string, string][] = [
     ['myRequestCorrection', 'app/attendance/requests/page.tsx', 'submitAction={myRequestCorrection}'],
@@ -134,7 +140,8 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
       expect(SRC_OF[file].includes(marker), `missing ${marker} on ${file}`).toBe(true);
     }
     expect(REQUESTS_PAGE).toContain('<CorrectionForm');
-    expect(REQUESTS_PAGE).toContain('<CorrectAnotherDayDialog');
+    expect(REQUESTS_PAGE).toContain('<CorrectionDialog');
+    expect(CORRECTION_FORM).toContain('export function CorrectionDialog');
     expect(CORRECTION_FORM.includes('action={submitAction}'), 'the shared form binds the action it is given').toBe(
       true,
     );
@@ -233,3 +240,68 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     }
   });
 });
+
+/**
+ * r227 — the Fix panel became a pop-up, and THREE things had to travel with it.
+ *
+ * Same rule as the describe above, one level down: this is a MOVE, and a move that drops part of what it
+ * moved is a capability quietly deleted. None of these three had a guard before, which is precisely why
+ * the plan had to name them; each one is invisible to types and to a 200.
+ */
+describe('r227 — Request opens the existing pop-up, and nothing is left behind', () => {
+  it('the per-row Request is the pop-up, not a ?fix= link', () => {
+    // The row used to render `<Link href={fixHref(d.date)}>`; it now mounts the dialog in the cell.
+    expect(REQUESTS_PAGE).toContain("triggerLabel={t('maFixThis')}");
+    expect(REQUESTS_PAGE.includes('fixHref'), 'the row no longer navigates to open the form').toBe(false);
+  });
+
+  it('1. the ?fix= address is no longer GENERATED, but still OPENS', () => {
+    // Nothing writes the param…
+    expect(REQUESTS_PAGE.includes("q.set('fix'"), 'the href helper may still carry a fix it was given').toBe(true);
+    expect(REQUESTS_PAGE.includes('href({ fix:'), 'nothing links to a fix address any more').toBe(false);
+    // …and the branch that renders it is kept, so an already-sent link still opens the form.
+    expect(REQUESTS_PAGE).toContain('const fixDay =');
+    expect(REQUESTS_PAGE).toContain('{fixDay && (');
+  });
+
+  it('2. a row files under ITS OWN section and kind, not the open tab’s', () => {
+    // The "Also waiting for you" rows come from a different section. The old link switched section on the
+    // way in; the pop-up is handed the row's own section instead. Reading `section` (the open tab) here
+    // would file a cross-section request under the wrong request_kind — silently, and only visibly later
+    // on the request list.
+    expect(REQUESTS_PAGE).toContain('section={d.section}');
+    expect(REQUESTS_PAGE).toContain('requestKind={KIND_OF_SECTION[d.section]}');
+  });
+
+  it('3. the absent day keeps BOTH routes — the form and “request leave instead”', () => {
+    // maAbsentTwoRoutes says out loud, under the list, that an absent day has two answers. The second one
+    // lived in the Card BELOW the inline form; moving the form without it deletes a route the screen
+    // promises in words.
+    expect(REQUESTS_PAGE).toContain("t('maAbsentTwoRoutes')");
+    expect(CORRECTION_FORM).toContain('export function LeaveInsteadNote');
+    expect(CORRECTION_FORM).toContain('/leave?apply=1&start=');
+    expect(REQUESTS_PAGE).toContain('/leave?apply=1&start=');
+    // Both faces render the SAME note rather than two copies that can drift.
+    expect(REQUESTS_PAGE).toContain('<LeaveInsteadNote');
+    expect(CORRECTION_FORM).toContain('<LeaveInsteadNote');
+  });
+
+  it('ONE confirm button beside Cancel — there is no draft state to save to', () => {
+    // attendance_correction_status is pending|approved|rejected|cancelled. A "Save" that did not submit
+    // would be a new lifecycle, not a second button, and the plan said so before it was approved.
+    expect(CORRECTION_FORM).toContain('cancelLabel');
+    expect(CORRECTION_FORM).toContain('<Dialog.Close asChild>');
+    expect(CORRECTION_FORM.match(/type="submit"/g)?.length, 'exactly one submit control').toBe(1);
+    expect(/draft/i.test(CORRECTION_FORM), 'no draft state was invented').toBe(false);
+  });
+
+  it('the table stays SERVER-side — the client dialog is mounted inside the cell', () => {
+    // The r123 shape: ExceptionTable takes `t`, so making this file 'use client' to reach the dialog
+    // would push a closure across the boundary — clean tsc, clean build, 500 at render.
+    expect(REQUESTS_PAGE.trimStart().startsWith("'use client'")).toBe(false);
+    expect(REQUESTS_PAGE).toContain('function ExceptionTable(');
+    // The per-row TITLE is resolved server-side; `t` itself never crosses.
+    expect(REQUESTS_PAGE).toContain("title={t('maFixHeading', { date: d.date })}");
+  });
+});
+

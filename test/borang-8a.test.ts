@@ -1,6 +1,17 @@
 /**
  * 8ca344bf — BORANG 8A (PERKESO monthly contribution schedule).
  *
+ * ⚠️ WHAT THIS FILE CANNOT SEE, NAMED HERE BECAUSE ITS ABSENCE NEARLY FILED A WRONG FORM (r227). Every
+ * assertion below is DB-FREE — it pins the rules against hand-built rows — so nothing here exercises a
+ * payroll run, and until r227 nothing anywhere exercised a SECOND run of the same month against this
+ * form. `createAdditionalRun` appeared zero times in this file, test/borang-a.test.ts,
+ * test/kwsp-borang-a-file.test.ts, test/socso-eis-file.test.ts and test/cp39-form.test.ts. A bonus run's
+ * zero-value payslip carries a full month's wage in `bases.socsoEis`, and the read SUMS the bases across
+ * the month's runs — so an extra run puts the month's wage in the salary box TWICE, and a fully green
+ * suite said nothing. That case now lives in test/borang-8a-report.test.ts ("an additional run and the
+ * SOCSO salary column"), which is where it can run a kernel; it cannot live here, and that is the point
+ * of the note.
+ *
  * WHAT THIS FILE IS FOR, IN ONE SENTENCE: the two dating rules, the page totals, and the four places the
  * form could quietly stop being the form. Everything here fails SILENTLY in production if it regresses —
  * a Borang 8A stamped with the wrong month, or with a page total that does not add up, downloads exactly

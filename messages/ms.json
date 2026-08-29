@@ -2873,6 +2873,7 @@
     "myAttendanceRequestStatusHelp": "Setiap permohonan kehadiran yang anda hantar, dan keputusannya.",
     "maSeeRequestStatus": "Lihat status permohonan saya",
     "maClose": "Tutup",
+    "maCancel": "Batal",
     "sharedLeaveGroups": {
       "heading": "Baki cuti dikongsi",
       "ofLimit": "daripada {limit} hari dikongsi",
@@ -3970,6 +3971,16 @@
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
+      "generatedWithSkipped": "Slip gaji dijana — {n} pekerja dilangkau. Senarai di bawah menamakan mereka dan sebabnya.",
+      "skipped": {
+        "title": "Pekerja yang dilangkau oleh proses ini",
+        "note": "Ini ialah proses gaji tambahan, jadi pekerja yang tiada apa-apa untuk dibayar tidak diproses. Mereka tiada slip gaji dalam proses ini dan tiada transaksi mereka digunakan.",
+        "colReason": "Sebab",
+        "reason": {
+          "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa"
+        }
+      },
       "preChecksConfirmRequired": "Sila sahkan amaran pra-pemprosesan sebelum menjana slip gaji.",
       "preConfirmTitle": "Proses payroll dengan amaran?",
       "preConfirmDescription": "{n} semakan pra-pemprosesan belum selesai (profil statutori atau butiran bank tiada). Pekerja terlibat mungkin menerima layanan statutori lalai dan tercicir daripada fail pembayaran.",
@@ -4987,6 +4998,8 @@
       "companiesSplit": "{ok} berjaya · {failed} gagal",
       "totalEmployeesSelected": "Jumlah pekerja dipilih",
       "totalEmployeesSucceeded": "Berjaya diproses",
+      "totalEmployeesSkipped": "Dilangkau — tiada bayaran",
+      "skippedNotAFailure": "Bukan kegagalan",
       "totalEmployeesFailed": "Gagal diproses",
       "startedAt": "Bermula pada",
       "endedAt": "Tamat pada",
@@ -4994,6 +5007,7 @@
       "colCompany": "Syarikat",
       "colSelected": "Dipilih",
       "colSucceeded": "Berjaya",
+      "colSkipped": "Dilangkau",
       "colStatus": "Status",
       "colDetail": "Butiran",
       "companySucceeded": "Berjaya",
@@ -5004,6 +5018,15 @@
       "colEmployeeName": "Nama Pekerja",
       "colFailureReason": "Sebab Kegagalan",
       "employeeFailed": "Gagal",
+      "skippedEmployeesTitle": "Pekerja yang dilangkau oleh proses ini",
+      "skippedEmployeesNote": "Ini ialah proses gaji tambahan, jadi pekerja yang tiada apa-apa untuk dibayar dalam kitaran ini tidak diproses. Mereka tiada slip gaji dan tiada rekod gaji untuk proses ini, dan tiada transaksi mereka digunakan.",
+      "skippedNamesUnavailable": "{n} pekerja telah dilangkau. Senarai nama tidak tersedia untuk akaun anda.",
+      "colSkipReason": "Sebab",
+      "employeeSkipped": "Dilangkau",
+      "skipReason": {
+        "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa"
+      },
       "overall": {
         "succeeded": "Berjaya",
         "partial": "Sebahagian berjaya",

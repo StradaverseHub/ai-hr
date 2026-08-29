@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
+import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
-import { CalendarPlus } from 'lucide-react';
 import { Button, Field, inputCls } from '@/components/ui';
 
 type Action = (fd: FormData) => void | Promise<void>;
@@ -29,6 +29,13 @@ type Action = (fd: FormData) => void | Promise<void>;
  * NO explicit encType: React sets multipart itself for a form whose action is a function, and spelling it
  * out earns "Cannot specify a encType or method for a form that specifies a function as the action" in the
  * dev log on every render. The file input still uploads.
+ *
+ * r227 MOVED THE SECOND MOUNT. The pop-up is now BOTH faces — the header's free-date "Correct another day"
+ * AND every table row's Request — because the reporter asked for the side panel that squeezed the list to
+ * become a pop-up. The inline mount survives for `?fix=YYYY-MM-DD` links written before this round; nothing
+ * generates that address any more. So the same "one form, two mounts" rule is what still holds this file
+ * together, and the pair of things that MOVED WITH the form (the Cancel beside Submit, and the absent day's
+ * request-leave-instead note) are here rather than in the page for the same reason.
  */
 export type CorrectionCopy = {
   dateLabel: string;
@@ -64,6 +71,7 @@ export function CorrectionForm({
   day,
   minDate,
   maxDate,
+  cancel,
   onSubmitted,
 }: {
   copy: CorrectionCopy;
@@ -78,6 +86,10 @@ export function CorrectionForm({
   /** The correction window, inclusive — the same bounds the screen states in words. */
   minDate: string;
   maxDate: string;
+  /** r227 — the dismiss control that sits BESIDE Submit, supplied by whoever can dismiss this form.
+   *  A node rather than a label because only the pop-up has something to close: `Dialog.Close` throws
+   *  outside a `Dialog.Root`, and the inline `?fix=` panel has no dialog around it. */
+  cancel?: ReactNode;
   onSubmitted?: () => void;
 }) {
   return (
@@ -152,7 +164,8 @@ export function CorrectionForm({
         <div className={`${inputCls} flex items-center bg-muted/40`}>{approver}</div>
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.originalKept}</p>
-      <div className="flex justify-end pt-1">
+      <div className="flex items-center justify-end gap-2 pt-1">
+        {cancel}
         <Button type="submit" size="sm">
           {copy.submit}
         </Button>
@@ -162,28 +175,90 @@ export function CorrectionForm({
 }
 
 /**
- * "Correct another day", as the pop-up the reporter asked for. The form inside is the component above —
- * the same fields, the same bounds, the same action — so the two paths cannot describe the correction
- * window differently.
+ * r227 — THE ABSENT DAY'S SECOND ROUTE, stated once and mounted twice.
+ *
+ * `maRequestLeaveHelp` + the `/leave?apply=1&start=` button are NOT part of the correction form: they are
+ * the OTHER answer to an absent day (don't correct the clock — ask for leave for it), which is why
+ * `maAbsentTwoRoutes` says so out loud under the list. When the form moved into a pop-up this note had to
+ * move with it, or an absent day would silently be left with one route. It lives here so the pop-up and
+ * the legacy inline panel cannot end up offering different things.
+ *
+ * Takes three plain strings: the page resolves `t` server-side, as everything crossing this boundary must.
  */
-export function CorrectAnotherDayDialog({
+export function LeaveInsteadNote({ href, help, label }: { href: string; help: string; label: string }) {
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <p className="text-[11px] text-muted-foreground">{help}</p>
+      <Button asChild size="sm" variant="outline" className="mt-2">
+        <Link href={href}>{label}</Link>
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The correction request as a POP-UP — both faces of it.
+ *
+ * ⚠️ IT WAS CALLED `CorrectAnotherDayDialog` UNTIL r227, and the rename is the point of the round rather
+ * than tidying. c6bb5f5a built this for the header's "Correct another day" only, but `day`, `section` and
+ * `requestKind` were already props and already spread into the shared CorrectionForm — it was the
+ * free-date face ONLY because the page handed it `day={null}`. r227 hands it a real flagged day from each
+ * table row, so the same component is now the per-row Request pop-up as well, with nothing changed inside
+ * it. A name that said "another day" would have been a lie on every row.
+ *
+ * WHY THE ROWS STOPPED NAVIGATING. `Request` used to be a link to `?fix=YYYY-MM-DD`, which opened the form
+ * in a second column beside the table — and that column is what squeezed the list the employee came to
+ * read (the reporter's complaint). The pop-up needs no column, so the table gets the whole width. The
+ * `?fix=` branch on the page is KEPT, unlinked-to, so bookmarks and already-sent links still open.
+ *
+ * NOTHING BUT STRINGS, A PLAIN DAY OBJECT AND THE SERVER ACTION CROSSES. The page is a server component
+ * and this module is 'use client': `t` and the page's `href()` closure may not cross
+ * (test/server-client-boundary.test.ts), so every label — including the per-row title — is resolved
+ * server-side. `section` / `requestKind` come across as strings rather than being derived here, which is
+ * what keeps an "Also waiting for you" row filing under ITS OWN kind instead of the open tab's.
+ */
+export function CorrectionDialog({
   title,
   triggerLabel,
+  triggerIcon,
+  triggerVariant = 'outline',
   closeLabel,
+  cancelLabel,
+  leaveHref,
+  leaveHelp,
+  leaveLabel,
   ...form
-}: Parameters<typeof CorrectionForm>[0] & { title: string; triggerLabel: string; closeLabel: string }) {
+}: Omit<Parameters<typeof CorrectionForm>[0], 'cancel' | 'onSubmitted'> & {
+  title: string;
+  triggerLabel: string;
+  /** Optional glyph on the trigger. NOT hardcoded any more: the header's "Correct another day" wants a
+   *  calendar, a row's plain "Request" does not. */
+  triggerIcon?: ReactNode;
+  triggerVariant?: ComponentProps<typeof Button>['variant'];
+  closeLabel: string;
+  cancelLabel: string;
+  /** The absent day's second route, when there is one — see LeaveInsteadNote. */
+  leaveHref?: string;
+  leaveHelp?: string;
+  leaveLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <Button type="button" size="sm" variant="outline" className="gap-1.5">
-          <CalendarPlus className="size-3.5" />
+        <Button type="button" size="sm" variant={triggerVariant} className={triggerIcon ? 'gap-1.5' : undefined}>
+          {triggerIcon}
           {triggerLabel}
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+        <Dialog.Content
+          // No Dialog.Description on this form — say so, or Radix logs a missing-description warning on
+          // every open (the same reason components/leave/request-leave-dialog.tsx sets it).
+          aria-describedby={undefined}
+          className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
+        >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <Dialog.Title className="text-sm font-semibold">{title}</Dialog.Title>
             <Dialog.Close asChild>
@@ -194,8 +269,24 @@ export function CorrectAnotherDayDialog({
           </div>
           {/* Closing on submit is what makes the pop-up feel like the inline panel it replaced: the action
               redirects back to this screen, and a dialog still hanging over the refreshed page would hide
-              the very row it just changed. */}
-          <CorrectionForm {...form} onSubmitted={() => setOpen(false)} />
+              the very row it just changed.
+
+              CANCEL sits beside Submit (the shape components/leave/request-leave-dialog.tsx already uses):
+              a form that can only be escaped by the header's Close reads as one you are committed to. */}
+          <CorrectionForm
+            {...form}
+            onSubmitted={() => setOpen(false)}
+            cancel={
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">
+                  {cancelLabel}
+                </Button>
+              </Dialog.Close>
+            }
+          />
+          {leaveHref && leaveHelp && leaveLabel ? (
+            <LeaveInsteadNote href={leaveHref} help={leaveHelp} label={leaveLabel} />
+          ) : null}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

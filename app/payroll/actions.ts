@@ -77,6 +77,7 @@ export async function generateAction(formData: FormData) {
   const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
   const t = await getTranslations('payroll.batch');
   let errMsg: string | null = null;
+  let toastMsg = 'Payslips generated';
   try {
     const checks = await preProcessAdvisory(s, batchId);
     // BLOCKER count: no compensation row covering the period OR a zero basic/rate (feedback 64fb5e48) —
@@ -100,7 +101,13 @@ export async function generateAction(formData: FormData) {
     } else if (warnings > 0 && !acknowledged) {
       errMsg = t('preChecksConfirmRequired', { n: warnings });
     } else {
-      await generatePayslips(s, { batchId });
+      // r226 — an ADDITIONAL run skips the employees it has nothing to pay in the cycle. This screen has
+      // no result payload to carry the names (that is the wizard's Step-3 page, which does list them), so
+      // the toast at least says HOW MANY are absent rather than leaving forty missing payslips to be
+      // noticed by counting. The run screen itself shows what was written.
+      const gen = await generatePayslips(s, { batchId });
+      const skipped = 'skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.length : 0;
+      if (skipped > 0) toastMsg = t('generatedWithSkipped', { n: skipped });
     }
   } catch (e) {
     errMsg =
@@ -115,7 +122,7 @@ export async function generateAction(formData: FormData) {
   }
   if (errMsg) redirect(`/payroll/${batchId}?error=${encodeURIComponent(errMsg)}`);
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?toast=Payslips generated`);
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(toastMsg)}`);
 }
 
 export async function setPayrollInputAction(formData: FormData) {
