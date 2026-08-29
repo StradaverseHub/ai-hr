@@ -18,21 +18,111 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-29 (r226 + r227 SHIPPED · BOARD HAS ONE APPROVED ITEM, NOTHING BUILDING)
+## CURRENT STATE — snapshot 2026-08-29 (r226 · r227 · r228 SHIPPED · THE BOARD IS EMPTY)
 
-**`main@550c5d3f` IS WHAT RUNS ON PRODUCTION (r227, 2026-08-29)** — verified by a zero-change
+**`main@7df709ee` IS WHAT RUNS ON PRODUCTION (r228, 2026-08-29)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-29 19:54:53 +0800.
-(Commits after `550c5d3f` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-29 21:05:11 +0800.
+(Commits after `7df709ee` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
 
-**BOARD: ONE approved item, unbuilt — `ea54fe6e` "Payroll – Pay Items EA Line Mapping for C.P.8A".**
-Nothing is `building`, nothing is `blocked`, and no `build/*` branch is unmerged. Next free migration is
-still `0451` — r226 and r227 both shipped WITHOUT one.
+**BOARD: EMPTY.** Nothing open, planned, approved, contested, blocked, building or done-awaiting-release.
+No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
+`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** — r226, r227
+and r228 all shipped WITHOUT one.
 
-⚠️ **TWO THINGS THE REPORTER IS STILL OWED, BOTH FROM `c6bb5f5a` — see the r227 entry for the detail.**
-Their refutation of rev 2 asked for four things; the approved rev-3 plan and the shipped code cover two.
-The consolidated "Also Waiting for You" screen and the My Attendance Request Status redesign are
-undelivered and recorded on no board item.
+⚠️ **THREE ROUNDS SHIPPED IN ONE SESSION AND TWO OF THEM WERE ALREADY BUILT WHEN IT STARTED.** r226 was
+merged and deployed but unrecorded; r227 was built on three branches and never gated. **The board was
+the only thing that surfaced it** — two items sat in `building`, which `improve:pull` deliberately hides.
+Run the two checks in "How this project is actually run" AND look at `building` before believing the
+board is quiet.
+
+⚠️⚠️ **FIVE THINGS THE REPORTER IS OWED, AND THE BOARD BEING EMPTY IS EXACTLY WHY THEY ARE EASY TO LOSE.**
+Nothing below is a defect; each is a gap between what they asked for and what shipped, and none of it is
+recorded on any board item. Raise them or say them plainly — an empty board reads as "nothing outstanding".
+
+From **`c6bb5f5a`** (r227) — their rev-2 refutation asked for FOUR things; the approved rev-3 plan and the
+shipped code cover two:
+  1. the consolidated "Also Waiting for You" screen — NOT built;
+  2. the My Attendance Request Status redesign with status indicators — NOT built.
+
+From **`ea54fe6e`** (r228):
+  3. `allowance_exempt` is one of their fourteen EA lines and it MAPS BUT MOVES NO FIGURE, deliberately —
+     the exempt box is a memo line with one derivation and must not gain a second;
+  4. nothing routes before assessment year **2027**, so mapping items today changes no form they can
+     generate today (they agreed this in the block trail, but it is worth restating on delivery);
+  5. their §10 request for an amendment audit trail is **ALREADY MET** by `ea_override` (amender, reason,
+     timestamp, and now the routed figure kept as `original`) — confirm it rather than leave it reading
+     as outstanding work.
+
+### r228 (2026-08-29) — the EA form reads the pay-item mapping it has stored all along (`ea54fe6e`). NO MIGRATION.
+
+The board's last approved item, and the plan's verdict — "partly there already" — was right.
+`pay_component.ea_form_line` has been storable, validated and audited since ADR-0035 wave 1. TWO links
+were broken. The CONTROL was replaced by a hidden passthrough in the `4994a48f` redesign
+(`component-form.tsx:78`) pending "a dedicated statutory module later" that never came, so the value
+survived every save and nobody could set it. The READ never existed at all: the EA summed
+`payslip.allowance` into one lump and no EA surface looked at `pay_component`.
+
+⚠️⚠️ **ROUTING MOVES MONEY; IT NEVER ADDS ANY. THAT IS THE PROPERTY THAT MADE THIS SHIPPABLE ONTO A TAX
+DOCUMENT.** The kernel's bucket already decided which EA figure an amount reached, so routing SUBTRACTS
+it there and ADDS it to the mapped box — `partB.gross` is identical before and after a mapping, so a
+form that reconciled yesterday still reconciles. `EA_BUCKET_SOURCE_FIELD` is the subtraction side
+(`wage`→allowances, `ot`→grossSalary, `bonus`→bonus); `reimburse` and `deduct` are absent on purpose —
+neither is Part B income, and routing a reimbursement would invent income. Pinned by reading the SAME
+payroll data twice, once before the mapping and once after, which is exact rather than approximate.
+
+⚠️ **NOTHING ROUTES BEFORE ASSESSMENT YEAR 2027 (`EA_ROUTING_FROM_YEAR`), AND THAT IS THE WHOLE RISK.**
+Per-component stamping began 2026-08-01 (`862ed0ad`), an EA covers January to December, so routing 2026
+would print an Aug–Dec subtotal in a box captioned as the full year — the plan's own worked example is a
+director paid 48,000 showing ~20,000 against director's fee, on a form someone files a tax return on
+(AGENTS 28). The earlier months CANNOT be recovered and must not be re-derived: those payslips hold
+monthly totals only, and a recomputation would disagree with the payslips already issued. Raise that
+constant only with a real reason; never lower it.
+
+⚠️ **THE VOCABULARY WENT 9 → 15 AND `gratuity_compensation` WAS SPLIT — SAFE ONLY BECAUSE NOTHING CARRIED
+IT.** Measured on production before touching it: **all 25 `pay_component` rows have `ea_form_line = NULL`**.
+So there was no stored value to migrate, no backfill, and — the part that matters for risk — **routing
+ships INERT**. It cannot change any EA form until an admin maps an item deliberately. `cleanEaLine`
+silently NULLS an unrecognised value, so re-check that emptiness before ever retiring a value again: the
+failure mode is an operator's mapping vanishing on their next save, with no error anywhere.
+`commission` and `director_fee` deliberately share one box — the form's own caption is
+"1(b) Fees (including directors' fees), commission or bonus".
+
+⚠️ **`allowance_exempt` MAPS BUT MOVES NO FIGURE, AND THE REPORTER MUST BE TOLD.** It is one of their
+fourteen. The exempt box is a MEMO line — the tax-exempt portion of `allowances`, printed "(included
+above)" and deliberately outside `EA_PART_B_COMPONENTS` so it cannot double-count — and it already has
+ONE derivation, the PCB exemption ledger (`statutory.exemptionUsed`, PCB_* codes). A second source would
+report an item twice with neither source aware of the other. Mapping to it marks the item as mapped and
+leaves the money where the kernel put it.
+
+⚠️ **THE ADR-0080 RATCHET CAUGHT A CROSS-PACK IMPORT THAT EVERY TARGETED RUN MISSED.** The Pay Items form
+imported `EA_ROUTING_FROM_YEAR` from `localization/my` to name the year in its hint. Pay Items is a
+GENERIC admin screen, and `test/country-pack-drift.test.ts` refused it — its own message says the
+allowlist only ever shrinks, so the fix is to remove the dependency, never to record debt. **123 of the
+124 files in that chunk passed and all seven adjacent EA / pay-item suites were green**; only the full
+gate reads every file. AGENTS 15 and 20's family. The EA statement carries the year as `routing.fromYear`
+out of the statement DATA instead, which is where an operator is looking when the question arises.
+
+**§7/§8 — THE MAPPING STATUS WAS IN THE CSV EXPORT AND NOWHERE ON SCREEN.** The plan said the list
+"already shows it as a column"; it did not — `eaFormLine` was an export column only, so "which items are
+still unmapped?" required downloading the file. It is now a real table column with a Mapped / Not mapped
+badge (a DEDUCTION is never flagged: no `EA_FORM_LINES` value targets a Part B box it could reach, so an
+amber pip beside every deduction would be a warning nobody can clear). The EA statement names any pay
+item that put money on THAT form with no mapping, **shown whatever the year** — so the mapping can be
+finished during 2026 and be correct on the first form that routes it, rather than being discovered on it.
+
+**PRECEDENCE IS THE REPORTER'S, IN WRITING** (mapping → auto amount → hand amendment → final): an
+`ea_override` still wins, and the routed figure survives as its `original`, so the amendment stays
+auditable. **Their §10 audit-trail request is ALREADY MET** by `ea_override` (amender, reason, timestamp)
+— worth confirming to them rather than leaving it reading as an open request.
+
+**RENDER-CHECKED** (rule 6): six routes, zero `MISSING_MESSAGE`/`IntlError`/RSC errors, and the select
+verified STRUCTURALLY rather than by label (all 15 `value="…"` options present, the stored `director_fee`
+coming back `selected`) — grepping rendered HTML for a LABEL is a false positive, because Next.js embeds
+the whole i18n catalogue in the payload. 12 new cases in `test/ea-line-routing.test.ts`, five of them
+two-directional table ratchets: a vocabulary value with no box, a table key outside the vocabulary, a
+routed box outside the printed total, a bucket source outside it, and a missing dropdown label in any of
+the six catalogues.
 
 ### r227 (2026-08-29) — the round that was BUILT ON 2026-08-28 AND NEVER SHIPPED. `c6bb5f5a`, `15239057`, `43cede88`. NO MIGRATION.
 
