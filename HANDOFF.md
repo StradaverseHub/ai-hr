@@ -18,12 +18,19 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-31 (r226-r230 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-31 (r226-r231 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@ab5f0da0` IS WHAT RUNS ON PRODUCTION (r230, 2026-08-31)** — verified by a zero-change
+**`main@2a0aedeb` IS WHAT RUNS ON PRODUCTION (r231, 2026-08-31)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 01:54:20 +0800.
-(Commits after `ab5f0da0` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 02:35:47 +0800.
+(Commits after `2a0aedeb` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+
+⚠️ **THE ASSISTANT IS REACHABLE BUT NOBODY HOLDS IT YET.** r231 shipped `/assistant` and the grant
+toggle on Users, so the path exists end to end — but production still has **0 assistant grants, 0
+exchanges, and the `assistant` module is not activated for the tenant**. Nothing is broken; it has simply
+not been switched on. Turning it on is two steps by hand: activate the billable module for the tenant,
+then grant the people who should have it from Administration → Users. **Do not read the zero counts as a
+defect** — that is what an unactivated billable module looks like.
 
 **SCHEDULED JOBS ON THE BOX — SIX, and `anomaly-sweep` at 02:30 is the one r230 added.** The others:
 `provision-runner` (every minute), `capture-usage` 01:00, `review-sweep` 03:00, `accrue-earned` monthly,
@@ -98,6 +105,56 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r231 (2026-08-31) — ADR-0082 slice 4: the assistant becomes reachable at all. NO MIGRATION.
+
+⚠️⚠️ **THREE SLICES HAD SHIPPED AND NONE OF IT COULD BE REACHED BY ANYBODY.** r221 built the gateway's
+conversation support, r223 the access-scoped tool registry, r229 the loop — and production carried **zero
+grants and zero exchanges**, because there was no screen AND no way to grant anyone access. Slice 4 is
+therefore deliberately TWO surfaces: without the grant control the ask screen is unreachable by every
+user in the tenant, so shipping only `/assistant` would have been three slices of dead code plus a fourth.
+**When a feature has a per-user gate, the thing that turns the gate on is part of the same slice.**
+
+**`/assistant`** — ask, read the answer, see what it looked at. Three properties, in the order they would
+hurt: (1) **it never presents a non-answer as an answer** — `stop` has FIVE members and only `end` means
+finished, so refusal, truncation, provider oddity and the turn cap each get their own sentence (§2.5; on
+HR data "there is nothing" and "I stopped early" are different claims); (2) **it lists the tools that
+ran**, which is also the honest statement of scope because each ran inside the asker's own session;
+(3) **no refusal without a route forward** — `mayUseAssistant`'s three reasons each name who can fix it.
+The answer is read back from `assistant_exchange`, never carried on the redirect: the audit row is the
+record and a second copy could differ from it.
+
+**GRANTS LIVE ON THE USERS SCREEN.** "Who may use this" is the question that screen already answers for
+roles, and a whole screen for one toggle is a menu row nobody finds.
+
+⚠️ **THE BUG THAT WAS ONE LINE FROM SHIPPING: `listAssistantGrants` RETURNS REVOKED ROWS ON PURPOSE.**
+Its own docblock says why — "who could ask the assistant last March" is the reason revocation is a STAMP
+rather than a delete. Read naively as "who has access" it shows a revoked person as still granted and
+offers to revoke them a second time. The screen filters on `revokedAt == null`, and the test asserts the
+underlying live-vs-historic distinction so neither half can drift. **A list that keeps history is not a
+list of who has access, and the two read identically at the call site.**
+
+⚠️⚠️ **ADR-0082 §2.8 IS WRONG ABOUT THE PERMISSIONS MATRIX, AND FOLLOWING IT WOULD HAVE FAILED THE GATE.**
+It says `app/assistant/page.tsx` needs a `lib/permissions.ts` SCREENS column. But
+`test/function-access.test.ts`'s guard regex matches only
+`requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession`, and this page uses
+`getSession` like `/me` and `/leave` — so a column would have failed that file's sibling "no stale routes"
+case. **This is r225's lesson verbatim, hit a second time from the opposite direction: there it was a
+brief demanding the column, here it is an ADR.** Recorded as an ASSERTED TEST rather than a comment, so
+the next reader of §2.8 finds the correction in the suite instead of repeating it.
+
+**NAV GATED BY `MODULE_OF_HREF`, the SECOND hand-written entry after `system_explorer`** and for the same
+mechanical reason: `assistant` is `packBacked: false`, so no pack descriptor exists to derive the href
+from and the entry cannot be generated. Without it the rail would advertise a module the tenant has not
+bought. The per-user grant is a separate second gate — the row is offered to an ungranted user and the
+screen tells them who to ask, which is a better dead end than a row that silently vanishes.
+
+**RENDER-CHECKED ON BOTH PATHS** (rule 6) — the denial path every user hits first, and the granted path
+after activating the module and inserting a grant: 200 on each, ask form present, zero `MISSING_MESSAGE`.
+Checking only the denial path would have exercised none of the screen.
+
+**NO MIGRATION — 0451 laid all four tables in r223.** Four rounds running now (r228 EA, r230 narrator,
+r231) where the storage already existed and only the read or the surface was missing.
 
 ### r230 (2026-08-31) — the AI finally arrives in the control tower, and the sweep starts running. NO MIGRATION.
 
