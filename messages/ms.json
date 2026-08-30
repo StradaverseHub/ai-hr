@@ -301,7 +301,8 @@
     "noticeBoard": "Papan Notis",
     "payrollIndividualPayslip": "Slip Gaji Individu",
     "payrollBackPay": "Bayaran Tunggakan",
-    "payrollStatutoryAdjustment": "Pelarasan Berkanun"
+    "payrollStatutoryAdjustment": "Pelarasan Berkanun",
+    "payrollControlTower": "Menara Kawalan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -5031,7 +5032,7 @@
       "employeeSkipped": "Dilangkau",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa"
       },
       "overall": {
         "succeeded": "Berjaya",
@@ -6013,6 +6014,44 @@
         "bonus": "Bonus",
         "adjustment": "Pelarasan"
       }
+    },
+    "controlTower": {
+      "title": "Menara Kawalan Gaji",
+      "description": "Setiap proses terbuka, apa yang memerlukan perhatian, dan sama ada semakan ini berbaloi.",
+      "backToPayroll": "Gaji",
+      "ratioTitle": "Berapa ramai orang diperlukan untuk menjalankan gaji ini?",
+      "ratioUnavailable": "Kami belum menunjukkan angka kakitangan, kerana ia tidak akan bermakna.",
+      "ratioWhyNotGuessed": "Unjuran kakitangan akan diambil tindakan. Kami lebih rela tidak menunjukkan apa-apa daripada satu angka yang dibina atas semakan yang belum diaudit sesiapa.",
+      "blocked_no_verdicts": "Belum ada proses yang disemak, jadi tiada apa untuk diukur.",
+      "blocked_thresholds_untuned": "Kepekaan semakan masih pada nilai permulaan yang dihantar. Sehingga ia ditala kepada gaji anda, kadar lulus mengukur tetapan dan bukan data anda.",
+      "blocked_no_human_signal": "Belum ada sesiapa menyelesaikan kes yang ditanda. Sehingga seseorang bersetuju atau tidak, kami tidak dapat memberitahu seberapa kerap semakan itu betul.",
+      "impliedOperators": "orang diperlukan, pada kadar pengecualian ini",
+      "employeesCovered": "pekerja disemak",
+      "exceptionsThisCycle": "memerlukan perhatian",
+      "ratioAssumption": "Menganggap seorang boleh menyelesaikan kira-kira {n} pengecualian setiap kitaran. Itu andaian daripada reka bentuk, bukan sesuatu yang diukur pada data anda.",
+      "metricsTitle": "Empat angka",
+      "mAutoClear": "Lulus tanpa manusia",
+      "mAutoClearHint": "Sasaran {target}% atau lebih baik.",
+      "mCoverage": "Semakan yang dapat berjalan",
+      "mCoverageHint": "Baca ini dahulu. Kadar lulus tinggi dengan liputan rendah ialah hasil yang tipis, bukan yang baik.",
+      "mFalsePositive": "Ditanda tersilap",
+      "mFalsePositiveHint": "Seberapa kerap kes yang ditanda sebenarnya tiada masalah.",
+      "mNoSignal": "Perlu seseorang menyelesaikan barisan dahulu.",
+      "mMttr": "Masa untuk selesaikan satu",
+      "mMttrHint": "Masa median dari tanda hingga keputusan.",
+      "metricsBasis": "Berdasarkan {verdicts} pekerja disemak merentas {runs} proses terbuka; {resolved} kes ditanda telah diselesaikan.",
+      "thresholdsUntuned": "Kepekaan masih pada nilai permulaan yang dihantar — tala terhadap bulan sebenar sebelum memetik angka ini kepada sesiapa.",
+      "runsTitle": "Proses terbuka",
+      "colCompany": "Syarikat",
+      "colPeriod": "Tempoh",
+      "colEmployees": "Pekerja",
+      "colCleared": "Lulus",
+      "colReview": "Untuk semakan",
+      "colBlocked": "Disekat",
+      "colWaiting": "Menunggu manusia",
+      "openQueue": "Buka barisan",
+      "notChecked": "Belum disemak",
+      "noRuns": "Tiada proses diproses. Menara ini tiada apa untuk dipantau sehingga satu proses diproses."
     }
   },
   "admin": {

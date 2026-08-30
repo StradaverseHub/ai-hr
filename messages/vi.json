@@ -301,7 +301,8 @@
     "noticeBoard": "Bảng thông báo",
     "payrollIndividualPayslip": "Phiếu lương cá nhân",
     "payrollBackPay": "Truy lĩnh",
-    "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định"
+    "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định",
+    "payrollControlTower": "Trung tâm điều hành"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -5031,7 +5032,7 @@
       "employeeSkipped": "Bỏ qua",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường"
       },
       "overall": {
         "succeeded": "Thành công",
@@ -6013,6 +6014,44 @@
         "bonus": "Thưởng",
         "adjustment": "Điều chỉnh"
       }
+    },
+    "controlTower": {
+      "title": "Trung tâm điều hành bảng lương",
+      "description": "Mọi kỳ đang mở, việc nào cần người, và các kiểm tra này có thực sự hữu ích không.",
+      "backToPayroll": "Bảng lương",
+      "ratioTitle": "Cần bao nhiêu người để chạy bảng lương này?",
+      "ratioUnavailable": "Chúng tôi chưa hiển thị con số nhân sự, vì nó sẽ không có ý nghĩa.",
+      "ratioWhyNotGuessed": "Một dự báo nhân sự sẽ được dùng để ra quyết định. Chúng tôi thà không hiển thị gì còn hơn đưa ra một con số dựa trên các kiểm tra chưa ai soát xét.",
+      "blocked_no_verdicts": "Chưa kỳ nào được kiểm tra, nên chưa có gì để đo.",
+      "blocked_thresholds_untuned": "Độ nhạy của các kiểm tra vẫn ở giá trị khởi đầu. Cho đến khi được hiệu chỉnh theo bảng lương của bạn, tỷ lệ thông qua đo cấu hình chứ không phải dữ liệu của bạn.",
+      "blocked_no_human_signal": "Chưa ai xử lý các trường hợp bị gắn cờ. Cho đến khi có người đồng ý hoặc không, chúng tôi không thể cho biết các kiểm tra đúng bao nhiêu lần.",
+      "impliedOperators": "số người cần, ở tỷ lệ ngoại lệ này",
+      "employeesCovered": "nhân viên đã kiểm tra",
+      "exceptionsThisCycle": "cần người xử lý",
+      "ratioAssumption": "Giả định một người xử lý được khoảng {n} ngoại lệ mỗi kỳ. Đây là giả định từ thiết kế, không phải số đo trên dữ liệu của bạn.",
+      "metricsTitle": "Bốn con số",
+      "mAutoClear": "Thông qua không cần người",
+      "mAutoClearHint": "Mục tiêu {target}% trở lên.",
+      "mCoverage": "Kiểm tra chạy được",
+      "mCoverageHint": "Đọc mục này trước. Tỷ lệ thông qua cao trên độ phủ thấp là kết quả mỏng, không phải kết quả tốt.",
+      "mFalsePositive": "Gắn cờ sai",
+      "mFalsePositiveHint": "Tần suất một trường hợp bị gắn cờ hóa ra vẫn ổn.",
+      "mNoSignal": "Cần có người xử lý hàng đợi trước.",
+      "mMttr": "Thời gian xử lý một ca",
+      "mMttrHint": "Thời gian trung vị từ lúc gắn cờ đến khi có quyết định.",
+      "metricsBasis": "Dựa trên {verdicts} nhân viên đã kiểm tra qua {runs} kỳ đang mở; đã xử lý {resolved} trường hợp gắn cờ.",
+      "thresholdsUntuned": "Độ nhạy vẫn ở giá trị khởi đầu — hãy hiệu chỉnh theo một tháng thực tế trước khi trích dẫn các con số này với bất kỳ ai.",
+      "runsTitle": "Kỳ đang mở",
+      "colCompany": "Công ty",
+      "colPeriod": "Kỳ",
+      "colEmployees": "Nhân viên",
+      "colCleared": "Đã thông qua",
+      "colReview": "Cần rà soát",
+      "colBlocked": "Bị chặn",
+      "colWaiting": "Chờ người xử lý",
+      "openQueue": "Mở hàng đợi",
+      "notChecked": "Chưa kiểm tra",
+      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý."
     }
   },
   "admin": {

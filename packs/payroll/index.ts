@@ -153,7 +153,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, HandCoins, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, HandCoins, History, Landmark, ReceiptText, RadarIcon, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -209,6 +209,10 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // Transaction View — which is where the approved plan puts it. `sort` is stable, so its literal
     // position is what decides it within the rank, not a guessed splice point.
     { href: '/payroll/back-pay', labelKey: 'payrollBackPay', icon: History },
+    // ADR-0074 — the Control Tower. The anomaly layer has existed since r177 with no front door: its
+    // queue hung off one run at a time and its metrics rendered nowhere. This is the row that makes the
+    // whole operation visible, and the home the per-run queue was missing.
+    { href: '/payroll/control-tower', labelKey: 'payrollControlTower', icon: RadarIcon },
     { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView', icon: Table2 },
     // 169e3c24 — the admin payslip review screen. The itemised breakdown it renders already existed on
     // Transaction View → History; what was missing was a menu row that says "payslip", which is why the
