@@ -194,6 +194,11 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // test/system-explorer.test.ts pins this href against the row in SYSTEM_SETTINGS_NODE and against
   // the route that exists on disk, so the three cannot part company silently.
   ['/admin/system-explorer', 'system_explorer'] as const,
+  // ADR-0082 — `assistant` is the SECOND hand-written entry and for the same reason as the first: it is
+  // a catalog module with `packBacked: false`, so there is no pack descriptor to derive the href from.
+  // Without this line the row would advertise a module the tenant has not bought. The per-user
+  // assistant_grant is a separate, second gate — this one only decides whether the row is offered.
+  ['/assistant', 'assistant'] as const,
 ]);
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
@@ -286,6 +291,11 @@ const GROUPS: Group[] = [
       MY_ATTENDANCE_NODE,
       CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
+      // ADR-0082 slice 4 — sits beside Knowledge Base because they answer the same shape of question,
+      // one from documents and one from the employee's own records. Module-gated via MODULE_OF_HREF
+      // above; a user without a grant sees the row and is told who to ask, which is a better dead end
+      // than a row that vanishes with no explanation.
+      { href: '/assistant', labelKey: 'assistant', icon: Sparkles },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
       // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
       { href: '/mobile-preview', labelKey: 'mobilePreview', icon: Smartphone },

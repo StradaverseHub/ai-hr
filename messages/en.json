@@ -302,7 +302,8 @@
     "payrollIndividualPayslip": "Individual Payslip",
     "payrollBackPay": "Back Pay",
     "payrollStatutoryAdjustment": "Statutory Adjustment",
-    "payrollControlTower": "Control Tower"
+    "payrollControlTower": "Control Tower",
+    "assistant": "Assistant"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -7231,7 +7232,9 @@
       "archivedCauseManual": "Archived by an administrator",
       "invitePerson": "Employee",
       "invitePersonPlaceholder": "Select an employee",
-      "unlinkedLogin": "Unlinked login {id}"
+      "unlinkedLogin": "Unlinked login {id}",
+      "assistantGrant": "Allow assistant",
+      "assistantRevoke": "Remove assistant"
     },
     "audit": {
       "title": "Audit trail",
@@ -11216,5 +11219,28 @@
     "narrateNotConfigured": "No AI provider is set up for this tenant, so there is nothing to explain with. The figures below are unaffected.",
     "narrateRejected": "The explanation was discarded: it named a figure the recorded numbers do not support. The figures below are unchanged.",
     "narrateNothing": "No explanation was produced. The figures below are unchanged."
+  },
+  "assistant": {
+    "title": "Assistant",
+    "description": "Ask about your own employment — leave, pay, attendance, and your team if you manage people.",
+    "placeholder": "Ask a question, for example: how much annual leave do I have left?",
+    "ask": "Ask",
+    "scopeNote": "It can only see what you can already see.",
+    "empty": "No questions yet. Ask one above.",
+    "noAnswer": "No answer was produced.",
+    "lookedAt": "Looked at: {tools}",
+    "stop_refusal": "The assistant declined to answer this one.",
+    "stop_max_tokens": "The answer was cut short because it got too long. Try asking for less at once.",
+    "stop_other": "The assistant stopped before finishing. Nothing is wrong with your records — please ask again.",
+    "stop_tool_use": "The assistant stopped while it was still looking something up. Please ask again.",
+    "stop_turn_cap": "The assistant reached its limit of {n} steps and stopped before finishing. Try splitting the question up.",
+    "denied_module_off": "The assistant is not part of your organisation’s plan. Your HR administrator can turn it on.",
+    "denied_no_grant": "You have not been given access to the assistant. Your HR administrator can grant it.",
+    "denied_no_user": "This login has no user record, so the assistant cannot be used with it.",
+    "err_not_configured": "No AI provider has been set up for your organisation yet. Your administrator can add one.",
+    "err_budget_monthly": "Your organisation has used its AI allowance for this month.",
+    "err_budget_daily": "You have used your questions for today. Please try again tomorrow.",
+    "err_invalid_question": "Please write a question, and keep it under 2000 characters.",
+    "err_provider_error": "The assistant could not be reached. Please try again."
   }
 }
