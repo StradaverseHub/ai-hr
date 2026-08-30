@@ -302,7 +302,8 @@
     "payrollIndividualPayslip": "个人工资单",
     "payrollBackPay": "补发工资",
     "payrollStatutoryAdjustment": "法定金额调整",
-    "payrollControlTower": "控制塔"
+    "payrollControlTower": "控制塔",
+    "assistant": "智能助理"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -7231,7 +7232,9 @@
       "archivedCauseManual": "由管理员归档",
       "invitePerson": "员工",
       "invitePersonPlaceholder": "选择员工",
-      "unlinkedLogin": "未关联的登录账号 {id}"
+      "unlinkedLogin": "未关联的登录账号 {id}",
+      "assistantGrant": "允许使用助理",
+      "assistantRevoke": "取消助理权限"
     },
     "audit": {
       "title": "审计日志",
@@ -11216,5 +11219,28 @@
     "narrateNotConfigured": "此租户未设置 AI 供应商，因此无法生成说明。下方数字不受影响。",
     "narrateRejected": "说明已被丢弃：其中出现了记录数字无法支持的数值。下方数字未变。",
     "narrateNothing": "未生成说明。下方数字未变。"
+  },
+  "assistant": {
+    "title": "智能助理",
+    "description": "询问与您自己雇佣相关的事项 — 假期、薪资、考勤，若您带团队也包括您的团队。",
+    "placeholder": "提出问题，例如：我还剩多少年假？",
+    "ask": "提问",
+    "scopeNote": "它只能看到您本来就能看到的内容。",
+    "empty": "还没有问题。请在上方提问。",
+    "noAnswer": "未生成答案。",
+    "lookedAt": "查阅了：{tools}",
+    "stop_refusal": "助理拒绝回答这个问题。",
+    "stop_max_tokens": "回答因过长而被截断。请一次问少一些。",
+    "stop_other": "助理在完成前停止了。您的记录没有问题 — 请再问一次。",
+    "stop_tool_use": "助理在查询过程中停止了。请再问一次。",
+    "stop_turn_cap": "助理达到 {n} 步的上限，在完成前停止。请尝试拆分问题。",
+    "denied_module_off": "贵机构的方案不包含智能助理。您的 HR 管理员可以启用它。",
+    "denied_no_grant": "您尚未获得使用助理的权限。您的 HR 管理员可以授予。",
+    "denied_no_user": "此登录没有用户记录，因此无法使用助理。",
+    "err_not_configured": "贵机构尚未设置 AI 供应商。管理员可以添加一个。",
+    "err_budget_monthly": "贵机构本月的 AI 额度已用完。",
+    "err_budget_daily": "您今天的提问次数已用完。请明天再试。",
+    "err_invalid_question": "请输入问题，并保持在 2000 字符以内。",
+    "err_provider_error": "无法连接助理。请重试。"
   }
 }

@@ -302,7 +302,8 @@
     "payrollIndividualPayslip": "Phiếu lương cá nhân",
     "payrollBackPay": "Truy lĩnh",
     "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định",
-    "payrollControlTower": "Trung tâm điều hành"
+    "payrollControlTower": "Trung tâm điều hành",
+    "assistant": "Trợ lý"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -7231,7 +7232,9 @@
       "archivedCauseManual": "Được quản trị viên lưu trữ",
       "invitePerson": "Nhân viên",
       "invitePersonPlaceholder": "Chọn nhân viên",
-      "unlinkedLogin": "Đăng nhập chưa liên kết {id}"
+      "unlinkedLogin": "Đăng nhập chưa liên kết {id}",
+      "assistantGrant": "Cho phép trợ lý",
+      "assistantRevoke": "Thu hồi trợ lý"
     },
     "audit": {
       "title": "Nhật ký kiểm toán",
@@ -11216,5 +11219,28 @@
     "narrateNotConfigured": "Chưa thiết lập nhà cung cấp AI cho tổ chức này nên không có gì để giải thích. Các số liệu bên dưới không bị ảnh hưởng.",
     "narrateRejected": "Phần giải thích đã bị loại bỏ: nó nêu một con số mà các số liệu đã ghi không hỗ trợ. Các số liệu bên dưới không thay đổi.",
     "narrateNothing": "Không tạo được phần giải thích. Các số liệu bên dưới không thay đổi."
+  },
+  "assistant": {
+    "title": "Trợ lý",
+    "description": "Hỏi về công việc của chính bạn — nghỉ phép, lương, chấm công, và nhóm của bạn nếu bạn quản lý người.",
+    "placeholder": "Đặt câu hỏi, ví dụ: tôi còn bao nhiêu ngày phép năm?",
+    "ask": "Hỏi",
+    "scopeNote": "Trợ lý chỉ thấy những gì bạn vốn đã thấy được.",
+    "empty": "Chưa có câu hỏi nào. Hãy đặt một câu ở trên.",
+    "noAnswer": "Không có câu trả lời nào được tạo.",
+    "lookedAt": "Đã xem: {tools}",
+    "stop_refusal": "Trợ lý từ chối trả lời câu này.",
+    "stop_max_tokens": "Câu trả lời bị cắt vì quá dài. Hãy thử hỏi ít hơn mỗi lần.",
+    "stop_other": "Trợ lý dừng trước khi hoàn tất. Hồ sơ của bạn không có vấn đề — vui lòng hỏi lại.",
+    "stop_tool_use": "Trợ lý dừng khi vẫn đang tra cứu. Vui lòng hỏi lại.",
+    "stop_turn_cap": "Trợ lý đã đạt giới hạn {n} bước và dừng trước khi hoàn tất. Hãy thử tách nhỏ câu hỏi.",
+    "denied_module_off": "Gói của tổ chức bạn không bao gồm trợ lý. Quản trị viên HR có thể bật nó.",
+    "denied_no_grant": "Bạn chưa được cấp quyền dùng trợ lý. Quản trị viên HR có thể cấp.",
+    "denied_no_user": "Đăng nhập này không có hồ sơ người dùng nên không dùng được trợ lý.",
+    "err_not_configured": "Tổ chức của bạn chưa thiết lập nhà cung cấp AI. Quản trị viên có thể thêm.",
+    "err_budget_monthly": "Tổ chức của bạn đã dùng hết hạn mức AI trong tháng này.",
+    "err_budget_daily": "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng thử lại vào ngày mai.",
+    "err_invalid_question": "Vui lòng viết câu hỏi và giữ dưới 2000 ký tự.",
+    "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại."
   }
 }

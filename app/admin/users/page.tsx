@@ -1,12 +1,13 @@
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
+import { listAssistantGrants } from '@/core/assistant-grant';
 import { listPendingInvitations } from '@/core/auth';
 import { adminCompanies, listCompanies, listEmployees } from '@/core/read';
 import { Avatar, Card, ErrorBanner, PageHeader, RoleTag, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { FunctionAccessGrid } from '@/components/function-access-grid';
 import { type Role, type ScreenEntry } from '@/lib/permissions';
-import { archiveUserAction, assignRoleAction, inviteUserAction, revokeInvitationAction, revokeRoleAction } from '../actions';
+import { archiveUserAction, assignRoleAction, inviteUserAction, revokeInvitationAction, revokeRoleAction, setAssistantGrantAction } from '../actions';
 
 const ROLES = [
   'employee',
@@ -72,13 +73,20 @@ export default async function UsersPage({
   // company-scoped admin sees the users list with no invitation rows. Archive is group-admin-only
   // anyway (the 0016 app_user WITH CHECK), so a delegated admin's view of this screen is read-only.
   // Widening invitation visibility is a new authz surface and out of scope here.
-  const [userList, companies, invitations, employees] = await Promise.all([
+  const [userList, assistantGrants, companies, invitations, employees] = await Promise.all([
     listUsers(s, { includeArchived }),
+    // ADR-0082 §2.8 — who currently holds an assistant grant. One read for the page, not one per row.
+    listAssistantGrants(s),
     groupAdmin ? listCompanies(s) : adminCompanies(s),
     groupAdmin ? listPendingInvitations(s) : Promise.resolve([]),
     groupAdmin ? listEmployees(s) : Promise.resolve([]),
   ]);
   const { users, hiddenCount } = userList;
+  // LIVE grants only. listAssistantGrants deliberately returns every grant EVER, revoked rows included
+  // ("who could ask the assistant last March" is the reason revocation is a stamp rather than a delete),
+  // so filtering on revokedAt is load-bearing: without it a revoked user reads as still granted and the
+  // button would offer to revoke them a second time. A set keeps the per-row check O(1).
+  const assistantGranted = new Set(assistantGrants.filter((g) => g.revokedAt == null).map((g) => g.appUserId));
   const roleOptions = groupAdmin ? ROLES : (['hr_admin'] as const);
   const companyName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? null;
 
@@ -352,6 +360,19 @@ export default async function UsersPage({
                     </select>
                     <button type="submit" className={btnGhost}>
                       {t('addRole')}
+                    </button>
+                  </form>
+                )}
+
+                {/* ADR-0082 §2.8 — the assistant is a per-user grant ON TOP of the billable module, and
+                    both gates fail closed. Offered only to group admins and only for a row that has a
+                    real login: an invitation with no app_user cannot hold a grant. */}
+                {groupAdmin && u.appUserId && (
+                  <form action={setAssistantGrantAction} className="inline">
+                    <input type="hidden" name="appUserId" value={u.appUserId} />
+                    <input type="hidden" name="granted" value={assistantGranted.has(u.appUserId) ? 'false' : 'true'} />
+                    <button type="submit" className={btnGhost}>
+                      {assistantGranted.has(u.appUserId) ? t('assistantRevoke') : t('assistantGrant')}
                     </button>
                   </form>
                 )}

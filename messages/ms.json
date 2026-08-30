@@ -302,7 +302,8 @@
     "payrollIndividualPayslip": "Slip Gaji Individu",
     "payrollBackPay": "Bayaran Tunggakan",
     "payrollStatutoryAdjustment": "Pelarasan Berkanun",
-    "payrollControlTower": "Menara Kawalan"
+    "payrollControlTower": "Menara Kawalan",
+    "assistant": "Pembantu"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -7231,7 +7232,9 @@
       "archivedCauseManual": "Diarkibkan oleh pentadbir",
       "invitePerson": "Pekerja",
       "invitePersonPlaceholder": "Pilih pekerja",
-      "unlinkedLogin": "Log masuk tidak berpaut {id}"
+      "unlinkedLogin": "Log masuk tidak berpaut {id}",
+      "assistantGrant": "Benarkan pembantu",
+      "assistantRevoke": "Tarik balik pembantu"
     },
     "audit": {
       "title": "Jejak audit",
@@ -11216,5 +11219,28 @@
     "narrateNotConfigured": "Tiada penyedia AI disediakan untuk penyewa ini, jadi tiada apa untuk menerangkannya. Angka di bawah tidak terjejas.",
     "narrateRejected": "Penerangan itu dibuang: ia menyebut angka yang tidak disokong oleh nombor yang direkodkan. Angka di bawah tidak berubah.",
     "narrateNothing": "Tiada penerangan dihasilkan. Angka di bawah tidak berubah."
+  },
+  "assistant": {
+    "title": "Pembantu",
+    "description": "Tanya tentang pekerjaan anda sendiri — cuti, gaji, kehadiran, dan pasukan anda jika anda menyelia orang.",
+    "placeholder": "Tanya soalan, contohnya: berapa baki cuti tahunan saya?",
+    "ask": "Tanya",
+    "scopeNote": "Ia hanya nampak apa yang anda sudah boleh nampak.",
+    "empty": "Belum ada soalan. Tanya satu di atas.",
+    "noAnswer": "Tiada jawapan dihasilkan.",
+    "lookedAt": "Melihat: {tools}",
+    "stop_refusal": "Pembantu enggan menjawab yang ini.",
+    "stop_max_tokens": "Jawapan terpotong kerana terlalu panjang. Cuba tanya lebih sedikit pada satu masa.",
+    "stop_other": "Pembantu berhenti sebelum selesai. Tiada masalah dengan rekod anda — sila tanya semula.",
+    "stop_tool_use": "Pembantu berhenti semasa ia masih mencari sesuatu. Sila tanya semula.",
+    "stop_turn_cap": "Pembantu mencapai had {n} langkah dan berhenti sebelum selesai. Cuba pecahkan soalan itu.",
+    "denied_module_off": "Pembantu tiada dalam pelan organisasi anda. Pentadbir HR anda boleh menghidupkannya.",
+    "denied_no_grant": "Anda belum diberi akses kepada pembantu. Pentadbir HR anda boleh memberikannya.",
+    "denied_no_user": "Log masuk ini tiada rekod pengguna, jadi pembantu tidak boleh digunakan dengannya.",
+    "err_not_configured": "Belum ada penyedia AI disediakan untuk organisasi anda. Pentadbir anda boleh menambahnya.",
+    "err_budget_monthly": "Organisasi anda telah menggunakan peruntukan AI untuk bulan ini.",
+    "err_budget_daily": "Anda telah menggunakan soalan anda untuk hari ini. Sila cuba esok.",
+    "err_invalid_question": "Sila tulis soalan, dan pastikan kurang daripada 2000 aksara.",
+    "err_provider_error": "Pembantu tidak dapat dihubungi. Sila cuba lagi."
   }
 }

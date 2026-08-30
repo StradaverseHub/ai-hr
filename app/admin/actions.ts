@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
+import { grantAssistant, revokeAssistant } from '@/core/assistant-grant';
 import {
   archiveBusinessUnit,
   archiveCompany,
@@ -1117,6 +1118,25 @@ export async function archiveUserAction(formData: FormData) {
       appUserId: String(formData.get('appUserId')),
       archived: archived(formData),
     });
+  } catch (e) {
+    fail(USERS, e);
+  }
+  ok(USERS);
+}
+
+/**
+ * ADR-0082 §2.8 — give or take away one person's access to the assistant.
+ *
+ * A per-user grant ON TOP of the billable module, and both gates fail closed. It lives on the Users
+ * screen rather than getting one of its own because "who may use this" is the same question that screen
+ * already answers for roles — and a second screen for one toggle is a menu row nobody would find.
+ */
+export async function setAssistantGrantAction(formData: FormData) {
+  const s = await getSession();
+  const appUserId = String(formData.get('appUserId'));
+  try {
+    if (String(formData.get('granted')) === 'true') await grantAssistant(s, { appUserId });
+    else await revokeAssistant(s, { appUserId });
   } catch (e) {
     fail(USERS, e);
   }
