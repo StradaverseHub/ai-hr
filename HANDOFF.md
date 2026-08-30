@@ -18,21 +18,31 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-30 (r226-r229 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-31 (r226-r230 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@95885719` IS WHAT RUNS ON PRODUCTION (r229, 2026-08-30)** — verified by a zero-change
+**`main@ab5f0da0` IS WHAT RUNS ON PRODUCTION (r230, 2026-08-31)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-30 17:22:56 +0800.
-(Commits after `95885719` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 01:54:20 +0800.
+(Commits after `ab5f0da0` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
 
-⚠️⚠️ **THE ONE THING TO DO NEXT IS NOT A BUILD.** The Control Tower is live at
-`/payroll/control-tower` and production carries **32 anomaly verdicts, every one of them UNRESOLVED**.
-Until somebody tunes `payroll_anomaly_config` off the shipped 30%/15% placeholders AND works that queue,
-`falsePositiveRate` and `mttrSeconds` are structurally NULL, the auto-clear rate measures the
-placeholders rather than the tenant, and the owner's "does this get us to 3 people for 3,000?" has no
-answer any of us can defend. **Do not build ADR-0074 item 2 (the auto-clear gate) before that** — it is
-the autonomy dial, §7 says the ratio is earned not launched, and granting it on untuned thresholds is
-the one move here that could pay somebody wrongly with nobody looking. See the r229 entry.
+**SCHEDULED JOBS ON THE BOX — SIX, and `anomaly-sweep` at 02:30 is the one r230 added.** The others:
+`provision-runner` (every minute), `capture-usage` 01:00, `review-sweep` 03:00, `accrue-earned` monthly,
+`expire-carry` annually. **A script existing in `scripts/` and being documented in DEPLOY.md does NOT
+mean it runs** — anomaly-sweep was both for six weeks and had never been installed. Check `crontab -l`
+against DEPLOY.md's block when a scheduled thing looks like it has not happened.
+
+⚠️⚠️ **THE ONE THING TO DO NEXT IS STILL NOT A BUILD — BUT IT NOW HAS DATA BEHIND IT.** r230 installed
+the nightly sweep (it had never been in the crontab) and evaluated the whole backlog: **23 runs, 104 live
+verdicts — 27 clear, 43 review, 34 block. A 26% AUTO-CLEAR RATE AGAINST A 95% TARGET.** The tower is
+flagging three quarters of everybody. That is not a payroll problem, it is r177's untuned 30%/15%
+placeholders behaving exactly as r177 predicted, and it was invisible until the sweep ran.
+
+**So: TUNE THE THRESHOLDS against a real month, then work the queue.** `payroll_anomaly_config` is still
+empty and no verdict has ever been resolved, so `falsePositiveRate` and `mttrSeconds` remain structurally
+NULL and the Control Tower's staffing tile still — correctly — refuses to print a figure. **Do not build
+ADR-0074 item 2 (the auto-clear gate) before that**: it is the autonomy dial, §7 says the ratio is earned
+not launched, and granting it on thresholds this far off would auto-clear on numbers nobody has
+validated. See the r229 and r230 entries.
 
 **BOARD: FIVE ITEMS, ALL `planned` AND AWAITING THE REPORTER — NOTHING BUILDING, NOTHING BUILDABLE.**
 No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
@@ -88,6 +98,60 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r230 (2026-08-31) — the AI finally arrives in the control tower, and the sweep starts running. NO MIGRATION.
+
+Owner request, after a fair challenge: *"This seems more like an automated workflow or action. Not an AI
+agent layer or AI payroll control tower. Where does the AI come in?"*
+
+⚠️⚠️ **THEY WERE RIGHT, AND THE ANSWER WAS "NOWHERE".** Grepped the whole path — evaluator, the 11
+detectors, the sweep, the queue, r229's roll-up and screen — and there was **not one LLM call in the
+payroll control tower**. What existed was pure detectors, threshold arithmetic, a cron script and a
+table. That absence is by DESIGN (ADR-0074: "the LLM never computes the money"; the detector contract
+says `evaluate(): Finding[] // PURE. No I/O. No LLM. No clock.`) — but §2.6 named exactly where the LLM
+DOES belong and it had never been built. **Do not call this an AI feature without checking which half
+you are looking at.**
+
+⚠️⚠️ **THE SWEEP WAS BUILT, DOCUMENTED IN DEPLOY.md, AND NEVER INSTALLED ON THE BOX.** ADR-0074 item 3 —
+the "continuously-running loop" the whole operating model rests on — was absent from the crontab. The
+evidence: **5 of 23 processed runs ever evaluated, last one 2026-08-18, twelve days cold.** The tower was
+not a loop, it was a button somebody pressed twice. Installed at 02:30 (the line DEPLOY.md already
+documented verbatim), previous crontab backed up to `/home/ubuntu/crontab.before-anomaly-sweep.bak`, and
+**verified by reading `crontab -l` back, not by trusting the install command**.
+
+**THE BACKLOG RUN IS THE FIRST REAL MEASUREMENT THIS PROJECT HAS EVER HAD, AND IT IS BAD NEWS WORTH
+HAVING: 23 runs → 27 clear, 43 review, 34 block. A 26% AUTO-CLEAR RATE AGAINST A 95% TARGET.** The tower
+is flagging three quarters of everybody. That is not a payroll problem, it is r177's untuned 30%/15%
+placeholders doing exactly what r177 said they would — and it was invisible until the sweep ran.
+**Threshold tuning is now the top item, and it now has data to tune against.**
+
+⚠️ **THE NARRATOR'S GUARD IS THE ONLY REASON AN LLM IS ACCEPTABLE ON THIS SCREEN.** §2.6 promises "every
+number in the prose is interpolated from `facts`" and "no ringgit figure is ever produced by the model".
+A prompt asking for that is a hope. `narrationIsFaithful` (`core/payroll-anomaly-narrate.ts`) CHECKS it:
+every numeric token in the prose must be a figure the facts support, and prose that fails is **DISCARDED
+— not stored, not flagged, not caveated**. There is no honest way to render a number nobody can trace on
+a payroll screen (AGENTS 28). It rejects an invented percentage, a total the model summed itself, and a
+near-miss 830 against a real 820; it accepts `RM820.00` against 820 and "2026" against a period of
+`2026-08`, because a guard that binned honest prose over formatting would make the feature pointless.
+**Tested WITHOUT a provider** — the interesting failure is not "the model was unavailable" but "the model
+wrote a plausible sentence with an untraceable figure in it", which is a pure function of (prose, facts).
+
+**FOUR PROPERTIES, ALL STRUCTURAL RATHER THAN PROMISED.** (1) It cannot change a classification —
+disposition and severity are written by pure detectors before it runs, it only ever writes the
+`narrative` COLUMN, and there is no code path from it back to a verdict. (2) It cannot ship a figure —
+above. (3) It is never on the critical path: no provider, provider down, timeout and unfaithful output
+all leave the row rendering exactly as it does today, and the action reports WHICH of those happened
+rather than reporting success. (4) It never sees a person — the prompt carries a detector id and a bag of
+numbers, no name, no employee code, no company. Nothing to leak and nothing to inject with.
+
+**ON DEMAND, NOT IN THE SWEEP.** The nightly sweep supersedes verdicts, so narrating there would re-spend
+on every finding every night — on the tenant's own BYOK key (ADR-0023) — for prose nobody may read. A
+button spends once per finding, only for findings someone opened, and keeps the narrator off the render
+path, which is what lets the queue open at 3,000 people whatever the provider is doing.
+
+**NO MIGRATION. `payroll_anomaly_finding.narrative` HAS EXISTED SINCE `0425` AND NOTHING EVER WROTE TO
+IT** — the same shape as r228's EA mapping: storage shipped, the read never built. That is twice in four
+rounds. **When a feature looks absent, check whether the column is already there.**
 
 ### r229 (2026-08-30) — the Control Tower gets a front door; the assistant gets its loop. NO MIGRATION.
 
