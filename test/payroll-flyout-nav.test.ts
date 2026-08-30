@@ -60,6 +60,11 @@ const EXPECTED_SET = [
   // NEW screen, so the guard's promise ("no destination lost, no href renamed") is untouched: every
   // original entry above and below is character for character what it was.
   { href: '/payroll/back-pay', labelKey: 'payrollBackPay' },
+  // ADR-0074 — an ADDITION, like statutory-forms / individual-payslip / loans / back-pay / statutory-
+  // adjustment. The Control Tower is a NEW screen: the cross-run home for the anomaly queue, which had
+  // only ever hung off one run at a time. Every original entry above and below is character for
+  // character what it was, so the guard's promise ("no destination lost, no href renamed") stands.
+  { href: '/payroll/control-tower', labelKey: 'payrollControlTower' },
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
   // 169e3c24 — an ADDITION to the set, like statutory-forms above. Every original entry is untouched, so
   // the guard's promise ("no destination lost, no href renamed") is not weakened by listing it.
