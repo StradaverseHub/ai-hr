@@ -11210,6 +11210,11 @@
     "closeBlockedByAnomalies": "This run cannot be closed while {count} employee(s) are blocked. Open Payroll exceptions to resolve them.",
     "closeBlockedBySwing": "This run's total pay moved {movement}% against last cycle, beyond the {threshold}% limit. Confirm the run, or raise the limit for this company.",
     "evaluated": "Checked: {block} blocked, {review} to review, {clear} cleared.",
-    "resolved": "Recorded."
+    "resolved": "Recorded.",
+    "explain": "Explain in plain words",
+    "narrated": "Explained {n} finding(s).",
+    "narrateNotConfigured": "No AI provider is set up for this tenant, so there is nothing to explain with. The figures below are unaffected.",
+    "narrateRejected": "The explanation was discarded: it named a figure the recorded numbers do not support. The figures below are unchanged.",
+    "narrateNothing": "No explanation was produced. The figures below are unchanged."
   }
 }

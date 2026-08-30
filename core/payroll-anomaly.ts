@@ -894,7 +894,16 @@ export type QueueRow = {
   resolvedAt: Date | null;
   detectorsRunCount: number;
   detectorsSkipped: SkippedDetector[];
-  findings: { detectorId: string; severity: Severity; facts: Record<string, string | number>; suggestedAction: string }[];
+  /** `narrative` is ADR-0076 §2.6's optional prose: null until an operator asks for it, and null forever
+   *  for a tenant with no AI provider. The facts beside it are the evidence and never depend on it. */
+  findings: {
+    id: string;
+    detectorId: string;
+    severity: Severity;
+    facts: Record<string, string | number>;
+    suggestedAction: string;
+    narrative: string | null;
+  }[];
 };
 
 /**
@@ -935,11 +944,13 @@ export async function anomalyQueue(ctx: SessionContext, p: { batchId: string }):
     // evaluator follows, for the same reason: this page must open for a 3,000-person run.
     const findings = await tx
       .select({
+        id: schema.payrollAnomalyFinding.id,
         verdictId: schema.payrollAnomalyFinding.verdictId,
         detectorId: schema.payrollAnomalyFinding.detectorId,
         severity: schema.payrollAnomalyFinding.severity,
         facts: schema.payrollAnomalyFinding.facts,
         suggestedAction: schema.payrollAnomalyFinding.suggestedAction,
+        narrative: schema.payrollAnomalyFinding.narrative,
       })
       .from(schema.payrollAnomalyFinding)
       .where(
@@ -952,10 +963,12 @@ export async function anomalyQueue(ctx: SessionContext, p: { batchId: string }):
     for (const f of findings) {
       const list = byVerdict.get(f.verdictId) ?? [];
       list.push({
+        id: f.id,
         detectorId: f.detectorId,
         severity: f.severity as Severity,
         facts: (f.facts ?? {}) as Record<string, string | number>,
         suggestedAction: f.suggestedAction,
+        narrative: f.narrative,
       });
       byVerdict.set(f.verdictId, list);
     }

@@ -11210,6 +11210,11 @@
     "closeBlockedByAnomalies": "Pusingan ini tidak boleh ditutup selagi {count} pekerja disekat. Buka Pengecualian gaji untuk menyelesaikannya.",
     "closeBlockedBySwing": "Jumlah gaji pusingan ini berubah {movement}% berbanding kitaran lalu, melebihi had {threshold}%. Sahkan pusingan ini, atau naikkan had bagi syarikat ini.",
     "evaluated": "Disemak: {block} disekat, {review} perlu semakan, {clear} lulus.",
-    "resolved": "Direkodkan."
+    "resolved": "Direkodkan.",
+    "explain": "Terangkan dalam bahasa mudah",
+    "narrated": "{n} penemuan telah diterangkan.",
+    "narrateNotConfigured": "Tiada penyedia AI disediakan untuk penyewa ini, jadi tiada apa untuk menerangkannya. Angka di bawah tidak terjejas.",
+    "narrateRejected": "Penerangan itu dibuang: ia menyebut angka yang tidak disokong oleh nombor yang direkodkan. Angka di bawah tidak berubah.",
+    "narrateNothing": "Tiada penerangan dihasilkan. Angka di bawah tidak berubah."
   }
 }
