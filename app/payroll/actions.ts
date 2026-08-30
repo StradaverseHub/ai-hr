@@ -38,6 +38,7 @@ import {
 // the counterpart employer's run is already closed so the days it owes can never be added (generate).
 import { PayrollCounterpartClosedError, PayrollCoverageIncompleteError } from '@/core/payroll-coverage';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
+import { narrateVerdict } from '@/core/payroll-anomaly-narrate';
 // 9066bd6c — the two ENTITLEMENT refusals removeEmployeePayroll throws BEFORE its reason check. Both are
 // reachable by a direct post (the entry points hide their links while the setting is off, and the route
 // 404s without the module), and without them the catch below pushed the service's raw English into the
@@ -675,6 +676,38 @@ export async function evaluateAnomaliesAction(formData: FormData) {
 }
 
 /** Record a human's disposition of one verdict. The note is optional; the resolution is not. */
+/**
+ * ADR-0076 §2.6 — ask for the plain-words explanation of one exception.
+ *
+ * Deliberately a BUTTON rather than something the page does on render. The prose costs a provider call
+ * on the tenant's own key, so it is spent when an operator actually wants it and then persisted; and it
+ * keeps the narrator off the render path, which is what lets the queue open at 3,000 people whatever the
+ * provider is doing. Every failure — no provider, provider down, prose naming a figure the facts do not
+ * support — leaves the row exactly as it was, with its facts, and says so.
+ */
+export async function narrateAnomalyAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const verdictId = String(formData.get('verdictId'));
+  const t = await getTranslations('anomaly');
+  let outcome: Awaited<ReturnType<typeof narrateVerdict>>;
+  try {
+    outcome = await narrateVerdict(s, { verdictId });
+  } catch (e) {
+    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}/anomalies`);
+  // Three outcomes, three different sentences. "Nothing happened" is never rendered as success.
+  const msg = outcome.notConfigured
+    ? t('narrateNotConfigured')
+    : outcome.narrated > 0
+      ? t('narrated', { n: outcome.narrated })
+      : outcome.rejected > 0
+        ? t('narrateRejected')
+        : t('narrateNothing');
+  redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(msg)}`);
+}
+
 export async function resolveAnomalyAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));

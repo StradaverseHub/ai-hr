@@ -11210,6 +11210,11 @@
     "closeBlockedByAnomalies": "Không thể chốt kỳ lương này khi còn {count} nhân viên bị chặn. Hãy mở Ngoại lệ bảng lương để xử lý.",
     "closeBlockedBySwing": "Tổng lương kỳ này biến động {movement}% so với kỳ trước, vượt giới hạn {threshold}%. Hãy xác nhận kỳ lương, hoặc nâng giới hạn cho công ty này.",
     "evaluated": "Đã kiểm tra: {block} bị chặn, {review} cần xem xét, {clear} đã thông qua.",
-    "resolved": "Đã ghi nhận."
+    "resolved": "Đã ghi nhận.",
+    "explain": "Giải thích bằng lời dễ hiểu",
+    "narrated": "Đã giải thích {n} phát hiện.",
+    "narrateNotConfigured": "Chưa thiết lập nhà cung cấp AI cho tổ chức này nên không có gì để giải thích. Các số liệu bên dưới không bị ảnh hưởng.",
+    "narrateRejected": "Phần giải thích đã bị loại bỏ: nó nêu một con số mà các số liệu đã ghi không hỗ trợ. Các số liệu bên dưới không thay đổi.",
+    "narrateNothing": "Không tạo được phần giải thích. Các số liệu bên dưới không thay đổi."
   }
 }

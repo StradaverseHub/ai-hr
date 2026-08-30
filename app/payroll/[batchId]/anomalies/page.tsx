@@ -11,7 +11,7 @@ import {
   type QueueRow,
 } from '@/core/payroll-anomaly';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { evaluateAnomaliesAction, resolveAnomalyAction } from '../../actions';
+import { evaluateAnomaliesAction, narrateAnomalyAction, resolveAnomalyAction } from '../../actions';
 
 /**
  * ADR-0076 slice 6 — the exceptions queue. ADR-0074 calls this "the analyst's whole day".
@@ -180,7 +180,7 @@ export default async function AnomaliesPage({
       ) : null}
 
       {flagged.map((row) => (
-        <VerdictCard key={row.verdictId} row={row} batchId={batchId} />
+        <VerdictCard key={row.verdictId} row={row} batchId={batchId} explainLabel={t('explain')} />
       ))}
 
       {/* Cleared employees are listed, not hidden. They are the denominator of the clear rate, and the
@@ -211,7 +211,9 @@ export default async function AnomaliesPage({
   );
 }
 
-function VerdictCard({ row, batchId }: { row: QueueRow; batchId: string }) {
+// `explainLabel` is passed in rather than resolved here: this is a plain (non-async) component and
+// getTranslations belongs to the page, which is also where every other string on this screen comes from.
+function VerdictCard({ row, batchId, explainLabel }: { row: QueueRow; batchId: string; explainLabel: string }) {
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -233,12 +235,29 @@ function VerdictCard({ row, batchId }: { row: QueueRow; batchId: string }) {
         {row.findings.map((f, i) => (
           <li key={`${f.detectorId}-${i}`} className={`rounded-md border p-3 text-xs ${TONE[f.severity] ?? ''}`}>
             <p className="font-medium">{f.detectorId}</p>
+            {/* ADR-0076 §2.6 — the plain-words explanation, when an operator has asked for one. It sits
+                ABOVE the facts and never replaces them: it is a reading of the evidence, and the evidence
+                stays on the row so the classification can still be checked rather than taken on trust.
+                Absent for a tenant with no AI provider, and the row reads exactly as it always has. */}
+            {f.narrative && <p className="mt-1 text-[12px] leading-snug">{f.narrative}</p>}
             {/* The facts ARE the evidence. Rendered verbatim rather than summarised, so the operator can
                 check the classification rather than take it on trust. */}
             <p className="mt-1 font-mono text-[11px] opacity-80">{factLine(f.facts)}</p>
           </li>
         ))}
       </ul>
+
+      {/* Only offered while there is something to narrate — a row whose findings all carry prose has
+          nothing to spend a provider call on, and a button that silently does nothing is worse than none. */}
+      {row.findings.some((f) => !f.narrative) && (
+        <form action={narrateAnomalyAction} className="mt-3">
+          <input type="hidden" name="batchId" value={batchId} />
+          <input type="hidden" name="verdictId" value={row.verdictId} />
+          <button type="submit" className="text-[11px] font-medium text-primary underline-offset-2 hover:underline">
+            {explainLabel}
+          </button>
+        </form>
+      )}
 
       {row.resolvedAt ? (
         <p className="mt-3 text-[11px] text-muted-foreground">{`resolved: ${row.resolution ?? ''}`}</p>

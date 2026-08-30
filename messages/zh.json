@@ -11210,6 +11210,11 @@
     "closeBlockedByAnomalies": "仍有 {count} 名员工处于阻断状态，无法关账。请打开「薪资异常」处理。",
     "closeBlockedBySwing": "本次运行的薪资总额相较上期变动 {movement}%，超过 {threshold}% 的上限。请确认本次运行，或提高该公司的上限。",
     "evaluated": "检查完成：{block} 项阻断，{review} 项待复核，{clear} 项通过。",
-    "resolved": "已记录。"
+    "resolved": "已记录。",
+    "explain": "用简明文字说明",
+    "narrated": "已说明 {n} 项发现。",
+    "narrateNotConfigured": "此租户未设置 AI 供应商，因此无法生成说明。下方数字不受影响。",
+    "narrateRejected": "说明已被丢弃：其中出现了记录数字无法支持的数值。下方数字未变。",
+    "narrateNothing": "未生成说明。下方数字未变。"
   }
 }
