@@ -18,36 +18,56 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-29 (r226 · r227 · r228 SHIPPED · THE BOARD IS EMPTY)
+## CURRENT STATE — snapshot 2026-08-30 (r226-r229 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@7df709ee` IS WHAT RUNS ON PRODUCTION (r228, 2026-08-29)** — verified by a zero-change
+**`main@95885719` IS WHAT RUNS ON PRODUCTION (r229, 2026-08-30)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-29 21:05:11 +0800.
-(Commits after `7df709ee` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-30 17:22:56 +0800.
+(Commits after `95885719` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
 
-**BOARD: FIVE ITEMS, NOTHING BUILDING.** One `planned` and awaiting the reporter; four `open`, all raised
-by CLAUDE AI. No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`,
-`r154`, `r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** —
-r226, r227 and r228 all shipped WITHOUT one.
+⚠️⚠️ **THE ONE THING TO DO NEXT IS NOT A BUILD.** The Control Tower is live at
+`/payroll/control-tower` and production carries **32 anomaly verdicts, every one of them UNRESOLVED**.
+Until somebody tunes `payroll_anomaly_config` off the shipped 30%/15% placeholders AND works that queue,
+`falsePositiveRate` and `mttrSeconds` are structurally NULL, the auto-clear rate measures the
+placeholders rather than the tenant, and the owner's "does this get us to 3 people for 3,000?" has no
+answer any of us can defend. **Do not build ADR-0074 item 2 (the auto-clear gate) before that** — it is
+the autonomy dial, §7 says the ratio is earned not launched, and granting it on untuned thresholds is
+the one move here that could pay somebody wrongly with nobody looking. See the r229 entry.
 
-  - `b36a8a91` **planned rev 1, with a mockup** — "C.P.8A (EA form) Mapping", the reporter's own. Verdict
-    is *mislabelled*: they used the EA row's SECONDARY action ("Download blank EA form"), which is empty
-    BY DESIGN, while the PRIMARY action on the same row ("Open employee list") already hands back a
-    completed per-employee EA as a PDF in the chosen language. Nine of their ten fields are already read
-    and printed; the one real gap is the **salutation** (`person.salutation`, migration 0300, held for 9
-    of 40 employments and read by no EA surface). **Do NOT build the "AI field matching" step their
-    workflow names** — the employee-record→EA-box mapping is fixed by the form and already written down
-    in `lib/ea-field-register.ts`; an inference step would put a guess on a tax document (AGENTS 28).
-  - `afc29d75` / `568b8f0b` **open, NOT planned ON PURPOSE** — the two halves of `c6bb5f5a` that r227 did
-    not deliver, now recorded instead of lost.
-  - `a8f525cf` / `3cbfe5e2` **open, and they are QUESTIONS, not work.** Each carries one thing only the
-    reporter can settle, with our recommendation stated so a one-word reply unblocks it. **Plan the two
-    items above only after these are answered.** (1) Does "waiting for the user's action/approval" mean
-    the employee's own days, or their team's requests awaiting their approval — the second is the
-    Approvals screen and changes who may see what; and do the three tabs stay as a filter? (2) Their
-    status list names **Completed**, and `attendance_correction_status` is only
-    `pending|approved|rejected|cancelled` — is Completed a synonym for Approved, or a real new state
-    after approval?
+**BOARD: FIVE ITEMS, ALL `planned` AND AWAITING THE REPORTER — NOTHING BUILDING, NOTHING BUILDABLE.**
+No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
+`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** — r226,
+r227, r228 and r229 ALL shipped WITHOUT one.
+
+⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
+on a BLOCKED approved one). An item raised at `open` with no plan has NO reply path — `approveFeedbackPlan`
+carries only an id and there is nothing to reject. Two questions were raised that way on 2026-08-29 and
+were unanswerable by construction; both are now folded into their parent items' plans, where approve
+means "your reading is right" and reject-with-a-reason carries the answer. **Ask a question INSIDE a plan
+with a recommendation. Never as a bare raised item.**
+
+  - `b36a8a91` **planned rev 3** — "C.P.8A (EA form) Mapping", the reporter's own, CONTESTED once and
+    re-planned. Verdict is *mislabelled*: they used the EA row's SECONDARY action ("Download blank EA
+    form"), which is empty BY DESIGN, while the PRIMARY action on the same row ("Open employee list")
+    already hands back a completed per-employee EA as a PDF in the chosen language. **Rev 1 promised to
+    print the Encik/Cik/Puan title and that was WRONG** — the salutation catalogue holds Datin, Dato',
+    Dr, Mr, Mrs, Ms, Puan Sri, Tan Sri … and *no* Encik, Cik or Puan; 6 of 40 people have "Mr", 3 "Ms",
+    31 nothing. Rev 2 retracted it, rev 3 uses the reporter's OWN screenshot (a Malay employee whose
+    Salutation reads "Mr") as the argument. **Do NOT build the "AI field matching" step their workflow
+    names** — the employee-record→EA-box mapping is fixed by the form and already written down in
+    `lib/ea-field-register.ts`; an inference step would put a guess on a tax document (AGENTS 28).
+    ⚠️ **REV 2 WAS PUSHED WITHOUT READING THE `.docx` THEY ATTACHED TO THE REJECTION.** AGENTS 30 exists
+    for exactly that and was not followed; the attachment was a screenshot wrapped in a Word file, the
+    same shape as the CP39 specimen that sat unread for two rounds. **Read the attachments BEFORE
+    replying** — `feedback_attachment`, base64 out, `unzip` the docx, look at `word/media/`.
+  - `afc29d75` / `568b8f0b` **planned rev 1, both with before/after mockups** — the two halves of
+    `c6bb5f5a` that r227 did not deliver. The consolidation is **Quick** because r227 already did the
+    hard part: every row carries its own section, so a mixed list needs no change to the pop-up, the
+    server action or the request kind. The status redesign is *partly there already* — the filters and
+    the colour-coded pills exist; what is weak is the seven-column row and a Cancel that is a bare
+    underlined link. Each plan carries its open question with a recommendation, so approve settles it.
+  - `a8f525cf` / `3cbfe5e2` **planned — close-outs.** They were QUESTIONS raised the wrong way (see the
+    channel warning above); each now carries a short plan whose only action is to be closed.
 
 ⚠️ **THREE ROUNDS SHIPPED IN ONE SESSION AND TWO OF THEM WERE ALREADY BUILT WHEN IT STARTED.** r226 was
 merged and deployed but unrecorded; r227 was built on three branches and never gated. **The board was
@@ -68,6 +88,77 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r229 (2026-08-30) — the Control Tower gets a front door; the assistant gets its loop. NO MIGRATION.
+
+Owner request, not a board item: "build the AI functions and payroll control tower", then "put all inside
+a centralised menu … we want to compare to get actual results whether this control tower AI feature
+really helps to reduce to 3 payroll headcount to manage 3000+ headcounts".
+
+⚠️⚠️ **THE CONTROL TOWER WAS ALREADY LIVE AND NOBODY KNEW, BECAUSE IT HAD NO FRONT DOOR.** r177 recorded
+ADR-0076 as "BUILT, GATED AND DELIBERATELY NOT DEPLOYED" pending the owner's command, and **that line has
+been stale for twenty-odd deploys** — migration `0425` went up with a later round and production carries
+**32 verdicts (8 auto_clear, 20 review, 4 block)**. What was missing was never the deploy: the queue hung
+off ONE run at a time (`/payroll/<batch>/anomalies`), the sweep was a cron script, and the four
+north-star metrics sat in `core/payroll-anomaly.ts` with nothing rendering them. An operator could work a
+run; nobody could see the operation. `/payroll/control-tower` is that door. **Re-read a "not deployed"
+line against the box before believing it** — that is the r159 lesson pointed at our own notes.
+
+⚠️⚠️ **THE STAFFING FIGURE IS BUILT AND REFUSES TO PRINT ITSELF, AND THAT REFUSAL IS THE FEATURE.**
+`impliedOperators` is `number | null` and stays null until THREE things hold: the tower has verdicts,
+`payroll_anomaly_config` has been tuned off r177's shipped 30%/15% placeholders, and a human has
+dispositioned at least one flag. **On production all three fail today** — every one of those 32 verdicts
+is unresolved, so `falsePositiveRate` and `mttrSeconds` are structurally NULL (not zero) and the clear
+rate measures the placeholder thresholds rather than the tenant's data. The screen renders `blockedBy`
+naming what is missing. AGENTS 28 is the rule and a headcount projection is its sharpest case: it gets
+screenshotted and acted on, and one computed from checks nobody has audited is a confident wrong number
+about somebody's job. r177 already said it for this feature — never quote an auto-clear rate from an
+unvalidated basis.
+
+**THE PATH TO THE OWNER'S ANSWER IS NOT CODE.** Tune the thresholds against a real month, then work the
+24 waiting exceptions. That produces the agreement signal, and the tile fills itself in. Until someone
+does, no amount of building moves the number.
+
+⚠️ **WHAT WAS DELIBERATELY NOT BUILT: ADR-0074 ITEM 2, THE AUTO-CLEAR GATE.** It is the autonomy dial —
+it decides who gets paid with nobody looking. §7 is explicit that the ratio is *earned, not launched*,
+and its Crawl stage is humans reviewing 100% while agreement is measured. There is zero agreement data.
+Building it now would grant autonomy on placeholder thresholds. **It needs an explicit owner decision
+after the queue has been worked, not a build round.**
+
+**Rolled up BY VERDICT, never by averaging per-run rates** — a 4-person run and a 400-person run must not
+carry equal weight in a number quoted as the operation's. An unevaluated run reports **"not checked"**,
+never 100%: "nothing was checked" and "everything passed" are opposite facts and a rate of 1.0 states the
+second (`autoClearRate: null`, the same discipline ADR-0076 §2.4 applies to a skipped detector).
+
+**ADR-0082 SLICE 3 — `core/assistant.ts`, the loop r223 named as next.** `converse()` (r221) and the tool
+registry (r223) had sat with no caller between them since 2026-08-26. This is the budget gate (checked
+before spending AND between turns, so eight turns cannot overshoot a ceiling by the size of their own
+loop), the turn loop at `MAX_TURNS = 8`, concurrent tool dispatch and the audit row. Every tool runs in
+the CALLER's `SessionContext`, so RLS scopes it exactly as it scopes the screens. Three decisions worth
+keeping: a **refusal goes back as content, not `isError`** (a tool declining correctly must not invite a
+retry); **every call returns a result** — unknown tool, unparseable arguments and a thrown wrapper all
+come back as `isError` rather than being dropped, because a dropped result is a malformed conversation,
+not a smaller answer; and the audit row holds tool **inputs and row counts, never rows**, or payslip and
+identity data acquires a second retention story. **NO MIGRATION — 0451 already laid all four tables.**
+Like slices 1 and 2 it has **no screen yet**; that slice is also what unblocks ADR-0074 item 5.
+
+⚠️ **A NO-BUDGET TENANT IS UNLIMITED, DELIBERATELY.** The feature is already gated by an explicit
+per-user grant an admin has to make (r223), so an absent `assistant_budget` row means "no ceiling set",
+not "nobody may ask". Refusing would make the assistant unusable the moment it is granted, which is the
+failure mode of a safety default nobody can discover.
+
+⚠️ **THE FROZEN NAV ORACLE FIRED, AND IT WAS RIGHT TO.** `test/payroll-flyout-nav.test.ts` compares the
+payroll fly-out's children as a FULL SET, not a `contains` — its own comment says a subset check stops
+noticing a deletion, which is what it exists to catch. So an eleventh row fails it by design. Recorded
+the addition the way the five before it are recorded (statutory-forms, loans, back-pay,
+individual-payslip, statutory-adjustment) rather than loosening the assertion. AGENTS 18. Caught by the
+FULL gate only — 124 of 125 files in that chunk passed and every suite I ran targeted was green.
+
+**RENDER-CHECKED EMPTY AND POPULATED** (rule 6), the populated state against a real fixture of 8 verdicts
+(6 cleared / 1 review / 1 block): zero `MISSING_MESSAGE`/`IntlError`/RSC errors, and the honesty gate
+verified STRUCTURALLY — the amber blocked box renders and the big staffing number does not, which is
+exactly right with no config rows and no resolved flags. Structural because grepping rendered HTML for a
+LABEL is a false positive: Next embeds the whole i18n catalogue in the payload.
 
 ### r228 (2026-08-29) — the EA form reads the pay-item mapping it has stored all along (`ea54fe6e`). NO MIGRATION.
 
