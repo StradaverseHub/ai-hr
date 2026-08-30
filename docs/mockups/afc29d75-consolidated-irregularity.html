@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<title>afc29d75 — one Attendance Irregularity list, before and after</title>
+<!--
+  Mockup for afc29d75 revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · THE "BEFORE" IS THE REAL STRUCTURE of app/attendance/requests/page.tsx as it stands on 2026-08-30:
+    three tabs (TABS, line 176: short / incomplete / absent) each with a count, the chosen section's
+    ExceptionTable, then one "Also waiting for you — <section>" card per OTHER section (line 361,
+    OTHER_SECTIONS), each showing the first ALSO_ROWS = 3 days with a "see all" link when there are more.
+  · THE DAYS AND COUNTS ARE ILLUSTRATIVE, not read from anyone's record. The POINT is the arrangement —
+    that the same day is reachable from two places — and that does not depend on whose days they are.
+  · THE "AFTER" IS THE PROPOSAL, not something built. Nothing has been released.
+  · WHAT IS NOT DRAWN, because it is the open question: whether this list should also carry OTHER
+    people's requests waiting for this user's approval. It is deliberately absent here — the plan says
+    in words that we are NOT proposing that, and a picture must not hedge.
+  · The Request button is drawn as it behaves after r227: it opens the correction pop-up for that row's
+    own day and section.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .now{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  .new{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .screen{border:1px solid var(--border);border-radius:12px;background:#fbfbfe;padding:13px}
+  .tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}
+  .tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:600}
+  .tab.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .n{opacity:.72;font-weight:500;margin-left:3px}
+  .panel{background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px}
+  .phead{padding:8px 11px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:600;
+         display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .plink{font-size:10.5px;color:var(--primary);text-decoration:underline;text-underline-offset:2px;font-weight:500}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;color:var(--mf);padding:5px 11px;border-bottom:1px solid var(--border)}
+  td{padding:6px 11px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:0}
+  .btn{border:1px solid var(--primary);color:var(--primary);background:#fff;border-radius:7px;padding:2px 10px;font-size:10.5px;font-weight:600}
+  .kind{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:600}
+  .k-short{background:#fef3c7;color:#92400e}
+  .k-inc{background:#dbeafe;color:#1e40af}
+  .k-abs{background:#fee2e2;color:#991b1b}
+  .dup{background:color-mix(in srgb,var(--bad) 7%,white);border:1px dashed color-mix(in srgb,var(--bad) 40%,white);
+       border-radius:9px;padding:8px 11px;font-size:11px;color:#8f1d1d;margin-top:9px}
+  .note{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .small{font-size:11px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h2>Today <span class="chip now">the same day, in two places</span></h2>
+  <p class="sub">You choose a tab, and see that one kind. Underneath, the other two kinds appear again in
+    their own boxes, three rows at a time, with a link to go and see the rest.</p>
+
+  <div class="screen">
+    <div class="tabs">
+      <span class="tab on">Short Hours<span class="n">2</span></span>
+      <span class="tab">Incomplete Entry<span class="n">3</span></span>
+      <span class="tab">Absent<span class="n">1</span></span>
+    </div>
+
+    <div class="panel">
+      <div class="phead">Short Hours</div>
+      <table>
+        <thead><tr><th style="width:24%">Date</th><th>What happened</th><th style="width:18%"></th></tr></thead>
+        <tbody>
+          <tr><td>Mon 24 Aug</td><td>Worked 6h 10m of 8h</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>Thu 27 Aug</td><td>Worked 7h 05m of 8h</td><td><span class="btn">Request</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="phead"><span>Also waiting for you &mdash; Incomplete Entry</span><span class="plink">See all 3</span></div>
+      <table><tbody>
+        <tr><td style="width:24%">Tue 25 Aug</td><td>No clock-out recorded</td><td style="width:18%"><span class="btn">Request</span></td></tr>
+        <tr><td>Wed 26 Aug</td><td>No clock-in recorded</td><td><span class="btn">Request</span></td></tr>
+        <tr><td>Fri 28 Aug</td><td>No clock-out recorded</td><td><span class="btn">Request</span></td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="panel">
+      <div class="phead">Also waiting for you &mdash; Absent</div>
+      <table><tbody>
+        <tr><td style="width:24%">Tue 18 Aug</td><td>No attendance recorded</td><td style="width:18%"><span class="btn">Request</span></td></tr>
+      </tbody></table>
+    </div>
+
+    <div class="dup">Six days need something from you. The screen shows them as one list of two plus two
+      lists of the rest &mdash; and switching tab rearranges the same six days into a different set of boxes.</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Proposed <span class="chip new">one list, filtered</span></h2>
+  <p class="sub">Every day that needs something from you, once, in date order, with its kind on the row.
+    The tabs stay &mdash; as a filter over the one list rather than three separate screens.</p>
+
+  <div class="screen">
+    <div class="tabs">
+      <span class="tab on">All<span class="n">6</span></span>
+      <span class="tab">Short Hours<span class="n">2</span></span>
+      <span class="tab">Incomplete Entry<span class="n">3</span></span>
+      <span class="tab">Absent<span class="n">1</span></span>
+    </div>
+
+    <div class="panel">
+      <table>
+        <thead><tr><th style="width:22%">Date</th><th style="width:20%">Kind</th><th>What happened</th><th style="width:16%"></th></tr></thead>
+        <tbody>
+          <tr><td>Tue 18 Aug</td><td><span class="kind k-abs">Absent</span></td><td>No attendance recorded</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>Mon 24 Aug</td><td><span class="kind k-short">Short Hours</span></td><td>Worked 6h 10m of 8h</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>Tue 25 Aug</td><td><span class="kind k-inc">Incomplete Entry</span></td><td>No clock-out recorded</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>Wed 26 Aug</td><td><span class="kind k-inc">Incomplete Entry</span></td><td>No clock-in recorded</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>Thu 27 Aug</td><td><span class="kind k-short">Short Hours</span></td><td>Worked 7h 05m of 8h</td><td><span class="btn">Request</span></td></tr>
+          <tr><td>Fri 28 Aug</td><td><span class="kind k-inc">Incomplete Entry</span></td><td>No clock-out recorded</td><td><span class="btn">Request</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small" style="margin:9px 0 0">No &ldquo;also waiting for you&rdquo; boxes, because there is
+      nothing left for them to repeat. Request still opens the same pop-up for that day.</p>
+  </div>
+
+  <div class="note">
+    <b>One thing this picture deliberately does not show.</b> Your request also mentioned records
+    &ldquo;waiting for the user&rsquo;s action / approval&rdquo;. We have read that as <i>your own</i> days,
+    which is what this screen has always been about. If you meant your team&rsquo;s requests waiting for
+    you to approve, that is the Approvals screen and a different job &mdash; reject this plan and say so,
+    and we will price it separately rather than draw it here as though it were agreed.
+  </div>
+</div>

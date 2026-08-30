@@ -1,0 +1,145 @@
+<meta charset="utf-8">
+<title>568b8f0b — My Attendance Request Status, before and after</title>
+<!--
+  Mockup for 568b8f0b revision 1.
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+  · THE "BEFORE" IS THE REAL SCREEN, app/attendance/request-status/page.tsx on 2026-08-30: filter pills
+    (All / Pending / Approved / Rejected / Cancelled), then a seven-column table — date, kind, asked for
+    (with reason, remark and attachment link stacked INSIDE that one cell), submitted, approver, status
+    pill, action. Cancel is a bare underlined text link and appears only while a request is pending.
+  · THE STATUS COLOURS ARE THE ONES ALREADY SHIPPED, not a proposal: amber pending, emerald approved,
+    rose rejected, grey cancelled (request-ui.tsx REQUEST_STATUS). The reporter asked for clear status
+    indicators and this part already exists — the drawing says so rather than claiming credit for it.
+  · THERE ARE FOUR STATUSES AND THERE IS NO "COMPLETED". attendance_correction_status is
+    pending | approved | rejected | cancelled. The fifth pill in the request cannot be drawn honestly,
+    so it is not drawn — it is raised in words in the plan instead.
+  · THE "AFTER" IS THE PROPOSAL. Nothing has been released. Rows and dates are illustrative.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .now{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  .new{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .screen{border:1px solid var(--border);border-radius:12px;background:#fbfbfe;padding:13px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
+  .p{border:1px solid var(--border);background:#fff;border-radius:999px;padding:4px 11px;font-size:11px;font-weight:600}
+  .p.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  table{width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:9px;overflow:hidden}
+  th{text-align:left;font-size:9.5px;text-transform:uppercase;color:var(--mf);padding:5px 7px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:6px 7px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .st{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+  .s-pend{background:#fffbeb;color:#b45309}
+  .s-appr{background:#ecfdf5;color:#047857}
+  .s-rej{background:#fff1f2;color:#be123c}
+  .s-canc{background:#f1f2f7;color:#63636f}
+  .lnk{color:var(--primary);text-decoration:underline;text-underline-offset:2px;font-size:10.5px}
+  .btn{border:1px solid var(--border);background:#fff;border-radius:7px;padding:3px 11px;font-size:10.5px;font-weight:600}
+  .rowcard{background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:9px}
+  .rowtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:5px}
+  .date{font-size:13px;font-weight:600}
+  .kind{font-size:10.5px;color:var(--mf)}
+  .det{font-size:11.5px;margin-top:5px}
+  .meta{font-size:10.5px;color:var(--mf);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap}
+  .cram{background:color-mix(in srgb,var(--bad) 7%,white);border:1px dashed color-mix(in srgb,var(--bad) 40%,white);
+        border-radius:9px;padding:8px 11px;font-size:11px;color:#8f1d1d;margin-top:9px}
+  .note{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .small{font-size:11px;color:var(--mf)}
+</style>
+
+<div class="card">
+  <h2>Today <span class="chip now">seven columns, one crowded cell</span></h2>
+  <p class="sub">The filters and the coloured status labels you asked for are already here. What is hard is
+    the row itself: the reason, any remark and the attachment are all stacked inside the one
+    &ldquo;asked for&rdquo; cell, and Cancel is a plain underlined word rather than a button.</p>
+
+  <div class="screen">
+    <div class="pills">
+      <span class="p on">All</span><span class="p">Pending</span><span class="p">Approved</span><span class="p">Rejected</span><span class="p">Cancelled</span>
+    </div>
+    <table>
+      <thead><tr><th>Date</th><th>Kind</th><th>Asked for</th><th>Submitted</th><th>Approver</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <tr>
+          <td>2026-08-25</td><td>Incomplete Entry</td>
+          <td>Clock-out 18:00<div class="small">Forgot to tap out</div><div class="small" style="font-style:italic">please approve</div><div><span class="lnk">Attachment</span></div></td>
+          <td>2026-08-26</td><td>Siti Aminah</td><td><span class="st s-pend">Pending</span></td>
+          <td><span class="lnk">Cancel</span></td>
+        </tr>
+        <tr>
+          <td>2026-08-24</td><td>Short Hours</td>
+          <td>Clock-out 18:00<div class="small">Client visit ran over</div></td>
+          <td>2026-08-25</td><td>Siti Aminah</td><td><span class="st s-appr">Approved</span></td><td></td>
+        </tr>
+        <tr>
+          <td>2026-08-18</td><td>Absent</td>
+          <td>Full day<div class="small">Medical</div></td>
+          <td>2026-08-19</td><td>Siti Aminah</td><td><span class="st s-rej">Rejected</span></td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="cram">Seven columns on a laptop; on a phone the table scrolls sideways and the status
+      &mdash; the thing you came to check &mdash; is the column furthest from the date.</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Proposed <span class="chip new">one row, one card</span></h2>
+  <p class="sub">The same information, given room. Date and status on the same line so the answer is the
+    first thing you see; the detail underneath instead of inside a column; Cancel as a real button.</p>
+
+  <div class="screen">
+    <div class="pills">
+      <span class="p on">All</span><span class="p">Pending</span><span class="p">Approved</span><span class="p">Rejected</span><span class="p">Cancelled</span>
+    </div>
+
+    <div class="rowcard">
+      <div class="rowtop">
+        <div><span class="date">Tue 25 Aug 2026</span> <span class="kind">&middot; Incomplete Entry</span></div>
+        <span class="st s-pend">Pending</span>
+      </div>
+      <div class="det">Asked for clock-out at 18:00 &mdash; &ldquo;Forgot to tap out&rdquo;</div>
+      <div class="meta"><span>Submitted 26 Aug</span><span>With Siti Aminah</span><span class="lnk">Attachment</span></div>
+      <div style="margin-top:9px"><span class="btn">Cancel request</span></div>
+    </div>
+
+    <div class="rowcard">
+      <div class="rowtop">
+        <div><span class="date">Mon 24 Aug 2026</span> <span class="kind">&middot; Short Hours</span></div>
+        <span class="st s-appr">Approved</span>
+      </div>
+      <div class="det">Asked for clock-out at 18:00 &mdash; &ldquo;Client visit ran over&rdquo;</div>
+      <div class="meta"><span>Submitted 25 Aug</span><span>Approved by Siti Aminah</span></div>
+    </div>
+
+    <div class="rowcard">
+      <div class="rowtop">
+        <div><span class="date">Tue 18 Aug 2026</span> <span class="kind">&middot; Absent</span></div>
+        <span class="st s-rej">Rejected</span>
+      </div>
+      <div class="det">Asked for a full day &mdash; &ldquo;Medical&rdquo;</div>
+      <div class="meta"><span>Submitted 19 Aug</span><span>Rejected by Siti Aminah</span></div>
+    </div>
+
+    <p class="small" style="margin:2px 0 0">The colours and the filters are the ones already on the screen.
+      On a wide monitor these stay side by side as a table; the card shape is what a narrow screen gets.</p>
+  </div>
+
+  <div class="note">
+    <b>Four statuses, not five.</b> A request can only ever be Pending, Approved, Rejected or Cancelled.
+    There is no Completed in the system and nothing that could ever set it, so it is not drawn here. If
+    Completed means something specific to you &mdash; approved AND the attendance record actually
+    corrected, say &mdash; that is a real extra step in the request&rsquo;s life rather than a label, and
+    a bigger job than this redesign. Reject this plan and tell us, and we will price it separately.
+  </div>
+</div>

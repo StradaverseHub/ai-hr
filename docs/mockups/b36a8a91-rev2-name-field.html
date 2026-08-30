@@ -1,0 +1,133 @@
+<meta charset="utf-8">
+<title>b36a8a91 rev 2 — field 1 and the title in front of it</title>
+<!--
+  Mockup for b36a8a91 revision 2. It REPLACES revision 1's third panel, which promised something the
+  data cannot produce. Read this before changing anything here:
+
+  · REV 1 WAS WRONG AND THIS SAYS SO. It drew "Puan SITI NURHALIZA BINTI ABDULLAH" as the after state.
+    There is no Puan, Encik or Cik anywhere in this system to print.
+  · THE CATALOGUE IS QUOTED EXACTLY, from production on 2026-08-30: profile_option category 'salutation'
+    holds Datin, Dato', Dato' Sri, Datuk, Dr, Hj, Hjh, Ir, Mdm, Mr, Mrs, Ms, Prof, Puan Sri, Tan Sri, Ts,
+    Tun. "Puan Sri" is a title of honour and is NOT the everyday Puan; it is not a substitute.
+  · USAGE IS COUNTED, NOT ESTIMATED: of 40 people, 6 have Mr, 3 have Ms, 31 have nothing.
+  · THE "WHAT PREFIXING WOULD ACTUALLY PRINT" COLUMN IS THE HONEST PROJECTION of rev 1's proposal
+    against that real data. It is the argument for not doing it.
+  · Names shown are illustrative placeholders, not real employees — the point is the title, not the person.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .good{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .badc{background:color-mix(in srgb,var(--bad) 10%,white);color:var(--bad)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--mf);padding:6px 8px;border-bottom:1px solid var(--border)}
+  td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .note{background:color-mix(in srgb,var(--warn) 8%,white);border:1px solid color-mix(in srgb,var(--warn) 35%,white);
+        border-radius:10px;padding:10px 12px;font-size:11.5px;color:#7c4a03;margin-top:12px}
+  .corr{background:color-mix(in srgb,var(--bad) 6%,white);border:1px solid color-mix(in srgb,var(--bad) 30%,white);
+        border-radius:10px;padding:11px 13px;font-size:12px;color:#8f1d1d;margin-bottom:18px}
+  .field{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fbfbfe}
+  .flabel{font-size:10.5px;color:var(--mf);margin-bottom:3px}
+  .fval{font-size:13px}
+  .arrow{text-align:center;color:var(--mf);font-size:16px;padding:4px 0}
+  .pill{display:inline-block;border:1px solid var(--border);border-radius:6px;padding:1px 7px;margin:2px 3px 2px 0;font-size:11px;background:#fff}
+  .small{font-size:11px;color:var(--mf)}
+</style>
+
+<div class="corr">
+  <b>A correction to what we sent you yesterday.</b> Revision 1 of this plan said we would print the
+  Encik / Cik / Puan title in front of the name, and drew it. We checked the records afterwards and that
+  is not something this system can produce &mdash; there is no Encik, Cik or Puan in it to print. The rest
+  of revision 1 stands; this panel replaces that one promise.
+</div>
+
+<div class="card">
+  <h2>1 &middot; Field 1 already comes from the box you pointed us at</h2>
+  <p class="sub">Personnel Management holds the name under the exact label you named, and the EA form
+    already prints that box, unchanged, for every employee.</p>
+
+  <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:250px">
+      <div class="flabel">Personnel Management &rsaquo; Personal details</div>
+      <div class="flabel" style="margin-top:4px">Full name (as per IC/passport)</div>
+      <div class="fval mono">SITI NURHALIZA BINTI ABDULLAH</div>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="field" style="flex:1;min-width:250px">
+      <div class="flabel">Form C.P.8A (EA)</div>
+      <div class="flabel" style="margin-top:4px">1. Nama Penuh Pekerja / Pesara</div>
+      <div class="fval mono">SITI NURHALIZA BINTI ABDULLAH</div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:11px"><span class="chip good">already works</span>&nbsp; No change is
+    needed here, and none is proposed.</p>
+</div>
+
+<div class="card">
+  <h2>2 &middot; Why we are not putting a title in front of it</h2>
+  <p class="sub">Salutation is a separate box on the same Personnel Management screen. This is every value
+    it can hold, exactly as the list stands today:</p>
+
+  <div style="margin-bottom:12px">
+    <span class="pill">Datin</span><span class="pill">Dato&rsquo;</span><span class="pill">Dato&rsquo; Sri</span><span class="pill">Datuk</span><span class="pill">Dr</span><span class="pill">Hj</span><span class="pill">Hjh</span><span class="pill">Ir</span><span class="pill">Mdm</span><span class="pill">Mr</span><span class="pill">Mrs</span><span class="pill">Ms</span><span class="pill">Prof</span><span class="pill">Puan Sri</span><span class="pill">Tan Sri</span><span class="pill">Ts</span><span class="pill">Tun</span>
+  </div>
+  <p class="small" style="margin:0 0 12px">There is no Encik, no Cik and no Puan. &ldquo;Puan Sri&rdquo; is a
+    title of honour and is not a stand-in for Puan.</p>
+
+  <table>
+    <thead>
+      <tr><th style="width:26%">Your 40 employees</th><th style="width:32%">Salutation on record</th><th>What prefixing it would print on the EA</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>31 people</td><td class="mono">(blank)</td><td class="mono">SITI NURHALIZA BINTI ABDULLAH <span class="small">&mdash; unchanged</span></td></tr>
+      <tr><td>6 people</td><td class="mono">Mr</td><td class="mono"><b style="color:#dc2626">Mr</b> AHMAD BIN ISMAIL</td></tr>
+      <tr><td>3 people</td><td class="mono">Ms</td><td class="mono"><b style="color:#dc2626">Ms</b> LEE MEI LING</td></tr>
+      <tr><td>0 people</td><td class="mono">Encik / Cik / Puan</td><td class="small">cannot happen &mdash; the words are not in the list</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>So the change we proposed yesterday would print English titles on a Bahasa Malaysia tax form for
+    nine people, and do nothing at all for the other thirty-one.</b> It would never once produce the Encik,
+    Cik or Puan you asked for. That is why we are recommending against it rather than quietly shipping
+    something that looks like the request but is not.
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 &middot; The screenshot you sent, which makes the point better than we did</h2>
+  <p class="sub">You are right that the Salutation box is already there, next to Full name (as per
+    IC/passport). Here is the record you sent us, as it stands:</p>
+
+  <div style="display:flex;gap:14px;flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:210px">
+      <div class="flabel">Salutation</div>
+      <div class="fval mono">Mr</div>
+    </div>
+    <div class="field" style="flex:1;min-width:210px">
+      <div class="flabel">Full name (as per IC/passport)</div>
+      <div class="fval mono">TEST0003</div>
+    </div>
+    <div class="field" style="flex:1;min-width:210px">
+      <div class="flabel">Race &middot; Religion</div>
+      <div class="fval mono">Malay &middot; Islam</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>This is the whole problem in one record.</b> The box is filled in, and what it says is
+    &ldquo;Mr&rdquo;. Printing it in front of the name on a Bahasa Malaysia EA would give
+    &ldquo;Mr TEST0003&rdquo;, not &ldquo;Encik TEST0003&rdquo;. The field you pointed us at is real and
+    populated &mdash; it just does not hold the word the form is asking for.
+  </div>
+</div>
