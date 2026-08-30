@@ -301,7 +301,8 @@
     "noticeBoard": "公告栏",
     "payrollIndividualPayslip": "个人工资单",
     "payrollBackPay": "补发工资",
-    "payrollStatutoryAdjustment": "法定金额调整"
+    "payrollStatutoryAdjustment": "法定金额调整",
+    "payrollControlTower": "控制塔"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -5031,7 +5032,7 @@
       "employeeSkipped": "已跳过",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "本薪资周期没有交易记录",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "本次运行类型无款项 — 其固定月薪由常规薪资运行发放"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "本次运行类型无款项 — 其固定月薪由常规薪资运行发放"
       },
       "overall": {
         "succeeded": "成功",
@@ -6013,6 +6014,44 @@
         "bonus": "花红",
         "adjustment": "调整"
       }
+    },
+    "controlTower": {
+      "title": "薪资控制塔",
+      "description": "所有进行中的薪资运行、需要人工处理的项目，以及这些检查是否真正发挥作用。",
+      "backToPayroll": "薪资",
+      "ratioTitle": "运行这套薪资需要多少人？",
+      "ratioUnavailable": "我们暂不显示人力数字，因为它没有意义。",
+      "ratioWhyNotGuessed": "人力预估会被拿来做决定。与其给出一个建立在尚未经人核查的检查之上的数字，我们宁可不显示。",
+      "blocked_no_verdicts": "尚未检查过任何薪资运行，因此无从衡量。",
+      "blocked_thresholds_untuned": "检查的灵敏度仍是出厂初始值。在针对贵公司薪资调校之前，通过率衡量的是设定，而非您的数据。",
+      "blocked_no_human_signal": "尚无人处理已标记的个案。在有人确认或否定之前，我们无法告诉您这些检查的准确度。",
+      "impliedOperators": "按此异常率所需人数",
+      "employeesCovered": "已检查员工",
+      "exceptionsThisCycle": "需要人工处理",
+      "ratioAssumption": "假设一人每个周期可处理约 {n} 项异常。这是设计上的假设，并非依据您的数据测得。",
+      "metricsTitle": "四项指标",
+      "mAutoClear": "无需人工即通过",
+      "mAutoClearHint": "目标 {target}% 或以上。",
+      "mCoverage": "可执行的检查",
+      "mCoverageHint": "请先看这一项。覆盖率低时的高通过率是薄弱的结果，不是好结果。",
+      "mFalsePositive": "误标记",
+      "mFalsePositiveHint": "被标记的个案实际上没有问题的比例。",
+      "mNoSignal": "需要先有人处理队列。",
+      "mMttr": "处理一项所需时间",
+      "mMttrHint": "从标记到裁决的中位时间。",
+      "metricsBasis": "基于 {runs} 个进行中运行的 {verdicts} 名已检查员工；已处理 {resolved} 项标记个案。",
+      "thresholdsUntuned": "灵敏度仍为出厂初始值 — 请先以真实月份调校，再向他人引用这些数字。",
+      "runsTitle": "进行中的运行",
+      "colCompany": "公司",
+      "colPeriod": "周期",
+      "colEmployees": "员工",
+      "colCleared": "已通过",
+      "colReview": "待复核",
+      "colBlocked": "已阻止",
+      "colWaiting": "等待人工",
+      "openQueue": "打开队列",
+      "notChecked": "未检查",
+      "noRuns": "没有已处理的运行。在有运行被处理之前，控制塔没有可监控的对象。"
     }
   },
   "admin": {

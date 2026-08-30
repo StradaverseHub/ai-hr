@@ -301,7 +301,8 @@
     "noticeBoard": "Notice Board",
     "payrollIndividualPayslip": "Individual Payslip",
     "payrollBackPay": "Back Pay",
-    "payrollStatutoryAdjustment": "Statutory Adjustment"
+    "payrollStatutoryAdjustment": "Statutory Adjustment",
+    "payrollControlTower": "Control Tower"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -5031,7 +5032,7 @@
       "employeeSkipped": "Skipped",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run"
       },
       "overall": {
         "succeeded": "Succeeded",
@@ -6013,6 +6014,44 @@
         "bonus": "Bonus",
         "adjustment": "Adjustment"
       }
+    },
+    "controlTower": {
+      "title": "Payroll Control Tower",
+      "description": "Every open run, what needs a person, and whether the checks are earning their keep.",
+      "backToPayroll": "Payroll",
+      "ratioTitle": "How many people does it take to run this payroll?",
+      "ratioUnavailable": "We are not showing a staffing figure yet, because it would not mean anything.",
+      "ratioWhyNotGuessed": "A headcount projection gets acted on. We would rather show you nothing than a number built on checks nobody has audited yet.",
+      "blocked_no_verdicts": "No run has been checked yet, so there is nothing to measure.",
+      "blocked_thresholds_untuned": "The sensitivity of the checks is still on the shipped starting values. Until they are tuned to your payroll, the clear rate measures the settings rather than your data.",
+      "blocked_no_human_signal": "Nobody has worked through the flagged cases yet. Until someone agrees or disagrees with them, we cannot tell you how often the checks are right.",
+      "impliedOperators": "people needed, at this exception rate",
+      "employeesCovered": "employees checked",
+      "exceptionsThisCycle": "needed a person",
+      "ratioAssumption": "Assumes one person can clear about {n} exceptions per cycle. That is an assumption from the design, not something measured on your data.",
+      "metricsTitle": "The four numbers",
+      "mAutoClear": "Cleared without a person",
+      "mAutoClearHint": "Target {target}% or better.",
+      "mCoverage": "Checks that could run",
+      "mCoverageHint": "Read this first. A high clear rate on low coverage is a thin result, not a good one.",
+      "mFalsePositive": "Flagged wrongly",
+      "mFalsePositiveHint": "How often a flagged case turned out to be fine.",
+      "mNoSignal": "Needs someone to work the queue first.",
+      "mMttr": "Time to clear one",
+      "mMttrHint": "Median time from flag to decision.",
+      "metricsBasis": "Based on {verdicts} checked employees across {runs} open run(s); {resolved} flagged case(s) resolved.",
+      "thresholdsUntuned": "Sensitivity is still on the shipped starting values — tune it against a real month before quoting these figures to anyone.",
+      "runsTitle": "Open runs",
+      "colCompany": "Company",
+      "colPeriod": "Period",
+      "colEmployees": "Employees",
+      "colCleared": "Cleared",
+      "colReview": "To review",
+      "colBlocked": "Blocked",
+      "colWaiting": "Waiting on a person",
+      "openQueue": "Open queue",
+      "notChecked": "Not checked",
+      "noRuns": "No processed runs. The tower has nothing to watch until a run is processed."
     }
   },
   "admin": {
