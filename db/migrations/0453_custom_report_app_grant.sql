@@ -1,0 +1,23 @@
+-- THE GRANT `0165` SHOULD HAVE CARRIED. Unrelated to r236's feature work; found by it.
+--
+-- `custom_report` was created without an explicit GRANT to ai_hr_app, so it works everywhere production
+-- does — `deploy/bootstrap-db.sql:72-75` runs ALTER DEFAULT PRIVILEGES, which hands ai_hr_app full CRUD
+-- on every owner-created table — and breaks on a cluster that was REBUILT rather than bootstrapped.
+-- `scripts/dev-db-rebuild.sh` builds exactly such a cluster, so after any local rebuild `/reports` returns
+-- 500 with `permission denied for table custom_report` and nothing else in the product does.
+--
+-- ⚠️ THIS IS THE FAILURE MODE 0451 AND 0452 BOTH WARN ABOUT IN THEIR OWN COMMENTS, CAUGHT IN THE WILD.
+-- It was found during r236's render check, where `agent_proposal` (explicit GRANT, added the same round)
+-- and `assistant_grant` (explicit GRANT, 0451) both read fine on the rebuilt cluster while `custom_report`
+-- did not. That contrast is the argument for writing the GRANT out every time even though it looks
+-- redundant: the redundancy is what survives a cluster that was not bootstrapped.
+--
+-- ON PRODUCTION THIS IS A NO-OP, and deliberately so: the four privileges below are exactly what
+-- `information_schema.role_table_grants` already reports there for this role and table, read before this
+-- file was written rather than guessed. GRANT is idempotent.
+--
+-- THE OTHER FOUR TABLES ai_hr_app CANNOT READ ON A REBUILT CLUSTER ARE LEFT ALONE, BECAUSE THEY ARE
+-- CORRECT: `ai_provider_config` is FORCE'd RLS holding a key ciphertext the app role must never read
+-- (0059), and `platform_user` / `tenant_provision_request` / `tenant_suspension_window` belong to the
+-- ai_hr_platform control plane (ADR-0077 / ADR-0079), not to a tenant session.
+GRANT SELECT, INSERT, UPDATE, DELETE ON "custom_report" TO ai_hr_app;

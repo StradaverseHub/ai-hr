@@ -1372,6 +1372,17 @@ grep — an empty result is a parser gap, not proof of no callers.
 
 ## Traps — the durable ones (each cost at least a round; several recurred AFTER being written down)
 
+- ⚠️ **NEVER `source .env.local` IN THE SAME SHELL AS `pnpm gate:shadow` — IT REPORTS AS A MIGRATION
+  DEFECT (r236).** `scripts/shadow-migrate.sh:92-93` REWRITES `MIGRATION_DATABASE_URL` inside `.env.local`
+  to point at the scratch `ai_hr_shadow` DB before running `drizzle-kit migrate`. An **exported** variable
+  of the same name (from `set -a; . ./.env.local`) wins over the dotenv file, so drizzle migrates
+  `ai_hr_dev` instead — which is usually already up to date, applies nothing, and leaves the shadow DB at
+  its restored watermark. The script then correctly observes that nothing was applied and prints
+  **`MIGRATION SILENTLY SKIPPED … almost certainly a when value that is not strictly greater than the live
+  watermark`** — pointing at a journal that is completely fine. The tell: a shadow run that PASSED earlier
+  in the session starts failing after you sourced the env for an unrelated `psql`. Run it as
+  `env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow`, or in a shell that never sourced it.
+
 - ⚠️ **A TEST THAT HARDCODES "THE FUTURE" IS A TIME BOMB, AND IT DETONATES AS A FALSE FAILURE IN AN
   UNRELATED ROUND (r236, 2026-09-01).** `test/employment-movement.test.ts` asserted that a future-dated
   increment writes nothing yet, with `effectiveDate: '2026-09-01'` written down. On 2026-09-01 the date
