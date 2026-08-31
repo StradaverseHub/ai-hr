@@ -124,8 +124,12 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
       .map((m) => m[1])
       .filter((s) => s.startsWith('.'));
     // entitlements is the module gate; read is the data; hr-date is the clock; ai/types is the contract.
+    // payslip-earning-lines is the fifth and does NOT weaken the property: it has ZERO imports of its own
+    // and no query surface at all — pure functions that read `statutory.componentLines` by SHAPE. It is
+    // how my_pay_change gets per-item figures without importing core/payroll and dragging the kernel into
+    // every assistant caller. Verify that emptiness before ever adding a sixth.
     expect(dataImports.sort()).toEqual(
-      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './read'].sort(),
+      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './read'].sort(),
     );
   });
 });
@@ -149,6 +153,8 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
       'employee_profile',
       'my_reporting_line',
       'my_payslip_summary',
+      // ADR-0074 item 5 — APPENDED, never inserted. See the prefix-caching note this list guards.
+      'my_pay_change',
     ]);
   });
 
@@ -178,7 +184,7 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
     expect(toolByName('no_such_tool')).toBeUndefined();
   });
 
-  it('the five self-bound tools accept NO subject argument at all — that is the control, not ergonomics', () => {
+  it('the self-bound tools accept NO subject argument at all — that is the control, not ergonomics', () => {
     // A tool with no employee argument cannot be pointed at anybody. Five of the nine are shaped that
     // way, and it is what makes them incapable of being aimed. `my_reporting_line` is on this list
     // specifically because reporting_line's own policy is tenant-wide and never checks the SUBJECT.
@@ -188,6 +194,9 @@ describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () =>
       'my_reporting_line',
       'upcoming_holidays',
       'my_payslip_summary',
+      // my_pay_change takes a PERIOD and no subject. A period cannot aim a tool at a person, which is
+      // what keeps it in this set despite not being argument-free.
+      'my_pay_change',
     ]) {
       const props = Object.keys(toolByName(name)!.spec.inputSchema.properties);
       expect(props, `${name} must take no employee/person argument`).not.toContain('employment_id');
@@ -571,24 +580,26 @@ describe('ADR-0077 — a tool whose module the tenant does not hold is not offer
   it('drops my_payslip_summary when payroll is off, and keeps the other eight', async () => {
     const withPayroll = await entitledCtx(base);
     expect(toolsFor(withPayroll).map((t) => t.spec.name)).toContain('my_payslip_summary');
-    expect(toolsFor(withPayroll)).toHaveLength(9);
+    expect(toolsFor(withPayroll)).toHaveLength(10);
 
     await setModule(base.tenantId, 'payroll', null);
     const without = await entitledCtx(base);
     const offered = toolsFor(without).map((t) => t.spec.name);
     expect(offered).not.toContain('my_payslip_summary');
+    // ADR-0074 item 5 is payroll-gated too, so turning payroll off now drops TWO tools, not one.
+    expect(offered).not.toContain('my_pay_change');
     expect(offered).toHaveLength(8);
     // The specs the gateway would send match the tools, and stay in registry order.
     expect(specsFor(without).map((s) => s.name)).toEqual(offered);
   });
 
   it('payroll is the ONLY axis the offered list varies on today, and that is worth knowing', () => {
-    // Eight of the nine name a CORE module, which answers enabled without consulting any snapshot. So
-    // ADR-0082 §2.8's "each tool is gated by its own module" is true of exactly one tool right now. It is
+    // Eight of the ten name a CORE module, which answers enabled without consulting any snapshot. So
+    // ADR-0082 §2.8's "each tool is gated by its own module" is true of exactly two tools right now. It is
     // not a defect — it is what keeps the cacheable prefix stable per tenant — but a reader who assumes
     // seven live gates will design around one that does not exist.
     const gated = ASSISTANT_TOOLS.filter((t) => t.module !== null).map((t) => t.module);
     expect(new Set(gated)).toEqual(new Set(['leave', 'org', 'employees', 'payroll']));
-    expect(ASSISTANT_TOOLS.filter((t) => t.module === 'payroll')).toHaveLength(1);
+    expect(ASSISTANT_TOOLS.filter((t) => t.module === 'payroll')).toHaveLength(2);
   });
 });
