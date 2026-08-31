@@ -1,3 +1,250 @@
+## r229 (2026-08-30) — the Control Tower gets a front door; the assistant gets its loop. NO MIGRATION.
+
+Owner request, not a board item: "build the AI functions and payroll control tower", then "put all inside
+a centralised menu … we want to compare to get actual results whether this control tower AI feature
+really helps to reduce to 3 payroll headcount to manage 3000+ headcounts".
+
+⚠️⚠️ **THE CONTROL TOWER WAS ALREADY LIVE AND NOBODY KNEW, BECAUSE IT HAD NO FRONT DOOR.** r177 recorded
+ADR-0076 as "BUILT, GATED AND DELIBERATELY NOT DEPLOYED" pending the owner's command, and **that line has
+been stale for twenty-odd deploys** — migration `0425` went up with a later round and production carries
+**32 verdicts (8 auto_clear, 20 review, 4 block)**. What was missing was never the deploy: the queue hung
+off ONE run at a time (`/payroll/<batch>/anomalies`), the sweep was a cron script, and the four
+north-star metrics sat in `core/payroll-anomaly.ts` with nothing rendering them. An operator could work a
+run; nobody could see the operation. `/payroll/control-tower` is that door. **Re-read a "not deployed"
+line against the box before believing it** — that is the r159 lesson pointed at our own notes.
+
+⚠️⚠️ **THE STAFFING FIGURE IS BUILT AND REFUSES TO PRINT ITSELF, AND THAT REFUSAL IS THE FEATURE.**
+`impliedOperators` is `number | null` and stays null until THREE things hold: the tower has verdicts,
+`payroll_anomaly_config` has been tuned off r177's shipped 30%/15% placeholders, and a human has
+dispositioned at least one flag. **On production all three fail today** — every one of those 32 verdicts
+is unresolved, so `falsePositiveRate` and `mttrSeconds` are structurally NULL (not zero) and the clear
+rate measures the placeholder thresholds rather than the tenant's data. The screen renders `blockedBy`
+naming what is missing. AGENTS 28 is the rule and a headcount projection is its sharpest case: it gets
+screenshotted and acted on, and one computed from checks nobody has audited is a confident wrong number
+about somebody's job. r177 already said it for this feature — never quote an auto-clear rate from an
+unvalidated basis.
+
+**THE PATH TO THE OWNER'S ANSWER IS NOT CODE.** Tune the thresholds against a real month, then work the
+24 waiting exceptions. That produces the agreement signal, and the tile fills itself in. Until someone
+does, no amount of building moves the number.
+
+⚠️ **WHAT WAS DELIBERATELY NOT BUILT: ADR-0074 ITEM 2, THE AUTO-CLEAR GATE.** It is the autonomy dial —
+it decides who gets paid with nobody looking. §7 is explicit that the ratio is *earned, not launched*,
+and its Crawl stage is humans reviewing 100% while agreement is measured. There is zero agreement data.
+Building it now would grant autonomy on placeholder thresholds. **It needs an explicit owner decision
+after the queue has been worked, not a build round.**
+
+**Rolled up BY VERDICT, never by averaging per-run rates** — a 4-person run and a 400-person run must not
+carry equal weight in a number quoted as the operation's. An unevaluated run reports **"not checked"**,
+never 100%: "nothing was checked" and "everything passed" are opposite facts and a rate of 1.0 states the
+second (`autoClearRate: null`, the same discipline ADR-0076 §2.4 applies to a skipped detector).
+
+**ADR-0082 SLICE 3 — `core/assistant.ts`, the loop r223 named as next.** `converse()` (r221) and the tool
+registry (r223) had sat with no caller between them since 2026-08-26. This is the budget gate (checked
+before spending AND between turns, so eight turns cannot overshoot a ceiling by the size of their own
+loop), the turn loop at `MAX_TURNS = 8`, concurrent tool dispatch and the audit row. Every tool runs in
+the CALLER's `SessionContext`, so RLS scopes it exactly as it scopes the screens. Three decisions worth
+keeping: a **refusal goes back as content, not `isError`** (a tool declining correctly must not invite a
+retry); **every call returns a result** — unknown tool, unparseable arguments and a thrown wrapper all
+come back as `isError` rather than being dropped, because a dropped result is a malformed conversation,
+not a smaller answer; and the audit row holds tool **inputs and row counts, never rows**, or payslip and
+identity data acquires a second retention story. **NO MIGRATION — 0451 already laid all four tables.**
+Like slices 1 and 2 it has **no screen yet**; that slice is also what unblocks ADR-0074 item 5.
+
+⚠️ **A NO-BUDGET TENANT IS UNLIMITED, DELIBERATELY.** The feature is already gated by an explicit
+per-user grant an admin has to make (r223), so an absent `assistant_budget` row means "no ceiling set",
+not "nobody may ask". Refusing would make the assistant unusable the moment it is granted, which is the
+failure mode of a safety default nobody can discover.
+
+⚠️ **THE FROZEN NAV ORACLE FIRED, AND IT WAS RIGHT TO.** `test/payroll-flyout-nav.test.ts` compares the
+payroll fly-out's children as a FULL SET, not a `contains` — its own comment says a subset check stops
+noticing a deletion, which is what it exists to catch. So an eleventh row fails it by design. Recorded
+the addition the way the five before it are recorded (statutory-forms, loans, back-pay,
+individual-payslip, statutory-adjustment) rather than loosening the assertion. AGENTS 18. Caught by the
+FULL gate only — 124 of 125 files in that chunk passed and every suite I ran targeted was green.
+
+**RENDER-CHECKED EMPTY AND POPULATED** (rule 6), the populated state against a real fixture of 8 verdicts
+(6 cleared / 1 review / 1 block): zero `MISSING_MESSAGE`/`IntlError`/RSC errors, and the honesty gate
+verified STRUCTURALLY — the amber blocked box renders and the big staffing number does not, which is
+exactly right with no config rows and no resolved flags. Structural because grepping rendered HTML for a
+LABEL is a false positive: Next embeds the whole i18n catalogue in the payload.
+
+## r228 (2026-08-29) — the EA form reads the pay-item mapping it has stored all along (`ea54fe6e`). NO MIGRATION.
+
+The board's last approved item, and the plan's verdict — "partly there already" — was right.
+`pay_component.ea_form_line` has been storable, validated and audited since ADR-0035 wave 1. TWO links
+were broken. The CONTROL was replaced by a hidden passthrough in the `4994a48f` redesign
+(`component-form.tsx:78`) pending "a dedicated statutory module later" that never came, so the value
+survived every save and nobody could set it. The READ never existed at all: the EA summed
+`payslip.allowance` into one lump and no EA surface looked at `pay_component`.
+
+⚠️⚠️ **ROUTING MOVES MONEY; IT NEVER ADDS ANY. THAT IS THE PROPERTY THAT MADE THIS SHIPPABLE ONTO A TAX
+DOCUMENT.** The kernel's bucket already decided which EA figure an amount reached, so routing SUBTRACTS
+it there and ADDS it to the mapped box — `partB.gross` is identical before and after a mapping, so a
+form that reconciled yesterday still reconciles. `EA_BUCKET_SOURCE_FIELD` is the subtraction side
+(`wage`→allowances, `ot`→grossSalary, `bonus`→bonus); `reimburse` and `deduct` are absent on purpose —
+neither is Part B income, and routing a reimbursement would invent income. Pinned by reading the SAME
+payroll data twice, once before the mapping and once after, which is exact rather than approximate.
+
+⚠️ **NOTHING ROUTES BEFORE ASSESSMENT YEAR 2027 (`EA_ROUTING_FROM_YEAR`), AND THAT IS THE WHOLE RISK.**
+Per-component stamping began 2026-08-01 (`862ed0ad`), an EA covers January to December, so routing 2026
+would print an Aug–Dec subtotal in a box captioned as the full year — the plan's own worked example is a
+director paid 48,000 showing ~20,000 against director's fee, on a form someone files a tax return on
+(AGENTS 28). The earlier months CANNOT be recovered and must not be re-derived: those payslips hold
+monthly totals only, and a recomputation would disagree with the payslips already issued. Raise that
+constant only with a real reason; never lower it.
+
+⚠️ **THE VOCABULARY WENT 9 → 15 AND `gratuity_compensation` WAS SPLIT — SAFE ONLY BECAUSE NOTHING CARRIED
+IT.** Measured on production before touching it: **all 25 `pay_component` rows have `ea_form_line = NULL`**.
+So there was no stored value to migrate, no backfill, and — the part that matters for risk — **routing
+ships INERT**. It cannot change any EA form until an admin maps an item deliberately. `cleanEaLine`
+silently NULLS an unrecognised value, so re-check that emptiness before ever retiring a value again: the
+failure mode is an operator's mapping vanishing on their next save, with no error anywhere.
+`commission` and `director_fee` deliberately share one box — the form's own caption is
+"1(b) Fees (including directors' fees), commission or bonus".
+
+⚠️ **`allowance_exempt` MAPS BUT MOVES NO FIGURE, AND THE REPORTER MUST BE TOLD.** It is one of their
+fourteen. The exempt box is a MEMO line — the tax-exempt portion of `allowances`, printed "(included
+above)" and deliberately outside `EA_PART_B_COMPONENTS` so it cannot double-count — and it already has
+ONE derivation, the PCB exemption ledger (`statutory.exemptionUsed`, PCB_* codes). A second source would
+report an item twice with neither source aware of the other. Mapping to it marks the item as mapped and
+leaves the money where the kernel put it.
+
+⚠️ **THE ADR-0080 RATCHET CAUGHT A CROSS-PACK IMPORT THAT EVERY TARGETED RUN MISSED.** The Pay Items form
+imported `EA_ROUTING_FROM_YEAR` from `localization/my` to name the year in its hint. Pay Items is a
+GENERIC admin screen, and `test/country-pack-drift.test.ts` refused it — its own message says the
+allowlist only ever shrinks, so the fix is to remove the dependency, never to record debt. **123 of the
+124 files in that chunk passed and all seven adjacent EA / pay-item suites were green**; only the full
+gate reads every file. AGENTS 15 and 20's family. The EA statement carries the year as `routing.fromYear`
+out of the statement DATA instead, which is where an operator is looking when the question arises.
+
+**§7/§8 — THE MAPPING STATUS WAS IN THE CSV EXPORT AND NOWHERE ON SCREEN.** The plan said the list
+"already shows it as a column"; it did not — `eaFormLine` was an export column only, so "which items are
+still unmapped?" required downloading the file. It is now a real table column with a Mapped / Not mapped
+badge (a DEDUCTION is never flagged: no `EA_FORM_LINES` value targets a Part B box it could reach, so an
+amber pip beside every deduction would be a warning nobody can clear). The EA statement names any pay
+item that put money on THAT form with no mapping, **shown whatever the year** — so the mapping can be
+finished during 2026 and be correct on the first form that routes it, rather than being discovered on it.
+
+**PRECEDENCE IS THE REPORTER'S, IN WRITING** (mapping → auto amount → hand amendment → final): an
+`ea_override` still wins, and the routed figure survives as its `original`, so the amendment stays
+auditable. **Their §10 audit-trail request is ALREADY MET** by `ea_override` (amender, reason, timestamp)
+— worth confirming to them rather than leaving it reading as an open request.
+
+**RENDER-CHECKED** (rule 6): six routes, zero `MISSING_MESSAGE`/`IntlError`/RSC errors, and the select
+verified STRUCTURALLY rather than by label (all 15 `value="…"` options present, the stored `director_fee`
+coming back `selected`) — grepping rendered HTML for a LABEL is a false positive, because Next.js embeds
+the whole i18n catalogue in the payload. 12 new cases in `test/ea-line-routing.test.ts`, five of them
+two-directional table ratchets: a vocabulary value with no box, a table key outside the vocabulary, a
+routed box outside the printed total, a bucket source outside it, and a missing dropdown label in any of
+the six catalogues.
+
+## r227 (2026-08-29) — the round that was BUILT ON 2026-08-28 AND NEVER SHIPPED. `c6bb5f5a`, `15239057`, `43cede88`. NO MIGRATION.
+
+Three branches were committed on 2026-08-28 between 16:50 and 16:58 and then nothing happened to them:
+no gate, no merge, no deploy, no `build-complete`. The session ended mid-round. This entry closes it.
+
+⚠️⚠️ **A ROUND CAN LOOK EXACTLY LIKE NO ROUND, AND THIS FILE IS WHY IT STAYED INVISIBLE FOR A DAY.**
+r226 shipped AND was marked deployed on the board, and r227 was fully built — and NEITHER appeared here,
+so `CURRENT STATE` still named `main@307ead09` (r225) as production while the box had been running r226
+since 12:54. The two checks in "How this project is actually run" are the ones that found it, and they
+found different halves: the dry-run rsync showed main was NOT ahead by any app code (r226 was live), and
+`git for-each-ref refs/heads/build` showed three unmerged r227 branches. **Neither check alone would have
+told the story.** The board is what surfaced it at all — two items sat in `building`, which `improve:pull`
+deliberately hides.
+
+**What shipped.** `15239057` the clipped photo panel · `c6bb5f5a` rev 3 the Attendance Irregularity width
+and the Request pop-up · `43cede88` the additional-run skip (built as r226, held back by its own gate).
+
+⚠️ **THE PHOTO PANEL WAS CLIPPED, NOT OVERLAPPED — AND IT WAS THE LEFT EDGE, NOT THE RIGHT.** The ticket
+said the panel overlaps other elements on a narrow window. `app/layout.tsx` gives `<main>`
+`overflow-y-auto`, and per CSS Overflow 3 a non-visible overflow on one axis computes the other to `auto`
+too, so the absolutely-positioned panel was TRIMMED at that scroll container's edge. z-index was never
+involved (it was already `z-50`). Measured in Chromium against the shipped classes: the panel starts ~43px
+LEFT of `<main>`'s content edge and ~43px is never painted — the left end of every full-width button in it
+— at EVERY width where the profile header lays out as a row (≥640px), not only narrow ones. Fixed the r206
+way (`app/payroll/row-actions.tsx`, whose docblock states the rule verbatim): `createPortal` to
+`document.body`, `fixed` coords measured from the trigger rect and clamped to the viewport, a flip above
+the trigger near the bottom, and a CAPTURE-phase scroll+resize listener. **Rule 7 again: the reported
+fault was not the real one, and the obvious remedy — raise the z-index — would have changed nothing.**
+
+⚠️ **`c6bb5f5a` REV 3 IS A NARROWER PROMISE THAN THE REPORTER'S OWN WORDS, AND THAT GAP IS STILL OPEN.**
+Their refutation of rev 2 asked for FOUR things: (1) full width, (2) Request opens a modal, (3) "Also
+Waiting for You" consolidated into ONE screen, (4) My Attendance Request Status redesigned with status
+indicators. **The approved rev-3 plan covers only (1) and (2)**, and so does the code. Shipping is
+legitimate — they approved that plan at 16:04 on 2026-08-28, after refuting rev 2 — but (3) and (4) are
+undelivered and are recorded NOWHERE on the board. Raise them, or say plainly that they were dropped.
+
+**The consent question r225 left open is CLOSED, and the trail is the reason.** r225 shipped
+`c6bb5f5a`'s code while the item sat `planned` on a revision the reporter had not answered, and this file
+said not to tidy that away. `feedback_plan_revision` now shows rev 1 approved then superseded, rev 2
+approved then REFUTED in the reporter's own words, rev 3 drafted 15:57 and approved 16:04 — a real,
+current approval on the plan that carries the mockup. **Read the revision table, not the item's status:**
+`approved_at` / `outcome` / `outcome_reason` per revision is the only place the negotiation survives.
+
+⚠️⚠️ **THE GATE WAS RED AND ONLY HALF OF IT WAS REAL — AND THIS FILE ALREADY HELD THE ANSWER, IN A LINE
+THAT CONTRADICTED ITS OWN HEADLINE RECIPE.** The gate was run as `bash scripts/gate-chunked.sh`, exactly
+as "THE GATE, IN FULL" wrote it. That defaults to `CHUNKS=3`, which put 248 files in chunk 3, drove
+`peak-disk` to **99%** and killed the cluster: 48 failed FILES, 126 failed tests, **zero AssertionErrors**,
+all `ECONNREFUSED 127.0.0.1:5433` / "the database system is in recovery mode" / `CONNECTION_CLOSED`.
+The Environment section has said **"`CHUNKS=6`, NOT the default 3"** since 2026-08-10 — 250 lines below
+the recipe that omitted it. Re-run at `CHUNKS=6` (124 files each): GREEN across all six, peak-disk ≤66%.
+**The headline recipe now carries `CHUNKS=6` too.** The diagnostic rule that made this cheap is the one
+already written down: *a red gate with no AssertionErrors is an environment problem* — `grep -c
+AssertionError` before reading a single failure. It has now paid out five times.
+**The suite is 745 files / 10,843 tests, not the 558 / 6612 this file recorded**; that line is corrected.
+
+⚠️ **THE ONE REAL RED WAS A FIXTURE, AND IT WAS IN THE NEW TEST FILE'S OWN MONEY-SAFETY CASES.**
+`test/payroll-additional-run-skip-r226.test.ts` failed two tests with `ComponentRequiredError`. `runCtx`
+turns `payroll.individual_txn_pay_enabled` ON, and under that flag `assertTxnComponents`
+(`core/payroll-individual-txn.ts:343`) refuses a NEW payable row with no component on EVERY create path —
+so both tests threw before reaching a single assertion. Componentless payable rows survive on production
+only as LEGACY rows keyed before the flag. Fixed by keying both earnings through **HOUSING**, which is
+EPF+SOCSO ⇒ the normal WAGE bucket that an additional run zeroes — so "the run has nothing to pay them"
+still holds and neither premise is weakened. The sibling standing-pay test at `:408` already documents
+HOUSING in exactly those words. **A test file that has never survived a full gate is not a tested file**:
+this one shipped its branch on 2026-08-28 with two of its fourteen cases unable to run.
+
+**RENDER-CHECKED** (rule 6): ten routes on a dev server, `MISSING_MESSAGE`/`IntlError`/RSC-boundary count
+**zero** — all four attendance screens, `/payroll`, `/payroll/process`, and BOTH `PhotoEditMenu` call
+sites (`/admin/personnel/[employmentId]` and `/admin/organization/[companyId]`, which reaches it through
+`components/company-logo.tsx` — the photo fix touches the company logo too, which the ticket never
+mentioned). 23 new i18n keys, present and symmetric in all six catalogues.
+
+⚠️ **`app/payroll/process/result/page.tsx` CARRIED A LIVE BUG THAT r227 FIXED BEFORE IT EVER SHIPPED.**
+r226 put the whole skipped-employee list inside the `?r=` redirect payload, taking it from O(companies) to
+O(headcount): 40 skipped = 9,298 bytes, 80 = 18,018, 245 = 54,136, against a 16,384-byte header budget.
+The page would have failed to load at ~70 skipped — on exactly the runs the skip exists for, and AFTER the
+payroll had been committed. The payload now carries a COUNT and the page reads names from each batch's
+`payroll-batch.processed` event. Two consequences: the card survives a refresh, and a reader who cannot
+see those events (admin-only under ADR-0015) sees counts with no names rather than "nobody was skipped".
+
+## r226 (2026-08-28) — Company Details: Bank Account back in slot two, filing numbers on their own cards (`06d92cbe`). NO MIGRATION.
+
+Shipped as `ee1c0401` and deployed at 12:54; the board item was marked `deployed` at 12:55. **It was never
+recorded here** — see r227 above for what that cost.
+
+⚠️ **THE DATA-LOSS HAZARD WAS THE WHOLE JOB, NOT THE TABS.** `company_statutory_my` is ONE row of five
+numbers and `setCompanyStatutoryMY` was a FULL-ROW OVERWRITE (`p.epfEmployerNo ?? null` for all five).
+Moving each body's filing number onto its own card means several forms write that row — so under the old
+writer, saving the EPF card would have NULLed SOCSO, LHDN, MyInvois and SSM, silently, behind a 200 and a
+green suite. The writer is now a PARTIAL PATCH (unnamed field = untouched, named = written, `''`/null =
+cleared) and the actions read through `postedField`, which keeps "this form does not carry that field"
+and "the operator cleared it" as different instructions.
+
+**The Bank Account tab is a REVERT the reporter asked for in writing** — it shipped as `94ae7e1f`, was
+deleted by `3c2f55d7` rev 2 on this same reporter's instruction, and is now back. "Other" is RETIRED
+rather than renamed: a tab called "Bank Account" containing "Delete this company" is worse than the
+problem it solves. SSM and MyInvois deliberately get no card (neither is a body you pay a contribution
+to); EIS gets no input because it files under SOCSO's PERKESO code.
+
+⚠️ **A CONTROL MUST NOT INHERIT A CAPTION THAT DESCRIBES SOMETHING ELSE.** The verify pass caught the HRDF
+status dropdown rendering under the "Filing identity" header, whose hint says the box is "the number that
+goes on this body's filed form". It is not a number — it is a registration band (not registered /
+mandatory / optional) that decides whether the levy is charged at all. Split into two blocks, each with
+its own caption. Same class as AGENTS rule 28: telling an operator the wrong thing about the box they are
+filling in is the fault, not the missing box.
+
 ## r225 (2026-08-27) — My Attendance split into four screens (`c6bb5f5a`). NO MIGRATION.
 
 Self Overtime, My Travel and My Attendance Request Status each get a real route and a menu row; the
@@ -186,6 +433,313 @@ Re-stamping filings is not a sidebar change and is the owner's call.
 107 `does not exist`, NINE `Hook timed out`**, and it took 421s against a 107s baseline for the same 124
 files. No stray process was found afterwards. **Re-running the identical code gave 124/124 in 112s.**
 Rule 12's signature exactly; run the cause tally and re-run before believing a red.
+
+## r221 (2026-08-26) — ADR-0082 slice 1: the AI gateway learns to converse. NO MIGRATION.
+
+**THE ROUND DID NOT COME FROM THE BOARD.** The owner asked to start "the real AI part". `lib/ai` was a
+governed gateway with four single-shot drafting callers and nothing else; the north star's Phase B
+(assistant) had never been started. **ADR-0082** designs it and **slice 1 is now deployed**.
+
+⚠️ **THE ASSISTANT DOES NOT RETRIEVE, AND THAT IS THE WHOLE DESIGN.** ADR-0007 §3 rejects naive RAG
+over tenant data, and this repo makes the reason concrete: access control is **per-row and in the
+database** — `db/client.ts:186-190` sets `app.tenant_id/user_id/roles/grants` as transaction GUCs and
+**128 migrations carry `CREATE POLICY`** against them (`payslip_rls` → `app.can_see_employment`,
+`compensation` → admin-or-self). A vector store is a DERIVED store and inherits none of it: you would
+re-implement `can_see_employment` as index-time ACL tags and re-index on every reporting-line change,
+delegation, transfer and termination — a second authorization system that must agree with the first
+forever. So the assistant calls the reads the SCREENS already call, inside the caller's own
+`SessionContext`. ~40 functions on `core/read.ts` already take `ctx` first; that signature is the seam.
+
+⚠️ **SLICE 1 HAS ZERO CALLERS AND THE ROUND SAYS SO.** `converse()` + the three adapters are ~1,800
+lines no production path reaches. Deployed because main-ahead-of-production is its own hazard (r159),
+NOT because it does anything yet. Every defect below was latent, never live.
+
+⚠️⚠️ **THE ADVERSARIAL PASS FOUND 3 MAJORS UNDER 58 GREEN TESTS, ALL THE SAME SHAPE: ANTHROPIC (the
+reference) WAS RIGHT AND THE OTHER TWO DIVERGED SILENTLY.** (a) Google's `providerState` replayed
+`functionCall` parts even when `normaliseStop` had SUPPRESSED those calls on refusal/`max_tokens`, so
+the next request showed the model a refused call as an outstanding request with no result closing it;
+(b) `String(raw ?? 'STOP')` read an ABSENT `finishReason` as `end`, though the SDK documents empty as
+"has NOT stopped generating" — a truncated answer reported as finished; (c) OpenAI emitted
+`{role:'assistant', content:null}` with no `tool_calls`, which the SDK documents as invalid — one
+`ConverseArgs`, legal on two providers, a 400 on the third surfaced as "Could not reach OpenAI".
+**Hand-fixed, not sent back for a second agent pass (rule 23b), and each fix PROVEN non-vacuous** by
+reverting it from a `cp` copy and watching exactly its own named test fail.
+
+⚠️ **ONE OF THOSE FIXES WAS WRONG AND AN EXISTING TEST CAUGHT IT — RULE 18, EXACTLY.** Routing Google's
+400 away from "Invalid API key" broke a deliberately-pinned behaviour whose premise was RIGHT: **the
+Gemini Developer API answers a bad key with 400, not the 401 Anthropic and OpenAI use.** 400 only became
+ambiguous once `converse()` made the request shape variable (a rejected tool schema is also a 400). So
+`reason()` now takes the PATH: `generate`/`validate` keep "Invalid API key" (fixed shapes — nothing else
+CAN be invalid), `converse` names both causes. The half still true stayed.
+
+**FOUR ADR-0082 §8 DECISIONS ARE SETTLED (2026-08-26), TWO AGAINST THE RECOMMENDATION** — both kept
+visible in the ADR rather than overwritten. (1) Audience is **a per-user grant the HR admin assigns and
+removes** — neither option offered, and a mechanism this codebase DOES NOT HAVE:
+`payroll_permission_grant` is keyed by ROLE, `lib/permissions.ts SCREENS` is static with no backing
+table, and no per-user screen access is persisted anywhere. (2) The **full §4 tool catalogue**, which
+commits `search_handbook` — the one tool that is not a wrapper over an existing read, since **there is
+no full-text search in this codebase at all**. (3) Refuse at the ceiling. (5) **Answers in all six
+locales**, which promotes one guardrail to load-bearing: the assistant may never ORIGINATE a statutory
+figure or interpretation in any language, because model quality in ms/ta/th/vi for statutory HR
+terminology is UNMEASURED here. Still open: transcript retention, and whose API key pays.
+
+**STILL NOT DONE IN SLICE 1, deliberately:** the cache-read assertion ADR §2.2 says the build MUST make
+(needs a live key); the `claude-opus-5` default in `lib/ai/registry.ts:16` (still `claude-opus-4-8` —
+valid, just behind, and moving it changes behaviour for FOUR shipped drafting callers, so it is the
+owner's call); and localising the gateway's raw-English error strings, which decision 5 makes overdue.
+**THE DRY RUN IS CLEAN WHEN YOU EXCLUDE `next-env.d.ts`, AND THAT EXCLUSION IS CORRECT:**
+`next-env.d.ts` (UNTRACKED and generated — a tree that has run `pnpm dev` says `.next/dev/types/…`,
+production says `.next/types/…`, and each side is correct for its own build mode). DELETE the deploy's own
+`deploy-rNNN.log` off the box when you are done with it, or `--delete` will report it forever. Anything
+ELSE in that dry run is an undeployed release.
+**NO MIGRATION SINCE r209** — r210 six items / 52 files; r212 two / 30; r215 two / 16.
+**Production is on 365 migrations** — r209 added `0448` `tp1_status_values` and `0449` `tp1_approval`
+(the reissue of the dead `0444`/`0445`), both verified present on the live schema
+(`tp1_relief.approved_month` / `approved_year` / `approved_by` / `deduction_month`). NOTE: `drizzle.__drizzle_migrations` is NO LONGER READABLE by the app role
+(`permission denied for schema drizzle`), so verify a migration by its EFFECT on `information_schema`
+instead of by the watermark. **r217 ADDED `0450`** (`employee_statutory_my.old_ic_number` +
+`passport_issuing_country_code`), verified on the live schema by its EFFECT on `information_schema`.
+**r218-r222 added NONE. r223 ADDED `0451`** (`assistant_substrate` — the four ADR-0082 tables),
+verified on production by its EFFECT: all four tables present, RLS on all four, and the DELETE
+asymmetry intact (`assistant_exchange` keeps DELETE for PDPA erasure; grant/budget/usage do not).
+**Next free is `0452`.**
+**Board after r220 (2026-08-25): `deployed = 738` · `cancelled = 14` · EVERYTHING ELSE ZERO — the board
+is completely clear for the THIRD time in its life.** r220 shipped two: `00806b4c` (the CP39 e-Data PCB
+file fills all four identity boxes, refuses an over-long one, and the two downloads are named apart) and
+`61c2e30f` (the blank C.P.8A Pin. 2024 in both languages, plus the EA field register). r219 shipped five
+(`0fea5cc9`, `ece6d75d`, `64c09b0e`, `ca7766ab`, `7966ee35`) — details in `docs/HANDOFF-HISTORY.md`.
+
+⚠️⚠️ **r220's DECISIVE FINDING, AND IT IS THE SECOND TIME: THE REPORTER'S "WRONG FORMAT" WAS THE WRONG
+BUTTON, NOT A WRONG FORMAT.** `00806b4c` sent a full LHDN fixed-width specification and asked for the CP39
+text file to be rebuilt to it. Generating **ISEDECOR's own January 2026 file from production** (19
+employees, aggregated per employment exactly as `cp39FileForBatch` does) produced
+`009457390901_2026.txt` — **the filename in their own ticket, byte for byte** — with a 57-character header,
+nineteen 136-character detail lines, no other line length present, CRLF between and after the last, and no
+delimiter anywhere. It already met every clause they sent. What they had almost certainly downloaded was
+**"Download as text"**, the READABLE COPY on the review screen, whose own tooltip already said it is not
+the upload file. r218 was the same shape (PERKESO). **Generate the tenant's own file before agreeing that
+a format is wrong.**
+
+⚠️ **AND THE REAL DEFECT WAS UNDERNEATH IT: THREE OF THE FOUR IDENTITY BOXES WENT OUT EMPTY ON EVERY
+LINE.** `buildCp39File` has always placed old K/P at 73–84, passport at 97–108 and Kod Negara at 109–110;
+`cp39FileForBatch` simply never fetched them. Now it does. **Filling them made silent truncation reachable
+for the first time** — the three columns are unbounded `text` and two are free-text inputs, and `alpha()`
+hard-truncates — so `overlongCp39Identities` refuses and names the person and the box instead. A half
+passport number is not most of an identity; it is a different identity, on a tax filing.
+
+⚠️ **r220 CHANGES NOTHING VISIBLE FOR THIS TENANT YET, AND THAT IS A DATA FACT, NOT A BUG.** All 33
+employees in `employee_statutory_my` have a new IC; **ZERO have an old IC, a passport or a country code**,
+so the three newly-filled boxes are still blank in their file and the new "no identity at all" refusal
+fires for NOBODY (verified against production before release: `would_refuse = 0`). Building r220's output
+and pre-r220's output from the same rows gives **byte-identical files**. The value lands when HR enters a
+passport. Two employees still have no TIN and are blocked by the older, unchanged gate.
+
+⚠️ **THE JANUARY DATA IS STILL WRONG IN THE WAY r218 FOUND, AND NOBODY HAS FIXED IT.** ISEDECOR's January
+rows still carry `TEST0001`…`TEST0014` in the name box and `ISMAIL` where the filed file says
+`MOHD RIDHUAN BIN ISMAIL`. r218 reported it in `68147833`; it is a DATA correction only they can make.
+
+⚠️⚠️ **`7966ee35` IS SHIPPED BUT THE FEATURE IS STILL OFF, AND THAT IS DELIBERATE.** What shipped is the
+SCREEN SAYING WHY. Replacement Leave in Lieu stays unavailable until `toil` is granted to this tenant, and
+that grant is COMMERCIAL PROVISIONING, not a migration or a seed — the owner has it. Until then `/leave`
+reads "Replacement Leave in Lieu is not part of this plan" instead of showing nothing, which is verified
+on a dev server, not inferred.
+
+**THE BOARD IS STILL EMPTY, BUT THE NEXT ROUND IS ALREADY CHOSEN** — `improve:pull` and
+`improve:pull-approved` both return `[]`, and every status except `deployed` and `cancelled` is ZERO.
+**That no longer means "nothing to build":** ADR-0082 is the active workstream and slices 2–7 are
+specified and decided (see the r221 entry above). Slice 2 is the tool registry
+(`core/assistant-tools.ts`) over the existing `core/read.ts` functions, plus the `assistant_grant`
+table and the module entry. **Next free migration is `0451`** — slice 1 added none.
+
+⚠️ **THE ONE THING THAT NEEDS A HUMAN: GRANT `toil` TO THIS TENANT, OR REPLACEMENT LEAVE STAYS OFF.**
+`tenant_module` has no `toil` row, so `replacementRequestAvailability` returns `module_off` on its first
+line for every employee in every company. r219 shipped the screen that SAYS so — `/leave` now reads
+"Replacement Leave in Lieu is not part of this plan" instead of showing nothing, verified on a dev server.
+The grant itself is COMMERCIAL PROVISIONING and must NOT be written as a migration, a seed or a fixture.
+
+⚠️⚠️ **r219's LESSON IS ABOUT THE PARENT, NOT THE AGENTS: MARKING ITEMS `building` BEFORE LAUNCHING MAKES
+THE APPROVED PLAN UNREADABLE TO EVERY AGENT.** `improve:pull-approved` returns only `approved` rows, and
+all five briefs said "read your plan there first". Five agents found nothing; ONE said so in `notBuilt` and
+the others built from the brief alone. **The plan is the promise to the reporter; the brief is only the
+parent's summary of it** (AGENTS 29). Either mark `building` AFTER the agents have read their plans, or
+paste the plan text into the brief. The parent's hand-done plan-vs-build diff then found two real gaps —
+the EA's derived `0.00` and the entitlement's half-built "backwards" — both fixed before the merge.
+
+⚠️ **A CLUSTER REBUILD WIPES `ai_hr_dev`, AND THE RENDER CHECK THEN FAILS IN A WAY THAT LOOKS LIKE THE
+CHANGE.** After `dev-db-rebuild.sh` every screen answered 500 with "No valid dev principal … run
+`pnpm db:seed`". Nothing was wrong with the code. Run `pnpm db:migrate && pnpm db:seed` before any render
+check in a session where the cluster was rebuilt, and READ THE DEV LOG rather than the status code — it
+named the cause on its first line.
+
+⚠️ **THE SAME MISSING GUARD BIT TWO STATUTORY FORMS IN ONE ROUND: EVERY GEOMETRY CASE MEASURES WHETHER A
+CAPTION FITS, NONE CHECK WHAT IT SAYS.** The EA shipped `5(a) Pelepasan dituntut melalui Borang TP1` where
+the agency's form says `(a) Pelepasan` — r217 wording that gained the form's numbering, so it LOOKED like
+the agency's box while saying something the page does not. Both forms now check every caption against the
+hand transcription beside the specimen (`docs/forms/*-transcription.txt`), which is the artifact that makes
+that checkable at all. **When you trace a form, write the caption list into the transcription and pin it.**
+
+⚠️ **THE REPLACEMENT-LEAVE NOTICE QUOTES SWITCH CAPTIONS THAT ARE ENGLISH IN ALL SIX LOCALES, AND THAT IS
+CORRECT.** `admin.replacementLeave.*` is untranslated everywhere, so the notice naming "{enableSwitch}"
+reads English in every language — because it interpolates the SETTINGS SCREEN'S OWN key. Translating the
+quote while the screen it points at stays English would be the actual defect. The debt is the settings
+screen's; do not "fix" it in the notice.
+
+⚠️⚠️ **r218's DECISIVE FINDING: THE PERKESO FILE WAS NEVER A FORMAT DEFECT, AND ONLY GENERATING IT FROM
+PRODUCTION FOUND THAT OUT.** The item said records were "split across two lines" and asked for a rewrite
+against the official spec. Generating their own January 2026 file on the box gave **19 records, every one
+278 characters, CRLF between and none after the last** — and the reporter's pasted example turned out to be
+**our record 1, verbatim**, with the runs of spaces collapsed by whatever they pasted it into. The real
+defect was in the DATA: **fourteen of the nineteen carry `TEST0001`…`TEST0014` in the name box**, a
+fifteenth reads `ISMAIL` where their filed file says `MOHD RIDHUAN BIN ISMAIL`, and several ICs are one or
+two digits off the filed ones (records copied, not keyed). **The plan we had already pushed told them the
+example did not come from their file. It did.** `68147833` carries the correction in plain words — say it
+plainly when a verification contradicts something you have already told the reporter.
+
+⚠️ **A KILLED `gate-chunked.sh` POISONS EVERY LATER RUN — now AGENTS rule 10b, with the symptom and the
+one-line fix.** The short version so nobody has to look it up mid-red: `grep "rebuild FAILED"` in the gate
+log BEFORE believing a failing chunk, and start a gate with the harness's own background flag, never a
+bare `&`.
+
+⚠️ **THE VERIFYING DRY-RUN RSYNC WILL ALWAYS REPORT `next-env.d.ts` IF YOUR LAST LOCAL RUN WAS `pnpm dev`.**
+Next regenerates it per build mode: dev writes `./.next/dev/types/routes.d.ts`, the server's production
+build writes `./.next/types/routes.d.ts`. Both are correct for their own side. Zero-change proof means
+zero-change APART from that file — diff its CONTENT before calling it a real difference, and never force
+the dev-flavoured copy onto the server.
+
+⚠️ **THE CP39 SPECIMEN IS FINALLY IN HAND, AND `lib/cp39-form-pdf.ts`'s OWN HEADER SAYS THAT WAS THE ONLY
+BLOCKER.** `c99e8358`'s attachment `CP39 sample.docx` (`feedback_attachment` id `477f3fec`) is a Word file
+holding TWO images: `word/media/image1.png` is OUR current output, `word/media/image2.png` is a fully
+populated **CP39 Pin.2015 at 1210px, legible to the last line of the A / B / C panels**. `unzip` the docx
+and it is right there. The renderer's 7ee14bbc paragraph says in as many words that the masthead and the
+instruction panels are undrawn because "the specimen is not in this repository" — so step one of that
+build is committing the image, not redesigning anything. **`fidelity` still stays `figures`**: it is a
+vendor rendering (the DXperience family again), a tracing source, not LHDN's page.
+
+⚠️ **THE REPORTER'S "large blue WRONG FORMAT box" IS OUR OWN ON-SCREEN HONESTY NOTICE**
+(`app/payroll/cp39/preview/page.tsx:225`, `bg-blue-50`, "Our layout, not LHDN's page"). It is NOT printed
+on the document. An AI summarising a screenshot of the review screen read it as part of the form. Worth
+knowing before the next item that quotes a box back at us.
+
+⚠️ **r217 LEFT A FALSE SENTENCE PRINTED ON A TAX DOCUMENT — FIX IT WITH `c99e8358`.** `0450` gave
+`No. K/P Lama` and `Kod Negara` real columns and the CP39 mapper already reads them, but FOUR places still
+assert they can never be filled: `lib/cp39-form-pdf.ts:461` (in Malay, ON THE PDF), `lib/cp39-form.ts:865`
+(text export), `app/payroll/cp39/preview/page.tsx:318` + `blankColumnsHint` in six locales, and
+`localization/my/cp39-form.ts:33`. AGENTS 18 applies: the half still true (never derive `Kod Negara` from
+the nationality text) stays; the reversed half goes.
+
+⚠️ **`5dbce839` IS NOT A FORMAT DEFECT, AND THE PROOF WAS ALREADY IN THE REPO.**
+`test/perkeso-socso-file.test.ts` asserts our writer reproduces the customer's own filed `BRG8A.txt` BYTE
+FOR BYTE, and the official spec (attached to `5d3acdc2`) agrees field for field. The request's "employee
+split across two lines" example mixes ONE person's identity number with ANOTHER's contributions and doubles
+the salary — it comes from no record of their own file. The likely cause is the READABLE `.txt` download
+being uploaded instead of the fixed-width one; both sit on the same screen. **The one real difference is
+`company_statutory_my.ssm_registration_no`, NULL for ISEDECOR**, so our MyCoID box is 20 spaces where the
+accepted file carries `34111U` — and the same empty column blanks `No. Pendaftaran Perniagaan` on the
+CP39. It is typeable at `components/company-panel.tsx:865`. The spec marks MyCoID **Mandatory = N** and
+has **no SKBBK / Lindung 24 Jam field at all**, so neither is a build.
+
+**MEASURED ON PRODUCTION FOR BOTH PLANS (2026-08-21), so the build does not re-derive it:** ISEDECOR's
+`2026-01` batch is `processed` with 38 payslips, **19 carrying a SOCSO/EIS contribution**, ZERO missing or
+malformed ICs, and `statutory.bases.socsoEis` present on every one — a file is produced today, unrefused.
+Their filed file has 14 people and their CP39 sample says 13 / RM 15,374.70 against our 17-of-19 /
+RM 6,919.45. Those are DIFFERENT EMPLOYEE SETS (r215: their reference documents name people who do not
+exist in `person`), which is why both plans say in plain words that this is format work and reconciles
+nothing.
+
+⚠️ **THE FULL GATE CAUGHT A FORM GAINING BOXES NOBODY COULD FILL, and targeted runs could not.** r217's EA
+work added four Section D fields to the PDF only. `test/ea-form-boxes-contract.test.ts` pins that EVERY EA
+field reaches EVERY surface — and three of the four have NO payroll source, so without the amend panel they
+could never hold a number at all. Adding an EA box means ALL of: `EA_FIELDS`, the derived baseline, the
+exhaustive switch in `core/ea-override.ts` (no `default:`, deliberately), the PDF, the HTML statement, and
+the amend panel.
+
+⚠️ **THE EA IS ONE PAGE AND ITS GUARD MEANS IT.** Those lines did not fit at 14pt leading, so `ROW_H` is
+now 12.5. If a later round adds a box and the page guard goes red, tighten the arithmetic — the published
+C.P.8A is one page and a second page is not a fix. The `ea-pdf` fixture is deliberately the TALLEST form the
+renderer can produce; keep its `partD` populated or the guard measures the wrong maximum.
+
+⚠️ **A RED GATE IS NOT ALWAYS REAL, AND r217 SAW BOTH KINDS.** The first red was entirely real (the three
+findings above). The second was the harness: `deadlock detected` inside `resetDb`'s TRUNCATE, nine
+`Hook timed out in 30000ms`, **ZERO AssertionErrors in every chunk**, and ten failing files the round had
+never touched. Run the per-chunk cause tally BEFORE believing a red — and before re-running, check
+`pg_stat_activity` for a stray dev server or agent rather than simply rolling again.
+
+⚠️ **r215's LESSON, CHEAP TO REUSE: A `method="get"` FORM DISCARDS ITS ACTION'S QUERY STRING.** The
+Borang 8A validation-report button was written `formAction=".../file?report=1"` — reads correctly, passes
+tsc, the suite and `next build`, and hands over THE FILE, because a GET submission rebuilds the query
+from the form's fields per the HTML spec. A hidden input is the OPPOSITE trap: every button in the form
+submits it, so both downloads would have returned the report. The one mechanism that works is the submit
+button's OWN `name`/`value`, sent by that button alone. Pinned on both halves in
+test/perkeso-socso-file.test.ts. **Both `borang-a/preview` and `borang-8a/preview` use GET download
+forms**, so this applies to any button added to either — including `da4fc817`'s, if the EA gains one.
+
+**`da4fc817`, `e4b541c6` AND `5d3acdc2` (the EA, CP39 and PERKESO items planned here) ALL SHIPPED IN
+r217 — the planning detail is in `docs/HANDOFF-HISTORY.md` → r215 and r217.** The format facts that
+outlived them (BRG8A is 278 chars, CRLF BETWEEN records and none after the last, numerics SPACE-padded;
+the twelve-field table) live in `lib/perkeso-socso-file.ts` and `test/perkeso-socso-file.test.ts`, which
+are the authority now.
+
+⚠️ **TWO LESSONS FROM r212 THAT COST REAL AGENT TIME:**
+
+  - **A FILE FENCE CAN SILENTLY DELETE THE DELIVERABLE.** r212's `elig` brief fenced the agent out of
+    `core/read.ts` and `EntitlementBreakdown.tsx` — the two files needed to carry the employee-facing
+    notice to a real page. The agent built everything else correctly and disclosed in `notBuilt` that the
+    prop had no caller; the verifier confirmed it rendered NOWHERE except its own test. **When a plan's
+    headline deliverable is an EMPLOYEE-facing screen, check the fence contains the read that feeds it**
+    before launching. It cost a whole extra pass.
+  - **THE GUARD TEST THE PLAN NAMED FOUND A REAL HOLE THE BUILD HAD MISSED.** The build skipped "a holder
+    is accepted in scope and refused outside it"; the fix pass built it and it immediately failed —
+    `subject?.companyId ?? null` judged the permission against tenant-wide overrides only, so an
+    employment the caller COULD NOT SEE fell straight through the on-behalf gate. Fixed in the same pass.
+    When a plan names a specific guard, its absence from the build report is a finding in itself.
+
+**MEASURED, SO NOBODY RE-LITIGATES IT:** the new eligibility explanation runs once per leave type in
+`no_eligibility_match`, which on this tenant is nearly every type. Reproduced locally (7 types × 4 tables,
+3 rules) `/leave` rendered in **160–210ms against a 188ms baseline** — immaterial, because the explain
+reuses the winner `core/read.ts` already resolved and touches only small configuration tables. This is
+NOT the shape of r210's `entitlementDeleteBlocks`, which really did cost 7s at scale by re-running an
+RLS SECURITY DEFINER function per ledger row.
+
+⚠️ **THE r207 EPF DIAGNOSIS WAS WRONG; r210 FIXED THE REAL ONE. DO NOT RE-LITIGATE IT.**
+"`localization/my/multicycle.ts` is unwired, wire it" was NEVER the fix — `core/payroll.ts` already ran
+the increment method (`earlierRunByEmp` ~3741 + `deltaStat` ~413). The defect was in `epf()`
+(localization/my/payroll.ts): it banded the NORMAL wage and added a straight percentage of the bonus.
+r210 makes the Third Schedule lookup take normal + additional COMBINED, so A0001's January bonus run
+went 182/199 → **176/192, the figures the reporter demanded twice**. `multicycle.ts` is STILL not wired
+into the kernel and ADR-0024 §5 still gates it.
+
+⚠️ **THE ONE CORNER WHERE r210's EPF PROMISE DOES NOT HOLD. The reporter HAS been told — see below.**
+The plan promised, in plain words, that two runs in a month equal one run. Across the RM5,000 employer
+step the published table steps DOWN (13%→12%), so a small bonus can make the month's combined figure
+SMALLER than the regular run already contributed; `deltaStat` clamps the negative delta to 0, the bonus
+payslip prints employer EPF 0.00, and the month sits up to **RM38** over the table figure. RM5,000 + RM50
+= 650 + 0 against a one-batch 612. Pinned in `test/epf-combined-month-bdf7d248.test.ts`
+(`twoRuns - oneRun === 38`). Nobody is short-paid — the excess is in the employee's own EPF account —
+and closing it needs a negative EPF line, i.e. the reversals ADR (§6), not a code change.
+**ALREADY RAISED AND CLOSED — do not raise it again.** It is board item `e52ce9b6` "EPF - the one case
+where a bonus cycle does not add up to the month (RM5,000 step)", raised as CLAUDE AI on 2026-08-20 and
+now `deployed` (`build_ref 1766c2b0`). The line that used to sit here said the reporter had NOT been
+told; checking the board before acting on it is what caught that — AGENTS rule 7 applies to this file as
+much as to a ticket.
+
+**PROVE THE DEPLOY CLAIM INDEPENDENTLY** rather than trusting the line above: `git for-each-ref
+refs/heads/build` plus a dry-run rsync FROM mainwt. **"Nothing in flight" is a claim about BRANCHES and
+is NEVER a claim that `main` has been deployed** — r159 exists because those two were conflated. Every
+unmerged `build/*` branch older than r209 is STALE, not pending: `r71`, `r83`, `r154` (squashed,
+ancestrally unrelated), `r163-g-release3` and `r163g-picker`, whose content reached main another way
+(their `0405` is on main as `0410_entitlement_reset_drop_old_layers.sql`, and `main` DELETES ~45,000
+lines relative to both — that is the tell). r209's seven `build/r209-*` branches are all merged.
+
+**IF YOU ARE ASKED TO BUILD SOMETHING, READ AGENTS RULES 23 AND 23b FIRST.** They are the most expensive
+lesson in this repo: a workstream reporting tsc-clean and test-green is not evidence it is right, the
+adversarial verify is the load-bearing step, and a second agent pass on the same code is where rounds go
+backwards. Budget verification at roughly the cost of building.
+
+**THE TWO THINGS STILL WAITING ON SOMEONE ELSE** (neither is a build):
+  - **The EPF multi-cycle aggregation needs an ACCOUNTANT'S SIGN-OFF** before it is wired in (ADR-0024
+    §5). r209 shipped the §7 worksheet that produces the evidence. See the r209 entry.
+  - **Grade "Executive" maps to no Medical entitlement table.** The reporter has not said which it should
+    use, and the leave health card surfaces it by name rather than guessing at someone's sick leave.
 
 ## r220 — 2026-08-25 · the CP39 identity boxes, and the blank C.P.8A
 

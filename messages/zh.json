@@ -307,7 +307,8 @@
     "aiControlTower": "AI 控制塔",
     "controlTowerOverview": "总览",
     "controlTowerHow": "运作方式",
-    "controlTowerReadiness": "档案完备性"
+    "controlTowerReadiness": "档案完备性",
+    "controlTowerActions": "智能体操作"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11263,7 +11264,7 @@
     "step3Title": "生成说明",
     "step3Sub": "AI 用简明文字撰写",
     "step4Title": "由人决定",
-    "step4Sub": "接受、修正，或标记为误报",
+    "step4Sub": "接受、修正，或批准 AI 提议关闭的项目",
     "step5Title": "记录结果",
     "step5Sub": "衡量成效",
     "loopBack": "人的判断，正是我们据以得知检查设定是否恰当的依据。",
@@ -11289,7 +11290,9 @@
       "assistant": "智能助理",
       "assistantDoes": "回答员工关于自身记录的问题 — 假期、薪资，以及薪资为何变动 — 使他们无需询问他人。",
       "autonomy": "自主执行",
-      "autonomyDoes": "在无人参与下通过或更改任何内容。本系统目前不做这件事。"
+      "autonomyDoes": "在无人参与下通过或更改任何内容。本系统目前不做这件事。",
+      "actions": "收尾者",
+      "actionsDoes": "找出因员工记录中缺少某些内容而产生的异常——而该内容现已录入。它会提议关闭这些异常；由你批准，并在你批准时对每一条重新检查。它从不修改员工记录。"
     },
     "why": {
       "detectorsOn": "在每次已处理的薪资运行上执行。",
@@ -11302,7 +11305,8 @@
       "noProvider": "未设置 AI 供应商，因此无法生成说明。其余功能照常 — 您会看到数字，只是没有文字说明。",
       "assistantOn": "您已有使用助理的权限。",
       "assistantNoGrant": "尚未为您启用。管理员会在「管理 → 用户」中逐人开通。",
-      "autonomyByDesign": "刻意关闭。未经人工，任何内容都不会被通过或更改；日后也只会逐项开放，且须先证明系统与贵方人员的判断足够一致。"
+      "autonomyByDesign": "刻意关闭。未经人工，任何内容都不会被通过或更改；日后也只会逐项开放，且须先证明系统与贵方人员的判断足够一致。",
+      "actionsOn": "正在“智能体操作”页面提出建议。在你批准之前，不会关闭任何内容。"
     },
     "domainsTitle": "监控范围",
     "domainsIntro": "薪资是第一个领域。同一套机制可扩展到其他领域，此处列出以便您了解后续规划，而非误以为薪资就是全部。",
@@ -11359,6 +11363,39 @@
         "no_epf_numberFix": "添加 KWSP 号码，以便缴纳文件能列出其姓名。",
         "no_socso_number": "无 PERKESO 号码",
         "no_socso_numberFix": "添加 PERKESO 号码，以便缴纳文件能列出其姓名。"
+      }
+    },
+    "actions": {
+      "title": "智能体操作",
+      "description": "AI 希望替你处理的工作。在你批准之前，这里不会发生任何事情，而且每一项的提议理由都清楚可见。",
+      "backToTower": "返回控制塔",
+      "emptyTitle": "没有待批准的项目",
+      "emptyBody": "目前仍在等待你处理的每一条薪资异常，背后都有真实的问题。当有人修正了底层记录后，该异常就会出现在这里等待关闭。",
+      "done": "已关闭 {closed} 条异常。",
+      "staleNote": "另外 {stale} 条保持开启。在你批准时它们被重新检查，已不再符合条件——可能是问题再次出现，也可能是已有人处理过。",
+      "reversibleNote": "这只记录对该异常的判定。它不会改变任何薪资、费率或员工记录，重新检查该薪资批次即可覆盖它。",
+      "recheckNote": "你按下时会重新检查每一条。自页面载入以来再次出现问题的，将保持开启。",
+      "overCap": "一次批准最多关闭 {cap} 条，而现在共有 {total} 条。先批准这些，稍后再处理其余的。",
+      "approve": "批准并关闭 {n} 条",
+      "type": {
+        "close_fixed_upstream": "关闭已经修正的异常"
+      },
+      "does": {
+        "close_fixed_upstream": "这些被标记是因为员工记录中缺少某些内容。该内容现已录入，因此该异常已无可报告。"
+      },
+      "cause": {
+        "no_compensation": "薪资已录入",
+        "no_bank_account": "银行账户已录入",
+        "no_identity": "身份证件已录入",
+        "no_tax_number": "税号已录入",
+        "no_epf_number": "公积金（EPF）号码已录入",
+        "no_socso_number": "社险（SOCSO）号码已录入"
+      },
+      "error": {
+        "unknown_type": "这不是本系统可以执行的操作。",
+        "blast_radius": "一次太多。未关闭任何内容——请批准较小的批次。",
+        "nothing_to_do": "未选择任何内容，因此未关闭任何内容。",
+        "failed": "无法完成。未关闭任何内容。"
       }
     }
   }

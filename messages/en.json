@@ -307,7 +307,8 @@
     "aiControlTower": "AI Control Tower",
     "controlTowerOverview": "Overview",
     "controlTowerHow": "How it works",
-    "controlTowerReadiness": "Record readiness"
+    "controlTowerReadiness": "Record readiness",
+    "controlTowerActions": "Agent actions"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -11263,7 +11264,7 @@
     "step3Title": "Explained",
     "step3Sub": "AI writes it in plain words",
     "step4Title": "A person decides",
-    "step4Sub": "accept, fix, or flag as wrong",
+    "step4Sub": "accept, fix, or approve what the AI proposes closing",
     "step5Title": "Result recorded",
     "step5Sub": "measures how well it is doing",
     "loopBack": "What people decide is what tells us whether the checks are set right.",
@@ -11289,7 +11290,9 @@
       "assistant": "The assistant",
       "assistantDoes": "Answers employees’ questions about their own records — leave, pay, and why their pay changed — so they do not have to ask a person.",
       "autonomy": "Acting on its own",
-      "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today."
+      "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today.",
+      "actions": "The closer",
+      "actionsDoes": "Finds exceptions that were raised because something was missing from an employee record — and that record now has it. It proposes closing them; you approve, and each one is checked again as you do. It never changes an employee record."
     },
     "why": {
       "detectorsOn": "Running on every processed payroll run.",
@@ -11302,7 +11305,8 @@
       "noProvider": "No AI provider is set up, so nothing can be explained. Everything else still works — you see the figures without the sentence.",
       "assistantOn": "You have access to the assistant.",
       "assistantNoGrant": "Not switched on for you. An administrator turns it on per person, under Administration → Users.",
-      "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it."
+      "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it.",
+      "actionsOn": "Proposing on the Agent actions screen. Nothing is closed until you approve it."
     },
     "domainsTitle": "What it watches",
     "domainsIntro": "Payroll is the first area. The same machinery is built to cover the others, and they are listed here so you can see what is coming rather than assuming payroll is all there is.",
@@ -11359,6 +11363,39 @@
         "no_epf_numberFix": "Add the KWSP number so the contribution file can name them.",
         "no_socso_number": "No SOCSO number",
         "no_socso_numberFix": "Add the PERKESO number so the contribution file can name them."
+      }
+    },
+    "actions": {
+      "title": "Agent actions",
+      "description": "Work the AI would like to take off your desk. Nothing here happens until you approve it, and you can see exactly why each one is being proposed.",
+      "backToTower": "Back to the Control Tower",
+      "emptyTitle": "Nothing to approve",
+      "emptyBody": "Every payroll exception still waiting on you has a real problem behind it. When somebody fixes the underlying record, the exception will appear here to be closed.",
+      "done": "Closed {closed} exception(s).",
+      "staleNote": "The other {stale} were left open. They were checked again as you approved, and no longer qualified — either the problem has come back, or somebody had already dealt with them.",
+      "reversibleNote": "This only records a decision about the exception. It changes no pay, no rate and no employee record, and checking the payroll run again replaces it.",
+      "recheckNote": "Each one is checked again the moment you press this. Anything that has gone wrong again since the page loaded is left open.",
+      "overCap": "One approval closes at most {cap}, and there are {total}. Approve these, then come back for the rest.",
+      "approve": "Approve and close {n}",
+      "type": {
+        "close_fixed_upstream": "Close exceptions that are already fixed"
+      },
+      "does": {
+        "close_fixed_upstream": "These were flagged because something was missing from the employee's record. That detail is now on file, so the exception has nothing left to report."
+      },
+      "cause": {
+        "no_compensation": "salary now on file",
+        "no_bank_account": "bank account now on file",
+        "no_identity": "identity document now on file",
+        "no_tax_number": "tax number now on file",
+        "no_epf_number": "EPF number now on file",
+        "no_socso_number": "SOCSO number now on file"
+      },
+      "error": {
+        "unknown_type": "That is not an action this system can take.",
+        "blast_radius": "Too many at once. Nothing was closed — approve a smaller batch.",
+        "nothing_to_do": "Nothing was selected, so nothing was closed.",
+        "failed": "That could not be completed. Nothing was closed."
       }
     }
   }

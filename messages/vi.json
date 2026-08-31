@@ -307,7 +307,8 @@
     "aiControlTower": "Trung tâm điều hành AI",
     "controlTowerOverview": "Tổng quan",
     "controlTowerHow": "Cách hoạt động",
-    "controlTowerReadiness": "Mức sẵn sàng hồ sơ"
+    "controlTowerReadiness": "Mức sẵn sàng hồ sơ",
+    "controlTowerActions": "Hành động của tác nhân"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11263,7 +11264,7 @@
     "step3Title": "Diễn giải",
     "step3Sub": "AI viết bằng lời dễ hiểu",
     "step4Title": "Một người quyết định",
-    "step4Sub": "chấp nhận, sửa, hoặc đánh dấu là sai",
+    "step4Sub": "chấp nhận, sửa, hoặc phê duyệt những gì AI đề xuất đóng",
     "step5Title": "Ghi nhận kết quả",
     "step5Sub": "đo xem hệ thống làm tốt đến đâu",
     "loopBack": "Chính quyết định của con người cho chúng ta biết các kiểm tra đã được đặt đúng hay chưa.",
@@ -11289,7 +11290,9 @@
       "assistant": "Trợ lý",
       "assistantDoes": "Trả lời câu hỏi của nhân viên về hồ sơ của chính họ — nghỉ phép, lương, và vì sao lương thay đổi — để họ không phải hỏi người khác.",
       "autonomy": "Tự hành động",
-      "autonomyDoes": "Duyệt hoặc thay đổi bất cứ điều gì mà không có người. Hiện không có phần nào trong hệ thống làm việc này."
+      "autonomyDoes": "Duyệt hoặc thay đổi bất cứ điều gì mà không có người. Hiện không có phần nào trong hệ thống làm việc này.",
+      "actions": "Người khép việc",
+      "actionsDoes": "Tìm những ngoại lệ phát sinh vì hồ sơ nhân viên thiếu thông tin — và hồ sơ đó nay đã có. Nó đề xuất đóng chúng; bạn phê duyệt, và mỗi mục được kiểm tra lại ngay lúc đó. Nó không bao giờ thay đổi hồ sơ nhân viên."
     },
     "why": {
       "detectorsOn": "Chạy trên mọi kỳ lương đã xử lý.",
@@ -11302,7 +11305,8 @@
       "noProvider": "Chưa thiết lập nhà cung cấp AI nên không thể diễn giải. Mọi thứ khác vẫn hoạt động — bạn thấy các con số mà không có câu diễn giải.",
       "assistantOn": "Bạn có quyền dùng trợ lý.",
       "assistantNoGrant": "Chưa bật cho bạn. Quản trị viên bật theo từng người, tại Quản trị → Người dùng.",
-      "autonomyByDesign": "Tắt có chủ đích. Không gì được duyệt hay thay đổi mà không có người, và điều đó chỉ thay đổi từng hành động một, sau khi chứng minh được hệ thống đồng thuận với nhân sự của bạn đủ thường xuyên."
+      "autonomyByDesign": "Tắt có chủ đích. Không gì được duyệt hay thay đổi mà không có người, và điều đó chỉ thay đổi từng hành động một, sau khi chứng minh được hệ thống đồng thuận với nhân sự của bạn đủ thường xuyên.",
+      "actionsOn": "Đang đề xuất trên màn hình Hành động của tác nhân. Không có gì bị đóng cho đến khi bạn phê duyệt."
     },
     "domainsTitle": "Những gì được theo dõi",
     "domainsIntro": "Bảng lương là lĩnh vực đầu tiên. Cùng bộ máy đó được xây để bao phủ các lĩnh vực khác, và chúng được liệt kê ở đây để bạn thấy điều sắp tới thay vì nghĩ bảng lương là tất cả.",
@@ -11359,6 +11363,39 @@
         "no_epf_numberFix": "Thêm số KWSP để tệp đóng góp có thể nêu tên họ.",
         "no_socso_number": "Không có số PERKESO",
         "no_socso_numberFix": "Thêm số PERKESO để tệp đóng góp có thể nêu tên họ."
+      }
+    },
+    "actions": {
+      "title": "Hành động của tác nhân",
+      "description": "Công việc mà AI muốn gánh bớt cho bạn. Không có gì xảy ra ở đây cho đến khi bạn phê duyệt, và bạn thấy rõ lý do từng mục được đề xuất.",
+      "backToTower": "Quay lại Tháp điều khiển",
+      "emptyTitle": "Không có gì để phê duyệt",
+      "emptyBody": "Mọi ngoại lệ bảng lương còn chờ bạn đều có một vấn đề thật phía sau. Khi có người sửa hồ sơ gốc, ngoại lệ đó sẽ xuất hiện ở đây để được đóng lại.",
+      "done": "Đã đóng {closed} ngoại lệ.",
+      "staleNote": "{stale} mục còn lại vẫn để mở. Chúng được kiểm tra lại khi bạn phê duyệt và không còn đủ điều kiện — hoặc vấn đề đã quay lại, hoặc đã có người xử lý trước đó.",
+      "reversibleNote": "Thao tác này chỉ ghi lại một quyết định về ngoại lệ. Nó không thay đổi lương, mức tính hay hồ sơ nhân viên nào, và việc kiểm tra lại đợt lương sẽ thay thế nó.",
+      "recheckNote": "Mỗi mục được kiểm tra lại ngay khi bạn nhấn nút này. Bất kỳ mục nào phát sinh lỗi trở lại kể từ khi tải trang sẽ được để mở.",
+      "overCap": "Một lần phê duyệt đóng tối đa {cap} mục, trong khi có {total} mục. Hãy duyệt số này trước rồi quay lại xử lý phần còn lại.",
+      "approve": "Phê duyệt và đóng {n}",
+      "type": {
+        "close_fixed_upstream": "Đóng các ngoại lệ đã được khắc phục"
+      },
+      "does": {
+        "close_fixed_upstream": "Những mục này bị gắn cờ vì hồ sơ nhân viên thiếu thông tin. Thông tin đó nay đã có, nên ngoại lệ không còn gì để báo nữa."
+      },
+      "cause": {
+        "no_compensation": "đã có mức lương trong hồ sơ",
+        "no_bank_account": "đã có tài khoản ngân hàng trong hồ sơ",
+        "no_identity": "đã có giấy tờ tùy thân trong hồ sơ",
+        "no_tax_number": "đã có mã số thuế trong hồ sơ",
+        "no_epf_number": "đã có số EPF trong hồ sơ",
+        "no_socso_number": "đã có số SOCSO trong hồ sơ"
+      },
+      "error": {
+        "unknown_type": "Đây không phải là hành động hệ thống có thể thực hiện.",
+        "blast_radius": "Quá nhiều cùng lúc. Không mục nào bị đóng — hãy phê duyệt một nhóm nhỏ hơn.",
+        "nothing_to_do": "Không có mục nào được chọn, nên không có gì bị đóng.",
+        "failed": "Không thể hoàn tất. Không có gì bị đóng."
       }
     }
   }

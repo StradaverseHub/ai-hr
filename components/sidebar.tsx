@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   Gauge,
   Sparkles,
+  Wand2,
   LayoutDashboard,
   ListChecks,
   MessageSquareText,
@@ -193,6 +194,10 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // tower with nothing in it. When a second adapter lands this becomes "any registered domain".
   ['/control-tower', 'payroll'] as const,
   ['/control-tower/how-it-works', 'payroll'] as const,
+  // r235 — payroll-gated for a sharper reason than the two above: the ONLY action type closes payroll
+  // exceptions, so without payroll this row is a permanently empty screen. It stops being payroll's when
+  // an action type lands whose subject is not a payroll finding.
+  ['/control-tower/actions', 'payroll'] as const,
   // NOT payroll-gated: record completeness is not a payroll question (see CONTROL_DOMAINS). Absent from
   // this map entirely, which is how a row says "always offered".
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
@@ -345,6 +350,9 @@ const GROUPS: Group[] = [
       // ADR-0083 §3 item 2 — the shift-left half. Sits ABOVE the explainer because it is a working screen
       // and the explainer is a reference one.
       { href: '/control-tower/readiness', labelKey: 'controlTowerReadiness', icon: ClipboardCheck, adminOnly: true },
+      // ADR-0083 §2.5 — the approval queue. The only screen in the product where a person authorises an
+      // agent to write, which is why it is a row of its own rather than a panel on another page.
+      { href: '/control-tower/actions', labelKey: 'controlTowerActions', icon: Wand2, adminOnly: true },
       { href: '/control-tower/how-it-works', labelKey: 'controlTowerHow', icon: BookOpen, adminOnly: true },
     ],
   },

@@ -125,6 +125,40 @@ describe('ADR-0083 — the explainer states what does NOT run', () => {
     expect(String(en.promise2)).toMatch(/never/i);
   });
 
+  /**
+   * r235 — THE GUARD THAT SHOULD HAVE EXISTED SINCE r233, ADDED WHEN A SIXTH AGENT ROW LANDED.
+   *
+   * The roster is data: the page renders `agent.${a.id}`, `agent.${a.id}Does` and `why.${a.reasonKey}`
+   * as DYNAMIC keys, which `i18n-coverage`'s static-key case cannot see (it says so in its own header).
+   * So an agent added to `agentStatuses` with a key missing from en.json throws MISSING_MESSAGE and
+   * CRASHES the explainer — a 200-passing, tsc-clean, suite-green crash of exactly the class AGENTS 6
+   * describes. This reads the ids and reason keys back out of the source, both branches of every ternary
+   * included, so adding a row without its strings fails here instead of on the screen.
+   */
+  it('every roster row and every reason it can carry has a string in en.json', () => {
+    const src = read('core/control-domains.ts');
+    const body = src.slice(src.indexOf('export async function agentStatuses'));
+    const agent = en.agent as Record<string, string>;
+    const why = en.why as Record<string, string>;
+
+    const ids = [...body.matchAll(/^\s*id: '([a-z_]+)',$/gm)].map((m) => m[1]!);
+    // The roster is six rows as of r235; a bare `toBeGreaterThan(0)` here would let a regex that stopped
+    // matching pass silently, which is the vacuity this whole file guards against elsewhere.
+    expect(ids.length, `ids found: ${ids.join(', ')}`).toBeGreaterThanOrEqual(6);
+    for (const id of ids) {
+      expect(agent[id], `controlTower.agent.${id}`).toBeTruthy();
+      expect(agent[`${id}Does`], `controlTower.agent.${id}Does`).toBeTruthy();
+    }
+
+    // Every quoted string on a `reasonKey:` line — a ternary contributes BOTH of its branches, and the
+    // branch that only appears when something is switched off is the one nobody renders while testing.
+    const reasons = [...body.matchAll(/reasonKey:[^\n]*/g)].flatMap((m) =>
+      [...m[0].matchAll(/'([A-Za-z]+)'/g)].map((q) => q[1]!),
+    );
+    expect(reasons.length, `reasons found: ${reasons.join(', ')}`).toBeGreaterThanOrEqual(8);
+    for (const key of reasons) expect(why[key], `controlTower.why.${key}`).toBeTruthy();
+  });
+
   it('distinguishes the AI steps from the rules-only ones in the drawing', () => {
     // The legend is the point of the illustration: an operator should see at a glance which parts can be
     // creative and which cannot.
