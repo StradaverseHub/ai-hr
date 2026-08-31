@@ -83,7 +83,8 @@ Two corollaries that are not negotiable and are the reason this is safe to expan
 
 ### 2.3 The proposal ledger — the substrate for self-learning
 
-One table, `ai_proposal`, written by every AI call site in the product:
+One table, `agent_proposal` (see the as-built note below on the name), written by every automated
+proposer in the product:
 
 | column | what it records |
 | --- | --- |
@@ -92,7 +93,7 @@ One table, `ai_proposal`, written by every AI call site in the product:
 | `input_digest` | hash of the facts the model saw — identical inputs become comparable across time and model versions |
 | `proposal` | the structured output, jsonb |
 | `adjudication` / `adjudication_reason` | **the machine's verdict** — accepted, or which check refused it |
-| `decision` / `decided_by` / `decided_at` | **the human's verdict** — approved, declined, or still open |
+| `decision` / `decided_by_user_id` / `decided_at` | **the human's verdict** — approved, declined, or still open |
 | `reversed_at` / `reversal_reason` | **later reality** — somebody undid it |
 | `model` / `provider` | so a regression can be attributed to a model change |
 
@@ -108,6 +109,40 @@ three different failures:
 
 A single "was it good?" column cannot distinguish "the model was wrong" from "the model was right and the
 human disagreed" from "everyone was wrong and reality corrected them a month later".
+
+**As built (r236, migration `0452`, `core/agent-proposal.ts`).** Four corrections and one caveat, all
+learned in the build:
+
+- **The table is `agent_proposal`, not `ai_proposal`.** ADR-0083 §2.5's action types are what §2.8's
+  autonomy criterion is measured over, and **none of them involves a model** — `close_fixed_upstream` is a
+  predicate. A ledger that excluded deterministic proposers would exclude the one type whose measurement
+  matters most. `provider` and `model` are nullable for exactly that reason.
+- **`reversed_at IS NULL OR decision = 'approved'` was unsound and a test caught it.** For an undecided
+  row the right branch is NULL, so the expression is `false OR NULL` = NULL — and **a CHECK rejects only
+  on FALSE, never on NULL.** It admitted precisely the row it forbids while reading as though it worked.
+  It is `IS NOT DISTINCT FROM` now. Any future constraint over a nullable column has the same trap.
+- **Recording runs in its own transaction and never throws into the caller.** A rejection almost always
+  happens inside an operation that then aborts; a row written in that transaction would roll back with it,
+  and the ledger would hold successes only — the pass rate structurally 100%, which is the exact inverse
+  of its purpose. The corollary is a caller requirement: **never record from inside an open transaction**,
+  since `withTenant` takes a second pooled connection.
+- **RLS splits read from insert, and the split is load-bearing in both directions.** Read is admin-only,
+  because a tenant-wide read would let any employee enumerate what the system proposes about their
+  colleagues — the surveillance surface ADR-0082 §2.7 refuses. Insert is tenant-wide, because §2.5's
+  nudge sweep runs in a system context and §2.7's triage runs in the employee's own session, and an
+  admin-only insert would make those writes match **zero rows, silently**.
+
+⚠️ **THE CAVEAT, AND IT AMENDS §2.8.** For `close_fixed_upstream` the **agreement rate is structurally
+1.0 and proves nothing**: the approval screen is a batch, so an operator who simply does not press the
+button leaves no trace, and a decline is unobservable. **The metric that means something for this type is
+the REVERSAL rate** — did the closure stick, or did the finding re-fire next cycle (§2.4)? So the autonomy
+criterion for a batch action type is reversal-led, not agreement-led. Making declines observable would
+need per-subject selection on the screen, which is a separate decision.
+
+**What has no caller yet, deliberately:** `recordDecision`, `recordReversal` and `proposalRates`. The
+first two belong with the surfaces that produce their signal (an admin saving a drafted rule; §2.4's
+recurrence sweep), and surfacing the rates is Phase 3 item 5 — a rate rendered before there is data to
+render is the "tune the thresholds" mistake in a new coat.
 
 **This is also the answer to the question that started this whole arc** — whether the control tower
 actually helps. Not a staffing ratio inferred from exception counts (ADR-0083 §5 already refuses to print

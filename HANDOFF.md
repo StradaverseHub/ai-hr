@@ -60,12 +60,14 @@ depends on has re-derived it.* Two corollaries that are not negotiable: **a mode
 `block`** (only `review`), and **adjudication failure is SILENT** — never "the AI said X but we could not
 verify it", which just moves the checking onto the reader.
 
-**ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): **1 the proposal ledger + the `adjudicate`
-contract — next, and the keystone** · 2 the readiness nudge agent (the headcount win: chasing people is
-where payroll time goes; ADR-0034's engine delivers it, and note its v1 addresses the event SUBJECT —
-HR-facing routing still needs the deferred reporting-graph resolver). Phase 2: 3 hypothesis detection ·
-4 input-side triage. Phase 3 (needs real history): 5 agreement measurement · 6 recurrence mining ·
-7 the first autonomy grant. **Not a build:** put the four missing call sites on the How it works page.
+**ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): 1 the proposal ledger + the `adjudicate`
+contract ✅ r236 · **2 the readiness nudge agent — next, and the headcount win** (chasing people is where
+payroll time goes; ADR-0034's engine delivers it, and note its v1 addresses the event SUBJECT — HR-facing
+routing still needs the deferred reporting-graph resolver; a kill switch, rate limit and opt-out are PART
+of that build, not a follow-up, because unlike r235's deferred one there is no button here). Phase 2:
+3 hypothesis detection · 4 input-side triage. Phase 3 (needs real history): 5 agreement measurement ·
+6 recurrence mining · 7 the first autonomy grant. **Not a build:** put the four missing call sites on the
+How it works page.
 
 ⚠️ **THE LEDGER'S THREE VERDICT COLUMNS MUST NOT BE COLLAPSED INTO ONE.** Machine-adjudicated,
 human-approved and later-reversed are three different truths and their combinations are three different
@@ -138,8 +140,8 @@ tile measures exceptions ÷ throughput, which is an exception-load estimate rath
 
 **BOARD: FIVE ITEMS, ALL `planned` AND AWAITING THE REPORTER — NOTHING BUILDING, NOTHING BUILDABLE.**
 No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
-`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** — r226,
-r227, r228 and r229 ALL shipped WITHOUT one.
+`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is **`0453`** — r236 took `0452`
+(`agent_proposal`), the first migration since `0451`; r226-r235 all shipped without one.
 
 ⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
 on a BLOCKED approved one). An item raised at `open` with no plan has NO reply path — `approveFeedbackPlan`
@@ -190,6 +192,74 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r236 (2026-09-01) — the proposal ledger: the AI loop stops being open. MIGRATION `0452`.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) Phase 1 item 1. Before this round there was **no
+edge anywhere in this codebase from an AI output back to an AI input** — the narrator wrote prose, the
+drafters drafted, the action layer proposed, and not one of them recorded what happened next. So nothing
+could improve without a developer editing a prompt, and nobody could answer the owner's actual question:
+does any of this help? `agent_proposal` is that edge, and it is the precondition for ADR-0083 §2.5's
+per-action autonomy (r235 shipped `AutonomyLevel` as a one-member union because there was nothing to
+measure).
+
+⚠️⚠️ **A CHECK CONSTRAINT THAT LOOKED RIGHT AND ENFORCED NOTHING — THE MOST TRANSFERABLE THING IN THIS
+ROUND.** `CHECK (reversed_at IS NULL OR decision = 'approved')` admits **exactly the row it forbids**. For
+an undecided row `decision = 'approved'` is **NULL**, so the expression is `false OR NULL` = NULL — and
+**a CHECK rejects only on FALSE, never on NULL.** It reads as if it works, it passes review, and it
+enforces nothing. `IS NOT DISTINCT FROM` is NULL-safe and always yields true or false. **Every future
+CHECK over a NULLABLE column has this trap**, and the only reason this one was caught is that the test
+asserted the refusal rather than the happy path.
+
+⚠️ **THE THREE VERDICT GROUPS ARE SEPARATE, AND 0452's CHECKS MAKE IT STRUCTURAL.** `adjudication` is THE
+MACHINE'S verdict, `decision` is A HUMAN'S, `reversed_at` is LATER REALITY. The dangerous combination is a
+high agreement rate ALONGSIDE a high reversal rate — the humans are rubber-stamping, and that reads as
+success in every other metric. A rejected proposal may carry no decision (it was never shown to anybody);
+a rejection must name which check refused it (or the pass rate is unactionable); a reversal is meaningless
+on something nobody approved.
+
+**FOUR PROPERTIES OF `core/agent-proposal.ts`, none incidental:**
+
+1. **Recording NEVER throws into the caller** — measurement is never worth breaking the feature it
+   measures. A ledger failure returns null.
+2. **Recording runs in its OWN transaction.** A rejection almost always happens inside an operation that
+   then aborts; a row written in that transaction would roll back with it and **the ledger would hold
+   successes only, pass rate structurally 100%** — the exact inverse of its purpose. ⚠️ The corollary is a
+   CALLER REQUIREMENT: **never record from inside an open `withTenant`**, which takes a second pooled
+   connection (pool exhaustion under load, deadlock if the outer tx holds a row the inner one needs). All
+   four shipped call sites record outside any transaction.
+3. **The id is generated in TypeScript, not by `RETURNING`** — the insert policy is `FOR INSERT` with no
+   `USING` (so it cannot widen the admin-only read), and `RETURNING` needs SELECT.
+4. **The facts are HASHED, never stored.** No second copy of employee data in a telemetry table.
+
+⚠️ **THE RLS SPLIT IS LOAD-BEARING IN BOTH DIRECTIONS.** Read is ADMIN-ONLY — a tenant-wide read would let
+any employee enumerate what the system proposes about their colleagues, which is the surveillance surface
+ADR-0082 §2.7 refuses. Insert is TENANT-WIDE — 0451's `assistant_usage` lesson applied before it bites:
+ADR-0084 §2.5's nudge sweep runs in a SYSTEM context and §2.7's triage runs in the EMPLOYEE'S OWN session,
+and an admin-only insert would make those writes match **zero rows, silently**. `DELETE` is revoked: an
+accuracy figure whose unflattering rows can be tidied away is not an accuracy figure, and nothing but
+`test/agent-proposal.test.ts` catches a dropped REVOKE.
+
+**FOUR TENANTS, AND THREE OF THEM COST NOTHING NEW.** `narrationIsFaithful`, `validatePayRule` and
+`validateReportSpec` were ALREADY adjudicators — this round only writes their verdicts down. The narrator
+was the ideal first one: it already produced both outcomes and threw both away (`rejected` was a number on
+a toast nobody could aggregate). The fourth is the action layer, where **the re-check IS the
+adjudication** — a subject whose cause came back is a REJECTED proposal, not a declined one; recording it
+as a decline would blame the operator and flatter the agreement rate.
+
+⚠️ **AND IT AMENDS ADR-0083 §2.8's AUTONOMY CRITERION.** For `close_fixed_upstream` the **agreement rate is
+structurally 1.0 and proves nothing** — the approval screen is a batch, so an operator who simply does not
+press the button leaves no trace and a decline is unobservable. **The REVERSAL rate is the metric that
+means anything for a batch action type.** Nothing writes it yet; Phase 3 item 6 does.
+
+**Every rate is `null` when its denominator is zero — never 0, never 1.** `anomaly_narration` can never
+carry a human decision (nobody approves prose), so its agreement rate is unmeasured for ever, and printing
+that as 0% would report the narrator as universally rejected. Same discipline as `impliedOperators`.
+
+**WHAT HAS NO CALLER YET, DELIBERATELY:** `recordDecision`, `recordReversal` and `proposalRates`. The
+first two belong with the surfaces that produce their signal; surfacing the rates is Phase 3 item 5, and a
+rate rendered before there is data to render is the "tune the thresholds" mistake in a new coat.
+
 
 ### r235 (2026-08-31) — the action layer: the first place an agent WRITES. NO MIGRATION.
 
