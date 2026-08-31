@@ -18,12 +18,20 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-31 (r226-r231 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-31 (r226-r232 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@2a0aedeb` IS WHAT RUNS ON PRODUCTION (r231, 2026-08-31)** — verified by a zero-change
+**`main@5e6336fa` IS WHAT RUNS ON PRODUCTION (r232, 2026-08-31)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 02:35:47 +0800.
-(Commits after `2a0aedeb` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 11:47:34 +0800.
+(Commits after `5e6336fa` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+
+**ADR-0074 SCOREBOARD, so nobody re-derives it.** 1 anomaly layer ✅ · 2 auto-clear gate ❌ REFUSED,
+see above · 3 nightly sweep ✅ (r230 — it had never been installed) · 4 exceptions queue ✅ + the
+cross-run Control Tower (r229) · 5 employee explanation agent ✅ (r232, `my_pay_change`) · 6 circuit
+breaker ✅ · 7 learning loop ❌ NOT YET POSSIBLE (needs resolved verdicts; there are none) · 8 MyInvois
+e-filing ❌ not started, only the identifier field exists. **Item 5 is the only one that attacks the
+ratio from the DEMAND side** — every other item makes exception CLEARING faster, which does nothing
+about the queue of people asking why their own payslip changed.
 
 ⚠️ **THE ASSISTANT IS REACHABLE BUT NOBODY HOLDS IT YET.** r231 shipped `/assistant` and the grant
 toggle on Users, so the path exists end to end — but production still has **0 assistant grants, 0
@@ -105,6 +113,56 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r232 (2026-08-31) — ADR-0074 item 5: "why is my pay different?" without a payroll person. NO MIGRATION.
+
+The item exists because **deflecting** that question is worth more than answering it faster. At 1000:1 it
+is what consumes a payroll team's day, and every other control-tower item makes exception CLEARING
+quicker — which does nothing about the queue of people asking about their own payslip. This is the first
+build that attacks the ratio from the demand side.
+
+**BUILT AS A REGISTRY TOOL, NOT A SCREEN**, so it inherits the whole r229 loop — the caller's own
+`SessionContext` (so RLS scopes it), the budget gate, the audit row, the refusal envelope — instead of
+growing a second path to payroll data with its own access story. `my_pay_change` takes a period, compares
+it against the previous period the asker was actually PAID for, and returns gross / deductions / net with
+the difference already worked out plus the same comparison per pay item.
+
+⚠️ **THE ARITHMETIC IS THE TOOL'S, NEVER THE MODEL'S.** ADR-0074's non-negotiable invariant, and it is
+also what makes the answer checkable: every figure an employee is told is a subtraction they can repeat
+against their own two payslips. Handing a model two numbers and asking it to subtract them is precisely
+what the ADR forbids, and it is how a wrong figure reaches somebody about their own wages.
+
+**FOUR DECISIONS, each of which reads as a detail and is not:**
+  - **A period is SUMMED ACROSS ITS RUNS.** Employees think in months; payroll thinks in runs, and a month
+    can carry a regular run plus a bonus. Comparing single runs answers "why is this PAYSLIP different",
+    a question nobody asked and whose answer ("because it is the bonus run") is not the one they need.
+  - **The comparison is the previous PAID period, never last calendar month.** A joiner, a leaver or an
+    unpaid month leaves a gap; stepping back one month finds nothing and reports a fall to zero — a false
+    alarm about someone's wages, delivered by a machine, with no human in the loop to catch it.
+  - **Unchanged pay items are DROPPED.** They are not why the pay is different, and twenty identical rows
+    bury the two that moved.
+  - **The release filter is mandatory**, the same one `my_payslip_summary` documents. `myPayslips` STAMPS
+    `released` rather than enforcing it. Without the filter the assistant explains a payslip the
+    employee's own screen refuses to show them, which is worse than a wrong screen: they cannot see what
+    it is talking about.
+
+**IT WILL NOT RETURN THE STATUTORY SPLIT.** Only component lines are projected out of `statutory`;
+EPF/SOCSO/PCB and the tax-relief record never leave. A deduction TOTAL that moved is reported and is
+usually the real answer, and the tool description tells the model to point at the payslip rather than
+guess which contribution changed.
+
+⚠️ **THREE GUARDS FIRED AND ALL THREE WERE RIGHT TO.** The frozen tool-list oracle (the name is APPENDED,
+never inserted — one reordered byte invalidates the cached prefix and costs ~10x per request while
+failing nothing else); the payroll-gated count 1 → 2; and the import allowlist in
+`test/assistant-tools-shape.test.ts`, whose property is "reaches the database only through core/read.ts,
+and holds no database handle at runtime". Adding `./payslip-earning-lines` does NOT weaken it — that
+module has **ZERO imports and no query surface at all**, verified before the allowlist was touched rather
+than after. **Check that emptiness before ever adding a sixth entry.**
+
+**TESTED AS THE EMPLOYEE, NOT AS AN ADMIN.** `myEmploymentIdsAll` resolves through `ctx.personId`, so the
+first run of these cases returned `no_employment` for all six — an admin context exercises a caller this
+tool can never actually have. The fixture now creates a real app_user for the employee's person and asks
+as them, which is the only shape that tests anything.
 
 ### r231 (2026-08-31) — ADR-0082 slice 4: the assistant becomes reachable at all. NO MIGRATION.
 
