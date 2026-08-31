@@ -1372,6 +1372,21 @@ grep — an empty result is a parser gap, not proof of no callers.
 
 ## Traps — the durable ones (each cost at least a round; several recurred AFTER being written down)
 
+- ⚠️ **A TEST THAT HARDCODES "THE FUTURE" IS A TIME BOMB, AND IT DETONATES AS A FALSE FAILURE IN AN
+  UNRELATED ROUND (r236, 2026-09-01).** `test/employment-movement.test.ts` asserted that a future-dated
+  increment writes nothing yet, with `effectiveDate: '2026-09-01'` written down. On 2026-09-01 the date
+  arrived, `createMovementEvent` correctly applied the change immediately, and the assertion failed
+  against a code path behaving exactly as designed — inside a gate for a change that touched nothing
+  near it. **The tell is a failure in a file the round did not touch, on a date boundary.** Fix: derive
+  the date from the clock (`new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10)`) and pass
+  the SAME value as the sweep's `today`.
+  **The class is wider than the one that fired.** It bites only where PRODUCTION CODE compares against the
+  wall clock — the movement family (`createMovementEvent` / `sweepDueMovements`, 21 test files) is the
+  main exposure. Tests comparing a hardcoded `effectiveFrom` against a hardcoded payroll `PERIOD`
+  (e.g. `test/payroll-basic-source.test.ts`) are date-STABLE and are not this. 153 hardcoded
+  `effectiveDate:` literals remain across the suite; they were NOT swept, and the gate is the oracle for
+  the next one to expire.
+
 - **MERGED IS NOT DEPLOYED, AND THIS FILE HAS ASSERTED OTHERWISE (r159).** r158 was merged to `main`,
   including migration `0403`, and never shipped; CURRENT STATE said "no pending deploy, nothing in
   flight" and the board still showed all three items `approved`. Every signal agreed and every signal

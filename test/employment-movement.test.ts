@@ -443,10 +443,19 @@ describe('createMovementEvent — the New Event dispatcher', () => {
   it('a future-dated pay change writes nothing until it applies, and never disturbs an earlier period', async () => {
     const hire = await hireOne();
     await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+
+    // ⚠️ THE EFFECTIVE DATE IS COMPUTED, NOT WRITTEN DOWN, AND THAT IS WHAT THIS COMMENT IS FOR. It was
+    // hardcoded as '2026-09-01' and this test SILENTLY INVERTED ON 2026-09-01: the date arrived, so
+    // createMovementEvent correctly applied the change straight away, and the "writes nothing yet"
+    // assertion failed against a code path behaving exactly as designed. **A test whose premise is "this
+    // date has not happened yet" must derive the date from the clock**, or it is a time bomb whose fuse is
+    // the gap between writing it and reaching it — and it detonates as a false failure in an unrelated
+    // round, which is the most expensive way for it to be found.
+    const future = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
       kind: 'increment',
-      effectiveDate: '2026-09-01',
+      effectiveDate: future,
       basicSalary: 4800,
     });
 
@@ -465,10 +474,11 @@ describe('createMovementEvent — the New Event dispatcher', () => {
     expect(pending[0].validTo).toBeNull();
 
     // On the effective date the sweep applies it.
-    await sweepDueMovements(adminCtx(b), { today: '2026-09-01' });
+    await sweepDueMovements(adminCtx(b), { today: future });
     const comps = await compsOf();
     expect(comps).toHaveLength(2);
-    // The window a June payroll run resolves is still the OLD record — the new one starts in September.
+    // The window a June-2026 payroll run resolves is still the OLD record — the new one starts on the
+    // effective date, which is always later than June 2026 because it is always later than today.
     const june = comps.filter((c) => c.validFrom <= '2026-06-01' && (c.validTo == null || c.validTo > '2026-06-01'));
     expect(june).toHaveLength(1);
     expect(june[0].basicSalary).toBe('4000.00');
