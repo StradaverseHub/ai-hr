@@ -315,12 +315,17 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */
-export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string>> = {
+export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> = {
   'payroll.reset_enabled': 'PAYROLL_RESET_ENABLED',
   'payroll.unlock_enabled': 'PAYROLL_UNLOCK_ENABLED',
   'payroll.individual_txn_pay_enabled': 'INDIVIDUAL_TXN_PAY_ENABLED',
   'audit.hash_chain_enabled': 'AUDIT_HASH_CHAIN_ENABLED',
   'feedback.ai_planning_enabled': 'FEEDBACK_AI_PLANNING_ENABLED',
+  // `null` = NO env gate ever, the same meaning it carries in LEGACY_MODULE_ENV_GATES above. This
+  // setting is NEW (ADR-0084 §2.5, r237) rather than migrated from a deployment flag, so there is no
+  // legacy value to honour — and null keeps it out of `legacyEnabledSettingsIn`, which is the correct
+  // outcome: an automated chaser must never arrive switched on by a backfill.
+  'notifications.readiness_nudge_enabled': null,
 };
 
 /**
@@ -420,7 +425,12 @@ export function legacyEnabledModulesIn(env: EnvLike): string[] {
 /** The setting rows this process's environment says are on. Same argument as the module helper. */
 export function legacyEnabledSettingsIn(env: EnvLike): { key: string; value: unknown }[] {
   return Object.entries(LEGACY_ENABLED_SETTINGS)
-    .filter(([key]) => env[LEGACY_SETTING_ENV_GATES[key]] === 'true')
+    .filter(([key]) => {
+      // A null gate means "never came from an env flag" — it can never be legacy-enabled, and indexing
+      // `env` with null would be a silent `undefined` lookup rather than a stated decision.
+      const gate = LEGACY_SETTING_ENV_GATES[key];
+      return gate !== null && gate !== undefined && env[gate] === 'true';
+    })
     .map(([key, value]) => ({ key, value }));
 }
 

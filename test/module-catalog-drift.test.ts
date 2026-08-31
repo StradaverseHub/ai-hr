@@ -332,6 +332,17 @@ describe('module catalog — the pack correspondence, both directions', () => {
         expect(key in LEGACY_ENABLED_SETTINGS, `'${key}' is excluded from parity by ADR-0030 §3`).toBe(false);
         continue;
       }
+      if (gate === null) {
+        // r237 — `null` means the setting NEVER came from a deployment flag, so no env file can turn it
+        // on and it must not be in the legacy backfill either. Asserted rather than skipped: a new
+        // setting sneaking into LEGACY_ENABLED_SETTINGS would switch itself on for every pre-existing
+        // tenant, which for an automated chaser is precisely the outcome the default-off exists to stop.
+        expect(
+          key in LEGACY_ENABLED_SETTINGS,
+          `setting '${key}' has no env gate, so it cannot be legacy-enabled for existing tenants`,
+        ).toBe(false);
+        continue;
+      }
       const on = repoShipsFlagOn(gate);
       expect(
         key in LEGACY_ENABLED_SETTINGS,
@@ -486,7 +497,7 @@ describe('module catalog — the pack correspondence, both directions', () => {
       );
     const gates = [
       ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
-      ...Object.values(LEGACY_SETTING_ENV_GATES),
+      ...Object.values(LEGACY_SETTING_ENV_GATES).filter((g): g is string => g !== null),
     ];
     // INVERTED BY SLICE 3, deliberately — and this is the more valuable direction.
     //
@@ -520,6 +531,10 @@ describe('module catalog — the pack correspondence, both directions', () => {
     // forces the entry to be deleted in the same commit that migrates the gate.
     for (const [key, owningSlice] of Object.entries(DEFERRED_ENV_GATES)) {
       const gate = LEGACY_SETTING_ENV_GATES[key];
+      // A DEFERRED gate is by definition still a real env var. `null` (r237's "never had a flag") here
+      // would mean it was migrated and its DEFERRED_ENV_GATES entry outlived the migration — the very
+      // stale entry this loop exists to force out. Same idiom as DEFERRED_GATE_NAMES above.
+      if (gate == null) throw new Error(`DEFERRED_ENV_GATES names '${key}', which has no env gate`);
       expect(
         envReadRe(gate).test(sources),
         `process.env.${gate} is listed in DEFERRED_ENV_GATES ("${owningSlice}") but no application ` +
@@ -1207,7 +1222,7 @@ describe('the env-gate divergence between seedBase and the suite', () => {
     // that reason; listing them as unconverted work would be a lie the ratchet could never retire.
     const gates = [
       ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
-      ...Object.values(LEGACY_SETTING_ENV_GATES),
+      ...Object.values(LEGACY_SETTING_ENV_GATES).filter((g): g is string => g !== null),
     ]
       .filter((g) => !DEFERRED_GATE_NAMES.has(g))
       .sort();
@@ -1270,7 +1285,7 @@ describe('the env-gate divergence between seedBase and the suite', () => {
     // test/audit-hash-chain.test.ts legitimately sets AUDIT_HASH_CHAIN_ENABLED for its own run.
     for (const gate of [
       ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
-      ...Object.values(LEGACY_SETTING_ENV_GATES),
+      ...Object.values(LEGACY_SETTING_ENV_GATES).filter((g): g is string => g !== null),
     ].filter((g) => !DEFERRED_GATE_NAMES.has(g))) {
       expect(process.env[gate], `${gate} must be deleted in test/env.ts`).toBeUndefined();
     }

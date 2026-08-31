@@ -63,7 +63,16 @@ export const NUDGE_AUDIENCE: Record<ReadinessGapId, NudgeAudience> = {
   no_compensation: 'hr',
 };
 
-/** The tenant switch. Default `false` — see the header: here there is no button, so this is the button. */
+/**
+ * The tenant switch. Default `false` — see the header: here there is no button, so this is the button.
+ *
+ * ⚠️ EXPORTED FOR CALLERS THAT NEED TO NAME IT (tests, docs) — but the `settingEnabled` call below passes
+ * the STRING LITERAL, not this constant, and that duplication is deliberate.
+ * `test/module-catalog-drift.test.ts` scans call sites for a literal key and asserts every one is
+ * catalogued; a call through a variable is invisible to it, so "tidying" the literal away here would
+ * quietly punch a hole in the guard that catches an uncatalogued key (which is a 500, not a disabled
+ * feature — `getSetting` throws a bare Error for an unknown key).
+ */
 export const NUDGE_SETTING_KEY = 'notifications.readiness_nudge_enabled';
 
 /** One nudge per person per gap per fortnight. A chaser that arrives daily is a chaser people filter. */
@@ -257,7 +266,8 @@ export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSw
     disabled: false,
     cappedOut: false,
   };
-  if (!settingEnabled(ctx, NUDGE_SETTING_KEY)) return { ...empty, disabled: true };
+  // The literal, not NUDGE_SETTING_KEY — see that constant's note.
+  if (!settingEnabled(ctx, 'notifications.readiness_nudge_enabled')) return { ...empty, disabled: true };
 
   // UNCAPPED, deliberately. `recordReadiness`'s default trims each gap to 25 names so a screen stays
   // readable; iterating that list would chase only the first 25 people per gap and report a clean run.
