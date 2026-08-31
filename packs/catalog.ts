@@ -188,6 +188,12 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'payroll.individual_txn_pay_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: true, customerVisible: true, description: 'Let the payroll kernel pay and deduct the one-off transaction ledger, instead of keeping it record-only.', sortOrder: 30 },
   { key: 'audit.hash_chain_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Tamper-evident hash chaining over the audit log. Integrity control — Stradaverse-managed, and one-way once enabled (slice 8).', sortOrder: 100 },
   { key: 'feedback.ai_planning_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: false, description: 'In-app AI drafting of improvement plans. Operator tooling, not a customer feature.', sortOrder: 110 },
+  // ADR-0084 §2.5 — the nudge agent's kill switch, and the reason it DEFAULTS OFF. Every other automated
+  // surface in this product waits for somebody to press a button; this one messages real employees on a
+  // schedule with nobody pressing send, so it must be switched on deliberately per tenant rather than
+  // arrive with the module. `scope: 'tenant'` so 0313's tenant_setting_write policy lets an admin change
+  // it; `defaultOnInstall: false` so buying notifications never starts a chaser nobody asked for.
+  { key: 'notifications.readiness_nudge_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system chase incomplete employee records on a schedule — the employee for their own bank details, HR for everything only HR can key in.', sortOrder: 120 },
 ];
 
 /*

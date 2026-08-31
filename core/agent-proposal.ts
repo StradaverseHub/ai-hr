@@ -61,7 +61,16 @@ export type ProposalTypeId =
   /** A report spec drafted from an admin's sentence, adjudicated by `validateReportSpec`. */
   | 'report_spec'
   /** ADR-0083 §2.5 — the action layer. DETERMINISTIC: no model, hence null provider/model. */
-  | 'close_fixed_upstream';
+  | 'close_fixed_upstream'
+  /** ADR-0084 §2.5 — a drafted nudge BODY, one per gap per sweep. Adjudicated by `nudgeIsFaithful`. */
+  | 'readiness_nudge'
+  /**
+   * ADR-0084 §2.5 — one nudge raised about one person's one gap. DETERMINISTIC, and **the only type in
+   * the product with a real agreement rate**: the human's verdict is observable in the record itself,
+   * because the gap either closed within the settle window or it did not. Everything else either has no
+   * human decision (`anomaly_narration`) or cannot observe a decline (`close_fixed_upstream`).
+   */
+  | 'readiness_fix';
 
 /** The adjudication contract (§2.4). Every proposal type supplies one; the reason is stored on failure. */
 export type Adjudication = { ok: true } | { ok: false; reason: string };

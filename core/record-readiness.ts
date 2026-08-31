@@ -135,7 +135,20 @@ export function gapsForRecord(r: ReadinessInput): ReadinessGapId[] {
  * employee is how a readiness screen becomes the slowest page in the product. RLS scopes it to the
  * tenant; `scopedAdmin` on the screen decides who may open it.
  */
-export async function recordReadiness(ctx: SessionContext): Promise<ReadinessView> {
+export async function recordReadiness(
+  ctx: SessionContext,
+  /**
+   * How many names each gap carries back. Defaults to `PEOPLE_PER_GAP`, which exists so a SCREEN stays
+   * readable — the `count` beside it is always the true total.
+   *
+   * ⚠️ A NON-SCREEN CALLER MUST PASS ITS OWN LIMIT. ADR-0084's nudge agent iterated the default list and
+   * therefore chased only the first 25 people per gap, silently, on a tenant of any size — a sample
+   * treated as a total, which is the exact failure the `count`/`people` split was introduced to prevent
+   * and which it caused here instead. Caught by `test/readiness-nudge.test.ts`'s blast-radius case.
+   */
+  opts?: { peopleLimit?: number },
+): Promise<ReadinessView> {
+  const peopleLimit = opts?.peopleLimit ?? PEOPLE_PER_GAP;
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -194,7 +207,7 @@ export async function recordReadiness(ctx: SessionContext): Promise<ReadinessVie
         count: people.length,
         // Sorted before capping, so the names shown are stable between loads rather than whatever the
         // query happened to return first.
-        people: [...people].sort((a, b) => a.name.localeCompare(b.name)).slice(0, PEOPLE_PER_GAP),
+        people: [...people].sort((a, b) => a.name.localeCompare(b.name)).slice(0, peopleLimit),
       }))
       // Worst consequence first, then biggest — "payroll cannot run for these 3" outranks "40 are missing
       // a SOCSO number", because one stops a cycle and the other stops a filing.

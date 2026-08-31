@@ -8,6 +8,11 @@
 // r83b 941c9dac: the same pass also APPLIES FUTURE-DATED MOVEMENTS (sweepDueMovements) — a promotion or
 // transfer keyed with a future effective date is held Pending and takes effect on the morning of that
 // date. Same job for the same reason: a second cron line is a second thing to forget to install.
+// r237 (ADR-0084 §2.5): the SAME nightly pass also runs the READINESS NUDGE AGENT, and folding it in
+// rather than adding a cron line is a deliberate reading of this file's own advice — "a second cron line
+// is a second thing to forget to install". r230 is the proof: the anomaly sweep sat BUILT, DOCUMENTED and
+// never installed in the crontab for six weeks. The nudge agent is additionally OFF per tenant by default
+// (notifications.readiness_nudge_enabled), so an installed job with no opted-in tenant sends nothing.
 // R51 722904dc/71b9143a: the SAME nightly pass also drives LEAVE APPROVAL ESCALATION
 // (sweepLeaveApprovalEscalations) — leave requests whose current approval step has sat pending past the
 // company's configured working-day threshold get a bell notification for the next approver. One job, no
@@ -20,6 +25,7 @@ import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
+import { sweepReadinessNudges } from '../core/readiness-nudge';
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
@@ -49,6 +55,9 @@ async function main() {
   let totalReminders = 0;
   let totalEscalated = 0;
   let totalMovements = 0;
+  let totalNudges = 0;
+  let totalNudgesSettled = 0;
+  let nudgeTenants = 0;
   let failures = 0;
   for (const t of tenants) {
     try {
@@ -83,16 +92,35 @@ async function main() {
       // run twice on the same day: due-ness is read from the ledger, and applying appends the record that
       // removes the movement from the due set (migration 0329 makes that unique).
       const { applied: movementsApplied, failed: movementsFailed } = await sweepDueMovements(ctx, { today });
-      // Project the new started/reminder/escalation events into notifications now — gated on the
+      // ADR-0084 §2.5 — chase incomplete records. Runs BEFORE dispatch so the nudge events it appends
+      // become notifications in this same pass rather than waiting a day for the next admin page load.
+      // Returns `disabled` for a tenant that has not switched it on, which is the default and is not a
+      // failure; those tenants are simply not counted below.
+      const nudge = await sweepReadinessNudges(ctx);
+      if (!nudge.disabled) nudgeTenants += 1;
+
+      // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
       await dispatchNotifications(ctx);
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
       totalMovements += movementsApplied;
+      totalNudges += nudge.sent;
+      totalNudgesSettled += nudge.settled;
       console.log(
         `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${movementsApplied} movement(s) applied` +
-          (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : ''),
+          (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : '') +
+          // Every nudge counter is printed, not just the flattering one: `orphaned` means a real gap with
+          // nobody to tell, and `cappedOut` means work was left undone. A sweep that reports only what it
+          // did reads as complete when it was truncated (AGENTS: no silent caps).
+          (nudge.disabled
+            ? ', nudges off'
+            : `, ${nudge.sent} nudge(s)` +
+              (nudge.cooled > 0 ? `, ${nudge.cooled} in cooldown` : '') +
+              (nudge.settled > 0 ? `, ${nudge.settled} outcome(s) judged` : '') +
+              (nudge.orphaned > 0 ? ` — ⚠ ${nudge.orphaned} gap(s) with NO ONE to notify` : '') +
+              (nudge.cappedOut ? ' — ⚠ CAPPED, more remain' : '')),
       );
     } catch (e) {
       failures += 1;
@@ -100,7 +128,7 @@ async function main() {
     }
   }
   console.log(
-    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied across ${tenants.length} tenant(s), ${failures} failure(s).` +
+    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied, ${totalNudges} nudge(s) across ${nudgeTenants} opted-in tenant(s), ${totalNudgesSettled} nudge outcome(s) judged, across ${tenants.length} tenant(s), ${failures} failure(s).` +
       (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a
@@ -113,7 +141,15 @@ async function main() {
       tenantsProcessed: tenants.length,
       tenantsFailed: failures,
       tenantsSkipped: scope.skipped.length,
-      result: { opened: totalOpened, reminders: totalReminders, escalated: totalEscalated, movementsApplied: totalMovements },
+      result: {
+        opened: totalOpened,
+        reminders: totalReminders,
+        escalated: totalEscalated,
+        movementsApplied: totalMovements,
+        nudgesSent: totalNudges,
+        nudgeOutcomesJudged: totalNudgesSettled,
+        nudgeTenants,
+      },
     });
   } catch (e) {
     console.error(`review:sweep — could not write the run log: ${(e as Error).message}`);

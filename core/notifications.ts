@@ -363,6 +363,31 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     recipients: async (_tx, ev, payload) =>
       payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
   },
+  // ADR-0084 §2.5 — the nudge agent. `body` is rendered by the SWEEP, not here, because it may be a
+  // model draft that passed `nudgeIsFaithful` — and if it did not, the sweep already substituted the
+  // deterministic template, so by the time it reaches this registry there is exactly one body and it is
+  // trustworthy. Rendering here would have to re-decide that, and two places deciding is how they drift.
+  'readiness.nudge-raised': {
+    kind: 'readiness.nudge',
+    // Its OWN category, so the existing per-category preference is a precise opt-out: somebody can mute
+    // record chasers without muting leave approvals.
+    category: 'readiness',
+    render: (p) => ({
+      severity: 'warning',
+      title: p?.audience === 'employee' ? 'Something is missing from your record' : 'An employee record needs completing',
+      // The fallback is unreachable in practice (the sweep never emits without a body) and is here so a
+      // hand-replayed or malformed event degrades to a true sentence rather than the string "undefined".
+      body: typeof p?.body === 'string' && p.body.length > 0 ? p.body : 'A record is incomplete and is holding up payroll or a statutory filing.',
+      // Deep-link to the screen the RECIPIENT can actually act on — the whole point of the routing split.
+      linkPath: p?.audience === 'employee' ? '/me' : '/control-tower/readiness',
+    }),
+    recipients: async (tx, ev, payload) => {
+      if (!ev.subjectEmploymentId) return [];
+      if (payload?.audience === 'employee') return [ev.subjectEmploymentId];
+      if (payload?.audience === 'hr') return hrAdminsForCompany(tx, ev.subjectEmploymentId);
+      return [];
+    },
+  },
   'profile-change.approved': {
     kind: 'profile.approved',
     category: 'profile',
