@@ -18,12 +18,14 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-31 (r226-r235 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-09-01 (r226-r236 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@af2b5e6a` IS WHAT RUNS ON PRODUCTION (r235, 2026-08-31)** — verified by an
+**`main@56323383` IS WHAT RUNS ON PRODUCTION (r236, 2026-09-01)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX, and `/control-tower/actions` answers 401 rather
-than 404, so the new route is in the production build. Build stamped 2026-08-31 21:59:09 +0800.
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-09-01 02:52:07 +0800.
+**Migrations `0452` + `0453` VERIFIED APPLIED, not assumed:** watermark `1781862553000`, 369 rows,
+`agent_proposal` present with RLS on, 6 CHECKs, three policies (read:SELECT / insert:INSERT /
+decide:UPDATE) and `has_table_privilege(ai_hr_app, 'DELETE') = false` — the REVOKE landed.
 **The dry run reports ONE entry, `next-env.d.ts`, and it is not a stale file** — Next rewrites it per
 build mode, so a box that ran `next build` has `./.next/types/routes.d.ts` where a tree that ran
 `pnpm dev` has `./.next/dev/types/routes.d.ts`. It is gitignored. Everything else is zero.
