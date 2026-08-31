@@ -266,6 +266,18 @@ Any failure (no provider, outage, unfaithful draft) falls back to the shipped te
 closes. **A tenant with no provider records NOTHING**: the template path is not a model failure and
 counting it as one would drag the pass rate down measuring the wrong thing.
 
+⚠️ **ADDING A SETTING COSTS MORE THAN A CATALOG LINE — THREE GUARDS FIRE, AND ALL THREE ARE RIGHT.**
+Budget for it next time: (1) `LEGACY_SETTING_ENV_GATES` must name what gates the setting TODAY, and a
+setting that never came from a deployment flag declares **`null`** — the meaning `LEGACY_MODULE_ENV_GATES`
+already carried, newly allowed for settings, and the thing that keeps it out of `legacyEnabledSettingsIn`
+so **a chaser can never arrive switched on by a backfill**. (2) The `settingEnabled(...)` call must pass a
+**STRING LITERAL**, not a constant — `test/module-catalog-drift.test.ts` scans call sites for literals and
+a variable key is invisible to it, which would hide an uncatalogued key (a 500 on the route, since
+`getSetting` throws a bare Error). The literal is duplicated beside the exported constant on purpose and
+says so, or somebody will tidy it away. (3) Three guard sites assumed a gate is non-null; each was fixed
+so the ASSERTION STILL FIRES — a null-gated setting must have no legacy row and no `tenant_setting` row —
+rather than skipping, which would have made the guards quietly partial.
+
 **BODIES ARE ENGLISH-ONLY, DIVERGING FROM THE ADR** — `core/notifications.ts` renders a body ONCE and
 STORES it, so per-reader locale is a change to ADR-0034's engine, not to this agent. Recorded in 0084's
 as-built note rather than quietly dropped.
