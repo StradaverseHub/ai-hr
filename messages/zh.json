@@ -303,7 +303,10 @@
     "payrollBackPay": "补发工资",
     "payrollStatutoryAdjustment": "法定金额调整",
     "payrollControlTower": "控制塔",
-    "assistant": "智能助理"
+    "assistant": "智能助理",
+    "aiControlTower": "AI 控制塔",
+    "controlTowerOverview": "总览",
+    "controlTowerHow": "运作方式"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -6052,7 +6055,9 @@
       "colWaiting": "等待人工",
       "openQueue": "打开队列",
       "notChecked": "未检查",
-      "noRuns": "没有已处理的运行。在有运行被处理之前，控制塔没有可监控的对象。"
+      "noRuns": "没有已处理的运行。在有运行被处理之前，控制塔没有可监控的对象。",
+      "domainsLine": "{total} 个领域中有 {live} 个已启用。",
+      "howItWorksLink": "运作方式"
     }
   },
   "admin": {
@@ -11242,5 +11247,88 @@
     "err_budget_daily": "您今天的提问次数已用完。请明天再试。",
     "err_invalid_question": "请输入问题，并保持在 2000 字符以内。",
     "err_provider_error": "无法连接助理。请重试。"
+  },
+  "controlTower": {
+    "howTitle": "控制塔的运作方式",
+    "howDescription": "有哪些环节、按什么顺序运行、哪些部分使用 AI，以及现在有哪些已启用。",
+    "backToTower": "返回控制塔",
+    "loopTitle": "运作闭环",
+    "loopIntro": "每个周期都执行相同的五个步骤。其中只有一步涉及 AI，且没有任何一步会自行做决定。",
+    "loopAlt": "五个步骤：执行检查、记录发现、AI 用简明文字说明、由人决定、结果回馈。",
+    "step1Title": "执行检查",
+    "step1Sub": "规则与计算",
+    "step2Title": "记录发现",
+    "step2Sub": "连同触发的数字",
+    "step3Title": "生成说明",
+    "step3Sub": "AI 用简明文字撰写",
+    "step4Title": "由人决定",
+    "step4Sub": "接受、修正，或标记为误报",
+    "step5Title": "记录结果",
+    "step5Sub": "衡量成效",
+    "loopBack": "人的判断，正是我们据以得知检查设定是否恰当的依据。",
+    "legendDeterministic": "仅规则 — 不涉及 AI",
+    "legendLlm": "使用 AI",
+    "legendHuman": "需要人处理",
+    "agentsTitle": "已启用的部分",
+    "agentsIntro": "直接读取自您的实际设置，而非某份写好的清单。若显示未启用，原因就在旁边。",
+    "statusOn": "已启用",
+    "statusOff": "未启用",
+    "statusByDesign": "按设计关闭",
+    "kind": {
+      "deterministic": "仅规则",
+      "llm": "使用 AI"
+    },
+    "agent": {
+      "detectors": "各项检查",
+      "detectorsDoes": "查看已完成薪资运行中的每位员工，判定为通过、需复核或必须阻止。不涉及 AI，相同数字的结论始终一致。",
+      "sweep": "每晚运行",
+      "sweepDoes": "每晚 02:30 执行检查，让您打开时队列已就绪，而不必等人手动点击。",
+      "narrator": "说明生成",
+      "narratorDoes": "把一条发现转成可读的句子。它只能使用已记录的数字 — 若产生这些数字无法支持的数值，该句子会被丢弃而不会显示。",
+      "assistant": "智能助理",
+      "assistantDoes": "回答员工关于自身记录的问题 — 假期、薪资，以及薪资为何变动 — 使他们无需询问他人。",
+      "autonomy": "自主执行",
+      "autonomyDoes": "在无人参与下通过或更改任何内容。本系统目前不做这件事。"
+    },
+    "why": {
+      "detectorsOn": "在每次已处理的薪资运行上执行。",
+      "moduleOff": "您的方案不含薪资模块，因此无内容可检查。",
+      "sweepOn": "最近两天内已运行。",
+      "sweepStale": "超过两天未运行 — 排程可能已停止。请检查该夜间任务。",
+      "sweepNever": "从未运行。在此之前队列会一直为空。",
+      "narratorOn": "已设置供应商，且所有发现均已生成说明。",
+      "narratorReady": "已设置供应商。说明会在您于异常画面提出要求时生成。",
+      "noProvider": "未设置 AI 供应商，因此无法生成说明。其余功能照常 — 您会看到数字，只是没有文字说明。",
+      "assistantOn": "您已有使用助理的权限。",
+      "assistantNoGrant": "尚未为您启用。管理员会在「管理 → 用户」中逐人开通。",
+      "autonomyByDesign": "刻意关闭。未经人工，任何内容都不会被通过或更改；日后也只会逐项开放，且须先证明系统与贵方人员的判断足够一致。"
+    },
+    "domainsTitle": "监控范围",
+    "domainsIntro": "薪资是第一个领域。同一套机制可扩展到其他领域，此处列出以便您了解后续规划，而非误以为薪资就是全部。",
+    "domainStatus": {
+      "live": "已启用",
+      "planned": "规划中"
+    },
+    "domain": {
+      "payroll": "薪资运行",
+      "payrollDoes": "检查每次已完成的薪资运行，找出看起来有误的数字、缺失的银行或税务资料，以及无考勤却有薪资的情形。",
+      "readiness": "档案完备性",
+      "readinessDoes": "将持续检查每位员工的档案，而不只在发薪时 — 让缺失的银行账户在阻碍任何人发薪之前很久就被发现并补齐。",
+      "onboarding": "入职",
+      "onboardingDoes": "将在新员工首次发薪前检查其档案是否完整正确，而不是在发薪过程中才发现。",
+      "compliance": "法定变更",
+      "complianceDoes": "将监控缴纳比率与表格的变更，并准备好更新供您批准。"
+    },
+    "trigger": {
+      "after_a_payroll_run": "于薪资运行后执行",
+      "nightly": "每晚执行",
+      "on_change": "档案变更时执行"
+    },
+    "checksCount": "{n} 项检查",
+    "promisesTitle": "本系统不会做的两件事",
+    "promise1": "AI 从不计算您的薪资。",
+    "promise1Body": "每一个数字 — 薪金、税款、缴纳、加班 — 都由薪资引擎计算，每次算法一致，并以已知答案验证。AI 只用于描述已经算好的数字，无法改动它。",
+    "promise2": "AI 从不自行做决定。",
+    "promise2Body": "通过、标记还是阻止，都由固定规则在 AI 介入之前判定，说明文字无法改变该判定。未经人工，任何内容都不会被通过、支付或更改。"
   }
 }

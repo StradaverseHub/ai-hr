@@ -517,10 +517,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // (It did fail here first, on the gate immediately after the page was written, which is the guard
       // working exactly as intended.)
       '/payroll/[batchId]/anomalies',
-      // ADR-0074 — the Control Tower, the cross-run home for the queue above. Same requireAdmin guard,
-      // and registered here for the same reason its sibling is: a guarded page with no matrix column
-      // fails test/function-access.test.ts rather than becoming a screen nobody can grant or revoke.
-      '/payroll/control-tower',
+      // ADR-0083 r233 — the Control Tower MOVED to its own top-level section, /control-tower, and gained
+      // an explainer beside it. Both carry requireAdmin, so both need a column here or
+      // test/function-access.test.ts fails rather than letting a guarded screen become one nobody can
+      // grant or revoke. `/payroll/control-tower` is now a redirect with no guard of its own and is
+      // deliberately NOT listed — the matrix tracks guarded screens, not forwards.
+      '/control-tower',
+      '/control-tower/how-it-works',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.

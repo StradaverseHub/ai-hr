@@ -60,11 +60,15 @@ const EXPECTED_SET = [
   // NEW screen, so the guard's promise ("no destination lost, no href renamed") is untouched: every
   // original entry above and below is character for character what it was.
   { href: '/payroll/back-pay', labelKey: 'payrollBackPay' },
-  // ADR-0074 — an ADDITION, like statutory-forms / individual-payslip / loans / back-pay / statutory-
-  // adjustment. The Control Tower is a NEW screen: the cross-run home for the anomaly queue, which had
-  // only ever hung off one run at a time. Every original entry above and below is character for
-  // character what it was, so the guard's promise ("no destination lost, no href renamed") stands.
-  { href: '/payroll/control-tower', labelKey: 'payrollControlTower' },
+  // ADR-0083 r233 — `/payroll/control-tower` is REMOVED from this set, the second removal it has ever
+  // taken (efe1d230's /payroll/guide was the first). Recorded here rather than quietly dropped, because a
+  // deletion from this list is exactly what this guard exists to catch.
+  //
+  // IT IS A MOVE, NOT A LOSS, WHICH IS WHY THE GUARD'S PROMISE SURVIVES. The screen was promoted to its
+  // own top-level section at /control-tower (a control plane whose first domain is payroll, ADR-0083
+  // §2.2). The old href still RESOLVES — app/payroll/control-tower/page.tsx forwards to the new one — so
+  // no bookmark breaks; it simply no longer appears in this menu. Every entry that came from the retired
+  // tab strip is untouched, character for character.
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
   // 169e3c24 — an ADDITION to the set, like statutory-forms above. Every original entry is untouched, so
   // the guard's promise ("no destination lost, no href renamed") is not weakened by listing it.

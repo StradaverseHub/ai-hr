@@ -14,6 +14,7 @@ import {
   Clock,
   FileBarChart,
   Hash,
+  Gauge,
   Sparkles,
   LayoutDashboard,
   ListChecks,
@@ -186,6 +187,11 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ...(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const),
   ...CLAIMS_LINKS.map((l) => [l.href, 'claims'] as const),
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
+  // ADR-0083 r233 — the Control Tower left the payroll pack's nav, so the flatMap above no longer reaches
+  // it. Still payroll-gated because payroll is its only LIVE domain: a tenant without it would open a
+  // tower with nothing in it. When a second adapter lands this becomes "any registered domain".
+  ['/control-tower', 'payroll'] as const,
+  ['/control-tower/how-it-works', 'payroll'] as const,
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
   ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
   // deec1691 — the ONE hand-written entry, and it has to be: `system_explorer` is a catalog module
@@ -317,6 +323,23 @@ const GROUPS: Group[] = [
       // moved into admin-gated Administration, because the group gate would hide them from every
       // non-admin manager. They mount by const reference from the attendance pack's navLinks.
       ...ATTENDANCE_MANAGE_ROWS,
+    ],
+  },
+  {
+    // ADR-0083 r233 — the Control Tower promoted OUT of the Payroll menu into its own section. It was a
+    // payroll row while payroll was the only domain it watched; it is a control plane for operational HR
+    // of which payroll is the FIRST adapter and not the subject (§2.2), and leaving it under Payroll
+    // taught every reader the opposite. Its own group rather than a node inside Administration because
+    // burying a control plane under "Administration" is how it came to look like a payroll feature.
+    // `adminOnly` mirrors the route guard (requireAdmin on both pages), not a preference.
+    labelKey: 'aiControlTower',
+    adminOnly: true,
+    items: [
+      { href: '/control-tower', labelKey: 'controlTowerOverview', icon: Gauge, adminOnly: true, exactHref: true },
+      // The explainer is a first-class row rather than a link buried on the overview: "what is switched
+      // on, and which parts involve a model" is the question an admin asks BEFORE trusting the queue, so
+      // it must be reachable without first reading the thing it explains.
+      { href: '/control-tower/how-it-works', labelKey: 'controlTowerHow', icon: BookOpen, adminOnly: true },
     ],
   },
   {

@@ -303,7 +303,10 @@
     "payrollBackPay": "Truy lĩnh",
     "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định",
     "payrollControlTower": "Trung tâm điều hành",
-    "assistant": "Trợ lý"
+    "assistant": "Trợ lý",
+    "aiControlTower": "Trung tâm điều hành AI",
+    "controlTowerOverview": "Tổng quan",
+    "controlTowerHow": "Cách hoạt động"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -6052,7 +6055,9 @@
       "colWaiting": "Chờ người xử lý",
       "openQueue": "Mở hàng đợi",
       "notChecked": "Chưa kiểm tra",
-      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý."
+      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
+      "domainsLine": "{live} trên {total} lĩnh vực đang hoạt động.",
+      "howItWorksLink": "Cách hoạt động"
     }
   },
   "admin": {
@@ -11242,5 +11247,88 @@
     "err_budget_daily": "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng thử lại vào ngày mai.",
     "err_invalid_question": "Vui lòng viết câu hỏi và giữ dưới 2000 ký tự.",
     "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại."
+  },
+  "controlTower": {
+    "howTitle": "Trung tâm điều hành hoạt động thế nào",
+    "howDescription": "Những gì chạy, theo thứ tự nào, phần nào dùng AI, và hiện đang bật những gì.",
+    "backToTower": "Quay lại Trung tâm điều hành",
+    "loopTitle": "Vòng lặp",
+    "loopIntro": "Mỗi chu kỳ chạy cùng năm bước. Chỉ một bước có AI, và không bước nào tự quyết định.",
+    "loopAlt": "Năm bước: chạy kiểm tra, ghi nhận phát hiện, AI diễn giải bằng lời dễ hiểu, một người quyết định, và kết quả phản hồi ngược lại.",
+    "step1Title": "Chạy kiểm tra",
+    "step1Sub": "quy tắc và phép tính",
+    "step2Title": "Ghi nhận phát hiện",
+    "step2Sub": "kèm các con số gây ra nó",
+    "step3Title": "Diễn giải",
+    "step3Sub": "AI viết bằng lời dễ hiểu",
+    "step4Title": "Một người quyết định",
+    "step4Sub": "chấp nhận, sửa, hoặc đánh dấu là sai",
+    "step5Title": "Ghi nhận kết quả",
+    "step5Sub": "đo xem hệ thống làm tốt đến đâu",
+    "loopBack": "Chính quyết định của con người cho chúng ta biết các kiểm tra đã được đặt đúng hay chưa.",
+    "legendDeterministic": "Chỉ quy tắc — không AI",
+    "legendLlm": "Dùng AI",
+    "legendHuman": "Cần người",
+    "agentsTitle": "Những gì đang bật",
+    "agentsIntro": "Đọc trực tiếp từ thiết lập của bạn, không phải từ một danh sách ai đó viết sẵn. Nếu mục nào đang tắt, lý do nằm ngay bên cạnh.",
+    "statusOn": "Bật",
+    "statusOff": "Tắt",
+    "statusByDesign": "Tắt có chủ đích",
+    "kind": {
+      "deterministic": "Chỉ quy tắc",
+      "llm": "Dùng AI"
+    },
+    "agent": {
+      "detectors": "Các kiểm tra",
+      "detectorsDoes": "Xem xét từng nhân viên trong một kỳ lương đã hoàn tất và quyết định là đạt, cần xem lại, hay phải chặn. Không có AI tham gia, và cùng một bộ số thì kết quả không bao giờ đổi.",
+      "sweep": "Lượt chạy hằng đêm",
+      "sweepDoes": "Chạy các kiểm tra mỗi đêm lúc 02:30 để hàng đợi đã sẵn sàng khi bạn mở, thay vì chờ ai đó bấm nút.",
+      "narrator": "Bộ diễn giải",
+      "narratorDoes": "Biến một phát hiện thành câu bạn đọc được. Nó chỉ dùng các con số đã ghi nhận — nếu tạo ra con số mà dữ liệu đó không hỗ trợ, câu ấy bị loại bỏ chứ không hiển thị.",
+      "assistant": "Trợ lý",
+      "assistantDoes": "Trả lời câu hỏi của nhân viên về hồ sơ của chính họ — nghỉ phép, lương, và vì sao lương thay đổi — để họ không phải hỏi người khác.",
+      "autonomy": "Tự hành động",
+      "autonomyDoes": "Duyệt hoặc thay đổi bất cứ điều gì mà không có người. Hiện không có phần nào trong hệ thống làm việc này."
+    },
+    "why": {
+      "detectorsOn": "Chạy trên mọi kỳ lương đã xử lý.",
+      "moduleOff": "Gói của bạn không có bảng lương nên không có gì để kiểm tra.",
+      "sweepOn": "Đã chạy trong hai ngày qua.",
+      "sweepStale": "Hơn hai ngày chưa chạy — lịch có thể đã dừng. Hãy kiểm tra tác vụ hằng đêm.",
+      "sweepNever": "Chưa từng chạy. Hàng đợi sẽ trống cho đến khi nó chạy.",
+      "narratorOn": "Đã thiết lập nhà cung cấp và mọi phát hiện đều đã được diễn giải.",
+      "narratorReady": "Đã thiết lập nhà cung cấp. Phần diễn giải được viết khi bạn yêu cầu, tại màn hình ngoại lệ.",
+      "noProvider": "Chưa thiết lập nhà cung cấp AI nên không thể diễn giải. Mọi thứ khác vẫn hoạt động — bạn thấy các con số mà không có câu diễn giải.",
+      "assistantOn": "Bạn có quyền dùng trợ lý.",
+      "assistantNoGrant": "Chưa bật cho bạn. Quản trị viên bật theo từng người, tại Quản trị → Người dùng.",
+      "autonomyByDesign": "Tắt có chủ đích. Không gì được duyệt hay thay đổi mà không có người, và điều đó chỉ thay đổi từng hành động một, sau khi chứng minh được hệ thống đồng thuận với nhân sự của bạn đủ thường xuyên."
+    },
+    "domainsTitle": "Những gì được theo dõi",
+    "domainsIntro": "Bảng lương là lĩnh vực đầu tiên. Cùng bộ máy đó được xây để bao phủ các lĩnh vực khác, và chúng được liệt kê ở đây để bạn thấy điều sắp tới thay vì nghĩ bảng lương là tất cả.",
+    "domainStatus": {
+      "live": "Đang chạy",
+      "planned": "Dự kiến"
+    },
+    "domain": {
+      "payroll": "Các kỳ lương",
+      "payrollDoes": "Kiểm tra mọi kỳ lương đã hoàn tất để tìm con số bất thường, thiếu thông tin ngân hàng hoặc thuế, và lương không có chấm công.",
+      "readiness": "Mức sẵn sàng của hồ sơ",
+      "readinessDoes": "Sẽ kiểm tra hồ sơ của mọi nhân viên liên tục, không chỉ khi tính lương, để một tài khoản ngân hàng còn thiếu được phát hiện và bổ sung từ lâu trước khi nó chặn lương của ai đó.",
+      "onboarding": "Gia nhập",
+      "onboardingDoes": "Sẽ kiểm tra hồ sơ người mới đầy đủ và chính xác trước kỳ lương đầu tiên, thay vì phát hiện ra giữa kỳ.",
+      "compliance": "Thay đổi luật định",
+      "complianceDoes": "Sẽ theo dõi thay đổi về tỷ lệ đóng góp và biểu mẫu, rồi chuẩn bị bản cập nhật để bạn phê duyệt."
+    },
+    "trigger": {
+      "after_a_payroll_run": "Chạy sau một kỳ lương",
+      "nightly": "Chạy hằng đêm",
+      "on_change": "Chạy mỗi khi hồ sơ thay đổi"
+    },
+    "checksCount": "{n} kiểm tra",
+    "promisesTitle": "Hai điều hệ thống này sẽ không làm",
+    "promise1": "AI không bao giờ tính lương của bạn.",
+    "promise1Body": "Mọi con số — lương, thuế, các khoản đóng góp, làm thêm giờ — đều do bộ máy tính lương tính, theo cùng một cách mỗi lần, và được kiểm thử với các đáp án đã biết. AI chỉ được dùng để mô tả một con số đã được tính. Nó không thể thay đổi con số đó.",
+    "promise2": "AI không bao giờ tự quyết định.",
+    "promise2Body": "Việc một mục được duyệt, gắn cờ hay chặn là do các quy tắc cố định quyết định trước khi AI tham gia, và phần diễn giải không thể thay đổi quyết định ấy. Không gì được duyệt, chi trả hay sửa đổi mà không có người."
   }
 }
