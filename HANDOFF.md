@@ -18,12 +18,12 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-31 (r226-r233 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-31 (r226-r234 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@48836bb9` IS WHAT RUNS ON PRODUCTION (r233, 2026-08-31)** — verified by a zero-change
+**`main@fc3b6098` IS WHAT RUNS ON PRODUCTION (r234, 2026-08-31)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 19:21:22 +0800.
-(Commits after `48836bb9` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 20:17:52 +0800.
+(Commits after `fc3b6098` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
@@ -31,9 +31,17 @@ supersedes ADR-0074's framing (not its invariant): the auto-clear rate is a LAGG
 quality, the model counts instances where the work is caused by classes, and payroll-run verification is
 a minority of HR operations time — so perfecting it can leave headcount unchanged. The target is no
 longer a ratio but a shape: **HR operations ceases to be a staffed function.** 0074 items 2 and 7 are
-superseded; item 8 is re-rated UP. **Next build under it is the continuous record-readiness adapter
-(§3 item 2) — the loop that feeds every other loop, and now a REGISTRATION rather than a rewrite
-because r233 cut the domain seam.**
+superseded; item 8 is re-rated UP. **ADR-0083 BUILD ORDER:** 1 domain seam ✅ r233 · 2 record readiness ✅ r234 · **3 the ACTION LAYER —
+next, and the first one that removes headcount rather than surfacing work** · 4 tier-0 letters and
+certificates · 5 onboarding adapter · 6 compliance adapter · 7 exit adapter.
+
+⚠️ **EVERYTHING SHIPPED SO FAR IS READ-ONLY, AND READ-ONLY AI MAKES PEOPLE FASTER WITHOUT REMOVING THEM.**
+Item 3 is where an agent first WRITES, so it wants its own round and its own security review. §2.5 has the
+shape: typed actions with preconditions (never a general write capability), a reversibility class where
+irreversible never auto-executes, blast radius as a first-class gate, autonomy earned PER ACTION TYPE
+rather than one global dial, every proposal and execution a domain event, and a kill switch plus a daily
+action budget — because the failure mode of an agent with write access is not one wrong action, it is a
+thousand.
 
 **ADR-0074 SCOREBOARD, so nobody re-derives it.** 1 anomaly layer ✅ · 2 auto-clear gate ❌ REFUSED,
 see above · 3 nightly sweep ✅ (r230 — it had never been installed) · 4 exceptions queue ✅ + the
@@ -137,6 +145,54 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r234 (2026-08-31) — record readiness: ADR-0083's shift-left half, and the second control domain. NO MIGRATION.
+
+[ADR-0083](docs/adr/0083-hr-operations-control-plane.md) §3 item 2 — the loop that feeds every other
+loop. ADR-0076's detectors run AFTER `generatePayslips`, so a missing bank account is discovered at the
+moment it blocks a payment, every cycle, for the same person, until somebody edits the record. **A fix is
+permanent; a review recurs.** This asks the same questions continuously against the RECORD.
+
+⚠️ **IT IS A QUERY, NOT A STORED VERDICT, AND THAT IS THE DESIGN.** No table, no sweep, no migration.
+Readiness is a function of the records as they are RIGHT NOW, so a computed-and-stored answer could only
+ever be wrong — stale the moment somebody fills a field in, and needing its own invalidation story to stop
+lying. **The payroll adapter persists verdicts because a verdict is a statement about one RUN, which is
+immutable once made. A gap is a statement about a RECORD, which is not.** Same substrate, opposite
+persistence, and the reason is the difference between the two nouns.
+
+⚠️ **THE RULE MOST LIKELY TO KILL THIS FEATURE, AND WHY IT DOES NOT.** `missing-bank-profile` fires only
+when the employee is paid BY BANK (`payment_method` bank_transfer or unset) — somebody paid in cash needs
+no account. Readiness matches that condition exactly. Without it the screen opens on day one accusing
+every cash-paid employee of an incomplete record, and **a readiness list that cries wolf is one nobody
+opens twice.** Pinned in BOTH directions so the guard cannot pass vacuously. The same instinct governs
+identity: an IC **or** a passport satisfies it (r220's reasoning applied to the other document), because
+demanding the IC would flag every foreign worker for a record that is complete.
+
+**LEAVERS ARE OUT OF THE DENOMINATOR, not merely out of the gaps.** A leaver's missing SOCSO number is a
+historical record, not a thing to go and fix; counting them would drag the readiness percentage down for
+ever and bury the people whose next payslip depends on it.
+
+**THE SCREEN IS A FIX LIST, NOT A FINDING LIST**, which is the ADR's economic claim made visible. Built
+around the GAP with the people inside it rather than the person with their gaps listed, because the unit
+of work is the fix. Every gap leads with WHAT IT STOPS — "no bank account" is a data complaint, "payment
+will fail for 14 people" is a consequence somebody acts on this afternoon. Names link straight to the
+record: the entire deliverable is getting from "14 people" to the field to fill in, in one click. Sorted
+by consequence (what stops a run outranks what stops a filing), and **the count is the true total even
+when the list is capped — a sample presented as a total is the wrong number to plan an afternoon around.**
+
+**THE SEAM PAID FOR ITSELF ONE ROUND AFTER IT WAS CUT.** This was a REGISTRATION: readiness flips
+`planned` → `live` in `CONTROL_DOMAINS` and both the tower and the explainer picked it up with no change
+to either. Not payroll-gated — a missing IC blocks a statutory return whether or not payroll is bought,
+which is exactly why the domain carries `module: null`.
+
+⚠️ **TWO FIXTURE TRAPS IN `localization/my/statutory.ts` WORTH KNOWING BEFORE WRITING ANY PASSPORT TEST.**
+(1) The passport has its OWN writer, `setPassportProfileMY` — it is not a field on `setStatutoryProfileMY`'s
+input, and passing it there **silently does nothing**, which is how the first run of this file appeared to
+prove that a passport does not satisfy the identity check. (2) The passport trio is ALL-OR-NOTHING and
+mandatory for a non-Malaysian: number, issue date and expiry together, or `PassportRequiredError`.
+
+**i18n complete in all six locales, verified by comparing VALUES against EN rather than trusting
+`parity ✓`** — r233's lesson applied up front this time instead of after the fact.
 
 ### r233 (2026-08-31) — the AI Control Tower becomes its own section, on an ADR-0083 domain seam. NO MIGRATION.
 
