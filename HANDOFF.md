@@ -60,12 +60,14 @@ depends on has re-derived it.* Two corollaries that are not negotiable: **a mode
 `block`** (only `review`), and **adjudication failure is SILENT** — never "the AI said X but we could not
 verify it", which just moves the checking onto the reader.
 
-**ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): **1 the proposal ledger + the `adjudicate`
-contract — next, and the keystone** · 2 the readiness nudge agent (the headcount win: chasing people is
-where payroll time goes; ADR-0034's engine delivers it, and note its v1 addresses the event SUBJECT —
-HR-facing routing still needs the deferred reporting-graph resolver). Phase 2: 3 hypothesis detection ·
-4 input-side triage. Phase 3 (needs real history): 5 agreement measurement · 6 recurrence mining ·
-7 the first autonomy grant. **Not a build:** put the four missing call sites on the How it works page.
+**ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): 1 the proposal ledger + the `adjudicate`
+contract ✅ r236 · **2 the readiness nudge agent — next, and the headcount win** (chasing people is where
+payroll time goes; ADR-0034's engine delivers it, and note its v1 addresses the event SUBJECT — HR-facing
+routing still needs the deferred reporting-graph resolver; a kill switch, rate limit and opt-out are PART
+of that build, not a follow-up, because unlike r235's deferred one there is no button here). Phase 2:
+3 hypothesis detection · 4 input-side triage. Phase 3 (needs real history): 5 agreement measurement ·
+6 recurrence mining · 7 the first autonomy grant. **Not a build:** put the four missing call sites on the
+How it works page.
 
 ⚠️ **THE LEDGER'S THREE VERDICT COLUMNS MUST NOT BE COLLAPSED INTO ONE.** Machine-adjudicated,
 human-approved and later-reversed are three different truths and their combinations are three different
@@ -138,8 +140,9 @@ tile measures exceptions ÷ throughput, which is an exception-load estimate rath
 
 **BOARD: FIVE ITEMS, ALL `planned` AND AWAITING THE REPORTER — NOTHING BUILDING, NOTHING BUILDABLE.**
 No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
-`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is still **`0451`** — r226,
-r227, r228 and r229 ALL shipped WITHOUT one.
+`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is **`0454`** — r236 took `0452`
+(`agent_proposal`) and `0453` (a GRANT `0165` should have carried), the first migrations since `0451`;
+r226-r235 all shipped without one.
 
 ⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
 on a BLOCKED approved one). An item raised at `open` with no plan has NO reply path — `approveFeedbackPlan`
@@ -190,6 +193,92 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r236 (2026-09-01) — the proposal ledger: the AI loop stops being open. MIGRATIONS `0452` + `0453`.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) Phase 1 item 1. Before this round there was **no
+edge anywhere in this codebase from an AI output back to an AI input** — the narrator wrote prose, the
+drafters drafted, the action layer proposed, and not one of them recorded what happened next. So nothing
+could improve without a developer editing a prompt, and nobody could answer the owner's actual question:
+does any of this help? `agent_proposal` is that edge, and it is the precondition for ADR-0083 §2.5's
+per-action autonomy (r235 shipped `AutonomyLevel` as a one-member union because there was nothing to
+measure).
+
+⚠️⚠️ **A CHECK CONSTRAINT THAT LOOKED RIGHT AND ENFORCED NOTHING — THE MOST TRANSFERABLE THING IN THIS
+ROUND.** `CHECK (reversed_at IS NULL OR decision = 'approved')` admits **exactly the row it forbids**. For
+an undecided row `decision = 'approved'` is **NULL**, so the expression is `false OR NULL` = NULL — and
+**a CHECK rejects only on FALSE, never on NULL.** It reads as if it works, it passes review, and it
+enforces nothing. `IS NOT DISTINCT FROM` is NULL-safe and always yields true or false. **Every future
+CHECK over a NULLABLE column has this trap**, and the only reason this one was caught is that the test
+asserted the refusal rather than the happy path.
+
+⚠️ **THE THREE VERDICT GROUPS ARE SEPARATE, AND 0452's CHECKS MAKE IT STRUCTURAL.** `adjudication` is THE
+MACHINE'S verdict, `decision` is A HUMAN'S, `reversed_at` is LATER REALITY. The dangerous combination is a
+high agreement rate ALONGSIDE a high reversal rate — the humans are rubber-stamping, and that reads as
+success in every other metric. A rejected proposal may carry no decision (it was never shown to anybody);
+a rejection must name which check refused it (or the pass rate is unactionable); a reversal is meaningless
+on something nobody approved.
+
+**FOUR PROPERTIES OF `core/agent-proposal.ts`, none incidental:**
+
+1. **Recording NEVER throws into the caller** — measurement is never worth breaking the feature it
+   measures. A ledger failure returns null.
+2. **Recording runs in its OWN transaction.** A rejection almost always happens inside an operation that
+   then aborts; a row written in that transaction would roll back with it and **the ledger would hold
+   successes only, pass rate structurally 100%** — the exact inverse of its purpose. ⚠️ The corollary is a
+   CALLER REQUIREMENT: **never record from inside an open `withTenant`**, which takes a second pooled
+   connection (pool exhaustion under load, deadlock if the outer tx holds a row the inner one needs). All
+   four shipped call sites record outside any transaction.
+3. **The id is generated in TypeScript, not by `RETURNING`** — the insert policy is `FOR INSERT` with no
+   `USING` (so it cannot widen the admin-only read), and `RETURNING` needs SELECT.
+4. **The facts are HASHED, never stored.** No second copy of employee data in a telemetry table.
+
+⚠️ **THE RLS SPLIT IS LOAD-BEARING IN BOTH DIRECTIONS.** Read is ADMIN-ONLY — a tenant-wide read would let
+any employee enumerate what the system proposes about their colleagues, which is the surveillance surface
+ADR-0082 §2.7 refuses. Insert is TENANT-WIDE — 0451's `assistant_usage` lesson applied before it bites:
+ADR-0084 §2.5's nudge sweep runs in a SYSTEM context and §2.7's triage runs in the EMPLOYEE'S OWN session,
+and an admin-only insert would make those writes match **zero rows, silently**. `DELETE` is revoked: an
+accuracy figure whose unflattering rows can be tidied away is not an accuracy figure, and nothing but
+`test/agent-proposal.test.ts` catches a dropped REVOKE.
+
+**FOUR TENANTS, AND THREE OF THEM COST NOTHING NEW.** `narrationIsFaithful`, `validatePayRule` and
+`validateReportSpec` were ALREADY adjudicators — this round only writes their verdicts down. The narrator
+was the ideal first one: it already produced both outcomes and threw both away (`rejected` was a number on
+a toast nobody could aggregate). The fourth is the action layer, where **the re-check IS the
+adjudication** — a subject whose cause came back is a REJECTED proposal, not a declined one; recording it
+as a decline would blame the operator and flatter the agreement rate.
+
+⚠️ **AND IT AMENDS ADR-0083 §2.8's AUTONOMY CRITERION.** For `close_fixed_upstream` the **agreement rate is
+structurally 1.0 and proves nothing** — the approval screen is a batch, so an operator who simply does not
+press the button leaves no trace and a decline is unobservable. **The REVERSAL rate is the metric that
+means anything for a batch action type.** Nothing writes it yet; Phase 3 item 6 does.
+
+**Every rate is `null` when its denominator is zero — never 0, never 1.** `anomaly_narration` can never
+carry a human decision (nobody approves prose), so its agreement rate is unmeasured for ever, and printing
+that as 0% would report the narrator as universally rejected. Same discipline as `impliedOperators`.
+
+**WHAT HAS NO CALLER YET, DELIBERATELY:** `recordDecision`, `recordReversal` and `proposalRates`. The
+first two belong with the surfaces that produce their signal; surfacing the rates is Phase 3 item 5, and a
+rate rendered before there is data to render is the "tune the thresholds" mistake in a new coat.
+
+**VERIFIED END TO END THROUGH REAL HTTP, not only in vitest** — the same discipline as r235, and the point
+of it here is that a ledger nobody exercises is indistinguishable from one that silently records nothing.
+Staged two verdicts on a dev server, approved through the actual form: `303 → ?closed=1&stale=0`, and the
+row reads `accepted / approved / decided_at stamped / provider NULL` (deterministic). Then submitted the
+STALE verdict directly: `?closed=0&stale=1`, the row reads `rejected / precondition_no_longer_holds /
+decision NULL`, and the verdict itself was untouched. **The machine's refusal is never recorded as the
+operator declining** — that distinction is the whole reason the two columns are separate.
+
+⚠️ **AND `0453` IS A DEFECT THIS ROUND FOUND WITHOUT CAUSING.** `/reports` returns 500 with `permission
+denied for table custom_report` on **any cluster built by `scripts/dev-db-rebuild.sh`**: `0165` created
+the table with no explicit GRANT and relied on production's `ALTER DEFAULT PRIVILEGES`, which a REBUILT
+cluster never runs. It is invisible on production (verified there directly — `role_table_grants` reports
+all four privileges) and breaks every developer after a rebuild. **`agent_proposal` and `assistant_grant`
+both read fine on the same broken cluster because both migrations wrote the GRANT out** — that contrast
+is the whole argument for the redundancy AGENTS rule 5 demands. The other four tables `ai_hr_app` cannot
+read there are CORRECT and were left alone: `ai_provider_config` is FORCE-RLS holding a key ciphertext
+(0059), and three belong to the `ai_hr_platform` control plane (ADR-0077/0079).
+
 
 ### r235 (2026-08-31) — the action layer: the first place an agent WRITES. NO MIGRATION.
 
@@ -1301,6 +1390,32 @@ grep — an empty result is a parser gap, not proof of no callers.
   RSC boundary errors `tsc` alone does not.
 
 ## Traps — the durable ones (each cost at least a round; several recurred AFTER being written down)
+
+- ⚠️ **NEVER `source .env.local` IN THE SAME SHELL AS `pnpm gate:shadow` — IT REPORTS AS A MIGRATION
+  DEFECT (r236).** `scripts/shadow-migrate.sh:92-93` REWRITES `MIGRATION_DATABASE_URL` inside `.env.local`
+  to point at the scratch `ai_hr_shadow` DB before running `drizzle-kit migrate`. An **exported** variable
+  of the same name (from `set -a; . ./.env.local`) wins over the dotenv file, so drizzle migrates
+  `ai_hr_dev` instead — which is usually already up to date, applies nothing, and leaves the shadow DB at
+  its restored watermark. The script then correctly observes that nothing was applied and prints
+  **`MIGRATION SILENTLY SKIPPED … almost certainly a when value that is not strictly greater than the live
+  watermark`** — pointing at a journal that is completely fine. The tell: a shadow run that PASSED earlier
+  in the session starts failing after you sourced the env for an unrelated `psql`. Run it as
+  `env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow`, or in a shell that never sourced it.
+
+- ⚠️ **A TEST THAT HARDCODES "THE FUTURE" IS A TIME BOMB, AND IT DETONATES AS A FALSE FAILURE IN AN
+  UNRELATED ROUND (r236, 2026-09-01).** `test/employment-movement.test.ts` asserted that a future-dated
+  increment writes nothing yet, with `effectiveDate: '2026-09-01'` written down. On 2026-09-01 the date
+  arrived, `createMovementEvent` correctly applied the change immediately, and the assertion failed
+  against a code path behaving exactly as designed — inside a gate for a change that touched nothing
+  near it. **The tell is a failure in a file the round did not touch, on a date boundary.** Fix: derive
+  the date from the clock (`new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10)`) and pass
+  the SAME value as the sweep's `today`.
+  **The class is wider than the one that fired.** It bites only where PRODUCTION CODE compares against the
+  wall clock — the movement family (`createMovementEvent` / `sweepDueMovements`, 21 test files) is the
+  main exposure. Tests comparing a hardcoded `effectiveFrom` against a hardcoded payroll `PERIOD`
+  (e.g. `test/payroll-basic-source.test.ts`) are date-STABLE and are not this. 153 hardcoded
+  `effectiveDate:` literals remain across the suite; they were NOT swept, and the gate is the oracle for
+  the next one to expire.
 
 - **MERGED IS NOT DEPLOYED, AND THIS FILE HAS ASSERTED OTHERWISE (r159).** r158 was merged to `main`,
   including migration `0403`, and never shipped; CURRENT STATE said "no pending deploy, nothing in

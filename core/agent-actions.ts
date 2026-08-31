@@ -45,6 +45,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveAnomalyVerdict } from './payroll-anomaly';
 import { gapsForRecord, type ReadinessGapId } from './record-readiness';
+import { recordProposal } from './agent-proposal';
 
 /** Nothing acts on its own. See (3) in the header before widening this. */
 export type AutonomyLevel = 'propose_only';
@@ -301,7 +302,35 @@ export async function executeAction(
 
   let closed = 0;
   for (const id of ids) {
-    if (!stillValid.has(id)) continue;
+    const valid = stillValid.has(id);
+
+    // ADR-0084 §2.3 — THE LEDGER'S MOST IMPORTANT TENANT, and the only DETERMINISTIC one: no model is
+    // involved, which is why `provider`/`model` are null and why the table is `agent_proposal` rather
+    // than `ai_proposal`. §2.8's autonomy criterion is measured over ACTION TYPES, and this is the only
+    // action type there is.
+    //
+    // ⚠️ THE RE-CHECK IS THE ADJUDICATION. A subject whose cause came back between render and click is a
+    // REJECTED proposal, not a declined one — a machine refused it, no human ever said no. Recording it
+    // as a decline would put the blame on the operator and corrupt the agreement rate in the flattering
+    // direction.
+    //
+    // ⚠️ AND AGREEMENT IS STRUCTURALLY 1.0 FOR THIS TYPE, SO IT PROVES NOTHING. An operator who simply
+    // does not press the button leaves no trace, so a decline is unobservable on a batch screen. **The
+    // metric that means anything here is the REVERSAL rate** — did the closure stick, or did the finding
+    // re-fire next cycle (§2.4)? Nothing writes that yet; ADR-0084 Phase 3 item 6 does.
+    await recordProposal(ctx, {
+      type: 'close_fixed_upstream',
+      subject: { type: 'payroll_anomaly_verdict', id },
+      facts: { typeId: type.id, verdictId: id, causeAbsent: valid },
+      proposal: { action: type.id, reversibility: type.reversibility, autonomy: type.autonomy },
+      adjudication: valid ? { ok: true } : { ok: false, reason: 'precondition_no_longer_holds' },
+      // The human is already in the loop: they read the list and pressed the button, so the decision is
+      // known at the same instant the proposal is. Only for an ACCEPTED one — a rejected proposal was
+      // never acted on, and 0452's CHECK refuses the combination anyway.
+      ...(valid ? { decision: 'approved' as const } : {}),
+    });
+
+    if (!valid) continue;
     try {
       // Through the EXISTING service: its RBAC check, its status guard and its domain event are the ones
       // already trusted for a human doing this by hand. This layer does not open a second write path.

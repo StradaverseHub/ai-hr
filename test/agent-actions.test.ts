@@ -28,6 +28,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { resolveAnomalyVerdict } from '../core/payroll-anomaly';
+import { proposalRates } from '../core/agent-proposal';
 import {
   AGENT_ACTION_TYPES,
   AgentActionError,
@@ -238,6 +239,53 @@ describe('ADR-0083 §2.5 — the action layer', () => {
       .where(eq(schema.payrollAnomalyVerdict.id, a.verdictId));
     // And the hand decision is untouched — not overwritten with `fixed_upstream`.
     expect(row!.resolution).toBe('accepted');
+  });
+
+  it('ADR-0084 — an execution records an APPROVED proposal; a stale one records a REJECTION', async () => {
+    // This is the ledger's most important tenant: ADR-0083 §2.8 measures autonomy per ACTION TYPE, and
+    // this is the only action type there is. The two outcomes must land on OPPOSITE sides of the machine/
+    // human split — the re-check refusing a subject is an ADJUDICATION, not a human decline. Recording a
+    // stale subject as "declined" would blame the operator and flatter the agreement rate.
+    const good = await flagged({ withBank: true });
+    const gone = await flagged({ withBank: true });
+    await owner.db
+      .update(schema.employeeStatutoryMy)
+      .set({ bankAccountNo: null })
+      .where(eq(schema.employeeStatutoryMy.personId, gone.personId));
+
+    const res = await executeAction(adminCtx(base), {
+      typeId: 'close_fixed_upstream',
+      verdictIds: [good.verdictId, gone.verdictId],
+    });
+    expect({ closed: res.closed, stale: res.stale }).toEqual({ closed: 1, stale: 1 });
+
+    const [r] = await proposalRates(adminCtx(base));
+    expect(r).toMatchObject({
+      type: 'close_fixed_upstream',
+      total: 2,
+      accepted: 1,
+      rejected: 1,
+      approved: 1,
+      declined: 0,
+    });
+    // A DETERMINISTIC proposer: no model was involved, which is why the table is agent_proposal and why
+    // provider/model are nullable.
+    const [row] = await owner.db
+      .select({
+        provider: schema.agentProposal.provider,
+        reason: schema.agentProposal.adjudicationReason,
+        subjectType: schema.agentProposal.subjectType,
+      })
+      .from(schema.agentProposal)
+      .where(eq(schema.agentProposal.adjudication, 'rejected'));
+    expect(row).toMatchObject({
+      provider: null,
+      reason: 'precondition_no_longer_holds',
+      subjectType: 'payroll_anomaly_verdict',
+    });
+    // And agreement is structurally 1.0 for this type — an operator who simply does not press the button
+    // leaves no trace — which is exactly why the REVERSAL rate is the metric that means anything here.
+    expect(r!.agreementRate).toBe(1);
   });
 
   it('the execution loop catches PER VERDICT, so one refusal cannot discard committed work', () => {
