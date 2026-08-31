@@ -37,5 +37,6 @@ decision, add a new ADR that supersedes the old one.
 | [0081](0081-tp1-2026-full-form.md) | LHDN TP1 (1/2026) as a complete e-form: C1–C17 catalogue in the country pack, per-month records, employer consent gating the payroll feed (with backfill), drawn PDF | Accepted |
 | [0082](0082-ai-assistant-access-scoped-tool-calling.md) | The AI Assistant (north-star Phase B): read-only tool calling over the governed read layer inside the caller's own session — RLS is the retrieval filter, not a vector store | Proposed |
 | [0083](0083-hr-operations-control-plane.md) | HR operations as a control plane: closed-loop automation with graduated per-action agent autonomy; supersedes 0074's operating model (keeps its invariant) | Proposed |
+| [0084](0084-propose-adjudicate-learn.md) | Propose · adjudicate · learn: a model emits a structured proposal into a closed vocabulary, the kernel's own validators adjudicate it, and the outcome is recorded so accuracy is measured rather than claimed — plus initiative (scheduled agents) and the ledger that earns 0083's per-action autonomy | Proposed |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

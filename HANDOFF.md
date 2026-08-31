@@ -35,8 +35,43 @@ quality, the model counts instances where the work is caused by classes, and pay
 a minority of HR operations time — so perfecting it can leave headcount unchanged. The target is no
 longer a ratio but a shape: **HR operations ceases to be a staffed function.** 0074 items 2 and 7 are
 superseded; item 8 is re-rated UP. **ADR-0083 BUILD ORDER:** 1 domain seam ✅ r233 · 2 record readiness ✅ r234 · 3 the ACTION LAYER
-✅ r235 · **4 tier-0 letters and certificates — next** · 5 onboarding adapter · 6 compliance adapter ·
-7 exit adapter.
+✅ r235 · 4 tier-0 letters and certificates · 5 onboarding adapter · 6 compliance adapter · 7 exit adapter.
+
+⚠️⚠️ **THE DIRECTION CHANGED ON 2026-09-01 — READ
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) BEFORE BUILDING ANY AI SURFACE.** The owner looked
+at the Control Tower's How it works page and said that if the AI only explains things there is not much
+value in it. **That is correct, and the page is not the worst of it.** Three findings, all checkable:
+
+  1. **EVERY AI CALL IN THIS PRODUCT WAITS FOR A CLICK.** The narrator, the assistant, the pay-rule
+     drafter and the report designer are all human-triggered. **The only thing that acts unattended is a
+     deterministic cron.** The ceiling on that is *a faster human* — which ADR-0083 §2.5 already says does
+     not remove headcount.
+  2. **NOTHING THE AI PRODUCES IS EVER MEASURED.** There is no edge anywhere from an AI output back to an
+     AI input, so nothing improves without a developer and nobody can say whether any of it helps.
+  3. **`agentStatuses` UNDER-REPORTS.** It shows 6 rows / 2 `llm`; there are SIX AI call sites in `core/`
+     (`payroll-anomaly-narrate`, `assistant`, `pay-rule-ai`, `report-ai`, `feedback`, `performance`).
+
+**THE PATTERN IS ALREADY HERE, INVENTED THREE TIMES AND NEVER NAMED** — `narrationIsFaithful` (discards
+prose whose numbers the facts do not support), `pay-rule-ai` and `report-ai` (a model classifies into a
+CLOSED union, then the SAME validator the kernel and the UI use adjudicates it). 0084 names it
+**propose · adjudicate · learn**, and the widened invariant is: *a model may propose anything; nothing it
+produced reaches a human, a record or a document until deterministic code the kernel or the UI already
+depends on has re-derived it.* Two corollaries that are not negotiable: **a model may never raise a
+`block`** (only `review`), and **adjudication failure is SILENT** — never "the AI said X but we could not
+verify it", which just moves the checking onto the reader.
+
+**ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): **1 the proposal ledger + the `adjudicate`
+contract — next, and the keystone** · 2 the readiness nudge agent (the headcount win: chasing people is
+where payroll time goes; ADR-0034's engine delivers it, and note its v1 addresses the event SUBJECT —
+HR-facing routing still needs the deferred reporting-graph resolver). Phase 2: 3 hypothesis detection ·
+4 input-side triage. Phase 3 (needs real history): 5 agreement measurement · 6 recurrence mining ·
+7 the first autonomy grant. **Not a build:** put the four missing call sites on the How it works page.
+
+⚠️ **THE LEDGER'S THREE VERDICT COLUMNS MUST NOT BE COLLAPSED INTO ONE.** Machine-adjudicated,
+human-approved and later-reversed are three different truths and their combinations are three different
+failures — a high agreement rate WITH a high reversal rate means the humans are rubber-stamping, which
+looks like success in every other metric. This is also the honest answer to the owner's original question
+(does the control tower help?): three measured rates per proposal type, not a staffing ratio.
 
 ⚠️ **AN AGENT CAN NOW WRITE, AND EXACTLY ONE THING — READ THE r235 ENTRY BEFORE ADDING A SECOND.**
 Everything before it was read-only, which makes people faster without removing them. `close_fixed_upstream`
