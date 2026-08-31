@@ -278,6 +278,20 @@ says so, or somebody will tidy it away. (3) Three guard sites assumed a gate is 
 so the ASSERTION STILL FIRES — a null-gated setting must have no legacy row and no `tenant_setting` row —
 rather than skipping, which would have made the guards quietly partial.
 
+⚠️⚠️ **VERIFIED END TO END ON A DEV SERVER, AND IT SURFACED A REAL PRODUCTION BLOCKER.** Switching the
+agent on for the demo tenant produced **3 accepted employee nudges** (bank account → `/me`, the real
+template body, three notifications created) and **13 REJECTED `no_recipient` rows** across the five HR
+gaps. The reason is not a bug in the agent: **`hrAdminsForCompany` returns EMPLOYMENT ids**, because a
+notification recipient IS an employment (ADR-0034) — and **production has ZERO admins whose `app_user` is
+linked to an employment** (checked directly: `admins-with-employment: 0` against 31 active employments).
+So today the HR half of the nudge agent would record every gap as unreachable and send nothing, while the
+employee half works.
+
+**That is the `no_recipient` design doing exactly its job** — "we know about these and there is nobody to
+tell" was previously invisible and is now a counted, queryable fact. **The fix is operational, not code:
+link an HR admin's `app_user` to an employment.** Until then, switching the agent on is still worth doing
+for the bank-account loop, and the rejection count is the measure of what is blocked.
+
 **BODIES ARE ENGLISH-ONLY, DIVERGING FROM THE ADR** — `core/notifications.ts` renders a body ONCE and
 STORES it, so per-reader locale is a change to ADR-0034's engine, not to this agent. Recorded in 0084's
 as-built note rather than quietly dropped.
