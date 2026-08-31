@@ -63,12 +63,10 @@ depends on has re-derived it.* Two corollaries that are not negotiable: **a mode
 verify it", which just moves the checking onto the reader.
 
 **ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): 1 the proposal ledger + the `adjudicate`
-contract ✅ r236 · **2 the readiness nudge agent — next, and the headcount win** (chasing people is where
-payroll time goes; ADR-0034's engine delivers it, and note its v1 addresses the event SUBJECT — HR-facing
-routing still needs the deferred reporting-graph resolver; a kill switch, rate limit and opt-out are PART
-of that build, not a follow-up, because unlike r235's deferred one there is no button here). Phase 2:
-3 hypothesis detection · 4 input-side triage. Phase 3 (needs real history): 5 agreement measurement ·
-6 recurrence mining · 7 the first autonomy grant. **Not a build:** put the four missing call sites on the
+contract ✅ r236 · 2 the readiness nudge agent ✅ r237 (**OFF per tenant by default — nothing in the UI
+turns it on yet; see the r237 entry for the one statement that does**). Phase 2: **3 hypothesis detection
+— next** · 4 input-side triage. Phase 3 (needs real history): 5 agreement measurement · 6 recurrence
+mining · 7 the first autonomy grant. **Not a build:** put the four missing call sites on the
 How it works page.
 
 ⚠️ **THE LEDGER'S THREE VERDICT COLUMNS MUST NOT BE COLLAPSED INTO ONE.** Machine-adjudicated,
@@ -195,6 +193,109 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r237 (2026-09-01) — the nudge agent: the system starts chasing people. NO MIGRATION.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.5 / Phase 1 item 2. **The first thing in this
+product that contacts a person with nobody pressing send.** r234 gave the system perfect knowledge of who
+has an incomplete record and it changed nothing on its own — a human still had to open the screen and go
+and chase people. **Chasing people is where payroll headcount actually goes**, not verifying runs.
+
+⚠️ **THE ROUTING TABLE IS THE MOST IMPORTANT DECISION IN THE ROUND, AND IT IS READ OUT OF THE PRODUCT.**
+`NUDGE_AUDIENCE` is derived from what each person can ACTUALLY DO: `app/me/actions.ts`'s
+`myRequestProfileChange` carries `bankName`/`bankAccountNo` (plus taxCategory, numChildren and three
+identity fields) through an approval — so of the six readiness gaps **only the bank account has a
+self-service path.** It addresses the employee; the other five are admin-only writers and go to the
+company's HR admins via `hrAdminsForCompany`. **Nudging somebody about a screen they do not have is worse
+than not nudging them** — it trains them to ignore the channel and the record still does not get fixed.
+When ESS grows a field, that table is the one thing to move with it.
+
+⚠️ **IT IS OFF PER TENANT BY DEFAULT, AND THAT IS THE KILL SWITCH.** ADR-0083 §2.5's kill switch was
+deliberately DEFERRED for the action layer because every execution there is a human pressing a button.
+**Here there is no button**, so it ships with the feature: `notifications.readiness_nudge_enabled`,
+`defaultValue: false`, `defaultOnInstall: false`. Buying the notifications module never starts a chaser
+nobody asked for.
+
+⚠️ **NOTHING IN THE UI CAN TURN IT ON YET** — no screen reads `SETTING_CATALOG`, and `tenant_setting` has
+no app writer (the catalog's own comment says the settings screen is "slice 7"). Same shape as the
+`assistant` module: activation is an operator action. Until then, one statement on the box:
+
+    INSERT INTO tenant_setting (tenant_id, key, value, source)
+    VALUES ('<tenant>', 'notifications.readiness_nudge_enabled', 'true'::jsonb, 'platform')
+    ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value;
+
+**TWO SWITCHES, BOTH REQUIRED, AND THEY ARE NOT THE SAME THING.** The `notifications` MODULE gates
+`dispatchNotifications` (a billable entitlement); the SETTING gates the agent. A tenant can hold
+notifications and still not want an automated chaser.
+
+**FOLDED INTO `review-sweep.ts`, NOT GIVEN ITS OWN CRON LINE** — a deliberate reading of that file's own
+advice, *"a second cron line is a second thing to forget to install"*. **r230 is the proof**: the anomaly
+sweep sat BUILT, DOCUMENTED and never installed for six weeks. It runs before `dispatchNotifications` in
+the same pass, so a nudge becomes a message that night rather than waiting for the next admin page load.
+**No crontab change was needed** and none was made.
+
+⚠️⚠️ **THE BLAST-RADIUS TEST CAUGHT A REAL BUG, AND IT IS THE MOST TRANSFERABLE THING HERE.** The sweep
+iterated `recordReadiness(ctx).gaps[].people` — which `PEOPLE_PER_GAP` trims to **25 names so a SCREEN
+stays readable**. So the agent would have chased 25 people per gap on a tenant of any size, **silently,
+reporting a clean run**. That is a sample treated as a total — the exact failure the `count`/`people`
+split was introduced to prevent, caused by it. The limit is now a caller decision
+(`recordReadiness(ctx, { peopleLimit })`); the sweep reads UNCAPPED and is bounded only by
+`MAX_NUDGES_PER_RUN`, which **says so when it bites** (`cappedOut`, printed by the sweep).
+
+**THE SETTLE WINDOW (21d) IS LONGER THAN THE COOLDOWN (14d) ON PURPOSE.** Judging at the cooldown would
+mark a nudge "ignored" at the same moment it becomes eligible to be sent again, so **every second nudge
+would score as a failure regardless of what anybody did.**
+
+⚠️ **`readiness_fix` IS THE ONLY PROPOSAL TYPE IN THE PRODUCT WITH A REAL AGREEMENT RATE.**
+`anomaly_narration` has no human decision (nobody approves prose) and `close_fixed_upstream`'s is
+structurally 1.0 (an operator who does not press the button leaves no trace — r236). A nudge is
+different: **the human's verdict is observable in the record itself** — the gap either closed within the
+window or it did not. So this is the first place the ledger can come back UNFLATTERING, which is the
+entire reason it was built.
+
+**A GAP WITH NOBODY TO TELL IS RECORDED, NOT SKIPPED.** No HR admin in the company ⇒ a REJECTED
+`readiness_fix` with reason `no_recipient` and no message. "We know about this and there is nobody to
+chase" is a real operational fact that is otherwise invisible, and the adjudication-pass rate for this
+type is exactly the measure of it.
+
+**THE MODEL'S PART IS DELIBERATELY SMALL AND SAID TO BE.** One draft per GAP per run (not per person —
+cheaper, reviewable, and fairer than personalising a chaser), adjudicated by `nudgeIsFaithful`: **no digit
+anywhere**, not "digits that match the facts". A nudge carries no figures, so any number in one is
+necessarily invented and there is nothing to check it against — the strongest form the check can take.
+Any failure (no provider, outage, unfaithful draft) falls back to the shipped template, so the loop always
+closes. **A tenant with no provider records NOTHING**: the template path is not a model failure and
+counting it as one would drag the pass rate down measuring the wrong thing.
+
+⚠️ **ADDING A SETTING COSTS MORE THAN A CATALOG LINE — THREE GUARDS FIRE, AND ALL THREE ARE RIGHT.**
+Budget for it next time: (1) `LEGACY_SETTING_ENV_GATES` must name what gates the setting TODAY, and a
+setting that never came from a deployment flag declares **`null`** — the meaning `LEGACY_MODULE_ENV_GATES`
+already carried, newly allowed for settings, and the thing that keeps it out of `legacyEnabledSettingsIn`
+so **a chaser can never arrive switched on by a backfill**. (2) The `settingEnabled(...)` call must pass a
+**STRING LITERAL**, not a constant — `test/module-catalog-drift.test.ts` scans call sites for literals and
+a variable key is invisible to it, which would hide an uncatalogued key (a 500 on the route, since
+`getSetting` throws a bare Error). The literal is duplicated beside the exported constant on purpose and
+says so, or somebody will tidy it away. (3) Three guard sites assumed a gate is non-null; each was fixed
+so the ASSERTION STILL FIRES — a null-gated setting must have no legacy row and no `tenant_setting` row —
+rather than skipping, which would have made the guards quietly partial.
+
+⚠️⚠️ **VERIFIED END TO END ON A DEV SERVER, AND IT SURFACED A REAL PRODUCTION BLOCKER.** Switching the
+agent on for the demo tenant produced **3 accepted employee nudges** (bank account → `/me`, the real
+template body, three notifications created) and **13 REJECTED `no_recipient` rows** across the five HR
+gaps. The reason is not a bug in the agent: **`hrAdminsForCompany` returns EMPLOYMENT ids**, because a
+notification recipient IS an employment (ADR-0034) — and **production has ZERO admins whose `app_user` is
+linked to an employment** (checked directly: `admins-with-employment: 0` against 31 active employments).
+So today the HR half of the nudge agent would record every gap as unreachable and send nothing, while the
+employee half works.
+
+**That is the `no_recipient` design doing exactly its job** — "we know about these and there is nobody to
+tell" was previously invisible and is now a counted, queryable fact. **The fix is operational, not code:
+link an HR admin's `app_user` to an employment.** Until then, switching the agent on is still worth doing
+for the bank-account loop, and the rejection count is the measure of what is blocked.
+
+**BODIES ARE ENGLISH-ONLY, DIVERGING FROM THE ADR** — `core/notifications.ts` renders a body ONCE and
+STORES it, so per-reader locale is a change to ADR-0034's engine, not to this agent. Recorded in 0084's
+as-built note rather than quietly dropped.
+
 
 ### r236 (2026-09-01) — the proposal ledger: the AI loop stops being open. MIGRATIONS `0452` + `0453`.
 

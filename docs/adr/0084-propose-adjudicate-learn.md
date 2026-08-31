@@ -186,6 +186,28 @@ ship (`leave-escalation-sweep`, `employment-review-reminder-sweep`) and are the 
 `reversed_at`-free, unambiguous outcome, and it is why the nudge agent is also the best first tenant of
 the ledger.
 
+**As built (r237, `core/readiness-nudge.ts`).** Three corrections and one divergence:
+
+- **The routing table is read out of the product, not assumed.** Only `no_bank_account` has an ESS path
+  (`app/me/actions.ts` carries `bankAccountNo` through an approval), so it addresses the employee and the
+  other five gaps go to `hrAdminsForCompany`. The ADR feared the deferred reporting-graph resolver would
+  block HR routing; it does not — that resolver is for APPROVER (manager) routing, and HR admins were
+  always resolvable.
+- **It is off per tenant by default, and nothing in the UI can turn it on yet.** No screen reads
+  `SETTING_CATALOG`; activation is an operator/DB action, the same shape as the `assistant` module.
+- **A gap with nobody to tell is recorded as a REJECTED proposal**, which was not in the ADR and should
+  have been: "we know about this and there is nobody to chase" is otherwise invisible, and it makes the
+  adjudication-pass rate for `readiness_fix` mean something real.
+- **DIVERGENCE: bodies are English-only.** §2.5 asked for the recipient's locale. ADR-0034's engine
+  renders a notification body ONCE and STORES it, so per-reader locale is a change to THAT engine, not to
+  this agent. Deferred deliberately rather than bolted on beside it.
+
+⚠️ **And `readiness_fix` turns out to be the only proposal type in the product with a REAL agreement
+rate.** `anomaly_narration` has no human decision and `close_fixed_upstream`'s is structurally 1.0
+(r236). Here the human's verdict is observable in the record itself — the gap closed within the settle
+window, or it did not. **This is the first place the ledger can come back unflattering**, which is what
+§2.3 was built for.
+
 ### 2.6 Judgment-grade detection: hypotheses, not rules
 
 Eleven binary presence checks cannot see *"this is odd"*. They can only see what somebody thought to write

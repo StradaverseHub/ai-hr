@@ -253,8 +253,14 @@ describe('slice 1 — entitlement substrate privileges and policies', () => {
     const got = new Set(rows.map((r) => r.key));
     for (const s of SETTING_CATALOG) {
       const gate = LEGACY_SETTING_ENV_GATES[s.key];
-      const shouldHaveRow = s.key in LEGACY_ENABLED_SETTINGS && process.env[gate] === 'true';
-      expect(got.has(s.key), `'${s.key}' row presence must follow ${gate}`).toBe(shouldHaveRow);
+      // r237 — a `null` gate means the setting never came from a deployment flag, so no env value can
+      // give it a row. Written as `gate != null && …` rather than skipped, because the assertion still
+      // has to fire: such a setting must have NO row, and a stray one would mean a backfill switched it
+      // on for a tenant that never asked.
+      const shouldHaveRow = s.key in LEGACY_ENABLED_SETTINGS && gate != null && process.env[gate] === 'true';
+      expect(got.has(s.key), `'${s.key}' row presence must follow ${gate ?? 'no gate (never env-flagged)'}`).toBe(
+        shouldHaveRow,
+      );
     }
   });
 
