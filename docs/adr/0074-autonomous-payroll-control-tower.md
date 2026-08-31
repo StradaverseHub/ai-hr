@@ -1,6 +1,15 @@
 # ADR-0074 — Autonomous Payroll Control Tower (closed-loop, exception-driven payroll)
 
-Status: Proposed (strategy / target architecture — NOT a build order)
+Status: Proposed — **operating model SUPERSEDED by [ADR-0083](0083-hr-operations-control-plane.md)**
+(strategy / target architecture — NOT a build order)
+
+> ⚠️ **READ ADR-0083 BEFORE ACTING ON §5's BUILD ORDER OR THE §"reframe" BELOW.** 0083 keeps this
+> document's non-negotiable invariant — the LLM never computes the money — and keeps §7's earned-autonomy
+> discipline. It supersedes three things: the auto-clear rate as the single north-star number (it is a
+> lagging indicator of input quality, and perfecting it can leave headcount unchanged); **item 2**, the
+> global confidence dial, replaced by autonomy granted per ACTION TYPE; and **item 7**, whose learning
+> target — tuning thresholds from human overrides — teaches the system to stop flagging rather than to fix.
+> Items 1, 3, 4, 5 and 6 are built and stand. Item 8 is re-rated UP by 0083.
 Date: 2026-07-18
 Relates to: ADR-0001 (domain-event log), the finance event-sourcing rule (`FinancialEvent`, root `CLAUDE.md`),
 the MY statutory kernel + rules-as-data packs (2C golden tests, ADR-0024/0025/0029/0037), the payroll batch

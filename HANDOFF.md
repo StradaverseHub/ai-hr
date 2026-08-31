@@ -46,18 +46,32 @@ defect** — that is what an unactivated billable module looks like.
 mean it runs** — anomaly-sweep was both for six weeks and had never been installed. Check `crontab -l`
 against DEPLOY.md's block when a scheduled thing looks like it has not happened.
 
-⚠️⚠️ **THE ONE THING TO DO NEXT IS STILL NOT A BUILD — BUT IT NOW HAS DATA BEHIND IT.** r230 installed
-the nightly sweep (it had never been in the crontab) and evaluated the whole backlog: **23 runs, 104 live
-verdicts — 27 clear, 43 review, 34 block. A 26% AUTO-CLEAR RATE AGAINST A 95% TARGET.** The tower is
-flagging three quarters of everybody. That is not a payroll problem, it is r177's untuned 30%/15%
-placeholders behaving exactly as r177 predicted, and it was invisible until the sweep ran.
+⚠️⚠️ **CORRECTION — "TUNE THE THRESHOLDS" WAS WRONG, AND IT WAS WRONG TWICE OVER.** r230's entry and an
+earlier version of this block recorded threshold tuning as the top priority, on the strength of the
+backlog sweep's **26% auto-clear rate (23 runs, 104 verdicts: 27 clear / 43 review / 34 block)**. Both
+halves of that reasoning fail:
 
-**So: TUNE THE THRESHOLDS against a real month, then work the queue.** `payroll_anomaly_config` is still
-empty and no verdict has ever been resolved, so `falsePositiveRate` and `mttrSeconds` remain structurally
-NULL and the Control Tower's staffing tile still — correctly — refuses to print a figure. **Do not build
-ADR-0074 item 2 (the auto-clear gate) before that**: it is the autonomy dial, §7 says the ratio is earned
-not launched, and granting it on thresholds this far off would auto-clear on numbers nobody has
-validated. See the r229 and r230 entries.
+  1. **THE DEMO TENANT'S FINDINGS ARE NOT EVIDENCE OF ANYTHING.** They are seeded rows; their distribution
+     reflects the seed script, not a payroll. No conclusion about this system's accuracy, its thresholds
+     or where operator time goes may be drawn from them. **The first real tenant month is the first real
+     data point.**
+  2. **EVEN TAKEN AT FACE VALUE THEY POINTED THE OTHER WAY.** Only `net-swing` is threshold-driven
+     (`netSwingPct`, default 30). `missing-bank-profile`, `missing-tax-profile`, `pay-without-attendance`
+     and the component appeared/vanished pair take **no params at all** — they are binary presence checks,
+     and thresholds cannot move them. Tuning would have touched a small fraction of the findings and left
+     the rest exactly where they were.
+
+**WHAT REPLACES IT: [ADR-0083](docs/adr/0083-hr-operations-control-plane.md).** The auto-clear rate is a
+LAGGING indicator of input quality, so optimising it is optimising the wrong end of the pipe; the fix is
+to shift detection LEFT onto continuous record readiness and to track CAUSES rather than instances. 0083
+supersedes ADR-0074's operating model, its item 2 (global confidence dial → autonomy per ACTION TYPE) and
+its item 7 (whose learning target taught the system to stop flagging rather than to fix). **0074's
+invariant stands unchanged: the LLM never computes the money.**
+
+**Still true and still the gate on item 2:** `payroll_anomaly_config` is empty, no verdict has ever been
+resolved, `falsePositiveRate` and `mttrSeconds` are structurally NULL, and the Control Tower's staffing
+tile correctly refuses to print a figure. **Do not build the auto-clear gate** — and note 0083 §5 that the
+tile measures exceptions ÷ throughput, which is an exception-load estimate rather than a headcount answer.
 
 **BOARD: FIVE ITEMS, ALL `planned` AND AWAITING THE REPORTER — NOTHING BUILDING, NOTHING BUILDABLE.**
 No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
@@ -234,11 +248,14 @@ not a loop, it was a button somebody pressed twice. Installed at 02:30 (the line
 documented verbatim), previous crontab backed up to `/home/ubuntu/crontab.before-anomaly-sweep.bak`, and
 **verified by reading `crontab -l` back, not by trusting the install command**.
 
-**THE BACKLOG RUN IS THE FIRST REAL MEASUREMENT THIS PROJECT HAS EVER HAD, AND IT IS BAD NEWS WORTH
-HAVING: 23 runs → 27 clear, 43 review, 34 block. A 26% AUTO-CLEAR RATE AGAINST A 95% TARGET.** The tower
-is flagging three quarters of everybody. That is not a payroll problem, it is r177's untuned 30%/15%
-placeholders doing exactly what r177 said they would — and it was invisible until the sweep ran.
-**Threshold tuning is now the top item, and it now has data to tune against.**
+**THE BACKLOG RUN PRODUCED NUMBERS — 23 runs → 27 clear, 43 review, 34 block, a 26% auto-clear rate —
+AND THIS ENTRY ORIGINALLY CALLED THEM "the first real measurement this project has ever had". THAT WAS
+WRONG AND THE CORRECTION IS IN CURRENT STATE.** They are seeded rows on a demo tenant; the distribution
+reflects the seed script. They are not evidence about thresholds, accuracy, or where operator time goes,
+and this entry's conclusion — "threshold tuning is now the top item" — was drawn from them and is
+withdrawn. Only `net-swing` is threshold-driven at all; the detectors that dominated the count take no
+params and cannot be tuned. See [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) for what replaced
+the reasoning. **The sweep being installed is still the real result of this round; what it found is not.**
 
 ⚠️ **THE NARRATOR'S GUARD IS THE ONLY REASON AN LLM IS ACCEPTABLE ON THIS SCREEN.** §2.6 promises "every
 number in the prose is interpolated from `facts`" and "no ringgit figure is ever produced by the model".
