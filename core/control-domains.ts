@@ -175,6 +175,16 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       reasonKey: assistant ? 'assistantOn' : 'assistantNoGrant',
     },
     {
+      // r235, ADR-0083 §2.5 — the action layer. DETERMINISTIC, and saying so on a page about AI is the
+      // point: the thing that proposes closing an exception is the SAME predicate the readiness screen
+      // uses, not a model with an opinion. It sits beside `autonomy` deliberately — one row says work is
+      // now proposed, the next says nothing is done without a person, and the pair is the honest answer.
+      id: 'actions',
+      kind: 'deterministic',
+      active: payrollOn,
+      reasonKey: payrollOn ? 'actionsOn' : 'moduleOff',
+    },
+    {
       // ADR-0083 §2.5 replaced 0074's global dial with per-action-type autonomy, and NONE is granted.
       // Rendered as a row rather than omitted: an operator reading this page is entitled to know that
       // nothing acts on its own, and to see that it is a decision rather than an oversight.

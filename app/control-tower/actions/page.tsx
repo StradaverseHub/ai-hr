@@ -55,7 +55,10 @@ export default async function AgentActionsPage({
         description={t('description')}
         back={{ href: '/control-tower', label: t('backToTower') }}
       />
-      <ErrorBanner message={sp.error ? t(`error.${sp.error}`) : undefined} />
+      {/* The code is validated against the known set before it reaches t(). A query string is user input,
+          and an unknown key throws MISSING_MESSAGE — which crashes the page rather than showing an error
+          on it, from nothing worse than a hand-edited URL. */}
+      <ErrorBanner message={isErrorCode(sp.error) ? t(`error.${sp.error}`) : undefined} />
 
       {sp.closed !== undefined && (
         <Card className="p-4">
@@ -117,6 +120,10 @@ export default async function AgentActionsPage({
     </div>
   );
 }
+
+const ERROR_CODES = ['unknown_type', 'blast_radius', 'nothing_to_do', 'failed'] as const;
+const isErrorCode = (v: string | undefined): v is (typeof ERROR_CODES)[number] =>
+  v !== undefined && (ERROR_CODES as readonly string[]).includes(v);
 
 /** `missing-bank-profile` → `missingBankProfile`, the shape the `anomaly.detector.*` keys are stored in. */
 const camel = (id: string) => id.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());

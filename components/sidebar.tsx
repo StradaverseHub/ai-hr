@@ -194,6 +194,10 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // tower with nothing in it. When a second adapter lands this becomes "any registered domain".
   ['/control-tower', 'payroll'] as const,
   ['/control-tower/how-it-works', 'payroll'] as const,
+  // r235 — payroll-gated for a sharper reason than the two above: the ONLY action type closes payroll
+  // exceptions, so without payroll this row is a permanently empty screen. It stops being payroll's when
+  // an action type lands whose subject is not a payroll finding.
+  ['/control-tower/actions', 'payroll'] as const,
   // NOT payroll-gated: record completeness is not a payroll question (see CONTROL_DOMAINS). Absent from
   // this map entirely, which is how a row says "always offered".
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),

@@ -11264,7 +11264,7 @@
     "step3Title": "Explained",
     "step3Sub": "AI writes it in plain words",
     "step4Title": "A person decides",
-    "step4Sub": "accept, fix, or flag as wrong",
+    "step4Sub": "accept, fix, or approve what the AI proposes closing",
     "step5Title": "Result recorded",
     "step5Sub": "measures how well it is doing",
     "loopBack": "What people decide is what tells us whether the checks are set right.",
@@ -11290,7 +11290,9 @@
       "assistant": "The assistant",
       "assistantDoes": "Answers employees’ questions about their own records — leave, pay, and why their pay changed — so they do not have to ask a person.",
       "autonomy": "Acting on its own",
-      "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today."
+      "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today.",
+      "actions": "The closer",
+      "actionsDoes": "Finds exceptions that were raised because something was missing from an employee record — and that record now has it. It proposes closing them; you approve, and each one is checked again as you do. It never changes an employee record."
     },
     "why": {
       "detectorsOn": "Running on every processed payroll run.",
@@ -11303,7 +11305,8 @@
       "noProvider": "No AI provider is set up, so nothing can be explained. Everything else still works — you see the figures without the sentence.",
       "assistantOn": "You have access to the assistant.",
       "assistantNoGrant": "Not switched on for you. An administrator turns it on per person, under Administration → Users.",
-      "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it."
+      "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it.",
+      "actionsOn": "Proposing on the Agent actions screen. Nothing is closed until you approve it."
     },
     "domainsTitle": "What it watches",
     "domainsIntro": "Payroll is the first area. The same machinery is built to cover the others, and they are listed here so you can see what is coming rather than assuming payroll is all there is.",

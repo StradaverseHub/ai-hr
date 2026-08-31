@@ -11264,7 +11264,7 @@
     "step3Title": "Diterangkan",
     "step3Sub": "AI menulis dalam bahasa mudah",
     "step4Title": "Seseorang memutuskan",
-    "step4Sub": "terima, betulkan, atau tanda salah",
+    "step4Sub": "terima, betulkan, atau luluskan apa yang AI cadangkan untuk ditutup",
     "step5Title": "Hasil direkod",
     "step5Sub": "mengukur sejauh mana ia berjaya",
     "loopBack": "Keputusan orang itulah yang memberitahu kami sama ada semakan ditetapkan dengan betul.",
@@ -11290,7 +11290,9 @@
       "assistant": "Pembantu",
       "assistantDoes": "Menjawab soalan pekerja tentang rekod mereka sendiri — cuti, gaji, dan sebab gaji mereka berubah — supaya mereka tidak perlu bertanya kepada seseorang.",
       "autonomy": "Bertindak sendiri",
-      "autonomyDoes": "Meluluskan atau mengubah sesuatu tanpa manusia. Tiada apa dalam sistem ini melakukannya hari ini."
+      "autonomyDoes": "Meluluskan atau mengubah sesuatu tanpa manusia. Tiada apa dalam sistem ini melakukannya hari ini.",
+      "actions": "Penutup",
+      "actionsDoes": "Mencari pengecualian yang dibangkitkan kerana ada sesuatu yang hilang daripada rekod pekerja — dan rekod itu kini memilikinya. Ia mencadangkan untuk menutupnya; anda meluluskan, dan setiap satu diperiksa semula ketika anda berbuat demikian. Ia tidak pernah mengubah rekod pekerja."
     },
     "why": {
       "detectorsOn": "Berjalan pada setiap proses gaji yang diproses.",
@@ -11303,7 +11305,8 @@
       "noProvider": "Tiada penyedia AI disediakan, jadi tiada apa boleh diterangkan. Semua yang lain masih berfungsi — anda nampak angka tanpa ayatnya.",
       "assistantOn": "Anda mempunyai akses kepada pembantu.",
       "assistantNoGrant": "Belum dihidupkan untuk anda. Pentadbir menghidupkannya bagi setiap orang, di bawah Pentadbiran → Pengguna.",
-      "autonomyByDesign": "Sengaja dimatikan. Tiada apa diluluskan atau diubah tanpa manusia, dan itu hanya akan berubah satu tindakan pada satu masa, apabila kami dapat menunjukkan sistem cukup kerap bersetuju dengan orang anda."
+      "autonomyByDesign": "Sengaja dimatikan. Tiada apa diluluskan atau diubah tanpa manusia, dan itu hanya akan berubah satu tindakan pada satu masa, apabila kami dapat menunjukkan sistem cukup kerap bersetuju dengan orang anda.",
+      "actionsOn": "Mencadangkan pada skrin Tindakan ejen. Tiada apa-apa ditutup sehingga anda meluluskannya."
     },
     "domainsTitle": "Apa yang dipantau",
     "domainsIntro": "Gaji ialah bidang pertama. Mesin yang sama dibina untuk meliputi yang lain, dan ia disenaraikan di sini supaya anda nampak apa yang akan datang.",
