@@ -241,6 +241,23 @@ pass vacuously.
 **i18n complete in all six locales, verified by comparing VALUES against EN** (28 keys × 5 locales, zero
 identical-to-EN) rather than trusting `parity ✓`.
 
+⚠️ **THE WRITE PATH WAS EXERCISED THROUGH REAL HTTP, NOT ONLY THROUGH vitest**, because this is the first
+round where a green suite would not have been enough — the form → server action → core → service chain has
+no unit test. Staged two verdicts on the dev server, POSTed the form the way the browser encodes it
+(`$ACTION_ID_…` + repeated `verdictId` fields, pulled out of the rendered payload), and got
+`303 → ?closed=2&stale=0`, both rows `fixed_upstream`, and **two `payroll.anomaly.resolved` domain events
+attributed to the approving USER, not to the system** — which is right: the human approved, and the note
+records that the control plane proposed it. Then removed a bank account BETWEEN render and POST and got
+`closed=0&stale=1` with `resolved_at` still NULL. **Property (2) is now proven in production-shaped code,
+not just in a test harness.**
+
+**Every render branch was forced, not just the happy one.** The empty state, the proposal list, `?closed=`
+with and without stale, all four error codes, and a hand-edited `?error=bogus` — which the `ERROR_CODES`
+guard rejects into no banner rather than a `MISSING_MESSAGE` crash. Zero `MISSING_MESSAGE`, zero
+`IntlError`, across every one. A crafted POST carrying a MALFORMED verdict id lands on `?error=failed`
+(the uuid cast throws inside the re-check and the server action catches it) — an error banner, not a 500,
+and not reachable from the screen, which posts only ids it printed.
+
 
 ### r234 (2026-08-31) — record readiness: ADR-0083's shift-left half, and the second control domain. NO MIGRATION.
 
