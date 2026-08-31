@@ -132,6 +132,16 @@ Agents must be able to act, and this is the shape that survives an audit:
 - **A kill switch and a per-tenant daily action budget.** The failure mode of an agent with write access is
   not a wrong action, it is a thousand of them.
 
+**As built (r235, `core/agent-actions.ts`).** One action type, `close_fixed_upstream`, with a
+deterministic precondition shared with the readiness screen rather than re-written; `reversible`;
+blast-radius cap 50 that REFUSES rather than truncates; `AutonomyLevel` a union with **one** member, so
+granting autonomy is a change to that file and not to a setting; execution through the existing
+`resolveAnomalyVerdict` service, which is where the domain event and the RBAC check already live. **The
+kill switch and the daily budget above are NOT built, deliberately** — while every execution is a human
+pressing a button they stop nothing the button does not already stop, and shipping them early would
+advertise a safety property that is really just the button. They are a precondition of the first grant of
+autonomy, i.e. of the same change that widens that union.
+
 ### 2.6 The learning loop learns fixes, not thresholds
 
 ADR-0074 item 7 proposed override analysis → threshold tuning. **Reject that target.** A loop trained on
