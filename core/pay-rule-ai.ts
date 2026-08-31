@@ -26,6 +26,7 @@ import { appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 import { validatePayRule, PAY_RULE_KINDS, type PayRule } from './pay-rule';
+import { recordProposal } from './agent-proposal';
 
 /** Thrown when AI assist cannot produce a valid rule (unconfigured provider, unparseable output, or a model
  *  rule that fails validatePayRule). Carries a localisable reason key so the dialog shows a translated message. */
@@ -100,7 +101,43 @@ export async function draftPayRule(
   // One-shot: validate the model's structured output. Invalid ⇒ a single typed error (the admin re-asks).
   // No second AI call.
   const v = rule ? validatePayRule(rule, p.componentProrates ?? false) : { ok: false as const, code: 'BAD_KIND' as const };
-  if (!parsed || !rule || !PAY_RULE_KINDS.includes(rule.kind) || !v.ok || !explanation) {
+
+  // ADR-0084 §2.4 — `validatePayRule` IS this surface's adjudicator; it always was, and the only thing
+  // this round adds is that its verdict is now WRITTEN DOWN. The reason is specific rather than a blanket
+  // "invalid": an adjudication-pass rate that cannot say WHICH check refused the output tells you the
+  // model is failing without telling you at what, which is not actionable (0452 CHECK requires it).
+  const reason = !parsed
+    ? 'unparseable_output'
+    : !rule
+      ? 'no_rule_in_output'
+      : !PAY_RULE_KINDS.includes(rule.kind)
+        ? 'unknown_rule_kind'
+        : !v.ok
+          ? `validate_pay_rule:${v.code}`
+          : !explanation
+            ? 'no_explanation'
+            : null;
+
+  // ⚠️ RECORDED BEFORE THE THROW, and in the ledger's OWN transaction (agent-proposal property 2). A
+  // rejection recorded inside the aborting path would roll back with it, and this surface's rejections
+  // are the entire point — an authoring assist that silently fails half the time looks identical to one
+  // that works, from the outside.
+  await recordProposal(ctx, {
+    type: 'pay_rule_draft',
+    // No subject: nothing is written until the admin saves, so there is no row for this to be about.
+    facts: { componentCode: p.componentCode ?? null, prorates: p.componentProrates ?? false },
+    // The DESCRIPTION never lands here — it is the admin's free text and is redacted before it even
+    // reaches the provider. Only the shape the model chose.
+    proposal: { ruleKind: rule?.kind ?? null, hasExplanation: Boolean(explanation) },
+    adjudication: reason === null ? { ok: true } : { ok: false, reason },
+    provider: cfg.provider,
+    model: cfg.model,
+  });
+
+  // The `!rule || !explanation` clauses are REDUNDANT AT RUNTIME — `reason` is already non-null in both
+  // cases — and are here so the compiler keeps the narrowing the original compound guard gave it. Without
+  // them `rule` stays `PayRule | undefined` below.
+  if (reason !== null || !rule || !explanation) {
     throw new PayRuleDraftError('invalid_output');
   }
 

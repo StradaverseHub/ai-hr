@@ -17,6 +17,7 @@ import { appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
 import { resolveActiveAiConfig } from './ai-config';
 import { getDataset, validateReportSpec, REPORT_DATASETS } from './report-registry';
+import { recordProposal } from './agent-proposal';
 import type { CustomReportSpec } from '../db/schema';
 
 export class ReportDraftError extends Error {
@@ -109,7 +110,25 @@ export async function draftReportSpec(
     | null;
   const rawSpec = parsed?.spec as Partial<CustomReportSpec> | undefined;
   const explanation = typeof parsed?.explanation === 'string' ? parsed.explanation.trim() : '';
-  if (!parsed || !rawSpec) throw new ReportDraftError('invalid_output');
+  // ADR-0084 §2.4 — `validateReportSpec` IS this surface's adjudicator, and there are TWO refusal points,
+  // not one: output that will not parse at all, and output that parses into an invalid spec. They are
+  // different failures (a provider problem versus a prompt problem) and a single blanket reason would
+  // hide which one is happening. Both record BEFORE throwing, in the ledger's own transaction.
+  const ledger = (reason: string | null, shape: Record<string, unknown>) =>
+    recordProposal(ctx, {
+      type: 'report_spec',
+      // No subject: nothing is written until the admin saves the report.
+      facts: { datasetId: p.datasetId },
+      proposal: shape,
+      adjudication: reason === null ? { ok: true } : { ok: false, reason },
+      provider: cfg.provider,
+      model: cfg.model,
+    });
+
+  if (!parsed || !rawSpec) {
+    await ledger('unparseable_output', {});
+    throw new ReportDraftError('invalid_output');
+  }
 
   const fieldIds = new Set(ds.fields.map((f) => f.id));
   // Sanitise the AI's layout: keep only align entries for known fields; drop alignment for unknown ids.
@@ -138,6 +157,10 @@ export async function draftReportSpec(
   };
 
   const v = validateReportSpec(spec);
+  // The spec's SHAPE is recorded, never its contents: column ids are a schema fact, but a filter value
+  // can carry employee data, and this is a telemetry table (§2.3 — the facts are hashed, never stored).
+  const shape = { datasetId: spec.datasetId, columnCount: spec.columns.length, hasFilters: Boolean(spec.filters) };
+  await ledger(!v.ok ? `validate_report_spec:${v.reason}` : !explanation ? 'no_explanation' : null, shape);
   if (!v.ok || !explanation) throw new ReportDraftError('invalid_output');
 
   // Smart recommendations (advisory): validated extra columns, best export format, a short note.

@@ -8188,3 +8188,65 @@ export const assistantUsage = pgTable(
     ),
   ],
 );
+
+/**
+ * ADR-0084 §2.3 — THE PROPOSAL LEDGER. Every automated proposer in the product writes here.
+ *
+ * Before it there was no edge anywhere in this codebase from an AI output back to an AI input: nothing a
+ * model produced was recorded against what happened to it, so nothing could improve without a developer
+ * editing a prompt, and nobody could say whether any of it helped.
+ *
+ * ⚠️ THE THREE VERDICT GROUPS ARE SEPARATE ON PURPOSE — `adjudication` is the MACHINE'S, `decision` is a
+ * HUMAN'S, `reversedAt` is LATER REALITY — and 0452's CHECKs make the ordering structural. A single
+ * "was it good?" column cannot tell "the model was wrong" from "the model was right and the human
+ * disagreed" from "everyone was wrong and reality corrected them later". The dangerous combination is a
+ * high agreement rate ALONGSIDE a high reversal rate: the humans are rubber-stamping, and it looks like
+ * success in every other metric.
+ *
+ * NOT `aiProposal`: a deterministic proposer belongs here too (ADR-0083 §2.5's action types are what
+ * §2.8's autonomy criterion is measured over, and none of them involves a model), which is why `provider`
+ * and `model` are nullable.
+ */
+export const agentProposal = pgTable(
+  'agent_proposal',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Closed vocabulary — `ProposalTypeId` in core/agent-proposal.ts. Deliberately unCHECKed in SQL:
+     *  the column is written only by code, and a CHECK would mean a migration per new AI surface. */
+    proposalType: text('proposal_type').notNull(),
+    /** BOTH NULL for an authoring proposal (a drafted pay rule or report has no subject row yet). */
+    subjectType: text('subject_type'),
+    subjectId: uuid('subject_id'),
+    /** Hash of the facts the proposer saw — the only way to tell a prompt regression from a hard month. */
+    inputDigest: text('input_digest').notNull(),
+    proposal: jsonb('proposal').$type<Record<string, unknown>>().notNull().default({}),
+    /** THE MACHINE'S VERDICT. `adjudicationReason` is required when rejected (0452 CHECK). */
+    adjudication: text('adjudication').$type<'accepted' | 'rejected'>().notNull(),
+    adjudicationReason: text('adjudication_reason'),
+    /** THE HUMAN'S VERDICT. Never set on a rejected row — it was never shown to anybody. */
+    decision: text('decision').$type<'approved' | 'declined'>(),
+    decidedByUserId: uuid('decided_by_user_id').references(() => appUser.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    /** LATER REALITY. Only meaningful once approved (0452 CHECK). */
+    reversedAt: timestamp('reversed_at', { withTimezone: true }),
+    reversalReason: text('reversal_reason'),
+    /** NULL for a deterministic proposer. */
+    provider: text('provider'),
+    model: text('model'),
+    proposedAt: timestamp('proposed_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('agent_proposal_type_time_idx').on(t.tenantId, t.proposalType, t.proposedAt.desc()),
+    index('agent_proposal_subject_idx').on(t.tenantId, t.subjectType, t.subjectId),
+    check('agent_proposal_adjudication_ck', sql`${t.adjudication} IN ('accepted', 'rejected')`),
+    check('agent_proposal_decision_ck', sql`${t.decision} IS NULL OR ${t.decision} IN ('approved', 'declined')`),
+    check('agent_proposal_rejected_undecided_ck', sql`${t.adjudication} = 'accepted' OR ${t.decision} IS NULL`),
+    check('agent_proposal_reject_reason_ck', sql`${t.adjudication} = 'accepted' OR ${t.adjudicationReason} IS NOT NULL`),
+    // NULL-SAFE ON PURPOSE: with a plain `=`, an undecided row makes this NULL, and a CHECK only rejects
+    // on FALSE — so it would have admitted the exact row it forbids. See 0452's comment.
+    check('agent_proposal_reversal_ck', sql`${t.reversedAt} IS NULL OR ${t.decision} IS NOT DISTINCT FROM 'approved'`),
+    check('agent_proposal_decided_together_ck', sql`(${t.decision} IS NULL) = (${t.decidedAt} IS NULL)`),
+  ],
+);

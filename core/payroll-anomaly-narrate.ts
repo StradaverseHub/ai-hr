@@ -34,6 +34,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { generateDraft } from '../lib/ai';
+import { recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 
 /** Bounded hard: this is prose over at most a handful of numbers, never an essay. */
@@ -164,7 +165,30 @@ export async function narrateVerdict(
       continue;
     }
     if (!prose) continue;
-    if (!narrationIsFaithful(prose, f.facts)) {
+
+    // ADR-0084 §2.4 — `narrationIsFaithful` IS this surface's adjudicator, and this loop is the reason it
+    // was the first thing retro-fitted onto the ledger: it already produced BOTH outcomes and threw both
+    // away. `rejected` was a number on a toast that nobody could aggregate; now every discarded figure is
+    // a row, and the adjudication-pass rate for `anomaly_narration` becomes a real quantity.
+    //
+    // THERE IS NO HUMAN DECISION ON THIS TYPE, EVER — nobody approves prose. So `agreementRate` stays
+    // null for it by construction, and the measurable property is the pass rate alone. A screen must not
+    // read that null as a zero (see `proposalRates`).
+    const faithful = narrationIsFaithful(prose, f.facts);
+    await recordProposal(ctx, {
+      type: 'anomaly_narration',
+      subject: { type: 'payroll_anomaly_finding', id: f.id },
+      facts: f.facts,
+      // The prose is the proposal. It is safe to keep ONLY because it just passed (or failed) the check
+      // that every number in it traces to `facts` — an unfaithful one is exactly what we want to read
+      // back later when asking why a model keeps inventing figures.
+      proposal: { detectorId: f.detectorId, prose },
+      adjudication: faithful ? { ok: true } : { ok: false, reason: 'unsupported_figure' },
+      provider: cfg.provider,
+      model: cfg.model,
+    });
+
+    if (!faithful) {
       // The model named a figure the facts do not support. Discard it — do NOT store it flagged, do NOT
       // show it caveated. There is no honest way to render a number we cannot trace on a payroll screen.
       rejected++;

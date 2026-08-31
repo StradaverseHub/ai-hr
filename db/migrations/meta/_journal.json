@@ -2570,6 +2570,13 @@
       "when": 1781862551000,
       "tag": "0451_assistant_substrate",
       "breakpoints": true
+    },
+    {
+      "idx": 452,
+      "version": "7",
+      "when": 1781862552000,
+      "tag": "0452_agent_proposal_ledger",
+      "breakpoints": true
     }
   ]
 }
