@@ -18,12 +18,22 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-31 (r226-r232 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-31 (r226-r233 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@5e6336fa` IS WHAT RUNS ON PRODUCTION (r232, 2026-08-31)** — verified by a zero-change
+**`main@48836bb9` IS WHAT RUNS ON PRODUCTION (r233, 2026-08-31)** — verified by a zero-change
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 11:47:34 +0800.
-(Commits after `5e6336fa` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 19:21:22 +0800.
+(Commits after `48836bb9` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+
+⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
+[ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
+supersedes ADR-0074's framing (not its invariant): the auto-clear rate is a LAGGING indicator of input
+quality, the model counts instances where the work is caused by classes, and payroll-run verification is
+a minority of HR operations time — so perfecting it can leave headcount unchanged. The target is no
+longer a ratio but a shape: **HR operations ceases to be a staffed function.** 0074 items 2 and 7 are
+superseded; item 8 is re-rated UP. **Next build under it is the continuous record-readiness adapter
+(§3 item 2) — the loop that feeds every other loop, and now a REGISTRATION rather than a rewrite
+because r233 cut the domain seam.**
 
 **ADR-0074 SCOREBOARD, so nobody re-derives it.** 1 anomaly layer ✅ · 2 auto-clear gate ❌ REFUSED,
 see above · 3 nightly sweep ✅ (r230 — it had never been installed) · 4 exceptions queue ✅ + the
@@ -127,6 +137,57 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r233 (2026-08-31) — the AI Control Tower becomes its own section, on an ADR-0083 domain seam. NO MIGRATION.
+
+Owner request and **[ADR-0083](docs/adr/0083-hr-operations-control-plane.md) step 1** in one round: a
+separate menu, a domain seam under it, and a page that explains the thing to the person who has to trust
+it.
+
+**THE SEAM (`core/control-domains.ts`).** Strip the payroll nouns out of what ADR-0076 built and nothing
+that remains is about payslips — detectors → typed findings → narration that cannot change a verdict → a
+queue → metrics that gate autonomy. The tower and the explainer now read a REGISTRY instead of calling
+payroll by name, so landing the readiness adapter is a registration rather than a rewrite of every
+surface. **A single-member abstraction is normally a smell; this one earns its place because the SCREENS
+are what is being generalised, not the evaluator** — a tower that hardcodes "payroll" in its headings and
+counts has to be rewritten for domain two. The evaluator did not move.
+
+**THE MOVE.** `/payroll/control-tower` → **`/control-tower`**, its own top-level admin section. It was a
+payroll row while payroll was the only domain it watched, and leaving it there taught every reader the
+opposite of what 0083 argues. The old href **FORWARDS (307, verified)** — it shipped live in r229 and a
+bookmark must not break to tidy a menu — and the row is REMOVED from the payroll pack rather than
+duplicated, because two menu paths to one screen is how a menu stops telling you where things live.
+
+**THE EXPLAINER (`/control-tower/how-it-works`).** An inline-SVG drawing of the five-step loop with the
+AI step, the human step and the rules-only steps colour-separated and legended, then a live agent roster.
+⚠️ **ITS ONE RULE IS THAT EVERY STATUS IS READ FROM THE SYSTEM, NEVER DECLARED.** The provider check is a
+real config read; the sweep check is the newest verdict's timestamp and distinguishes "never ran" from
+"ran a fortnight ago", which are different faults with different fixes; the assistant check is the
+caller's own grant. A page asserting "the narrator is active" from a constant manufactures confidence and
+is wrong exactly when it matters. **And it states what does NOT run:** autonomy renders as a row reading
+*off by design* with its reason, because an admin looking at something called an AI Control Tower is
+entitled to know nothing here acts on its own, and to see that as a decision (0083 §2.5) rather than
+discover it by accident. Both invariants are said in plain words — AI never works out your pay, AI never
+decides anything on its own.
+
+⚠️⚠️ **`parity ✓` DOES NOT MEAN TRANSLATED, AND THIS ROUND NEARLY SHIPPED PROOF OF IT.** The first i18n
+pass built the ta / th / vi catalogues from the English dict and overrode only the short labels, leaving
+**48 of 69 keys holding ENGLISH TEXT inside a translation catalogue** — and `scripts/i18n-check.mjs`
+passed, because it counts keys and compares placeholders and cannot see this. **That is worse than a
+missing key**: a missing key falls back visibly and gets picked up by a translation pass, while a key
+populated with English looks finished forever. Caught by comparing VALUES against EN, which is the check
+that exists nowhere in the toolchain. All 69 are now translated in all six. **Do this comparison whenever
+a round adds a screen's worth of strings.**
+
+**THREE GUARDS UPDATED, NOT WEAKENED.** The payroll fly-out set records the removal as a MOVE — its
+second removal ever, after `efe1d230`'s guide — and the guard's promise ("no destination lost, no href
+renamed") survives because the href still resolves. The permissions matrix gains the two guarded routes
+and deliberately OMITS the forward: the matrix tracks guarded screens, and listing a redirect would claim
+a screen that does not exist. The phase map drops the retired rank.
+
+**RENDER-CHECKED** (rule 6): both routes 200, the forward 307, zero
+`MISSING_MESSAGE`/`IntlError`/RSC errors across ~69 new keys. 11 new cases pinning the move, the registry
+and the explainer's honesty rules.
 
 ### r232 (2026-08-31) — ADR-0074 item 5: "why is my pay different?" without a payroll person. NO MIGRATION.
 
