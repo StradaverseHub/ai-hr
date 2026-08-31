@@ -140,8 +140,9 @@ tile measures exceptions ÷ throughput, which is an exception-load estimate rath
 
 **BOARD: FIVE ITEMS, ALL `planned` AND AWAITING THE REPORTER — NOTHING BUILDING, NOTHING BUILDABLE.**
 No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
-`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is **`0453`** — r236 took `0452`
-(`agent_proposal`), the first migration since `0451`; r226-r235 all shipped without one.
+`r163-g-release3`, `r163g-picker`, `r197-epfcycle`). Next free migration is **`0454`** — r236 took `0452`
+(`agent_proposal`) and `0453` (a GRANT `0165` should have carried), the first migrations since `0451`;
+r226-r235 all shipped without one.
 
 ⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
 on a BLOCKED approved one). An item raised at `open` with no plan has NO reply path — `approveFeedbackPlan`
@@ -193,7 +194,7 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r236 (2026-09-01) — the proposal ledger: the AI loop stops being open. MIGRATION `0452`.
+### r236 (2026-09-01) — the proposal ledger: the AI loop stops being open. MIGRATIONS `0452` + `0453`.
 
 [ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) Phase 1 item 1. Before this round there was **no
 edge anywhere in this codebase from an AI output back to an AI input** — the narrator wrote prose, the
@@ -259,6 +260,24 @@ that as 0% would report the narrator as universally rejected. Same discipline as
 **WHAT HAS NO CALLER YET, DELIBERATELY:** `recordDecision`, `recordReversal` and `proposalRates`. The
 first two belong with the surfaces that produce their signal; surfacing the rates is Phase 3 item 5, and a
 rate rendered before there is data to render is the "tune the thresholds" mistake in a new coat.
+
+**VERIFIED END TO END THROUGH REAL HTTP, not only in vitest** — the same discipline as r235, and the point
+of it here is that a ledger nobody exercises is indistinguishable from one that silently records nothing.
+Staged two verdicts on a dev server, approved through the actual form: `303 → ?closed=1&stale=0`, and the
+row reads `accepted / approved / decided_at stamped / provider NULL` (deterministic). Then submitted the
+STALE verdict directly: `?closed=0&stale=1`, the row reads `rejected / precondition_no_longer_holds /
+decision NULL`, and the verdict itself was untouched. **The machine's refusal is never recorded as the
+operator declining** — that distinction is the whole reason the two columns are separate.
+
+⚠️ **AND `0453` IS A DEFECT THIS ROUND FOUND WITHOUT CAUSING.** `/reports` returns 500 with `permission
+denied for table custom_report` on **any cluster built by `scripts/dev-db-rebuild.sh`**: `0165` created
+the table with no explicit GRANT and relied on production's `ALTER DEFAULT PRIVILEGES`, which a REBUILT
+cluster never runs. It is invisible on production (verified there directly — `role_table_grants` reports
+all four privileges) and breaks every developer after a rebuild. **`agent_proposal` and `assistant_grant`
+both read fine on the same broken cluster because both migrations wrote the GRANT out** — that contrast
+is the whole argument for the redundancy AGENTS rule 5 demands. The other four tables `ai_hr_app` cannot
+read there are CORRECT and were left alone: `ai_provider_config` is FORCE-RLS holding a key ciphertext
+(0059), and three belong to the `ai_hr_platform` control plane (ADR-0077/0079).
 
 
 ### r235 (2026-08-31) — the action layer: the first place an agent WRITES. NO MIGRATION.
