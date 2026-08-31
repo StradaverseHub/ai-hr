@@ -64,8 +64,17 @@ export const CONTROL_DOMAINS: readonly ControlDomain[] = [
     detectorCount: DETECTORS.length,
     status: 'live',
   },
-  // ADR-0083 §3 item 2 — the loop that feeds every other loop. Not built.
-  { id: 'readiness', labelKey: 'readiness', module: null, trigger: 'on_change', detectorCount: 0, status: 'planned' },
+  // ADR-0083 §3 item 2 — the loop that feeds every other loop, built in r234.
+  //
+  // `module: null` because record completeness is not a payroll question: the same missing IC blocks a
+  // statutory return and the same missing bank account blocks a payment, so a tenant without the payroll
+  // module still has records that are either ready or not.
+  //
+  // `detectorCount: 6` is the six gaps in core/record-readiness.ts's ReadinessGapId. It is a literal here
+  // and the payroll row's is derived, which is a real inconsistency: the readiness checks are a union
+  // type rather than a runtime list, so there is nothing to take a length of. test/record-readiness.test.ts
+  // pins the two together so the literal cannot drift.
+  { id: 'readiness', labelKey: 'readiness', module: null, trigger: 'on_change', detectorCount: 6, status: 'live' },
   // §3 item 5.
   { id: 'onboarding', labelKey: 'onboarding', module: null, trigger: 'on_change', detectorCount: 0, status: 'planned' },
   // §3 item 6.

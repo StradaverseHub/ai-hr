@@ -14,6 +14,7 @@ import {
   Clock,
   FileBarChart,
   Hash,
+  ClipboardCheck,
   Gauge,
   Sparkles,
   LayoutDashboard,
@@ -192,6 +193,8 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // tower with nothing in it. When a second adapter lands this becomes "any registered domain".
   ['/control-tower', 'payroll'] as const,
   ['/control-tower/how-it-works', 'payroll'] as const,
+  // NOT payroll-gated: record completeness is not a payroll question (see CONTROL_DOMAINS). Absent from
+  // this map entirely, which is how a row says "always offered".
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
   ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
   // deec1691 — the ONE hand-written entry, and it has to be: `system_explorer` is a catalog module
@@ -339,6 +342,9 @@ const GROUPS: Group[] = [
       // The explainer is a first-class row rather than a link buried on the overview: "what is switched
       // on, and which parts involve a model" is the question an admin asks BEFORE trusting the queue, so
       // it must be reachable without first reading the thing it explains.
+      // ADR-0083 §3 item 2 — the shift-left half. Sits ABOVE the explainer because it is a working screen
+      // and the explainer is a reference one.
+      { href: '/control-tower/readiness', labelKey: 'controlTowerReadiness', icon: ClipboardCheck, adminOnly: true },
       { href: '/control-tower/how-it-works', labelKey: 'controlTowerHow', icon: BookOpen, adminOnly: true },
     ],
   },

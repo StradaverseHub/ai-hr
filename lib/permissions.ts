@@ -524,6 +524,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // deliberately NOT listed — the matrix tracks guarded screens, not forwards.
       '/control-tower',
       '/control-tower/how-it-works',
+      '/control-tower/readiness',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.
