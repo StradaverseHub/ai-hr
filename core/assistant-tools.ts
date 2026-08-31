@@ -37,6 +37,9 @@
 import type { SessionContext } from '../db/client';
 import type { AiJsonSchema, AiToolSpec } from '../lib/ai/types';
 import { todayInKualaLumpur } from '../lib/hr-date';
+// Reads `statutory.componentLines` BY SHAPE, so this file consumes the kernel's stamp without importing
+// core/payroll and dragging the engine into every assistant caller.
+import { storedComponentLines } from './payslip-earning-lines';
 import { isModuleEnabled } from './entitlements';
 import {
   awayTodayCount,
@@ -783,6 +786,151 @@ const myPayslipSummary: AssistantTool = {
   },
 };
 
+
+/**
+ * ADR-0074 item 5 — THE EMPLOYEE-FACING EXPLANATION AGENT, as a tool rather than a screen.
+ *
+ * "Why is my pay different this month?" is the question that actually consumes a payroll team's day, and
+ * ADR-0074 lists deflecting it as its own item precisely because answering it faster is worth less than
+ * not being asked. Built as a registry tool rather than a bespoke surface so it inherits the whole loop:
+ * the caller's own SessionContext (so RLS scopes it), the budget gate, the audit row, and the refusal
+ * envelope.
+ *
+ * THE ARITHMETIC IS DONE HERE. Every difference below is computed in this function and handed to the
+ * model already worked out. That is ADR-0074's non-negotiable invariant — the LLM never computes the
+ * money — and it is also what makes the answer checkable: each number the employee is told corresponds
+ * to a subtraction someone can repeat against their own two payslips.
+ *
+ * THE RELEASE FILTER IS MANDATORY AND IS THE SAME ONE `my_payslip_summary` DOCUMENTS. `myPayslips`
+ * STAMPS a `released` flag rather than enforcing it; without this filter the assistant would explain a
+ * payslip the employee's own screen refuses to show them.
+ *
+ * A PERIOD IS SUMMED ACROSS ITS RUNS, deliberately. An employee thinks in months; payroll thinks in runs,
+ * and a month can carry a regular run plus a bonus or off-cycle one. Comparing single runs would answer
+ * "why is this PAYSLIP different", which is a question nobody asked and whose answer ("because it is the
+ * bonus run") is not the one they need.
+ *
+ * WHAT IT DELIBERATELY DOES NOT RETURN: the statutory breakdown. `statutory` carries the EPF/SOCSO/PCB
+ * split and the tax-relief record, and only the component lines are projected out of it — the same
+ * restraint `my_payslip_summary` states. A deduction TOTAL that moved is reported and is usually the
+ * answer; the split is on the employee's own payslip, which they can already open.
+ */
+const myPayChange: AssistantTool = {
+  module: 'payroll',
+  sensitivity: 'pay',
+  spec: {
+    name: 'my_pay_change',
+    description:
+      "Explains why the asking user's own take-home pay changed, by comparing one pay period against the " +
+      'previous period they were paid for. Returns the gross, deductions and net for each period with the ' +
+      'difference already calculated, plus the same comparison per pay item (allowances, overtime, bonus ' +
+      'and so on) so a change can be attributed to a specific item. Both periods must be RELEASED payslips; ' +
+      'an unreleased period is simply absent. Use my_payslip_summary first if you do not know which periods ' +
+      'exist. It takes no employee argument and can only answer about the asking user. It does NOT return ' +
+      'the EPF / SOCSO / PCB split — if the deduction total moved, say so and point the employee at their ' +
+      'payslip for the breakdown rather than guessing which contribution changed.',
+    inputSchema: schema({
+      period: {
+        type: 'string',
+        pattern: '^\\d{4}-\\d{2}$',
+        description: 'The pay period to explain, as YYYY-MM. It is compared against the previous released period.',
+      },
+    }),
+  },
+  async run(ctx, input) {
+    const period = strArg(asObject(input), 'period');
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      return refuse('invalid_input', '`period` must be a month in YYYY-MM form, for example 2026-08.');
+    }
+    const ids = (await myEmploymentIdsAll(ctx)).map((e) => e.employmentId);
+    if (ids.length === 0) {
+      return refuse('no_employment', 'The asking user has no employee record, so they have no payslips.');
+    }
+
+    const released = (await myPayslips(ctx, ids)).filter((r) => r.released);
+    if (released.length === 0) return refuse('no_data', 'The asking user has no released payslips.');
+
+    // Sum each period across its runs — see the header on why a month, not a payslip, is the unit.
+    const byPeriod = new Map<string, { gross: number; deductions: number; net: number; lines: Map<string, { name: string; amount: number }> }>();
+    for (const r of released) {
+      const acc = byPeriod.get(r.payPeriod) ?? { gross: 0, deductions: 0, net: 0, lines: new Map() };
+      acc.gross += num(r.gross) ?? 0;
+      acc.deductions += num(r.deductions) ?? 0;
+      acc.net += num(r.net) ?? 0;
+      // ONLY the component lines are taken out of `statutory`. The rest of that object is the
+      // contribution breakdown and the tax-relief record and must not reach the model.
+      for (const line of storedComponentLines(r.statutory)) {
+        const code = (line.code ?? '').trim();
+        if (!code) continue;
+        const prev = acc.lines.get(code);
+        acc.lines.set(code, {
+          name: (line.name ?? code).trim() || code,
+          amount: (prev?.amount ?? 0) + (num(line.amount as string | number | null) ?? 0),
+        });
+      }
+      byPeriod.set(r.payPeriod, acc);
+    }
+
+    const current = byPeriod.get(period);
+    if (!current) {
+      return refuse('no_data', `The asking user has no released payslip for ${period}.`);
+    }
+    // The previous period they were actually PAID for, which is not necessarily the previous calendar
+    // month — a leaver, a joiner or an unpaid month all leave gaps, and stepping back one month would
+    // compare against nothing and read as "your pay fell to zero".
+    const earlier = [...byPeriod.keys()].filter((p) => p < period).sort();
+    const previousPeriod = earlier.length ? earlier[earlier.length - 1]! : null;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    if (!previousPeriod) {
+      return {
+        ok: true,
+        period,
+        previousPeriod: null,
+        // Stated rather than left to inference: with one payslip there is nothing to compare, and a
+        // model handed a lone figure will otherwise describe it as though it were a change.
+        note: 'This is the earliest released payslip, so there is no previous period to compare it against.',
+        gross: round2(current.gross),
+        deductions: round2(current.deductions),
+        net: round2(current.net),
+      };
+    }
+
+    const prev = byPeriod.get(previousPeriod)!;
+    const codes = new Set([...current.lines.keys(), ...prev.lines.keys()]);
+    const lines = [...codes]
+      .map((code) => {
+        const c = current.lines.get(code);
+        const p = prev.lines.get(code);
+        return {
+          code,
+          name: c?.name ?? p?.name ?? code,
+          current: round2(c?.amount ?? 0),
+          previous: round2(p?.amount ?? 0),
+          change: round2((c?.amount ?? 0) - (p?.amount ?? 0)),
+        };
+      })
+      // Unchanged items are dropped: they are not why the pay is different, and a list of twenty
+      // identical rows buries the two that moved.
+      .filter((l) => l.change !== 0)
+      .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+    return {
+      ok: true,
+      period,
+      previousPeriod,
+      gross: { current: round2(current.gross), previous: round2(prev.gross), change: round2(current.gross - prev.gross) },
+      deductions: {
+        current: round2(current.deductions),
+        previous: round2(prev.deductions),
+        change: round2(current.deductions - prev.deductions),
+      },
+      net: { current: round2(current.net), previous: round2(prev.net), change: round2(current.net - prev.net) },
+      ...cap(lines, 25),
+    };
+  },
+};
+
 /** APPEND ONLY — see the prefix-caching note above. */
 export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   myLeaveBalances,
@@ -794,6 +942,8 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   employeeProfile,
   myReportingLine,
   myPayslipSummary,
+  // ADR-0074 item 5. APPENDED, never inserted — one reordered byte invalidates the cached prefix.
+  myPayChange,
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════════════════════════════
