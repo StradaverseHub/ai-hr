@@ -216,7 +216,29 @@ screens is how an operator stops believing either.
 an unknown key throws `MISSING_MESSAGE`, which CRASHES the page rather than showing an error on it — from
 nothing worse than a hand-edited URL. Rule 6's failure mode, reachable by hand.
 
-**i18n complete in all six locales, verified by comparing VALUES against EN** (24 keys × 5 locales, zero
+⚠️ **ONE REFUSAL MUST NOT DISCARD A COMMITTED BATCH.** Each `resolveAnomalyVerdict` is its own
+transaction, so a throw escaping the execution loop would report total failure over verdicts that had
+ALREADY closed — the mirror of the truncation property (4) refuses, and just as misleading. The loop
+catches per verdict. `stale` is therefore "approved but not closed, for any reason" — the cause came back,
+or somebody resolved it by hand while the page was open — deliberately ONE number, because the operator's
+next move is the same for both and a second count would imply a distinction they cannot act on. **The
+screen's wording covers both cases and must keep doing so if this is ever split.**
+
+**THE EXPLAINER GAINED A SIXTH AGENT ROW — "the closer", DETERMINISTIC**, which is the point worth making
+on a page about AI: the thing proposing that work be closed is a predicate, not a model. It sits directly
+above `autonomy`, so one row says work is now proposed and the next says nothing is done without a person.
+Step 4 of the drawing now names approval.
+
+⚠️ **AND THAT ROW EXPOSED A GUARD THAT SHOULD HAVE EXISTED SINCE r233.** The roster is DATA — the page
+renders `agent.${id}`, `agent.${id}Does` and `why.${reasonKey}` as dynamic keys, and `i18n-coverage`'s
+static-key case **says in its own header that it cannot see those.** A row added without its strings
+throws `MISSING_MESSAGE` and crashes the explainer while tsc, the full suite and `next build` all stay
+green — AGENTS 6 exactly. `test/control-tower-menu.test.ts` now reads the ids and reason keys back out of
+`core/control-domains.ts`, **both branches of every ternary included** (the off-branch is the one nobody
+renders while testing): 6 ids, 13 reason keys today, with floors so a regex that stops matching cannot
+pass vacuously.
+
+**i18n complete in all six locales, verified by comparing VALUES against EN** (28 keys × 5 locales, zero
 identical-to-EN) rather than trusting `parity ✓`.
 
 

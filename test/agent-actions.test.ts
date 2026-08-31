@@ -18,6 +18,8 @@
  *  5. THE PREDICATE IS SHARED WITH READINESS. Two definitions of "has a bank account" would drift, and
  *     the drift would be invisible: the action layer closing findings the readiness screen still lists.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -25,6 +27,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { resolveAnomalyVerdict } from '../core/payroll-anomaly';
 import {
   AGENT_ACTION_TYPES,
   AgentActionError,
@@ -212,6 +215,44 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     await expect(executeAction(a, { typeId: 'close_fixed_upstream', verdictIds: [] })).rejects.toThrow(
       AgentActionError,
     );
+  });
+
+  it('one verdict already dealt with by hand does NOT cost the rest of the batch', async () => {
+    // The realistic race: two proposals on screen, somebody resolves one by hand, the operator approves
+    // both. The batch must still close the other — losing an approved batch to one row is the mirror of
+    // the truncation property (3) refuses, and just as misleading.
+    const a = await flagged({ withBank: true });
+    const b = await flagged({ withBank: true });
+    await resolveAnomalyVerdict(adminCtx(base), { verdictId: a.verdictId, resolution: 'accepted' });
+
+    const res = await executeAction(adminCtx(base), {
+      typeId: 'close_fixed_upstream',
+      verdictIds: [a.verdictId, b.verdictId],
+    });
+    expect(res.closed).toBe(1);
+    expect(res.stale).toBe(1);
+
+    const [row] = await owner.db
+      .select({ resolution: schema.payrollAnomalyVerdict.resolution })
+      .from(schema.payrollAnomalyVerdict)
+      .where(eq(schema.payrollAnomalyVerdict.id, a.verdictId));
+    // And the hand decision is untouched — not overwritten with `fixed_upstream`.
+    expect(row!.resolution).toBe('accepted');
+  });
+
+  it('the execution loop catches PER VERDICT, so one refusal cannot discard committed work', () => {
+    // A SOURCE-SHAPE ASSERTION, and deliberately so: the case above reaches the pre-filter rather than
+    // the catch, and the only thing that reaches the catch is a genuine race inside a single call — the
+    // service refusing between the re-check and the write. That cannot be staged deterministically, and
+    // a behavioural test that silently exercises a different path would claim coverage it does not have.
+    // What matters is checkable here: each resolve is its own transaction, so a throw escaping the loop
+    // would report total failure over verdicts that had already COMMITTED.
+    const src = fs.readFileSync(path.resolve(__dirname, '../core/agent-actions.ts'), 'utf8');
+    const loop = src.slice(src.indexOf('for (const id of ids)'));
+    expect(loop).toContain('try {');
+    expect(loop).toContain('await resolveAnomalyVerdict(');
+    expect(loop.indexOf('try {')).toBeLessThan(loop.indexOf('await resolveAnomalyVerdict('));
+    expect(loop).toMatch(/\}\s*catch\b/);
   });
 
   it('every action type is reversible and propose-only — the invariant, not a description', () => {

@@ -11372,7 +11372,7 @@
       "emptyTitle": "Không có gì để phê duyệt",
       "emptyBody": "Mọi ngoại lệ bảng lương còn chờ bạn đều có một vấn đề thật phía sau. Khi có người sửa hồ sơ gốc, ngoại lệ đó sẽ xuất hiện ở đây để được đóng lại.",
       "done": "Đã đóng {closed} ngoại lệ.",
-      "staleNote": "{stale} mục vẫn để mở: vấn đề đã quay lại kể từ khi trang này được tải, nên chúng không bị đóng.",
+      "staleNote": "{stale} mục còn lại vẫn để mở. Chúng được kiểm tra lại khi bạn phê duyệt và không còn đủ điều kiện — hoặc vấn đề đã quay lại, hoặc đã có người xử lý trước đó.",
       "reversibleNote": "Thao tác này chỉ ghi lại một quyết định về ngoại lệ. Nó không thay đổi lương, mức tính hay hồ sơ nhân viên nào, và việc kiểm tra lại đợt lương sẽ thay thế nó.",
       "recheckNote": "Mỗi mục được kiểm tra lại ngay khi bạn nhấn nút này. Bất kỳ mục nào phát sinh lỗi trở lại kể từ khi tải trang sẽ được để mở.",
       "overCap": "Một lần phê duyệt đóng tối đa {cap} mục, trong khi có {total} mục. Hãy duyệt số này trước rồi quay lại xử lý phần còn lại.",

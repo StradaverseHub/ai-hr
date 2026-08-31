@@ -11372,7 +11372,7 @@
       "emptyTitle": "Tiada apa-apa untuk diluluskan",
       "emptyBody": "Setiap pengecualian gaji yang masih menunggu anda mempunyai masalah sebenar di sebaliknya. Apabila seseorang membetulkan rekod asasnya, pengecualian itu akan muncul di sini untuk ditutup.",
       "done": "Menutup {closed} pengecualian.",
-      "staleNote": "{stale} dibiarkan terbuka: masalahnya telah kembali sejak halaman ini dimuatkan, jadi ia tidak ditutup.",
+      "staleNote": "Baki {stale} lagi dibiarkan terbuka. Ia diperiksa semula semasa anda meluluskan, dan tidak lagi layak — sama ada masalah itu telah kembali, atau seseorang telah pun menanganinya.",
       "reversibleNote": "Ini hanya merekodkan keputusan tentang pengecualian tersebut. Ia tidak mengubah gaji, kadar atau rekod pekerja, dan memeriksa semula pusingan gaji akan menggantikannya.",
       "recheckNote": "Setiap satu diperiksa semula sebaik sahaja anda menekan butang ini. Apa-apa yang rosak semula sejak halaman dimuatkan akan dibiarkan terbuka.",
       "overCap": "Satu kelulusan menutup paling banyak {cap}, dan terdapat {total}. Luluskan yang ini, kemudian kembali untuk selebihnya.",

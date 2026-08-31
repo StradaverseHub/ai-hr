@@ -11372,7 +11372,7 @@
       "emptyTitle": "Nothing to approve",
       "emptyBody": "Every payroll exception still waiting on you has a real problem behind it. When somebody fixes the underlying record, the exception will appear here to be closed.",
       "done": "Closed {closed} exception(s).",
-      "staleNote": "{stale} were left open: the problem had come back since this page loaded, so they were not closed.",
+      "staleNote": "The other {stale} were left open. They were checked again as you approved, and no longer qualified — either the problem has come back, or somebody had already dealt with them.",
       "reversibleNote": "This only records a decision about the exception. It changes no pay, no rate and no employee record, and checking the payroll run again replaces it.",
       "recheckNote": "Each one is checked again the moment you press this. Anything that has gone wrong again since the page loaded is left open.",
       "overCap": "One approval closes at most {cap}, and there are {total}. Approve these, then come back for the rest.",

@@ -212,7 +212,13 @@ export async function proposeActions(ctx: SessionContext): Promise<ActionProposa
 export type ExecuteResult = {
   /** Verdicts actually closed. */
   closed: number;
-  /** Proposed but refused at execution because the cause had come back — see (2). */
+  /**
+   * Approved but NOT closed, for either reason: the cause had come back (2), or the verdict moved under
+   * us — somebody resolved it by hand between the page rendering and the button being pressed, and the
+   * service refused. Deliberately ONE number rather than two, because the operator's next move is the
+   * same for both (look at the row again) and a second count would imply a distinction they cannot act
+   * on. The screen's wording covers both cases; it must keep doing so if this is ever split.
+   */
   stale: number;
 };
 
@@ -296,14 +302,23 @@ export async function executeAction(
   let closed = 0;
   for (const id of ids) {
     if (!stillValid.has(id)) continue;
-    // Through the EXISTING service: its RBAC check, its status guard and its domain event are the ones
-    // already trusted for a human doing this by hand. This layer does not open a second write path.
-    await resolveAnomalyVerdict(ctx, {
-      verdictId: id,
-      resolution: 'fixed_upstream',
-      note: 'Closed by the control plane: the record fact that caused this finding is no longer missing.',
-    });
-    closed++;
+    try {
+      // Through the EXISTING service: its RBAC check, its status guard and its domain event are the ones
+      // already trusted for a human doing this by hand. This layer does not open a second write path.
+      await resolveAnomalyVerdict(ctx, {
+        verdictId: id,
+        resolution: 'fixed_upstream',
+        note: 'Closed by the control plane: the record fact that caused this finding is no longer missing.',
+      });
+      closed++;
+    } catch {
+      // ONE REFUSAL MUST NOT DISCARD THE REST, and it must not report failure over work that COMMITTED.
+      // Each call is its own transaction, so a throw escaping this loop would leave the earlier verdicts
+      // closed while the operator is told the whole thing failed — the mirror of the truncation (4)
+      // refuses, and just as misleading. The realistic cause is a race: somebody resolved this verdict by
+      // hand while the page was open, and the service's status guard correctly refused. Not closed BY US
+      // is the only fact this layer can assert, so it counts as stale and the numbers stay true.
+    }
   }
   return { closed, stale: ids.length - closed };
 }
