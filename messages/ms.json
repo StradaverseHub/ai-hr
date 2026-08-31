@@ -303,7 +303,10 @@
     "payrollBackPay": "Bayaran Tunggakan",
     "payrollStatutoryAdjustment": "Pelarasan Berkanun",
     "payrollControlTower": "Menara Kawalan",
-    "assistant": "Pembantu"
+    "assistant": "Pembantu",
+    "aiControlTower": "Menara Kawalan AI",
+    "controlTowerOverview": "Gambaran keseluruhan",
+    "controlTowerHow": "Cara ia berfungsi"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -6052,7 +6055,9 @@
       "colWaiting": "Menunggu manusia",
       "openQueue": "Buka barisan",
       "notChecked": "Belum disemak",
-      "noRuns": "Tiada proses diproses. Menara ini tiada apa untuk dipantau sehingga satu proses diproses."
+      "noRuns": "Tiada proses diproses. Menara ini tiada apa untuk dipantau sehingga satu proses diproses.",
+      "domainsLine": "{live} daripada {total} bidang sedang aktif.",
+      "howItWorksLink": "Cara ia berfungsi"
     }
   },
   "admin": {
@@ -11242,5 +11247,88 @@
     "err_budget_daily": "Anda telah menggunakan soalan anda untuk hari ini. Sila cuba esok.",
     "err_invalid_question": "Sila tulis soalan, dan pastikan kurang daripada 2000 aksara.",
     "err_provider_error": "Pembantu tidak dapat dihubungi. Sila cuba lagi."
+  },
+  "controlTower": {
+    "howTitle": "Cara Menara Kawalan berfungsi",
+    "howDescription": "Apa yang berjalan, dalam susunan apa, bahagian mana menggunakan AI, dan apa yang dihidupkan sekarang.",
+    "backToTower": "Kembali ke Menara Kawalan",
+    "loopTitle": "Gelung kerja",
+    "loopIntro": "Setiap kitaran menjalankan lima langkah yang sama. Hanya satu melibatkan AI, dan tiada satu pun membuat keputusan sendiri.",
+    "loopAlt": "Lima langkah: semakan berjalan, penemuan direkod, AI menerangkannya dalam bahasa mudah, seseorang membuat keputusan, dan hasilnya kembali ke permulaan.",
+    "step1Title": "Semakan berjalan",
+    "step1Sub": "peraturan dan pengiraan",
+    "step2Title": "Penemuan direkod",
+    "step2Sub": "dengan angka yang menyebabkannya",
+    "step3Title": "Diterangkan",
+    "step3Sub": "AI menulis dalam bahasa mudah",
+    "step4Title": "Seseorang memutuskan",
+    "step4Sub": "terima, betulkan, atau tanda salah",
+    "step5Title": "Hasil direkod",
+    "step5Sub": "mengukur sejauh mana ia berjaya",
+    "loopBack": "Keputusan orang itulah yang memberitahu kami sama ada semakan ditetapkan dengan betul.",
+    "legendDeterministic": "Peraturan sahaja — tiada AI",
+    "legendLlm": "Menggunakan AI",
+    "legendHuman": "Perlukan manusia",
+    "agentsTitle": "Apa yang dihidupkan",
+    "agentsIntro": "Dibaca terus daripada tetapan anda, bukan daripada senarai yang ditulis seseorang. Jika sesuatu dimatikan, sebabnya ada di sebelahnya.",
+    "statusOn": "Hidup",
+    "statusOff": "Mati",
+    "statusByDesign": "Sengaja dimatikan",
+    "kind": {
+      "deterministic": "Peraturan sahaja",
+      "llm": "Menggunakan AI"
+    },
+    "agent": {
+      "detectors": "Semakan",
+      "detectorsDoes": "Melihat setiap pekerja dalam proses gaji yang selesai dan memutuskan sama ada ia lulus, perlu disemak, atau perlu disekat. Tiada AI terlibat dan jawapannya tidak pernah berubah untuk angka yang sama.",
+      "sweep": "Proses malam",
+      "sweepDoes": "Menjalankan semakan setiap malam pada 02:30 supaya barisan sudah terisi apabila anda membukanya, bukan menunggu seseorang menekan butang.",
+      "narrator": "Penerang",
+      "narratorDoes": "Menukar penemuan kepada ayat yang boleh dibaca. Ia hanya boleh menggunakan angka yang sudah direkod — jika ia menghasilkan nombor yang tidak disokong angka itu, ayat itu dibuang dan bukan ditunjukkan.",
+      "assistant": "Pembantu",
+      "assistantDoes": "Menjawab soalan pekerja tentang rekod mereka sendiri — cuti, gaji, dan sebab gaji mereka berubah — supaya mereka tidak perlu bertanya kepada seseorang.",
+      "autonomy": "Bertindak sendiri",
+      "autonomyDoes": "Meluluskan atau mengubah sesuatu tanpa manusia. Tiada apa dalam sistem ini melakukannya hari ini."
+    },
+    "why": {
+      "detectorsOn": "Berjalan pada setiap proses gaji yang diproses.",
+      "moduleOff": "Gaji bukan sebahagian daripada pelan anda, jadi tiada apa untuk disemak.",
+      "sweepOn": "Berjalan dalam dua hari lepas.",
+      "sweepStale": "Tidak berjalan lebih dua hari — jadual mungkin terhenti. Periksa kerja malam itu.",
+      "sweepNever": "Tidak pernah berjalan. Barisan akan kekal kosong sehingga ia berjalan.",
+      "narratorOn": "Penyedia telah disediakan dan setiap penemuan telah diterangkan.",
+      "narratorReady": "Penyedia telah disediakan. Penerangan ditulis apabila anda memintanya, pada skrin pengecualian.",
+      "noProvider": "Tiada penyedia AI disediakan, jadi tiada apa boleh diterangkan. Semua yang lain masih berfungsi — anda nampak angka tanpa ayatnya.",
+      "assistantOn": "Anda mempunyai akses kepada pembantu.",
+      "assistantNoGrant": "Belum dihidupkan untuk anda. Pentadbir menghidupkannya bagi setiap orang, di bawah Pentadbiran → Pengguna.",
+      "autonomyByDesign": "Sengaja dimatikan. Tiada apa diluluskan atau diubah tanpa manusia, dan itu hanya akan berubah satu tindakan pada satu masa, apabila kami dapat menunjukkan sistem cukup kerap bersetuju dengan orang anda."
+    },
+    "domainsTitle": "Apa yang dipantau",
+    "domainsIntro": "Gaji ialah bidang pertama. Mesin yang sama dibina untuk meliputi yang lain, dan ia disenaraikan di sini supaya anda nampak apa yang akan datang.",
+    "domainStatus": {
+      "live": "Aktif",
+      "planned": "Dirancang"
+    },
+    "domain": {
+      "payroll": "Proses gaji",
+      "payrollDoes": "Menyemak setiap proses gaji yang selesai untuk angka yang kelihatan salah, butiran bank atau cukai yang hilang, dan gaji tanpa kehadiran.",
+      "readiness": "Kesediaan rekod",
+      "readinessDoes": "Akan menyemak setiap rekod pekerja sepanjang masa, bukan hanya semasa gaji, supaya akaun bank yang hilang ditemui dan dibetulkan jauh sebelum ia menyekat gaji sesiapa.",
+      "onboarding": "Penyertaan",
+      "onboardingDoes": "Akan menyemak rekod pekerja baharu lengkap dan betul sebelum gaji pertama mereka, bukan mengetahuinya semasa proses itu.",
+      "compliance": "Perubahan statutori",
+      "complianceDoes": "Akan memantau perubahan kadar caruman dan borang, dan menyediakan kemas kini untuk anda luluskan."
+    },
+    "trigger": {
+      "after_a_payroll_run": "Berjalan selepas proses gaji",
+      "nightly": "Berjalan setiap malam",
+      "on_change": "Berjalan apabila rekod berubah"
+    },
+    "checksCount": "{n} semakan",
+    "promisesTitle": "Dua perkara yang ini tidak akan lakukan",
+    "promise1": "AI tidak pernah mengira gaji anda.",
+    "promise1Body": "Setiap angka — gaji, cukai, caruman, kerja lebih masa — dikira oleh enjin gaji, cara yang sama setiap kali, dan diuji terhadap jawapan yang diketahui. AI hanya digunakan untuk menerangkan angka yang sudah dikira. Ia tidak boleh mengubahnya.",
+    "promise2": "AI tidak pernah membuat keputusan sendiri.",
+    "promise2Body": "Sama ada sesuatu lulus, ditanda atau disekat diputuskan oleh peraturan tetap sebelum sebarang AI terlibat, dan penerangan itu tidak boleh mengubah keputusan tersebut. Tiada apa diluluskan, dibayar atau diubah tanpa manusia."
   }
 }

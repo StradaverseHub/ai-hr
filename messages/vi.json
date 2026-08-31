@@ -303,7 +303,10 @@
     "payrollBackPay": "Truy lĩnh",
     "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định",
     "payrollControlTower": "Trung tâm điều hành",
-    "assistant": "Trợ lý"
+    "assistant": "Trợ lý",
+    "aiControlTower": "Trung tâm điều hành AI",
+    "controlTowerOverview": "Tổng quan",
+    "controlTowerHow": "Cách hoạt động"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -6052,7 +6055,9 @@
       "colWaiting": "Chờ người xử lý",
       "openQueue": "Mở hàng đợi",
       "notChecked": "Chưa kiểm tra",
-      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý."
+      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
+      "domainsLine": "{live} trên {total} lĩnh vực đang hoạt động.",
+      "howItWorksLink": "Cách hoạt động"
     }
   },
   "admin": {
@@ -11242,5 +11247,88 @@
     "err_budget_daily": "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng thử lại vào ngày mai.",
     "err_invalid_question": "Vui lòng viết câu hỏi và giữ dưới 2000 ký tự.",
     "err_provider_error": "Không thể kết nối tới trợ lý. Vui lòng thử lại."
+  },
+  "controlTower": {
+    "howTitle": "Trung tâm điều hành hoạt động thế nào",
+    "howDescription": "Những gì chạy, theo thứ tự nào, phần nào dùng AI, và hiện đang bật những gì.",
+    "backToTower": "Quay lại Trung tâm điều hành",
+    "loopTitle": "Vòng lặp",
+    "loopIntro": "Mỗi chu kỳ chạy cùng năm bước. Chỉ một bước có AI, và không bước nào tự quyết định.",
+    "loopAlt": "Five steps: checks run, findings are recorded, AI explains them in plain words, a person decides, and the result feeds back.",
+    "step1Title": "Checks run",
+    "step1Sub": "rules and arithmetic",
+    "step2Title": "Findings recorded",
+    "step2Sub": "with the figures that caused them",
+    "step3Title": "Explained",
+    "step3Sub": "AI writes it in plain words",
+    "step4Title": "A person decides",
+    "step4Sub": "accept, fix, or flag as wrong",
+    "step5Title": "Result recorded",
+    "step5Sub": "measures how well it is doing",
+    "loopBack": "What people decide is what tells us whether the checks are set right.",
+    "legendDeterministic": "Chỉ quy tắc — không AI",
+    "legendLlm": "Dùng AI",
+    "legendHuman": "Cần người",
+    "agentsTitle": "Những gì đang bật",
+    "agentsIntro": "Read live from your own setup, not from a list someone wrote. If something says it is off, the reason is next to it.",
+    "statusOn": "Bật",
+    "statusOff": "Tắt",
+    "statusByDesign": "Tắt có chủ đích",
+    "kind": {
+      "deterministic": "Chỉ quy tắc",
+      "llm": "Dùng AI"
+    },
+    "agent": {
+      "detectors": "The checks",
+      "detectorsDoes": "Looks at every employee in a finished payroll run and decides whether it is clear, needs a look, or must be blocked. No AI is involved and the answer never varies for the same figures.",
+      "sweep": "The nightly run",
+      "sweepDoes": "Runs the checks every night at 02:30 so the queue is already filled when you open it, instead of waiting for someone to press a button.",
+      "narrator": "The explainer",
+      "narratorDoes": "Turns a finding into a sentence you can read. It can only use the figures already recorded — if it produces a number those figures do not support, the sentence is thrown away rather than shown.",
+      "assistant": "The assistant",
+      "assistantDoes": "Answers employees’ questions about their own records — leave, pay, and why their pay changed — so they do not have to ask a person.",
+      "autonomy": "Acting on its own",
+      "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today."
+    },
+    "why": {
+      "detectorsOn": "Running on every processed payroll run.",
+      "moduleOff": "Payroll is not part of your plan, so there is nothing to check.",
+      "sweepOn": "Ran within the last two days.",
+      "sweepStale": "Has not run in over two days — the schedule may have stopped. Check the nightly job.",
+      "sweepNever": "Has never run. The queue will stay empty until it does.",
+      "narratorOn": "A provider is set up and every finding has been explained.",
+      "narratorReady": "A provider is set up. Explanations are written when you ask for them, on the exceptions screen.",
+      "noProvider": "No AI provider is set up, so nothing can be explained. Everything else still works — you see the figures without the sentence.",
+      "assistantOn": "You have access to the assistant.",
+      "assistantNoGrant": "Not switched on for you. An administrator turns it on per person, under Administration → Users.",
+      "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it."
+    },
+    "domainsTitle": "Những gì được theo dõi",
+    "domainsIntro": "Payroll is the first area. The same machinery is built to cover the others, and they are listed here so you can see what is coming rather than assuming payroll is all there is.",
+    "domainStatus": {
+      "live": "Đang chạy",
+      "planned": "Dự kiến"
+    },
+    "domain": {
+      "payroll": "Payroll runs",
+      "payrollDoes": "Checks every finished payroll run for figures that look wrong, missing bank or tax details, and pay without attendance.",
+      "readiness": "Record readiness",
+      "readinessDoes": "Would check every employee record all the time, not just at payroll, so a missing bank account is found and fixed long before it blocks anyone’s pay.",
+      "onboarding": "Joining",
+      "onboardingDoes": "Would check that a new joiner’s record is complete and correct before their first payroll, instead of finding out during it.",
+      "compliance": "Statutory changes",
+      "complianceDoes": "Would watch for changes to contribution rates and forms, and prepare the update for you to approve."
+    },
+    "trigger": {
+      "after_a_payroll_run": "Runs after a payroll run",
+      "nightly": "Runs nightly",
+      "on_change": "Runs whenever a record changes"
+    },
+    "checksCount": "{n} kiểm tra",
+    "promisesTitle": "Hai điều hệ thống này sẽ không làm",
+    "promise1": "AI không bao giờ tính lương của bạn.",
+    "promise1Body": "Every figure — salary, tax, contributions, overtime — is calculated by the payroll engine, the same way every time, and tested against known answers. AI is only ever used to describe a figure that has already been calculated. It cannot change one.",
+    "promise2": "AI không bao giờ tự quyết định.",
+    "promise2Body": "Whether something is cleared, flagged or blocked is decided by fixed rules before any AI is involved, and the explanation cannot change that decision. Nothing is cleared, paid or altered without a person."
   }
 }

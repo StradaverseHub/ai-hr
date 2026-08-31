@@ -303,7 +303,10 @@
     "payrollBackPay": "เงินย้อนหลัง",
     "payrollStatutoryAdjustment": "การปรับยอดตามกฎหมาย",
     "payrollControlTower": "ศูนย์ควบคุม",
-    "assistant": "ผู้ช่วย"
+    "assistant": "ผู้ช่วย",
+    "aiControlTower": "ศูนย์ควบคุม AI",
+    "controlTowerOverview": "ภาพรวม",
+    "controlTowerHow": "หลักการทำงาน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -6052,7 +6055,9 @@
       "colWaiting": "รอคน",
       "openQueue": "เปิดคิว",
       "notChecked": "ยังไม่ตรวจ",
-      "noRuns": "ไม่มีรอบที่ประมวลผลแล้ว ศูนย์ควบคุมยังไม่มีอะไรให้เฝ้าดูจนกว่าจะมีรอบถูกประมวลผล"
+      "noRuns": "ไม่มีรอบที่ประมวลผลแล้ว ศูนย์ควบคุมยังไม่มีอะไรให้เฝ้าดูจนกว่าจะมีรอบถูกประมวลผล",
+      "domainsLine": "ใช้งานอยู่ {live} จาก {total} ด้าน",
+      "howItWorksLink": "หลักการทำงาน"
     }
   },
   "admin": {
@@ -11242,5 +11247,88 @@
     "err_budget_daily": "คุณใช้จำนวนคำถามของวันนี้หมดแล้ว โปรดลองใหม่พรุ่งนี้",
     "err_invalid_question": "โปรดเขียนคำถาม และไม่เกิน 2000 ตัวอักษร",
     "err_provider_error": "ไม่สามารถติดต่อผู้ช่วยได้ โปรดลองอีกครั้ง"
+  },
+  "controlTower": {
+    "howTitle": "ศูนย์ควบคุมทำงานอย่างไร",
+    "howDescription": "มีอะไรทำงานบ้าง ตามลำดับใด ส่วนใดใช้ AI และตอนนี้เปิดใช้อะไรอยู่",
+    "backToTower": "กลับไปที่ศูนย์ควบคุม",
+    "loopTitle": "วงจรการทำงาน",
+    "loopIntro": "ทุกรอบทำงานห้าขั้นตอนเดิม มีเพียงขั้นเดียวที่ใช้ AI และไม่มีขั้นใดตัดสินใจเองได้",
+    "loopAlt": "Five steps: checks run, findings are recorded, AI explains them in plain words, a person decides, and the result feeds back.",
+    "step1Title": "Checks run",
+    "step1Sub": "rules and arithmetic",
+    "step2Title": "Findings recorded",
+    "step2Sub": "with the figures that caused them",
+    "step3Title": "Explained",
+    "step3Sub": "AI writes it in plain words",
+    "step4Title": "A person decides",
+    "step4Sub": "accept, fix, or flag as wrong",
+    "step5Title": "Result recorded",
+    "step5Sub": "measures how well it is doing",
+    "loopBack": "What people decide is what tells us whether the checks are set right.",
+    "legendDeterministic": "กฎเท่านั้น — ไม่ใช้ AI",
+    "legendLlm": "ใช้ AI",
+    "legendHuman": "ต้องใช้คน",
+    "agentsTitle": "สิ่งที่เปิดใช้อยู่",
+    "agentsIntro": "Read live from your own setup, not from a list someone wrote. If something says it is off, the reason is next to it.",
+    "statusOn": "เปิด",
+    "statusOff": "ปิด",
+    "statusByDesign": "ปิดโดยตั้งใจ",
+    "kind": {
+      "deterministic": "กฎเท่านั้น",
+      "llm": "ใช้ AI"
+    },
+    "agent": {
+      "detectors": "The checks",
+      "detectorsDoes": "Looks at every employee in a finished payroll run and decides whether it is clear, needs a look, or must be blocked. No AI is involved and the answer never varies for the same figures.",
+      "sweep": "The nightly run",
+      "sweepDoes": "Runs the checks every night at 02:30 so the queue is already filled when you open it, instead of waiting for someone to press a button.",
+      "narrator": "The explainer",
+      "narratorDoes": "Turns a finding into a sentence you can read. It can only use the figures already recorded — if it produces a number those figures do not support, the sentence is thrown away rather than shown.",
+      "assistant": "The assistant",
+      "assistantDoes": "Answers employees’ questions about their own records — leave, pay, and why their pay changed — so they do not have to ask a person.",
+      "autonomy": "Acting on its own",
+      "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today."
+    },
+    "why": {
+      "detectorsOn": "Running on every processed payroll run.",
+      "moduleOff": "Payroll is not part of your plan, so there is nothing to check.",
+      "sweepOn": "Ran within the last two days.",
+      "sweepStale": "Has not run in over two days — the schedule may have stopped. Check the nightly job.",
+      "sweepNever": "Has never run. The queue will stay empty until it does.",
+      "narratorOn": "A provider is set up and every finding has been explained.",
+      "narratorReady": "A provider is set up. Explanations are written when you ask for them, on the exceptions screen.",
+      "noProvider": "No AI provider is set up, so nothing can be explained. Everything else still works — you see the figures without the sentence.",
+      "assistantOn": "You have access to the assistant.",
+      "assistantNoGrant": "Not switched on for you. An administrator turns it on per person, under Administration → Users.",
+      "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it."
+    },
+    "domainsTitle": "สิ่งที่เฝ้าดู",
+    "domainsIntro": "Payroll is the first area. The same machinery is built to cover the others, and they are listed here so you can see what is coming rather than assuming payroll is all there is.",
+    "domainStatus": {
+      "live": "ใช้งานอยู่",
+      "planned": "มีแผน"
+    },
+    "domain": {
+      "payroll": "Payroll runs",
+      "payrollDoes": "Checks every finished payroll run for figures that look wrong, missing bank or tax details, and pay without attendance.",
+      "readiness": "Record readiness",
+      "readinessDoes": "Would check every employee record all the time, not just at payroll, so a missing bank account is found and fixed long before it blocks anyone’s pay.",
+      "onboarding": "Joining",
+      "onboardingDoes": "Would check that a new joiner’s record is complete and correct before their first payroll, instead of finding out during it.",
+      "compliance": "Statutory changes",
+      "complianceDoes": "Would watch for changes to contribution rates and forms, and prepare the update for you to approve."
+    },
+    "trigger": {
+      "after_a_payroll_run": "Runs after a payroll run",
+      "nightly": "Runs nightly",
+      "on_change": "Runs whenever a record changes"
+    },
+    "checksCount": "การตรวจ {n} รายการ",
+    "promisesTitle": "สองสิ่งที่ระบบนี้จะไม่ทำ",
+    "promise1": "AI ไม่เคยคำนวณเงินเดือนของคุณ",
+    "promise1Body": "Every figure — salary, tax, contributions, overtime — is calculated by the payroll engine, the same way every time, and tested against known answers. AI is only ever used to describe a figure that has already been calculated. It cannot change one.",
+    "promise2": "AI ไม่เคยตัดสินใจเอง",
+    "promise2Body": "Whether something is cleared, flagged or blocked is decided by fixed rules before any AI is involved, and the explanation cannot change that decision. Nothing is cleared, paid or altered without a person."
   }
 }

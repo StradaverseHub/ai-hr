@@ -90,10 +90,6 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   // as Transactions, so it lands between Transactions and Transaction View, which is where the approved
   // plan puts it.
   '/payroll/back-pay': 2,
-  // ADR-0074 — the Control Tower is the REVIEW step that comes before looking at any one person: it
-  // says who needs a human at all. Ranked with the review screens and written literally first among
-  // them, so "what needs me?" precedes "show me this payslip". `sort` is stable.
-  '/payroll/control-tower': 5,
   '/payroll/transaction-view': 5,
   // 169e3c24 — Individual Payslip is the same REVIEW step as Transaction View: check one person's pay
   // before it goes out. Same rank, and `sort` is stable, so it lands immediately after it (its literal
