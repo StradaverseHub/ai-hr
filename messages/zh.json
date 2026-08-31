@@ -306,7 +306,8 @@
     "assistant": "智能助理",
     "aiControlTower": "AI 控制塔",
     "controlTowerOverview": "总览",
-    "controlTowerHow": "运作方式"
+    "controlTowerHow": "运作方式",
+    "controlTowerReadiness": "档案完备性"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11329,6 +11330,36 @@
     "promise1": "AI 从不计算您的薪资。",
     "promise1Body": "每一个数字 — 薪金、税款、缴纳、加班 — 都由薪资引擎计算，每次算法一致，并以已知答案验证。AI 只用于描述已经算好的数字，无法改动它。",
     "promise2": "AI 从不自行做决定。",
-    "promise2Body": "通过、标记还是阻止，都由固定规则在 AI 介入之前判定，说明文字无法改变该判定。未经人工，任何内容都不会被通过、支付或更改。"
+    "promise2Body": "通过、标记还是阻止，都由固定规则在 AI 介入之前判定，说明文字无法改变该判定。未经人工，任何内容都不会被通过、支付或更改。",
+    "readinessScreen": {
+      "title": "档案完备性",
+      "backToTower": "返回控制塔",
+      "description": "每位在职员工要么已具备发薪与申报所需的一切，要么还缺少某些内容。在此一次性补齐，而不是每次发薪时重新遇到。",
+      "readyPct": "档案完整",
+      "readyOf": "员工已就绪",
+      "gapKinds": "缺失类型",
+      "liveNote": "每次打开本页面时实时计算，因此绝不会过时。",
+      "allReady": "全部 {n} 位在职员工都已具备发薪与申报所需的一切。无需处理。",
+      "moreNotShown": "显示 {total} 位中的 {shown} 位。处理完后重新载入即可查看其余。",
+      "blocks": {
+        "payroll": "无法为 {n} 位运行薪资",
+        "payment": "{n} 位的付款将失败",
+        "statutory_filing": "无法申报：{n} 位"
+      },
+      "gap": {
+        "no_compensation": "未记录薪资",
+        "no_compensationFix": "在员工档案中设定其薪资。在此之前，薪资系统无从为其计算。",
+        "no_bank_account": "无银行账户",
+        "no_bank_accountFix": "在员工档案中添加银行账户。仅列出以银行转账方式支付的员工 — 以现金或支票支付的不在此列。",
+        "no_identity": "无身份证或护照",
+        "no_identityFix": "添加身份证或护照号码。二者有其一即可；否则无法出现在任何法定申报中。",
+        "no_tax_number": "无税务号码",
+        "no_tax_numberFix": "添加 LHDN 税务号码，以便其每月税款扣缴可据此申报。",
+        "no_epf_number": "无 KWSP 号码",
+        "no_epf_numberFix": "添加 KWSP 号码，以便缴纳文件能列出其姓名。",
+        "no_socso_number": "无 PERKESO 号码",
+        "no_socso_numberFix": "添加 PERKESO 号码，以便缴纳文件能列出其姓名。"
+      }
+    }
   }
 }

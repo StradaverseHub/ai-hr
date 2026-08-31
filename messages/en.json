@@ -306,7 +306,8 @@
     "assistant": "Assistant",
     "aiControlTower": "AI Control Tower",
     "controlTowerOverview": "Overview",
-    "controlTowerHow": "How it works"
+    "controlTowerHow": "How it works",
+    "controlTowerReadiness": "Record readiness"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -11329,6 +11330,36 @@
     "promise1": "AI never works out your pay.",
     "promise1Body": "Every figure — salary, tax, contributions, overtime — is calculated by the payroll engine, the same way every time, and tested against known answers. AI is only ever used to describe a figure that has already been calculated. It cannot change one.",
     "promise2": "AI never decides anything on its own.",
-    "promise2Body": "Whether something is cleared, flagged or blocked is decided by fixed rules before any AI is involved, and the explanation cannot change that decision. Nothing is cleared, paid or altered without a person."
+    "promise2Body": "Whether something is cleared, flagged or blocked is decided by fixed rules before any AI is involved, and the explanation cannot change that decision. Nothing is cleared, paid or altered without a person.",
+    "readinessScreen": {
+      "title": "Record readiness",
+      "backToTower": "Back to the Control Tower",
+      "description": "Every active employee is either ready to be paid and filed for, or has something missing. Fix it here, once, instead of meeting it again every payroll.",
+      "readyPct": "records complete",
+      "readyOf": "employees ready",
+      "gapKinds": "kinds of gap",
+      "liveNote": "Worked out fresh each time you open this page, so it is never out of date.",
+      "allReady": "All {n} active employees have everything needed to be paid and filed for. Nothing to fix.",
+      "moreNotShown": "Showing {shown} of {total}. Fix these and reload to see the rest.",
+      "blocks": {
+        "payroll": "Payroll cannot run for {n}",
+        "payment": "Payment will fail for {n}",
+        "statutory_filing": "Cannot be filed for: {n}"
+      },
+      "gap": {
+        "no_compensation": "No salary on record",
+        "no_compensationFix": "Set their salary on the employee record. Until then payroll has nothing to calculate for them.",
+        "no_bank_account": "No bank account",
+        "no_bank_accountFix": "Add the bank account on the employee record. Only people paid by bank transfer are listed — anyone paid in cash or by cheque is not.",
+        "no_identity": "No IC or passport",
+        "no_identityFix": "Add an IC or a passport number. Either one is enough; without one they cannot appear on any statutory submission.",
+        "no_tax_number": "No tax number",
+        "no_tax_numberFix": "Add the LHDN tax number so their monthly tax deduction can be filed against it.",
+        "no_epf_number": "No EPF number",
+        "no_epf_numberFix": "Add the KWSP number so the contribution file can name them.",
+        "no_socso_number": "No SOCSO number",
+        "no_socso_numberFix": "Add the PERKESO number so the contribution file can name them."
+      }
+    }
   }
 }

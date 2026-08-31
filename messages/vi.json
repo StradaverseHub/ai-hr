@@ -306,7 +306,8 @@
     "assistant": "Trợ lý",
     "aiControlTower": "Trung tâm điều hành AI",
     "controlTowerOverview": "Tổng quan",
-    "controlTowerHow": "Cách hoạt động"
+    "controlTowerHow": "Cách hoạt động",
+    "controlTowerReadiness": "Mức sẵn sàng hồ sơ"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11329,6 +11330,36 @@
     "promise1": "AI không bao giờ tính lương của bạn.",
     "promise1Body": "Mọi con số — lương, thuế, các khoản đóng góp, làm thêm giờ — đều do bộ máy tính lương tính, theo cùng một cách mỗi lần, và được kiểm thử với các đáp án đã biết. AI chỉ được dùng để mô tả một con số đã được tính. Nó không thể thay đổi con số đó.",
     "promise2": "AI không bao giờ tự quyết định.",
-    "promise2Body": "Việc một mục được duyệt, gắn cờ hay chặn là do các quy tắc cố định quyết định trước khi AI tham gia, và phần diễn giải không thể thay đổi quyết định ấy. Không gì được duyệt, chi trả hay sửa đổi mà không có người."
+    "promise2Body": "Việc một mục được duyệt, gắn cờ hay chặn là do các quy tắc cố định quyết định trước khi AI tham gia, và phần diễn giải không thể thay đổi quyết định ấy. Không gì được duyệt, chi trả hay sửa đổi mà không có người.",
+    "readinessScreen": {
+      "title": "Mức sẵn sàng hồ sơ",
+      "backToTower": "Quay lại Trung tâm điều hành",
+      "description": "Mỗi nhân viên đang làm việc hoặc đã sẵn sàng để trả lương và kê khai, hoặc còn thiếu thứ gì đó. Hãy xử lý ở đây một lần, thay vì gặp lại mỗi kỳ lương.",
+      "readyPct": "hồ sơ đầy đủ",
+      "readyOf": "nhân viên sẵn sàng",
+      "gapKinds": "loại thiếu sót",
+      "liveNote": "Được tính lại mỗi lần bạn mở trang này, nên không bao giờ lỗi thời.",
+      "allReady": "Cả {n} nhân viên đang làm việc đều có đủ thông tin để trả lương và kê khai. Không có gì cần xử lý.",
+      "moreNotShown": "Hiển thị {shown} trên {total}. Xử lý xong rồi tải lại để xem phần còn lại.",
+      "blocks": {
+        "payroll": "Không thể chạy lương cho {n} người",
+        "payment": "Việc chi trả sẽ thất bại với {n} người",
+        "statutory_filing": "Không thể kê khai cho: {n}"
+      },
+      "gap": {
+        "no_compensation": "Chưa có mức lương",
+        "no_compensationFix": "Thiết lập mức lương trong hồ sơ nhân viên. Trước đó bảng lương không có gì để tính.",
+        "no_bank_account": "Không có tài khoản ngân hàng",
+        "no_bank_accountFix": "Thêm tài khoản ngân hàng vào hồ sơ. Chỉ liệt kê người nhận lương qua chuyển khoản — người nhận tiền mặt hoặc séc thì không.",
+        "no_identity": "Không có CMND/CCCD hoặc hộ chiếu",
+        "no_identityFix": "Thêm số CMND/CCCD hoặc hộ chiếu. Chỉ cần một trong hai; nếu không họ không thể xuất hiện trên bất kỳ hồ sơ kê khai nào.",
+        "no_tax_number": "Không có mã số thuế",
+        "no_tax_numberFix": "Thêm mã số thuế LHDN để khoản khấu trừ thuế hằng tháng được kê khai theo đó.",
+        "no_epf_number": "Không có số KWSP",
+        "no_epf_numberFix": "Thêm số KWSP để tệp đóng góp có thể nêu tên họ.",
+        "no_socso_number": "Không có số PERKESO",
+        "no_socso_numberFix": "Thêm số PERKESO để tệp đóng góp có thể nêu tên họ."
+      }
+    }
   }
 }

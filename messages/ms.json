@@ -306,7 +306,8 @@
     "assistant": "Pembantu",
     "aiControlTower": "Menara Kawalan AI",
     "controlTowerOverview": "Gambaran keseluruhan",
-    "controlTowerHow": "Cara ia berfungsi"
+    "controlTowerHow": "Cara ia berfungsi",
+    "controlTowerReadiness": "Kesediaan rekod"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11329,6 +11330,36 @@
     "promise1": "AI tidak pernah mengira gaji anda.",
     "promise1Body": "Setiap angka — gaji, cukai, caruman, kerja lebih masa — dikira oleh enjin gaji, cara yang sama setiap kali, dan diuji terhadap jawapan yang diketahui. AI hanya digunakan untuk menerangkan angka yang sudah dikira. Ia tidak boleh mengubahnya.",
     "promise2": "AI tidak pernah membuat keputusan sendiri.",
-    "promise2Body": "Sama ada sesuatu lulus, ditanda atau disekat diputuskan oleh peraturan tetap sebelum sebarang AI terlibat, dan penerangan itu tidak boleh mengubah keputusan tersebut. Tiada apa diluluskan, dibayar atau diubah tanpa manusia."
+    "promise2Body": "Sama ada sesuatu lulus, ditanda atau disekat diputuskan oleh peraturan tetap sebelum sebarang AI terlibat, dan penerangan itu tidak boleh mengubah keputusan tersebut. Tiada apa diluluskan, dibayar atau diubah tanpa manusia.",
+    "readinessScreen": {
+      "title": "Kesediaan rekod",
+      "backToTower": "Kembali ke Menara Kawalan",
+      "description": "Setiap pekerja aktif sama ada sudah bersedia untuk dibayar dan difailkan, atau ada sesuatu yang tiada. Betulkan di sini sekali sahaja, bukannya bertemu semula setiap kali gaji.",
+      "readyPct": "rekod lengkap",
+      "readyOf": "pekerja bersedia",
+      "gapKinds": "jenis kekurangan",
+      "liveNote": "Dikira semula setiap kali anda membuka halaman ini, jadi ia tidak pernah lapuk.",
+      "allReady": "Kesemua {n} pekerja aktif mempunyai segala yang diperlukan untuk dibayar dan difailkan. Tiada apa untuk dibetulkan.",
+      "moreNotShown": "Menunjukkan {shown} daripada {total}. Betulkan ini dan muat semula untuk melihat selebihnya.",
+      "blocks": {
+        "payroll": "Gaji tidak boleh diproses untuk {n}",
+        "payment": "Pembayaran akan gagal untuk {n}",
+        "statutory_filing": "Tidak boleh difailkan untuk: {n}"
+      },
+      "gap": {
+        "no_compensation": "Tiada gaji direkodkan",
+        "no_compensationFix": "Tetapkan gaji mereka pada rekod pekerja. Sehingga itu, gaji tiada apa untuk dikira bagi mereka.",
+        "no_bank_account": "Tiada akaun bank",
+        "no_bank_accountFix": "Tambah akaun bank pada rekod pekerja. Hanya mereka yang dibayar melalui pindahan bank disenaraikan — yang dibayar tunai atau cek tidak.",
+        "no_identity": "Tiada KP atau pasport",
+        "no_identityFix": "Tambah nombor KP atau pasport. Salah satu sudah memadai; tanpanya mereka tidak boleh muncul dalam sebarang penyerahan statutori.",
+        "no_tax_number": "Tiada nombor cukai",
+        "no_tax_numberFix": "Tambah nombor cukai LHDN supaya potongan cukai bulanan mereka boleh difailkan.",
+        "no_epf_number": "Tiada nombor KWSP",
+        "no_epf_numberFix": "Tambah nombor KWSP supaya fail caruman boleh menamakan mereka.",
+        "no_socso_number": "Tiada nombor PERKESO",
+        "no_socso_numberFix": "Tambah nombor PERKESO supaya fail caruman boleh menamakan mereka."
+      }
+    }
   }
 }
