@@ -307,7 +307,8 @@
     "aiControlTower": "Menara Kawalan AI",
     "controlTowerOverview": "Gambaran keseluruhan",
     "controlTowerHow": "Cara ia berfungsi",
-    "controlTowerReadiness": "Kesediaan rekod"
+    "controlTowerReadiness": "Kesediaan rekod",
+    "controlTowerActions": "Tindakan ejen"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11359,6 +11360,39 @@
         "no_epf_numberFix": "Tambah nombor KWSP supaya fail caruman boleh menamakan mereka.",
         "no_socso_number": "Tiada nombor PERKESO",
         "no_socso_numberFix": "Tambah nombor PERKESO supaya fail caruman boleh menamakan mereka."
+      }
+    },
+    "actions": {
+      "title": "Tindakan ejen",
+      "description": "Kerja yang AI ingin ambil daripada meja anda. Tiada apa-apa berlaku di sini sehingga anda meluluskannya, dan anda boleh lihat dengan tepat sebab setiap satu dicadangkan.",
+      "backToTower": "Kembali ke Menara Kawalan",
+      "emptyTitle": "Tiada apa-apa untuk diluluskan",
+      "emptyBody": "Setiap pengecualian gaji yang masih menunggu anda mempunyai masalah sebenar di sebaliknya. Apabila seseorang membetulkan rekod asasnya, pengecualian itu akan muncul di sini untuk ditutup.",
+      "done": "Menutup {closed} pengecualian.",
+      "staleNote": "{stale} dibiarkan terbuka: masalahnya telah kembali sejak halaman ini dimuatkan, jadi ia tidak ditutup.",
+      "reversibleNote": "Ini hanya merekodkan keputusan tentang pengecualian tersebut. Ia tidak mengubah gaji, kadar atau rekod pekerja, dan memeriksa semula pusingan gaji akan menggantikannya.",
+      "recheckNote": "Setiap satu diperiksa semula sebaik sahaja anda menekan butang ini. Apa-apa yang rosak semula sejak halaman dimuatkan akan dibiarkan terbuka.",
+      "overCap": "Satu kelulusan menutup paling banyak {cap}, dan terdapat {total}. Luluskan yang ini, kemudian kembali untuk selebihnya.",
+      "approve": "Luluskan dan tutup {n}",
+      "type": {
+        "close_fixed_upstream": "Tutup pengecualian yang sudah dibetulkan"
+      },
+      "does": {
+        "close_fixed_upstream": "Ini ditandakan kerana ada sesuatu yang hilang daripada rekod pekerja. Butiran itu kini ada dalam fail, jadi pengecualian ini tiada lagi apa-apa untuk dilaporkan."
+      },
+      "cause": {
+        "no_compensation": "gaji kini dalam fail",
+        "no_bank_account": "akaun bank kini dalam fail",
+        "no_identity": "dokumen pengenalan kini dalam fail",
+        "no_tax_number": "nombor cukai kini dalam fail",
+        "no_epf_number": "nombor KWSP kini dalam fail",
+        "no_socso_number": "nombor PERKESO kini dalam fail"
+      },
+      "error": {
+        "unknown_type": "Itu bukan tindakan yang boleh diambil oleh sistem ini.",
+        "blast_radius": "Terlalu banyak sekali gus. Tiada apa-apa ditutup — luluskan kumpulan yang lebih kecil.",
+        "nothing_to_do": "Tiada apa-apa dipilih, jadi tiada apa-apa ditutup.",
+        "failed": "Itu tidak dapat diselesaikan. Tiada apa-apa ditutup."
       }
     }
   }

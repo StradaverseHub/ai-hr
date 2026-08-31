@@ -86,6 +86,48 @@ export type ReadinessView = {
 /** How many names a gap carries to the screen. The count above it is always the real one. */
 export const PEOPLE_PER_GAP = 25;
 
+/** The columns any caller must supply to ask "what is missing from this record?". */
+export type ReadinessInput = {
+  paymentMethod: string | null;
+  ic: string | null;
+  passport: string | null;
+  taxNumber: string | null;
+  epfNumber: string | null;
+  socsoNumber: string | null;
+  bankAccountNo: string | null;
+  hasComp: boolean;
+};
+
+const blank = (v: string | null | undefined) => v == null || v.trim() === '';
+
+/**
+ * THE ONE DEFINITION OF "what is missing", and the reason it is exported rather than inlined into the
+ * view below.
+ *
+ * ADR-0083's action layer proposes closing a payroll finding when its CAUSE no longer holds — "this
+ * verdict blocked on a missing bank account, and this person now has one". That is the same question this
+ * file already answers, and answering it twice is how the two answers drift: the action layer would close
+ * findings the readiness screen still lists, or refuse to close ones it says are fixed. One function, both
+ * callers, no drift possible.
+ */
+export function gapsForRecord(r: ReadinessInput): ReadinessGapId[] {
+  const out: ReadinessGapId[] = [];
+  if (!r.hasComp) out.push('no_compensation');
+  // The bank rule, matched to `missing-bank-profile`: unset counts as bank_transfer, and cash or cheque
+  // needs no account. See the header on why this condition is load-bearing.
+  if ((r.paymentMethod === 'bank_transfer' || r.paymentMethod == null) && blank(r.bankAccountNo)) {
+    out.push('no_bank_account');
+  }
+  // EITHER identity document satisfies it — r220 established that an old identity card counts as an
+  // identity, and the same logic applies to a passport for a non-citizen. Demanding an IC would flag every
+  // foreign worker for a record that is complete.
+  if (blank(r.ic) && blank(r.passport)) out.push('no_identity');
+  if (blank(r.taxNumber)) out.push('no_tax_number');
+  if (blank(r.epfNumber)) out.push('no_epf_number');
+  if (blank(r.socsoNumber)) out.push('no_socso_number');
+  return out;
+}
+
 /**
  * Every active employment, and what is missing from each.
  *
@@ -125,7 +167,6 @@ export async function recordReadiness(ctx: SessionContext): Promise<ReadinessVie
       // listing them would bury the people whose next payslip actually depends on it.
       .where(isNull(schema.employment.terminatedOn));
 
-    const blank = (v: string | null | undefined) => v == null || v.trim() === '';
     const buckets = new Map<ReadinessGapId, ReadinessPerson[]>();
     const add = (id: ReadinessGapId, p: ReadinessPerson) => {
       const list = buckets.get(id) ?? [];
@@ -141,27 +182,9 @@ export async function recordReadiness(ctx: SessionContext): Promise<ReadinessVie
         employeeCode: r.employeeCode,
         company: r.company,
       };
-      let clean = true;
-      const flag = (id: ReadinessGapId) => {
-        clean = false;
-        add(id, who);
-      };
-
-      if (!r.hasComp) flag('no_compensation');
-      // The bank rule, matched to `missing-bank-profile`: unset counts as bank_transfer, and cash or
-      // cheque needs no account. See the header on why this condition is load-bearing.
-      if ((r.paymentMethod === 'bank_transfer' || r.paymentMethod == null) && blank(r.bankAccountNo)) {
-        flag('no_bank_account');
-      }
-      // EITHER identity document satisfies it — r220 established that an old identity card counts as an
-      // identity, and the same logic applies to a passport for a non-citizen. Demanding an IC would flag
-      // every foreign worker for a record that is complete.
-      if (blank(r.ic) && blank(r.passport)) flag('no_identity');
-      if (blank(r.taxNumber)) flag('no_tax_number');
-      if (blank(r.epfNumber)) flag('no_epf_number');
-      if (blank(r.socsoNumber)) flag('no_socso_number');
-
-      if (clean) ready++;
+      const gaps = gapsForRecord(r);
+      for (const id of gaps) add(id, who);
+      if (gaps.length === 0) ready++;
     }
 
     const gaps: ReadinessGap[] = [...buckets.entries()]

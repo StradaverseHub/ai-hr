@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   Gauge,
   Sparkles,
+  Wand2,
   LayoutDashboard,
   ListChecks,
   MessageSquareText,
@@ -345,6 +346,9 @@ const GROUPS: Group[] = [
       // ADR-0083 §3 item 2 — the shift-left half. Sits ABOVE the explainer because it is a working screen
       // and the explainer is a reference one.
       { href: '/control-tower/readiness', labelKey: 'controlTowerReadiness', icon: ClipboardCheck, adminOnly: true },
+      // ADR-0083 §2.5 — the approval queue. The only screen in the product where a person authorises an
+      // agent to write, which is why it is a row of its own rather than a panel on another page.
+      { href: '/control-tower/actions', labelKey: 'controlTowerActions', icon: Wand2, adminOnly: true },
       { href: '/control-tower/how-it-works', labelKey: 'controlTowerHow', icon: BookOpen, adminOnly: true },
     ],
   },

@@ -307,7 +307,8 @@
     "aiControlTower": "Trung tâm điều hành AI",
     "controlTowerOverview": "Tổng quan",
     "controlTowerHow": "Cách hoạt động",
-    "controlTowerReadiness": "Mức sẵn sàng hồ sơ"
+    "controlTowerReadiness": "Mức sẵn sàng hồ sơ",
+    "controlTowerActions": "Hành động của tác nhân"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11359,6 +11360,39 @@
         "no_epf_numberFix": "Thêm số KWSP để tệp đóng góp có thể nêu tên họ.",
         "no_socso_number": "Không có số PERKESO",
         "no_socso_numberFix": "Thêm số PERKESO để tệp đóng góp có thể nêu tên họ."
+      }
+    },
+    "actions": {
+      "title": "Hành động của tác nhân",
+      "description": "Công việc mà AI muốn gánh bớt cho bạn. Không có gì xảy ra ở đây cho đến khi bạn phê duyệt, và bạn thấy rõ lý do từng mục được đề xuất.",
+      "backToTower": "Quay lại Tháp điều khiển",
+      "emptyTitle": "Không có gì để phê duyệt",
+      "emptyBody": "Mọi ngoại lệ bảng lương còn chờ bạn đều có một vấn đề thật phía sau. Khi có người sửa hồ sơ gốc, ngoại lệ đó sẽ xuất hiện ở đây để được đóng lại.",
+      "done": "Đã đóng {closed} ngoại lệ.",
+      "staleNote": "{stale} mục vẫn để mở: vấn đề đã quay lại kể từ khi trang này được tải, nên chúng không bị đóng.",
+      "reversibleNote": "Thao tác này chỉ ghi lại một quyết định về ngoại lệ. Nó không thay đổi lương, mức tính hay hồ sơ nhân viên nào, và việc kiểm tra lại đợt lương sẽ thay thế nó.",
+      "recheckNote": "Mỗi mục được kiểm tra lại ngay khi bạn nhấn nút này. Bất kỳ mục nào phát sinh lỗi trở lại kể từ khi tải trang sẽ được để mở.",
+      "overCap": "Một lần phê duyệt đóng tối đa {cap} mục, trong khi có {total} mục. Hãy duyệt số này trước rồi quay lại xử lý phần còn lại.",
+      "approve": "Phê duyệt và đóng {n}",
+      "type": {
+        "close_fixed_upstream": "Đóng các ngoại lệ đã được khắc phục"
+      },
+      "does": {
+        "close_fixed_upstream": "Những mục này bị gắn cờ vì hồ sơ nhân viên thiếu thông tin. Thông tin đó nay đã có, nên ngoại lệ không còn gì để báo nữa."
+      },
+      "cause": {
+        "no_compensation": "đã có mức lương trong hồ sơ",
+        "no_bank_account": "đã có tài khoản ngân hàng trong hồ sơ",
+        "no_identity": "đã có giấy tờ tùy thân trong hồ sơ",
+        "no_tax_number": "đã có mã số thuế trong hồ sơ",
+        "no_epf_number": "đã có số EPF trong hồ sơ",
+        "no_socso_number": "đã có số SOCSO trong hồ sơ"
+      },
+      "error": {
+        "unknown_type": "Đây không phải là hành động hệ thống có thể thực hiện.",
+        "blast_radius": "Quá nhiều cùng lúc. Không mục nào bị đóng — hãy phê duyệt một nhóm nhỏ hơn.",
+        "nothing_to_do": "Không có mục nào được chọn, nên không có gì bị đóng.",
+        "failed": "Không thể hoàn tất. Không có gì bị đóng."
       }
     }
   }
