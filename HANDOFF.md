@@ -18,11 +18,11 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-01 (r226-r236 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-09-01 (r226-r237 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@56323383` IS WHAT RUNS ON PRODUCTION (r236, 2026-09-01)** — verified by an
+**`main@94ea3c91` IS WHAT RUNS ON PRODUCTION (r237, 2026-09-01)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-09-01 02:52:07 +0800.
+Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-09-01 04:25:02 +0800.
 **Migrations `0452` + `0453` VERIFIED APPLIED, not assumed:** watermark `1781862553000`, 369 rows,
 `agent_proposal` present with RLS on, 6 CHECKs, three policies (read:SELECT / insert:INSERT /
 decide:UPDATE) and `has_table_privilege(ai_hr_app, 'DELETE') = false` — the REVOKE landed.
@@ -103,6 +103,11 @@ exchanges, and the `assistant` module is not activated for the tenant**. Nothing
 not been switched on. Turning it on is two steps by hand: activate the billable module for the tenant,
 then grant the people who should have it from Administration → Users. **Do not read the zero counts as a
 defect** — that is what an unactivated billable module looks like.
+
+⚠️ **THE NUDGE AGENT IS DEPLOYED AND OFF EVERYWHERE — 0 tenants switched on, 0 proposals** (verified on
+production). It runs inside `review-sweep` at 03:00 and needs NO crontab change. Turning it on is the one
+`tenant_setting` statement in the r237 entry — and note the HR half will record `no_recipient` until an
+admin's `app_user` is linked to an employment.
 
 **SCHEDULED JOBS ON THE BOX — SIX, and `anomaly-sweep` at 02:30 is the one r230 added.** The others:
 `provision-runner` (every minute), `capture-usage` 01:00, `review-sweep` 03:00, `accrue-earned` monthly,
