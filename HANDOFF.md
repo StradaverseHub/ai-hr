@@ -18,12 +18,15 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-08-31 (r226-r234 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-08-31 (r226-r235 SHIPPED · FIVE ITEMS ON THE BOARD, ALL AWAITING THE REPORTER)
 
-**`main@fc3b6098` IS WHAT RUNS ON PRODUCTION (r234, 2026-08-31)** — verified by a zero-change
+**`main@af2b5e6a` IS WHAT RUNS ON PRODUCTION (r235, 2026-08-31)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-08-31 20:17:52 +0800.
-(Commits after `fc3b6098` are docs only — this file and `docs/HANDOFF-HISTORY.md`.)
+Service active, `GET localhost:3000/` → 401 ON THE BOX, and `/control-tower/actions` answers 401 rather
+than 404, so the new route is in the production build. Build stamped 2026-08-31 21:59:09 +0800.
+**The dry run reports ONE entry, `next-env.d.ts`, and it is not a stale file** — Next rewrites it per
+build mode, so a box that ran `next build` has `./.next/types/routes.d.ts` where a tree that ran
+`pnpm dev` has `./.next/dev/types/routes.d.ts`. It is gitignored. Everything else is zero.
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
