@@ -386,17 +386,22 @@ export function hypothesisFinding(
   evidence: readonly FeatureKey[],
   f: FeatureVector,
 ): Finding {
+  // ⚠️ FILTERED, not trusted. On the cache path this is handed an evidence list read back out of the
+  // ledger's jsonb WITHOUT re-adjudication (an identical digest is identical features, so the answer
+  // cannot differ) — so an unknown key would index `f.values` to `undefined` and put an undefined into a
+  // facts blob typed as string|number. Unreachable today; a change to FEATURE_KEYS is what would reach it.
+  const cited = evidence.filter((k) => (FEATURE_KEYS as readonly string[]).includes(k));
   const facts: Record<string, string | number> = { claim, cohortSize: f.cohort.size };
-  for (const key of evidence) {
+  for (const key of cited) {
     const v = f.values[key];
-    if (v !== null) facts[key] = v;
+    if (v !== null && v !== undefined) facts[key] = v;
   }
   // The group's middle for each cited base feature, so the operator sees what "unusual" was measured
   // against without having to re-run anything.
-  for (const key of evidence) {
+  for (const key of cited) {
     const base = BASE_OF[key] ?? key;
     const mid = f.cohort.median[base];
-    if (mid !== null && !(`cohort_${base}` in facts)) facts[`cohort_${base}`] = mid;
+    if (mid !== null && mid !== undefined && !(`cohort_${base}` in facts)) facts[`cohort_${base}`] = mid;
   }
   return {
     detectorId: HYPOTHESIS_DETECTOR_ID,
@@ -607,11 +612,18 @@ export async function proposeHypotheses(
 
   const writes: { verdictId: string; finding: Finding; proposalId: string | null }[] = [];
 
+  // ⚠️ ONE COUNTER, INCREMENTED ONCE PER CANDIDATE. The outcome counters below overlap deliberately —
+  // a cache hit that becomes a finding is both `cached` and a write — so summing them to decide the cap
+  // would trip it at roughly half the intended number and report `cappedOut` on a run that had not
+  // reached it. The cap is about how many PEOPLE this pass may look at, which is exactly this.
+  let looked = 0;
+
   for (const c of candidates) {
-    if (writes.length + out.declined + out.rejected + out.cached + out.suppressed >= MAX_HYPOTHESES_PER_RUN) {
+    if (looked >= MAX_HYPOTHESES_PER_RUN) {
       out.cappedOut = true;
       break;
     }
+    looked++;
     // The SAME object is hashed for the cache lookup and handed to `recordProposal`, so the identity the
     // ledger records and the identity this reads back cannot drift apart.
     const facts = { employmentId: c.employmentId, values: c.f.values, cohort: c.f.cohort };

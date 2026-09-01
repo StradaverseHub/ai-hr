@@ -1,3 +1,554 @@
+## r237 (2026-09-01) — the nudge agent: the system starts chasing people. NO MIGRATION.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.5 / Phase 1 item 2. **The first thing in this
+product that contacts a person with nobody pressing send.** r234 gave the system perfect knowledge of who
+has an incomplete record and it changed nothing on its own — a human still had to open the screen and go
+and chase people. **Chasing people is where payroll headcount actually goes**, not verifying runs.
+
+⚠️ **THE ROUTING TABLE IS THE MOST IMPORTANT DECISION IN THE ROUND, AND IT IS READ OUT OF THE PRODUCT.**
+`NUDGE_AUDIENCE` is derived from what each person can ACTUALLY DO: `app/me/actions.ts`'s
+`myRequestProfileChange` carries `bankName`/`bankAccountNo` (plus taxCategory, numChildren and three
+identity fields) through an approval — so of the six readiness gaps **only the bank account has a
+self-service path.** It addresses the employee; the other five are admin-only writers and go to the
+company's HR admins via `hrAdminsForCompany`. **Nudging somebody about a screen they do not have is worse
+than not nudging them** — it trains them to ignore the channel and the record still does not get fixed.
+When ESS grows a field, that table is the one thing to move with it.
+
+⚠️ **IT IS OFF PER TENANT BY DEFAULT, AND THAT IS THE KILL SWITCH.** ADR-0083 §2.5's kill switch was
+deliberately DEFERRED for the action layer because every execution there is a human pressing a button.
+**Here there is no button**, so it ships with the feature: `notifications.readiness_nudge_enabled`,
+`defaultValue: false`, `defaultOnInstall: false`. Buying the notifications module never starts a chaser
+nobody asked for.
+
+⚠️ **NOTHING IN THE UI CAN TURN IT ON YET** — no screen reads `SETTING_CATALOG`, and `tenant_setting` has
+no app writer (the catalog's own comment says the settings screen is "slice 7"). Same shape as the
+`assistant` module: activation is an operator action. Until then, one statement on the box:
+
+    INSERT INTO tenant_setting (tenant_id, key, value, source)
+    VALUES ('<tenant>', 'notifications.readiness_nudge_enabled', 'true'::jsonb, 'platform')
+    ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value;
+
+**TWO SWITCHES, BOTH REQUIRED, AND THEY ARE NOT THE SAME THING.** The `notifications` MODULE gates
+`dispatchNotifications` (a billable entitlement); the SETTING gates the agent. A tenant can hold
+notifications and still not want an automated chaser.
+
+**FOLDED INTO `review-sweep.ts`, NOT GIVEN ITS OWN CRON LINE** — a deliberate reading of that file's own
+advice, *"a second cron line is a second thing to forget to install"*. **r230 is the proof**: the anomaly
+sweep sat BUILT, DOCUMENTED and never installed for six weeks. It runs before `dispatchNotifications` in
+the same pass, so a nudge becomes a message that night rather than waiting for the next admin page load.
+**No crontab change was needed** and none was made.
+
+⚠️⚠️ **THE BLAST-RADIUS TEST CAUGHT A REAL BUG, AND IT IS THE MOST TRANSFERABLE THING HERE.** The sweep
+iterated `recordReadiness(ctx).gaps[].people` — which `PEOPLE_PER_GAP` trims to **25 names so a SCREEN
+stays readable**. So the agent would have chased 25 people per gap on a tenant of any size, **silently,
+reporting a clean run**. That is a sample treated as a total — the exact failure the `count`/`people`
+split was introduced to prevent, caused by it. The limit is now a caller decision
+(`recordReadiness(ctx, { peopleLimit })`); the sweep reads UNCAPPED and is bounded only by
+`MAX_NUDGES_PER_RUN`, which **says so when it bites** (`cappedOut`, printed by the sweep).
+
+**THE SETTLE WINDOW (21d) IS LONGER THAN THE COOLDOWN (14d) ON PURPOSE.** Judging at the cooldown would
+mark a nudge "ignored" at the same moment it becomes eligible to be sent again, so **every second nudge
+would score as a failure regardless of what anybody did.**
+
+⚠️ **`readiness_fix` IS THE ONLY PROPOSAL TYPE IN THE PRODUCT WITH A REAL AGREEMENT RATE.**
+`anomaly_narration` has no human decision (nobody approves prose) and `close_fixed_upstream`'s is
+structurally 1.0 (an operator who does not press the button leaves no trace — r236). A nudge is
+different: **the human's verdict is observable in the record itself** — the gap either closed within the
+window or it did not. So this is the first place the ledger can come back UNFLATTERING, which is the
+entire reason it was built.
+
+**A GAP WITH NOBODY TO TELL IS RECORDED, NOT SKIPPED.** No HR admin in the company ⇒ a REJECTED
+`readiness_fix` with reason `no_recipient` and no message. "We know about this and there is nobody to
+chase" is a real operational fact that is otherwise invisible, and the adjudication-pass rate for this
+type is exactly the measure of it.
+
+**THE MODEL'S PART IS DELIBERATELY SMALL AND SAID TO BE.** One draft per GAP per run (not per person —
+cheaper, reviewable, and fairer than personalising a chaser), adjudicated by `nudgeIsFaithful`: **no digit
+anywhere**, not "digits that match the facts". A nudge carries no figures, so any number in one is
+necessarily invented and there is nothing to check it against — the strongest form the check can take.
+Any failure (no provider, outage, unfaithful draft) falls back to the shipped template, so the loop always
+closes. **A tenant with no provider records NOTHING**: the template path is not a model failure and
+counting it as one would drag the pass rate down measuring the wrong thing.
+
+⚠️ **ADDING A SETTING COSTS MORE THAN A CATALOG LINE — THREE GUARDS FIRE, AND ALL THREE ARE RIGHT.**
+Budget for it next time: (1) `LEGACY_SETTING_ENV_GATES` must name what gates the setting TODAY, and a
+setting that never came from a deployment flag declares **`null`** — the meaning `LEGACY_MODULE_ENV_GATES`
+already carried, newly allowed for settings, and the thing that keeps it out of `legacyEnabledSettingsIn`
+so **a chaser can never arrive switched on by a backfill**. (2) The `settingEnabled(...)` call must pass a
+**STRING LITERAL**, not a constant — `test/module-catalog-drift.test.ts` scans call sites for literals and
+a variable key is invisible to it, which would hide an uncatalogued key (a 500 on the route, since
+`getSetting` throws a bare Error). The literal is duplicated beside the exported constant on purpose and
+says so, or somebody will tidy it away. (3) Three guard sites assumed a gate is non-null; each was fixed
+so the ASSERTION STILL FIRES — a null-gated setting must have no legacy row and no `tenant_setting` row —
+rather than skipping, which would have made the guards quietly partial.
+
+⚠️⚠️ **VERIFIED END TO END ON A DEV SERVER, AND IT SURFACED A REAL PRODUCTION BLOCKER.** Switching the
+agent on for the demo tenant produced **3 accepted employee nudges** (bank account → `/me`, the real
+template body, three notifications created) and **13 REJECTED `no_recipient` rows** across the five HR
+gaps. The reason is not a bug in the agent: **`hrAdminsForCompany` returns EMPLOYMENT ids**, because a
+notification recipient IS an employment (ADR-0034) — and **production has ZERO admins whose `app_user` is
+linked to an employment** (checked directly: `admins-with-employment: 0` against 31 active employments).
+So today the HR half of the nudge agent would record every gap as unreachable and send nothing, while the
+employee half works.
+
+**That is the `no_recipient` design doing exactly its job** — "we know about these and there is nobody to
+tell" was previously invisible and is now a counted, queryable fact. **The fix is operational, not code:
+link an HR admin's `app_user` to an employment.** Until then, switching the agent on is still worth doing
+for the bank-account loop, and the rejection count is the measure of what is blocked.
+
+**BODIES ARE ENGLISH-ONLY, DIVERGING FROM THE ADR** — `core/notifications.ts` renders a body ONCE and
+STORES it, so per-reader locale is a change to ADR-0034's engine, not to this agent. Recorded in 0084's
+as-built note rather than quietly dropped.
+
+
+## r236 (2026-09-01) — the proposal ledger: the AI loop stops being open. MIGRATIONS `0452` + `0453`.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) Phase 1 item 1. Before this round there was **no
+edge anywhere in this codebase from an AI output back to an AI input** — the narrator wrote prose, the
+drafters drafted, the action layer proposed, and not one of them recorded what happened next. So nothing
+could improve without a developer editing a prompt, and nobody could answer the owner's actual question:
+does any of this help? `agent_proposal` is that edge, and it is the precondition for ADR-0083 §2.5's
+per-action autonomy (r235 shipped `AutonomyLevel` as a one-member union because there was nothing to
+measure).
+
+⚠️⚠️ **A CHECK CONSTRAINT THAT LOOKED RIGHT AND ENFORCED NOTHING — THE MOST TRANSFERABLE THING IN THIS
+ROUND.** `CHECK (reversed_at IS NULL OR decision = 'approved')` admits **exactly the row it forbids**. For
+an undecided row `decision = 'approved'` is **NULL**, so the expression is `false OR NULL` = NULL — and
+**a CHECK rejects only on FALSE, never on NULL.** It reads as if it works, it passes review, and it
+enforces nothing. `IS NOT DISTINCT FROM` is NULL-safe and always yields true or false. **Every future
+CHECK over a NULLABLE column has this trap**, and the only reason this one was caught is that the test
+asserted the refusal rather than the happy path.
+
+⚠️ **THE THREE VERDICT GROUPS ARE SEPARATE, AND 0452's CHECKS MAKE IT STRUCTURAL.** `adjudication` is THE
+MACHINE'S verdict, `decision` is A HUMAN'S, `reversed_at` is LATER REALITY. The dangerous combination is a
+high agreement rate ALONGSIDE a high reversal rate — the humans are rubber-stamping, and that reads as
+success in every other metric. A rejected proposal may carry no decision (it was never shown to anybody);
+a rejection must name which check refused it (or the pass rate is unactionable); a reversal is meaningless
+on something nobody approved.
+
+**FOUR PROPERTIES OF `core/agent-proposal.ts`, none incidental:**
+
+1. **Recording NEVER throws into the caller** — measurement is never worth breaking the feature it
+   measures. A ledger failure returns null.
+2. **Recording runs in its OWN transaction.** A rejection almost always happens inside an operation that
+   then aborts; a row written in that transaction would roll back with it and **the ledger would hold
+   successes only, pass rate structurally 100%** — the exact inverse of its purpose. ⚠️ The corollary is a
+   CALLER REQUIREMENT: **never record from inside an open `withTenant`**, which takes a second pooled
+   connection (pool exhaustion under load, deadlock if the outer tx holds a row the inner one needs). All
+   four shipped call sites record outside any transaction.
+3. **The id is generated in TypeScript, not by `RETURNING`** — the insert policy is `FOR INSERT` with no
+   `USING` (so it cannot widen the admin-only read), and `RETURNING` needs SELECT.
+4. **The facts are HASHED, never stored.** No second copy of employee data in a telemetry table.
+
+⚠️ **THE RLS SPLIT IS LOAD-BEARING IN BOTH DIRECTIONS.** Read is ADMIN-ONLY — a tenant-wide read would let
+any employee enumerate what the system proposes about their colleagues, which is the surveillance surface
+ADR-0082 §2.7 refuses. Insert is TENANT-WIDE — 0451's `assistant_usage` lesson applied before it bites:
+ADR-0084 §2.5's nudge sweep runs in a SYSTEM context and §2.7's triage runs in the EMPLOYEE'S OWN session,
+and an admin-only insert would make those writes match **zero rows, silently**. `DELETE` is revoked: an
+accuracy figure whose unflattering rows can be tidied away is not an accuracy figure, and nothing but
+`test/agent-proposal.test.ts` catches a dropped REVOKE.
+
+**FOUR TENANTS, AND THREE OF THEM COST NOTHING NEW.** `narrationIsFaithful`, `validatePayRule` and
+`validateReportSpec` were ALREADY adjudicators — this round only writes their verdicts down. The narrator
+was the ideal first one: it already produced both outcomes and threw both away (`rejected` was a number on
+a toast nobody could aggregate). The fourth is the action layer, where **the re-check IS the
+adjudication** — a subject whose cause came back is a REJECTED proposal, not a declined one; recording it
+as a decline would blame the operator and flatter the agreement rate.
+
+⚠️ **AND IT AMENDS ADR-0083 §2.8's AUTONOMY CRITERION.** For `close_fixed_upstream` the **agreement rate is
+structurally 1.0 and proves nothing** — the approval screen is a batch, so an operator who simply does not
+press the button leaves no trace and a decline is unobservable. **The REVERSAL rate is the metric that
+means anything for a batch action type.** Nothing writes it yet; Phase 3 item 6 does.
+
+**Every rate is `null` when its denominator is zero — never 0, never 1.** `anomaly_narration` can never
+carry a human decision (nobody approves prose), so its agreement rate is unmeasured for ever, and printing
+that as 0% would report the narrator as universally rejected. Same discipline as `impliedOperators`.
+
+**WHAT HAS NO CALLER YET, DELIBERATELY:** `recordDecision`, `recordReversal` and `proposalRates`. The
+first two belong with the surfaces that produce their signal; surfacing the rates is Phase 3 item 5, and a
+rate rendered before there is data to render is the "tune the thresholds" mistake in a new coat.
+
+**VERIFIED END TO END THROUGH REAL HTTP, not only in vitest** — the same discipline as r235, and the point
+of it here is that a ledger nobody exercises is indistinguishable from one that silently records nothing.
+Staged two verdicts on a dev server, approved through the actual form: `303 → ?closed=1&stale=0`, and the
+row reads `accepted / approved / decided_at stamped / provider NULL` (deterministic). Then submitted the
+STALE verdict directly: `?closed=0&stale=1`, the row reads `rejected / precondition_no_longer_holds /
+decision NULL`, and the verdict itself was untouched. **The machine's refusal is never recorded as the
+operator declining** — that distinction is the whole reason the two columns are separate.
+
+⚠️ **AND `0453` IS A DEFECT THIS ROUND FOUND WITHOUT CAUSING.** `/reports` returns 500 with `permission
+denied for table custom_report` on **any cluster built by `scripts/dev-db-rebuild.sh`**: `0165` created
+the table with no explicit GRANT and relied on production's `ALTER DEFAULT PRIVILEGES`, which a REBUILT
+cluster never runs. It is invisible on production (verified there directly — `role_table_grants` reports
+all four privileges) and breaks every developer after a rebuild. **`agent_proposal` and `assistant_grant`
+both read fine on the same broken cluster because both migrations wrote the GRANT out** — that contrast
+is the whole argument for the redundancy AGENTS rule 5 demands. The other four tables `ai_hr_app` cannot
+read there are CORRECT and were left alone: `ai_provider_config` is FORCE-RLS holding a key ciphertext
+(0059), and three belong to the `ai_hr_platform` control plane (ADR-0077/0079).
+
+
+## r235 (2026-08-31) — the action layer: the first place an agent WRITES. NO MIGRATION.
+
+[ADR-0083](docs/adr/0083-hr-operations-control-plane.md) §2.5 / §3 item 3. Everything shipped before this
+round is read-only — the narrator explains, the assistant answers, the tower counts, readiness lists.
+**Read-only AI makes people faster; it does not remove them.** This is the seam through which work
+actually leaves a desk, and therefore the seam most worth being paranoid about.
+
+**THE FIVE PROPERTIES, each asserted in BOTH directions in `test/agent-actions.test.ts` so widening any of
+them requires editing that file too:**
+
+1. **Typed actions with preconditions, NEVER a general write.** An agent cannot "update a record"; it
+   proposes one of a closed set, each knowing what must be true before it runs. A closed vocabulary is
+   reviewable line by line; a general write capability is not reviewable at all, and no amount of prompt
+   discipline makes it so.
+2. **The precondition is RE-CHECKED AT EXECUTION.** A proposal is evidence about the moment a page
+   rendered. The test that matters most is the one where the fix is UNDONE between proposal and click:
+   `closed=0`, `stale=1`, `resolvedAt` still null. The human approved "close the ones that are fixed",
+   not "close these ids".
+3. **`autonomy` is a union with ONE member.** Not a config flag defaulting to off — granting autonomy is
+   a change to the source, not to a setting somebody can flip. §2.5 requires it be earned PER ACTION TYPE
+   from measured agreement, and no agreement has been measured yet.
+4. **Blast radius is a GATE, NOT A WARNING.** Over the cap (50) the whole call is REFUSED, never
+   truncated: doing half of what was approved while reporting success is the worse failure, because the
+   operator believes the whole thing happened.
+5. **Every execution is a domain event**, inherited free — it writes through the existing
+   `resolveAnomalyVerdict` service, so the audit trail, the RBAC check and the event are the ones already
+   trusted for a human doing this by hand. It does not open a second write path to the same table.
+
+⚠️ **THE FIRST ACTION WAS CHOSEN FOR WHAT IT CANNOT DO.** `close_fixed_upstream` closes a payroll
+exception whose CAUSE has since been fixed. Its precondition is `gapsForRecord` — **the same predicate the
+readiness screen uses**, extracted from `core/record-readiness.ts` in this round rather than re-written,
+because two definitions of "has a bank account" would drift and the drift would be invisible: the action
+layer closing findings the readiness screen still lists. The write is a judgement stamp on a verdict, not
+a change to anybody's data, and re-evaluating the run supersedes it.
+
+⚠️ **`net-swing` CAN NEVER BE CLOSED THIS WAY, AND THAT BOUNDARY IS `CAUSE_OF`.** Only detectors whose
+cause is a RECORD FACT are in the map. "Their pay moved 40%" does not stop being true when somebody edits
+a field — closing it would assert a judgement the agent has not made. Pinned by a test.
+
+⚠️ **IT CLOSES AS `fixed_upstream`, NOT `false_positive`.** The finding was RIGHT when it was raised.
+Recording it as a false positive would corrupt the very accuracy metric this layer exists to start
+populating — `falsePositiveRate` and `mttrSeconds` are structurally null today because nobody has ever
+dispositioned a flag.
+
+**WHAT §2.5 LISTS THAT IS DELIBERATELY ABSENT.** A kill switch and a daily action budget. Both exist to
+bound an agent that acts on its own, and nothing here acts on its own: every execution is a human pressing
+a button having read what will happen. A kill switch for propose-only agents stops nothing that was not
+already stopped, and shipping one would **advertise a safety property that is really just the button.**
+They belong with the first grant of autonomy — the same change that widens the union in (3) — and that is
+a decision, not a build. Recorded in the file header so their absence is not read as an oversight.
+
+**THE SCREEN MAKES APPROVAL AN INFORMED ACT, NOT A CONVENIENT ONE.** Each row carries the reasoning — who,
+which check fired, and the record fact now on file — because an operator who cannot check the claim is not
+approving, they are rubber-stamping. **Only the verdict ids PRINTED ON THE PAGE are posted**, one hidden
+input each, never a filter: a filter re-evaluated server-side could pick up a row that appeared between
+render and click, riding along on an approval nobody gave it. The detector's name comes from the existing
+`anomaly.detector.*` vocabulary rather than a second one — naming the same check two different ways on two
+screens is how an operator stops believing either.
+
+**`?error=` IS VALIDATED AGAINST A KNOWN SET BEFORE IT REACHES `t()`.** A query string is user input and
+an unknown key throws `MISSING_MESSAGE`, which CRASHES the page rather than showing an error on it — from
+nothing worse than a hand-edited URL. Rule 6's failure mode, reachable by hand.
+
+⚠️ **ONE REFUSAL MUST NOT DISCARD A COMMITTED BATCH.** Each `resolveAnomalyVerdict` is its own
+transaction, so a throw escaping the execution loop would report total failure over verdicts that had
+ALREADY closed — the mirror of the truncation property (4) refuses, and just as misleading. The loop
+catches per verdict. `stale` is therefore "approved but not closed, for any reason" — the cause came back,
+or somebody resolved it by hand while the page was open — deliberately ONE number, because the operator's
+next move is the same for both and a second count would imply a distinction they cannot act on. **The
+screen's wording covers both cases and must keep doing so if this is ever split.**
+
+**THE EXPLAINER GAINED A SIXTH AGENT ROW — "the closer", DETERMINISTIC**, which is the point worth making
+on a page about AI: the thing proposing that work be closed is a predicate, not a model. It sits directly
+above `autonomy`, so one row says work is now proposed and the next says nothing is done without a person.
+Step 4 of the drawing now names approval.
+
+⚠️ **AND THAT ROW EXPOSED A GUARD THAT SHOULD HAVE EXISTED SINCE r233.** The roster is DATA — the page
+renders `agent.${id}`, `agent.${id}Does` and `why.${reasonKey}` as dynamic keys, and `i18n-coverage`'s
+static-key case **says in its own header that it cannot see those.** A row added without its strings
+throws `MISSING_MESSAGE` and crashes the explainer while tsc, the full suite and `next build` all stay
+green — AGENTS 6 exactly. `test/control-tower-menu.test.ts` now reads the ids and reason keys back out of
+`core/control-domains.ts`, **both branches of every ternary included** (the off-branch is the one nobody
+renders while testing): 6 ids, 13 reason keys today, with floors so a regex that stops matching cannot
+pass vacuously.
+
+**i18n complete in all six locales, verified by comparing VALUES against EN** (28 keys × 5 locales, zero
+identical-to-EN) rather than trusting `parity ✓`.
+
+⚠️ **THE WRITE PATH WAS EXERCISED THROUGH REAL HTTP, NOT ONLY THROUGH vitest**, because this is the first
+round where a green suite would not have been enough — the form → server action → core → service chain has
+no unit test. Staged two verdicts on the dev server, POSTed the form the way the browser encodes it
+(`$ACTION_ID_…` + repeated `verdictId` fields, pulled out of the rendered payload), and got
+`303 → ?closed=2&stale=0`, both rows `fixed_upstream`, and **two `payroll.anomaly.resolved` domain events
+attributed to the approving USER, not to the system** — which is right: the human approved, and the note
+records that the control plane proposed it. Then removed a bank account BETWEEN render and POST and got
+`closed=0&stale=1` with `resolved_at` still NULL. **Property (2) is now proven in production-shaped code,
+not just in a test harness.**
+
+**Every render branch was forced, not just the happy one.** The empty state, the proposal list, `?closed=`
+with and without stale, all four error codes, and a hand-edited `?error=bogus` — which the `ERROR_CODES`
+guard rejects into no banner rather than a `MISSING_MESSAGE` crash. Zero `MISSING_MESSAGE`, zero
+`IntlError`, across every one. A crafted POST carrying a MALFORMED verdict id lands on `?error=failed`
+(the uuid cast throws inside the re-check and the server action catches it) — an error banner, not a 500,
+and not reachable from the screen, which posts only ids it printed.
+
+
+## r234 (2026-08-31) — record readiness: ADR-0083's shift-left half, and the second control domain. NO MIGRATION.
+
+[ADR-0083](docs/adr/0083-hr-operations-control-plane.md) §3 item 2 — the loop that feeds every other
+loop. ADR-0076's detectors run AFTER `generatePayslips`, so a missing bank account is discovered at the
+moment it blocks a payment, every cycle, for the same person, until somebody edits the record. **A fix is
+permanent; a review recurs.** This asks the same questions continuously against the RECORD.
+
+⚠️ **IT IS A QUERY, NOT A STORED VERDICT, AND THAT IS THE DESIGN.** No table, no sweep, no migration.
+Readiness is a function of the records as they are RIGHT NOW, so a computed-and-stored answer could only
+ever be wrong — stale the moment somebody fills a field in, and needing its own invalidation story to stop
+lying. **The payroll adapter persists verdicts because a verdict is a statement about one RUN, which is
+immutable once made. A gap is a statement about a RECORD, which is not.** Same substrate, opposite
+persistence, and the reason is the difference between the two nouns.
+
+⚠️ **THE RULE MOST LIKELY TO KILL THIS FEATURE, AND WHY IT DOES NOT.** `missing-bank-profile` fires only
+when the employee is paid BY BANK (`payment_method` bank_transfer or unset) — somebody paid in cash needs
+no account. Readiness matches that condition exactly. Without it the screen opens on day one accusing
+every cash-paid employee of an incomplete record, and **a readiness list that cries wolf is one nobody
+opens twice.** Pinned in BOTH directions so the guard cannot pass vacuously. The same instinct governs
+identity: an IC **or** a passport satisfies it (r220's reasoning applied to the other document), because
+demanding the IC would flag every foreign worker for a record that is complete.
+
+**LEAVERS ARE OUT OF THE DENOMINATOR, not merely out of the gaps.** A leaver's missing SOCSO number is a
+historical record, not a thing to go and fix; counting them would drag the readiness percentage down for
+ever and bury the people whose next payslip depends on it.
+
+**THE SCREEN IS A FIX LIST, NOT A FINDING LIST**, which is the ADR's economic claim made visible. Built
+around the GAP with the people inside it rather than the person with their gaps listed, because the unit
+of work is the fix. Every gap leads with WHAT IT STOPS — "no bank account" is a data complaint, "payment
+will fail for 14 people" is a consequence somebody acts on this afternoon. Names link straight to the
+record: the entire deliverable is getting from "14 people" to the field to fill in, in one click. Sorted
+by consequence (what stops a run outranks what stops a filing), and **the count is the true total even
+when the list is capped — a sample presented as a total is the wrong number to plan an afternoon around.**
+
+**THE SEAM PAID FOR ITSELF ONE ROUND AFTER IT WAS CUT.** This was a REGISTRATION: readiness flips
+`planned` → `live` in `CONTROL_DOMAINS` and both the tower and the explainer picked it up with no change
+to either. Not payroll-gated — a missing IC blocks a statutory return whether or not payroll is bought,
+which is exactly why the domain carries `module: null`.
+
+⚠️ **TWO FIXTURE TRAPS IN `localization/my/statutory.ts` WORTH KNOWING BEFORE WRITING ANY PASSPORT TEST.**
+(1) The passport has its OWN writer, `setPassportProfileMY` — it is not a field on `setStatutoryProfileMY`'s
+input, and passing it there **silently does nothing**, which is how the first run of this file appeared to
+prove that a passport does not satisfy the identity check. (2) The passport trio is ALL-OR-NOTHING and
+mandatory for a non-Malaysian: number, issue date and expiry together, or `PassportRequiredError`.
+
+**i18n complete in all six locales, verified by comparing VALUES against EN rather than trusting
+`parity ✓`** — r233's lesson applied up front this time instead of after the fact.
+
+## r233 (2026-08-31) — the AI Control Tower becomes its own section, on an ADR-0083 domain seam. NO MIGRATION.
+
+Owner request and **[ADR-0083](docs/adr/0083-hr-operations-control-plane.md) step 1** in one round: a
+separate menu, a domain seam under it, and a page that explains the thing to the person who has to trust
+it.
+
+**THE SEAM (`core/control-domains.ts`).** Strip the payroll nouns out of what ADR-0076 built and nothing
+that remains is about payslips — detectors → typed findings → narration that cannot change a verdict → a
+queue → metrics that gate autonomy. The tower and the explainer now read a REGISTRY instead of calling
+payroll by name, so landing the readiness adapter is a registration rather than a rewrite of every
+surface. **A single-member abstraction is normally a smell; this one earns its place because the SCREENS
+are what is being generalised, not the evaluator** — a tower that hardcodes "payroll" in its headings and
+counts has to be rewritten for domain two. The evaluator did not move.
+
+**THE MOVE.** `/payroll/control-tower` → **`/control-tower`**, its own top-level admin section. It was a
+payroll row while payroll was the only domain it watched, and leaving it there taught every reader the
+opposite of what 0083 argues. The old href **FORWARDS (307, verified)** — it shipped live in r229 and a
+bookmark must not break to tidy a menu — and the row is REMOVED from the payroll pack rather than
+duplicated, because two menu paths to one screen is how a menu stops telling you where things live.
+
+**THE EXPLAINER (`/control-tower/how-it-works`).** An inline-SVG drawing of the five-step loop with the
+AI step, the human step and the rules-only steps colour-separated and legended, then a live agent roster.
+⚠️ **ITS ONE RULE IS THAT EVERY STATUS IS READ FROM THE SYSTEM, NEVER DECLARED.** The provider check is a
+real config read; the sweep check is the newest verdict's timestamp and distinguishes "never ran" from
+"ran a fortnight ago", which are different faults with different fixes; the assistant check is the
+caller's own grant. A page asserting "the narrator is active" from a constant manufactures confidence and
+is wrong exactly when it matters. **And it states what does NOT run:** autonomy renders as a row reading
+*off by design* with its reason, because an admin looking at something called an AI Control Tower is
+entitled to know nothing here acts on its own, and to see that as a decision (0083 §2.5) rather than
+discover it by accident. Both invariants are said in plain words — AI never works out your pay, AI never
+decides anything on its own.
+
+⚠️⚠️ **`parity ✓` DOES NOT MEAN TRANSLATED, AND THIS ROUND NEARLY SHIPPED PROOF OF IT.** The first i18n
+pass built the ta / th / vi catalogues from the English dict and overrode only the short labels, leaving
+**48 of 69 keys holding ENGLISH TEXT inside a translation catalogue** — and `scripts/i18n-check.mjs`
+passed, because it counts keys and compares placeholders and cannot see this. **That is worse than a
+missing key**: a missing key falls back visibly and gets picked up by a translation pass, while a key
+populated with English looks finished forever. Caught by comparing VALUES against EN, which is the check
+that exists nowhere in the toolchain. All 69 are now translated in all six. **Do this comparison whenever
+a round adds a screen's worth of strings.**
+
+**THREE GUARDS UPDATED, NOT WEAKENED.** The payroll fly-out set records the removal as a MOVE — its
+second removal ever, after `efe1d230`'s guide — and the guard's promise ("no destination lost, no href
+renamed") survives because the href still resolves. The permissions matrix gains the two guarded routes
+and deliberately OMITS the forward: the matrix tracks guarded screens, and listing a redirect would claim
+a screen that does not exist. The phase map drops the retired rank.
+
+**RENDER-CHECKED** (rule 6): both routes 200, the forward 307, zero
+`MISSING_MESSAGE`/`IntlError`/RSC errors across ~69 new keys. 11 new cases pinning the move, the registry
+and the explainer's honesty rules.
+
+## r232 (2026-08-31) — ADR-0074 item 5: "why is my pay different?" without a payroll person. NO MIGRATION.
+
+The item exists because **deflecting** that question is worth more than answering it faster. At 1000:1 it
+is what consumes a payroll team's day, and every other control-tower item makes exception CLEARING
+quicker — which does nothing about the queue of people asking about their own payslip. This is the first
+build that attacks the ratio from the demand side.
+
+**BUILT AS A REGISTRY TOOL, NOT A SCREEN**, so it inherits the whole r229 loop — the caller's own
+`SessionContext` (so RLS scopes it), the budget gate, the audit row, the refusal envelope — instead of
+growing a second path to payroll data with its own access story. `my_pay_change` takes a period, compares
+it against the previous period the asker was actually PAID for, and returns gross / deductions / net with
+the difference already worked out plus the same comparison per pay item.
+
+⚠️ **THE ARITHMETIC IS THE TOOL'S, NEVER THE MODEL'S.** ADR-0074's non-negotiable invariant, and it is
+also what makes the answer checkable: every figure an employee is told is a subtraction they can repeat
+against their own two payslips. Handing a model two numbers and asking it to subtract them is precisely
+what the ADR forbids, and it is how a wrong figure reaches somebody about their own wages.
+
+**FOUR DECISIONS, each of which reads as a detail and is not:**
+  - **A period is SUMMED ACROSS ITS RUNS.** Employees think in months; payroll thinks in runs, and a month
+    can carry a regular run plus a bonus. Comparing single runs answers "why is this PAYSLIP different",
+    a question nobody asked and whose answer ("because it is the bonus run") is not the one they need.
+  - **The comparison is the previous PAID period, never last calendar month.** A joiner, a leaver or an
+    unpaid month leaves a gap; stepping back one month finds nothing and reports a fall to zero — a false
+    alarm about someone's wages, delivered by a machine, with no human in the loop to catch it.
+  - **Unchanged pay items are DROPPED.** They are not why the pay is different, and twenty identical rows
+    bury the two that moved.
+  - **The release filter is mandatory**, the same one `my_payslip_summary` documents. `myPayslips` STAMPS
+    `released` rather than enforcing it. Without the filter the assistant explains a payslip the
+    employee's own screen refuses to show them, which is worse than a wrong screen: they cannot see what
+    it is talking about.
+
+**IT WILL NOT RETURN THE STATUTORY SPLIT.** Only component lines are projected out of `statutory`;
+EPF/SOCSO/PCB and the tax-relief record never leave. A deduction TOTAL that moved is reported and is
+usually the real answer, and the tool description tells the model to point at the payslip rather than
+guess which contribution changed.
+
+⚠️ **THREE GUARDS FIRED AND ALL THREE WERE RIGHT TO.** The frozen tool-list oracle (the name is APPENDED,
+never inserted — one reordered byte invalidates the cached prefix and costs ~10x per request while
+failing nothing else); the payroll-gated count 1 → 2; and the import allowlist in
+`test/assistant-tools-shape.test.ts`, whose property is "reaches the database only through core/read.ts,
+and holds no database handle at runtime". Adding `./payslip-earning-lines` does NOT weaken it — that
+module has **ZERO imports and no query surface at all**, verified before the allowlist was touched rather
+than after. **Check that emptiness before ever adding a sixth entry.**
+
+**TESTED AS THE EMPLOYEE, NOT AS AN ADMIN.** `myEmploymentIdsAll` resolves through `ctx.personId`, so the
+first run of these cases returned `no_employment` for all six — an admin context exercises a caller this
+tool can never actually have. The fixture now creates a real app_user for the employee's person and asks
+as them, which is the only shape that tests anything.
+
+## r231 (2026-08-31) — ADR-0082 slice 4: the assistant becomes reachable at all. NO MIGRATION.
+
+⚠️⚠️ **THREE SLICES HAD SHIPPED AND NONE OF IT COULD BE REACHED BY ANYBODY.** r221 built the gateway's
+conversation support, r223 the access-scoped tool registry, r229 the loop — and production carried **zero
+grants and zero exchanges**, because there was no screen AND no way to grant anyone access. Slice 4 is
+therefore deliberately TWO surfaces: without the grant control the ask screen is unreachable by every
+user in the tenant, so shipping only `/assistant` would have been three slices of dead code plus a fourth.
+**When a feature has a per-user gate, the thing that turns the gate on is part of the same slice.**
+
+**`/assistant`** — ask, read the answer, see what it looked at. Three properties, in the order they would
+hurt: (1) **it never presents a non-answer as an answer** — `stop` has FIVE members and only `end` means
+finished, so refusal, truncation, provider oddity and the turn cap each get their own sentence (§2.5; on
+HR data "there is nothing" and "I stopped early" are different claims); (2) **it lists the tools that
+ran**, which is also the honest statement of scope because each ran inside the asker's own session;
+(3) **no refusal without a route forward** — `mayUseAssistant`'s three reasons each name who can fix it.
+The answer is read back from `assistant_exchange`, never carried on the redirect: the audit row is the
+record and a second copy could differ from it.
+
+**GRANTS LIVE ON THE USERS SCREEN.** "Who may use this" is the question that screen already answers for
+roles, and a whole screen for one toggle is a menu row nobody finds.
+
+⚠️ **THE BUG THAT WAS ONE LINE FROM SHIPPING: `listAssistantGrants` RETURNS REVOKED ROWS ON PURPOSE.**
+Its own docblock says why — "who could ask the assistant last March" is the reason revocation is a STAMP
+rather than a delete. Read naively as "who has access" it shows a revoked person as still granted and
+offers to revoke them a second time. The screen filters on `revokedAt == null`, and the test asserts the
+underlying live-vs-historic distinction so neither half can drift. **A list that keeps history is not a
+list of who has access, and the two read identically at the call site.**
+
+⚠️⚠️ **ADR-0082 §2.8 IS WRONG ABOUT THE PERMISSIONS MATRIX, AND FOLLOWING IT WOULD HAVE FAILED THE GATE.**
+It says `app/assistant/page.tsx` needs a `lib/permissions.ts` SCREENS column. But
+`test/function-access.test.ts`'s guard regex matches only
+`requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession`, and this page uses
+`getSession` like `/me` and `/leave` — so a column would have failed that file's sibling "no stale routes"
+case. **This is r225's lesson verbatim, hit a second time from the opposite direction: there it was a
+brief demanding the column, here it is an ADR.** Recorded as an ASSERTED TEST rather than a comment, so
+the next reader of §2.8 finds the correction in the suite instead of repeating it.
+
+**NAV GATED BY `MODULE_OF_HREF`, the SECOND hand-written entry after `system_explorer`** and for the same
+mechanical reason: `assistant` is `packBacked: false`, so no pack descriptor exists to derive the href
+from and the entry cannot be generated. Without it the rail would advertise a module the tenant has not
+bought. The per-user grant is a separate second gate — the row is offered to an ungranted user and the
+screen tells them who to ask, which is a better dead end than a row that silently vanishes.
+
+**RENDER-CHECKED ON BOTH PATHS** (rule 6) — the denial path every user hits first, and the granted path
+after activating the module and inserting a grant: 200 on each, ask form present, zero `MISSING_MESSAGE`.
+Checking only the denial path would have exercised none of the screen.
+
+**NO MIGRATION — 0451 laid all four tables in r223.** Four rounds running now (r228 EA, r230 narrator,
+r231) where the storage already existed and only the read or the surface was missing.
+
+## r230 (2026-08-31) — the AI finally arrives in the control tower, and the sweep starts running. NO MIGRATION.
+
+Owner request, after a fair challenge: *"This seems more like an automated workflow or action. Not an AI
+agent layer or AI payroll control tower. Where does the AI come in?"*
+
+⚠️⚠️ **THEY WERE RIGHT, AND THE ANSWER WAS "NOWHERE".** Grepped the whole path — evaluator, the 11
+detectors, the sweep, the queue, r229's roll-up and screen — and there was **not one LLM call in the
+payroll control tower**. What existed was pure detectors, threshold arithmetic, a cron script and a
+table. That absence is by DESIGN (ADR-0074: "the LLM never computes the money"; the detector contract
+says `evaluate(): Finding[] // PURE. No I/O. No LLM. No clock.`) — but §2.6 named exactly where the LLM
+DOES belong and it had never been built. **Do not call this an AI feature without checking which half
+you are looking at.**
+
+⚠️⚠️ **THE SWEEP WAS BUILT, DOCUMENTED IN DEPLOY.md, AND NEVER INSTALLED ON THE BOX.** ADR-0074 item 3 —
+the "continuously-running loop" the whole operating model rests on — was absent from the crontab. The
+evidence: **5 of 23 processed runs ever evaluated, last one 2026-08-18, twelve days cold.** The tower was
+not a loop, it was a button somebody pressed twice. Installed at 02:30 (the line DEPLOY.md already
+documented verbatim), previous crontab backed up to `/home/ubuntu/crontab.before-anomaly-sweep.bak`, and
+**verified by reading `crontab -l` back, not by trusting the install command**.
+
+**THE BACKLOG RUN PRODUCED NUMBERS — 23 runs → 27 clear, 43 review, 34 block, a 26% auto-clear rate —
+AND THIS ENTRY ORIGINALLY CALLED THEM "the first real measurement this project has ever had". THAT WAS
+WRONG AND THE CORRECTION IS IN CURRENT STATE.** They are seeded rows on a demo tenant; the distribution
+reflects the seed script. They are not evidence about thresholds, accuracy, or where operator time goes,
+and this entry's conclusion — "threshold tuning is now the top item" — was drawn from them and is
+withdrawn. Only `net-swing` is threshold-driven at all; the detectors that dominated the count take no
+params and cannot be tuned. See [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) for what replaced
+the reasoning. **The sweep being installed is still the real result of this round; what it found is not.**
+
+⚠️ **THE NARRATOR'S GUARD IS THE ONLY REASON AN LLM IS ACCEPTABLE ON THIS SCREEN.** §2.6 promises "every
+number in the prose is interpolated from `facts`" and "no ringgit figure is ever produced by the model".
+A prompt asking for that is a hope. `narrationIsFaithful` (`core/payroll-anomaly-narrate.ts`) CHECKS it:
+every numeric token in the prose must be a figure the facts support, and prose that fails is **DISCARDED
+— not stored, not flagged, not caveated**. There is no honest way to render a number nobody can trace on
+a payroll screen (AGENTS 28). It rejects an invented percentage, a total the model summed itself, and a
+near-miss 830 against a real 820; it accepts `RM820.00` against 820 and "2026" against a period of
+`2026-08`, because a guard that binned honest prose over formatting would make the feature pointless.
+**Tested WITHOUT a provider** — the interesting failure is not "the model was unavailable" but "the model
+wrote a plausible sentence with an untraceable figure in it", which is a pure function of (prose, facts).
+
+**FOUR PROPERTIES, ALL STRUCTURAL RATHER THAN PROMISED.** (1) It cannot change a classification —
+disposition and severity are written by pure detectors before it runs, it only ever writes the
+`narrative` COLUMN, and there is no code path from it back to a verdict. (2) It cannot ship a figure —
+above. (3) It is never on the critical path: no provider, provider down, timeout and unfaithful output
+all leave the row rendering exactly as it does today, and the action reports WHICH of those happened
+rather than reporting success. (4) It never sees a person — the prompt carries a detector id and a bag of
+numbers, no name, no employee code, no company. Nothing to leak and nothing to inject with.
+
+**ON DEMAND, NOT IN THE SWEEP.** The nightly sweep supersedes verdicts, so narrating there would re-spend
+on every finding every night — on the tenant's own BYOK key (ADR-0023) — for prose nobody may read. A
+button spends once per finding, only for findings someone opened, and keeps the narrator off the render
+path, which is what lets the queue open at 3,000 people whatever the provider is doing.
+
+**NO MIGRATION. `payroll_anomaly_finding.narrative` HAS EXISTED SINCE `0425` AND NOTHING EVER WROTE TO
+IT** — the same shape as r228's EA mapping: storage shipped, the read never built. That is twice in four
+rounds. **When a feature looks absent, check whether the column is already there.**
+
 ## r229 (2026-08-30) — the Control Tower gets a front door; the assistant gets its loop. NO MIGRATION.
 
 Owner request, not a board item: "build the AI functions and payroll control tower", then "put all inside

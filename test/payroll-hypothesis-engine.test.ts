@@ -21,7 +21,7 @@ import * as schema from '../db/schema';
 import { digestOf } from '../core/agent-proposal';
 import { evaluateBatchAnomalies, loadBatchContexts, resolveAnomalyVerdict } from '../core/payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID } from '../core/payroll-anomaly-detectors';
-import { buildFeatures, proposeHypotheses } from '../core/payroll-hypothesis';
+import { MAX_HYPOTHESES_PER_RUN, buildFeatures, proposeHypotheses } from '../core/payroll-hypothesis';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setSetting, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 
@@ -122,6 +122,75 @@ async function seedRun(): Promise<{ batchId: string; oddId: string; peerId: stri
   await addPayslip(prior, oddId, PRIOR, 1);
   await addPayslip(current, oddId, PERIOD, 1);
   return { batchId: current, oddId, peerId: ids[0] };
+}
+
+/**
+ * The same run, built in BULK, for the one case that needs a crowd: the blast-radius cap.
+ *
+ * ⚠️ THE PROPORTIONS ARE NOT ARBITRARY AND CANNOT BE TIGHTENED. A robust z-score is scale-invariant, so
+ * how FAR the outliers moved changes nothing — only how MANY of them there are. With k outliers in n
+ * people the outlier's z is about sqrt(n/k), so clearing `Z_MATERIAL` (1.5) needs n ≥ 2.25k. Twenty-six
+ * candidates therefore need a run of eighty, not of thirty. That is a property of the statistic and it is
+ * worth knowing before writing any other fixture for this layer.
+ */
+async function seedCrowd(flat: number, movers: number) {
+  const prior = await makeBatch(PRIOR);
+  const current = await makeBatch(PERIOD);
+  const n = flat + movers;
+  const people = await owner.db
+    .insert(schema.person)
+    .values(
+      Array.from({ length: n }, (_, i) => ({
+        tenantId: b.tenantId,
+        fullName: `crowd${i}`,
+        primaryEmail: `crowd${i}_${randomUUID()}@t.local`,
+      })),
+    )
+    .returning({ id: schema.person.id });
+  const emps = await owner.db
+    .insert(schema.employment)
+    .values(
+      people.map((p) => ({
+        tenantId: b.tenantId,
+        personId: p.id,
+        companyId: b.companyId,
+        hiredOn: '2020-01-01',
+        paymentMethod: 'bank_transfer' as const,
+      })),
+    )
+    .returning({ id: schema.employment.id });
+  await owner.db.insert(schema.employeeStatutoryMy).values(
+    people.map((p) => ({ tenantId: b.tenantId, personId: p.id, bankName: 'Maybank', bankAccountNo: '1234567890' })),
+  );
+
+  const slip = (batchId: string, employmentId: string, period: string, k: number) => {
+    const m = (x: number) => (x * k).toFixed(2);
+    return {
+      tenantId: b.tenantId,
+      batchId,
+      employmentId,
+      basicSalary: m(5000),
+      grossPay: m(5000),
+      totalDeductions: m(800),
+      netPay: m(4200),
+      employerCost: m(5700),
+      daysWorked: period === PRIOR ? '30.00' : '31.00',
+      statutory: { epfEmployee: 550 * k, socsoEmployee: 24.75 * k, eisEmployee: 9.9 * k, pcb: 215 * k },
+    };
+  };
+  await owner.db.insert(schema.attendance).values(
+    emps.flatMap((e) => [PRIOR, PERIOD].map((period) => ({
+      tenantId: b.tenantId,
+      employmentId: e.id,
+      attendanceDate: `${period}-04`,
+      workedMinutes: 480,
+    }))),
+  );
+  await owner.db.insert(schema.payslip).values([
+    ...emps.map((e) => slip(prior, e.id, PRIOR, 1)),
+    ...emps.map((e, i) => slip(current, e.id, PERIOD, i < flat ? 1 : 1.06)),
+  ]);
+  return { batchId: current, flatIds: emps.slice(0, flat).map((e) => e.id) };
 }
 
 const findingsOn = (verdictId: string) =>
@@ -304,6 +373,29 @@ describe('the ledger is the memory, and it is what makes a nightly re-ask free',
     expect(run.suppressed).toBe(1);
     expect(run.raised).toBe(0);
     expect((await liveVerdict(batchId, oddId)).disposition).toBe('auto_clear');
+  });
+
+  it('REFUSES at the blast-radius cap rather than truncating quietly', async () => {
+    // Twenty-six candidates against a cap of twenty-five, every one of them answerable from the ledger so
+    // the run is not stopped by the absence of a provider first. ADR-0083 §2.5: a blast-radius limit must
+    // refuse and SAY SO — a pass that silently looks at a subset and reports a clean run is the
+    // sample-treated-as-a-total failure r237's nudge sweep shipped a bug for.
+    const { batchId, flatIds } = await seedCrowd(MAX_HYPOTHESES_PER_RUN + 1, 54);
+    await evaluateBatchAnomalies(a, { batchId });
+
+    const contexts = (await loadBatchContexts(a, { batchId }))!;
+    const features = buildFeatures(contexts);
+    for (const id of flatIds) {
+      const f = features.get(id)!;
+      await seedAnswer(id, digestOf({ employmentId: id, values: f.values, cohort: f.cohort }));
+    }
+
+    const run = await proposeHypotheses(a, { batchId });
+    expect(run.candidates).toBe(MAX_HYPOTHESES_PER_RUN + 1);
+    expect(run.cappedOut, 'the cap bit and the run says so').toBe(true);
+    // Exactly the cap, not half of it: the counter is per CANDIDATE, and the overlapping outcome
+    // counters (a cache hit that becomes a finding is both) must not be summed to decide it.
+    expect(run.raised).toBe(MAX_HYPOTHESES_PER_RUN);
   });
 
   it('is idempotent within a night — a second pass adds no second finding', async () => {
