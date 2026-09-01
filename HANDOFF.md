@@ -18,14 +18,15 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-01 (r226-r237 SHIPPED · r238 BUILT, GATE RUNNING · FOUR ITEMS APPROVED AND UNBUILT)
+## CURRENT STATE — snapshot 2026-09-01 (r226-r238 SHIPPED · FOUR BOARD ITEMS APPROVED AND UNBUILT)
 
-**`main@94ea3c91` IS WHAT RUNS ON PRODUCTION (r237, 2026-09-01)** — verified by an
+**`main@ba5a3629` IS WHAT RUNS ON PRODUCTION (r238, 2026-09-01)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX. Build stamped 2026-09-01 04:25:02 +0800.
-**Migrations `0452` + `0453` VERIFIED APPLIED, not assumed:** watermark `1781862553000`, 369 rows,
-`agent_proposal` present with RLS on, 6 CHECKs, three policies (read:SELECT / insert:INSERT /
-decide:UPDATE) and `has_table_privilege(ai_hr_app, 'DELETE') = false` — the REVOKE landed.
+Service active, `GET localhost:3000/` → 401 ON THE BOX.
+**Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
+`payroll_anomaly_finding.proposal_id` present (uuid, nullable), and
+`setting_definition` carries `payroll.anomaly_hypotheses_enabled` (tenant scope, default false) — the
+catalog seed ran. `0452`/`0453` remain applied from r236.
 **The dry run reports ONE entry, `next-env.d.ts`, and it is not a stale file** — Next rewrites it per
 build mode, so a box that ran `next build` has `./.next/types/routes.d.ts` where a tree that ran
 `pnpm dev` has `./.next/dev/types/routes.d.ts`. It is gitignored. Everything else is zero.
@@ -123,8 +124,12 @@ not been switched on. Turning it on is two steps by hand: activate the billable 
 then grant the people who should have it from Administration → Users. **Do not read the zero counts as a
 defect** — that is what an unactivated billable module looks like.
 
-⚠️ **THE NUDGE AGENT IS DEPLOYED AND OFF EVERYWHERE — 0 tenants switched on, 0 proposals** (verified on
-production). It runs inside `review-sweep` at 03:00 and needs NO crontab change. Turning it on is the one
+⚠️ **BOTH UNATTENDED AGENTS ARE DEPLOYED AND OFF EVERYWHERE — 0 tenants switched on, 0 proposals of
+either kind** (verified on production). The hypothesis layer (r238) additionally needs an AI provider; with
+the setting on and no provider it records NOTHING and reports `notConfigured`, which is correct rather than
+a fault.
+
+⚠️ **THE NUDGE AGENT** (verified on production). It runs inside `review-sweep` at 03:00 and needs NO crontab change. Turning it on is the one
 `tenant_setting` statement in the r237 entry — and note the HR half will record `no_recipient` until an
 admin's `app_user` is linked to an employment.
 
@@ -168,8 +173,8 @@ to close it as already working) and `a8f525cf` / `3cbfe5e2` (questions raised th
 their parents). Only `568b8f0b` (attendance request status — clearer indicators) is a build.
 `afc29d75` (the consolidated irregularity view) is still `planned` and not yet answered.
 No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
-`r163-g-release3`, `r163g-picker`, `r197-epfcycle`) plus `build/r238-hypothesis-detection`, which is this
-round. Next free migration is **`0455`** — r236 took `0452`/`0453` and r238 took `0454`
+`r163-g-release3`, `r163g-picker`, `r197-epfcycle`); `build/r238-hypothesis-detection` is merged.
+Next free migration is **`0455`** — r236 took `0452`/`0453` and r238 took `0454`
 (`payroll_anomaly_finding.proposal_id`).
 
 ⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
@@ -222,7 +227,7 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r238 (2026-09-01) — hypothesis detection: the first AI surface that can CREATE a finding. MIGRATION `0454`.
+### r238 (2026-09-01) — hypothesis detection: the first AI surface that can CREATE a finding. MIGRATION `0454`. SHIPPED.
 
 [ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.6 / Phase 2 item 3. Everything before this round
 either explained a finding a rule had already made (`anomaly_narration`), drafted something an admin then
