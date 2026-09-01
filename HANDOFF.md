@@ -18,16 +18,16 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-01 (r226-r239 SHIPPED · BOARD CLEAR BUT FOR ONE ITEM AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-09-01 (r226-r240 SHIPPED · BOARD CLEAR BUT FOR ONE ITEM AWAITING THE REPORTER)
 
-**`main@4d4bff9f` IS WHAT RUNS ON PRODUCTION (r239, 2026-09-01)** — verified by an
+**`main@3bd208fa` IS WHAT RUNS ON PRODUCTION (r240, 2026-09-01)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
 `payroll_anomaly_finding.proposal_id` present (uuid, nullable), and
 `setting_definition` carries `payroll.anomaly_hypotheses_enabled` (tenant scope, default false) — the
 catalog seed ran. `0452`/`0453` remain applied from r236.
-**The r239 dry run reported ZERO lines** — not even `next-env.d.ts`, which the r238 one did (Next rewrites
+**370 migrations applied; r239 and r240 carried none.** The r239 dry run reported ZERO lines — not even `next-env.d.ts`, which the r238 one did (Next rewrites
 it per build mode and it is gitignored; a single such entry is not a stale file). `0454` remains the last
 migration; r239 carried none.
 
@@ -66,22 +66,24 @@ verify it", which just moves the checking onto the reader.
 
 **ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): 1 the proposal ledger + the `adjudicate`
 contract ✅ r236 · 2 the readiness nudge agent ✅ r237. Phase 2: 3 hypothesis detection ✅ r238 ·
-**4 input-side triage (§2.7) — NEXT, and the largest untouched surface in the product: every payroll error
-is born upstream in a claim, a timesheet or a change request, and that work is 100% human today.**
-Phase 3 (needs real history): 5 agreement measurement · 6 recurrence mining · 7 the first autonomy grant.
+4 input-side triage ✅ r240 (claims only). **PHASE 2 IS DONE.** Phase 3 (needs real history):
+**5 agreement measurement — next, and BLOCKED until production has a provider and a switched-on tenant** ·
+6 recurrence mining · 7 the first autonomy grant.
 ~~Not a build: the missing call sites~~ ✅ r238.
 
-⚠️ **BOTH UNATTENDED AGENTS ARE OFF PER TENANT AND NOTHING IN THE UI TURNS EITHER ON** (no screen reads
+⚠️ **ALL THREE UNATTENDED AGENTS ARE OFF PER TENANT AND NOTHING IN THE UI TURNS ANY OF THEM ON** (no screen reads
 `SETTING_CATALOG`; the settings screen is slice 7). Two operator statements, and they are independent —
 the first chases people, the second only writes into the exceptions queue:
 
     INSERT INTO tenant_setting (tenant_id, key, value, source) VALUES
       ('<tenant>', 'notifications.readiness_nudge_enabled', 'true'::jsonb, 'platform'),
-      ('<tenant>', 'payroll.anomaly_hypotheses_enabled',    'true'::jsonb, 'platform')
+      ('<tenant>', 'payroll.anomaly_hypotheses_enabled',    'true'::jsonb, 'platform'),
+      ('<tenant>', 'claims.input_triage_enabled',            'true'::jsonb, 'platform')
     ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value;
 
 The nudge one ALSO needs the `notifications` module (a billable entitlement gating `dispatchNotifications`);
-the hypothesis one needs a configured AI provider, or it records nothing and says `notConfigured`.
+the hypothesis and triage ones need a configured AI provider, or they record nothing and say
+`notConfigured`. Triage additionally needs the billable `claims` module.
 
 ⚠️ **THE LEDGER'S THREE VERDICT COLUMNS MUST NOT BE COLLAPSED INTO ONE.** Machine-adjudicated,
 human-approved and later-reversed are three different truths and their combinations are three different
@@ -252,6 +254,77 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r240 (2026-09-01) — input-side triage: the system asks the person who filed the claim. NO MIGRATION.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.7 / Phase 2 item 4, and **Phase 2 is now done.**
+r238 put a second opinion on what payroll PRODUCED; this puts one on what was PUT IN, which is the only
+end where an error is still cheap.
+
+⚠️⚠️ **THE QUERY GOES TO THE CLAIMANT, NOT THE APPROVER, AND THAT IS THE WHOLE DESIGN.** §2.7 says only
+"it queues a query for a human", and 0452's RLS comment imagined it running in the employee's session at
+submit. Neither is what shipped. **Telling an approver "look at this one" makes a faster human — the
+ceiling ADR-0084 §1 says leaves headcount where it was.** The claimant is the only person who can still
+WITHDRAW the claim (`cancelClaim` lets them; no other screen can un-file it), so they are the only
+recipient for whom a question can stop work rather than speed it up. And a provider call on the SUBMIT
+path would put an outage in front of a core flow for nothing — the sweep asks the same question the same
+night. Same discipline as r237's routing table: address the person who can act, read out of the product.
+
+**WHAT THE RULES ALREADY CATCH IS NOT THIS LAYER'S BUSINESS.** `priceAndCheckClaimTx` already refuses, in
+the submitting transaction: unknown/archived type, missing or foreign item, receipt date in the future or
+outside the backdating window, mileage priced off the wrong band table, blank required custom fields, and
+every per-grade limit and block window. A claim reaching triage has passed all of it, so triage looks at
+one thing only — **whether the description and the claim agree.**
+
+**FIVE CATALOGUED RULES, EACH WITH A NECESSARY PREDICATE RE-DERIVED FROM THE CLAIM ROW**
+(`category_mismatch`, `amount_unexplained`, `date_inconsistent`, `subject_not_self`, `detail_insufficient`).
+⚠️ **The one that really bites is `date_inconsistent`: a description naming no date, month or year cannot
+contradict a receipt date, so the rule is UNAVAILABLE however confident the model sounds.**
+
+**THE FIGURE CHECK IS `narrationIsFaithful`, BORROWED UNCHANGED — its third surface.** §2.7 asks that any
+referenced figure match the source record; the narrator already discards prose naming an unsupported
+number. Re-implementing it here is how two definitions of "supported" would drift. **The claim's
+DESCRIPTION counts as source**: a figure the employee wrote themselves is theirs to be quoted back.
+
+**"IT NEVER REJECTS ANYTHING" IS STRUCTURAL AND A TEST ASSERTS IT AS SOURCE SHAPE** — no `reject` in the
+vocabulary, no write to `claim_request` anywhere in the module, no status set. The notification is
+`severity: 'info'`, never `warning`: nothing is wrong, nothing is refused, and a warning colour would tell
+an employee they are in trouble, which is the accusation §2.7 forbids.
+
+⚠️ **`input_triage`'s `decision` COLUMN IS DELIBERATELY NEVER WRITTEN, AND THAT IS A FINDING.** The only
+observable action is the employee CANCELLING; "I checked and it is fine" leaves no trace. Stamping
+`approved` on a cancellation alone makes the agreement rate structurally 1.0 — r236's exact
+`close_fixed_upstream` defect — and stamping `declined` on silence manufactures a number out of an absence.
+**The honest measure is the ACTION rate** (cancellations within the window ÷ queries raised), derivable
+from the ledger plus `claim_request.status`. A null column beats a dishonest one.
+
+⚠️⚠️ **THIS IS THE FIRST SURFACE IN THE PRODUCT THAT SENDS EMPLOYEE-AUTHORED FREE TEXT TO A PROVIDER, AND
+IT SHOULD BE SAID OUT LOUD BEFORE ANY TENANT SWITCHES IT ON.** `report-ai.ts`'s posture is *schema out,
+never data*; the narrator sends only numbers. Here the description IS what is read. Withheld: name,
+employment id, company, and whatever `redactPII` finds (email, IC, phone). Sent: type, item, amount, two
+dates, redacted description. Tenant's own key (ADR-0023), off until they ask.
+
+**ONCE PER CLAIM, EVER, AND THE LEDGER REMEMBERS.** A pending claim's description cannot change, so a
+second look asks the same person the same question about the same words. `agent_proposal.subject_id` is the
+claim, so "already triaged" is a ledger read — nothing to migrate, nothing to keep in step. Bounded further
+by a 14-day window (an older pending claim is an APPROVER problem and the wrong person to ask) and
+`MAX_TRIAGE_PER_RUN = 40`, which refuses rather than truncating.
+
+**FOLDED INTO `review-sweep.ts` BESIDE THE NUDGE AGENT, IN ITS OWN try/catch, NO CRONTAB CHANGE.** A
+provider outage must not cost the tenant the review openings, reminders, escalations and movements that
+pass already computed.
+
+**ROSTER ROW 13.** ⚠️ And a small trap found in adding it: the roster guard demands an i18n key for EVERY
+quoted string in a `reasonKey:` expression, so an inline `isModuleEnabled(ctx, 'claims')` in that ternary
+made it require a phantom `why.claims`. **Keep a reasonKey expression to reason keys; hoist module checks
+into a variable.** The guard is right to be blunt.
+
+**Verified:** gate green 6/6 across 759 files · tsc + `next build` clean · three mutations re-derived by
+hand (drop the rule precondition → 3 fail; drop the figure check → 1 fail; `warning` instead of `info` →
+2 fail) · the How it works page rendered in `en` and `ms` with all 13 rows and a clean dev log.
+
+**NOT BUILT:** timesheets, overtime entries and change requests. They are the same seam — a pending row, a
+free-text reason, and a person who can withdraw it — and none of them is wired.
 
 ### r239 (2026-09-01) — the attendance request list gets a second face; three items closed with no code. NO MIGRATION.
 
