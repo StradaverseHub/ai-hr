@@ -18,18 +18,18 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-01 (r226-r238 SHIPPED · FOUR BOARD ITEMS APPROVED AND UNBUILT)
+## CURRENT STATE — snapshot 2026-09-01 (r226-r239 SHIPPED · BOARD CLEAR BUT FOR ONE ITEM AWAITING THE REPORTER)
 
-**`main@ba5a3629` IS WHAT RUNS ON PRODUCTION (r238, 2026-09-01)** — verified by an
+**`main@4d4bff9f` IS WHAT RUNS ON PRODUCTION (r239, 2026-09-01)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
 `payroll_anomaly_finding.proposal_id` present (uuid, nullable), and
 `setting_definition` carries `payroll.anomaly_hypotheses_enabled` (tenant scope, default false) — the
 catalog seed ran. `0452`/`0453` remain applied from r236.
-**The dry run reports ONE entry, `next-env.d.ts`, and it is not a stale file** — Next rewrites it per
-build mode, so a box that ran `next build` has `./.next/types/routes.d.ts` where a tree that ran
-`pnpm dev` has `./.next/dev/types/routes.d.ts`. It is gitignored. Everything else is zero.
+**The r239 dry run reported ZERO lines** — not even `next-env.d.ts`, which the r238 one did (Next rewrites
+it per build mode and it is gitignored; a single such entry is not a stale file). `0454` remains the last
+migration; r239 carried none.
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
@@ -191,15 +191,17 @@ resolved (r235 makes it POSSIBLE, not automatic — somebody has to open Agent a
 tile correctly refuses to print a figure. **Do not build the auto-clear gate** — and note 0083 §5 that the
 tile measures exceptions ÷ throughput, which is an exception-load estimate rather than a headcount answer.
 
-**BOARD: FOUR ITEMS NOW `approved` AND UNBUILT — the reporter answered while r238 was being built.**
-⚠️ **THREE OF THE FOUR ARE CLOSE-OUTS WITH NO CODE**: `b36a8a91` (EA mapping — the plan's only action is
-to close it as already working) and `a8f525cf` / `3cbfe5e2` (questions raised the wrong way, folded into
-their parents). Only `568b8f0b` (attendance request status — clearer indicators) is a build.
-`afc29d75` (the consolidated irregularity view) is still `planned` and not yet answered.
-No `build/*` branch is unmerged except the documented pre-r209 stale set (`r71`, `r83`, `r154`,
-`r163-g-release3`, `r163g-picker`, `r197-epfcycle`); `build/r238-hypothesis-detection` is merged.
-Next free migration is **`0455`** — r236 took `0452`/`0453` and r238 took `0454`
-(`payroll_anomaly_finding.proposal_id`).
+**BOARD: ONE ITEM LEFT, AND IT IS WITH THE REPORTER, NOT WITH US.** 752 deployed, 17 cancelled,
+**1 `planned`** — `afc29d75`, "My Attendance: consolidate Also Waiting for You into one Attendance
+Irregularity view", plan revision 1, carrying the two questions `a8f525cf` was raised to ask. Nothing is
+`open`, `contested`, `approved` or `building`. **There is no buildable work on the board.**
+
+⚠️ **THREE OF r239's FOUR ITEMS WERE CLOSE-OUTS WITH NO CODE, AND THAT WAS THE APPROVED PLAN IN EACH
+CASE** — `b36a8a91` (EA mapping: field 1 already reads `person.fullName`; rev 3 retracted rev 1's wrong
+salutation promise and they approved the retraction), `a8f525cf` and `3cbfe5e2` (questions raised the
+wrong way, folded into their parents' plans). **Approving a plan whose only action is "close this" IS the
+answer**, and `3cbfe5e2`'s approval is specifically the reporter accepting that there are four attendance
+statuses and no `Completed`.
 
 ⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
 on a BLOCKED approved one). An item raised at `open` with no plan has NO reply path — `approveFeedbackPlan`
@@ -250,6 +252,73 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r239 (2026-09-01) — the attendance request list gets a second face; three items closed with no code. NO MIGRATION.
+
+Board `568b8f0b`, the last of the four `c6bb5f5a` follow-ups. Presentational only: below `lg` each request
+is one block with the date and the outcome on the first line and the detail underneath; from `lg` up the
+seven-column table is exactly what it was. **Built by a workflow — one build agent, then three adversarial
+verifiers on separate lenses — and the verify pass is what made the round worth anything.**
+
+⚠️⚠️ **THE VERIFIERS BROKE TWO OF THE BUILD'S OWN GUARDS, AND THAT IS THE MOST TRANSFERABLE THING HERE.**
+Both looked right, both passed, both pinned a PROXY rather than the property:
+
+  1. The "date and status on one line" case — the plan's headline promise — sliced the source from
+     `md:hidden` to **END OF FILE** and asked whether the flex class and the `<Pill` both APPEARED in that
+     span. A verifier moved the Pill out of the row into its own div underneath (the exact shape the
+     reporter complained about) and all 27 cases passed. **Co-occurrence is not containment, and an
+     unbounded slice is not a region.** It now balances tags and asserts the Pill is INSIDE the row.
+  2. The cancel-rule case pinned that the rule was *defined once and asked twice*, never what it SAID.
+     Deleting `!isOvertime(r) &&` passed everything. It now pins the literal predicate — and checks that
+     every `<CancelRequest` is drawn through `canCancel` rather than an inline pending test.
+
+⚠️ **AND THEN MY OWN FIX BROKE THE SECOND GUARD IN A THIRD WAY, WHICH IS THE SAME LESSON AGAIN.** Guard D
+also asserted `r.status === 'pending'` appeared **exactly once** in the file. A legitimate second use
+arrived in the same fix pass (the approver caption, below) and the count failed on a change that was
+entirely correct. A count of a token is a proxy; the property is "the cancel control is never drawn behind
+an inline pending test", and that is what it asserts now.
+
+**ALL FOUR MUTATIONS WERE RE-DERIVED BY HAND** (AGENTS 23), each failing exactly one case: Pill out of the
+row · overtime dropped from the cancel rule · block face labelling the status without `isOvertime` · the
+approver caption made unconditional.
+
+⚠️ **THE BREAKPOINT IS `lg`, NOT `md`, AND THE ARITHMETIC IS THE ARGUMENT.** The nav rail appears at `sm`
+and takes 232px; the shell adds 24px padding and a 12px gap. So a 768px viewport gives this list a **~500px
+content column — narrower than the ~615px the block face gets at 639px**. Switching at `md` would have
+brought the seven columns back at the tightest width the screen ever has. `lg` keeps the table on every
+laptop (the plan's explicit promise, and the one this repo has a scar from breaking) and gives the
+768-1023px band the blocks it is better served by. **Any responsive switch in this app has to subtract the
+rail before choosing a breakpoint.**
+
+**"Goes to {approver}" NOW DRAWS ONLY ON A PENDING REQUEST.** As a column HEADING over a list of names it
+is neutral; as a running caption beside a red Rejected pill it asserts the request is still with that
+person — and `approver` is the employee's CURRENT approver, not whoever decided the row, so on a settled
+request it may not even be the right name. AGENTS 28. Two independent verifiers found it.
+
+**THE PILL GAINED `shrink-0 whitespace-nowrap`, AND ONLY A LONG LOCALE SHOWS WHY.** It now sits at the end
+of a flex row on a phone. `leaveStatus.approved` is 8 characters in English and **20 in Tamil**;
+`otStatusWithdrawn` is 9 and **21**. Without it the chip shrinks and wraps its label inside its own rounded
+background — invisible to an English-only check.
+
+**RENDERED, NOT ASSUMED (AGENTS 6).** Dev server on the r239 tree, five seeded requests covering all four
+statuses plus an overtime plan, in `en` and `ta`: both faces present, five blocks, `aria-current` on the
+active filter, `aria-label` carrying the date on each Cancel, the approver caption on the pending row ONLY,
+and the overtime row correctly reading **"Withdrawn"** rather than "Cancelled" in BOTH faces. Dev log clean
+of `MISSING_MESSAGE` in both locales. **Zero new i18n keys** — every string was already on this screen.
+
+⚠️ **ONE REAL DEFECT LEFT STANDING ON PURPOSE, AND THE RENDER WALK DEMONSTRATED IT.** `Submitted` is
+`r.createdAt.toISOString().slice(0, 10)` — a UTC slice shown to a UTC+8 audience, so a request filed at
+07:00 MYT prints the previous day (seen live: a row created `2026-08-12 07:00+08` rendered `2026-08-11`).
+It is PRE-EXISTING in the table, `app/attendance/travel/page.tsx:128` has it too, and `lib/hr-date.ts`
+already exports `todayInKualaLumpur` for it. The build had made a SECOND copy; that is now one
+module-scope `submittedOn(r)` so the two faces cannot disagree, with the value unchanged. **Fixing it
+changes a printed date, which a presentational round must not do silently — it needs a round that says so,
+and it should take `travel` with it.**
+
+**NOT DONE, DELIBERATELY:** the mockup's friendlier date ("Tue 25 Aug 2026") — `lib/utils.ts`'s `formatDate`
+is hardcoded `en-GB`, so it would print English dates to five other locales; a locale-aware helper is a new
+decision the plan did not carry. And the mockup's status-varying approver captions ("Approved by…",
+"Rejected by…") need a `decidedBy` the read does not carry — a data change, not a caption.
 
 ### r238 (2026-09-01) — hypothesis detection: the first AI surface that can CREATE a finding. MIGRATION `0454`. SHIPPED.
 
