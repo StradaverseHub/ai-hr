@@ -26,6 +26,7 @@ import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { sweepReadinessNudges } from '../core/readiness-nudge';
+import { triagePendingClaims } from '../core/input-triage';
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
@@ -58,6 +59,8 @@ async function main() {
   let totalNudges = 0;
   let totalNudgesSettled = 0;
   let nudgeTenants = 0;
+  let triageTenants = 0;
+  let totalQueries = 0;
   let failures = 0;
   for (const t of tenants) {
     try {
@@ -99,6 +102,21 @@ async function main() {
       const nudge = await sweepReadinessNudges(ctx);
       if (!nudge.disabled) nudgeTenants += 1;
 
+      // ADR-0084 §2.7 — read the claims filed since the last pass and ask the CLAIMANT about anything
+      // that does not fit. Also before dispatch, for the same reason as the nudge above.
+      //
+      // ⚠️ ITS OWN try/catch. A provider outage or a rate limit must not cost this tenant the review
+      // openings, the reminders, the escalations and the movements this pass has already computed — those
+      // are the part somebody depends on tonight, and triage is the part nobody has ever had.
+      let triage = { disabled: true, queried: 0, asked: 0, cleared: 0, rejected: 0, candidates: 0, cappedOut: false, notConfigured: false };
+      try {
+        triage = await triagePendingClaims(ctx);
+        if (!triage.disabled) triageTenants += 1;
+        totalQueries += triage.queried;
+      } catch (e) {
+        console.error(`  ✗ triage ${t.name}: ${(e as Error).message}`);
+      }
+
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
       await dispatchNotifications(ctx);
@@ -120,7 +138,18 @@ async function main() {
               (nudge.cooled > 0 ? `, ${nudge.cooled} in cooldown` : '') +
               (nudge.settled > 0 ? `, ${nudge.settled} outcome(s) judged` : '') +
               (nudge.orphaned > 0 ? ` — ⚠ ${nudge.orphaned} gap(s) with NO ONE to notify` : '') +
-              (nudge.cappedOut ? ' — ⚠ CAPPED, more remain' : '')),
+              (nudge.cappedOut ? ' — ⚠ CAPPED, more remain' : '')) +
+          // Same rule as the nudge counters: every one is printed, including the unflattering ones. A
+          // discarded proposal is the adjudicator refusing a question we would otherwise have put in
+          // front of an employee, and it is the number this feature is measured on.
+          (triage.disabled
+            ? ', triage off'
+            : `, triage ${triage.candidates} claim(s)` +
+              (triage.queried > 0 ? ` — ${triage.queried} question(s) raised` : ' — none to ask about') +
+              (triage.cleared > 0 ? `, ${triage.cleared} read and clear` : '') +
+              (triage.rejected > 0 ? `, ⚠ ${triage.rejected} discarded` : '') +
+              (triage.notConfigured ? ' [no AI provider]' : '') +
+              (triage.cappedOut ? ' — ⚠ CAPPED, more remain' : '')),
       );
     } catch (e) {
       failures += 1;
@@ -128,7 +157,7 @@ async function main() {
     }
   }
   console.log(
-    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied, ${totalNudges} nudge(s) across ${nudgeTenants} opted-in tenant(s), ${totalNudgesSettled} nudge outcome(s) judged, across ${tenants.length} tenant(s), ${failures} failure(s).` +
+    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied, ${totalNudges} nudge(s) across ${nudgeTenants} opted-in tenant(s), ${totalNudgesSettled} nudge outcome(s) judged, ${totalQueries} claim question(s) across ${triageTenants} opted-in tenant(s), across ${tenants.length} tenant(s), ${failures} failure(s).` +
       (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a

@@ -11317,7 +11317,9 @@
       "reviewDrafter": "The review drafter",
       "reviewDrafterDoes": "Drafts the wording of a manager’s performance review from what has already been recorded. The manager edits it and owns it; nothing is saved on their behalf.",
       "planDrafter": "The plan drafter",
-      "planDrafterDoes": "Drafts a reply to an improvement request raised from inside the product. This is our own tooling rather than a feature of your plan."
+      "planDrafterDoes": "Drafts a reply to an improvement request raised from inside the product. This is our own tooling rather than a feature of your plan.",
+      "triage": "The claim reader",
+      "triageDoes": "Reads each expense claim as it is filed and, if the description does not fit the rest of the claim, asks the person who filed it — before an approver spends time on it. It can only ever ask a question: it cannot refuse a claim, change one, or decide one."
     },
     "why": {
       "detectorsOn": "Running on every processed payroll run.",
@@ -11337,7 +11339,9 @@
       "nudgeOn": "Switched on. Reminders go out on the nightly run.",
       "nudgeOff": "Not switched on. Nobody is contacted automatically until you ask for it.",
       "draftOnlyOn": "A provider is set up. It drafts only when you ask, and nothing is saved until you say so.",
-      "planDrafterOff": "Deliberately off. This is Stradaverse’s own tooling, not part of your plan."
+      "planDrafterOff": "Deliberately off. This is Stradaverse’s own tooling, not part of your plan.",
+      "triageOn": "Reading new claims every night and asking the person who filed them. Nothing it asks can refuse or change a claim.",
+      "triageOff": "Not switched on. Claims are read by people only, and nobody is asked anything automatically."
     },
     "domainsTitle": "What it watches",
     "domainsIntro": "Payroll is the first area. The same machinery is built to cover the others, and they are listed here so you can see what is coming rather than assuming payroll is all there is.",

@@ -199,6 +199,11 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // and it puts rows in their exceptions queue that a MODEL chose to put there. Both are opt-in. The
   // severity ceiling is not a setting and never appears here: a hypothesis is `review`, forever.
   { key: 'payroll.anomaly_hypotheses_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system look for payroll exceptions the fixed checks cannot see, by comparing each person against their colleagues on the same run. Findings are always for review, never blocking.', sortOrder: 130 },
+  // ADR-0084 §2.7 — input triage. OFF by default, and this is the switch with the most behind it: it puts
+  // a question in front of a real employee about their own money, on a schedule, and it is the first
+  // surface in the product that sends employee-authored FREE TEXT to a model. Both are things a customer
+  // opts into. Nothing it does can refuse a claim.
+  { key: 'claims.input_triage_enabled', moduleCode: 'claims', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system read each new expense claim and ask the person who filed it about anything that does not fit. It can only ever ask a question — it can never refuse or change a claim.', sortOrder: 140 },
 ];
 
 /*
@@ -336,6 +341,9 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // `legacyEnabledSettingsIn`, which is the correct outcome. A backfill must never switch on something
   // that spends a customer's provider budget on a schedule.
   'payroll.anomaly_hypotheses_enabled': null,
+  // `null` — new in ADR-0084 §2.7 (r240), never a deployment flag, and kept out of
+  // `legacyEnabledSettingsIn` so no backfill can start it messaging employees.
+  'claims.input_triage_enabled': null,
 };
 
 /**

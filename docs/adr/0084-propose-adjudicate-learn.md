@@ -276,6 +276,42 @@ Triage proposes `{ verdict: 'ok' | 'query', policyRuleId, reason }`. Adjudicatio
 `policyRuleId` to exist in the closed policy catalogue and any referenced figure to match the source
 record. **It never rejects anything** — it queues a query for a human, or it stays quiet.
 
+**As built (r240, `core/input-triage.ts`). NO MIGRATION.** One divergence from the section, and it is the
+whole design:
+
+- ⚠️ **THE QUERY GOES TO THE PERSON WHO FILED THE CLAIM, NOT TO AN APPROVER.** §2.7 says only "it queues a
+  query for a human", and 0452's RLS note imagined it running "in the employee's own session as they
+  submit a claim". Neither is what shipped, for two reasons. Telling an APPROVER "look at this one" makes a
+  faster human, which §1 says is the ceiling that leaves headcount where it was — the claimant is the only
+  person who can still *withdraw* the claim (`cancelClaim` lets them; nobody else's screen can un-file it),
+  so they are the only recipient for whom the query can stop work rather than speed it up. And running it
+  on the SUBMIT PATH would put a provider call, and a provider outage, in front of a core flow for no gain:
+  the sweep asks the same question the same night. **Same discipline as r237's routing table — address the
+  person who can act, read out of the product rather than assumed.**
+- **The catalogue is five rules, and each carries a NECESSARY predicate re-derived from the claim row.**
+  The one that really bites is `claim.date_inconsistent`: a description naming no date, month or year
+  cannot contradict a receipt date, so the rule is unavailable however confident the model sounds.
+- **The figure check is `narrationIsFaithful`, borrowed unchanged.** §2.7 asks that "any referenced figure
+  must match the source record"; the narrator already discards prose naming an unsupported number, and
+  re-implementing it here is how the two would come to disagree about what *supported* means. §2.4 asked
+  for one contract with several implementations — this is the contract borrowing an implementation, which
+  is better. The claim's DESCRIPTION counts as source: a figure the employee wrote themselves is theirs to
+  be quoted back at them.
+- **"It never rejects anything" is structural, and a test asserts it as source shape.** There is no
+  `reject` in the vocabulary, no write to `claim_request` anywhere in the module, and no status set.
+- ⚠️ **`input_triage`'s `decision` COLUMN IS DELIBERATELY NEVER WRITTEN.** The only observable action is the
+  employee CANCELLING the claim — "I checked and it is fine" leaves no trace. Stamping `approved` on a
+  cancellation alone would make the agreement rate structurally 1.0, the exact defect r236 recorded for
+  `close_fixed_upstream`; stamping `declined` on silence would manufacture a number out of an absence. The
+  honest measure is the ACTION rate — cancellations within the window ÷ queries raised — derivable from the
+  ledger and `claim_request.status` without abusing a column that means something else. **A null column is
+  better than a dishonest one**, which is the same call `impliedOperators` already makes.
+- ⚠️ **AND THIS IS THE FIRST SURFACE IN THE PRODUCT THAT SENDS EMPLOYEE-AUTHORED FREE TEXT TO A PROVIDER.**
+  `report-ai.ts`'s posture is *schema out, never data*, and the narrator sends only numbers. Here the
+  description IS what is being read. Withheld: the name, the employment id, the company, and whatever
+  `redactPII` finds (email, IC, phone). Sent: type, item, amount, two dates, redacted description. On the
+  tenant's own key, and off until they switch it on.
+
 ### 2.8 What earns autonomy
 
 r235 shipped `AutonomyLevel` as a union with one member, deliberately, because §2.5 of ADR-0083 requires
@@ -306,7 +342,8 @@ earlier items generating real history.
 **Phase 2 — put AI where judgment is.** Needs Phase 1's substrate, not its data.
 
 3. ~~**Hypothesis detection (§2.6).**~~ ✅ r238.
-4. **Input-side triage (§2.7).** — next.
+4. ~~**Input-side triage (§2.7).**~~ ✅ r240 — claims only; timesheets, overtime and change requests are
+   the same seam and are not built.
 
 **Phase 3 — close the learning loop.** Needs production history from Phases 1–2.
 

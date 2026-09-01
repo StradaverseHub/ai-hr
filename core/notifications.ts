@@ -281,6 +281,33 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: 'offboarding',
     render: () => ({ severity: 'warning', title: 'Resignation not accepted', body: 'Your resignation was not accepted — please speak with HR.', linkPath: '/me' }),
   },
+  /**
+   * ADR-0084 §2.7 — the input-triage question. The BODY is written by the SWEEP, not here, for the same
+   * reason the nudge's is: it may be a model draft, and by the time it reaches this registry it has
+   * already passed `adjudicateTriage` (or it was never emitted). Re-deciding that here would be two
+   * places deciding, which is how they drift.
+   *
+   * ⚠️ IT GOES TO THE CLAIMANT, NOT THE APPROVER, and that is the whole design (see core/input-triage.ts).
+   * `subjectEmploymentId` is the person who filed it, so the DEFAULT recipient resolver is already right
+   * and no `recipients` override is needed — the absence of one here is deliberate, not an oversight.
+   */
+  'claim-request.triage-queried': {
+    kind: 'claim.triageQueried',
+    // The claims category, so muting claim notifications mutes this too. It is a question about a claim.
+    category: 'claims',
+    render: (p) => ({
+      // `info`, never `warning`. Nothing is wrong with the claim, nothing is refused, and nothing is
+      // required of them — a warning colour would tell the employee they are in trouble, which is exactly
+      // the accusation §2.7 forbids.
+      severity: 'info',
+      title: 'A question about your claim',
+      body:
+        typeof p?.reason === 'string' && p.reason.length > 0
+          ? p.reason
+          : 'There is a question about a claim you filed. Please check it before it is approved.',
+      linkPath: '/me',
+    }),
+  },
   'claim-request.approved': {
     kind: 'claim.approved',
     category: 'claims',
