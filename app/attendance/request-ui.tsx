@@ -57,10 +57,17 @@ const REQUEST_STATUS: Record<RequestStatus, string> = {
   cancelled: 'bg-muted text-muted-foreground',
 };
 
+/**
+ * ⚠️ `shrink-0 whitespace-nowrap` IS NOT COSMETIC, AND ENGLISH IS THE ONLY LOCALE THAT HIDES THE NEED.
+ * From r239 this pill sits at the end of a flex row beside the date on a phone. "Approved" is 8
+ * characters; the Tamil `leaveStatus.approved` is 20 and `otStatusWithdrawn` is 21. Without these the
+ * chip is a flex item that shrinks and wraps its own label inside its rounded background — the one place
+ * on this screen a long locale would visibly break, and the one an English-only check cannot see.
+ */
 export function Pill({ status, label }: { status: string; label: string }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REQUEST_STATUS[status as RequestStatus] ?? 'bg-muted text-muted-foreground'}`}
+      className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${REQUEST_STATUS[status as RequestStatus] ?? 'bg-muted text-muted-foreground'}`}
     >
       {label}
     </span>

@@ -186,6 +186,8 @@ describe('af7a8eb4 — Attendance screen layout', () => {
  * — the manual render walk at two widths is the backstop.
  */
 describe('r239 — My Attendance Request Status: table on a wide screen, blocks on a narrow one', () => {
+  // The switch is `lg`, not `md`: the nav rail appears at `sm` and takes 232px, so a 768px viewport gives
+  // this list a ~500px content column — narrower than the block face gets at 639px. See page.tsx.
   const PAGE = read('app/attendance/request-status/page.tsx');
   const UI = read('app/attendance/request-ui.tsx');
 
@@ -193,25 +195,102 @@ describe('r239 — My Attendance Request Status: table on a wide screen, blocks 
    *  being forbidden reads to a plain `includes()` as the thing itself (AGENTS 27). */
   const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
+  /**
+   * The index just past the tag that CLOSES the element beginning at or before `from`.
+   *
+   * A region guard is only as good as its boundary: the first version of case A2 sliced to end of file
+   * and asked whether two markers both appeared, which a verifier defeated by moving the Pill out of the
+   * row entirely. Balancing the tags is what makes "inside this element" mean it.
+   */
+  function closingTagOf(src: string, from: number, tag: string): number {
+    const open = new RegExp(`<${tag}\\b`, 'g');
+    const close = new RegExp(`</${tag}>`, 'g');
+    const start = src.lastIndexOf(`<${tag}`, from);
+    let depth = 0;
+    let i = start;
+    while (i < src.length) {
+      open.lastIndex = i;
+      close.lastIndex = i;
+      const o = open.exec(src);
+      const c = close.exec(src);
+      if (!c) return -1;
+      if (o && o.index < c.index) {
+        depth++;
+        i = o.index + 1;
+      } else {
+        depth--;
+        i = c.index + 1;
+        if (depth === 0) return c.index;
+      }
+    }
+    return -1;
+  }
+
   it('A. renders BOTH faces, and shows exactly one of them at a time', () => {
     // The table keeps the shared wrapper class and gains a visibility rule; the blocks are its inverse.
     // Asserting the PAIR is the point: one without the other is a screen that is blank at one width.
-    expect(PAGE, 'the wide face must be the table, hidden below md').toContain('`hidden md:block ${tableWrapCls}`');
-    expect(PAGE, 'the narrow face must be the stacked block list, hidden from md up').toContain(
-      'className="divide-y divide-border md:hidden"',
+    expect(PAGE, 'the wide face must be the table, hidden below lg').toContain('`hidden lg:block ${tableWrapCls}`');
+    expect(PAGE, 'the narrow face must be the stacked block list, hidden from lg up').toContain(
+      'className="divide-y divide-border lg:hidden"',
     );
     // …and the two faces are the SAME rows: both map the paginated page, neither re-reads or re-filters.
     expect(code(PAGE).match(/reqPage\.rows\.map/g) ?? [], 'both faces map the one paginated row set').toHaveLength(2);
   });
 
-  it('A2. the narrow block leads with date + outcome, and puts the detail underneath', () => {
-    // The complaint was that the answer was the column furthest from the date. The Pill sits in the same
-    // flex row as the date; askedFor / reason / remark / submitted / approver / attachment follow it.
-    const block = PAGE.slice(PAGE.indexOf('md:hidden'));
-    expect(block, 'date and status share the first line').toContain('flex items-start justify-between');
-    for (const marker of ['askedFor(r, t)', 'r.reason', 'r.remark', "t('maColSubmitted')", "t('otGoesToColumn')", 'maAttachmentOnRequest']) {
-      expect(block.includes(marker), `the block face must still carry ${marker}`).toBe(true);
+  it('A2. the narrow block leads with date + outcome ON ONE LINE, and puts the detail underneath', () => {
+    // ⚠️ THIS CASE WAS VACUOUS WHEN IT WAS FIRST WRITTEN, AND A VERIFIER PROVED IT: it sliced from
+    // `md:hidden` to END OF FILE and only asked whether the flex class and the Pill both APPEARED
+    // somewhere in that span. Moving the Pill out of the flex row into its own <div> underneath — the
+    // exact shape the reporter complained about — passed all 27 cases. Co-occurrence is not containment,
+    // and an unbounded slice is not a region.
+    //
+    // So: bound the region at the list's own closing tag, and require the Pill to be INSIDE the first
+    // line's element rather than merely after it.
+    const start = PAGE.indexOf('lg:hidden');
+    const end = PAGE.indexOf('</ul>', start);
+    expect(start, 'the narrow face must exist').toBeGreaterThan(-1);
+    expect(end, 'and it must be a bounded list, not the rest of the file').toBeGreaterThan(start);
+    const block = PAGE.slice(start, end);
+
+    const lineStart = block.indexOf('flex items-start justify-between');
+    expect(lineStart, 'date and status share a flex row').toBeGreaterThan(-1);
+    // The flex row's OWN element, found by balancing its tags. `indexOf('</div>')` is not good enough —
+    // it lands on the inner text div's close, which sits BEFORE the Pill, so the region would exclude the
+    // very thing this case exists to locate.
+    const lineEnd = closingTagOf(block, lineStart, 'div');
+    expect(lineEnd, 'the flex row must be a closed element').toBeGreaterThan(lineStart);
+    const firstLine = block.slice(lineStart, lineEnd);
+    expect(firstLine, 'the DATE is on that line').toContain('r.attendanceDate');
+    expect(firstLine, 'and so is the outcome — this is the whole complaint').toContain('<Pill status={r.status}');
+
+    // …and the detail follows it rather than sharing it.
+    const rest = block.slice(lineEnd);
+    for (const marker of ['askedFor(r, t)', 'r.reason', 'r.remark', "t('maColSubmitted')", 'maAttachmentOnRequest']) {
+      expect(rest.includes(marker), `the block face must carry ${marker} BELOW the first line`).toBe(true);
     }
+    // The overtime wording rule now has TWO render sites (ADR-free but load-bearing: a cancelled overtime
+    // plan reads "Withdrawn", not "Cancelled", and request-ui.tsx's comment says that wording has already
+    // survived two relocations). A verifier mutated the block face's third argument to `false` and NOTHING
+    // failed. Both sites must pass the real predicate.
+    expect(
+      code(PAGE).match(/statusLabel\(r\.status, t, isOvertime\(r\)\)/g) ?? [],
+      'both faces label the status through isOvertime — otherwise a withdrawn OT plan reads "Cancelled"',
+    ).toHaveLength(2);
+  });
+
+  it('A3. the approver caption is drawn only where it is still true', () => {
+    // `otGoesToColumn` reads "Goes to" (ms "Kepada", th/vi "sent to"). As a column HEADING over names it
+    // is neutral; as a running caption beside a red Rejected pill it asserts the request is still with
+    // that person — and `approver` is the employee's CURRENT approver, not whoever decided the row. Two
+    // independent verifiers found this. AGENTS 28: a confidently wrong caption is worse than none.
+    const start = PAGE.indexOf('lg:hidden');
+    const block = PAGE.slice(start, PAGE.indexOf('</ul>', start));
+    const at = block.indexOf("t('otGoesToColumn')");
+    expect(at, 'the block face still names the approver somewhere').toBeGreaterThan(-1);
+    expect(
+      block.slice(Math.max(0, at - 400), at),
+      'and only on a pending request — a decided one must not claim it is still with anybody',
+    ).toContain("r.status === 'pending' ?");
   });
 
   it('B. stays server-rendered — the responsive switch is CSS, not client state', () => {
@@ -248,17 +327,38 @@ describe('r239 — My Attendance Request Status: table on a wide screen, blocks 
   });
 
   it('D. Cancel is the module’s button, and its state rule is written exactly once', () => {
+    // No trailing `>`: the control also carries an aria-label (every pending row draws an identically
+    // worded button, so the accessible name has to say WHICH request it takes back). Pinning the opening
+    // attributes keeps the case about the styling change the reporter asked for.
     expect(PAGE, 'Cancel is a real button now, not a bare underlined word').toContain(
-      '<Button type="submit" size="sm" variant="outline">',
+      '<Button type="submit" size="sm" variant="outline"',
     );
+    expect(PAGE, 'and it says which request it cancels, not just "Cancel"').toContain('aria-label={`${label}');
     expect(PAGE.includes('action={myCancelAttendanceRequest}'), 'still the same server-action form').toBe(true);
     // ONE form, ONE rule, drawn by both faces.
     expect(code(PAGE).match(/action=\{myCancelAttendanceRequest\}/g) ?? []).toHaveLength(1);
     expect(code(PAGE).match(/const canCancel = /g) ?? [], 'the cancel rule is defined once').toHaveLength(1);
+    // ⚠️ THE CONTENT, NOT JUST THE SHAPE. A verifier deleted `!isOvertime(r) &&` from the predicate and
+    // every case here still passed — the guard pinned that the rule was asked twice and defined once,
+    // never what it SAYS. An overtime plan is withdrawn from Self Overtime under its own state rule; a
+    // Cancel button on one here offers a withdrawal this screen must not give.
+    expect(PAGE, 'the cancel rule is BOTH halves — not overtime, and still pending').toContain(
+      "const canCancel = (r: RequestRow) => !isOvertime(r) && r.status === 'pending';",
+    );
     expect(code(PAGE).match(/canCancel\(r\)/g) ?? [], 'and both faces ask it rather than restating it').toHaveLength(2);
-    expect(
-      code(PAGE).includes("r.status === 'pending'") && code(PAGE).match(/r\.status === 'pending'/g)!.length === 1,
-      'the pending condition must live only inside canCancel',
-    ).toBe(true);
+    // ⚠️ THIS USED TO COUNT `r.status === 'pending'` AND REQUIRE EXACTLY ONE, WHICH PINNED A PROXY RATHER
+    // THAN THE PROPERTY. A legitimate SECOND use arrived in the same round — the approver caption is
+    // drawn only on a pending request — and the count failed on a change that was entirely correct. What
+    // actually matters is narrower: the Cancel control is drawn through `canCancel` and never behind an
+    // inline pending test, because an inline one would omit the overtime half of the rule.
+    const drawn = [...code(PAGE).matchAll(/<CancelRequest\b/g)].map((m) => m.index!);
+    expect(drawn, 'Cancel is drawn once per face').toHaveLength(2);
+    for (const at of drawn) {
+      const before = code(PAGE).slice(Math.max(0, at - 200), at);
+      expect(before, 'every Cancel is drawn through canCancel').toContain('canCancel(r)');
+      expect(before, 'and never behind an inline pending test, which would drop the overtime half').not.toContain(
+        "r.status === 'pending'",
+      );
+    }
   });
 });

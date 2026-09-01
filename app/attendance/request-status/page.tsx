@@ -115,6 +115,11 @@ export default async function MyRequestStatusPage({
               <Link
                 key={f ?? 'all'}
                 href={href(f ?? null)}
+                // The filters are unchanged for the eye, as the plan promised. This attribute is not
+                // visible: without it, colour is the ONLY carrier of which filter is applied, so a screen
+                // reader hears five identical links. Same treatment as the segmented filters on
+                // app/admin/personnel.
+                aria-current={on ? 'true' : undefined}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   on ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
@@ -128,8 +133,15 @@ export default async function MyRequestStatusPage({
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoRequests')}</p>
         ) : (
           <>
-            {/* WIDE (md and up) — the seven-column table, unchanged but for the Cancel control's styling. */}
-            <div className={`hidden md:block ${tableWrapCls}`}>
+            {/* WIDE (lg and up) — the seven-column table, unchanged but for the Cancel control's styling.
+                ⚠️ `lg`, NOT `md`, AND THE ARITHMETIC IS THE REASON. The nav rail appears at `sm` and takes
+                232px (components/sidebar.tsx), and the shell adds 24px of padding and a 12px gap
+                (app/layout.tsx). So a 768px viewport gives this list a ~500px CONTENT column — narrower
+                than the ~615px the block face gets at 639px. Switching at `md` would therefore bring the
+                seven columns back at the tightest width the screen ever has. `lg` (1024px) keeps the
+                table on every laptop, which is what the approved plan promised, and gives the 768-1023px
+                band the blocks it is actually better served by. */}
+            <div className={`hidden lg:block ${tableWrapCls}`}>
               <table className="w-full text-sm">
                 <thead className={theadCls}>
                   <tr>
@@ -160,15 +172,15 @@ export default async function MyRequestStatusPage({
                           </a>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
-                        {r.createdAt.toISOString().slice(0, 10)}
-                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{submittedOn(r)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{approver}</td>
                       <td className="px-3 py-2.5">
                         <Pill status={r.status} label={statusLabel(r.status, t, isOvertime(r))} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        {canCancel(r) ? <CancelRequest id={r.id} label={t('maCancelRequest')} /> : null}
+                        {canCancel(r) ? (
+                          <CancelRequest id={r.id} label={t('maCancelRequest')} on={r.attendanceDate} />
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -176,9 +188,9 @@ export default async function MyRequestStatusPage({
               </table>
             </div>
 
-            {/* NARROW (below md) — the same rows, one block each. Date and outcome share the first line;
+            {/* NARROW (below lg) — the same rows, one block each. Date and outcome share the first line;
                 everything the table stacked inside one cell gets its own line underneath. */}
-            <ul className="divide-y divide-border md:hidden">
+            <ul className="divide-y divide-border lg:hidden">
               {reqPage.rows.map((r) => (
                 <li key={r.id} className="space-y-1.5 px-4 py-3.5">
                   <div className="flex items-start justify-between gap-3">
@@ -195,12 +207,21 @@ export default async function MyRequestStatusPage({
                   {r.remark && <p className="text-sm italic text-muted-foreground">{r.remark}</p>}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>
-                      {t('maColSubmitted')}{' '}
-                      <span className="tabular-nums">{r.createdAt.toISOString().slice(0, 10)}</span>
+                      {t('maColSubmitted')} <span className="tabular-nums">{submittedOn(r)}</span>
                     </span>
-                    <span>
-                      {t('otGoesToColumn')} {approver}
-                    </span>
+                    {/* ⚠️ THE LABEL ONLY WHERE IT IS STILL TRUE. `otGoesToColumn` reads "Goes to" (ms
+                        "Kepada", th/vi "sent to") — fine as a column HEADING over a list of names, and a
+                        false statement as a running caption beside a red Rejected pill: it says the
+                        request is still with that person when it was decided weeks ago. And `approver` is
+                        the employee's CURRENT approver, not whoever decided this row, so on a settled
+                        request it may not even be the right name. AGENTS 28 — a caption that asserts
+                        something untrue is worse than one that is merely terse. Pending rows keep it;
+                        decided rows show nothing rather than a claim we cannot stand behind. */}
+                    {r.status === 'pending' ? (
+                      <span>
+                        {t('otGoesToColumn')} {approver}
+                      </span>
+                    ) : null}
                     {r.hasAttachment && (
                       <a
                         href={`/attendance/requests/attachment/${r.id}`}
@@ -212,7 +233,7 @@ export default async function MyRequestStatusPage({
                   </div>
                   {canCancel(r) ? (
                     <div className="pt-1">
-                      <CancelRequest id={r.id} label={t('maCancelRequest')} />
+                      <CancelRequest id={r.id} label={t('maCancelRequest')} on={r.attendanceDate} />
                     </div>
                   ) : null}
                 </li>
@@ -244,6 +265,20 @@ const isOvertime = (r: RequestRow) => r.proposedCheckIn == null && r.requestedOt
  */
 const canCancel = (r: RequestRow) => !isOvertime(r) && r.status === 'pending';
 
+/**
+ * The submitted date, in ONE place.
+ *
+ * It is the expression the table has always shown, kept byte-for-byte: this round is presentational and
+ * changing a printed date is not presentational. It is lifted here only so the two faces cannot come to
+ * disagree — the build briefly carried two copies of it.
+ *
+ * ⚠️ IT IS A UTC SLICE RENDERED TO A UTC+8 AUDIENCE, and that is a REAL pre-existing defect, not a style:
+ * a request filed at 07:00 in Kuala Lumpur prints the previous day. `lib/hr-date.ts` already has
+ * `todayInKualaLumpur` for it, and `app/attendance/travel/page.tsx` has the same bug. Fixing it changes
+ * what people see and belongs to a round that says so, together with travel — not to this one.
+ */
+const submittedOn = (r: RequestRow) => r.createdAt.toISOString().slice(0, 10);
+
 /** The `me` key naming the request's kind. `other` covers every request filed before migration 0434. */
 const kindKey = (r: RequestRow) => KIND_LABEL[r.requestKind ?? (isOvertime(r) ? 'self_overtime' : 'other')];
 
@@ -252,11 +287,15 @@ const kindKey = (r: RequestRow) => KIND_LABEL[r.requestKind ?? (isOvertime(r) ? 
  * screen submits with), not the bare underlined word it used to be. Still the same server-action form:
  * only the styling changed, and the decision to draw it at all stays with `canCancel`.
  */
-function CancelRequest({ id, label }: { id: string; label: string }) {
+function CancelRequest({ id, label, on }: { id: string; label: string; on: string }) {
   return (
     <form action={myCancelAttendanceRequest}>
       <input type="hidden" name="correctionId" value={id} />
-      <Button type="submit" size="sm" variant="outline">
+      {/* `aria-label` carries the DATE as well as the verb. Every pending row draws this control, so
+          without it a screen reader hears "Cancel, Cancel, Cancel" down the list with nothing to say
+          which request each one takes back. The visible word is unchanged, and the date needs no
+          translation. */}
+      <Button type="submit" size="sm" variant="outline" aria-label={`${label} · ${on}`}>
         {label}
       </Button>
     </form>
