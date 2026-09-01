@@ -30,6 +30,7 @@ import { resolveEntitlementsTx } from '../core/entitlements';
 import { payrollBatch } from '../db/schema';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { evaluateBatchAnomalies } from '../core/payroll-anomaly';
+import { proposeHypotheses } from '../core/payroll-hypothesis';
 import { recordJobRun } from '../core/job-run';
 
 function loadEnv() {
@@ -52,6 +53,10 @@ export type SweepResult = {
   block: number;
   failures: number;
   skipped: number;
+  /** ADR-0084 §2.6 — hypotheses that survived adjudication and became a `review` finding. */
+  hypotheses: number;
+  /** Provider calls the hypothesis layer actually made. Zero on a tenant that has not switched it on. */
+  hypothesisCalls: number;
 };
 
 export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {}): Promise<SweepResult> {
@@ -72,6 +77,8 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
     block: 0,
     failures: 0,
     skipped: scope.skipped.length,
+    hypotheses: 0,
+    hypothesisCalls: 0,
   };
 
   for (const t of scope.run) {
@@ -112,6 +119,34 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
           `  ${t.name} ${batch.payPeriod}: ${run.total} slips — ${run.autoClear} clear, ${run.review} review, ` +
             `${run.block} block, coverage ${(run.coverage * 100).toFixed(1)}%`,
         );
+
+        // ADR-0084 §2.6 — AFTER the deterministic pass, over what it AUTO-CLEARED, and never before:
+        // the rules decide who is already going to a human, and this layer only looks at the rest.
+        //
+        // ⚠️ FOLDED IN HERE RATHER THAN GIVEN ITS OWN CRON LINE, for the reason r230 proved the hard
+        // way — `anomaly-sweep` itself sat BUILT and DOCUMENTED for six weeks without ever being
+        // installed. A second cron line is a second thing to forget to install, and this one has a hard
+        // ordering dependency on the pass above, so a separate schedule could only get it wrong.
+        //
+        // IT NEVER FAILS THE BATCH. A provider outage, a rate limit, a ledger write that did not land —
+        // none of that may cost the tenant the verdicts the deterministic pass just produced, which are
+        // the part somebody depends on tonight.
+        try {
+          const h = await proposeHypotheses(ctx, { batchId: batch.id });
+          out.hypotheses += h.raised;
+          out.hypothesisCalls += h.asked;
+          if (!h.disabled) {
+            console.log(
+              `    hypotheses: ${h.candidates} candidate(s) — ${h.raised} raised, ${h.declined} ordinary, ` +
+                `${h.rejected} discarded, ${h.suppressed} suppressed, ${h.asked} call(s), ${h.cached} cached` +
+                (h.cohortTooSmall ? ' [run too small for a peer group]' : '') +
+                (h.notConfigured ? ' [no AI provider]' : '') +
+                (h.cappedOut ? ' [CAPPED — candidates left]' : ''),
+            );
+          }
+        } catch (e) {
+          console.error(`  hypotheses FAILED ${t.name} ${batch.payPeriod}: ${(e as Error).message}`);
+        }
       } catch (e) {
         out.failures += 1;
         // One bad batch must not end the sweep — the other tenants still need their queues filled.
@@ -122,7 +157,8 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
 
   console.log(
     `anomaly:sweep done — ${out.batches} run(s) across ${out.tenants} tenant(s): ` +
-      `${out.autoClear} clear, ${out.review} review, ${out.block} block, ${out.failures} failure(s)`,
+      `${out.autoClear} clear, ${out.review} review, ${out.block} block, ${out.failures} failure(s), ` +
+      `${out.hypotheses} hypothesis finding(s) from ${out.hypothesisCalls} model call(s)`,
   );
   return out;
 }

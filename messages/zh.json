@@ -11215,7 +11215,12 @@
       "duplicateEmploymentPay": "同一人本期在多个雇佣关系下领薪。请确认这是预期安排。",
       "netSwing": "请查明此人本期发生了什么变化。",
       "componentAppeared": "请确认这个新增薪资项目正确无误。",
-      "componentVanished": "请确认该薪资项目确实应当停止。"
+      "componentVanished": "请确认该薪资项目确实应当停止。",
+      "hypothesisMissedIncrement": "本次发薪中同事的薪酬上调了，而此人没有。请检查是否漏了调薪或调整。",
+      "hypothesisOutOfStepWithPeers": "此人的薪酬变动方式与本次发薪的其他人不同。请检查他们那边有什么变化。",
+      "hypothesisComponentDrift": "加班或津贴在此人薪酬中所占比例与同事相差很大。请检查相关录入。",
+      "hypothesisDeductionOutlier": "扣款在此人薪酬中所占比例与同事相差很大。请检查记录上的经常性扣款。",
+      "hypothesisStatutoryCategoryDoubt": "法定缴款在此人薪酬中所占比例与同事相差很大。请检查记录上的缴款类别。"
     },
     "closeBlockedByAnomalies": "仍有 {count} 名员工处于阻断状态，无法关账。请打开「薪资异常」处理。",
     "closeBlockedBySwing": "本次运行的薪资总额相较上期变动 {movement}%，超过 {threshold}% 的上限。请确认本次运行，或提高该公司的上限。",
@@ -11225,7 +11230,15 @@
     "narrated": "已说明 {n} 项发现。",
     "narrateNotConfigured": "此租户未设置 AI 供应商，因此无法生成说明。下方数字不受影响。",
     "narrateRejected": "说明已被丢弃：其中出现了记录数字无法支持的数值。下方数字未变。",
-    "narrateNothing": "未生成说明。下方数字未变。"
+    "narrateNothing": "未生成说明。下方数字未变。",
+    "hypothesisLabel": "第二意见 — 仅供复核",
+    "hypothesisHelp": "固定检查已放行此人。下面的数字由我们根据本次发薪重新计算；模型只是提示该往哪里看，凡是我们无法重新验证的建议，都在你看到之前被丢弃了。",
+    "lookAgain": "查找固定检查遗漏的问题",
+    "hypothesisRaised": "已提出 {n} 项供复核。",
+    "hypothesisNone": "本次发薪没有其他异常。",
+    "hypothesisDisabled": "你的账户尚未开启第二意见。",
+    "hypothesisTooSmall": "本次发薪人数太少，无法在员工之间作比较。",
+    "hypothesisNotConfigured": "未设置 AI 供应商，因此无法给出第二意见。"
   },
   "assistant": {
     "title": "智能助理",
@@ -11292,7 +11305,19 @@
       "autonomy": "自主执行",
       "autonomyDoes": "在无人参与下通过或更改任何内容。本系统目前不做这件事。",
       "actions": "收尾者",
-      "actionsDoes": "找出因员工记录中缺少某些内容而产生的异常——而该内容现已录入。它会提议关闭这些异常；由你批准，并在你批准时对每一条重新检查。它从不修改员工记录。"
+      "actionsDoes": "找出因员工记录中缺少某些内容而产生的异常——而该内容现已录入。它会提议关闭这些异常；由你批准，并在你批准时对每一条重新检查。它从不修改员工记录。",
+      "hypotheses": "第二意见",
+      "hypothesesDoes": "对固定检查已放行的员工再看一次，把每个人与同一次发薪中的同事作比较。它只能提请复核——永远不能阻止发薪——凡是无法用你自己的数字重新验证的建议，都会在你看到之前被丢弃。",
+      "nudge": "催办者",
+      "nudgeDoes": "发现谁的记录缺少发薪所需的内容，并通知唯一能补上的人——银行资料通知员工本人，只有 HR 能录入的内容通知 HR。在你开启之前，它不会发出任何消息。",
+      "payRuleDrafter": "薪资规则起草者",
+      "payRuleDrafterDoes": "把“每工作一小时 RM5”这样的一句话转成一组固定薪资规则中的一条，再由发薪引擎所用的同一段代码检查。它从不保存任何内容——由你复核后点击保存。",
+      "reportDesigner": "报表设计者",
+      "reportDesignerDoes": "把报表的描述转成布局草稿，并按报表生成器所执行的同一套规则检查。它看到的是数据的结构，而非数据本身。",
+      "reviewDrafter": "评估起草者",
+      "reviewDrafterDoes": "根据已记录的内容，为经理起草绩效评估的措辞。经理负责修改并对内容负责；系统不会代为保存。",
+      "planDrafter": "方案起草者",
+      "planDrafterDoes": "为产品内提出的改进请求起草回复。这是我们自己的工具，不属于你的套餐功能。"
     },
     "why": {
       "detectorsOn": "在每次已处理的薪资运行上执行。",
@@ -11306,7 +11331,13 @@
       "assistantOn": "您已有使用助理的权限。",
       "assistantNoGrant": "尚未为您启用。管理员会在「管理 → 用户」中逐人开通。",
       "autonomyByDesign": "刻意关闭。未经人工，任何内容都不会被通过或更改；日后也只会逐项开放，且须先证明系统与贵方人员的判断足够一致。",
-      "actionsOn": "正在“智能体操作”页面提出建议。在你批准之前，不会关闭任何内容。"
+      "actionsOn": "正在“智能体操作”页面提出建议。在你批准之前，不会关闭任何内容。",
+      "hypothesesOn": "每晚对固定检查已放行的员工运行。它提出的任何事项仅供复核，绝不会阻止发薪。",
+      "hypothesesOff": "尚未开启。固定检查照常运行；这是把每个人与同事作比较的额外一层，在你要求之前保持关闭。",
+      "nudgeOn": "已开启。提醒会在每晚的运行中发出。",
+      "nudgeOff": "尚未开启。在你要求之前，不会自动联系任何人。",
+      "draftOnlyOn": "已设置供应商。它只在你要求时起草，且在你确认之前不保存任何内容。",
+      "planDrafterOff": "刻意关闭。这是 Stradaverse 自己的工具，不属于你的套餐。"
     },
     "domainsTitle": "监控范围",
     "domainsIntro": "薪资是第一个领域。同一套机制可扩展到其他领域，此处列出以便您了解后续规划，而非误以为薪资就是全部。",

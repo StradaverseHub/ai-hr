@@ -194,6 +194,11 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // arrive with the module. `scope: 'tenant'` so 0313's tenant_setting_write policy lets an admin change
   // it; `defaultOnInstall: false` so buying notifications never starts a chaser nobody asked for.
   { key: 'notifications.readiness_nudge_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system chase incomplete employee records on a schedule — the employee for their own bank details, HR for everything only HR can key in.', sortOrder: 120 },
+  // ADR-0084 §2.6 — the hypothesis layer's switch, OFF for the same two reasons the nudge agent's is.
+  // It spends the tenant's own provider budget (ADR-0023, BYOK) on a nightly schedule nobody triggered,
+  // and it puts rows in their exceptions queue that a MODEL chose to put there. Both are opt-in. The
+  // severity ceiling is not a setting and never appears here: a hypothesis is `review`, forever.
+  { key: 'payroll.anomaly_hypotheses_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system look for payroll exceptions the fixed checks cannot see, by comparing each person against their colleagues on the same run. Findings are always for review, never blocking.', sortOrder: 130 },
 ];
 
 /*
@@ -326,6 +331,11 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // legacy value to honour — and null keeps it out of `legacyEnabledSettingsIn`, which is the correct
   // outcome: an automated chaser must never arrive switched on by a backfill.
   'notifications.readiness_nudge_enabled': null,
+  // `null` for the same reason as the row above: ADR-0084 §2.6 is NEW rather than migrated from a
+  // deployment flag, so there is no legacy value to honour — and null keeps it out of
+  // `legacyEnabledSettingsIn`, which is the correct outcome. A backfill must never switch on something
+  // that spends a customer's provider budget on a schedule.
+  'payroll.anomaly_hypotheses_enabled': null,
 };
 
 /**

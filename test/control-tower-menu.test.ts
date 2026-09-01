@@ -141,21 +141,31 @@ describe('ADR-0083 — the explainer states what does NOT run', () => {
     const agent = en.agent as Record<string, string>;
     const why = en.why as Record<string, string>;
 
-    const ids = [...body.matchAll(/^\s*id: '([a-z_]+)',$/gm)].map((m) => m[1]!);
-    // The roster is six rows as of r235; a bare `toBeGreaterThan(0)` here would let a regex that stopped
-    // matching pass silently, which is the vacuity this whole file guards against elsewhere.
-    expect(ids.length, `ids found: ${ids.join(', ')}`).toBeGreaterThanOrEqual(6);
+    // ⚠️ `[A-Za-z_]` NOT `[a-z_]` (r238). The original class silently skipped every camelCase id, so the
+    // four authoring assists added that round — `payRuleDrafter` and friends — would have gone
+    // unguarded: exactly the MISSING_MESSAGE crash this case exists to prevent, hidden by the guard
+    // itself. A character class in a source-scanning guard is part of its coverage, not a detail.
+    const ids = [...body.matchAll(/^\s*id: '([A-Za-z_]+)',$/gm)].map((m) => m[1]!);
+    // The roster is twelve rows as of r238; a bare `toBeGreaterThan(0)` here would let a regex that
+    // stopped matching pass silently, which is the vacuity this whole file guards against elsewhere.
+    expect(ids.length, `ids found: ${ids.join(', ')}`).toBeGreaterThanOrEqual(12);
     for (const id of ids) {
       expect(agent[id], `controlTower.agent.${id}`).toBeTruthy();
       expect(agent[`${id}Does`], `controlTower.agent.${id}Does`).toBeTruthy();
     }
 
-    // Every quoted string on a `reasonKey:` line — a ternary contributes BOTH of its branches, and the
-    // branch that only appears when something is switched off is the one nobody renders while testing.
-    const reasons = [...body.matchAll(/reasonKey:[^\n]*/g)].flatMap((m) =>
+    // Every quoted string in a `reasonKey:` EXPRESSION — a ternary contributes every one of its
+    // branches, and the branch that only appears when something is switched off is the one nobody
+    // renders while testing.
+    //
+    // ⚠️ IT READS TO THE END OF THE EXPRESSION, NOT THE END OF THE LINE (r238). A four-way ternary is
+    // wrapped by the formatter, so the line-bounded form here saw only the first branch and let three
+    // reason keys through unguarded. The expression ends at the row's next property or at the row's
+    // closing brace.
+    const reasons = [...body.matchAll(/reasonKey:[\s\S]*?(?=\n\s{6}\w+:|\n\s{4}\},)/g)].flatMap((m) =>
       [...m[0].matchAll(/'([A-Za-z]+)'/g)].map((q) => q[1]!),
     );
-    expect(reasons.length, `reasons found: ${reasons.join(', ')}`).toBeGreaterThanOrEqual(8);
+    expect(reasons.length, `reasons found: ${reasons.join(', ')}`).toBeGreaterThanOrEqual(18);
     for (const key of reasons) expect(why[key], `controlTower.why.${key}`).toBeTruthy();
   });
 

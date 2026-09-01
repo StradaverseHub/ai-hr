@@ -5503,6 +5503,13 @@ export const payrollAnomalyFinding = pgTable(
     suggestedAction: text('suggested_action').notNull(),
     /** OPTIONAL LLM prose, additive only, generated AFTER classification and unable to revise it. */
     narrative: text('narrative'),
+    /**
+     * ADR-0084 §2.6 (0454) — the ledger row this finding came from, for the ONE detector that is a
+     * model: `hypothesis`. NULL for every deterministic detector, and null too when the best-effort
+     * ledger write failed (core/agent-proposal.ts property 1). It is what lets `resolveAnomalyVerdict`
+     * stamp the human's verdict on the RIGHT proposal rather than the most recent plausible one.
+     */
+    proposalId: uuid('proposal_id').references(() => agentProposal.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
   (t) => [
