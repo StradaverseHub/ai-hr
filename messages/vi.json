@@ -11215,7 +11215,12 @@
       "duplicateEmploymentPay": "Cùng một người được trả lương dưới nhiều hợp đồng trong kỳ này. Hãy xác nhận đây là chủ ý.",
       "netSwing": "Hãy kiểm tra điều gì đã thay đổi với người này trong kỳ.",
       "componentAppeared": "Hãy xác nhận khoản lương mới này là đúng.",
-      "componentVanished": "Hãy xác nhận khoản lương này đúng là phải dừng."
+      "componentVanished": "Hãy xác nhận khoản lương này đúng là phải dừng.",
+      "hypothesisMissedIncrement": "Đồng nghiệp trong kỳ này được tăng còn người này thì không. Kiểm tra xem có bỏ sót đợt tăng hay điều chỉnh nào không.",
+      "hypothesisOutOfStepWithPeers": "Lương của người này biến động theo cách mà những người còn lại trong kỳ thì không. Kiểm tra xem điều gì đã thay đổi với họ.",
+      "hypothesisComponentDrift": "Tăng ca hoặc phụ cấp chiếm tỷ trọng rất khác so với đồng nghiệp trong lương của người này. Kiểm tra các bản ghi gốc.",
+      "hypothesisDeductionOutlier": "Các khoản khấu trừ chiếm tỷ trọng rất khác so với đồng nghiệp trong lương của người này. Kiểm tra các khoản khấu trừ định kỳ trên hồ sơ.",
+      "hypothesisStatutoryCategoryDoubt": "Các khoản đóng góp theo luật chiếm tỷ trọng rất khác so với đồng nghiệp trong lương của người này. Kiểm tra nhóm đóng góp trên hồ sơ."
     },
     "closeBlockedByAnomalies": "Không thể chốt kỳ lương này khi còn {count} nhân viên bị chặn. Hãy mở Ngoại lệ bảng lương để xử lý.",
     "closeBlockedBySwing": "Tổng lương kỳ này biến động {movement}% so với kỳ trước, vượt giới hạn {threshold}%. Hãy xác nhận kỳ lương, hoặc nâng giới hạn cho công ty này.",
@@ -11225,7 +11230,15 @@
     "narrated": "Đã giải thích {n} phát hiện.",
     "narrateNotConfigured": "Chưa thiết lập nhà cung cấp AI cho tổ chức này nên không có gì để giải thích. Các số liệu bên dưới không bị ảnh hưởng.",
     "narrateRejected": "Phần giải thích đã bị loại bỏ: nó nêu một con số mà các số liệu đã ghi không hỗ trợ. Các số liệu bên dưới không thay đổi.",
-    "narrateNothing": "Không tạo được phần giải thích. Các số liệu bên dưới không thay đổi."
+    "narrateNothing": "Không tạo được phần giải thích. Các số liệu bên dưới không thay đổi.",
+    "hypothesisLabel": "Ý kiến thứ hai — chỉ để xem lại",
+    "hypothesisHelp": "Các kiểm tra cố định đã cho người này qua. Những con số bên dưới là của chúng tôi, tính lại từ kỳ này; mô hình chỉ gợi ý nên nhìn vào đâu, và bất kỳ gợi ý nào chúng tôi không thể suy lại đều đã bị loại bỏ trước khi bạn thấy.",
+    "lookAgain": "Tìm những gì các kiểm tra bỏ sót",
+    "hypothesisRaised": "Đã nêu {n} mục để xem lại.",
+    "hypothesisNone": "Không có gì khác nổi bật trong kỳ này.",
+    "hypothesisDisabled": "Tài khoản của bạn chưa bật ý kiến thứ hai.",
+    "hypothesisTooSmall": "Kỳ này quá ít người để so sánh giữa các nhân viên.",
+    "hypothesisNotConfigured": "Chưa thiết lập nhà cung cấp AI nên không thể đưa ra ý kiến thứ hai."
   },
   "assistant": {
     "title": "Trợ lý",
@@ -11292,7 +11305,19 @@
       "autonomy": "Tự hành động",
       "autonomyDoes": "Duyệt hoặc thay đổi bất cứ điều gì mà không có người. Hiện không có phần nào trong hệ thống làm việc này.",
       "actions": "Người khép việc",
-      "actionsDoes": "Tìm những ngoại lệ phát sinh vì hồ sơ nhân viên thiếu thông tin — và hồ sơ đó nay đã có. Nó đề xuất đóng chúng; bạn phê duyệt, và mỗi mục được kiểm tra lại ngay lúc đó. Nó không bao giờ thay đổi hồ sơ nhân viên."
+      "actionsDoes": "Tìm những ngoại lệ phát sinh vì hồ sơ nhân viên thiếu thông tin — và hồ sơ đó nay đã có. Nó đề xuất đóng chúng; bạn phê duyệt, và mỗi mục được kiểm tra lại ngay lúc đó. Nó không bao giờ thay đổi hồ sơ nhân viên.",
+      "hypotheses": "Ý kiến thứ hai",
+      "hypothesesDoes": "Xem lại những người đã được các kiểm tra cố định cho qua, và so sánh từng người với đồng nghiệp trong cùng kỳ trả lương. Nó chỉ có thể đề nghị xem lại — không bao giờ chặn được kỳ trả lương — và bất kỳ đề xuất nào chúng tôi không thể suy lại từ chính con số của bạn đều bị loại bỏ trước khi bạn nhìn thấy.",
+      "nudge": "Người nhắc việc",
+      "nudgeDoes": "Phát hiện hồ sơ của ai còn thiếu thứ mà việc trả lương cần, rồi nhắc đúng người có thể bổ sung — nhân viên cho thông tin ngân hàng của chính họ, HR cho những gì chỉ HR nhập được. Nó không gửi gì cho đến khi bạn bật.",
+      "payRuleDrafter": "Người soạn quy tắc lương",
+      "payRuleDrafterDoes": "Chuyển một câu như “RM5 cho mỗi giờ làm việc” thành một quy tắc lương trong bộ cố định, rồi được kiểm tra bằng chính đoạn mã mà bộ máy tính lương dùng. Nó không bao giờ tự lưu — bạn xem lại rồi bấm lưu.",
+      "reportDesigner": "Người thiết kế báo cáo",
+      "reportDesignerDoes": "Chuyển mô tả một báo cáo thành bản bố cục nháp, kiểm tra theo đúng các quy tắc mà trình tạo báo cáo áp dụng. Nó thấy cấu trúc dữ liệu của bạn, không thấy dữ liệu.",
+      "reviewDrafter": "Người soạn đánh giá",
+      "reviewDrafterDoes": "Soạn lời văn cho bản đánh giá hiệu suất của quản lý từ những gì đã được ghi nhận. Quản lý chỉnh sửa và chịu trách nhiệm; không có gì được lưu thay họ.",
+      "planDrafter": "Người soạn kế hoạch",
+      "planDrafterDoes": "Soạn phản hồi cho một yêu cầu cải tiến được gửi từ trong sản phẩm. Đây là công cụ của chúng tôi, không phải tính năng trong gói của bạn."
     },
     "why": {
       "detectorsOn": "Chạy trên mọi kỳ lương đã xử lý.",
@@ -11306,7 +11331,13 @@
       "assistantOn": "Bạn có quyền dùng trợ lý.",
       "assistantNoGrant": "Chưa bật cho bạn. Quản trị viên bật theo từng người, tại Quản trị → Người dùng.",
       "autonomyByDesign": "Tắt có chủ đích. Không gì được duyệt hay thay đổi mà không có người, và điều đó chỉ thay đổi từng hành động một, sau khi chứng minh được hệ thống đồng thuận với nhân sự của bạn đủ thường xuyên.",
-      "actionsOn": "Đang đề xuất trên màn hình Hành động của tác nhân. Không có gì bị đóng cho đến khi bạn phê duyệt."
+      "actionsOn": "Đang đề xuất trên màn hình Hành động của tác nhân. Không có gì bị đóng cho đến khi bạn phê duyệt.",
+      "hypothesesOn": "Chạy mỗi đêm trên những người đã được các kiểm tra cố định cho qua. Mọi điều nó nêu chỉ để xem lại và không bao giờ chặn kỳ trả lương.",
+      "hypothesesOff": "Chưa bật. Các kiểm tra cố định vẫn chạy; đây là lớp xem thêm so sánh từng người với đồng nghiệp, và tắt cho đến khi bạn yêu cầu.",
+      "nudgeOn": "Đã bật. Lời nhắc được gửi trong lượt chạy ban đêm.",
+      "nudgeOff": "Chưa bật. Không ai bị liên hệ tự động cho đến khi bạn yêu cầu.",
+      "draftOnlyOn": "Đã thiết lập nhà cung cấp. Nó chỉ soạn khi bạn yêu cầu và không lưu gì cho đến khi bạn đồng ý.",
+      "planDrafterOff": "Cố ý tắt. Đây là công cụ riêng của Stradaverse, không thuộc gói của bạn."
     },
     "domainsTitle": "Những gì được theo dõi",
     "domainsIntro": "Bảng lương là lĩnh vực đầu tiên. Cùng bộ máy đó được xây để bao phủ các lĩnh vực khác, và chúng được liệt kê ở đây để bạn thấy điều sắp tới thay vì nghĩ bảng lương là tất cả.",

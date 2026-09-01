@@ -10,8 +10,14 @@ import {
   evaluateCircuitBreaker,
   type QueueRow,
 } from '@/core/payroll-anomaly';
+import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { evaluateAnomaliesAction, narrateAnomalyAction, resolveAnomalyAction } from '../../actions';
+import {
+  evaluateAnomaliesAction,
+  narrateAnomalyAction,
+  proposeHypothesesAction,
+  resolveAnomalyAction,
+} from '../../actions';
 
 /**
  * ADR-0076 slice 6 — the exceptions queue. ADR-0074 calls this "the analyst's whole day".
@@ -79,6 +85,25 @@ export default async function AnomaliesPage({
     withTenant(s, (tx) => evaluateCircuitBreaker(tx, s.tenantId, batchId)),
   ]);
 
+  /**
+   * ADR-0084 §2.6 — the strings a hypothesis finding needs, resolved HERE for the same reason
+   * `explainLabel` is: `VerdictCard` is a plain component and `getTranslations` belongs to the page.
+   *
+   * The claim map is keyed by the closed vocabulary in `core/payroll-hypothesis.ts`. A finding whose
+   * claim is not in it renders its facts and no sentence — never a raw enum member, and never the key.
+   */
+  const hypothesis = {
+    label: t('hypothesisLabel'),
+    help: t('hypothesisHelp'),
+    claim: {
+      missed_increment: t('action.hypothesisMissedIncrement'),
+      out_of_step_with_peers: t('action.hypothesisOutOfStepWithPeers'),
+      component_drift: t('action.hypothesisComponentDrift'),
+      deduction_outlier: t('action.hypothesisDeductionOutlier'),
+      statutory_category_doubt: t('action.hypothesisStatutoryCategoryDoubt'),
+    } as Record<string, string>,
+  };
+
   const everRun = metrics.total > 0;
   const flagged = rows.filter((r) => r.disposition !== 'auto_clear');
   const cleared = rows.filter((r) => r.disposition === 'auto_clear');
@@ -141,12 +166,23 @@ export default async function AnomaliesPage({
             {metrics.block > 0 ? (
               <p className="mt-2 text-[11px] font-medium text-rose-700 dark:text-rose-300">{t('blockedHelp')}</p>
             ) : null}
-            <form action={evaluateAnomaliesAction} className="mt-4">
-              <input type="hidden" name="batchId" value={batchId} />
-              <Button type="submit" size="sm" variant="secondary">
-                {t('runAgain')}
-              </Button>
-            </form>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <form action={evaluateAnomaliesAction}>
+                <input type="hidden" name="batchId" value={batchId} />
+                <Button type="submit" size="sm" variant="secondary">
+                  {t('runAgain')}
+                </Button>
+              </form>
+              {/* ADR-0084 §2.6. The nightly sweep already does this unattended — the button exists so an
+                  operator can ask NOW, and because a layer nobody can trigger is a layer nobody can
+                  evaluate. It says what happened in every case, including "not switched on". */}
+              <form action={proposeHypothesesAction}>
+                <input type="hidden" name="batchId" value={batchId} />
+                <Button type="submit" size="sm" variant="secondary">
+                  {t('lookAgain')}
+                </Button>
+              </form>
+            </div>
           </Card>
 
           {/* The run-level breaker: a global mis-key moves everyone together, so no per-employee row
@@ -180,7 +216,13 @@ export default async function AnomaliesPage({
       ) : null}
 
       {flagged.map((row) => (
-        <VerdictCard key={row.verdictId} row={row} batchId={batchId} explainLabel={t('explain')} />
+        <VerdictCard
+          key={row.verdictId}
+          row={row}
+          batchId={batchId}
+          explainLabel={t('explain')}
+          hypothesis={hypothesis}
+        />
       ))}
 
       {/* Cleared employees are listed, not hidden. They are the denominator of the clear rate, and the
@@ -213,7 +255,19 @@ export default async function AnomaliesPage({
 
 // `explainLabel` is passed in rather than resolved here: this is a plain (non-async) component and
 // getTranslations belongs to the page, which is also where every other string on this screen comes from.
-function VerdictCard({ row, batchId, explainLabel }: { row: QueueRow; batchId: string; explainLabel: string }) {
+type HypothesisCopy = { label: string; help: string; claim: Record<string, string> };
+
+function VerdictCard({
+  row,
+  batchId,
+  explainLabel,
+  hypothesis,
+}: {
+  row: QueueRow;
+  batchId: string;
+  explainLabel: string;
+  hypothesis: HypothesisCopy;
+}) {
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -234,7 +288,19 @@ function VerdictCard({ row, batchId, explainLabel }: { row: QueueRow; batchId: s
       <ul className="mt-3 space-y-2">
         {row.findings.map((f, i) => (
           <li key={`${f.detectorId}-${i}`} className={`rounded-md border p-3 text-xs ${TONE[f.severity] ?? ''}`}>
-            <p className="font-medium">{f.detectorId}</p>
+            {/* ⚠️ AN AI-PROPOSED FINDING SAYS SO, AND SAYS IT FIRST. Every other row on this screen was
+                produced by a rule that always gives the same answer for the same figures; this one was
+                not, and an operator deciding what to do about it is entitled to know which they are
+                looking at. The label also carries the ceiling — "for review only" — because that is the
+                other thing they would otherwise have to take on trust (ADR-0084 §2.2). */}
+            <p className="font-medium">
+              {f.detectorId === HYPOTHESIS_DETECTOR_ID ? hypothesis.label : f.detectorId}
+            </p>
+            {f.detectorId === HYPOTHESIS_DETECTOR_ID && hypothesis.claim[String(f.facts.claim ?? '')] ? (
+              <p className="mt-1 text-[12px] font-medium leading-snug">
+                {hypothesis.claim[String(f.facts.claim)]}
+              </p>
+            ) : null}
             {/* ADR-0076 §2.6 — the plain-words explanation, when an operator has asked for one. It sits
                 ABOVE the facts and never replaces them: it is a reading of the evidence, and the evidence
                 stays on the row so the classification can still be checked rather than taken on trust.
@@ -243,6 +309,9 @@ function VerdictCard({ row, batchId, explainLabel }: { row: QueueRow; batchId: s
             {/* The facts ARE the evidence. Rendered verbatim rather than summarised, so the operator can
                 check the classification rather than take it on trust. */}
             <p className="mt-1 font-mono text-[11px] opacity-80">{factLine(f.facts)}</p>
+            {f.detectorId === HYPOTHESIS_DETECTOR_ID ? (
+              <p className="mt-2 text-[11px] leading-snug opacity-70">{hypothesis.help}</p>
+            ) : null}
           </li>
         ))}
       </ul>

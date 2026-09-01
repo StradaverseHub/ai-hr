@@ -65,6 +65,17 @@ export type ProposalTypeId =
   /** ADR-0084 §2.5 — a drafted nudge BODY, one per gap per sweep. Adjudicated by `nudgeIsFaithful`. */
   | 'readiness_nudge'
   /**
+   * ADR-0084 §2.6 — a hypothesis about ONE auto-cleared employee's figures, classified into a closed set
+   * of five explanations (or `nothing_notable`) and adjudicated by re-deriving every field it cites.
+   *
+   * ⚠️ **THE ONLY TYPE IN THE PRODUCT WHOSE THREE RATES ARE ALL REAL AND ALL INFORMATIVE.** Its
+   * adjudication-pass rate says whether the model cites fields that actually hold; its agreement rate is
+   * an operator answering "is this a real problem?" on a row nothing else would have flagged; and its
+   * reversal rate is the honest ceiling on ever granting it autonomy. It is also the only type that can
+   * produce a payroll FINDING — capped at severity `review`, forever (§2.2).
+   */
+  | 'anomaly_hypothesis'
+  /**
    * ADR-0084 §2.5 — one nudge raised about one person's one gap. DETERMINISTIC, and **the only type in
    * the product with a real agreement rate**: the human's verdict is observable in the record itself,
    * because the gap either closed within the settle window or it did not. Everything else either has no

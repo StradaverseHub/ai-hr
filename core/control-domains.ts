@@ -26,7 +26,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from './ai-config';
-import { isModuleEnabled } from './entitlements';
+import { isModuleEnabled, settingEnabled } from './entitlements';
 import { mayUseAssistant } from './assistant-grant';
 import { DETECTORS } from './payroll-anomaly-detectors';
 
@@ -119,6 +119,12 @@ const SWEEP_FRESH_DAYS = 2;
  */
 export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]> {
   const payrollOn = isModuleEnabled(ctx, 'payroll');
+  // ADR-0084 §2.6 / §2.5 — the two unattended agents. Both are per-tenant switches that default OFF, so
+  // "is it on" is a real question with a real answer rather than a constant.
+  const hypothesesOn = payrollOn && settingEnabled(ctx, 'payroll.anomaly_hypotheses_enabled');
+  const nudgeOn = settingEnabled(ctx, 'notifications.readiness_nudge_enabled');
+  // Operator tooling, and platform-scoped — a customer cannot switch it on for themselves.
+  const planDrafterOn = settingEnabled(ctx, 'feedback.ai_planning_enabled');
 
   const [lastSweep, aiConfigured, assistant] = await Promise.all([
     withTenant(ctx, async (tx) => {
@@ -183,6 +189,60 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       kind: 'deterministic',
       active: payrollOn,
       reasonKey: payrollOn ? 'actionsOn' : 'moduleOff',
+    },
+    {
+      // ADR-0084 §2.6, r238 — the FIRST surface in this product where a model can create a finding rather
+      // than explain one. It sits directly under `narrator` on purpose: one row is AI reading the
+      // evidence, the next is AI proposing there is some, and the difference is the whole ADR.
+      id: 'hypotheses',
+      kind: 'llm',
+      active: hypothesesOn && aiConfigured,
+      reasonKey: !payrollOn
+        ? 'moduleOff'
+        : !hypothesesOn
+          ? 'hypothesesOff'
+          : aiConfigured
+            ? 'hypothesesOn'
+            : 'noProvider',
+    },
+    {
+      // ADR-0084 §2.5, r237. The only thing in this product that contacts a person with nobody pressing
+      // send, which is exactly why it is listed rather than left implicit.
+      id: 'nudge',
+      kind: 'llm',
+      active: nudgeOn,
+      reasonKey: nudgeOn ? 'nudgeOn' : 'nudgeOff',
+    },
+    // ⚠️ THE FOUR AUTHORING ASSISTS BELOW WERE MISSING FROM THIS ROSTER UNTIL r238, AND ADR-0084 §1
+    // FINDING 3 IS ABOUT EXACTLY THAT: the page showed 6 agents while `core/` held six AI call sites it
+    // never mentioned. A page whose purpose is "what does this thing do and what is switched on" is worse
+    // than no page when it under-reports — an operator cannot audit what they are not shown. All four are
+    // human-triggered draft-only assists, and saying so beside the two unattended agents above is the
+    // honest shape of the AI story rather than a flattering one.
+    {
+      id: 'payRuleDrafter',
+      kind: 'llm',
+      active: aiConfigured && payrollOn,
+      reasonKey: !payrollOn ? 'moduleOff' : aiConfigured ? 'draftOnlyOn' : 'noProvider',
+    },
+    {
+      id: 'reportDesigner',
+      kind: 'llm',
+      active: aiConfigured,
+      reasonKey: aiConfigured ? 'draftOnlyOn' : 'noProvider',
+    },
+    {
+      id: 'reviewDrafter',
+      kind: 'llm',
+      active: aiConfigured,
+      reasonKey: aiConfigured ? 'draftOnlyOn' : 'noProvider',
+    },
+    {
+      id: 'planDrafter',
+      kind: 'llm',
+      active: planDrafterOn && aiConfigured,
+      reasonKey: !planDrafterOn ? 'planDrafterOff' : aiConfigured ? 'draftOnlyOn' : 'noProvider',
+      offByDesign: !planDrafterOn,
     },
     {
       // ADR-0083 §2.5 replaced 0074's global dial with per-action-type autonomy, and NONE is granted.

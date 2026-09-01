@@ -11215,7 +11215,12 @@
       "duplicateEmploymentPay": "Orang yang sama dibayar di bawah lebih daripada satu pekerjaan tempoh ini. Sahkan ia dikehendaki.",
       "netSwing": "Semak apa yang berubah untuk pekerja ini kitaran ini.",
       "componentAppeared": "Sahkan item gaji baharu ini betul.",
-      "componentVanished": "Sahkan item gaji ini memang sepatutnya berhenti."
+      "componentVanished": "Sahkan item gaji ini memang sepatutnya berhenti.",
+      "hypothesisMissedIncrement": "Rakan sekerja pada larian ini naik dan orang ini tidak. Semak sama ada kenaikan atau pelarasan tertinggal.",
+      "hypothesisOutOfStepWithPeers": "Gaji orang ini berubah dengan cara yang tidak berlaku pada baki larian. Semak apa yang berubah untuk mereka.",
+      "hypothesisComponentDrift": "Kerja lebih masa atau elaun merupakan bahagian gaji orang ini yang sangat berbeza berbanding rakan sekerja. Semak catatan asasnya.",
+      "hypothesisDeductionOutlier": "Potongan mengambil bahagian gaji orang ini yang sangat berbeza berbanding rakan sekerja. Semak potongan berulang pada rekod.",
+      "hypothesisStatutoryCategoryDoubt": "Caruman berkanun merupakan bahagian gaji orang ini yang sangat berbeza berbanding rakan sekerja. Semak kategori caruman pada rekod."
     },
     "closeBlockedByAnomalies": "Pusingan ini tidak boleh ditutup selagi {count} pekerja disekat. Buka Pengecualian gaji untuk menyelesaikannya.",
     "closeBlockedBySwing": "Jumlah gaji pusingan ini berubah {movement}% berbanding kitaran lalu, melebihi had {threshold}%. Sahkan pusingan ini, atau naikkan had bagi syarikat ini.",
@@ -11225,7 +11230,15 @@
     "narrated": "{n} penemuan telah diterangkan.",
     "narrateNotConfigured": "Tiada penyedia AI disediakan untuk penyewa ini, jadi tiada apa untuk menerangkannya. Angka di bawah tidak terjejas.",
     "narrateRejected": "Penerangan itu dibuang: ia menyebut angka yang tidak disokong oleh nombor yang direkodkan. Angka di bawah tidak berubah.",
-    "narrateNothing": "Tiada penerangan dihasilkan. Angka di bawah tidak berubah."
+    "narrateNothing": "Tiada penerangan dihasilkan. Angka di bawah tidak berubah.",
+    "hypothesisLabel": "Pendapat kedua — untuk semakan sahaja",
+    "hypothesisHelp": "Pemeriksaan tetap telah melepaskan orang ini. Angka di bawah adalah milik kami, dikira semula daripada larian ini; model hanya mencadangkan tempat untuk dilihat, dan apa-apa cadangan yang tidak dapat kami sahkan semula telah dibuang sebelum anda melihatnya.",
+    "lookAgain": "Cari apa yang terlepas daripada pemeriksaan",
+    "hypothesisRaised": "{n} dibangkitkan untuk semakan.",
+    "hypothesisNone": "Tiada apa-apa lagi yang menonjol pada larian ini.",
+    "hypothesisDisabled": "Pendapat kedua belum dihidupkan untuk akaun anda.",
+    "hypothesisTooSmall": "Larian ini terlalu kecil untuk membandingkan pekerja antara satu sama lain.",
+    "hypothesisNotConfigured": "Tiada penyedia AI disediakan, jadi tiada pendapat kedua boleh diberikan."
   },
   "assistant": {
     "title": "Pembantu",
@@ -11292,7 +11305,19 @@
       "autonomy": "Bertindak sendiri",
       "autonomyDoes": "Meluluskan atau mengubah sesuatu tanpa manusia. Tiada apa dalam sistem ini melakukannya hari ini.",
       "actions": "Penutup",
-      "actionsDoes": "Mencari pengecualian yang dibangkitkan kerana ada sesuatu yang hilang daripada rekod pekerja — dan rekod itu kini memilikinya. Ia mencadangkan untuk menutupnya; anda meluluskan, dan setiap satu diperiksa semula ketika anda berbuat demikian. Ia tidak pernah mengubah rekod pekerja."
+      "actionsDoes": "Mencari pengecualian yang dibangkitkan kerana ada sesuatu yang hilang daripada rekod pekerja — dan rekod itu kini memilikinya. Ia mencadangkan untuk menutupnya; anda meluluskan, dan setiap satu diperiksa semula ketika anda berbuat demikian. Ia tidak pernah mengubah rekod pekerja.",
+      "hypotheses": "Pendapat kedua",
+      "hypothesesDoes": "Melihat semula pekerja yang telah dilepaskan oleh pemeriksaan tetap, dan membandingkan setiap seorang dengan rakan sekerja pada larian gaji yang sama. Ia hanya boleh meminta semakan — ia tidak pernah boleh menyekat larian gaji — dan apa-apa cadangan yang tidak dapat kami sahkan semula daripada angka anda sendiri dibuang sebelum anda melihatnya.",
+      "nudge": "Pengejar",
+      "nudgeDoes": "Melihat rekod siapa yang kekurangan sesuatu yang diperlukan oleh penggajian, dan memberitahu orang yang boleh membetulkannya — pekerja untuk butiran bank mereka sendiri, HR untuk perkara yang hanya HR boleh kunci masuk. Ia tidak menghantar apa-apa sehingga anda menghidupkannya.",
+      "payRuleDrafter": "Penggubal peraturan gaji",
+      "payRuleDrafterDoes": "Menukar ayat seperti “RM5 bagi setiap jam bekerja” kepada salah satu daripada set peraturan gaji yang tetap, yang kemudian diperiksa oleh kod yang sama digunakan oleh enjin penggajian. Ia tidak pernah menyimpan apa-apa — anda menyemak dan menekan simpan.",
+      "reportDesigner": "Pereka laporan",
+      "reportDesignerDoes": "Menukar penerangan sesuatu laporan kepada draf susun atur, diperiksa terhadap peraturan yang sama dikuatkuasakan oleh pembina laporan. Ia melihat bentuk data anda, bukan data itu sendiri.",
+      "reviewDrafter": "Penggubal penilaian",
+      "reviewDrafterDoes": "Merangka kata-kata penilaian prestasi seorang pengurus daripada apa yang telah direkodkan. Pengurus menyunting dan memilikinya; tiada apa disimpan bagi pihak mereka.",
+      "planDrafter": "Penggubal pelan",
+      "planDrafterDoes": "Merangka jawapan kepada permintaan penambahbaikan yang dibangkitkan dari dalam produk. Ini alat kami sendiri, bukan ciri pelan anda."
     },
     "why": {
       "detectorsOn": "Berjalan pada setiap proses gaji yang diproses.",
@@ -11306,7 +11331,13 @@
       "assistantOn": "Anda mempunyai akses kepada pembantu.",
       "assistantNoGrant": "Belum dihidupkan untuk anda. Pentadbir menghidupkannya bagi setiap orang, di bawah Pentadbiran → Pengguna.",
       "autonomyByDesign": "Sengaja dimatikan. Tiada apa diluluskan atau diubah tanpa manusia, dan itu hanya akan berubah satu tindakan pada satu masa, apabila kami dapat menunjukkan sistem cukup kerap bersetuju dengan orang anda.",
-      "actionsOn": "Mencadangkan pada skrin Tindakan ejen. Tiada apa-apa ditutup sehingga anda meluluskannya."
+      "actionsOn": "Mencadangkan pada skrin Tindakan ejen. Tiada apa-apa ditutup sehingga anda meluluskannya.",
+      "hypothesesOn": "Berjalan setiap malam ke atas pekerja yang telah dilepaskan oleh pemeriksaan tetap. Apa-apa yang dibangkitkan adalah untuk semakan sahaja dan tidak pernah menyekat larian gaji.",
+      "hypothesesOff": "Belum dihidupkan. Pemeriksaan tetap masih berjalan; ini ialah semakan tambahan yang membandingkan setiap pekerja dengan rakan sekerja, dan ia kekal dimatikan sehingga anda memintanya.",
+      "nudgeOn": "Dihidupkan. Peringatan dihantar pada larian malam.",
+      "nudgeOff": "Belum dihidupkan. Tiada sesiapa dihubungi secara automatik sehingga anda memintanya.",
+      "draftOnlyOn": "Penyedia telah disediakan. Ia merangka hanya apabila anda minta, dan tiada apa disimpan sehingga anda berkata begitu.",
+      "planDrafterOff": "Sengaja dimatikan. Ini alat Stradaverse sendiri, bukan sebahagian daripada pelan anda."
     },
     "domainsTitle": "Apa yang dipantau",
     "domainsIntro": "Gaji ialah bidang pertama. Mesin yang sama dibina untuk meliputi yang lain, dan ia disenaraikan di sini supaya anda nampak apa yang akan datang.",

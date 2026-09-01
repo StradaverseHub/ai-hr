@@ -11215,7 +11215,12 @@
       "duplicateEmploymentPay": "The same person is paid under more than one employment this period. Confirm that is intended.",
       "netSwing": "Check what changed for this person this cycle.",
       "componentAppeared": "Confirm this new pay item is correct.",
-      "componentVanished": "Confirm this pay item was meant to stop."
+      "componentVanished": "Confirm this pay item was meant to stop.",
+      "hypothesisMissedIncrement": "Colleagues on this run moved up and this person did not. Check whether an increment or an adjustment was missed.",
+      "hypothesisOutOfStepWithPeers": "This person’s pay moved in a way the rest of the run did not. Check what changed for them.",
+      "hypothesisComponentDrift": "Overtime or allowance is a very different share of this person’s pay than their colleagues’. Check the underlying entries.",
+      "hypothesisDeductionOutlier": "Deductions take a very different share of this person’s pay than their colleagues’. Check the recurring deductions on the record.",
+      "hypothesisStatutoryCategoryDoubt": "Statutory contributions are a very different share of this person’s pay than their colleagues’. Check the contribution category on the record."
     },
     "closeBlockedByAnomalies": "This run cannot be closed while {count} employee(s) are blocked. Open Payroll exceptions to resolve them.",
     "closeBlockedBySwing": "This run's total pay moved {movement}% against last cycle, beyond the {threshold}% limit. Confirm the run, or raise the limit for this company.",
@@ -11225,7 +11230,15 @@
     "narrated": "Explained {n} finding(s).",
     "narrateNotConfigured": "No AI provider is set up for this tenant, so there is nothing to explain with. The figures below are unaffected.",
     "narrateRejected": "The explanation was discarded: it named a figure the recorded numbers do not support. The figures below are unchanged.",
-    "narrateNothing": "No explanation was produced. The figures below are unchanged."
+    "narrateNothing": "No explanation was produced. The figures below are unchanged.",
+    "hypothesisLabel": "Second opinion — for review only",
+    "hypothesisHelp": "The fixed checks cleared this person. The figures below are ours, recalculated from this run; the model only suggested where to look, and anything it suggested that we could not re-derive was discarded before you saw it.",
+    "lookAgain": "Look for what the checks missed",
+    "hypothesisRaised": "{n} raised for a second look.",
+    "hypothesisNone": "Nothing else stood out on this run.",
+    "hypothesisDisabled": "The second opinion is not switched on for your account.",
+    "hypothesisTooSmall": "This run is too small to compare people against each other.",
+    "hypothesisNotConfigured": "No AI provider is set up, so there is no second opinion to give."
   },
   "assistant": {
     "title": "Assistant",
@@ -11292,7 +11305,19 @@
       "autonomy": "Acting on its own",
       "autonomyDoes": "Clearing or changing anything without a person. Nothing in this system does this today.",
       "actions": "The closer",
-      "actionsDoes": "Finds exceptions that were raised because something was missing from an employee record — and that record now has it. It proposes closing them; you approve, and each one is checked again as you do. It never changes an employee record."
+      "actionsDoes": "Finds exceptions that were raised because something was missing from an employee record — and that record now has it. It proposes closing them; you approve, and each one is checked again as you do. It never changes an employee record.",
+      "hypotheses": "The second opinion",
+      "hypothesesDoes": "Looks again at the people the fixed checks cleared, and compares each of them with their colleagues on the same payroll run. It can only ever ask for a second look — it can never block a run — and anything it suggests that we cannot re-derive from your own figures is thrown away before you see it.",
+      "nudge": "The chaser",
+      "nudgeDoes": "Notices whose record is missing something payroll needs, and tells the one person who can fix it — the employee for their own bank details, HR for everything only HR can key in. It sends nothing until you switch it on.",
+      "payRuleDrafter": "The pay-rule drafter",
+      "payRuleDrafterDoes": "Turns a sentence like “RM5 for every hour worked” into one of a fixed set of pay rules, which is then checked by the same code the payroll engine uses. It never saves anything — you review it and press save.",
+      "reportDesigner": "The report designer",
+      "reportDesignerDoes": "Turns a description of a report into a draft layout, checked against the same rules the report builder enforces. It sees the shape of your data, never the data.",
+      "reviewDrafter": "The review drafter",
+      "reviewDrafterDoes": "Drafts the wording of a manager’s performance review from what has already been recorded. The manager edits it and owns it; nothing is saved on their behalf.",
+      "planDrafter": "The plan drafter",
+      "planDrafterDoes": "Drafts a reply to an improvement request raised from inside the product. This is our own tooling rather than a feature of your plan."
     },
     "why": {
       "detectorsOn": "Running on every processed payroll run.",
@@ -11306,7 +11331,13 @@
       "assistantOn": "You have access to the assistant.",
       "assistantNoGrant": "Not switched on for you. An administrator turns it on per person, under Administration → Users.",
       "autonomyByDesign": "Deliberately off. Nothing is cleared or changed without a person, and that will only change one action at a time, once we can show the system agrees with your people often enough to earn it.",
-      "actionsOn": "Proposing on the Agent actions screen. Nothing is closed until you approve it."
+      "actionsOn": "Proposing on the Agent actions screen. Nothing is closed until you approve it.",
+      "hypothesesOn": "Running every night on the people the fixed checks cleared. Anything it raises is for review only and never blocks a payroll run.",
+      "hypothesesOff": "Not switched on. The fixed checks still run; this is the extra look that compares each person with their colleagues, and it stays off until you ask for it.",
+      "nudgeOn": "Switched on. Reminders go out on the nightly run.",
+      "nudgeOff": "Not switched on. Nobody is contacted automatically until you ask for it.",
+      "draftOnlyOn": "A provider is set up. It drafts only when you ask, and nothing is saved until you say so.",
+      "planDrafterOff": "Deliberately off. This is Stradaverse’s own tooling, not part of your plan."
     },
     "domainsTitle": "What it watches",
     "domainsIntro": "Payroll is the first area. The same machinery is built to cover the others, and they are listed here so you can see what is coming rather than assuming payroll is all there is.",

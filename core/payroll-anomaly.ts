@@ -30,11 +30,13 @@
  */
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { recordDecision } from './agent-proposal';
 import { appendEvent, actorOf } from '../db/events';
 import * as schema from '../db/schema';
 import { packFor } from '../localization/registry';
 import {
   DETECTORS,
+  HYPOTHESIS_DETECTOR_ID,
   resolveDisposition,
   type Detector,
   type DetectorContext,
@@ -565,6 +567,23 @@ export async function evaluateBatchAnomalies(
 }
 
 /**
+ * The per-employee contexts for one batch, WITHOUT evaluating anything.
+ *
+ * ADR-0084 §2.6's hypothesis layer needs the same slice of the run the detectors get — this cycle's
+ * figures and the prior one's — but it must run OUTSIDE a transaction, because it calls a provider and
+ * writes to the ledger (core/agent-proposal.ts property 2). So it reads through this rather than
+ * through `evaluateBatchAnomalies`, which is transactional by design and stays that way.
+ *
+ * Null when the batch does not exist, matching `gatherContext`.
+ */
+export async function loadBatchContexts(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<DetectorContext[] | null> {
+  return withTenant(ctx, async (tx) => (await gatherContext(tx, ctx.tenantId, p.batchId))?.contexts ?? null);
+}
+
+/**
  * The open BLOCK verdicts standing against a batch. `closeBatch` refuses while this is non-empty.
  *
  * "Open" means live and unresolved: a superseded verdict is history, and a resolved one is a human
@@ -623,6 +642,38 @@ export async function supersedeVerdictsForEmployments(
 }
 
 /**
+ * The ledger rows a resolution answers — the ONLY place `anomaly_hypothesis` gets an agreement rate.
+ *
+ * ⚠️ **IT REFUSES TO GUESS.** A resolution is recorded per VERDICT, not per finding, so it is
+ * attributable to a hypothesis only when EVERY finding on that verdict is one. A verdict carrying a rule
+ * finding as well tells us nothing about which of them the operator meant, and a misattributed agreement
+ * rate is worse than a missing one — it is the number ADR-0084 §2.8 would grant autonomy on.
+ * `proposeHypotheses` only ever asks about AUTO-CLEARED employees precisely so this holds by
+ * construction; the check is here because "by construction" has to survive the next person.
+ *
+ * Only UNDECIDED proposals are returned: the first human answer about a given shape is the one that
+ * counts, not the last operator to re-resolve a re-materialised copy of it.
+ */
+async function hypothesisProposalsToStamp(tx: Tx, verdictId: string): Promise<string[]> {
+  const findings = await tx
+    .select({
+      detectorId: schema.payrollAnomalyFinding.detectorId,
+      proposalId: schema.payrollAnomalyFinding.proposalId,
+    })
+    .from(schema.payrollAnomalyFinding)
+    .where(eq(schema.payrollAnomalyFinding.verdictId, verdictId));
+  if (findings.length === 0) return [];
+  if (!findings.every((f) => f.detectorId === HYPOTHESIS_DETECTOR_ID)) return [];
+  const ids = findings.map((f) => f.proposalId).filter((x): x is string => x !== null);
+  if (ids.length === 0) return [];
+  const open = await tx
+    .select({ id: schema.agentProposal.id })
+    .from(schema.agentProposal)
+    .where(and(inArray(schema.agentProposal.id, ids), isNull(schema.agentProposal.decision)));
+  return open.map((r) => r.id);
+}
+
+/**
  * Record a human's disposition of a flagged verdict.
  *
  * `false_positive` is the numerator of the false-positive rate, and `raised` — a human finding something
@@ -635,7 +686,7 @@ export async function resolveAnomalyVerdict(
   ctx: SessionContext,
   p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
 ): Promise<void> {
-  return withTenant(ctx, async (tx) => {
+  const toStamp = await withTenant(ctx, async (tx) => {
     const [row] = await tx
       .select({
         id: schema.payrollAnomalyVerdict.id,
@@ -669,7 +720,26 @@ export async function resolveAnomalyVerdict(
       subjectEmploymentId: row.employmentId,
       payload: { batchId: row.batchId, disposition: row.disposition, resolution: p.resolution, note: p.note ?? null },
     });
+
+    // ADR-0084 §2.3 — which ledger rows this human just answered. Read INSIDE the transaction (it is a
+    // read of the verdict being resolved) and stamped OUTSIDE it, below.
+    return hypothesisProposalsToStamp(tx, p.verdictId);
   });
+
+  /**
+   * ⚠️ **THE ONLY REAL AGREEMENT RATE THE PAYROLL SIDE OF THIS PRODUCT HAS.** `anomaly_narration` has no
+   * human decision — nobody approves prose — and `close_fixed_upstream`'s is structurally 1.0 (r236).
+   * Here an operator looked at a hypothesis a model raised and said whether it was a real problem, which
+   * is precisely ADR-0084 §2.3's `agreement rate` and the first payroll input to §2.8's autonomy test.
+   *
+   * `false_positive` is the model being WRONG. `accepted` and `fixed_upstream` are both it being right —
+   * they differ in what the human then did about it, not in whether there was something to do.
+   *
+   * OUTSIDE the transaction above: `recordDecision` opens its own (agent-proposal property 2), and a
+   * nested `withTenant` holds a second pooled connection for the duration of the outer one.
+   */
+  const decision = p.resolution === 'false_positive' ? 'declined' : 'approved';
+  for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision });
 }
 
 /**

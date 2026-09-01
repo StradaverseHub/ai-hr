@@ -221,6 +221,52 @@ down. A hypothesis detector proposes what a rule cannot:
   discarded and never becomes a finding.
 - **Ceiling:** severity `review` only, forever. §2.2's first corollary.
 
+**As built (r238, `core/payroll-hypothesis.ts`, migration `0454`).** Six decisions the section did not
+settle, one of which diverges from the shape it printed:
+
+- **CANDIDATES ARE THE AUTO-CLEARED, AND ONLY THE AUTO-CLEARED.** The section did not say who to ask
+  about. Asking about somebody the rules already flagged spends a call on a row a human is about to read
+  anyway — and, more importantly, it destroys attribution: a resolution is recorded per VERDICT, so on a
+  verdict carrying both a rule finding and a hypothesis, "not a real problem" says nothing about which one
+  was wrong. Restricting to auto-clears makes the hypothesis the only finding on the row by construction,
+  which is what lets §2.3's agreement rate mean what it says. It also makes this **the machine performing
+  its own false-negative check** — the rate ADR-0076 §5 says governs autonomy, and which until now had
+  only a human route to a numerator.
+- **`expectedRange` IS COMPUTED, NOT PROPOSED.** §2.6's output shape offered it optionally. It is a
+  deterministic quantity (the cohort's own middle for the cited feature), so letting a model emit one adds
+  a number that must then be re-derived, with no upside — AGENTS 28's shape exactly. The adjudicator
+  attaches the group's median for every cited feature instead, and the model emits no number at all.
+  **There is therefore nothing in the output to hallucinate except a label and a field name, both closed
+  vocabularies, both re-derived** — the strongest form this check has taken anywhere in the product.
+- **THE ADJUDICATOR'S PREDICATES ARE NECESSARY, NEVER SUFFICIENT, AND THE FILE SAYS SO.** The fair
+  objection to this layer is "your predicates are deterministic, so why is a model here at all?" On a real
+  run several claims' predicates hold at once for most candidates, because the deduction share is
+  arithmetic on the pay movement. A rule firing on "any necessary condition holds" would flag nearly every
+  candidate. The model's contribution is which explanation the whole vector supports — and, the majority
+  answer, **that none of them does**. `nothing_notable` is a valid, accepted output that produces no
+  finding, and no rule can produce it.
+- **A STATISTICAL FLOOR IS TWO THINGS, AND ONLY ONE IS OBVIOUS.** A z-score alone flags every rounding
+  difference, because in an ordinary month most people's pay does not move at all and the spread is near
+  zero. Every citation must clear a z **and** an absolute floor measured as a deviation from the group's
+  own middle. The z-score itself is median/MAD-based, falling back to σ when MAD is zero — which is the
+  NORMAL case for "how much did your pay change", and a MAD-only implementation would have produced no
+  candidates at all on exactly the runs this layer is for.
+- **THE LEDGER DOUBLES AS THE MEMORY, AND THAT IS WHERE §2.4'S LEARN HALF FIRST BECOMES REAL.** The
+  nightly sweep supersedes and rewrites every verdict, so without one this layer would re-ask a provider
+  the same question about the same unchanged figures every night forever. `input_digest` already defines
+  when two questions are the same question; one further clause makes it a memory rather than a cache:
+  **a hypothesis a human resolved as `false_positive` is never raised again on identical figures.** The
+  system stops arguing with an operator who has already answered, for the price of a WHERE clause.
+- **It is off per tenant by default** (`payroll.anomaly_hypotheses_enabled`), for §2.5's two reasons: it
+  spends the tenant's own BYOK budget on a schedule nobody triggered, and it puts rows a MODEL chose in
+  their queue. The severity ceiling is NOT a setting and never will be — `'review'` is a literal appearing
+  exactly once in the file, and a test asserts that.
+- **The roster stopped under-reporting in the same round** (§1 finding 3, §3's "not a build"). All six AI
+  call sites in `core/` are now on the How it works page, plus the two unattended agents. The guard that
+  was supposed to catch a missing string had a `[a-z_]` character class and could not see a camelCase id,
+  so four of them would have gone unguarded — **a source-scanning guard's character class is part of its
+  coverage, not a detail.**
+
 ### 2.7 Input-side triage: the largest untouched surface
 
 Every payroll error is born upstream — in a claim, a timesheet, an overtime entry, a change request. It is
@@ -259,8 +305,8 @@ earlier items generating real history.
 
 **Phase 2 — put AI where judgment is.** Needs Phase 1's substrate, not its data.
 
-3. **Hypothesis detection (§2.6).**
-4. **Input-side triage (§2.7).**
+3. ~~**Hypothesis detection (§2.6).**~~ ✅ r238.
+4. **Input-side triage (§2.7).** — next.
 
 **Phase 3 — close the learning loop.** Needs production history from Phases 1–2.
 

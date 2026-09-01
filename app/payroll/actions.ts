@@ -39,6 +39,7 @@ import {
 import { PayrollCounterpartClosedError, PayrollCoverageIncompleteError } from '@/core/payroll-coverage';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
 import { narrateVerdict } from '@/core/payroll-anomaly-narrate';
+import { proposeHypotheses } from '@/core/payroll-hypothesis';
 // 9066bd6c — the two ENTITLEMENT refusals removeEmployeePayroll throws BEFORE its reason check. Both are
 // reachable by a direct post (the entry points hide their links while the setting is off, and the route
 // 404s without the module), and without them the catch below pushed the service's raw English into the
@@ -705,6 +706,39 @@ export async function narrateAnomalyAction(formData: FormData) {
       : outcome.rejected > 0
         ? t('narrateRejected')
         : t('narrateNothing');
+  redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(msg)}`);
+}
+
+/**
+ * ADR-0084 §2.6 — ask the second-opinion layer to look at what the fixed checks cleared.
+ *
+ * The nightly sweep already runs this unattended, which is the point of the whole ADR; the button exists
+ * so an operator can ask NOW, and because a layer nobody can trigger by hand is a layer nobody can
+ * evaluate. Every outcome gets its own sentence — "not switched on", "run too small", "no provider" and
+ * "nothing stood out" are four different facts, and rendering any of them as success would be the
+ * "nothing happened, reported as fine" failure `narrateAnomalyAction` above already refuses.
+ */
+export async function proposeHypothesesAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const t = await getTranslations('anomaly');
+  let run: Awaited<ReturnType<typeof proposeHypotheses>>;
+  try {
+    run = await proposeHypotheses(s, { batchId });
+  } catch (e) {
+    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}/anomalies`);
+  revalidatePath(`/payroll/${batchId}`);
+  const msg = run.disabled
+    ? t('hypothesisDisabled')
+    : run.cohortTooSmall
+      ? t('hypothesisTooSmall')
+      : run.raised > 0
+        ? t('hypothesisRaised', { n: run.raised })
+        : run.notConfigured
+          ? t('hypothesisNotConfigured')
+          : t('hypothesisNone');
   redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(msg)}`);
 }
 

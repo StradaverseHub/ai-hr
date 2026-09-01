@@ -419,6 +419,20 @@ export const DETECTORS: readonly Detector[] = [
   componentVanished,
 ];
 
+/**
+ * ADR-0084 §2.6 — the detector id every AI-proposed hypothesis finding carries.
+ *
+ * ⚠️ **DELIBERATELY NOT IN `DETECTORS`, and it never can be.** Everything in that registry is PURE — no
+ * I/O, no LLM, no clock — which is the property that makes a verdict reproducible from stored inputs
+ * during an audit. A hypothesis is produced by a model outside a transaction and adjudicated afterwards,
+ * so it lives in `core/payroll-hypothesis.ts` and only borrows the finding shape. The id is declared HERE
+ * rather than there so the resolve path can recognise one without importing the layer that writes them.
+ *
+ * The severity ceiling is `review`, forever, and it is a literal in that file: a model may never raise a
+ * `block` (ADR-0084 §2.2), because `resolveDisposition` below is derived and never scored.
+ */
+export const HYPOTHESIS_DETECTOR_ID = 'hypothesis';
+
 /** §2.5 — derived, never scored. */
 export function resolveDisposition(findings: readonly Finding[]): Disposition {
   if (findings.some((f) => f.severity === 'block')) return 'block';
