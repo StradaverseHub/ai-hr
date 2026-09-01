@@ -123,6 +123,10 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
   // "is it on" is a real question with a real answer rather than a constant.
   const hypothesesOn = payrollOn && settingEnabled(ctx, 'payroll.anomaly_hypotheses_enabled');
   const nudgeOn = settingEnabled(ctx, 'notifications.readiness_nudge_enabled');
+  // ADR-0084 §2.7 — needs the billable claims module AND the tenant switch. Both, because a tenant
+  // without claims has nothing to triage and a tenant with claims still has to ask for it.
+  const claimsOn = isModuleEnabled(ctx, 'claims');
+  const triageOn = claimsOn && settingEnabled(ctx, 'claims.input_triage_enabled');
   // Operator tooling, and platform-scoped — a customer cannot switch it on for themselves.
   const planDrafterOn = settingEnabled(ctx, 'feedback.ai_planning_enabled');
 
@@ -203,6 +207,26 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
           ? 'hypothesesOff'
           : aiConfigured
             ? 'hypothesesOn'
+            : 'noProvider',
+    },
+    {
+      // ADR-0084 §2.7, r240 — the input end. It sits after `hypotheses` because the pair is the honest
+      // shape of the loop: one reads what payroll PRODUCED, the other reads what was PUT IN. It is also
+      // the only agent here that can put a question in front of an ordinary employee about their own
+      // money, and the row says so rather than leaving that to the reader.
+      id: 'triage',
+      kind: 'llm',
+      active: triageOn && aiConfigured,
+      // ⚠️ `claimsOn`, hoisted, NOT `isModuleEnabled(ctx, 'claims')` inline. The roster guard reads every
+      // quoted string in a `reasonKey:` expression and demands an i18n key for it, so a module code
+      // written inline here becomes a phantom reason key the page never renders. Keep this expression to
+      // reason keys only.
+      reasonKey: !claimsOn
+        ? 'moduleOff'
+        : !triageOn
+          ? 'triageOff'
+          : aiConfigured
+            ? 'triageOn'
             : 'noProvider',
     },
     {

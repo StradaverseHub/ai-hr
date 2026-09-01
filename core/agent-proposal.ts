@@ -76,6 +76,21 @@ export type ProposalTypeId =
    */
   | 'anomaly_hypothesis'
   /**
+   * ADR-0084 §2.7 — one expense claim read for whether anything about it needs asking, BEFORE an approver
+   * spends judgment on it. Adjudicated by `adjudicateTriage`, which borrows `narrationIsFaithful` for the
+   * figure check §2.7 requires.
+   *
+   * ⚠️ **ITS `decision` COLUMN IS DELIBERATELY NEVER WRITTEN, AND THAT IS A FINDING RATHER THAN AN
+   * OMISSION.** The query goes to the employee who filed the claim, so the only observable action is them
+   * CANCELLING it — "I checked and it is fine" leaves no trace at all. Stamping `approved` on a
+   * cancellation alone would make the agreement rate structurally 1.0, which is exactly the defect r236
+   * recorded for `close_fixed_upstream`; stamping `declined` on silence would manufacture a number out of
+   * an absence. The honest measure for this type is the ACTION rate — cancellations within the settle
+   * window ÷ queries raised — which is derivable from this table and `claim_request.status` without
+   * abusing a column that means something else.
+   */
+  | 'input_triage'
+  /**
    * ADR-0084 §2.5 — one nudge raised about one person's one gap. DETERMINISTIC, and **the only type in
    * the product with a real agreement rate**: the human's verdict is observable in the record itself,
    * because the gap either closed within the settle window or it did not. Everything else either has no

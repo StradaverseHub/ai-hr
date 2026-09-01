@@ -146,9 +146,9 @@ describe('ADR-0083 — the explainer states what does NOT run', () => {
     // unguarded: exactly the MISSING_MESSAGE crash this case exists to prevent, hidden by the guard
     // itself. A character class in a source-scanning guard is part of its coverage, not a detail.
     const ids = [...body.matchAll(/^\s*id: '([A-Za-z_]+)',$/gm)].map((m) => m[1]!);
-    // The roster is twelve rows as of r238; a bare `toBeGreaterThan(0)` here would let a regex that
+    // The roster is thirteen rows as of r240; a bare `toBeGreaterThan(0)` here would let a regex that
     // stopped matching pass silently, which is the vacuity this whole file guards against elsewhere.
-    expect(ids.length, `ids found: ${ids.join(', ')}`).toBeGreaterThanOrEqual(12);
+    expect(ids.length, `ids found: ${ids.join(', ')}`).toBeGreaterThanOrEqual(13);
     for (const id of ids) {
       expect(agent[id], `controlTower.agent.${id}`).toBeTruthy();
       expect(agent[`${id}Does`], `controlTower.agent.${id}Does`).toBeTruthy();
@@ -165,7 +165,11 @@ describe('ADR-0083 — the explainer states what does NOT run', () => {
     const reasons = [...body.matchAll(/reasonKey:[\s\S]*?(?=\n\s{6}\w+:|\n\s{4}\},)/g)].flatMap((m) =>
       [...m[0].matchAll(/'([A-Za-z]+)'/g)].map((q) => q[1]!),
     );
-    expect(reasons.length, `reasons found: ${reasons.join(', ')}`).toBeGreaterThanOrEqual(18);
+    expect(reasons.length, `reasons found: ${reasons.join(', ')}`).toBeGreaterThanOrEqual(20);
+    // ⚠️ EVERY quoted string in the expression is demanded as a reason key, INCLUDING one that is not a
+    // reason at all. r240 briefly wrote `isModuleEnabled(ctx, 'claims')` inline in a reasonKey ternary and
+    // this case then required a `why.claims` string the page never renders. The guard is right to be
+    // blunt; the fix is to hoist a module check into a variable and keep the expression to reason keys.
     for (const key of reasons) expect(why[key], `controlTower.why.${key}`).toBeTruthy();
   });
 

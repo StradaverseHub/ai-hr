@@ -11317,7 +11317,9 @@
       "reviewDrafter": "Penggubal penilaian",
       "reviewDrafterDoes": "Merangka kata-kata penilaian prestasi seorang pengurus daripada apa yang telah direkodkan. Pengurus menyunting dan memilikinya; tiada apa disimpan bagi pihak mereka.",
       "planDrafter": "Penggubal pelan",
-      "planDrafterDoes": "Merangka jawapan kepada permintaan penambahbaikan yang dibangkitkan dari dalam produk. Ini alat kami sendiri, bukan ciri pelan anda."
+      "planDrafterDoes": "Merangka jawapan kepada permintaan penambahbaikan yang dibangkitkan dari dalam produk. Ini alat kami sendiri, bukan ciri pelan anda.",
+      "triage": "Pembaca tuntutan",
+      "triageDoes": "Membaca setiap tuntutan perbelanjaan sebaik difailkan dan, jika penerangannya tidak sepadan dengan tuntutan itu, bertanya kepada orang yang memfailkannya — sebelum pelulus menghabiskan masa padanya. Ia hanya boleh bertanya: ia tidak boleh menolak, mengubah atau memutuskan sesuatu tuntutan."
     },
     "why": {
       "detectorsOn": "Berjalan pada setiap proses gaji yang diproses.",
@@ -11337,7 +11339,9 @@
       "nudgeOn": "Dihidupkan. Peringatan dihantar pada larian malam.",
       "nudgeOff": "Belum dihidupkan. Tiada sesiapa dihubungi secara automatik sehingga anda memintanya.",
       "draftOnlyOn": "Penyedia telah disediakan. Ia merangka hanya apabila anda minta, dan tiada apa disimpan sehingga anda berkata begitu.",
-      "planDrafterOff": "Sengaja dimatikan. Ini alat Stradaverse sendiri, bukan sebahagian daripada pelan anda."
+      "planDrafterOff": "Sengaja dimatikan. Ini alat Stradaverse sendiri, bukan sebahagian daripada pelan anda.",
+      "triageOn": "Membaca tuntutan baharu setiap malam dan bertanya kepada orang yang memfailkannya. Tiada apa yang ditanyanya boleh menolak atau mengubah sesuatu tuntutan.",
+      "triageOff": "Belum dihidupkan. Tuntutan dibaca oleh manusia sahaja, dan tiada sesiapa ditanya apa-apa secara automatik."
     },
     "domainsTitle": "Apa yang dipantau",
     "domainsIntro": "Gaji ialah bidang pertama. Mesin yang sama dibina untuk meliputi yang lain, dan ia disenaraikan di sini supaya anda nampak apa yang akan datang.",
