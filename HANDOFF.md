@@ -124,6 +124,30 @@ not been switched on. Turning it on is two steps by hand: activate the billable 
 then grant the people who should have it from Administration → Users. **Do not read the zero counts as a
 defect** — that is what an unactivated billable module looks like.
 
+⚠️⚠️ **PRODUCTION HAS NO AI PROVIDER AT ALL, AND NOTHING IN THIS FILE SAID SO UNTIL r238 WENT LOOKING.**
+Measured on the box, both halves of `resolveActiveAiConfig`: `ai_provider_config` is **EMPTY (0 rows)**,
+and `.env.production` sets **none** of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` /
+`GEMINI_API_KEY` (the env fallback in `lib/ai/registry.ts`). **So every LLM surface in the product is
+inert on production** — the narrator has never written a sentence, the assistant could not answer if it
+were granted, and the four authoring assists return `not_configured`. The DETERMINISTIC layers are
+unaffected and are what has been running all along: the eleven detectors, the sweep, record readiness, the
+action layer, and the nudge agent's shipped template body.
+**Do not read a zero AI count on production as a defect in the feature.** Adding a provider is
+Administration → AI, or one env key on the box; until then the honest description of this product's AI is
+"built, gated, and switched off at the source".
+
+⚠️ **AND IT IS WHY SWITCHING `payroll.anomaly_hypotheses_enabled` ON TODAY WOULD DO NOTHING** — the layer
+would report `notConfigured` and record nothing, which is correct behaviour, not a fault. Two things must
+be true first: a provider, and a run big enough to have a peer group. **Only ONE processed batch on
+production clears `MIN_COHORT` (8): `2026-08`, with 37 payslips.** The others carry 2, 4, 6, 6, 7 and 2 —
+every one of them would report `cohortTooSmall`. Live verdicts today: **30 auto_clear, 63 review, 37
+block**, so the candidate pool is those 30 minus whoever is not statistically unusual.
+
+⚠️ **`agent_proposal` IS STILL EMPTY ON PRODUCTION (0 rows).** No proposal of any type has ever been
+recorded, so all three rates remain NULL and ADR-0084 §2.8's autonomy test has no input yet. That is the
+expected state, not a defect: the narrator needs a provider, the nudge agent and the hypothesis layer are
+both switched off, and `close_fixed_upstream` needs an operator to press the button once.
+
 ⚠️ **BOTH UNATTENDED AGENTS ARE DEPLOYED AND OFF EVERYWHERE — 0 tenants switched on, 0 proposals of
 either kind** (verified on production). The hypothesis layer (r238) additionally needs an AI provider; with
 the setting on and no provider it records NOTHING and reports `notConfigured`, which is correct rather than
