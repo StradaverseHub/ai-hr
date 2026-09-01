@@ -31,10 +31,26 @@ export function statusLabel(status: string, t: T, isOvertime: boolean): string {
   return t('leaveStatus.pending');
 }
 
+/**
+ * THE STATUS VOCABULARY, ONE LIST. `attendance_correction_status` is pending | approved | rejected |
+ * cancelled and NOTHING ELSE — there is no `completed`, nothing in the schema or the service could ever
+ * write one, and a filter offering one would return an empty list forever while looking like a real state.
+ * r239 pulled the tuple up here (from a copy in the request-status page's filter row and a second copy in
+ * its query parser) so the set exists once: the filter pills, the URL whitelist and the colour map below
+ * are all derived from it, and test/attendance-screens-layout.test.ts pins it against
+ * db/schema.ts's `attendanceCorrectionStatusEnum`. A fifth status therefore cannot reach this screen
+ * without someone deciding, in a migration and in that test, that it should.
+ */
+export const REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
 // The request-status colours. Deliberately NOT components/ui's StatusBadge: that palette is the Employee
 // Status vocabulary (probation/active/resigned…), which has no entry for pending/approved/rejected —
 // every pill here would render neutral grey.
-const REQUEST_STATUS: Record<string, string> = {
+// Keyed by RequestStatus rather than by `string`, so a status added to the tuple above without a colour is
+// a type error rather than a silently grey pill.
+const REQUEST_STATUS: Record<RequestStatus, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
@@ -44,7 +60,7 @@ const REQUEST_STATUS: Record<string, string> = {
 export function Pill({ status, label }: { status: string; label: string }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REQUEST_STATUS[status] ?? 'bg-muted text-muted-foreground'}`}
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REQUEST_STATUS[status as RequestStatus] ?? 'bg-muted text-muted-foreground'}`}
     >
       {label}
     </span>

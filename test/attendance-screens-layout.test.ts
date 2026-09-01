@@ -30,6 +30,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { attendanceCorrectionStatusEnum } from '../db/schema';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -153,5 +154,111 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     expect(read('app/admin/attendance-policy/schedule/page.tsx')).toContain(
       "const SELF = '/admin/attendance-policy/schedule'",
     );
+  });
+});
+
+
+/**
+ * r239 — My Attendance Request Status: two faces of ONE list, and four statuses.
+ *
+ * The reporter approved a purely presentational change: a narrow screen gets one block per request with
+ * the date and the outcome on the same line and the detail underneath, while a wide monitor keeps the
+ * seven-column table. Nothing about the read, the filter or the status colours moved.
+ *
+ * Nothing pinned this screen's arrangement before — the only assertion it had anywhere was
+ * test/me-tabs.test.ts's "cancel is on the list", which stays true whatever shape the row takes. So these
+ * cases are ADDED rather than rewritten, and each pins a property the plan named out loud:
+ *
+ *   A. BOTH faces are rendered and CSS picks one. Deleting either half, or letting both show at once, is
+ *      invisible to tsc, to the suite and to a 200 — the page renders either way.
+ *   B. NO client state. A `useState`/`matchMedia` switch would turn a server-rendered list into an island
+ *      that flashes the wrong shape; the plan forbade it in as many words.
+ *   C. FOUR statuses, and they are the DATABASE's four. This is the case the plan promised so that a fifth
+ *      ("Completed") cannot arrive by accident: the screen's tuple is compared against
+ *      `attendance_correction_status` itself, and the filter pills and the URL whitelist are required to
+ *      DERIVE from that tuple rather than restate it. A `completed` filter would return an empty list
+ *      forever while looking like a real state.
+ *   D. Cancel is a button, drawn from ONE rule. The styling is what the reporter asked to change; the
+ *      condition `!isOvertime && pending` is a real state rule (an overtime plan is withdrawn from Self
+ *      Overtime instead) and must exist exactly once, not once per face.
+ *
+ * Limits: source-static, like the rest of this file. It cannot see a class that never reaches the browser
+ * — the manual render walk at two widths is the backstop.
+ */
+describe('r239 — My Attendance Request Status: table on a wide screen, blocks on a narrow one', () => {
+  const PAGE = read('app/attendance/request-status/page.tsx');
+  const UI = read('app/attendance/request-ui.tsx');
+
+  /** Source with comments removed. These guards read code, and a comment that spells out the very token
+   *  being forbidden reads to a plain `includes()` as the thing itself (AGENTS 27). */
+  const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('A. renders BOTH faces, and shows exactly one of them at a time', () => {
+    // The table keeps the shared wrapper class and gains a visibility rule; the blocks are its inverse.
+    // Asserting the PAIR is the point: one without the other is a screen that is blank at one width.
+    expect(PAGE, 'the wide face must be the table, hidden below md').toContain('`hidden md:block ${tableWrapCls}`');
+    expect(PAGE, 'the narrow face must be the stacked block list, hidden from md up').toContain(
+      'className="divide-y divide-border md:hidden"',
+    );
+    // …and the two faces are the SAME rows: both map the paginated page, neither re-reads or re-filters.
+    expect(code(PAGE).match(/reqPage\.rows\.map/g) ?? [], 'both faces map the one paginated row set').toHaveLength(2);
+  });
+
+  it('A2. the narrow block leads with date + outcome, and puts the detail underneath', () => {
+    // The complaint was that the answer was the column furthest from the date. The Pill sits in the same
+    // flex row as the date; askedFor / reason / remark / submitted / approver / attachment follow it.
+    const block = PAGE.slice(PAGE.indexOf('md:hidden'));
+    expect(block, 'date and status share the first line').toContain('flex items-start justify-between');
+    for (const marker of ['askedFor(r, t)', 'r.reason', 'r.remark', "t('maColSubmitted')", "t('otGoesToColumn')", 'maAttachmentOnRequest']) {
+      expect(block.includes(marker), `the block face must still carry ${marker}`).toBe(true);
+    }
+  });
+
+  it('B. stays server-rendered — the responsive switch is CSS, not client state', () => {
+    const src = code(PAGE);
+    expect(src.includes("'use client'"), 'the request list must not become a client island').toBe(false);
+    expect(src, 'no viewport measuring, no state — CSS decides which face shows').not.toMatch(
+      /\buseState\b|\buseEffect\b|\bmatchMedia\b|\bwindow\./,
+    );
+  });
+
+  it('C. offers exactly the four statuses the database has — no fifth, no Completed', () => {
+    // Parsed off the source rather than imported, because what must not drift is the LITERAL the screen
+    // ships. Compared against the enum itself, so adding a filter without a migration fails here, and
+    // adding an enum value forces someone to decide what this screen does with it.
+    const tuple = UI.match(/export const REQUEST_STATUSES = \[([^\]]*)\] as const;/);
+    expect(tuple, 'REQUEST_STATUSES must be a plain literal tuple this guard can read').not.toBeNull();
+    const offered = tuple![1]
+      .split(',')
+      .map((v) => v.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean);
+    expect(offered).toEqual(['pending', 'approved', 'rejected', 'cancelled']);
+    expect(offered, 'the screen offers the stored statuses and only those').toEqual([
+      ...attendanceCorrectionStatusEnum.enumValues,
+    ]);
+    // Both consumers DERIVE from the tuple. A second hand-written list is how the pills and the addresses
+    // they link to come to disagree — the filter would look right and return nothing.
+    expect(PAGE).toContain('const STATUS_FILTERS = [null, ...REQUEST_STATUSES] as const');
+    expect(PAGE, 'the URL whitelist is the same list, not a copy').toContain('REQUEST_STATUSES.includes(');
+    expect(code(PAGE).toLowerCase().includes('completed'), 'there is no completed status to render').toBe(false);
+    expect(code(UI).toLowerCase().includes('completed'), 'and none in the shared vocabulary either').toBe(false);
+    // The colour map is keyed by the tuple's type, so a status added without a colour is a type error
+    // rather than a silently grey pill.
+    expect(UI).toContain('const REQUEST_STATUS: Record<RequestStatus, string>');
+  });
+
+  it('D. Cancel is the module’s button, and its state rule is written exactly once', () => {
+    expect(PAGE, 'Cancel is a real button now, not a bare underlined word').toContain(
+      '<Button type="submit" size="sm" variant="outline">',
+    );
+    expect(PAGE.includes('action={myCancelAttendanceRequest}'), 'still the same server-action form').toBe(true);
+    // ONE form, ONE rule, drawn by both faces.
+    expect(code(PAGE).match(/action=\{myCancelAttendanceRequest\}/g) ?? []).toHaveLength(1);
+    expect(code(PAGE).match(/const canCancel = /g) ?? [], 'the cancel rule is defined once').toHaveLength(1);
+    expect(code(PAGE).match(/canCancel\(r\)/g) ?? [], 'and both faces ask it rather than restating it').toHaveLength(2);
+    expect(
+      code(PAGE).includes("r.status === 'pending'") && code(PAGE).match(/r\.status === 'pending'/g)!.length === 1,
+      'the pending condition must live only inside canCancel',
+    ).toBe(true);
   });
 });
