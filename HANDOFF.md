@@ -18,7 +18,7 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-02 (r226-r241 SHIPPED · TWO PLANS AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-09-02 (r226-r241 SHIPPED · ⚠️ r242 IS MERGED TO main, GREEN, AND NOT DEPLOYED — SSH IS DOWN)
 
 **`main@b771ed4c` IS WHAT RUNS ON PRODUCTION (r241, 2026-09-02)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
@@ -30,6 +30,23 @@ catalog seed ran. `0452`/`0453` remain applied from r236.
 **370 migrations applied; r239 and r240 carried none.** The r239 dry run reported ZERO lines — not even `next-env.d.ts`, which the r238 one did (Next rewrites
 it per build mode and it is gitignored; a single such entry is not a stale file). `0454` remains the last
 migration; r239 carried none.
+
+⚠️⚠️ **r242 IS FINISHED AND SITTING ON `main` UNDEPLOYED. READ THIS BEFORE PLANNING ANYTHING.** Both
+approved board items — `b36a8a91` (EA "Open Form" + readiness panel) and `1ff969ed` (the Explanation panel
+on Employee Balances) — are built, adversarially verified, fix-passed, **gate green 6/6 across 763 files**,
+`next build` clean, and render-checked on a dev server. `main` is at the two merge commits above r241's
+head. **Production still runs r241 (`main@b771ed4c`).**
+
+**WHY IT DID NOT SHIP: THE SERVER'S SSH STOPPED ANSWERING, and the box is otherwise fine.** Measured, not
+guessed: `ping` 0% loss at ~24ms; **port 8288 and port 22 both closed/filtered**; **ports 80 and 443 OPEN**
+and `https://203.142.6.241/` returns **303** (the app is up and serving). So this is sshd or a firewall
+rule, NOT a dead machine and NOT the application. Nothing can be deployed until somebody with console
+access restarts sshd — every deploy path in this repo goes through `ssh -p 8288`.
+
+**THE TWO BOARD ITEMS ARE STILL `building` ON PURPOSE.** `improve:pull` HIDES `building`, so this entry is
+the only thing that surfaces them. Do NOT re-plan or re-build them. When SSH returns, the round finishes
+with: rsync → `deploy.sh` → verify → `improve:build-complete` then `improve:mark-deployed` for BOTH ids
+(`b36a8a91`, `1ff969ed`) → move this block into the r242 entry.
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
@@ -269,6 +286,61 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r242 (2026-09-02) — two approved items, built by workflow. ⚠️ MERGED AND GREEN, NOT DEPLOYED. NO MIGRATION.
+
+`b36a8a91` (EA) and `1ff969ed` (Leave Explanation), each built by its own agent in its own worktree and
+then adversarially verified by two lenses. **The verify pass earned its keep twice over: four majors, and
+two of them would have shipped a promise the round had already made to the reporter in writing.**
+
+⚠️⚠️ **EA MAJOR 1 — "Open form" STILL ENDED IN A PDF DOWNLOAD.** 587ee719 had made an EA-shelf arrival hand
+back the PDF directly when you click an employee name, which was right when the shelf's only promise was
+"the form". `b36a8a91` changed that promise — *"Open Form … takes you to the employee list and then
+straight into that person's completed EA. Nothing downloads when you press it"* — and the build renamed the
+button without moving the destination. **It also put this round's own readiness panel out of reach of the
+entry point the round renamed.** Both arrivals now end on the statement, carrying the language; and the
+download the name click used to give had to be ADDED to that screen, or the fix would have deleted a
+capability while calling itself an improvement.
+
+⚠️⚠️ **EA MAJOR 2 — THE READINESS PANEL RENDERED FOR ORDINARY EMPLOYEES.** `app/me/page.tsx` links every
+employee to `/payroll/reports/ea/<id>` for their own EA, and that page has **no role gate** — RLS scoping
+is what fences it. So an employee was being told their record was incomplete and sent to Personnel
+Management, an admin screen they cannot open. Gated on `canAmend`, the amend panel's own predicate, and the
+render check confirms it: as HR the chip and the amend panel draw; as an employee neither does, while the
+download link still does.
+
+**EA — the contribution gate was a proxy for AGE.** The first build silenced the EPF/SOCSO number checks
+when the employee's own contribution for the year was zero. An employee's EPF share is zero at **60 and
+over** under the Third Schedule while the number is still required on the form, so the check switched
+itself off for exactly the population most likely to be reviewed by hand. Removed; its guard case is
+UPDATED to pin the reversal (AGENTS 18).
+
+⚠️ **LEAVE MAJOR — A GUARD IN A FILE THE BUILDER NEVER RAN.** `test/r196-entitlement-not-generated.test.ts`
+still pinned `colSpan={11}` on the page the build changed to 12. The builder's "vitest exit 0, 17 files"
+was true and did not cover it. **A targeted run is not a gate**, and this is the cheapest possible
+reminder of it.
+
+⚠️ **AND ONE PROMISE I MADE THAT THE PRODUCT DOES NOT KEEP.** `1ff969ed`'s plan said the Explanation panel
+shows "the rule that applied, the dates and years of service it was worked out from, the entitlement step
+by step … and the balance shown component by component". Measured: the panel is **one section** since
+feedback `1f6fd6d8`, which REMOVED the Entitlement Calculation Breakdown **at the reporter's own
+push-back** — they supplied the replacement column verbatim. What is true: the balance component by
+component (yes), per-field Formula Explanations where configured (partly), the resolved entitlement table
+named on the row (yes, r209). Hire date and years of service are **not** there. **Do not "fix" this by
+re-adding the removed section** — that is the r179/r185 panel round trip a third time. It belongs in the
+delivery note to the reporter, offering it back.
+
+**Not changed, deliberately:** the four Leave columns (Credit / Share / Pending Share / YOS — the row's
+`SharedLeaveBalanceInfo` is about which leave TYPES share a pooled ledger, not employee-to-employee
+sharing); the EA download filename; the PDF's layout, wording, field order, language and page size; and
+the mockup's box table over money boxes, which cannot be drawn without asserting a state for figures the
+panel is not competent to judge (AGENTS 28).
+
+⚠️ **A PROCESS MISTAKE WORTH RECORDING: I MERGED FROM THE WRONG WORKTREE.** The shell cwd persisted from a
+`cd` into the leave worktree, so `git merge build/r242-ea-review` landed the EA branch **on the leave
+branch** instead of on `main`. Nothing was lost — `main` was untouched, and the branch was reset to its own
+tip and both merges redone from mainwt — but this is the fifth time this repo has been bitten by cwd
+persistence. **Put the tree in the command, every time, including `git merge`.**
 
 ### r241 (2026-09-02) — one consolidated Attendance Irregularity list (`afc29d75`). NO MIGRATION.
 
