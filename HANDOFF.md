@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-01 (r226-r240 SHIPPED · BOARD CLEAR BUT FOR ONE ITEM AWAITING THE REPORTER)
+## CURRENT STATE — snapshot 2026-09-02 (r226-r241 SHIPPED · TWO PLANS AWAITING THE REPORTER)
 
-**`main@3bd208fa` IS WHAT RUNS ON PRODUCTION (r240, 2026-09-01)** — verified by an
+**`main@b771ed4c` IS WHAT RUNS ON PRODUCTION (r241, 2026-09-02)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
@@ -193,17 +193,32 @@ resolved (r235 makes it POSSIBLE, not automatic — somebody has to open Agent a
 tile correctly refuses to print a figure. **Do not build the auto-clear gate** — and note 0083 §5 that the
 tile measures exceptions ÷ throughput, which is an exception-load estimate rather than a headcount answer.
 
-**BOARD: ONE ITEM LEFT, AND IT IS WITH THE REPORTER, NOT WITH US.** 752 deployed, 17 cancelled,
-**1 `planned`** — `afc29d75`, "My Attendance: consolidate Also Waiting for You into one Attendance
-Irregularity view", plan revision 1, carrying the two questions `a8f525cf` was raised to ask. Nothing is
-`open`, `contested`, `approved` or `building`. **There is no buildable work on the board.**
+**BOARD: TWO ITEMS, BOTH `planned` AND WITH THE REPORTER.** Nothing open, contested, approved or
+building — there is no buildable work.
 
-⚠️ **THREE OF r239's FOUR ITEMS WERE CLOSE-OUTS WITH NO CODE, AND THAT WAS THE APPROVED PLAN IN EACH
-CASE** — `b36a8a91` (EA mapping: field 1 already reads `person.fullName`; rev 3 retracted rev 1's wrong
-salutation promise and they approved the retraction), `a8f525cf` and `3cbfe5e2` (questions raised the
-wrong way, folded into their parents' plans). **Approving a plan whose only action is "close this" IS the
-answer**, and `3cbfe5e2`'s approval is specifically the reporter accepting that there are four attendance
-statuses and no `Completed`.
+  - `b36a8a91` **planned rev 4** — "C.P.8A (EA form) Mapping", and **rev 3 was WRONG.** It told them there
+    was nothing to build and closed the item; they came back with a full workflow spec. ⚠️ **The correction
+    is at the TOP of rev 4** (AGENTS 31). What rev 3 got right: the completed EA exists. What it missed:
+    they were describing a WORKFLOW, and two of its four steps are absent. **Measured on the screens
+    rather than assumed** — `app/payroll/reports/ea/[employmentId]/page.tsx` IS already the review screen
+    (statement rows + `EaAmendPanel` + print), `app/me/ea/[employmentId]/pdf/route.ts` already downloads
+    the POPULATED pdf in both languages, and `/payroll/ea/blank` is the secondary action they pressed,
+    which does exactly what its label says. Rev 4 promises only the two real gaps: rename the primary
+    action to "Open Form" and fold the blank + field register into one second action; and a readiness
+    panel naming which boxes are empty. ⚠️ **A box is "missing" only when the field register says it maps
+    to an employee-record field that is NULL — never when a payroll figure is zero** (AGENTS 28).
+  - `1ff969ed` **planned rev 1** — "Leave Inquiry", raised as a new function. **Nearly all of it exists**
+    under Leave rather than the Leave Config tab they looked in: `components/leave/leave-inquiry-nav.tsx`
+    already renders their exact three tabs, and Employee Balances already carries every column but four.
+    The one real gap is the Explanation button — `components/leave/EntitlementBreakdown.tsx` exists and is
+    mounted on `/me` and the personnel record, but NOT on the HR balances row. ⚠️ **Credit, Share, Pending
+    Share and Years of Service are deliberately NOT promised**: `SharedLeaveBalanceInfo` is about which
+    leave TYPES share a pooled ledger, not employee-to-employee sharing, and committing to a column on a
+    name match is how a column that reads authoritative and is wrong gets shipped.
+
+**Both plans carry a before/after mockup, and NEITHER DRAWS A SINGLE FIGURE** — dashes and state chips
+instead. The first EA draft had a real employee code beside invented ringgit amounts, which is exactly the
+half-fix `scripts/mockup/README.md` records from r170; it was redrawn before pushing.
 
 ⚠️ **THE REPORTER'S ONLY TEXT CHANNEL BACK IS `contest_reason` ON A PLANNED ITEM** (or the answer field
 on a BLOCKED approved one). An item raised at `open` with no plan has NO reply path — `approveFeedbackPlan`
@@ -254,6 +269,43 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r241 (2026-09-02) — one consolidated Attendance Irregularity list (`afc29d75`). NO MIGRATION.
+
+The last of the `c6bb5f5a` follow-ups. Three sections became FILTERS over one date-ordered list with
+"All" leading and its count the sum; the kind moved onto the row as a badge; the "Also waiting for you"
+cards, `OTHER_SECTIONS` and `ALSO_ROWS` are gone, and `maAlsoWaiting` / `maSeeAllInSection` are removed
+from all six catalogues.
+
+⚠️ **TWO THINGS HAD TO MOVE WITH IT, AND BOTH ARE INVISIBLE TO TYPES AND TO A 200.**
+
+  1. **The legacy `?fix=` link resolves against the WHOLE list, not the filtered one.** That address named
+     a DAY, not a tab; resolving it against `sectionDays` would make an already-circulated link open
+     nothing whenever the filter excluded its day. And its panel now files under the **day's** own kind,
+     because the open filter may be `all` — which is not a section. That is r227's lesson arriving a
+     second time from a different direction.
+  2. **`maAbsentTwoRoutes` is keyed on whether an absent day is ON SCREEN, not on which tab is open.** On
+     the All filter an absent row is visible while the tab is not "Absent", so the old condition would
+     have silently stopped naming a route the row still offers — a capability deleted by a condition.
+
+**Four mutations re-derived by hand** (absent note keyed on the tab · badge dropped · sorted by section
+instead of date · `all` no longer the default), each failing exactly one new case.
+
+**Rendered on a dev server** with seeded days across kinds: one table, "All 19" leading, rows in date
+order with Absent (rose) and Incomplete Entry (sky) badges, no "also waiting" cards, the two-routes note
+present, and `?section=absent` filtering correctly. Dev log clean. **Short Hours did not render in the
+walk** — with no shift resolving, `flagOf` cannot judge late/under, so the fixture produced none. The
+badge path is identical for all three and its label mapping is pinned by a test, but it was not seen.
+
+⚠️⚠️ **THE FIRST GATE WENT RED WITH 13 FAILURES AND ZERO ASSERTION ERRORS, AND THE CAUSE WAS THE RAM
+DISK.** `load average 111`, swap at **7.9GB of 9.2GB**, ~55MB free RAM; chunk 2 threw 12 `Hook timed out`
+in `resetDb`, chunk 3 had a single test take **651 SECONDS**. The 8GB RAM disk is itself wired memory, so
+on a machine already swapping it makes the gate the thing that starves. `AIHR_RAMDISK_GB=0` (the escape
+`scripts/dev-db-rebuild.sh` documents) dropped load to 22 immediately and the re-run was **green 6/6**,
+with the previously-failing chunk 2 at 127/127 and peak-disk 22% instead of 76%.
+**READ THE CAUSE TALLY BEFORE BELIEVING A RED** (AGENTS 12): zero `AssertionError` plus hook timeouts is
+never a code failure. And on a loaded machine, prefer the SSD — the RAM disk is an optimisation, not a
+requirement.
 
 ### r240 (2026-09-01) — input-side triage: the system asks the person who filed the claim. NO MIGRATION.
 
