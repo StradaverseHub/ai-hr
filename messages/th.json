@@ -2874,8 +2874,6 @@
     "maFoundShort": "น้อยกว่าชั่วโมงตามตาราง",
     "maAskedOvertime": "ล่วงเวลา {hours} ชั่วโมง",
     "maAskedTimes": "เข้า {in} · ออก {out}",
-    "maAlsoWaiting": "ยังรอคุณอยู่ด้วย — {section}",
-    "maSeeAllInSection": "ดูทั้งหมด {count} รายการ",
     "myAttendanceRequestStatus": "สถานะคำขอด้านการลงเวลาของฉัน",
     "myAttendanceRequestStatusHelp": "ทุกคำขอด้านการลงเวลาที่คุณยื่น และผลของคำขอนั้น",
     "maSeeRequestStatus": "ดูสถานะคำขอของฉัน",
@@ -2886,7 +2884,11 @@
       "ofLimit": "จาก {limit} วันที่ใช้ร่วมกัน",
       "sharedAcross": "ใช้ร่วมกับ: {types}",
       "maxPerApplication": "สูงสุด {days} วันต่อการยื่นหนึ่งครั้ง"
-    }
+    },
+    "maSectionAll": "ทั้งหมด",
+    "maSectionAllHelp": "ทุกวันที่ต้องการการดำเนินการจากคุณ",
+    "maFoundForYouAll": "วันที่เราพบสำหรับคุณ",
+    "maEmptyAll": "ในช่วงนี้ไม่มีสิ่งใดที่ต้องการการดำเนินการจากคุณ"
   },
   "approvals": {
     "title": "การอนุมัติ",

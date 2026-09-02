@@ -19,6 +19,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/me/page.tsx'), 'utf8');
+// afc29d75 — all six catalogues, so "the retired string is gone" is checked where it can actually still
+// be hiding. An unused key removed from en.json alone is the shape the unused-key check carries forever.
+const MESSAGES: Record<string, { me: Record<string, unknown> }> = Object.fromEntries(
+  ['en', 'ms', 'zh', 'ta', 'th', 'vi'].map((l) => [
+    l,
+    JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${l}.json`), 'utf8')) as { me: Record<string, unknown> },
+  ]),
+);
 const REQUESTS_PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/attendance/requests/page.tsx'),
   'utf8',
@@ -237,6 +245,92 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
       const line = actions.split('\n').find((l) => l.includes(marker));
       expect(line, `redirect for ${marker}`).toBeDefined();
       expect(line, `${marker} must return to its own screen`).toContain(target);
+    }
+  });
+});
+
+/**
+ * afc29d75 (r241) — ONE list of every day that needs the employee, with the kind on the row.
+ *
+ * The reporter's complaint was that the same days rearranged themselves into a different set of boxes
+ * depending on which tab you were on: the open section's table, plus an "Also waiting for you" card per
+ * OTHER section showing three rows of it. Those cards are gone and the three tabs became FILTERS over one
+ * date-ordered list, with "All" leading.
+ *
+ * Every case here pins something that types, a 200 and the rest of the suite are all blind to — a second
+ * table creeping back, the kind falling off the row, or the absent day's second route quietly ceasing to
+ * be named because it was keyed on the tab rather than on what is actually on screen.
+ */
+describe('afc29d75 — one consolidated Attendance Irregularity list', () => {
+  const code = REQUESTS_PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('renders the list ONCE — the "also waiting for you" cards and their machinery are gone', () => {
+    expect(code.match(/<ExceptionTable/g) ?? [], 'one table, not one per section').toHaveLength(1);
+    for (const dead of ['OTHER_SECTIONS', 'ALSO_ROWS', 'maAlsoWaiting', 'maSeeAllInSection']) {
+      expect(code.includes(dead), `${dead} belongs to the arrangement that was replaced`).toBe(false);
+    }
+  });
+
+  it('the one list is all three kinds, in date order', () => {
+    expect(code).toContain('const allDays: ExceptionDay[] = [...found.incomplete, ...found.short, ...found.absent]');
+    expect(code, 'date order, not section order — the whole point of consolidating').toContain(
+      'a.date.localeCompare(b.date)',
+    );
+  });
+
+  it('"All" is the default and the first tab, and its count is the sum', () => {
+    expect(code, 'no section in the address means all of them').toContain("? parsed : 'all'");
+    const tabs = code.slice(code.indexOf('const TABS'), code.indexOf('];', code.indexOf('const TABS')));
+    expect(tabs.indexOf("key: 'all'"), 'All leads the strip').toBeGreaterThan(-1);
+    expect(tabs.indexOf("key: 'all'")).toBeLessThan(tabs.indexOf("key: 'short'"));
+    expect(tabs, 'its count is every day, not a section total').toContain('count: allDays.length');
+  });
+
+  it('the kind is ON THE ROW, named by the tabs’ own labels', () => {
+    // With one mixed list nothing about a day's kind is carried by which box it sits in, so the row has
+    // to say it. Read through ONE mapping: a badge and a tab that name the same section differently is
+    // the drift this repo keeps paying for.
+    expect(code).toContain("<th className={thCls}>{t('maColType')}</th>");
+    expect(code).toContain('{t(SECTION_LABEL[d.section])}');
+    expect(code).toContain('SECTION_TONE[d.section]');
+    const map = code.slice(code.indexOf('const SECTION_LABEL'), code.indexOf('} as const satisfies'));
+    for (const key of ['maSectionShort', 'maSectionIncomplete', 'maSectionAbsent']) {
+      expect(map, `the badge reuses ${key} rather than a second string for the same word`).toContain(key);
+    }
+  });
+
+  it('the absent day’s second route is named while an absent day is ON SCREEN, not while a tab is open', () => {
+    // maAbsentTwoRoutes promises two answers out loud. On the All filter an absent row is visible while
+    // the open tab is not "Absent", so a note keyed on the tab would stop naming a route the row still
+    // offers — a capability deleted by a condition, which is invisible to everything but this.
+    expect(code).toContain("sectionDays.some((d) => d.section === 'absent')");
+    expect(code.includes("{section === 'absent' && sectionDays.length > 0"), 'not keyed on the tab').toBe(false);
+  });
+
+  it('a legacy ?fix= link resolves against the WHOLE list, not the open filter', () => {
+    // The address named a DAY, not a tab. Resolving it against the filtered list would make an
+    // already-circulated link open nothing whenever the filter happened to exclude its day.
+    expect(code).toContain('const fixDay = sp.fix ? allDays.find');
+    // …and that panel files under the DAY's own kind now, because the open filter may be `all`, which is
+    // not a section at all.
+    expect(code).toContain('section={fixDay.section}');
+    expect(code).toContain('requestKind={KIND_OF_SECTION[fixDay.section]}');
+  });
+
+  it('the filter is an address, not client state', () => {
+    expect(code.includes("'use client'"), 'this page renders on the server').toBe(false);
+    expect(code, 'the tabs are links, the same way section always was').toContain('href={href({ section: tab.key');
+    expect(code).not.toMatch(/\buseState\b|\buseEffect\b/);
+  });
+
+  it('the retired strings are gone from ALL SIX catalogues, not just English', () => {
+    for (const [locale, m] of Object.entries(MESSAGES)) {
+      for (const dead of ['maAlsoWaiting', 'maSeeAllInSection']) {
+        expect((m.me as Record<string, unknown>)[dead], `${locale}.me.${dead}`).toBeUndefined();
+      }
+      for (const added of ['maSectionAll', 'maSectionAllHelp', 'maFoundForYouAll', 'maEmptyAll']) {
+        expect((m.me as Record<string, unknown>)[added], `${locale}.me.${added}`).toBeTruthy();
+      }
     }
   });
 });
