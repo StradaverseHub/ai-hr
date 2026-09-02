@@ -10,6 +10,16 @@ import { PrintButton } from '@/components/print-button';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { EaAmendPanel, type AmendField } from './ea-amend-panel';
 
+/**
+ * A box caption, as a fragment of a SENTENCE rather than as a row label.
+ *
+ * The captions are the form's own — "1. Full name of employee / pensioner (Mr/Ms/Mrs)" — so joining them
+ * raw into the footnote produced a leading box number mid-sentence and, on the last one, "…7. PERKESO
+ * no.." with two full stops. Strips the leading "<n>. " and any trailing period; changes no caption
+ * anywhere else, because the row labels still render the full form wording.
+ */
+const trimBoxCaption = (s: string) => s.replace(/^\s*\d+\.\s*/, '').replace(/\.\s*$/, '');
+
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -46,11 +56,16 @@ export default async function EaStatementPage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ year?: string; company?: string }>;
+  searchParams: Promise<{ year?: string; company?: string; lang?: string }>;
 }) {
   const { employmentId } = await params;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employmentId)) notFound();
-  const { year, company } = await searchParams;
+  const { year, company, lang } = await searchParams;
+  /* r242 — THE DOCUMENT'S LANGUAGE, NOT THE VIEWER'S. An EA-shelf arrival names the language the shelf row
+     promised (English or Bahasa Malaysia); every other arrival carries none and the PDF renders in the
+     viewer's own locale, exactly as it always has. Shape-checked here rather than trusted: this value is
+     appended to a download address. */
+  const eaLang = lang === 'en' || lang === 'ms' ? lang : null;
   const yr = /^\d{4}$/.test(year ?? '') ? (year as string) : String(new Date().getFullYear());
   const s = await getSession(); // RLS-scopes the read to what this user may see
 
@@ -201,7 +216,20 @@ export default async function EaStatementPage({
         <Link href="/payroll/reports" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
           ← {t('backToReports')}
         </Link>
-        <PrintButton />
+        <div className="flex items-center gap-3">
+          {/* ⚠️ r242 — THE DOWNLOAD HAD TO COME WITH THE ROUTE. Until this round an EA-shelf arrival
+              clicked a name and got the PDF immediately; b36a8a91 sends that click to this screen
+              instead, so the download it replaced has to be ON this screen or the round would have
+              deleted a capability while calling itself an improvement. Same route the /me tab already
+              uses — one renderer, not a second — and it carries the shelf's language when there was one. */}
+          <a
+            href={`/me/ea/${employmentId}/pdf?year=${yr}${eaLang ? `&lang=${eaLang}` : ''}`}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            {t('downloadPdf')}
+          </a>
+          <PrintButton />
+        </div>
       </div>
 
       {/* b7b22514 — a transfer year has one form PER EMPLOYER. Shown only when there is genuinely more
@@ -274,6 +302,13 @@ export default async function EaStatementPage({
           </p>
         </div>
 
+        {/* ⚠️ HR ONLY, ON THE SAME PREDICATE THE AMEND PANEL USES. This page has no role gate of its own:
+            app/me/page.tsx links EVERY employee here for their own EA (self-serve tax filing), and RLS
+            scoping is what stops them reading somebody else's. So an ungated readiness panel would tell an
+            ordinary employee that their record is incomplete and send them to Personnel Management — an
+            admin screen they cannot open. The panel is a note to the person who can act on it. */}
+        {canAmend && (
+        <>
         {/* b36a8a91 — WHETHER THIS FORM IS READY, AND WHAT IS STOPPING IT. Above the boxes, because the
             answer is what the reader came for; `print:hidden` because it is a note to the reviewer and not
             part of the statement the employee is handed.
@@ -325,9 +360,11 @@ export default async function EaStatementPage({
           )}
 
           <p className="mt-2 text-xs text-muted-foreground">
-            {t('readiness.checkedNote', { boxes: readiness.checked.map((c) => boxName(c.captions)).join(' · ') })}
+            {t('readiness.checkedNote', { boxes: readiness.checked.map((c) => trimBoxCaption(boxName(c.captions))).join(' · ') })}
           </p>
         </div>
+        </>
+        )}
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

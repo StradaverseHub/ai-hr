@@ -3906,7 +3906,7 @@
       "readiness": {
         "ready": "Ready for review",
         "required": "Review required",
-        "readyNote": "Nothing this form takes from the employee’s record is missing.",
+        "readyNote": "None of the details checked below is missing from the employee’s record.",
         "requiredNote": "{count, plural, one {# item needs attention before this form is filed} other {# items need attention before this form is filed}}",
         "whereProfile": "Not on this employee’s record — add it under Personnel Management → Profile",
         "whereStatutory": "Not on this employee’s record — add it under Personnel Management → Bank & Statutory",
@@ -3954,7 +3954,8 @@
       "multiEmployer": {
         "title": "EA forms for {count} employers",
         "body": "This employee was paid by more than one company in this year, so each owes a separate EA form. Choose an employer to view and print its form."
-      }
+      },
+      "downloadPdf": "Download the EA form"
     },
     "cp22": {
       "download": "Download CP22",

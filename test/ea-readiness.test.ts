@@ -96,15 +96,27 @@ describe('b36a8a91 — a box the employee’s record should hold and does not', 
     expect(named(complete({ ic: null, passport: null }))).toEqual(['icNo+passportNo']);
   });
 
-  it('asks for a fund number only where the employee contributed to that fund', () => {
+  /**
+   * ⚠️ THIS CASE PINNED THE OPPOSITE RULE ONE REVISION AGO, AND THE REVERSAL IS THE POINT OF KEEPING IT.
+   *
+   * The first build silenced these two boxes when the employee's own contribution for the year was zero,
+   * on the reading that somebody who did not contribute has nothing for the box to hold. A verifier found
+   * the hole: the EMPLOYEE's EPF share is zero for a member aged 60 and over under the Third Schedule
+   * while the employer still contributes and the form still needs the number — so a contribution amount
+   * is a proxy for AGE, not for fund registration, and the check switched itself off for exactly the
+   * population most likely to be reviewed by hand.
+   *
+   * The `askedOf` MECHANISM is kept (it is how a conditional box would be expressed if one ever needs to
+   * be); what changed is that neither fund number uses it. AGENTS 18 — the case is updated, not deleted.
+   */
+  it('asks for a fund number whatever the year’s contribution came to', () => {
     // Contributions were made and the number is absent: a real gap on a form that must carry it.
     expect(named(complete({ epfNo: null }, { epf: 1200, socso: 240 }))).toEqual(['epfNo']);
     expect(named(complete({ socsoNo: null }, { epf: 1200, socso: 240 }))).toEqual(['socsoNo']);
-    // No contribution to that fund all year: there is nothing for the box to hold, and an employee who is
-    // not registered with the fund is not an incomplete record.
-    expect(named(complete({ epfNo: null, socsoNo: null }, { epf: 0, socso: 0 }))).toEqual([]);
-    // …and the gate is per fund, not one switch over both.
-    expect(named(complete({ epfNo: null, socsoNo: null }, { epf: 1200, socso: 0 }))).toEqual(['epfNo']);
+    // …AND STILL A GAP AT ZERO. This is the assertion the reversal exists for: an over-60 member whose own
+    // share is nil is not an employee without an EPF number.
+    expect(named(complete({ epfNo: null, socsoNo: null }, { epf: 0, socso: 0 }))).toEqual(['epfNo', 'socsoNo']);
+    expect(named(complete({ epfNo: null, socsoNo: null }, { epf: 1200, socso: 0 }))).toEqual(['epfNo', 'socsoNo']);
   });
 
   it('lists what it checked, and lists only the boxes this form asks THIS employee for', () => {
@@ -115,11 +127,12 @@ describe('b36a8a91 — a box the employee’s record should hold and does not', 
       'epfNo',
       'socsoNo',
     ]);
-    // A fund the employee did not contribute to is not claimed as checked.
+    // …and the SAME five whatever the contributions came to: nothing is conditionally dropped any more.
     expect(eaReadiness(complete({}, { epf: 0, socso: 240 })).checked.map((c) => c.captions.join('+'))).toEqual([
       'name',
       'icNo+passportNo',
       'incomeTaxNo',
+      'epfNo',
       'socsoNo',
     ]);
   });

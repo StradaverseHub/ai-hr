@@ -95,7 +95,6 @@ const filled = (v: string | null | undefined) => (v ?? '').trim() !== '';
  * with no payroll source. It decides whether the form ASKS for a fund number; it never decides whether a
  * figure is missing, and nothing here reports an amount.
  */
-const hasAmount = (n: number) => Math.round((Number(n) || 0) * 100) !== 0;
 
 /**
  * THE BOXES THIS PANEL IS COMPETENT TO JUDGE — the identifiers, which is the same set the CP39 and
@@ -134,21 +133,25 @@ export const EA_READINESS_CHECKS: readonly EaReadinessCheck[] = [
     onRecord: (s) => filled(s.employee.taxNo),
   },
   {
-    // Section E names the fund before its amount. The number is asked for because the employee contributed
-    // to the fund this year; where they contributed nothing, there is nothing for the box to hold and no
-    // fault to report. The GATE IS NOT A FIGURE THIS PANEL PRINTS OR JUDGES — it only ever silences a box.
+    /* ⚠️ NO `askedOf` GATE ON EITHER FUND NUMBER, AND THE ONE THIS ROUND REMOVED IS WORTH RECORDING.
+       The first version silenced these two boxes when the employee's own contribution for the year was
+       zero, reasoning that somebody who did not contribute has nothing for the box to hold. That reads
+       well and is wrong: the EMPLOYEE's EPF share is zero for a member aged 60 and over under the Third
+       Schedule while the employer still contributes and the number is still required on the form, and a
+       SOCSO category can do the same. So a contribution amount is not a proxy for fund registration — it
+       is a proxy for age and category, and using it silently switched the check off for exactly the
+       population most likely to be reviewed by hand. The register calls both boxes staff-fed
+       unconditionally, and so does this. */
     sources: ['employee.epfNo'],
     captions: ['epfNo'],
     where: 'bankStatutory',
     onRecord: (s) => filled(s.employee.epfNo),
-    askedOf: (s) => hasAmount(s.partE.epf),
   },
   {
     sources: ['employee.socsoNo'],
     captions: ['socsoNo'],
     where: 'bankStatutory',
     onRecord: (s) => filled(s.employee.socsoNo),
-    askedOf: (s) => hasAmount(s.partE.socso),
   },
 ];
 

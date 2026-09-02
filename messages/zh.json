@@ -3541,7 +3541,7 @@
       "readiness": {
         "ready": "可供审核",
         "required": "需要检查",
-        "readyNote": "本表格从员工档案中取用的资料没有缺失。",
+        "readyNote": "下方所检查的各项资料，员工记录中均无缺漏。",
         "requiredNote": "{count, plural, one {提交本表格前有 # 项需要处理} other {提交本表格前有 # 项需要处理}}",
         "whereProfile": "此员工档案中没有此项 — 请在员工管理 → 个人资料中补上",
         "whereStatutory": "此员工档案中没有此项 — 请在员工管理 → 银行与法定中补上",
@@ -3589,7 +3589,8 @@
       "multiEmployer": {
         "title": "{count} 家雇主的 EA 表格",
         "body": "该员工本年度由多家公司支付薪酬，因此每家公司均须出具各自的 EA 表格。请选择雇主以查看并打印其表格。"
-      }
+      },
+      "downloadPdf": "下载 EA 表格"
     },
     "cp22": {
       "download": "下载 CP22",

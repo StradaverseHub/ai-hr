@@ -658,6 +658,31 @@ export default async function StatutoryFormsPage({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
+                      {/* NO ACTION ELEMENT AT ALL for a form that was never built — not a disabled button,
+                          which is still a button and still gets clicked at. A plain sentence, and nothing
+                          to press. `c.action` is null for exactly one reason: the entry came from a
+                          `PlannedFormDef`, which has no href to render.
+                          ⚠️ r242 — THE ROUTE COMES FIRST, AND ON A ROW WITH FOLDED EXTRAS IT IS A BUTTON.
+                          The first build rendered the extras before it, as a bordered chip, with the route
+                          itself a plain underlined link: the demoted control outweighed the promoted one,
+                          which is the opposite of what the round is for and of what the approved picture
+                          shows. Rows without extras keep the shelf's shared link styling exactly as it
+                          was — only the row that folded something gets the emphasis, so nothing else on
+                          the shelf changes appearance. */}
+                      {c.action ? (
+                        <Link
+                          href={c.action.href}
+                          className={
+                            c.extrasLabel
+                              ? 'rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90'
+                              : 'text-primary hover:underline'
+                          }
+                        >
+                          {c.action.label}
+                        </Link>
+                      ) : (
+                        <span className="text-xs italic text-muted-foreground">{t('noAction')}</span>
+                      )}
                       {/* d3a9383c's second action and r220's third, rendered from the same shape so a row
                           with two extras cannot look like two different kinds of control. r242 folds them
                           under one name when the entry asks for it — same links, one less thing on the row
@@ -666,17 +691,6 @@ export default async function StatutoryFormsPage({
                         items={[c.secondary, c.tertiary].filter((x): x is ShelfExtraAction => x !== null)}
                         groupLabel={c.extrasLabel}
                       />
-                      {/* NO ACTION ELEMENT AT ALL for a form that was never built — not a disabled button,
-                          which is still a button and still gets clicked at. A plain sentence, and nothing
-                          to press. `c.action` is null for exactly one reason: the entry came from a
-                          `PlannedFormDef`, which has no href to render. */}
-                      {c.action ? (
-                        <Link href={c.action.href} className="text-primary hover:underline">
-                          {c.action.label}
-                        </Link>
-                      ) : (
-                        <span className="text-xs italic text-muted-foreground">{t('noAction')}</span>
-                      )}
                     </div>
                   </div>
                 </li>

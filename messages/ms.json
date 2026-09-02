@@ -3541,7 +3541,7 @@
       "readiness": {
         "ready": "Sedia untuk semakan",
         "required": "Semakan diperlukan",
-        "readyNote": "Tiada butiran yang borang ini ambil daripada rekod pekerja yang tertinggal.",
+        "readyNote": "Tiada satu pun butiran yang disemak di bawah tiada daripada rekod pekerja.",
         "requiredNote": "{count, plural, one {# perkara perlu diberi perhatian sebelum borang ini difailkan} other {# perkara perlu diberi perhatian sebelum borang ini difailkan}}",
         "whereProfile": "Tiada pada rekod pekerja ini — tambahkannya di Pengurusan Kakitangan → Profil",
         "whereStatutory": "Tiada pada rekod pekerja ini — tambahkannya di Pengurusan Kakitangan → Bank & Berkanun",
@@ -3589,7 +3589,8 @@
       "multiEmployer": {
         "title": "Borang EA bagi {count} majikan",
         "body": "Pekerja ini dibayar oleh lebih daripada satu syarikat pada tahun ini, jadi setiap satu perlu mengeluarkan Borang EA yang berasingan. Pilih majikan untuk melihat dan mencetak borangnya."
-      }
+      },
+      "downloadPdf": "Muat turun borang EA"
     },
     "cp22": {
       "download": "Muat turun CP22",

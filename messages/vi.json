@@ -3541,7 +3541,7 @@
       "readiness": {
         "ready": "Sẵn sàng để rà soát",
         "required": "Cần rà soát",
-        "readyNote": "Không thiếu thông tin nào mà biểu mẫu này lấy từ hồ sơ nhân viên.",
+        "readyNote": "Không mục nào được kiểm tra bên dưới bị thiếu trong hồ sơ nhân viên.",
         "requiredNote": "{count, plural, one {Có # mục cần xử lý trước khi nộp biểu mẫu này} other {Có # mục cần xử lý trước khi nộp biểu mẫu này}}",
         "whereProfile": "Không có trong hồ sơ của nhân viên này — hãy bổ sung tại Quản lý Nhân sự → Hồ sơ",
         "whereStatutory": "Không có trong hồ sơ của nhân viên này — hãy bổ sung tại Quản lý Nhân sự → Ngân hàng & Luật định",
@@ -3589,7 +3589,8 @@
       "multiEmployer": {
         "title": "Biểu mẫu EA cho {count} người sử dụng lao động",
         "body": "Nhân viên này được nhiều công ty trả lương trong năm nay, nên mỗi công ty phải cấp một biểu mẫu EA riêng. Chọn một người sử dụng lao động để xem và in biểu mẫu."
-      }
+      },
+      "downloadPdf": "Tải xuống biểu mẫu EA"
     },
     "cp22": {
       "download": "Tải CP22",
