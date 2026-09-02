@@ -1,6 +1,11 @@
 import type { SessionContext } from '@/db/client';
 import { leaveBalances, leaveEntitlementBreakdown } from '@/core/read';
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
+// r242 — TYPE ONLY. The import is erased at compile time, so this server module pulls in no client runtime
+// (the same reason `leave-cards.tsx` names this type rather than the component). It is the side-sheet's
+// structural mirror of the breakdown `leaveEntitlementBreakdown` returns, and naming it here is what lets a
+// row CARRY the breakdown it was derived from instead of the screen fetching one for itself.
+import type { EntitlementBreakdownData } from '@/components/leave/EntitlementBreakdown';
 import type { EntitlementStatus } from '@/lib/entitlement-status';
 import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
 
@@ -12,6 +17,13 @@ import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '@/lib/shared-le
  * the same pure `deriveBalanceRow` — a second derivation for HR would drift from the employee's screen and
  * the figure HR quotes would be the wrong one. The one deliberate difference: `essView` is emptied, because
  * per-component ESS hiding is a rule about SELF-SERVICE, not about what HR may look at.
+ *
+ * r242 — THE EXPLAIN BUTTON RIDES ON THAT SAME PAIR OF READS. Each row now carries the breakdown object it
+ * was derived from (plus the balance row's `available` and per-type visual), which the screen hands to the
+ * existing read-only side-sheet. Nothing here is recomputed and nothing is read twice: the button explains
+ * the row beside it because it is literally holding the row's own working. If you ever need another figure
+ * in that panel, take it off `b` or off `bd` — the moment it comes from anywhere else, HR's explanation and
+ * HR's grid start answering as of two different instants.
  */
 export type EmployeeBalanceRow = {
   leaveTypeId: string;
@@ -39,6 +51,21 @@ export type EmployeeBalanceRow = {
   /** Brought-forward days lost this cycle: cap excess at year open + any expiry lapse realised by `asOf`. */
   forfeitedBf: number | null;
   balance: number | null;
+  /** r242 — THE EXPLANATION PANEL'S DATA, AND IT IS THE VERY BREAKDOWN THIS ROW WAS DERIVED FROM.
+   *
+   *  The Explain button on HR's grid opens the same read-only side-sheet (`EntitlementBreakdown`) that /me
+   *  and the personnel record already open. It is fed from `bd` below — the object `deriveBalanceRow` was
+   *  handed one line earlier — so the panel and the row it sits on cannot describe different arithmetic.
+   *  A second `leaveEntitlementBreakdown` call for the panel would be a THIRD source in the sense this
+   *  file's header forbids: it would answer at a different instant, and HR would quote whichever of the
+   *  two happened to be on screen. null ⇒ nothing resolved for the type, and the button is not offered. */
+  breakdown: EntitlementBreakdownData | null;
+  /** r242 — `PanelSummary.available`: leaveBalances' own `available` (ledger balance − pending), the one
+   *  panel line that is NOT taken from the breakdown. Carried off the same `b` the figures above came
+   *  from, exactly as /leave and /admin/personnel pass it. */
+  available: number;
+  /** r242 — display-only per-type theming (639fdf77) for the panel header. Already on the balance row. */
+  visual: { color: string | null; icon: string | null; code: string | null };
 };
 
 export async function employeeBalanceRows(
@@ -91,6 +118,10 @@ export async function employeeBalanceRows(
         overutilized: row.overutilized,
         forfeitedBf: bd ? bd.forfeited : null,
         balance: row.balance,
+        // r242 — the SAME `bd` that produced every figure above, handed on rather than re-read.
+        breakdown: bd,
+        available: b.available,
+        visual: { color: b.color, icon: b.icon, code: b.code },
       };
     })
     .filter((r) => (typeIds.length ? typeIds.includes(r.leaveTypeId) : true))

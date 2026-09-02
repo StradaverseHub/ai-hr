@@ -2052,7 +2052,9 @@
       "empSearchClear": "Kosongkan pekerja",
       "colEntitlementStatus": "Status Kelayakan",
       "resolvedEntitlementTable": "Jadual kelayakan: {name}",
-      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})"
+      "sharedBalanceWith": "Berkongsi satu baki dengan {types} (kumpulan: {pool})",
+      "colExplanation": "Penerangan",
+      "explainAction": "Terangkan"
     },
     "override": {
       "title": "Before you submit",
@@ -6678,6 +6680,7 @@
       "encashmentEligibleTypesFixed": "Cuti yang layak: Cuti Tahunan sahaja.",
       "encashmentRoundingFixed": "Pembundaran: kurang daripada 0.5 hari dibundarkan turun kepada 0; 0.5 hari atau lebih dibundarkan naik kepada hari penuh seterusnya. Angka ini tidak akan kurang daripada 0.",
       "importAction": "+ Import",
+      "employeeBalancesAction": "Baki Cuti Pekerja",
       "runAccrualAction": "Jalankan Pengumpulan",
       "close": "Tutup",
       "import": {

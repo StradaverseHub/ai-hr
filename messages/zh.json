@@ -2052,7 +2052,9 @@
       "empSearchClear": "清除员工",
       "colEntitlementStatus": "额度状态",
       "resolvedEntitlementTable": "额度表：{name}",
-      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）"
+      "sharedBalanceWith": "与 {types} 共用一个余额（额度池：{pool}）",
+      "colExplanation": "说明",
+      "explainAction": "查看说明"
     },
     "override": {
       "title": "Before you submit",
@@ -6678,6 +6680,7 @@
       "encashmentEligibleTypesFixed": "合资格假期：仅限年假。",
       "encashmentRoundingFixed": "四舍五入规则：不足0.5天的部分舍去为0；达到0.5天或以上的部分进位为下一个整天。该数值永远不会低于0。",
       "importAction": "+ 导入",
+      "employeeBalancesAction": "员工假期余额",
       "runAccrualAction": "运行累积",
       "close": "关闭",
       "import": {

@@ -2052,7 +2052,9 @@
       "empSearchClear": "ล้างพนักงาน",
       "colEntitlementStatus": "สถานะสิทธิ",
       "resolvedEntitlementTable": "ตารางสิทธิ: {name}",
-      "sharedBalanceWith": "ใช้ยอดคงเหลือร่วมกับ {types} (แหล่งรวม: {pool})"
+      "sharedBalanceWith": "ใช้ยอดคงเหลือร่วมกับ {types} (แหล่งรวม: {pool})",
+      "colExplanation": "คำอธิบาย",
+      "explainAction": "อธิบาย"
     },
     "override": {
       "title": "Before you submit",
@@ -6678,6 +6680,7 @@
       "encashmentEligibleTypesFixed": "วันลาที่มีสิทธิ์: วันลาพักร้อนเท่านั้น",
       "encashmentRoundingFixed": "การปัดเศษ: น้อยกว่า 0.5 วันจะปัดลงเป็น 0; 0.5 วันขึ้นไปจะปัดขึ้นเป็นวันเต็มถัดไป ตัวเลขนี้จะไม่ต่ำกว่า 0",
       "importAction": "+ นำเข้า",
+      "employeeBalancesAction": "ยอดวันลาของพนักงาน",
       "runAccrualAction": "เรียกใช้การสะสม",
       "close": "ปิด",
       "import": {

@@ -2052,7 +2052,9 @@
       "empSearchClear": "பணியாளரை அழி",
       "colEntitlementStatus": "உரிமை நிலை",
       "resolvedEntitlementTable": "உரிமை அட்டவணை: {name}",
-      "sharedBalanceWith": "{types} உடன் ஒரே இருப்பைப் பகிர்கிறது (தொகுப்பு: {pool})"
+      "sharedBalanceWith": "{types} உடன் ஒரே இருப்பைப் பகிர்கிறது (தொகுப்பு: {pool})",
+      "colExplanation": "விளக்கம்",
+      "explainAction": "விளக்கு"
     },
     "override": {
       "title": "Before you submit",
@@ -6678,6 +6680,7 @@
       "encashmentEligibleTypesFixed": "தகுதியான விடுப்பு: ஆண்டு விடுப்பு மட்டும்.",
       "encashmentRoundingFixed": "வட்டமிடல்: 0.5 நாளுக்கும் குறைவானது 0 ஆக வட்டமிடப்படும்; 0.5 நாள் அல்லது அதற்கு மேல் அடுத்த முழு நாளாக வட்டமிடப்படும். இந்த எண் 0க்குக் கீழே செல்லாது.",
       "importAction": "+ இறக்குமதி",
+      "employeeBalancesAction": "ஊழியர் விடுப்பு இருப்பு",
       "runAccrualAction": "சேர்ப்பை இயக்கு",
       "close": "மூடு",
       "import": {
