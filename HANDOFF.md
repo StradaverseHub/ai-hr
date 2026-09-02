@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-02 (r226-r241 SHIPPED · ⚠️ r242 IS MERGED TO main, GREEN, AND NOT DEPLOYED — SSH IS DOWN)
+## CURRENT STATE — snapshot 2026-09-02 (r226-r242 SHIPPED · BOARD EMPTY — NOTHING OPEN, CONTESTED, PLANNED, APPROVED OR BUILDING)
 
-**`main@b771ed4c` IS WHAT RUNS ON PRODUCTION (r241, 2026-09-02)** — verified by an
+**`main@b0543e85` IS WHAT RUNS ON PRODUCTION (r242, 2026-09-02)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
@@ -30,23 +30,6 @@ catalog seed ran. `0452`/`0453` remain applied from r236.
 **370 migrations applied; r239 and r240 carried none.** The r239 dry run reported ZERO lines — not even `next-env.d.ts`, which the r238 one did (Next rewrites
 it per build mode and it is gitignored; a single such entry is not a stale file). `0454` remains the last
 migration; r239 carried none.
-
-⚠️⚠️ **r242 IS FINISHED AND SITTING ON `main` UNDEPLOYED. READ THIS BEFORE PLANNING ANYTHING.** Both
-approved board items — `b36a8a91` (EA "Open Form" + readiness panel) and `1ff969ed` (the Explanation panel
-on Employee Balances) — are built, adversarially verified, fix-passed, **gate green 6/6 across 763 files**,
-`next build` clean, and render-checked on a dev server. `main` is at the two merge commits above r241's
-head. **Production still runs r241 (`main@b771ed4c`).**
-
-**WHY IT DID NOT SHIP: THE SERVER'S SSH STOPPED ANSWERING, and the box is otherwise fine.** Measured, not
-guessed: `ping` 0% loss at ~24ms; **port 8288 and port 22 both closed/filtered**; **ports 80 and 443 OPEN**
-and `https://203.142.6.241/` returns **303** (the app is up and serving). So this is sshd or a firewall
-rule, NOT a dead machine and NOT the application. Nothing can be deployed until somebody with console
-access restarts sshd — every deploy path in this repo goes through `ssh -p 8288`.
-
-**THE TWO BOARD ITEMS ARE STILL `building` ON PURPOSE.** `improve:pull` HIDES `building`, so this entry is
-the only thing that surfaces them. Do NOT re-plan or re-build them. When SSH returns, the round finishes
-with: rsync → `deploy.sh` → verify → `improve:build-complete` then `improve:mark-deployed` for BOTH ids
-(`b36a8a91`, `1ff969ed`) → move this block into the r242 entry.
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
@@ -287,7 +270,7 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r242 (2026-09-02) — two approved items, built by workflow. ⚠️ MERGED AND GREEN, NOT DEPLOYED. NO MIGRATION.
+### r242 (2026-09-02) — two approved items, built by workflow. SHIPPED. NO MIGRATION.
 
 `b36a8a91` (EA) and `1ff969ed` (Leave Explanation), each built by its own agent in its own worktree and
 then adversarially verified by two lenses. **The verify pass earned its keep twice over: four majors, and
@@ -335,6 +318,15 @@ delivery note to the reporter, offering it back.
 sharing); the EA download filename; the PDF's layout, wording, field order, language and page size; and
 the mockup's box table over money boxes, which cannot be drawn without asserting a state for figures the
 panel is not competent to judge (AGENTS 28).
+
+⚠️ **THE DEPLOY FAILED ONCE ON SSH AND IT WAS TRANSIENT — DO NOT REDIAGNOSE IT AS A DEAD BOX.** Between
+the green gate and the rsync, `ssh -p 8288` began timing out and stayed down across several retries and
+~20 minutes; ports 8288 AND 22 both read closed/filtered while ICMP, 80 and 443 stayed up and the app kept
+serving. It came back on its own with no intervention. **The evidence that mattered was that the box was
+otherwise healthy** — a machine answering HTTPS while refusing SSH is a daemon or a filter, never a dead
+host, and the right response is to record the round as undeployed and retry rather than to go looking for
+a second address. (The only host in this repo is `203.142.6.241:8288`; `10.20.30.20` is the LAN-only CLI
+default and is not a route to production.)
 
 ⚠️ **A PROCESS MISTAKE WORTH RECORDING: I MERGED FROM THE WRONG WORKTREE.** The shell cwd persisted from a
 `cd` into the leave worktree, so `git merge build/r242-ea-review` landed the EA branch **on the leave
