@@ -373,8 +373,13 @@ export default async function EmployeeBalancesPage({
                             shows you which table each person got, rather than leaving you to work it out
                             from the balance". The figure alone cannot answer it — several Medical tables
                             grant the same days at some service lengths. It goes in the LEAVE CODE column
-                            rather than a twelfth one: 026e16b9 measured this table to the pixel and the
-                            eleven it has already overflow a laptop. */}
+                            rather than beside the figures: 026e16b9 measured the FIGURE columns to the
+                            pixel and the eleven of them already overflow a laptop.
+                            ⚠️ r242 ADDED A TWELFTH COLUMN and this comment used to deny one existed. The
+                            measurement is still right, because that column holds the Explanation CONTROL
+                            rather than a number — but a live comment asserting the opposite of the file
+                            three lines below it is how the next reader is misled. It is also, on its own,
+                            the plan's "rule that applied": this caption is already on the row. */}
                         {r.entitlementTemplateName && (
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">
                             {tInq('resolvedEntitlementTable', { name: r.entitlementTemplateName })}
@@ -425,7 +430,11 @@ export default async function EmployeeBalancesPage({
                           /admin/personnel/[id] pass it. No breakdown resolved ⇒ no button, rather than a
                           button opening a panel of em dashes. */}
                       <td className="px-2 py-2">
-                        {r.breakdown && (
+                        {/* ⚠️ AN EM DASH, NOT AN EMPTY CELL, WHERE NO BREAKDOWN RESOLVED. Every other
+                            column in this table renders a null figure as "—"; a blank cell under a
+                            heading reads as a screen that failed rather than as a row with nothing to
+                            explain. Same convention, one column further right. */}
+                        {r.breakdown ? (
                           <EntitlementBreakdown
                             data={r.breakdown}
                             summary={{ available: r.available }}
@@ -436,6 +445,8 @@ export default async function EmployeeBalancesPage({
                             triggerLabel={tInq('explainAction')}
                             triggerClassName="whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
                           />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                     </tr>
