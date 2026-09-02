@@ -6074,7 +6074,47 @@
       "notChecked": "Belum disemak",
       "noRuns": "Tiada proses diproses. Menara ini tiada apa untuk dipantau sehingga satu proses diproses.",
       "domainsLine": "{live} daripada {total} bidang sedang aktif.",
-      "howItWorksLink": "Cara ia berfungsi"
+      "howItWorksLink": "Cara ia berfungsi",
+      "agentsLink": "Ejen yang sedang berjalan",
+      "agents": {
+        "title": "Ejen AI",
+        "description": "Bahagian sistem ini yang bertindak sendiri, dan sama ada setiap satunya benar-benar boleh.",
+        "backToTower": "Kembali ke Menara Kawalan",
+        "heading": "Apa yang berjalan tanpa diminta",
+        "headingHelp": "Setiap satu dimatikan sehingga anda menghidupkannya, dan menghidupkannya bukan bermakna ia boleh berfungsi — suis yang tiada apa di belakangnya menyatakannya di bawah.",
+        "stateOn": "Berjalan",
+        "stateBlocked": "Dihidupkan, tetapi tidak boleh berjalan",
+        "stateOff": "Dimatikan",
+        "turnOn": "Hidupkan",
+        "turnOff": "Matikan",
+        "blockedModule": "Tiada apa akan berlaku: {module} bukan sebahagian daripada pelan anda.",
+        "blockedProvider": "Tiada apa akan berlaku: tiada penyedia AI disediakan, jadi tiada model untuk ditanya.",
+        "providerHelp": "Penyedia AI disediakan di bawah Pentadbiran → AI. Tanpanya, bahagian ejen ini yang memerlukan model tidak melakukan apa-apa dan tidak merekod apa-apa — itu tingkah laku yang betul, bukan kerosakan.",
+        "readOnlyNotice": "Anda boleh melihat keadaan setiap ejen di sini, tetapi menghidupkan atau mematikannya ialah perubahan seluruh kumpulan dan memerlukan pentadbir kumpulan.",
+        "switchedOn": "Dihidupkan.",
+        "switchedOff": "Dimatikan.",
+        "unknownAgent": "Itu bukan salah satu ejen pada skrin ini.",
+        "measuredTitle": "Bagaimana kami akan tahu sama ada ia membantu",
+        "measuredBody": "Setiap cadangan ejen ini direkodkan bersama apa yang berlaku kepadanya, supaya ketepatannya menjadi angka yang diukur dan bukan pendapat. Belum ada apa-apa direkodkan, kerana tiada satu pun dihidupkan — dan kami lebih suka tidak menunjukkan apa-apa daripada peratusan yang dikira tanpa bukti.",
+        "seeHowItWorks": "Lihat cara keseluruhan gelung berfungsi",
+        "agent": {
+          "nudge": "Pengejar",
+          "hypotheses": "Pendapat kedua",
+          "triage": "Pembaca tuntutan"
+        },
+        "agentDoes": {
+          "nudge": "Mengejar sesiapa yang boleh membetulkan rekod pekerja yang tidak lengkap — pekerja untuk butiran bank mereka sendiri, HR untuk yang hanya HR boleh kunci masuk.",
+          "hypotheses": "Melihat semula pekerja yang telah dilepaskan oleh larian gaji, membandingkan setiap seorang dengan rakan sekerja. Ia hanya boleh meminta semakan — ia tidak boleh menyekat larian gaji.",
+          "triage": "Membaca setiap tuntutan perbelanjaan baharu dan, jika penerangannya tidak sepadan, bertanya kepada orang yang memfailkannya. Ia tidak boleh menolak atau mengubah tuntutan."
+        },
+        "refused": {
+          "not_group_admin": "Hanya pentadbir kumpulan boleh mengubah ini.",
+          "unknown_key": "Tetapan itu tidak wujud.",
+          "not_tenant_scoped": "Tetapan itu bukan milik anda untuk diubah.",
+          "not_customer_visible": "Tetapan itu diuruskan oleh Stradaverse.",
+          "wrong_type": "Itu bukan nilai yang sah untuk tetapan ini."
+        }
+      }
     }
   },
   "admin": {

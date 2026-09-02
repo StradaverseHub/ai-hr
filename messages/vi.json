@@ -6074,7 +6074,47 @@
       "notChecked": "Chưa kiểm tra",
       "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
       "domainsLine": "{live} trên {total} lĩnh vực đang hoạt động.",
-      "howItWorksLink": "Cách hoạt động"
+      "howItWorksLink": "Cách hoạt động",
+      "agentsLink": "Tác nhân nào đang chạy",
+      "agents": {
+        "title": "Tác nhân AI",
+        "description": "Những phần của hệ thống tự hoạt động, và liệu từng phần có thực sự làm được hay không.",
+        "backToTower": "Quay lại Tháp điều khiển",
+        "heading": "Những gì tự chạy mà không cần yêu cầu",
+        "headingHelp": "Mỗi mục đều tắt cho đến khi bạn bật, và bật không có nghĩa là nó chạy được — công tắc nào chưa đủ điều kiện sẽ được nêu bên dưới.",
+        "stateOn": "Đang chạy",
+        "stateBlocked": "Đã bật, nhưng không chạy được",
+        "stateOff": "Đã tắt",
+        "turnOn": "Bật",
+        "turnOff": "Tắt",
+        "blockedModule": "Sẽ không có gì xảy ra: {module} không thuộc gói của bạn.",
+        "blockedProvider": "Sẽ không có gì xảy ra: chưa thiết lập nhà cung cấp AI nên không có mô hình để hỏi.",
+        "providerHelp": "Nhà cung cấp AI được thiết lập tại Quản trị → AI. Nếu không có, những phần cần mô hình sẽ không làm gì và không ghi nhận gì — đó là hành vi đúng, không phải lỗi.",
+        "readOnlyNotice": "Bạn có thể xem trạng thái từng tác nhân ở đây, nhưng bật hoặc tắt là thay đổi toàn nhóm và cần quản trị viên nhóm.",
+        "switchedOn": "Đã bật.",
+        "switchedOff": "Đã tắt.",
+        "unknownAgent": "Đó không phải một trong các tác nhân trên màn hình này.",
+        "measuredTitle": "Làm sao biết được nó có ích hay không",
+        "measuredBody": "Mọi đề xuất của các tác nhân này đều được ghi lại kèm kết quả, nên độ chính xác của chúng là con số đo được chứ không phải ý kiến. Hiện chưa có gì được ghi nhận vì chưa tác nhân nào được bật — và chúng tôi thà không hiển thị gì còn hơn một tỷ lệ tính từ dữ liệu không tồn tại.",
+        "seeHowItWorks": "Xem toàn bộ vòng lặp hoạt động thế nào",
+        "agent": {
+          "nudge": "Người nhắc việc",
+          "hypotheses": "Ý kiến thứ hai",
+          "triage": "Người đọc đơn hoàn ứng"
+        },
+        "agentDoes": {
+          "nudge": "Nhắc người có thể bổ sung hồ sơ nhân viên còn thiếu — nhân viên cho thông tin ngân hàng, HR cho những gì chỉ HR nhập được.",
+          "hypotheses": "Xem lại những người mà kỳ trả lương đã cho qua, so sánh từng người với đồng nghiệp. Chỉ có thể đề nghị xem lại, không bao giờ chặn được kỳ trả lương.",
+          "triage": "Đọc từng đơn hoàn ứng mới và, nếu mô tả không khớp với phần còn lại, hỏi lại người đã nộp. Không bao giờ có thể từ chối hay sửa một đơn."
+        },
+        "refused": {
+          "not_group_admin": "Chỉ quản trị viên nhóm mới thay đổi được.",
+          "unknown_key": "Cài đặt đó không tồn tại.",
+          "not_tenant_scoped": "Cài đặt đó không thuộc quyền thay đổi của bạn.",
+          "not_customer_visible": "Cài đặt đó do Stradaverse quản lý.",
+          "wrong_type": "Đó không phải giá trị hợp lệ cho cài đặt này."
+        }
+      }
     }
   },
   "admin": {
