@@ -3783,6 +3783,7 @@
       "link_ea_blank_title": "A completely blank EA — every heading, box, caption, note and signature area, with no figures and no employee details in it. It follows the C.P.8A (Pin. 2024) arrangement but is printed on paper of ours: we hold no blank C.P.8A from LHDN, so this is our rendering of that layout, not the agency’s artwork. Print it and hold it beside the agency’s own form.",
       "link_ea_register": "Download field register",
       "link_ea_register_title": "Every box on the EA form, listed with its official section, its official box number, the agency’s own wording, the kind of value it takes, and what feeds it today — or “nothing feeds this yet”. A Markdown file in English, to work down box by box beside the blank form.",
+      "link_ea_more": "Blank form and field register",
       "desc_ea_en": "Each employee’s annual statement of remuneration, always in English. Drawn to the C.P.8A (Pin. 2024) arrangement, on paper of ours — we hold no blank C.P.8A from LHDN.",
       "desc_ea_ms": "The same statement, always in Bahasa Malaysia. Drawn to the C.P.8A (Pin. 2024) arrangement, on paper of ours — we hold no blank C.P.8A from LHDN.",
       "link_borang_e": "Borang E",
@@ -3902,6 +3903,15 @@
       "disclaimer": "Generated from payroll for YA {year} (statutory tables {version}). Salary, bonus, allowances, EPF, SOCSO/EIS, MTD, CP38 and zakat come from payroll. Fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity have no payroll source and are entered by HR; until then the printed form leaves those rules empty rather than printing 0.00. The printed form follows the C.P.8A (Pin. 2024) arrangement but is printed on paper of ours — we hold no blank C.P.8A from LHDN — so check every figure against your records before filing.",
       "blankDisclaimer": "This is a BLANK EA. No payroll figures and no employee details are printed on it — every rule is left empty for whoever completes it. It follows the C.P.8A (Pin. 2024) arrangement but is printed on paper of ours: we hold no blank C.P.8A from LHDN, so this is our rendering of that layout and not the agency’s own artwork. Check it against the agency’s form before relying on the layout.",
       "formEUnaffectedNote": "EA amendments affect only this EA form. Form E / CP8D figures are computed from payroll and are unaffected.",
+      "readiness": {
+        "ready": "Ready for review",
+        "required": "Review required",
+        "readyNote": "Nothing this form takes from the employee’s record is missing.",
+        "requiredNote": "{count, plural, one {# item needs attention before this form is filed} other {# items need attention before this form is filed}}",
+        "whereProfile": "Not on this employee’s record — add it under Personnel Management → Profile",
+        "whereStatutory": "Not on this employee’s record — add it under Personnel Management → Bank & Statutory",
+        "checkedNote": "Checked against the employee’s record: {boxes}. The year’s figures come from payroll and are not checked here — an amount of 0.00 is a real figure, not a missing one."
+      },
       "override": {
         "panelTitle": "Amend EA figures",
         "panelDescription": "Authorized HR may overwrite specific EA-form fields. Original payroll records are never changed; amendments appear only on this EA form.",

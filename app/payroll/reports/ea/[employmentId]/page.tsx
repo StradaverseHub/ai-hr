@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';
 import { isAdmin, canManagePayroll } from '@/lib/authz';
 import { Card } from '@/components/ui';
+import { eaReadiness, type EaBoxCaption } from '@/lib/ea-readiness';
 import { PrintButton } from '@/components/print-button';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { EaAmendPanel, type AmendField } from './ea-amend-panel';
@@ -68,6 +69,16 @@ export default async function EaStatementPage({
 
   const t = await getTranslations('payroll.ea');
   const canAmend = isAdmin(s) || canManagePayroll(s); // server gate for the "Amend EA figures" panel
+
+  // b36a8a91 — IS THIS FORM READY TO BE FILED? Derived from the statement ALREADY read above, joined to
+  // the field register; see lib/ea-readiness.ts for what "missing" is allowed to mean. It counts and names
+  // boxes and computes no figure, so the panel cannot disagree with the form printed beneath it.
+  const readiness = eaReadiness(ea);
+  // The box's name in the form's own vocabulary — the same caption Section A prints for it two rows down,
+  // never a second wording for one box. Two captions where the form takes either document (I.C. / passport).
+  // Every key reachable here is also dereferenced statically below, which is what keeps them covered by
+  // test/i18n-coverage.test.ts's static sweep.
+  const boxName = (captions: readonly EaBoxCaption[]) => captions.map((k) => t(k as 'name')).join(' / ');
 
   const CATEGORY: Record<number, string> = {
     1: t('category1'),
@@ -260,6 +271,61 @@ export default async function EaStatementPage({
           <p className="text-sm text-muted-foreground">
             {t('yearEnded', { year: ea.year, employer: ea.employer.name })}
             {ea.employer.eNumber ? ` · E ${ea.employer.eNumber}` : ''}
+          </p>
+        </div>
+
+        {/* b36a8a91 — WHETHER THIS FORM IS READY, AND WHAT IS STOPPING IT. Above the boxes, because the
+            answer is what the reader came for; `print:hidden` because it is a note to the reviewer and not
+            part of the statement the employee is handed.
+            ⚠️ The green line claims ONLY that nothing the form takes from the employee's RECORD is absent.
+            It says nothing about whether a figure is right, and the note under it says so rather than
+            letting "Ready for review" be read as an assurance about the money (AGENTS 28). */}
+        <div
+          className={`rounded-lg border px-4 py-3 print:hidden ${
+            readiness.ready
+              ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10'
+              : 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                readiness.ready
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+              }`}
+            >
+              {readiness.ready ? t('readiness.ready') : t('readiness.required')}
+            </span>
+            <span
+              className={`text-sm font-medium ${
+                readiness.ready ? 'text-emerald-900 dark:text-emerald-200' : 'text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              {readiness.ready ? t('readiness.readyNote') : t('readiness.requiredNote', { count: readiness.missing.length })}
+            </span>
+          </div>
+
+          {/* Each empty box by NAME, and where on the employee's record the detail belongs — the panel exists
+              because "one of these fifty rows is blank" is not something a reader should have to find. */}
+          {readiness.missing.length > 0 && (
+            <ul className="mt-3 divide-y divide-amber-200/70 dark:divide-amber-500/20">
+              {readiness.missing.map((m) => (
+                <li
+                  key={m.captions.join('/')}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-1.5 text-sm"
+                >
+                  <span className="font-medium text-amber-900 dark:text-amber-200">{boxName(m.captions)}</span>
+                  <span className="text-xs text-amber-800 dark:text-amber-300/90">
+                    {m.where === 'profile' ? t('readiness.whereProfile') : t('readiness.whereStatutory')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('readiness.checkedNote', { boxes: readiness.checked.map((c) => boxName(c.captions)).join(' · ') })}
           </p>
         </div>
 

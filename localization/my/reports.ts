@@ -252,6 +252,19 @@ export type StatutoryFormLink = {
   tertiaryHref?: string;
   tertiaryLabelKey?: string;
   tertiaryTitleKey?: string;
+  /**
+   * r242 (item b36a8a91) — ONE NAME OVER THE ROW'S EXTRA ACTIONS, so they read as one thing.
+   *
+   * The reporter downloaded a BLANK EA believing it was the completed one, and the row is why: three
+   * actions side by side at equal weight, the middle one a blank form. Folding the blank and the field
+   * register under a single named control leaves the row with one obvious route to a completed form and
+   * one clearly-labelled aside — and BOTH extras stay reachable, which matters: a blank C.P.8A is a real
+   * thing HR sometimes wants, so this is a demotion and not a deletion.
+   *
+   * Optional ⇒ a row that declares none renders its extras side by side exactly as before (the CP22 row
+   * has one extra and needs no name over it).
+   */
+  extrasLabelKey?: string;
 };
 
 export type ReportDef = {
@@ -1906,6 +1919,18 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   //
   // The fidelity is UNCHANGED and stays `agency-layout` for both: a blank copy of our rendering is still
   // our rendering. Nothing here moves toward `official`, which needs agency artwork in `public/forms/`.
+  //
+  // r242 (item b36a8a91) — THE ROW NOW SAYS WHAT IS BEHIND IT, AND THE BLANK IS NO LONGER BESIDE IT.
+  // r220 left each EA row with three actions at equal weight, the middle one a blank form; the reporter
+  // pressed it, got an empty C.P.8A, and reported that the product could not produce a completed EA — which
+  // it has been able to do all along, one screen further on. Two changes, both presentational:
+  //   • the primary action REUSES the shared `openForm` label rather than naming the employee list it
+  //     passes through. It is the same href and the same journey (list → person → their completed EA);
+  //     what changes is that the button now names the DESTINATION. `openEmployeeList` is not retired — it
+  //     is still what `my.tp1` says, where the list IS the destination.
+  //   • `extrasLabelKey` folds the blank and the field register under one named control, so neither can be
+  //     mistaken for the route to a completed form. Both stay reachable, one press further on.
+  // Nothing about what either row PRODUCES moves, and the fidelity is untouched.
   {
     id: 'my.ea.en',
     labelKey: 'link_ea_en',
@@ -1914,13 +1939,14 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     body: 'lhdn',
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=en',
-    actionLabelKey: 'openEmployeeList',
+    actionLabelKey: 'openForm',
     secondaryHref: '/payroll/ea/blank?lang=en',
     secondaryLabelKey: 'link_ea_blank_en',
     secondaryTitleKey: 'link_ea_blank_title',
     tertiaryHref: '/payroll/ea/field-register',
     tertiaryLabelKey: 'link_ea_register',
     tertiaryTitleKey: 'link_ea_register_title',
+    extrasLabelKey: 'link_ea_more',
     fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 3,
@@ -1933,13 +1959,14 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     body: 'lhdn',
     cadence: 'annual',
     href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=ms',
-    actionLabelKey: 'openEmployeeList',
+    actionLabelKey: 'openForm',
     secondaryHref: '/payroll/ea/blank?lang=ms',
     secondaryLabelKey: 'link_ea_blank_ms',
     secondaryTitleKey: 'link_ea_blank_title',
     tertiaryHref: '/payroll/ea/field-register',
     tertiaryLabelKey: 'link_ea_register',
     tertiaryTitleKey: 'link_ea_register_title',
+    extrasLabelKey: 'link_ea_more',
     fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 4,

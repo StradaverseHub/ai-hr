@@ -185,9 +185,44 @@ type ShelfCard = {
    */
   secondary: ShelfExtraAction | null;
   tertiary: ShelfExtraAction | null;
+  /**
+   * r242 — the ONE name the row's extra actions sit under, when the catalog entry gives them one.
+   *
+   * Null ⇒ they render side by side exactly as they did (the CP22 row, with a single extra, needs no
+   * name over it). The two EA rows declare one, because three actions at equal weight is how a reporter
+   * pressed "Download blank EA form" believing it was the completed one.
+   */
+  extrasLabel: string | null;
 };
 
 type ShelfExtraAction = { href: string; label: string; title: string | null };
+
+/**
+ * r242 — a row's extra actions, either side by side (as before) or folded under one named disclosure.
+ *
+ * A `<details>`, not a menu: it is a server component with no client state to hand across the boundary,
+ * it works with no JavaScript, and the two links inside it are the SAME links the row rendered before —
+ * this demotes the blank form, it does not take it away.
+ */
+function ExtraActions({ items, groupLabel }: { items: ShelfExtraAction[]; groupLabel: string | null }) {
+  if (items.length === 0) return null;
+  const link = (x: ShelfExtraAction, cls: string) => (
+    <Link key={x.href} href={x.href} title={x.title ?? undefined} className={cls}>
+      {x.label}
+    </Link>
+  );
+  const flat = 'rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent';
+  if (!groupLabel) return <>{items.map((x) => link(x, flat))}</>;
+  return (
+    <details>
+      <summary className={`inline-flex cursor-pointer list-none ${flat}`}>{groupLabel}</summary>
+      {/* IN FLOW, NOT A FLOATING PANEL. The shelf Card clips its overflow, so an absolutely-positioned
+          menu on the last row of a shelf would be cut off — and the blank form would stop being reachable
+          for the one row that has it. Opening the fold makes the card taller instead. */}
+      <div className="mt-1 flex flex-wrap justify-end gap-2">{items.map((x) => link(x, flat))}</div>
+    </details>
+  );
+}
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 
@@ -347,6 +382,7 @@ export default async function StatutoryFormsPage({
         action: { href: formHref(r.id, r.periodKind), label: t('openForm') },
         secondary: null,
         tertiary: null,
+        extrasLabel: null,
       });
     }
 
@@ -362,8 +398,12 @@ export default async function StatutoryFormsPage({
         draftFile: (l.outputs ?? []).includes('file'),
         due: null,
         // The row's OWN action wording when it declares one — the CP22 entry scrolls to the worklist, it
-        // does not open a form; the two EA entries open an employee list. Everything else falls back to
-        // the shared label, which is why rewording either one never touches the other.
+        // does not open a form; `my.tp1` opens an employee list. Everything else falls back to the shared
+        // label, which is why rewording either one never touches the other.
+        //
+        // r242 — the two EA entries now name `openForm` explicitly, which is the SHARED label they would
+        // have fallen back to. Naming it is the point: the row that reads "Open form" is the row that ends
+        // at a completed EA, and that decision belongs in the catalog beside the href it describes.
         action: { href: linkHref(l.href), label: t((l.actionLabelKey ?? 'openForm') as 'openForm') },
         // d3a9383c — a second action, when the catalog entry declares one (the blank fillable CP22; r220
         // added the blank C.P.8A to both EA rows). Rendered from the SAME data as the action beside it.
@@ -377,6 +417,9 @@ export default async function StatutoryFormsPage({
         // r220 — the third: the EA field register, offered beside the blank form because a blank page you
         // cannot check box by box is only half of what was asked for.
         tertiary: extraAction(l.tertiaryHref, l.tertiaryLabelKey, l.tertiaryTitleKey, null),
+        // r242 — and the ONE name those two now sit under on the EA rows. Read off the catalog like every
+        // other string here; a row that declares no key renders its extras exactly as it did.
+        extrasLabel: l.extrasLabelKey ? t(l.extrasLabelKey as 'link_ea_more') : null,
       });
     }
 
@@ -396,6 +439,7 @@ export default async function StatutoryFormsPage({
         action: null,
         secondary: null,
         tertiary: null,
+        extrasLabel: null,
       });
     }
 
@@ -615,17 +659,13 @@ export default async function StatutoryFormsPage({
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                       {/* d3a9383c's second action and r220's third, rendered from the same shape so a row
-                          with two extras cannot look like two different kinds of control. */}
-                      {[c.secondary, c.tertiary].filter((x): x is ShelfExtraAction => x !== null).map((x) => (
-                        <Link
-                          key={x.href}
-                          href={x.href}
-                          title={x.title ?? undefined}
-                          className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent"
-                        >
-                          {x.label}
-                        </Link>
-                      ))}
+                          with two extras cannot look like two different kinds of control. r242 folds them
+                          under one name when the entry asks for it — same links, one less thing on the row
+                          that can be mistaken for the route to a completed form. */}
+                      <ExtraActions
+                        items={[c.secondary, c.tertiary].filter((x): x is ShelfExtraAction => x !== null)}
+                        groupLabel={c.extrasLabel}
+                      />
                       {/* NO ACTION ELEMENT AT ALL for a form that was never built — not a disabled button,
                           which is still a button and still gets clicked at. A plain sentence, and nothing
                           to press. `c.action` is null for exactly one reason: the entry came from a

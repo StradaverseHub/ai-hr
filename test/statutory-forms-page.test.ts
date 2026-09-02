@@ -568,21 +568,32 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(cp22.actionLabelKey).toBe('openWorklist');
     expect(en.payroll.statutoryForms.openWorklist).toBe('Open worklist');
     // 587ee719 — each entry still names its OWN action or falls back, which is the mechanism this test
-    // exists to protect. "Open worklist" stays CP22's alone; the two EA entries open an employee list,
-    // which is what their href does; Borang E declares none and renders the shared label.
+    // exists to protect. "Open worklist" stays CP22's alone; Borang E declares none and renders the
+    // shared label.
     //
     // r224 — `my.tp1` REUSES `openEmployeeList` RATHER THAN GROWING A KEY OF ITS OWN, because it is the
     // same act: its href opens a list of people, and the form belongs to one of them. A fourth wording
     // for the third screen that does this is how a shared label stops being shared.
+    //
+    // ⚠️ r242 (item b36a8a91) — THE TWO EA ROWS MOVED OFF `openEmployeeList`, AND THE CASE MOVES WITH THEM
+    // RATHER THAN BEING DELETED (AGENTS 18). They used to be the evidence that a row names the screen its
+    // href opens; the reporter then downloaded a blank EA believing it was the completed one, and the row
+    // was why — the button named the list it passes THROUGH rather than the form it ends at. So they now
+    // say `openForm`, the SHARED label they would have fallen back to, and the mechanism this case protects
+    // is untouched: `openEmployeeList` is still `my.tp1`'s (where the list IS the destination), CP22 still
+    // owns "Open worklist" alone, and rewording either still leaves the other alone.
     expect(
       MY_STATUTORY_LINKS.map((l) => [l.id, l.actionLabelKey ?? null]),
     ).toEqual([
-      ['my.ea.en', 'openEmployeeList'],
-      ['my.ea.ms', 'openEmployeeList'],
+      ['my.ea.en', 'openForm'],
+      ['my.ea.ms', 'openForm'],
       ['my.borang-e', null],
       ['my.tp1', 'openEmployeeList'],
       ['my.cp22', 'openWorklist'],
     ]);
+    // …and the shared key is REUSED rather than duplicated: no EA-only "Open form" wording of its own.
+    expect(en.payroll.statutoryForms.openEmployeeList).toBe('Open employee list');
+    expect(Object.keys(en.payroll.statutoryForms).filter((k) => /^openForm/.test(k))).toEqual(['openForm']);
     expect(PAGE).toContain("t((l.actionLabelKey ?? 'openForm')");
     // The row title is untouched — the fix that was NOT applied.
     expect(en.payroll.statutoryForms.link_cp22).toBe('CP22 / CP22A notices');
@@ -646,6 +657,43 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(en_.secondaryTitleKey).toBe('link_ea_blank_title');
     expect(ms_.secondaryTitleKey).toBe('link_ea_blank_title');
     expect(en_.tertiaryTitleKey).toBe('link_ea_register_title');
+  });
+
+  /**
+   * ⚠️ r242 (item b36a8a91) — THE TWO EXTRAS ARE STILL BOTH THERE, AND THEY NOW SIT UNDER ONE NAME.
+   *
+   * The case above is what r220 approved and it is unchanged: the blank form and the field register are
+   * offered from both EA rows, in each row's own language. What this round changes is their WEIGHT. Three
+   * actions side by side, the middle one a blank form, is how the reporter downloaded an empty C.P.8A
+   * believing it was the completed one — so the extras fold under a single named control and the row is
+   * left with one obvious route to a completed form.
+   *
+   * THE BLANK MUST STAY REACHABLE. It is a real thing HR sometimes wants, and this is a demotion, not a
+   * deletion — which is why the hrefs above are pinned unchanged and why this case pins that the folded
+   * control still renders BOTH of them.
+   */
+  it('folds the EA row’s blank form and field register under one named action, without hiding either', () => {
+    for (const id of ['my.ea.en', 'my.ea.ms']) {
+      const l = MY_STATUTORY_LINKS.find((x) => x.id === id)!;
+      expect(l.extrasLabelKey, id).toBe('link_ea_more');
+      // The demotion is presentational: both extras keep their own href, label and tooltip.
+      expect(l.secondaryHref, id).toBeTruthy();
+      expect(l.tertiaryHref, id).toBeTruthy();
+    }
+    expect(en.payroll.statutoryForms.link_ea_more).toBe('Blank form and field register');
+    // The screen reads the name off the catalog and renders the extras through ONE component, so a row
+    // that declares no name still renders them side by side exactly as it did.
+    expect(PAGE).toContain('l.extrasLabelKey ?');
+    expect(PAGE).toContain('groupLabel={c.extrasLabel}');
+    expect(PAGE).toContain('if (!groupLabel) return');
+    // A <details>, not a client menu: this screen is a server component and the fold must work with no
+    // JavaScript, or the blank form stops being reachable for anyone who has it turned off.
+    expect(PAGE).toContain('<details');
+    expect(PAGE).toContain('<summary');
+    // Every row that has NOT been given a name over its extras must not sprout one.
+    for (const l of MY_STATUTORY_LINKS.filter((x) => !['my.ea.en', 'my.ea.ms'].includes(x.id))) {
+      expect(l.extrasLabelKey, `${l.id} must not name a group of extras`).toBeUndefined();
+    }
   });
 
   /**
