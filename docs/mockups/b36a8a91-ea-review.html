@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<title>EA (C.P.8A): Open Form goes to the completed form, and says whether it is ready</title>
+<!--
+  b36a8a91 revision 4. BEFORE/AFTER, because most of this chain already exists and prose has not landed
+  that twice. Everything drawn here is either on the screen today (marked "today") or is what revision 4
+  promises. The four missing-item lines are illustrative names, not a measured list.
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:20px}
+  h2{font-size:15px;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 14px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:middle}
+  .bad{background:#fee2e2;color:#991b1b}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .have{background:var(--muted);color:var(--mf)}
+  .ok{background:#d1fae5;color:#065f46}
+  .warn{background:#fef3c7;color:#92400e}
+  .row{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff}
+  .rowtitle{font-weight:600;font-size:13.5px}
+  .rowhint{font-size:11.5px;color:var(--mf);margin-top:2px}
+  .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px;align-items:center}
+  .btn{display:inline-block;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;
+       background:var(--primary);color:#fff}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .trap{outline:2px dashed #dc2626;outline-offset:3px}
+  .callout{margin-top:12px;border:1px dashed #dc2626;border-radius:10px;padding:9px 11px;
+           background:#fef2f2;color:#991b1b;font-size:11.5px}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 4px;font-size:11.5px;color:var(--mf)}
+  .step{background:var(--muted);border-radius:8px;padding:5px 10px;color:var(--fg);font-weight:600}
+  .arrow{color:var(--mf)}
+  .status{display:flex;align-items:center;gap:10px;border:1px solid #fcd34d;background:#fffbeb;
+          border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .status .t{font-weight:600;font-size:13px;color:#92400e}
+  .miss{margin:0;padding:0;list-style:none;font-size:12px}
+  .miss li{display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--border)}
+  .miss li:last-child{border-bottom:0}
+  .miss .f{font-weight:600}
+  .miss .w{color:var(--mf);font-size:11.5px;text-align:right}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 8px;background:var(--muted)}
+  td{padding:6px 8px;border-top:1px solid var(--border)}
+  .r{text-align:right;font-variant-numeric:tabular-nums}
+  .note{font-size:11.5px;color:var(--mf);margin-top:12px}
+</style>
+
+<div class="card">
+  <h2>Today <span class="chip bad">three actions, and the middle one is a blank form</span></h2>
+  <p class="sub">This is the EA row on Statutory Forms as it stands.</p>
+
+  <div class="row">
+    <div class="rowtitle">Form C.P.8A (EA) — Bahasa Malaysia</div>
+    <div class="rowhint">Annual · Lembaga Hasil Dalam Negeri</div>
+    <div class="acts">
+      <span class="btn">Open employee list</span>
+      <span class="btn sec trap">Download blank EA form (Bahasa Malaysia)</span>
+      <span class="btn sec">EA field register</span>
+    </div>
+    <div class="callout">
+      The dashed one is what you pressed. It downloads an EMPTY form, which is what it is for — but
+      nothing on this row says that the completed form is behind the first button.
+    </div>
+  </div>
+
+  <div class="flow">
+    <span class="step">Open employee list</span><span class="arrow">→</span>
+    <span class="step">pick a person</span><span class="arrow">→</span>
+    <span class="step">their completed EA <span class="chip have">today</span></span><span class="arrow">→</span>
+    <span class="step">Download EA PDF <span class="chip have">today</span></span>
+  </div>
+  <p class="note">
+    So the generating, the populating and the downloading already work. What is missing is a button that
+    says so, and anything on the completed form telling you whether it is actually ready.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Proposed <span class="chip new">one route, and the form says whether it is ready</span></h2>
+
+  <div class="row">
+    <div class="rowtitle">Form C.P.8A (EA) — Bahasa Malaysia</div>
+    <div class="rowhint">Annual · Lembaga Hasil Dalam Negeri</div>
+    <div class="acts">
+      <span class="btn">Open Form</span>
+      <span class="btn sec">Blank form and field register</span>
+    </div>
+    <div class="rowhint" style="margin-top:9px">
+      Open Form takes you to the employee list and then straight into that person's completed EA.
+      Nothing downloads when you press it.
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="rowtitle">Penyata Saraan Pekerja (EA) — TEST0003 · 2026</div>
+
+    <div class="status" style="margin-top:12px">
+      <span class="chip warn">Review required</span>
+      <span class="t">2 items need attention before this form is filed</span>
+    </div>
+
+    <ul class="miss">
+      <li><span class="f">No. Cukai Pendapatan</span>
+          <span class="w">Not on this employee's record — add it under Personnel Management</span></li>
+      <li><span class="f">No. PERKESO</span>
+          <span class="w">Not on this employee's record — add it under Personnel Management</span></li>
+    </ul>
+
+    <table>
+      <thead><tr><th>EA box</th><th>Where the value comes from</th><th class="r">State</th></tr></thead>
+      <tbody>
+        <tr><td>Nama penuh</td><td>Employee record</td><td class="r"><span class="chip ok">filled</span></td></tr>
+        <tr><td>No. K.P. Baru</td><td>Employee record</td><td class="r"><span class="chip ok">filled</span></td></tr>
+        <tr><td>No. Cukai Pendapatan</td><td>Employee record</td><td class="r"><span class="chip bad">empty</span></td></tr>
+        <tr><td>No. PERKESO</td><td>Employee record</td><td class="r"><span class="chip bad">empty</span></td></tr>
+        <tr><td>Gaji kasar</td><td>Payroll records for the year</td><td class="r"><span class="chip ok">filled</span></td></tr>
+        <tr><td>Bonus</td><td>Payroll records for the year</td><td class="r"><span class="chip ok">filled</span></td></tr>
+        <tr><td>Caruman KWSP pekerja</td><td>Payroll records for the year</td><td class="r"><span class="chip ok">filled</span></td></tr>
+        <tr><td>PCB</td><td>Payroll records for the year</td><td class="r"><span class="chip ok">filled</span></td></tr>
+      </tbody>
+    </table>
+
+    <div class="acts">
+      <span class="btn">Download EA (BM) Form</span>
+      <span class="btn sec">Amend a figure</span>
+      <span class="btn sec">Print</span>
+    </div>
+  </div>
+
+  <p class="note">
+    Empty stays empty. Where a figure is not in the records we leave the box blank and name it above —
+    we do not put a guessed number on a tax form. Annual figures are added up from that year's payroll
+    records, which is already how the completed form is built.
+  </p>
+</div>
