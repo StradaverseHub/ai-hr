@@ -136,8 +136,16 @@ export function StatutoryReportPanel({
                       ) : c.key === 'name' && row.employmentId && eaYear ? (
                         <Link
                           href={
+                            /* ⚠️ r242 — BOTH ARRIVALS NOW END ON SCREEN, and the language rides along.
+                               587ee719 made an EA-shelf arrival hand back the PDF directly, which was
+                               right when the shelf's only promise was "the form". b36a8a91 changed that
+                               promise: "Open Form … takes you to the employee list and then straight into
+                               that person's completed EA. Nothing downloads when you press it." A name
+                               that downloads also puts the round's own readiness panel out of reach of
+                               the entry point the round renamed. The language is not lost — it is carried
+                               into the statement, which offers the PDF in that language. */
                             eaLang
-                              ? `/me/ea/${row.employmentId}/pdf?year=${eaYear}&lang=${eaLang}`
+                              ? `/payroll/reports/ea/${row.employmentId}?year=${eaYear}&lang=${eaLang}`
                               : `/payroll/reports/ea/${row.employmentId}?year=${eaYear}`
                           }
                           className="text-primary hover:underline"

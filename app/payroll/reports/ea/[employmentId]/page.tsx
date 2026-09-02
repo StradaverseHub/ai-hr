@@ -5,9 +5,20 @@ import { getSession } from '@/lib/session';
 import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';
 import { isAdmin, canManagePayroll } from '@/lib/authz';
 import { Card } from '@/components/ui';
+import { eaReadiness, type EaBoxCaption } from '@/lib/ea-readiness';
 import { PrintButton } from '@/components/print-button';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { EaAmendPanel, type AmendField } from './ea-amend-panel';
+
+/**
+ * A box caption, as a fragment of a SENTENCE rather than as a row label.
+ *
+ * The captions are the form's own — "1. Full name of employee / pensioner (Mr/Ms/Mrs)" — so joining them
+ * raw into the footnote produced a leading box number mid-sentence and, on the last one, "…7. PERKESO
+ * no.." with two full stops. Strips the leading "<n>. " and any trailing period; changes no caption
+ * anywhere else, because the row labels still render the full form wording.
+ */
+const trimBoxCaption = (s: string) => s.replace(/^\s*\d+\.\s*/, '').replace(/\.\s*$/, '');
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -45,11 +56,16 @@ export default async function EaStatementPage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ year?: string; company?: string }>;
+  searchParams: Promise<{ year?: string; company?: string; lang?: string }>;
 }) {
   const { employmentId } = await params;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employmentId)) notFound();
-  const { year, company } = await searchParams;
+  const { year, company, lang } = await searchParams;
+  /* r242 — THE DOCUMENT'S LANGUAGE, NOT THE VIEWER'S. An EA-shelf arrival names the language the shelf row
+     promised (English or Bahasa Malaysia); every other arrival carries none and the PDF renders in the
+     viewer's own locale, exactly as it always has. Shape-checked here rather than trusted: this value is
+     appended to a download address. */
+  const eaLang = lang === 'en' || lang === 'ms' ? lang : null;
   const yr = /^\d{4}$/.test(year ?? '') ? (year as string) : String(new Date().getFullYear());
   const s = await getSession(); // RLS-scopes the read to what this user may see
 
@@ -68,6 +84,16 @@ export default async function EaStatementPage({
 
   const t = await getTranslations('payroll.ea');
   const canAmend = isAdmin(s) || canManagePayroll(s); // server gate for the "Amend EA figures" panel
+
+  // b36a8a91 — IS THIS FORM READY TO BE FILED? Derived from the statement ALREADY read above, joined to
+  // the field register; see lib/ea-readiness.ts for what "missing" is allowed to mean. It counts and names
+  // boxes and computes no figure, so the panel cannot disagree with the form printed beneath it.
+  const readiness = eaReadiness(ea);
+  // The box's name in the form's own vocabulary — the same caption Section A prints for it two rows down,
+  // never a second wording for one box. Two captions where the form takes either document (I.C. / passport).
+  // Every key reachable here is also dereferenced statically below, which is what keeps them covered by
+  // test/i18n-coverage.test.ts's static sweep.
+  const boxName = (captions: readonly EaBoxCaption[]) => captions.map((k) => t(k as 'name')).join(' / ');
 
   const CATEGORY: Record<number, string> = {
     1: t('category1'),
@@ -190,7 +216,20 @@ export default async function EaStatementPage({
         <Link href="/payroll/reports" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
           ← {t('backToReports')}
         </Link>
-        <PrintButton />
+        <div className="flex items-center gap-3">
+          {/* ⚠️ r242 — THE DOWNLOAD HAD TO COME WITH THE ROUTE. Until this round an EA-shelf arrival
+              clicked a name and got the PDF immediately; b36a8a91 sends that click to this screen
+              instead, so the download it replaced has to be ON this screen or the round would have
+              deleted a capability while calling itself an improvement. Same route the /me tab already
+              uses — one renderer, not a second — and it carries the shelf's language when there was one. */}
+          <a
+            href={`/me/ea/${employmentId}/pdf?year=${yr}${eaLang ? `&lang=${eaLang}` : ''}`}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            {t('downloadPdf')}
+          </a>
+          <PrintButton />
+        </div>
       </div>
 
       {/* b7b22514 — a transfer year has one form PER EMPLOYER. Shown only when there is genuinely more
@@ -262,6 +301,70 @@ export default async function EaStatementPage({
             {ea.employer.eNumber ? ` · E ${ea.employer.eNumber}` : ''}
           </p>
         </div>
+
+        {/* ⚠️ HR ONLY, ON THE SAME PREDICATE THE AMEND PANEL USES. This page has no role gate of its own:
+            app/me/page.tsx links EVERY employee here for their own EA (self-serve tax filing), and RLS
+            scoping is what stops them reading somebody else's. So an ungated readiness panel would tell an
+            ordinary employee that their record is incomplete and send them to Personnel Management — an
+            admin screen they cannot open. The panel is a note to the person who can act on it. */}
+        {canAmend && (
+        <>
+        {/* b36a8a91 — WHETHER THIS FORM IS READY, AND WHAT IS STOPPING IT. Above the boxes, because the
+            answer is what the reader came for; `print:hidden` because it is a note to the reviewer and not
+            part of the statement the employee is handed.
+            ⚠️ The green line claims ONLY that nothing the form takes from the employee's RECORD is absent.
+            It says nothing about whether a figure is right, and the note under it says so rather than
+            letting "Ready for review" be read as an assurance about the money (AGENTS 28). */}
+        <div
+          className={`rounded-lg border px-4 py-3 print:hidden ${
+            readiness.ready
+              ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10'
+              : 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                readiness.ready
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+              }`}
+            >
+              {readiness.ready ? t('readiness.ready') : t('readiness.required')}
+            </span>
+            <span
+              className={`text-sm font-medium ${
+                readiness.ready ? 'text-emerald-900 dark:text-emerald-200' : 'text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              {readiness.ready ? t('readiness.readyNote') : t('readiness.requiredNote', { count: readiness.missing.length })}
+            </span>
+          </div>
+
+          {/* Each empty box by NAME, and where on the employee's record the detail belongs — the panel exists
+              because "one of these fifty rows is blank" is not something a reader should have to find. */}
+          {readiness.missing.length > 0 && (
+            <ul className="mt-3 divide-y divide-amber-200/70 dark:divide-amber-500/20">
+              {readiness.missing.map((m) => (
+                <li
+                  key={m.captions.join('/')}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-1.5 text-sm"
+                >
+                  <span className="font-medium text-amber-900 dark:text-amber-200">{boxName(m.captions)}</span>
+                  <span className="text-xs text-amber-800 dark:text-amber-300/90">
+                    {m.where === 'profile' ? t('readiness.whereProfile') : t('readiness.whereStatutory')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('readiness.checkedNote', { boxes: readiness.checked.map((c) => trimBoxCaption(boxName(c.captions))).join(' · ') })}
+          </p>
+        </div>
+        </>
+        )}
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

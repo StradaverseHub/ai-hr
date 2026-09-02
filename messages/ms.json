@@ -3418,6 +3418,7 @@
       "link_ea_blank_title": "Borang EA yang benar-benar kosong — setiap tajuk, kotak, kapsyen, nota dan ruang tandatangan, tanpa sebarang angka dan tanpa butiran pekerja. Ia mengikut susun atur C.P.8A (Pin. 2024) tetapi dicetak di atas kertas kami: kami tidak menyimpan borang C.P.8A kosong daripada LHDN, jadi ini lukisan susun atur itu oleh kami dan bukan cetakan rasmi agensi. Cetak dan bandingkan dengan borang agensi itu sendiri.",
       "link_ea_register": "Muat turun daftar medan",
       "link_ea_register_title": "Setiap kotak pada borang EA, disenaraikan dengan seksyennya, nombor kotaknya, perkataan agensi itu sendiri, jenis nilai yang diterimanya, dan apa yang mengisinya hari ini — atau “tiada apa-apa yang mengisinya lagi”. Fail Markdown dalam bahasa Inggeris, untuk disemak kotak demi kotak bersama borang kosong.",
+      "link_ea_more": "Borang kosong dan daftar medan",
       "desc_ea_en": "Penyata saraan tahunan setiap pekerja, sentiasa dalam Bahasa Inggeris. Dilukis mengikut susunan C.P.8A (Pin. 2024), di atas kertas kami sendiri — kami tidak menyimpan borang C.P.8A kosong daripada LHDN.",
       "desc_ea_ms": "Penyata yang sama, sentiasa dalam Bahasa Malaysia. Dilukis mengikut susunan C.P.8A (Pin. 2024), di atas kertas kami sendiri — kami tidak menyimpan borang C.P.8A kosong daripada LHDN.",
       "link_borang_e": "Borang E",
@@ -3537,6 +3538,15 @@
       "disclaimer": "Dijana daripada gaji untuk YA {year} (jadual berkanun {version}). Gaji, bonus, elaun, EPF, SOCSO/EIS, MTD, CP38 dan zakat datang daripada sistem gaji. Fi, tip dan perkuisit, cukai ditanggung majikan, ESOS, ganjaran, tunggakan, manfaat berupa barangan, tempat kediaman, bayaran balik kumpulan wang tidak diluluskan, pampasan kehilangan pekerjaan, pencen dan anuiti tiada sumber gaji dan dimasukkan oleh HR; sehingga itu borang bercetak membiarkan garisan itu kosong dan bukan mencetak 0.00. Borang bercetak mengikut susunan C.P.8A (Pin. 2024) tetapi dicetak di atas kertas kami sendiri — kami tidak menyimpan sebarang borang C.P.8A kosong daripada LHDN — jadi semak setiap angka dengan rekod anda sebelum memfailkan.",
       "blankDisclaimer": "Ini ialah borang EA KOSONG. Tiada angka gaji dan tiada butiran pekerja dicetak padanya — setiap garisan dibiarkan kosong untuk diisi. Ia mengikut susun atur C.P.8A (Pin. 2024) tetapi dicetak di atas kertas kami sendiri: kami tidak menyimpan borang C.P.8A kosong daripada LHDN, jadi ini ialah lukisan susun atur tersebut oleh kami dan bukan cetakan rasmi agensi. Semak dengan borang agensi sebelum bergantung pada susun aturnya.",
       "formEUnaffectedNote": "Pindaan EA hanya menjejaskan borang EA ini. Angka Borang E / CP8D dikira daripada penggajian dan tidak terjejas.",
+      "readiness": {
+        "ready": "Sedia untuk semakan",
+        "required": "Semakan diperlukan",
+        "readyNote": "Tiada satu pun butiran yang disemak di bawah tiada daripada rekod pekerja.",
+        "requiredNote": "{count, plural, one {# perkara perlu diberi perhatian sebelum borang ini difailkan} other {# perkara perlu diberi perhatian sebelum borang ini difailkan}}",
+        "whereProfile": "Tiada pada rekod pekerja ini — tambahkannya di Pengurusan Kakitangan → Profil",
+        "whereStatutory": "Tiada pada rekod pekerja ini — tambahkannya di Pengurusan Kakitangan → Bank & Berkanun",
+        "checkedNote": "Disemak dengan rekod pekerja: {boxes}. Angka bagi tahun ini datang daripada sistem gaji dan tidak disemak di sini — jumlah 0.00 ialah angka sebenar, bukan angka yang hilang."
+      },
       "override": {
         "panelTitle": "Pinda angka EA",
         "panelDescription": "HR yang diberi kuasa boleh menulis ganti medan borang EA tertentu. Rekod penggajian asal tidak pernah diubah; pindaan hanya muncul pada borang EA ini.",
@@ -3579,7 +3589,8 @@
       "multiEmployer": {
         "title": "Borang EA bagi {count} majikan",
         "body": "Pekerja ini dibayar oleh lebih daripada satu syarikat pada tahun ini, jadi setiap satu perlu mengeluarkan Borang EA yang berasingan. Pilih majikan untuk melihat dan mencetak borangnya."
-      }
+      },
+      "downloadPdf": "Muat turun borang EA"
     },
     "cp22": {
       "download": "Muat turun CP22",
