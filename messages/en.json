@@ -6074,7 +6074,47 @@
       "notChecked": "Not checked",
       "noRuns": "No processed runs. The tower has nothing to watch until a run is processed.",
       "domainsLine": "{live} of {total} areas are live.",
-      "howItWorksLink": "How this works"
+      "howItWorksLink": "How this works",
+      "agentsLink": "Which agents are running",
+      "agents": {
+        "title": "AI agents",
+        "description": "The parts of this system that act on their own, and whether each of them actually can.",
+        "backToTower": "Back to the Control Tower",
+        "heading": "What runs without being asked",
+        "headingHelp": "Each of these is off until you switch it on, and switching one on is not the same as it being able to work — a switch that has nothing behind it says so below.",
+        "stateOn": "Running",
+        "stateBlocked": "On, but cannot run",
+        "stateOff": "Off",
+        "turnOn": "Switch on",
+        "turnOff": "Switch off",
+        "blockedModule": "Nothing will happen: {module} is not part of your plan.",
+        "blockedProvider": "Nothing will happen: no AI provider is set up, so there is no model for it to ask.",
+        "providerHelp": "An AI provider is set up under Administration → AI. Without one, the parts of these agents that need a model do nothing and record nothing — which is correct behaviour, not a fault.",
+        "readOnlyNotice": "You can see the state of each agent here, but switching one on or off is a group-wide change and needs a group administrator.",
+        "switchedOn": "Switched on.",
+        "switchedOff": "Switched off.",
+        "unknownAgent": "That is not one of the agents on this screen.",
+        "measuredTitle": "How we will know whether it helps",
+        "measuredBody": "Every suggestion these agents make is recorded with what happened to it, so their accuracy becomes a measured figure rather than an opinion. Nothing has been recorded yet, because none of them has been switched on — and we would rather show you nothing than a percentage worked out from no evidence.",
+        "seeHowItWorks": "See how the whole loop works",
+        "agent": {
+          "nudge": "The chaser",
+          "hypotheses": "The second opinion",
+          "triage": "The claim reader"
+        },
+        "agentDoes": {
+          "nudge": "Chases whoever can fix an incomplete employee record — the employee for their own bank details, HR for everything only HR can key in.",
+          "hypotheses": "Looks again at the people a payroll run cleared, comparing each with their colleagues. It can only ask for a second look — it can never block a run.",
+          "triage": "Reads each new expense claim and, if the description does not fit the rest of the claim, asks the person who filed it. It can never refuse or change a claim."
+        },
+        "refused": {
+          "not_group_admin": "Only a group administrator can change this.",
+          "unknown_key": "That setting does not exist.",
+          "not_tenant_scoped": "That setting is not yours to change.",
+          "not_customer_visible": "That setting is managed by Stradaverse.",
+          "wrong_type": "That is not a valid value for this setting."
+        }
+      }
     }
   },
   "admin": {

@@ -6074,7 +6074,47 @@
       "notChecked": "未检查",
       "noRuns": "没有已处理的运行。在有运行被处理之前，控制塔没有可监控的对象。",
       "domainsLine": "{total} 个领域中有 {live} 个已启用。",
-      "howItWorksLink": "运作方式"
+      "howItWorksLink": "运作方式",
+      "agentsLink": "哪些代理在运行",
+      "agents": {
+        "title": "AI 代理",
+        "description": "本系统中能够自行运作的部分，以及它们各自是否真的能运作。",
+        "backToTower": "返回控制塔",
+        "heading": "无需人工触发即会运行的部分",
+        "headingHelp": "每一项在你开启之前都是关闭的；开启并不等于它就能运作——若某个开关背后条件不足，下方会说明。",
+        "stateOn": "运行中",
+        "stateBlocked": "已开启，但无法运行",
+        "stateOff": "已关闭",
+        "turnOn": "开启",
+        "turnOff": "关闭",
+        "blockedModule": "不会有任何动作：{module} 不在你的套餐内。",
+        "blockedProvider": "不会有任何动作：未设置 AI 供应商，没有可调用的模型。",
+        "providerHelp": "AI 供应商在「管理 → AI」中设置。若未设置，这些代理中需要模型的部分不会运作也不会记录——这是正确行为，并非故障。",
+        "readOnlyNotice": "你可以在此查看各代理的状态，但开启或关闭属于整个集团范围的变更，需要集团管理员。",
+        "switchedOn": "已开启。",
+        "switchedOff": "已关闭。",
+        "unknownAgent": "那不是此屏幕上的代理之一。",
+        "measuredTitle": "我们将如何得知它是否有帮助",
+        "measuredBody": "这些代理提出的每一条建议都会连同其结果一并记录，因此它们的准确度是可衡量的数字，而非主观判断。目前尚无记录，因为还没有开启任何一个——比起用没有依据的数据算出百分比，我们宁可先不显示。",
+        "seeHowItWorks": "查看整个闭环如何运作",
+        "agent": {
+          "nudge": "催办者",
+          "hypotheses": "第二意见",
+          "triage": "报销单审读者"
+        },
+        "agentDoes": {
+          "nudge": "催办能够补全员工记录的人——银行资料找员工本人，只有 HR 能录入的内容找 HR。",
+          "hypotheses": "重新查看发薪已放行的员工，将每个人与同事比较。它只能提请复核，绝不能阻止发薪。",
+          "triage": "读取每张新提交的报销单，若说明与单据其余内容不符，就询问提交人。它不能拒绝或修改单据。"
+        },
+        "refused": {
+          "not_group_admin": "只有集团管理员可以更改。",
+          "unknown_key": "该设置不存在。",
+          "not_tenant_scoped": "该设置不由你更改。",
+          "not_customer_visible": "该设置由 Stradaverse 管理。",
+          "wrong_type": "这不是该设置的有效值。"
+        }
+      }
     }
   },
   "admin": {

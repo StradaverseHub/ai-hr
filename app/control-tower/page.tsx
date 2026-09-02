@@ -52,6 +52,12 @@ export default async function ControlTowerPage() {
         {t('domainsLine', { live: live.length, total: domains.length })}{' '}
         <Link href="/control-tower/how-it-works" className="font-medium text-primary hover:underline">
           {t('howItWorksLink')}
+        </Link>{' '}
+        ·{' '}
+        {/* ADR-0084 r243 — the way to switch an agent on. It sits beside the explainer because the two
+            answer consecutive questions: what does this thing do, and is any of it actually running. */}
+        <Link href="/control-tower/agents" className="font-medium text-primary hover:underline">
+          {t('agentsLink')}
         </Link>
       </p>
 

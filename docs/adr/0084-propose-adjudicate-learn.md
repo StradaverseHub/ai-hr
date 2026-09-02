@@ -347,6 +347,20 @@ earlier items generating real history.
 
 **Phase 3 — close the learning loop.** Needs production history from Phases 1–2.
 
+⚠️ **AND PHASE 3 TURNED OUT TO HAVE A PRECONDITION NOBODY WROTE DOWN (r243).** Every item below is blocked
+on `agent_proposal` having rows in it, and on production it is EMPTY — not because anything is broken, but
+because **no tenant had switched any agent on, and no screen could.** All three settings landed with the
+same footnote in their round entries: *nothing in the UI turns this on; here is an INSERT to run on the
+box.* Three consecutive rounds carrying the same caveat is the caveat asking to become a screen, and until
+it was one the ADR's own sequencing could not advance. `/control-tower/agents` is that screen, and
+`core/tenant-settings.ts` is the app's first writer of `tenant_setting`. It is not item 5 arriving early —
+it is the thing that lets item 5 ever have data.
+
+**The screen also settles a question the ADR left implicit: what "on" means.** Each agent has a SECOND
+gate — a billable module, a configured AI provider, or both — so a switch set to ON while its gate is shut
+does nothing at all while looking enabled. That is the state production was in, invisibly, for three
+rounds. The switchboard renders three states rather than two, and names the shut gate.
+
 5. **Agreement measurement per proposal type**, surfaced in the Control Tower beside the existing rates.
 6. **Recurrence mining (§2.4)** — which fixes actually eliminated recurring findings.
 7. **The first autonomy grant (§2.8)**, as a source change, with its own review.

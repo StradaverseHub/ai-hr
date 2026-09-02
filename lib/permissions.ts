@@ -526,6 +526,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/control-tower/how-it-works',
       '/control-tower/readiness',
       '/control-tower/actions',
+      // ADR-0084 r243 — the switchboard for the three unattended agents. Same requireAdmin guard as its
+      // siblings, so it needs a column here or test/function-access.test.ts fails rather than letting a
+      // guarded screen become one nobody can grant or revoke. (The WRITE it performs is gated harder
+      // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
+      // "may the role open the screen at all", by design.)
+      '/control-tower/agents',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.
