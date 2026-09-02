@@ -164,6 +164,48 @@ describe('388e53c2 · the rail is the way in, and only its FIRST tab moved', () 
   });
 });
 
+/**
+ * r242 — A SECOND DOOR, NOT A SECOND ADDRESS.
+ *
+ * 388e53c2 moved the entry point to Team Leave Tracker and the reporter still went looking under Leave
+ * Config, which is where an HR administrator configures leave and therefore where they expected to look one
+ * up. The approved plan answers that with a LINK, deliberately and only a link: the three screens keep the
+ * exact addresses the block above pins, because saved links and the export links already in circulation
+ * depend on them, and because two routes for one screen is how a surface starts diverging from itself.
+ */
+describe('r242 · Leave Config points at the inquiry surface, and moves nothing', () => {
+  const leaveConfigLanding = read('app/admin/leave/entitlements/page.tsx');
+
+  it('the Leave Config landing screen links to Employee Balances at its unchanged address', () => {
+    expect(leaveConfigLanding).toContain('href="/leave/employee-balances"');
+    // Resolved through the page's own single namespace (`admin.leave`), so the i18n-coverage guard's
+    // static-key check still attributes every t() in this large file (a second getTranslations here would
+    // make it skip the file entirely).
+    expect(leaveConfigLanding).toContain("{t('employeeBalancesAction')}");
+    expect((leaveConfigLanding.match(/getTranslations\(/g) ?? []).length, 'one namespace on this page').toBe(1);
+  });
+
+  it('the caption ships in all six catalogues and takes no ICU argument', () => {
+    for (const loc of LOCALES) {
+      const dict = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, Record<string, string>>>;
+      const v = dict.admin.leave.employeeBalancesAction;
+      expect(v, `${loc} admin.leave.employeeBalancesAction`).toBeTruthy();
+      // Rendered by a bare t() — a {brace} throws FORMATTING_ERROR at render behind a green 200.
+      expect(String(v), `${loc}: unexpected ICU argument`).not.toMatch(/[{}]/);
+    }
+  });
+
+  it('IT IS A LINK AND NOTHING ELSE — the rail is not duplicated onto the config screen', () => {
+    // A second mount of the inquiry rail here would give an administrator two Employee Details screens,
+    // which is the exact failure the block above ("the move is incomplete") exists to catch, arriving from
+    // the other direction. One way in, one screen.
+    expect(leaveConfigLanding).not.toContain('LeaveInquiryNav');
+    expect(leaveConfigLanding).not.toContain('employeeBalanceRows');
+    // …and the rail's own three hrefs are untouched by this item; they are asserted verbatim above.
+    expect(nav).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances'), label: t('employeeBalances') }");
+  });
+});
+
 describe('388e53c2 · My Leave means your own leave again', () => {
   it('it kept no fragment of the inquiry surface', () => {
     for (const gone of [

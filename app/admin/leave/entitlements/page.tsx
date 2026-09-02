@@ -408,6 +408,17 @@ export default async function LeaveEntitlementsPage({
             <Link href="/admin/leave/entitlements/ledger-archive" className="text-sm underline">
               {t('balanceRecordAction')}
             </Link>
+            {/* r242 — THE WAY IN THE REPORTER WENT LOOKING FOR. The Leave Inquiry surface (Employee
+                Details / Employee Balances / Employee Leave Record) lives under Leave, and an HR admin
+                who wants to look one person's balances up came here, to Leave Config, and found nothing
+                pointing at it. This link is the whole of that fix: it opens Employee Balances, whose own
+                left-hand rail carries the other two tabs, so one link reaches all three.
+                THE ADDRESS IS UNCHANGED ON PURPOSE — 388e53c2 moved the entry point and nothing else,
+                precisely so saved links and the export links already in circulation stay valid. This adds
+                a second door; it does not move the room. */}
+            <Link href="/leave/employee-balances" className="text-sm underline">
+              {t('employeeBalancesAction')}
+            </Link>
             <Link href="/admin/leave/import" className={btnPrimary}>
               {t('importAction')}
             </Link>

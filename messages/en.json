@@ -2052,7 +2052,9 @@
       "empSearchClear": "Clear employee",
       "colEntitlementStatus": "Entitlement Status",
       "resolvedEntitlementTable": "Entitlement table: {name}",
-      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})"
+      "sharedBalanceWith": "Shares one balance with {types} (pool: {pool})",
+      "colExplanation": "Explanation",
+      "explainAction": "Explain"
     },
     "override": {
       "title": "Before you submit",
@@ -6689,6 +6691,7 @@
       "encashmentEligibleTypesFixed": "Eligible leave: Annual Leave only.",
       "encashmentRoundingFixed": "Rounding: less than 0.5 day rounds down to 0; 0.5 day or more rounds up to the next whole day. The figure never goes below 0.",
       "importAction": "+ Import",
+      "employeeBalancesAction": "Employee Balances",
       "runAccrualAction": "Run Accrual",
       "close": "Close",
       "import": {

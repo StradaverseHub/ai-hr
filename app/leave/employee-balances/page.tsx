@@ -24,6 +24,10 @@ import { otherContributors } from '@/lib/shared-leave-balance';
 import { isReplacementLeaveType } from '@/core/ess-view';
 import { replacementRequestAvailability } from '@/packs/leave/service';
 import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
+// r242 — the SAME read-only side-sheet /me and /admin/personnel/[id] already open. A client component that
+// imports no db client and no server action, so mounting it from this RSC crosses no boundary; every figure
+// it shows arrives as a prop, taken off the row below.
+import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { employeeBalanceRows } from './rows';
 
 /**
@@ -49,6 +53,18 @@ import { employeeBalanceRows } from './rows';
  * CSV/Excel export carries the same dated figures because it renders from the same `employeeBalanceRows`.
  * If you ever add a column, take its figure from one of those two reads — a third source is how this
  * happened.
+ *
+ * THE EXPLANATION BUTTON (r242). Every row carries an Explain button opening the read-only entitlement
+ * side-sheet that already opens on /me and on the personnel record — the rule that applied, the dates it
+ * was worked out from, the entitlement step by step and the balance component by component. It is the SAME
+ * component, and it is fed from the SAME breakdown `employeeBalanceRows` already loaded for the row
+ * (`r.breakdown`): this page performs no read of its own for it, and computes nothing. That is the same
+ * rule the paragraph above states about columns, applied to the panel — an explanation fetched separately
+ * would eventually explain a figure other than the one it sits beside.
+ *
+ * `applyEssConfig` is deliberately NOT passed, which is the HR/self-service asymmetry stated above seen
+ * from the panel's side: per-component ESS hiding is a rule about what an EMPLOYEE is shown, never about
+ * what HR may look at, so HR gets every line — exactly as /admin/personnel/[id] already does.
  */
 
 export default async function EmployeeBalancesPage({
@@ -130,6 +146,16 @@ export default async function EmployeeBalancesPage({
     p.set('format', format);
     return `/leave/employee-balances/export?${p.toString()}`;
   };
+  // r242 — what the panel's own as-at GET form must carry back. The panel posts `asOf` (its own field), so
+  // everything ELSE that narrows this screen rides as hidden inputs or pressing Apply inside the sheet would
+  // silently drop the employee, the search and the leave-type filter — the same carrier pattern the search
+  // form above uses, and the reason `params()` is not reused: that one deliberately re-sends `asOf`.
+  const panelHiddenParams: Record<string, string | string[]> = {};
+  if (selected) panelHiddenParams.emp = selected.employmentId;
+  if (q) panelHiddenParams.q = q;
+  if (typeIds.length) panelHiddenParams.type = typeIds;
+  panelHiddenParams.dir = dir;
+
   // A balance row opens that leave type's transactions for the same employee (953be4b0).
   const recordsHref = (leaveTypeId: string) =>
     `/leave/employee-records?emp=${selected?.employmentId ?? ''}&type=${leaveTypeId}`;
@@ -322,12 +348,16 @@ export default async function EmployeeBalancesPage({
                     <th className={thNum}>{tInq('colForfeitedBf')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colBalance')}</th>
                     <th className={th}>{tInq('colDate')}</th>
+                    {/* r242 — the twelfth column, and the only one that is not a figure. It is LAST on
+                        purpose: 026e16b9 measured this table to the pixel, and a control column at the end
+                        is the one addition that pushes no numeric column around. */}
+                    <th className={th}>{tInq('colExplanation')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={12} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRows')}
                       </td>
                     </tr>
@@ -343,8 +373,13 @@ export default async function EmployeeBalancesPage({
                             shows you which table each person got, rather than leaving you to work it out
                             from the balance". The figure alone cannot answer it — several Medical tables
                             grant the same days at some service lengths. It goes in the LEAVE CODE column
-                            rather than a twelfth one: 026e16b9 measured this table to the pixel and the
-                            eleven it has already overflow a laptop. */}
+                            rather than beside the figures: 026e16b9 measured the FIGURE columns to the
+                            pixel and the eleven of them already overflow a laptop.
+                            ⚠️ r242 ADDED A TWELFTH COLUMN and this comment used to deny one existed. The
+                            measurement is still right, because that column holds the Explanation CONTROL
+                            rather than a number — but a live comment asserting the opposite of the file
+                            three lines below it is how the next reader is misled. It is also, on its own,
+                            the plan's "rule that applied": this caption is already on the row. */}
                         {r.entitlementTemplateName && (
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">
                             {tInq('resolvedEntitlementTable', { name: r.entitlementTemplateName })}
@@ -387,6 +422,33 @@ export default async function EmployeeBalancesPage({
                       <td className={tdNum}>{num(r.forfeitedBf)}</td>
                       <td className={`${tdNum} font-medium`}>{num(r.balance)}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{asOf}</td>
+                      {/* r242 — "how was this figure arrived at", answered from the row HR is already
+                          looking at. `data={r.breakdown}` is the object the row's own figures came out of
+                          (app/leave/employee-balances/rows.ts) — not a second read and not a recomputation.
+                          `summary.available` is the balance row's authoritative bookable figure, the one
+                          line of the panel that is not breakdown-derived, passed exactly as /leave and
+                          /admin/personnel/[id] pass it. No breakdown resolved ⇒ no button, rather than a
+                          button opening a panel of em dashes. */}
+                      <td className="px-2 py-2">
+                        {/* ⚠️ AN EM DASH, NOT AN EMPTY CELL, WHERE NO BREAKDOWN RESOLVED. Every other
+                            column in this table renders a null figure as "—"; a blank cell under a
+                            heading reads as a screen that failed rather than as a row with nothing to
+                            explain. Same convention, one column further right. */}
+                        {r.breakdown ? (
+                          <EntitlementBreakdown
+                            data={r.breakdown}
+                            summary={{ available: r.available }}
+                            visual={r.visual}
+                            asOf={asOf}
+                            action="/leave/employee-balances"
+                            hiddenParams={panelHiddenParams}
+                            triggerLabel={tInq('explainAction')}
+                            triggerClassName="whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
+                          />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

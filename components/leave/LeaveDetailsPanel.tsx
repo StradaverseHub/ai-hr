@@ -114,6 +114,8 @@ export function LeaveDetailsPanel({
   open,
   onOpenChange,
   hideTrigger = false,
+  triggerLabel,
+  triggerClassName,
 }: {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
@@ -151,6 +153,18 @@ export function LeaveDetailsPanel({
   onOpenChange?: (open: boolean) => void;
   /** Hide the built-in "View Breakdown" trigger (used with controlled-open, where an external card opens it). */
   hideTrigger?: boolean;
+  /**
+   * r242 — the built-in trigger's CAPTION and CLASSES, for a host whose surface names this affordance
+   * differently. Employee Balances puts it in a table cell under an "Explanation" heading, where the
+   * default stacked "Breakdown" link reads as a stray word and its `mt-2` fights the row.
+   *
+   * A PLAIN STRING, resolved by the caller — never a translator function. Handing a client island a
+   * closure across the RSC boundary is a 500 on every request that tsc, the suite and `next build` all
+   * stay green through (r123). Omit BOTH and this component is byte-identical to what /me, /leave and
+   * the personnel record render today; that is the property that keeps this an addition, not a change.
+   */
+  triggerLabel?: string;
+  triggerClassName?: string;
 }) {
   const t = useTranslations('leave.breakdown');
   /**
@@ -366,9 +380,9 @@ export function LeaveDetailsPanel({
         <Dialog.Trigger asChild>
           <button
             type="button"
-            className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
+            className={triggerClassName ?? 'mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline'}
           >
-            {t('viewBreakdown')}
+            {triggerLabel ?? t('viewBreakdown')}
           </button>
         </Dialog.Trigger>
       )}

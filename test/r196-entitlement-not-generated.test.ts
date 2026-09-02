@@ -694,9 +694,12 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     const src = read('app/leave/employee-balances/page.tsx');
     expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
     expect(src).toContain('{num(r.ytdEntitled)}');
-    // No new column: eleven is what the header row and the empty-state colSpan agree on, and 026e16b9
-    // already measured this table to the pixel.
-    expect(src).toContain('colSpan={11}');
+    // ⚠️ TWELVE SINCE r242, AND THE CLAIM THIS PINS IS UNCHANGED: the header row and the empty-state
+    // colSpan must agree, whatever the count is. 1ff969ed added the Explanation column, so the number
+    // moved and this assertion moved with it (AGENTS 18 — a guard that pins the arrangement being
+    // replaced gets UPDATED, never deleted). 026e16b9's pixel measurement still stands for the eleven
+    // FIGURE columns; the twelfth holds a control, not a number.
+    expect(src).toContain('colSpan={12}');
   });
 
   it('the export carries it as a column, so the file cannot disagree with the screen', () => {

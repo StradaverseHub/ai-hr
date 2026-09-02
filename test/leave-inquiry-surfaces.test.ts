@@ -153,7 +153,13 @@ describe('20c699f8: Employee Balances', () => {
     expect(rowsHelper).toContain('essView: {}');
   });
 
-  it('renders all eleven requested columns', () => {
+  it('renders all eleven requested columns, plus the twelfth r242 added', () => {
+    // UPDATED BY r242 (AGENTS rule 18), not rewritten. The eleven the reporter asked for in 20c699f8 are
+    // still asserted one by one and none of them moved; what changed is that a TWELFTH column was added on
+    // the reporter's approved plan — the Explanation column whose button opens the read-only entitlement
+    // side-sheet. Deleting the eleven-column claim to make room for it would have retired a promise that is
+    // still being kept; the empty-state colSpan is the one figure that HAD to move with it, because a
+    // colSpan that no longer spans the header is a visibly broken empty row.
     for (const col of [
       "tInq('colLeaveCode')",
       "tInq('colEntitlementYear')",
@@ -166,10 +172,58 @@ describe('20c699f8: Employee Balances', () => {
       "tInq('colForfeitedBf')",
       "tMe('leaveBalanceTable.colBalance')",
       "tInq('colDate')",
+      // r242 — the Explanation column, LAST, so no numeric column is pushed around by it.
+      "tInq('colExplanation')",
     ]) {
       expect(balancesPage.includes(col), col).toBe(true);
     }
-    expect(balancesPage).toContain('colSpan={11}');
+    expect(balancesPage).toContain('colSpan={12}');
+  });
+
+  /**
+   * r242 — THE EXPLANATION BUTTON, AND THE ONE THING THAT MUST NOT BE TRUE OF IT.
+   *
+   * The reporter's complaint was that nothing on this screen answers "how was this figure arrived at". The
+   * answer already existed — the same read-only side-sheet opens on /me and on the personnel record — so
+   * the build is a MOUNT, not a new panel. The expensive way to get that wrong is to fetch the breakdown
+   * again for the panel: the screen would then hold two answers derived at two instants, and HR would quote
+   * whichever one the page happened to render. `rows.ts`'s own header forbids a third source for exactly
+   * that reason; this pins the panel to the same rule.
+   */
+  it('the Explain panel is fed from the breakdown the ROW already loaded — never a second read', () => {
+    // ONE breakdown call in the whole row builder, and it is the one `deriveBalanceRow` is handed.
+    expect((rowsHelper.match(/leaveEntitlementBreakdown\(/g) ?? []).length, 'exactly one breakdown read').toBe(1);
+    expect(rowsHelper).toContain('const bd = byType.get(balanceStoryTypeId(b)) ?? null;');
+    expect(rowsHelper).toContain('const row = deriveBalanceRow({ ...b, essView: {} }, bd);');
+    // …and the row CARRIES that same object on to the panel, rather than the screen resolving its own.
+    expect(rowsHelper).toContain('breakdown: bd,');
+    // The panel's one non-breakdown line is the balance row's own authoritative `available`, and the
+    // per-type visual is the balance row's too — both off `b`, neither recomputed here.
+    expect(rowsHelper).toContain('available: b.available,');
+    expect(rowsHelper).toContain('visual: { color: b.color, icon: b.icon, code: b.code },');
+
+    // The SCREEN reads nothing of its own for the panel: it renders what the row handed it.
+    expect(balancesPage).toContain('<EntitlementBreakdown');
+    expect(balancesPage).toContain('data={r.breakdown}');
+    expect(balancesPage).toContain('summary={{ available: r.available }}');
+    expect(balancesPage).toContain('visual={r.visual}');
+    // A breakdown read on the page would be the second source. Asserted on the CALL SHAPE, so the
+    // explanatory prose in this file and in the page may keep naming the function (AGENTS 27).
+    expect(balancesPage, 'the page must not read the breakdown itself').not.toMatch(/leaveEntitlementBreakdown\(/);
+    // Same as-at date as every figure in the row: the panel is titled "As at {date}", so a panel opened
+    // from a back-dated grid must answer for that date and not for today.
+    expect(balancesPage).toMatch(/<EntitlementBreakdown[\s\S]{0,400}?asOf=\{asOf\}/);
+  });
+
+  it('THE ESS GATE DIFFERENCE SURVIVES THE PANEL — hiding a figure from self-service is not a rule about HR', () => {
+    // `essView: {}` (missing key ⇒ visible) is asserted above for the ROW. The panel has its own switch for
+    // the same decision, and it must be left off here for the same reason: /me passes `applyEssConfig` so an
+    // employee sees only the lines HR left visible; this screen and /admin/personnel/[id] do not, so HR sees
+    // the whole column. Passing it here would hide from HR exactly the lines HR is looking the figure up to
+    // explain — the ONE deliberate difference between this screen and the employee's, quietly undone.
+    const mount = balancesPage.slice(balancesPage.indexOf('<EntitlementBreakdown'));
+    expect(mount.slice(0, mount.indexOf('/>')), 'HR must not be ESS-gated').not.toContain('applyEssConfig');
+    expect(read('app/admin/personnel/[employmentId]/page.tsx')).toContain('<EntitlementBreakdown');
   });
 
   it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {
@@ -263,10 +317,17 @@ describe('953be4b0: Employee Leave Record', () => {
       'recordsSearchPlaceholder', 'colLeaveCode', 'colEntitlementYear', 'colBroughtForward',
       'colPendingApproval', 'colForfeitedBf', 'colDate', 'colReason', 'colAttachment',
       'colFinalApproval', 'viewAttachment', 'attachmentYes', 'noRows', 'noRecords', 'noEmployees',
+      // r242 — the Explanation column heading and its button caption. Both are rendered by a bare
+      // tInq(...) with no argument, so a {brace} in any catalogue would throw at render behind a green
+      // 200 (AGENTS 6); the ICU check below is the other half of that.
+      'colExplanation', 'explainAction',
     ];
     for (const loc of LOCALES) {
       const inquiry = (msgs(loc) as unknown as { leave: { inquiry: Record<string, string> } }).leave.inquiry;
       for (const k of keys) expect(inquiry?.[k], `${loc} leave.inquiry.${k}`).toBeTruthy();
+      for (const k of ['colExplanation', 'explainAction']) {
+        expect(inquiry[k], `${loc} leave.inquiry.${k} must take no ICU argument`).not.toMatch(/[{}]/);
+      }
     }
   });
 });

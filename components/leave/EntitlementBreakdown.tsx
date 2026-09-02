@@ -89,6 +89,8 @@ export function EntitlementBreakdown({
   action,
   hiddenParams = {},
   applyEssConfig = false,
+  triggerLabel,
+  triggerClassName,
 }: {
   data: EntitlementBreakdownData;
   /** §1 Leave Summary figures from the balance row (leaveBalances). */
@@ -104,6 +106,12 @@ export function EntitlementBreakdown({
   /** Employee Leave View Configuration (65dec703): when true (ESS /me), gate each section/field against
    *  `data.essView` (missing key ⇒ visible). Admin/HR leave it false so everything always shows. */
   applyEssConfig?: boolean;
+  /** r242 — caption + classes for the built-in trigger, forwarded verbatim. Omit both and every existing
+   *  mount renders exactly what it rendered before; Employee Balances passes them because its trigger is a
+   *  cell under an "Explanation" heading rather than a link stacked under a figure. Plain strings only —
+   *  a translator closure crossing this boundary is a 500 (r123). */
+  triggerLabel?: string;
+  triggerClassName?: string;
 }) {
   return (
     <LeaveDetailsPanel
@@ -114,6 +122,8 @@ export function EntitlementBreakdown({
       action={action}
       hiddenParams={hiddenParams}
       applyEssConfig={applyEssConfig}
+      triggerLabel={triggerLabel}
+      triggerClassName={triggerClassName}
       /* r212 — the notice rides INSIDE the breakdown the server already loaded, so every page that renders
          this adapter shows it without a prop of its own. Wiring it as a sibling prop instead would have
          meant editing each of the four host pages, and the one that forgot would have silently kept the

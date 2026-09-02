@@ -147,6 +147,30 @@ describe('026e16b9 · numeric columns compact, the text column gets the room', (
     expect(records.includes('title={r.reason ?? \'\'}')).toBe(true);
   });
 
+  /**
+   * r242 — the Explanation column is the first column added to this table since the widths were measured,
+   * and the measurement is only still true if it behaves. Two properties, both cheap to break:
+   * it goes LAST (so no numeric column is displaced), and it is not treated as a numeric cell (`tdNum`
+   * carries `text-right tabular-nums`, which would right-align a button against the table edge).
+   * The panel it opens is a Radix side-sheet fixed to the viewport, so it adds no width of its own.
+   */
+  it('r242: the Explanation column is last and is not a numeric cell — the measured widths still hold', () => {
+    const thead = balances.slice(balances.indexOf('<thead'), balances.indexOf('</thead>'));
+    const headings = [...thead.matchAll(/\{t(?:Inq|Me)\('([^']+)'\)\}/g)].map((m) => m[1]);
+    expect(headings.at(-1), 'the Explanation heading must be the LAST column').toBe('colExplanation');
+    // …and exactly one of them, so a later edit cannot quietly seat it mid-table as well.
+    expect(headings.filter((h) => h === 'colExplanation')).toHaveLength(1);
+    // The trigger lives in a plain px-2 cell (the table's own padding), never the right-aligned numeric one:
+    // `tdNum` carries text-right + tabular-nums, which would shove a button against the table edge and
+    // render its caption in figure spacing.
+    const before = balances.slice(0, balances.indexOf('<EntitlementBreakdown'));
+    const openTd = before.slice(before.lastIndexOf('<td '));
+    const openTag = openTd.slice(0, openTd.indexOf('>'));
+    expect(openTag, 'the Explanation cell keeps the table padding').toContain('px-2 py-2');
+    expect(openTag, 'the Explanation cell is not a figure cell').not.toContain('tabular-nums');
+    expect(openTag, 'the Explanation cell is not right-aligned').not.toContain('text-right');
+  });
+
   it('the inquiry table headings drop tracking-wide (measured: 23px across eleven columns)', () => {
     for (const p of [BALANCES, RECORDS]) {
       expect(
