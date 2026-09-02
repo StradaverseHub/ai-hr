@@ -2874,8 +2874,6 @@
     "maFoundShort": "未达排班工时",
     "maAskedOvertime": "加班 {hours} 小时",
     "maAskedTimes": "上班 {in} · 下班 {out}",
-    "maAlsoWaiting": "另外等待处理 — {section}",
-    "maSeeAllInSection": "查看全部 {count} 项",
     "myAttendanceRequestStatus": "我的考勤申请状态",
     "myAttendanceRequestStatusHelp": "你提交过的每一项考勤申请及其结果。",
     "maSeeRequestStatus": "查看我的申请状态",
@@ -2886,7 +2884,11 @@
       "ofLimit": "共享额度 {limit} 天",
       "sharedAcross": "共享类型：{types}",
       "maxPerApplication": "单次申请最多 {days} 天"
-    }
+    },
+    "maSectionAll": "全部",
+    "maSectionAllHelp": "所有需要你处理的日子。",
+    "maFoundForYouAll": "为你找到的日子",
+    "maEmptyAll": "本期间没有需要你处理的事项。"
   },
   "approvals": {
     "title": "审批",

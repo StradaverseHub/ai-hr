@@ -2874,8 +2874,6 @@
     "maFoundShort": "Ít hơn số giờ theo lịch",
     "maAskedOvertime": "Làm thêm {hours} giờ",
     "maAskedTimes": "Vào {in} · Ra {out}",
-    "maAlsoWaiting": "Cũng đang chờ bạn — {section}",
-    "maSeeAllInSection": "Xem tất cả {count}",
     "myAttendanceRequestStatus": "Trạng thái đề nghị chấm công của tôi",
     "myAttendanceRequestStatusHelp": "Mọi đề nghị chấm công bạn đã gửi, và kết quả của chúng.",
     "maSeeRequestStatus": "Xem trạng thái đề nghị của tôi",
@@ -2886,7 +2884,11 @@
       "ofLimit": "trên {limit} ngày dùng chung",
       "sharedAcross": "Dùng chung giữa: {types}",
       "maxPerApplication": "Tối đa {days} ngày trong một đơn"
-    }
+    },
+    "maSectionAll": "Tất cả",
+    "maSectionAllHelp": "Mọi ngày cần bạn xử lý.",
+    "maFoundForYouAll": "Những ngày chúng tôi tìm thấy cho bạn",
+    "maEmptyAll": "Trong kỳ này không có gì cần bạn xử lý."
   },
   "approvals": {
     "title": "Phê duyệt",

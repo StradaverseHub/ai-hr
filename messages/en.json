@@ -2874,8 +2874,6 @@
     "maFoundShort": "Short of the scheduled hours",
     "maAskedOvertime": "Overtime {hours} h",
     "maAskedTimes": "Clock in {in} · Clock out {out}",
-    "maAlsoWaiting": "Also waiting for you — {section}",
-    "maSeeAllInSection": "See all {count}",
     "myAttendanceRequestStatus": "My Attendance Request Status",
     "myAttendanceRequestStatusHelp": "Every attendance request you have filed, and what happened to it.",
     "maSeeRequestStatus": "See my request status",
@@ -2886,7 +2884,11 @@
       "ofLimit": "of {limit} shared days",
       "sharedAcross": "Shared across: {types}",
       "maxPerApplication": "Up to {days} days in one application"
-    }
+    },
+    "maSectionAll": "All",
+    "maSectionAllHelp": "Every day that needs something from you.",
+    "maFoundForYouAll": "Days we found for you",
+    "maEmptyAll": "Nothing in this period needs anything from you."
   },
   "approvals": {
     "title": "Approvals",

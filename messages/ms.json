@@ -2874,8 +2874,6 @@
     "maFoundShort": "Kurang daripada jam berjadual",
     "maAskedOvertime": "Kerja lebih masa {hours} jam",
     "maAskedTimes": "Masuk {in} · Keluar {out}",
-    "maAlsoWaiting": "Turut menunggu anda — {section}",
-    "maSeeAllInSection": "Lihat kesemua {count}",
     "myAttendanceRequestStatus": "Status Permohonan Kehadiran Saya",
     "myAttendanceRequestStatusHelp": "Setiap permohonan kehadiran yang anda hantar, dan keputusannya.",
     "maSeeRequestStatus": "Lihat status permohonan saya",
@@ -2886,7 +2884,11 @@
       "ofLimit": "daripada {limit} hari dikongsi",
       "sharedAcross": "Dikongsi antara: {types}",
       "maxPerApplication": "Sehingga {days} hari dalam satu permohonan"
-    }
+    },
+    "maSectionAll": "Semua",
+    "maSectionAllHelp": "Setiap hari yang memerlukan tindakan anda.",
+    "maFoundForYouAll": "Hari yang kami jumpa untuk anda",
+    "maEmptyAll": "Tiada apa-apa dalam tempoh ini memerlukan tindakan anda."
   },
   "approvals": {
     "title": "Kelulusan",

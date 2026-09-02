@@ -152,8 +152,18 @@ export default async function AttendanceIrregularityPage({
   const onClocking = days.some((d) => d.attendanceId != null);
   const found = onClocking ? groupExceptions(days) : { incomplete: [], short: [], absent: [] };
   const counts = { incomplete: found.incomplete.length, short: found.short.length, absent: found.absent.length };
+  /**
+   * afc29d75 — `all` IS THE DEFAULT AND THE FIRST TAB, and the three sections become FILTERS over one
+   * list rather than three screens. The reporter's complaint was that the same six days rearranged
+   * themselves into a different set of boxes depending on which tab you were on; there is one list now,
+   * and the tab decides only how much of it you are looking at.
+   *
+   * `defaultSection` is no longer consulted here and is NOT deleted: it is exported, unit-tested, and
+   * still the right answer to "which single section would you open on" — which is a question this screen
+   * has simply stopped asking.
+   */
   const parsed = parseSection(sp.section);
-  const section: ExceptionSection = parsed && parsed !== 'overtime' ? parsed : defaultSection(counts);
+  const section: FilterSection = parsed && parsed !== 'overtime' ? parsed : 'all';
 
   // A date that already has a request WAITING cannot take a second one: attendance_correction carries a
   // partial unique index on (employment, date) WHERE status = 'pending'. The row shows "Requested" rather
@@ -161,11 +171,26 @@ export default async function AttendanceIrregularityPage({
   // decides whether to draw a control.
   const pendingDates = new Set(requests.filter((r) => r.status === 'pending').map((r) => r.attendanceDate));
 
+  /**
+   * ONE list, in date order, whatever kinds are in it. Sorted here rather than by `groupExceptions`,
+   * which is pure and still returns the three groups the counts and the filters are read off.
+   */
+  const allDays: ExceptionDay[] = [...found.incomplete, ...found.short, ...found.absent].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
   const sectionDays: ExceptionDay[] =
-    section === 'incomplete' ? found.incomplete : section === 'short' ? found.short : found.absent;
-  const fixDay = sp.fix ? sectionDays.find((d) => d.date === sp.fix) ?? null : null;
+    section === 'all'
+      ? allDays
+      : section === 'incomplete'
+        ? found.incomplete
+        : section === 'short'
+          ? found.short
+          : found.absent;
+  // The legacy `?fix=` branch resolves against the WHOLE list, not the filtered one: a bookmark written
+  // when that address was the only way in named a day, not a tab, and must still open its form.
+  const fixDay = sp.fix ? allDays.find((d) => d.date === sp.fix) ?? null : null;
 
-  const href = (next: { section?: ExceptionSection; fix?: string | null }) => {
+  const href = (next: { section?: FilterSection; fix?: string | null }) => {
     const q = new URLSearchParams();
     q.set('section', next.section ?? section);
     const fix = next.fix === undefined ? sp.fix : next.fix;
@@ -173,7 +198,9 @@ export default async function AttendanceIrregularityPage({
     return `/attendance/requests?${q.toString()}`;
   };
 
-  const TABS: { key: ExceptionSection; label: string; help: string; count: number }[] = [
+  // `all` leads, and its count is the SUM — the figure the reporter actually wants ("what needs me?").
+  const TABS: { key: FilterSection; label: string; help: string; count: number }[] = [
+    { key: 'all', label: t('maSectionAll'), help: t('maSectionAllHelp'), count: allDays.length },
     { key: 'short', label: t('maSectionShort'), help: t('maSectionShortHelp'), count: counts.short },
     { key: 'incomplete', label: t('maSectionIncomplete'), help: t('maSectionIncompleteHelp'), count: counts.incomplete },
     { key: 'absent', label: t('maSectionAbsent'), help: t('maSectionAbsentHelp'), count: counts.absent },
@@ -259,7 +286,7 @@ export default async function AttendanceIrregularityPage({
       <ErrorBanner message={sp.error} />
 
       {/* ── The three exception sections ──────────────────────────────────────────────────────────── */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {TABS.map((tab) => {
           const on = tab.key === section;
           return (
@@ -303,8 +330,11 @@ export default async function AttendanceIrregularityPage({
               copy={copy}
               approver={approver}
               submitAction={myRequestCorrection}
-              section={section}
-              requestKind={KIND_OF_SECTION[section]}
+              /* OFF THE DAY, NOT THE TAB. With one mixed list the open filter no longer implies the
+                 kind, and taking it from `section` would file an `all` request under a section that is
+                 not one — the r227 lesson, which was about exactly this. */
+              section={fixDay.section}
+              requestKind={KIND_OF_SECTION[fixDay.section]}
               day={{
                 date: fixDay.date,
                 missing: fixDay.missing,
@@ -314,7 +344,7 @@ export default async function AttendanceIrregularityPage({
               minDate={from}
               maxDate={to}
             />
-            {section === 'absent' && (
+            {fixDay.section === 'absent' && (
               /* The reporter's second route for an absent day: don't correct the clock, ask for leave —
                  with the date carried across so it does not have to be typed again. The same note the
                  pop-up carries (LeaveInsteadNote), so the two faces cannot offer different routes. */
@@ -330,64 +360,33 @@ export default async function AttendanceIrregularityPage({
         {/* ── Short Hours · Incomplete Entry · Absent — the days found FOR the employee ──────────── */}
         <Card className="overflow-hidden">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-            {t('maFoundForYou', { section: TABS.find((x) => x.key === section)!.label })}
+            {section === 'all' ? t('maFoundForYouAll') : t('maFoundForYou', { section: TABS.find((x) => x.key === section)!.label })}
           </div>
           {!onClocking ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoClockingRecords')}</p>
           ) : sectionDays.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {section === 'incomplete'
-                ? t('maEmptyIncomplete')
-                : section === 'short'
-                  ? t('maEmptyShort')
-                  : t('maEmptyAbsent')}
+              {section === 'all'
+                ? t('maEmptyAll')
+                : section === 'incomplete'
+                  ? t('maEmptyIncomplete')
+                  : section === 'short'
+                    ? t('maEmptyShort')
+                    : t('maEmptyAbsent')}
             </p>
           ) : (
             <ExceptionTable days={sectionDays} t={t} openDate={sp.fix} pendingDates={pendingDates} request={request} />
           )}
-          {section === 'absent' && sectionDays.length > 0 && (
+          {/* ⚠️ KEYED ON THE LIST, NOT ON THE TAB. `maAbsentTwoRoutes` promises a second route out loud,
+              and on the `all` filter an absent day is on screen while the tab is not "Absent" — a note
+              keyed on the tab would silently stop naming a route the row still offers. */}
+          {sectionDays.some((d) => d.section === 'absent') && (
             <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
               {t('maAbsentTwoRoutes')}
             </p>
           )}
         </Card>
 
-        {/* ── "Also waiting for you" — the OTHER sections' days, in view. ──────────────────────────
-            The counts on the tabs already say a section is not empty; this says WHAT is in it, so a
-            missing clock-out and a late arrival do not need two visits to be seen. Only the first
-            few rows, with a link into the section for the rest — an Absent section with twenty days
-            would otherwise bury the tab the employee chose. */}
-        {onClocking &&
-          OTHER_SECTIONS[section].map((other) => {
-            const days = other === 'incomplete' ? found.incomplete : other === 'short' ? found.short : found.absent;
-            if (days.length === 0) return null;
-            const label = TABS.find((x) => x.key === other)!.label;
-            return (
-              <Card key={other} className="overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-                  <span className="text-sm font-semibold">{t('maAlsoWaiting', { section: label })}</span>
-                  {days.length > ALSO_ROWS && (
-                    <Link
-                      href={href({ section: other, fix: null })}
-                      className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-                    >
-                      {t('maSeeAllInSection', { count: days.length })}
-                    </Link>
-                  )}
-                </div>
-                {/* No section switch on the way in any more: the row's pop-up is handed ITS OWN day's
-                    section and kind (ExceptionTable reads `d.section`), which is what the navigation used
-                    to be for. Lose that and a cross-section request files under the open tab's kind. */}
-                <ExceptionTable
-                  days={days.slice(0, ALSO_ROWS)}
-                  t={t}
-                  openDate={undefined}
-                  pendingDates={pendingDates}
-                  request={request}
-                />
-              </Card>
-            );
-          })}
       </div>
     </div>
   );
@@ -395,6 +394,9 @@ export default async function AttendanceIrregularityPage({
 
 /** The three sections this screen keeps — Self Overtime is a screen of its own now (c6bb5f5a). */
 type ExceptionSection = Exclude<AttendanceSection, 'overtime'>;
+
+/** What the tab strip can be on: the three kinds, or all of them at once (afc29d75, and the default). */
+type FilterSection = ExceptionSection | 'all';
 
 /** Stage one's FIXED cut-off: a correction can be asked for up to 30 days back. It is fixed because the
  *  Attendance Request Settings screen that would make it configurable is deliberately stage two — a
@@ -408,16 +410,6 @@ const addDays = (iso: string, days: number) =>
 
 const dayName = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
-
-/** How many rows an "Also waiting for you" card shows before it links into its own section. */
-const ALSO_ROWS = 3;
-
-/** For each exception section, the OTHER two — in the same worst-first order the tabs use. */
-const OTHER_SECTIONS: Record<ExceptionSection, ExceptionSection[]> = {
-  incomplete: ['short', 'absent'],
-  short: ['incomplete', 'absent'],
-  absent: ['incomplete', 'short'],
-};
 
 type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
 
@@ -466,6 +458,7 @@ function ExceptionTable({
         <thead className={theadCls}>
           <tr>
             <th className={thCls}>{t('maColDate')}</th>
+            <th className={thCls}>{t('maColType')}</th>
             <th className={thCls}>{t('maColScheduled')}</th>
             <th className={thCls}>{t('maColFound')}</th>
             <th className={thCls}>{t('maColHave')}</th>
@@ -490,6 +483,17 @@ function ExceptionTable({
                 <td className="px-3 py-2.5">
                   <div className="tabular-nums">{d.date}</div>
                   <div className="text-[11px] text-muted-foreground">{dayName(d.date)}</div>
+                </td>
+                {/* THE KIND, ON THE ROW. This is what pays for the "Also waiting for you" boxes going
+                    away: with one mixed list, nothing about a day's kind is carried by which box it sits
+                    in any more, so the row has to say it. Labels are the tabs' own — no new strings for
+                    the badge, and no second vocabulary for the same three words. */}
+                <td className="px-3 py-2.5">
+                  <span
+                    className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${SECTION_TONE[d.section]}`}
+                  >
+                    {t(SECTION_LABEL[d.section])}
+                  </span>
                 </td>
                 <td className="px-3 py-2.5 tabular-nums text-muted-foreground">
                   {d.scheduledFrom && d.scheduledTo ? `${d.scheduledFrom} – ${d.scheduledTo}` : '—'}
@@ -545,6 +549,24 @@ function ExceptionTable({
     </div>
   );
 }
+
+/**
+ * The three kinds, as the tabs already name them. One mapping, so a badge and a tab can never disagree
+ * about what a section is called — and no new message keys, in six locales, for three words the
+ * catalogue already holds.
+ */
+const SECTION_LABEL = {
+  short: 'maSectionShort',
+  incomplete: 'maSectionIncomplete',
+  absent: 'maSectionAbsent',
+} as const satisfies Record<ExceptionSection, string>;
+
+/** Colour per kind, matching the approved picture. Absent is the one that stops a day counting at all. */
+const SECTION_TONE: Record<ExceptionSection, string> = {
+  short: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
+  incomplete: 'bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300',
+  absent: 'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300',
+};
 
 /** What the row says we found. Duration comes from the STORED figures where there is one; a `late` day
  *  whose late_minutes is null (196 of 270 production rows predate the engine that writes them) is still
