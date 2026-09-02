@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-02 (r226-r242 SHIPPED · BOARD EMPTY — NOTHING OPEN, CONTESTED, PLANNED, APPROVED OR BUILDING)
+## CURRENT STATE — snapshot 2026-09-02 (r226-r243 SHIPPED · BOARD EMPTY · THE AGENTS ARE NOW SWITCHABLE FROM THE PRODUCT)
 
-**`main@b0543e85` IS WHAT RUNS ON PRODUCTION (r242, 2026-09-02)** — verified by an
+**`main@d96cdd81` IS WHAT RUNS ON PRODUCTION (r243, 2026-09-02)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
@@ -71,15 +71,22 @@ contract ✅ r236 · 2 the readiness nudge agent ✅ r237. Phase 2: 3 hypothesis
 6 recurrence mining · 7 the first autonomy grant.
 ~~Not a build: the missing call sites~~ ✅ r238.
 
-⚠️ **ALL THREE UNATTENDED AGENTS ARE OFF PER TENANT AND NOTHING IN THE UI TURNS ANY OF THEM ON** (no screen reads
-`SETTING_CATALOG`; the settings screen is slice 7). Two operator statements, and they are independent —
-the first chases people, the second only writes into the exceptions queue:
+⚠️ **ALL THREE UNATTENDED AGENTS ARE STILL OFF — BUT THEY ARE NOW SWITCHABLE FROM THE PRODUCT (r243).**
+`/control-tower/agents` is the switchboard; `core/tenant-settings.ts` is the app's first writer of
+`tenant_setting`. **The hand-written INSERT is no longer the only way in**, and the three round entries
+that had to document one are superseded. The SQL below still works and is kept for a headless context:
 
     INSERT INTO tenant_setting (tenant_id, key, value, source) VALUES
       ('<tenant>', 'notifications.readiness_nudge_enabled', 'true'::jsonb, 'platform'),
       ('<tenant>', 'payroll.anomaly_hypotheses_enabled',    'true'::jsonb, 'platform'),
-      ('<tenant>', 'claims.input_triage_enabled',            'true'::jsonb, 'platform')
+      ('<tenant>', 'claims.input_triage_enabled',           'true'::jsonb, 'platform')
     ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value;
+
+⚠️ **SWITCHING ONE ON IS NOT THE SAME AS IT BEING ABLE TO RUN, AND THE SCREEN NOW SAYS SO.** Each agent
+has a SECOND gate — a billable module, a configured AI provider, or both. An agent switched on behind a
+shut gate does nothing at all while looking enabled, which is the state this deployment was in
+invisibly for three rounds. The switchboard renders THREE states (`Running` / `On, but cannot run` /
+`Off`) and names the shut gate.
 
 The nudge one ALSO needs the `notifications` module (a billable entitlement gating `dispatchNotifications`);
 the hypothesis and triage ones need a configured AI provider, or they record nothing and say
@@ -269,6 +276,56 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r243 (2026-09-02) — the AI agent switchboard: ADR-0084 Phase 3's missing precondition. NO MIGRATION.
+
+⚠️⚠️ **PHASE 3 WAS BLOCKED ON SOMETHING THE ADR NEVER WROTE DOWN.** Items 5, 6 and 7 (agreement
+measurement, recurrence mining, the first autonomy grant) all need `agent_proposal` to have rows in it.
+On production it is EMPTY — not because anything is broken, but because **no tenant had switched any
+agent on and no screen could.** r237, r238 and r240 each shipped a setting and each had to record the
+same footnote: *nothing in the UI turns this on; here is an INSERT to run on the box.* **Three
+consecutive entries carrying the same caveat is the caveat asking to become a screen**, and until it was
+one the ADR's own sequencing could not advance. This is not item 5 arriving early — it is what lets item
+5 ever have data.
+
+**`core/tenant-settings.ts` IS THE APP'S FIRST WRITER OF `tenant_setting`,** and it re-states every
+conjunct of 0313's `tenant_setting_write` policy in TypeScript rather than leaning on it. ⚠️ **That
+policy's failure mode is SILENCE**: a write that misses it matches ZERO ROWS, returns no error, and the
+caller believes it saved. So group-admin, catalogued, tenant-scoped, customer-visible and value-type are
+each checked here first and refused with a typed error. The policy stays the authority; this is so a
+refusal is legible.
+
+**`source: 'customer'` ON BOTH ARMS OF THE UPSERT.** 0313's own comment: provenance follows the write, and
+overwriting a platform-written value REQUIRES setting it. A customer switch that left `platform` on the
+row would be claiming the platform made the change.
+
+⚠️ **THE ACTION TAKES AN AGENT ID, NEVER A SETTINGS KEY.** A form field naming a key would let anybody who
+can open the screen write ANY tenant-scoped catalogued setting — including `payroll.reset_enabled` and
+`payroll.unlock_enabled`, which reopen a finalised run. The key is looked up from the same closed list the
+screen renders.
+
+⚠️ **THE CATALOGUE DRIFT GUARD CAUGHT ME MID-BUILD, EXACTLY AS r237 PREDICTED.** `aiAgentSwitches` first
+read each value with `settingEnabled(ctx, a.key)` — a VARIABLE — and
+`test/module-catalog-drift.test.ts` fails on that, because a variable key is invisible to the catalogue
+scan and an uncatalogued key is a 500 rather than a disabled feature. Each entry now carries its own
+literal-keyed `read`, with the duplication documented so nobody tidies it away. **Second time this trap
+has fired in the same round family.**
+
+**NO ACCURACY RATE IS RENDERED, AND A TEST FORBIDS ONE.** §2.3's three rates are NULL until proposals
+exist, and a screen printing "0%" over an empty ledger would assert an accuracy figure nobody can stand
+behind — the same refusal the staffing tile already makes. A guard fails the moment `proposalRates`,
+`agreementRate`, `adjudicationPassRate` or `reversalRate` appears on this page without somebody first
+deciding how a null reads.
+
+**Verified end to end on a dev server, not inferred:** the write lands (`payroll.anomaly_hypotheses_enabled
+| true | customer` in `tenant_setting`), a fresh request reflects it, and the row renders **"On, but cannot
+run — no AI provider is set up, so there is no model for it to ask."** A company-scoped admin is refused
+`not_group_admin`; `payroll.reset_enabled` is refused `not_tenant_scoped`. Four mutations re-derived by
+hand. Gate green 6/6 across 763 files.
+
+**WHAT IS STILL TRUE AND IS NOW THE ONLY THING IN THE WAY:** production has **no AI provider** (empty
+`ai_provider_config`, no env key), so the two agents that need a model would report `notConfigured` even
+switched on. **Adding one is Administration → AI and is the single remaining step before Phase 3 has data.**
 
 ### r242 (2026-09-02) — two approved items, built by workflow. SHIPPED. NO MIGRATION.
 
