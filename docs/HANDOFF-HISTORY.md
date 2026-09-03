@@ -1,3 +1,425 @@
+## r244 (2026-09-03) — an EA arrival says it is the EA (`a294cca5`). NO MIGRATION.
+
+⚠️⚠️ **A REGRESSION r242 INTRODUCED, REPORTED BY THE CUSTOMER THE NEXT MORNING, AND THE SHAPE IS WORTH
+KEEPING.** They pressed **"Open Form" on the EA (Bahasa Malaysia) row and landed on a page headed
+"Form E / CP8D — annual (LHDN)"**. r242 renamed that button from *"Open employee list"* to *"Open Form"*
+and **did not move where it goes** — so the label began promising the EA while the destination went on
+announcing a different return. **An inaccurate label at least did not CONTRADICT the page; a better label
+over an unchanged destination did.** Renaming a control is a change to what it PROMISES, and the promise
+has to be checked against where it actually lands.
+
+**REPRODUCED BEFORE THE PLAN WAS WRITTEN, not taken on trust** — dev server, followed the row's own href,
+h1 read "Form E / CP8D" TWICE (screen header at `[formId]/page.tsx`, and the print-only header below it).
+The correction went at the TOP of the reporter's half of the plan (AGENTS 31), and the mockup's "Today"
+panel carried the REAL rendered heading rather than a reconstruction.
+
+**THE HREF STAYS `my.cp8d` AND THE LIST IS UNTOUCHED.** The EA population IS the CP8D population — one row
+per employee for the tax year — and 587ee719 already threads `eaLang` through so a name hands back that
+person's EA. The list was never wrong; only the page's self-description was. **Do not build a second
+employee list.**
+
+**BOTH HEADERS, AND THE PRINT ONE MATTERED MORE.** An EA arrival takes its title from the shelf rows' own
+`link_ea_en` / `link_ea_ms` keys, so the row you pressed and the page you land on cannot drift apart. The
+print-only header had the same wrong name, and a printed page naming a statutory return it is not is a
+document somebody could file under the wrong heading.
+
+⚠️ **AND THE CP8D EXPORTS ARE NOT OFFERED UNDER AN EA HEADING — a fault the reporter had NOT hit.** The
+three Download controls call the CP8D exporter (the annexe to Form E). Under an EA title they would hand
+an operator the wrong statutory document. They were invisible only because that company has no figures for
+the year yet. AGENTS 28: a control producing a confidently wrong artefact is worse than an absent one.
+**They are untouched on the Form E row's own arrival** — a fix that deleted them would have taken a real
+capability from the return that owns them, and a guard pins that they survive there.
+
+**Verified by rendering all THREE arrivals, not two:** EA (en) → "Form C.P.8A (EA) — English"; EA (ms) →
+"— Bahasa Malaysia", the reporter's exact case; Form E from its own row → still "Form E / CP8D — annual
+(LHDN)" with its plain company description. The picker line renders only on the EA arrivals (checked
+against the markup with the embedded i18n payload stripped — a raw grep finds it on every page and is the
+false positive this file already warns about). Four mutations re-derived by hand. Gate green 6/6.
+
+## r243 (2026-09-02) — the AI agent switchboard: ADR-0084 Phase 3's missing precondition. NO MIGRATION.
+
+⚠️⚠️ **PHASE 3 WAS BLOCKED ON SOMETHING THE ADR NEVER WROTE DOWN.** Items 5, 6 and 7 (agreement
+measurement, recurrence mining, the first autonomy grant) all need `agent_proposal` to have rows in it.
+On production it is EMPTY — not because anything is broken, but because **no tenant had switched any
+agent on and no screen could.** r237, r238 and r240 each shipped a setting and each had to record the
+same footnote: *nothing in the UI turns this on; here is an INSERT to run on the box.* **Three
+consecutive entries carrying the same caveat is the caveat asking to become a screen**, and until it was
+one the ADR's own sequencing could not advance. This is not item 5 arriving early — it is what lets item
+5 ever have data.
+
+**`core/tenant-settings.ts` IS THE APP'S FIRST WRITER OF `tenant_setting`,** and it re-states every
+conjunct of 0313's `tenant_setting_write` policy in TypeScript rather than leaning on it. ⚠️ **That
+policy's failure mode is SILENCE**: a write that misses it matches ZERO ROWS, returns no error, and the
+caller believes it saved. So group-admin, catalogued, tenant-scoped, customer-visible and value-type are
+each checked here first and refused with a typed error. The policy stays the authority; this is so a
+refusal is legible.
+
+**`source: 'customer'` ON BOTH ARMS OF THE UPSERT.** 0313's own comment: provenance follows the write, and
+overwriting a platform-written value REQUIRES setting it. A customer switch that left `platform` on the
+row would be claiming the platform made the change.
+
+⚠️ **THE ACTION TAKES AN AGENT ID, NEVER A SETTINGS KEY.** A form field naming a key would let anybody who
+can open the screen write ANY tenant-scoped catalogued setting — including `payroll.reset_enabled` and
+`payroll.unlock_enabled`, which reopen a finalised run. The key is looked up from the same closed list the
+screen renders.
+
+⚠️ **THE CATALOGUE DRIFT GUARD CAUGHT ME MID-BUILD, EXACTLY AS r237 PREDICTED.** `aiAgentSwitches` first
+read each value with `settingEnabled(ctx, a.key)` — a VARIABLE — and
+`test/module-catalog-drift.test.ts` fails on that, because a variable key is invisible to the catalogue
+scan and an uncatalogued key is a 500 rather than a disabled feature. Each entry now carries its own
+literal-keyed `read`, with the duplication documented so nobody tidies it away. **Second time this trap
+has fired in the same round family.**
+
+**NO ACCURACY RATE IS RENDERED, AND A TEST FORBIDS ONE.** §2.3's three rates are NULL until proposals
+exist, and a screen printing "0%" over an empty ledger would assert an accuracy figure nobody can stand
+behind — the same refusal the staffing tile already makes. A guard fails the moment `proposalRates`,
+`agreementRate`, `adjudicationPassRate` or `reversalRate` appears on this page without somebody first
+deciding how a null reads.
+
+**Verified end to end on a dev server, not inferred:** the write lands (`payroll.anomaly_hypotheses_enabled
+| true | customer` in `tenant_setting`), a fresh request reflects it, and the row renders **"On, but cannot
+run — no AI provider is set up, so there is no model for it to ask."** A company-scoped admin is refused
+`not_group_admin`; `payroll.reset_enabled` is refused `not_tenant_scoped`. Four mutations re-derived by
+hand. Gate green 6/6 across 763 files.
+
+**WHAT IS STILL TRUE AND IS NOW THE ONLY THING IN THE WAY:** production has **no AI provider** (empty
+`ai_provider_config`, no env key), so the two agents that need a model would report `notConfigured` even
+switched on. **Adding one is Administration → AI and is the single remaining step before Phase 3 has data.**
+
+## r242 (2026-09-02) — two approved items, built by workflow. SHIPPED. NO MIGRATION.
+
+`b36a8a91` (EA) and `1ff969ed` (Leave Explanation), each built by its own agent in its own worktree and
+then adversarially verified by two lenses. **The verify pass earned its keep twice over: four majors, and
+two of them would have shipped a promise the round had already made to the reporter in writing.**
+
+⚠️⚠️ **EA MAJOR 1 — "Open form" STILL ENDED IN A PDF DOWNLOAD.** 587ee719 had made an EA-shelf arrival hand
+back the PDF directly when you click an employee name, which was right when the shelf's only promise was
+"the form". `b36a8a91` changed that promise — *"Open Form … takes you to the employee list and then
+straight into that person's completed EA. Nothing downloads when you press it"* — and the build renamed the
+button without moving the destination. **It also put this round's own readiness panel out of reach of the
+entry point the round renamed.** Both arrivals now end on the statement, carrying the language; and the
+download the name click used to give had to be ADDED to that screen, or the fix would have deleted a
+capability while calling itself an improvement.
+
+⚠️⚠️ **EA MAJOR 2 — THE READINESS PANEL RENDERED FOR ORDINARY EMPLOYEES.** `app/me/page.tsx` links every
+employee to `/payroll/reports/ea/<id>` for their own EA, and that page has **no role gate** — RLS scoping
+is what fences it. So an employee was being told their record was incomplete and sent to Personnel
+Management, an admin screen they cannot open. Gated on `canAmend`, the amend panel's own predicate, and the
+render check confirms it: as HR the chip and the amend panel draw; as an employee neither does, while the
+download link still does.
+
+**EA — the contribution gate was a proxy for AGE.** The first build silenced the EPF/SOCSO number checks
+when the employee's own contribution for the year was zero. An employee's EPF share is zero at **60 and
+over** under the Third Schedule while the number is still required on the form, so the check switched
+itself off for exactly the population most likely to be reviewed by hand. Removed; its guard case is
+UPDATED to pin the reversal (AGENTS 18).
+
+⚠️ **LEAVE MAJOR — A GUARD IN A FILE THE BUILDER NEVER RAN.** `test/r196-entitlement-not-generated.test.ts`
+still pinned `colSpan={11}` on the page the build changed to 12. The builder's "vitest exit 0, 17 files"
+was true and did not cover it. **A targeted run is not a gate**, and this is the cheapest possible
+reminder of it.
+
+⚠️ **AND ONE PROMISE I MADE THAT THE PRODUCT DOES NOT KEEP.** `1ff969ed`'s plan said the Explanation panel
+shows "the rule that applied, the dates and years of service it was worked out from, the entitlement step
+by step … and the balance shown component by component". Measured: the panel is **one section** since
+feedback `1f6fd6d8`, which REMOVED the Entitlement Calculation Breakdown **at the reporter's own
+push-back** — they supplied the replacement column verbatim. What is true: the balance component by
+component (yes), per-field Formula Explanations where configured (partly), the resolved entitlement table
+named on the row (yes, r209). Hire date and years of service are **not** there. **Do not "fix" this by
+re-adding the removed section** — that is the r179/r185 panel round trip a third time. It belongs in the
+delivery note to the reporter, offering it back.
+
+**Not changed, deliberately:** the four Leave columns (Credit / Share / Pending Share / YOS — the row's
+`SharedLeaveBalanceInfo` is about which leave TYPES share a pooled ledger, not employee-to-employee
+sharing); the EA download filename; the PDF's layout, wording, field order, language and page size; and
+the mockup's box table over money boxes, which cannot be drawn without asserting a state for figures the
+panel is not competent to judge (AGENTS 28).
+
+⚠️ **THE DEPLOY FAILED ONCE ON SSH AND IT WAS TRANSIENT — DO NOT REDIAGNOSE IT AS A DEAD BOX.** Between
+the green gate and the rsync, `ssh -p 8288` began timing out and stayed down across several retries and
+~20 minutes; ports 8288 AND 22 both read closed/filtered while ICMP, 80 and 443 stayed up and the app kept
+serving. It came back on its own with no intervention. **The evidence that mattered was that the box was
+otherwise healthy** — a machine answering HTTPS while refusing SSH is a daemon or a filter, never a dead
+host, and the right response is to record the round as undeployed and retry rather than to go looking for
+a second address. (The only host in this repo is `203.142.6.241:8288`; `10.20.30.20` is the LAN-only CLI
+default and is not a route to production.)
+
+⚠️ **A PROCESS MISTAKE WORTH RECORDING: I MERGED FROM THE WRONG WORKTREE.** The shell cwd persisted from a
+`cd` into the leave worktree, so `git merge build/r242-ea-review` landed the EA branch **on the leave
+branch** instead of on `main`. Nothing was lost — `main` was untouched, and the branch was reset to its own
+tip and both merges redone from mainwt — but this is the fifth time this repo has been bitten by cwd
+persistence. **Put the tree in the command, every time, including `git merge`.**
+
+## r241 (2026-09-02) — one consolidated Attendance Irregularity list (`afc29d75`). NO MIGRATION.
+
+The last of the `c6bb5f5a` follow-ups. Three sections became FILTERS over one date-ordered list with
+"All" leading and its count the sum; the kind moved onto the row as a badge; the "Also waiting for you"
+cards, `OTHER_SECTIONS` and `ALSO_ROWS` are gone, and `maAlsoWaiting` / `maSeeAllInSection` are removed
+from all six catalogues.
+
+⚠️ **TWO THINGS HAD TO MOVE WITH IT, AND BOTH ARE INVISIBLE TO TYPES AND TO A 200.**
+
+  1. **The legacy `?fix=` link resolves against the WHOLE list, not the filtered one.** That address named
+     a DAY, not a tab; resolving it against `sectionDays` would make an already-circulated link open
+     nothing whenever the filter excluded its day. And its panel now files under the **day's** own kind,
+     because the open filter may be `all` — which is not a section. That is r227's lesson arriving a
+     second time from a different direction.
+  2. **`maAbsentTwoRoutes` is keyed on whether an absent day is ON SCREEN, not on which tab is open.** On
+     the All filter an absent row is visible while the tab is not "Absent", so the old condition would
+     have silently stopped naming a route the row still offers — a capability deleted by a condition.
+
+**Four mutations re-derived by hand** (absent note keyed on the tab · badge dropped · sorted by section
+instead of date · `all` no longer the default), each failing exactly one new case.
+
+**Rendered on a dev server** with seeded days across kinds: one table, "All 19" leading, rows in date
+order with Absent (rose) and Incomplete Entry (sky) badges, no "also waiting" cards, the two-routes note
+present, and `?section=absent` filtering correctly. Dev log clean. **Short Hours did not render in the
+walk** — with no shift resolving, `flagOf` cannot judge late/under, so the fixture produced none. The
+badge path is identical for all three and its label mapping is pinned by a test, but it was not seen.
+
+⚠️⚠️ **THE FIRST GATE WENT RED WITH 13 FAILURES AND ZERO ASSERTION ERRORS, AND THE CAUSE WAS THE RAM
+DISK.** `load average 111`, swap at **7.9GB of 9.2GB**, ~55MB free RAM; chunk 2 threw 12 `Hook timed out`
+in `resetDb`, chunk 3 had a single test take **651 SECONDS**. The 8GB RAM disk is itself wired memory, so
+on a machine already swapping it makes the gate the thing that starves. `AIHR_RAMDISK_GB=0` (the escape
+`scripts/dev-db-rebuild.sh` documents) dropped load to 22 immediately and the re-run was **green 6/6**,
+with the previously-failing chunk 2 at 127/127 and peak-disk 22% instead of 76%.
+**READ THE CAUSE TALLY BEFORE BELIEVING A RED** (AGENTS 12): zero `AssertionError` plus hook timeouts is
+never a code failure. And on a loaded machine, prefer the SSD — the RAM disk is an optimisation, not a
+requirement.
+
+## r240 (2026-09-01) — input-side triage: the system asks the person who filed the claim. NO MIGRATION.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.7 / Phase 2 item 4, and **Phase 2 is now done.**
+r238 put a second opinion on what payroll PRODUCED; this puts one on what was PUT IN, which is the only
+end where an error is still cheap.
+
+⚠️⚠️ **THE QUERY GOES TO THE CLAIMANT, NOT THE APPROVER, AND THAT IS THE WHOLE DESIGN.** §2.7 says only
+"it queues a query for a human", and 0452's RLS comment imagined it running in the employee's session at
+submit. Neither is what shipped. **Telling an approver "look at this one" makes a faster human — the
+ceiling ADR-0084 §1 says leaves headcount where it was.** The claimant is the only person who can still
+WITHDRAW the claim (`cancelClaim` lets them; no other screen can un-file it), so they are the only
+recipient for whom a question can stop work rather than speed it up. And a provider call on the SUBMIT
+path would put an outage in front of a core flow for nothing — the sweep asks the same question the same
+night. Same discipline as r237's routing table: address the person who can act, read out of the product.
+
+**WHAT THE RULES ALREADY CATCH IS NOT THIS LAYER'S BUSINESS.** `priceAndCheckClaimTx` already refuses, in
+the submitting transaction: unknown/archived type, missing or foreign item, receipt date in the future or
+outside the backdating window, mileage priced off the wrong band table, blank required custom fields, and
+every per-grade limit and block window. A claim reaching triage has passed all of it, so triage looks at
+one thing only — **whether the description and the claim agree.**
+
+**FIVE CATALOGUED RULES, EACH WITH A NECESSARY PREDICATE RE-DERIVED FROM THE CLAIM ROW**
+(`category_mismatch`, `amount_unexplained`, `date_inconsistent`, `subject_not_self`, `detail_insufficient`).
+⚠️ **The one that really bites is `date_inconsistent`: a description naming no date, month or year cannot
+contradict a receipt date, so the rule is UNAVAILABLE however confident the model sounds.**
+
+**THE FIGURE CHECK IS `narrationIsFaithful`, BORROWED UNCHANGED — its third surface.** §2.7 asks that any
+referenced figure match the source record; the narrator already discards prose naming an unsupported
+number. Re-implementing it here is how two definitions of "supported" would drift. **The claim's
+DESCRIPTION counts as source**: a figure the employee wrote themselves is theirs to be quoted back.
+
+**"IT NEVER REJECTS ANYTHING" IS STRUCTURAL AND A TEST ASSERTS IT AS SOURCE SHAPE** — no `reject` in the
+vocabulary, no write to `claim_request` anywhere in the module, no status set. The notification is
+`severity: 'info'`, never `warning`: nothing is wrong, nothing is refused, and a warning colour would tell
+an employee they are in trouble, which is the accusation §2.7 forbids.
+
+⚠️ **`input_triage`'s `decision` COLUMN IS DELIBERATELY NEVER WRITTEN, AND THAT IS A FINDING.** The only
+observable action is the employee CANCELLING; "I checked and it is fine" leaves no trace. Stamping
+`approved` on a cancellation alone makes the agreement rate structurally 1.0 — r236's exact
+`close_fixed_upstream` defect — and stamping `declined` on silence manufactures a number out of an absence.
+**The honest measure is the ACTION rate** (cancellations within the window ÷ queries raised), derivable
+from the ledger plus `claim_request.status`. A null column beats a dishonest one.
+
+⚠️⚠️ **THIS IS THE FIRST SURFACE IN THE PRODUCT THAT SENDS EMPLOYEE-AUTHORED FREE TEXT TO A PROVIDER, AND
+IT SHOULD BE SAID OUT LOUD BEFORE ANY TENANT SWITCHES IT ON.** `report-ai.ts`'s posture is *schema out,
+never data*; the narrator sends only numbers. Here the description IS what is read. Withheld: name,
+employment id, company, and whatever `redactPII` finds (email, IC, phone). Sent: type, item, amount, two
+dates, redacted description. Tenant's own key (ADR-0023), off until they ask.
+
+**ONCE PER CLAIM, EVER, AND THE LEDGER REMEMBERS.** A pending claim's description cannot change, so a
+second look asks the same person the same question about the same words. `agent_proposal.subject_id` is the
+claim, so "already triaged" is a ledger read — nothing to migrate, nothing to keep in step. Bounded further
+by a 14-day window (an older pending claim is an APPROVER problem and the wrong person to ask) and
+`MAX_TRIAGE_PER_RUN = 40`, which refuses rather than truncating.
+
+**FOLDED INTO `review-sweep.ts` BESIDE THE NUDGE AGENT, IN ITS OWN try/catch, NO CRONTAB CHANGE.** A
+provider outage must not cost the tenant the review openings, reminders, escalations and movements that
+pass already computed.
+
+**ROSTER ROW 13.** ⚠️ And a small trap found in adding it: the roster guard demands an i18n key for EVERY
+quoted string in a `reasonKey:` expression, so an inline `isModuleEnabled(ctx, 'claims')` in that ternary
+made it require a phantom `why.claims`. **Keep a reasonKey expression to reason keys; hoist module checks
+into a variable.** The guard is right to be blunt.
+
+**Verified:** gate green 6/6 across 759 files · tsc + `next build` clean · three mutations re-derived by
+hand (drop the rule precondition → 3 fail; drop the figure check → 1 fail; `warning` instead of `info` →
+2 fail) · the How it works page rendered in `en` and `ms` with all 13 rows and a clean dev log.
+
+**NOT BUILT:** timesheets, overtime entries and change requests. They are the same seam — a pending row, a
+free-text reason, and a person who can withdraw it — and none of them is wired.
+
+## r239 (2026-09-01) — the attendance request list gets a second face; three items closed with no code. NO MIGRATION.
+
+Board `568b8f0b`, the last of the four `c6bb5f5a` follow-ups. Presentational only: below `lg` each request
+is one block with the date and the outcome on the first line and the detail underneath; from `lg` up the
+seven-column table is exactly what it was. **Built by a workflow — one build agent, then three adversarial
+verifiers on separate lenses — and the verify pass is what made the round worth anything.**
+
+⚠️⚠️ **THE VERIFIERS BROKE TWO OF THE BUILD'S OWN GUARDS, AND THAT IS THE MOST TRANSFERABLE THING HERE.**
+Both looked right, both passed, both pinned a PROXY rather than the property:
+
+  1. The "date and status on one line" case — the plan's headline promise — sliced the source from
+     `md:hidden` to **END OF FILE** and asked whether the flex class and the `<Pill` both APPEARED in that
+     span. A verifier moved the Pill out of the row into its own div underneath (the exact shape the
+     reporter complained about) and all 27 cases passed. **Co-occurrence is not containment, and an
+     unbounded slice is not a region.** It now balances tags and asserts the Pill is INSIDE the row.
+  2. The cancel-rule case pinned that the rule was *defined once and asked twice*, never what it SAID.
+     Deleting `!isOvertime(r) &&` passed everything. It now pins the literal predicate — and checks that
+     every `<CancelRequest` is drawn through `canCancel` rather than an inline pending test.
+
+⚠️ **AND THEN MY OWN FIX BROKE THE SECOND GUARD IN A THIRD WAY, WHICH IS THE SAME LESSON AGAIN.** Guard D
+also asserted `r.status === 'pending'` appeared **exactly once** in the file. A legitimate second use
+arrived in the same fix pass (the approver caption, below) and the count failed on a change that was
+entirely correct. A count of a token is a proxy; the property is "the cancel control is never drawn behind
+an inline pending test", and that is what it asserts now.
+
+**ALL FOUR MUTATIONS WERE RE-DERIVED BY HAND** (AGENTS 23), each failing exactly one case: Pill out of the
+row · overtime dropped from the cancel rule · block face labelling the status without `isOvertime` · the
+approver caption made unconditional.
+
+⚠️ **THE BREAKPOINT IS `lg`, NOT `md`, AND THE ARITHMETIC IS THE ARGUMENT.** The nav rail appears at `sm`
+and takes 232px; the shell adds 24px padding and a 12px gap. So a 768px viewport gives this list a **~500px
+content column — narrower than the ~615px the block face gets at 639px**. Switching at `md` would have
+brought the seven columns back at the tightest width the screen ever has. `lg` keeps the table on every
+laptop (the plan's explicit promise, and the one this repo has a scar from breaking) and gives the
+768-1023px band the blocks it is better served by. **Any responsive switch in this app has to subtract the
+rail before choosing a breakpoint.**
+
+**"Goes to {approver}" NOW DRAWS ONLY ON A PENDING REQUEST.** As a column HEADING over a list of names it
+is neutral; as a running caption beside a red Rejected pill it asserts the request is still with that
+person — and `approver` is the employee's CURRENT approver, not whoever decided the row, so on a settled
+request it may not even be the right name. AGENTS 28. Two independent verifiers found it.
+
+**THE PILL GAINED `shrink-0 whitespace-nowrap`, AND ONLY A LONG LOCALE SHOWS WHY.** It now sits at the end
+of a flex row on a phone. `leaveStatus.approved` is 8 characters in English and **20 in Tamil**;
+`otStatusWithdrawn` is 9 and **21**. Without it the chip shrinks and wraps its label inside its own rounded
+background — invisible to an English-only check.
+
+**RENDERED, NOT ASSUMED (AGENTS 6).** Dev server on the r239 tree, five seeded requests covering all four
+statuses plus an overtime plan, in `en` and `ta`: both faces present, five blocks, `aria-current` on the
+active filter, `aria-label` carrying the date on each Cancel, the approver caption on the pending row ONLY,
+and the overtime row correctly reading **"Withdrawn"** rather than "Cancelled" in BOTH faces. Dev log clean
+of `MISSING_MESSAGE` in both locales. **Zero new i18n keys** — every string was already on this screen.
+
+⚠️ **ONE REAL DEFECT LEFT STANDING ON PURPOSE, AND THE RENDER WALK DEMONSTRATED IT.** `Submitted` is
+`r.createdAt.toISOString().slice(0, 10)` — a UTC slice shown to a UTC+8 audience, so a request filed at
+07:00 MYT prints the previous day (seen live: a row created `2026-08-12 07:00+08` rendered `2026-08-11`).
+It is PRE-EXISTING in the table, `app/attendance/travel/page.tsx:128` has it too, and `lib/hr-date.ts`
+already exports `todayInKualaLumpur` for it. The build had made a SECOND copy; that is now one
+module-scope `submittedOn(r)` so the two faces cannot disagree, with the value unchanged. **Fixing it
+changes a printed date, which a presentational round must not do silently — it needs a round that says so,
+and it should take `travel` with it.**
+
+**NOT DONE, DELIBERATELY:** the mockup's friendlier date ("Tue 25 Aug 2026") — `lib/utils.ts`'s `formatDate`
+is hardcoded `en-GB`, so it would print English dates to five other locales; a locale-aware helper is a new
+decision the plan did not carry. And the mockup's status-varying approver captions ("Approved by…",
+"Rejected by…") need a `decidedBy` the read does not carry — a data change, not a caption.
+
+## r238 (2026-09-01) — hypothesis detection: the first AI surface that can CREATE a finding. MIGRATION `0454`. SHIPPED.
+
+[ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.6 / Phase 2 item 3. Everything before this round
+either explained a finding a rule had already made (`anomaly_narration`), drafted something an admin then
+saved (`pay_rule_draft`, `report_spec`), or chased somebody about a gap deterministic code found
+(`readiness_fix`). **`core/payroll-hypothesis.ts` is the first place a model's output becomes a row a
+payroll officer has to work.**
+
+⚠️ **IT LOOKS AT THE AUTO-CLEARED, AND ONLY THE AUTO-CLEARED — the single most important decision in the
+round.** Twelve people move up 6% together and one stays flat: **not one of the eleven detectors says a
+word**, because `net-swing` wants 30% and every other check is a presence test that passes. That is the
+miss this layer is for, and it makes the round the machine performing **its own false-negative check** —
+the rate ADR-0076 §5 says governs autonomy and which has never had anything but a human route to a
+numerator. It is also what makes the human's verdict ATTRIBUTABLE: a resolution is recorded per VERDICT,
+so on a row carrying both a rule finding and a hypothesis, "not a real problem" says nothing about which
+one was wrong. `test/payroll-hypothesis-engine.test.ts` asserts the refusal to guess in that case.
+
+⚠️ **THE FAIR OBJECTION IS "YOUR PREDICATES ARE DETERMINISTIC, SO WHY IS A MODEL HERE?" — AND THE ANSWER
+IS IN THE FILE HEADER, NOT IN THIS ENTRY, BECAUSE THE NEXT PERSON WILL ASK IT AGAIN.** Each claim's
+predicate is NECESSARY, never sufficient; on a real run several hold at once for most candidates, because
+the deduction share is arithmetic on the pay movement. A rule firing on "any necessary condition holds"
+would flag nearly everyone. The model picks WHICH explanation the whole vector supports — and, the
+expected majority answer, **that none of them does.** `nothing_notable` is a valid accepted output that
+produces no finding, and no rule can produce it.
+
+**THE MODEL EMITS NO NUMBER AT ALL, WHICH IS THE STRONGEST FORM THIS CHECK HAS TAKEN ANYWHERE.** Output is
+`{"claim": <one of 5 + nothing_notable>, "evidence": [<field names>]}` — two closed vocabularies, both
+re-derived by `adjudicateHypothesis` against features recomputed from the run. §2.6's optional
+`expectedRange` was deliberately NOT taken from the model: it is a deterministic quantity (the cohort's
+own median), so letting a model emit one adds a figure that must then be checked, for nothing. Five named
+refusals, each recorded as its own `adjudication_reason`: `unknown_claim`, `unknown_evidence:<k>`,
+`inadmissible_evidence:<k>`, `immaterial_evidence:<k>`, `claim_unsupported:<claim>`.
+
+⚠️⚠️ **A Z-SCORE ALONE WOULD HAVE MADE THIS LAYER USELESS, IN BOTH DIRECTIONS, AND BOTH HALVES ARE
+NON-OBVIOUS.** (1) In an ordinary month most people's pay does not move at all, so the spread of
+`netChangePct` is near zero and **anybody who moved half a percent scores a colossal z** — without an
+ABSOLUTE floor (measured as a deviation from the group's own middle, in the feature's own unit) this would
+spend a provider call on every rounding difference on the run. (2) The same fact makes the MEDIAN ABSOLUTE
+DEVIATION exactly zero, so a MAD-only z is null for everybody and **a robust-statistics-only implementation
+would produce no candidates at all on precisely the runs this exists for.** It falls back to σ, and a test
+pins that case.
+
+**THE LEDGER IS NOW A MEMORY, AND THIS IS WHERE ADR-0084 §2.4's LEARN HALF FIRST DOES SOMETHING.** The
+nightly sweep supersedes and rewrites every verdict, so an uncached layer would re-ask a provider the same
+question about the same unchanged figures every night forever. `agent_proposal.input_digest` already
+defines when two questions are the same one; **one further clause makes it a memory rather than a cache: a
+hypothesis a human resolved as `false_positive` is never raised again on identical figures.** The system
+stops arguing with an operator who has already answered, for the price of a WHERE clause.
+
+**MIGRATION `0454` — `payroll_anomaly_finding.proposal_id`.** The edge from a finding back to the proposal
+that produced it. Nullable (every deterministic detector's finding has none, and `recordProposal` is
+best-effort by design), `ON DELETE SET NULL`. Without it, stamping the human's verdict is a guess — most
+recent accepted proposal for this employment, hope it is the right one — and §2.3's agreement rate is only
+worth having if it lands on the right row.
+
+⚠️ **`anomaly_hypothesis` IS THE ONLY TYPE IN THE PRODUCT WHOSE THREE RATES ARE ALL REAL.**
+`anomaly_narration` has no human decision, `close_fixed_upstream`'s agreement is structurally 1.0 (r236),
+`readiness_fix`'s is observable but has no reversal notion. Here: adjudication pass = does the model cite
+fields that actually hold; agreement = an operator answering "is this a real problem?" on a row nothing
+else would have flagged; reversal = the honest ceiling on ever granting it autonomy.
+
+**OFF PER TENANT BY DEFAULT — `payroll.anomaly_hypotheses_enabled`.** Two reasons, both §2.5's: it spends
+the tenant's own BYOK budget on a schedule nobody triggered, and it puts rows a MODEL chose into their
+queue. Nothing in the UI can turn it on (no screen reads `SETTING_CATALOG` — settings screen is slice 7),
+so it is an operator statement, exactly like the nudge agent's:
+
+    INSERT INTO tenant_setting (tenant_id, key, value, source)
+    VALUES ('<tenant>', 'payroll.anomaly_hypotheses_enabled', 'true'::jsonb, 'platform')
+    ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value;
+
+**THE SEVERITY CEILING IS STRUCTURAL, NOT A SETTING.** `severity: 'review'` is a literal appearing exactly
+ONCE in the file and a test asserts both that count and the absence of `'block'`. ADR-0084 §2.2: a model
+may never raise a `block`, because `resolveDisposition` is derived and never scored.
+
+**FOLDED INTO `anomaly-sweep.ts`, NO CRONTAB CHANGE**, after the deterministic pass and inside its own
+try/catch — a provider outage must not cost the tenant the verdicts that pass just produced. Same reading
+of r230 as r237: a second cron line is a second thing to forget to install. A button
+("Look for what the checks missed") is on the exceptions screen too, because a layer nobody can trigger by
+hand is a layer nobody can evaluate.
+
+**THE ROSTER STOPPED UNDER-REPORTING** (ADR-0084 §1 finding 3, §3's "not a build"). Twelve rows now, from
+six: `hypotheses`, `nudge`, and the four authoring assists (`payRuleDrafter`, `reportDesigner`,
+`reviewDrafter`, `planDrafter`) that were in `core/` all along and never on the page.
+⚠️ **AND THE GUARD THAT WAS SUPPOSED TO CATCH A MISSING STRING COULD NOT SEE THEM.** `test/control-tower-menu.test.ts`
+matched roster ids with `[a-z_]+` — every camelCase id was invisible to it — and read `reasonKey:` only to
+the end of the LINE, so a formatter-wrapped four-way ternary contributed one branch out of four. Both are
+fixed. **A source-scanning guard's character class and its line boundary are part of its coverage, not
+details** (same family as AGENTS 27, which says the same about comments).
+
+**Live-risk notes for whoever deploys it.** The button runs up to `MAX_HYPOTHESES_PER_RUN` (25) provider
+calls inside one server action — the same shape as `narrateAnomalyAction`, and the same exposure to a slow
+provider. `loadBatchContexts` re-reads the batch, so the sweep now gathers each batch twice; deliberate,
+because the provider call and the ledger write must happen OUTSIDE the evaluator's transaction
+(agent-proposal property 2).
+
 ## r237 (2026-09-01) — the nudge agent: the system starts chasing people. NO MIGRATION.
 
 [ADR-0084](docs/adr/0084-propose-adjudicate-learn.md) §2.5 / Phase 1 item 2. **The first thing in this
