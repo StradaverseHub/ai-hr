@@ -6115,6 +6115,21 @@
           "not_customer_visible": "该设置由 Stradaverse 管理。",
           "wrong_type": "这不是该设置的有效值。"
         }
+      },
+      "exceptionsLink": "有什么在等你处理",
+      "exceptions": {
+        "title": "异常",
+        "description": "所有等待处理的被标记员工，来自每一次发薪，汇总为一张列表。",
+        "backToTower": "返回控制塔",
+        "outstanding": "等待处理",
+        "blocking": "其中会阻止发薪的",
+        "capped": "显示 {total} 项中最紧急的 {shown} 项。处理一部分后其余会出现。",
+        "help": "最紧急的在前：先是会阻止发薪的，然后是等待最久的。在这里做的决定与在该次发薪页面上做的完全相同。",
+        "waitingSince": "标记于 {date}",
+        "emptyTitle": "没有待处理项",
+        "emptyBody": "所有发薪中被标记的员工都已处理完毕。",
+        "whyTitle": "你的处理为何重要",
+        "whyBody": "控制塔上的三个数字——检查出错的频率、异常等待的时长、以及这些工作量意味着需要多少人手——在有人处理这些之前都无法得出。在那之前，控制塔会刻意显示缺什么，而不是给出一个数字。"
       }
     }
   },

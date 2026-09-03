@@ -6115,6 +6115,21 @@
           "not_customer_visible": "Tetapan itu diuruskan oleh Stradaverse.",
           "wrong_type": "Itu bukan nilai yang sah untuk tetapan ini."
         }
+      },
+      "exceptionsLink": "Apa yang menunggu anda",
+      "exceptions": {
+        "title": "Pengecualian",
+        "description": "Setiap pekerja yang ditanda dan masih menunggu keputusan, daripada setiap larian gaji, dalam satu senarai.",
+        "backToTower": "Kembali ke Menara Kawalan",
+        "outstanding": "Menunggu keputusan",
+        "blocking": "Daripada itu, menyekat larian",
+        "capped": "Menunjukkan {shown} paling mendesak daripada {total}. Selesaikan sebahagian dan selebihnya akan muncul.",
+        "help": "Paling mendesak dahulu: apa-apa yang menyekat larian, kemudian yang paling lama menunggu. Membuat keputusan di sini sama seperti membuatnya pada larian gaji itu sendiri.",
+        "waitingSince": "Ditanda {date}",
+        "emptyTitle": "Tiada apa menunggu",
+        "emptyBody": "Setiap pekerja yang ditanda dalam setiap larian telah diputuskan.",
+        "whyTitle": "Mengapa keputusan anda penting di sini",
+        "whyBody": "Tiga daripada angka di Menara Kawalan — berapa kerap pemeriksaan tersilap, berapa lama sesuatu pengecualian menunggu, dan berapa ramai orang yang diperlukan oleh beban kerja ini — tidak boleh dikira sehingga seseorang memutuskan perkara ini. Sehingga itu, Menara menunjukkan apa yang tiada dan bukan satu nombor, dengan sengaja."
       }
     }
   },

@@ -6115,6 +6115,21 @@
           "not_customer_visible": "That setting is managed by Stradaverse.",
           "wrong_type": "That is not a valid value for this setting."
         }
+      },
+      "exceptionsLink": "What is waiting for you",
+      "exceptions": {
+        "title": "Exceptions",
+        "description": "Every flagged employee still waiting for a decision, from every payroll run, in one list.",
+        "backToTower": "Back to the Control Tower",
+        "outstanding": "Waiting for a decision",
+        "blocking": "Of those, blocking a run",
+        "capped": "Showing the {shown} most urgent of {total}. Clear some and the rest appear.",
+        "help": "Most urgent first: anything blocking a run, then whatever has waited longest. Deciding one here is the same as deciding it on its own payroll run.",
+        "waitingSince": "Flagged {date}",
+        "emptyTitle": "Nothing is waiting",
+        "emptyBody": "Every flagged employee across every run has been decided.",
+        "whyTitle": "Why your decisions matter here",
+        "whyBody": "Three of the figures on the Control Tower — how often the checks are wrong, how long an exception waits, and how many people this workload implies — cannot be worked out until somebody decides these. Until then the Tower shows what is missing instead of a number, on purpose."
       }
     }
   },

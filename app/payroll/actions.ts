@@ -742,19 +742,34 @@ export async function proposeHypothesesAction(formData: FormData) {
   redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(msg)}`);
 }
 
+/**
+ * ⚠️ r245 — TWO SCREENS RESOLVE, AND THERE IS STILL ONE ACTION. The cross-run queue at
+ * /control-tower/exceptions posts here too, so `returnTo` says where to land afterwards; it is
+ * ALLOWLISTED rather than echoed, because it becomes a redirect target. A second copy of this action
+ * would be a second place the ledger stamp (r238's `hypothesisProposalsToStamp`, inside
+ * `resolveAnomalyVerdict`) could be forgotten.
+ */
+const RESOLVE_RETURNS = ['tower'] as const;
+
 export async function resolveAnomalyAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const verdictId = String(formData.get('verdictId'));
   const resolution = String(formData.get('resolution')) as 'accepted' | 'fixed_upstream' | 'false_positive';
   const note = String(formData.get('note') ?? '').trim();
+  const back = String(formData.get('returnTo') ?? '');
+  const home = (RESOLVE_RETURNS as readonly string[]).includes(back)
+    ? '/control-tower/exceptions'
+    : `/payroll/${batchId}/anomalies`;
   const t = await getTranslations('anomaly');
   try {
     await resolveAnomalyVerdict(s, { verdictId, resolution, note: note || undefined });
   } catch (e) {
-    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${home}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(t('resolved'))}`);
+  revalidatePath('/control-tower/exceptions');
+  revalidatePath('/control-tower');
+  redirect(`${home}?toast=${encodeURIComponent(t('resolved'))}`);
 }
