@@ -3827,7 +3827,8 @@
       "borang8aReview": "Open Borang 8A review",
       "borang8aReviewTitle": "Check the schedule, type a status against any row, then download the form or the same content as plain text.",
       "borangAReview": "Open Borang A review",
-      "borangAReviewTitle": "Check the form, set the contribution month, then download the form, the same content as plain text, or the i-Akaun upload file."
+      "borangAReviewTitle": "Check the form, set the contribution month, then download the form, the same content as plain text, or the i-Akaun upload file.",
+      "eaPickPerson": "{company} · {year} · choose a person to open their completed EA"
     },
     "ea": {
       "backToReports": "Reports",

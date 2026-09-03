@@ -3462,7 +3462,8 @@
       "borang8aReview": "打开 Borang 8A 复核",
       "borang8aReviewTitle": "核对明细表，可在任意行输入状态，然后下载表单或同样内容的纯文本。",
       "borangAReview": "打开 Borang A 复核",
-      "borangAReviewTitle": "核对表格、设置缴款月份，然后下载表格、相同内容的纯文本，或 i-Akaun 上传文件。"
+      "borangAReviewTitle": "核对表格、设置缴款月份，然后下载表格、相同内容的纯文本，或 i-Akaun 上传文件。",
+      "eaPickPerson": "{company} · {year} · 选择一位员工以打开其已填妥的 EA 表格"
     },
     "ea": {
       "backToReports": "报表",

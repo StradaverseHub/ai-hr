@@ -630,6 +630,49 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
    * reason there are two EA rows); the field register is ONE document for both, because it describes the
    * FORM rather than a language.
    */
+  /**
+   * a294cca5 (r244) — WHAT THE PAGE BEHIND "Open Form" CALLS ITSELF.
+   *
+   * The reporter pressed Open Form on the EA (Bahasa Malaysia) row and landed on a page headed
+   * "Form E / CP8D — annual (LHDN)". They were right, and it was ours: r242 renamed that button from
+   * "Open employee list" to "Open Form" and did not move where it goes, so the label began promising the
+   * EA while the destination went on announcing a different return.
+   *
+   * The href stays `my.cp8d` — the EA population IS the CP8D population, and the list was never wrong.
+   * These cases pin the two things that were: what the page says it is, and which documents it offers.
+   * Both are invisible to types, to the suite as it stood, and to a 200.
+   */
+  it('an EA arrival is titled as the EA, from the shelf row’s OWN label key', () => {
+    // Off the same keys the shelf renders, so the row you pressed and the page you land on cannot drift.
+    expect(FORM_PAGE).toContain("const eaTitle = eaLang ? t(eaLang === 'ms' ? 'link_ea_ms' : 'link_ea_en') : null;");
+    expect(FORM_PAGE).toContain('const heading = eaTitle ?? def.label;');
+    // …and BOTH headers use it. The print one was the second place the wrong name appeared, and the worse
+    // of the two: a printed page naming a return it is not is a document somebody could file wrongly.
+    expect(FORM_PAGE, 'the screen header').toContain('title={heading}');
+    expect(FORM_PAGE, 'the print-only header').toContain('<h1 className="text-lg font-semibold">{heading}</h1>');
+    expect(
+      FORM_PAGE.includes('title={def.label}') || FORM_PAGE.includes('{def.label}</h1>'),
+      'neither header may render def.label directly any more — that is the defect',
+    ).toBe(false);
+  });
+
+  it('an EA arrival says it is a PICKER, because there is no single EA for a company', () => {
+    expect(FORM_PAGE).toContain("description={eaLang ? t('eaPickPerson', { company: companyName, year }) : companyName}");
+  });
+
+  it('an EA arrival offers NO Form E downloads', () => {
+    // ⚠️ These three call the CP8D exporter — the annexe to Form E. Under an EA heading they would hand
+    // an operator the wrong statutory document, which is worse than offering nothing (AGENTS 28). The
+    // reporter has not hit this yet only because their company has no figures for the year.
+    const block = FORM_PAGE.slice(FORM_PAGE.indexOf("exportHref('pdf')") - 400, FORM_PAGE.indexOf("exportHref('csv')") + 200);
+    expect(block, 'the export trio is gated on the arrival').toContain('{!eaLang && (');
+    // …and they are STILL THERE for the Form E row's own arrival. A fix that deleted them would have
+    // taken a real capability away from the return that owns it.
+    for (const f of ['pdf', 'xlsx', 'csv']) {
+      expect(FORM_PAGE, `${f} export must survive for a non-EA arrival`).toContain(`exportHref('${f}')`);
+    }
+  });
+
   it('offers the blank EA and the field register from both EA rows, in each row’s own language', () => {
     const en_ = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea.en')!;
     const ms_ = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea.ms')!;
