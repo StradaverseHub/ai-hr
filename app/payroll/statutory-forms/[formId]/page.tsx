@@ -154,6 +154,25 @@ export default async function StatutoryFormPage({
   // ALLOWLISTED, never echoed. An unrecognised value is dropped rather than passed on: `lang` ends up in
   // a URL the employee-name links point at, and the EA route allowlists it a second time.
   const eaLang: EaLang | null = EA_LANGS.includes(sp.lang as EaLang) ? (sp.lang as EaLang) : null;
+  /**
+   * a294cca5 — WHAT THIS PAGE CALLS ITSELF WHEN IT WAS OPENED FROM AN EA ROW.
+   *
+   * ⚠️ THE REPORTER PRESSED "Open Form" ON THE EA (BAHASA MALAYSIA) ROW AND GOT A PAGE HEADED
+   * "Form E / CP8D — annual (LHDN)". They were right, and it was ours: r242 renamed that button from
+   * "Open employee list" to "Open Form" and did not move where it goes, so the label began promising the
+   * EA while the destination went on announcing a different return. An inaccurate label at least did not
+   * CONTRADICT the page.
+   *
+   * The href is `my.cp8d` on purpose and stays: the EA population IS the CP8D population — one row per
+   * employee for the tax year — and 587ee719 already threads `eaLang` through here so a name hands back
+   * that person's EA. The list was never wrong. Only its self-description was.
+   *
+   * The title comes from the EA shelf rows' OWN label keys, so the row you pressed and the page you land
+   * on cannot drift apart; `def.label` stays the answer for every other arrival, including Form E from
+   * its own row.
+   */
+  const eaTitle = eaLang ? t(eaLang === 'ms' ? 'link_ea_ms' : 'link_ea_en') : null;
+  const heading = eaTitle ?? def.label;
   const backHref = `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}${
     def.submission ? `&body=${def.submission.body}` : ''
   }`;
@@ -165,12 +184,22 @@ export default async function StatutoryFormPage({
   return (
     <div className="mx-auto max-w-[100rem] space-y-6 print:max-w-none">
       <div className="print:hidden">
-        <PageHeader back={{ href: backHref, label: t('pageTitle') }} title={def.label} description={companyName} />
+        <PageHeader
+          back={{ href: backHref, label: t('pageTitle') }}
+          title={heading}
+          /* An EA arrival is a PICKER, and saying so is the other half of the fix: there is no single EA
+             document for a company — forty employees are forty EA forms — so a page that hands you the
+             people has to say that is what it is doing. */
+          description={eaLang ? t('eaPickPerson', { company: companyName, year }) : companyName}
+        />
       </div>
       {/* The on-screen header carries a back link, so it is hidden on paper — but a printed statutory
           return with no form name, company or period on it is not a document anybody can file. */}
+      {/* ⚠️ THE PRINTED HEADER TOO. It was the SECOND place the wrong name appeared, and the worse of the
+          two: a printed page that names a statutory return it is not is a document somebody could file
+          under the wrong heading. */}
       <div className="hidden print:block">
-        <h1 className="text-lg font-semibold">{def.label}</h1>
+        <h1 className="text-lg font-semibold">{heading}</h1>
         <p className="text-sm">
           {companyName} · {periodLabel}
         </p>
@@ -351,15 +380,26 @@ export default async function StatutoryFormPage({
                   {t('borangAReview')}
                 </a>
               )}
-              <a href={exportHref('pdf')} className={outBtn}>
-                {t('downloadPdf')}
-              </a>
-              <a href={exportHref('xlsx')} className={outBtn}>
-                {t('downloadExcel')}
-              </a>
-              <a href={exportHref('csv')} className={outBtn}>
-                {t('downloadCsv')}
-              </a>
+              {/* ⚠️ NOT UNDER AN EA HEADING. These three call the CP8D exporter — the annexe to Form E —
+                  so on an EA arrival they would hand an operator the WRONG STATUTORY DOCUMENT under a
+                  heading that says EA. The reporter has not hit this yet only because their company has
+                  no figures for the year, so the block is not drawn; it is the same fault waiting.
+                  AGENTS 28: a control that produces a confidently wrong artefact is worse than an absent
+                  one, and on a tax filing that is the more expensive failure. They are untouched on the
+                  Form E row's own arrival, which is where they belong. */}
+              {!eaLang && (
+                <>
+                  <a href={exportHref('pdf')} className={outBtn}>
+                    {t('downloadPdf')}
+                  </a>
+                  <a href={exportHref('xlsx')} className={outBtn}>
+                    {t('downloadExcel')}
+                  </a>
+                  <a href={exportHref('csv')} className={outBtn}>
+                    {t('downloadCsv')}
+                  </a>
+                </>
+              )}
               <PrintButton />
               <form action={recordReportAction}>
                 <input type="hidden" name="companyId" value={companyId} />

@@ -3462,7 +3462,8 @@
       "borang8aReview": "Buka semakan Borang 8A",
       "borang8aReviewTitle": "Semak penyata, taip status pada mana-mana baris, kemudian muat turun borang atau kandungan yang sama sebagai teks biasa.",
       "borangAReview": "Buka semakan Borang A",
-      "borangAReviewTitle": "Semak borang, tetapkan bulan caruman, kemudian muat turun borang, kandungan sama sebagai teks biasa, atau fail muat naik i-Akaun."
+      "borangAReviewTitle": "Semak borang, tetapkan bulan caruman, kemudian muat turun borang, kandungan sama sebagai teks biasa, atau fail muat naik i-Akaun.",
+      "eaPickPerson": "{company} · {year} · pilih seorang pekerja untuk membuka borang EA lengkap mereka"
     },
     "ea": {
       "backToReports": "Laporan",

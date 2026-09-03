@@ -3462,7 +3462,8 @@
       "borang8aReview": "Mở màn hình rà soát Borang 8A",
       "borang8aReviewTitle": "Kiểm tra bảng kê, gõ trạng thái vào bất kỳ dòng nào, rồi tải biểu mẫu hoặc cùng nội dung đó dưới dạng văn bản thuần.",
       "borangAReview": "Mở phần soát xét Borang A",
-      "borangAReviewTitle": "Soát xét biểu mẫu, đặt tháng đóng góp, rồi tải biểu mẫu, cùng nội dung ở dạng văn bản thuần, hoặc tệp tải lên i-Akaun."
+      "borangAReviewTitle": "Soát xét biểu mẫu, đặt tháng đóng góp, rồi tải biểu mẫu, cùng nội dung ở dạng văn bản thuần, hoặc tệp tải lên i-Akaun.",
+      "eaPickPerson": "{company} · {year} · chọn một người để mở biểu mẫu EA đã hoàn chỉnh của họ"
     },
     "ea": {
       "backToReports": "Báo cáo",
