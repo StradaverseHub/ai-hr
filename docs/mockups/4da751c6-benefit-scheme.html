@@ -1,0 +1,114 @@
+<meta charset="utf-8">
+<title>Benefit Scheme on the Leave tab</title>
+<!--
+  4da751c6 revision 1. THE FIGURES ARE THE REPORTER'S OWN, taken verbatim from their request (John,
+  Grade 12-15 (Permanent), Maternity 98 / Paternity 7 / Prolonged Illness 90-90-180 / Unpaid 14) and
+  labelled as such on the page. No production employee and no invented ringgit figure appears here.
+  Panel 2 is the honest empty state the plan promises - it is drawn because a mockup that shows only
+  the happy path is a promise we would not be able to keep.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:18px;overflow:hidden}
+  .head{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;
+        display:flex;align-items:center;gap:9px}
+  .body{padding:16px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .new{background:#e0e7ff;color:#3730a3}
+  .ok{background:#d1fae5;color:#065f46}
+  .amber{background:#fef3c7;color:#92400e}
+  .tabs{display:flex;gap:2px;padding:0 16px;border-bottom:1px solid var(--border);background:#fbfbfe}
+  .tab{padding:9px 13px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent}
+  .tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:14px 22px}
+  .lbl{font-size:11px;color:var(--mf);margin-bottom:3px}
+  .val{font-size:15px;font-weight:600}
+  .val.mut{font-weight:500;color:var(--mf)}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  td.here{background:color-mix(in srgb,var(--primary) 7%,white);font-weight:600;border-radius:4px}
+  .links{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--mf)}
+  .links a{color:var(--primary);text-decoration:none;margin-right:16px}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 16px}
+  .rule{margin:0 0 8px;font-size:12.5px}
+</style>
+<div class="wrap">
+
+<p class="cap">Employee profile &rarr; Leave tab. The new panel sits above the leave balances that are
+already there. Drawn with the example from your own request, so the names and day counts below are yours.</p>
+
+<div class="card">
+  <div class="head">John &middot; Leave <span class="chip ok">example from your request</span></div>
+  <div class="tabs">
+    <div class="tab">Profile</div><div class="tab">Job</div><div class="tab on">Leave</div>
+    <div class="tab">Payroll</div><div class="tab">Documents</div>
+  </div>
+  <div class="body">
+    <div class="fields">
+      <div>
+        <div class="lbl">Benefit Scheme <span class="chip new">new</span></div>
+        <div class="val">Grade 12&ndash;15 (Permanent)</div>
+      </div>
+      <div>
+        <div class="lbl">Effective From <span class="chip new">new</span></div>
+        <div class="val">1 January 2026</div>
+        <div class="lbl" style="margin-top:3px">Promotion to Executive Grade 13</div>
+      </div>
+      <div><div class="lbl">Job Grade</div><div class="val mut">Executive Grade 13</div></div>
+      <div><div class="lbl">Years of service</div><div class="val mut">3 years</div></div>
+    </div>
+
+    <table>
+      <tr><th>Leave type</th><th>Eligibility</th><th class="n">0&ndash;2 yrs</th>
+          <th class="n">2&ndash;5 yrs</th><th class="n">5+ yrs</th></tr>
+      <tr><td>Maternity Leave</td><td>Permanent</td><td class="n">98</td><td class="n here">98</td><td class="n">98</td></tr>
+      <tr><td>Paternity Leave</td><td>Permanent</td><td class="n">7</td><td class="n here">7</td><td class="n">7</td></tr>
+      <tr><td>Prolonged Illness &ndash; Full Pay</td><td>Permanent</td><td class="n">90</td><td class="n here">90</td><td class="n">90</td></tr>
+      <tr><td>Prolonged Illness &ndash; Half Pay</td><td>Permanent</td><td class="n">90</td><td class="n here">90</td><td class="n">90</td></tr>
+      <tr><td>Prolonged Illness &ndash; No Pay</td><td>Permanent</td><td class="n">180</td><td class="n here">180</td><td class="n">180</td></tr>
+      <tr><td>Unpaid Leave</td><td>Permanent</td><td class="n">14</td><td class="n here">14</td><td class="n">14</td></tr>
+    </table>
+    <p class="cap" style="margin:8px 0 0">The shaded column is the one that applies to John at 3 years of service.</p>
+
+    <div class="links">
+      <a href="#">Change grade or status &rarr; new movement</a>
+      <a href="#">Change what this scheme grants &rarr; Employee Eligibility</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">The same panel when it cannot name one scheme
+    <span class="chip amber">illustration, not your data</span></div>
+  <div class="body">
+    <div class="fields">
+      <div>
+        <div class="lbl">Benefit Scheme</div>
+        <div class="val mut">Does not resolve to a single scheme</div>
+      </div>
+      <div>
+        <div class="lbl">Effective From</div>
+        <div class="val mut">&mdash;</div>
+      </div>
+    </div>
+    <p class="cap" style="margin:0 0 12px">Made-up figures, to show the shape of the message only.
+      We would rather say this than print a tidy scheme name that is not true.</p>
+    <p class="rule" style="margin-top:0">This employee is picked up by different conditions for
+      different leave types, so there is no one scheme to name. What applies is listed per leave type
+      instead:</p>
+    <table>
+      <tr><th>Leave type</th><th>Picked up by</th><th class="n">Days at 3 yrs</th></tr>
+      <tr><td>Annual Leave</td><td>Executive Grade 13, Permanent</td><td class="n">18</td></tr>
+      <tr><td>Medical Leave</td><td>All full-time employees</td><td class="n">14</td></tr>
+      <tr><td>Maternity Leave</td><td>Female, Permanent</td><td class="n">98</td></tr>
+    </table>
+  </div>
+</div>
+
+</div>
