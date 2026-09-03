@@ -1,0 +1,108 @@
+<meta charset="utf-8">
+<title>Open Form on the EA row should not land on Form E</title>
+<!--
+  a294cca5 revision 1. The "Today" half is the REAL rendered heading, read off a dev server following the
+  EA (Bahasa Malaysia) row's own Open Form link — not a reconstruction. No employee figures are drawn
+  anywhere (scripts/mockup/README.md, r170).
+  Tokens from app/globals.css; everything inline.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:20px}
+  h2{font-size:15px;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--mf);margin:0 0 14px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:middle}
+  .bad{background:#fee2e2;color:#991b1b}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .row{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff}
+  .rowtitle{font-weight:600;font-size:13.5px}
+  .rowhint{font-size:11.5px;color:var(--mf);margin-top:2px}
+  .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px;align-items:center}
+  .btn{display:inline-block;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;background:var(--primary);color:#fff}
+  .btn.sec{background:#fff;color:var(--fg);border:1px solid var(--border);font-weight:500}
+  .arrow{margin:12px 0 10px;font-size:12px;color:var(--mf)}
+  .screen{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .screenhead{padding:14px 16px;border-bottom:1px solid var(--border);background:#fbfbfe}
+  .h1{font-size:16px;font-weight:700}
+  .h1.wrong{color:#991b1b}
+  .h1sub{font-size:11.5px;color:var(--mf);margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+     font-weight:600;padding:6px 12px;background:var(--muted)}
+  td{padding:7px 12px;border-top:1px solid var(--border)}
+  .link{color:var(--primary);font-weight:600}
+  .r{text-align:right;color:var(--mf)}
+  .callout{margin-top:12px;border:1px dashed #dc2626;border-radius:10px;padding:9px 11px;
+           background:#fef2f2;color:#991b1b;font-size:11.5px}
+  .note{font-size:11.5px;color:var(--mf);margin-top:12px}
+  .dl{display:inline-block;border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:11.5px;margin-right:6px}
+  .dl.bad{border-color:#fca5a5;background:#fef2f2;color:#991b1b}
+</style>
+
+<div class="card">
+  <h2>Today <span class="chip bad">Open Form on the EA row opens Form E</span></h2>
+  <p class="sub">This is the heading the screen actually prints — read off the running system by following that button.</p>
+
+  <div class="row">
+    <div class="rowtitle">Form C.P.8A (EA) — Bahasa Malaysia</div>
+    <div class="rowhint">Annual · Lembaga Hasil Dalam Negeri</div>
+    <div class="acts"><span class="btn">Open Form</span><span class="btn sec">Blank form and field register</span></div>
+  </div>
+
+  <p class="arrow">↓ pressing it opens</p>
+
+  <div class="screen">
+    <div class="screenhead">
+      <div class="h1 wrong">Form E / CP8D — annual (LHDN)</div>
+      <div class="h1sub">Acme Sdn Bhd</div>
+    </div>
+    <table>
+      <thead><tr><th>Employee</th><th>No.</th><th class="r">For the year</th></tr></thead>
+      <tbody>
+        <tr><td class="link">(an employee)</td><td>—</td><td class="r">—</td></tr>
+        <tr><td class="link">(an employee)</td><td>—</td><td class="r">—</td></tr>
+      </tbody>
+    </table>
+    <div style="padding:12px 16px;border-top:1px solid var(--border)">
+      <span class="dl bad">Download PDF</span><span class="dl bad">Download Excel</span><span class="dl bad">Download CSV</span>
+    </div>
+  </div>
+
+  <div class="callout">
+    The list itself is right — these are the people the EA covers, and clicking a name does open that
+    person's completed EA in the language you chose. What is wrong is everything the page says about
+    itself: the heading, the heading it prints on paper, and those three Download buttons, which produce
+    the CP8D annexe to Form E rather than an EA.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Proposed <span class="chip new">the page says what you pressed</span></h2>
+
+  <div class="screen">
+    <div class="screenhead">
+      <div class="h1">Form C.P.8A (EA) — Bahasa Malaysia</div>
+      <div class="h1sub">Acme Sdn Bhd · 2026 · choose a person to open their completed EA</div>
+    </div>
+    <table>
+      <thead><tr><th>Employee</th><th>No.</th><th class="r">For the year</th></tr></thead>
+      <tbody>
+        <tr><td class="link">(an employee)</td><td>—</td><td class="r">—</td></tr>
+        <tr><td class="link">(an employee)</td><td>—</td><td class="r">—</td></tr>
+      </tbody>
+    </table>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:11.5px;color:var(--mf)">
+      No Form E downloads under an EA heading — those belong to the Form E row on the same shelf,
+      which is unchanged.
+    </div>
+  </div>
+
+  <p class="note">
+    An EA is one statement per person, so there is no single EA file for a company — this screen is how
+    you pick whose EA to open, and it should say so. Nothing about the completed EA itself changes, and
+    Form E and its CP8D annexe keep their own row and their own downloads.
+  </p>
+</div>
