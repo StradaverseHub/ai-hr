@@ -58,6 +58,12 @@ export default async function ControlTowerPage() {
             answer consecutive questions: what does this thing do, and is any of it actually running. */}
         <Link href="/control-tower/agents" className="font-medium text-primary hover:underline">
           {t('agentsLink')}
+        </Link>{' '}
+        ·{' '}
+        {/* r245 — the work itself. It sits last because the three read in order: what does this do, is
+            any of it running, and what is waiting for me. */}
+        <Link href="/control-tower/exceptions" className="font-medium text-primary hover:underline">
+          {t('exceptionsLink')}
         </Link>
       </p>
 

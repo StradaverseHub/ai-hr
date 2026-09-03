@@ -28,7 +28,7 @@
  * 3,000-employee run on a daily cadence, and a per-employee query would make the dry-run's cost scale
  * with headcount in exactly the dimension the whole programme is trying to flatten.
  */
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { recordDecision } from './agent-proposal';
 import { appendEvent, actorOf } from '../db/events';
@@ -975,6 +975,140 @@ export type QueueRow = {
     narrative: string | null;
   }[];
 };
+
+/**
+ * ADR-0074 — THE EXCEPTIONS QUEUE ACROSS EVERY RUN, which is the shape "the analyst's whole day"
+ * actually has.
+ *
+ * ⚠️ **WHY THIS EXISTS, MEASURED ON PRODUCTION RATHER THAN ASSUMED.** 81 flagged verdicts were sitting
+ * live and unresolved across **23 different batches**, and NOT ONE had ever been dispositioned. The
+ * reason is structural, not negligence: the only place to resolve one was
+ * `/payroll/<batchId>/anomalies`, so clearing that queue meant twenty-three separate visits, and the
+ * Control Tower — which is the screen an operator actually opens — listed the RUNS and linked into each.
+ *
+ * **AND THAT IS WHAT HAS BEEN BLOCKING THE TOWER'S OWN HEADLINE.** `falsePositiveRate` and `mttrSeconds`
+ * are structurally NULL until a human dispositions a flag, and `impliedOperators` refuses to print
+ * without them (ADR-0074 §5, core/control-tower.ts). The staffing answer the owner keeps asking for has
+ * been waiting on a human signal that the product made expensive to give. A per-run queue is also the
+ * payroll noun leaking through a control plane that ADR-0083 says is not about payroll.
+ *
+ * ONE READER, ONE ROW SHAPE. This returns `QueueRow` — the same shape `anomalyQueue` returns and the
+ * same shape the per-run screen renders — plus the run each row came from, because out of its own batch
+ * a row has to say which period it belongs to. A second row shape here is how the two screens would come
+ * to describe the same verdict differently.
+ *
+ * WORST FIRST, THEN OLDEST FIRST. Blocks stop a run from closing, so they outrank reviews; within a
+ * severity the longest-waiting comes first, because the metric this unblocks is time-to-resolution and a
+ * queue that buries the oldest item optimises against its own measurement.
+ */
+/** A queue row plus the run it came from — out of its own batch, a row has to say which period it is. */
+export type OpenExceptionRow = QueueRow & { payPeriod: string; batchId: string };
+
+export async function openExceptionsAcrossRuns(
+  ctx: SessionContext,
+  p?: { limit?: number },
+): Promise<{ rows: OpenExceptionRow[]; total: number; cappedOut: boolean }> {
+  const limit = p?.limit ?? 100;
+  return withTenant(ctx, async (tx) => {
+    const verdicts = await tx
+      .select({
+        verdictId: schema.payrollAnomalyVerdict.id,
+        employmentId: schema.payrollAnomalyVerdict.employmentId,
+        batchId: schema.payrollAnomalyVerdict.batchId,
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        computedAt: schema.payrollAnomalyVerdict.computedAt,
+        resolution: schema.payrollAnomalyVerdict.resolution,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
+        detectorsRun: schema.payrollAnomalyVerdict.detectorsRun,
+        detectorsSkipped: schema.payrollAnomalyVerdict.detectorsSkipped,
+        employeeName: schema.person.fullName,
+        employeeCode: schema.employment.employeeCode,
+        payPeriod: schema.payrollBatch.payPeriod,
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
+      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
+      .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payrollAnomalyVerdict.batchId))
+      .where(
+        and(
+          // LIVE only: a superseded verdict is what the system believed before the last re-evaluation,
+          // and resolving one would stamp a judgement on a reading nobody is looking at.
+          isNull(schema.payrollAnomalyVerdict.supersededAt),
+          // UNRESOLVED only. This queue is work outstanding; what has been decided belongs to its run.
+          isNull(schema.payrollAnomalyVerdict.resolvedAt),
+          // Auto-cleared rows are excluded HERE and deliberately, unlike the per-run screen which lists
+          // them so a human can raise a false negative. That affordance is per-run by nature — it needs
+          // the whole run in front of you to notice an omission — and a cross-run list of everything the
+          // system cleared would be thousands of rows nobody is being asked to act on.
+          ne(schema.payrollAnomalyVerdict.disposition, 'auto_clear'),
+        ),
+      );
+    if (verdicts.length === 0) return { rows: [], total: 0, cappedOut: false };
+
+    const rank: Record<string, number> = { block: 0, review: 1, auto_clear: 2 };
+    const ordered = verdicts.sort((x, y) => {
+      const d = (rank[x.disposition] ?? 9) - (rank[y.disposition] ?? 9);
+      if (d !== 0) return d;
+      return x.computedAt.getTime() - y.computedAt.getTime();
+    });
+    // ⚠️ CAPPED, AND THE COUNT IS RETURNED SO THE SCREEN CAN SAY SO. A page that silently shows the first
+    // hundred of nine hundred reads as a queue somebody has nearly finished (AGENTS: no silent caps).
+    const page = ordered.slice(0, limit);
+
+    // One read for every finding on the page, then grouped in memory — the same no-N+1 discipline
+    // `anomalyQueue` follows, for the same reason.
+    const findings = await tx
+      .select({
+        id: schema.payrollAnomalyFinding.id,
+        verdictId: schema.payrollAnomalyFinding.verdictId,
+        detectorId: schema.payrollAnomalyFinding.detectorId,
+        severity: schema.payrollAnomalyFinding.severity,
+        facts: schema.payrollAnomalyFinding.facts,
+        suggestedAction: schema.payrollAnomalyFinding.suggestedAction,
+        narrative: schema.payrollAnomalyFinding.narrative,
+      })
+      .from(schema.payrollAnomalyFinding)
+      .where(
+        inArray(
+          schema.payrollAnomalyFinding.verdictId,
+          page.map((v) => v.verdictId),
+        ),
+      );
+    const byVerdict = new Map<string, QueueRow['findings']>();
+    for (const f of findings) {
+      const list = byVerdict.get(f.verdictId) ?? [];
+      list.push({
+        id: f.id,
+        detectorId: f.detectorId,
+        severity: f.severity as Severity,
+        facts: (f.facts ?? {}) as Record<string, string | number>,
+        suggestedAction: f.suggestedAction,
+        narrative: f.narrative,
+      });
+      byVerdict.set(f.verdictId, list);
+    }
+
+    return {
+      rows: page.map((v) => ({
+        verdictId: v.verdictId,
+        employmentId: v.employmentId,
+        employeeName: v.employeeName,
+        employeeCode: v.employeeCode,
+        disposition: v.disposition as Disposition,
+        computedAt: v.computedAt,
+        resolution: v.resolution,
+        resolvedAt: v.resolvedAt,
+        detectorsRunCount: (v.detectorsRun as string[] | null)?.length ?? 0,
+        detectorsSkipped: (v.detectorsSkipped as SkippedDetector[] | null) ?? [],
+        findings: byVerdict.get(v.verdictId) ?? [],
+        payPeriod: v.payPeriod,
+        batchId: v.batchId,
+      })),
+      total: ordered.length,
+      cappedOut: ordered.length > page.length,
+    };
+  });
+}
 
 /**
  * The exceptions queue for one batch — the analyst's whole day, in ADR-0074's terms.

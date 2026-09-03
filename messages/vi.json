@@ -6115,6 +6115,21 @@
           "not_customer_visible": "Cài đặt đó do Stradaverse quản lý.",
           "wrong_type": "Đó không phải giá trị hợp lệ cho cài đặt này."
         }
+      },
+      "exceptionsLink": "Những gì đang chờ bạn",
+      "exceptions": {
+        "title": "Ngoại lệ",
+        "description": "Mọi nhân viên bị gắn cờ còn chờ quyết định, từ mọi kỳ trả lương, trong một danh sách.",
+        "backToTower": "Quay lại Tháp điều khiển",
+        "outstanding": "Đang chờ quyết định",
+        "blocking": "Trong đó, đang chặn một kỳ",
+        "capped": "Hiển thị {shown} mục cấp bách nhất trong {total}. Xử lý bớt thì phần còn lại sẽ hiện ra.",
+        "help": "Cấp bách trước: những gì đang chặn một kỳ, rồi đến những gì chờ lâu nhất. Quyết định ở đây giống hệt quyết định ngay trên kỳ trả lương đó.",
+        "waitingSince": "Gắn cờ ngày {date}",
+        "emptyTitle": "Không có gì đang chờ",
+        "emptyBody": "Mọi nhân viên bị gắn cờ ở mọi kỳ đều đã được quyết định.",
+        "whyTitle": "Vì sao quyết định của bạn quan trọng",
+        "whyBody": "Ba con số trên Tháp điều khiển — các kiểm tra sai bao lâu một lần, một ngoại lệ chờ bao lâu, và khối lượng này cần bao nhiêu người — không thể tính được cho đến khi có người quyết định những mục này. Trước đó, Tháp cố ý hiển thị những gì còn thiếu thay vì một con số."
       }
     }
   },

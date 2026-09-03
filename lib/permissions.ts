@@ -532,6 +532,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
       // "may the role open the screen at all", by design.)
       '/control-tower/agents',
+      // ADR-0074 r245 — the cross-run exceptions queue. Same requireAdmin guard as its siblings and the
+      // per-run queue it complements, so it needs a column here or test/function-access.test.ts fails.
+      '/control-tower/exceptions',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.
