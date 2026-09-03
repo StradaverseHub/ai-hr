@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-02 (r226-r243 SHIPPED · BOARD EMPTY · THE AGENTS ARE NOW SWITCHABLE FROM THE PRODUCT)
+## CURRENT STATE — snapshot 2026-09-03 (r226-r244 SHIPPED · BOARD EMPTY · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
 
-**`main@d96cdd81` IS WHAT RUNS ON PRODUCTION (r243, 2026-09-02)** — verified by an
+**`main@0784956f` IS WHAT RUNS ON PRODUCTION (r244, 2026-09-03)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
@@ -276,6 +276,44 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r244 (2026-09-03) — an EA arrival says it is the EA (`a294cca5`). NO MIGRATION.
+
+⚠️⚠️ **A REGRESSION r242 INTRODUCED, REPORTED BY THE CUSTOMER THE NEXT MORNING, AND THE SHAPE IS WORTH
+KEEPING.** They pressed **"Open Form" on the EA (Bahasa Malaysia) row and landed on a page headed
+"Form E / CP8D — annual (LHDN)"**. r242 renamed that button from *"Open employee list"* to *"Open Form"*
+and **did not move where it goes** — so the label began promising the EA while the destination went on
+announcing a different return. **An inaccurate label at least did not CONTRADICT the page; a better label
+over an unchanged destination did.** Renaming a control is a change to what it PROMISES, and the promise
+has to be checked against where it actually lands.
+
+**REPRODUCED BEFORE THE PLAN WAS WRITTEN, not taken on trust** — dev server, followed the row's own href,
+h1 read "Form E / CP8D" TWICE (screen header at `[formId]/page.tsx`, and the print-only header below it).
+The correction went at the TOP of the reporter's half of the plan (AGENTS 31), and the mockup's "Today"
+panel carried the REAL rendered heading rather than a reconstruction.
+
+**THE HREF STAYS `my.cp8d` AND THE LIST IS UNTOUCHED.** The EA population IS the CP8D population — one row
+per employee for the tax year — and 587ee719 already threads `eaLang` through so a name hands back that
+person's EA. The list was never wrong; only the page's self-description was. **Do not build a second
+employee list.**
+
+**BOTH HEADERS, AND THE PRINT ONE MATTERED MORE.** An EA arrival takes its title from the shelf rows' own
+`link_ea_en` / `link_ea_ms` keys, so the row you pressed and the page you land on cannot drift apart. The
+print-only header had the same wrong name, and a printed page naming a statutory return it is not is a
+document somebody could file under the wrong heading.
+
+⚠️ **AND THE CP8D EXPORTS ARE NOT OFFERED UNDER AN EA HEADING — a fault the reporter had NOT hit.** The
+three Download controls call the CP8D exporter (the annexe to Form E). Under an EA title they would hand
+an operator the wrong statutory document. They were invisible only because that company has no figures for
+the year yet. AGENTS 28: a control producing a confidently wrong artefact is worse than an absent one.
+**They are untouched on the Form E row's own arrival** — a fix that deleted them would have taken a real
+capability from the return that owns them, and a guard pins that they survive there.
+
+**Verified by rendering all THREE arrivals, not two:** EA (en) → "Form C.P.8A (EA) — English"; EA (ms) →
+"— Bahasa Malaysia", the reporter's exact case; Form E from its own row → still "Form E / CP8D — annual
+(LHDN)" with its plain company description. The picker line renders only on the EA arrivals (checked
+against the markup with the embedded i18n payload stripped — a raw grep finds it on every page and is the
+false positive this file already warns about). Four mutations re-derived by hand. Gate green 6/6.
 
 ### r243 (2026-09-02) — the AI agent switchboard: ADR-0084 Phase 3's missing precondition. NO MIGRATION.
 
