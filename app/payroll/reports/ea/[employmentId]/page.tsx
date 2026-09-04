@@ -300,6 +300,15 @@ export default async function EaStatementPage({
             {t('yearEnded', { year: ea.year, employer: ea.employer.name })}
             {ea.employer.eNumber ? ` · E ${ea.employer.eNumber}` : ''}
           </p>
+          {/* d6e2cccc — THIS SCREEN IS NOT THE FORM, AND SAYING SO IS THE WHOLE ROUND. The reporter
+              photographed this page and filed "the EA is not the statutory form"; what downloads from
+              the button above IS the C.P.8A (Pin. 2024), drawn by lib/ea-pdf.ts to an arrangement
+              measured off the blank C.P.8A they themselves supplied. The gap was never the PDF, it was
+              that nothing on the screen in front of it said which one you were looking at.
+              print:hidden — it is a note about the screen, so it must not appear on the printed sheet.
+              AGENTS 28b: this asserts only what OUR download is, never what LHDN does or does not
+              publish. */}
+          <p className="mt-2 text-xs text-muted-foreground print:hidden">{t('previewNotice')}</p>
         </div>
 
         {/* ⚠️ HR ONLY, ON THE SAME PREDICATE THE AMEND PANEL USES. This page has no role gate of its own:
