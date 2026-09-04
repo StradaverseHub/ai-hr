@@ -118,6 +118,47 @@ elif [ -d "$DATA" ]; then
   OLD="$DATA.wedged-$(date +%Y%m%d-%H%M%S)"
   mv "$DATA" "$OLD"
   echo "▸ old cluster moved to $OLD"
+
+  # ⚠️ r246 — KEEP EXACTLY ONE, AND DRAIN THE REST. The mv above is instant and that is the whole
+  # reason this script uses it, but NOTHING EVER REMOVED THE RESULT: --purge is opt-in and the gate
+  # has never passed it, while gate-chunked.sh calls this script ONCE PER CHUNK. So every six-chunk
+  # gate left six clusters behind.
+  #
+  # Measured 2026-09-03, after that had run unnoticed for weeks: 68 of them, the volume at 188MB free
+  # of 926GB, one sampled cluster holding 2.5M files. The gate then failed in the way this trap always
+  # fails — chunk 3 exited 1 with COMPLETELY EMPTY output and zero AssertionErrors, which reads exactly
+  # like a code failure, and chunk 4 died at initdb with "No space left on device". AGENTS 10b.
+  #
+  # One previous cluster is enough to inspect, which is all the mv was ever for. Deletion is in the
+  # BACKGROUND so the rebuild stays instant.
+  #
+  # ⚠️ THE LOCK IS NOT OPTIONAL, and the first version of this fix got it wrong. A background rm here
+  # is SLOW — on this machine unlink is intercepted by an endpoint-security extension and runs at a
+  # few hundred files/sec, so one 2.5M-file cluster takes hours. The gate calls this script once per
+  # chunk, so "delete the oldest in the background" WITHOUT a lock leaves a six-chunk gate with a
+  # dozen concurrent rm processes competing with the tests for exactly the I/O the endpoint extension
+  # is already throttling. The lock keeps it to ONE draining purge at a time, whatever calls this.
+  #
+  # The lock is a directory because mkdir is atomic; a stale one is cleared when its pid is gone.
+  # ⚠️ RELEASE WITH rm -rf, NEVER rmdir — the lock directory holds the pid file, so rmdir fails and the
+  # lock is never released: one drain would run and every later call would skip forever. Caught by
+  # exercising this in a sandbox rather than reading it; the concurrency half was already correct.
+  # And the pid recorded is the BACKGROUND JOB's ($!), not $$ — inside ( ) $$ is still the parent
+  # shell, so a $$ here would have made the stale-lock check test the wrong process.
+  LOCK="$DATA.purge.lock"
+  if mkdir "$LOCK" 2>/dev/null; then
+    STALE="$(ls -dt "$DATA".wedged-* 2>/dev/null | tail -n +2 | tail -1)"
+    if [ -n "$STALE" ]; then
+      echo "▸ draining one stale cluster in the background: $STALE"
+      ( rm -rf "$STALE"; rm -rf "$LOCK" ) >/dev/null 2>&1 &
+      echo $! > "$LOCK/pid" 2>/dev/null || true
+    else
+      rm -rf "$LOCK" 2>/dev/null
+    fi
+  elif [ -f "$LOCK/pid" ] && ! kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; then
+    # Previous drain died (a killed gate, a reboot). Clear the lock; the next run picks it up.
+    rm -rf "$LOCK" 2>/dev/null
+  fi
 fi
 
 echo "▸ initdb"
