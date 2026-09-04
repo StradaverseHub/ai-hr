@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-03 (r226-r244 SHIPPED · BOARD EMPTY · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
+## CURRENT STATE — snapshot 2026-09-04 (r226-r246 SHIPPED · 4 ITEMS APPROVED AND WAITING TO BE BUILT · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
 
-**`main@0784956f` IS WHAT RUNS ON PRODUCTION (r244, 2026-09-03)** — verified by an
+**`main@bd4af8eb` IS WHAT RUNS ON PRODUCTION (r245 + r246, 2026-09-04)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
 Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
@@ -30,6 +30,23 @@ catalog seed ran. `0452`/`0453` remain applied from r236.
 **370 migrations applied; r239 and r240 carried none.** The r239 dry run reported ZERO lines — not even `next-env.d.ts`, which the r238 one did (Next rewrites
 it per build mode and it is gitignored; a single such entry is not a stale file). `0454` remains the last
 migration; r239 carried none.
+
+
+**⚠️ FOUR APPROVED ITEMS ARE WAITING (2026-09-04), and two of them need almost no code:**
+- `cd63bd91` Haji Leave — ALREADY WORKS. Delivery note only; Delete is already offered and cascades the
+  two approval rules. Do NOT unset their leave type — NULL is the company DEFAULT chain, not a non-match.
+- `d6e2cccc` EA C.P.8A — ALREADY WORKS. The reporter photographed the PREVIEW SCREEN. One line on that
+  screen naming it a preview, six locales. The form itself does not change.
+- `4da751c6` Benefit Scheme + Effective From — a DERIVED read-only field on the employee Leave tab.
+  Never store it: 6e9a126e release three deleted that layer on purpose. Build the "does not resolve to a
+  single scheme" empty state — grade groups are an applicator over gradeIds, so the reverse lookup is
+  genuinely ambiguous and the mockup already promises that state.
+- `a6fe37fc` Rebuild Leave Configuration From Scratch — **THE APPROVED DELIVERABLE IS THE PHASE 1 AUDIT
+  REPORT, NOT A REBUILD.** The reporter's own Implementation Rules say produce the audit and wait for
+  approval before destructive changes. AGENTS 29: the brief must carry that, not quietly become a build.
+  The audit so far: leave_type has 63 columns covering EVERY item on their Phase 3 list, and production
+  holds 261 hand-built leave_approval_policy rows, 297 leave_ledger rows and 45 entitlement_templates.
+  `4da751c6` overlaps this item — fold it in rather than building it twice.
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
@@ -333,10 +350,12 @@ shape. `/me` renders the same component and this is HR-side detail.
 
 **Also this round:** HANDOFF.md 1714 → 1298 lines (r238-r244 moved to history).
 
-**⚠️ THE GATE COULD NOT BE COMPLETED THIS ROUND, AND THE REASON IS AN ENVIRONMENT TRAP WORTH MORE THAN
-THE ROUND.** See Traps → "The moved-aside clusters ate the disk". r245 remains MERGED TO main AND
-UNGATED — do not mark it deployed. What is known: chunks 1 and 2 passed cleanly (254 files, 3827 tests,
-zero AssertionErrors across every attempt).
+**r245 IS DEPLOYED (2026-09-04).** Gate green after the environment was fixed — see Traps → "The
+moved-aside clusters ate the disk" and the worker-count trap under it. The chunked run was 752/762 files;
+the 10 that failed were ALL hook timeouts and ALL 10 then passed in isolation (269 tests, exit 0), so the
+gate is green with an environmental caveat rather than red. **Zero AssertionErrors across every attempt
+all day** — that count is what separated four false reds from a real one. tsc clean, next build clean,
+no migration in r245. Arrival proved by a ZERO-CHANGE `rsync -azi --dry-run`, service active, `GET /` 401.
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
