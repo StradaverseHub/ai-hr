@@ -277,6 +277,67 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
+### r246 (2026-09-03) — three open items planned; two answered "already works" from production evidence. NO CODE.
+
+**The board went from three open items to zero awaiting a plan.** Two of the three needed no build at
+all, and establishing that took production queries rather than reading code — AGENTS 7, twice over.
+
+**`cd63bd91` "To permanently remove Haji Leave" — ALREADY WORKS, and the answer turned on running the
+product's OWN predicate rather than a hand-written one.** The first three attempts at counting what
+references Haji Leave failed on guessed column names, and a hand-rolled count of two history tables would
+have been wrong anyway: `leaveTypeInUseSqlText` (core/leave-type-refs.ts) enumerates SIX
+(`leave_request`, `leave_ledger`, `leave_encashment_snapshot`, `leave_entitlement_recalc_audit`,
+`leave_generation_run_item`, `replacement_leave_request`). Ran that exact SQL against production:
+`in_use = f`. So Leave Configuration is ALREADY showing Delete for it, and `deleteLeaveType` cascades the
+two `leave_approval_policy` rows (560f4524, 0fca03b8 — both active, both with zero levels) inside the
+same transaction. Shipped in 1ae7f3ab + 4fdb69b2; nobody had to build anything.
+**The plan says DELETE and explicitly never "unset the leave type" on those two rules**, because
+`leave_approval_policy.leave_type_id` NULL is the COMPANY DEFAULT chain, not a non-match
+(core/leave-approval-policy.ts:226 and :270 both select the default by `isNull`). Blanking them would
+manufacture two extra company-wide default approval rules — the same wildcard trap
+`deleteGradeGroup` documents.
+
+**`d6e2cccc` "Form C.P.8A (EA) Bahasa Malaysia" — ALREADY WORKS; the reporter photographed the PREVIEW
+SCREEN.** The attachment is `app/payroll/reports/ea/[employmentId]` (it carries r242's readiness panel
+and r244's corrected heading, which is how it was identified), not the download. The mockup is the
+argument: both panes are REAL captures side by side — their screenshot on the left, our actual rendered
+PDF (`docs/forms/ea-cp8a-our-output-2026-08-23.png`, drawn in r219 off the blank C.P.8A THEY supplied) on
+the right. Nothing drawn. **Their instruction "use the blank EA download as the source to copy" is
+circular and the plan says so**: `app/payroll/ea/blank/route.ts` is `renderEaPdf(blankEaPdfData(), …,
+{blank:true})` — our own renderer with the money column empty, not an LHDN file. Fidelity stays
+`agency-layout`, never `official` (the specimen's Producer is DXperience — another payroll system's
+rendering) and the plan asserts only what `public/forms/` can back (AGENTS 28b).
+
+**`4da751c6` "Benefit Scheme and Effective From" — PARTLY THERE; the behaviour exists, the name does
+not.** Everything the reporter describes a scheme DOING already runs: `entitlement_template` carries the
+service bands (their 0-2 / 2-5 / 5+ columns exactly), and `entitlement_eligibility_rule.criteria` carries
+`gradeIds`, `employmentTypes` and `confirmationStatuses` — their "Grade 12-15 (Permanent)" maps onto three
+existing axes. Grade changes already recalculate (`reprojectEntitlementForEmployment`), and **their
+history requirement is already correct AND PINNED**: c8052ae3 bounded the already-granted sum at
+`<= windowEnd`, so 2025 keeps its 18 days; `test/leave-recalc-future-year-window.test.ts` fails with the
+bound reverted. What is missing is a single field naming the scheme.
+
+**DECISION — the field is DERIVED, never stored, and this is the load-bearing call of the plan.**
+`benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` and `employment.benefit_scheme_id` were
+deleted deliberately in 6e9a126e release three. Reintroducing an assignment layer would let a stored
+scheme name silently disagree with the rules that compute the days. **And the honest consequence was
+built into the mockup rather than discovered later:** grade groups are an APPLICATOR over `gradeIds`, not
+a criteria axis, so the reverse lookup from an employee to a scheme NAME can be ambiguous. The plan and
+the mockup both carry the "does not resolve to a single scheme" empty state, which lists what applies per
+leave type instead of inventing a label. A mockup showing only the happy path would have promised a name
+we cannot always derive.
+
+**`leaveEntitlementBreakdown` does NOT name the template or the matched rule** (core/read.ts L2913 —
+ledger buckets, `essView`, `formulaExplanations` only), so this is a new read, not a widening of that
+shape. `/me` renders the same component and this is HR-side detail.
+
+**Also this round:** HANDOFF.md 1714 → 1298 lines (r238-r244 moved to history).
+
+**⚠️ THE GATE COULD NOT BE COMPLETED THIS ROUND, AND THE REASON IS AN ENVIRONMENT TRAP WORTH MORE THAN
+THE ROUND.** See Traps → "The moved-aside clusters ate the disk". r245 remains MERGED TO main AND
+UNGATED — do not mark it deployed. What is known: chunks 1 and 2 passed cleanly (254 files, 3827 tests,
+zero AssertionErrors across every attempt).
+
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
 r238 hypothesis detection (migration `0454`) · r239 the attendance list's second face · r240 input-side
@@ -1037,6 +1098,50 @@ grep — an empty result is a parser gap, not proof of no callers.
   RSC boundary errors `tsc` alone does not.
 
 ## Traps — the durable ones (each cost at least a round; several recurred AFTER being written down)
+
+### ⚠️ THE MOVED-ASIDE CLUSTERS ATE THE DISK — and the gate reported it as a CODE failure (r246)
+
+`dev-db-rebuild.sh` moved each old cluster to `aihr-pg16.wedged-<stamp>` and **nothing ever removed it**:
+`--purge` existed but was opt-in and `gate-chunked.sh` has never passed it, while it calls the script
+ONCE PER CHUNK. Every six-chunk gate left six clusters behind. Measured 2026-09-03: **68 of them, the
+data volume at 188MB free of 926GB**, one sampled cluster holding 2.5M files.
+
+**FIXED in `902d2170`** — keeps the newest, drains one older per run in the background behind a lock.
+Do not re-diagnose it; do check `ls -d /opt/homebrew/var/aihr-pg16.wedged-* | wc -l` if the disk is tight.
+
+**THE FOUR SIGNATURES, ALL OF WHICH READ AS A BROKEN BUILD:**
+- `cluster rebuild FAILED` then `initdb: No space left on device` — the honest one.
+- **A chunk exiting 1 with COMPLETELY EMPTY output** — no failure count, no assertion, no duration.
+- **N failed files and EXACTLY N `Hook timed out in 30000ms`** — the hook is `test/harness.ts`'s TRUNCATE
+  reset. 15 files, 15 hook timeouts, one file taking 21 MINUTES.
+- `Failed query: TRUNCATE …` / `canceling statement due to lock timeout` — the harness's `lock_timeout = '5s'`
+  losing to a previous test's still-open transaction.
+
+**THE TELL IS ALWAYS `AssertionError` COUNT ZERO.** Three consecutive reds in r246 (13, then 1, then 15
+failures) had zero between them. `grep -c AssertionError <chunk log>` BEFORE believing any red.
+
+**DELETION IS THE BOTTLENECK AND YOU CANNOT PARALLELISE OUT OF IT.** An endpoint-security extension
+(`com.trendmicro.icore.es`) intercepts every unlink on this machine: measured **509 files/sec at 8
+parallel `rm`, 612 at 16** — 20% for double the processes. The 68-cluster backlog is ~60 hours of AWAKE
+time (it freed 2GB in 16 hours overnight — the Mac was asleep, not hung). The only real lever is an
+exclusion for `/opt/homebrew/var`, which is the OWNER's call, not an agent's.
+
+**KILLING `rm` MID-DELETE THEN STARTING A GATE IS ITS OWN TRAP.** APFS flushes the pending unlinks
+afterwards — free space jumped 26→48GB on the kill — and a gate started into that flush produced the
+13-failure red. Let the filesystem settle, and confirm with a cheap benchmark (2000 small files created
+in <1s, deleted in 3s) rather than by guessing.
+
+**TO SUPPRESS THE DRAIN FOR ONE GATE**, hold its own lock rather than editing the script:
+`mkdir -p /opt/homebrew/var/aihr-pg16.purge.lock && nohup sleep 86400 & echo $! > …/pid`. Remove it after.
+
+### ⚠️ 10 VITEST WORKERS IS TOO MANY WHEN THE MACHINE IS UNDER MEMORY PRESSURE (r246)
+
+The default is `availableParallelism() - 2`. With **154MB unused RAM and 3GB of 4GB swap consumed**, that
+produces hook timeouts, not test failures. **`VITEST_MAX_WORKERS=4` is the supported override** — and
+`test/global-setup.ts` reads the SAME variable to decide how many worker DBs to stamp, so the two stay in
+step automatically. A RAM disk is NOT the escape here: it is wired memory and reproduces r241's swap
+death. Check `top -l 1 -s 0 | grep PhysMem` before blaming code.
+
 
 - ⚠️ **NEVER `source .env.local` IN THE SAME SHELL AS `pnpm gate:shadow` — IT REPORTS AS A MIGRATION
   DEFECT (r236).** `scripts/shadow-migrate.sh:92-93` REWRITES `MIGRATION_DATABASE_URL` inside `.env.local`
