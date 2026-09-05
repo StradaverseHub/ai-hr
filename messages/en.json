@@ -6131,7 +6131,29 @@
         "emptyBody": "Every flagged employee across every run has been decided.",
         "whyTitle": "Why your decisions matter here",
         "whyBody": "Three of the figures on the Control Tower — how often the checks are wrong, how long an exception waits, and how many people this workload implies — cannot be worked out until somebody decides these. Until then the Tower shows what is missing instead of a number, on purpose."
-      }
+      },
+      "agreementTitle": "Does the AI agree with us?",
+      "agreementUnavailable": "Nothing to measure yet.",
+      "agreementWhyNotGuessed": "We show no figure rather than a flattering one. A rate needs decisions to divide by, and until there are some, any percentage here would be a claim about accuracy that nothing supports.",
+      "agreementBlocked_no_provider": "No AI provider is configured, so nothing that uses a model can run.",
+      "agreementBlocked_no_agent_on": "No unattended agent is switched on for this company.",
+      "agreementBlocked_nothing_proposed": "No proposal has been recorded yet.",
+      "agreementBlocked_nothing_decided": "Proposals exist, but nobody has approved or declined one yet — so the agreement rate has nothing to divide by.",
+      "agreementDashMeaning": "A dash means not measured yet, never zero. Adjudication pass is how often the proposal was even valid; agreement is how often a person then approved it; reversal is how often an approval was later undone.",
+      "colProposalType": "What was proposed",
+      "colProposed": "Proposed",
+      "colAdjudicationPass": "Passed checks",
+      "colAgreement": "Agreement",
+      "colReversal": "Reversed",
+      "proposalType_anomaly_narration": "Payslip anomaly, explained in words",
+      "proposalType_pay_rule_draft": "Pay rule drafted from a sentence",
+      "proposalType_report_spec": "Report drafted from a sentence",
+      "proposalType_close_fixed_upstream": "Close a finding whose cause is fixed",
+      "proposalType_readiness_nudge": "Nudge to complete a missing record",
+      "proposalType_anomaly_hypothesis": "Possible issue the rules did not catch",
+      "proposalType_input_triage": "Question back to whoever filed a claim",
+      "proposalType_readiness_fix": "Suggested fix for an incomplete record",
+      "agreementReversalUninstrumented": "Reversed is blank on purpose: nothing in the system records a reversal yet, so a figure here would say every approval stuck when it really says nobody is checking."
     }
   },
   "admin": {

@@ -6131,7 +6131,29 @@
         "emptyBody": "Setiap pekerja yang ditanda dalam setiap larian telah diputuskan.",
         "whyTitle": "Mengapa keputusan anda penting di sini",
         "whyBody": "Tiga daripada angka di Menara Kawalan — berapa kerap pemeriksaan tersilap, berapa lama sesuatu pengecualian menunggu, dan berapa ramai orang yang diperlukan oleh beban kerja ini — tidak boleh dikira sehingga seseorang memutuskan perkara ini. Sehingga itu, Menara menunjukkan apa yang tiada dan bukan satu nombor, dengan sengaja."
-      }
+      },
+      "agreementTitle": "Adakah AI bersetuju dengan kita?",
+      "agreementUnavailable": "Belum ada apa-apa untuk diukur.",
+      "agreementWhyNotGuessed": "Kami tidak memaparkan sebarang angka daripada memaparkan angka yang mengelirukan. Kadar memerlukan keputusan sebagai pembahagi, dan sehingga ada, sebarang peratusan di sini adalah dakwaan ketepatan yang tidak disokong apa-apa.",
+      "agreementBlocked_no_provider": "Tiada pembekal AI dikonfigurasikan, jadi apa-apa yang menggunakan model tidak boleh berjalan.",
+      "agreementBlocked_no_agent_on": "Tiada ejen tanpa pengawasan dihidupkan untuk syarikat ini.",
+      "agreementBlocked_nothing_proposed": "Belum ada cadangan direkodkan.",
+      "agreementBlocked_nothing_decided": "Cadangan wujud, tetapi belum ada sesiapa meluluskan atau menolaknya — jadi kadar persetujuan tiada pembahagi.",
+      "agreementDashMeaning": "Sengkang bermaksud belum diukur, bukan sifar. Lulus semakan ialah berapa kerap cadangan itu sah; persetujuan ialah berapa kerap seseorang kemudian meluluskannya; pembalikan ialah berapa kerap kelulusan kemudian dibatalkan.",
+      "colProposalType": "Apa yang dicadangkan",
+      "colProposed": "Dicadangkan",
+      "colAdjudicationPass": "Lulus semakan",
+      "colAgreement": "Persetujuan",
+      "colReversal": "Dibalikkan",
+      "proposalType_anomaly_narration": "Anomali slip gaji, diterangkan dengan ayat",
+      "proposalType_pay_rule_draft": "Peraturan gaji dirangka daripada satu ayat",
+      "proposalType_report_spec": "Laporan dirangka daripada satu ayat",
+      "proposalType_close_fixed_upstream": "Tutup penemuan yang puncanya telah dibaiki",
+      "proposalType_readiness_nudge": "Peringatan untuk melengkapkan rekod yang tidak lengkap",
+      "proposalType_anomaly_hypothesis": "Kemungkinan isu yang tidak dikesan oleh peraturan",
+      "proposalType_input_triage": "Soalan kembali kepada pemfail tuntutan",
+      "proposalType_readiness_fix": "Cadangan pembetulan untuk rekod tidak lengkap",
+      "agreementReversalUninstrumented": "Ruangan dibalikkan sengaja kosong: belum ada apa-apa dalam sistem yang merekod pembalikan, jadi angka di sini akan menyatakan setiap kelulusan kekal sedangkan sebenarnya tiada sesiapa menyemak."
     }
   },
   "admin": {

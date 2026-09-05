@@ -6131,7 +6131,29 @@
         "emptyBody": "Mọi nhân viên bị gắn cờ ở mọi kỳ đều đã được quyết định.",
         "whyTitle": "Vì sao quyết định của bạn quan trọng",
         "whyBody": "Ba con số trên Tháp điều khiển — các kiểm tra sai bao lâu một lần, một ngoại lệ chờ bao lâu, và khối lượng này cần bao nhiêu người — không thể tính được cho đến khi có người quyết định những mục này. Trước đó, Tháp cố ý hiển thị những gì còn thiếu thay vì một con số."
-      }
+      },
+      "agreementTitle": "AI có đồng ý với chúng ta không?",
+      "agreementUnavailable": "Chưa có gì để đo lường.",
+      "agreementWhyNotGuessed": "Chúng tôi không hiển thị con số nào còn hơn hiển thị một con số đẹp nhưng sai. Một tỷ lệ cần có các quyết định làm mẫu số, và cho đến khi có, bất kỳ phần trăm nào ở đây cũng là một tuyên bố về độ chính xác mà không có gì chứng minh.",
+      "agreementBlocked_no_provider": "Chưa cấu hình nhà cung cấp AI, nên mọi thứ dùng mô hình đều không chạy được.",
+      "agreementBlocked_no_agent_on": "Chưa bật tác nhân tự động nào cho công ty này.",
+      "agreementBlocked_nothing_proposed": "Chưa ghi nhận đề xuất nào.",
+      "agreementBlocked_nothing_decided": "Đã có đề xuất, nhưng chưa ai phê duyệt hay từ chối — nên tỷ lệ đồng thuận không có mẫu số.",
+      "agreementDashMeaning": "Dấu gạch ngang nghĩa là chưa đo được, không phải bằng không. Đạt kiểm tra là tỷ lệ đề xuất hợp lệ; đồng thuận là tỷ lệ sau đó được người duyệt; đảo ngược là tỷ lệ đã duyệt rồi bị hủy.",
+      "colProposalType": "Nội dung đề xuất",
+      "colProposed": "Số đề xuất",
+      "colAdjudicationPass": "Đạt kiểm tra",
+      "colAgreement": "Đồng thuận",
+      "colReversal": "Đảo ngược",
+      "proposalType_anomaly_narration": "Giải thích bất thường phiếu lương bằng lời",
+      "proposalType_pay_rule_draft": "Quy tắc lương soạn từ một câu",
+      "proposalType_report_spec": "Báo cáo soạn từ một câu",
+      "proposalType_close_fixed_upstream": "Đóng phát hiện đã khắc phục nguyên nhân",
+      "proposalType_readiness_nudge": "Nhắc hoàn thiện hồ sơ còn thiếu",
+      "proposalType_anomaly_hypothesis": "Vấn đề có thể có mà quy tắc chưa bắt được",
+      "proposalType_input_triage": "Câu hỏi gửi lại người nộp yêu cầu",
+      "proposalType_readiness_fix": "Đề xuất sửa cho hồ sơ chưa đầy đủ",
+      "agreementReversalUninstrumented": "Cột đảo ngược để trống có chủ đích: chưa có gì trong hệ thống ghi nhận việc đảo ngược, nên một con số ở đây sẽ nói rằng mọi phê duyệt đều đứng vững, trong khi thực tế là chưa ai kiểm tra."
     }
   },
   "admin": {
