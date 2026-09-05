@@ -1,3 +1,66 @@
+## r246 (2026-09-03) — three open items planned; two answered "already works" from production evidence. NO CODE.
+
+**The board went from three open items to zero awaiting a plan.** Two of the three needed no build at
+all, and establishing that took production queries rather than reading code — AGENTS 7, twice over.
+
+**`cd63bd91` "To permanently remove Haji Leave" — ALREADY WORKS, and the answer turned on running the
+product's OWN predicate rather than a hand-written one.** The first three attempts at counting what
+references Haji Leave failed on guessed column names, and a hand-rolled count of two history tables would
+have been wrong anyway: `leaveTypeInUseSqlText` (core/leave-type-refs.ts) enumerates SIX
+(`leave_request`, `leave_ledger`, `leave_encashment_snapshot`, `leave_entitlement_recalc_audit`,
+`leave_generation_run_item`, `replacement_leave_request`). Ran that exact SQL against production:
+`in_use = f`. So Leave Configuration is ALREADY showing Delete for it, and `deleteLeaveType` cascades the
+two `leave_approval_policy` rows (560f4524, 0fca03b8 — both active, both with zero levels) inside the
+same transaction. Shipped in 1ae7f3ab + 4fdb69b2; nobody had to build anything.
+**The plan says DELETE and explicitly never "unset the leave type" on those two rules**, because
+`leave_approval_policy.leave_type_id` NULL is the COMPANY DEFAULT chain, not a non-match
+(core/leave-approval-policy.ts:226 and :270 both select the default by `isNull`). Blanking them would
+manufacture two extra company-wide default approval rules — the same wildcard trap
+`deleteGradeGroup` documents.
+
+**`d6e2cccc` "Form C.P.8A (EA) Bahasa Malaysia" — ALREADY WORKS; the reporter photographed the PREVIEW
+SCREEN.** The attachment is `app/payroll/reports/ea/[employmentId]` (it carries r242's readiness panel
+and r244's corrected heading, which is how it was identified), not the download. The mockup is the
+argument: both panes are REAL captures side by side — their screenshot on the left, our actual rendered
+PDF (`docs/forms/ea-cp8a-our-output-2026-08-23.png`, drawn in r219 off the blank C.P.8A THEY supplied) on
+the right. Nothing drawn. **Their instruction "use the blank EA download as the source to copy" is
+circular and the plan says so**: `app/payroll/ea/blank/route.ts` is `renderEaPdf(blankEaPdfData(), …,
+{blank:true})` — our own renderer with the money column empty, not an LHDN file. Fidelity stays
+`agency-layout`, never `official` (the specimen's Producer is DXperience — another payroll system's
+rendering) and the plan asserts only what `public/forms/` can back (AGENTS 28b).
+
+**`4da751c6` "Benefit Scheme and Effective From" — PARTLY THERE; the behaviour exists, the name does
+not.** Everything the reporter describes a scheme DOING already runs: `entitlement_template` carries the
+service bands (their 0-2 / 2-5 / 5+ columns exactly), and `entitlement_eligibility_rule.criteria` carries
+`gradeIds`, `employmentTypes` and `confirmationStatuses` — their "Grade 12-15 (Permanent)" maps onto three
+existing axes. Grade changes already recalculate (`reprojectEntitlementForEmployment`), and **their
+history requirement is already correct AND PINNED**: c8052ae3 bounded the already-granted sum at
+`<= windowEnd`, so 2025 keeps its 18 days; `test/leave-recalc-future-year-window.test.ts` fails with the
+bound reverted. What is missing is a single field naming the scheme.
+
+**DECISION — the field is DERIVED, never stored, and this is the load-bearing call of the plan.**
+`benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` and `employment.benefit_scheme_id` were
+deleted deliberately in 6e9a126e release three. Reintroducing an assignment layer would let a stored
+scheme name silently disagree with the rules that compute the days. **And the honest consequence was
+built into the mockup rather than discovered later:** grade groups are an APPLICATOR over `gradeIds`, not
+a criteria axis, so the reverse lookup from an employee to a scheme NAME can be ambiguous. The plan and
+the mockup both carry the "does not resolve to a single scheme" empty state, which lists what applies per
+leave type instead of inventing a label. A mockup showing only the happy path would have promised a name
+we cannot always derive.
+
+**`leaveEntitlementBreakdown` does NOT name the template or the matched rule** (core/read.ts L2913 —
+ledger buckets, `essView`, `formulaExplanations` only), so this is a new read, not a widening of that
+shape. `/me` renders the same component and this is HR-side detail.
+
+**Also this round:** HANDOFF.md 1714 → 1298 lines (r238-r244 moved to history).
+
+**r245 IS DEPLOYED (2026-09-04).** Gate green after the environment was fixed — see Traps → "The
+moved-aside clusters ate the disk" and the worker-count trap under it. The chunked run was 752/762 files;
+the 10 that failed were ALL hook timeouts and ALL 10 then passed in isolation (269 tests, exit 0), so the
+gate is green with an environmental caveat rather than red. **Zero AssertionErrors across every attempt
+all day** — that count is what separated four false reds from a real one. tsc clean, next build clean,
+no migration in r245. Arrival proved by a ZERO-CHANGE `rsync -azi --dry-run`, service active, `GET /` 401.
+
 ## r244 (2026-09-03) — an EA arrival says it is the EA (`a294cca5`). NO MIGRATION.
 
 ⚠️⚠️ **A REGRESSION r242 INTRODUCED, REPORTED BY THE CUSTOMER THE NEXT MORNING, AND THE SHAPE IS WORTH

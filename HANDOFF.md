@@ -18,35 +18,35 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-04 (r226-r246 SHIPPED · 4 ITEMS APPROVED AND WAITING TO BE BUILT · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
+## CURRENT STATE — snapshot 2026-09-05 (r226-r247 SHIPPED · BOARD HAS NOTHING BUILDABLE · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
 
-**`main@bd4af8eb` IS WHAT RUNS ON PRODUCTION (r245 + r246, 2026-09-04)** — verified by an
-`rsync -azi --delete --dry-run` from **mainwt**, not by `deploy.sh` succeeding, which is not proof.
-Service active, `GET localhost:3000/` → 401 ON THE BOX.
+**`main@04ab47b4` IS WHAT RUNS ON PRODUCTION (r247, 2026-09-05)** — verified by an
+`rsync -azi --delete --dry-run` from **mainwt** that returned ONE line, `next-env.d.ts` (Next rewrites it
+per build mode and it is gitignored; a single such entry is the zero-change state, not a stale file).
+Not by `deploy.sh` succeeding, which is not proof. Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
 `payroll_anomaly_finding.proposal_id` present (uuid, nullable), and
 `setting_definition` carries `payroll.anomaly_hypotheses_enabled` (tenant scope, default false) — the
 catalog seed ran. `0452`/`0453` remain applied from r236.
-**370 migrations applied; r239 and r240 carried none.** The r239 dry run reported ZERO lines — not even `next-env.d.ts`, which the r238 one did (Next rewrites
-it per build mode and it is gitignored; a single such entry is not a stale file). `0454` remains the last
-migration; r239 carried none.
+**370 migrations applied. `0454` IS STILL THE LAST ONE — r247 carried none**, and neither did r239,
+r240 or r245.
 
 
-**⚠️ FOUR APPROVED ITEMS ARE WAITING (2026-09-04), and two of them need almost no code:**
-- `cd63bd91` Haji Leave — ALREADY WORKS. Delivery note only; Delete is already offered and cascades the
-  two approval rules. Do NOT unset their leave type — NULL is the company DEFAULT chain, not a non-match.
-- `d6e2cccc` EA C.P.8A — ALREADY WORKS. The reporter photographed the PREVIEW SCREEN. One line on that
-  screen naming it a preview, six locales. The form itself does not change.
-- `4da751c6` Benefit Scheme + Effective From — a DERIVED read-only field on the employee Leave tab.
-  Never store it: 6e9a126e release three deleted that layer on purpose. Build the "does not resolve to a
-  single scheme" empty state — grade groups are an applicator over gradeIds, so the reverse lookup is
-  genuinely ambiguous and the mockup already promises that state.
-- `a6fe37fc` Rebuild Leave Configuration From Scratch — **THE APPROVED DELIVERABLE IS THE PHASE 1 AUDIT
-  REPORT, NOT A REBUILD.** The reporter's own Implementation Rules say produce the audit and wait for
-  approval before destructive changes. AGENTS 29: the brief must carry that, not quietly become a build.
-  The audit so far: leave_type has 63 columns covering EVERY item on their Phase 3 list, and production
-  holds 261 hand-built leave_approval_policy rows, 297 leave_ledger rows and 45 entitlement_templates.
-  `4da751c6` overlaps this item — fold it in rather than building it twice.
+**✅ ALL FOUR APPROVED ITEMS ARE CLOSED (r247, 2026-09-05). THE BOARD HAS NOTHING BUILDABLE.**
+- `cd63bd91` Haji Leave — `deployed`, `build_ref = no-code-change`. It already worked; Delete is offered
+  on Leave Configuration and cascades the two approval rules. Their leave type was never unset — NULL is
+  the company DEFAULT chain, not a non-match.
+- `d6e2cccc` EA C.P.8A — `deployed`. One line on the PREVIEW screen naming it a preview, six locales. The
+  form itself did not change; the reporter had photographed the preview.
+- `4da751c6` Benefit Scheme + Effective From — `deployed`. A DERIVED read-only panel on the employee Leave
+  tab (`core/entitlement-scheme-view.ts`), never stored, plus the "does not resolve to a single scheme"
+  empty state.
+- `a6fe37fc` Rebuild Leave Configuration — **the Phase 1 AUDIT was the deliverable and it is now BACK WITH
+  THE REPORTER as plan rev 2** (`docs/audits/a6fe37fc-leave-config-audit.md`, mockup attached). It
+  recommends NOT rebuilding. The concrete defect it found is CONFIGURATION and would survive any rewrite:
+  45 template lineages, ALL with `valid_to IS NULL`, only 4 eligibility rules in the whole tenant, and
+  Annual Leave carrying **16 tables in force against 2 rules**. Approve means "fix the configuration
+  first"; reject-with-a-reason means they still want the rebuild.
 
 ⚠️ **THE OPERATING MODEL CHANGED THIS SESSION — READ
 [ADR-0083](docs/adr/0083-hr-operations-control-plane.md) BEFORE PLANNING CONTROL-TOWER WORK.** It
@@ -217,8 +217,12 @@ resolved (r235 makes it POSSIBLE, not automatic — somebody has to open Agent a
 tile correctly refuses to print a figure. **Do not build the auto-clear gate** — and note 0083 §5 that the
 tile measures exceptions ÷ throughput, which is an exception-load estimate rather than a headcount answer.
 
-**BOARD: TWO ITEMS, BOTH `planned` AND WITH THE REPORTER.** Nothing open, contested, approved or
-building — there is no buildable work.
+**BOARD: NOTHING BUILDABLE. Verified on production 2026-09-05 after r247: `open` 0, `contested` 0,
+`approved` 0, `blocked` 0.** Everything live is `planned` and with the reporter, and `a6fe37fc` **rev 2**
+(the Leave Configuration audit answer at the top of this file) joined them this round.
+⚠️ **The CLI cannot list `planned` items** — `pullPlannable` is `open`+`contested`, and there is no
+`pull-planned`. So the planned list below is the last thing a round WROTE, not a reading of the board;
+treat a count here as unverified until someone queries `feedback_request` directly.
 
   - `b36a8a91` **planned rev 4** — "C.P.8A (EA form) Mapping", and **rev 3 was WRONG.** It told them there
     was nothing to build and closed the item; they came back with a full workflow spec. ⚠️ **The correction
@@ -251,20 +255,12 @@ were unanswerable by construction; both are now folded into their parent items' 
 means "your reading is right" and reject-with-a-reason carries the answer. **Ask a question INSIDE a plan
 with a recommendation. Never as a bare raised item.**
 
-  - `b36a8a91` **planned rev 3** — "C.P.8A (EA form) Mapping", the reporter's own, CONTESTED once and
-    re-planned. Verdict is *mislabelled*: they used the EA row's SECONDARY action ("Download blank EA
-    form"), which is empty BY DESIGN, while the PRIMARY action on the same row ("Open employee list")
-    already hands back a completed per-employee EA as a PDF in the chosen language. **Rev 1 promised to
-    print the Encik/Cik/Puan title and that was WRONG** — the salutation catalogue holds Datin, Dato',
-    Dr, Mr, Mrs, Ms, Puan Sri, Tan Sri … and *no* Encik, Cik or Puan; 6 of 40 people have "Mr", 3 "Ms",
-    31 nothing. Rev 2 retracted it, rev 3 uses the reporter's OWN screenshot (a Malay employee whose
-    Salutation reads "Mr") as the argument. **Do NOT build the "AI field matching" step their workflow
-    names** — the employee-record→EA-box mapping is fixed by the form and already written down in
-    `lib/ea-field-register.ts`; an inference step would put a guess on a tax document (AGENTS 28).
-    ⚠️ **REV 2 WAS PUSHED WITHOUT READING THE `.docx` THEY ATTACHED TO THE REJECTION.** AGENTS 30 exists
-    for exactly that and was not followed; the attachment was a screenshot wrapped in a Word file, the
-    same shape as the CP39 specimen that sat unread for two rounds. **Read the attachments BEFORE
-    replying** — `feedback_attachment`, base64 out, `unzip` the docx, look at `word/media/`.
+  - ⚠️ **TWO LESSONS FROM `b36a8a91`'s EARLIER REVISIONS, kept now that rev 3's plan text is superseded
+    by rev 4 above.** (a) **Rev 1 promised to print the Encik/Cik/Puan title and that was WRONG** — the
+    salutation catalogue holds Datin, Dato', Dr, Mr, Mrs, Ms, Puan Sri, Tan Sri … and *no* Encik, Cik or
+    Puan; 6 of 40 people have "Mr", 3 "Ms", 31 nothing. (b) **REV 2 WAS PUSHED WITHOUT READING THE `.docx`
+    THEY ATTACHED TO THE REJECTION** — AGENTS 30 exists for exactly that. Read attachments BEFORE replying:
+    `feedback_attachment`, base64 out, `unzip` the docx, look at `word/media/`.
   - `afc29d75` / `568b8f0b` **planned rev 1, both with before/after mockups** — the two halves of
     `c6bb5f5a` that r227 did not deliver. The consolidation is **Quick** because r227 already did the
     hard part: every row carries its own section, so a mixed list needs no change to the pop-up, the
@@ -294,68 +290,43 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r246 (2026-09-03) — three open items planned; two answered "already works" from production evidence. NO CODE.
+### r247 (2026-09-05) — the four approved items closed; the Leave Configuration audit goes back as a plan. `main@04ab47b4`.
 
-**The board went from three open items to zero awaiting a plan.** Two of the three needed no build at
-all, and establishing that took production queries rather than reading code — AGENTS 7, twice over.
+**DEPLOYED.** tsc clean · full suite green (see the caveat below) · `next build` clean · no migration ·
+arrival proved by a one-line `rsync -azi --dry-run` (`next-env.d.ts` only) · service active · `GET /` 401.
 
-**`cd63bd91` "To permanently remove Haji Leave" — ALREADY WORKS, and the answer turned on running the
-product's OWN predicate rather than a hand-written one.** The first three attempts at counting what
-references Haji Leave failed on guessed column names, and a hand-rolled count of two history tables would
-have been wrong anyway: `leaveTypeInUseSqlText` (core/leave-type-refs.ts) enumerates SIX
-(`leave_request`, `leave_ledger`, `leave_encashment_snapshot`, `leave_entitlement_recalc_audit`,
-`leave_generation_run_item`, `replacement_leave_request`). Ran that exact SQL against production:
-`in_use = f`. So Leave Configuration is ALREADY showing Delete for it, and `deleteLeaveType` cascades the
-two `leave_approval_policy` rows (560f4524, 0fca03b8 — both active, both with zero levels) inside the
-same transaction. Shipped in 1ae7f3ab + 4fdb69b2; nobody had to build anything.
-**The plan says DELETE and explicitly never "unset the leave type" on those two rules**, because
-`leave_approval_policy.leave_type_id` NULL is the COMPANY DEFAULT chain, not a non-match
-(core/leave-approval-policy.ts:226 and :270 both select the default by `isNull`). Blanking them would
-manufacture two extra company-wide default approval rules — the same wildcard trap
-`deleteGradeGroup` documents.
+**THE GATE FOUND ONE REAL BUG AND IT WAS AN ARCHITECTURE ONE.** `test/leave-pack-drift.test.ts`
+(ADR-0080 D9) caught `core/entitlement-scheme-view.ts` — new in this round — importing `core/leave-compute`
+and `core/entitlement-template` directly. Both are leave-pack BOUNDARY modules and this file is an OUTSIDE
+consumer: its caller is the personnel screen, not a leave screen.
+**DECISION: the fix is the facade, never the allowlist.** It now imports from `packs/leave/service`, which
+re-exports both in place. `test/pack-drift-allowlist.json` is audited kernel-contract debt and the test's
+own message records that it only ever SHRINKS. The tempting alternative — declaring this module part of the
+leave pack — would have moved the violation onto `app/admin/personnel` and GROWN the list, which is the
+drift D9 exists to stop.
 
-**`d6e2cccc` "Form C.P.8A (EA) Bahasa Malaysia" — ALREADY WORKS; the reporter photographed the PREVIEW
-SCREEN.** The attachment is `app/payroll/reports/ea/[employmentId]` (it carries r242's readiness panel
-and r244's corrected heading, which is how it was identified), not the download. The mockup is the
-argument: both panes are REAL captures side by side — their screenshot on the left, our actual rendered
-PDF (`docs/forms/ea-cp8a-our-output-2026-08-23.png`, drawn in r219 off the blank C.P.8A THEY supplied) on
-the right. Nothing drawn. **Their instruction "use the blank EA download as the source to copy" is
-circular and the plan says so**: `app/payroll/ea/blank/route.ts` is `renderEaPdf(blankEaPdfData(), …,
-{blank:true})` — our own renderer with the money column empty, not an LHDN file. Fidelity stays
-`agency-layout`, never `official` (the specimen's Producer is DXperience — another payroll system's
-rendering) and the plan asserts only what `public/forms/` can back (AGENTS 28b).
+**DECISION — `a6fe37fc`'s audit went back as a PLAN, not as a delivery note.** The reporter's own
+Implementation Rules said produce the audit and wait for approval before destructive changes, and
+`approveFeedbackPlan` carries no payload — so the only channel that can carry "we recommend not rebuilding"
+AND accept an answer is a plan revision with ONE recommended course of action (AGENTS 9). Rev 2 recommends
+fixing the configuration; rejecting it with a reason is how they say they still want the rebuild.
+**The mockup draws only the measured BEFORE and the SHAPE of the after** — it deliberately does not name
+which of the 16 Annual Leave tables survive, because that is the decision being asked for and a picture
+cannot hedge.
 
-**`4da751c6` "Benefit Scheme and Effective From" — PARTLY THERE; the behaviour exists, the name does
-not.** Everything the reporter describes a scheme DOING already runs: `entitlement_template` carries the
-service bands (their 0-2 / 2-5 / 5+ columns exactly), and `entitlement_eligibility_rule.criteria` carries
-`gradeIds`, `employmentTypes` and `confirmationStatuses` — their "Grade 12-15 (Permanent)" maps onto three
-existing axes. Grade changes already recalculate (`reprojectEntitlementForEmployment`), and **their
-history requirement is already correct AND PINNED**: c8052ae3 bounded the already-granted sum at
-`<= windowEnd`, so 2025 keeps its 18 days; `test/leave-recalc-future-year-window.test.ts` fails with the
-bound reverted. What is missing is a single field naming the scheme.
+**THE AUDIT'S FINDING, which outlives this round:** 45 entitlement template lineages, ALL with
+`valid_to IS NULL` — nothing has ever been superseded — and only 4 eligibility rules in the whole tenant.
+Ten of the eleven leave types that carry templates carry more than one. **Annual Leave: 16 tables in force,
+2 rules.** An entitlement table says how many days; a rule says who gets it. This is CONFIGURATION and a
+rebuild would carry it across intact. Also corrected in passing: `AGENTS.md` and this file both said TWELVE
+foreign keys to `leave_type`; measured on production it is **ten direct plus one indirect**
+(`entitlement_eligibility_rule`, through the template lineage). `leave_policy` went in release three.
 
-**DECISION — the field is DERIVED, never stored, and this is the load-bearing call of the plan.**
-`benefit_scheme`, `scheme_leave_entitlement`, `leave_policy` and `employment.benefit_scheme_id` were
-deleted deliberately in 6e9a126e release three. Reintroducing an assignment layer would let a stored
-scheme name silently disagree with the rules that compute the days. **And the honest consequence was
-built into the mockup rather than discovered later:** grade groups are an APPLICATOR over `gradeIds`, not
-a criteria axis, so the reverse lookup from an employee to a scheme NAME can be ambiguous. The plan and
-the mockup both carry the "does not resolve to a single scheme" empty state, which lists what applies per
-leave type instead of inventing a label. A mockup showing only the happy path would have promised a name
-we cannot always derive.
-
-**`leaveEntitlementBreakdown` does NOT name the template or the matched rule** (core/read.ts L2913 —
-ledger buckets, `essView`, `formulaExplanations` only), so this is a new read, not a widening of that
-shape. `/me` renders the same component and this is HR-side detail.
-
-**Also this round:** HANDOFF.md 1714 → 1298 lines (r238-r244 moved to history).
-
-**r245 IS DEPLOYED (2026-09-04).** Gate green after the environment was fixed — see Traps → "The
-moved-aside clusters ate the disk" and the worker-count trap under it. The chunked run was 752/762 files;
-the 10 that failed were ALL hook timeouts and ALL 10 then passed in isolation (269 tests, exit 0), so the
-gate is green with an environmental caveat rather than red. **Zero AssertionErrors across every attempt
-all day** — that count is what separated four false reds from a real one. tsc clean, next build clean,
-no migration in r245. Arrival proved by a ZERO-CHANGE `rsync -azi --dry-run`, service active, `GET /` 401.
+**THE GATE'S CAVEAT, and it is the same shape as r245.** The chunked run reported 59 failed files across
+763. **58 of them carry ZERO AssertionErrors** and fail with `database system is in recovery mode` /
+`ECONNREFUSED 5433`; chunks 1 and 3 both hit `peak-disk=100%` while chunk 2 peaked at 85% and produced the
+ONE real failure. All 59 were re-run together on a rebuilt cluster: **59 passed (59), 519 tests, exit 0.**
+The AssertionError count is again what separated the environment from the code.
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
@@ -1152,6 +1123,35 @@ in <1s, deleted in 3s) rather than by guessing.
 
 **TO SUPPRESS THE DRAIN FOR ONE GATE**, hold its own lock rather than editing the script:
 `mkdir -p /opt/homebrew/var/aihr-pg16.purge.lock && nohup sleep 86400 & echo $! > …/pid`. Remove it after.
+
+### ⚠️ THREE CHUNKS IS NO LONGER A FULL GATE — THE SUITE OUTGREW IT (r247)
+
+`gate-chunked.sh` defaults to **3** chunks. At **763 test files** that is too coarse: chunks 1 and 3 both
+reported **`peak-disk=100%`** on the 8 GiB RAM disk, Postgres died mid-chunk, and everything after it
+failed with `database system is in recovery mode` / `ECONNREFUSED 5433` — **58 files red for no reason
+connected to the code.** Chunk 2 peaked at 85% and was the only chunk whose failure was real.
+
+**`CHUNKS=5 ./scripts/gate-chunked.sh` is the new floor.** And read the `peak-disk` figure the script
+prints per chunk: **100% means that chunk's result is not evidence**, whatever the failure list says. The
+machine has 18 GB of RAM, so the RAM disk cannot simply be made bigger — more chunks is the lever.
+
+**The AssertionError count remains the discriminator.** 59 failed files, 58 with ZERO AssertionErrors, all
+59 green on a rebuilt cluster (519 tests, exit 0). Grep `AssertionError` before believing any red gate.
+
+### ⚠️ `node_modules` VANISHED FROM mainwt MID-SESSION, AND `npx` HID IT (r247)
+
+Between the full gate and the re-run, `node_modules/` disappeared from mainwt. Nothing in
+`dev-db-rebuild.sh` touches the repo and no deletion was running when it was noticed — **cause unknown, so
+expect it again.** What matters is how it PRESENTED:
+
+- **`npx vitest run …` did not say "no dependencies".** npx fetched its own vitest and died inside
+  `vitest.config.ts` with `Cannot find module 'vitest/config'` — a config error, not a missing-install one.
+- **`pnpm vitest run …`** then failed with `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "vitest" not found`.
+- **`npx tsc --noEmit` returned exit 0 with node_modules absent.** A green typecheck proved nothing.
+
+**`ls node_modules/.bin/vitest` before trusting any gate result on a tree you have not just installed in.**
+`pnpm install --frozen-lockfile` restored it in 3.5s from the store, and tsc + the 59 files were green
+afterwards. Related: a fresh worktree never has node_modules.
 
 ### ⚠️ 10 VITEST WORKERS IS TOO MANY WHEN THE MACHINE IS UNDER MEMORY PRESSURE (r246)
 
