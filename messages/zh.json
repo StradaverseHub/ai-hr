@@ -6131,7 +6131,29 @@
         "emptyBody": "所有发薪中被标记的员工都已处理完毕。",
         "whyTitle": "你的处理为何重要",
         "whyBody": "控制塔上的三个数字——检查出错的频率、异常等待的时长、以及这些工作量意味着需要多少人手——在有人处理这些之前都无法得出。在那之前，控制塔会刻意显示缺什么，而不是给出一个数字。"
-      }
+      },
+      "agreementTitle": "AI 的判断和我们一致吗？",
+      "agreementUnavailable": "暂时没有可衡量的数据。",
+      "agreementWhyNotGuessed": "我们宁可不显示数字，也不显示一个好看的假数字。比率需要有决定作为分母，在此之前，这里的任何百分比都是没有依据的准确性声明。",
+      "agreementBlocked_no_provider": "尚未配置 AI 供应商，因此任何使用模型的功能都无法运行。",
+      "agreementBlocked_no_agent_on": "本公司未启用任何自动代理。",
+      "agreementBlocked_nothing_proposed": "尚未记录任何提议。",
+      "agreementBlocked_nothing_decided": "已有提议，但还没有人批准或拒绝过 — 因此一致率没有分母。",
+      "agreementDashMeaning": "破折号表示尚未衡量，而不是零。通过检查指提议本身有效的比例；一致指随后有人批准的比例；撤回指批准后又被推翻的比例。",
+      "colProposalType": "提议内容",
+      "colProposed": "提议数",
+      "colAdjudicationPass": "通过检查",
+      "colAgreement": "一致率",
+      "colReversal": "撤回率",
+      "proposalType_anomaly_narration": "用文字解释工资单异常",
+      "proposalType_pay_rule_draft": "根据一句话起草薪酬规则",
+      "proposalType_report_spec": "根据一句话起草报表",
+      "proposalType_close_fixed_upstream": "关闭根因已修复的问题",
+      "proposalType_readiness_nudge": "提醒补全缺失的记录",
+      "proposalType_anomaly_hypothesis": "规则未捕捉到的潜在问题",
+      "proposalType_input_triage": "向报销申请人回问的问题",
+      "proposalType_readiness_fix": "针对不完整记录的修正建议",
+      "agreementReversalUninstrumented": "撤回列刻意留空：系统目前还没有任何地方记录撤回，所以显示数字会让人以为每次批准都成立，而实际上只是无人核查。"
     }
   },
   "admin": {

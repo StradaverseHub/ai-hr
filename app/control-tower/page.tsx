@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE, TARGET_AUTO_CLEAR_RATE } from '@/core/control-tower';
+import { agreementView, controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE, TARGET_AUTO_CLEAR_RATE } from '@/core/control-tower';
 import { domainsFor } from '@/core/control-domains';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 
@@ -38,6 +38,10 @@ export default async function ControlTowerPage() {
   const domains = domainsFor(s);
   const live = domains.filter((d) => d.status === 'live');
   const view = await controlTowerView(s);
+  // ⚠️ A SECOND, SEPARATE CALL ON PURPOSE — see agreementView's header. It reads the proposal ledger,
+  // which opens its own transaction, and controlTowerView is one big one. Folding this into that view
+  // would nest `withTenant` inside `withTenant`, which core/agent-proposal.ts property 2 forbids.
+  const agreement = await agreementView(s);
 
   const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
   const mins = (v: number | null) => (v == null ? '—' : `${Math.round(v / 60)}m`);
@@ -131,6 +135,69 @@ export default async function ControlTowerPage() {
         </p>
         {!view.ratio.thresholdsTuned && (
           <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('thresholdsUntuned')}</p>
+        )}
+      </Card>
+
+
+      {/* ── ADR-0084 Phase 3 item 5 — DOES THE AI AGREE WITH US? Three rates per proposal type, and the
+             same honest refusal the ratio card makes when there is nothing to stand behind. ── */}
+      <Card className="p-5">
+        <SectionHeader title={t('agreementTitle')} />
+        {agreement.rates.length === 0 ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+            <p className="font-medium text-amber-900 dark:text-amber-200">{t('agreementUnavailable')}</p>
+            <ul className="mt-2 space-y-1 text-amber-800 dark:text-amber-300/90">
+              {agreement.blockedBy.map((b) => (
+                <li key={b}>• {t(`agreementBlocked_${b}`)}</li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-amber-800 dark:text-amber-300/90">{t('agreementWhyNotGuessed')}</p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">{t('colProposalType')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colProposed')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colAdjudicationPass')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colAgreement')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colReversal')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {agreement.rates.map((r) => (
+                    <tr key={r.type}>
+                      {/* ⚠️ `r.type` is a TEXT column, and ProposalTypeId is a TypeScript union rather
+                          than a SQL CHECK (see 0452's header) — so a type can reach this screen that has
+                          no translation yet, and a bare t() would throw MISSING_MESSAGE and take the
+                          whole Control Tower down. Fall back to the raw id: ugly beats absent. */}
+                      <td className="px-4 py-2.5">
+                        {t.has(`proposalType_${r.type}`) ? t(`proposalType_${r.type}`) : r.type}
+                      </td>
+                      <td className="px-4 py-2.5 tabular-nums">{r.total.toLocaleString()}</td>
+                      {/* Every one of these renders null as an em dash, NEVER as 0% — the rate is null
+                          precisely when its denominator is zero, and "0% agreement because nobody has
+                          decided anything" is a claim about accuracy that nothing supports. */}
+                      <td className="px-4 py-2.5 tabular-nums">{pct(r.adjudicationPassRate)}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{pct(r.agreementRate)}</td>
+                      {/* ⚠️ Reversal matters most (§2.4) and is the one nothing writes yet, so the view
+                          blanks it rather than letting a real-looking 0% through — see
+                          REVERSAL_HAS_A_WRITER. The column is still RENDERED, because an always-blank
+                          column is a visible debt and a hidden one is a forgotten one. */}
+                      <td className="px-4 py-2.5 tabular-nums">{pct(r.reversalRate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">{t('agreementDashMeaning')}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{t('agreementReversalUninstrumented')}</p>
+            {agreement.blockedBy.includes('nothing_decided') && (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('agreementBlocked_nothing_decided')}</p>
+            )}
+          </>
         )}
       </Card>
 

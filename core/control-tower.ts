@@ -31,6 +31,9 @@
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
+import { proposalRates, type ProposalRates } from './agent-proposal';
+import { resolveActiveAiConfig } from './ai-config';
+import { isModuleEnabled, settingEnabled } from './entitlements';
 
 /** ADR-0074 §"the reframe": the target the whole design serves. */
 export const TARGET_AUTO_CLEAR_RATE = 0.95;
@@ -241,4 +244,89 @@ export async function controlTowerView(ctx: SessionContext): Promise<ControlTowe
       },
     };
   });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════════
+ * ADR-0084 Phase 3 item 5 — AGREEMENT MEASUREMENT
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Why there is nothing to measure. Same shape and same discipline as `ratio.blockedBy` above: name what
+ * is missing rather than print a figure nobody can defend.
+ *
+ * The order is causal, not alphabetical — a tenant with no provider ALSO has no proposals, and telling
+ * them "nothing proposed yet" first would send them looking in the wrong place.
+ */
+export type AgreementBlocker = 'no_provider' | 'no_agent_on' | 'nothing_proposed' | 'nothing_decided';
+
+/**
+ * ⚠️ **NOTHING IN THIS PRODUCT CALLS `recordReversal` YET, SO A REVERSAL RATE WOULD BE A FABRICATION.**
+ *
+ * `proposalRates` computes `reversed ÷ approved`, and that arithmetic is right: once one proposal is
+ * approved the denominator is real, so the rate is a real 0. The problem is what a 0 MEANS here. With no
+ * writer anywhere, `reversed` is structurally zero for every row, so the screen would print "0% reversed"
+ * — which reads as "every approval stuck" — when the truth is "nothing in this system can notice that one
+ * did not". That is the same lie as a 0% agreement rate, in the flattering direction, and it is the one
+ * ADR-0084 says matters MOST (§2.4: for a batch action type, whether the closure stuck is the only thing
+ * that proves anything).
+ *
+ * This is a CONSTANT rather than a setting for the reason `AutonomyLevel` is a union with one member:
+ * turning it on must be a source change that arrives WITH the writer and gets reviewed alongside it, not
+ * a flag somebody flips. Phase 3 item 6 (recurrence mining) is what writes reversals; that round flips
+ * this to `true` in the same diff and deletes this paragraph.
+ */
+const REVERSAL_HAS_A_WRITER = false;
+
+export type AgreementView = {
+  rates: ProposalRates[];
+  /** Empty only when at least one rate is actually measurable. */
+  blockedBy: AgreementBlocker[];
+  /** Proposals recorded, all types, all time. The denominator behind `nothing_proposed`. */
+  proposals: number;
+};
+
+/**
+ * The three rates per proposal type, plus the honest reason when there are none.
+ *
+ * ⚠️ **CALL THIS OUTSIDE ANY TRANSACTION, AND NEVER FROM INSIDE `controlTowerView`.** `proposalRates`
+ * opens its own `withTenant`, and `core/agent-proposal.ts` property 2's corollary is explicit that
+ * nesting one inside another holds two pool connections for the duration of the outer one and deadlocks
+ * if the outer ever locks a row the inner needs. `controlTowerView` is one big `withTenant`, so this is a
+ * SECOND page-level call rather than another field on that view. That separation is deliberate; folding
+ * it in later would reintroduce exactly the nesting the ledger warns about.
+ *
+ * ⚠️ **AND IT NEVER TURNS A NULL RATE INTO A ZERO.** `proposalRates` returns null for every rate whose
+ * denominator is zero, and this function preserves that verbatim — the caller renders the null. "0%
+ * agreement because nobody has decided anything" is the same class of lie as an implied-operators figure
+ * computed from placeholder thresholds, and this file already refuses that one.
+ */
+export async function agreementView(ctx: SessionContext): Promise<AgreementView> {
+  const measured = await proposalRates(ctx);
+  // Blank the reversal rate while nothing can write one — see REVERSAL_HAS_A_WRITER. The core arithmetic
+  // is left exactly as it is: it is correct, other callers and test/agent-proposal.test.ts depend on it,
+  // and bending shared arithmetic to suit one screen is how a number becomes wrong somewhere else.
+  const rates: ProposalRates[] = REVERSAL_HAS_A_WRITER
+    ? measured
+    : measured.map((r) => ({ ...r, reversalRate: null }));
+  const proposals = rates.reduce((n, r) => n + r.total, 0);
+
+  // The gates, read from the system rather than assumed — the same sources the agent switchboard reads,
+  // so the two screens cannot disagree about whether anything is switched on.
+  const aiConfigured = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).then((c) => c != null);
+  const anyAgentOn =
+    (isModuleEnabled(ctx, 'payroll') && settingEnabled(ctx, 'payroll.anomaly_hypotheses_enabled')) ||
+    settingEnabled(ctx, 'notifications.readiness_nudge_enabled') ||
+    (isModuleEnabled(ctx, 'claims') && settingEnabled(ctx, 'claims.input_triage_enabled'));
+
+  const blockedBy: AgreementBlocker[] = [];
+  if (!aiConfigured) blockedBy.push('no_provider');
+  if (!anyAgentOn) blockedBy.push('no_agent_on');
+  if (proposals === 0) blockedBy.push('nothing_proposed');
+  // Proposals exist but no human verdict has landed on any of them, so `agreementRate` is null across the
+  // board. That is a DIFFERENT gap from having no proposals — the proposers are working and the loop is
+  // still open — and it is the one Phase 3 items 6 and 7 close, so it gets its own sentence.
+  else if (rates.every((r) => r.agreementRate == null)) blockedBy.push('nothing_decided');
+
+  return { rates, blockedBy, proposals };
 }
