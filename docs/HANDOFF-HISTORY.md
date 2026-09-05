@@ -1,3 +1,41 @@
+## r247 (2026-09-05) — the four approved items closed; the Leave Configuration audit goes back as a plan. `main@04ab47b4`.
+
+**DEPLOYED.** tsc clean · full suite green (see the caveat below) · `next build` clean · no migration ·
+arrival proved by a one-line `rsync -azi --dry-run` (`next-env.d.ts` only) · service active · `GET /` 401.
+
+**THE GATE FOUND ONE REAL BUG AND IT WAS AN ARCHITECTURE ONE.** `test/leave-pack-drift.test.ts`
+(ADR-0080 D9) caught `core/entitlement-scheme-view.ts` — new in this round — importing `core/leave-compute`
+and `core/entitlement-template` directly. Both are leave-pack BOUNDARY modules and this file is an OUTSIDE
+consumer: its caller is the personnel screen, not a leave screen.
+**DECISION: the fix is the facade, never the allowlist.** It now imports from `packs/leave/service`, which
+re-exports both in place. `test/pack-drift-allowlist.json` is audited kernel-contract debt and the test's
+own message records that it only ever SHRINKS. The tempting alternative — declaring this module part of the
+leave pack — would have moved the violation onto `app/admin/personnel` and GROWN the list, which is the
+drift D9 exists to stop.
+
+**DECISION — `a6fe37fc`'s audit went back as a PLAN, not as a delivery note.** The reporter's own
+Implementation Rules said produce the audit and wait for approval before destructive changes, and
+`approveFeedbackPlan` carries no payload — so the only channel that can carry "we recommend not rebuilding"
+AND accept an answer is a plan revision with ONE recommended course of action (AGENTS 9). Rev 2 recommends
+fixing the configuration; rejecting it with a reason is how they say they still want the rebuild.
+**The mockup draws only the measured BEFORE and the SHAPE of the after** — it deliberately does not name
+which of the 16 Annual Leave tables survive, because that is the decision being asked for and a picture
+cannot hedge.
+
+**THE AUDIT'S FINDING, which outlives this round:** 45 entitlement template lineages, ALL with
+`valid_to IS NULL` — nothing has ever been superseded — and only 4 eligibility rules in the whole tenant.
+Ten of the eleven leave types that carry templates carry more than one. **Annual Leave: 16 tables in force,
+2 rules.** An entitlement table says how many days; a rule says who gets it. This is CONFIGURATION and a
+rebuild would carry it across intact. Also corrected in passing: `AGENTS.md` and this file both said TWELVE
+foreign keys to `leave_type`; measured on production it is **ten direct plus one indirect**
+(`entitlement_eligibility_rule`, through the template lineage). `leave_policy` went in release three.
+
+**THE GATE'S CAVEAT, and it is the same shape as r245.** The chunked run reported 59 failed files across
+763. **58 of them carry ZERO AssertionErrors** and fail with `database system is in recovery mode` /
+`ECONNREFUSED 5433`; chunks 1 and 3 both hit `peak-disk=100%` while chunk 2 peaked at 85% and produced the
+ONE real failure. All 59 were re-run together on a rebuilt cluster: **59 passed (59), 519 tests, exit 0.**
+The AssertionError count is again what separated the environment from the code.
+
 ## r246 (2026-09-03) — three open items planned; two answered "already works" from production evidence. NO CODE.
 
 **The board went from three open items to zero awaiting a plan.** Two of the three needed no build at

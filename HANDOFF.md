@@ -18,12 +18,12 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-05 (r226-r247 SHIPPED · BOARD HAS NOTHING BUILDABLE · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
+## CURRENT STATE — snapshot 2026-09-06 (r226-r248 SHIPPED · BOARD HAS NOTHING BUILDABLE · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
 
-**`main@04ab47b4` IS WHAT RUNS ON PRODUCTION (r247, 2026-09-05)** — verified by an
-`rsync -azi --delete --dry-run` from **mainwt** that returned ONE line, `next-env.d.ts` (Next rewrites it
-per build mode and it is gitignored; a single such entry is the zero-change state, not a stale file).
-Not by `deploy.sh` succeeding, which is not proof. Service active, `GET localhost:3000/` → 401 ON THE BOX.
+**`main@49ff2885` IS WHAT RUNS ON PRODUCTION (r248, 2026-09-06)** — verified by an
+`rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
+which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
+and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
 **Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
 `payroll_anomaly_finding.proposal_id` present (uuid, nullable), and
 `setting_definition` carries `payroll.anomaly_hypotheses_enabled` (tenant scope, default false) — the
@@ -84,8 +84,10 @@ verify it", which just moves the checking onto the reader.
 **ADR-0084 BUILD ORDER.** Phase 1 (no production data needed): 1 the proposal ledger + the `adjudicate`
 contract ✅ r236 · 2 the readiness nudge agent ✅ r237. Phase 2: 3 hypothesis detection ✅ r238 ·
 4 input-side triage ✅ r240 (claims only). **PHASE 2 IS DONE.** Phase 3 (needs real history):
-**5 agreement measurement — next, and BLOCKED until production has a provider and a switched-on tenant** ·
-6 recurrence mining · 7 the first autonomy grant.
+**5 agreement measurement ✅ r248 — the SURFACE ships; the RATES stay null until production has a provider,
+a switched-on tenant, and a caller for `recordDecision`** · 6 recurrence mining — **and it now owns a
+specific debt: it must flip `REVERSAL_HAS_A_WRITER` in `core/control-tower.ts` in the same diff that
+starts writing reversals** · 7 the first autonomy grant.
 ~~Not a build: the missing call sites~~ ✅ r238.
 
 ⚠️ **ALL THREE UNATTENDED AGENTS ARE STILL OFF — BUT THEY ARE NOW SWITCHABLE FROM THE PRODUCT (r243).**
@@ -290,43 +292,57 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r247 (2026-09-05) — the four approved items closed; the Leave Configuration audit goes back as a plan. `main@04ab47b4`.
+### r248 (2026-09-06) — agreement measurement lands, and the first thing it measured was a lie we were about to print. `main@49ff2885`.
 
-**DEPLOYED.** tsc clean · full suite green (see the caveat below) · `next build` clean · no migration ·
-arrival proved by a one-line `rsync -azi --dry-run` (`next-env.d.ts` only) · service active · `GET /` 401.
+**DEPLOYED.** tsc clean · **full gate GREEN, 764 files across 5 chunks, every chunk exit 0** · `next build`
+clean · no migration · arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401.
 
-**THE GATE FOUND ONE REAL BUG AND IT WAS AN ARCHITECTURE ONE.** `test/leave-pack-drift.test.ts`
-(ADR-0080 D9) caught `core/entitlement-scheme-view.ts` — new in this round — importing `core/leave-compute`
-and `core/entitlement-template` directly. Both are leave-pack BOUNDARY modules and this file is an OUTSIDE
-consumer: its caller is the personnel screen, not a leave screen.
-**DECISION: the fix is the facade, never the allowlist.** It now imports from `packs/leave/service`, which
-re-exports both in place. `test/pack-drift-allowlist.json` is audited kernel-contract debt and the test's
-own message records that it only ever SHRINKS. The tempting alternative — declaring this module part of the
-leave pack — would have moved the violation onto `app/admin/personnel` and GROWN the list, which is the
-drift D9 exists to stop.
+**ADR-0084 Phase 3 item 5.** `proposalRates` already existed and was already correct — the missing half was
+a surface. `agreementView` (core/control-tower.ts) returns the three rates per proposal type plus the honest
+reason when there are none, in the same shape `ratio.blockedBy` already uses on that page. The card renders
+`no_provider → no_agent_on → nothing_proposed` in CAUSAL order, because a tenant with no provider also has
+no proposals and leading with "nothing proposed yet" sends them looking in the wrong place. A fourth
+blocker, `nothing_decided`, separates "the proposers are not running" from "the proposers ARE running and
+nobody has ruled on them" — different gaps, different sentences.
 
-**DECISION — `a6fe37fc`'s audit went back as a PLAN, not as a delivery note.** The reporter's own
-Implementation Rules said produce the audit and wait for approval before destructive changes, and
-`approveFeedbackPlan` carries no payload — so the only channel that can carry "we recommend not rebuilding"
-AND accept an answer is a plan revision with ONE recommended course of action (AGENTS 9). Rev 2 recommends
-fixing the configuration; rejecting it with a reason is how they say they still want the rebuild.
-**The mockup draws only the measured BEFORE and the SHAPE of the after** — it deliberately does not name
-which of the 16 Annual Leave tables survive, because that is the decision being asked for and a picture
-cannot hedge.
+⚠️ **DECISION: A SECOND PAGE-LEVEL CALL, NOT A FIELD ON `controlTowerView`.** `proposalRates` opens its own
+`withTenant` and `controlTowerView` is one big one; `core/agent-proposal.ts` property 2's corollary forbids
+nesting them (two pool connections held for the outer's duration, deadlock if the outer locks a row the
+inner needs). Anyone "tidying" this into one view reintroduces exactly that — the header on `agreementView`
+says so.
 
-**THE AUDIT'S FINDING, which outlives this round:** 45 entitlement template lineages, ALL with
-`valid_to IS NULL` — nothing has ever been superseded — and only 4 eligibility rules in the whole tenant.
-Ten of the eleven leave types that carry templates carry more than one. **Annual Leave: 16 tables in force,
-2 rules.** An entitlement table says how many days; a rule says who gets it. This is CONFIGURATION and a
-rebuild would carry it across intact. Also corrected in passing: `AGENTS.md` and this file both said TWELVE
-foreign keys to `leave_type`; measured on production it is **ten direct plus one indirect**
-(`entitlement_eligibility_rule`, through the template lineage). `leave_policy` went in release three.
+⚠️⚠️ **THE TEST CAUGHT A FABRICATED 0%, AND IT WAS NOT IN THIS ROUND'S CODE.** `reversalRate` is
+`reversed ÷ approved` — correct arithmetic, and once one proposal is approved the denominator is real, so
+it returns a real `0`. But **`recordReversal` HAS ZERO CALLERS IN THE PRODUCT** (verified across
+`core app lib scripts localization`). So `reversed` is structurally zero for every row and the card would
+have printed **"0% reversed" — i.e. every approval stuck — when the truth is that nothing in this system can
+notice that one did not.** ADR-0084 §2.4 calls reversal the metric that matters MOST, so this was the
+flattering-direction lie in the most expensive available place.
 
-**THE GATE'S CAVEAT, and it is the same shape as r245.** The chunked run reported 59 failed files across
-763. **58 of them carry ZERO AssertionErrors** and fail with `database system is in recovery mode` /
-`ECONNREFUSED 5433`; chunks 1 and 3 both hit `peak-disk=100%` while chunk 2 peaked at 85% and produced the
-ONE real failure. All 59 were re-run together on a rebuilt cluster: **59 passed (59), 519 tests, exit 0.**
-The AssertionError count is again what separated the environment from the code.
+**DECISION: fixed at the VIEW, deliberately NOT in `proposalRates`.** That arithmetic is right, other
+callers and `test/agent-proposal.test.ts` depend on it, and bending shared arithmetic to suit one screen is
+how a number becomes wrong somewhere else. `REVERSAL_HAS_A_WRITER` is a **CONSTANT**, for the same reason
+`AutonomyLevel` is a union with one member: turning it on must be a source change that arrives WITH the
+writer and gets reviewed beside it, never a flag somebody flips. **Phase 3 item 6 owns flipping it.** The
+column still renders — an always-blank column is visible debt; a hidden one is forgotten debt.
+
+**WHAT STILL CANNOT PRODUCE A RATE, so nobody reads the blank card as a defect:** production has no AI
+provider (unchanged), no agent is switched on, AND **`recordDecision` also has no callers**. Wiring that one
+is a real design problem rather than a missing line: `draftPayRule` discards the id `recordProposal` returns,
+the UI would have to carry it to the save, and a DECLINE is unobservable if the admin simply navigates away
+— which would make agreement structurally 1.0, the exact flaw §2.4 already records for
+`close_fixed_upstream`. **Do not bolt it on; it deserves its own round.**
+
+**Verified on production before building, not taken from this file:** `ai_provider_config` 0 rows,
+`agent_proposal` 0 rows, 0 agents switched on, and 0 AI keys in `.env.production`.
+
+**`t.has()` on the proposal-type label (AGENTS 6).** `ProposalTypeId` is a TypeScript union, not a SQL
+CHECK — 0452's header explains why — so a type can reach the screen with no translation, and a bare `t()`
+would `MISSING_MESSAGE` the whole Control Tower down. Falls back to the raw id: ugly beats absent.
+
+**CHUNKS=5 VALIDATED.** r247's floor was a guess from a failure; this is the measurement. Five chunks
+peaked at **58-79% disk** and produced **zero** environmental failures, against 58 at three chunks the day
+before. 153+153+153+153+152 = 764, so every file was counted (AGENTS 4).
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
@@ -1131,9 +1147,11 @@ reported **`peak-disk=100%`** on the 8 GiB RAM disk, Postgres died mid-chunk, an
 failed with `database system is in recovery mode` / `ECONNREFUSED 5433` — **58 files red for no reason
 connected to the code.** Chunk 2 peaked at 85% and was the only chunk whose failure was real.
 
-**`CHUNKS=5 ./scripts/gate-chunked.sh` is the new floor.** And read the `peak-disk` figure the script
-prints per chunk: **100% means that chunk's result is not evidence**, whatever the failure list says. The
-machine has 18 GB of RAM, so the RAM disk cannot simply be made bigger — more chunks is the lever.
+**`CHUNKS=5 ./scripts/gate-chunked.sh` IS THE FLOOR, AND r248 MEASURED IT RATHER THAN GUESSING.** Five
+chunks peaked at **58-79%** and produced **ZERO** environmental failures the day after three chunks produced
+58. Read the `peak-disk` figure the script prints per chunk: **100% means that chunk's result is not
+evidence**, whatever the failure list says. The machine has 18 GB of RAM, so the RAM disk cannot simply be
+made bigger — more chunks is the lever.
 
 **The AssertionError count remains the discriminator.** 59 failed files, 58 with ZERO AssertionErrors, all
 59 green on a rebuilt cluster (519 tests, exit 0). Grep `AssertionError` before believing any red gate.
