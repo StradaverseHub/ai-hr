@@ -47,7 +47,7 @@
 # and none of this touches it. Never copy these settings to a server.
 #
 #   ./scripts/dev-db-rebuild.sh          rebuild on a RAM disk (default; use with gate-chunked.sh)
-#   ./scripts/dev-db-rebuild.sh --purge  also delete previously-moved-aside on-disk clusters
+#   ./scripts/dev-db-rebuild.sh --purge  ALSO delete every moved-aside cluster (SLOW — hours to days)
 #   AIHR_RAMDISK_GB=0 ./scripts/dev-db-rebuild.sh   rebuild ON DISK (no ceiling; for a bare full run)
 #
 # SIZING: 8 GB by default on an 18 GB machine. Steady state is well under 1 GB of WAL (see the block below)
@@ -84,6 +84,21 @@ MOUNT="${DATA}-ram"          # the RAM disk itself
 REAL="$MOUNT/data"           # PGDATA lives one level DOWN — see below
 is_mounted() { mount | grep -q " on $MOUNT "; }
 
+# EVERY moved-aside cluster this script has ever produced, newest first. The suffix has drifted —
+# `.wedged-<ts>` from the on-disk branch below, `.predisk-<ts>` from the first RAM-disk migration, and
+# `.w4`/`.w5`/`.wedged2-*`/`.wedged3` from hand-run rebuilds — so a `.wedged-*` glob silently missed a
+# third of them (measured 2026-09-05: 75 of 88). Match the whole `$DATA.` prefix instead and subtract
+# the one thing under it that is NOT a cluster: this script's own drain lock.
+moved_aside() { ls -dt "$DATA".* 2>/dev/null | grep -v '\.purge\.lock$'; }
+
+# Remove ONE moved-aside entry. ⚠️ A MOVED-ASIDE ENTRY CAN BE A SYMLINK INTO THE LIVE DATA DIRECTORY.
+# Running with AIHR_RAMDISK_GB=0 while $DATA is still the RAM-disk symlink hits the `elif [ -d "$DATA" ]`
+# branch (-d follows the link), and `mv` moves the LINK — so `$DATA.wedged-<ts>` then points at
+# `$DATA-ram/data`, the cluster that is RUNNING. `rm -rf` through it would delete the live database.
+# Links therefore go with `rm -f`, real directories with `rm -rf`, and NEVER with a trailing slash.
+# aihr-pg16.wedged-20260902-112906 was exactly this and sat there for three days.
+remove_cluster() { if [ -L "$1" ]; then rm -f "$1"; else rm -rf "$1"; fi; }
+
 # WHY THE SYMLINK. initdb REFUSES a mount point as the data directory: HFS puts .fseventsd and
 # "HFS+ Private Directory Data" at the root of every volume, so the directory is never empty and initdb
 # stops with "exists but is not empty ... perhaps due to it being a mount point". So the volume is
@@ -118,47 +133,57 @@ elif [ -d "$DATA" ]; then
   OLD="$DATA.wedged-$(date +%Y%m%d-%H%M%S)"
   mv "$DATA" "$OLD"
   echo "▸ old cluster moved to $OLD"
+fi
 
-  # ⚠️ r246 — KEEP EXACTLY ONE, AND DRAIN THE REST. The mv above is instant and that is the whole
-  # reason this script uses it, but NOTHING EVER REMOVED THE RESULT: --purge is opt-in and the gate
-  # has never passed it, while gate-chunked.sh calls this script ONCE PER CHUNK. So every six-chunk
-  # gate left six clusters behind.
-  #
-  # Measured 2026-09-03, after that had run unnoticed for weeks: 68 of them, the volume at 188MB free
-  # of 926GB, one sampled cluster holding 2.5M files. The gate then failed in the way this trap always
-  # fails — chunk 3 exited 1 with COMPLETELY EMPTY output and zero AssertionErrors, which reads exactly
-  # like a code failure, and chunk 4 died at initdb with "No space left on device". AGENTS 10b.
-  #
-  # One previous cluster is enough to inspect, which is all the mv was ever for. Deletion is in the
-  # BACKGROUND so the rebuild stays instant.
-  #
-  # ⚠️ THE LOCK IS NOT OPTIONAL, and the first version of this fix got it wrong. A background rm here
-  # is SLOW — on this machine unlink is intercepted by an endpoint-security extension and runs at a
-  # few hundred files/sec, so one 2.5M-file cluster takes hours. The gate calls this script once per
-  # chunk, so "delete the oldest in the background" WITHOUT a lock leaves a six-chunk gate with a
-  # dozen concurrent rm processes competing with the tests for exactly the I/O the endpoint extension
-  # is already throttling. The lock keeps it to ONE draining purge at a time, whatever calls this.
-  #
-  # The lock is a directory because mkdir is atomic; a stale one is cleared when its pid is gone.
-  # ⚠️ RELEASE WITH rm -rf, NEVER rmdir — the lock directory holds the pid file, so rmdir fails and the
-  # lock is never released: one drain would run and every later call would skip forever. Caught by
-  # exercising this in a sandbox rather than reading it; the concurrency half was already correct.
-  # And the pid recorded is the BACKGROUND JOB's ($!), not $$ — inside ( ) $$ is still the parent
-  # shell, so a $$ here would have made the stale-lock check test the wrong process.
-  LOCK="$DATA.purge.lock"
-  if mkdir "$LOCK" 2>/dev/null; then
-    STALE="$(ls -dt "$DATA".wedged-* 2>/dev/null | tail -n +2 | tail -1)"
-    if [ -n "$STALE" ]; then
-      echo "▸ draining one stale cluster in the background: $STALE"
-      ( rm -rf "$STALE"; rm -rf "$LOCK" ) >/dev/null 2>&1 &
-      echo $! > "$LOCK/pid" 2>/dev/null || true
-    else
-      rm -rf "$LOCK" 2>/dev/null
-    fi
-  elif [ -f "$LOCK/pid" ] && ! kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; then
-    # Previous drain died (a killed gate, a reboot). Clear the lock; the next run picks it up.
+
+# ⚠️ r246/r247 — KEEP EXACTLY ONE, AND DRAIN THE REST. The mv above is instant and that is the whole
+# reason this script uses it, but NOTHING EVER REMOVED THE RESULT.
+#
+# ⚠️ r246 DIAGNOSED THIS WRONG AND THE WRONG VERSION SAT HERE FOR A ROUND. It said "gate-chunked.sh
+# calls this script once per chunk, so every six-chunk gate left six clusters behind". It does not:
+# the gate passes no AIHR_RAMDISK_GB, so it takes the RAM-disk branch, which CLEARS THE RAM DISK IN
+# PLACE and leaves nothing aside at all. The real mechanism is worse and quieter — this drain used to
+# live INSIDE the on-disk `elif` branch above, so the gate never reached it either. Draining only ever
+# happened on `AIHR_RAMDISK_GB=0` rebuilds, which is how 89 moved-aside clusters (~350GB, 926GB volume
+# down to 188MB free) accumulated underneath a comment that claimed one was drained per rebuild.
+# It is unconditional now: cheap when there is nothing to drain, and the only thing standing between a
+# long gate and a full volume.
+#
+# What a full volume looks like, so it is recognised next time: the gate fails in a way that reads
+# exactly like a code failure — a chunk exits 1 with COMPLETELY EMPTY output and ZERO AssertionErrors,
+# or initdb dies with "No space left on device". AGENTS 10b. In r247 it presented as 58 files failing
+# with "database system is in recovery mode" while the RAM disk sat at 100%.
+#
+# One previous cluster is enough to inspect, which is all the mv was ever for. Deletion is in the
+# BACKGROUND so the rebuild stays instant.
+#
+# ⚠️ THE LOCK IS NOT OPTIONAL, and the first version of this fix got it wrong. A background rm here
+# is SLOW — on this machine unlink is intercepted by an endpoint-security extension and runs at a
+# few hundred files/sec. Measured 2026-09-05 over a real 88-cluster purge: ~5 MINUTES per 5GB cluster.
+# The gate calls this script once per chunk, so "delete the oldest in the background" WITHOUT a lock
+# leaves a multi-chunk gate with a dozen concurrent rm processes competing with the tests for exactly
+# the I/O the endpoint extension is already throttling. The lock keeps it to ONE drain at a time,
+# whatever calls this.
+#
+# The lock is a directory because mkdir is atomic; a stale one is cleared when its pid is gone.
+# ⚠️ RELEASE WITH rm -rf, NEVER rmdir — the lock directory holds the pid file, so rmdir fails and the
+# lock is never released: one drain would run and every later call would skip forever. Caught by
+# exercising this in a sandbox rather than reading it; the concurrency half was already correct.
+# And the pid recorded is the BACKGROUND JOB's ($!), not $$ — inside ( ) $$ is still the parent
+# shell, so a $$ here would have made the stale-lock check test the wrong process.
+LOCK="$DATA.purge.lock"
+if mkdir "$LOCK" 2>/dev/null; then
+  STALE="$(moved_aside | tail -n +2 | tail -1)"
+  if [ -n "$STALE" ]; then
+    echo "▸ draining one stale cluster in the background: $STALE"
+    ( remove_cluster "$STALE"; rm -rf "$LOCK" ) >/dev/null 2>&1 &
+    echo $! > "$LOCK/pid" 2>/dev/null || true
+  else
     rm -rf "$LOCK" 2>/dev/null
   fi
+elif [ -f "$LOCK/pid" ] && ! kill -0 "$(cat "$LOCK/pid" 2>/dev/null)" 2>/dev/null; then
+  # Previous drain died (a killed gate, a reboot). Clear the lock; the next run picks it up.
+  rm -rf "$LOCK" 2>/dev/null
 fi
 
 echo "▸ initdb"
@@ -279,8 +304,28 @@ psql -p "$PORT" -U postgres -d postgres -At -F'|' \
   -c "select 'databases', count(*)::text from pg_database"
 
 if [ "${1:-}" = "--purge" ]; then
-  echo "▸ purging previously moved-aside clusters"
-  rm -rf "$DATA".wedged-* 2>/dev/null
+  # ⚠️ THIS TAKES DAYS, NOT MINUTES, AND IT IS NOT STUCK. Unlink on this machine is intercepted by an
+  # endpoint-security extension, and the cost is per FILE, not per byte. Measured 2026-09-05/06 over a
+  # real purge: median 459s per cluster, MAX 9195s (2.5 hours) for ONE of them, mean ~27 min — so ~34
+  # hours for 76 clusters. Cluster SIZE barely predicts it; file COUNT does, and the fattest hold
+  # millions. Budget accordingly and do not start this before a gate.
+  # It prints one line per cluster with elapsed time and free space, and it is safe to ctrl-C at any
+  # point — each entry is removed whole, and the next --purge picks up where this one left off.
+  #
+  # It removes EVERY moved-aside cluster including the newest, which is the difference between this and
+  # the background drain above (that one always keeps one to inspect). Two earlier bugs are fixed here:
+  # the old `rm -rf "$DATA".wedged-*` matched only ONE of the several suffixes this script has produced
+  # over time (75 of 88 on the day it was measured), and it went through remove_cluster's symlink case
+  # blind — see that function for why a moved-aside entry can point at the RUNNING cluster.
+  free_gi() { df -g /System/Volumes/Data | awk 'NR==2{print $4}'; }
+  n=0; total=$(moved_aside | wc -l | tr -d ' ')
+  echo "▸ purging $total previously moved-aside cluster(s) — expect ~5 min each; free=$(free_gi)Gi"
+  moved_aside | while IFS= read -r c; do
+    n=$((n + 1)); t0=$(date +%s)
+    remove_cluster "$c"
+    echo "  [$n/$total] removed in $(( $(date +%s) - t0 ))s  free=$(free_gi)Gi  $(basename "$c")"
+  done
+  echo "▸ purge done; free=$(free_gi)Gi"
 fi
 
 cat <<'DONE'
