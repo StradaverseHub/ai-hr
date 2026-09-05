@@ -3958,7 +3958,8 @@
         "title": "EA forms for {count} employers",
         "body": "This employee was paid by more than one company in this year, so each owes a separate EA form. Choose an employer to view and print its form."
       },
-      "downloadPdf": "Download the EA form"
+      "downloadPdf": "Download the EA form",
+      "previewNotice": "This screen is a preview, for checking the figures before you file. “Download the EA form” gives you the C.P.8A itself, laid out as the printed form."
     },
     "cp22": {
       "download": "Download CP22",

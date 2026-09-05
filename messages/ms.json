@@ -3593,7 +3593,8 @@
         "title": "Borang EA bagi {count} majikan",
         "body": "Pekerja ini dibayar oleh lebih daripada satu syarikat pada tahun ini, jadi setiap satu perlu mengeluarkan Borang EA yang berasingan. Pilih majikan untuk melihat dan mencetak borangnya."
       },
-      "downloadPdf": "Muat turun borang EA"
+      "downloadPdf": "Muat turun borang EA",
+      "previewNotice": "Skrin ini ialah pratonton, untuk menyemak angka sebelum anda memfailkan. “Muat turun borang EA” memberikan anda C.P.8A itu sendiri, disusun seperti borang bercetak."
     },
     "cp22": {
       "download": "Muat turun CP22",
