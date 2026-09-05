@@ -8393,6 +8393,22 @@
       "explainWhyMatched": "匹配",
       "explainRuleLink": "打开规则",
       "explainTable": "额度表：{name}"
+    },
+    "personnel": {
+      "benefitScheme": {
+        "title": "福利方案",
+        "effectiveFrom": "生效日期",
+        "none": "无法归入单一方案",
+        "noneHint": "该员工的不同假期类型由不同规则涵盖，因此没有单一方案可命名。下方列出每种假期类型的适用情况。",
+        "noRule": "无方案规则 — 此假期类型的唯一表",
+        "colLeaveType": "假期类型",
+        "colPickedUpBy": "适用规则",
+        "colDays": "服务 {years} 年的天数",
+        "changeGrade": "更改职级或状态",
+        "changeRules": "更改此方案的内容",
+        "serviceYears": "服务 {years} 年",
+        "empty": "尚无适用于该员工的假期额度表。"
+      }
     }
   },
   "topbar": {

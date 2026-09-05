@@ -24,6 +24,9 @@ import {
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { listEntitlementRecalcAudit } from '@/core/leave';
+// 4da751c6 — the DERIVED Benefit Scheme readout. Stores nothing; asks the entitlement engine what it
+// already decided. See core/entitlement-scheme-view.ts for why there is no table behind it.
+import { benefitSchemeView } from '@/core/entitlement-scheme-view';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import {
   ENTITLEMENT_STATUS_LABEL_KEY,
@@ -317,6 +320,9 @@ export default async function EmployeePage({
     balances.map((b) => leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf)),
   );
   const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
+  // 4da751c6 — same asOf as the breakdowns, so the scheme and the days it explains can never be read at
+  // two different dates. Read-only and derived; no write, no column, no migration.
+  const scheme = admin ? await benefitSchemeView(s, employmentId, breakdownAsOf) : null;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
@@ -2347,6 +2353,93 @@ export default async function EmployeePage({
             </Link>
           </p>
         </div>
+      </div>
+    </Card>
+  ) : null;
+
+  // 4da751c6 — BENEFIT SCHEME + EFFECTIVE FROM, above the balances so the name reads before the numbers
+  // it explains. Everything here is DERIVED at read time (core/entitlement-scheme-view.ts): the scheme is
+  // the winning eligibility rule the entitlement engine itself chose, not a stored field, because a stored
+  // name can silently disagree with the rules that compute the days.
+  //
+  // ⚠️ THE AMBIGUOUS STATE IS NOT AN EDGE CASE TO TIDY AWAY — IT IS PROMISED TO THE REPORTER. Eligibility
+  // is per leave type, and grade groups are an APPLICATOR over gradeIds rather than a stored link, so an
+  // employee can legitimately be picked up by different rules for different types. The approved plan says
+  // in that case we "say so plainly and list what applies per leave type, rather than inventing a name".
+  // Do not replace this with a best guess.
+  const tScheme = await getTranslations('admin.personnel.benefitScheme');
+  const benefitSchemeCard = scheme ? (
+    <Card id="section-benefit-scheme">
+      <SectionHeader title={tScheme('title')} />
+      <div className="p-4">
+        {scheme.perType.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{tScheme('empty')}</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <div className="text-xs text-muted-foreground">{tScheme('title')}</div>
+                <div className={`text-base font-semibold ${scheme.schemeName ? '' : 'font-medium text-muted-foreground'}`}>
+                  {scheme.schemeName ?? tScheme('none')}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">{tScheme('effectiveFrom')}</div>
+                {/* An em dash, never a guessed date: the record shows no applied movement that could have
+                    moved this employee between schemes. AGENTS 28 — an absent value asserts nothing, a
+                    wrong one asserts something false. */}
+                <div className="text-base font-semibold tabular-nums">{scheme.effectiveFrom ?? '—'}</div>
+                {scheme.serviceYears != null && (
+                  <div className="text-xs text-muted-foreground">
+                    {tScheme('serviceYears', { years: scheme.serviceYears })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {scheme.ambiguous && (
+              <p className="mt-3 text-xs text-amber-700 dark:text-amber-500">{tScheme('noneHint')}</p>
+            )}
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="py-2 text-left font-medium">{tScheme('colLeaveType')}</th>
+                    <th className="py-2 text-left font-medium">{tScheme('colPickedUpBy')}</th>
+                    <th className="py-2 text-right font-medium">
+                      {tScheme('colDays', { years: scheme.serviceYears ?? 0 })}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scheme.perType.map((r) => (
+                    <tr key={r.leaveTypeId} className="border-b border-border last:border-0">
+                      <td className="py-2">{r.leaveTypeName}</td>
+                      <td className="py-2 text-muted-foreground">
+                        {r.viaSoleTemplate ? tScheme('noRule') : (r.ruleName ?? r.templateName)}
+                      </td>
+                      {/* Em dash rather than 0.00 — "no band resolves" and "zero days" are different facts. */}
+                      <td className="py-2 text-right tabular-nums">{r.daysAtService ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-4 border-t border-border pt-3 text-xs">
+              <Link
+                href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
+                className="text-primary hover:underline"
+              >
+                {tScheme('changeGrade')}
+              </Link>
+              <Link href="/admin/leave/entitlements" className="text-primary hover:underline">
+                {tScheme('changeRules')}
+              </Link>
+            </div>
+          </>
+        )}
       </div>
     </Card>
   ) : null;
@@ -4421,6 +4514,7 @@ export default async function EmployeePage({
       <>
         {/* Item 52a30630 — Grade relocated from Profile onto this tab, pinned above the balance card. */}
         {gradeCard}
+        {benefitSchemeCard}
         {leaveBalanceCard}
         {/* R45 7527ea5f — profile-change entitlement recalculation history. */}
         {recalcHistoryCard}

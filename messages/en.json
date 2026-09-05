@@ -8393,6 +8393,22 @@
       "explainWhyMatched": "Matches",
       "explainRuleLink": "Open rule",
       "explainTable": "Table: {name}"
+    },
+    "personnel": {
+      "benefitScheme": {
+        "title": "Benefit Scheme",
+        "effectiveFrom": "Effective From",
+        "none": "Does not resolve to a single scheme",
+        "noneHint": "This employee is picked up by different rules for different leave types, so there is no one scheme to name. What applies to each leave type is listed below.",
+        "noRule": "No scheme rule — the only table for this leave type",
+        "colLeaveType": "Leave type",
+        "colPickedUpBy": "Picked up by",
+        "colDays": "Days at {years} years",
+        "changeGrade": "Change grade or status",
+        "changeRules": "Change what this scheme grants",
+        "serviceYears": "{years} years of service",
+        "empty": "No entitlement tables reach this employee yet."
+      }
     }
   },
   "topbar": {

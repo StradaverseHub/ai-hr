@@ -8393,6 +8393,22 @@
       "explainWhyMatched": "Khớp",
       "explainRuleLink": "Mở quy tắc",
       "explainTable": "Bảng: {name}"
+    },
+    "personnel": {
+      "benefitScheme": {
+        "title": "Chế độ phúc lợi",
+        "effectiveFrom": "Có hiệu lực từ",
+        "none": "Không quy về một chế độ duy nhất",
+        "noneHint": "Nhân viên này được áp dụng bởi các quy tắc khác nhau cho từng loại nghỉ phép, nên không có một chế độ duy nhất để đặt tên. Nội dung áp dụng cho từng loại nghỉ phép được liệt kê bên dưới.",
+        "noRule": "Không có quy tắc chế độ — bảng duy nhất cho loại nghỉ phép này",
+        "colLeaveType": "Loại nghỉ phép",
+        "colPickedUpBy": "Được áp dụng bởi",
+        "colDays": "Số ngày ở {years} năm",
+        "changeGrade": "Thay đổi bậc hoặc trạng thái",
+        "changeRules": "Thay đổi nội dung chế độ này",
+        "serviceYears": "{years} năm công tác",
+        "empty": "Chưa có bảng định mức nào áp dụng cho nhân viên này."
+      }
     }
   },
   "topbar": {

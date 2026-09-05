@@ -8393,6 +8393,22 @@
       "explainWhyMatched": "Sepadan",
       "explainRuleLink": "Buka peraturan",
       "explainTable": "Jadual: {name}"
+    },
+    "personnel": {
+      "benefitScheme": {
+        "title": "Skim Faedah",
+        "effectiveFrom": "Berkuat Kuasa Dari",
+        "none": "Tidak menghasilkan satu skim tunggal",
+        "noneHint": "Pekerja ini dipilih oleh peraturan berbeza bagi jenis cuti berbeza, jadi tiada satu skim untuk dinamakan. Apa yang terpakai bagi setiap jenis cuti disenaraikan di bawah.",
+        "noRule": "Tiada peraturan skim — satu-satunya jadual bagi jenis cuti ini",
+        "colLeaveType": "Jenis cuti",
+        "colPickedUpBy": "Dipilih oleh",
+        "colDays": "Hari pada {years} tahun",
+        "changeGrade": "Tukar gred atau status",
+        "changeRules": "Tukar apa yang skim ini berikan",
+        "serviceYears": "{years} tahun perkhidmatan",
+        "empty": "Tiada jadual kelayakan mencapai pekerja ini lagi."
+      }
     }
   },
   "topbar": {
