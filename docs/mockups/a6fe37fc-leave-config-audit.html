@@ -1,0 +1,118 @@
+<meta charset="utf-8">
+<title>Leave Configuration — what we measured</title>
+<!--
+  a6fe37fc revision 2. EVERY FIGURE ON THIS PAGE IS MEASURED FROM THE REPORTER'S OWN PRODUCTION DATA
+  on 2026-09-05 (docs/audits/a6fe37fc-leave-config-audit.md). No employee name, no invented table name
+  and no invented day count appears here. The right-hand panel deliberately does NOT name the tables
+  that would survive the clean-up - that is the decision we are asking them to make with us, and a
+  picture cannot hedge. It draws the SHAPE of the outcome (one match instead of sixteen candidates),
+  which is what the plan actually promises.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1040px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:18px;overflow:hidden}
+  .head{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;
+        display:flex;align-items:center;gap:9px}
+  .body{padding:16px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .bad{background:#fee2e2;color:#991b1b}
+  .ok{background:#d1fae5;color:#065f46}
+  .amber{background:#fef3c7;color:#92400e}
+  .grey{background:#eceef5;color:#4b4b57}
+  table{width:100%;border-collapse:collapse;margin-top:4px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  td.hot{color:#991b1b;font-weight:700}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 16px}
+  .stack{margin-top:8px}
+  .row{display:flex;align-items:center;gap:8px;padding:5px 9px;border:1px solid var(--border);
+       border-radius:8px;margin-bottom:5px;font-size:12px;background:#fbfbfe}
+  .row.dim{color:var(--mf)}
+  .row.win{background:color-mix(in srgb,var(--primary) 8%,white);border-color:var(--primary);font-weight:600}
+  .more{font-size:11.5px;color:var(--mf);padding-left:9px}
+  .verdict{margin-top:12px;padding:10px 12px;border-radius:9px;font-size:12.5px}
+  .v-bad{background:#fef2f2;color:#7f1d1d}
+  .v-ok{background:#ecfdf5;color:#065f46}
+</style>
+<div class="wrap">
+
+<p class="cap">Leave Configuration &rarr; Entitlements. Every number below was measured in your own system
+on 5 September 2026. Nothing here is an example or an estimate.</p>
+
+<div class="card">
+  <div class="head">What we found <span class="chip bad">the problem is configuration, not the software</span></div>
+  <div class="body">
+    <table>
+      <tr><th>Leave type</th><th class="n">Entitlement tables switched on</th>
+          <th class="n">Rules deciding who gets which</th><th>Result</th></tr>
+      <tr><td>Annual Leave</td><td class="n hot">16</td><td class="n">2</td>
+          <td><span class="chip bad">nothing to decide with</span></td></tr>
+      <tr><td>Sick Leave</td><td class="n hot">5</td><td class="n">1</td>
+          <td><span class="chip bad">nothing to decide with</span></td></tr>
+      <tr><td>Compassionate, Paternity, Maternity, Marriage,<br>Study, Hospitalisation, Exam</td>
+          <td class="n hot">2&ndash;3 each</td><td class="n">0</td>
+          <td><span class="chip bad">no rule at all</span></td></tr>
+    </table>
+    <div class="verdict v-bad">An entitlement table says <b>how many days</b>. A rule says <b>who gets
+      that table</b>. Ten of the eleven leave types that carry entitlement tables at all have more
+      than one switched on, and there are only 4 rules in the whole company &mdash; so for most employees the system has nothing to choose with.
+      A rebuild would carry all of this across unchanged.</div>
+  </div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <div class="head">Annual Leave today <span class="chip bad">16 candidates</span></div>
+    <div class="body">
+      <div class="stack">
+        <div class="row dim">Entitlement table 1 &mdash; no rule says who this is for</div>
+        <div class="row dim">Entitlement table 2 &mdash; no rule says who this is for</div>
+        <div class="row dim">Entitlement table 3 &mdash; no rule says who this is for</div>
+        <div class="row dim">Entitlement table 4 &mdash; no rule says who this is for</div>
+        <div class="more">&hellip; and 12 more, all switched on at the same time</div>
+      </div>
+      <div class="verdict v-bad">Two rules, sixteen tables. This is why entitlements feel arbitrary.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">After the clean-up <span class="chip ok">one match</span></div>
+    <div class="body">
+      <div class="stack">
+        <div class="row win">The table that applies to this employee &mdash; and the rule that says so</div>
+        <div class="row dim">Applies to a different group &mdash; rule says so</div>
+        <div class="row dim">Applies to a different group &mdash; rule says so</div>
+        <div class="row"><span class="chip grey">retired</span> duplicate, no longer switched on</div>
+      </div>
+      <div class="verdict v-ok">Every table still switched on says who it is for, so each employee
+        resolves to a single answer. We decide which tables survive together with you &mdash; this sketch
+        deliberately does not name them.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">What stays exactly as it is</div>
+  <div class="body">
+    <table>
+      <tr><th>Your records</th><th class="n">How many</th><th>What happens to them</th></tr>
+      <tr><td>Approval rules, built by hand</td><td class="n">261</td>
+          <td><span class="chip ok">untouched</span></td></tr>
+      <tr><td>Leave balance records</td><td class="n">297</td><td><span class="chip ok">untouched</span></td></tr>
+      <tr><td>Entitlement set-ups</td><td class="n">45</td>
+          <td><span class="chip amber">reviewed with you, none deleted without your say-so</span></td></tr>
+      <tr><td>Leave applications</td><td class="n">42</td><td><span class="chip ok">untouched</span></td></tr>
+      <tr><td>Recalculation history</td><td class="n">115</td><td><span class="chip ok">untouched</span></td></tr>
+      <tr><td>Leave types</td><td class="n">25</td><td><span class="chip ok">untouched</span></td></tr>
+    </table>
+    <div class="verdict v-ok">We are not touching how anything is calculated.</div>
+  </div>
+</div>
+
+</div>
