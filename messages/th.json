@@ -8431,6 +8431,26 @@
         "serviceYears": "อายุงาน {years} ปี",
         "empty": "ยังไม่มีตารางสิทธิ์ที่ใช้กับพนักงานคนนี้"
       }
+    },
+    "leaveConfigMap": {
+      "label": "หน้าจอการตั้งค่าการลา",
+      "group": {
+        "configure": "ตั้งค่า",
+        "run": "ดำเนินการ",
+        "history": "ประวัติ"
+      },
+      "item": {
+        "leaveTypes": "ประเภทการลา",
+        "entitlementTables": "ตารางสิทธิ",
+        "approvalChain": "สายอนุมัติ",
+        "replacementLeave": "ลาชดเชย",
+        "payrollImpact": "ผลต่อเงินเดือน",
+        "generateEntitlement": "สร้างสิทธิ",
+        "adjustments": "การปรับปรุง",
+        "importLeaveData": "นำเข้าข้อมูลการลา",
+        "entitlementArchive": "คลังสิทธิ",
+        "ledgerArchive": "คลังบัญชีแยกประเภท"
+      }
     }
   },
   "topbar": {

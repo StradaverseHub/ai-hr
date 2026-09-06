@@ -8,6 +8,7 @@ import { EntitlementTablesBlock, loadEntitlementTablesData } from './entitlement
 // named employee. Mounted HERE and not in the block, because the block is composed once per leave type on
 // the Entitlements page and an employee search is not a per-leave-type control.
 import { EligibilityExplainPanel } from './eligibility-explain';
+import { LeaveConfigMap } from '@/components/leave-config-map';
 
 /**
  * 6e9a126e RELEASE TWO — ENTITLEMENT TABLES + EMPLOYEE ELIGIBILITY. The reporter's two steps, one screen.
@@ -59,6 +60,8 @@ export default async function EntitlementTemplatesPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="entitlementTables" />
       <ErrorBanner message={sp.error} />
 
       <Card>

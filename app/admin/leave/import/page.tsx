@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Button, PageHeader } from '@/components/ui';
 import { LeaveLedgerImport } from './leave-ledger-import';
+import { LeaveConfigMap } from '@/components/leave-config-map';
 
 export default async function LeaveImportPage() {
   const t = await getTranslations('admin.leave.import');
@@ -24,6 +25,8 @@ export default async function LeaveImportPage() {
           </Button>
         }
       />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="importLeaveData" />
       <LeaveLedgerImport />
     </div>
   );

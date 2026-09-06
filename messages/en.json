@@ -8431,6 +8431,26 @@
         "serviceYears": "{years} years of service",
         "empty": "No entitlement tables reach this employee yet."
       }
+    },
+    "leaveConfigMap": {
+      "label": "Leave configuration screens",
+      "group": {
+        "configure": "Configure",
+        "run": "Run",
+        "history": "History"
+      },
+      "item": {
+        "leaveTypes": "Leave types",
+        "entitlementTables": "Entitlement tables",
+        "approvalChain": "Approval chain",
+        "replacementLeave": "Replacement leave",
+        "payrollImpact": "Payroll impact",
+        "generateEntitlement": "Generate entitlement",
+        "adjustments": "Adjustments",
+        "importLeaveData": "Import leave data",
+        "entitlementArchive": "Entitlement archive",
+        "ledgerArchive": "Ledger archive"
+      }
     }
   },
   "topbar": {

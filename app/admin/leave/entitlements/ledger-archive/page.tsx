@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveLedgerArchiveCaptures, listLeaveLedgerResetArchive } from '@/packs/leave/service';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
+import { LeaveConfigMap } from '@/components/leave-config-map';
 
 /**
  * c8052ae3 — THE BALANCE RECORD FOR THE MEDICAL / HOSPITALIZATION RESET (read-only).
@@ -50,6 +51,8 @@ export default async function LeaveLedgerArchivePage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="ledgerArchive" />
 
       <Card>
         <div className="space-y-3 p-4 text-sm">

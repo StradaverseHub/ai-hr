@@ -8431,6 +8431,26 @@
         "serviceYears": "{years} tahun perkhidmatan",
         "empty": "Tiada jadual kelayakan mencapai pekerja ini lagi."
       }
+    },
+    "leaveConfigMap": {
+      "label": "Skrin konfigurasi cuti",
+      "group": {
+        "configure": "Konfigurasi",
+        "run": "Jalankan",
+        "history": "Sejarah"
+      },
+      "item": {
+        "leaveTypes": "Jenis cuti",
+        "entitlementTables": "Jadual kelayakan",
+        "approvalChain": "Rantaian kelulusan",
+        "replacementLeave": "Cuti ganti",
+        "payrollImpact": "Kesan penggajian",
+        "generateEntitlement": "Jana kelayakan",
+        "adjustments": "Pelarasan",
+        "importLeaveData": "Import data cuti",
+        "entitlementArchive": "Arkib kelayakan",
+        "ledgerArchive": "Arkib lejar"
+      }
     }
   },
   "topbar": {

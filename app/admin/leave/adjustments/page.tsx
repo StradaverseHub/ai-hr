@@ -11,6 +11,7 @@ import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { AdjustmentForm } from '@/components/leave/adjustment-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
 import {
   applyLeaveAdjustmentAction,
   previewLeaveAdjustmentAction,
@@ -96,7 +97,9 @@ export default async function LeaveAdjustmentsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader title={await leaveConfigScreenTitle('adjustments')} description={t('pageDescription')} />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="adjustments" />
       <ErrorBanner message={error} />
 
       <Card>

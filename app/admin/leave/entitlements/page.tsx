@@ -43,6 +43,7 @@ import {
 // below are sliced from, so the card and each type's own Entitlement step can never disagree.
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
+import { LeaveConfigMap } from '@/components/leave-config-map';
 import {
   archiveLeaveTypeAction,
   setLeaveHalfDayFullDeductionCompaniesAction,
@@ -425,6 +426,8 @@ export default async function LeaveEntitlementsPage({
           </div>
         }
       />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="leaveTypes" />
       <ErrorBanner message={error} />
 
       {/* r209 — above the leave-type workspace on purpose: it answers "which of these can produce a balance

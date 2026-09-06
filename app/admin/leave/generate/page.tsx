@@ -12,6 +12,7 @@ import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { GenerateForm } from '@/components/leave/generate-form';
 import { openLeaveYearAction } from '../../actions';
 import { previewLeaveGenerationAction } from './actions';
+import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
 
 /**
  * Leave Settings — Generate Entitlement (feedback 4b0e76ae, grown into the five-step module by 93249794).
@@ -96,7 +97,9 @@ export default async function LeaveGeneratePage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader title={await leaveConfigScreenTitle('generateEntitlement')} description={t('pageDescription')} />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="generateEntitlement" />
       <ErrorBanner message={error} />
 
       <Card>

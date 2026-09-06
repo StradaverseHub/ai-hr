@@ -8431,6 +8431,26 @@
         "serviceYears": "{years} năm công tác",
         "empty": "Chưa có bảng định mức nào áp dụng cho nhân viên này."
       }
+    },
+    "leaveConfigMap": {
+      "label": "Các màn hình cấu hình nghỉ phép",
+      "group": {
+        "configure": "Cấu hình",
+        "run": "Chạy",
+        "history": "Lịch sử"
+      },
+      "item": {
+        "leaveTypes": "Loại nghỉ phép",
+        "entitlementTables": "Bảng định mức",
+        "approvalChain": "Chuỗi phê duyệt",
+        "replacementLeave": "Nghỉ bù",
+        "payrollImpact": "Ảnh hưởng lương",
+        "generateEntitlement": "Tạo định mức",
+        "adjustments": "Điều chỉnh",
+        "importLeaveData": "Nhập dữ liệu nghỉ phép",
+        "entitlementArchive": "Lưu trữ định mức",
+        "ledgerArchive": "Lưu trữ sổ cái"
+      }
     }
   },
   "topbar": {

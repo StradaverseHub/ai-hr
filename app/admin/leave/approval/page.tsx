@@ -14,6 +14,7 @@ import {
 // behind as a fan of queries for a surface nobody renders (the e4238594 precedent).
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
+import { LeaveConfigMap } from '@/components/leave-config-map';
 import {
   ApprovalAssignmentManager,
   ApprovalTemplateManager,
@@ -252,6 +253,8 @@ export default async function LeaveApprovalTabPage({
   return (
     <div className="space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="approvalChain" />
       {error && <ErrorBanner message={error} />}
 
       {companies.length === 0 ? (

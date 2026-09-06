@@ -8431,6 +8431,26 @@
         "serviceYears": "服务 {years} 年",
         "empty": "尚无适用于该员工的假期额度表。"
       }
+    },
+    "leaveConfigMap": {
+      "label": "休假配置页面",
+      "group": {
+        "configure": "配置",
+        "run": "执行",
+        "history": "历史"
+      },
+      "item": {
+        "leaveTypes": "休假类型",
+        "entitlementTables": "额度表",
+        "approvalChain": "审批链",
+        "replacementLeave": "替假",
+        "payrollImpact": "薪资影响",
+        "generateEntitlement": "生成额度",
+        "adjustments": "调整",
+        "importLeaveData": "导入休假数据",
+        "entitlementArchive": "额度归档",
+        "ledgerArchive": "台账归档"
+      }
     }
   },
   "topbar": {

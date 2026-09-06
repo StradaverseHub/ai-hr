@@ -12,6 +12,7 @@ import { CompanyFilterSelect } from '@/components/company-filter-select';
 import { ReplacementEligibilityPicker } from '@/components/replacement-eligibility-picker';
 import { setToilPolicyAction } from '../../actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
 
 // Not exported: Next refuses unknown exports from a page module. The company picker's hrefs are built
 // here on the server, so the choice rides in the address bar and the page stays a server render.
@@ -194,7 +195,7 @@ export default async function LeaveReplacementPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={t('pageTitle')}
+        title={await leaveConfigScreenTitle('replacementLeave')}
         description={t('pageDescription')}
         actions={
           visible.length > 0 ? (
@@ -207,6 +208,8 @@ export default async function LeaveReplacementPage({
           ) : undefined
         }
       />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="replacementLeave" />
 
       <ErrorBanner message={error} />
       {saved !== undefined && (

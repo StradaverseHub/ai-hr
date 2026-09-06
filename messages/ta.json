@@ -8431,6 +8431,26 @@
         "serviceYears": "{years} ஆண்டுகள் பணி",
         "empty": "இந்த ஊழியரை இதுவரை எந்த உரிமை அட்டவணையும் அடையவில்லை."
       }
+    },
+    "leaveConfigMap": {
+      "label": "விடுப்பு அமைவு திரைகள்",
+      "group": {
+        "configure": "அமைவு",
+        "run": "இயக்கு",
+        "history": "வரலாறு"
+      },
+      "item": {
+        "leaveTypes": "விடுப்பு வகைகள்",
+        "entitlementTables": "உரிமை அட்டவணைகள்",
+        "approvalChain": "ஒப்புதல் சங்கிலி",
+        "replacementLeave": "மாற்று விடுப்பு",
+        "payrollImpact": "ஊதியத் தாக்கம்",
+        "generateEntitlement": "உரிமையை உருவாக்கு",
+        "adjustments": "சரிசெய்தல்",
+        "importLeaveData": "விடுப்புத் தரவை இறக்கு",
+        "entitlementArchive": "உரிமை காப்பகம்",
+        "ledgerArchive": "லெட்ஜர் காப்பகம்"
+      }
     }
   },
   "topbar": {

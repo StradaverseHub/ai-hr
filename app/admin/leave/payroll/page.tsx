@@ -4,6 +4,7 @@ import { listCompanies, listLeaveTypes } from '@/core/read';
 import { getEncashmentPolicies } from '@/core/leave-encashment';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { setLeaveEncashmentPolicyAction, updateLeaveTypeAction } from '../../actions';
+import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
 
 /**
  * Leave Settings — Payroll Related tab (0d147b78 — Leave Settings Reorganization).
@@ -33,7 +34,9 @@ export default async function LeavePayrollPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader title={await leaveConfigScreenTitle('payrollImpact')} description={t('pageDescription')} />
+      {/* a6fe37fc — the area map. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="payrollImpact" />
       <ErrorBanner message={error} />
 
       {/* Feedback 9d8cf621 — per-leave-type Payroll impact, relocated from the Leave Types tab. */}

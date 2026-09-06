@@ -1,0 +1,186 @@
+<meta charset="utf-8">
+<title>Leave Configuration — one map, one name per screen</title>
+<!--
+  a6fe37fc revision 3. THE SUBJECT IS THE PRODUCT'S OWN STRUCTURE, NOT THE REPORTER'S DATA — this is a
+  navigation change, so every label drawn here is a real screen name read out of the app
+  (lib/permissions.ts routes + messages/en.json), not a figure and not a record. The only customer data
+  on the page is the list of their own leave type NAMES in the left rail, which is what that rail already
+  shows today; no day counts, no employees, no invented rows (scripts/mockup/README.md, r170).
+
+  BEFORE is drawn from the real screens: /admin/leave/adjustments, /generate, /payroll and /replacement
+  all render admin.leave.pageTitle, which is the string "Leave configuration". That is verified, not
+  asserted — it is why the BEFORE strip shows four identical headings.
+
+  DRAWN ONLY WHAT WILL BE BUILT: the grouped nav and the per-screen names. The workspace panel on the
+  right is shown UNCHANGED on purpose — this proposal does not redesign it, and a mockup that redrew it
+  would be promising work that is not in the plan.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;overflow:hidden}
+  .head{padding:11px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;
+        display:flex;align-items:center;gap:9px}
+  .body{padding:16px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .bad{background:#fee2e2;color:#991b1b}
+  .ok{background:#d1fae5;color:#065f46}
+  .new{background:#e0e7ff;color:#3730a3}
+  .grey{background:#eceef5;color:#4b4b57}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .pane{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  .ph{padding:13px 16px;border-bottom:1px solid var(--border)}
+  .ph h1{margin:0;font-size:19px;font-weight:650}
+  .ph p{margin:3px 0 0;font-size:11.5px;color:var(--mf)}
+  .links{padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;background:#fbfbfe}
+  .links a{color:var(--primary);text-decoration:underline;text-underline-offset:2px;margin-right:14px}
+  .split{display:grid;grid-template-columns:190px 1fr;min-height:212px}
+  .rail{border-right:1px solid var(--border);background:#fbfbfe;padding:10px 0}
+  .rail .g{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);
+           font-weight:700;padding:9px 14px 4px}
+  .rail .i{padding:5px 14px;font-size:12px;color:#3b3b46;display:flex;justify-content:space-between;gap:6px}
+  .rail .i.on{background:color-mix(in srgb,var(--primary) 9%,white);color:var(--primary);font-weight:650;
+              box-shadow:inset 2px 0 0 var(--primary)}
+  /* The area map. A STRIP above the workspace, not a replacement for the left rail — the leave-type list
+     has to stay exactly where it is, or the proposal quietly removes the way you pick a leave type. */
+  .map{padding:9px 16px;border-bottom:1px solid var(--border);background:#fbfbfe;
+       display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+  .map .g{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700;margin-left:4px}
+  .map .g:first-child{margin-left:0}
+  .map .n{padding:3px 9px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;
+          color:#3b3b46;background:#fff}
+  .map .n.on{border-color:var(--primary);color:var(--primary);font-weight:650;
+             background:color-mix(in srgb,var(--primary) 8%,white)}
+  .map .sep{width:1px;align-self:stretch;background:var(--border);margin:0 3px}
+  .rail .t{padding:5px 14px;font-size:12px;color:#3b3b46}
+  .rail .t.on{color:var(--primary);font-weight:650}
+  .work{padding:14px 16px}
+  .lt{display:flex;align-items:center;justify-content:space-between;padding:5px 9px;border:1px solid var(--border);
+      border-radius:8px;margin-bottom:5px;font-size:12px;background:#fbfbfe}
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .step{padding:4px 10px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;color:var(--mf);background:#fbfbfe}
+  .step.on{border-color:var(--primary);color:var(--primary);font-weight:650;background:color-mix(in srgb,var(--primary) 7%,white)}
+  .dupes{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:11px}
+  .dupe{border:1px solid #fecaca;background:#fef2f2;border-radius:9px;padding:9px 11px}
+  .dupe .t{font-size:14px;font-weight:650;color:#7f1d1d}
+  .dupe .u{font-size:10.5px;color:#9f5b5b;margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .verdict{margin-top:12px;padding:10px 12px;border-radius:9px;font-size:12.5px}
+  .v-bad{background:#fef2f2;color:#7f1d1d}
+  .v-ok{background:#ecfdf5;color:#065f46}
+</style>
+<div class="wrap">
+
+<p class="cap">Leave configuration. This proposal changes only how the area is <b>navigated and named</b> —
+no screen is merged, no screen is removed, and every existing link and bookmark keeps working.</p>
+
+<!-- ─────────────────────────── BEFORE ─────────────────────────── -->
+<div class="card">
+  <div class="head">Today <span class="chip bad">nine screens, no map</span></div>
+  <div class="body">
+    <div class="pane">
+      <div class="ph">
+        <h1>Leave configuration</h1>
+        <p>Configure leave types, entitlement tables and the rules that hand them out.</p>
+      </div>
+      <div class="links">
+        <a>Entitlement tables</a><a>Entitlement archive</a><a>Ledger archive</a>
+        <span style="color:var(--mf)">&mdash; and six more screens reachable only from elsewhere</span>
+      </div>
+      <div class="split">
+        <div class="rail">
+          <div class="t on">Annual Leave</div>
+          <div class="t">Medical Leave</div>
+          <div class="t">Compassionate Leave</div>
+          <div class="t">Maternity Leave</div>
+          <div class="t">Paternity Leave</div>
+          <div class="t" style="color:var(--mf)">&hellip; and 20 more</div>
+        </div>
+        <div class="work">
+          <div class="steps">
+            <span class="step on">Details</span><span class="step">Earning method</span>
+            <span class="step">Carry forward</span><span class="step">Conditions</span>
+            <span class="step">Entitlement</span>
+          </div>
+          <div class="lt">Annual Leave &mdash; general setup</div>
+          <div class="lt" style="color:var(--mf)">The per-type step flow, unchanged by this proposal.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dupes">
+      <div class="dupe"><div class="t">Leave configuration</div><div class="u">/admin/leave/adjustments</div></div>
+      <div class="dupe"><div class="t">Leave configuration</div><div class="u">/admin/leave/generate</div></div>
+      <div class="dupe"><div class="t">Leave configuration</div><div class="u">/admin/leave/payroll</div></div>
+      <div class="dupe"><div class="t">Leave configuration</div><div class="u">/admin/leave/replacement</div></div>
+    </div>
+    <div class="verdict v-bad">Four different screens are headed <b>&ldquo;Leave configuration&rdquo;</b>,
+      so the heading cannot tell you which one you are on. There is also no list anywhere of the nine
+      screens in this area &mdash; you reach most of them from a link on another page, or not at all.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── AFTER ─────────────────────────── -->
+<div class="card">
+  <div class="head">Proposed <span class="chip new">one map, one name per screen</span></div>
+  <div class="body">
+    <div class="pane">
+      <div class="ph">
+        <h1>Leave types <span class="chip grey" style="vertical-align:middle">Configure</span></h1>
+        <p>The leave types themselves, and the entitlement each one grants.</p>
+      </div>
+      <!-- The map is ADDITIVE: a strip above the workspace. The left rail below keeps the leave types,
+           because replacing it with the nav would remove the way you choose a leave type. -->
+      <div class="map">
+        <span class="g">Configure</span>
+        <span class="n on">Leave types</span><span class="n">Entitlement tables</span>
+        <span class="n">Approval chain</span><span class="n">Replacement leave</span>
+        <span class="n">Payroll impact</span>
+        <span class="sep"></span>
+        <span class="g">Run</span>
+        <span class="n">Generate entitlement</span><span class="n">Adjustments</span>
+        <span class="n">Import leave data</span>
+        <span class="sep"></span>
+        <span class="g">History</span>
+        <span class="n">Entitlement archive</span><span class="n">Ledger archive</span>
+      </div>
+      <div class="split">
+        <div class="rail">
+          <div class="t on">Annual Leave</div>
+          <div class="t">Medical Leave</div>
+          <div class="t">Compassionate Leave</div>
+          <div class="t">Maternity Leave</div>
+          <div class="t">Paternity Leave</div>
+          <div class="t" style="color:var(--mf)">&hellip; and 20 more</div>
+        </div>
+        <div class="work">
+          <div class="steps">
+            <span class="step on">Details</span><span class="step">Earning method</span>
+            <span class="step">Carry forward</span><span class="step">Conditions</span>
+            <span class="step">Entitlement</span>
+          </div>
+          <div class="lt">Annual Leave &mdash; general setup</div>
+          <div class="lt" style="color:var(--mf)">Unchanged. The leave-type list and the step flow both stay exactly as they are.</div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict v-ok">Every screen in the area is listed in one place, grouped by what you are
+      doing: <b>Configure</b> what the rules are, <b>Run</b> a one-off job, read <b>History</b>. The map sits
+      ABOVE the workspace, so the leave-type list and the step flow are untouched. Each screen keeps its own
+      address, so existing links and bookmarks are unaffected &mdash; and each one gets its own name.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">What is not changing</div>
+  <div class="body">
+    <div class="lt"><span>Your leave types, entitlement tables, approval rules, balances and applications</span><span class="chip ok">untouched</span></div>
+    <div class="lt"><span>How any entitlement is calculated</span><span class="chip ok">untouched</span></div>
+    <div class="lt"><span>The step flow inside a leave type (Details, Earning method, Carry forward, Conditions, Entitlement)</span><span class="chip ok">untouched</span></div>
+    <div class="lt"><span>Every existing address, link and bookmark</span><span class="chip ok">still works</span></div>
+  </div>
+</div>
+
+</div>
