@@ -195,7 +195,9 @@ export default async function AttendancePage({
         </Card>
       )}
 
-      <Card className="overflow-hidden" data-tour="attendance-summary">
+      {/* `id` is the anchor /reports links "Overtime report" at — the OT export control lives in this
+          card's header, and landing on the page top left the customer hunting for it. */}
+      <Card id="ot-report" className="overflow-hidden" data-tour="attendance-summary">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="text-sm font-medium">
             {t('monthSummary')}

@@ -20,7 +20,12 @@ export const dynamic = 'force-dynamic';
 const PREDEFINED: Record<ReportCategory, { href: string; key: string }[]> = {
   master: [{ href: '/analytics', key: 'analytics' }],
   attendance: [
-    { href: '/attendance/ot-report', key: 'otReport' },
+    /* ⚠️ THIS POINTED AT `/attendance/ot-report` AND 404'd. `app/attendance/ot-report/` holds ONLY
+       `export/route.ts` — a download endpoint, never a page — so the link in a list whose own comment
+       promises "surfaces that exist today" was the one entry that did not. The Overtime report is an
+       export control on the Attendance screen, so that is where this now goes. Caught by a browser
+       audit: the 404 only ever showed up as a failed RSC prefetch, never as a broken-looking page. */
+    { href: '/attendance#ot-report', key: 'otReport' },
     { href: '/attendance', key: 'attendanceRecords' },
   ],
   leave: [{ href: '/analytics#leave', key: 'leaveAnalytics' }],
