@@ -32,6 +32,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { proposalRates, type ProposalRates } from './agent-proposal';
+import { classifyClosures } from './recurrence-mining';
 import { resolveActiveAiConfig } from './ai-config';
 import { isModuleEnabled, settingEnabled } from './entitlements';
 
@@ -261,22 +262,23 @@ export async function controlTowerView(ctx: SessionContext): Promise<ControlTowe
 export type AgreementBlocker = 'no_provider' | 'no_agent_on' | 'nothing_proposed' | 'nothing_decided';
 
 /**
- * ⚠️ **NOTHING IN THIS PRODUCT CALLS `recordReversal` YET, SO A REVERSAL RATE WOULD BE A FABRICATION.**
+ * ⚠️ **A REVERSAL RATE IS ONLY HONEST ONCE CLOSURES HAVE BEEN TESTED, WHICH IS NOT THE SAME AS APPROVED.**
  *
- * `proposalRates` computes `reversed ÷ approved`, and that arithmetic is right: once one proposal is
- * approved the denominator is real, so the rate is a real 0. The problem is what a 0 MEANS here. With no
- * writer anywhere, `reversed` is structurally zero for every row, so the screen would print "0% reversed"
- * — which reads as "every approval stuck" — when the truth is "nothing in this system can notice that one
- * did not". That is the same lie as a 0% agreement rate, in the flattering direction, and it is the one
- * ADR-0084 says matters MOST (§2.4: for a batch action type, whether the closure stuck is the only thing
- * that proves anything).
+ * r248 blanked this column outright, because `recordReversal` had no caller anywhere and a 0 would have
+ * meant "every approval stuck" when it really meant "nothing can notice that one did not". r249 shipped
+ * the writer (`core/recurrence-mining.ts`), so the flag below is now `true` — but flipping it was NOT
+ * sufficient, and the second half is the subtler trap:
  *
- * This is a CONSTANT rather than a setting for the reason `AutonomyLevel` is a union with one member:
- * turning it on must be a source change that arrives WITH the writer and gets reviewed alongside it, not
- * a flag somebody flips. Phase 3 item 6 (recurrence mining) is what writes reversals; that round flips
- * this to `true` in the same diff and deletes this paragraph.
+ * **A closure is not tested until the employee is paid again.** `reversed ÷ approved` counts every
+ * approval in the denominator, including closures whose employee has not been run since. Ten closures all
+ * still pending would print "0% reversed" — the same flattering lie in a new coat. So the rate is blanked
+ * per type while NOTHING of that type has been tested, and `closuresPending` carries the count so the
+ * screen can say why.
+ *
+ * The flag stays a CONSTANT for the reason `AutonomyLevel` is a union with one member: it may only move in
+ * a diff that also moves the writer, and be reviewed alongside it.
  */
-const REVERSAL_HAS_A_WRITER = false;
+const REVERSAL_HAS_A_WRITER = true;
 
 export type AgreementView = {
   rates: ProposalRates[];
@@ -284,6 +286,12 @@ export type AgreementView = {
   blockedBy: AgreementBlocker[];
   /** Proposals recorded, all types, all time. The denominator behind `nothing_proposed`. */
   proposals: number;
+  /**
+   * Approved closures whose employee has not been paid since, so whether the fix held is UNKNOWABLE.
+   * Rendered beside the reversal column: a reader who cannot see this cannot tell "no fix has failed"
+   * from "no fix has been tried yet".
+   */
+  closuresPending: number;
 };
 
 /**
@@ -303,12 +311,27 @@ export type AgreementView = {
  */
 export async function agreementView(ctx: SessionContext): Promise<AgreementView> {
   const measured = await proposalRates(ctx);
-  // Blank the reversal rate while nothing can write one — see REVERSAL_HAS_A_WRITER. The core arithmetic
-  // is left exactly as it is: it is correct, other callers and test/agent-proposal.test.ts depend on it,
-  // and bending shared arithmetic to suit one screen is how a number becomes wrong somewhere else.
-  const rates: ProposalRates[] = REVERSAL_HAS_A_WRITER
-    ? measured
-    : measured.map((r) => ({ ...r, reversalRate: null }));
+
+  // How many closures have actually been PUT TO THE TEST. `classifyClosures` is the same predicate the
+  // nightly miner writes reversals from (core/recurrence-mining.ts) — deliberately shared rather than
+  // re-derived here, so the screen and the sweep can never disagree about whether a fix held. It returns
+  // only NOT-YET-REVERSED closures, so an already-reversed one counts as tested via `r.reversed` below.
+  const outcomes = REVERSAL_HAS_A_WRITER ? await classifyClosures(ctx) : [];
+  const closuresPending = outcomes.filter((o) => o.status === 'pending').length;
+  const closuresHeld = outcomes.filter((o) => o.status === 'held').length;
+
+  // The core arithmetic is left exactly as it is — it is correct, other callers and
+  // test/agent-proposal.test.ts depend on it, and bending shared arithmetic to suit one screen is how a
+  // number becomes wrong somewhere else. The BLANKING happens here, at the surface that would mislead.
+  const rates: ProposalRates[] = measured.map((r) => {
+    if (!REVERSAL_HAS_A_WRITER) return { ...r, reversalRate: null };
+    // Only `close_fixed_upstream` has a reversal writer. Any other type's reversal count is still
+    // structurally zero, so its rate is still a fabrication and stays blank.
+    if (r.type !== 'close_fixed_upstream') return { ...r, reversalRate: null };
+    // Tested = the ones already reversed (they failed) plus the ones a clean next cycle vindicated.
+    // Nothing tested yet ⇒ nothing to report, however many were approved.
+    return r.reversed + closuresHeld === 0 ? { ...r, reversalRate: null } : r;
+  });
   const proposals = rates.reduce((n, r) => n + r.total, 0);
 
   // The gates, read from the system rather than assumed — the same sources the agent switchboard reads,
@@ -328,5 +351,5 @@ export async function agreementView(ctx: SessionContext): Promise<AgreementView>
   // still open — and it is the one Phase 3 items 6 and 7 close, so it gets its own sentence.
   else if (rates.every((r) => r.agreementRate == null)) blockedBy.push('nothing_decided');
 
-  return { rates, blockedBy, proposals };
+  return { rates, blockedBy, proposals, closuresPending };
 }

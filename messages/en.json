@@ -6153,7 +6153,7 @@
       "proposalType_anomaly_hypothesis": "Possible issue the rules did not catch",
       "proposalType_input_triage": "Question back to whoever filed a claim",
       "proposalType_readiness_fix": "Suggested fix for an incomplete record",
-      "agreementReversalUninstrumented": "Reversed is blank on purpose: nothing in the system records a reversal yet, so a figure here would say every approval stuck when it really says nobody is checking."
+      "agreementClosuresPending": "Reversed counts closures the system has been able to check: a closure is only tested when that employee is next paid. {n} closure(s) have not reached their next payroll yet, so they are not in this figure either way."
     }
   },
   "admin": {

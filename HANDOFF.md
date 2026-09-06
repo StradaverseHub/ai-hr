@@ -327,11 +327,29 @@ writer and gets reviewed beside it, never a flag somebody flips. **Phase 3 item 
 column still renders — an always-blank column is visible debt; a hidden one is forgotten debt.
 
 **WHAT STILL CANNOT PRODUCE A RATE, so nobody reads the blank card as a defect:** production has no AI
-provider (unchanged), no agent is switched on, AND **`recordDecision` also has no callers**. Wiring that one
-is a real design problem rather than a missing line: `draftPayRule` discards the id `recordProposal` returns,
-the UI would have to carry it to the save, and a DECLINE is unobservable if the admin simply navigates away
-— which would make agreement structurally 1.0, the exact flaw §2.4 already records for
-`close_fixed_upstream`. **Do not bolt it on; it deserves its own round.**
+provider, and no agent is switched on. **THAT IS THE WHOLE LIST.**
+
+⚠️ **CORRECTION, MADE THE SAME SESSION (2026-09-06). r248's entry first said `recordDecision` had no
+callers and that wiring one "deserves its own round". BOTH ARE WRONG — it has TWO, and they are good:**
+  - `core/payroll-anomaly.ts:742` (r238) — `resolveAnomalyVerdict` stamps every hypothesis proposal behind
+    the verdict an operator just resolved. `false_positive` → declined; `accepted`/`fixed_upstream` →
+    approved. Its own comment calls it "the only real agreement rate the payroll side of this product has",
+    and it is right: hypotheses are raised ONLY about employees the detectors auto-cleared, so the
+    operator's verdict is attributable to the model rather than to a rule sharing the row.
+  - `core/readiness-nudge.ts:248` (r237) — a nudge whose gap later closed is approved; one still open at
+    the deadline is declined.
+
+**WHERE THE WRONG CLAIM CAME FROM, because the shape will recur:** ADR-0084 §2.3 says "What has no caller
+yet, deliberately: `recordDecision`, `recordReversal` and `proposalRates`." That was TRUE AT r236 and r237
+and r238 falsified two-thirds of it without editing the sentence. **An ADR is a decision record, not a
+statement of current fact, and it does not get updated when a later round overtakes it** — so AGENTS 7
+("reproduce before agreeing the premise") applies to this repository's own prose exactly as it applies to a
+ticket. `grep -rn "recordDecision" core app lib scripts localization` is four seconds and would have
+settled it. That ADR line now carries a dated correction pointing here.
+
+**The genuinely unwired one is `recordReversal`** — no caller anywhere, which is what `REVERSAL_HAS_A_WRITER`
+encodes and what Phase 3 item 6 owns. **The agreement rate needs no further code: a provider and a
+switched-on agent are enough.**
 
 **Verified on production before building, not taken from this file:** `ai_provider_config` 0 rows,
 `agent_proposal` 0 rows, 0 agents switched on, and 0 AI keys in `.env.production`.

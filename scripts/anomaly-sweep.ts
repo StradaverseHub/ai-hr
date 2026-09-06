@@ -31,6 +31,7 @@ import { payrollBatch } from '../db/schema';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { evaluateBatchAnomalies } from '../core/payroll-anomaly';
 import { proposeHypotheses } from '../core/payroll-hypothesis';
+import { mineClosureRecurrences } from '../core/recurrence-mining';
 import { recordJobRun } from '../core/job-run';
 
 function loadEnv() {
@@ -57,6 +58,12 @@ export type SweepResult = {
   hypotheses: number;
   /** Provider calls the hypothesis layer actually made. Zero on a tenant that has not switched it on. */
   hypothesisCalls: number;
+  /** ADR-0084 §2.4 — closures whose finding came back at the employee's next payroll. Reversals written. */
+  reversalsFound: number;
+  /** Closures a clean next cycle vindicated. */
+  closuresHeld: number;
+  /** Closures whose employee has not been paid since, so whether the fix held is not yet knowable. */
+  closuresPending: number;
 };
 
 export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {}): Promise<SweepResult> {
@@ -79,6 +86,9 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
     skipped: scope.skipped.length,
     hypotheses: 0,
     hypothesisCalls: 0,
+    reversalsFound: 0,
+    closuresHeld: 0,
+    closuresPending: 0,
   };
 
   for (const t of scope.run) {
@@ -153,12 +163,41 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
         console.error(`  FAILED ${t.name} ${batch.payPeriod}: ${(e as Error).message}`);
       }
     }
+
+    // ADR-0084 §2.4 / Phase 3 item 6 — ONCE PER TENANT, AND ONLY AFTER EVERY BATCH ABOVE HAS BEEN
+    // EVALUATED. The question it answers is "did the closures we made last cycle hold?", and the evidence
+    // is the verdicts the loop above just wrote. Running it per batch would ask before the answer exists,
+    // and running it before the loop would always be one cycle stale.
+    //
+    // ⚠️ ITS OWN try/catch, and it is LAST on purpose. This is telemetry about our own accuracy; a
+    // failure here must not cost the tenant the verdicts and hypotheses this pass already produced, which
+    // are the part somebody depends on tonight.
+    //
+    // No tenant switch, deliberately — see core/recurrence-mining.ts. It writes one timestamp to a
+    // telemetry table and nothing employee-facing.
+    if (!opts.dryRun) {
+      try {
+        const rec = await mineClosureRecurrences(ctx);
+        out.reversalsFound += rec.reversed;
+        out.closuresHeld += rec.held;
+        out.closuresPending += rec.pending;
+        if (rec.checked > 0) {
+          console.log(
+            `    closures: ${rec.checked} checked — ${rec.reversed} did NOT hold, ${rec.held} held, ` +
+              `${rec.pending} not yet testable`,
+          );
+        }
+      } catch (e) {
+        console.error(`  recurrence mining FAILED ${t.name}: ${(e as Error).message}`);
+      }
+    }
   }
 
   console.log(
     `anomaly:sweep done — ${out.batches} run(s) across ${out.tenants} tenant(s): ` +
       `${out.autoClear} clear, ${out.review} review, ${out.block} block, ${out.failures} failure(s), ` +
-      `${out.hypotheses} hypothesis finding(s) from ${out.hypothesisCalls} model call(s)`,
+      `${out.hypotheses} hypothesis finding(s) from ${out.hypothesisCalls} model call(s), ` +
+      `${out.reversalsFound} closure(s) that did not hold`,
   );
   return out;
 }

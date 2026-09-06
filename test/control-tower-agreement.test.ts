@@ -80,7 +80,7 @@ describe('ADR-0084 item 5 — agreement measurement', () => {
     expect(v.blockedBy).toContain('nothing_decided');
   });
 
-  it('starts measuring agreement once a human decides, and still blanks reversal (nothing writes one)', async () => {
+  it('starts measuring agreement once a human decides, and still blanks reversal for a type with no writer', async () => {
     const approved = await propose(base, 'pay_rule_draft', { a: 1 });
     const declined = await propose(base, 'pay_rule_draft', { a: 2 });
     await propose(base, 'pay_rule_draft', { a: 3 }); // undecided — must not count either way
@@ -96,10 +96,10 @@ describe('ADR-0084 item 5 — agreement measurement', () => {
     // dilute agreement with proposals nobody has looked at yet.
     expect(row.agreementRate).toBe(0.5);
     // ⚠️ NULL, AND THIS ONE IS NOT THE EMPTY-DENOMINATOR CASE. One proposal IS approved, so
-    // `proposalRates` computes a real 0 here — the view blanks it deliberately, because nothing in the
-    // product calls `recordReversal`, so a 0 would mean "every approval stuck" when it really means
-    // "nothing can notice that one did not". This assertion fails the moment someone flips
-    // REVERSAL_HAS_A_WRITER without shipping the writer, which is exactly when it should.
+    // `proposalRates` computes a real 0 here; the view blanks it. r249 gave reversals a writer
+    // (core/recurrence-mining.ts) but ONLY for `close_fixed_upstream` — a `pay_rule_draft` reversal is
+    // still structurally impossible, so a 0 here would still mean "every approval stuck" when it really
+    // means "nothing can notice that one did not". Blanking is per type for exactly this reason.
     expect(row.reversalRate).toBeNull();
     expect(v.blockedBy).not.toContain('nothing_decided');
   });

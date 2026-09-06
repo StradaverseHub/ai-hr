@@ -6153,7 +6153,7 @@
       "proposalType_anomaly_hypothesis": "Kemungkinan isu yang tidak dikesan oleh peraturan",
       "proposalType_input_triage": "Soalan kembali kepada pemfail tuntutan",
       "proposalType_readiness_fix": "Cadangan pembetulan untuk rekod tidak lengkap",
-      "agreementReversalUninstrumented": "Ruangan dibalikkan sengaja kosong: belum ada apa-apa dalam sistem yang merekod pembalikan, jadi angka di sini akan menyatakan setiap kelulusan kekal sedangkan sebenarnya tiada sesiapa menyemak."
+      "agreementClosuresPending": "Dibalikkan mengira penutupan yang dapat disemak oleh sistem: sesuatu penutupan hanya diuji apabila pekerja itu dibayar pada kali berikutnya. {n} penutupan belum sampai ke gaji seterusnya, jadi ia tidak dikira dalam angka ini."
     }
   },
   "admin": {

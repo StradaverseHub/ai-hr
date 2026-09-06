@@ -139,7 +139,12 @@ the REVERSAL rate** — did the closure stick, or did the finding re-fire next c
 criterion for a batch action type is reversal-led, not agreement-led. Making declines observable would
 need per-subject selection on the screen, which is a separate decision.
 
-**What has no caller yet, deliberately:** `recordDecision`, `recordReversal` and `proposalRates`. The
+**What has no caller yet, deliberately:** `recordDecision`, `recordReversal` and `proposalRates`.
+> ⚠️ **STALE AS OF 2026-09-06 — true when written (r236), overtaken since, and read as current by a later
+> round.** `recordDecision` gained two callers (`core/readiness-nudge.ts` r237, `core/payroll-anomaly.ts`
+> r238) and `proposalRates` gained one (`agreementView`, r248). Only `recordReversal` is still unwired.
+> Left in place rather than rewritten — an ADR records a decision at a point in time — but flagged, because
+> r248 planned a whole round on the strength of this sentence. See HANDOFF.md → r248. The
 first two belong with the surfaces that produce their signal (an admin saving a drafted rule; §2.4's
 recurrence sweep), and surfacing the rates is Phase 3 item 5 — a rate rendered before there is data to
 render is the "tune the thresholds" mistake in a new coat.

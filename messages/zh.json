@@ -6153,7 +6153,7 @@
       "proposalType_anomaly_hypothesis": "规则未捕捉到的潜在问题",
       "proposalType_input_triage": "向报销申请人回问的问题",
       "proposalType_readiness_fix": "针对不完整记录的修正建议",
-      "agreementReversalUninstrumented": "撤回列刻意留空：系统目前还没有任何地方记录撤回，所以显示数字会让人以为每次批准都成立，而实际上只是无人核查。"
+      "agreementClosuresPending": "撤回列统计的是系统能够核查的关闭项：只有当该员工下次发薪时，关闭才算受到检验。目前有 {n} 项关闭尚未到达下一个发薪周期，因此不计入此数字。"
     }
   },
   "admin": {

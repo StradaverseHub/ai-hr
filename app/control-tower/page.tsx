@@ -182,10 +182,10 @@ export default async function ControlTowerPage() {
                           decided anything" is a claim about accuracy that nothing supports. */}
                       <td className="px-4 py-2.5 tabular-nums">{pct(r.adjudicationPassRate)}</td>
                       <td className="px-4 py-2.5 tabular-nums">{pct(r.agreementRate)}</td>
-                      {/* ⚠️ Reversal matters most (§2.4) and is the one nothing writes yet, so the view
-                          blanks it rather than letting a real-looking 0% through — see
-                          REVERSAL_HAS_A_WRITER. The column is still RENDERED, because an always-blank
-                          column is a visible debt and a hidden one is a forgotten one. */}
+                      {/* ⚠️ Reversal matters most (§2.4). r249 gave it a writer, but the view still
+                          blanks it per type until at least one closure has actually been TESTED by the
+                          employee's next payroll — "0% reversed" off an untested denominator is the same
+                          lie as "0% agreement" off an undecided one. See REVERSAL_HAS_A_WRITER. */}
                       <td className="px-4 py-2.5 tabular-nums">{pct(r.reversalRate)}</td>
                     </tr>
                   ))}
@@ -193,7 +193,14 @@ export default async function ControlTowerPage() {
               </table>
             </div>
             <p className="mt-4 text-xs text-muted-foreground">{t('agreementDashMeaning')}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{t('agreementReversalUninstrumented')}</p>
+            {/* r249 — a closure is only TESTED when the employee is next paid. Saying how many are still
+                untested is what stops "no fix has failed" being read off a denominator that is mostly
+                unexamined; agreementView blanks the rate entirely while NONE has been tested. */}
+            {agreement.closuresPending > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t('agreementClosuresPending', { n: agreement.closuresPending })}
+              </p>
+            )}
             {agreement.blockedBy.includes('nothing_decided') && (
               <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('agreementBlocked_nothing_decided')}</p>
             )}

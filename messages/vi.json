@@ -6153,7 +6153,7 @@
       "proposalType_anomaly_hypothesis": "Vấn đề có thể có mà quy tắc chưa bắt được",
       "proposalType_input_triage": "Câu hỏi gửi lại người nộp yêu cầu",
       "proposalType_readiness_fix": "Đề xuất sửa cho hồ sơ chưa đầy đủ",
-      "agreementReversalUninstrumented": "Cột đảo ngược để trống có chủ đích: chưa có gì trong hệ thống ghi nhận việc đảo ngược, nên một con số ở đây sẽ nói rằng mọi phê duyệt đều đứng vững, trong khi thực tế là chưa ai kiểm tra."
+      "agreementClosuresPending": "Cột đảo ngược chỉ tính những lần đóng mà hệ thống kiểm chứng được: một lần đóng chỉ được kiểm chứng khi nhân viên đó được trả lương lần kế tiếp. Hiện có {n} lần đóng chưa tới kỳ lương kế tiếp nên chưa được tính vào con số này."
     }
   },
   "admin": {
