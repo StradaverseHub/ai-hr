@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-06 (r226-r248 SHIPPED · BOARD HAS NOTHING BUILDABLE · THE AGENTS ARE SWITCHABLE; ONLY A PROVIDER IS MISSING)
+## CURRENT STATE — snapshot 2026-09-06 (r226-r249 SHIPPED · BOARD HAS NOTHING BUILDABLE · THE LEARNING LOOP IS CLOSED IN CODE; ONLY A PROVIDER IS MISSING)
 
-**`main@49ff2885` IS WHAT RUNS ON PRODUCTION (r248, 2026-09-06)** — verified by an
+**`main@ec9612db` IS WHAT RUNS ON PRODUCTION (r249, 2026-09-06)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
 which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
 and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
@@ -85,9 +85,10 @@ verify it", which just moves the checking onto the reader.
 contract ✅ r236 · 2 the readiness nudge agent ✅ r237. Phase 2: 3 hypothesis detection ✅ r238 ·
 4 input-side triage ✅ r240 (claims only). **PHASE 2 IS DONE.** Phase 3 (needs real history):
 **5 agreement measurement ✅ r248 — the SURFACE ships; the RATES stay null until production has a provider,
-a switched-on tenant, and a caller for `recordDecision`** · 6 recurrence mining — **and it now owns a
-specific debt: it must flip `REVERSAL_HAS_A_WRITER` in `core/control-tower.ts` in the same diff that
-starts writing reversals** · 7 the first autonomy grant.
+a switched-on tenant, and a caller for `recordDecision`** · **6 recurrence mining ✅ r249 — `core/recurrence-mining.ts` is the only writer of
+`agent_proposal.reversed_at`, folded into `anomaly-sweep` (cron VERIFIED installed, not assumed)** ·
+**7 the first autonomy grant — NEXT, and it is the one that needs a human decision rather than a build:
+§2.5's kill switch and daily action budget must arrive WITH it.**
 ~~Not a build: the missing call sites~~ ✅ r238.
 
 ⚠️ **ALL THREE UNATTENDED AGENTS ARE STILL OFF — BUT THEY ARE NOW SWITCHABLE FROM THE PRODUCT (r243).**
@@ -292,75 +293,56 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r248 (2026-09-06) — agreement measurement lands, and the first thing it measured was a lie we were about to print. `main@49ff2885`.
+### r249 (2026-09-06) — the loop closes: the system can now catch its own failed fix. `main@ec9612db`.
 
-**DEPLOYED.** tsc clean · **full gate GREEN, 764 files across 5 chunks, every chunk exit 0** · `next build`
-clean · no migration · arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401.
+**DEPLOYED.** tsc clean · **full gate GREEN, 765 files / 5 chunks, peak disk 58-79%** · `next build` clean ·
+no migration · arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401 ·
+**`anomaly-sweep` cron VERIFIED present on the box** (AGENTS 13 — a script existing is not a script running,
+and r230 lost six weeks to exactly that).
 
-**ADR-0084 Phase 3 item 5.** `proposalRates` already existed and was already correct — the missing half was
-a surface. `agreementView` (core/control-tower.ts) returns the three rates per proposal type plus the honest
-reason when there are none, in the same shape `ratio.blockedBy` already uses on that page. The card renders
-`no_provider → no_agent_on → nothing_proposed` in CAUSAL order, because a tenant with no provider also has
-no proposals and leading with "nothing proposed yet" sends them looking in the wrong place. A fourth
-blocker, `nothing_decided`, separates "the proposers are not running" from "the proposers ARE running and
-nobody has ruled on them" — different gaps, different sentences.
+**ADR-0084 §2.4 / Phase 3 item 6.** `core/recurrence-mining.ts` implements one sentence: *a verdict closed
+as `fixed_upstream` whose finding re-fires next cycle proves the fix did not hold.* It is the ONLY writer of
+`agent_proposal.reversed_at`, and runs once per tenant at the END of `anomaly-sweep` — the evidence it needs
+is the verdicts that same pass just wrote, so per-batch would ask before the answer exists and before-the-loop
+would always be a cycle stale.
 
-⚠️ **DECISION: A SECOND PAGE-LEVEL CALL, NOT A FIELD ON `controlTowerView`.** `proposalRates` opens its own
-`withTenant` and `controlTowerView` is one big one; `core/agent-proposal.ts` property 2's corollary forbids
-nesting them (two pool connections held for the outer's duration, deadlock if the outer locks a row the
-inner needs). Anyone "tidying" this into one view reintroduces exactly that — the header on `agreementView`
-says so.
+⚠️ **A RECURRENCE REVERSES A CLOSURE AND MUST NEVER TOUCH A HYPOTHESIS. This is the decision to re-read
+before extending this file.** `close_fixed_upstream` claimed *the cause is gone*, so the finding returning
+falsifies it. `anomaly_hypothesis` claimed *there may be a problem here*, so the problem returning CONFIRMS
+it. Reversing the second would record a correct model as wrong — and because §2.8 reads these rates to grant
+autonomy, the bug would teach the system to **stop raising hypotheses that were true**. A test pins it;
+nothing else in the suite would notice.
 
-⚠️⚠️ **THE TEST CAUGHT A FABRICATED 0%, AND IT WAS NOT IN THIS ROUND'S CODE.** `reversalRate` is
-`reversed ÷ approved` — correct arithmetic, and once one proposal is approved the denominator is real, so
-it returns a real `0`. But **`recordReversal` HAS ZERO CALLERS IN THE PRODUCT** (verified across
-`core app lib scripts localization`). So `reversed` is structurally zero for every row and the card would
-have printed **"0% reversed" — i.e. every approval stuck — when the truth is that nothing in this system can
-notice that one did not.** ADR-0084 §2.4 calls reversal the metric that matters MOST, so this was the
-flattering-direction lie in the most expensive available place.
+⚠️ **"NEXT CYCLE" IS THE EMPLOYEE'S NEXT APPEARANCE, NOT ANY LATER ONE.** A fix that held for five clean
+cycles and broke in the sixth is a REGRESSION; one gone by the very next payroll never worked. Only the
+second falsifies the closure. A clean next cycle means the fix HELD and nothing is written — silence is the
+correct record of a fix that worked.
 
-**DECISION: fixed at the VIEW, deliberately NOT in `proposalRates`.** That arithmetic is right, other
-callers and `test/agent-proposal.test.ts` depend on it, and bending shared arithmetic to suit one screen is
-how a number becomes wrong somewhere else. `REVERSAL_HAS_A_WRITER` is a **CONSTANT**, for the same reason
-`AutonomyLevel` is a union with one member: turning it on must be a source change that arrives WITH the
-writer and gets reviewed beside it, never a flag somebody flips. **Phase 3 item 6 owns flipping it.** The
-column still renders — an always-blank column is visible debt; a hidden one is forgotten debt.
+⚠️⚠️ **FLIPPING `REVERSAL_HAS_A_WRITER` WAS NOT SUFFICIENT, AND THE SECOND HALF IS THE ONE THAT NEARLY
+SHIPPED.** A closure is not TESTED until the employee is paid again, but `reversed ÷ approved` puts every
+approval in the denominator — so ten closures all still pending would have printed **"0% reversed"**, which
+is r248's own lie in a new coat, one round later. The rate is now blanked PER TYPE until at least one closure
+of that type has been tested, and `closuresPending` is on the screen so a reader can tell *"no fix has
+failed"* from *"no fix has been tried yet"*. **Verified by rendering a POPULATED card, not the empty state:
+`close_fixed_upstream` shows an em dash beside a 100% agreement rate, exactly as intended.**
 
-**WHAT STILL CANNOT PRODUCE A RATE, so nobody reads the blank card as a defect:** production has no AI
-provider, and no agent is switched on. **THAT IS THE WHOLE LIST.**
+**ONE PREDICATE, TWO CONSUMERS.** `classifyClosures` is read-only and shared: the sweep writes reversals from
+it, the Control Tower asks it whether the denominator is real. r235's rule — *share the predicate, never
+re-write it*. A test pins that the read path writes nothing, because the screen calls it on every render.
 
-⚠️ **CORRECTION, MADE THE SAME SESSION (2026-09-06). r248's entry first said `recordDecision` had no
-callers and that wiring one "deserves its own round". BOTH ARE WRONG — it has TWO, and they are good:**
-  - `core/payroll-anomaly.ts:742` (r238) — `resolveAnomalyVerdict` stamps every hypothesis proposal behind
-    the verdict an operator just resolved. `false_positive` → declined; `accepted`/`fixed_upstream` →
-    approved. Its own comment calls it "the only real agreement rate the payroll side of this product has",
-    and it is right: hypotheses are raised ONLY about employees the detectors auto-cleared, so the
-    operator's verdict is attributable to the model rather than to a rule sharing the row.
-  - `core/readiness-nudge.ts:248` (r237) — a nudge whose gap later closed is approved; one still open at
-    the deadline is declined.
+**NO TENANT SWITCH, deliberately.** The three unattended agents each carry one because each DOES something to
+the tenant. This writes one timestamp to a telemetry table about our own accuracy: nothing employee-facing,
+no money, no notification. Gating self-measurement behind a switch is how a product ends up unable to answer
+whether it works.
 
-**WHERE THE WRONG CLAIM CAME FROM, because the shape will recur:** ADR-0084 §2.3 says "What has no caller
-yet, deliberately: `recordDecision`, `recordReversal` and `proposalRates`." That was TRUE AT r236 and r237
-and r238 falsified two-thirds of it without editing the sentence. **An ADR is a decision record, not a
-statement of current fact, and it does not get updated when a later round overtakes it** — so AGENTS 7
-("reproduce before agreeing the premise") applies to this repository's own prose exactly as it applies to a
-ticket. `grep -rn "recordDecision" core app lib scripts localization` is four seconds and would have
-settled it. That ADR line now carries a dated correction pointing here.
-
-**The genuinely unwired one is `recordReversal`** — no caller anywhere, which is what `REVERSAL_HAS_A_WRITER`
-encodes and what Phase 3 item 6 owns. **The agreement rate needs no further code: a provider and a
-switched-on agent are enough.**
-
-**Verified on production before building, not taken from this file:** `ai_provider_config` 0 rows,
-`agent_proposal` 0 rows, 0 agents switched on, and 0 AI keys in `.env.production`.
-
-**`t.has()` on the proposal-type label (AGENTS 6).** `ProposalTypeId` is a TypeScript union, not a SQL
-CHECK — 0452's header explains why — so a type can reach the screen with no translation, and a bare `t()`
-would `MISSING_MESSAGE` the whole Control Tower down. Falls back to the raw id: ugly beats absent.
-
-**CHUNKS=5 VALIDATED.** r247's floor was a guess from a failure; this is the measurement. Five chunks
-peaked at **58-79% disk** and produced **zero** environmental failures, against 58 at three chunks the day
-before. 153+153+153+153+152 = 764, so every file was counted (AGENTS 4).
+⚠️ **TWO CORRECTIONS TO r248, AND THE SHAPE MATTERS MORE THAN THE FACTS.** r248 recorded that
+`recordDecision` had no callers and that wiring one "deserves its own round". **It has TWO** —
+`core/payroll-anomaly.ts:742` (r238) and `core/readiness-nudge.ts:248` (r237). The claim came from ADR-0084
+§2.3's *"what has no caller yet, deliberately"*, which was TRUE at r236 and was overtaken by the next two
+rounds without the sentence ever being edited. **An ADR is a decision record, not a statement of current
+fact, and nothing updates it when a later round overtakes it** — so AGENTS 7 applies to this repository's own
+prose exactly as it applies to a ticket. A four-second grep settles it. That ADR line now carries a dated
+flag pointing here.
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 

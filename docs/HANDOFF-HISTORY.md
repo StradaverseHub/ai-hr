@@ -1,3 +1,73 @@
+## r248 (2026-09-06) — agreement measurement lands, and the first thing it measured was a lie we were about to print. `main@49ff2885`.
+
+**DEPLOYED.** tsc clean · **full gate GREEN, 764 files across 5 chunks, every chunk exit 0** · `next build`
+clean · no migration · arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401.
+
+**ADR-0084 Phase 3 item 5.** `proposalRates` already existed and was already correct — the missing half was
+a surface. `agreementView` (core/control-tower.ts) returns the three rates per proposal type plus the honest
+reason when there are none, in the same shape `ratio.blockedBy` already uses on that page. The card renders
+`no_provider → no_agent_on → nothing_proposed` in CAUSAL order, because a tenant with no provider also has
+no proposals and leading with "nothing proposed yet" sends them looking in the wrong place. A fourth
+blocker, `nothing_decided`, separates "the proposers are not running" from "the proposers ARE running and
+nobody has ruled on them" — different gaps, different sentences.
+
+⚠️ **DECISION: A SECOND PAGE-LEVEL CALL, NOT A FIELD ON `controlTowerView`.** `proposalRates` opens its own
+`withTenant` and `controlTowerView` is one big one; `core/agent-proposal.ts` property 2's corollary forbids
+nesting them (two pool connections held for the outer's duration, deadlock if the outer locks a row the
+inner needs). Anyone "tidying" this into one view reintroduces exactly that — the header on `agreementView`
+says so.
+
+⚠️⚠️ **THE TEST CAUGHT A FABRICATED 0%, AND IT WAS NOT IN THIS ROUND'S CODE.** `reversalRate` is
+`reversed ÷ approved` — correct arithmetic, and once one proposal is approved the denominator is real, so
+it returns a real `0`. But **`recordReversal` HAS ZERO CALLERS IN THE PRODUCT** (verified across
+`core app lib scripts localization`). So `reversed` is structurally zero for every row and the card would
+have printed **"0% reversed" — i.e. every approval stuck — when the truth is that nothing in this system can
+notice that one did not.** ADR-0084 §2.4 calls reversal the metric that matters MOST, so this was the
+flattering-direction lie in the most expensive available place.
+
+**DECISION: fixed at the VIEW, deliberately NOT in `proposalRates`.** That arithmetic is right, other
+callers and `test/agent-proposal.test.ts` depend on it, and bending shared arithmetic to suit one screen is
+how a number becomes wrong somewhere else. `REVERSAL_HAS_A_WRITER` is a **CONSTANT**, for the same reason
+`AutonomyLevel` is a union with one member: turning it on must be a source change that arrives WITH the
+writer and gets reviewed beside it, never a flag somebody flips. **Phase 3 item 6 owns flipping it.** The
+column still renders — an always-blank column is visible debt; a hidden one is forgotten debt.
+
+**WHAT STILL CANNOT PRODUCE A RATE, so nobody reads the blank card as a defect:** production has no AI
+provider, and no agent is switched on. **THAT IS THE WHOLE LIST.**
+
+⚠️ **CORRECTION, MADE THE SAME SESSION (2026-09-06). r248's entry first said `recordDecision` had no
+callers and that wiring one "deserves its own round". BOTH ARE WRONG — it has TWO, and they are good:**
+  - `core/payroll-anomaly.ts:742` (r238) — `resolveAnomalyVerdict` stamps every hypothesis proposal behind
+    the verdict an operator just resolved. `false_positive` → declined; `accepted`/`fixed_upstream` →
+    approved. Its own comment calls it "the only real agreement rate the payroll side of this product has",
+    and it is right: hypotheses are raised ONLY about employees the detectors auto-cleared, so the
+    operator's verdict is attributable to the model rather than to a rule sharing the row.
+  - `core/readiness-nudge.ts:248` (r237) — a nudge whose gap later closed is approved; one still open at
+    the deadline is declined.
+
+**WHERE THE WRONG CLAIM CAME FROM, because the shape will recur:** ADR-0084 §2.3 says "What has no caller
+yet, deliberately: `recordDecision`, `recordReversal` and `proposalRates`." That was TRUE AT r236 and r237
+and r238 falsified two-thirds of it without editing the sentence. **An ADR is a decision record, not a
+statement of current fact, and it does not get updated when a later round overtakes it** — so AGENTS 7
+("reproduce before agreeing the premise") applies to this repository's own prose exactly as it applies to a
+ticket. `grep -rn "recordDecision" core app lib scripts localization` is four seconds and would have
+settled it. That ADR line now carries a dated correction pointing here.
+
+**The genuinely unwired one is `recordReversal`** — no caller anywhere, which is what `REVERSAL_HAS_A_WRITER`
+encodes and what Phase 3 item 6 owns. **The agreement rate needs no further code: a provider and a
+switched-on agent are enough.**
+
+**Verified on production before building, not taken from this file:** `ai_provider_config` 0 rows,
+`agent_proposal` 0 rows, 0 agents switched on, and 0 AI keys in `.env.production`.
+
+**`t.has()` on the proposal-type label (AGENTS 6).** `ProposalTypeId` is a TypeScript union, not a SQL
+CHECK — 0452's header explains why — so a type can reach the screen with no translation, and a bare `t()`
+would `MISSING_MESSAGE` the whole Control Tower down. Falls back to the raw id: ugly beats absent.
+
+**CHUNKS=5 VALIDATED.** r247's floor was a guess from a failure; this is the measurement. Five chunks
+peaked at **58-79% disk** and produced **zero** environmental failures, against 58 at three chunks the day
+before. 153+153+153+153+152 = 764, so every file was counted (AGENTS 4).
+
 ## r247 (2026-09-05) — the four approved items closed; the Leave Configuration audit goes back as a plan. `main@04ab47b4`.
 
 **DEPLOYED.** tsc clean · full suite green (see the caveat below) · `next build` clean · no migration ·
