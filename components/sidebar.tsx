@@ -40,6 +40,7 @@ import {
   Users,
   Wallet,
   type LucideIcon,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCountBadge } from '@/components/approval-count-badge';
@@ -292,6 +293,10 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
 
 const GROUPS: Group[] = [
   {
+    // a6-audit — LABELLED so it can COLLAPSE. It was the one unnamed group, which meant it was always
+    // open; at ten rows that alone is half the rail's height and no amount of collapsing the other three
+    // could make the menu fit.
+    labelKey: 'sectionHome',
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
@@ -446,6 +451,24 @@ export function Sidebar({
   // Single-open flyout state (fdc20776): the labelKey of the open module, or null. Clicking a
   // parent sets it (replacing any other open module); clicking the same parent again closes.
   const [openKey, setOpenKey] = useState<string | null>(null);
+  /**
+   * WHICH SECTIONS ARE EXPANDED — the fix for a rail that did not fit.
+   *
+   * MEASURED BEFORE THIS EXISTED (production build, 1440x900): the rail's content was 1490px in a 746px
+   * column on EVERY screen. 34 entries, 16 reachable without scrolling, 18 below the fold — including
+   * Analytics, Audit trail, Data Privacy, Security & permissions and AI, which is where a provider is
+   * configured. A menu whose second half is only reachable by scrolling is not a menu people use.
+   *
+   * ⚠️ THE ACTIVE SECTION IS ALWAYS OPEN AND CANNOT BE CLOSED. "Where am I" must never depend on a
+   * toggle: collapsing the section you are standing in would hide the highlighted row and leave the rail
+   * saying nothing about the current page.
+   *
+   * Session state, deliberately NOT a cookie. `rail_collapsed` is read SSR-side precisely so the icon
+   * rail has no flash; a second cookie read on the client after mount would flip sections open after
+   * paint, which is the same flash in a new place. Navigating within a section keeps it open, and moving
+   * to another section opens that one, so the state a user actually experiences is the useful one.
+   */
+  const [openSections, setOpenSections] = useState<ReadonlySet<string>>(new Set());
   // Escape returns focus to the trigger that opened the panel.
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   // Safety net for back/forward navigation only — picking a sub-item closes via its onClick
@@ -491,6 +514,20 @@ export function Sidebar({
     isNavRowActive(pathname, search, r);
   // The open module's node (permission-filtered children), resolved from the visible groups so a
   // stale openKey (e.g. after a role change) simply renders no panel.
+  /** The section containing the current page — from the same predicates the rows light up with, so the
+   *  open section and the highlighted row can never disagree. */
+  const activeSectionKey =
+    groups.find((g) =>
+      g.items.some((r) =>
+        isCollapsible(r)
+          ? isParentActive(pathname, r.children.filter(canSeeChild).map((c) => c.href))
+          : isNavRowActive(pathname, search, r),
+      ),
+    )?.labelKey ?? null;
+
+  const sectionOpen = (key?: string) =>
+    key == null || key === activeSectionKey || openSections.has(key);
+
   const openNode = openKey
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey) ?? null
     : null;
@@ -560,17 +597,57 @@ export function Sidebar({
         >
           {groups.map((group, gi) => (
             <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}>
-              {gi > 0 &&
-                (collapsed ? (
-                  <span className="my-1.5 h-px w-7 rounded-full bg-border" aria-hidden />
-                ) : (
-                  group.labelKey && (
-                    <div className="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-                      {t(group.labelKey)}
-                    </div>
-                  )
-                ))}
-              {group.items.map((item) => {
+              {gi > 0 && collapsed && (
+                <span className="my-1.5 h-px w-7 rounded-full bg-border" aria-hidden />
+              )}
+              {/* ⚠️ THE SECTION HEADING IS A CONTROL NOW, not a caption. In the icon rail there is no
+                  heading to click (labels are hidden), so sections stay open there and the divider above
+                  is unchanged — collapsing a nameless strip of icons would hide destinations behind a
+                  chevron with nothing to say what is inside. */}
+              {!collapsed && group.labelKey && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenSections((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(group.labelKey!)) next.delete(group.labelKey!);
+                      else next.add(group.labelKey!);
+                      return next;
+                    })
+                  }
+                  // The active section cannot be collapsed, so its control is not offered as one.
+                  disabled={group.labelKey === activeSectionKey}
+                  aria-expanded={sectionOpen(group.labelKey)}
+                  aria-controls={`nav-section-${group.labelKey}`}
+                  className={cn(
+                    'group/sec flex w-full items-center justify-between rounded-md px-2 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80',
+                    // The first heading sits directly under the rail's own py-3, so its top padding is
+                    // duplicate space. Reclaiming it is what brings the Admin section — the longest, at
+                    // 15 rows — inside the viewport instead of one row over.
+                    gi === 0 ? 'pt-0.5' : 'pt-2.5',
+                    group.labelKey !== activeSectionKey && 'hover:text-foreground',
+                  )}
+                >
+                  <span>{t(group.labelKey)}</span>
+                  {group.labelKey !== activeSectionKey && (
+                    <ChevronDown
+                      aria-hidden
+                      className={cn(
+                        'h-3.5 w-3.5 shrink-0 transition-transform',
+                        !sectionOpen(group.labelKey) && '-rotate-90',
+                      )}
+                    />
+                  )}
+                </button>
+              )}
+              {/* The id `aria-controls` on the heading points at. Without a real element to reference,
+                  the attribute is a dangling promise to a screen reader. */}
+              <div
+                id={group.labelKey ? `nav-section-${group.labelKey}` : undefined}
+                className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}
+              >
+              {(collapsed || sectionOpen(group.labelKey)) &&
+              group.items.map((item) => {
                 if (isCollapsible(item)) {
                   const children = item.children.filter(canSeeChild);
                   // Hide the whole parent if the viewer can see none of its children.
@@ -632,6 +709,7 @@ export function Sidebar({
                   </Link>
                 );
               })}
+              </div>
             </div>
           ))}
         </nav>

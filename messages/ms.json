@@ -308,7 +308,8 @@
     "controlTowerOverview": "Gambaran keseluruhan",
     "controlTowerHow": "Cara ia berfungsi",
     "controlTowerReadiness": "Kesediaan rekod",
-    "controlTowerActions": "Tindakan ejen"
+    "controlTowerActions": "Tindakan ejen",
+    "sectionHome": "Utama"
   },
   "dashboard": {
     "title": "Papan pemuka",

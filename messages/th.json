@@ -308,7 +308,8 @@
     "controlTowerOverview": "ภาพรวม",
     "controlTowerHow": "หลักการทำงาน",
     "controlTowerReadiness": "ความพร้อมของข้อมูล",
-    "controlTowerActions": "การดำเนินการของเอเจนต์"
+    "controlTowerActions": "การดำเนินการของเอเจนต์",
+    "sectionHome": "หน้าแรก"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

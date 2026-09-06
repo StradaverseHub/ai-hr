@@ -308,7 +308,8 @@
     "controlTowerOverview": "மேலோட்டம்",
     "controlTowerHow": "இது எப்படி வேலை செய்கிறது",
     "controlTowerReadiness": "பதிவுத் தயார்நிலை",
-    "controlTowerActions": "முகவர் நடவடிக்கைகள்"
+    "controlTowerActions": "முகவர் நடவடிக்கைகள்",
+    "sectionHome": "முகப்பு"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

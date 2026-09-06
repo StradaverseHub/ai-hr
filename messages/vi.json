@@ -308,7 +308,8 @@
     "controlTowerOverview": "Tổng quan",
     "controlTowerHow": "Cách hoạt động",
     "controlTowerReadiness": "Mức sẵn sàng hồ sơ",
-    "controlTowerActions": "Hành động của tác nhân"
+    "controlTowerActions": "Hành động của tác nhân",
+    "sectionHome": "Trang chính"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

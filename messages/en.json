@@ -308,7 +308,8 @@
     "controlTowerOverview": "Overview",
     "controlTowerHow": "How it works",
     "controlTowerReadiness": "Record readiness",
-    "controlTowerActions": "Agent actions"
+    "controlTowerActions": "Agent actions",
+    "sectionHome": "Home"
   },
   "dashboard": {
     "title": "Dashboard",

@@ -308,7 +308,8 @@
     "controlTowerOverview": "总览",
     "controlTowerHow": "运作方式",
     "controlTowerReadiness": "档案完备性",
-    "controlTowerActions": "智能体操作"
+    "controlTowerActions": "智能体操作",
+    "sectionHome": "首页"
   },
   "dashboard": {
     "title": "仪表盘",
