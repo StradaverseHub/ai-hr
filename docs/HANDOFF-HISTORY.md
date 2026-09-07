@@ -1,3 +1,61 @@
+## r250 (2026-09-07) — a customer-readiness audit in a real browser; two defects found and fixed; the Leave Config map shipped. `main@82c2b816`.
+
+**DEPLOYED.** tsc clean · **full gate GREEN, 767 files / 5 chunks** · `next build` clean · no migration ·
+arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401 ·
+`a6fe37fc` marked `deployed` (ref 82c2b816).
+
+**THE APPROVED ITEM: `a6fe37fc` rev 3 — the Leave Configuration MAP.** Nine screens in that area had no
+list of them anywhere, and FOUR (`adjustments`, `generate`, `payroll`, `replacement`) all rendered the
+heading "Leave configuration" because they shared `admin.leave.pageTitle`. Each now has its own name, and
+`components/leave-config-map.tsx` groups the area by what you are doing (Configure / Run / History).
+**No route moved**, so no new screenKey and no function-access column (AGENTS 20).
+⚠️ **The map's list is declared in the component and is NOT derived from `lib/permissions.ts`** — that is
+an access-control registry, and deriving a customer-facing menu from it would let a permissions edit
+silently reorder the menu. `test/leave-config-map.test.ts` enforces their AGREEMENT instead.
+
+**AND THE AUDIT THAT FOUND EVERYTHING ELSE.** Playwright over the PRODUCTION build (the dev server hides
+this): 45 registered screens x 5 viewports, 1440 down to 390. Result: **0 horizontal overflow at any
+width**, 0 missing `<h1>`, 0 console errors, and after the fixes 0 render failures. 63 statutory test
+files green. `pnpm test:browser` green.
+
+⚠️ **DEFECT 1 — `/reports` "Overtime report" 404'd.** `app/attendance/ot-report/` holds ONLY
+`export/route.ts`; there is no page. The link sat in a list whose own comment promised "honest links to
+surfaces that exist today", and it NEVER LOOKED BROKEN — the only symptom was a failed RSC prefetch.
+Found by crawling every internal link a rendered page offers (**219 destinations; exactly one broken**).
+Now `/attendance#ot-report`, with the anchor added to the card that holds the export.
+
+⚠️⚠️ **DEFECT 2 — THE NAV RAIL DID NOT FIT, ON EVERY SCREEN.** Measured at 1440x900: **1490px of nav in a
+746px column, 34 entries, 16 reachable, 18 BELOW THE FOLD** — including Analytics, Audit trail, Data
+Privacy, Security & permissions and AI, the screen where a provider is configured. Sections are
+collapsible now, active one open: **ratio 1.0 and ZERO below the fold on all 45 screens.**
+Three properties, each load-bearing and each pinned by `test/sidebar-sections-fit.test.ts`:
+the first group had NO LABEL so it could never collapse (ten rows, half the rail); the ACTIVE section is
+force-open with its toggle disabled ("where am I" must not depend on a control you can switch off); and a
+closed section **renders nothing** rather than hiding with CSS, or `scrollHeight` is unchanged and the fix
+is cosmetic.
+
+⚠️ **A METRIC THAT COULD NOT FAIL, AND THE LESSON GENERALISES.** The audit's first "page too tall" check
+reported 0 problems on all 45 screens — because this is a fixed-height app shell where
+`documentElement.scrollHeight` ALWAYS equals the viewport. The content scrolls inside
+`<main overflow-y-auto>`, the rail inside its own `<nav>`. Re-pointed at the real scrollers, the same
+check immediately found the rail and two deep pages (`/analytics` 5.7x, `/admin/users` 4.8x). **A green
+metric nobody has tried to make fail is decoration.**
+
+⚠️ **`.vitest-attachments/` IS GITIGNORED BUT IS NOT IN THE RSYNC EXCLUDES** — not in the hand-rolled
+deploy and not in `scripts/improve/release.ts:73`. It was in this round's dry run and was excluded by
+hand. **Test artefacts must never reach production; add it to release.ts's exclude list.** Not done here
+because it would have meant editing source mid-deploy and re-gating.
+
+**BRANCHES LEFT BEHIND, both intentional:** `release/ui-fixes` (the two fixes cherry-picked onto r249 for
+a staged deploy) and `backup/pre-reorder-20260907`. **Neither was deployed** — the reporter approved the
+map mid-round, which removed the reason to ship the fixes separately, so `main` went out as one superset.
+Reordering `main` to put the fixes before the map was attempted and **refused by the permission
+classifier** (it rewrites a shared branch), which is why the cherry-pick branch exists at all. Both can be
+deleted.
+
+**STILL TRUE:** production has no AI provider and no agent switched on, so every rate on the Control Tower
+is correctly blank. The screens say so in words rather than printing a zero — verified in this audit.
+
 ## r249 (2026-09-06) — the loop closes: the system can now catch its own failed fix. `main@ec9612db`.
 
 **DEPLOYED.** tsc clean · **full gate GREEN, 765 files / 5 chunks, peak disk 58-79%** · `next build` clean ·

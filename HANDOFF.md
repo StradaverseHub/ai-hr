@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-07 (r226-r250 SHIPPED · ONE OPEN ITEM AWAITING A PLAN · THE LEARNING LOOP IS CLOSED IN CODE; ONLY A PROVIDER IS MISSING)
+## CURRENT STATE — snapshot 2026-09-07 (r226-r251 SHIPPED · BOTH BOARD ITEMS PLANNED AND WITH THE REPORTER · THE DEMO SIGNS IN AT /login)
 
-**`main@82c2b816` IS WHAT RUNS ON PRODUCTION (r250, 2026-09-07)** — verified by an
+**`main@c39661c0` IS WHAT RUNS ON PRODUCTION (r251, 2026-09-07)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
 which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
 and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
@@ -220,11 +220,18 @@ resolved (r235 makes it POSSIBLE, not automatic — somebody has to open Agent a
 tile correctly refuses to print a figure. **Do not build the auto-clear gate** — and note 0083 §5 that the
 tile measures exceptions ÷ throughput, which is an exception-load estimate rather than a headcount answer.
 
-**BOARD (verified on production 2026-09-07 after r250): `approved` 0, `blocked` 0, and ONE item at
-`open` awaiting a plan — `711adcd2` "Payroll Items – Category, Payroll Category and ORP Calculation
-Setting Enhancement" (enhancement). It asks for clearer Category / Payroll Category terminology, a new
-Ordinary Rate of Pay setting controlling which items form the OT and unpaid-leave base, and a full-width
-redesign of the Pay Items screen with the calculation workflow unchanged. NOT YET PLANNED.**
+**BOARD (verified 2026-09-07 after r251): `open` 0, `contested` 0, `approved` 0, `blocked` 0. BOTH live
+items are `planned` and with the reporter:**
+  - `a6fe37fc` **rev 4** — they CONTESTED rev 3 by quoting their own "Phase 2 — Remove the Legacy Module".
+    Rev 4 says YES to the rebuild, in the order their own data-safety rule requires: prove the
+    approval-rule replay first, agree the structure, build alongside, migrate and verify, remove last.
+    The one carve-out is theirs, not ours — a table holding transactional data must not be dropped, and
+    261 approval rules / 297 balances / 42 applications / 115 recalc rows live in those tables.
+  - `711adcd2` **rev 1** — Pay Items: rename Category/Payroll Category, add BIK, and a per-item ORP
+    control. ⚠️ **Their worked example SUBTRACTS a deduction from the overtime base**; ORP is EA-1955 s.2
+    wages ÷ 26, so that lowers overtime pay. The plan allows it but never defaults it and warns on the
+    screen. Also: **"Automatic" is the DEFAULT on 6 of their 29 pay items**, so the plan renames rather
+    than removes it.
 
 ⚠️ `a6fe37fc` IS CLOSED — the reporter approved plan rev 3 (the navigation map) and it shipped in r250.
 The earlier framing that this file carried for two rounds — "go through the 16 Annual Leave tables and
@@ -303,63 +310,61 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r250 (2026-09-07) — a customer-readiness audit in a real browser; two defects found and fixed; the Leave Config map shipped. `main@82c2b816`.
+### r251 (2026-09-07) — the demo signs in at /login; TWO bugs in that one flow, each masking the other. `main@c39661c0`.
 
-**DEPLOYED.** tsc clean · **full gate GREEN, 767 files / 5 chunks** · `next build` clean · no migration ·
-arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401 ·
-`a6fe37fc` marked `deployed` (ref 82c2b816).
+**DEPLOYED.** tsc clean · **gate 768 files / 5 chunks — chunk 5 red with ZERO AssertionErrors, peak-disk
+94%; all 10 files pass on a rebuilt cluster (55 tests, exit 0)** · service restarted 14:51:34 · verified by
+driving all five identities on production, not by trusting the deploy.
 
-**THE APPROVED ITEM: `a6fe37fc` rev 3 — the Leave Configuration MAP.** Nine screens in that area had no
-list of them anywhere, and FOUR (`adjustments`, `generate`, `payroll`, `replacement`) all rendered the
-heading "Leave configuration" because they shared `admin.leave.pageTitle`. Each now has its own name, and
-`components/leave-config-map.tsx` groups the area by what you are doing (Configure / Run / History).
-**No route moved**, so no new screenKey and no function-access column (AGENTS 20).
-⚠️ **The map's list is declared in the component and is NOT derived from `lib/permissions.ts`** — that is
-an access-control registry, and deriving a customer-facing menu from it would let a permissions edit
-silently reorder the menu. `test/leave-config-map.test.ts` enforces their AGREEMENT instead.
+**THE CHANGE.** The demo used to sign every visitor in automatically: `lib/session.ts` fell back to
+`DEV_USER_ID` when no `dev_user` cookie was set, so a visitor arrived as the seeded GROUP ADMIN and
+/login was unreachable in normal use. Now no cookie ⇒ signed out ⇒ /login, which lists the seeded
+identities WITH the access each carries. Log out clears the cookie (it used to keep it deliberately, so
+logging out did not log you out). The header switcher is hidden on the demo — leaving it lets a tester
+swap access mid-session and stop testing the level they signed in with.
+**LOCAL DEV KEEPS THE FALLBACK** (`isDemoDeployment()`, not `demoSwitcherEnabled()`): this file's header
+says the switcher exists so `pnpm dev` and the harness are never forced through WorkOS.
 
-**AND THE AUDIT THAT FOUND EVERYTHING ELSE.** Playwright over the PRODUCTION build (the dev server hides
-this): 45 registered screens x 5 viewports, 1440 down to 390. Result: **0 horizontal overflow at any
-width**, 0 missing `<h1>`, 0 console errors, and after the fixes 0 render failures. 63 statutory test
-files green. `pnpm test:browser` green.
+⚠️⚠️ **BUG 1 — A SERVER ACTION THAT SETS A COOKIE AND THEN REDIRECTS DOES NOT CARRY IT.** Only ONE
+identity could sign in; the rest bounced back to /login. The cookie was set correctly every time, and
+`curl`-ing `/` on the box with each identity's cookie returned **200 for all five** — so resolution was
+never broken. The navigation the action performed simply arrived without it. **Fixed by a ROUTE HANDLER**:
+plain form POST → 303 + Set-Cookie → GET. One ordinary HTTP round trip.
 
-⚠️ **DEFECT 1 — `/reports` "Overtime report" 404'd.** `app/attendance/ot-report/` holds ONLY
-`export/route.ts`; there is no page. The link sat in a list whose own comment promised "honest links to
-surfaces that exist today", and it NEVER LOOKED BROKEN — the only symptom was a failed RSC prefetch.
-Found by crawling every internal link a rendered page offers (**219 destinations; exactly one broken**).
-Now `/attendance#ot-report`, with the anchor added to the card that holds the export.
+⚠️⚠️ **BUG 2, HIDDEN BEHIND BUG 1 — `NextResponse.redirect(new URL('/', req.url))` POINTS AT THE INTERNAL
+ORIGIN.** With bug 1 fixed everyone landed on `/` and got a **BLANK 39-character document**. Behind the
+tunnel `req.url` is `http://127.0.0.1:3000/...`, so the browser was sent somewhere it cannot reach.
+**Anyone using the demo through cloudflared would have hit this.** Fixed with a RELATIVE `Location`, which
+the browser resolves against the url IT used. **Any redirect from a route handler here must do the same.**
 
-⚠️⚠️ **DEFECT 2 — THE NAV RAIL DID NOT FIT, ON EVERY SCREEN.** Measured at 1440x900: **1490px of nav in a
-746px column, 34 entries, 16 reachable, 18 BELOW THE FOLD** — including Analytics, Audit trail, Data
-Privacy, Security & permissions and AI, the screen where a provider is configured. Sections are
-collapsible now, active one open: **ratio 1.0 and ZERO below the fold on all 45 screens.**
-Three properties, each load-bearing and each pinned by `test/sidebar-sections-fit.test.ts`:
-the first group had NO LABEL so it could never collapse (ten rows, half the rail); the ACTIVE section is
-force-open with its toggle disabled ("where am I" must not depend on a control you can switch off); and a
-closed section **renders nothing** rather than hiding with CSS, or `scrollHeight` is unchanged and the fix
-is cosmetic.
+**THE MEASUREMENT THAT CRACKED IT, and it is the transferable part:** two numbers from the SAME session —
+after the redirect `body.length = 0`, after a plain `GET /` `body.length = 1062, nav = 11`. Neither number
+alone says anything; the pair says "the page is fine, the Location is not". Both bugs looked like "the
+identity is broken" and neither was.
 
-⚠️ **A METRIC THAT COULD NOT FAIL, AND THE LESSON GENERALISES.** The audit's first "page too tall" check
-reported 0 problems on all 45 screens — because this is a fixed-height app shell where
-`documentElement.scrollHeight` ALWAYS equals the viewport. The content scrolls inside
-`<main overflow-y-auto>`, the rail inside its own `<nav>`. Re-pointed at the real scrollers, the same
-check immediately found the rail and two deep pages (`/analytics` 5.7x, `/admin/users` 4.8x). **A green
-metric nobody has tried to make fail is decoration.**
+**VERIFIED ON PRODUCTION, all five:** HR Admin lands with 13 nav entries and reaches /admin/users; the
+manager and three employees land with 11 and are redirected away from it; the switcher is hidden for all.
 
-⚠️ **`.vitest-attachments/` IS GITIGNORED BUT IS NOT IN THE RSYNC EXCLUDES** — not in the hand-rolled
-deploy and not in `scripts/improve/release.ts:73`. It was in this round's dry run and was excluded by
-hand. **Test artefacts must never reach production; add it to release.ts's exclude list.** Not done here
-because it would have meant editing source mid-deploy and re-gating.
+⚠️ **AN SSH DROP KILLED A SERVER-SIDE `next build` AND LEFT PRODUCTION IN A HALF-STATE** — new source on
+disk, old build serving, service never restarted, and `deploy.sh` returned 255. It looked exactly like a
+code bug and cost a diagnosis. **Deploys now run detached: `setsid nohup ./deploy/deploy.sh > log 2>&1 &`,
+then poll the log.** A dropped connection cannot half-finish one.
 
-**BRANCHES LEFT BEHIND, both intentional:** `release/ui-fixes` (the two fixes cherry-picked onto r249 for
-a staged deploy) and `backup/pre-reorder-20260907`. **Neither was deployed** — the reporter approved the
-map mid-round, which removed the reason to ship the fixes separately, so `main` went out as one superset.
-Reordering `main` to put the fixes before the map was attempted and **refused by the permission
-classifier** (it rewrites a shared branch), which is why the cherry-pick branch exists at all. Both can be
-deleted.
+⚠️ **AGENTS 27 BIT AGAIN, ON MY OWN COMMENT.** The new guard scans `app/login/as/route.ts` as text and
+does not strip comments, so the comment EXPLAINING the forbidden redirect failed the check that forbids
+it. Reworded the comment; the guard stands. This is the third recorded instance.
 
-**STILL TRUE:** production has no AI provider and no agent switched on, so every rate on the Control Tower
-is correctly blank. The screens say so in words rather than printing a zero — verified in this audit.
+⚠️ **`/login` IS OUTSIDE `lib/permissions.ts`,** so the 45-screen browser audit never covered it — as are
+`/invite`, `/reset-password` and `/callback`. The registry is the AUTHORISED surface, not the reachable
+one. Related trap: `/login` is EXEMPT from the SHARE_PASSWORD gate, so it renders fine with the WRONG
+password while every other page 401s — that masked the real behaviour for several attempts.
+
+**`SHARE_PASSWORD` STAYS.** Choosing an identity is SELECTION, not authentication — there is no password —
+so the basic-auth gate is still the only boundary in front of **83 people, 82 payslips** and their
+statutory data. It comes off when the demo moves to real WorkOS logins, and not before.
+
+⚠️ **CHUNKS=5 IS NOW MARGINAL:** chunk 5 hit **94%** peak disk (58-79% when it was validated in r248) on a
+768-file suite. Next red chunk with zero AssertionErrors, go to `CHUNKS=6` before diagnosing anything.
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
