@@ -18,7 +18,15 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-07 (r226-r252 SHIPPED · BOTH BOARD ITEMS PLANNED AND WITH THE REPORTER · THE DEMO SIGNS IN AT /login · THE DASHBOARD IS FAST FOR NON-ADMINS)
+## CURRENT STATE — snapshot 2026-09-07 (r226-r252 SHIPPED · ⛔ r253 BUILT AND GATED BUT **NOT DEPLOYED** · THE DEMO SIGNS IN AT /login · THE DASHBOARD IS FAST FOR NON-ADMINS)
+
+⛔ **`main` IS AHEAD OF PRODUCTION AND THAT IS THE FIRST THING TO FIX.** `main@7fd982e6` carries r253 —
+six approved board items, gate GREEN across 6 chunks — and production is still on **`2db7011f` (r252)**.
+The deploy never started: **SSH to 203.142.6.241:8288 times out** (host UP, ping 21ms, ports 80/443 open,
+8288 and 22 filtered; this machine's network is fine). When SSH is back, deploy r253 the normal way —
+rsync → `deploy.sh` → **zero-change `rsync -azi --dry-run` read as TEXT, not as a line count** → confirm
+the watermark is still `1781862555000` (r253 carries NO migration) → then mark the six items deployed on
+the board. **Nothing from r253 is marked deployed and nothing should be until that has actually run.**
 
 **`main@2db7011f` IS WHAT RUNS ON PRODUCTION (r252, 2026-09-07)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
@@ -314,6 +322,94 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r253 (2026-09-07) — SIX APPROVED ITEMS, BUILT AND GATED GREEN. ⛔ **NOT DEPLOYED — THE BOX IS UNREACHABLE.** `main@7fd982e6`.
+
+⛔ **READ THIS FIRST. r253 IS FINISHED CODE SITTING ON `main` THAT PRODUCTION HAS NEVER SEEN.** Every
+gate passed — tsc clean, **GATE GREEN across all 6 chunks (780 files, peak-disk 55-71%)**, the browser
+project green (2 files, 10 passed + 1 expected fail), `next build` clean — and then the deploy could not
+start: **SSH to 203.142.6.241:8288 times out.** Diagnosed rather than assumed: the host is UP (ping 0%
+loss, 21ms) and ports 80 and 443 are OPEN, but 8288 AND 22 are closed/filtered, while github.com:443 and
+1.1.1.1:443 are fine from here — so it is that box's SSH, not this machine's network and not a dead
+server. **Nothing is marked deployed on the board and nothing should be until the rsync + deploy.sh +
+zero-change dry-run + watermark check have actually run.**
+
+⚠️ **AND A WARNING ABOUT HOW THAT WAS NEARLY MISREPORTED.** The first proof-of-arrival check was
+`rsync -azi --dry-run … | wc -l`, which printed **2** — and 2 is not 0, but the two lines were
+`ssh: connect … timed out` and `rsync: unexpected end of file`, NOT two changed files. A line count is
+not a change count when the transport can fail. Read the dry run's TEXT.
+
+**WHAT SHIPPED INTO `main` — six workstreams, six worktrees, six branches, merged and gated:**
+`8041aa84` Transactions → Transaction Entry · `b372e923` a Payroll Result link on every reprocess row ·
+`420ebab5` part one, the whole employee row opens the employee · `9da61c86` the System Settings
+master-data lists page · `2983802f` the import template catches up with the employee record ·
+`d75b0c11` the Payroll Process filter selection survives the run flow's actions.
+
+**THE ROUND'S REAL LESSON: ALL SIX BUILT GREEN AND FIVE WERE WRONG.** Every workstream reported tsc
+clean and targeted tests passing. The adversarial verify pass then returned **27 findings, 5 of 6 verdict
+`fix-first`**, including a BLOCKER and six majors. A gate would have shipped every one of them. AGENTS 23
+holds exactly as written, for the fourth round running.
+
+⚠️ **WE TOLD THE REPORTER `d75b0c11` "ALREADY WORKS" AND WE WERE WRONG. THEY MUST BE TOLD (AGENTS 31).**
+The approved plan said the Payroll Process filter memory was already built, on a production measurement
+that was real but incomplete: it tested LINK navigation, which does work. It does not survive an ACTION.
+`closeAction` (app/payroll/actions.ts:650), `generateAction` (:127), `unlockAction` (:599) and
+`reprocessSelectedAction` (:500) all redirected to a hardcoded path with no `from`, and the posting forms
+carried only `batchId`. **The reporter's exact complaint reproduces:** list → Year 2026 + January → open a
+processed run → Close payroll → land on `?toast=Payroll+closed` → Back → September 2026. Worse, the
+builder's own case G asserted that a missing `from` resolves to `/payroll` — it pinned the bug as correct.
+Fixed via new `lib/return-to.ts withPayrollFrom(destination, raw)` across all four actions plus the
+Anomalies chain and the wizard's draft-adjustment panel, on the refusal branch as well as the success one.
+
+⚠️ **THE BLOCKER: `position: relative` ON A `<tr>` IS DROPPED BY WEBKIT, AND THE FIX WAS FOUND BY
+MEASUREMENT, NOT BY REASONING.** The clickable-row overlay was pinned to the `<tr>`. A WKWebView probe
+against system WebKit 605.1.15 (Safari 26.5) showed the row computes as **static**, so `elementFromPoint`
+answered with the LAST row's anchor for every probe on the page — other rows' cells, the paragraph below
+the table, the top of the content area. The positioning context moved to the `<td>` (padding and
+positioning on the same box, so no gaps between cells). **The agent REJECTED the parent's suggested fix on
+measurement:** a block wrapper inside the cell is only as tall as its own content, so the top and bottom of
+every short cell answered with no link — dead bands across the table, in Chromium. That measurement is
+recorded in `app/admin/personnel/row-link.tsx`, along with an explicit "not measured, so not claimed"
+clause for older Safari.
+
+⚠️ **`test/personnel-row-click.browser.test.tsx` IS NOT IN THE GATE.** `vitest.browser.config.ts` keeps
+the browser project out of `pnpm vitest run` by design, so the full gate does NOT run it. It must be run
+separately (`pnpm test:browser`) or a regression in that file is invisible. It was run for this round.
+
+**THE OTHER MAJORS, ALL FIXED:** every keystroke in the three master-data grids fired a client navigation
+(now returns without navigating when the target query equals the current one — chosen over a debounce,
+which would only delay the one useful reset); **adding a holiday no longer showed the new row** (new
+`holidayFollowPath()` looks the row up in the same list the screen builds and redirects to its page,
+dropping only a filter that would hide it); `passport_issuing_country` was validated against the `country`
+catalog instead of the issuing-country one; and the plan's promised `from` never reached the new reprocess
+links, which also pointed at a different result screen from the one the run screen uses.
+
+**FOUR FINDINGS WERE DECLINED WITH REASONS, AND THAT WAS THE RIGHT OUTCOME.** The strongest: restoring
+mouse text-selection inside an employee row is impossible without reintroducing the dead zones the item
+exists to remove — an overlay is the topmost hit target by construction. The trade is now stated in
+`row-link.tsx` rather than left to be rediscovered; a copy affordance on the Employee ID cell would be a
+new item, not a change to this one.
+
+**THE MERGE NEEDED HAND-RESOLUTION AND THE GROUPING RULE ONLY HELD FOR FIVE OF SIX.** `payroll-filter` and
+`reprocess-link` both fixed the reprocess screen for different reasons and collided on five files. Kept
+BOTH features: the shared `withPayrollFrom`/`withQueryParam` helpers over a duplicate local `to()`; ONE
+copy of a variable pair both branches had invented under different names (`carriedFrom`/`carry` vs
+`listBack`/`listFrom`); and `payrollResultHref(batch, employmentId, backHref)` so the run screen's link
+both points at the shared destination and carries the selection.
+
+**LOCALE AUDIT WAS BASE-AWARE, NOT PARITY-ONLY (19b).** Four branches each touched all six locale files.
+Diffed base vs merged vs every side: +32 keys in each of the six, perfect parity, **zero branch edits
+dropped by the merge**, and **zero values left as English** in ms/ta/th/vi/zh across all 39 new/changed
+keys. `i18n-check.mjs` cannot see either failure.
+
+**`CHUNKS=6` IS THE NEW FLOOR AND IT WAS MEASURED, NOT GUESSED.** At 780 files six chunks peaked at
+**55-71%**, against five chunks' 87-94% at 769 files last round. No environmental failures.
+
+**STILL OWED ON THE BOARD, deliberately NOT built this round:** `a6fe37fc` (the approved plan promises the
+reporter a structure-and-screens review BEFORE building — building it would break that promise) ·
+`711adcd2` (changes what feeds overtime pay; AGENTS 23b says money-affecting work is hand-fixed on the
+first pass, not delegated) · `420ebab5` part two (one Save per tab — staged behind the 35-form
+classification this round produced at `docs/audits/420ebab5-personnel-save-classification.md`).
 
 ### r252 (2026-09-07) — THE 8.5-SECOND DASHBOARD WAS ONE MISSING INDEX AND AN RLS FUNCTION CALLED PER ROW. Migration `0455`.
 
