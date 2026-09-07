@@ -13,7 +13,7 @@ import { listProfileChangeRequests } from '@/core/profile';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
-import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
+import { Button, Card, PageHeader } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
@@ -26,6 +26,8 @@ import {
 import { decideProfileChangeAction } from './actions';
 import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
 import { ColumnPicker } from './column-picker';
+import { DraftRow } from './draft-row';
+import { EmployeeRow } from './employee-row';
 import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
@@ -532,81 +534,55 @@ export default async function PeoplePage({
             <tbody className="divide-y divide-border">
               {/* DRAFTS FIRST (item 06f0cb8f). Same columns as everyone else — the reporter's own example
                   table is Employee ID / Employee Name / Company / Status — so a Draft reads as what it is:
-                  a place in the list with a number held for it. Every column it genuinely has no answer
-                  for shows an em dash rather than being left blank, because a blank cell in a table of
-                  filled ones reads as a loading fault. The row links to the continue form, not to a
-                  profile: there is no profile yet. */}
+                  a place in the list with a number held for it.
+
+                  420ebab5 — and it is clickable across its whole width like every other row here, because
+                  it IS one of the rows the reporter was looking at. The destination differs (the form that
+                  finishes the draft, not a profile that does not exist yet) and the row says so twice, in
+                  the Draft chip and the sub-line under the name. Every string is resolved here: <DraftRow>
+                  owns no translator, exactly like <EmployeeRow>. */}
               {drafts.map((d) => (
-                <tr key={d.id} className="bg-muted/20 hover:bg-muted/40">
-                  {columns.map((key) => (
-                    <td key={key} className="px-4 py-3">
-                      {key === 'code' ? (
-                        d.reservedEmployeeCode ? (
-                          <EmployeeCode code={d.reservedEmployeeCode} />
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )
-                      ) : key === 'name' ? (
-                        <div className="flex items-center gap-3">
-                          <Avatar name={d.label || '?'} />
-                          <div className="min-w-0">
-                            <Link
-                              href={`/admin/personnel/new?draft=${d.id}`}
-                              className="font-medium text-foreground hover:text-primary"
-                            >
-                              {d.label || t('draftUntitled')}
-                            </Link>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {d.missing.length > 0
-                                ? t('draftMissing', { count: d.missing.length })
-                                : t('draftReady')}
-                            </div>
-                          </div>
-                        </div>
-                      ) : key === 'status' ? (
-                        <StatusBadge status="draft" label={t('statusDraft')} />
-                      ) : key === 'company' ? (
-                        <span className="text-muted-foreground">{d.companyName ?? t('draftNoCompany')}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                <DraftRow
+                  key={d.id}
+                  draftId={d.id}
+                  label={d.label || t('draftUntitled')}
+                  avatarName={d.label || '?'}
+                  subtitle={
+                    d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady')
+                  }
+                  reservedEmployeeCode={d.reservedEmployeeCode}
+                  companyName={d.companyName ?? t('draftNoCompany')}
+                  statusLabel={t('statusDraft')}
+                  columns={columns}
+                />
               ))}
-              {employees.map((e) => (
-                <tr key={e.employmentId} className="hover:bg-muted/40">
-                  {columns.map((key) => (
-                    <td key={key} className="px-4 py-3">
-                      {key === 'code' ? (
-                        <EmployeeCode code={e.employeeCode} />
-                      ) : key === 'name' ? (
-                        <div className="flex items-center gap-3">
-                          <Avatar name={e.name} />
-                          <div className="min-w-0">
-                            <Link
-                              href={`/admin/personnel/${e.employmentId}?from=personnel`}
-                              className="font-medium text-foreground hover:text-primary"
-                            >
-                              {e.name}
-                            </Link>
-                            <div className="truncate text-xs text-muted-foreground">{e.email}</div>
-                          </div>
-                        </div>
-                      ) : key === 'status' ? (
-                        (() => {
-                          const st = deriveEmploymentStatus(e, today);
-                          return <StatusBadge status={st} label={tStatus(st)} />;
-                        })()
-                      ) : (
-                        <span className="whitespace-nowrap text-muted-foreground">
-                          {textCell(e, key) ?? '—'}
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {/* 420ebab5 — THE WHOLE ROW OPENS THE EMPLOYEE. The row carried the hover tint and nothing
+                  else: only the name was a link, so it looked clickable and was not. The markup moved into
+                  <EmployeeRow>, which is the one place the stretched-link idiom is spelled and explains
+                  itself there — and it had to move to be TESTABLE at all, because this page is an async
+                  server component that reads the database before it renders a single row.
+
+                  Everything the row shows is still resolved HERE and handed over as plain text: the
+                  component owns no translator, no clock and no column catalogue of its own, so this table
+                  and the Excel export keep printing the same projection. */}
+              {employees.map((e) => {
+                const st = deriveEmploymentStatus(e, today);
+                const text: Partial<Record<EmployeeColumnKey, string | null>> = {};
+                for (const key of columns) text[key] = textCell(e, key);
+                return (
+                  <EmployeeRow
+                    key={e.employmentId}
+                    employmentId={e.employmentId}
+                    name={e.name}
+                    email={e.email}
+                    employeeCode={e.employeeCode}
+                    status={st}
+                    statusLabel={tStatus(st)}
+                    columns={columns}
+                    text={text}
+                  />
+                );
+              })}
               {/* The empty state counts the DRAFT rows too — "no employees yet" under a table that is
                   visibly showing two of them would be the screen contradicting itself. */}
               {employees.length === 0 && drafts.length === 0 && (
