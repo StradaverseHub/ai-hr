@@ -7,7 +7,7 @@
  *   - TP3 gets its OWN card + dedicated setTp3Action that PARTIAL-updates only the four TP3 columns and
  *     appends an `employee.tp3.updated` DomainEvent (before/after). The rest of the statutory row is
  *     untouched.
- *   - Zakat is rendered read-only (editing stays at Payroll → Transactions → Zakat).
+ *   - Zakat is rendered read-only (editing stays at Payroll → Transaction Entry → Zakat).
  *   - setStatutoryAction no longer carries the TP3 fields, so it must PASS THE STORED TP3 THROUGH — a
  *     Bank & Statutory save can never wipe the opening balances the TP3 card wrote (the full-overwrite
  *     wipe trap, mirroring the existing zakat pass-through guard).
