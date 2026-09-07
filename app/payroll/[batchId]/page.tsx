@@ -181,7 +181,10 @@ export default async function BatchPage({
    * THE SELECTION TRAVELS IN THE URL, deliberately. Transaction View is a server component driving GET
    * forms, and it SCOPE-GUARDS every param it receives: an `employmentId` outside the viewer's employee
    * scope is coerced to `undefined` — "no selection" — rather than queried (its own comment at the
-   * coercion says so, and test/payroll-batch-payslip-link.test.ts pins it now that this link exists).
+   * coercion says so, and it is pinned by test/payroll-run-screen-e440991b.test.ts — "THE REFUSAL:
+   * Transaction View still coerces an out-of-scope employmentId to 'no selection'", written for this
+   * link; test/employee-scope-panel-guard.test.ts proves the same refusal against a real out-of-scope
+   * id in the database. r253 corrected this reference: it named a guard file that has never existed.)
    * Handing the selection over as a link therefore inherits that fence for free; passing a callback or
    * pre-resolved rows across the boundary instead would both break RSC and route around the guard.
    *
@@ -191,7 +194,11 @@ export default async function BatchPage({
    * run's own company, period and cycle are still what identifies the record; this screen still passes
    * no `from`, exactly as before.
    */
-  const payslipDetailHref = (employmentId: string) => payrollResultHref(batch, employmentId);
+  // r253 — the URL lives in `payrollResultHref` (b372e923 moved it there so Reprocess links to the
+  // SAME screen), and `backHref` is d75b0c11's half: the operator's filter selection travels with the
+  // link so Back from the result restores the list as they left it. The helper omits an empty `from`.
+  const payslipDetailHref = (employmentId: string) =>
+    payrollResultHref(batch, employmentId, backHref === '/payroll' ? undefined : backHref);
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
   const resetOn = settingEnabledOrDefault(s, 'payroll.reset_enabled');
@@ -291,9 +298,13 @@ export default async function BatchPage({
             {/* ADR-0076 — the exceptions queue. Only from `processed` onward: a draft has no payslips, and
                 the checks read payslips. It is a plain Link because the page is read-only; running the
                 checks is a deliberate action taken ON that page, not a side effect of navigating to it. */}
+            {/* d75b0c11 — the CHAIN, not just the last hop: Anomalies' own Back returns HERE, so without
+                carrying `from` this screen's Back would then collapse to a bare /payroll and the
+                operator's filter selection would be lost one screen deeper than anyone was looking.
+                Same `fromSuffix` Reprocess and Remove already ride. */}
             {batch.status !== 'draft' && (
               <Link
-                href={`/payroll/${batch.id}/anomalies`}
+                href={`/payroll/${batch.id}/anomalies${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
                 {ta('title')}
@@ -324,6 +335,12 @@ export default async function BatchPage({
             {batch.status === 'draft' && (
               <form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
+                {/* r253 — THE SELECTION SURVIVES THE BUTTON, not just the Back link. This action
+                    redirects to this same screen, and until now it redirected to a HARDCODED
+                    `/payroll/<id>?toast=…` with no `from` — so pressing Generate silently reset the
+                    operator's filter selection to the current period. Posts the already-whitelisted
+                    `backHref`, exactly as the reset form below does. */}
+                <input type="hidden" name="from" value={backHref} />
                 {preBlockers > 0 ? (
                   // Blocked: employees with no salary record — server re-asserts (PreProcessBlockedError).
                   <Button type="submit" disabled title={t('preChecksBlockedError', { n: preBlockers })}>
@@ -387,6 +404,10 @@ export default async function BatchPage({
               ) : (
                 <form action={closeAction}>
                   <input type="hidden" name="batchId" value={batch.id} />
+                  {/* r253 — CLOSE PAYROLL IS THE PATH THE REPORTER WALKED: filter to January, View a
+                      processed run, Close, then Back — and Back went to September, because this action
+                      redirected to a bare `/payroll/<id>?toast=…`. The filter selection posts with it. */}
+                  <input type="hidden" name="from" value={backHref} />
                   {/* ef31d251 — Close is the step that publishes pay to employees and fans out a
                       payslip.ready notification to every one of them, and it was a plain button that
                       said nothing about either. variant="secondary" is mandatory: ConfirmSubmit
@@ -559,6 +580,9 @@ export default async function BatchPage({
                 mirrored into a hidden input in this form; Confirm requestSubmit()s it to unlockAction. */}
             <form action={unlockAction} className="flex justify-end">
               <input type="hidden" name="batchId" value={batch.id} />
+              {/* r253 — same as Generate and Close: the action returns to this screen, so it is handed
+                  the filter selection this screen's own Back is built from. */}
+              <input type="hidden" name="from" value={backHref} />
               <ConfirmSubmit
                 size="sm"
                 title={t('unlockConfirmTitle')}

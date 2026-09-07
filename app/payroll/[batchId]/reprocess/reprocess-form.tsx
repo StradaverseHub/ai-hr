@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
+import { withPayrollFrom } from '@/lib/return-to';
 import { reprocessSelectedAction } from '../../actions';
 
 export type ReprocessCandidate = {
@@ -225,7 +226,9 @@ export function ReprocessForm({
     <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
-      {from && <input type="hidden" name="from" value={from} />}
+      {/* See the `from` prop: the submit is the ordinary way off this screen, and it used to strip the
+          operator's filter selection on the way through. */}
+      {from ? <input type="hidden" name="from" value={from} /> : null}
 
       {/* 65e2d5de — Search Employee, at the top of the screen where the request put it. It filters the
           rows only; it never changes the selection — and, per `blockImplicitSubmit` above, Enter in it
@@ -438,7 +441,9 @@ export function ReprocessForm({
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Link
-          href={`/payroll/${batchId}`}
+          // r253 — Cancel lands on the run screen, whose own Back is built from `?from=`; without this
+          // it arrived bare and the operator's selection was lost one link later.
+          href={withPayrollFrom(`/payroll/${batchId}`, from)}
           className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           {t('reprocessCancel')}

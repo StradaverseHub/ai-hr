@@ -209,22 +209,18 @@ describe('e440991b — progress is reported honestly', () => {
   });
 
   it('the action returns to the new screen carrying the job id, not a one-line toast on the run screen', () => {
-    expect(ACTIONS).toContain('const back = `/payroll/${batchId}/reprocess`;');
-    // b372e923 BUILDS THE DESTINATION THROUGH A LOCAL `to()` HELPER — it re-attaches the Payroll Process
-    // list's filter query on the way, which a hand-concatenated template literal was silently dropping.
-    // So what is pinned here is the DECISION this case was always about (success carries the job id;
-    // refusals land back on the SELECTION screen, never on the run) rather than the concatenation that
-    // expressed it. Both are driven end to end against a real run, through the real action, in
-    // test/payroll-reprocess-result-link-b372e923.test.ts.
-    const start = ACTIONS.indexOf('export async function reprocessSelectedAction');
-    const next = ACTIONS.indexOf('export async function', start + 1);
-    const body = ACTIONS.slice(start, next === -1 ? undefined : next);
-    expect(start, 'reprocessSelectedAction is gone').toBeGreaterThan(-1);
-    expect(body).toMatch(/redirect\(\s*to\(\{\s*job:\s*jobId\s*\}\)\s*\)/);
-    expect(body, 'refusals must land back on the selection, not on the run screen').toMatch(
-      /redirect\(\s*to\(\{\s*error:/,
+    // r253 — SAME DESTINATION, PLUS THE OPERATOR'S FILTER SELECTION. The literal was right while the
+    // destination was a constant; it is not one any more. `backPath` is the bare route (revalidatePath
+    // takes a path, never a query) and `back` is that route carrying the whitelisted `?from=` the
+    // screen posted, so the job result the operator lands on still has a Back that restores the list.
+    expect(ACTIONS).toContain('const backPath = `/payroll/${batchId}/reprocess`;');
+    expect(ACTIONS).toContain("const back = withPayrollFrom(backPath, formData.get('from'));");
+    expect(ACTIONS).toMatch(/redirect\(withQueryParam\(back, 'job', jobId\)\)/);
+    expect(ACTIONS, 'refusals must land back on the selection, not on the run screen').toMatch(
+      /redirect\(withQueryParam\(back, 'error'/,
     );
-    expect(body, 'a redirect to the run screen came back').not.toMatch(/redirect\(\s*`\/payroll\/\$\{batchId\}`/);
+    // …and the cache drop still names a PATH. A query string here silently revalidates nothing.
+    expect(ACTIONS).toMatch(/revalidatePath\(backPath\)/);
   });
 });
 

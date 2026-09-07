@@ -120,7 +120,32 @@ export function payrollListAfterReset(raw: unknown): string {
   return kept.length > 0 ? `${path}?${kept.join('&')}` : path;
 }
 
-/** Append a `toast=`/`error=` to a destination that may or may not already carry a query string. */
-export function withQueryParam(destination: string, key: 'toast' | 'error', value: string): string {
+/** Append a `toast=`/`error=`/`job=` to a destination that may or may not already carry a query string. */
+export function withQueryParam(destination: string, key: 'toast' | 'error' | 'job', value: string): string {
   return `${destination}${destination.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;
+}
+
+/**
+ * r253 — CARRY THE OPERATOR'S FILTER SELECTION ONTO A DESTINATION A SERVER ACTION IS REDIRECTING TO.
+ *
+ * 9066bd6c and d75b0c11 both audited BACK LINKS and neither looked at ACTION REDIRECTS, which is where
+ * the reporter's complaint actually lived. Every link out of the Payroll Process list carries `?from=`,
+ * but the moment the operator pressed a BUTTON — Close payroll, Generate, Unlock, Reprocess, or any of
+ * the anomaly actions — the action redirected to a HARDCODED `/payroll/<batchId>?toast=…`, the
+ * destination re-rendered with no `from` at all, and its Back collapsed to the current period. Reported
+ * as "click Back and it returns to September"; answered, wrongly, with "already works".
+ *
+ * The value arrives in a FormData, so it is UNTRUSTED and is whitelisted by shape through
+ * `payrollListReturnTo` — never echoed. A refused or absent value resolves to `/payroll`, and is then
+ * OMITTED rather than written out as a redundant default, so an unfiltered journey keeps exactly the
+ * address it has today.
+ *
+ * ENCODED ON THE WAY OUT. The carried value is itself a query string, so appending it raw would make its
+ * own `&m=1` a parameter of the OUTER url and Back would render `/payroll?year=2026` with the month
+ * silently gone — the trap d75b0c11's case B exists to pin, one layer further along the journey.
+ */
+export function withPayrollFrom(destination: string, raw: unknown): string {
+  const from = payrollListReturnTo(raw);
+  if (from === '/payroll') return destination;
+  return `${destination}${destination.includes('?') ? '&' : '?'}from=${encodeURIComponent(from)}`;
 }

@@ -99,6 +99,12 @@ export default async function ReprocessPage({
   // parameter and Postgres answers with an error, i.e. a 500 where a 404 belongs.
   if (!UUID_RE.test(batchId)) notFound();
   const sp = await searchParams;
+  // 9066bd6c — the Payroll Process list's own filter query, whitelisted BY SHAPE (never echoed raw).
+  // r253 — resolved ONCE and handed to the form as well as to the header. It used to be resolved inline
+  // for the Back link only, so `reprocessSelectedAction` — the ordinary way off this screen — posted
+  // nothing, redirected to a bare `/payroll/<id>/reprocess?job=…`, and the selection was gone by the
+  // time the operator read the job result. `undefined` when there is nothing to carry, so an unfiltered
+  // visit posts no field at all and the address stays exactly as it was.
 
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
