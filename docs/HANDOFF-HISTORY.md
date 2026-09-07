@@ -1,3 +1,54 @@
+## r249 (2026-09-06) — the loop closes: the system can now catch its own failed fix. `main@ec9612db`.
+
+**DEPLOYED.** tsc clean · **full gate GREEN, 765 files / 5 chunks, peak disk 58-79%** · `next build` clean ·
+no migration · arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401 ·
+**`anomaly-sweep` cron VERIFIED present on the box** (AGENTS 13 — a script existing is not a script running,
+and r230 lost six weeks to exactly that).
+
+**ADR-0084 §2.4 / Phase 3 item 6.** `core/recurrence-mining.ts` implements one sentence: *a verdict closed
+as `fixed_upstream` whose finding re-fires next cycle proves the fix did not hold.* It is the ONLY writer of
+`agent_proposal.reversed_at`, and runs once per tenant at the END of `anomaly-sweep` — the evidence it needs
+is the verdicts that same pass just wrote, so per-batch would ask before the answer exists and before-the-loop
+would always be a cycle stale.
+
+⚠️ **A RECURRENCE REVERSES A CLOSURE AND MUST NEVER TOUCH A HYPOTHESIS. This is the decision to re-read
+before extending this file.** `close_fixed_upstream` claimed *the cause is gone*, so the finding returning
+falsifies it. `anomaly_hypothesis` claimed *there may be a problem here*, so the problem returning CONFIRMS
+it. Reversing the second would record a correct model as wrong — and because §2.8 reads these rates to grant
+autonomy, the bug would teach the system to **stop raising hypotheses that were true**. A test pins it;
+nothing else in the suite would notice.
+
+⚠️ **"NEXT CYCLE" IS THE EMPLOYEE'S NEXT APPEARANCE, NOT ANY LATER ONE.** A fix that held for five clean
+cycles and broke in the sixth is a REGRESSION; one gone by the very next payroll never worked. Only the
+second falsifies the closure. A clean next cycle means the fix HELD and nothing is written — silence is the
+correct record of a fix that worked.
+
+⚠️⚠️ **FLIPPING `REVERSAL_HAS_A_WRITER` WAS NOT SUFFICIENT, AND THE SECOND HALF IS THE ONE THAT NEARLY
+SHIPPED.** A closure is not TESTED until the employee is paid again, but `reversed ÷ approved` puts every
+approval in the denominator — so ten closures all still pending would have printed **"0% reversed"**, which
+is r248's own lie in a new coat, one round later. The rate is now blanked PER TYPE until at least one closure
+of that type has been tested, and `closuresPending` is on the screen so a reader can tell *"no fix has
+failed"* from *"no fix has been tried yet"*. **Verified by rendering a POPULATED card, not the empty state:
+`close_fixed_upstream` shows an em dash beside a 100% agreement rate, exactly as intended.**
+
+**ONE PREDICATE, TWO CONSUMERS.** `classifyClosures` is read-only and shared: the sweep writes reversals from
+it, the Control Tower asks it whether the denominator is real. r235's rule — *share the predicate, never
+re-write it*. A test pins that the read path writes nothing, because the screen calls it on every render.
+
+**NO TENANT SWITCH, deliberately.** The three unattended agents each carry one because each DOES something to
+the tenant. This writes one timestamp to a telemetry table about our own accuracy: nothing employee-facing,
+no money, no notification. Gating self-measurement behind a switch is how a product ends up unable to answer
+whether it works.
+
+⚠️ **TWO CORRECTIONS TO r248, AND THE SHAPE MATTERS MORE THAN THE FACTS.** r248 recorded that
+`recordDecision` had no callers and that wiring one "deserves its own round". **It has TWO** —
+`core/payroll-anomaly.ts:742` (r238) and `core/readiness-nudge.ts:248` (r237). The claim came from ADR-0084
+§2.3's *"what has no caller yet, deliberately"*, which was TRUE at r236 and was overtaken by the next two
+rounds without the sentence ever being edited. **An ADR is a decision record, not a statement of current
+fact, and nothing updates it when a later round overtakes it** — so AGENTS 7 applies to this repository's own
+prose exactly as it applies to a ticket. A four-second grep settles it. That ADR line now carries a dated
+flag pointing here.
+
 ## r248 (2026-09-06) — agreement measurement lands, and the first thing it measured was a lie we were about to print. `main@49ff2885`.
 
 **DEPLOYED.** tsc clean · **full gate GREEN, 764 files across 5 chunks, every chunk exit 0** · `next build`

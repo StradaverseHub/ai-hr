@@ -18,9 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-06 (r226-r249 SHIPPED · BOARD HAS NOTHING BUILDABLE · THE LEARNING LOOP IS CLOSED IN CODE; ONLY A PROVIDER IS MISSING)
+## CURRENT STATE — snapshot 2026-09-07 (r226-r250 SHIPPED · ONE OPEN ITEM AWAITING A PLAN · THE LEARNING LOOP IS CLOSED IN CODE; ONLY A PROVIDER IS MISSING)
 
-**`main@ec9612db` IS WHAT RUNS ON PRODUCTION (r249, 2026-09-06)** — verified by an
+**`main@82c2b816` IS WHAT RUNS ON PRODUCTION (r250, 2026-09-07)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
 which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
 and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
@@ -220,8 +220,18 @@ resolved (r235 makes it POSSIBLE, not automatic — somebody has to open Agent a
 tile correctly refuses to print a figure. **Do not build the auto-clear gate** — and note 0083 §5 that the
 tile measures exceptions ÷ throughput, which is an exception-load estimate rather than a headcount answer.
 
-**BOARD: NOTHING BUILDABLE. Verified on production 2026-09-05 after r247: `open` 0, `contested` 0,
-`approved` 0, `blocked` 0.** Everything live is `planned` and with the reporter, and `a6fe37fc` **rev 2**
+**BOARD (verified on production 2026-09-07 after r250): `approved` 0, `blocked` 0, and ONE item at
+`open` awaiting a plan — `711adcd2` "Payroll Items – Category, Payroll Category and ORP Calculation
+Setting Enhancement" (enhancement). It asks for clearer Category / Payroll Category terminology, a new
+Ordinary Rate of Pay setting controlling which items form the OT and unpaid-leave base, and a full-width
+redesign of the Pay Items screen with the calculation workflow unchanged. NOT YET PLANNED.**
+
+⚠️ `a6fe37fc` IS CLOSED — the reporter approved plan rev 3 (the navigation map) and it shipped in r250.
+The earlier framing that this file carried for two rounds — "go through the 16 Annual Leave tables and
+retire the duplicates" — WAS WRONG and rev 3 corrected it to them in writing: the 16 are a deliberate
+CONTRACT / PERMANENT / PART TIMER x grade matrix and nothing should be deleted. What is missing is the
+eligibility RULES, which is their data entry, and the product already flags it (r209's
+`ruleNonePointsHere` / `criteriaEveryone`). Everything live is `planned` and with the reporter, and `a6fe37fc` **rev 2**
 (the Leave Configuration audit answer at the top of this file) joined them this round.
 ⚠️ **The CLI cannot list `planned` items** — `pullPlannable` is `open`+`contested`, and there is no
 `pull-planned`. So the planned list below is the last thing a round WROTE, not a reading of the board;
@@ -293,56 +303,63 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r249 (2026-09-06) — the loop closes: the system can now catch its own failed fix. `main@ec9612db`.
+### r250 (2026-09-07) — a customer-readiness audit in a real browser; two defects found and fixed; the Leave Config map shipped. `main@82c2b816`.
 
-**DEPLOYED.** tsc clean · **full gate GREEN, 765 files / 5 chunks, peak disk 58-79%** · `next build` clean ·
-no migration · arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401 ·
-**`anomaly-sweep` cron VERIFIED present on the box** (AGENTS 13 — a script existing is not a script running,
-and r230 lost six weeks to exactly that).
+**DEPLOYED.** tsc clean · **full gate GREEN, 767 files / 5 chunks** · `next build` clean · no migration ·
+arrival proved by a ZERO-line `rsync -azi --dry-run` · service active · `GET /` 401 ·
+`a6fe37fc` marked `deployed` (ref 82c2b816).
 
-**ADR-0084 §2.4 / Phase 3 item 6.** `core/recurrence-mining.ts` implements one sentence: *a verdict closed
-as `fixed_upstream` whose finding re-fires next cycle proves the fix did not hold.* It is the ONLY writer of
-`agent_proposal.reversed_at`, and runs once per tenant at the END of `anomaly-sweep` — the evidence it needs
-is the verdicts that same pass just wrote, so per-batch would ask before the answer exists and before-the-loop
-would always be a cycle stale.
+**THE APPROVED ITEM: `a6fe37fc` rev 3 — the Leave Configuration MAP.** Nine screens in that area had no
+list of them anywhere, and FOUR (`adjustments`, `generate`, `payroll`, `replacement`) all rendered the
+heading "Leave configuration" because they shared `admin.leave.pageTitle`. Each now has its own name, and
+`components/leave-config-map.tsx` groups the area by what you are doing (Configure / Run / History).
+**No route moved**, so no new screenKey and no function-access column (AGENTS 20).
+⚠️ **The map's list is declared in the component and is NOT derived from `lib/permissions.ts`** — that is
+an access-control registry, and deriving a customer-facing menu from it would let a permissions edit
+silently reorder the menu. `test/leave-config-map.test.ts` enforces their AGREEMENT instead.
 
-⚠️ **A RECURRENCE REVERSES A CLOSURE AND MUST NEVER TOUCH A HYPOTHESIS. This is the decision to re-read
-before extending this file.** `close_fixed_upstream` claimed *the cause is gone*, so the finding returning
-falsifies it. `anomaly_hypothesis` claimed *there may be a problem here*, so the problem returning CONFIRMS
-it. Reversing the second would record a correct model as wrong — and because §2.8 reads these rates to grant
-autonomy, the bug would teach the system to **stop raising hypotheses that were true**. A test pins it;
-nothing else in the suite would notice.
+**AND THE AUDIT THAT FOUND EVERYTHING ELSE.** Playwright over the PRODUCTION build (the dev server hides
+this): 45 registered screens x 5 viewports, 1440 down to 390. Result: **0 horizontal overflow at any
+width**, 0 missing `<h1>`, 0 console errors, and after the fixes 0 render failures. 63 statutory test
+files green. `pnpm test:browser` green.
 
-⚠️ **"NEXT CYCLE" IS THE EMPLOYEE'S NEXT APPEARANCE, NOT ANY LATER ONE.** A fix that held for five clean
-cycles and broke in the sixth is a REGRESSION; one gone by the very next payroll never worked. Only the
-second falsifies the closure. A clean next cycle means the fix HELD and nothing is written — silence is the
-correct record of a fix that worked.
+⚠️ **DEFECT 1 — `/reports` "Overtime report" 404'd.** `app/attendance/ot-report/` holds ONLY
+`export/route.ts`; there is no page. The link sat in a list whose own comment promised "honest links to
+surfaces that exist today", and it NEVER LOOKED BROKEN — the only symptom was a failed RSC prefetch.
+Found by crawling every internal link a rendered page offers (**219 destinations; exactly one broken**).
+Now `/attendance#ot-report`, with the anchor added to the card that holds the export.
 
-⚠️⚠️ **FLIPPING `REVERSAL_HAS_A_WRITER` WAS NOT SUFFICIENT, AND THE SECOND HALF IS THE ONE THAT NEARLY
-SHIPPED.** A closure is not TESTED until the employee is paid again, but `reversed ÷ approved` puts every
-approval in the denominator — so ten closures all still pending would have printed **"0% reversed"**, which
-is r248's own lie in a new coat, one round later. The rate is now blanked PER TYPE until at least one closure
-of that type has been tested, and `closuresPending` is on the screen so a reader can tell *"no fix has
-failed"* from *"no fix has been tried yet"*. **Verified by rendering a POPULATED card, not the empty state:
-`close_fixed_upstream` shows an em dash beside a 100% agreement rate, exactly as intended.**
+⚠️⚠️ **DEFECT 2 — THE NAV RAIL DID NOT FIT, ON EVERY SCREEN.** Measured at 1440x900: **1490px of nav in a
+746px column, 34 entries, 16 reachable, 18 BELOW THE FOLD** — including Analytics, Audit trail, Data
+Privacy, Security & permissions and AI, the screen where a provider is configured. Sections are
+collapsible now, active one open: **ratio 1.0 and ZERO below the fold on all 45 screens.**
+Three properties, each load-bearing and each pinned by `test/sidebar-sections-fit.test.ts`:
+the first group had NO LABEL so it could never collapse (ten rows, half the rail); the ACTIVE section is
+force-open with its toggle disabled ("where am I" must not depend on a control you can switch off); and a
+closed section **renders nothing** rather than hiding with CSS, or `scrollHeight` is unchanged and the fix
+is cosmetic.
 
-**ONE PREDICATE, TWO CONSUMERS.** `classifyClosures` is read-only and shared: the sweep writes reversals from
-it, the Control Tower asks it whether the denominator is real. r235's rule — *share the predicate, never
-re-write it*. A test pins that the read path writes nothing, because the screen calls it on every render.
+⚠️ **A METRIC THAT COULD NOT FAIL, AND THE LESSON GENERALISES.** The audit's first "page too tall" check
+reported 0 problems on all 45 screens — because this is a fixed-height app shell where
+`documentElement.scrollHeight` ALWAYS equals the viewport. The content scrolls inside
+`<main overflow-y-auto>`, the rail inside its own `<nav>`. Re-pointed at the real scrollers, the same
+check immediately found the rail and two deep pages (`/analytics` 5.7x, `/admin/users` 4.8x). **A green
+metric nobody has tried to make fail is decoration.**
 
-**NO TENANT SWITCH, deliberately.** The three unattended agents each carry one because each DOES something to
-the tenant. This writes one timestamp to a telemetry table about our own accuracy: nothing employee-facing,
-no money, no notification. Gating self-measurement behind a switch is how a product ends up unable to answer
-whether it works.
+⚠️ **`.vitest-attachments/` IS GITIGNORED BUT IS NOT IN THE RSYNC EXCLUDES** — not in the hand-rolled
+deploy and not in `scripts/improve/release.ts:73`. It was in this round's dry run and was excluded by
+hand. **Test artefacts must never reach production; add it to release.ts's exclude list.** Not done here
+because it would have meant editing source mid-deploy and re-gating.
 
-⚠️ **TWO CORRECTIONS TO r248, AND THE SHAPE MATTERS MORE THAN THE FACTS.** r248 recorded that
-`recordDecision` had no callers and that wiring one "deserves its own round". **It has TWO** —
-`core/payroll-anomaly.ts:742` (r238) and `core/readiness-nudge.ts:248` (r237). The claim came from ADR-0084
-§2.3's *"what has no caller yet, deliberately"*, which was TRUE at r236 and was overtaken by the next two
-rounds without the sentence ever being edited. **An ADR is a decision record, not a statement of current
-fact, and nothing updates it when a later round overtakes it** — so AGENTS 7 applies to this repository's own
-prose exactly as it applies to a ticket. A four-second grep settles it. That ADR line now carries a dated
-flag pointing here.
+**BRANCHES LEFT BEHIND, both intentional:** `release/ui-fixes` (the two fixes cherry-picked onto r249 for
+a staged deploy) and `backup/pre-reorder-20260907`. **Neither was deployed** — the reporter approved the
+map mid-round, which removed the reason to ship the fixes separately, so `main` went out as one superset.
+Reordering `main` to put the fixes before the map was attempted and **refused by the permission
+classifier** (it rewrites a shared branch), which is why the cherry-pick branch exists at all. Both can be
+deleted.
+
+**STILL TRUE:** production has no AI provider and no agent switched on, so every rate on the Control Tower
+is correctly blank. The screens say so in words rather than printing a zero — verified in this audit.
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
