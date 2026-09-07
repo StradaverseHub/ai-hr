@@ -157,7 +157,12 @@ describe('the dedicated screen carries the whole job', () => {
     // The reporter's complaint in one line: a half-finished record sat in an amber card above the table
     // with no status against it. It is a row now, with the held Employee ID and a Draft badge.
     expect(listPage.includes("t('draftsHeading')")).toBe(false);
-    expect(listPage).toContain('<StatusBadge status="draft"');
+    // 420ebab5 moved the row's MARKUP into <DraftRow> so the whole row could be made clickable and could
+    // be rendered in a test (this page is an async server component). The requirement is unchanged and is
+    // still asserted end to end — the listing emits the row inside its table, and the row still carries
+    // the Draft badge and the held Employee ID.
+    expect(listPage).toContain('<DraftRow');
+    expect(read('app/admin/personnel/draft-row.tsx')).toContain('<StatusBadge status="draft"');
     expect(listPage).toContain('d.reservedEmployeeCode');
     // And Draft is an option on the status filter, so HR can pull up exactly who is outstanding.
     //

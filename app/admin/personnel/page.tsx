@@ -13,7 +13,7 @@ import { listProfileChangeRequests } from '@/core/profile';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
-import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
+import { Button, Card, PageHeader } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
@@ -26,6 +26,7 @@ import {
 import { decideProfileChangeAction } from './actions';
 import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
 import { ColumnPicker } from './column-picker';
+import { DraftRow } from './draft-row';
 import { EmployeeRow } from './employee-row';
 import {
   DRAFT_BUCKET,
@@ -533,47 +534,27 @@ export default async function PeoplePage({
             <tbody className="divide-y divide-border">
               {/* DRAFTS FIRST (item 06f0cb8f). Same columns as everyone else — the reporter's own example
                   table is Employee ID / Employee Name / Company / Status — so a Draft reads as what it is:
-                  a place in the list with a number held for it. Every column it genuinely has no answer
-                  for shows an em dash rather than being left blank, because a blank cell in a table of
-                  filled ones reads as a loading fault. The row links to the continue form, not to a
-                  profile: there is no profile yet. */}
+                  a place in the list with a number held for it.
+
+                  420ebab5 — and it is clickable across its whole width like every other row here, because
+                  it IS one of the rows the reporter was looking at. The destination differs (the form that
+                  finishes the draft, not a profile that does not exist yet) and the row says so twice, in
+                  the Draft chip and the sub-line under the name. Every string is resolved here: <DraftRow>
+                  owns no translator, exactly like <EmployeeRow>. */}
               {drafts.map((d) => (
-                <tr key={d.id} className="bg-muted/20 hover:bg-muted/40">
-                  {columns.map((key) => (
-                    <td key={key} className="px-4 py-3">
-                      {key === 'code' ? (
-                        d.reservedEmployeeCode ? (
-                          <EmployeeCode code={d.reservedEmployeeCode} />
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )
-                      ) : key === 'name' ? (
-                        <div className="flex items-center gap-3">
-                          <Avatar name={d.label || '?'} />
-                          <div className="min-w-0">
-                            <Link
-                              href={`/admin/personnel/new?draft=${d.id}`}
-                              className="font-medium text-foreground hover:text-primary"
-                            >
-                              {d.label || t('draftUntitled')}
-                            </Link>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {d.missing.length > 0
-                                ? t('draftMissing', { count: d.missing.length })
-                                : t('draftReady')}
-                            </div>
-                          </div>
-                        </div>
-                      ) : key === 'status' ? (
-                        <StatusBadge status="draft" label={t('statusDraft')} />
-                      ) : key === 'company' ? (
-                        <span className="text-muted-foreground">{d.companyName ?? t('draftNoCompany')}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                <DraftRow
+                  key={d.id}
+                  draftId={d.id}
+                  label={d.label || t('draftUntitled')}
+                  avatarName={d.label || '?'}
+                  subtitle={
+                    d.missing.length > 0 ? t('draftMissing', { count: d.missing.length }) : t('draftReady')
+                  }
+                  reservedEmployeeCode={d.reservedEmployeeCode}
+                  companyName={d.companyName ?? t('draftNoCompany')}
+                  statusLabel={t('statusDraft')}
+                  columns={columns}
+                />
               ))}
               {/* 420ebab5 — THE WHOLE ROW OPENS THE EMPLOYEE. The row carried the hover tint and nothing
                   else: only the name was a link, so it looked clickable and was not. The markup moved into
