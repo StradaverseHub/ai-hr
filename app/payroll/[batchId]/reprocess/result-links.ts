@@ -1,64 +1,57 @@
+import { payrollResultHref, type PayrollResultRun } from '../../payroll-result-href';
+
 /**
  * b372e923 — THE PAYROLL RESULT LINK ON EACH ROW OF A COMPLETED REPROCESS.
  *
  * The reprocess result table listed every employee it had just recalculated as plain text: to open one
  * of them you had to leave this screen, return to the Payroll Process list, find the same person on the
- * run and open them from there. The destination is NOT new — `/payroll/individual-payslip` is the same
- * HR-facing payroll result screen `app/payroll/pcb-detail/page.tsx` and
- * `app/payroll/statutory-detail/page.tsx` already send their Back links to, and it is deliberately the
- * ONLY one: a second payroll-result surface built for reprocessing could print figures that disagree
- * with the run's.
+ * run and open them from there.
  *
- * WHY THIS IS A MODULE AND NOT FOUR LINES IN THE PAGE. The failure the reporter named ("it should not
- * accidentally open ... another employee's result") lives entirely in the JOIN: the result rows come
- * from `payroll_employee_result_history` and the payslip ids come from `batchDetail`'s `slips`, two
+ * THE DESTINATION IS NOT DECIDED HERE. It is `payrollResultHref` (app/payroll/payroll-result-href.ts),
+ * the same builder the normal Payroll Process run screen uses for its own per-employee links — which is
+ * the reporter's third requirement stated as code rather than as a comment: there is no reprocess
+ * variant of the payroll result screen because there is no second place that spells its URL.
+ *
+ * WHAT THIS MODULE IS FOR, THEN, IS THE JOIN. The failure the reporter named ("it should not
+ * accidentally open ... another employee's result") lives entirely in it: the result rows come from
+ * `payroll_employee_result_history` and the run's payslips come from `batchDetail`'s `slips`, two
  * independently-ordered lists that share only `employmentId`. A link built from the wrong row's ids
  * renders, looks right, and opens somebody else — and it is invisible to a test that counts anchors.
- * Resolving the whole table here makes that join a pure function of its two inputs, so it can be run
+ * Resolving the whole table here makes that join a pure function of its inputs, so it can be run
  * against a real reprocessed run and checked row by row.
  *
- * PAYSLIP ID, NOT EMPLOYMENT ID ALONE. `slips` is read on this same render, after the reprocess has
- * written its results, so the id resolved here is the payslip that exists NOW on this run — including
- * one an ADD created moments ago, which is why an addition links like every other row rather than being
- * special-cased into plain text.
- *
- * NO ROW IS GIVEN A DEAD LINK. An employment with no payslip on this run resolves to nothing and the
- * caller renders plain text; `/payroll/individual-payslip` shape-checks the id it is handed, but an
- * anchor that leads to a "not found" card is still a promise this screen should not make.
+ * WHY `slips` IS STILL READ WHEN THE HREF NO LONGER CARRIES A PAYSLIP ID. It is the guard, not the
+ * destination: an employment with no payslip on this run has no result to open, and an anchor that
+ * leads to an empty result card is still a promise this screen should not make. `slips` is read on the
+ * same render, AFTER the reprocess wrote its results, so an employee this job ADDED already has one and
+ * links exactly like a recalculated row rather than being special-cased into plain text.
  */
-
-/** The one payroll result screen. Shared with pcb-detail / statutory-detail, never a second copy. */
-export const PAYROLL_RESULT_PATH = '/payroll/individual-payslip';
 
 /**
  * Resolve one Payroll Result href per result row, keyed by the ROW's own id.
  *
  * @param rows  the completed job's result rows (`id` is the history row, `employmentId` the employee)
- * @param slips this run's payslips as `batchDetail` returns them (`id` is the payslip)
- * @param from  the Payroll Process list's own filter query, exactly as this screen received it, so Back
- *              from the payslip returns the list as the operator left it. Forwarded VERBATIM and
- *              URL-encoded: the destination whitelists it by shape through `payrollListReturnTo`
- *              (`lib/return-to.ts`), which is the single authority on what a `from` may be, and
- *              re-implementing that judgement here would give the product two answers.
+ * @param slips this run's payslips as `batchDetail` returns them — presence is what makes a row linkable
+ * @param run   the run being reprocessed: its company, period and cycle identify the payroll record
+ * @param from  the Payroll Process list's own filter query, already whitelisted by shape through
+ *              `payrollListReturnTo` by the caller, so Back from the result returns the list as the
+ *              operator left it. Absent ⇒ no `from` on the link at all.
  *
  * A row whose employment has no payslip on this run is absent from the map — never mapped to `''` or to
- * some other row's payslip.
+ * some other row's employee.
  */
 export function reprocessResultHrefs(
   rows: readonly { id: string; employmentId: string }[],
   slips: readonly { id: string; employmentId: string }[],
+  run: PayrollResultRun,
   from?: string,
 ): Map<string, string> {
-  const payslipIdOf = new Map<string, string>();
-  for (const sl of slips) payslipIdOf.set(sl.employmentId, sl.id);
+  const paidOnThisRun = new Set(slips.map((sl) => sl.employmentId));
 
   const hrefs = new Map<string, string>();
   for (const row of rows) {
-    const payslipId = payslipIdOf.get(row.employmentId);
-    if (!payslipId) continue;
-    const q = new URLSearchParams({ employmentId: row.employmentId, payslipId });
-    if (typeof from === 'string' && from !== '') q.set('from', from);
-    hrefs.set(row.id, `${PAYROLL_RESULT_PATH}?${q.toString()}`);
+    if (!paidOnThisRun.has(row.employmentId)) continue;
+    hrefs.set(row.id, payrollResultHref(run, row.employmentId, from));
   }
   return hrefs;
 }

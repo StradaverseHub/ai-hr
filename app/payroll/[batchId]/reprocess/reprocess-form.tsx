@@ -75,6 +75,7 @@ export function ReprocessForm({
   newCandidates,
   preselectedIds,
   currency,
+  from,
 }: {
   batchId: string;
   employees: ReprocessCandidate[];
@@ -97,6 +98,14 @@ export function ReprocessForm({
    */
   preselectedIds?: string[];
   currency: string | null;
+  /**
+   * b372e923 — the Payroll Process list's filter query, already whitelisted by shape on the server, or
+   * null when the operator arrived without one. It rides the SUBMIT rather than only the address bar:
+   * the action redirects back here with the finished job's id, and a redirect builds a brand-new URL, so
+   * anything not posted is gone by the time the result table renders — taking the filters off every
+   * Payroll Result link on it, and off this screen's own Back. The Remove form carries it the same way.
+   */
+  from?: string | null;
 }) {
   const t = useTranslations('payroll.batch');
   const additions = newCandidates ?? [];
@@ -216,6 +225,7 @@ export function ReprocessForm({
     <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      {from && <input type="hidden" name="from" value={from} />}
 
       {/* 65e2d5de — Search Employee, at the top of the screen where the request put it. It filters the
           rows only; it never changes the selection — and, per `blockImplicitSubmit` above, Enter in it

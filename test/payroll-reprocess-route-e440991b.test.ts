@@ -210,10 +210,21 @@ describe('e440991b — progress is reported honestly', () => {
 
   it('the action returns to the new screen carrying the job id, not a one-line toast on the run screen', () => {
     expect(ACTIONS).toContain('const back = `/payroll/${batchId}/reprocess`;');
-    expect(ACTIONS).toMatch(/redirect\(`\$\{back\}\?job=\$\{encodeURIComponent\(jobId\)\}`\)/);
-    expect(ACTIONS, 'refusals must land back on the selection, not on the run screen').toMatch(
-      /redirect\(`\$\{back\}\?error=/,
+    // b372e923 BUILDS THE DESTINATION THROUGH A LOCAL `to()` HELPER — it re-attaches the Payroll Process
+    // list's filter query on the way, which a hand-concatenated template literal was silently dropping.
+    // So what is pinned here is the DECISION this case was always about (success carries the job id;
+    // refusals land back on the SELECTION screen, never on the run) rather than the concatenation that
+    // expressed it. Both are driven end to end against a real run, through the real action, in
+    // test/payroll-reprocess-result-link-b372e923.test.ts.
+    const start = ACTIONS.indexOf('export async function reprocessSelectedAction');
+    const next = ACTIONS.indexOf('export async function', start + 1);
+    const body = ACTIONS.slice(start, next === -1 ? undefined : next);
+    expect(start, 'reprocessSelectedAction is gone').toBeGreaterThan(-1);
+    expect(body).toMatch(/redirect\(\s*to\(\{\s*job:\s*jobId\s*\}\)\s*\)/);
+    expect(body, 'refusals must land back on the selection, not on the run screen').toMatch(
+      /redirect\(\s*to\(\{\s*error:/,
     );
+    expect(body, 'a redirect to the run screen came back').not.toMatch(/redirect\(\s*`\/payroll\/\$\{batchId\}`/);
   });
 });
 

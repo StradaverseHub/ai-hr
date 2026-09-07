@@ -138,9 +138,17 @@ export default async function ReprocessPage({
     { label: t('totalNet'), value: formatMoney(totals.net, currency) },
   ];
 
+  // 9066bd6c / b372e923 — the list's own filter query, whitelisted by shape ONCE and then used three
+  // times: this screen's Back, the hidden field that carries it across the submit, and the Payroll
+  // Result link on every result row. `payrollListReturnTo` answers '/payroll' for absent-or-hostile,
+  // which is the same as having none — so `listFrom` is undefined there rather than pinning an
+  // unfiltered list onto every outgoing URL.
+  const listBack = payrollListReturnTo(sp.from);
+  const listFrom = listBack === '/payroll' ? undefined : listBack;
+
   const header = (
     <PageHeader
-      back={{ href: payrollListReturnTo(sp.from), label: t('reprocessBack') }}
+      back={{ href: listBack, label: t('reprocessBack') }}
       title={t('reprocessTitle')}
       description={`${batch.payPeriod} · ${listed?.company ?? ''}`}
     />
@@ -225,12 +233,14 @@ export default async function ReprocessPage({
     : [];
   const jobRowIds = new Set(jobRows.map((r) => r.id));
   const earlier = disclosure.filter((r) => !jobRowIds.has(r.id));
-  // b372e923 — the Payroll Result link for each of those rows. `slips` is this run's payslips as read at
-  // the top of THIS render, i.e. after the reprocess wrote its results, so an employee the run just ADDED
-  // resolves to the payslip it created for them and links exactly like a recalculated one. `sp.from` — the
-  // Payroll Process list's own filter query — travels with the link so Back from the payslip returns the
-  // list as the operator left it, the same journey this screen's own header Back makes.
-  const resultHrefs = reprocessResultHrefs(jobRows, slips, sp.from);
+  // b372e923 — the Payroll Result link for each of those rows, at the SAME destination the normal
+  // Payroll Process run screen sends its own per-employee links to (one shared builder, so there is no
+  // reprocess-only result screen to drift). `slips` is this run's payslips as read at the top of THIS
+  // render, i.e. after the reprocess wrote its results, so an employee the job just ADDED is already
+  // paid on the run and links exactly like a recalculated one. `listFrom` travels with the link so Back
+  // from the result returns the list as the operator left it — the same journey this screen's own
+  // header Back makes, and it survives the submit because the form posts it (see ReprocessForm).
+  const resultHrefs = reprocessResultHrefs(jobRows, slips, batch, listFrom);
 
   const money = (n: unknown) => formatMoney(n, currency);
   /** What moved, in the words of the diff: gross first when it moved, then each statutory line. */
@@ -385,12 +395,17 @@ export default async function ReprocessPage({
                 a false reassurance, so the second half is stated whenever the group is on screen. */}
             {newCandidates.length > 0 && ` ${t('reprocessNewCollects')}`}
           </p>
+          {/* b372e923 — `from` rides the SUBMIT, not just the address bar. The action redirects, and a
+              redirect builds a brand-new URL: without this the reprocess result lands on a URL carrying
+              no filter query, and every Payroll Result link the result table then draws drops the
+              operator on an unfiltered list. The Remove form carries it the same way. */}
           <ReprocessForm
             batchId={batchId}
             employees={candidates}
             newCandidates={newCandidates}
             preselectedIds={preselectedIds}
             currency={currency}
+            from={listFrom ?? null}
           />
         </div>
       </Card>

@@ -172,6 +172,27 @@ describe('e440991b — what the form posts', () => {
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     expect(submit()).toBeDisabled();
   });
+
+  it('b372e923 — posts the Payroll Process list’s filter query back, so the redirect can re-attach it', () => {
+    // The submit is a redirect, and a redirect builds a brand-new URL: anything this form does not post
+    // is gone by the time the result table renders. That table draws a Payroll Result link per employee
+    // and each one hands `from` on to the result screen, so without this field the whole chain — this
+    // screen's Back, and every link on the result — falls back to an unfiltered list. The action's half
+    // of the round trip is driven against a real run in
+    // test/payroll-reprocess-result-link-b372e923.test.ts.
+    const { container } = form({ from: '/payroll?year=2026&m=5&status=processed' });
+    const el = container.querySelector('form') as HTMLFormElement;
+    expect(new FormData(el).get('from')).toBe('/payroll?year=2026&m=5&status=processed');
+  });
+
+  it('b372e923 — and posts no `from` at all when the operator arrived without filters', () => {
+    // An unfiltered visit must keep a clean URL rather than pinning a bare list onto every link.
+    for (const over of [{}, { from: null }, { from: '' }]) {
+      const { container } = form(over);
+      const el = container.querySelector('form') as HTMLFormElement;
+      expect(new FormData(el).has('from'), `posted a from for ${JSON.stringify(over)}`).toBe(false);
+    }
+  });
 });
 
 /**

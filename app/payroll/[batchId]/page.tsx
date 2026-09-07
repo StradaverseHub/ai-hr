@@ -11,6 +11,9 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
+// b372e923 — the payroll result destination, now spelled in ONE place because the Reprocess result table
+// links to it too and the reporter's requirement is that the two cannot be different screens.
+import { payrollResultHref } from '../payroll-result-href';
 import { payrollListReturnTo } from '@/lib/return-to';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
@@ -181,16 +184,14 @@ export default async function BatchPage({
    * coercion says so, and test/payroll-batch-payslip-link.test.ts pins it now that this link exists).
    * Handing the selection over as a link therefore inherits that fence for free; passing a callback or
    * pre-resolved rows across the boundary instead would both break RSC and route around the guard.
+   *
+   * b372e923 MOVED THE URL ITSELF into `payrollResultHref` and changed nothing about it. The Reprocess
+   * result table now links to the same place, and the reporter's requirement is that the two open the
+   * SAME payroll result screen — which one shared builder makes structural instead of a promise. The
+   * run's own company, period and cycle are still what identifies the record; this screen still passes
+   * no `from`, exactly as before.
    */
-  const payslipDetailHref = (employmentId: string) =>
-    `/payroll/transaction-view?${new URLSearchParams({
-      tab: 'history',
-      companyId: batch.companyId,
-      employmentId,
-      year: String(pYear),
-      month: String(pMonth),
-      cycle: batch.runType,
-    }).toString()}`;
+  const payslipDetailHref = (employmentId: string) => payrollResultHref(batch, employmentId);
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
   const resetOn = settingEnabledOrDefault(s, 'payroll.reset_enabled');

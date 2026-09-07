@@ -460,6 +460,13 @@ export async function resetAction(formData: FormData) {
  * moved. It returns to /payroll/<id>/reprocess carrying the JOB ID, and that page renders the completed
  * job: every employee reprocessed, net pay before and after off the stored snapshots, which figures
  * moved and why. Refusals come back to the same screen so the selection is still in front of you.
+ *
+ * b372e923 — AND IT CARRIES `from` ACROSS THE ROUND TRIP, the way removeEmployeePayrollAction does. A
+ * redirect builds a brand-new URL: whatever the operator arrived with is gone unless the form posted it
+ * and this action puts it back. It was gone, and the cost was not only this screen's Back — the result
+ * table it lands on renders a Payroll Result link per employee, and each of those hands `from` on to the
+ * result screen. With none in the address bar the whole chain fell back to a bare, unfiltered list.
+ * Whitelisted by shape here as well as on the page, because a FormData value is untrusted input.
  */
 export async function reprocessSelectedAction(formData: FormData) {
   const s = await getSession();
@@ -467,10 +474,17 @@ export async function reprocessSelectedAction(formData: FormData) {
   const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
   const reason = String(formData.get('reason') ?? '').trim();
   const idempotencyKey = String(formData.get('idempotencyKey') ?? '').trim();
+  const from = payrollListReturnTo(formData.get('from'));
   const t = await getTranslations('payroll.batch');
   const back = `/payroll/${batchId}/reprocess`;
+  const to = (params: Record<string, string>) => {
+    const sp = new URLSearchParams(params);
+    // Only carried when it is not the default, so an unfiltered visit keeps a clean URL.
+    if (from !== '/payroll') sp.set('from', from);
+    return `${back}?${sp.toString()}`;
+  };
   if (employmentIds.length === 0) {
-    redirect(`${back}?error=${encodeURIComponent(t('reprocessNoneSelected'))}`);
+    redirect(to({ error: t('reprocessNoneSelected') }));
   }
   let jobId = '';
   try {
@@ -492,12 +506,12 @@ export async function reprocessSelectedAction(formData: FormData) {
             e instanceof PayrollCounterpartClosedError
             ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
             : (e as Error).message;
-    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+    redirect(to({ error: msg }));
   }
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath(back);
-  redirect(`${back}?job=${encodeURIComponent(jobId)}`);
+  redirect(to({ job: jobId }));
 }
 
 /**
