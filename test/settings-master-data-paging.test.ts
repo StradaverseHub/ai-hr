@@ -29,12 +29,13 @@ const GRIDS = [
   'components/grade-labels-grid.tsx',
 ] as const;
 
-/** The sweep: every other admin master-data list that was rendering every row with no pager. All six are
- *  server-rendered, so all six take the SERVER pager and the same ?page=&size= contract. */
+/** The sweep: every other admin master-data list that was rendering every row with no pager. All seven are
+ *  server-rendered, so all seven take the SERVER pager and the same ?page=&size= contract. */
 const SWEPT_PAGES = [
   'app/admin/settings/movement/page.tsx',
   'app/admin/settings/hiring-defaults/page.tsx',
   'app/admin/settings/dashboard/page.tsx',
+  'app/admin/settings/employee-id/page.tsx',
   'app/admin/pay-components/page.tsx',
   'app/admin/holidays/page.tsx',
   'app/admin/holidays/groups/page.tsx',

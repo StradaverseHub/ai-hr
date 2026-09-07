@@ -4,6 +4,8 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listConfigs, formatEmployeeCode, exceedsCp39EmployeeNoLength, type ConfigRow } from '@/core/employee-id-config';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { createConfigAction, updateConfigAction, setStatusAction, deleteConfigAction } from './actions';
@@ -23,17 +25,24 @@ function previewCode(prefix: string, startNumber: number, numberLength: number, 
 export default async function EmployeeIdConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; toast?: string; edit?: string; new?: string }>;
+  searchParams: Promise<{ error?: string; toast?: string; edit?: string; new?: string; page?: string; size?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('employeeIdConfig');
-  const { error, edit, new: newParam } = await searchParams;
+  const sp = await searchParams;
+  const { error, edit, new: newParam } = sp;
 
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const configs = await listConfigs(s, scopeIds);
 
   const companyName = (id: string | null) => (id == null ? t('scopeGlobal') : companies.find((c) => c.id === id)?.name ?? '—');
+  // 9da61c86 — a list of records like its System Settings siblings, so it carries the same bar: the
+  // record count, the rows-per-page choice and the position. `editing` is looked up in the WHOLE set, not
+  // the page — an ?edit= link must open its row whichever page that row is on.
+  const pq = parsePageQuery(sp);
+  const { rows: pageConfigs, state: pgState } = paginateRows(configs, pq);
+
   const editing: ConfigRow | null = edit ? configs.find((c) => c.id === edit) ?? null : null;
   const showForm = Boolean(editing || newParam);
 
@@ -80,7 +89,7 @@ export default async function EmployeeIdConfigPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {configs.map((c) => (
+              {pageConfigs.map((c) => (
                 <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
                   <td className="px-4 py-2.5">
                     {c.templateName ? c.templateName : <span className="text-muted-foreground">{t('templateUnnamed')}</span>}
@@ -138,6 +147,7 @@ export default async function EmployeeIdConfigPage({
             </tbody>
           </table>
         </div>
+        <Pager basePath={PAGE} state={pgState} />
       </Card>
 
       {showForm && (
