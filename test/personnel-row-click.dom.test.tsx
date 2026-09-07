@@ -13,7 +13,7 @@
  * to a plain <a> under renderToStaticMarkup, which is exactly the element under test).
  *
  * WHAT jsdom CANNOT SAY. There is no layout and no CSS here, so no assertion below claims to have
- * measured a hit area. What it can do — and what a source scan of one file cannot — is check the two
+ * measured a hit area — test/personnel-row-click.browser.test.tsx does that in real Chromium. What it can do — and what a source scan of one file cannot — is check the two
  * STRUCTURAL conditions the stretched-link idiom actually depends on, which is where it silently breaks:
  *   1. the overlay's containing block is the ROW, so nothing between the anchor and the <tr> may be
  *      positioned — an ancestor with `relative` shrinks the overlay to that element and the rest of the

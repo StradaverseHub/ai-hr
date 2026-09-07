@@ -27,6 +27,13 @@
  * The row is extracted from page.tsx into its own component for one reason beyond tidiness: the listing
  * is an async server component that reads the database before it renders anything, so the row could not
  * otherwise be RENDERED in a test — and every claim above is a claim about rendered markup.
+ *
+ * The claim that `relative` on a `<tr>` is honoured at all — the one thing the whole idiom rests on, and
+ * one no source scan or jsdom render can settle — is MEASURED in Chromium with the real compiled
+ * stylesheet by test/personnel-row-click.browser.test.tsx, which hit-tests the Employee ID cell, the
+ * status chip and the row's far edge, and checks each overlay stops at its own row. Drop the `relative`
+ * and that file reports "row 1 opened the wrong employee": an unpinned overlay does not disappear, it
+ * stretches to the whole page.
  */
 import Link from 'next/link';
 import { Avatar, EmployeeCode, StatusBadge } from '@/components/ui';
