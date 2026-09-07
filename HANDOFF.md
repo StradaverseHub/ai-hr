@@ -18,18 +18,23 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-07 (r226-r251 SHIPPED · BOTH BOARD ITEMS PLANNED AND WITH THE REPORTER · THE DEMO SIGNS IN AT /login)
+## CURRENT STATE — snapshot 2026-09-07 (r226-r252 SHIPPED · BOTH BOARD ITEMS PLANNED AND WITH THE REPORTER · THE DEMO SIGNS IN AT /login · THE DASHBOARD IS FAST FOR NON-ADMINS)
 
-**`main@c39661c0` IS WHAT RUNS ON PRODUCTION (r251, 2026-09-07)** — verified by an
+**`main@2db7011f` IS WHAT RUNS ON PRODUCTION (r252, 2026-09-07)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
 which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
 and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
-**Migration `0454` VERIFIED APPLIED, not assumed:** 370 migrations, watermark `1781862554000`,
-`payroll_anomaly_finding.proposal_id` present (uuid, nullable), and
-`setting_definition` carries `payroll.anomaly_hypotheses_enabled` (tenant scope, default false) — the
-catalog seed ran. `0452`/`0453` remain applied from r236.
-**370 migrations applied. `0454` IS STILL THE LAST ONE — r247 carried none**, and neither did r239,
-r240 or r245.
+**Migration `0455` VERIFIED APPLIED, not assumed:** 371 migrations, watermark `1781862555000`, and
+`pg_indexes` on the box returns
+`CREATE INDEX domain_event_recent_idx ON public.domain_event USING btree (tenant_id, occurred_at DESC)`.
+`0454` remains applied from r238, `0452`/`0453` from r236.
+**371 migrations applied. `0455` IS THE LAST ONE** — r247, r239, r240 and r245 carried none.
+
+**THE DASHBOARD IS FIXED AND THE NUMBERS ARE FROM THE BOX, not from this Mac** (r252, measured after
+deploy with `curl` on localhost:3000, three warm runs each): **employee 0.74-0.84s** (was 4.4s locally on
+a production-data restore, and the owner reported 8.5s), **manager 1.0-1.4s** (was 5.7s), **HR Admin
+0.16-0.19s** (was 0.36s — the admin gained too, because the sort it no longer does was costing it as
+well). Manager is now the slowest identity; nothing about it is pathological, it simply sees the most.
 
 
 **✅ ALL FOUR APPROVED ITEMS ARE CLOSED (r247, 2026-09-05). THE BOARD HAS NOTHING BUILDABLE.**
@@ -312,8 +317,20 @@ silently, which is what this block used to record.
 
 ### r252 (2026-09-07) — THE 8.5-SECOND DASHBOARD WAS ONE MISSING INDEX AND AN RLS FUNCTION CALLED PER ROW. Migration `0455`.
 
-**DEPLOYED.** tsc clean · shadow PASS (371/371 against the live-shaped schema) · gate GATE_STATUS · verified
-by re-timing the built app against a local restore of PRODUCTION data, not by trusting the deploy.
+**DEPLOYED — `main@2db7011f`.** tsc clean · shadow PASS (371/371 against the live-shaped schema) · **gate
+GREEN across all 5 chunks (769 files), plus chunk 1 re-verified against the FINAL tree (154 files, 2277
+tests, exit 0)** because an inert edit landed after that chunk had started · `next build` clean · zero-change
+`rsync -azi --dry-run` · watermark `1781862555000` and the index read back out of `pg_indexes` on the box.
+Verified by RE-TIMING THE DEPLOYED APP ON PRODUCTION (employee 0.78s, manager 1.2s, admin 0.17s), not by
+trusting the deploy.
+
+⚠️ **AND THE FIRST ATTEMPT TO RE-VERIFY CHUNK 1 WAS A FALSE RED — 89 files, 457 tests.** It was run WITHOUT
+the per-chunk cluster rebuild the gate does, straight after chunk 5 had left the RAM disk at 87%; `df`
+showed **100%, 4.0 KiB free**. `AssertionError` count **0**, with `could not extend file`, `recovery mode`,
+`not yet accepting connections` and 10x `ECONNREFUSED`. After `./scripts/dev-db-rebuild.sh`: 154/154 files,
+2277/2277 tests, exit 0. The discriminator worked exactly as the trap above says it does — but note the
+trap now has a second trigger: **running a chunk-sized batch by hand is not the same as the gate running
+it, because the gate rebuilds the cluster first.**
 
 **THE REPORT** was "why does it take so long to go into the page after selecting the user?" — and the
 answer only existed in the production data. On the seeded dev database every identity was fast, which is
