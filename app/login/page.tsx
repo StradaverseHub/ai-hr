@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { listPrincipals } from '@/lib/principals';
-import { signInAs } from '@/app/identity-actions';
 
 /**
  * /login (ADR-0072). In a real deployment this redirects to the WorkOS AuthKit hosted login, so the
@@ -63,7 +62,11 @@ export default async function LoginPage() {
             {principals.map((p) => (
               // One form per row rather than a select: the ROLE each identity carries is the whole
               // reason to pick it, and a dropdown hides every option but one behind a click.
-              <form key={p.userId} action={signInAs}>
+              // ⚠️ A PLAIN FORM POST TO A ROUTE HANDLER, NOT A SERVER ACTION. The server-action version
+              // set the cookie correctly and then navigated without it, so every identity but one bounced
+              // straight back here — see app/login/as/route.ts for the measurement. A real POST → 303 →
+              // GET stores the cookie before the next request is made.
+              <form key={p.userId} method="post" action="/login/as">
                 <input type="hidden" name="userId" value={p.userId} />
                 <button
                   type="submit"

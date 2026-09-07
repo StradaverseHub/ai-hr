@@ -82,6 +82,34 @@ describe('demo sign-in flow', () => {
     expect(AUTH_ACTIONS).toContain('await signOutDemo();');
   });
 
+  it('signs in through a ROUTE HANDLER, never a server action that redirects', () => {
+    /**
+     * ⚠️ THIS SHIPPED BROKEN ONCE, AND THE SYMPTOM WAS BAFFLING. The first version used a server action
+     * that set the `dev_user` cookie and then called redirect('/'). The cookie was set correctly every
+     * time — curling `/` with that exact cookie returned 200 for every identity — but the navigation the
+     * action performed reached the server WITHOUT it, so the layout saw a signed-out request and bounced
+     * back to /login. Only one identity appeared to work. A plain reload afterwards always worked.
+     *
+     * A POST to a route handler that answers 303 + Set-Cookie is one ordinary HTTP round trip: the
+     * browser stores the cookie before following the Location. Reintroducing a server action here
+     * reintroduces the race, so the shape is pinned rather than the behaviour.
+     */
+    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/login/as/route.ts'), 'utf8');
+    expect(LOGIN).toContain('method="post" action="/login/as"');
+    expect(LOGIN).not.toContain('action={signInAs}');
+    expect(ROUTE).toContain('status: 303');
+    expect(ROUTE).toContain("res.cookies.set('dev_user'");
+  });
+
+  it('never writes an identity the chooser does not offer', () => {
+    // `dev_user` selects the principal the whole app runs as, so a hand-crafted post must not be able to
+    // set an arbitrary one. The endpoint checks the id against the same list the page renders.
+    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/login/as/route.ts'), 'utf8');
+    expect(ROUTE).toContain('listPrincipals()');
+    expect(ROUTE).toMatch(/allowed\.some\(\(p\) => p\.userId === userId\)/);
+    expect(ROUTE).toContain('if (!demoSwitcherEnabled())');
+  });
+
   it('offers the identities WITH the access each carries, and only on the demo', () => {
     // The roles are the entire reason to pick one, so they must reach the screen.
     expect(LOGIN).toContain('listPrincipals');
