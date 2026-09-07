@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
 import { TENANT_STATUS_UNRESOLVED, resolveEntitlementsInTenantTx } from '../core/entitlements';
 import { AuthRequiredError } from './auth-errors';
-import { demoSwitcherEnabled } from './demo-mode';
+import { demoSwitcherEnabled, isDemoDeployment } from './demo-mode';
 
 /**
  * Session resolution (ADR-0072). Two paths, gated by NODE_ENV:
@@ -66,7 +66,12 @@ export async function resolveDevPrincipal(
 ): Promise<SessionContext> {
   const ids = [...new Set([cookieUser, fallback].filter((v): v is string => Boolean(v)))];
   if (ids.length === 0) {
-    throw new Error('No dev principal. Run `pnpm db:seed`, then pick an identity.');
+    // ⚠️ AuthRequiredError, NOT a plain Error. With no cookie and no fallback the caller is simply not
+    // signed in yet — the demo's normal starting state — and app/layout.tsx turns this into a redirect
+    // to /login. A plain Error would surface as a 500 on the front door. Local dev still passes a
+    // fallback, so it reaches this branch only when the database is genuinely unseeded, and the message
+    // says so.
+    throw new AuthRequiredError('No identity selected. Run `pnpm db:seed`, then choose one at /login.');
   }
   for (const id of ids) {
     const [principal] = await lookup(id);
@@ -212,7 +217,24 @@ async function resolveSession(): Promise<SessionContext> {
   if (demoSwitcherEnabled()) {
     const cookieStore = await cookies();
     const cookieUser = cookieStore.get(DEV_COOKIE)?.value;
-    const fallback = process.env.DEV_USER_ID;
+    /**
+     * ⚠️ THE GATED DEMO HAS NO FALLBACK IDENTITY, AND THAT IS WHAT MAKES /login THE FRONT DOOR.
+     *
+     * `DEV_USER_ID` is why the demo signed everyone in automatically: with no cookie, resolveDevPrincipal
+     * fell through to the seeded GROUP ADMIN, so a visitor arrived already authenticated as the most
+     * privileged identity in the tenant and the sign-in page was unreachable in normal use. A tester
+     * could not experience the product as a manager or an employee without first knowing to use the
+     * header switcher.
+     *
+     * On the demo the fallback is therefore withheld: no cookie ⇒ resolveDevPrincipal throws ⇒
+     * app/layout.tsx redirects to /login, where the tester CHOOSES which access to test with.
+     *
+     * ⚠️ LOCAL DEV KEEPS THE FALLBACK, deliberately. This file's header states the dev switcher exists so
+     * `pnpm dev` and the test harness "are never forced through WorkOS"; removing the fallback outright
+     * would send every local page to /login and break the harness. `isDemoDeployment()` is the same
+     * predicate lib/demo-mode.ts already uses to separate the two audiences.
+     */
+    const fallback = isDemoDeployment() ? undefined : process.env.DEV_USER_ID;
     const lookup = (id: string) =>
       client<PrincipalRow[]>`
         select tenant_id, person_id, grants from app.principal(${id}::uuid)

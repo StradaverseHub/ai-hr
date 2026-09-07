@@ -10414,7 +10414,10 @@
       "title": "Sign in",
       "devNote": "This is a development build — the identity switcher is used instead of a real login.",
       "enterApp": "Enter the app",
-      "demoNote": "You are signing in to a demonstration environment. Choose an identity to explore the product with — no password is needed, and the data you see is sample data."
+      "demoNote": "You are signing in to a demonstration environment. Choose an identity to explore the product with — no password is needed, and the data you see is sample data.",
+      "chooseIdentity": "Choose who to explore as",
+      "noRole": "No role",
+      "accessNote": "You will see exactly what this person sees. To try a different level of access, log out and choose again."
     },
     "invite": {
       "title": "You've been invited",

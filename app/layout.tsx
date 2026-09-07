@@ -24,7 +24,7 @@ import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
-import { demoSwitcherEnabled } from '@/lib/demo-mode';
+import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
@@ -175,7 +175,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       >
                         dev
                       </span>
-                      <DevIdentitySwitcher principals={principals} current={session.userId ?? ''} />
+                      {/* ⚠️ NOT ON THE GATED DEMO. The demo now signs a tester in at /login as a chosen
+                          identity so they can experience the product with exactly that person's access;
+                          a header control that swaps identity mid-session defeats that — you would stop
+                          testing an access level and start browsing with all of them. Local `pnpm dev`
+                          keeps it, where switching quickly between roles is the point. */}
+                      {!isDemoDeployment() && (
+                        <DevIdentitySwitcher principals={principals} current={session.userId ?? ''} />
+                      )}
                     </>
                   )}
                 </div>

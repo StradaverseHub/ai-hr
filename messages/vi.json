@@ -10414,7 +10414,10 @@
       "title": "Đăng nhập",
       "devNote": "Đây là bản dựng phát triển — trình chuyển đổi danh tính được dùng thay cho đăng nhập thật.",
       "enterApp": "Vào ứng dụng",
-      "demoNote": "Bạn đang đăng nhập vào môi trường trình diễn. Hãy chọn một danh tính để khám phá sản phẩm — không cần mật khẩu, và dữ liệu bạn thấy là dữ liệu mẫu."
+      "demoNote": "Bạn đang đăng nhập vào môi trường trình diễn. Hãy chọn một danh tính để khám phá sản phẩm — không cần mật khẩu, và dữ liệu bạn thấy là dữ liệu mẫu.",
+      "chooseIdentity": "Chọn danh tính để khám phá",
+      "noRole": "Không có vai trò",
+      "accessNote": "Bạn sẽ thấy đúng những gì người này thấy. Để thử mức truy cập khác, hãy đăng xuất và chọn lại."
     },
     "invite": {
       "title": "Bạn đã được mời",

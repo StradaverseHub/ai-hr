@@ -10414,7 +10414,10 @@
       "title": "Log masuk",
       "devNote": "Ini ialah binaan pembangunan — penukar identiti digunakan sebagai ganti log masuk sebenar.",
       "enterApp": "Masuk ke aplikasi",
-      "demoNote": "Anda sedang log masuk ke persekitaran demonstrasi. Pilih satu identiti untuk meneroka produk — tiada kata laluan diperlukan, dan data yang anda lihat ialah data contoh."
+      "demoNote": "Anda sedang log masuk ke persekitaran demonstrasi. Pilih satu identiti untuk meneroka produk — tiada kata laluan diperlukan, dan data yang anda lihat ialah data contoh.",
+      "chooseIdentity": "Pilih identiti untuk meneroka",
+      "noRole": "Tiada peranan",
+      "accessNote": "Anda akan melihat tepat apa yang orang ini lihat. Untuk mencuba tahap akses yang berbeza, log keluar dan pilih semula."
     },
     "invite": {
       "title": "Anda telah dijemput",

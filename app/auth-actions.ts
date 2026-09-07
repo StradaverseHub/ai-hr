@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { logout as logoutService, requestPasswordReset } from '@/core/auth';
 import { demoSwitcherEnabled } from '@/lib/demo-mode';
+import { signOutDemo } from '@/app/identity-actions';
 
 /**
  * Log the current user out: append app-user.logged-out (auth-audit) then clear/revoke the WorkOS
@@ -20,7 +21,11 @@ export async function logoutAction() {
     throw e;
   }
   if (demoSwitcherEnabled()) {
-    // Dev/demo switcher path — no WorkOS session to revoke; the dev cookie stays (switcher keeps working).
+    // Dev/demo switcher path — no WorkOS session to revoke. ⚠️ THE COOKIE IS CLEARED NOW: it used to be
+    // left in place ("the switcher keeps working"), which meant Log out did not log you out — /login
+    // would show the chooser while the old identity was still active behind it. Since /login is the
+    // demo's front door, signing out has to actually return you to it signed out.
+    await signOutDemo();
     redirect('/login');
   }
   await logoutService({ tenantId: session.tenantId, userId: session.userId! }, undefined, '/login');
