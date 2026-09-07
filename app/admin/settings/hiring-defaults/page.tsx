@@ -117,7 +117,9 @@ export default async function HiringDefaultsListPage({
   const { rows: pageRows, state: pgState } = paginateRows(rows, pq);
 
   /** Keep the whole view in the address when one control changes. `page` is NOT carried: a new filter or
-   *  a new sort is a new list, and page 4 of the old one means nothing in it. */
+   *  a new sort is a new list, and page 4 of the old one means nothing in it. `size` IS carried — it is
+   *  not a position in a list but the reader's own choice of how many rows to see, and a filter change is
+   *  no reason to reset it. */
   const href = (over: Partial<{ q: string; status: SettingsStatus; sort: string; dir: SortDir }>) => {
     const next = { q, status, sort, dir, ...over };
     const usp = new URLSearchParams();
@@ -125,6 +127,7 @@ export default async function HiringDefaultsListPage({
     if (next.status !== 'active') usp.set('status', next.status);
     if (next.sort !== 'company') usp.set('sort', next.sort);
     if (next.dir !== 'asc') usp.set('dir', next.dir);
+    if (sp.size) usp.set('size', String(pq.size));
     const qs = usp.toString();
     return qs ? `${PAGE}?${qs}` : PAGE;
   };

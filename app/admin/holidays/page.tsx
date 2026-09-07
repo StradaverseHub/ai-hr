@@ -67,7 +67,10 @@ export default async function HolidaysPage({
       <input type="hidden" name="filterCountry" value={country ?? ''} />
       <input type="hidden" name="filterYear" value={year ?? ''} />
       <input type="hidden" name="filterPage" value={String(pq.page)} />
-      <input type="hidden" name="filterSize" value={String(pq.size)} />
+      {/* Only when the READER chose one. pq.size resolves to the default whether or not the address says
+          anything, so posting it unconditionally made the first Save rewrite a bare /admin/holidays into
+          ?size=25 — an address claiming a choice nobody made. The filter form above follows the same rule. */}
+      {sp.size && <input type="hidden" name="filterSize" value={String(pq.size)} />}
     </>
   );
   const typeOf = (v: string | null): (typeof HOLIDAY_TYPES)[number] =>

@@ -27,7 +27,13 @@ import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
 import { pageOfIndex, paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
-import { ClientPager, useClientPageNav, useClientPageQuery, useResetPageOnFilterChange } from './client-pager';
+import {
+  ClientPager,
+  useClampPagePastEnd,
+  useClientPageNav,
+  useClientPageQuery,
+  useResetPageOnFilterChange,
+} from './client-pager';
 import { ConfirmDialog } from './ui/confirm-submit';
 
 export type ProfileGridCategory = string;
@@ -282,6 +288,9 @@ export function ProfileOptionsGrid({
   const view = useMemo(() => applyView(rows), [applyView, rows]);
   // Sort first, page second — the ordering that makes a column header mean the whole category.
   const { rows: pageRows, state: pgState } = paginateRows(view, pq);
+  // A page that no longer exists (rows deleted off the end, or a stale bookmark) draws nothing at all —
+  // land the reader on the last page that has rows instead.
+  useClampPagePastEnd(pgState);
 
   function toggleSort(field: typeof sortField) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));

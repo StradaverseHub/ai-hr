@@ -109,6 +109,24 @@ describe('the sweep — every other admin master-data list', () => {
     expect(src).toContain('PAGED SINCE 9da61c86');
     expect(src, 'the old reasoning is quoted, not deleted').toContain('NO PAGINATION, deliberately');
   });
+
+  /**
+   * The SECOND reversal, and the one that cost this round a defect: lib/pagination's module header is the
+   * product-wide statement of which surfaces page, and it named the grade-labels grid as one that must
+   * not. A file that contradicts the contract it documents is worse than an undocumented one — the next
+   * reader follows the header and reverts the screen.
+   */
+  it('lib/pagination no longer names grade labels among the surfaces paging is kept off', () => {
+    const src = read('lib/pagination.ts');
+    const header = src.slice(0, src.indexOf('export const PAGE_SIZE_OPTIONS'));
+    const exclusions = header.match(/Deliberately NOT applied to:[\s\S]*?import previews\./)?.[0];
+    expect(exclusions, 'the exclusion sentence must still exist — it governs the other surfaces').toBeTruthy();
+    expect(exclusions!.toLowerCase()).not.toContain('grade label');
+    // Reversed, not silently edited: the header still carries WHY the old classification was wrong, and
+    // the test that decides future cases (whole-artifact, not merely editable).
+    expect(header).toContain('GRADE LABELS LEFT THAT LIST');
+    expect(header).toContain('9da61c86');
+  });
 });
 
 /**
@@ -138,6 +156,75 @@ describe('editing a holiday returns to the page you were on', () => {
     expect(src).toContain("formData.get('filterSize')");
     expect(src).toMatch(/sp\.set\('page', page\)/);
     expect(src).toMatch(/sp\.set\('size', size\)/);
+  });
+
+  // The SIZE rides only when the reader actually chose one. pq.size resolves to the default whether or not
+  // the address says anything, so an unconditional hidden field turned a bare /admin/holidays into
+  // ?size=25 on the first Save — an address claiming a choice nobody made.
+  it('the page posts a size only when the address carries one', () => {
+    const src = code(read('app/admin/holidays/page.tsx'));
+    expect(src).toMatch(/\{sp\.size && <input type="hidden" name="filterSize"/);
+  });
+});
+
+/**
+ * ROWS-PER-PAGE IS A PREFERENCE, NOT A POSITION IN A LIST (9da61c86 fix pass).
+ *
+ * The swept screens deliberately drop ?page= when a filter, a status or a sort changes — page 4 of the
+ * active items is not page 4 of the inactive ones. Their link helpers dropped ?size= with it, silently
+ * resetting a reader who had chosen 100 rows back to 25, and on two of the three the SEARCH form beside
+ * those links carried the size through — so the two controls next to each other behaved differently.
+ */
+describe('a filter or status switch keeps the rows-per-page', () => {
+  it.each([
+    ['app/admin/pay-components/page.tsx', /sp\.size \? `&size=\$\{pq\.size\}` : ''/],
+    ['app/admin/settings/movement/page.tsx', /if \(sp\.size\) usp\.set\('size', String\(pq\.size\)\)/],
+    ['app/admin/settings/hiring-defaults/page.tsx', /if \(sp\.size\) usp\.set\('size', String\(pq\.size\)\)/],
+  ] as const)('%s carries the size through its own link helper', (file, shape) => {
+    expect(code(read(file))).toMatch(shape);
+  });
+});
+
+/**
+ * "KEEP YOUR SEARCH, FILTER AND PAGE POSITION WHEN YOU ADD OR EDIT A RECORD AND COME BACK" — the plan's
+ * third bullet, on the two swept screens that edit through the address rather than a separate route.
+ *
+ * Both minted an Edit link that dropped the page, and both ran every write through a `run()` that
+ * redirected to a bare `${PAGE}?toast=`. On the Dashboard that also dropped section=library, so saving a
+ * card left the library view entirely. It is the cross-file class of defect standing order 17 names — the
+ * page sends the position, the action reads it back, and a unit test of either half passes throughout —
+ * so both halves are pinned here.
+ *
+ * (Pay Items and Hiring Defaults edit on their own maintenance ROUTES and are not covered: their round
+ * trip discards the search and status filter too, and predates this round. Declared, not forgotten.)
+ */
+describe('editing a record returns you to the list you were on', () => {
+  it.each([
+    // The Edit link's exact shape, per screen: the row id ALONE is the defect — it opens the editor on a
+    // list that has forgotten which page (and on the Dashboard, which filters) the row was found under.
+    ['app/admin/settings/employee-id', /href=\{keepingPlace\(`\$\{PAGE\}\?edit=\$\{c\.id\}`\)\}/],
+    ['app/admin/settings/dashboard', /href=\{`\$\{PAGE\}\?\$\{listQs\}&edit=\$\{c\.id\}`\}/],
+  ] as const)('%s carries the view into the form and back out of the action', (dir, editLink) => {
+    const page = code(read(`${dir}/page.tsx`));
+    // The list's own address, minted once and hung on the links AND on a hidden field in every row form.
+    expect(page).toContain('const listQs = listAddress.toString()');
+    expect(page).toContain('name="returnTo"');
+    expect(page, 'the Edit link must carry the list position, not just the row id').toMatch(editLink);
+
+    const actions = code(read(`${dir}/actions.ts`));
+    expect(actions).toContain("formData.get('returnTo')");
+    // Every redirect goes through the rebuilt address; none goes back to a bare first page.
+    expect(actions).toContain('listAddress(formData, { toast:');
+    expect(actions).toContain('listAddress(formData, { error:');
+    expect(actions, 'a bare ?toast= is the bug this pins').not.toMatch(/\$\{PAGE\}\?toast=/);
+    expect(actions, 'a bare ?error= drops the position on a failure too').not.toMatch(/\$\{PAGE\}\?error=/);
+  });
+
+  // Only the keys the screen owns survive the round trip, so a hand-edited returnTo cannot put anything
+  // else into the redirect.
+  it('the Card Library carries its filters as well as its page', () => {
+    const actions = code(read('app/admin/settings/dashboard/actions.ts'));
+    expect(actions).toContain("const RETURN_KEYS = ['section', 'q', 'type', 'status', 'page', 'size']");
   });
 });
 

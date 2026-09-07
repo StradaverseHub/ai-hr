@@ -193,6 +193,38 @@ describe('9da61c86 — editing on page 3 keeps your place', () => {
     expect(codeCells(container)[0]).toBe('SEC139');
   });
 
+  /**
+   * SEARCHING MUST NOT NAVIGATE ONCE PER CHARACTER.
+   *
+   * The reset-to-page-one effect is keyed on the filter signature, and `search` is a plain controlled
+   * input, so it fires on every keystroke. On the first page there is nothing to reset — every one of
+   * those was a client navigation to the address already on screen, which on System Labels means an RSC
+   * render of a route that loads four label categories, the companies, the grades and every profile-option
+   * category. Nine characters, nine renders of a screen the reader was already looking at.
+   */
+  it('typing in the search box does not navigate at all on the first page', async () => {
+    renderProfileGrid();
+    await userEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    await userEvent.type(screen.getByPlaceholderText('Search values…'), 'Section 1');
+    expect(replace).not.toHaveBeenCalled();
+    // …and the search still narrows the list, which is the whole point of the box.
+    expect(screen.getByText('1–25 of 111')).toBeInTheDocument();
+  });
+
+  /**
+   * A page past the end drew a table body with NOTHING in it — not even the "no rows" line, which the
+   * grids guard on the filtered set rather than on the rows actually drawn — while the counter beside it
+   * said the records were there. Reachable from a stale bookmark, or by deleting the last rows off the
+   * last page.
+   */
+  it('an address past the end of the list lands the reader on the last page that has rows', () => {
+    search = 'page=40';
+    renderProfileGrid();
+    // 328 rows at 25 a page is 14 pages, last index 13 — one navigation, and it goes to rows.
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toContain('page=13');
+  });
+
   // A draft is appended to the end and then sorted, so on a paged list it lands on a page the reader is not
   // looking at — Add Row would appear to have done nothing at all.
   it('Add Row follows the new draft to the page it landed on', async () => {

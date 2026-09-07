@@ -177,7 +177,8 @@ export default async function MovementSettingsPage({
   /** Keep the whole view in the address when one control changes. Only the LIST's controls live in the
    *  address now — the Add/Edit dialog is client state and deliberately leaves no trace here. `page` is
    *  NOT carried: changing a filter or a sort re-orders the whole set, so page 4 of the old view is not
-   *  page 4 of the new one. */
+   *  page 4 of the new one. `size` IS carried, and the distinction is deliberate: the page is a position
+   *  in a list the reader has just replaced, while rows-per-page is a preference about every list. */
   const href = (over: Partial<{ q: string; status: SettingsStatus; sort: string; dir: SortDir }>) => {
     const next = { q, status, sort, dir, ...over };
     const usp = new URLSearchParams();
@@ -185,6 +186,7 @@ export default async function MovementSettingsPage({
     if (next.status !== 'all') usp.set('status', next.status);
     if (next.sort !== 'catalog') usp.set('sort', next.sort);
     if (next.dir !== 'asc') usp.set('dir', next.dir);
+    if (sp.size) usp.set('size', String(pq.size));
     const qs = usp.toString();
     return qs ? `${PAGE}?${qs}` : PAGE;
   };

@@ -63,8 +63,12 @@ export default async function PayComponentsPage({
   const pq = parsePageQuery(sp);
   const { rows: pageRows, state: pgState } = paginateRows(rows, pq);
 
-  // A status link drops ?page= on purpose: page 4 of the active items is not page 4 of the inactive ones.
-  const qs = (st: Status) => `${PAGE}?status=${st}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+  // A status link drops ?page= on purpose — page 4 of the active items is not page 4 of the inactive ones —
+  // and KEEPS ?size=, which is not a position in a list but the reader's own choice of how many rows they
+  // want to see. Silently resetting it to 25 on a status switch would make the two controls beside each
+  // other behave differently, since the search form already carries the size through.
+  const qs = (st: Status) =>
+    `${PAGE}?status=${st}${q ? `&q=${encodeURIComponent(q)}` : ''}${sp.size ? `&size=${pq.size}` : ''}`;
 
   // 61bf109d rev2 — the formula in plain words. Names for referenced codes come from the catalog already
   // loaded above (archived rows included, so a formula pointing at a deactivated item still reads as words

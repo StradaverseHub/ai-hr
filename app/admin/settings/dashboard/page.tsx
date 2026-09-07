@@ -74,6 +74,21 @@ export default async function DashboardCardConfigPage({
   const pq = parsePageQuery(sp);
   const { rows: pageCards, state: pgState } = paginateRows(filteredCards, pq);
 
+  // 9da61c86 fix pass — "keep your search, filter and page position when you add or edit a record and come
+  // back". Every row action used to redirect to a bare ?toast=, which dropped the library's search, type
+  // and status filters as well as the page (and only stayed on the library at all because that is the
+  // default section). The links carry the view INTO the form and returnFields carries it back out: a
+  // server action reads the form, never the address it was posted from. `size` rides only when the reader
+  // actually chose one — pq.size resolves to the default either way.
+  const listAddress = new URLSearchParams({ section: 'library' });
+  if (q) listAddress.set('q', q);
+  if (typeFilter) listAddress.set('type', typeFilter);
+  if (statusFilter) listAddress.set('status', statusFilter);
+  if (pq.page > 0) listAddress.set('page', String(pq.page));
+  if (sp.size) listAddress.set('size', String(pq.size));
+  const listQs = listAddress.toString();
+  const returnFields = <input type="hidden" name="returnTo" value={listQs} />;
+
   // Derived fixed-row template (R44 → 2806443b): a card is pinned to the full-width fixed second row ONLY
   // when lib/dashboard-layout FIXED_ROW_KEYS names it — the same shared rule the employee customizer uses,
   // so the Templates explainer and the Preview show the SAME partition employees get. That list is EMPTY
@@ -142,7 +157,7 @@ export default async function DashboardCardConfigPage({
               <Card className="overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
                   <SectionHeader title={t('catalogTitle')} count={filteredCards.length} />
-                  <Link href={`${PAGE}?section=library&new=1`} className={btnPrimary}>
+                  <Link href={`${PAGE}?${listQs}&new=1`} className={btnPrimary}>
                     {t('createNew')}
                   </Link>
                 </div>
@@ -185,7 +200,7 @@ export default async function DashboardCardConfigPage({
                   </button>
                   {(q || typeFilter || statusFilter) && (
                     <Link
-                      href={`${PAGE}?section=library`}
+                      href={`${PAGE}?section=library${sp.size ? `&size=${pq.size}` : ''}`}
                       className="text-sm font-medium text-muted-foreground hover:text-foreground"
                     >
                       {tm('filtersClear')}
@@ -239,7 +254,7 @@ export default async function DashboardCardConfigPage({
                           <td className="px-4 py-2.5">
                             <div className="flex items-center justify-end gap-3">
                               <Link
-                                href={`${PAGE}?section=library&edit=${c.id}`}
+                                href={`${PAGE}?${listQs}&edit=${c.id}`}
                                 className="text-xs font-medium text-primary hover:underline"
                               >
                                 {t('edit')}
@@ -251,12 +266,14 @@ export default async function DashboardCardConfigPage({
                                   name="status"
                                   value={c.status === 'active' ? 'inactive' : 'active'}
                                 />
+                                {returnFields}
                                 <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                                   {c.status === 'active' ? t('deactivate') : t('activate')}
                                 </button>
                               </form>
                               <form action={deleteCardAction}>
                                 <input type="hidden" name="id" value={c.id} />
+                                {returnFields}
                                 <ConfirmSubmit
                                   title={t('deleteTitle')}
                                   description={t('deleteDescription', { name: c.name })}
@@ -302,6 +319,7 @@ export default async function DashboardCardConfigPage({
                     className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
                   >
                     {editing && <input type="hidden" name="id" value={editing.id} />}
+                    {returnFields}
 
                     <label className="flex flex-col gap-1">
                       <span className="text-sm font-medium">{t('fieldKey')}</span>
@@ -441,7 +459,7 @@ export default async function DashboardCardConfigPage({
                         {t('save')}
                       </button>
                       <Link
-                        href={`${PAGE}?section=library`}
+                        href={`${PAGE}?${listQs}`}
                         className="text-sm font-medium text-muted-foreground hover:text-foreground"
                       >
                         {t('cancel')}

@@ -103,10 +103,42 @@ export function useClientPageNav(paramNames?: { page: string; size: string }) {
       if (page > 0) next.set(names.page, String(page));
       else next.delete(names.page);
       const q = next.toString();
+      // NEVER NAVIGATE TO THE ADDRESS ALREADY ON SCREEN. router.replace() to the current address is not
+      // free: it is a client navigation, and on a server component it is a fresh RSC render of the whole
+      // route (System Labels loads four label categories, every company, the grades and the profile-option
+      // catalogues). The caller that made this matter is useResetPageOnFilterChange below — the search box
+      // is an undebounced controlled input, so "reset to page one" fires on EVERY keystroke, and after the
+      // first one every reset is a request for the page the reader is already looking at. With this guard
+      // typing costs one navigation when it actually leaves a page, and none at all on the first page —
+      // which is where a reader who is searching almost always is.
+      if (q === qs) return;
       router.replace(q ? `?${q}` : '?', { scroll: false });
     },
     [qs, names.page, router],
   );
+}
+
+/**
+ * Bring a reader who is standing past the end of the list back onto it (9da61c86 fix pass).
+ *
+ * Reachable two ways: deleting the last rows of the last page, and opening a bookmark or a shared link
+ * whose ?page= no longer exists. Both used to draw a table body with NOTHING in it — not even the
+ * "no rows" line, which the grids guard on the filtered set rather than on the rows actually drawn — while
+ * the counter beside it said the records were there. Clamping is better than an empty-state message
+ * because there is nothing to explain: the rows exist, and the last page is where they end.
+ *
+ * Rows-per-page changes already restart at page one, so this only ever fires on an address that named a
+ * page the list cannot honour; the effect stops as soon as it lands (the clamped page has rows).
+ */
+export function useClampPagePastEnd(state: PageState, paramNames?: { page: string; size: string }) {
+  const goToPage = useClientPageNav(paramNames);
+  const last = lastPage(state);
+  // An EMPTY list is one empty page, not a page past the end — leave it alone so the grid can say "no
+  // rows match" rather than being bounced to a page that is just as empty.
+  const past = state.total > 0 && state.page > last;
+  useEffect(() => {
+    if (past) goToPage(last);
+  }, [past, last, goToPage]);
 }
 
 /**
@@ -119,6 +151,12 @@ export function useClientPageNav(paramNames?: { page: string; size: string }) {
  *
  * It skips the FIRST render on purpose: a deep link that carries ?page=3 must open on page 3, and an
  * unconditional reset here would strip it before the reader saw it.
+ *
+ * The signature changes on every KEYSTROKE — search is a plain controlled input — so this fires far more
+ * often than it navigates. That is deliberate rather than debounced: useClientPageNav refuses to navigate
+ * to the address already on screen, so the reset costs exactly one navigation the moment typing takes you
+ * off a later page and nothing at all thereafter. Debouncing instead would have delayed that one useful
+ * reset behind a timer for no gain.
  */
 export function useResetPageOnFilterChange(
   signature: string,

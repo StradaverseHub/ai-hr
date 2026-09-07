@@ -6,11 +6,23 @@
  * for the reader to change the page size. Every list table now goes through these pure helpers plus the
  * shared <Pager> so the behaviour can only be defined once.
  *
- * Deliberately NOT applied to: configuration grids you edit as a whole (grade labels, band grids, access
- * matrices, approval-workflow matrices), statutory rate tables (PCB, SKBBK), single-record breakdowns (one
- * payslip's lines, one leave request's days) and import previews. Paging a config grid means saving a
- * matrix you can only see a third of; paging an import preview means approving a file you have only partly
- * read. Those are tables in layout only — they are not lists of records.
+ * Deliberately NOT applied to: configuration grids you edit as a whole (band grids, access matrices,
+ * approval-workflow matrices), statutory rate tables (PCB, SKBBK), single-record breakdowns (one payslip's
+ * lines, one leave request's days) and import previews. Paging a config grid means saving a matrix you can
+ * only see a third of; paging an import preview means approving a file you have only partly read. Those are
+ * tables in layout only — they are not lists of records.
+ *
+ * GRADE LABELS LEFT THAT LIST IN 9da61c86, and the old classification is recorded here rather than quietly
+ * deleted because the RULE it belonged to is unchanged and still governs everything else in the sentence
+ * above. It read "configuration grids you edit as a whole (grade labels, …)" — but Settings → System
+ * Labels → Job Grades is not a matrix. It is the job-grade MASTER: one record per row, added to and
+ * searched exactly like the position and department lists beside it, and it grows with the tenant rather
+ * than with the product. Its sibling grids (System Labels, Profile Options) page for the same reason. What
+ * still excludes a surface is that a PARTIAL VIEW WOULD MAKE THE SAVE WRONG — a matrix whose cells are
+ * meaningful only together, an import preview you are approving unread — and that is not true of these
+ * three: each sorts and filters its whole set before slicing, and Save submits every dirty row in the
+ * category rather than the rows the page happens to be showing. Editable is not the test; whole-artifact
+ * is. Do not re-add them here without changing that.
  *
  * Pure arithmetic, no React and no DB, so the boundary cases (empty page, page past the end, the "All"
  * ceiling) are unit-testable without a browser or a database.

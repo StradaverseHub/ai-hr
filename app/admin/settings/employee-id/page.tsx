@@ -43,6 +43,18 @@ export default async function EmployeeIdConfigPage({
   const pq = parsePageQuery(sp);
   const { rows: pageConfigs, state: pgState } = paginateRows(configs, pq);
 
+  // 9da61c86 fix pass — "keep your search, filter and page position when you add or edit a record and come
+  // back". The links carry the list's position INTO the form, and returnFields carries it back out through
+  // the server action, which cannot see the address it was posted from. `size` rides only when the reader
+  // actually chose one: pq.size resolves to the default either way, and echoing it would write a choice
+  // nobody made into the address.
+  const listAddress = new URLSearchParams();
+  if (pq.page > 0) listAddress.set('page', String(pq.page));
+  if (sp.size) listAddress.set('size', String(pq.size));
+  const listQs = listAddress.toString();
+  const keepingPlace = (base: string) => (listQs ? `${base}&${listQs}` : base);
+  const returnFields = <input type="hidden" name="returnTo" value={listQs} />;
+
   const editing: ConfigRow | null = edit ? configs.find((c) => c.id === edit) ?? null : null;
   const showForm = Boolean(editing || newParam);
 
@@ -67,7 +79,7 @@ export default async function EmployeeIdConfigPage({
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
           <SectionHeader title={t('catalogTitle')} count={configs.length} />
-          <Link href={`${PAGE}?new=1`} className={btnPrimary}>
+          <Link href={keepingPlace(`${PAGE}?new=1`)} className={btnPrimary}>
             {t('createNew')}
           </Link>
         </div>
@@ -112,18 +124,23 @@ export default async function EmployeeIdConfigPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-3">
-                      <Link href={`${PAGE}?edit=${c.id}`} className="text-xs font-medium text-primary hover:underline">
+                      <Link
+                        href={keepingPlace(`${PAGE}?edit=${c.id}`)}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
                         {t('edit')}
                       </Link>
                       <form action={setStatusAction}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="status" value={c.status === 'active' ? 'inactive' : 'active'} />
+                        {returnFields}
                         <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                           {c.status === 'active' ? t('deactivate') : t('activate')}
                         </button>
                       </form>
                       <form action={deleteConfigAction}>
                         <input type="hidden" name="id" value={c.id} />
+                        {returnFields}
                         <ConfirmSubmit
                           title={t('deleteTitle')}
                           description={t('deleteDescription', { prefix: c.prefix })}
@@ -155,6 +172,7 @@ export default async function EmployeeIdConfigPage({
           <SectionHeader title={editing ? t('editTitle') : t('createTitle')} />
           <form action={editing ? updateConfigAction : createConfigAction} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {editing && <input type="hidden" name="id" value={editing.id} />}
+            {returnFields}
 
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t('fieldScope')}</span>
@@ -271,7 +289,11 @@ export default async function EmployeeIdConfigPage({
               <button type="submit" className={btnPrimary}>
                 {t('save')}
               </button>
-              <Link href={PAGE} className="text-sm font-medium text-muted-foreground hover:text-foreground">
+              {/* Cancel returns to the page of the list the editor was opened from, not to page one. */}
+              <Link
+                href={listQs ? `${PAGE}?${listQs}` : PAGE}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
                 {t('cancel')}
               </Link>
             </div>
