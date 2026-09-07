@@ -4,8 +4,13 @@ import { join } from 'node:path';
 import {
   ALL_ROW_CEILING,
   DEFAULT_PAGE_SIZE,
+  PAGE_NUMBER_WINDOW,
   PAGE_SIZE_OPTIONS,
+  lastPage,
+  pageCount,
   pageHref,
+  pageNumbers,
+  pageOfIndex,
   pageState,
   paginateRows,
   parsePageQuery,
@@ -102,6 +107,47 @@ describe('fc776376 — the one pagination contract', () => {
     expect(showPager(pageState(parsePageQuery({}), 30, 25))).toBe(true);
   });
 
+  // ── 9da61c86: the numbered strip, First and Last. ──────────────────────────────────────────────────
+  it('counts the pages, and calls an empty list one empty page rather than none', () => {
+    expect(pageCount(328, 25)).toBe(14);
+    expect(pageCount(100, 25)).toBe(4);
+    expect(pageCount(0, 25)).toBe(1);
+    // "All" is one page by construction — pageState gives it no next, so there is nothing to number.
+    expect(pageCount(12430, 'all')).toBe(1);
+    expect(lastPage(pageState(parsePageQuery({}), 328, 25))).toBe(13);
+  });
+
+  it('offers a WINDOW of page numbers, centred and clamped, never one button per page', () => {
+    const at = (page: number, total = 328) => pageNumbers(pageState(parsePageQuery({ page: String(page) }), total, 25));
+    expect(PAGE_NUMBER_WINDOW).toBe(5);
+    // Centred in the middle of the run…
+    expect(at(6)).toEqual([4, 5, 6, 7, 8]);
+    // …and slid back inside it at the ends, so the strip keeps its width instead of shrinking to two.
+    expect(at(0)).toEqual([0, 1, 2, 3, 4]);
+    expect(at(13)).toEqual([9, 10, 11, 12, 13]);
+    // Fewer pages than the window: every page, once.
+    expect(at(1, 60)).toEqual([0, 1, 2]);
+  });
+
+  // The bar itself still renders at every row count (showPager) — the size control and the counter are the
+  // framework. A lone "1" beside them is not; on this tenant most lists are one page long.
+  it('draws no page numbers for a list that fits on one page, or under All', () => {
+    expect(pageNumbers(pageState(parsePageQuery({}), 5, 5))).toEqual([]);
+    expect(pageNumbers(pageState(parsePageQuery({}), 0, 0))).toEqual([]);
+    expect(pageNumbers(pageState(parsePageQuery({ size: 'all' }), 12430, ALL_ROW_CEILING))).toEqual([]);
+  });
+
+  // What the editable grids use to follow a newly added row onto whichever page it landed on.
+  it('answers which page a row index falls on, and never a negative one', () => {
+    expect(pageOfIndex(0, 25)).toBe(0);
+    expect(pageOfIndex(24, 25)).toBe(0);
+    expect(pageOfIndex(25, 25)).toBe(1);
+    expect(pageOfIndex(328, 25)).toBe(13);
+    // -1 is findIndex's "not in this view" — an active search hiding a still-empty draft. Page one.
+    expect(pageOfIndex(-1, 25)).toBe(0);
+    expect(pageOfIndex(400, 'all')).toBe(0);
+  });
+
   it('keeps every other param when it builds a link, and drops the empty ones', () => {
     const href = pageHref('/personnel', { q: 'lee', dept: '', status: undefined, size: 50 }, { page: 3 });
     expect(href).toBe('/personnel?q=lee&size=50&page=3');
@@ -160,6 +206,10 @@ describe('fc776376 — one implementation, not a sixth', () => {
         'rangeEmpty',
         'previous',
         'next',
+        // 9da61c86 — the ends and the numbered strip the reporter asked for by name.
+        'first',
+        'last',
+        'pageNumber',
         'truncated',
         'truncatedHint',
         'truncatedExport',
@@ -172,11 +222,20 @@ describe('fc776376 — one implementation, not a sixth', () => {
   it('leaves the non-list tables alone — config grids, statutory rates, import previews', () => {
     // Paging a config grid means saving a matrix you can only see a third of; paging an import preview
     // means approving a file you have only partly read. These are tables in layout only.
+    //
+    // 9da61c86 REMOVED TWO ENTRIES FROM THIS LIST, on the reporter's approved request:
+    // components/grade-labels-grid.tsx and components/system-labels-grid.tsx (and, with them,
+    // components/profile-options-grid.tsx, which never stood here). The rule they were classified under
+    // is unchanged and still governs everything left below — but they were classified WRONGLY. A matrix
+    // you save as a whole (a band grid, the access matrix) genuinely cannot be paged: you would be
+    // committing a decision about rows you cannot see. These three are not matrices; they are LISTS of
+    // master-data records that happen to be edited in place, one independent row at a time, and a tenant
+    // has hundreds of them. Their Save still submits every dirty row in the category rather than the page
+    // (test/settings-grid-paging.dom.test.tsx pins the behaviour), so nothing about paging them commits
+    // an unseen decision. The entries move rather than the rule.
     for (const file of [
       'components/band-grid-editor.tsx',
       'components/function-access-grid.tsx',
-      'components/grade-labels-grid.tsx',
-      'components/system-labels-grid.tsx',
       // 706d34e8 — app/admin/leave-approval/workflow-matrix.tsx STOOD HERE and the file is deleted (the
       // per-rule Approval Workflows list was removed from /admin/leave/approval and it had no other
       // importer). A config grid that no longer exists cannot grow pagination; the entry goes with it.

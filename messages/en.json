@@ -11043,6 +11043,9 @@
     "rangeEmpty": "0 of {total, number}",
     "previous": "← Previous",
     "next": "Next →",
+    "first": "« First",
+    "last": "Last »",
+    "pageNumber": "Page {n}",
     "truncated": "Showing the first {shown, number} of {total, number} rows.",
     "truncatedHint": "Use Reports → Export for the complete set.",
     "truncatedExport": "Export the complete set"

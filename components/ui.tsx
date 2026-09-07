@@ -38,6 +38,26 @@ export const theadCls = 'bg-muted/50 text-left text-xs uppercase tracking-wide t
 export const thCls = 'px-3 py-2 font-medium';
 export const tbodyCls = 'divide-y divide-border';
 
+/**
+ * The pager's step and page-number chrome (9da61c86), shared by BOTH pagers.
+ *
+ * components/pager.tsx renders these on <Link>s and components/client-pager.tsx on <button>s — the server
+ * one cannot be awaited inside a 'use client' grid — so the only thing the two can share is the look. It
+ * lives here rather than being exported from pager.tsx because importing anything from that module pulls
+ * next-intl/server into the client bundle.
+ */
+export const pagerStepCls = 'text-primary hover:underline';
+export const pagerStepMutedCls = 'text-muted-foreground/50';
+/** The <button> variant of a step, whose disabled look is a VARIANT rather than a second element. Written
+ *  out in full because Tailwind extracts class candidates from the source text — `disabled:${cls}` built
+ *  at runtime is invisible to it and the rule would never be emitted. */
+export const pagerStepButtonCls =
+  'text-primary hover:underline disabled:text-muted-foreground/50 disabled:no-underline';
+export const pagerPageNumCls =
+  'inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-xs tabular-nums text-primary transition-colors hover:bg-accent';
+export const pagerPageNumCurrentCls =
+  'inline-flex h-7 min-w-7 items-center justify-center rounded-md bg-primary px-1.5 text-xs font-semibold tabular-nums text-primary-foreground';
+
 export function Field({
   label,
   children,

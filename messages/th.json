@@ -11043,6 +11043,9 @@
     "rangeEmpty": "0 จาก {total, number}",
     "previous": "← ก่อนหน้า",
     "next": "ถัดไป →",
+    "first": "« หน้าแรก",
+    "last": "หน้าสุดท้าย »",
+    "pageNumber": "หน้า {n}",
     "truncated": "แสดง {shown, number} แถวแรกจากทั้งหมด {total, number} แถว",
     "truncatedHint": "ใช้ รายงาน → ส่งออก เพื่อดูข้อมูลทั้งหมด",
     "truncatedExport": "ส่งออกข้อมูลทั้งหมด"

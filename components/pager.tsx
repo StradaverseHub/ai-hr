@@ -3,11 +3,19 @@ import { getTranslations } from 'next-intl/server';
 import {
   ALL_ROW_CEILING,
   PAGE_SIZE_OPTIONS,
+  lastPage,
   pageHref,
+  pageNumbers,
   showPager,
   type PageSize,
   type PageState,
 } from '@/lib/pagination';
+import {
+  pagerPageNumCls,
+  pagerPageNumCurrentCls,
+  pagerStepCls,
+  pagerStepMutedCls,
+} from './ui';
 import { PageSizeSelect } from './page-size-select';
 
 /**
@@ -73,6 +81,10 @@ export async function Pager({
     { value: 'all', label: t('all'), href: href({ size: 'all', page: 0 }) },
   ];
 
+  // The numbered strip (9da61c86). A window rather than the whole run — see pageNumbers.
+  const numbers = pageNumbers(state);
+  const last = lastPage(state);
+
   return (
     <div className="border-t border-border">
       {state.truncated && (
@@ -94,20 +106,45 @@ export async function Pager({
             ? t('range', { from: state.from, to: state.to, total: state.total })
             : t('rangeEmpty', { total: state.total })}
         </span>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-2 text-sm">
           {state.hasPrev ? (
-            <Link href={href({ page: state.page - 1 })} className="text-primary hover:underline">
+            <Link href={href({ page: 0 })} className={pagerStepCls}>
+              {t('first')}
+            </Link>
+          ) : (
+            <span className={pagerStepMutedCls}>{t('first')}</span>
+          )}
+          {state.hasPrev ? (
+            <Link href={href({ page: state.page - 1 })} className={pagerStepCls}>
               {t('previous')}
             </Link>
           ) : (
-            <span className="text-muted-foreground/50">{t('previous')}</span>
+            <span className={pagerStepMutedCls}>{t('previous')}</span>
+          )}
+          {numbers.map((n) =>
+            n === state.page ? (
+              <span key={n} aria-current="page" className={pagerPageNumCurrentCls}>
+                {n + 1}
+              </span>
+            ) : (
+              <Link key={n} href={href({ page: n })} aria-label={t('pageNumber', { n: n + 1 })} className={pagerPageNumCls}>
+                {n + 1}
+              </Link>
+            ),
           )}
           {state.hasNext ? (
-            <Link href={href({ page: state.page + 1 })} className="text-primary hover:underline">
+            <Link href={href({ page: state.page + 1 })} className={pagerStepCls}>
               {t('next')}
             </Link>
           ) : (
-            <span className="text-muted-foreground/50">{t('next')}</span>
+            <span className={pagerStepMutedCls}>{t('next')}</span>
+          )}
+          {state.hasNext ? (
+            <Link href={href({ page: last })} className={pagerStepCls}>
+              {t('last')}
+            </Link>
+          ) : (
+            <span className={pagerStepMutedCls}>{t('last')}</span>
           )}
         </div>
       </div>

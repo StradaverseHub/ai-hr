@@ -11043,6 +11043,9 @@
     "rangeEmpty": "0 trong {total, number}",
     "previous": "← Trước",
     "next": "Sau →",
+    "first": "« Đầu",
+    "last": "Cuối »",
+    "pageNumber": "Trang {n}",
     "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
     "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
     "truncatedExport": "Xuất toàn bộ dữ liệu"

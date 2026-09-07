@@ -10,6 +10,8 @@ import {
 } from '@/core/dashboard-card-config';
 import { MAX_FIRST_ROW, MAX_SHORTCUTS, isFixedRowKey } from '@/lib/dashboard-layout';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { createCardAction, updateCardAction, setStatusAction, deleteCardAction } from './actions';
@@ -38,6 +40,8 @@ export default async function DashboardCardConfigPage({
     q?: string;
     type?: string;
     status?: string;
+    page?: string;
+    size?: string;
   }>;
 }) {
   // scopedAdmin also fences the RLS session to an admin — the guard the reverse-completeness test asserts.
@@ -64,6 +68,11 @@ export default async function DashboardCardConfigPage({
       (!typeFilter || c.cardType === typeFilter) &&
       (!statusFilter || c.status === statusFilter),
   );
+
+  // 9da61c86 — the Card Library is a list of master data and pages through the shared contract. Filter
+  // first, slice second, so the count beside the heading still describes the whole matching set.
+  const pq = parsePageQuery(sp);
+  const { rows: pageCards, state: pgState } = paginateRows(filteredCards, pq);
 
   // Derived fixed-row template (R44 → 2806443b): a card is pinned to the full-width fixed second row ONLY
   // when lib/dashboard-layout FIXED_ROW_KEYS names it — the same shared rule the employee customizer uses,
@@ -145,6 +154,9 @@ export default async function DashboardCardConfigPage({
                   className="flex flex-wrap items-end gap-3 border-t border-border px-4 py-3"
                 >
                   <input type="hidden" name="section" value="library" />
+                  {/* The chosen rows-per-page survives a filter change; the PAGE does not — a new filter
+                      is a new list, and page 4 of the old one means nothing in it. */}
+                  {sp.size && <input type="hidden" name="size" value={String(pq.size)} />}
                   <label className="flex flex-col gap-1">
                     <span className="text-xs font-medium text-muted-foreground">{tm('filtersSearch')}</span>
                     <input name="q" defaultValue={q} placeholder={tm('filtersSearch')} className={inputCls} />
@@ -197,7 +209,7 @@ export default async function DashboardCardConfigPage({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {filteredCards.map((c) => (
+                      {pageCards.map((c) => (
                         <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
                           <td className="px-4 py-2.5">
                             <div className="font-medium">{c.name}</div>
@@ -268,6 +280,18 @@ export default async function DashboardCardConfigPage({
                     </tbody>
                   </table>
                 </div>
+                {/* The library's own filters ride in the address already, so the pager keeps them and the
+                    section it belongs to. */}
+                <Pager
+                  basePath={PAGE}
+                  params={{
+                    section: 'library',
+                    q: q || undefined,
+                    type: typeFilter || undefined,
+                    status: statusFilter || undefined,
+                  }}
+                  state={pgState}
+                />
               </Card>
 
               {showForm && (

@@ -160,3 +160,57 @@ export function pageHref(
 export function showPager(state: PageState): boolean {
   return true;
 }
+
+/**
+ * How many numbered page links the pager offers at once (9da61c86).
+ *
+ * A window, not the whole run: a 328-row list at 25 rows a page is 14 pages and would fit, but the same
+ * list at "50 of 12,430 audit rows" is 249 — a pager that draws every number stops being a control and
+ * becomes the longest thing on the screen. Five keeps the strip a fixed width at any list size, and First
+ * / Last cover the ends the window cannot reach.
+ */
+export const PAGE_NUMBER_WINDOW = 5;
+
+/** How many pages the list divides into. Always at least 1 — an empty list is one empty page, not zero. */
+export function pageCount(total: number, size: PageSize): number {
+  if (size === 'all') return 1;
+  return Math.max(1, Math.ceil(Math.max(0, total) / size));
+}
+
+/** The 0-based index of the final page. */
+export function lastPage(state: PageState): number {
+  return pageCount(state.total, state.size) - 1;
+}
+
+/**
+ * The 0-based page numbers to offer as direct links, centred on the current page and clamped to the ends.
+ *
+ * Returns NOTHING when the list fits on one page. The bar itself still renders at every row count (see
+ * showPager) — the size control and the position counter are the framework the reporter asked for — but a
+ * lone "1" beside them is noise, and on this tenant most lists are one page long.
+ *
+ * Also nothing under "All": "All" is a single page by construction (pageState gives it no next), so a
+ * number to click would be a link to where you already are.
+ */
+export function pageNumbers(state: PageState, window: number = PAGE_NUMBER_WINDOW): number[] {
+  const count = pageCount(state.total, state.size);
+  if (state.size === 'all' || count <= 1) return [];
+  const span = Math.min(window, count);
+  // Centre the window on the current page, then slide it back inside the run rather than clipping it, so
+  // the strip keeps its width at both ends instead of shrinking to two entries on page 0.
+  const start = Math.min(Math.max(0, state.page - Math.floor(span / 2)), count - span);
+  return Array.from({ length: span }, (_, i) => start + i);
+}
+
+/**
+ * The page a row at `index` of the filtered list falls on (9da61c86).
+ *
+ * The master-data grids add a row into the list they are already showing, and an appended draft on a paged
+ * list lands wherever the sort puts it — usually the last page, silently, which reads as "Add Row did
+ * nothing". They therefore look up the new row's page and go there. A negative index (the row is filtered
+ * out of the current view) answers 0 rather than a negative page.
+ */
+export function pageOfIndex(index: number, size: PageSize): number {
+  if (size === 'all' || index < 0) return 0;
+  return Math.floor(index / size);
+}

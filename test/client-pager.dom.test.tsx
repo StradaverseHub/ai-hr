@@ -10,7 +10,7 @@
  * layout. It cannot see a Tailwind emission-order bug like 4dbe04c6 — that needs the real browser project
  * (vitest.browser.config.ts). What this catches is rendering and interaction logic.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
@@ -98,5 +98,65 @@ describe('ClientPager', () => {
   it('says so on screen when All truncates at the ceiling', () => {
     renderPager(5000, 2000, 'size=all');
     expect(screen.getByText(/Showing the first 2,000 of 5,000 rows/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * 9da61c86 — "keep the page size you pick, so you do not reset it every time you open the screen".
+ *
+ * Per SCREEN, in localStorage rather than in the address, and applied only on a BARE arrival. The address
+ * is what a shared link carries, so a link must open on the view its SENDER was looking at — not on the
+ * view the recipient last chose for themselves.
+ */
+describe('ClientPager remembers the rows-per-page for its screen', () => {
+  const renderRemembering = (sp = '') => {
+    search = sp;
+    replace.mockClear();
+    const state = pageState(parsePageQuery(Object.fromEntries(new URLSearchParams(sp))), 312, 25);
+    return render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <ClientPager state={state} rememberAs="a-screen" />
+      </NextIntlClientProvider>,
+    );
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('writes the choice down when the reader changes it', async () => {
+    renderRemembering();
+    await userEvent.selectOptions(screen.getByLabelText('Rows'), '100');
+    expect(window.localStorage.getItem('pager.size.a-screen')).toBe('100');
+  });
+
+  it('applies it on the next bare arrival', () => {
+    window.localStorage.setItem('pager.size.a-screen', '100');
+    renderRemembering();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toContain('size=100');
+  });
+
+  // The link someone sent wins. It carries a page and a size, and rewriting either would show its
+  // recipient a different set of rows from the one its sender was describing.
+  it('leaves a link that already names a page or a size alone', () => {
+    window.localStorage.setItem('pager.size.a-screen', '100');
+    renderRemembering('page=3');
+    expect(replace).not.toHaveBeenCalled();
+    renderRemembering('size=50');
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stored value that is not an offered size', () => {
+    window.localStorage.setItem('pager.size.a-screen', '10000');
+    renderRemembering();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  // A screen that does not ask to be remembered must not read or write anyone else's setting.
+  it('does nothing at all without a screen key', () => {
+    window.localStorage.setItem('pager.size.a-screen', '100');
+    renderPager(312, 25);
+    expect(replace).not.toHaveBeenCalled();
   });
 });

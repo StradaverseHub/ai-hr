@@ -862,15 +862,27 @@ export async function setLeaveHalfDayFullDeductionCompaniesAction(formData: Form
 
 // ── Public holidays ──
 /** Preserve the active country/year/group filter across the redirect so the admin stays in context.
- *  (R18 a519a96e: `group` keeps the per-group effective-calendar view open across row edits.) */
+ *  (R18 a519a96e: `group` keeps the per-group effective-calendar view open across row edits.)
+ *
+ *  9da61c86 — and the PAGE with them. The list pages now, and every row's Save and Delete post through
+ *  here; without the page in the redirect, editing the third holiday on page 4 drops the admin back on
+ *  page 1 and they have to find their place again. The page rides as `filterPage` / `filterSize` for the
+ *  same reason country and year do: a server action reads the form, never the address it was posted
+ *  from. The page's hidden fields are the other half of this contract — neither half works alone. */
 function holidaysPath(formData: FormData): string {
   const sp = new URLSearchParams();
   const country = String(formData.get('filterCountry') ?? '').trim();
   const year = String(formData.get('filterYear') ?? '').trim();
   const group = String(formData.get('filterGroup') ?? '').trim();
+  const page = String(formData.get('filterPage') ?? '').trim();
+  const size = String(formData.get('filterSize') ?? '').trim();
   if (country) sp.set('country', country);
   if (year) sp.set('year', year);
   if (group) sp.set('group', group);
+  // page 0 is the bare screen, so it is written only when it is not the first page — the same rule the
+  // pager's own links follow.
+  if (page && page !== '0') sp.set('page', page);
+  if (size) sp.set('size', size);
   const qs = sp.toString();
   return qs ? `${HOLIDAYS}?${qs}` : HOLIDAYS;
 }
