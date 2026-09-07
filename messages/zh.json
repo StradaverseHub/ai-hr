@@ -3940,6 +3940,8 @@
       "reprocessColNetAfter": "处理后实发",
       "reprocessColMoved": "变动项目",
       "reprocessColWhy": "原因",
+      "reprocessColResult": "薪资结果",
+      "reprocessResultLink": "查看薪资结果",
       "reprocessMovedGross": "应发工资",
       "reprocessPayUnchanged": "实发未变",
       "reprocessNothingMoved": "无变动",

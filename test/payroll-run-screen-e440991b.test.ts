@@ -32,6 +32,7 @@ import {
   rowsForRun,
   transactionDetailReport,
 } from '../app/payroll/[batchId]/transaction-detail-report';
+import { payrollResultHref } from '../app/payroll/payroll-result-href';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -55,11 +56,25 @@ describe('e440991b point 1 — the Payroll Process wizard has a way back', () =>
 describe('e440991b point 5 — the payslip rows open the employee’s full result', () => {
   it('the run screen links each payslip row at Transaction View, carrying the employee in the URL', () => {
     expect(BATCH_PAGE, 'no payslip detail link on the run screen').toContain('payslipDetailHref');
-    expect(BATCH_PAGE).toContain('/payroll/transaction-view?');
+    expect(BATCH_PAGE).toMatch(/payslipDetailHref\(sl\.employmentId\)/);
+    // b372e923 MOVED THE URL, NOT THE BEHAVIOUR. The Reprocess result table links to the same payroll
+    // result screen, and the reporter's requirement is that the two cannot be different screens, so the
+    // href is now built by one shared function that both callers use. This case therefore checks the URL
+    // that function PRODUCES for a run rather than a string in this file — which is what it was really
+    // asserting all along, and is now immune to where the builder happens to live.
+    const href = payrollResultHref({ companyId: 'co-1', payPeriod: '2026-05', runType: 'regular' }, 'emp-1');
+    const [pathname, query = ''] = href.split('?', 2);
+    const params = new URLSearchParams(query);
+    expect(pathname).toBe('/payroll/transaction-view');
+    expect(params.get('tab')).toBe('history');
     // The selection travels as a param, not across the RSC boundary — that is what keeps the server-side
     // scope guard on the destination applicable at all.
-    expect(BATCH_PAGE).toMatch(/employmentId,/);
-    expect(BATCH_PAGE).toMatch(/payslipDetailHref\(sl\.employmentId\)/);
+    expect(params.get('employmentId')).toBe('emp-1');
+    expect(params.get('companyId')).toBe('co-1');
+    // The run's own period and cycle, so the row opens the payroll record the operator is reading.
+    expect(params.get('year')).toBe('2026');
+    expect(params.get('month')).toBe('5');
+    expect(params.get('cycle')).toBe('regular');
   });
 
   it('THE REFUSAL: Transaction View still coerces an out-of-scope employmentId to “no selection”', () => {

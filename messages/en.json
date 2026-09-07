@@ -3456,6 +3456,8 @@
       "reprocessColNetAfter": "Net pay after",
       "reprocessColMoved": "What moved",
       "reprocessColWhy": "Why",
+      "reprocessColResult": "Payroll Result",
+      "reprocessResultLink": "View payroll result",
       "reprocessMovedGross": "Gross pay",
       "reprocessPayUnchanged": "pay unchanged",
       "reprocessNothingMoved": "Nothing moved",
