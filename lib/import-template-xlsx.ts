@@ -10,11 +10,16 @@
  * The fix has to be in the template, and this is it: a real workbook whose identity columns are
  * pre-formatted as TEXT (`z: '@'`, 500 rows deep), so Excel keeps exactly what HR typed.
  *
- * Three sheets, as the reporter specified:
+ * FOUR sheets. Three were the reporter's original specification; the Family sheet joined them in
+ * item 2983802f, because one employee has any number of family members and flat columns could only ever
+ * hold an arbitrary few of them:
  *   1. Employee Import   — human column labels + two worked sample rows.
- *   2. Reference         — the live dropdown values (companies, departments, positions, cost
- *                          centres, and the fixed enumerations) so a typo cannot become a record.
- *   3. Instructions      — how to fill it in, including the leading-zero rule.
+ *   2. Family            — one row per family member, linked to an employee row by Employee ID. Filled
+ *                          in like sheet 1, and read back BY NAME on upload.
+ *   3. Reference         — the live dropdown values (companies, departments, positions, cost centres,
+ *                          states, countries, relationships, and the fixed enumerations) so a typo
+ *                          cannot become a record.
+ *   4. Instructions      — how to fill it in, including the leading-zero rule.
  *
  * NO DomainEvent: downloading a template writes nothing.
  *
@@ -26,7 +31,7 @@
  * promising a clickable dropdown would mean shipping a second xlsx writer. The Reference sheet gives
  * HR the exact accepted spellings, and `analyze()` rejects anything else by name with the reason.
  */
-import { IMPORT_COLUMNS } from './import-schema';
+import { DEPENDENT_IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
 import { PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import {
@@ -123,11 +128,66 @@ export function buildInstructionRows(title: string, lines: string[]): string[][]
  *  stay first, and a renamed sheet would silently change which one is read. */
 export const EMPLOYEE_XLSX_SHEETS = {
   data: 'Employee Import',
+  /** Item 2983802f — the FAMILY sheet. Read BY NAME on upload (`readImportFile`), so unlike the data
+   *  sheet its position in the workbook is not load-bearing, but its NAME is: rename it and an uploaded
+   *  file's family rows stop being found. It sits second so it reads as the other sheet to fill in. */
+  family: 'Family',
   reference: 'Reference',
   instructions: 'Instructions',
 } as const;
 
 export const EMPLOYEE_XLSX_FILENAME = 'employee-import-template.xlsx';
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// FAMILY (2983802f) — the second sheet, one row per family member
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Every family column, required first — derived from the SAME contract core/import enforces. */
+export const DEPENDENT_XLSX_COLUMNS: readonly string[] = [
+  ...DEPENDENT_IMPORT_COLUMNS.required,
+  ...DEPENDENT_IMPORT_COLUMNS.optional,
+];
+
+export const DEPENDENT_XLSX_HEADERS: readonly string[] = DEPENDENT_XLSX_COLUMNS.map(employeeColumnLabel);
+
+/**
+ * The family sheet's identity columns — same reasoning as the employee sheet's: these are digits that
+ * must survive verbatim, and a General-formatted cell destroys a leading zero in the file itself. The
+ * Employee ID is here too, because it is the LINK: mangle it and the row matches nobody.
+ */
+export const DEPENDENT_TEXT_COLUMN_KEYS: readonly string[] = [
+  'employee_code',
+  'ic_or_passport',
+  'passport_number',
+  'phone',
+];
+
+/** 0-based positions of the family sheet's text columns. */
+export function dependentTextColumnIndexes(): number[] {
+  return DEPENDENT_TEXT_COLUMN_KEYS.map((k) => DEPENDENT_XLSX_COLUMNS.indexOf(k)).filter((i) => i >= 0);
+}
+
+/**
+ * Worked family rows for the two sample employees on the data sheet — deliberately showing the shape
+ * the flat-columns alternative could not express: ONE employee with THREE family members.
+ * Order matches DEPENDENT_XLSX_COLUMNS.
+ */
+export const DEPENDENT_SAMPLE_ROWS: readonly (readonly string[])[] = [
+  // employee_code, full_name, relationship, date_of_birth, gender, ic_or_passport, passport_number,
+  // phone, is_beneficiary, remarks
+  ['TMPL0001', 'Nurul Huda Binti Ismail', 'spouse', '1979-08-14', 'female', '790814105566', '', '', 'yes', ''],
+  ['TMPL0001', 'Aiman Bin Faizal', 'child', '2014-03-02', 'male', '', '', '', 'no', ''],
+  ['TMPL0001', 'Alia Binti Faizal', 'child', '2018-11-21', 'female', '', '', '', 'no', ''],
+];
+
+/** The fixed enumerations the family sheet accepts (the relationship list also takes any ACTIVE custom
+ *  option from the tenant's dependentRelationship catalog — the Reference sheet is generated from the
+ *  live catalog, so what it lists is what validates). */
+export const DEPENDENT_ENUM_VALUES = {
+  relationship: ['spouse', 'child', 'parent', 'sibling', 'other'],
+  gender: ['male', 'female', 'undisclosed'],
+  is_beneficiary: ['yes', 'no'],
+} as const;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // PAYROLL HISTORY (4157a498) — the reporter's Payroll Result Import (PAY_IMP) workbook

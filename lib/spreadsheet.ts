@@ -72,6 +72,26 @@ export function numberToPlainString(n: number): string {
  * has no rows so the caller can surface a clear i18n message.
  */
 export async function workbookToCsvText(buf: ArrayBuffer | Uint8Array): Promise<string> {
+  return (await workbookToCsvTexts(buf)).first;
+}
+
+/**
+ * Item 2983802f — the same single decoder, reading the first worksheet AND any NAMED extra sheets.
+ *
+ * The employee importer grew a second sheet (Family), and a second sheet cannot be read by "the first
+ * worksheet" — so the decoder had to learn one thing: fetch a sheet by name. Everything else is
+ * unchanged, and `workbookToCsvText` above is now literally this function's `first`, so there is still
+ * exactly ONE workbook decoder and one set of cell rules in this repo.
+ *
+ * Sheet names are matched case- and whitespace-insensitively, because a workbook that has been through
+ * Excel, Numbers and Google Sheets does not reliably come back with the capitalisation it left with.
+ * A named sheet that is missing, or that holds nothing but blanks, is simply absent from `extra` — an
+ * employee file with no family members is the normal case, not an error.
+ */
+export async function workbookToCsvTexts(
+  buf: ArrayBuffer | Uint8Array,
+  extraSheetNames: readonly string[] = [],
+): Promise<{ first: string; extra: Record<string, string> }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
   // callers handing us File.arrayBuffer() output OR raw bytes (and to SheetJS's own type drift).
@@ -81,24 +101,44 @@ export async function workbookToCsvText(buf: ArrayBuffer | Uint8Array): Promise<
   const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
   const firstName = wb.SheetNames[0];
   if (!firstName) throw new Error('EMPTY_SHEET');
-  const ws = wb.Sheets[firstName];
-  // header:1 → array-of-arrays (no header inference); raw:true → raw cell values, so a date cell stays
-  // the Date instance cellDates produced (raw:false would substitute the FORMATTED text, e.g. "1/1/26",
-  // which fails the engine's DATE_RE). Non-date cells are strings/numbers and are String()-ed below.
-  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false });
-  const rows = (aoa as Cell[][]).map((row) =>
-    row.map((cell) => {
-      if (cell instanceof Date) return toIsoDate(cell);
-      // d8471481 — a General-formatted identity column arrives as a JS number; emit plain digits so
-      // nothing downstream ever sees exponential notation.
-      if (typeof cell === 'number') return numberToPlainString(cell);
-      return cell;
-    }),
-  );
-  // Drop fully-empty trailing rows so a workbook padded with blanks doesn't yield empty CSV records.
-  const nonEmpty = rows.filter((r) => r.some((c) => c != null && String(c).trim() !== ''));
-  if (nonEmpty.length === 0) throw new Error('EMPTY_SHEET');
-  return rowsToCsvText(nonEmpty);
+
+  const sheetCsv = (sheetName: string): string => {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) return '';
+    // header:1 → array-of-arrays (no header inference); raw:true → raw cell values, so a date cell stays
+    // the Date instance cellDates produced (raw:false would substitute the FORMATTED text, e.g. "1/1/26",
+    // which fails the engine's DATE_RE). Non-date cells are strings/numbers and are String()-ed below.
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false });
+    const rows = (aoa as Cell[][]).map((row) =>
+      row.map((cell) => {
+        if (cell instanceof Date) return toIsoDate(cell);
+        // d8471481 — a General-formatted identity column arrives as a JS number; emit plain digits so
+        // nothing downstream ever sees exponential notation.
+        if (typeof cell === 'number') return numberToPlainString(cell);
+        return cell;
+      }),
+    );
+    // Drop fully-empty trailing rows so a workbook padded with blanks doesn't yield empty CSV records.
+    const nonEmpty = rows.filter((r) => r.some((c) => c != null && String(c).trim() !== ''));
+    if (nonEmpty.length === 0) return '';
+    return rowsToCsvText(nonEmpty);
+  };
+
+  const first = sheetCsv(firstName);
+  if (first === '') throw new Error('EMPTY_SHEET');
+
+  const key = (s: string) => s.trim().toLowerCase();
+  const byKey = new Map(wb.SheetNames.map((n) => [key(n), n]));
+  const extra: Record<string, string> = {};
+  for (const wanted of extraSheetNames) {
+    // Never re-read the data sheet as an extra: a workbook whose ONLY sheet is called "Family" would
+    // otherwise be read as both the employee rows and the family rows.
+    const found = byKey.get(key(wanted));
+    if (!found || found === firstName) continue;
+    const csv = sheetCsv(found);
+    if (csv !== '') extra[wanted] = csv;
+  }
+  return { first, extra };
 }
 
 /**
@@ -118,7 +158,14 @@ export async function buildXlsx(
   if (opts?.textColumns?.length) applyTextColumns(XLSX, ws, opts.textColumns, rows.length, opts.textRowFloor ?? TEXT_ROW_FLOOR);
   XLSX.utils.book_append_sheet(wb, ws, opts?.sheetName ?? 'Leave Import');
   for (const extra of opts?.extraSheets ?? []) {
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(extra.rows), extra.name);
+    const sheet = XLSX.utils.aoa_to_sheet(extra.rows);
+    // Item 2983802f — an extra sheet may be a FILL-IN sheet too (the employee importer's Family sheet),
+    // not just a read-only reference list, so it needs the same leading-zero protection the data sheet
+    // gets: an Employee ID typed into a General cell is mangled wherever it is typed.
+    if (extra.textColumns?.length) {
+      applyTextColumns(XLSX, sheet, extra.textColumns, Math.max(extra.rows.length - 1, 0), opts?.textRowFloor ?? TEXT_ROW_FLOOR);
+    }
+    XLSX.utils.book_append_sheet(wb, sheet, extra.name);
   }
   // type:'array' → SheetJS returns an ArrayBuffer (despite older typings suggesting Uint8Array);
   // wrap it so callers always get real bytes, safe for a browser Blob or Buffer.from().
@@ -130,8 +177,10 @@ export type BuildXlsxOptions = {
   sheetName?: string;
   /** 0-based indexes of columns that must be TEXT so leading zeros survive HR's typing. */
   textColumns?: number[];
-  /** Additional read-only sheets (reference lists, instructions), appended after the data sheet. */
-  extraSheets?: { name: string; rows: (string | number)[][] }[];
+  /** Additional sheets appended after the data sheet — reference lists, instructions, and (2983802f)
+   *  the employee importer's Family sheet, which is filled in and therefore takes `textColumns` of its
+   *  own so its Employee ID and identity columns survive Excel. */
+  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[] }[];
   /** How many rows below the samples get the text format pre-applied. */
   textRowFloor?: number;
 };

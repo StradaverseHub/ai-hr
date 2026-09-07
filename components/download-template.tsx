@@ -8,7 +8,15 @@ import { buildTemplateCsv, type TemplateSpec } from '@/lib/import-template';
  * Pure client-side, read-only — no server round-trip, no DomainEvent (nothing is written).
  * Sits beside the import controls; same button styling as <DownloadCsv />.
  */
-export function DownloadTemplate({ spec }: { spec: TemplateSpec }) {
+export function DownloadTemplate({
+  spec,
+  onDownloaded,
+}: {
+  spec: TemplateSpec;
+  /** Item 2983802f — optional: told that a template really was taken, so a caller with a step rail can
+   *  say step 1 is done instead of guessing. Purely a notification; the download is unchanged. */
+  onDownloaded?: () => void;
+}) {
   const t = useTranslations('components.downloadTemplate');
   function download() {
     const csv = buildTemplateCsv(spec);
@@ -18,6 +26,7 @@ export function DownloadTemplate({ spec }: { spec: TemplateSpec }) {
     a.download = spec.filename;
     a.click();
     URL.revokeObjectURL(url);
+    onDownloaded?.();
   }
   return (
     <button

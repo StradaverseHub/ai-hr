@@ -64,6 +64,17 @@ export type ImportFileRead = {
   format: ImportFileFormat;
   /** CSV text — byte-for-byte what the user would otherwise have pasted. */
   text: string;
+  /**
+   * Item 2983802f — the FAMILY sheet's rows, as CSV text, when the workbook carried one.
+   *
+   * Empty string when there is no such sheet, and ALWAYS empty for a .csv upload or a paste: a CSV file
+   * is one sheet by definition, so family members can only arrive in a real workbook. That limit is
+   * stated on the template's Instructions sheet rather than left to be discovered.
+   *
+   * It travels as CSV text for the same reason the employee rows do — the server action receives text
+   * and re-validates it, so no workbook ever reaches the server.
+   */
+  dependentsText: string;
 };
 
 /** True when the name looks like a CSV. Extension-based on purpose: browsers report wildly
@@ -90,12 +101,18 @@ export function importFileFormat(name: string): ImportFileFormat | null {
  * SheetJS is imported lazily (it is ~400 KB) so an admin who only ever uploads CSV never downloads
  * it, and it never enters a server bundle.
  */
-export async function readImportFile(file: File): Promise<ImportFileRead> {
+export async function readImportFile(
+  file: File,
+  /** Item 2983802f — worksheets to read ALONGSIDE the first one, by name (the employee importer asks
+   *  for its Family sheet). Ignored for a .csv upload, which has exactly one sheet. */
+  opts?: { extraSheets?: readonly string[] },
+): Promise<ImportFileRead> {
   const format = importFileFormat(file.name);
   if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
   if (file.size > MAX_IMPORT_FILE_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
 
   let text: string;
+  let dependentsText = '';
   if (format === 'csv') {
     if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
     try {
@@ -104,21 +121,28 @@ export async function readImportFile(file: File): Promise<ImportFileRead> {
       throw new ImportFileError('FILE_READ_FAILED');
     }
   } else {
-    const { workbookToCsvText } = await import('./spreadsheet');
+    const { workbookToCsvTexts } = await import('./spreadsheet');
+    const wanted = opts?.extraSheets ?? [];
+    let extra: Record<string, string> = {};
     try {
-      text = await workbookToCsvText(await file.arrayBuffer());
+      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted);
+      text = decoded.first;
+      extra = decoded.extra;
     } catch (e) {
       // The decoder's one meaningful failure is a workbook whose first sheet holds nothing; it is a
       // user-fixable mistake and deserves its own message rather than "could not read that file".
       throw new ImportFileError((e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : 'FILE_READ_FAILED');
     }
+    dependentsText = wanted.length > 0 ? (extra[wanted[0]] ?? '') : '';
     // A workbook's CSV projection can be far larger than the compressed file, so the text ceiling is
     // enforced AFTER the decode for this path — that is the size the server action actually receives.
-    if (new Blob([text]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+    // BOTH sheets are counted: they travel as two arguments of the same server action, so the ceiling
+    // that protects it is the ceiling on their sum.
+    if (new Blob([text, dependentsText]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
   }
   if (text.trim() === '') throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
 
-  return { name: file.name, format, text };
+  return { name: file.name, format, text, dependentsText };
 }
 
 /** Error code → i18n key under the importer's namespace. Exported (rather than inlined in the

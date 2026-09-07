@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
+import { listProfileOptions } from '@/core/profile-options';
 import { listEmployeeImportRuns } from '@/core/import';
 import { PageHeader } from '@/components/ui';
 import { EmployeeImport } from './employee-import';
@@ -15,11 +16,33 @@ export default async function ImportPage() {
   // ones core/import's analyze() validates a row against. Reading them here (rather than
   // hand-maintaining a second list) is what makes "the value in the template is a value the importer
   // accepts" true by construction. Unscoped on purpose: a file may now span several companies.
-  const [companies, departments, positions, costCenters, importRuns] = await Promise.all([
+  const [
+    companies,
+    departments,
+    positions,
+    costCenters,
+    // Item 2983802f — the catalog-governed vocabularies the new columns write into. Read here for the
+    // same reason as the catalogs above: the Reference sheet must list the values `analyze()` accepts,
+    // and the only way to guarantee that is to generate it from the list `analyze()` reads.
+    states,
+    countries,
+    // The passport's Issuing Country is fed from the NATIONALITY catalog, not `country` — the Personnel
+    // Passport card's picker reads that list, so the value the product stores there is a demonym
+    // ("Malaysian", not "Malaysia"). Read here so the Reference sheet lists what `analyze()` accepts.
+    nationalities,
+    relationships,
+    familyRelationships,
+    importRuns,
+  ] = await Promise.all([
     listCompanies(s),
     listDepartments(s),
     listPositions(s),
     listCostCenters(s),
+    listProfileOptions(s, 'state', { activeOnly: true }),
+    listProfileOptions(s, 'country', { activeOnly: true }),
+    listProfileOptions(s, 'nationality', { activeOnly: true }),
+    listProfileOptions(s, 'relationship', { activeOnly: true }),
+    listProfileOptions(s, 'dependentRelationship', { activeOnly: true }),
     // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
     // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
     listEmployeeImportRuns(s),
@@ -60,6 +83,13 @@ export default async function ImportPage() {
               departments: uniqSorted(departments.map((d) => d.name)),
               positions: uniqSorted(positions.map((p) => p.title)),
               costCenters: uniqSorted(costCenters.map((c) => c.code ?? c.name ?? '')),
+              // Catalog order (sortOrder, then value) is kept rather than re-sorted: it is the order the
+              // dropdowns on the Personnel screens show, and the sheet is a copy of those dropdowns.
+              states: states.map((o) => o.value),
+              countries: countries.map((o) => o.value),
+              nationalities: nationalities.map((o) => o.value),
+              relationships: relationships.map((o) => o.value),
+              familyRelationships: familyRelationships.map((o) => o.value),
             }}
           />
           {/* cf43c909 — the record of what has been loaded. Always rendered, empty state included, so an
