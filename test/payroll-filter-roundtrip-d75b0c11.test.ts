@@ -44,7 +44,15 @@
  *
  * SCOPE FENCE, deliberately NOT tested as a defect: opening Payroll fresh from the sidebar does not
  * remember, and must not. It defaults to the current period, which is point 3 of the reporter's own
- * request. Case F states that as an expectation so nobody "fixes" it later.
+ * request. Case G states that as an expectation so nobody "fixes" it later.
+ *
+ * ⚠️ r253 — WHAT THE FIRST CUT OF THIS FILE MISSED, AND WHY THE ITEM WAS ANSWERED WRONGLY. Everything
+ * above walks Back LINKS. The reporter's journey ends on a BUTTON, and `closeAction`, `generateAction`,
+ * `unlockAction`, `reprocessSelectedAction` and the four anomaly actions all redirected to a HARDCODED
+ * `/payroll/<batchId>?toast=…` with no `from` at all — so Close payroll, then Back, really did land on
+ * September, exactly as reported, on a branch whose own summary said "no odd one out". Cases H and I
+ * pin the two halves of that contract (the form posts it; the action puts it back on the address), and
+ * case G now fences the action path too: posting no selection still redirects to today's bare address.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -99,12 +107,25 @@ vi.mock('@/lib/authz', async (orig) => ({
   requireAdmin: async () => scope.s,
   requireModule: async () => scope.s,
 }));
+// r253 — the server ACTIONS are entry points: they resolve their own session rather than being handed
+// one, so the fixture's admin has to reach them the way a request would.
+vi.mock('@/lib/session', async (orig) => ({
+  ...(await orig<typeof import('../lib/session')>()),
+  getSession: async () => scope.s,
+}));
 
 import { PageHeader } from '../components/ui';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
+import {
+  closeAction,
+  evaluateAnomaliesAction,
+  generateAction,
+  reprocessSelectedAction,
+  unlockAction,
+} from '../app/payroll/actions';
 import {
   asArray,
   dashboardHref,
@@ -180,6 +201,99 @@ function fromOf(href: string): string | null {
   return new URL(href, 'https://app.test').searchParams.get('from');
 }
 
+/**
+ * r253 — THE OTHER HALF OF THE JOURNEY: the `<form>` an operator PRESSES, not the link they click.
+ *
+ * Every case above walks Back LINKS, and so did the audit that shipped this item — which is why the run
+ * flow's own buttons were missed. A form is found by the server action it posts to (identity, not a
+ * string), and its hidden fields are the payload a browser would actually send.
+ */
+function formPostingTo(node: unknown, action: unknown): Elementish | null {
+  if (node == null || typeof node !== 'object') return null;
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const found = formPostingTo(n, action);
+      if (found) return found;
+    }
+    return null;
+  }
+  const el = node as Elementish;
+  if (el.type === 'form' && el.props?.action === action) return el;
+  if (!el.props) return null;
+  for (const v of Object.values(el.props)) {
+    const found = formPostingTo(v, action);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The first element anywhere in the tree carrying a string prop by this name. */
+function findWithProp(node: unknown, key: string): Elementish | null {
+  if (node == null || typeof node !== 'object') return null;
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const found = findWithProp(n, key);
+      if (found) return found;
+    }
+    return null;
+  }
+  const el = node as Elementish;
+  if (typeof el.props?.[key] === 'string') return el;
+  if (!el.props) return null;
+  for (const v of Object.values(el.props)) {
+    const found = findWithProp(v, key);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Every `<input type="hidden">` under a node, as name → value. */
+function hiddenFields(node: unknown, acc: Record<string, string> = {}): Record<string, string> {
+  if (node == null || typeof node !== 'object') return acc;
+  if (Array.isArray(node)) {
+    for (const n of node) hiddenFields(n, acc);
+    return acc;
+  }
+  const props = (node as Elementish).props;
+  if (props) {
+    if (
+      (node as Elementish).type === 'input' &&
+      props.type === 'hidden' &&
+      typeof props.name === 'string' &&
+      typeof props.value === 'string'
+    ) {
+      acc[props.name] = props.value;
+    }
+    for (const v of Object.values(props)) hiddenFields(v, acc);
+  }
+  return acc;
+}
+
+/**
+ * Run a server action and hand back the address it redirected to.
+ *
+ * `redirect()` is mocked at the top of this file to THROW `redirect(<url>)`, which is also how the real
+ * one signals. Every action under test ends in one — success or refusal — so returning without a
+ * redirect is itself a failure rather than a silent pass.
+ */
+async function redirectOf(run: () => Promise<unknown>): Promise<string> {
+  try {
+    await run();
+  } catch (e) {
+    const m = /^redirect\(([\s\S]*)\)$/.exec((e as Error).message);
+    if (m) return m[1];
+    throw e;
+  }
+  throw new Error('the action returned without redirecting');
+}
+
+/** A submitted form, as the action receives it. */
+function post(fields: Record<string, string>): FormData {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+  return fd;
+}
+
 type ListQuery = {
   year?: string;
   m?: string | string[];
@@ -251,6 +365,9 @@ describe('d75b0c11 — the Payroll Process filter selection survives the whole r
     // is about would be vacuously absent.
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     await setSetting(base.tenantId, 'payroll.reset_enabled', true);
+    // r253 — case H renders the CLOSED run's Unlock card, which is behind this switch. Inert for every
+    // other case: no other case closes a run, and the card is `status === 'closed'` only.
+    await setSetting(base.tenantId, 'payroll.unlock_enabled', true);
     const a = await entitledCtx(base);
 
     const e = await hireEmployee(a, {
@@ -361,10 +478,12 @@ describe('d75b0c11 — the Payroll Process filter selection survives the whole r
     }
   });
 
-  it('D. the six screens that share payrollProcessBack resolve the same selection', async () => {
-    // back-pay · individual-payslip · process/result · statutory-adjustment · statutory-forms ·
-    // transaction-view all build their header from exactly this helper (payroll-back-navigation case C
-    // pins that they call it), so resolving it once here covers the same contract for all six.
+  it('D. payrollProcessBack — the helper the shared screens build their header from — resolves the selection', async () => {
+    // A UNIT TEST OF THE HELPER, and the title says so: this case renders no screen. back-pay ·
+    // individual-payslip · statutory-adjustment · statutory-forms · transaction-view build their header
+    // from exactly this function, and payroll-back-navigation case C2 pins BY SOURCE that each of them
+    // calls it — that pair is the coverage, not a render of the five. process/result IS rendered for
+    // real, in case F. (r253 corrected this title: it used to claim six screens were proved here.)
     for (const { name, sel: s } of scenarios()) {
       const hrefs = await renderList(s);
       const from = fromOf(hrefs.find((h) => h.startsWith(`/payroll/${batchId}?`))!)!;
@@ -386,11 +505,19 @@ describe('d75b0c11 — the Payroll Process filter selection survives the whole r
     const anomaliesHref = collectHrefs(runTree).find((h) => h.startsWith(`/payroll/${batchId}/anomalies`));
     expect(anomaliesHref, 'the run screen offers no Anomalies link').toBeTruthy();
 
-    const anomaliesBack = backOf(
-      await AnomaliesPage({
-        params: Promise.resolve({ batchId }),
-        searchParams: Promise.resolve({ from: fromOf(anomaliesHref!) ?? undefined }),
-      }),
+    const anomaliesTree = await AnomaliesPage({
+      params: Promise.resolve({ batchId }),
+      searchParams: Promise.resolve({ from: fromOf(anomaliesHref!) ?? undefined }),
+    });
+    const anomaliesBack = backOf(anomaliesTree);
+    // r253 — …AND THE BUTTONS ON IT, not only its Back. Every anomaly action redirects to this same
+    // screen, so a form that posts no selection wipes it for the rest of the chain: Back to the run,
+    // Back again, and the operator is on the current period. Same defect as Close payroll, two screens
+    // further down. (`evaluateAnomaliesAction` is the one form that renders in every state.)
+    const evaluateForm = formPostingTo(anomaliesTree, evaluateAnomaliesAction);
+    expect(evaluateForm, 'the Anomalies screen renders no evaluate form').toBeTruthy();
+    expect(hiddenFields(evaluateForm).from, 'the Anomalies screen’s buttons post no selection').toBe(
+      dashboardHref(s),
     );
     // Anomalies goes back to the RUN, not to the list — and hands the run its `from` back, so the run's
     // own Back still restores the list. Without that, the selection is lost one screen deeper than
@@ -431,6 +558,11 @@ describe('d75b0c11 — the Payroll Process filter selection survives the whole r
       await ProcessWizardPage({ searchParams: Promise.resolve({ from: from ?? undefined }) }),
     );
     expect(wizardBack!.href, 'the wizard’s Back ignores ?from=').toBe(dashboardHref(s));
+    // r253 — AND THE LABEL IS STILL THIS SCREEN'S OWN. Sending the destination through the shared
+    // helper is a href change; taking the helper's LABEL with it silently renamed the wizard's Back
+    // from "Back" to "Payroll", which is a user-visible string nobody asked to change. Translations are
+    // identity here, so this pins the KEY: `payroll.process.back`, not `payroll.list.title`.
+    expect(wizardBack!.label, 'the wizard’s Back label drifted off payroll.process.back').toBe('back');
 
     // The terminal screen of the run flow. Its Back has read `?from=` since 9066bd6c and never received
     // one, because a redirect is the only way onto it; `r` is deliberately omitted here so the page
@@ -441,6 +573,100 @@ describe('d75b0c11 — the Payroll Process filter selection survives the whole r
     );
     expect(resultBack!.href, 'the Payroll Result screen ignores ?from=').toBe(dashboardHref(s));
     expect(selectionRestoredBy(resultBack!.href)).toEqual(s);
+  });
+
+  /**
+   * ─── r253: THE ACTION PATH, WHICH IS WHERE THE REPORTER'S COMPLAINT ACTUALLY LIVED ─────────────────
+   *
+   * Every case above walks Back LINKS, and so did the sweep that shipped this item — which is exactly
+   * why it concluded "already works" and was wrong. The reporter's own journey ends on a BUTTON:
+   *
+   *     Payroll Process → Year 2026 + Month January → View a processed run → Close payroll
+   *       → /payroll/<batchId>?toast=Payroll+closed   (no `from` — the action hardcoded the path)
+   *       → press Back → /payroll → September 2026.
+   *
+   * Both halves of that contract are pinned, because either one alone passes while the journey is
+   * broken: the FORM has to post the selection (case H) and the ACTION has to put it back on the
+   * address it redirects to (case I).
+   */
+  it('H. the run screen’s action BUTTONS post the selection, not just its links', async () => {
+    const s = sel({ months: [1, 2, 3], companyIds: [companyId] });
+    const hrefs = await renderList(s);
+    const from = fromOf(hrefs.find((h) => h.startsWith(`/payroll/${batchId}?`))!)!;
+    const render = (id: string) =>
+      BatchPage({ params: Promise.resolve({ batchId: id }), searchParams: Promise.resolve({ from }) });
+
+    // PROCESSED → Close payroll (the reporter's own path) and Reset, which has carried it since 65e2d5de
+    // and is the precedent the other three now follow.
+    const processed = await render(batchId);
+    for (const [name, action] of [['Close payroll', closeAction]] as const) {
+      const form = formPostingTo(processed, action);
+      expect(form, `the processed run screen renders no ${name} form`).toBeTruthy();
+      expect(hiddenFields(form).from, `${name} posts no selection`).toBe(dashboardHref(s));
+    }
+
+    // DRAFT → Generate payslips. A second period, because a company already has a January run.
+    const draft = await createBatch(scope.s, { companyId, payPeriod: '2026-02' });
+    const draftForm = formPostingTo(await render(draft.batchId), generateAction);
+    expect(draftForm, 'the draft run screen renders no Generate form').toBeTruthy();
+    expect(hiddenFields(draftForm).from, 'Generate payslips posts no selection').toBe(dashboardHref(s));
+
+    // CLOSED → Unlock. The one action that only exists after the run is published.
+    await closeBatch(scope.s, { batchId });
+    const unlockForm = formPostingTo(await render(batchId), unlockAction);
+    expect(unlockForm, 'the closed run screen renders no Unlock form').toBeTruthy();
+    expect(hiddenFields(unlockForm).from, 'Unlock posts no selection').toBe(dashboardHref(s));
+  });
+
+  it('I. the ACTIONS put it back on the address they redirect to — Close, Generate, Unlock, Reprocess, Anomalies', async () => {
+    const s = sel({ months: [1, 2, 3], companyIds: [companyId] });
+    const carried = dashboardHref(s);
+    const draft = await createBatch(scope.s, { companyId, payPeriod: '2026-02' });
+
+    // Ordered as a real session runs them (close → unlock → reprocess the processed run again), so the
+    // run is in a plausible state for each. A REFUSAL is asserted the same way as a success on purpose:
+    // both redirect, and the operator who is bounced back by an error needs their filters just as much
+    // as the one who succeeds — so `from` has to ride on both branches of every one of these actions.
+    const flows: [string, () => Promise<unknown>][] = [
+      ['closeAction', () => closeAction(post({ batchId, from: carried }))],
+      ['generateAction', () => generateAction(post({ batchId: draft.batchId, from: carried }))],
+      ['unlockAction', () => unlockAction(post({ batchId, from: carried, reason: 'r253 round trip' }))],
+      ['reprocessSelectedAction', () => reprocessSelectedAction(post({ batchId, from: carried }))],
+      ['evaluateAnomaliesAction', () => evaluateAnomaliesAction(post({ batchId, from: carried }))],
+    ];
+    for (const [name, run] of flows) {
+      const to = await redirectOf(run);
+      expect(fromOf(to), `${name} redirected to ${to}, dropping the selection`).toBe(carried);
+      // …and the round trip closes: what the destination will parse back out is the selection that went
+      // in, not merely a string that survived. An encoding that flattened the three months into one
+      // would satisfy the line above and fail this one.
+      expect(selectionRestoredBy(fromOf(to)!), `${name} mangled the selection`).toEqual(s);
+    }
+  });
+
+  it('J. the wizard’s draft-adjustment panel returns to the wizard WITH the selection still on it', async () => {
+    // The Review step's consolidation bridges (Prefill overtime, Transfer allowances, saving one
+    // employee's row…) all post `returnTo` and land back on the wizard. `returnTo` was hardcoded
+    // without `from`, so pressing any of them silently emptied the wizard's own Back — and, because the
+    // wizard posts the same value onward, the Result screen's Back with it, for the rest of that run.
+    const s = sel({ months: [1, 2, 3], companyIds: [companyId] });
+    const draft = await createBatch(scope.s, { companyId, payPeriod: '2026-02' });
+    const tree = await ProcessWizardPage({
+      searchParams: Promise.resolve({ resume: draft.batchId, from: dashboardHref(s) }),
+    });
+    const panel = findWithProp(tree, 'returnTo');
+    expect(panel, 'the resumed wizard renders no adjustment panel').toBeTruthy();
+    const returnTo = panel!.props!.returnTo as string;
+    expect(returnTo.startsWith(`/payroll/process?resume=${draft.batchId}`), returnTo).toBe(true);
+    expect(fromOf(returnTo), 'the adjustment panel throws the selection away').toBe(dashboardHref(s));
+    // The whole point of the round trip: the wizard reached through that destination still has a Back
+    // that restores the list, rather than one that has quietly collapsed to the current period.
+    const backAfter = backOf(
+      await ProcessWizardPage({
+        searchParams: Promise.resolve({ resume: draft.batchId, from: fromOf(returnTo) ?? undefined }),
+      }),
+    );
+    expect(backAfter!.href).toBe(dashboardHref(s));
   });
 
   it('G. THE SCOPE FENCE: opening Payroll fresh from the sidebar still defaults, and must', async () => {
@@ -459,5 +685,14 @@ describe('d75b0c11 — the Payroll Process filter selection survives the whole r
     ]) {
       expect(back!.href).toBe('/payroll');
     }
+    // r253 — and the same fence on the ACTION path: a form that posts no selection redirects to exactly
+    // the address it always did, so an operator who never filtered keeps a clean URL and the default
+    // period. This is the half that must NOT change; case I is the half that must.
+    expect(await redirectOf(() => closeAction(post({ batchId })))).toMatch(
+      new RegExp(`^/payroll/${batchId}\\?(toast|error)=`),
+    );
+    expect(await redirectOf(() => reprocessSelectedAction(post({ batchId })))).toMatch(
+      new RegExp(`^/payroll/${batchId}/reprocess\\?error=`),
+    );
   });
 });

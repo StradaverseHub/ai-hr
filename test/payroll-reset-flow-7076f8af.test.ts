@@ -106,8 +106,11 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
     // Following the query verbatim lands them on a list the row has just dropped out of. Behaviour pinned
     // in test/payroll-draft-resume.test.ts a3; the CALL is pinned here because a helper nobody calls fixes
     // nothing.
+    // r253 added `withPayrollFrom` (the action redirects now carry the selection too), so the import is
+    // matched by NAME rather than as one exact line — the claim is "every destination in this file comes
+    // out of the whitelist module", not "the import fits on 100 columns".
     expect(PAYROLL_ACTIONS).toMatch(
-      /import \{ adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam \} from '@\/lib\/return-to'/,
+      /import \{[\s\S]*?\badjustmentReturnTo\b[\s\S]*?\bpayrollListAfterReset\b[\s\S]*?\bpayrollListReturnTo\b[\s\S]*?\bwithPayrollFrom\b[\s\S]*?\bwithQueryParam\b[\s\S]*?\} from '@\/lib\/return-to'/,
     );
     expect(PAYROLL_ACTIONS).toMatch(/const back = payrollListAfterReset\(String\(formData\.get\('from'\) \?\? ''\)\);/);
     expect(PAYROLL_ACTIONS).toMatch(/redirect\(withQueryParam\(back, 'toast', t\('resetDone'\)\)\)/);

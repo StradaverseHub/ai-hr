@@ -209,11 +209,18 @@ describe('e440991b — progress is reported honestly', () => {
   });
 
   it('the action returns to the new screen carrying the job id, not a one-line toast on the run screen', () => {
-    expect(ACTIONS).toContain('const back = `/payroll/${batchId}/reprocess`;');
-    expect(ACTIONS).toMatch(/redirect\(`\$\{back\}\?job=\$\{encodeURIComponent\(jobId\)\}`\)/);
+    // r253 — SAME DESTINATION, PLUS THE OPERATOR'S FILTER SELECTION. The literal was right while the
+    // destination was a constant; it is not one any more. `backPath` is the bare route (revalidatePath
+    // takes a path, never a query) and `back` is that route carrying the whitelisted `?from=` the
+    // screen posted, so the job result the operator lands on still has a Back that restores the list.
+    expect(ACTIONS).toContain('const backPath = `/payroll/${batchId}/reprocess`;');
+    expect(ACTIONS).toContain("const back = withPayrollFrom(backPath, formData.get('from'));");
+    expect(ACTIONS).toMatch(/redirect\(withQueryParam\(back, 'job', jobId\)\)/);
     expect(ACTIONS, 'refusals must land back on the selection, not on the run screen').toMatch(
-      /redirect\(`\$\{back\}\?error=/,
+      /redirect\(withQueryParam\(back, 'error'/,
     );
+    // …and the cache drop still names a PATH. A query string here silently revalidates nothing.
+    expect(ACTIONS).toMatch(/revalidatePath\(backPath\)/);
   });
 });
 

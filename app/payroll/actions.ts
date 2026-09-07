@@ -57,7 +57,13 @@ import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 // Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
 // lib/return-to.ts.
-import { adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam } from '@/lib/return-to';
+import {
+  adjustmentReturnTo,
+  payrollListAfterReset,
+  payrollListReturnTo,
+  withPayrollFrom,
+  withQueryParam,
+} from '@/lib/return-to';
 
 // Note: run creation (regular + additional) moved to app/payroll/process/actions.ts (createRunAction) as
 // part of the Payroll Process wizard — creation is now the wizard's TERMINAL action. createBatch /
@@ -76,6 +82,10 @@ import { adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQue
 export async function generateAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  // r253 — THE RUN SCREEN THIS RETURNS TO KEEPS THE OPERATOR'S FILTER SELECTION. The form posts the same
+  // `from` its own Back is built from; without it, generating from a January-filtered list landed on a
+  // run screen whose Back went to a bare `/payroll`, i.e. the current period. See `withPayrollFrom`.
+  const home = withPayrollFrom(`/payroll/${batchId}`, formData.get('from'));
   const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
   const t = await getTranslations('payroll.batch');
   let errMsg: string | null = null;
@@ -122,9 +132,9 @@ export async function generateAction(formData: FormData) {
           ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
           : (e as Error).message;
   }
-  if (errMsg) redirect(`/payroll/${batchId}?error=${encodeURIComponent(errMsg)}`);
+  if (errMsg) redirect(withQueryParam(home, 'error', errMsg));
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(toastMsg)}`);
+  redirect(withQueryParam(home, 'toast', toastMsg));
 }
 
 export async function setPayrollInputAction(formData: FormData) {
@@ -468,9 +478,14 @@ export async function reprocessSelectedAction(formData: FormData) {
   const reason = String(formData.get('reason') ?? '').trim();
   const idempotencyKey = String(formData.get('idempotencyKey') ?? '').trim();
   const t = await getTranslations('payroll.batch');
-  const back = `/payroll/${batchId}/reprocess`;
+  const backPath = `/payroll/${batchId}/reprocess`;
+  // r253 — …AND IT COMES BACK WITH THE FILTER SELECTION STILL ON IT. Reprocess is one of the five Back
+  // destinations the reporter named, and this redirect is the ordinary way onto it: pressing the button
+  // stripped the `from` the screen was opened with, so Back from the job result went to the current
+  // period. `backPath` stays bare for `revalidatePath`, which takes a path and not a query.
+  const back = withPayrollFrom(backPath, formData.get('from'));
   if (employmentIds.length === 0) {
-    redirect(`${back}?error=${encodeURIComponent(t('reprocessNoneSelected'))}`);
+    redirect(withQueryParam(back, 'error', t('reprocessNoneSelected')));
   }
   let jobId = '';
   try {
@@ -492,12 +507,12 @@ export async function reprocessSelectedAction(formData: FormData) {
             e instanceof PayrollCounterpartClosedError
             ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
             : (e as Error).message;
-    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+    redirect(withQueryParam(back, 'error', msg));
   }
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
-  revalidatePath(back);
-  redirect(`${back}?job=${encodeURIComponent(jobId)}`);
+  revalidatePath(backPath);
+  redirect(withQueryParam(back, 'job', jobId));
 }
 
 /**
@@ -577,6 +592,8 @@ export async function unlockAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const reason = String(formData.get('reason') ?? '').trim();
+  // r253 — the run screen it returns to keeps the filter selection the operator arrived with.
+  const home = withPayrollFrom(`/payroll/${batchId}`, formData.get('from'));
   const t = await getTranslations('payroll.batch');
   let warned = false;
   try {
@@ -591,12 +608,12 @@ export async function unlockAction(formData: FormData) {
           : e instanceof BatchNotUnlockableError
             ? t('unlockNotClosed')
             : (e as Error).message;
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+    redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
   const toast = warned ? t('unlockDoneWarned') : t('unlockDone');
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(toast)}`);
+  redirect(withQueryParam(home, 'toast', toast));
 }
 
 /**
@@ -614,6 +631,11 @@ export async function unlockAction(formData: FormData) {
 export async function closeAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  // r253 — THE PATH THE REPORTER ACTUALLY WALKED. Filter to January, open a processed run, press Close
+  // payroll: this redirect landed on `/payroll/<id>?toast=…` with no `from`, so the run screen's Back
+  // then went to a bare `/payroll` — September. The Back LINKS were carrying the selection all along;
+  // this button was throwing it away, which is why the item read as "already works" and was not.
+  const home = withPayrollFrom(`/payroll/${batchId}`, formData.get('from'));
   const t = await getTranslations('payroll.batch');
   const ta = await getTranslations('anomaly');
   try {
@@ -643,11 +665,11 @@ export async function closeAction(formData: FormData) {
               : e instanceof PayrollPermissionDeniedError
                 ? t('closePermissionDenied')
                 : (e as Error).message;
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+    redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
-  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('closeDone'))}`);
+  redirect(withQueryParam(home, 'toast', t('closeDone')));
 }
 
 /**
@@ -659,20 +681,26 @@ export async function closeAction(formData: FormData) {
 export async function evaluateAnomaliesAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  // r253 — Anomalies' own Back goes to the RUN, and the run screen's Back goes to the list, so an
+  // anomalies redirect that drops `from` loses the selection TWO screens further on than anybody was
+  // looking. Every form on that screen posts the value the page was opened with.
+  const home = withPayrollFrom(`/payroll/${batchId}/anomalies`, formData.get('from'));
   const t = await getTranslations('anomaly');
   let summary: { block: number; review: number; autoClear: number };
   try {
     const run = await evaluateBatchAnomalies(s, { batchId });
     summary = { block: run.block, review: run.review, autoClear: run.autoClear };
   } catch (e) {
-    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(home, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
   redirect(
-    `/payroll/${batchId}/anomalies?toast=${encodeURIComponent(
+    withQueryParam(
+      home,
+      'toast',
       t('evaluated', { block: summary.block, review: summary.review, clear: summary.autoClear }),
-    )}`,
+    ),
   );
 }
 
@@ -690,12 +718,13 @@ export async function narrateAnomalyAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const verdictId = String(formData.get('verdictId'));
+  const home = withPayrollFrom(`/payroll/${batchId}/anomalies`, formData.get('from')); // r253 — see above
   const t = await getTranslations('anomaly');
   let outcome: Awaited<ReturnType<typeof narrateVerdict>>;
   try {
     outcome = await narrateVerdict(s, { verdictId });
   } catch (e) {
-    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(home, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   // Three outcomes, three different sentences. "Nothing happened" is never rendered as success.
@@ -706,7 +735,7 @@ export async function narrateAnomalyAction(formData: FormData) {
       : outcome.rejected > 0
         ? t('narrateRejected')
         : t('narrateNothing');
-  redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(msg)}`);
+  redirect(withQueryParam(home, 'toast', msg));
 }
 
 /**
@@ -721,12 +750,13 @@ export async function narrateAnomalyAction(formData: FormData) {
 export async function proposeHypothesesAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const home = withPayrollFrom(`/payroll/${batchId}/anomalies`, formData.get('from')); // r253 — see above
   const t = await getTranslations('anomaly');
   let run: Awaited<ReturnType<typeof proposeHypotheses>>;
   try {
     run = await proposeHypotheses(s, { batchId });
   } catch (e) {
-    redirect(`/payroll/${batchId}/anomalies?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(home, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
@@ -739,7 +769,7 @@ export async function proposeHypothesesAction(formData: FormData) {
         : run.notConfigured
           ? t('hypothesisNotConfigured')
           : t('hypothesisNone');
-  redirect(`/payroll/${batchId}/anomalies?toast=${encodeURIComponent(msg)}`);
+  redirect(withQueryParam(home, 'toast', msg));
 }
 
 /**
@@ -758,18 +788,21 @@ export async function resolveAnomalyAction(formData: FormData) {
   const resolution = String(formData.get('resolution')) as 'accepted' | 'fixed_upstream' | 'false_positive';
   const note = String(formData.get('note') ?? '').trim();
   const back = String(formData.get('returnTo') ?? '');
+  // r253 — the Payroll branch carries the operator's filter selection (see `evaluateAnomaliesAction`).
+  // The cross-run queue at /control-tower/exceptions does NOT: it is not reached from the Payroll
+  // Process list and has no selection to restore, so it keeps exactly the address it has today.
   const home = (RESOLVE_RETURNS as readonly string[]).includes(back)
     ? '/control-tower/exceptions'
-    : `/payroll/${batchId}/anomalies`;
+    : withPayrollFrom(`/payroll/${batchId}/anomalies`, formData.get('from'));
   const t = await getTranslations('anomaly');
   try {
     await resolveAnomalyVerdict(s, { verdictId, resolution, note: note || undefined });
   } catch (e) {
-    redirect(`${home}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withQueryParam(home, 'error', (e as Error).message));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/control-tower/exceptions');
   revalidatePath('/control-tower');
-  redirect(`${home}?toast=${encodeURIComponent(t('resolved'))}`);
+  redirect(withQueryParam(home, 'toast', t('resolved')));
 }

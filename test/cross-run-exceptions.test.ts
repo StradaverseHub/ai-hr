@@ -174,7 +174,11 @@ describe('one action, and one row shape', () => {
       code(ACTIONS).indexOf('export async function', code(ACTIONS).indexOf('export async function resolveAnomalyAction') + 10),
     );
     expect(body, 'the return target comes from an allowlist').toContain('RESOLVE_RETURNS as readonly string[]');
-    expect(body, 'and the redirect uses the derived value').toContain('redirect(`${home}?toast=');
+    // r253 — the same claim against the shape that can also carry the Payroll Process filter selection:
+    // the Payroll branch of `home` is now `withPayrollFrom(…)` and the append goes through the one
+    // helper. The tower branch is unchanged, and the negative assertion below is what pins that the
+    // posted `returnTo` still never reaches a redirect.
+    expect(body, 'and the redirect uses the derived value').toContain("redirect(withQueryParam(home, 'toast'");
     expect(
       /redirect\(`?\$?\{?back\b/.test(body),
       'the raw form value must never reach a redirect in this action',

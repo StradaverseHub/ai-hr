@@ -52,7 +52,12 @@ export default async function PayrollProcessPage({
   // d75b0c11 — the Payroll Process list hands this screen its own filter query as `?from=…` (on the
   // period cell, on Continue and on the New-run button). Whitelisted BY SHAPE inside the helper, never
   // echoed raw. Absent or hostile ⇒ `/payroll`, i.e. byte-identical to the pre-d75b0c11 destination.
-  const back = await payrollProcessBack(from);
+  //
+  // r253 — THE HREF IS SHARED, THE LABEL IS NOT. d75b0c11 passed the helper's whole return value to
+  // PageHeader, which silently changed this screen's Back from "Back" (`payroll.process.back`) to
+  // "Payroll" (`payroll.list.title`) — a user-visible string nobody asked to change. The destination is
+  // what the item was about; the wording stays this screen's own key.
+  const back = { href: (await payrollProcessBack(from)).href, label: t('back') };
   // Carried into the wizard so the TERMINAL screen of the run flow (`/payroll/process/result`) receives
   // it too — its Back has read `?from=` since 9066bd6c but nothing has ever supplied one.
   const carryFrom = back.href === '/payroll' ? undefined : back.href;
@@ -148,10 +153,24 @@ export default async function PayrollProcessPage({
           from={carryFrom}
           adjustmentsPanel={
             resumeBatch ? (
+              /* r253 — THE PANEL RETURNS TO THIS SCREEN WITH THE SELECTION STILL ON IT. `returnTo` was
+                 hardcoded without `from`, so pressing any consolidation bridge (Prefill overtime,
+                 Transfer allowances, saving one employee's row…) redirected to a wizard URL with no
+                 selection: this screen's Back collapsed to `/payroll` and running the payroll from
+                 there landed on a Result screen with nothing to carry either. `adjustmentReturnTo`
+                 keeps a whitelisted path's query verbatim, so the encoded value survives the round
+                 trip; the pager gets it too, since paging the input grid is the same navigation. */
               <PayrollAdjustmentsPanel
                 batchId={resumeBatch.id}
-                returnTo={`/payroll/process?resume=${resumeBatch.id}`}
-                pager={{ basePath: '/payroll/process', params: { resume: resumeBatch.id }, page: iPage, size: iSize }}
+                returnTo={`/payroll/process?resume=${resumeBatch.id}${
+                  carryFrom ? `&from=${encodeURIComponent(carryFrom)}` : ''
+                }`}
+                pager={{
+                  basePath: '/payroll/process',
+                  params: { resume: resumeBatch.id, ...(carryFrom ? { from: carryFrom } : {}) },
+                  page: iPage,
+                  size: iSize,
+                }}
               />
             ) : null
           }

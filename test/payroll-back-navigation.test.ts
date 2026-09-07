@@ -24,11 +24,21 @@
  *   B. The Payroll Process list hands its own filter query to every row link as `?from=…`.
  *   C. The screens that receive it resolve it through `payrollListReturnTo`, never raw.
  *   D. `payrollListReturnTo` itself: it keeps a real filter query and refuses every off-site shape.
+ *
+ * r253 adds the half every one of the cases above walks past, and it is where the reporter's complaint
+ * actually lived: A-D are all about LINKS. The run flow's own BUTTONS — Close payroll, Generate, Unlock,
+ * Reprocess and the four anomaly actions — redirected to hardcoded paths, so pressing any of them threw
+ * the selection away and Back went to the current period.
+ *
+ *   C3. Every one of those actions builds its destination through `withPayrollFrom`, and no posted value
+ *       reaches a redirect without it.
+ *   D2. `withPayrollFrom` itself: encoded, joined correctly, and omitted entirely when there is nothing
+ *       to carry or the value is refused.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { payrollListReturnTo } from '../lib/return-to';
+import { payrollListReturnTo, withPayrollFrom } from '../lib/return-to';
 
 const ROOT = path.resolve(__dirname, '..');
 const PAYROLL = path.join(ROOT, 'app', 'payroll');
@@ -162,6 +172,48 @@ describe('Payroll back navigation (source shape)', () => {
       'both run actions must carry the selection onto /payroll/process/result').toHaveLength(2);
   });
 
+  it('C3. the run-flow ACTIONS carry the posted selection onto their redirect, whitelisted not echoed', () => {
+    /**
+     * r253 — THE HALF NEITHER 9066bd6c NOR d75b0c11 LOOKED AT. Cases B and C above walk LINKS; this one
+     * walks the BUTTONS. Every action here redirects to a screen whose Back reads `?from=`, and every
+     * one of them used to redirect to a hardcoded path — so Close payroll (the reporter's own path),
+     * Generate, Unlock, Reprocess and the four anomaly buttons all silently reset the operator's filter
+     * selection to the current period, on a branch whose summary said the item already worked.
+     *
+     * COMMENTS STRIPPED (rule 27): the source explains this fix in prose that names the very helper the
+     * guard looks for, so an unstripped read would pass on a file where the code had been ripped out.
+     */
+    const actions = fs
+      .readFileSync(path.join(PAYROLL, 'actions.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    const bodyOf = (fn: string) => {
+      const start = actions.indexOf(`export async function ${fn}(`);
+      expect(start, `${fn} is gone from app/payroll/actions.ts`).toBeGreaterThan(-1);
+      const next = actions.indexOf('export async function ', start + 10);
+      return actions.slice(start, next === -1 ? undefined : next);
+    };
+    for (const fn of [
+      'generateAction',
+      'closeAction',
+      'unlockAction',
+      'reprocessSelectedAction',
+      'evaluateAnomaliesAction',
+      'narrateAnomalyAction',
+      'proposeHypothesesAction',
+      'resolveAnomalyAction',
+    ]) {
+      expect(bodyOf(fn), `${fn} builds its destination without the ?from= whitelist`).toContain(
+        'withPayrollFrom(',
+      );
+    }
+    // …and the posted value never reaches a redirect without passing through it. `removeEmployeePayroll`
+    // and `resetAction` resolve theirs through the sibling helpers, which is why they are not listed.
+    expect(actions, 'a raw posted `from` reached a redirect').not.toMatch(
+      /redirect\([^;]*formData\.get\('from'\)/,
+    );
+  });
+
   it('D. payrollListReturnTo keeps a real filter query and refuses every off-site shape', () => {
     // Kept, verbatim — this is the whole point of the parameter.
     expect(payrollListReturnTo('/payroll?year=2026&m=5&m=6&company=abc&status=processed')).toBe(
@@ -190,5 +242,31 @@ describe('Payroll back navigation (source shape)', () => {
     ]) {
       expect(payrollListReturnTo(hostile as unknown), `${String(hostile)} must not survive`).toBe('/payroll');
     }
+  });
+
+  it('D2. withPayrollFrom hangs a whitelisted selection on a destination, ENCODED, or nothing at all', () => {
+    // r253 — the one idiom every action redirect now uses. Three properties, and the middle one is the
+    // trap this whole item was raised over.
+    const sel = '/payroll?year=2026&m=1&m=2&company=abc';
+    // 1. ENCODED, so the carried query's own `&m=2` cannot become a parameter of the OUTER address.
+    const hung = withPayrollFrom('/payroll/b1', sel);
+    expect(hung).toBe(`/payroll/b1?from=${encodeURIComponent(sel)}`);
+    expect(new URL(hung, 'https://app.test').searchParams.get('from')).toBe(sel);
+    expect(new URL(hung, 'https://app.test').searchParams.getAll('m'), '`m` leaked out of from=').toEqual([]);
+    // 2. Joined with `&` when the destination already carries a query of its own.
+    expect(withPayrollFrom('/payroll/b1/reprocess?job=7', sel)).toBe(
+      `/payroll/b1/reprocess?job=7&from=${encodeURIComponent(sel)}`,
+    );
+    // 3. OMITTED when there is nothing to carry or the value is refused — byte-identical to the address
+    //    these actions redirected to before, which is what keeps the sidebar's own default untouched.
+    for (const nothing of ['/payroll', '', undefined, null, 42, 'https://evil.example/payroll', '//evil.example', '/admin']) {
+      expect(withPayrollFrom('/payroll/b1', nothing as unknown), `${String(nothing)} must not survive`).toBe(
+        '/payroll/b1',
+      );
+    }
+    // A round-tripped toast/error is stripped rather than doubled, exactly as case D pins for the href.
+    expect(withPayrollFrom('/payroll/b1', '/payroll?year=2026&toast=done')).toBe(
+      `/payroll/b1?from=${encodeURIComponent('/payroll?year=2026')}`,
+    );
   });
 });

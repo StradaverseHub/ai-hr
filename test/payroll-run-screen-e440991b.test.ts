@@ -63,8 +63,12 @@ describe('e440991b point 1 — the Payroll Process wizard has a way back', () =>
   it('renders a back link, and it points at the run listing', () => {
     const src = code('app/payroll/process/page.tsx');
     expect(src, 'PageHeader still has no `back` prop').toMatch(/back=\{back\}/);
+    // r253 — THE HREF COMES FROM THE SHARED HELPER; THE LABEL STAYS THIS SCREEN'S OWN. Taking the
+    // helper's whole return value renamed this Back from "Back" to "Payroll" (`payroll.list.title`),
+    // a user-visible string change nobody asked for. Both halves are pinned so neither drifts again;
+    // the rendered label is proved in payroll-filter-roundtrip case F.
     expect(src, 'the back must be resolved through the shared payroll-list helper').toMatch(
-      /const back = await payrollProcessBack\(from\);/,
+      /const back = \{ href: \(await payrollProcessBack\(from\)\)\.href, label: t\('back'\) \};/,
     );
     expect(src).toContain("import { payrollProcessBack } from '../back';");
   });

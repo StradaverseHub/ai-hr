@@ -14,7 +14,7 @@ import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
 // d75b0c11 — this screen's Back goes to the RUN, not to the list, so what it carries is the run screen's
 // own `?from=`. Whitelisted by shape here for the same reason every other consumer does it: a href taken
 // straight out of searchParams is the open-redirect shape (lib/return-to.ts).
-import { payrollListReturnTo } from '@/lib/return-to';
+import { payrollListReturnTo, withPayrollFrom } from '@/lib/return-to';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   evaluateAnomaliesAction,
@@ -83,8 +83,13 @@ export default async function AnomaliesPage({
   // still returns the Payroll Process list as it was left. Nothing to carry ⇒ the bare run address,
   // byte-identical to the pre-d75b0c11 destination.
   const carried = payrollListReturnTo(sp.from);
-  const backToRun =
-    carried === '/payroll' ? `/payroll/${batchId}` : `/payroll/${batchId}?from=${encodeURIComponent(carried)}`;
+  const backToRun = withPayrollFrom(`/payroll/${batchId}`, carried);
+  // r253 — …AND EVERY BUTTON ON THIS SCREEN POSTS IT. The four anomaly actions all redirect back here,
+  // and each redirected to a hardcoded `/payroll/<id>/anomalies?toast=…`: pressing Evaluate or Resolve
+  // wiped the `from` this page was opened with, so Back went to the run, the run's Back went to a bare
+  // `/payroll`, and the operator's filter selection was gone two screens down the chain. `undefined`
+  // when there is nothing to carry, so an unfiltered visit posts no field at all.
+  const carry = carried === '/payroll' ? undefined : carried;
 
   const batch = await batchDetail(s, batchId).catch(() => null);
   if (!batch) notFound();
@@ -142,6 +147,7 @@ export default async function AnomaliesPage({
           <p className="text-sm text-muted-foreground">{t('neverRun')}</p>
           <form action={evaluateAnomaliesAction} className="mt-4">
             <input type="hidden" name="batchId" value={batchId} />
+            {carry ? <input type="hidden" name="from" value={carry} /> : null}
             <Button type="submit" size="sm">
               {t('runNow')}
             </Button>
@@ -179,6 +185,7 @@ export default async function AnomaliesPage({
             <div className="mt-4 flex flex-wrap gap-2">
               <form action={evaluateAnomaliesAction}>
                 <input type="hidden" name="batchId" value={batchId} />
+                {carry ? <input type="hidden" name="from" value={carry} /> : null}
                 <Button type="submit" size="sm" variant="secondary">
                   {t('runAgain')}
                 </Button>
@@ -188,6 +195,7 @@ export default async function AnomaliesPage({
                   evaluate. It says what happened in every case, including "not switched on". */}
               <form action={proposeHypothesesAction}>
                 <input type="hidden" name="batchId" value={batchId} />
+                {carry ? <input type="hidden" name="from" value={carry} /> : null}
                 <Button type="submit" size="sm" variant="secondary">
                   {t('lookAgain')}
                 </Button>
@@ -230,6 +238,7 @@ export default async function AnomaliesPage({
           key={row.verdictId}
           row={row}
           batchId={batchId}
+          from={carry}
           explainLabel={t('explain')}
           hypothesis={hypothesis}
         />
@@ -270,11 +279,14 @@ type HypothesisCopy = { label: string; help: string; claim: Record<string, strin
 function VerdictCard({
   row,
   batchId,
+  from,
   explainLabel,
   hypothesis,
 }: {
   row: QueueRow;
   batchId: string;
+  /** r253 — the whitelisted Payroll Process filter query this screen was opened with; see the page. */
+  from?: string;
   explainLabel: string;
   hypothesis: HypothesisCopy;
 }) {
@@ -332,6 +344,7 @@ function VerdictCard({
         <form action={narrateAnomalyAction} className="mt-3">
           <input type="hidden" name="batchId" value={batchId} />
           <input type="hidden" name="verdictId" value={row.verdictId} />
+          {from ? <input type="hidden" name="from" value={from} /> : null}
           <button type="submit" className="text-[11px] font-medium text-primary underline-offset-2 hover:underline">
             {explainLabel}
           </button>
@@ -344,6 +357,7 @@ function VerdictCard({
         <form action={resolveAnomalyAction} className="mt-4 space-y-2">
           <input type="hidden" name="batchId" value={batchId} />
           <input type="hidden" name="verdictId" value={row.verdictId} />
+          {from ? <input type="hidden" name="from" value={from} /> : null}
           <input name="note" placeholder="note (optional)" className={inputCls} />
           <div className="flex flex-wrap gap-2">
             <Button type="submit" size="sm" name="resolution" value="accepted" variant="secondary">
