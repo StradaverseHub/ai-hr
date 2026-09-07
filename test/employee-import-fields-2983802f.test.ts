@@ -19,7 +19,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { commitEmployeeImport, validateEmployeeImport } from '../core/import';
+import {
+  carriedProfileValue,
+  classifyCatalogCell,
+  commitEmployeeImport,
+  validateEmployeeImport,
+} from '../core/import';
 import { parseCsvRecords } from '../lib/csv';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -334,6 +339,59 @@ describe('2983802f §3 · the new columns are validated, per row and per column'
     );
   });
 
+  it('passport_issuing_country is checked against the NATIONALITY list, not the country list', async () => {
+    // The Passport card's Issuing Country picker is fed from the tenant's NATIONALITY catalog
+    // (app/admin/personnel/[employmentId]/page.tsx → IdentityFields `countryOptions`), so the value the
+    // product itself stores in this column is a demonym — "Malaysian", not "Malaysia". The separate
+    // passport_issuing_country_code field carries the ISO code precisely because one is not derivable
+    // from the other (e4b541c6). Checking this column against `country` inverted the whole rule: it
+    // refused every value the card can produce and accepted values the card's dropdown never offers.
+    //
+    // BOTH catalogs are seeded on purpose. With only one configured the empty-catalog free-text
+    // tolerance accepts anything, and the test would pass whichever list the importer consulted.
+    await owner.db.insert(schema.profileOption).values([
+      { tenantId: b.tenantId, category: 'nationality', value: 'Malaysian', label: 'Malaysian', sortOrder: 1 },
+      { tenantId: b.tenantId, category: 'country', value: 'Malaysia', label: 'Malaysia', sortOrder: 1 },
+    ]);
+    expect(await errorsFor({ passport_issuing_country: 'Malaysian' }), 'the value the card stores').toBe('');
+    expect(await errorsFor({ passport_issuing_country: 'Malaysia' }), 'a country NAME').toMatch(
+      /"Malaysia" is not an active nationality option/,
+    );
+
+    // …and it reaches the column the card reads back, spelled the way the card spells it.
+    const result = await commitEmployeeImport(a, {
+      companyId: b.companyId,
+      records: recs(NEW_HEADER, [newRow({ passport_issuing_country: 'Malaysian' })]),
+    });
+    expect(result.imported).toBe(1);
+    const p = await personByEmail('faizal@acme.test');
+    const [stat] = await owner.db
+      .select()
+      .from(schema.employeeStatutoryMy)
+      .where(eq(schema.employeeStatutoryMy.personId, p.id));
+    expect(stat.passportIssuingCountry).toBe('Malaysian');
+  });
+
+  it('a value the catalog REFUSED contributes nothing — it never falls back to the raw cell', () => {
+    // The three outcomes of a catalog-governed cell are kept apart because collapsing "blank" and
+    // "refused" into one `undefined` made the payload builder fall back to the RAW cell for a value the
+    // dry run had just rejected. Nothing wrote it — the row carried the error and was skipped at commit —
+    // but a rejected value surviving in the payload, with only an unrelated guard between it and the
+    // database, is the silently-wrong-field this whole item exists to prevent.
+    const refused = classifyCatalogCell('Selangoor', (v) => v === 'Selangor');
+    expect(refused).toEqual({ kind: 'refused', value: 'Selangoor' });
+    expect(carriedProfileValue(refused, 'Selangoor'), 'a refused cell contributes NOTHING').toBeUndefined();
+
+    expect(classifyCatalogCell('Selangor', (v) => v === 'Selangor')).toEqual({ kind: 'ok', value: 'Selangor' });
+    expect(carriedProfileValue({ kind: 'ok', value: 'Selangor' }, 'Selangor')).toBe('Selangor');
+
+    // A blank verdict and a column with no validator both fall through to the raw cell, which is how
+    // every plain-text address column is carried.
+    expect(classifyCatalogCell('  ', () => false)).toEqual({ kind: 'blank' });
+    expect(carriedProfileValue({ kind: 'blank' }, '')).toBeUndefined();
+    expect(carriedProfileValue(undefined, '88 Jalan Bukit')).toBe('88 Jalan Bukit');
+  });
+
   it('a state that is not an active catalog option is refused, and a configured one is accepted', async () => {
     // With an EMPTY catalog the tenant has never configured the list and free text is accepted, exactly
     // as it is on the Personnel screens — so the catalog has to exist before the rule can bite.
@@ -409,6 +467,45 @@ describe('2983802f §4 · direct superior is a forward reference', () => {
     });
     expect(preview.rows[0].errors.join(' | ')).toMatch(/Unknown direct_superior "NOBODY"/);
     expect(preview.validCount).toBe(0);
+  });
+
+  it('a manager whose ONLY fault is its own direct_superior still fails the subordinate, in the dry run', async () => {
+    // Row 1's manager is row 2, and row 2's only fault is its own direct_superior cell. That error is
+    // added by the SAME pass that decides row 1 — so reading the manager's `ok` flag mid-pass read a
+    // flag not yet re-derived, previewed row 1 as Ready to Import, created the person with NO manager,
+    // and reported the miss only after the write. The point of a preview is that this is seen first.
+    const records = recs(twoRowHeader, [
+      `Ali Baba,ali@acme.test,Finance,2026-05-01,${ic(60)},4000,S1,S2`,
+      `Bala Krishnan,bala@acme.test,Finance,2026-05-01,${ic(61)},4000,S2,NOBODY`,
+    ]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.rows[1].errors.join(' | ')).toMatch(/Unknown direct_superior "NOBODY"/);
+    expect(preview.rows[0].ok, 'row 1 must not be previewed as ready to import').toBe(false);
+    expect(preview.rows[0].errors.join(' | ')).toMatch(
+      /direct_superior "S2" is on row 2 of this file, which has errors/,
+    );
+    expect(preview.validCount).toBe(0);
+
+    const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
+    expect(result.imported).toBe(0);
+    // Nothing was created, so there is nothing to report AFTER the write — which is the whole change:
+    // the miss moved from `superiorFailed` (too late) into the preview (still fixable).
+    expect(result.superiorFailed).toEqual([]);
+  });
+
+  it('the refusal is transitive — a chain of three fails all the way up the file', async () => {
+    // C is refused on its own account, so B (who reports to C) has nothing to point at, so A (who
+    // reports to B) has nothing either. One pass in file order can only ever see one link of that.
+    const records = recs(twoRowHeader, [
+      `Top Level,top@acme.test,Finance,2026-05-01,${ic(62)},4000,T1,T2`,
+      `Middle One,middle@acme.test,Finance,2026-05-01,${ic(63)},4000,T2,T3`,
+      `Bottom Bad,bottom@acme.test,NoSuchDept,2026-05-01,${ic(64)},4000,T3,`,
+    ]);
+    const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
+    expect(preview.rows[2].errors.join(' | '), 'row 3 fails on its own department').toMatch(/NoSuchDept/);
+    expect(preview.rows[1].errors.join(' | ')).toMatch(/is on row 3 of this file, which has errors/);
+    expect(preview.rows[0].errors.join(' | ')).toMatch(/is on row 2 of this file, which has errors/);
+    expect(preview.validCount, 'all three rows are refused').toBe(0);
   });
 
   it('a row that names itself, and a pair that name each other, are both refused', async () => {

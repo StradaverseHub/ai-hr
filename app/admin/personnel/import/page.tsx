@@ -26,6 +26,10 @@ export default async function ImportPage() {
     // and the only way to guarantee that is to generate it from the list `analyze()` reads.
     states,
     countries,
+    // The passport's Issuing Country is fed from the NATIONALITY catalog, not `country` — the Personnel
+    // Passport card's picker reads that list, so the value the product stores there is a demonym
+    // ("Malaysian", not "Malaysia"). Read here so the Reference sheet lists what `analyze()` accepts.
+    nationalities,
     relationships,
     familyRelationships,
     importRuns,
@@ -36,6 +40,7 @@ export default async function ImportPage() {
     listCostCenters(s),
     listProfileOptions(s, 'state', { activeOnly: true }),
     listProfileOptions(s, 'country', { activeOnly: true }),
+    listProfileOptions(s, 'nationality', { activeOnly: true }),
     listProfileOptions(s, 'relationship', { activeOnly: true }),
     listProfileOptions(s, 'dependentRelationship', { activeOnly: true }),
     // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
@@ -82,6 +87,7 @@ export default async function ImportPage() {
               // dropdowns on the Personnel screens show, and the sheet is a copy of those dropdowns.
               states: states.map((o) => o.value),
               countries: countries.map((o) => o.value),
+              nationalities: nationalities.map((o) => o.value),
               relationships: relationships.map((o) => o.value),
               familyRelationships: familyRelationships.map((o) => o.value),
             }}

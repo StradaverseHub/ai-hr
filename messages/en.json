@@ -1615,6 +1615,7 @@
       "superiorFailedCount": "{count, plural, one {# employee was imported, but their direct superior could not be linked} other {# employees were imported, but their direct superior could not be linked}}",
       "familyRelationshipLabel": "Family relationship",
       "familyGenderLabel": "Family member gender",
+      "instructionPassport": "Passport Number, Issue Date and Expiry Date must be filled in together, or all three left blank. Passport Issuing Country uses the same list as Nationality — see the Reference sheet.",
       "instructionAddress": "The address columns are the employee’s home address. State and Country must match a value on the Reference sheet.",
       "instructionProbation": "Probation End Date applies to full-time employees only. Probation and notice periods are whole numbers of months and days.",
       "instructionSuperior": "Direct Superior takes an Employee ID or work email. It may name someone further down this file, or someone already employed.",

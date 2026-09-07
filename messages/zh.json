@@ -1615,6 +1615,7 @@
       "superiorFailedCount": "{count, plural, one {# 名员工已导入，但无法关联其直属上级} other {# 名员工已导入，但无法关联其直属上级}}",
       "familyRelationshipLabel": "家庭关系",
       "familyGenderLabel": "家庭成员性别",
+      "instructionPassport": "护照号码、签发日期和有效期必须同时填写，或三项均留空。护照签发国使用与国籍相同的列表——请查看「参考」工作表。",
       "instructionAddress": "地址各列为员工的住家地址。州属和国家必须与「参考」工作表上的值一致。",
       "instructionProbation": "试用期结束日期仅适用于全职员工。试用期与通知期以整数的月数和天数填写。",
       "instructionSuperior": "直属上级填写员工编号或工作邮箱。可以指向本文件中位置更靠后的人，也可以是已在职的员工。",

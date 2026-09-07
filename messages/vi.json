@@ -1615,6 +1615,7 @@
       "superiorFailedCount": "{count, plural, one {# nhân viên đã được nhập nhưng chưa liên kết được cấp trên trực tiếp} other {# nhân viên đã được nhập nhưng chưa liên kết được cấp trên trực tiếp}}",
       "familyRelationshipLabel": "Quan hệ gia đình",
       "familyGenderLabel": "Giới tính thành viên gia đình",
+      "instructionPassport": "Số hộ chiếu, Ngày cấp và Ngày hết hạn phải được điền cùng nhau, hoặc để trống cả ba. Quốc gia cấp hộ chiếu dùng chung danh sách với Quốc tịch — xem trang tính Tham chiếu.",
       "instructionAddress": "Các cột địa chỉ là địa chỉ nhà của nhân viên. Tỉnh/Bang và Quốc gia phải khớp với một giá trị trên trang tính Tham chiếu.",
       "instructionProbation": "Ngày kết thúc thử việc chỉ áp dụng cho nhân viên toàn thời gian. Thời gian thử việc và thời gian báo trước là số nguyên tháng và ngày.",
       "instructionSuperior": "Cấp trên trực tiếp nhận Mã nhân viên hoặc email công việc. Có thể là người ở phía dưới trong tệp này, hoặc người đã đang làm việc.",

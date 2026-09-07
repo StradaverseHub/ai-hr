@@ -43,6 +43,10 @@ export type ImportReference = {
   // Personnel screens do, and the sheet then shows an em dash rather than pretending otherwise.
   states: string[];
   countries: string[];
+  /** The passport's Issuing Country list. It is the NATIONALITY catalog — the Personnel Passport card's
+   *  picker reads that one, so the stored value is a demonym ("Malaysian"), and `analyze()` checks this
+   *  column against the same catalog. Listing `country` here would print spellings the importer refuses. */
+  nationalities: string[];
   relationships: string[];
   familyRelationships: string[];
 };
@@ -74,6 +78,9 @@ export function EmployeeImport({
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
+  // Item 2983802f — a template really was taken. The rail's step 1 is a thing the admin does, so it is
+  // reported from the click that does it and never inferred from something else being true.
+  const [templateDownloaded, setTemplateDownloaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
@@ -171,6 +178,10 @@ export function EmployeeImport({
                 // by the server component, so a value on this sheet is a value the file may carry.
                 { label: employeeColumnLabel('state'), values: reference.states },
                 { label: employeeColumnLabel('country'), values: reference.countries },
+                {
+                  label: employeeColumnLabel('passport_issuing_country'),
+                  values: reference.nationalities,
+                },
                 { label: employeeColumnLabel('emergency_contact_relationship'), values: reference.relationships },
                 { label: t('familyRelationshipLabel'), values: reference.familyRelationships },
                 { label: t('familyGenderLabel'), values: [...DEPENDENT_ENUM_VALUES.gender] },
@@ -190,6 +201,7 @@ export function EmployeeImport({
                 t('instructionIdentityText'),
                 t('instructionCompany'),
                 t('instructionReference'),
+                t('instructionPassport'),
                 t('instructionAddress'),
                 t('instructionProbation'),
                 t('instructionSuperior'),
@@ -211,6 +223,7 @@ export function EmployeeImport({
       a.download = EMPLOYEE_XLSX_FILENAME;
       a.click();
       URL.revokeObjectURL(url);
+      setTemplateDownloaded(true);
     } catch {
       setError(t('fileReadError'));
     }
@@ -249,10 +262,28 @@ export function EmployeeImport({
 
   const company = companies.find((c) => c.id === companyId);
 
-  // Item 2983802f — which numbered step the screen is on, derived from the phase it was ALREADY in.
-  // Nothing new is tracked: 'done' is the result, 'previewed' is the confirm decision, text in the box
-  // means the file has been provided, and everything before that is the admin's own work off-screen.
-  const currentStep = result ? 6 : preview ? 5 : csv.trim() !== '' ? 4 : 1;
+  // Item 2983802f — which numbered step the screen is on. Every arm is a thing the screen has EVIDENCE
+  // for, and the rail paints only the steps before it as done, so it never claims a step that has not
+  // happened. The first cut derived it from three signals alone and could therefore never show steps 2
+  // or 3 at all: it sat on step 1 until text appeared and then jumped straight to 4, so an admin who had
+  // downloaded the template and was filling it in was told they were still on "Download the template",
+  // and the two middle steps were dead labels. The template download and the upload in progress are both
+  // observable, so they are observed.
+  //
+  // Note on step 4: being ON "Check and preview" is not a claim that validation has run. It becomes DONE
+  // (and the rail moves to 5) only when a preview actually comes back — `preview`, below, is set by the
+  // server action and by nothing else.
+  const currentStep = result
+    ? 6
+    : preview
+      ? 5
+      : reading || dragging
+        ? 3 // a file is being dropped or read right now — the upload IS the step in progress
+        : csv.trim() !== ''
+          ? 4 // data is in hand, however it arrived; the next thing to do is check it
+          : templateDownloaded
+            ? 2 // the template has been taken; filling it in happens off-screen
+            : 1;
 
   return (
     <div className="space-y-6">
@@ -293,7 +324,7 @@ export function EmployeeImport({
           >
             {t('downloadTemplateXlsx')}
           </button>
-          <DownloadTemplate spec={employeeTemplate} />
+          <DownloadTemplate spec={employeeTemplate} onDownloaded={() => setTemplateDownloaded(true)} />
           <span className="ml-auto text-xs text-muted-foreground">
             {t('resolveHint', { company: company?.name ?? t('theCompany') })}
           </span>

@@ -20,8 +20,9 @@
  * Scope note (inherited from the other dom tests): jsdom applies no CSS and computes no layout, so this
  * catches rendering and interaction logic, not a visual regression.
  */
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import * as XLSX from 'xlsx';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
@@ -58,6 +59,7 @@ const screenUnderTest = () =>
         costCenters: ['CC1'],
         states: ['Selangor'],
         countries: ['Malaysia'],
+        nationalities: ['Malaysian'],
         relationships: ['Spouse'],
         familyRelationships: ['spouse', 'child'],
       }}
@@ -91,6 +93,92 @@ describe('2983802f · the import screen names its six steps', () => {
     for (const n of [1, 2, 3, 4]) expect(screen.getByText(`Step ${n}`)).toBeInTheDocument();
     expect(screen.getByText('Download Excel template')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Validate' })).toBeInTheDocument();
+  });
+});
+
+describe('2983802f · the rail reports only the steps the screen has evidence for', () => {
+  /**
+   * The first cut derived the current step from three signals — a result, a preview, and any text in the
+   * box — so it could never show step 2 or step 3 at all: it sat on "Download the template" while the
+   * admin was filling the template in, then jumped straight to step 4 the instant a character appeared.
+   * Two of the six labels were dead, and the two live ones were reached by guessing. The download and the
+   * upload are both observable, so they are now observed.
+   *
+   * Being ON step 4 with the Validate button unpressed is not a claim that validation has happened —
+   * that is what "current" means — and the rail only leaves step 4 when a preview actually comes back.
+   * Both halves are asserted below.
+   */
+  let captured: Blob | null = null;
+  beforeEach(() => {
+    // jsdom implements no object URLs at all, so the download path has nowhere to put its Blob.
+    // Stubbing createObjectURL is also how the workbook is captured — this IS the interception point.
+    captured = null;
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: (blob: Blob) => {
+        captured = blob;
+        return 'blob:employee-template';
+      },
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: () => {} });
+  });
+
+  /** The rail's marker for step `n`. `aria-current="step"` is the accessible statement of where we are. */
+  const railStep = (n: number) =>
+    within(screen.getByRole('list', { name: 'Import steps' })).getByText(String(n));
+  const currentStep = () =>
+    [1, 2, 3, 4, 5, 6].filter((n) => railStep(n).getAttribute('aria-current') === 'step');
+
+  it('reaches step 2 only once a template has really been taken', async () => {
+    const userEvent = (await import('@testing-library/user-event')).default;
+    const user = userEvent.setup();
+    screenUnderTest();
+    expect(currentStep(), 'nothing done yet').toEqual([1]);
+    await user.click(screen.getByRole('button', { name: 'Download Template' }));
+    // Filling the template in happens in Excel, off this screen — step 2 is where the admin now is.
+    expect(currentStep()).toEqual([2]);
+  });
+
+  it('shows step 3 while a file is actually being dropped on the upload box', () => {
+    screenUnderTest();
+    const dropZone = screen.getByRole('button', { name: /Drop a file here or click to browse/ });
+    fireEvent.dragOver(dropZone);
+    expect(currentStep(), 'the upload is the step in progress').toEqual([3]);
+    fireEvent.dragLeave(dropZone);
+    expect(currentStep()).toEqual([1]);
+  });
+
+  it('sits ON step 4 while pasted data is unvalidated, and moves to 5 only when a preview returns', async () => {
+    const userEvent = (await import('@testing-library/user-event')).default;
+    const user = userEvent.setup();
+    validateMock.mockResolvedValue({ ...basePreview, fileErrors: [] });
+    screenUnderTest();
+    await user.type(screen.getByPlaceholderText(/Paste CSV with a header row/), 'full_name\n');
+    // Data is in hand; checking it is what happens next. Step 5 is NOT claimed, and neither is 6.
+    expect(currentStep()).toEqual([4]);
+    await user.click(screen.getByRole('button', { name: 'Validate' }));
+    await screen.findByText(/Preview/);
+    expect(currentStep(), 'a preview came back — now the decision is Confirm').toEqual([5]);
+  });
+
+  it('the Excel template lists the passport issuing country, from the nationality catalog', async () => {
+    // The Reference sheet is the only place HR can discover an accepted spelling, and this column had no
+    // list on it at all while the importer was refusing values by name. The values are DEMONYMS because
+    // `analyze()` checks this column against the nationality catalog — the same list the Personnel
+    // Passport card's picker offers. A `country` list here would print spellings the importer refuses.
+    screenUnderTest();
+    screen.getByRole('button', { name: 'Download Excel template' }).click();
+    await waitFor(() => expect(captured, 'the button must hand a Blob to the browser').not.toBeNull());
+    const wb = XLSX.read(await (captured as unknown as Blob).arrayBuffer(), { type: 'array' });
+    const reference = XLSX.utils
+      .sheet_to_json<string[]>(wb.Sheets.Reference, { header: 1, blankrows: true })
+      .map((r) => (r[0] ?? '').toString());
+    const at = reference.indexOf('Passport Issuing Country');
+    expect(at, 'the Reference sheet must carry this column').toBeGreaterThan(-1);
+    expect(reference[at + 1], 'the nationality catalog this screen was handed').toBe('Malaysian');
+    // …and not the country catalog, whose value the importer refuses for this column.
+    expect(reference.slice(at + 1, at + 3)).not.toContain('Malaysia');
   });
 });
 

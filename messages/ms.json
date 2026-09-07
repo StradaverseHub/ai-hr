@@ -1615,6 +1615,7 @@
       "superiorFailedCount": "{count, plural, one {# pekerja diimport, tetapi penyelia langsungnya tidak dapat dipautkan} other {# pekerja diimport, tetapi penyelia langsung mereka tidak dapat dipautkan}}",
       "familyRelationshipLabel": "Hubungan keluarga",
       "familyGenderLabel": "Jantina ahli keluarga",
+      "instructionPassport": "Nombor Pasport, Tarikh Dikeluarkan dan Tarikh Luput mesti diisi bersama, atau ketiga-tiganya dibiarkan kosong. Negara Pengeluar Pasport menggunakan senarai yang sama dengan Kewarganegaraan — lihat helaian Rujukan.",
       "instructionAddress": "Lajur alamat ialah alamat rumah pekerja. Negeri dan Negara mesti sepadan dengan nilai pada helaian Rujukan.",
       "instructionProbation": "Tarikh Tamat Percubaan hanya untuk pekerja sepenuh masa. Tempoh percubaan dan notis ialah nombor bulat bulan dan hari.",
       "instructionSuperior": "Penyelia Langsung menerima ID Pekerja atau e-mel kerja. Ia boleh merujuk seseorang di bawah dalam fail ini, atau seseorang yang sudah bekerja.",

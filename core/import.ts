@@ -187,6 +187,45 @@ const lc = (s: string | undefined) => norm(s).toLowerCase();
  *  column on this sheet is already read (`employment_type`, `pay_mode`, `epf_citizenship`). */
 const enumCell = (s: string | undefined) => lc(s).replace(/[\s-]+/g, '_');
 
+/**
+ * Item 2983802f — the verdict on ONE catalog-governed import cell, in THREE distinct states.
+ *
+ * The three are kept apart on purpose. An earlier shape returned `undefined` for both "the cell was
+ * blank" and "the catalog refused this value", and the payload builder below then fell back to the RAW
+ * cell — so a value the dry run had just rejected was still assembled into the `updatePerson` payload.
+ * Nothing wrote it, because the row also carried the error and was skipped at commit; but "a rejected
+ * value survives in the payload and only an unrelated guard stops it from being written" is the exact
+ * silently-wrong-field this whole item exists to prevent. So the verdict says which of the three it is.
+ */
+export type CatalogCell =
+  | { kind: 'blank' }
+  | { kind: 'ok'; value: string }
+  | { kind: 'refused'; value: string };
+
+/** Pure: classify one cell against a catalog predicate. Exported so the three-way contract is pinned by
+ *  a test rather than inferred from the call sites. */
+export function classifyCatalogCell(
+  raw: string | undefined,
+  allows: (value: string) => boolean,
+): CatalogCell {
+  const v = norm(raw);
+  if (!v) return { kind: 'blank' };
+  return allows(v) ? { kind: 'ok', value: v } : { kind: 'refused', value: v };
+}
+
+/**
+ * Pure: what one cell contributes to an `updatePerson` payload. `checked` is the validator's verdict for
+ * a catalog-governed column and `undefined` for a plain-text one; `raw` is the trimmed cell.
+ *
+ * A REFUSED verdict contributes NOTHING. It must not fall through to `raw`: the reason is already on the
+ * row, and writing the text anyway would put a value in the record that the catalog does not allow.
+ */
+export function carriedProfileValue(checked: CatalogCell | undefined, raw: string): string | undefined {
+  if (checked?.kind === 'refused') return undefined;
+  const v = checked?.kind === 'ok' ? checked.value : raw;
+  return v === '' ? undefined : v;
+}
+
 /** Build the catalog + pack context for ONE company. Called once per DISTINCT company named in the
  *  file, so a single-company import does exactly the work it always did. */
 async function loadCompanyContext(
@@ -565,23 +604,37 @@ async function analyze(
       }
       return String(n);
     };
-    /** An optional value governed by a profile_option catalog. */
-    const catalogField = (raw: string | undefined, category: string, label: string): string | undefined => {
-      const v = norm(raw);
-      if (!v) return undefined;
-      if (!catalogAllows(category, v)) {
-        errors.push(`"${v}" is not an active ${category} option (see the Reference sheet) — column ${label}`);
-        return undefined;
+    /** An optional value governed by a profile_option catalog, as a three-way verdict (see `CatalogCell`
+     *  — blank, accepted and refused are never collapsed into one another). */
+    const catalogField = (raw: string | undefined, category: string, label: string): CatalogCell => {
+      const cell = classifyCatalogCell(raw, (v) => catalogAllows(category, v));
+      if (cell.kind === 'refused') {
+        errors.push(
+          `"${cell.value}" is not an active ${category} option (see the Reference sheet) — column ${label}`,
+        );
       }
-      return v;
+      return cell;
     };
 
     // PASSPORT — all-or-nothing on the trio, matching the Personnel card (a partial passport block is
-    // refused there too). The issuing country is optional and catalog-governed like every country field.
+    // refused there too).
+    //
+    // THE ISSUING COUNTRY IS GOVERNED BY THE `nationality` CATALOG, NOT `country`. That is not a typo: the
+    // Passport card's Issuing Country picker is fed from the tenant's nationality list
+    // (app/admin/personnel/[employmentId]/page.tsx → IdentityFields `countryOptions`), so the value the
+    // product itself stores in this column is a DEMONYM — "Malaysian", not "Malaysia"; the separate
+    // `passportIssuingCountryCode` field carries the ISO code precisely because one cannot be derived from
+    // the other (e4b541c6, components/personnel-identity.tsx). Checking it against `country` rejected every
+    // value the card can produce and accepted values its dropdown never offers, which the Reference sheet
+    // (which now lists this column, from the same live nationality catalog) would have made obvious.
     const passportNumber = norm(rec.passport_number);
     const passportIssue = dateField(rec.passport_issue_date, 'passport_issue_date');
     const passportExpiry = dateField(rec.passport_expiry_date, 'passport_expiry_date');
-    const passportCountry = catalogField(rec.passport_issuing_country, 'country', 'passport_issuing_country');
+    const passportCountry = catalogField(
+      rec.passport_issuing_country,
+      'nationality',
+      'passport_issuing_country',
+    );
     const passportTouched =
       Boolean(passportNumber) ||
       norm(rec.passport_issue_date) !== '' ||
@@ -598,7 +651,7 @@ async function analyze(
           passportNumber,
           passportIssueDate: passportIssue,
           passportExpiryDate: passportExpiry,
-          passportIssuingCountry: passportCountry,
+          passportIssuingCountry: passportCountry.kind === 'ok' ? passportCountry.value : undefined,
         };
       }
     }
@@ -608,10 +661,10 @@ async function analyze(
     // actually carries are put in the payload: `updatePerson` leaves an omitted field alone, so a
     // template missing these columns entirely can never blank an existing person's address.
     const profile: Record<string, string | null> = {};
-    const carry = (column: string, field: string, value?: string) => {
+    const carry = (column: string, field: string, checked?: CatalogCell) => {
       if (!(column in rec)) return; // column absent from the file → say nothing about it
-      const v = value !== undefined ? value : norm(rec[column]);
-      if (v !== '') profile[field] = v;
+      const v = carriedProfileValue(checked, norm(rec[column]));
+      if (v !== undefined) profile[field] = v;
     };
     carry('address_line_1', 'permanentAddressLine1');
     carry('address_line_2', 'permanentAddressLine2');
@@ -742,12 +795,9 @@ async function analyze(
       row.result.errors.push(`Unknown direct_superior "${raw}" (no employee with that Employee ID or email)`);
     } else if (found.kind === 'row' && found.index === idx) {
       row.result.errors.push('direct_superior cannot be the employee themselves');
-    } else if (found.kind === 'row' && !resolved[found.index].result.ok) {
-      // The manager is on this file but is not going to be created, so the link has nothing to point at.
-      row.result.errors.push(
-        `direct_superior "${raw}" is on row ${found.index + 1} of this file, which has errors and will not be imported`,
-      );
     } else {
+      // "The manager is on this file but is not going to be created" is decided AFTER this loop, not
+      // inside it — see the propagation below.
       row.superior = found;
     }
   });
@@ -770,6 +820,29 @@ async function analyze(
   });
   // Re-derive `ok` for every row: pass 3 can only ADD errors, never remove them.
   for (const r of resolved) r.result.ok = r.result.errors.length === 0;
+
+  // "YOUR MANAGER IS NOT BEING IMPORTED" — decided HERE, once every superior error above has been
+  // pushed and `ok` re-derived, and iterated to a fixpoint.
+  //
+  // Reading `ok` from inside the resolve loop was wrong in two ways at once. A manager whose ONLY fault
+  // was its own direct_superior cell still read as `ok` at the moment the subordinate looked at it (the
+  // flag is not re-derived until the loop ends), so the subordinate was previewed as Ready to Import and
+  // created with no manager — the miss surfacing only in `superiorFailed` after the write, which is the
+  // opposite of what a check-before-create preview is for. And the rule is TRANSITIVE: if C is refused,
+  // B (who reports to C) is refused, so A (who reports to B) has nothing to point at either. One pass in
+  // file order could not see either case; the loop below runs until nothing more changes.
+  for (let settling = true; settling; ) {
+    settling = false;
+    resolved.forEach((row, idx) => {
+      if (!row.result.ok || row.superior?.kind !== 'row') return;
+      if (resolved[row.superior.index].result.ok) return;
+      row.result.errors.push(
+        `direct_superior "${superiorRaw[idx]}" is on row ${row.superior.index + 1} of this file, which has errors and will not be imported`,
+      );
+      row.result.ok = false;
+      settling = true;
+    });
+  }
 
   // ─────────────────────── PASS 4 (2983802f) — the FAMILY sheet ───────────────────────
   const { dependents, dependentPreview, fileErrors } = analyzeDependents(dependentRecords, {
