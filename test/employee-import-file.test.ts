@@ -321,8 +321,13 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
 
   it('the file path feeds the SAME validate/commit actions as the paste path', () => {
     // loadFile ends in the shared validate; commit still sends the shared csv string.
-    expect(src).toMatch(/const loadFile[\s\S]*?runValidate\(text\)/);
-    expect(src).toMatch(/validateImportAction\(text, companyId\)/);
+    // r253 (2983802f): the employee importer gained a SECOND sheet (Family), so both calls carry one
+    // more argument — the family rows, as CSV text, decoded from the same workbook in the same browser.
+    // Widened rather than pinned to the old arity for the same reason the commit call below was widened
+    // in r88: the subject of this assertion is "the file path and the paste path go through ONE shared
+    // validate", which the single-call-site counts underneath are what actually enforce.
+    expect(src).toMatch(/const loadFile[\s\S]*?runValidate\(text(,[^)]*)?\)/);
+    expect(src).toMatch(/validateImportAction\(text, companyId(,[^)]*)?\)/);
     // r88 (cf43c909): commit now also carries the FILE NAME, because import history records what was
     // uploaded. Widened rather than pinned to the old two-arg form — the subject of this assertion is
     // "one shared commit action", not its arity. The single-call-site checks below are what actually
@@ -335,10 +340,15 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
 
   it('leaves the parse and write path untouched (actions.ts still just parses and delegates)', () => {
     expect(actions).toMatch(/parseCsvRecords\(csv\)/);
-    expect(actions).toMatch(/validateEmployeeImport\(s, \{ companyId, records \}\)/);
+    // r253 (2983802f): both payloads gained `dependentRecords` — the Family sheet, parsed by the SAME
+    // parser on the same line of the same file — so the object literals are now multi-line. Still the
+    // same two delegate calls carrying the same companyId + records; the point of this case is that
+    // actions.ts parses and delegates and does nothing else, which the FormData/File check below is what
+    // enforces.
+    expect(actions).toMatch(/validateEmployeeImport\(s, \{[\s\S]{0,200}?companyId,[\s\S]{0,200}?records[\s\S]{0,200}?\}\)/);
     // r88 (cf43c909): the commit payload gained `fileName` so the import-history row can name what was
-    // uploaded. Still the same delegate call with the same companyId + records — only an extra scalar.
-    expect(actions).toMatch(/commitEmployeeImport\(s, \{ companyId, records(, [^}]*)? \}\)/);
+    // uploaded. Still the same delegate call with the same companyId + records — only extra scalars.
+    expect(actions).toMatch(/commitEmployeeImport\(s, \{[\s\S]{0,300}?companyId,[\s\S]{0,300}?records[\s\S]{0,300}?\}\)/);
     // No file/FormData handling leaked to the server — the reader is browser-side by design so
     // d8471481 can swap it without touching anything that writes. A file NAME is a string and is fine;
     // a File OBJECT or FormData would mean the reader had moved server-side, which is what this forbids.
@@ -355,7 +365,12 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     // handler down, so the assertion matches the CONDITION rather than a one-line formatting of it.
     expect(src).toMatch(/preview && !result && \(?\s*<PreviewTable/);
     // The import button lives inside the preview and is disabled when nothing is importable.
-    expect(src).toMatch(/onClick=\{onImport\} disabled=\{busy \|\| preview\.validCount === 0\}/);
+    // r253 (2983802f): "nothing is importable" gained a second cause. A file whose Family sheet names an
+    // employee it does not contain is refused WHOLE — valid rows included — so the button is disabled on
+    // `fileErrors` too. The two conditions are asserted together rather than loosened to a wildcard,
+    // because dropping either one is the defect this case exists to catch.
+    expect(src).toMatch(/onClick=\{onImport\}[\s\S]{0,200}?preview\.validCount === 0/);
+    expect(src).toMatch(/onClick=\{onImport\}[\s\S]{0,200}?preview\.fileErrors\.length > 0/);
   });
 
   it('renders rejected rows, their reasons, and missing columns', () => {

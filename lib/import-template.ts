@@ -92,6 +92,35 @@ export const employeeTemplate: TemplateSpec = {
       'monthly', // pay_mode (ADR-0078; blank = monthly)
       'monthly', // payment_term (blank = monthly)
       '', // rate_amount (only for daily/hourly pay modes)
+      // ── 2983802f — the seven new blocks. Every cell here is chosen so an UNMODIFIED download → upload
+      //    still round-trips clean, which is why the catalog-backed cells (state / country / emergency
+      //    contact relationship) are blank: their accepted values are per-tenant and live on the
+      //    Reference sheet, so a sample cannot name one that is certain to exist.
+      '', // passport_number — this row is a MyKad holder; the trio is all-or-nothing
+      '', // passport_issue_date
+      '', // passport_expiry_date
+      '', // passport_issuing_country
+      '12 Jalan Ampang', // address_line_1 (the employee's home address)
+      'Taman Melawati', // address_line_2
+      '', // address_line_3
+      '53100', // postcode
+      'Kuala Lumpur', // city
+      '', // state — catalog-backed; see the Reference sheet
+      '', // country — catalog-backed
+      'Rahman Bin Hassan', // emergency_contact_name
+      '', // emergency_contact_relationship — catalog-backed
+      '+60 12-222 3344', // emergency_contact_phone (mobile)
+      '', // emergency_contact_home_phone
+      '', // emergency_contact_address
+      '2026-04-06', // probation_end_date — full_time only (3 months after the hire date above)
+      '3', // probation_months
+      '0', // probation_days
+      '2026-04-06', // confirmation_date
+      '1', // resignation_notice_months
+      '0', // resignation_notice_days
+      // A FORWARD REFERENCE ON PURPOSE: this employee's manager is the row BELOW. Superiors are
+      // resolved after every row is read, so file order never decides whether a valid file imports.
+      'TMPL0002', // direct_superior
     ],
     [
       'Daniel Tan Wei Ming', // full_name
@@ -120,6 +149,31 @@ export const employeeTemplate: TemplateSpec = {
       'daily', // pay_mode (ADR-0078) — a daily-rated worker; basic_salary above stays the monthly-equivalent
       'monthly', // payment_term
       '180', // rate_amount — RM per day (required for daily/hourly)
+      'A12345678', // passport_number — the trio is all-or-nothing, so all three are filled
+      '2023-05-10', // passport_issue_date
+      '2033-05-09', // passport_expiry_date
+      '', // passport_issuing_country (optional)
+      '', // address_line_1
+      '', // address_line_2
+      '', // address_line_3
+      '', // postcode
+      '', // city
+      '', // state
+      '', // country
+      '', // emergency_contact_name
+      '', // emergency_contact_relationship
+      '', // emergency_contact_phone
+      '', // emergency_contact_home_phone
+      '', // emergency_contact_address
+      // BLANK ON PURPOSE: this row is a CONTRACT hire, and probation_end_date is refused for anything but
+      // full_time — on a contract the same underlying date means the end of the contract, not of probation.
+      '', // probation_end_date
+      '', // probation_months
+      '', // probation_days
+      '', // confirmation_date
+      '1', // resignation_notice_months
+      '', // resignation_notice_days
+      '', // direct_superior — this row IS the manager named above
     ],
   ],
 };

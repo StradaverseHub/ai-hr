@@ -20,13 +20,17 @@ import { readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
 import { parseCsvRecords } from '../lib/csv';
 import { workbookToCsvText, buildXlsx, numberToPlainString } from '../lib/spreadsheet';
-import { IMPORT_COLUMNS } from '../lib/import-schema';
+import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS } from '../lib/import-schema';
 import { employeeTemplate } from '../lib/import-template';
 import {
   employeeColumnLabel,
   employeeTextColumnIndexes,
   buildReferenceRows,
   buildInstructionRows,
+  dependentTextColumnIndexes,
+  DEPENDENT_SAMPLE_ROWS,
+  DEPENDENT_XLSX_COLUMNS,
+  DEPENDENT_XLSX_HEADERS,
   EMPLOYEE_ENUM_VALUES,
   EMPLOYEE_TEXT_COLUMN_KEYS,
   EMPLOYEE_XLSX_COLUMNS,
@@ -70,6 +74,12 @@ function buildEmployeeTemplateXlsx(): Promise<Uint8Array> {
     sheetName: EMPLOYEE_XLSX_SHEETS.data,
     textColumns: employeeTextColumnIndexes(),
     extraSheets: [
+      // r253 (2983802f) — the Family sheet, in the same position the screen builds it.
+      {
+        name: EMPLOYEE_XLSX_SHEETS.family,
+        rows: [[...DEPENDENT_XLSX_HEADERS], ...DEPENDENT_SAMPLE_ROWS.map((r) => [...r])],
+        textColumns: dependentTextColumnIndexes(),
+      },
       {
         name: EMPLOYEE_XLSX_SHEETS.reference,
         rows: buildReferenceRows('Accepted values', [
@@ -153,9 +163,13 @@ describe('§2 dates and leading zeros survive the read', () => {
 
 // ── §3 the template writes text-typed identity columns ────────────────────────────────────────────
 describe('§3 the downloaded Excel template', () => {
-  it('has the three sheets, data sheet FIRST (workbookToCsvText reads sheet 1)', async () => {
+  it('carries every sheet, data sheet FIRST (workbookToCsvText reads sheet 1)', async () => {
+    // r253 (2983802f) added a FOURTH sheet (Family). The rule this case has always guarded is unchanged
+    // and is the load-bearing half: whatever else the workbook carries, the DATA sheet stays first,
+    // because that is the sheet an upload is read from.
     const wb = XLSX.read(await buildEmployeeTemplateXlsx(), { type: 'array' });
     expect(wb.SheetNames[0]).toBe(EMPLOYEE_XLSX_SHEETS.data);
+    expect(wb.SheetNames).toContain(EMPLOYEE_XLSX_SHEETS.family);
     expect(wb.SheetNames).toContain(EMPLOYEE_XLSX_SHEETS.reference);
     expect(wb.SheetNames).toContain(EMPLOYEE_XLSX_SHEETS.instructions);
   });
@@ -246,6 +260,83 @@ describe('§4 labels and contract cannot drift', () => {
 });
 
 // ── §5 the reader: what it accepts, and every error it can raise ──────────────────────────────────
+/**
+ * §4b — THE FAMILY SHEET (item 2983802f). One employee has any number of family members, so family could
+ * not be flat columns without an arbitrary cap; it is a second worksheet keyed by Employee ID. That makes
+ * the reader's "first worksheet only" rule insufficient for the FIRST time since it was written, so these
+ * cases cover the one thing that changed: a named second sheet is read, by name, alongside the first.
+ */
+describe('§4b the family sheet', () => {
+  it('is in the downloaded template, with its own headers and its Employee ID column typed as text', async () => {
+    // cellNF is what makes SheetJS surface the number format (`z`) this case is about.
+    const wb = XLSX.read(await buildEmployeeTemplateXlsx(), { type: 'array', cellNF: true });
+    expect(wb.SheetNames).toContain(EMPLOYEE_XLSX_SHEETS.family);
+    // The DATA sheet must still be first — workbookToCsvText reads sheet 1 on re-upload.
+    expect(wb.SheetNames[0]).toBe(EMPLOYEE_XLSX_SHEETS.data);
+    const ws = wb.Sheets[EMPLOYEE_XLSX_SHEETS.family];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as unknown[][];
+    expect(aoa[0]).toEqual([...DEPENDENT_XLSX_HEADERS]);
+    // Employee ID is the LINK: a General-formatted cell would destroy a leading zero and the row would
+    // then match nobody. Column 0, well below the samples.
+    const deep = ws[XLSX.utils.encode_cell({ c: 0, r: 40 })] as { z?: string } | undefined;
+    expect(deep?.z).toBe('@');
+  });
+
+  it('every family header lowercases-and-underscores back to its own column key', () => {
+    // Same round-trip rule the employee sheet lives by: parseCsvRecords normalises a header exactly this
+    // way, so a prettier label that did not round-trip would silently drop the whole column.
+    for (const key of DEPENDENT_XLSX_COLUMNS) {
+      expect(employeeColumnLabel(key).trim().toLowerCase().replace(/\s+/g, '_')).toBe(key);
+    }
+  });
+
+  it('the family columns ARE the enforced contract, in order', () => {
+    expect([...DEPENDENT_XLSX_COLUMNS]).toEqual([
+      ...DEPENDENT_IMPORT_COLUMNS.required,
+      ...DEPENDENT_IMPORT_COLUMNS.optional,
+    ]);
+  });
+
+  it('readImportFile returns the family sheet BY NAME, and the first sheet unchanged', async () => {
+    const bytes = await buildXlsx(['full_name', 'email'], [['Ali', 'ali@x.test']], {
+      sheetName: EMPLOYEE_XLSX_SHEETS.data,
+      extraSheets: [
+        { name: 'Reference', rows: [['ignored']] },
+        { name: EMPLOYEE_XLSX_SHEETS.family, rows: [['employee_code', 'full_name'], ['A0001', 'Spouse']] },
+      ],
+    });
+    const read = await readImportFile(xlsxFile(bytes), { extraSheets: [EMPLOYEE_XLSX_SHEETS.family] });
+    expect(parseCsvRecords(read.text).records[0]).toMatchObject({ full_name: 'Ali' });
+    expect(parseCsvRecords(read.dependentsText).records[0]).toMatchObject({
+      employee_code: 'A0001',
+      full_name: 'Spouse',
+    });
+    // The sheet BETWEEN them is not read: only the named one is.
+    expect(read.dependentsText).not.toMatch(/ignored/);
+  });
+
+  it('a workbook with no family sheet reads exactly as it always did', async () => {
+    const bytes = await buildXlsx(['full_name'], [['Ali']], { sheetName: EMPLOYEE_XLSX_SHEETS.data });
+    const read = await readImportFile(xlsxFile(bytes), { extraSheets: [EMPLOYEE_XLSX_SHEETS.family] });
+    expect(read.dependentsText).toBe('');
+  });
+
+  it('a CSV upload never carries family rows — a CSV is one sheet by definition', async () => {
+    const read = await readImportFile(csvFile('full_name\nAli\n'), {
+      extraSheets: [EMPLOYEE_XLSX_SHEETS.family],
+    });
+    expect(read.dependentsText).toBe('');
+  });
+
+  it('a workbook whose ONLY sheet is called Family is read as the employee sheet, not as both', async () => {
+    // Otherwise the same rows would be validated twice, once as employees and once as their own family.
+    const bytes = await buildXlsx(['full_name'], [['Ali']], { sheetName: EMPLOYEE_XLSX_SHEETS.family });
+    const read = await readImportFile(xlsxFile(bytes), { extraSheets: [EMPLOYEE_XLSX_SHEETS.family] });
+    expect(read.text).toMatch(/Ali/);
+    expect(read.dependentsText).toBe('');
+  });
+});
+
 describe('§5 readImportFile after the .xlsx widening', () => {
   it('the accept attribute advertises exactly what the reader takes', () => {
     for (const ext of ['.csv', '.xlsx', '.xls']) expect(IMPORT_FILE_ACCEPT).toContain(ext);

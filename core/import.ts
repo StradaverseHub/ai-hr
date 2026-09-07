@@ -13,11 +13,23 @@
  * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
  */
 import { withTenant, type SessionContext } from '../db/client';
-import { company, person, employeeStatutoryMy, employeeDraft, employment, employeeImportRun, appUser } from '../db/schema';
+import {
+  company,
+  person,
+  employeeStatutoryMy,
+  employeeDraft,
+  employment,
+  employeeImportRun,
+  appUser,
+  profileOption,
+} from '../db/schema';
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
-import { hireEmployee } from './org';
+import { hireEmployee, setEmploymentInfo, setReportingLine, updatePerson } from './org';
 import { setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
+// Item 2983802f — the family sheet writes through the SAME service the Family card uses, so an imported
+// dependant is indistinguishable from a hand-entered one (events, child-relief resync, catalog rules).
+import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 // Rung 5a (ADR-0080 D1/D6): the statutory writer + IC helpers come from the COMPANY'S country pack
 // (resolved in analyze() from company.country), never from a direct localization/my import. A company
 // whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
@@ -27,7 +39,10 @@ import { listCompanies, listDepartments, listLeaveTypes } from './read';
 import { listPositions, listCostCenters } from './admin';
 import { appendEvent, actorOf } from '../db/events';
 import {
+  DEPENDENT_IMPORT_COLUMNS,
   IMPORT_COLUMNS,
+  type DependentPreview,
+  type DependentRowResult,
   type ImportRecord,
   type RowResult,
   type ImportPreview,
@@ -37,8 +52,17 @@ import {
 } from '../lib/import-schema';
 
 // Re-exported so server-side callers (actions, tests) can keep importing from core/import.
-export { IMPORT_COLUMNS };
-export type { ImportRecord, RowResult, ImportPreview, ImportResult, ImportRunError, ImportRunRow };
+export { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS };
+export type {
+  ImportRecord,
+  RowResult,
+  ImportPreview,
+  ImportResult,
+  ImportRunError,
+  ImportRunRow,
+  DependentPreview,
+  DependentRowResult,
+};
 
 /**
  * cf43c909 — how many rejected rows an import run stores.
@@ -86,7 +110,36 @@ type ResolvedRow = {
     hiredOn: string;
     employeeCode?: string; // optional — blank/absent falls through to hireEmployee's auto counter
     grantLeaveTypes: { id: string; code: string }[];
+    /** Item 2983802f — the probation end date, set AT HIRE (this is the column hireEmployee accepts).
+     *  Undefined unless the row supplied one, so an existing file's behaviour is byte-identical. */
+    provisionalEndOn?: string;
   };
+  /**
+   * Item 2983802f — home address + emergency contact, written through `updatePerson` (the same writer the
+   * Personnel Contact & Address card uses, which routes the emergency block into the register in the same
+   * transaction). Undefined when the row supplied none of these columns, so no extra write happens and an
+   * existing file's import is unchanged.
+   */
+  profile?: Record<string, string | null>;
+  /** Item 2983802f — the passport block, written through the company pack's `setPassport`. Undefined
+   *  unless the row supplied at least one passport cell (an all-blank block must not clear anything). */
+  passport?: {
+    passportNumber: string;
+    passportIssueDate: string;
+    passportExpiryDate: string;
+    passportIssuingCountry?: string;
+  };
+  /** Item 2983802f — probation + notice-period periods and the confirmation date, written through
+   *  `setEmploymentInfo`. Undefined unless the row supplied at least one of them. */
+  employmentInfo?: Record<string, string>;
+  /**
+   * Item 2983802f — the Direct Superior, RESOLVED AFTER EVERY ROW IS READ.
+   *
+   * `existing` names an employment already in the tenant; `row` names another line of THIS file, which is
+   * the whole point: A0002's manager may be A0005 further down, and a valid file must not fail because of
+   * the order its rows happen to be in.
+   */
+  superior?: { kind: 'existing'; employmentId: string } | { kind: 'row'; index: number };
   statutory: {
     icNumber: string;
     epfNumber?: string;
@@ -110,8 +163,29 @@ type ResolvedRow = {
   effectiveFrom: string;
 };
 
+/** Item 2983802f — one validated row of the FAMILY sheet, with the employee row it belongs to. */
+type ResolvedDependent = {
+  result: DependentRowResult;
+  /** Index into the employee `resolved` array; -1 when the Employee ID matched nothing on that sheet. */
+  employeeIndex: number;
+  add: {
+    fullName: string;
+    relationship: string;
+    dateOfBirth?: string;
+    gender?: string;
+    icOrPassport?: string;
+    passportNumber?: string;
+    phone?: string;
+    isBeneficiary: boolean;
+    remarks?: string;
+  };
+};
+
 const norm = (s: string | undefined) => (s ?? '').trim();
 const lc = (s: string | undefined) => norm(s).toLowerCase();
+/** Enum-ish cell: lowercased with spaces and dashes folded to underscores, the way every other coded
+ *  column on this sheet is already read (`employment_type`, `pay_mode`, `epf_citizenship`). */
+const enumCell = (s: string | undefined) => lc(s).replace(/[\s-]+/g, '_');
 
 /** Build the catalog + pack context for ONE company. Called once per DISTINCT company named in the
  *  file, so a single-company import does exactly the work it always did. */
@@ -146,7 +220,10 @@ async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: ImportRecord[],
-): Promise<{ preview: ImportPreview; resolved: ResolvedRow[] }> {
+  /** Item 2983802f — the FAMILY sheet's records. Empty for every file that has no such sheet, which is
+   *  every file that imports today. */
+  dependentRecords: ImportRecord[] = [],
+): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[] }> {
   const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx), listLeaveTypes(ctx)]);
   // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
   // and registration number are accepted because those are what an HR spreadsheet usually carries.
@@ -186,7 +263,15 @@ async function analyze(
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
-  const { existingEmails, existingIcs, existingCodes, reservedCodes } = await withTenant(ctx, async (tx) => {
+  const {
+    existingEmails,
+    existingIcs,
+    existingCodes,
+    reservedCodes,
+    catalog,
+    superiorByCode,
+    superiorByEmail,
+  } = await withTenant(ctx, async (tx) => {
     if (!normPack) {
       // No company resolved from `listCompanies` — which EXCLUDES archived companies, so this is
       // reachable when the screen's selected company has since been archived. Read its country
@@ -204,6 +289,22 @@ async function analyze(
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
     // existing staff ID. Compared on the normalized (uppercased) value, matching the uniqueness rule.
     const codes = await tx.select({ code: employment.employeeCode }).from(employment);
+    // Item 2983802f — the tenant's existing employments, keyed by Employee ID and by work email, so a
+    // `direct_superior` cell may name somebody who is ALREADY employed (the usual case: a new intake
+    // reporting to a manager who has been here for years) as well as somebody further down the file.
+    const superiorCandidates = await tx
+      .select({ id: employment.id, code: employment.employeeCode, email: person.primaryEmail })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId));
+    // Item 2983802f — the catalog-governed vocabularies the new columns write into. Read ONCE here so a
+    // typo in `state` / `country` / an emergency-contact or family relationship is a per-row error in the
+    // DRY RUN, where a spreadsheet can still be fixed, instead of a failure at write with an employee
+    // already created. Same rule as `assertProfileValueAllowed`: an EMPTY catalog means the tenant never
+    // configured that list and free text is accepted, exactly as it is on the Personnel screens.
+    const options = await tx
+      .select({ category: profileOption.category, value: profileOption.value })
+      .from(profileOption)
+      .where(eq(profileOption.isActive, true));
     // Item 06f0cb8f — an unfinished DRAFT holds an Employee ID too, so an import can collide with a
     // record that has no employment row yet. `hireEmployee` refuses it either way (that is the
     // authority, and it is what makes the rule true for every path at once); reading it here as well
@@ -212,7 +313,22 @@ async function analyze(
       .select({ code: employeeDraft.reservedEmployeeCode })
       .from(employeeDraft)
       .where(isNotNull(employeeDraft.reservedEmployeeCode));
+    const catalog = new Map<string, Set<string>>();
+    for (const o of options) {
+      const set = catalog.get(o.category) ?? new Set<string>();
+      set.add(o.value);
+      catalog.set(o.category, set);
+    }
+    const superiorByCode = new Map<string, string>();
+    const superiorByEmail = new Map<string, string>();
+    for (const e of superiorCandidates) {
+      if (e.code) superiorByCode.set(normalizeEmployeeCode(e.code), e.id);
+      superiorByEmail.set(e.email.toLowerCase(), e.id);
+    }
     return {
+      catalog,
+      superiorByCode,
+      superiorByEmail,
       reservedCodes: new Set(reserved.map((r) => normalizeEmployeeCode(r.code as string))),
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
@@ -231,6 +347,26 @@ async function analyze(
   const seenIcs = new Set<string>();
   const seenCodes = new Set<string>();
   const resolved: ResolvedRow[] = [];
+  // Item 2983802f — the Direct Superior cell of each row, kept as typed. Resolution happens AFTER the
+  // loop below, because a superior may be a row this loop has not reached yet.
+  const superiorRaw: string[] = [];
+  // Item 2983802f — Employee ID → row index, for both the superior pass and the family sheet's link.
+  const codeToRow = new Map<string, number>();
+
+  /**
+   * Item 2983802f — is this value acceptable for a catalog-governed column?
+   *
+   * The SAME rule `assertProfileValueAllowed` applies at write time, checked here so it fails in the dry
+   * run instead: blank is always fine, an EMPTY catalog means the tenant never configured that list and
+   * free text is accepted (today's behaviour on the Personnel screens), otherwise the value must be one
+   * of the active options. Deliberately NOT case-folded — the catalog value is what gets stored, and the
+   * Reference sheet lists the exact spellings.
+   */
+  const catalogAllows = (category: string, value: string): boolean => {
+    const active = catalog.get(category);
+    if (!active || active.size === 0) return true;
+    return active.has(value);
+  };
 
   records.forEach((rec, idx) => {
     const errors: string[] = [];
@@ -403,6 +539,130 @@ async function analyze(
       errors.push(`pay_mode "${payMode}" requires a positive rate_amount`);
     }
 
+    // ─────────────────────────── Item 2983802f — the seven new blocks ───────────────────────────
+    // Every one of them is OPTIONAL and every one of them fails HERE, in the dry run, rather than
+    // half-way through a commit: the whole reason the preview exists is that a spreadsheet can still be
+    // corrected while nothing has been written.
+
+    /** An optional YYYY-MM-DD cell. Blank → undefined; malformed → a named per-row error. */
+    const dateField = (raw: string | undefined, label: string): string | undefined => {
+      const v = norm(raw);
+      if (!v) return undefined;
+      if (!DATE_RE.test(v)) {
+        errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
+        return undefined;
+      }
+      return v;
+    };
+    /** An optional non-negative whole number (a period length in months or days). */
+    const countField = (raw: string | undefined, label: string): string | undefined => {
+      const v = norm(raw).replace(/[,_]/g, '');
+      if (!v) return undefined;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0) {
+        errors.push(`Invalid ${label} "${raw}" (whole number, 0 or more)`);
+        return undefined;
+      }
+      return String(n);
+    };
+    /** An optional value governed by a profile_option catalog. */
+    const catalogField = (raw: string | undefined, category: string, label: string): string | undefined => {
+      const v = norm(raw);
+      if (!v) return undefined;
+      if (!catalogAllows(category, v)) {
+        errors.push(`"${v}" is not an active ${category} option (see the Reference sheet) — column ${label}`);
+        return undefined;
+      }
+      return v;
+    };
+
+    // PASSPORT — all-or-nothing on the trio, matching the Personnel card (a partial passport block is
+    // refused there too). The issuing country is optional and catalog-governed like every country field.
+    const passportNumber = norm(rec.passport_number);
+    const passportIssue = dateField(rec.passport_issue_date, 'passport_issue_date');
+    const passportExpiry = dateField(rec.passport_expiry_date, 'passport_expiry_date');
+    const passportCountry = catalogField(rec.passport_issuing_country, 'country', 'passport_issuing_country');
+    const passportTouched =
+      Boolean(passportNumber) ||
+      norm(rec.passport_issue_date) !== '' ||
+      norm(rec.passport_expiry_date) !== '' ||
+      norm(rec.passport_issuing_country) !== '';
+    let passport: ResolvedRow['passport'];
+    if (passportTouched) {
+      if (!passportNumber || !passportIssue || !passportExpiry) {
+        errors.push('passport_number, passport_issue_date and passport_expiry_date must be provided together');
+      } else if (passportExpiry < passportIssue) {
+        errors.push('passport_expiry_date must be on or after passport_issue_date');
+      } else {
+        passport = {
+          passportNumber,
+          passportIssueDate: passportIssue,
+          passportExpiryDate: passportExpiry,
+          passportIssuingCountry: passportCountry,
+        };
+      }
+    }
+
+    // ADDRESS + EMERGENCY CONTACT — one `updatePerson` payload, because that writer saves the address and
+    // routes the emergency block into the register inside ONE transaction. Only the cells the file
+    // actually carries are put in the payload: `updatePerson` leaves an omitted field alone, so a
+    // template missing these columns entirely can never blank an existing person's address.
+    const profile: Record<string, string | null> = {};
+    const carry = (column: string, field: string, value?: string) => {
+      if (!(column in rec)) return; // column absent from the file → say nothing about it
+      const v = value !== undefined ? value : norm(rec[column]);
+      if (v !== '') profile[field] = v;
+    };
+    carry('address_line_1', 'permanentAddressLine1');
+    carry('address_line_2', 'permanentAddressLine2');
+    carry('address_line_3', 'permanentAddressLine3');
+    carry('postcode', 'permanentPostcode');
+    carry('city', 'permanentCity');
+    carry('state', 'permanentState', catalogField(rec.state, 'state', 'state'));
+    carry('country', 'permanentCountry', catalogField(rec.country, 'country', 'country'));
+    carry('emergency_contact_name', 'emergencyContactName');
+    carry(
+      'emergency_contact_relationship',
+      'emergencyContactRelationship',
+      catalogField(rec.emergency_contact_relationship, 'relationship', 'emergency_contact_relationship'),
+    );
+    carry('emergency_contact_phone', 'emergencyContactPhone');
+    carry('emergency_contact_home_phone', 'emergencyContactPhone2');
+    carry('emergency_contact_address', 'emergencyContactAddress');
+
+    // PROBATION + NOTICE PERIOD. `probation_end_date` writes the employment's provisional end date, which
+    // IS the probation end for a full-time hire — and means the END OF THE CONTRACT for a contract or an
+    // internship. Accepting it there would quietly record a contract end nobody typed, so it is refused
+    // with the reason instead.
+    const probationEnd = dateField(rec.probation_end_date, 'probation_end_date');
+    if (probationEnd && employmentType !== 'full_time') {
+      errors.push(
+        `probation_end_date applies to full_time employees only (this row is ${employmentType}; for a fixed term use the contract dates on the employee's record)`,
+      );
+    }
+    if (probationEnd && hiredOn && DATE_RE.test(hiredOn) && probationEnd < hiredOn) {
+      errors.push('probation_end_date must be on or after hired_on');
+    }
+    const confirmationDate = dateField(rec.confirmation_date, 'confirmation_date');
+    if (confirmationDate && hiredOn && DATE_RE.test(hiredOn) && confirmationDate < hiredOn) {
+      errors.push('confirmation_date must be on or after hired_on');
+    }
+    const employmentInfo: Record<string, string> = {};
+    const period = (column: string, field: string) => {
+      const v = countField(rec[column], column);
+      if (v !== undefined) employmentInfo[field] = v;
+    };
+    period('probation_months', 'probationMonths');
+    period('probation_days', 'probationDays');
+    period('resignation_notice_months', 'resignationNoticeMonths');
+    period('resignation_notice_days', 'resignationNoticeDays');
+    if (confirmationDate) employmentInfo.confirmationDate = confirmationDate;
+
+    // DIRECT SUPERIOR — recorded now, RESOLVED LATER (see the pass after this loop). Resolving here would
+    // fail a perfectly valid file purely because the manager's row happens to come after the subordinate's.
+    superiorRaw.push(norm(rec.direct_superior));
+    if (codeRaw && isValidEmployeeCode(codeRaw) && !codeToRow.has(codeNorm)) codeToRow.set(codeNorm, idx);
+
     const ok = errors.length === 0;
     const result: RowResult = {
       rowNum: idx + 1,
@@ -427,7 +687,11 @@ async function analyze(
         // Blank → undefined so hireEmployee falls through to the nextEmployeeCode auto-counter.
         employeeCode: codeNorm || undefined,
         grantLeaveTypes: grants,
+        provisionalEndOn: probationEnd,
       },
+      profile: Object.keys(profile).length > 0 ? profile : undefined,
+      passport,
+      employmentInfo: Object.keys(employmentInfo).length > 0 ? employmentInfo : undefined,
       statutory: {
         icNumber: icRaw,
         epfNumber: norm(rec.epf_number) || undefined,
@@ -450,22 +714,225 @@ async function analyze(
     });
   });
 
+  // ─────────────── PASS 3 (2983802f) — DIRECT SUPERIOR, once every row is staged ───────────────
+  //
+  // This pass exists for exactly one reason: A0002's manager may be A0005, further down the same file.
+  // Resolving inside the row loop would fail a perfectly valid file on the order of its lines, which is
+  // the kind of defect that makes people stop trusting an importer. So the whole sheet is read first and
+  // the edges are resolved against BOTH the tenant's existing employments and the file's own rows.
+  const emailToRow = new Map<string, number>();
+  resolved.forEach((r, i) => {
+    const e = r.result.email.toLowerCase();
+    if (e && !emailToRow.has(e)) emailToRow.set(e, i);
+  });
+  /** Which row (or existing employment) does this cell name? */
+  const findSuperior = (raw: string): NonNullable<ResolvedRow['superior']> | 'unknown' => {
+    const asCode = normalizeEmployeeCode(raw);
+    const existingById = superiorByCode.get(asCode) ?? superiorByEmail.get(raw.toLowerCase());
+    if (existingById) return { kind: 'existing', employmentId: existingById };
+    const rowIndex = codeToRow.get(asCode) ?? emailToRow.get(raw.toLowerCase());
+    if (rowIndex !== undefined) return { kind: 'row', index: rowIndex };
+    return 'unknown';
+  };
+  superiorRaw.forEach((raw, idx) => {
+    if (!raw) return;
+    const row = resolved[idx];
+    const found = findSuperior(raw);
+    if (found === 'unknown') {
+      row.result.errors.push(`Unknown direct_superior "${raw}" (no employee with that Employee ID or email)`);
+    } else if (found.kind === 'row' && found.index === idx) {
+      row.result.errors.push('direct_superior cannot be the employee themselves');
+    } else if (found.kind === 'row' && !resolved[found.index].result.ok) {
+      // The manager is on this file but is not going to be created, so the link has nothing to point at.
+      row.result.errors.push(
+        `direct_superior "${raw}" is on row ${found.index + 1} of this file, which has errors and will not be imported`,
+      );
+    } else {
+      row.superior = found;
+    }
+  });
+  // A CYCLE INSIDE THE FILE (A reports to B, B reports to A) would be refused by `setReportingLine` at
+  // write time — with half the pair already created. Walking the file's own edges here turns that into a
+  // dry-run error on the row that closes the loop, which is where it can still be fixed.
+  resolved.forEach((row, idx) => {
+    if (row.superior?.kind !== 'row') return;
+    const seen = new Set<number>([idx]);
+    let at: number | undefined = row.superior.index;
+    while (at !== undefined) {
+      if (seen.has(at)) {
+        row.result.errors.push('direct_superior forms a reporting cycle within this file');
+        break;
+      }
+      seen.add(at);
+      const next: ResolvedRow['superior'] = resolved[at].superior;
+      at = next?.kind === 'row' ? next.index : undefined;
+    }
+  });
+  // Re-derive `ok` for every row: pass 3 can only ADD errors, never remove them.
+  for (const r of resolved) r.result.ok = r.result.errors.length === 0;
+
+  // ─────────────────────── PASS 4 (2983802f) — the FAMILY sheet ───────────────────────
+  const { dependents, dependentPreview, fileErrors } = analyzeDependents(dependentRecords, {
+    resolved,
+    codeToRow,
+    catalog,
+  });
+
   const preview: ImportPreview = {
     companyId,
     total: records.length,
     validCount: resolved.filter((r) => r.result.ok).length,
     rows: resolved.map((r) => r.result),
     missingColumns,
+    fileErrors,
+    dependents: dependentPreview,
   };
-  return { preview, resolved };
+  return { preview, resolved, dependents };
+}
+
+/**
+ * Item 2983802f — validate the FAMILY sheet as its own row set, and decide whether the file survives.
+ *
+ * THE DECISION, written down once: **any problem on the family sheet rejects the WHOLE file.** Not the
+ * offending row — the file. Nothing is imported: not the employees, not the family.
+ *
+ * That is deliberately stricter than the employee sheet, where a bad row is skipped and the rest load,
+ * and the asymmetry is the point. A skipped employee row is VISIBLE — that person is simply not in the
+ * system, and the first thing anybody does is look for them. A skipped FAMILY row is invisible: the
+ * employee is there, their record looks complete, and the missing spouse is discovered by an insurance
+ * claim months later. The plan asked for this case to be decided rather than left to chance, and this is
+ * the decision: a file that carries family is imported whole or not at all.
+ *
+ * The specific case the plan named — a family row whose Employee ID is not on the employee sheet — is one
+ * instance of it, and it gets its own message naming the ID so the fix is one cell.
+ */
+function analyzeDependents(
+  records: ImportRecord[],
+  ctx: {
+    resolved: ResolvedRow[];
+    codeToRow: Map<string, number>;
+    catalog: Map<string, Set<string>>;
+  },
+): { dependents: ResolvedDependent[]; dependentPreview: DependentPreview; fileErrors: string[] } {
+  const presentColumns = new Set(records.length ? Object.keys(records[0]) : []);
+  const missingColumns = records.length
+    ? DEPENDENT_IMPORT_COLUMNS.required.filter((c) => !presentColumns.has(c))
+    : [];
+  const builtinRelationships = new Set<string>(DEPENDENT_RELATIONSHIPS);
+  const customRelationships = ctx.catalog.get('dependentRelationship') ?? new Set<string>();
+  const genders = new Set<string>(DEPENDENT_GENDERS);
+  const dependents: ResolvedDependent[] = [];
+  const unmatchedCodes: string[] = [];
+
+  records.forEach((rec, idx) => {
+    const errors: string[] = [];
+    const codeRaw = norm(rec.employee_code);
+    const fullName = norm(rec.full_name);
+    const relationship = norm(rec.relationship);
+
+    if (!codeRaw) errors.push('Missing employee_code — this is the link to the employee row');
+    if (!fullName) errors.push('Missing full_name');
+    if (!relationship) errors.push('Missing relationship');
+    else if (!builtinRelationships.has(relationship) && !customRelationships.has(relationship)) {
+      errors.push(
+        `Unknown relationship "${relationship}" (use ${[...DEPENDENT_RELATIONSHIPS].join(' / ')}, or an active option from your Family relationship list)`,
+      );
+    }
+
+    const dob = norm(rec.date_of_birth);
+    if (dob && !DATE_RE.test(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+    const gender = enumCell(rec.gender);
+    if (gender && !genders.has(gender)) {
+      errors.push(`Unknown gender "${rec.gender}" (use ${[...DEPENDENT_GENDERS].join(' / ')})`);
+    }
+    // Blank means NO here, unlike the employee sheet's default-true statutory flags: a family member is
+    // an insurance beneficiary only when somebody says so.
+    const benRaw = lc(rec.is_beneficiary);
+    let isBeneficiary = false;
+    if (benRaw !== '') {
+      if (TRUTHY.has(benRaw)) isBeneficiary = true;
+      else if (FALSY.has(benRaw)) isBeneficiary = false;
+      else errors.push(`Invalid is_beneficiary "${rec.is_beneficiary}" (use yes/no)`);
+    }
+
+    // The link. An Employee ID that is not on the employee sheet is the case the plan singled out.
+    const codeNorm = normalizeEmployeeCode(codeRaw);
+    let employeeIndex = -1;
+    if (codeRaw) {
+      const found = ctx.codeToRow.get(codeNorm);
+      if (found === undefined) {
+        errors.push(`Employee ID "${codeRaw}" is not on the employee sheet`);
+        if (!unmatchedCodes.includes(codeRaw)) unmatchedCodes.push(codeRaw);
+      } else {
+        employeeIndex = found;
+        if (!ctx.resolved[found].result.ok) {
+          errors.push(
+            `the employee on row ${found + 1} of the employee sheet has errors, so this family member has nobody to belong to`,
+          );
+        }
+      }
+    }
+
+    dependents.push({
+      result: {
+        rowNum: idx + 1,
+        employeeCode: codeRaw,
+        fullName,
+        relationship,
+        ok: errors.length === 0,
+        errors,
+      },
+      employeeIndex,
+      add: {
+        fullName,
+        relationship,
+        dateOfBirth: dob || undefined,
+        gender: gender || undefined,
+        icOrPassport: norm(rec.ic_or_passport) || undefined,
+        passportNumber: norm(rec.passport_number) || undefined,
+        phone: norm(rec.phone) || undefined,
+        isBeneficiary,
+        remarks: norm(rec.remarks) || undefined,
+      },
+    });
+  });
+
+  const fileErrors: string[] = [];
+  if (missingColumns.length > 0) {
+    fileErrors.push(
+      `The Family sheet is missing required column(s): ${missingColumns.join(', ')}. Nothing was imported.`,
+    );
+  }
+  for (const code of unmatchedCodes.slice(0, 5)) {
+    fileErrors.push(
+      `The Family sheet names Employee ID "${code}", which is not on the employee sheet. Nothing was imported — add the employee, or correct the ID, and upload again.`,
+    );
+  }
+  const badRows = dependents.filter((d) => !d.result.ok).map((d) => d.result.rowNum);
+  if (badRows.length > 0) {
+    fileErrors.push(
+      `${badRows.length} row(s) on the Family sheet could not be validated (row ${badRows.slice(0, 10).join(', row ')}${badRows.length > 10 ? ', …' : ''}). A file that carries family members is imported whole or not at all, so nothing was imported.`,
+    );
+  }
+
+  return {
+    dependents,
+    dependentPreview: {
+      total: records.length,
+      validCount: dependents.filter((d) => d.result.ok).length,
+      rows: dependents.map((d) => d.result),
+      missingColumns,
+    },
+    fileErrors,
+  };
 }
 
 /** Dry run: validate the records against the company catalog without writing anything. */
 export async function validateEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[] },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[] },
 ): Promise<ImportPreview> {
-  const { preview } = await analyze(ctx, p.companyId, p.records);
+  const { preview } = await analyze(ctx, p.companyId, p.records, p.dependentRecords ?? []);
   return preview;
 }
 
@@ -474,19 +941,56 @@ export async function validateEmployeeImport(
  *  batch event so the import itself shows up in the audit trail. */
 export async function commitEmployeeImport(
   ctx: SessionContext,
-  p: { companyId: string; records: ImportRecord[]; fileName?: string },
+  p: { companyId: string; records: ImportRecord[]; dependentRecords?: ImportRecord[]; fileName?: string },
 ): Promise<ImportResult> {
-  const { resolved } = await analyze(ctx, p.companyId, p.records);
+  const { preview, resolved, dependents } = await analyze(
+    ctx,
+    p.companyId,
+    p.records,
+    p.dependentRecords ?? [],
+  );
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
+  const superiorFailed: ImportResult['superiorFailed'] = [];
   let imported = 0;
+  let dependentsImported = 0;
 
-  for (const row of valid) {
+  // Item 2983802f — A FILE-LEVEL REFUSAL WRITES NOTHING. Re-derived here from the records, never taken
+  // from a client-supplied preview, so a tampered payload cannot talk the server into a half-import.
+  if (preview.fileErrors.length > 0) {
+    return {
+      companyId: p.companyId,
+      imported: 0,
+      failed: [],
+      skipped: resolved.length,
+      dependentsImported: 0,
+      superiorFailed: [],
+      fileErrors: preview.fileErrors,
+      runId: null,
+    };
+  }
+
+  // Item 2983802f — family members grouped by the employee row they belong to, so each employee's family
+  // is written immediately after that employee exists.
+  const familyByRow = new Map<number, ResolvedDependent[]>();
+  for (const d of dependents) {
+    if (d.employeeIndex < 0) continue;
+    const list = familyByRow.get(d.employeeIndex) ?? [];
+    list.push(d);
+    familyByRow.set(d.employeeIndex, list);
+  }
+  // Item 2983802f — row index → the employment it created, so the Direct Superior pass below can link a
+  // subordinate to a manager who was created by the SAME run.
+  const employmentByRow = new Map<number, string>();
+
+  for (const [index, row] of resolved.entries()) {
+    if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
     try {
       const { employmentId, personId } = await hireEmployee(ctx, row.hire);
+      employmentByRow.set(index, employmentId);
       await pack.statutory.set(ctx, { personId, ...row.statutory });
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
@@ -511,9 +1015,72 @@ export async function commitEmployeeImport(
         rateAmount: row.rateAmount,
         effectiveFrom: row.effectiveFrom,
       });
+      // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and
+      //    each skipped entirely when the file carried none of its columns. That is what keeps an
+      //    existing file's import byte-identical to what it was before this change.
+      if (row.passport) {
+        await pack.statutory.setPassport(ctx, { personId, ...row.passport });
+      }
+      if (row.profile) {
+        // `updatePerson` re-writes the core trio, so the row's own values are passed through — omitting
+        // `phone` would blank a phone number the file had just supplied.
+        await updatePerson(ctx, {
+          personId,
+          fullName: row.hire.person.fullName,
+          primaryEmail: row.hire.person.primaryEmail,
+          phone: row.hire.person.phone ?? null,
+          via: 'employee-import',
+          ...row.profile,
+        });
+      }
+      if (row.employmentInfo) {
+        await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo });
+      }
+      for (const d of familyByRow.get(index) ?? []) {
+        await addDependent(ctx, { personId, ...d.add });
+        dependentsImported++;
+      }
       imported++;
     } catch (e) {
       failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: (e as Error).message });
+    }
+  }
+
+  // ── Item 2983802f — DIRECT SUPERIOR, after every row has been created.
+  //
+  // This is the write-side half of the forward-reference rule: a manager who is on this file only exists
+  // once the loop above has finished, so the edges cannot be drawn inside it. The line type is
+  // `administrative` and the window opens on the subordinate's hire date — the same edge the Personnel
+  // screen's Direct Superior field writes (dce55aff), through the same service, so an imported hierarchy
+  // is indistinguishable from a hand-built one and carries the same audit events.
+  for (const [index, row] of resolved.entries()) {
+    if (!row.superior) continue;
+    const subordinate = employmentByRow.get(index);
+    if (!subordinate) continue; // the employee itself failed to import; nothing to attach a manager to
+    const manager =
+      row.superior.kind === 'existing' ? row.superior.employmentId : employmentByRow.get(row.superior.index);
+    if (!manager) {
+      superiorFailed.push({
+        rowNum: row.result.rowNum,
+        email: row.result.email,
+        message: 'the direct superior named on this row was not imported',
+      });
+      continue;
+    }
+    try {
+      await setReportingLine(ctx, {
+        subordinateEmploymentId: subordinate,
+        managerEmploymentId: manager,
+        lineType: 'administrative',
+        validFrom: row.hire.hiredOn,
+      });
+    } catch (e) {
+      // The employee EXISTS — only the link failed. Reported apart from `failed` for exactly that reason.
+      superiorFailed.push({
+        rowNum: row.result.rowNum,
+        email: row.result.email,
+        message: (e as Error).message,
+      });
     }
   }
 
@@ -533,6 +1100,8 @@ export async function commitEmployeeImport(
         // SELECTED company (a stable aggregate id the audit trail already keys on); the distinct
         // companies actually written are recorded here so the event still describes what happened.
         companyIds: [...new Set(valid.map((r) => r.hire.companyId))],
+        // Item 2983802f — the family sheet's contribution, so the audit trail describes the whole run.
+        dependents: dependentsImported,
       },
     }),
   );
@@ -546,7 +1115,16 @@ export async function commitEmployeeImport(
     failed,
   });
 
-  return { companyId: p.companyId, imported, failed, skipped: resolved.length - valid.length, runId };
+  return {
+    companyId: p.companyId,
+    imported,
+    failed,
+    skipped: resolved.length - valid.length,
+    dependentsImported,
+    superiorFailed,
+    fileErrors: [],
+    runId,
+  };
 }
 
 /**
