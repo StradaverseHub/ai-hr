@@ -11,11 +11,17 @@
  * per-row validation highlighting), a Scope cell (Global / company-specific), a "Copy to companies" bulk
  * action, per-company sharing toggles, and CSV export. Import is deferred (the reporter marked it future).
  *
+ * PAGED SINCE 9da61c86, through the shared client pager. Rows are filtered and sorted FIRST and sliced
+ * second, so a column header still orders the whole category rather than the twenty-five rows on screen;
+ * Save still submits every dirty row in the category and CSV export still writes the whole filtered set,
+ * neither of them the page. The per-row ticks are the one thing that is page-scoped — see the note beside
+ * the selection reset.
+ *
  * All writes go through server actions passed in from the page; scope changes (Global / assign / unassign)
  * fire immediately (a saved row must exist first), while text edits + new rows batch into Save.
  */
 
-import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
@@ -29,7 +35,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { pageOfIndex, paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
+import {
+  ClientPager,
+  useClampPagePastEnd,
+  useClientPageNav,
+  useClientPageQuery,
+  useResetPageOnFilterChange,
+} from './client-pager';
 
 export type GridKind = 'department' | 'position' | 'cost_center' | 'business_unit';
 
@@ -241,6 +255,17 @@ export function SystemLabelsGrid({
   const [showSharing, setShowSharing] = useState(false);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
+  // Paging rides in the address (?page=&size=), as it does on the server-paged screens — which is what
+  // keeps your place across the save round trip and makes the view a shareable link.
+  const pq = useClientPageQuery();
+  const goToPage = useClientPageNav();
+  // The rail selection is part of the signature, not just the filters: every rail entry is a DIFFERENT
+  // list, and arriving on page 5 of a category that has two pages would show an empty table. (The rail's
+  // slot bodies — Grades, Grade Groups, the option categories — share this one ?page=, because exactly
+  // one body is mounted at a time.)
+  useResetPageOnFilterChange(
+    `${kind}|${optionKey}|${showGrades}|${showGradeGroups}|${search}|${statusFilter}|${scopeFilter}`,
+  );
 
   const rows = rowsByKind[kind];
   const companyName = useMemo(() => new Map(companies.map((c) => [c.id, c.name])), [companies]);
@@ -258,17 +283,30 @@ export function SystemLabelsGrid({
   function updateCell(key: string, field: keyof GridRecord, value: string | boolean | null) {
     patchRows(rows.map((r) => (r.key === key ? { ...r, [field]: value, dirty: true } : r)));
   }
+  /**
+   * Put a new draft in front of the reader (9da61c86).
+   *
+   * Appended rows land wherever the current sort puts them, which on a paged list is usually a page
+   * nobody is looking at — Add Row would read as doing nothing. (An active search hides a still-empty
+   * draft, as it always has; findIndex answers -1 and pageOfIndex turns that into page one.)
+   */
+  function followDraft(next: RowState[], key: string) {
+    goToPage(pageOfIndex(applyView(next).findIndex((r) => r.key === key), pq.size));
+  }
   function addRow() {
     if (!newRowCompany) return;
     draftSeq.current += 1;
-    patchRows([...rows, emptyDraft(`draft-${draftSeq.current}`, newRowCompany, isGroupAdmin)]);
+    const draft = emptyDraft(`draft-${draftSeq.current}`, newRowCompany, isGroupAdmin);
+    const next = [...rows, draft];
+    patchRows(next);
+    followDraft(next, draft.key);
   }
   function duplicateRow(src: RowState) {
     draftSeq.current += 1;
-    patchRows([
-      ...rows,
-      { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description },
-    ]);
+    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
+    const next = [...rows, copy];
+    patchRows(next);
+    followDraft(next, copy.key);
   }
   function removeDraft(key: string) {
     patchRows(rows.filter((r) => r.key !== key));
@@ -430,12 +468,17 @@ export function SystemLabelsGrid({
       });
       news.push(d);
     }
-    if (news.length) patchRows([...rows, ...news]);
+    if (news.length) {
+      const next = [...rows, ...news];
+      patchRows(next);
+      followDraft(next, news[0].key);
+    }
   }
 
-  // ── Derived view: filter + search + sort. ──
-  const view = useMemo(() => {
-    let v = rows.filter((r) => {
+  // ── Derived view: filter + search + sort. A function as well as a memo, because addRow, duplicateRow
+  //    and the multi-row paste all need to ask which page their new draft landed on. ──
+  const applyView = useCallback((source: RowState[]) => {
+    let v = source.filter((r) => {
       if (statusFilter === 'active' && r.archived) return false;
       if (statusFilter === 'archived' && !r.archived) return false;
       if (scopeFilter === 'global' && !r.isGlobal) return false;
@@ -454,7 +497,25 @@ export function SystemLabelsGrid({
       });
     }
     return v;
-  }, [rows, statusFilter, scopeFilter, search, sortField, sortDir]);
+  }, [statusFilter, scopeFilter, search, sortField, sortDir]);
+
+  const view = useMemo(() => applyView(rows), [applyView, rows]);
+  // Sort first, page second — the ordering that makes a column header mean the whole category.
+  const { rows: pageRows, state: pgState } = paginateRows(view, pq);
+  // A page that no longer exists (rows deleted off the end, or a stale bookmark) draws nothing at all —
+  // land the reader on the last page that has rows instead.
+  useClampPagePastEnd(pgState);
+
+  // Ticks are made by hand on the rows in front of you, so leaving the page clears them: a "Copy to
+  // companies" that quietly included rows you can no longer see is the bulk-selection hazard fc776376
+  // fixed on the feedback board, in a smaller shape.
+  const pagePosition = `${pq.page}|${pq.size}`;
+  const lastPagePosition = useRef(pagePosition);
+  useEffect(() => {
+    if (lastPagePosition.current === pagePosition) return;
+    lastPagePosition.current = pagePosition;
+    setSelected(new Set());
+  }, [pagePosition]);
 
   function toggleSort(field: keyof GridRecord) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -791,7 +852,7 @@ export function SystemLabelsGrid({
                   </td>
                 </tr>
               )}
-              {view.map((r, rowIdx) => {
+              {pageRows.map((r, rowIdx) => {
                 const err = rowErrors[r.key];
                 return (
                   <tr key={r.key} className={`${r.archived ? 'opacity-50' : ''} ${err ? 'bg-destructive/5' : ''}`}>
@@ -886,6 +947,8 @@ export function SystemLabelsGrid({
             </tbody>
           </table>
         </div>
+        {/* The rows-per-page choice is remembered per screen, so opening System Labels again keeps it. */}
+        <ClientPager state={pgState} rememberAs="system-labels" />
         <p className="text-[11px] text-muted-foreground">{t('pasteHint')}</p>
       </div>
       )}

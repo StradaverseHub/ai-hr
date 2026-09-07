@@ -4,6 +4,8 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listConfigs, formatEmployeeCode, exceedsCp39EmployeeNoLength, type ConfigRow } from '@/core/employee-id-config';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { createConfigAction, updateConfigAction, setStatusAction, deleteConfigAction } from './actions';
@@ -23,17 +25,36 @@ function previewCode(prefix: string, startNumber: number, numberLength: number, 
 export default async function EmployeeIdConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; toast?: string; edit?: string; new?: string }>;
+  searchParams: Promise<{ error?: string; toast?: string; edit?: string; new?: string; page?: string; size?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('employeeIdConfig');
-  const { error, edit, new: newParam } = await searchParams;
+  const sp = await searchParams;
+  const { error, edit, new: newParam } = sp;
 
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const configs = await listConfigs(s, scopeIds);
 
   const companyName = (id: string | null) => (id == null ? t('scopeGlobal') : companies.find((c) => c.id === id)?.name ?? '—');
+  // 9da61c86 — a list of records like its System Settings siblings, so it carries the same bar: the
+  // record count, the rows-per-page choice and the position. `editing` is looked up in the WHOLE set, not
+  // the page — an ?edit= link must open its row whichever page that row is on.
+  const pq = parsePageQuery(sp);
+  const { rows: pageConfigs, state: pgState } = paginateRows(configs, pq);
+
+  // 9da61c86 fix pass — "keep your search, filter and page position when you add or edit a record and come
+  // back". The links carry the list's position INTO the form, and returnFields carries it back out through
+  // the server action, which cannot see the address it was posted from. `size` rides only when the reader
+  // actually chose one: pq.size resolves to the default either way, and echoing it would write a choice
+  // nobody made into the address.
+  const listAddress = new URLSearchParams();
+  if (pq.page > 0) listAddress.set('page', String(pq.page));
+  if (sp.size) listAddress.set('size', String(pq.size));
+  const listQs = listAddress.toString();
+  const keepingPlace = (base: string) => (listQs ? `${base}&${listQs}` : base);
+  const returnFields = <input type="hidden" name="returnTo" value={listQs} />;
+
   const editing: ConfigRow | null = edit ? configs.find((c) => c.id === edit) ?? null : null;
   const showForm = Boolean(editing || newParam);
 
@@ -58,7 +79,7 @@ export default async function EmployeeIdConfigPage({
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
           <SectionHeader title={t('catalogTitle')} count={configs.length} />
-          <Link href={`${PAGE}?new=1`} className={btnPrimary}>
+          <Link href={keepingPlace(`${PAGE}?new=1`)} className={btnPrimary}>
             {t('createNew')}
           </Link>
         </div>
@@ -80,7 +101,7 @@ export default async function EmployeeIdConfigPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {configs.map((c) => (
+              {pageConfigs.map((c) => (
                 <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
                   <td className="px-4 py-2.5">
                     {c.templateName ? c.templateName : <span className="text-muted-foreground">{t('templateUnnamed')}</span>}
@@ -103,18 +124,23 @@ export default async function EmployeeIdConfigPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-3">
-                      <Link href={`${PAGE}?edit=${c.id}`} className="text-xs font-medium text-primary hover:underline">
+                      <Link
+                        href={keepingPlace(`${PAGE}?edit=${c.id}`)}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
                         {t('edit')}
                       </Link>
                       <form action={setStatusAction}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="status" value={c.status === 'active' ? 'inactive' : 'active'} />
+                        {returnFields}
                         <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                           {c.status === 'active' ? t('deactivate') : t('activate')}
                         </button>
                       </form>
                       <form action={deleteConfigAction}>
                         <input type="hidden" name="id" value={c.id} />
+                        {returnFields}
                         <ConfirmSubmit
                           title={t('deleteTitle')}
                           description={t('deleteDescription', { prefix: c.prefix })}
@@ -138,6 +164,7 @@ export default async function EmployeeIdConfigPage({
             </tbody>
           </table>
         </div>
+        <Pager basePath={PAGE} state={pgState} />
       </Card>
 
       {showForm && (
@@ -145,6 +172,7 @@ export default async function EmployeeIdConfigPage({
           <SectionHeader title={editing ? t('editTitle') : t('createTitle')} />
           <form action={editing ? updateConfigAction : createConfigAction} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {editing && <input type="hidden" name="id" value={editing.id} />}
+            {returnFields}
 
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t('fieldScope')}</span>
@@ -261,7 +289,11 @@ export default async function EmployeeIdConfigPage({
               <button type="submit" className={btnPrimary}>
                 {t('save')}
               </button>
-              <Link href={PAGE} className="text-sm font-medium text-muted-foreground hover:text-foreground">
+              {/* Cancel returns to the page of the list the editor was opened from, not to page one. */}
+              <Link
+                href={listQs ? `${PAGE}?${listQs}` : PAGE}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
                 {t('cancel')}
               </Link>
             </div>

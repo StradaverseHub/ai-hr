@@ -4,6 +4,8 @@ import { listCompanies } from '@/core/read';
 import { listHolidays, listHolidayYears } from '@/core/admin';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { HolidayTabs } from '@/components/holiday-tabs';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import { createHolidayAction, deleteHolidayAction, updateHolidayAction } from '../actions';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -19,15 +21,21 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  * Each row is an inline edit form associated by the `form=` attribute (the <form> element lives outside the
  * <table> so table markup stays valid HTML). Holiday Type value 'company' is relabelled "Replacement
  * holiday" in i18n only — the stored value + CHECK constraint are unchanged.
+ *
+ * PAGED SINCE 9da61c86. A holiday master accumulates a country's calendar year after year, so it is a
+ * list of records and pages like every other one. Both maps below slice the SAME page: the detached edit
+ * forms and the rows that attach to them by `form=` are one thing in two places, and a form rendered for
+ * a row that is not on screen (or a row whose form is not rendered) is a Save that silently does nothing.
  */
 export default async function HolidaysPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; country?: string; year?: string }>;
+  searchParams: Promise<{ error?: string; country?: string; year?: string; page?: string; size?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.holidays');
-  const { error, country: countryParam, year: yearParam } = await searchParams;
+  const sp = await searchParams;
+  const { error, country: countryParam, year: yearParam } = sp;
 
   const [companies, years] = await Promise.all([listCompanies(s), listHolidayYears(s)]);
   const countries = [...new Set(companies.map((c) => c.country))].sort();
@@ -45,13 +53,24 @@ export default async function HolidaysPage({
     optional: t('holidayType.optional'),
   };
 
+  const pq = parsePageQuery(sp);
+  const { rows: pageRows, state: pgState } = paginateRows(holidays, pq);
+
   const today = todayInKualaLumpur();
   const defaultCountry = country ?? countries[0] ?? 'MY';
   // Hidden fields echo the active filter so actions redirect back into the same view.
+  // Hidden fields echo the active filter AND the page so actions redirect back into the same view. A
+  // server action cannot read the address it was posted from, so anything that must survive a row's Save
+  // or Delete has to travel in the form — see holidaysPath in app/admin/actions.ts, the other half.
   const filterFields = (
     <>
       <input type="hidden" name="filterCountry" value={country ?? ''} />
       <input type="hidden" name="filterYear" value={year ?? ''} />
+      <input type="hidden" name="filterPage" value={String(pq.page)} />
+      {/* Only when the READER chose one. pq.size resolves to the default whether or not the address says
+          anything, so posting it unconditionally made the first Save rewrite a bare /admin/holidays into
+          ?size=25 — an address claiming a choice nobody made. The filter form above follows the same rule. */}
+      {sp.size && <input type="hidden" name="filterSize" value={String(pq.size)} />}
     </>
   );
   const typeOf = (v: string | null): (typeof HOLIDAY_TYPES)[number] =>
@@ -87,6 +106,9 @@ export default async function HolidaysPage({
               ))}
             </select>
           </Field>
+          {/* The chosen rows-per-page survives a filter change; the PAGE deliberately does not, because
+              page 4 of one country's calendar is not page 4 of another's. */}
+          {sp.size && <input type="hidden" name="size" value={String(pq.size)} />}
           <div className="sm:col-span-2">
             <button className={btnPrimary}>{t('applyFilter')}</button>
           </div>
@@ -113,7 +135,7 @@ export default async function HolidaysPage({
                 inputs/buttons attach via the `form=` attribute. Save posts updateHolidayAction, Delete posts
                 deleteHolidayAction. holidayCode/description are intentionally NOT posted here, so the service
                 preserves their stored values (backward compatible) while the UI no longer edits them. */}
-            {holidays.map((h) => (
+            {pageRows.map((h) => (
               <form key={`f-${h.id}`} id={`hf-${h.id}`} action={updateHolidayAction} className="hidden">
                 <input type="hidden" name="id" value={h.id} />
                 {filterFields}
@@ -132,7 +154,7 @@ export default async function HolidaysPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {holidays.map((h) => (
+                  {pageRows.map((h) => (
                     <tr key={h.id} className="align-middle">
                       <td className="px-4 py-1.5">
                         <input
@@ -227,6 +249,7 @@ export default async function HolidaysPage({
                 </tbody>
               </table>
             </div>
+            <Pager basePath="/admin/holidays" params={{ country, year }} state={pgState} />
           </>
         )}
       </Card>

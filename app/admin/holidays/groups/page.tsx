@@ -4,18 +4,31 @@ import { requireAdmin } from '@/lib/authz';
 import { listHolidayGroups } from '@/core/admin';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary } from '@/components/ui';
 import { HolidayTabs } from '@/components/holiday-tabs';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import { deleteHolidayGroupAction } from '../../actions';
 
 /**
  * Holiday Group tab (66b8f5a8) — a simple list of the reusable holiday groups. Columns: code, name, status
  * + Edit / Delete actions; an "Add New" button in the top-right opens the dedicated add page (not a popup).
  * Groups are shared across the whole organisation (no company assignment) — already true today.
+ *
+ * PAGED SINCE 9da61c86, for the same reason its sibling Holiday tab is: it is a list of records, and the
+ * bar is a framework rather than a control that appears once a list gets big (see showPager). Most tenants
+ * will see one page and the record count — which is the point, because until now the screen said neither.
  */
-export default async function HolidayGroupsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function HolidayGroupsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; page?: string; size?: string }>;
+}) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.holidayGroups');
-  const { error } = await searchParams;
+  const sp = await searchParams;
+  const { error } = sp;
   const groups = await listHolidayGroups(s);
+  const pq = parsePageQuery(sp);
+  const { rows: pageGroups, state: pgState } = paginateRows(groups, pq);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -36,7 +49,8 @@ export default async function HolidayGroupsPage({ searchParams }: { searchParams
         {groups.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -47,7 +61,7 @@ export default async function HolidayGroupsPage({ searchParams }: { searchParams
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {groups.map((g) => (
+                {pageGroups.map((g) => (
                   <tr key={g.id}>
                     <td className="px-4 py-2 font-mono text-muted-foreground">{g.code ?? '—'}</td>
                     <td className="px-4 py-2 font-medium text-foreground">
@@ -81,7 +95,10 @@ export default async function HolidayGroupsPage({ searchParams }: { searchParams
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+            {/* The record count and the rows-per-page choice, on the same bar every other list carries. */}
+            <Pager basePath="/admin/holidays/groups" state={pgState} />
+          </>
         )}
       </Card>
     </div>

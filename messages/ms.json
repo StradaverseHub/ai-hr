@@ -11045,6 +11045,9 @@
     "rangeEmpty": "0 daripada {total, number}",
     "previous": "← Sebelumnya",
     "next": "Seterusnya →",
+    "first": "« Pertama",
+    "last": "Akhir »",
+    "pageNumber": "Halaman {n}",
     "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
     "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
     "truncatedExport": "Eksport set lengkap"

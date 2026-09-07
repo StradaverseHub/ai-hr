@@ -79,13 +79,28 @@ describe('the shared System Settings list idiom', () => {
     expect(read(file)).toContain('rowActionsCls');
   });
 
-  it.each(LISTS)('%s stays OUT of the pagination contract, deliberately', (file) => {
+  /**
+   * REVERSED IN PART by 9da61c86. This case used to read "stays OUT of the pagination contract,
+   * deliberately" and asserted BOTH halves: no hand-rolled pager, and no shared one either. The second
+   * half is gone — the reporter asked for paging on the System Settings master-data screens and both of
+   * these lists are in that group, so they now render the shared <Pager> (pinned positively in
+   * test/settings-master-data-paging.test.ts).
+   *
+   * The reasoning that produced the old case is worth keeping, because it was only half wrong.
+   * 1b87e8a0's plan omitted paging on the grounds that "a settings catalogue is short; searching beats
+   * paging". Short is still true. But fc776376 had already settled what that implies: the bar renders at
+   * every row count, because a control that appears only once a list gets big is a surprise rather than a
+   * framework — which is exactly why the reporter of 9da61c86 said the product had no pagination.
+   *
+   * THE HALF THAT STILL STANDS is the one that mattered: never a hand-rolled pager. There is one
+   * contract, lib/pagination + components/Pager, and this is still where a private page-size constant or
+   * a hand-written "Showing 1-50" would be caught.
+   */
+  it.each(LISTS)('%s pages through the ONE contract and never a hand-rolled one', (file) => {
     const src = read(file);
-    // 1b87e8a0's plan omits paging on purpose (a settings catalogue is short; searching beats paging),
-    // and the shared contract is lib/pagination + components/Pager — test/pagination.test.ts pins the
-    // converted surfaces and a sixth HAND-ROLLED pager is what this guards against, in both directions.
     expect(src, `${file} must not hand-roll a pager`).not.toMatch(/rowsPlusOne|const PAGE_SIZE|Showing \d/);
-    expect(src, `${file} does not claim the shared pager either`).not.toContain('<Pager');
+    expect(src, `${file} uses the shared pager`).toContain('<Pager');
+    expect(src, `${file} uses the shared query parser`).toContain('parsePageQuery(sp)');
   });
 
   it.each(LISTS)('%s is a server component passing no closures to a client component', (file) => {

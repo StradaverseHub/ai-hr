@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listHiringDefaults } from '@/core/hiring-defaults';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import {
   Badge,
   Card,
@@ -60,7 +62,16 @@ const PAGE = '/admin/settings/hiring-defaults';
 export default async function HiringDefaultsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; toast?: string; q?: string; status?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    toast?: string;
+    q?: string;
+    status?: string;
+    sort?: string;
+    dir?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('hiringDefaults');
@@ -100,7 +111,15 @@ export default async function HiringDefaultsListPage({
       return dir === 'desc' ? -by : by;
     });
 
-  /** Keep the whole view in the address when one control changes. */
+  // Filter and sort first, page second, so a column header orders every company rather than one page of
+  // them. The count beside the heading stays the whole matching set (9da61c86).
+  const pq = parsePageQuery(sp);
+  const { rows: pageRows, state: pgState } = paginateRows(rows, pq);
+
+  /** Keep the whole view in the address when one control changes. `page` is NOT carried: a new filter or
+   *  a new sort is a new list, and page 4 of the old one means nothing in it. `size` IS carried — it is
+   *  not a position in a list but the reader's own choice of how many rows to see, and a filter change is
+   *  no reason to reset it. */
   const href = (over: Partial<{ q: string; status: SettingsStatus; sort: string; dir: SortDir }>) => {
     const next = { q, status, sort, dir, ...over };
     const usp = new URLSearchParams();
@@ -108,6 +127,7 @@ export default async function HiringDefaultsListPage({
     if (next.status !== 'active') usp.set('status', next.status);
     if (next.sort !== 'company') usp.set('sort', next.sort);
     if (next.dir !== 'asc') usp.set('dir', next.dir);
+    if (sp.size) usp.set('size', String(pq.size));
     const qs = usp.toString();
     return qs ? `${PAGE}?${qs}` : PAGE;
   };
@@ -166,7 +186,7 @@ export default async function HiringDefaultsListPage({
               </tr>
             </thead>
             <tbody className={tbodyCls}>
-              {rows.map((c) => {
+              {pageRows.map((c) => {
                 const d = byCompany.get(c.id) ?? null;
                 return (
                   <tr key={c.id}>
@@ -219,6 +239,16 @@ export default async function HiringDefaultsListPage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath={PAGE}
+          params={{
+            q: q || undefined,
+            status: status === 'active' ? undefined : status,
+            sort: sort === 'company' ? undefined : sort,
+            dir: dir === 'asc' ? undefined : dir,
+          }}
+          state={pgState}
+        />
       </Card>
     </div>
   );

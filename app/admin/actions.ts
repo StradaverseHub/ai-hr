@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
+// 9da61c86 — the Holiday master pages, so its row actions have to answer WHICH page a row is on.
+import { pageOfIndex, parsePageSize } from '@/lib/pagination';
 import { grantAssistant, revokeAssistant } from '@/core/assistant-grant';
 import {
   archiveBusinessUnit,
@@ -19,6 +21,7 @@ import {
   createDepartment,
   createHoliday,
   createHolidayGroup,
+  listHolidays,
   createLeaveType,
   createPosition,
   deleteHoliday,
@@ -862,41 +865,112 @@ export async function setLeaveHalfDayFullDeductionCompaniesAction(formData: Form
 
 // ── Public holidays ──
 /** Preserve the active country/year/group filter across the redirect so the admin stays in context.
- *  (R18 a519a96e: `group` keeps the per-group effective-calendar view open across row edits.) */
-function holidaysPath(formData: FormData): string {
+ *  (R18 a519a96e: `group` keeps the per-group effective-calendar view open across row edits.)
+ *
+ *  9da61c86 — and the PAGE with them. The list pages now, and every row's Save and Delete post through
+ *  here; without the page in the redirect, editing the third holiday on page 4 drops the admin back on
+ *  page 1 and they have to find their place again. The page rides as `filterPage` / `filterSize` for the
+ *  same reason country and year do: a server action reads the form, never the address it was posted
+ *  from. The page's hidden fields are the other half of this contract — neither half works alone. */
+function holidaysPath(
+  formData: FormData,
+  /** Where the row the admin just touched actually IS — see holidayFollowPath. */
+  over: { country?: string; year?: string; page?: number } = {},
+): string {
   const sp = new URLSearchParams();
-  const country = String(formData.get('filterCountry') ?? '').trim();
-  const year = String(formData.get('filterYear') ?? '').trim();
+  const country = over.country ?? String(formData.get('filterCountry') ?? '').trim();
+  const year = over.year ?? String(formData.get('filterYear') ?? '').trim();
   const group = String(formData.get('filterGroup') ?? '').trim();
+  const page = over.page !== undefined ? String(over.page) : String(formData.get('filterPage') ?? '').trim();
+  const size = String(formData.get('filterSize') ?? '').trim();
   if (country) sp.set('country', country);
   if (year) sp.set('year', year);
   if (group) sp.set('group', group);
+  // page 0 is the bare screen, so it is written only when it is not the first page — the same rule the
+  // pager's own links follow.
+  if (page && page !== '0') sp.set('page', page);
+  // The size is written only when the READER chose one. The hidden field always carries the resolved
+  // default, so echoing it unconditionally turned a bare /admin/holidays into ?size=25 on the first Save —
+  // an address that says a choice was made when none was, and (on the client pager's rule) an arrival that
+  // is no longer bare. The page therefore posts filterSize only when the address already carries a size.
+  if (size) sp.set('size', size);
   const qs = sp.toString();
   return qs ? `${HOLIDAYS}?${qs}` : HOLIDAYS;
+}
+
+/**
+ * The address that PUTS THE ROW THE ADMIN JUST SAVED IN FRONT OF THEM (9da61c86 fix pass).
+ *
+ * holidaysPath alone returns you to the page you posted from, which is right for a Save that changes a
+ * name and wrong for the two writes that MOVE a row. The master is ordered by date and now sliced at 25:
+ * add a holiday for next year from page 1 and it lands on the last page, edit a date and the row jumps
+ * pages. Both looked like "the product did nothing" — the reporter's Add New requirement is that "the new
+ * record should be reflected in the list automatically", and a success toast over an unchanged table is
+ * the opposite of that.
+ *
+ * So the row is looked up in the SAME list the screen builds (core listHolidays under the same filter,
+ * same order) and its index becomes the page. Two consequences worth stating:
+ *   · A FILTER THAT EXCLUDES THE ROW IS DROPPED, because no page number can show a row the filter hides.
+ *     Only the filter that actually excludes it: adding a 2027 holiday while filtered to 2026 clears the
+ *     year and keeps the country.
+ *   · The lookup costs one extra query per create/edit — a list this screen already runs on every render.
+ * A row that cannot be found at all (deleted from another tab between the write and the read) answers
+ * page one rather than a negative page, exactly as pageOfIndex does for the client grids.
+ */
+async function holidayFollowPath(
+  s: Awaited<ReturnType<typeof getSession>>,
+  formData: FormData,
+  id: string,
+  /** The row's country — omitted by update, where scope is immutable and cannot leave the filter. */
+  rowCountry: string | undefined,
+  /** The row's date as posted (YYYY-MM-DD); its year is what the year filter is checked against. */
+  rowDate: string,
+): Promise<string> {
+  const filterCountry = String(formData.get('filterCountry') ?? '').trim();
+  const filterYear = String(formData.get('filterYear') ?? '').trim();
+  const size = parsePageSize(String(formData.get('filterSize') ?? '') || undefined);
+  const rowYear = /^(\d{4})-/.exec(rowDate)?.[1] ?? '';
+  const country = rowCountry && filterCountry && filterCountry !== rowCountry ? '' : filterCountry;
+  const year = rowYear && filterYear && filterYear !== rowYear ? '' : filterYear;
+  const rows = await listHolidays(s, {
+    country: country || undefined,
+    year: year ? Number(year) : undefined,
+  });
+  const page = pageOfIndex(
+    rows.findIndex((r) => r.id === id),
+    size,
+  );
+  return holidaysPath(formData, { country, year, page });
 }
 
 export async function createHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
+  const country = String(formData.get('country') ?? 'MY');
+  const holidayDate = String(formData.get('holidayDate') ?? '');
+  let createdId = '';
   // 66b8f5a8 — the simplified Holiday-master form no longer collects Scope / State / Business-group /
   // Holiday-group. Every holiday added here is a plain national-country master record; the scope columns
   // stay in the DB (backward compatible) but default to null. The form now collects the master fields.
   // 3e831868 — Holiday Code + Description are no longer collected in the UI; the nullable columns stay in
   // the DB (backward compatible) and simply default to null on new rows.
   try {
-    await createHoliday(s, {
-      country: String(formData.get('country') ?? 'MY'),
-      holidayDate: String(formData.get('holidayDate') ?? ''),
+    const created = await createHoliday(s, {
+      country,
+      holidayDate,
       name: String(formData.get('name') ?? ''),
       holidayType: String(formData.get('holidayType') ?? 'public'),
       active: formData.get('active') === 'on',
       // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
       tentative: formData.get('tentative') === 'on',
     });
+    createdId = created.id;
   } catch (e) {
     fail(path, e);
   }
-  ok(path);
+  // Land on the page the new row is ON, not the page the form was posted from (the redirect stays OUTSIDE
+  // the try so its NEXT_REDIRECT is not caught as a failure).
+  ok(await holidayFollowPath(s, formData, createdId, country, holidayDate));
 }
 
 /** ADR-0063 + 66b8f5a8 + 3e831868: edit a holiday's date + name + type + active + tentative flag. Scope
@@ -906,10 +980,12 @@ export async function createHolidayAction(formData: FormData) {
 export async function updateHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
+  const id = String(formData.get('id'));
+  const holidayDate = String(formData.get('holidayDate') ?? '');
   try {
     await updateHoliday(s, {
-      id: String(formData.get('id')),
-      holidayDate: String(formData.get('holidayDate') ?? ''),
+      id,
+      holidayDate,
       name: String(formData.get('name') ?? ''),
       holidayType: String(formData.get('holidayType') ?? 'public'),
       active: formData.get('active') === 'on',
@@ -918,7 +994,11 @@ export async function updateHolidayAction(formData: FormData) {
   } catch (e) {
     fail(path, e);
   }
-  ok(path);
+  // Editing a DATE moves the row: the master is ordered by date, so a corrected holiday can leave the page
+  // it was saved from (and, with a year filter on, the view entirely). Follow it — an edit that appears to
+  // delete the row is the same failure as an Add that appears to do nothing. Scope is immutable on update,
+  // so the country filter cannot be the one that hides it.
+  ok(await holidayFollowPath(s, formData, id, undefined, holidayDate));
 }
 
 export async function deleteHolidayAction(formData: FormData) {

@@ -50,14 +50,26 @@
  *   3. Typing a code that belongs to an archived grade no longer creates a silent duplicate. The save
  *      comes back with a row error carrying that grade's id, and the offer to restore it in place.
  *
+ * PAGED SINCE 9da61c86, through the shared client pager. Rows are filtered and sorted FIRST and sliced
+ * second, so Rank still orders every grade rather than the twenty-five on screen, and Save still submits
+ * every dirty row — not the ones the page happens to be showing.
+ *
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
-import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Filter, Trash2, X } from 'lucide-react';
+import { pageOfIndex, paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
+import {
+  ClientPager,
+  useClampPagePastEnd,
+  useClientPageNav,
+  useClientPageQuery,
+  useResetPageOnFilterChange,
+} from './client-pager';
 import { ConfirmDialog } from './ui/confirm-submit';
 
 /** Exactly the shape core/read.ts `listJobGrades` returns — no synthetic fields, no mapper. */
@@ -137,6 +149,13 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   const [confirmDelete, setConfirmDelete] = useState<RowState | null>(null);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
+  // Paging rides in the address (?page=&size=), as it does on the server-paged screens — which is what
+  // keeps your place across the save round trip and makes the view a shareable link.
+  const pq = useClientPageQuery();
+  const goToPage = useClientPageNav();
+  // Narrowing the filters restarts at page one: a search that matches four rows, made while you are on
+  // page 5, would otherwise show an empty table with no sign the rows exist.
+  useResetPageOnFilterChange(`${search}|${statusFilter}`);
 
   const drafts = rows.filter((r) => r.isNew);
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
@@ -152,21 +171,25 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   function addRow() {
     draftSeq.current += 1;
     const nextRank = rows.reduce((m, r) => Math.max(m, Number(r.rank) || 0), -1) + 1;
-    setRows((prev) => [
-      ...prev,
-      {
-        key: `draft-${draftSeq.current}`,
-        id: '',
-        code: '',
-        name: '',
-        description: '',
-        rank: String(nextRank),
-        archived: false,
-        inUse: false,
-        isNew: true,
-        dirty: true,
-      },
-    ]);
+    const draft: RowState = {
+      key: `draft-${draftSeq.current}`,
+      id: '',
+      code: '',
+      name: '',
+      description: '',
+      rank: String(nextRank),
+      archived: false,
+      inUse: false,
+      isNew: true,
+      dirty: true,
+    };
+    const next = [...rows, draft];
+    setRows(next);
+    // A draft is appended and then SORTED by rank, so on a paged list it lands on the LAST page — where
+    // the reader is not looking, which reads as "Add Row did nothing". Follow it. (An active search hides
+    // a still-empty draft, as it always has; findIndex answers -1 and pageOfIndex turns that into page
+    // one rather than a negative page.)
+    goToPage(pageOfIndex(applyView(next).findIndex((r) => r.key === draft.key), pq.size));
   }
   function removeDraft(key: string) {
     setRows((prev) => prev.filter((r) => r.key !== key));
@@ -295,8 +318,9 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
     }
   }
 
-  const view = useMemo(() => {
-    let v = rows.filter((r) => {
+  /** Filter + sort, as a function rather than only a memo: addRow needs to ask where a new draft landed. */
+  const applyView = useCallback((source: RowState[]) => {
+    let v = source.filter((r) => {
       if (statusFilter === 'active' && r.archived) return false;
       if (statusFilter === 'archived' && !r.archived) return false;
       if (search) {
@@ -327,7 +351,14 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
       });
     }
     return v;
-  }, [rows, statusFilter, search, sortField, sortDir]);
+  }, [statusFilter, search, sortField, sortDir]);
+
+  const view = useMemo(() => applyView(rows), [applyView, rows]);
+  // Sort first, page second — the ordering that makes a column header mean the whole catalogue.
+  const { rows: pageRows, state: pgState } = paginateRows(view, pq);
+  // A page that no longer exists (rows deleted off the end, or a stale bookmark) draws nothing at all —
+  // land the reader on the last page that has rows instead.
+  useClampPagePastEnd(pgState);
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -458,7 +489,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                 </td>
               </tr>
             )}
-            {view.map((r, rowIdx) => {
+            {pageRows.map((r, rowIdx) => {
               const err = rowErrors[r.key];
               // r224 — the two things that used to be readable ONLY by hovering. `restoreOffer` is the
               // archived-code refusal (server message + the grade to restore); `inUseNotice` is the
@@ -624,6 +655,8 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           </tbody>
         </table>
       </div>
+      {/* The rows-per-page choice is remembered per screen, so opening Job Grades again keeps it. */}
+      <ClientPager state={pgState} rememberAs="grade-labels" />
 
       {confirmDelete && (
         <ConfirmDialog

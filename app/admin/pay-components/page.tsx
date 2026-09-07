@@ -6,6 +6,8 @@ import { listPayComponents } from '@/core/pay-components';
 import type { FormulaOp, FormulaOperand, PayRule, PayRuleKind } from '@/core/pay-rule';
 import { payRuleInWords } from './pay-rule-words';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DownloadCsv } from '@/components/download-csv';
@@ -30,7 +32,7 @@ const inputTypeOf = (rule: unknown): PayRuleKind => (rule as PayRule | null)?.ki
 export default async function PayComponentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string; new?: string; q?: string; status?: string }>;
+  searchParams: Promise<{ edit?: string; new?: string; q?: string; status?: string; page?: string; size?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payComponents');
@@ -55,7 +57,18 @@ export default async function PayComponentsPage({
     return okQ && okStatus;
   });
 
-  const qs = (st: Status) => `${PAGE}?status=${st}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+  // 9da61c86 — the catalogue is a LIST of master data and grows with the tenant, so it pages through the
+  // shared contract like every other list. Filtering happens first and the page slices the result, so the
+  // count beside the heading and the CSV export both still describe the whole matching set.
+  const pq = parsePageQuery(sp);
+  const { rows: pageRows, state: pgState } = paginateRows(rows, pq);
+
+  // A status link drops ?page= on purpose — page 4 of the active items is not page 4 of the inactive ones —
+  // and KEEPS ?size=, which is not a position in a list but the reader's own choice of how many rows they
+  // want to see. Silently resetting it to 25 on a status switch would make the two controls beside each
+  // other behave differently, since the search form already carries the size through.
+  const qs = (st: Status) =>
+    `${PAGE}?status=${st}${q ? `&q=${encodeURIComponent(q)}` : ''}${sp.size ? `&size=${pq.size}` : ''}`;
 
   // 61bf109d rev2 — the formula in plain words. Names for referenced codes come from the catalog already
   // loaded above (archived rows included, so a formula pointing at a deactivated item still reads as words
@@ -135,6 +148,8 @@ export default async function PayComponentsPage({
           </Link>
           <form action={PAGE} method="get" className="flex items-center gap-2">
             <input type="hidden" name="status" value={status} />
+            {/* The chosen rows-per-page survives a search; the PAGE does not — a new search is a new list. */}
+            {sp.size && <input type="hidden" name="size" value={String(pq.size)} />}
             <input
               type="search"
               name="q"
@@ -180,7 +195,7 @@ export default async function PayComponentsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((c) => (
+              {pageRows.map((c) => (
                 <tr key={c.id}>
                   <td className="px-4 py-2.5 font-mono text-xs">{c.code}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.label ?? '—'}</td>
@@ -293,6 +308,7 @@ export default async function PayComponentsPage({
             </tbody>
           </table>
         </div>
+        <Pager basePath={PAGE} params={{ q, status }} state={pgState} />
       </Card>
     </div>
   );

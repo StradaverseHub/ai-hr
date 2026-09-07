@@ -31,8 +31,34 @@ async function errorMessage(e: unknown): Promise<string> {
   return (e as Error).message;
 }
 
+/**
+ * The view to come back to (9da61c86 — "keep your search, filter and page position when you add or edit a
+ * record and come back").
+ *
+ * This screen is worse off than most without it: the redirect was a bare `${PAGE}?toast=`, and PAGE opens
+ * on the Card Library only because `library` is the default section — so saving a card dropped the admin's
+ * search, type and status filters AND their page, on a screen whose whole purpose is to find one card
+ * among many. A server action reads the FORM, never the address it was posted from, so the page sends its
+ * view as `returnTo` and this reads it back.
+ *
+ * Only the keys this screen owns are re-emitted, so nothing a hand-edited form could put in that field can
+ * reach the redirect.
+ */
+const RETURN_KEYS = ['section', 'q', 'type', 'status', 'page', 'size'] as const;
+
+function listAddress(formData: FormData, extra: Record<string, string>): string {
+  const from = new URLSearchParams(String(formData.get('returnTo') ?? ''));
+  const sp = new URLSearchParams();
+  for (const k of RETURN_KEYS) {
+    const v = from.get(k);
+    if (v) sp.set(k, v);
+  }
+  for (const [k, v] of Object.entries(extra)) sp.set(k, v);
+  return `${PAGE}?${sp.toString()}`;
+}
+
 /** Run a write, then redirect (success/error redirect ALWAYS outside try/catch so NEXT_REDIRECT isn't caught). */
-async function run(write: () => Promise<void>, toastKey: string) {
+async function run(write: () => Promise<void>, toastKey: string, formData: FormData) {
   let errMsg: string | null = null;
   try {
     await write();
@@ -40,9 +66,9 @@ async function run(write: () => Promise<void>, toastKey: string) {
   } catch (e) {
     errMsg = await errorMessage(e);
   }
-  if (errMsg) redirect(`${PAGE}?error=${encodeURIComponent(errMsg)}`);
+  if (errMsg) redirect(listAddress(formData, { error: errMsg }));
   const t = await getTranslations('dashboardCardConfig.toasts');
-  redirect(`${PAGE}?toast=${encodeURIComponent(t(toastKey))}`);
+  redirect(listAddress(formData, { toast: t(toastKey) }));
 }
 
 export async function createCardAction(formData: FormData) {
@@ -63,6 +89,7 @@ export async function createCardAction(formData: FormData) {
         audience: audienceOf(formData),
       }).then(() => undefined),
     'saved',
+    formData,
   );
 }
 
@@ -85,6 +112,7 @@ export async function updateCardAction(formData: FormData) {
         audience: audienceOf(formData),
       }).then(() => undefined),
     'saved',
+    formData,
   );
 }
 
@@ -93,10 +121,11 @@ export async function setStatusAction(formData: FormData) {
   await run(
     () => setStatus(s, { id: String(formData.get('id') ?? ''), status: String(formData.get('status') ?? '') }).then(() => undefined),
     'statusChanged',
+    formData,
   );
 }
 
 export async function deleteCardAction(formData: FormData) {
   const s = await getSession();
-  await run(() => deleteCard(s, { id: String(formData.get('id') ?? '') }).then(() => undefined), 'deleted');
+  await run(() => deleteCard(s, { id: String(formData.get('id') ?? '') }).then(() => undefined), 'deleted', formData);
 }

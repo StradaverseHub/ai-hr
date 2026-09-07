@@ -18,7 +18,13 @@ import { join } from 'node:path';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
 
-/** Every list grid that sorts or filters in the browser. */
+/** Every list grid that sorts or filters in the browser.
+ *
+ *  9da61c86 added THREE MORE — the System Settings master-data grids (system-labels, profile-options,
+ *  grade-labels) — and they are pinned in test/settings-master-data-paging.test.ts rather than here,
+ *  because they carry two things these six do not: a per-screen remembered page size and a page that
+ *  follows a newly added draft row. Same pager, same contract; a fuller set of assertions. Do not add a
+ *  grid to only one of the two lists. */
 const CLIENT_GRIDS = [
   'app/feedback/bulk-table.tsx',
   'components/loan-list.tsx',

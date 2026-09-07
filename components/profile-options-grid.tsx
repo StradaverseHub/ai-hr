@@ -14,14 +14,26 @@
  * with NO company scope, NO sharing, and NO Criteria column (see core/profile-options.ts). The value-
  * immutability rule is preserved — Code is editable only on brand-new draft rows and read-only once saved.
  *
+ * PAGED SINCE 9da61c86, through the shared client pager. Rows are filtered and sorted FIRST and sliced
+ * second, so a column header still orders the whole category rather than the twenty-five rows on screen,
+ * and Save still submits every dirty row in the category — not the ones the page happens to be showing.
+ *
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
+import { pageOfIndex, paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
+import {
+  ClientPager,
+  useClampPagePastEnd,
+  useClientPageNav,
+  useClientPageQuery,
+  useResetPageOnFilterChange,
+} from './client-pager';
 import { ConfirmDialog } from './ui/confirm-submit';
 
 export type ProfileGridCategory = string;
@@ -107,6 +119,13 @@ export function ProfileOptionsGrid({
   const [confirmDelete, setConfirmDelete] = useState<RowState | null>(null);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
+  // Paging rides in the address (?page=&size=), exactly as it does on the server-paged screens, which is
+  // what keeps your place across the save round trip and makes the view a shareable link.
+  const pq = useClientPageQuery();
+  const goToPage = useClientPageNav();
+  // Switching category or narrowing the filters restarts at page one — otherwise a search that matches
+  // four rows, made while you are on page 5, shows an empty table and no sign the rows exist.
+  useResetPageOnFilterChange(`${category}|${search}|${statusFilter}`);
 
   const rows = rowsByCat[category] ?? [];
 
@@ -131,20 +150,24 @@ export function ProfileOptionsGrid({
   function addRow() {
     draftSeq.current += 1;
     const nextSort = rows.reduce((m, r) => Math.max(m, r.sortOrder), -1) + 1;
-    patchRows([
-      ...rows,
-      {
-        key: `draft-${draftSeq.current}`,
-        id: '',
-        value: '',
-        label: '',
-        description: '',
-        sortOrder: nextSort,
-        isActive: true,
-        isNew: true,
-        dirty: true,
-      },
-    ]);
+    const draft: RowState = {
+      key: `draft-${draftSeq.current}`,
+      id: '',
+      value: '',
+      label: '',
+      description: '',
+      sortOrder: nextSort,
+      isActive: true,
+      isNew: true,
+      dirty: true,
+    };
+    const next = [...rows, draft];
+    patchRows(next);
+    // A draft is appended to the end and then SORTED, so on a paged list it lands wherever the current
+    // ordering puts it — usually a page you are not looking at, which reads as "Add Row did nothing".
+    // Follow it. (An active search hides a still-empty draft, as it always has; findIndex answers -1 and
+    // pageOfIndex turns that into page one rather than a negative page.)
+    goToPage(pageOfIndex(applyView(next).findIndex((r) => r.key === draft.key), pq.size));
   }
   function removeDraft(key: string) {
     patchRows(rows.filter((r) => r.key !== key));
@@ -239,8 +262,9 @@ export function ProfileOptionsGrid({
     }
   }
 
-  const view = useMemo(() => {
-    let v = rows.filter((r) => {
+  /** Filter + sort, as a function rather than only a memo: addRow needs to ask where a new draft landed. */
+  const applyView = useCallback((source: RowState[]) => {
+    let v = source.filter((r) => {
       if (statusFilter === 'active' && !r.isActive) return false;
       if (statusFilter === 'inactive' && r.isActive) return false;
       if (search) {
@@ -259,7 +283,14 @@ export function ProfileOptionsGrid({
       });
     }
     return v;
-  }, [rows, statusFilter, search, sortField, sortDir]);
+  }, [statusFilter, search, sortField, sortDir]);
+
+  const view = useMemo(() => applyView(rows), [applyView, rows]);
+  // Sort first, page second — the ordering that makes a column header mean the whole category.
+  const { rows: pageRows, state: pgState } = paginateRows(view, pq);
+  // A page that no longer exists (rows deleted off the end, or a stale bookmark) draws nothing at all —
+  // land the reader on the last page that has rows instead.
+  useClampPagePastEnd(pgState);
 
   function toggleSort(field: typeof sortField) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -417,7 +448,7 @@ export function ProfileOptionsGrid({
                   </td>
                 </tr>
               )}
-              {view.map((r, rowIdx) => {
+              {pageRows.map((r, rowIdx) => {
                 const err = rowErrors[r.key];
                 return (
                   <tr key={r.key} className={`${r.isActive ? '' : 'opacity-60'} ${err ? 'bg-destructive/5' : ''}`}>
@@ -503,6 +534,8 @@ export function ProfileOptionsGrid({
             </tbody>
           </table>
         </div>
+        {/* The rows-per-page choice is remembered per screen, so opening Profile Options again keeps it. */}
+        <ClientPager state={pgState} rememberAs="profile-options" />
         <p className="text-xs text-muted-foreground">{t('legacyNote')}</p>
       </div>
 

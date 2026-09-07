@@ -2,6 +2,8 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { CONFIGURABLE_BEHAVIOUR_KINDS, listMovementEventTypes } from '@/core/movement-type';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { Pager } from '@/components/pager';
 import {
   Badge,
   Card,
@@ -76,9 +78,13 @@ const PAGE = '/admin/settings/movement';
  *     created_at is the date of a rename, not of a creation. Adding updated_at is a migration plus a
  *     write-path change and was raised to the reporter as its own request.
  *
- * NO PAGINATION, deliberately. A tenant has a handful of event types; searching finds one faster than
- * paging, and the shared contract for paging is lib/pagination + components/Pager (test/pagination
- * .test.ts pins the converted surfaces) — never a hand-rolled sixth.
+ * PAGED SINCE 9da61c86, REVERSING the note that stood here. It read: "NO PAGINATION, deliberately. A
+ * tenant has a handful of event types; searching finds one faster than paging." The premise is still
+ * true — this catalogue IS small — but the conclusion was the one fc776376 had already overturned for the
+ * whole product: a control that appears only once a list grows is not a framework, it is a surprise, and
+ * a reader who never sees the row count or the rows-per-page choice reports that paging does not exist.
+ * The half of the note that was right is kept in full: the contract is lib/pagination + components/Pager,
+ * never a hand-rolled sixth.
  *
  * STATUS DEFAULTS TO ALL, not to Active like the other catalogues. Switching a type back ON is a main
  * reason to open this screen; an Active default would hide exactly the rows you came for.
@@ -101,6 +107,8 @@ export default async function MovementSettingsPage({
     status?: string;
     sort?: string;
     dir?: string;
+    page?: string;
+    size?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -160,8 +168,17 @@ export default async function MovementSettingsPage({
       return dir === 'desc' ? -by : by;
     });
 
+  // Filter and sort first, page second: a column header orders the whole catalogue, not one page of it.
+  // The count beside the heading stays `visible.length`, the whole matching set — the pager says which
+  // slice of it is on screen.
+  const pq = parsePageQuery(sp);
+  const { rows: pageRows, state: pgState } = paginateRows(visible, pq);
+
   /** Keep the whole view in the address when one control changes. Only the LIST's controls live in the
-   *  address now — the Add/Edit dialog is client state and deliberately leaves no trace here. */
+   *  address now — the Add/Edit dialog is client state and deliberately leaves no trace here. `page` is
+   *  NOT carried: changing a filter or a sort re-orders the whole set, so page 4 of the old view is not
+   *  page 4 of the new one. `size` IS carried, and the distinction is deliberate: the page is a position
+   *  in a list the reader has just replaced, while rows-per-page is a preference about every list. */
   const href = (over: Partial<{ q: string; status: SettingsStatus; sort: string; dir: SortDir }>) => {
     const next = { q, status, sort, dir, ...over };
     const usp = new URLSearchParams();
@@ -169,6 +186,7 @@ export default async function MovementSettingsPage({
     if (next.status !== 'all') usp.set('status', next.status);
     if (next.sort !== 'catalog') usp.set('sort', next.sort);
     if (next.dir !== 'asc') usp.set('dir', next.dir);
+    if (sp.size) usp.set('size', String(pq.size));
     const qs = usp.toString();
     return qs ? `${PAGE}?${qs}` : PAGE;
   };
@@ -266,7 +284,7 @@ export default async function MovementSettingsPage({
               </tr>
             </thead>
             <tbody className={tbodyCls}>
-              {visible.map((r) => (
+              {pageRows.map((r) => (
                 <tr key={r.code}>
                   <td className="px-3 py-2">
                     <div className={r.active ? 'font-medium' : 'font-medium text-muted-foreground'}>
@@ -350,6 +368,16 @@ export default async function MovementSettingsPage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath={PAGE}
+          params={{
+            q: q || undefined,
+            status: status === 'all' ? undefined : status,
+            sort: sort === 'catalog' ? undefined : sort,
+            dir: dir === 'asc' ? undefined : dir,
+          }}
+          state={pgState}
+        />
       </Card>
     </div>
   );
