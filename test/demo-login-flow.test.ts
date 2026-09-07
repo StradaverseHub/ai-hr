@@ -101,6 +101,22 @@ describe('demo sign-in flow', () => {
     expect(ROUTE).toContain("res.cookies.set('dev_user'");
   });
 
+  it('redirects to a RELATIVE Location, never one built from req.url', () => {
+    /**
+     * ⚠️ THE ABSOLUTE FORM ALSO SHIPPED BROKEN. `NextResponse.redirect(new URL('/', req.url))` resolves
+     * against the server's INTERNAL origin (127.0.0.1:3000) because the app sits behind a tunnel, so the
+     * browser was sent to an address it could not reach and landed on a blank 39-character document —
+     * while fetching the same page directly rendered fine with 11 nav entries.
+     *
+     * A relative Location is resolved by the browser against the URL IT used, so the public origin
+     * survives without this route knowing what it is.
+     */
+    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/login/as/route.ts'), 'utf8');
+    expect(ROUTE).not.toContain('NextResponse.redirect(');
+    expect(ROUTE).not.toContain('req.url');
+    expect(ROUTE).toMatch(/headers: \{ Location: location \}/);
+  });
+
   it('never writes an identity the chooser does not offer', () => {
     // `dev_user` selects the principal the whole app runs as, so a hand-crafted post must not be able to
     // set an arbitrary one. The endpoint checks the id against the same list the page renders.

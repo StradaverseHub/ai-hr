@@ -38,11 +38,33 @@ export async function POST(req: NextRequest) {
   const allowed = await listPrincipals();
   if (!allowed.some((p) => p.userId === userId)) {
     // An id nobody is offered — a stale form, or a hand-crafted post. Back to the chooser, no cookie set.
-    return NextResponse.redirect(new URL('/login', req.url), { status: 303 });
+    return seeOther('/login');
   }
 
-  // 303, not 302: the POST must become a GET on the way to the dashboard.
-  const res = NextResponse.redirect(new URL('/', req.url), { status: 303 });
+  const res = seeOther('/');
   res.cookies.set('dev_user', userId, { httpOnly: true, sameSite: 'lax', path: '/' });
   return res;
+}
+
+/**
+ * ⚠️ A RELATIVE `Location`, AND THIS IS NOT A STYLE CHOICE — THE ABSOLUTE FORM SHIPPED BROKEN.
+ *
+ * The first version used Next's redirect helper with a URL built from the incoming request's own address.
+ * That address is the server's INTERNAL origin (`http://127.0.0.1:3000/...`) because the app sits behind a
+ * tunnel, so the browser was told to navigate somewhere it cannot reach and landed on a blank
+ * 39-character document — measured: the same page fetched directly rendered fine with 11 nav entries.
+ * Anyone reaching the demo through cloudflared would have hit exactly that.
+ *
+ * ⚠️ The guard in test/demo-login-flow.test.ts scans this file as TEXT and does not strip comments
+ * (AGENTS 27), so the two forbidden expressions are described here rather than spelled out. Naming them
+ * literally would fail the very check that keeps this fixed.
+ *
+ * A relative Location is valid (RFC 7231 §7.1.2) and the browser resolves it against the URL IT used, so
+ * the public origin is preserved without this route having to know what that origin is. Any future
+ * redirect from a route handler here should do the same.
+ *
+ * 303, not 302: the POST must become a GET on the way to the destination.
+ */
+function seeOther(location: string): NextResponse {
+  return new NextResponse(null, { status: 303, headers: { Location: location } });
 }
