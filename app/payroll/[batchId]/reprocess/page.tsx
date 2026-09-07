@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -16,6 +17,10 @@ import { formatMoney } from '@/lib/money';
 // months, company, cycle and status selection was thrown away. Whitelisted by shape, never echoed raw.
 import { payrollListReturnTo } from '@/lib/return-to';
 import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } from './reprocess-form';
+// b372e923 — one Payroll Result href per result row, joined to this run's payslips by employment. The
+// join lives in its own module so the "opens somebody else's result" failure can be checked row by row
+// against a real reprocessed run; see the module header for why that is not a four-line inline map.
+import { reprocessResultHrefs } from './result-links';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -220,6 +225,12 @@ export default async function ReprocessPage({
     : [];
   const jobRowIds = new Set(jobRows.map((r) => r.id));
   const earlier = disclosure.filter((r) => !jobRowIds.has(r.id));
+  // b372e923 — the Payroll Result link for each of those rows. `slips` is this run's payslips as read at
+  // the top of THIS render, i.e. after the reprocess wrote its results, so an employee the run just ADDED
+  // resolves to the payslip it created for them and links exactly like a recalculated one. `sp.from` — the
+  // Payroll Process list's own filter query — travels with the link so Back from the payslip returns the
+  // list as the operator left it, the same journey this screen's own header Back makes.
+  const resultHrefs = reprocessResultHrefs(jobRows, slips, sp.from);
 
   const money = (n: unknown) => formatMoney(n, currency);
   /** What moved, in the words of the diff: gross first when it moved, then each statutory line. */
@@ -267,7 +278,7 @@ export default async function ReprocessPage({
             · {thisJob.updatedAt.toISOString().slice(0, 16).replace('T', ' ')}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[44rem] text-sm">
+            <table className="w-full min-w-[52rem] text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
@@ -275,6 +286,8 @@ export default async function ReprocessPage({
                   <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{t('reprocessColNetAfter')}</th>
                   <th className="px-3 py-2 font-medium">{t('reprocessColMoved')}</th>
                   <th className="px-3 py-2 font-medium">{t('reprocessColWhy')}</th>
+                  {/* b372e923 — the action column the reprocess result never had. */}
+                  <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColResult')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -284,6 +297,10 @@ export default async function ReprocessPage({
                   // zero and the diff would read as a pay rise from nothing. It is rendered as the event
                   // it actually is; `action` is what the engine recorded, not something re-derived here.
                   const isAdd = r.action === 'add';
+                  // b372e923 — THIS row's href, looked up by THIS row's id. An addition is not excluded:
+                  // it has a payslip, created by this very reprocess. Absent ⇒ no payslip on this run for
+                  // that employment, and the cell is plain text rather than a link that leads nowhere.
+                  const resultHref = resultHrefs.get(r.id);
                   return (
                     <tr key={r.id}>
                       <td className="px-3 py-2">
@@ -328,12 +345,21 @@ export default async function ReprocessPage({
                             : t('reprocessWhyOwnInputs')}
                         {r.reason ? ` · ${r.reason}` : ''}
                       </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-xs">
+                        {resultHref ? (
+                          <Link href={resultHref} className="font-medium text-primary hover:underline">
+                            {t('reprocessResultLink')}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
                 {jobRows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
                       {t('reprocessNothingMoved')}
                     </td>
                   </tr>
