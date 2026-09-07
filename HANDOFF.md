@@ -310,61 +310,89 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r251 (2026-09-07) — the demo signs in at /login; TWO bugs in that one flow, each masking the other. `main@c39661c0`.
+### r252 (2026-09-07) — THE 8.5-SECOND DASHBOARD WAS ONE MISSING INDEX AND AN RLS FUNCTION CALLED PER ROW. Migration `0455`.
 
-**DEPLOYED.** tsc clean · **gate 768 files / 5 chunks — chunk 5 red with ZERO AssertionErrors, peak-disk
-94%; all 10 files pass on a rebuilt cluster (55 tests, exit 0)** · service restarted 14:51:34 · verified by
-driving all five identities on production, not by trusting the deploy.
+**DEPLOYED.** tsc clean · shadow PASS (371/371 against the live-shaped schema) · gate GATE_STATUS · verified
+by re-timing the built app against a local restore of PRODUCTION data, not by trusting the deploy.
 
-**THE CHANGE.** The demo used to sign every visitor in automatically: `lib/session.ts` fell back to
-`DEV_USER_ID` when no `dev_user` cookie was set, so a visitor arrived as the seeded GROUP ADMIN and
-/login was unreachable in normal use. Now no cookie ⇒ signed out ⇒ /login, which lists the seeded
-identities WITH the access each carries. Log out clears the cookie (it used to keep it deliberately, so
-logging out did not log you out). The header switcher is hidden on the demo — leaving it lets a tester
-swap access mid-session and stop testing the level they signed in with.
-**LOCAL DEV KEEPS THE FALLBACK** (`isDemoDeployment()`, not `demoSwitcherEnabled()`): this file's header
-says the switcher exists so `pnpm dev` and the harness are never forced through WorkOS.
+**THE REPORT** was "why does it take so long to go into the page after selecting the user?" — and the
+answer only existed in the production data. On the seeded dev database every identity was fast, which is
+why nobody had seen it. So production was dumped (structure + rows, minus three FORCE RLS tables that
+`pg_dump` cannot read), restored locally as `ai_hr_prof`, and the bug reproduced on the first request:
 
-⚠️⚠️ **BUG 1 — A SERVER ACTION THAT SETS A COOKIE AND THEN REDIRECTS DOES NOT CARRY IT.** Only ONE
-identity could sign in; the rest bounced back to /login. The cookie was set correctly every time, and
-`curl`-ing `/` on the box with each identity's cookie returned **200 for all five** — so resolution was
-never broken. The navigation the action performed simply arrived without it. **Fixed by a ROUTE HANDLER**:
-plain form POST → 303 + Set-Cookie → GET. One ordinary HTTP round trip.
+| identity | before | after |
+|---|---|---|
+| HR Admin | 0.36s | **0.08s** |
+| employee | 4.4s | **0.31s** |
+| manager | 5.7s | **0.46s** |
 
-⚠️⚠️ **BUG 2, HIDDEN BEHIND BUG 1 — `NextResponse.redirect(new URL('/', req.url))` POINTS AT THE INTERNAL
-ORIGIN.** With bug 1 fixed everyone landed on `/` and got a **BLANK 39-character document**. Behind the
-tunnel `req.url` is `http://127.0.0.1:3000/...`, so the browser was sent somewhere it cannot reach.
-**Anyone using the demo through cloudflared would have hit this.** Fixed with a RELATIVE `Location`, which
-the browser resolves against the url IT used. **Any redirect from a route handler here must do the same.**
+**THE DIAGNOSIS, MEASURED IN THREE STEPS AND NOT INFERRED.** `app/page.tsx` was instrumented (marks around
+every await, one per member of its six-call `Promise.all`) and the whole gap was ONE read: `recentActivity`
+— the eight-row activity card — at **4,369ms for a non-admin against 35ms for the admin**. `EXPLAIN` said
+why:
 
-**THE MEASUREMENT THAT CRACKED IT, and it is the transferable part:** two numbers from the SAME session —
-after the redirect `body.length = 0`, after a plain `GET /` `body.length = 1062, nav = 11`. Neither number
-alone says anything; the pair says "the page is fine, the Location is not". Both bugs looked like "the
-identity is broken" and neither was.
+```
+Limit (actual time=4081.805..4081.806 rows=8)
+  -> Sort (top-N heapsort)
+    -> Seq Scan on domain_event (actual time=0.591..4081.612 rows=858)
+         Filter: (tenant_id = …) AND (app.is_admin() OR (… AND app.can_see_employment(subject_employment_id)))
+         Rows Removed by Filter: 9418
+Execution Time: 4081.830 ms
+```
 
-**VERIFIED ON PRODUCTION, all five:** HR Admin lands with 13 nav entries and reaches /admin/users; the
-manager and three employees land with 11 and are redirected away from it; the switcher is hidden for all.
+**`app.is_admin()` takes no row, so it SHORT-CIRCUITS the OR and an admin's predicate is a constant. Everyone
+else pays `app.can_see_employment()` — a SECURITY DEFINER function with four EXISTS branches, two of them
+recursive (reporting line, department tree) — ONCE PER ROW.** And there was no index on `occurred_at` (the
+five that existed all serve lookups BY key), so "the 8 newest" was a sort, and a sort must see every row:
+10,276 calls to a recursive function to return eight rows.
 
-⚠️ **AN SSH DROP KILLED A SERVER-SIDE `next build` AND LEFT PRODUCTION IN A HALF-STATE** — new source on
-disk, old build serving, service never restarted, and `deploy.sh` returned 255. It looked exactly like a
-code bug and cost a diagnosis. **Deploys now run detached: `setsid nohup ./deploy/deploy.sh > log 2>&1 &`,
-then poll the log.** A dropped connection cannot half-finish one.
+**THE FIX IS TWO HALVES IN TWO FILES AND EITHER ONE ALONE SILENTLY DEGRADES.**
+- `0455` adds `domain_event (tenant_id, occurred_at DESC)`. The planner now walks in time order and stops
+  once eight rows have passed the policy: **4,082ms → 60ms, 169 function calls instead of 10,276.**
+- `core/read.ts` bounds `recentActivity` to a **30-day window**. The index alone does not bound the WORST
+  case — someone who can see almost nothing (a new joiner on day one) still walks to the end, measured at
+  525ms and growing forever at ~133 events/day. The window makes the worst case a function of the ACTIVITY
+  RATE rather than the table's AGE: **525ms → 183ms, and it stays there.**
 
-⚠️ **AGENTS 27 BIT AGAIN, ON MY OWN COMMENT.** The new guard scans `app/login/as/route.ts` as text and
-does not strip comments, so the comment EXPLAINING the forbidden redirect failed the check that forbids
-it. Reworded the comment; the guard stands. This is the third recorded instance.
+It costs nothing on screen: inside 30 days an employee has 159 visible events and a manager 1,014, against
+a card that shows eight. All three identities still render a full eight-row card (newest items 54m–14h old).
 
-⚠️ **`/login` IS OUTSIDE `lib/permissions.ts`,** so the 45-screen browser audit never covered it — as are
-`/invite`, `/reset-password` and `/callback`. The registry is the AUTHORISED surface, not the reachable
-one. Related trap: `/login` is EXEMPT from the SHARE_PASSWORD gate, so it renders fine with the WRONG
-password while every other page 401s — that masked the real behaviour for several attempts.
+⚠️ **A CLAIM IN THE FIRST DRAFT OF THIS ROUND WAS WRONG AND IS CORRECTED IN THE CODE.** The migration, the
+schema comment and the test all said DESC was "the part that matters" — that an ascending index could not
+stop early. **Measured, it is false:** an ascending index gives `Index Scan Backward` at identical cost
+(183ms either way). DESC still ships, because it states the intent and matches every other newest-first
+index here, but `test/recent-activity-bounded.test.ts` asserts the COLUMNS and deliberately does not assert
+the direction — pinning it would have been pinning a preference while calling it a performance property.
 
-**`SHARE_PASSWORD` STAYS.** Choosing an identity is SELECTION, not authentication — there is no password —
-so the basic-auth gate is still the only boundary in front of **83 people, 82 payslips** and their
-statutory data. It comes off when the demo moves to real WorkOS logins, and not before.
+**`test/recent-activity-bounded.test.ts` (4 cases) was verified NON-VACUOUS by reverting each half from a
+`cp` copy:** strip the window → the "EXCLUDES ones older than it" case and the source-shape case both fail;
+make the migration build an ascending index → the direction case failed, which is what exposed the wrong
+claim above.
 
-⚠️ **CHUNKS=5 IS NOW MARGINAL:** chunk 5 hit **94%** peak disk (58-79% when it was validated in r248) on a
-768-file suite. Next red chunk with zero AssertionErrors, go to `CHUNKS=6` before diagnosing anything.
+⚠️ **AND THE INDEX DETONATED A TIME BOMB IN THE HARNESS — see Traps.** The gate came back red on
+`payroll-config.test.ts` with `created` moved from the front of an asserted array to the back. Cause:
+`eventTypesFor` (test/harness.ts) had **no ORDER BY**, and 118 test files call it, most asserting an exact
+ordered array. They were all relying on the order Postgres happened to return rows in — and adding an
+index changed the plan. Fixed at the source with `orderBy(asc(sequence))`, which is exactly the append
+order every caller means. `latestEventPayload` directly below it already sorted by sequence in JS, so the
+guarantee was understood and merely absent here.
+
+**`auditEvents` HAS THE SAME SHAPE AND IS NOT AFFECTED** — `/admin/audit` is `requireAdmin`, so
+`app.is_admin()` short-circuits there. `recentActivity` was the only exposed reader; this was checked, not
+assumed.
+
+**THE PRODUCTION COPY IS GONE.** `ai_hr_prof` dropped, `prod.dump` and every rendered page deleted — it was
+83 real people with IC numbers and salaries, and it existed only to be profiled.
+
+### r245 · r246 · r247 · r248 · r249 · r250 · r251 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
+
+r245 · r246 the moved-aside clusters ate the disk · r247 the last four approved items closed · r248
+ADR-0084 agreement measurement · r249 recurrence mining · r250 the Leave Configuration navigation map ·
+r251 the demo signs in at /login. **The live facts from them are in CURRENT STATE and Traps above, not
+here:** `SHARE_PASSWORD` stays until the demo uses real WorkOS logins (identity selection is not
+authentication, and 83 people / 82 payslips sit behind it); `CHUNKS=5` is the floor and is now marginal;
+sign-in is a ROUTE HANDLER answering 303 + Set-Cookie with a RELATIVE Location, and both halves of that
+shipped broken once.
 
 ### r238 · r239 · r240 · r241 · r242 · r243 · r244 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
@@ -1177,6 +1205,34 @@ made bigger — more chunks is the lever.
 
 **The AssertionError count remains the discriminator.** 59 failed files, 58 with ZERO AssertionErrors, all
 59 green on a rebuilt cluster (519 tests, exit 0). Grep `AssertionError` before believing any red gate.
+
+⚠️ **AND FIVE IS NOW MARGINAL, NOT COMFORTABLE (measured r251, still true r252).** On a 768-file suite
+chunk 5 peaked at **94%** — against the 58-79% that made five chunks look safe when r248 measured it — and
+went red with ZERO AssertionErrors; all 10 files passed on a rebuilt cluster. The floor and the ceiling
+have converged, so treat the next zero-AssertionError red as the disk again and **go to `CHUNKS=6` before
+diagnosing anything**. The suite grows every round; this number needs re-measuring, not re-assuming.
+
+### ⚠️ A TEST THAT ASSERTS AN ORDERED ARRAY FROM A QUERY WITH NO `ORDER BY` IS A TIME BOMB, AND A NEW INDEX DETONATES IT (r252)
+
+r252 added one index for one screen — `domain_event (tenant_id, occurred_at)`, for the dashboard's
+activity feed — and the gate came back red on **`payroll-config.test.ts`**, a file with no connection to
+that screen: `company.payroll-config.created` had moved from the FRONT of an asserted array to the BACK.
+
+The cause was `eventTypesFor` in `test/harness.ts`, which selected without an `ORDER BY`. **118 test files
+call it, most asserting an exact ordered array**, and every one of them was relying on the order Postgres
+happened to return rows in. Postgres promises nothing there: the order is whatever the plan produces, and
+the plan changes when the DATA, the STATISTICS or the available INDEXES change. Adding an index is enough.
+
+**So the failure looks impossible — a green file goes red on a change that cannot reach it — and the
+temptation is to call it flaky or environmental.** It is neither; the `AssertionError` count is 1 and the
+peak-disk figure is healthy, which is exactly how it is told apart from the RAM-disk trap above.
+
+Fixed at the source: `orderBy(asc(sequence))` — a bigserial, so ascending IS append order, which is what
+every caller means. `latestEventPayload` directly beside it already sorted by sequence in JS, so the
+guarantee was understood and merely missing here. **135 more direct `domain_event` selects in test files
+still have no `ORDER BY`;** most read one row or a payload and cannot break, but the next index may find
+one that can. If an unrelated file starts asserting a permuted array, look for the missing `ORDER BY`
+before looking at the code the round changed.
 
 ### ⚠️ `node_modules` VANISHED FROM mainwt MID-SESSION, AND `npx` HID IT (r247)
 

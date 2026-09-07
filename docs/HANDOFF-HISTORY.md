@@ -9090,3 +9090,56 @@ pinned `requestLeaveEmployeeOptions` as built from `selectableSubjects`, which i
 fix changed. Updated per rule 18 (the "a report with an empty set is not selectable" half is still true
 and was kept; only the source moved) with the reasoning written into the case, so the next round does
 not read the new shape as drift and revert it.
+
+### r251 (2026-09-07) — the demo signs in at /login; TWO bugs in that one flow, each masking the other. `main@c39661c0`.
+
+**DEPLOYED.** tsc clean · **gate 768 files / 5 chunks — chunk 5 red with ZERO AssertionErrors, peak-disk
+94%; all 10 files pass on a rebuilt cluster (55 tests, exit 0)** · service restarted 14:51:34 · verified by
+driving all five identities on production, not by trusting the deploy.
+
+**THE CHANGE.** The demo used to sign every visitor in automatically: `lib/session.ts` fell back to
+`DEV_USER_ID` when no `dev_user` cookie was set, so a visitor arrived as the seeded GROUP ADMIN and
+/login was unreachable in normal use. Now no cookie ⇒ signed out ⇒ /login, which lists the seeded
+identities WITH the access each carries. Log out clears the cookie (it used to keep it deliberately, so
+logging out did not log you out). The header switcher is hidden on the demo — leaving it lets a tester
+swap access mid-session and stop testing the level they signed in with.
+**LOCAL DEV KEEPS THE FALLBACK** (`isDemoDeployment()`, not `demoSwitcherEnabled()`): this file's header
+says the switcher exists so `pnpm dev` and the harness are never forced through WorkOS.
+
+⚠️⚠️ **BUG 1 — A SERVER ACTION THAT SETS A COOKIE AND THEN REDIRECTS DOES NOT CARRY IT.** Only ONE
+identity could sign in; the rest bounced back to /login. The cookie was set correctly every time, and
+`curl`-ing `/` on the box with each identity's cookie returned **200 for all five** — so resolution was
+never broken. The navigation the action performed simply arrived without it. **Fixed by a ROUTE HANDLER**:
+plain form POST → 303 + Set-Cookie → GET. One ordinary HTTP round trip.
+
+⚠️⚠️ **BUG 2, HIDDEN BEHIND BUG 1 — `NextResponse.redirect(new URL('/', req.url))` POINTS AT THE INTERNAL
+ORIGIN.** With bug 1 fixed everyone landed on `/` and got a **BLANK 39-character document**. Behind the
+tunnel `req.url` is `http://127.0.0.1:3000/...`, so the browser was sent somewhere it cannot reach.
+**Anyone using the demo through cloudflared would have hit this.** Fixed with a RELATIVE `Location`, which
+the browser resolves against the url IT used. **Any redirect from a route handler here must do the same.**
+
+**THE MEASUREMENT THAT CRACKED IT, and it is the transferable part:** two numbers from the SAME session —
+after the redirect `body.length = 0`, after a plain `GET /` `body.length = 1062, nav = 11`. Neither number
+alone says anything; the pair says "the page is fine, the Location is not". Both bugs looked like "the
+identity is broken" and neither was.
+
+**VERIFIED ON PRODUCTION, all five:** HR Admin lands with 13 nav entries and reaches /admin/users; the
+manager and three employees land with 11 and are redirected away from it; the switcher is hidden for all.
+
+⚠️ **AN SSH DROP KILLED A SERVER-SIDE `next build` AND LEFT PRODUCTION IN A HALF-STATE** — new source on
+disk, old build serving, service never restarted, and `deploy.sh` returned 255. It looked exactly like a
+code bug and cost a diagnosis. **Deploys now run detached: `setsid nohup ./deploy/deploy.sh > log 2>&1 &`,
+then poll the log.** A dropped connection cannot half-finish one.
+
+⚠️ **AGENTS 27 BIT AGAIN, ON MY OWN COMMENT.** The new guard scans `app/login/as/route.ts` as text and
+does not strip comments, so the comment EXPLAINING the forbidden redirect failed the check that forbids
+it. Reworded the comment; the guard stands. This is the third recorded instance.
+
+⚠️ **`/login` IS OUTSIDE `lib/permissions.ts`,** so the 45-screen browser audit never covered it — as are
+`/invite`, `/reset-password` and `/callback`. The registry is the AUTHORISED surface, not the reachable
+one. Related trap: `/login` is EXEMPT from the SHARE_PASSWORD gate, so it renders fine with the WRONG
+password while every other page 401s — that masked the real behaviour for several attempts.
+
+**`SHARE_PASSWORD` STAYS.** Choosing an identity is SELECTION, not authentication — there is no password —
+so the basic-auth gate is still the only boundary in front of **83 people, 82 payslips** and their
+statutory data. It comes off when the demo moves to real WorkOS logins, and not before.

@@ -4162,7 +4162,31 @@ export function groupBreakdown(ctx: SessionContext) {
   );
 }
 
-/** Most recent domain events — the substrate's activity feed. */
+const RECENT_ACTIVITY_WINDOW_DAYS = 30;
+
+/**
+ * Most recent domain events — the substrate's activity feed (the dashboard card, its only caller).
+ *
+ * ⚠️ THE 30-DAY WINDOW IS A PERFORMANCE BOUND, NOT A PRODUCT PREFERENCE, AND REMOVING IT REOPENS AN
+ * 8.5-SECOND DASHBOARD. Read migration 0455 for the measurement; the short version is that this table's
+ * read policy calls `app.can_see_employment()` — a recursive SECURITY DEFINER function — once per row it
+ * examines, and `app.is_admin()` short-circuits it for admins only. So the cost of this query is however
+ * many rows Postgres has to look at, and for everyone who is not an admin that was the entire table.
+ *
+ * 0455's index makes the planner walk newest-first and stop once eight rows have passed the policy, which
+ * is what took the page from 4.4s to 0.30s. But "stop at eight" only stops EARLY for someone who has eight
+ * visible events near the top. Someone who can see almost nothing — a new joiner on their first day —
+ * still walks to the end, and that end moves further away every day the event log grows (measured: 525ms
+ * over 10,276 rows, and this tenant writes ~133 events a day).
+ *
+ * The window is what makes that bounded. `occurred_at > now() - 30 days` becomes an Index Cond, so the
+ * scan cannot go past the window's edge no matter how old the table is: the worst case stops being a
+ * function of the table's AGE and becomes a function of its ACTIVITY RATE (525ms -> 183ms, and it stays).
+ *
+ * It costs nothing on screen. Measured on production data, the visible-event counts inside 30 days were
+ * 159 for an employee and 1,014 for a manager — against a card that shows eight. A tenant quiet enough
+ * for the window to bite is a tenant whose honest answer is "no recent activity" anyway.
+ */
 export function recentActivity(ctx: SessionContext, limit = 8) {
   return withTenant(ctx, (tx) =>
     tx
@@ -4177,6 +4201,10 @@ export function recentActivity(ctx: SessionContext, limit = 8) {
       .from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
       .leftJoin(person, eq(person.id, appUser.personId))
+      // Bounded in SQL rather than from a JS clock: `now()` is the same transaction time the rest of the
+      // statement sees. `make_interval` is IMMUTABLE and `now()` STABLE, so the bound folds to a constant
+      // at plan time and stays an Index Cond on domain_event_recent_idx — which is the whole point of it.
+      .where(sql`${domainEvent.occurredAt} > now() - make_interval(days => ${RECENT_ACTIVITY_WINDOW_DAYS})`)
       .orderBy(desc(domainEvent.occurredAt))
       .limit(limit),
   );

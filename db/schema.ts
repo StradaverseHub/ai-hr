@@ -2750,6 +2750,14 @@ export const domainEvent = pgTable(
     index('domain_event_aggregate_idx').on(t.tenantId, t.aggregateType, t.aggregateId),
     index('domain_event_subject_idx').on(t.tenantId, t.subjectEmploymentId),
     index('domain_event_chain_idx').on(t.tenantId, t.chainSeq),
+    // ⚠️ AN RLS FIX RATHER THAN AN ORDINARY SPEED-UP — see migration 0455 for the measurement. Without
+    // it the dashboard's activity feed took 4.1 SECONDS on production data for everyone who is not an
+    // admin, because "read the 8 newest" had to sort the whole table and therefore had to run this
+    // table's read policy — app.can_see_employment(), a recursive SECURITY DEFINER function — once per
+    // row. Ordering by time lets the planner stop at 8, so the policy runs ~169 times, not 10,276.
+    // `.desc()` is convention, not necessity: an ascending index gives Index Scan Backward at the same
+    // cost. core/read.ts's 30-day window is the other half of the fix and must not be removed alone.
+    index('domain_event_recent_idx').on(t.tenantId, t.occurredAt.desc()),
   ],
 );
 

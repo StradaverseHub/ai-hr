@@ -2,7 +2,7 @@ import { createEntitlementTemplate, createEligibilityRule } from '../core/entitl
 import type { ServiceBand } from '../core/leave-compute';
 import type { OrgCriteria } from '../core/org-criteria';
 /** Test harness: owner-role DB access for setup/seed/reset + migration of the test DB. */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { randomUUID } from 'node:crypto';
 import { createDb, client as appClient, type SessionContext } from '../db/client';
@@ -385,11 +385,29 @@ export async function ledgerBalance(employmentId: string, leaveTypeId: string): 
   return Number(row?.bal ?? 0);
 }
 
+/**
+ * The event types appended for an aggregate, IN APPEND ORDER.
+ *
+ * ⚠️ THE `orderBy` IS LOAD-BEARING AND WAS MISSING UNTIL r252 — 118 test files call this, most of them
+ * asserting an exact ordered array, and every one of them was relying on the order Postgres happened to
+ * return rows in. That is not a guarantee: without ORDER BY the order is whatever the plan produces, and
+ * the plan changes when the data, the statistics or the available INDEXES change.
+ *
+ * It changed. r252 added `domain_event_recent_idx` for an unrelated reason (the dashboard's activity feed
+ * was reading the whole event log), the planner started using it here, and payroll-config.test.ts failed
+ * with `created` moved from the front of the array to the back — a green suite going red on a change that
+ * could not affect it. The next index, or simply enough rows to flip a plan, would have done the same.
+ *
+ * `sequence` is a bigserial, so ascending is exactly "the order appendEvent wrote them", which is what
+ * every caller means by the array it asserts. Note `latestEventPayload` directly below already sorted by
+ * sequence in JS for the same reason — the guarantee was understood there and merely absent here.
+ */
 export async function eventTypesFor(tenantId: string, aggregateId: string): Promise<string[]> {
   const rows = await owner.db
     .select({ t: schema.domainEvent.eventType })
     .from(schema.domainEvent)
-    .where(and(eq(schema.domainEvent.tenantId, tenantId), eq(schema.domainEvent.aggregateId, aggregateId)));
+    .where(and(eq(schema.domainEvent.tenantId, tenantId), eq(schema.domainEvent.aggregateId, aggregateId)))
+    .orderBy(asc(schema.domainEvent.sequence));
   return rows.map((r) => r.t);
 }
 

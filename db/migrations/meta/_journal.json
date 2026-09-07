@@ -2591,6 +2591,13 @@
       "when": 1781862554000,
       "tag": "0454_anomaly_finding_proposal_link",
       "breakpoints": true
+    },
+    {
+      "idx": 455,
+      "version": "7",
+      "when": 1781862555000,
+      "tag": "0455_domain_event_recent_idx",
+      "breakpoints": true
     }
   ]
 }

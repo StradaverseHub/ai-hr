@@ -1,0 +1,69 @@
+-- THE DASHBOARD TOOK 8.5 SECONDS FOR EVERYONE WHO IS NOT AN ADMIN, AND THIS INDEX IS THE FIX.
+--
+-- Reported as "why does it take so long to go into the page after selecting the user?". Measured on a
+-- local restore of the production database (83 people, 10,276 domain events, 77 days of history):
+--
+--     HR Admin   0.36s        employee   4.4s        manager   5.7s
+--
+-- The whole difference was ONE of the dashboard's six parallel reads. recentActivity() — the activity
+-- feed card, eight rows — cost 35ms for the admin and 4,369ms for everybody else.
+--
+-- ═══ WHY THE ADMIN WAS FAST AND NOBODY ELSE WAS ═══
+--
+-- domain_event's read policy is
+--
+--     tenant_id = app.current_tenant_id()
+--     AND (app.is_admin() OR (subject_employment_id IS NOT NULL AND app.can_see_employment(subject_employment_id)))
+--
+-- `app.is_admin()` takes no row and SHORT-CIRCUITS the OR, so an admin's predicate is a constant. For
+-- everyone else Postgres must call `app.can_see_employment(row)` — a SECURITY DEFINER function with four
+-- EXISTS branches, two of them RECURSIVE (app.is_admin_report_of walks the reporting line,
+-- app.heads_department_of walks the department tree) — and it must call it ONCE PER ROW.
+--
+-- There was no index on occurred_at. So "the 8 newest events" was planned as a Seq Scan + top-N sort,
+-- and a sort has to see every row before it can name the first one:
+--
+--     Limit (actual time=4081.805..4081.806 rows=8)
+--       -> Sort (top-N heapsort)
+--         -> Seq Scan on domain_event (actual time=0.591..4081.612 rows=858)
+--              Filter: (tenant_id = …) AND (app.is_admin() OR (… AND app.can_see_employment(…)))
+--              Rows Removed by Filter: 9418
+--     Execution Time: 4081.830 ms
+--
+-- 10,276 calls to a recursive function, to return eight rows. The five existing indexes (aggregate,
+-- chain, movement x2, subject) all serve lookups BY key; not one of them orders by time, which is the
+-- one thing an activity feed asks for.
+--
+-- ═══ WHAT THE INDEX CHANGES ═══
+--
+-- (tenant_id, occurred_at) lets the planner walk in time order inside the tenant and stop as soon as the
+-- policy has admitted eight rows. The sort disappears, and with it the obligation to look at every row.
+-- Re-measured on the same restored production data, same identity:
+--
+--     Limit (actual time=43.234..59.818 rows=8)
+--       -> Index Scan using domain_event_recent_idx (actual time=43.233..59.816 rows=8)
+--            Rows Removed by Filter: 161
+--     Execution Time: 59.843 ms
+--
+-- 4,082ms -> 60ms, because the function ran 169 times instead of 10,276. End to end the page went
+-- employee 4.4s -> 0.30s, manager 5.7s -> 0.44s, and the admin improved too (0.36s -> 0.08s) since the
+-- sort was costing it as well.
+--
+-- ⚠️ THE INDEX ALONE DOES NOT BOUND THE WORST CASE — core/read.ts CARRIES THE OTHER HALF OF THIS FIX.
+-- "Stop at 8" only stops early for someone who HAS eight visible events near the top. A principal who can
+-- see almost nothing — a new joiner on day one — still walks the whole index: measured at 525ms here, and
+-- that grows with the table forever (this tenant writes ~133 events a day, so ~2.5s within a year).
+-- recentActivity() therefore also bounds the scan to a 30-day window, which turns the worst case into a
+-- function of the ACTIVITY RATE instead of the table's age (525ms -> 183ms, and it stays there). Keep the
+-- two together: dropping the window quietly restores an unbounded scan that looks fine on a young tenant.
+--
+-- DESC is CONVENTION AND INTENT, NOT NECESSITY — measured, because the first draft of this file claimed
+-- otherwise. An ascending index serves the same query through `Index Scan Backward` at identical cost
+-- (183ms either way on this data). Descending is written here because it states what the index is for and
+-- matches every other newest-first index in this schema (assistant_exchange_user_asked_idx,
+-- agent_proposal_type_time_idx); the COLUMNS are what carry the fix. test/recent-activity-bounded.ts
+-- therefore asserts the columns and deliberately does not assert the direction.
+--
+-- Plain CREATE INDEX, not CONCURRENTLY: production's domain_event is ~10k rows and builds in well under a
+-- second, and the migration runner wraps statements in a transaction (CONCURRENTLY cannot run in one).
+CREATE INDEX IF NOT EXISTS "domain_event_recent_idx" ON "domain_event" ("tenant_id", "occurred_at" DESC);

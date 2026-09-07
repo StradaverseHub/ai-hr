@@ -72,6 +72,9 @@ export async function releaseBuiltItem(p: {
     '-e', `ssh -p ${PORT} -o BatchMode=yes -o ConnectTimeout=12`,
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
     '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
+    // r252 — vitest writes failure attachments here during a gate. Small, but it is test output, and
+    // `--delete` above means whatever the local tree holds at rsync time is what the server gets.
+    '--exclude', '.vitest-attachments',
     src, `${USER}@${HOST}:${DIR}/`,
   ]);
 
