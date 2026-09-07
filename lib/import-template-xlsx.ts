@@ -10,11 +10,16 @@
  * The fix has to be in the template, and this is it: a real workbook whose identity columns are
  * pre-formatted as TEXT (`z: '@'`, 500 rows deep), so Excel keeps exactly what HR typed.
  *
- * Three sheets, as the reporter specified:
+ * FOUR sheets. Three were the reporter's original specification; the Family sheet joined them in
+ * item 2983802f, because one employee has any number of family members and flat columns could only ever
+ * hold an arbitrary few of them:
  *   1. Employee Import   — human column labels + two worked sample rows.
- *   2. Reference         — the live dropdown values (companies, departments, positions, cost
- *                          centres, and the fixed enumerations) so a typo cannot become a record.
- *   3. Instructions      — how to fill it in, including the leading-zero rule.
+ *   2. Family            — one row per family member, linked to an employee row by Employee ID. Filled
+ *                          in like sheet 1, and read back BY NAME on upload.
+ *   3. Reference         — the live dropdown values (companies, departments, positions, cost centres,
+ *                          states, countries, relationships, and the fixed enumerations) so a typo
+ *                          cannot become a record.
+ *   4. Instructions      — how to fill it in, including the leading-zero rule.
  *
  * NO DomainEvent: downloading a template writes nothing.
  *
@@ -26,7 +31,7 @@
  * promising a clickable dropdown would mean shipping a second xlsx writer. The Reference sheet gives
  * HR the exact accepted spellings, and `analyze()` rejects anything else by name with the reason.
  */
-import { DEPENDENT_IMPORT_COLUMNS, IMPORT_COLUMNS } from './import-schema';
+import { DEPENDENT_IMPORT_COLUMNS } from './import-schema';
 import { employeeTemplate } from './import-template';
 import { PAYROLL_HISTORY_HEADERS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import {
