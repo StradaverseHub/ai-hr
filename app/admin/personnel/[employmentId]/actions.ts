@@ -1199,7 +1199,7 @@ export async function setStatutoryAction(formData: FormData) {
   const pack = packFor('MY');
   try {
     if (!pack) throw new Error('No localization pack for MY');
-    // Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260): this form no
+    // Zakat election RELOCATED to Payroll > Transaction Entry > Zakat (feedback 58755260): this form no
     // longer carries zakat fields, but the setter is a FULL overwrite of the statutory row — so read
     // the current election and pass it through unchanged. Without this, every Personnel statutory
     // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
@@ -1284,7 +1284,7 @@ export async function setStatutoryAction(formData: FormData) {
       // tp3ZakatPaid is never on this form (it comes from payroll-history import) — pass the stored
       // value through so a statutory save doesn't silently null an imported zakat opening balance.
       tp3ZakatPaid: current?.tp3ZakatPaid != null ? Number(current.tp3ZakatPaid) : null,
-      // Zakat election pass-through (owned by Payroll > Transactions > Zakat since 58755260): the
+      // Zakat election pass-through (owned by Payroll > Transaction Entry > Zakat since 58755260): the
       // stored decimal percent goes back in as-is (it is already ÷100), so the election round-trips
       // bit-for-bit through the full-overwrite setter.
       zakatActive: current?.zakatActive ?? false,

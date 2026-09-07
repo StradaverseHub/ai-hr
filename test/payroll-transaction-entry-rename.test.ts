@@ -16,7 +16,9 @@
  *   B. THE TRANSLATIONS SILENTLY REVERT TO ENGLISH. scripts/i18n-check.mjs enforces key parity and
  *      ICU placeholders — it CANNOT tell whether a value is the right words. "Transaction Entry" left
  *      verbatim in ms/ta/th/vi/zh would ship green (HANDOFF trap 19b), so this file asserts each
- *      non-English locale carries its own translation, distinct from the English one.
+ *      non-English locale carries its own translation, distinct from the English one — and, because a
+ *      translation can be genuinely non-English and STILL collide with the command next to it, that no
+ *      locale's name is the opening of the Excel-import title the same screen shows.
  *
  *   C. THE READINESS-CHECK KEY FRAGMENTS GET "RENAMED" TOO. `transactions: 'Transactions'` in
  *      app/payroll/[batchId]/page.tsx (CHECK_CAP) and app/payroll/setup/page.tsx is NOT a label: line
@@ -59,7 +61,7 @@ const LABEL: Record<Locale, string> = {
   ms: 'Kemasukan Transaksi',
   ta: 'பரிவர்த்தனை உள்ளீடு',
   th: 'บันทึกธุรกรรม',
-  vi: 'Nhập giao dịch',
+  vi: 'Nhập liệu giao dịch',
   zh: '交易录入',
 };
 
@@ -107,6 +109,24 @@ describe('8041aa84 — Payroll Transactions renamed to Transaction Entry', () =>
       const v = resolve(dicts[l], 'nav.payrollTransactions') as string;
       expect(v, `${l}.json → nav.payrollTransactions is still English`).not.toBe(LABEL.en);
       expect(v, `${l}.json → nav.payrollTransactions contains the English label`).not.toContain('Transaction Entry');
+    }
+  });
+
+  it('B. no locale reuses the import action\'s own wording for the screen label', () => {
+    // The label and payroll.txnImport.title.* meet on ONE screen: the label is the PageHeader Back
+    // link of /payroll/transactions/{fixed,individual}, and the import title is the dialog those pages
+    // open. When the import title merely extends the label, the two controls read as the same command
+    // and the Back link looks like it will pull in a spreadsheet. vi shipped exactly that collision in
+    // this round's first cut, so the screen's name has to stand apart from the import wording.
+    for (const l of LOCALES) {
+      for (const variant of ['fixed', 'individual'] as const) {
+        const importTitle = resolve(dicts[l], `payroll.txnImport.title.${variant}`);
+        expect(typeof importTitle, `${l}.json → payroll.txnImport.title.${variant} missing`).toBe('string');
+        expect(
+          (importTitle as string).startsWith(LABEL[l]),
+          `${l}.json → payroll.txnImport.title.${variant} starts with the screen label "${LABEL[l]}" — on that screen the Back link and the import action read alike`,
+        ).toBe(false);
+      }
     }
   });
 

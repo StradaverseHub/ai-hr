@@ -3084,7 +3084,8 @@ export default async function EmployeePage({
 
   // ── ZAKAT SUMMARY (Payroll tab, read-only) ──────────────────────────────────
   // Item a6a47698 — the zakat pointer paragraph moved off Bank & Statutory onto the Payroll tab as a
-  // read-only summary of the current election (owned by Payroll → Transactions → Zakat since 58755260).
+  // read-only summary of the current election (owned by Payroll → Transaction Entry → Zakat, the
+  // /payroll/transactions route, since 58755260 — the row was labelled "Transactions" until 8041aa84).
   // Editing stays SOLELY at that route — single source of truth, no second write path here.
   const zakatSummaryCard = admin ? (
     <Card id="section-zakat-summary">
@@ -4490,7 +4491,7 @@ export default async function EmployeePage({
     // change — every card's definition and behaviour is unchanged.
     // Item a6a47698 — TP3 / opening balances and the Zakat summary relocated here from Bank & Statutory so
     // all payroll-related employee information is centralized on this tab. tp3Card has its own partial save
-    // (setTp3Action); zakatSummaryCard is read-only and links to Payroll → Transactions → Zakat to edit.
+    // (setTp3Action); zakatSummaryCard is read-only and links to Payroll → Transaction Entry → Zakat to edit.
     // R46 79eb7151 — payrollPolicyCard moved from LAST to SECOND, directly under compensationCard. It was
     // the layout root cause: Pay Mode and Payment Term both live on the payroll policy, but the card holding
     // it sat below pay components, CP38, encashment, TP3 and zakat, so from the Salary section at the top of

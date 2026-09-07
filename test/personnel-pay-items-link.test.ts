@@ -3,7 +3,7 @@
  *
  * The reporter's point was that Edit, Stop and Remove already existed but were unreachable from the
  * employee's own screen: the table was read-only and the buttons sat one screen away under
- * Payroll → Transactions → Fixed. Five of that item's seven original steps had already shipped under a
+ * Payroll → Transaction Entry → Fixed. Five of that item's seven original steps had already shipped under a
  * DIFFERENT item (2aed39d4, r185) and one of them contradicts what is now live, so this link is the only
  * work revision 2 asks for.
  *

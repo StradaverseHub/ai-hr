@@ -11,7 +11,7 @@ import {
 
 /**
  * Zakat election relocation (feedback 58755260). The durable per-employee zakat election (state,
- * method, %-of-PCB or fixed RM, effective dates) is now edited HERE — Payroll > Transactions > Zakat —
+ * method, %-of-PCB or fixed RM, effective dates) is now edited HERE — Payroll > Transaction Entry > Zakat —
  * in an employee-first flow; the Personnel > Statutory (MY) form no longer carries zakat fields.
  *
  * This action delegates to the EXISTING setStatutoryProfileMY setter, which validates the election

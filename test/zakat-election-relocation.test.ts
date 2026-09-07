@@ -1,6 +1,6 @@
 /**
  * Zakat election relocation (feedback 58755260) — the durable per-employee election is edited from
- * Payroll > Transactions > Zakat (employee-first), and Personnel > Statutory (MY) no longer carries
+ * Payroll > Transaction Entry > Zakat (employee-first), and Personnel > Statutory (MY) no longer carries
  * zakat fields. Guards:
  *  (a) saveZakatElectionAction round-trips the election through the EXISTING setStatutoryProfileMY
  *      setter and the EXISTING statutory.my.updated event carries the zakat fields (no new event type).
@@ -43,7 +43,7 @@ vi.mock('next/navigation', () => ({
 // The personnel actions module imports next-intl/server at top level; stub it (no request context here).
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-describe('Zakat election relocation — Payroll > Transactions > Zakat owns the election', () => {
+describe('Zakat election relocation — Payroll > Transaction Entry > Zakat owns the election', () => {
   let base: Base;
   beforeAll(async () => {
     await migrateTestDb();
