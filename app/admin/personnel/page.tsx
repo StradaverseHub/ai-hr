@@ -26,6 +26,7 @@ import {
 import { decideProfileChangeAction } from './actions';
 import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-actions';
 import { ColumnPicker } from './column-picker';
+import { EmployeeRow } from './employee-row';
 import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
@@ -574,39 +575,33 @@ export default async function PeoplePage({
                   ))}
                 </tr>
               ))}
-              {employees.map((e) => (
-                <tr key={e.employmentId} className="hover:bg-muted/40">
-                  {columns.map((key) => (
-                    <td key={key} className="px-4 py-3">
-                      {key === 'code' ? (
-                        <EmployeeCode code={e.employeeCode} />
-                      ) : key === 'name' ? (
-                        <div className="flex items-center gap-3">
-                          <Avatar name={e.name} />
-                          <div className="min-w-0">
-                            <Link
-                              href={`/admin/personnel/${e.employmentId}?from=personnel`}
-                              className="font-medium text-foreground hover:text-primary"
-                            >
-                              {e.name}
-                            </Link>
-                            <div className="truncate text-xs text-muted-foreground">{e.email}</div>
-                          </div>
-                        </div>
-                      ) : key === 'status' ? (
-                        (() => {
-                          const st = deriveEmploymentStatus(e, today);
-                          return <StatusBadge status={st} label={tStatus(st)} />;
-                        })()
-                      ) : (
-                        <span className="whitespace-nowrap text-muted-foreground">
-                          {textCell(e, key) ?? '—'}
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {/* 420ebab5 — THE WHOLE ROW OPENS THE EMPLOYEE. The row carried the hover tint and nothing
+                  else: only the name was a link, so it looked clickable and was not. The markup moved into
+                  <EmployeeRow>, which is the one place the stretched-link idiom is spelled and explains
+                  itself there — and it had to move to be TESTABLE at all, because this page is an async
+                  server component that reads the database before it renders a single row.
+
+                  Everything the row shows is still resolved HERE and handed over as plain text: the
+                  component owns no translator, no clock and no column catalogue of its own, so this table
+                  and the Excel export keep printing the same projection. */}
+              {employees.map((e) => {
+                const st = deriveEmploymentStatus(e, today);
+                const text: Partial<Record<EmployeeColumnKey, string | null>> = {};
+                for (const key of columns) text[key] = textCell(e, key);
+                return (
+                  <EmployeeRow
+                    key={e.employmentId}
+                    employmentId={e.employmentId}
+                    name={e.name}
+                    email={e.email}
+                    employeeCode={e.employeeCode}
+                    status={st}
+                    statusLabel={tStatus(st)}
+                    columns={columns}
+                    text={text}
+                  />
+                );
+              })}
               {/* The empty state counts the DRAFT rows too — "no employees yet" under a table that is
                   visibly showing two of them would be the screen contradicting itself. */}
               {employees.length === 0 && drafts.length === 0 && (
