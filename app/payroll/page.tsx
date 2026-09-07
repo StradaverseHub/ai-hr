@@ -210,7 +210,10 @@ export default async function PayrollPage({
             /* Feedback 8bf6dfa1: "Import payroll history" moved off this operational header into the
                Payroll > Transactions hub (admin data-maintenance grouping). Route unchanged. */
             <Button asChild data-tour="payroll-create">
-              <Link href="/payroll/process">{t('newRun')}</Link>
+              {/* d75b0c11 — the wizard's Back is `payrollProcessBack(sp.from)` now, so this entry point
+                  carries the selection too: opening a new run from a January view and pressing Back
+                  returns to January, not to the current period. */}
+              <Link href={`/payroll/process?from=${fromQuery}`}>{t('newRun')}</Link>
             </Button>
           }
         />
@@ -304,7 +307,12 @@ export default async function PayrollPage({
                       {/* A DRAFT batch resumes into the wizard at Step 1 (Payroll Period & Company shown
                           read-only for review — feedback 4f00d8f0), then Employee Selection. Processed/closed
                           batches open directly as read-only, unchanged. */}
-                      <Link href={resumeHref(b.id, b.status)} className="font-medium hover:text-primary">
+                      {/* d75b0c11 — THE PERIOD CELL IS A LINK TOO, and it was the one that lost the
+                          selection. 9066bd6c gave `?from=` to View / Reprocess / Remove / Reset but not to
+                          this link or to Continue below, both of which go through `resumeHref` — so the
+                          most natural way into a run (clicking the run itself) was still landing on a
+                          screen whose Back went to a bare /payroll. */}
+                      <Link href={resumeHref(b.id, b.status, fromQuery)} className="font-medium hover:text-primary">
                         {b.payPeriod}
                       </Link>
                     </td>
@@ -357,7 +365,7 @@ export default async function PayrollPage({
                         </Link>
                         {b.status === 'draft' && (
                           <Link
-                            href={resumeHref(b.id, b.status)}
+                            href={resumeHref(b.id, b.status, fromQuery)}
                             className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
                           >
                             {t('rowContinue')}

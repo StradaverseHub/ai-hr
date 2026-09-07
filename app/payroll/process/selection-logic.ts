@@ -11,9 +11,25 @@
  *      not straight on Employee Selection (feedback 4f00d8f0).
  */
 
-/** The row-link / resume-link target for a batch by status. Draft ⇒ wizard resume; else ⇒ direct view. */
-export function resumeHref(batchId: string, status: string): string {
-  return status === 'draft' ? `/payroll/process?resume=${batchId}` : `/payroll/${batchId}`;
+/**
+ * The row-link / resume-link target for a batch by status. Draft ⇒ wizard resume; else ⇒ direct view.
+ *
+ * d75b0c11 — `from` IS THE FILTER SELECTION THE OPERATOR IS LOOKING AT, and it is passed ALREADY
+ * PERCENT-ENCODED (the caller builds it once as `encodeURIComponent(dashboardHref(filters))` and hangs
+ * the same string on every link in the row). Encoding it here instead would double-encode the callers
+ * that already hold the encoded form, and handing it on RAW is the actual trap this parameter exists to
+ * avoid: a decoded `/payroll?year=2026&m=1` pasted into an outer query makes `&m=1` a parameter of the
+ * OUTER url, so Back renders `/payroll?year=2026` with the month silently missing.
+ *
+ * The two shapes differ in whether they already carry a query, which is why this is a function and not a
+ * template literal at each call site: the wizard resume link needs `&from=`, the direct view `?from=`.
+ * Omitted ⇒ byte-identical to the pre-d75b0c11 output, which is what keeps the wizard's own
+ * "existing runs" list (step-period.tsx, no filter state to carry) unchanged.
+ */
+export function resumeHref(batchId: string, status: string, from?: string): string {
+  const base = status === 'draft' ? `/payroll/process?resume=${batchId}` : `/payroll/${batchId}`;
+  if (!from) return base;
+  return `${base}${base.includes('?') ? '&' : '?'}from=${from}`;
 }
 
 /**

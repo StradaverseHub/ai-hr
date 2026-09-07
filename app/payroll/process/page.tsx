@@ -13,6 +13,10 @@ import { Wizard, type ResumeBatch } from './wizard';
 import { PayrollAdjustmentsPanel } from '../adjustments-panel';
 import type { CycleOption } from './steps/step-period';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
+// d75b0c11 — Back returns the Payroll Process list AS IT WAS LEFT. The label + the `payroll.list`
+// lookup live in the shared helper so this page keeps exactly ONE next-intl namespace (see
+// app/payroll/back.ts, and test/i18n-coverage.test.ts Check C, which only resolves single-namespace files).
+import { payrollProcessBack } from '../back';
 
 /** Map a run_type back to the wizard's cycle code. Advance/Mid-Month off-cycle presets are persisted as
  *  run_type='off_cycle' with a remarks label, so a resumed off-cycle draft re-enters as 'off_cycle' (the
@@ -40,11 +44,18 @@ export default async function PayrollProcessPage({
 }: {
   // iPage/iSize page the adjustment panel's input grid on the Review step, using the same prefixed pair
   // the run screen used, so paging it can never be confused with a future listing on this page.
-  searchParams: Promise<{ error?: string; resume?: string; iPage?: string; iSize?: string }>;
+  searchParams: Promise<{ error?: string; resume?: string; from?: string; iPage?: string; iSize?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.process');
-  const { error, resume, iPage, iSize } = await searchParams;
+  const { error, resume, from, iPage, iSize } = await searchParams;
+  // d75b0c11 — the Payroll Process list hands this screen its own filter query as `?from=…` (on the
+  // period cell, on Continue and on the New-run button). Whitelisted BY SHAPE inside the helper, never
+  // echoed raw. Absent or hostile ⇒ `/payroll`, i.e. byte-identical to the pre-d75b0c11 destination.
+  const back = await payrollProcessBack(from);
+  // Carried into the wizard so the TERMINAL screen of the run flow (`/payroll/process/result`) receives
+  // it too — its Back has read `?from=` since 9066bd6c but nothing has ever supplied one.
+  const carryFrom = back.href === '/payroll' ? undefined : back.href;
   const multiCycle = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');
   const thisMonth = new Date().toISOString().slice(0, 7);
 
@@ -108,9 +119,10 @@ export default async function PayrollProcessPage({
     <div className={pageWideCls}>
       {/* e440991b point 1 — this was the one screen in the product with no way back. Every other
           multi-step screen passes `back`; the wizard's own in-step Back button only walks between
-          steps, so from step 1 the only exit was the browser control. Points at /payroll, the run
-          listing this wizard is entered from. */}
-      <PageHeader title={t('title')} description={t('subtitle')} back={{ href: '/payroll', label: t('back') }} />
+          steps, so from step 1 the only exit was the browser control. Points at the run listing this
+          wizard is entered from — d75b0c11 makes that the listing AS IT WAS LEFT rather than a bare
+          /payroll, which is the same destination whenever no filter selection was carried in. */}
+      <PageHeader title={t('title')} description={t('subtitle')} back={back} />
       <ErrorBanner message={error} />
       {resumeError ? (
         <ErrorBanner message={resumeError} />
@@ -133,6 +145,7 @@ export default async function PayrollProcessPage({
           thisMonth={thisMonth}
           multiCycle={multiCycle}
           resumeBatch={resumeBatch}
+          from={carryFrom}
           adjustmentsPanel={
             resumeBatch ? (
               <PayrollAdjustmentsPanel

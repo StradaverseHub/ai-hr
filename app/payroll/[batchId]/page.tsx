@@ -190,6 +190,11 @@ export default async function BatchPage({
       year: String(pYear),
       month: String(pMonth),
       cycle: batch.runType,
+      // d75b0c11 — Transaction View is "View Payroll" for one employee, and its Back
+      // (`payrollProcessBack`) has always pointed at the Payroll Process list. It now points at the list
+      // AS IT WAS LEFT. Omitted when there is nothing to carry, so the address stays as it was.
+      // URLSearchParams does the percent-encoding, which is the whole point of building it here.
+      ...(backHref === '/payroll' ? {} : { from: backHref }),
     }).toString()}`;
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
@@ -290,9 +295,13 @@ export default async function BatchPage({
             {/* ADR-0076 — the exceptions queue. Only from `processed` onward: a draft has no payslips, and
                 the checks read payslips. It is a plain Link because the page is read-only; running the
                 checks is a deliberate action taken ON that page, not a side effect of navigating to it. */}
+            {/* d75b0c11 — the CHAIN, not just the last hop: Anomalies' own Back returns HERE, so without
+                carrying `from` this screen's Back would then collapse to a bare /payroll and the
+                operator's filter selection would be lost one screen deeper than anyone was looking.
+                Same `fromSuffix` Reprocess and Remove already ride. */}
             {batch.status !== 'draft' && (
               <Link
-                href={`/payroll/${batch.id}/anomalies`}
+                href={`/payroll/${batch.id}/anomalies${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
                 {ta('title')}

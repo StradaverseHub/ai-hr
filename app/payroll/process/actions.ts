@@ -17,6 +17,28 @@ import {
   type IntendedRunType,
 } from '@/core/payroll-run-group';
 import { unattachedHoldersOutsideSelection, type UnattachedHolderRow } from '@/core/payroll-view';
+import { payrollListReturnTo } from '@/lib/return-to';
+
+/**
+ * d75b0c11 — THE RESULT SCREEN'S `?from=`, composed here because a redirect is the only way onto it.
+ *
+ * `/payroll/process/result` has resolved `?from=` through `payrollProcessBack` since 9066bd6c, and it has
+ * never once received a value: both run actions redirect there, and neither carried the wizard's own
+ * filter selection. So the terminal screen of the run flow — "Payroll Result" in the reporter's list of
+ * Back destinations — always went back to a bare `/payroll`, i.e. the current period.
+ *
+ * The posted value is UNTRUSTED (it arrives in a FormData that anything can craft), so it is whitelisted
+ * BY SHAPE, exactly as every other consumer of this parameter does; a refused value collapses to
+ * `/payroll` and is then omitted entirely rather than round-tripped as a redundant default.
+ *
+ * ENCODED ON THE WAY OUT, and that is the whole trap this item was raised over: the value is itself a
+ * query string, so appending it raw would make its own `&m=1` a parameter of the RESULT url instead, and
+ * Back would render `/payroll?year=2026` with the month silently gone.
+ */
+function resultFromSuffix(raw: FormDataEntryValue | null): string {
+  const back = payrollListReturnTo(typeof raw === 'string' ? raw : undefined);
+  return back === '/payroll' ? '' : `&from=${encodeURIComponent(back)}`;
+}
 
 /** Step 2 population (plan §2) — fetched by the client once company(ies) + period are chosen. Accepts one
  *  or more company ids so the multi-company run's Step-2 list spans every selected company (3653d14b). */
@@ -276,7 +298,7 @@ export async function resumeRunAction(formData: FormData) {
 
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/process/result?r=${encodeRunGroupResult(result)}`);
+  redirect(`/payroll/process/result?r=${encodeRunGroupResult(result)}${resultFromSuffix(formData.get('from'))}`);
 }
 
 /**
@@ -328,5 +350,5 @@ export async function runMultiCompanyAction(formData: FormData) {
     redirect(`/payroll/process?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/payroll');
-  redirect(`/payroll/process/result?r=${encoded}`);
+  redirect(`/payroll/process/result?r=${encoded}${resultFromSuffix(formData.get('from'))}`);
 }

@@ -152,7 +152,20 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
     expect(PROCESS_ACTIONS).toMatch(/await generatePayslips\(s, \{ batchId \}\)/);
     // … wraps the outcome in the EXISTING run-group shape and ends on the shared result page …
     expect(PROCESS_ACTIONS).toMatch(/summarize\(batch\.payPeriod, startedAt, new Date\(\)\.toISOString\(\), \[outcome\]\)/);
-    expect(PROCESS_ACTIONS).toMatch(/redirect\(`\/payroll\/process\/result\?r=\$\{encodeRunGroupResult\(result\)\}`\)/);
+    /**
+     * UPDATED BY d75b0c11, NOT WEAKENED. The destination is unchanged — `/payroll/process/result` with
+     * the encoded run-group payload, which is the whole claim this line makes. What is appended is the
+     * operator's filter selection, so the result screen's Back (which has read `?from=` since 9066bd6c
+     * and never once received one, because a redirect is the only way onto this page) returns the
+     * Payroll Process list AS IT WAS LEFT rather than to the current period.
+     *
+     * `resultFromSuffix` is EMPTY when nothing was carried, so a run started without a selection still
+     * produces the byte-identical redirect this case used to pin. Pinning the trailing backtick would
+     * forbid the fix, so the assertion moves to the prefix plus the suffix call.
+     */
+    expect(PROCESS_ACTIONS).toMatch(
+      /redirect\(`\/payroll\/process\/result\?r=\$\{encodeRunGroupResult\(result\)\}\$\{resultFromSuffix\(formData\.get\('from'\)\)\}`\)/,
+    );
     // … and the old hand-back is gone.
     expect(PROCESS_ACTIONS).not.toMatch(/redirect\(`\/payroll\/\$\{batchId\}\?from=process`\)/);
   });

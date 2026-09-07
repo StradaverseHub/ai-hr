@@ -83,7 +83,7 @@ describe('Payroll back navigation (source shape)', () => {
     }
   });
 
-  it('B. the Payroll Process list hands its own filter query to the View / Reprocess / Remove row links', () => {
+  it('B. the Payroll Process list hands its own filter query to EVERY link that leaves the row', () => {
     const src = fs.readFileSync(path.join(PAYROLL, 'page.tsx'), 'utf8');
     // The one serialiser of a filter selection — reused, not rebuilt.
     expect(src).toContain('const fromQuery = encodeURIComponent(dashboardHref(filters));');
@@ -91,9 +91,22 @@ describe('Payroll back navigation (source shape)', () => {
       'href={`/payroll/${b.id}?from=${fromQuery}`}',
       'href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}',
       'href={`/payroll/${b.id}/remove?from=${fromQuery}`}',
+      // d75b0c11 — Reset was ALREADY built this way (9f8cd608 made it a link) and was simply missing
+      // from this list, so the one row action nobody was guarding was the destructive one.
+      'href={`/payroll/${b.id}/reset?from=${fromQuery}`}',
+      // …and the three links this case did not cover at all, all added by d75b0c11. `resumeHref` serves
+      // BOTH the period cell (the most natural way into a run — you click the run) and Continue on a
+      // draft; the New-run button opens the wizard, whose Back is now the list as it was left.
+      'href={`/payroll/process?from=${fromQuery}`}',
     ]) {
       expect(src, `row link missing the filter query: ${href}`).toContain(href);
     }
+    // Two call sites, both passing it — a bare `resumeHref(b.id, b.status)` left anywhere on this screen
+    // is a link that silently drops the selection.
+    expect(src.match(/resumeHref\(b\.id, b\.status, fromQuery\)/g) ?? []).toHaveLength(2);
+    expect(src, 'a resumeHref call is still dropping the filter query').not.toMatch(
+      /resumeHref\(b\.id, b\.status\)/,
+    );
   });
 
   it('C. the screens that receive `?from=` resolve it through payrollListReturnTo, never raw', () => {
@@ -101,7 +114,13 @@ describe('Payroll back navigation (source shape)', () => {
       'app/payroll/[batchId]/page.tsx',
       'app/payroll/[batchId]/reprocess/page.tsx',
       'app/payroll/[batchId]/remove/page.tsx',
+      'app/payroll/[batchId]/reset/page.tsx',
+      // d75b0c11 — Anomalies sends Back to the RUN, and hands the run its own `?from=` back so the
+      // chain is unbroken a screen deeper than 9066bd6c reached.
+      'app/payroll/[batchId]/anomalies/page.tsx',
+      // …and the wizard + its terminal Result screen, both through the shared helper below.
       'app/payroll/back.ts',
+      'app/payroll/process/actions.ts',
     ]) {
       const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
       expect(src, `${rel} must whitelist ?from= by shape`).toContain('payrollListReturnTo');
@@ -110,6 +129,37 @@ describe('Payroll back navigation (source shape)', () => {
         "back={{ href: sp.from",
       );
     }
+  });
+
+  it('C2. the screens whose Back is the Payroll Process list build it with payrollProcessBack', () => {
+    /**
+     * d75b0c11 extends the 9066bd6c set by two: the Payroll Process WIZARD (reached from the New-run
+     * button and from Continue on a draft row, and previously pinned to a literal `/payroll`), and the
+     * wizard's terminal Result screen — which has read `?from=` since 9066bd6c and never received one,
+     * because a redirect is the only way onto it and neither run action carried the value.
+     *
+     * The helper is the subject rather than the href because it is also where the SINGLE next-intl
+     * namespace lives (app/payroll/back.ts): a page that inlined `getTranslations('payroll.list')`
+     * alongside its own namespace would silently switch off test/i18n-coverage.test.ts Check C for
+     * itself, which only statically resolves single-namespace files.
+     */
+    for (const rel of [
+      'app/payroll/back-pay/page.tsx',
+      'app/payroll/individual-payslip/page.tsx',
+      'app/payroll/statutory-adjustment/page.tsx',
+      'app/payroll/statutory-forms/page.tsx',
+      'app/payroll/transaction-view/page.tsx',
+      'app/payroll/process/page.tsx',
+      'app/payroll/process/result/page.tsx',
+    ]) {
+      const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      expect(src, `${rel} must build Back through payrollProcessBack`).toContain('payrollProcessBack');
+    }
+    // And the actions that redirect onto the Result screen must actually put a `from` on it — the half
+    // that was missing for the whole of 9066bd6c's life, and that no test of either file could see.
+    const actions = fs.readFileSync(path.join(PAYROLL, 'process', 'actions.ts'), 'utf8');
+    expect(actions.match(/resultFromSuffix\(formData\.get\('from'\)\)/g) ?? [],
+      'both run actions must carry the selection onto /payroll/process/result').toHaveLength(2);
   });
 
   it('D. payrollListReturnTo keeps a real filter query and refuses every off-site shape', () => {

@@ -45,10 +45,28 @@ const code = (rel: string) =>
 const BATCH_PAGE = code('app/payroll/[batchId]/page.tsx');
 
 describe('e440991b point 1 — the Payroll Process wizard has a way back', () => {
+  /**
+   * UPDATED BY d75b0c11, NOT WEAKENED. This case used to require the literal
+   * `back={{ href: '/payroll' … }}`, which was the right assertion while the destination was a constant.
+   * It is no longer one: the wizard is reached FROM the Payroll Process list (the New-run button, and
+   * Continue on a draft row), both of which now hand it the operator's own filter query as `?from=…`, so
+   * Back returns the listing AS IT WAS LEFT. The destination is unchanged whenever nothing is carried —
+   * `payrollProcessBack` resolves an absent or hostile `from` to exactly `/payroll` — which is why the
+   * claim this case exists to make ("the wizard has a way back, and it goes to the run listing") is the
+   * same claim, stated against the shape that can also carry a selection.
+   *
+   * The literal is gone deliberately: pinning it would forbid the fix, and two tests asserting opposite
+   * things about the same line are invisible to a targeted run.
+   * test/payroll-filter-roundtrip-d75b0c11.test.ts case F renders this page and proves both halves —
+   * the selection when one is carried, the bare `/payroll` when none is.
+   */
   it('renders a back link, and it points at the run listing', () => {
     const src = code('app/payroll/process/page.tsx');
-    expect(src, 'PageHeader still has no `back` prop').toMatch(/back=\{\{/);
-    expect(src).toMatch(/back=\{\{\s*href:\s*'\/payroll'/);
+    expect(src, 'PageHeader still has no `back` prop').toMatch(/back=\{back\}/);
+    expect(src, 'the back must be resolved through the shared payroll-list helper').toMatch(
+      /const back = await payrollProcessBack\(from\);/,
+    );
+    expect(src).toContain("import { payrollProcessBack } from '../back';");
   });
 });
 

@@ -79,6 +79,7 @@ export function Wizard({
   thisMonth,
   multiCycle,
   resumeBatch,
+  from,
   adjustmentsPanel,
 }: {
   companies: Company[];
@@ -99,6 +100,12 @@ export function Wizard({
    *  review (feedback 4f00d8f0), then Step 2 (Employee Selection) with the selection pre-seeded from the
    *  persisted scope. */
   resumeBatch?: ResumeBatch;
+  /** d75b0c11 — the Payroll Process list's own filter query, already whitelisted by shape on the server
+   *  (`payrollProcessBack`). Posted with the run so the terminal result screen can send Back to the list
+   *  AS IT WAS LEFT; `/payroll/process/result` has read `?from=` since 9066bd6c and never received one,
+   *  because a redirect is the only way onto it and neither action carried the value. Undefined on a
+   *  wizard opened without a selection, and then nothing is posted at all. */
+  from?: string;
   /** 7076f8af — the draft's adjustment panel, RENDERED ON THE SERVER and handed down as a node.
    *
    *  It is a React node, never a function: a server component reaches a client one only by being passed as
@@ -227,6 +234,8 @@ export function Wizard({
       // actually narrowed the set (filtersTouched) — an untouched resume leaves the existing scope as-is.
       fd.set('batchId', resumeBatch.id);
       fd.set('filtersTouched', String(filtersTouched));
+      // d75b0c11 — carried so the result screen's Back returns the filtered list, not a bare /payroll.
+      if (from) fd.set('from', from);
       if (filtersTouched) {
         for (const id of selected) fd.append('employmentIds', id);
       }
@@ -245,6 +254,7 @@ export function Wizard({
     // not trust any client-submitted runType/remarks, same defensive pattern as employmentIds).
     fd.set('payrollCycleId', cycleId);
     fd.set('paymentDate', paymentDate || defaultDate);
+    if (from) fd.set('from', from);
     if (filtersTouched) {
       for (const id of selected) fd.append('employmentIds', id);
     }

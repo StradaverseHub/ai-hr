@@ -34,7 +34,16 @@ export default defineConfig({
   // Mirror the tsconfig "@/*" → "./*" path alias so tests can import app/ modules that use it
   // (e.g. app/analytics/labels.ts imports '@/core/analytics').
   resolve: {
-    alias: { '@': fileURLToPath(new URL('.', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('.', import.meta.url)),
+      // d75b0c11 — `server-only` is a Next BUILD-TIME poison pill, not a dependency: it is not in
+      // node_modules (Next resolves it internally), so importing any app module that declares it — the
+      // payroll run screen reaches lib/statutory-readiness.ts, which does — fails a vitest run outright
+      // with "Cannot find package 'server-only'". Mapped to an empty module, which is precisely the real
+      // package's SERVER entry. Inert for every pre-existing test: the specifier did not resolve at all
+      // before, so nothing in the suite was importing it successfully.
+      'server-only': fileURLToPath(new URL('./test/stubs/server-only.ts', import.meta.url)),
+    },
   },
   test: {
     projects: [

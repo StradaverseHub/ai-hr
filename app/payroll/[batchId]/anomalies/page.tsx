@@ -11,6 +11,10 @@ import {
   type QueueRow,
 } from '@/core/payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
+// d75b0c11 — this screen's Back goes to the RUN, not to the list, so what it carries is the run screen's
+// own `?from=`. Whitelisted by shape here for the same reason every other consumer does it: a href taken
+// straight out of searchParams is the open-redirect shape (lib/return-to.ts).
+import { payrollListReturnTo } from '@/lib/return-to';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   evaluateAnomaliesAction,
@@ -63,7 +67,7 @@ export default async function AnomaliesPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; toast?: string }>;
+  searchParams: Promise<{ error?: string; toast?: string; from?: string }>;
 }) {
   const { batchId } = await params;
   // Same shape-check as the batch page: an unmatched /payroll/<segment>/anomalies must 404, not 500 on a
@@ -75,6 +79,12 @@ export default async function AnomaliesPage({
   const s = await requireAdmin();
   const t = await getTranslations('anomaly');
   const sp = await searchParams;
+  // d75b0c11 — Back returns the RUN, and hands the run its own `?from=` back so the run screen's Back
+  // still returns the Payroll Process list as it was left. Nothing to carry ⇒ the bare run address,
+  // byte-identical to the pre-d75b0c11 destination.
+  const carried = payrollListReturnTo(sp.from);
+  const backToRun =
+    carried === '/payroll' ? `/payroll/${batchId}` : `/payroll/${batchId}?from=${encodeURIComponent(carried)}`;
 
   const batch = await batchDetail(s, batchId).catch(() => null);
   if (!batch) notFound();
@@ -115,7 +125,7 @@ export default async function AnomaliesPage({
           (already translated) label; what changes is that it now renders in the one place every other
           screen puts it, so "does this screen have Back?" is answerable by looking at the header. */}
       <PageHeader
-        back={{ href: `/payroll/${batchId}`, label: t('backToBatch') }}
+        back={{ href: backToRun, label: t('backToBatch') }}
         title={t('title')}
         description={t('subtitle')}
       />
