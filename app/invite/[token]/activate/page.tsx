@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { acceptInvitation } from '@/core/auth';
 import { InvalidInvitationError } from '@/lib/auth-errors';
-import { demoSwitcherEnabled } from '@/lib/demo-mode';
+import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 
 /**
  * /invite/[token]/activate (ADR-0072) — where an invitation actually becomes a login.
@@ -40,7 +40,11 @@ export default async function InviteActivatePage({
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
         <h1 className="text-2xl font-semibold text-foreground">{t('invite.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('invite.devNote')}</p>
+        {/* Same split as /login: demoSwitcherEnabled() is true for BOTH local dev and the gated demo,
+            and telling a prospect they are on a "development build" is wrong on the demo. */}
+        <p className="text-sm text-muted-foreground">
+          {isDemoDeployment() ? t('invite.demoNote') : t('invite.devNote')}
+        </p>
         <a
           href="/"
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"

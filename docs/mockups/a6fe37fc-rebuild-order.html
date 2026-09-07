@@ -1,0 +1,93 @@
+<meta charset="utf-8">
+<title>Leave Configuration rebuild — the order, and what is kept</title>
+<!--
+  a6fe37fc revision 4. The reporter contested rev 3 by quoting their own Phase 2 ("remove the legacy
+  module"). This draws the ANSWER: yes, in the order their own data-safety rule requires.
+
+  EVERY FIGURE IS MEASURED on production (docs/audits/a6fe37fc-leave-config-audit.md, re-checked
+  2026-09-07): 261 leave_approval_policy, 297 leave_ledger, 45 entitlement_template lineages, 42
+  leave_request, 115 leave_entitlement_recalc_audit, 25 leave_type. No invented record, no employee.
+
+  ⚠️ A MOCKUP IS A PROMISE. This deliberately does NOT draw the new screens — their structure is the
+  thing we have promised to agree WITH the reporter before building, and drawing them here would be
+  committing to a layout nobody has approved. What is drawn is the sequence and the kept/removed split,
+  which is exactly what this revision asks them to approve.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:18px;overflow:hidden}
+  .head{padding:11px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;gap:9px;align-items:center}
+  .body{padding:16px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .ok{background:#d1fae5;color:#065f46}
+  .bad{background:#fee2e2;color:#991b1b}
+  .new{background:#e0e7ff;color:#3730a3}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .steps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .step{border:1px solid var(--border);border-radius:11px;padding:11px;background:#fbfbfe;position:relative}
+  .step .n{width:21px;height:21px;border-radius:999px;background:var(--primary);color:#fff;font-size:11px;
+           font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:7px}
+  .step h3{margin:0 0 4px;font-size:12.5px;font-weight:650}
+  .step p{margin:0;font-size:11px;color:var(--mf);line-height:1.45}
+  .step.last{border-color:#fca5a5;background:#fef2f2}
+  .step.last .n{background:#b91c1c}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .verdict{margin-top:12px;padding:10px 12px;border-radius:9px;font-size:12.5px}
+  .v-ok{background:#ecfdf5;color:#065f46}
+  .v-amber{background:#fffbeb;color:#92400e}
+</style>
+<div class="wrap">
+
+<p class="cap">You asked for the legacy Leave Configuration to be removed and rebuilt. This is how we would
+do it, and what stays untouched while we do.</p>
+
+<div class="card">
+  <div class="head">The order <span class="chip new">nothing is deleted until the replacement is proven</span></div>
+  <div class="body">
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3>Prove the safety net</h3>
+        <p>Build the check first: every approval rule, resolved for every real employee, before and after. Nothing else starts until this runs.</p></div>
+      <div class="step"><div class="n">2</div><h3>Agree the structure</h3>
+        <p>We show you the new module&rsquo;s shape and screens. You approve it before a screen is built. Your own rule.</p></div>
+      <div class="step"><div class="n">3</div><h3>Build alongside</h3>
+        <p>The new screens go in beside the old ones. At every point you have something that works.</p></div>
+      <div class="step"><div class="n">4</div><h3>Move and verify</h3>
+        <p>Your configuration moves across, and the check from step 1 must come back identical.</p></div>
+      <div class="step last"><div class="n">5</div><h3>Remove the old</h3>
+        <p>Only now. Old screens, old routes and the code behind them are deleted for real &mdash; not hidden.</p></div>
+    </div>
+    <div class="verdict v-ok">Step 5 is the one you asked for, and it happens. Steps 1 to 4 are what stop
+      it costing you anything.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">What is removed, and what is kept</div>
+  <div class="body">
+    <table>
+      <tr><th>Item</th><th class="n">How many</th><th>What happens</th></tr>
+      <tr><td>Leave Configuration screens, routes and the code behind them</td><td class="n">9 screens</td><td><span class="chip bad">removed</span></td></tr>
+      <tr><td>Approval rules you built by hand</td><td class="n">261</td><td><span class="chip ok">kept and re-checked one by one</span></td></tr>
+      <tr><td>Leave balance records</td><td class="n">297</td><td><span class="chip ok">kept</span></td></tr>
+      <tr><td>Leave applications</td><td class="n">42</td><td><span class="chip ok">kept</span></td></tr>
+      <tr><td>Entitlement set-ups</td><td class="n">45</td><td><span class="chip ok">kept, moved across</span></td></tr>
+      <tr><td>Recalculation history</td><td class="n">115</td><td><span class="chip ok">kept</span></td></tr>
+      <tr><td>Leave types</td><td class="n">25</td><td><span class="chip ok">kept</span></td></tr>
+    </table>
+    <div class="verdict v-amber">The one thing we are not removing is the code that turns your rules into a
+      number of days. Your 297 balance records were produced by it and reconcile against it, so replacing
+      it would mean recalculating every balance you hold. Your own instruction says a table holding
+      transaction data must not be dropped, and this is the same argument one level up. If you want that
+      replaced too, tell us and we will plan it on its own, with a before-and-after balance check for
+      every employee.</div>
+  </div>
+</div>
+
+</div>

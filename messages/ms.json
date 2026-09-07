@@ -10413,7 +10413,8 @@
     "login": {
       "title": "Log masuk",
       "devNote": "Ini ialah binaan pembangunan — penukar identiti digunakan sebagai ganti log masuk sebenar.",
-      "enterApp": "Masuk ke aplikasi"
+      "enterApp": "Masuk ke aplikasi",
+      "demoNote": "Anda sedang log masuk ke persekitaran demonstrasi. Pilih satu identiti untuk meneroka produk — tiada kata laluan diperlukan, dan data yang anda lihat ialah data contoh."
     },
     "invite": {
       "title": "Anda telah dijemput",
@@ -10422,7 +10423,8 @@
       "expiryNote": "Pautan jemputan ini hanya boleh digunakan sekali dan tamat tempoh selepas beberapa hari.",
       "devNote": "Ini ialah binaan pembangunan — jemputan diaktifkan melalui perkhidmatan log masuk sebenar, yang tidak dikonfigurasikan di sini.",
       "invalidTitle": "Jemputan ini tidak lagi sah",
-      "invalidBody": "Ia mungkin telah digunakan, atau telah tamat tempoh. Minta pentadbir anda menghantar jemputan baharu."
+      "invalidBody": "Ia mungkin telah digunakan, atau telah tamat tempoh. Minta pentadbir anda menghantar jemputan baharu.",
+      "demoNote": "Ini persekitaran demonstrasi, jadi jemputan tidak diaktifkan melalui perkhidmatan log masuk sebenar. Teruskan ke dalam produk untuk menerokainya dengan data contoh."
     },
     "reset": {
       "title": "Set semula kata laluan anda",

@@ -1,0 +1,167 @@
+<meta charset="utf-8">
+<title>Pay Item — clearer wording and the ORP control</title>
+<!--
+  711adcd2 revision 1. THE ONLY CUSTOMER DATA HERE IS MEASURED, on production 2026-09-07:
+  pay_component has 29 rows — kind allowance 24 / deduction 5, and display_category NULL (= Automatic)
+  on SIX of them. Those two figures are the argument for keeping Automatic, so they are stated rather
+  than illustrated. Every RM amount on the page is the reporter's OWN example from the request
+  (2,500 / 500 / 200), labelled as theirs — no invented figure, no production employee (r170).
+
+  DRAWN ONLY WHAT WILL BE BUILT. The ORP section, the renamed options and the full-width four-card
+  layout are the deliverable. The deduction row carries the warning the plan promises, because a mockup
+  that showed the happy path only would be promising a control with no guard on it.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1120px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:18px;overflow:hidden}
+  .head{padding:11px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;gap:9px;align-items:center}
+  .body{padding:16px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .bad{background:#fee2e2;color:#991b1b}
+  .ok{background:#d1fae5;color:#065f46}
+  .new{background:#e0e7ff;color:#3730a3}
+  .amber{background:#fef3c7;color:#92400e}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .pane{border:1px solid var(--border);border-radius:11px;background:#fff;overflow:hidden}
+  .ph{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .ph h1{margin:0;font-size:17px;font-weight:650}
+  .back{font-size:12px;color:var(--primary)}
+  .sec{border-top:1px solid var(--border);padding:13px 16px}
+  .sec:first-of-type{border-top:0}
+  .sec h2{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--mf)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 20px}
+  .f{display:flex;flex-direction:column;gap:3px}
+  .lbl{font-size:11px;color:var(--mf)}
+  .inp{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12.5px;background:#fbfbfe}
+  .sel{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12.5px;background:#fff;
+       display:flex;justify-content:space-between;align-items:center}
+  .tick{display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border:1px solid var(--border);
+        border-radius:8px;margin-bottom:6px;background:#fbfbfe;font-size:12.5px}
+  .box{width:13px;height:13px;border:1.5px solid var(--mf);border-radius:3px;margin-top:2px;flex:none}
+  .box.on{background:var(--primary);border-color:var(--primary)}
+  .hint{font-size:11px;color:var(--mf);margin-top:2px}
+  .foot{border-top:1px solid var(--border);padding:11px 16px;display:flex;justify-content:flex-end;gap:8px}
+  .btn{padding:6px 14px;border-radius:8px;font-size:12.5px;border:1px solid var(--border);background:#fff}
+  .btn.p{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12.5px}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);font-weight:600}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .verdict{margin-top:11px;padding:10px 12px;border-radius:9px;font-size:12.5px}
+  .v-bad{background:#fef2f2;color:#7f1d1d}
+  .v-ok{background:#ecfdf5;color:#065f46}
+  .v-amber{background:#fffbeb;color:#92400e}
+</style>
+<div class="wrap">
+
+<p class="cap">Payroll &rarr; Settings &rarr; Pay Items &rarr; edit one item. The wording changes, the new
+Ordinary Rate of Pay section, and the full-width layout.</p>
+
+<div class="card">
+  <div class="head">Today <span class="chip bad">wording, and no way to control the overtime base</span></div>
+  <div class="body">
+    <div class="pane" style="max-width:560px">
+      <div class="ph"><h1>Edit pay item</h1></div>
+      <div class="sec">
+        <div class="grid">
+          <div class="f"><span class="lbl">Category</span><div class="sel">Allowance <span>&#9662;</span></div></div>
+          <div class="f"><span class="lbl">Payroll Category</span><div class="sel">Automatic (from Statutory Settings) <span>&#9662;</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict v-bad">Two problems. <b>&ldquo;Allowance&rdquo;</b> is used for every kind of
+      payment, including ones that are not allowances. And there is <b>no setting anywhere</b> for which
+      pay items feed the overtime rate &mdash; today that is decided by the item&rsquo;s type, so every
+      fixed, non-statutory Allowance counts and nothing else does.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">Proposed <span class="chip new">full width, clearer wording, ORP control</span></div>
+  <div class="body">
+    <div class="pane">
+      <div class="ph"><span class="back">&larr; Back</span><h1>Edit pay item</h1></div>
+
+      <div class="sec">
+        <h2>General information</h2>
+        <div class="grid">
+          <div class="f"><span class="lbl">Pay item code</span><div class="inp">TRANSPORT</div></div>
+          <div class="f"><span class="lbl">Pay item name</span><div class="inp">Transport Allowance</div></div>
+          <div class="f" style="grid-column:1/-1"><span class="lbl">Description</span><div class="inp">Monthly transport support</div></div>
+          <div class="f"><span class="lbl">Category <span class="chip new">renamed</span></span>
+            <div class="sel">Earning <span>&#9662;</span></div>
+            <div class="hint">Was &ldquo;Allowance&rdquo;. Also renamed: Non-Payable (BIK) &rarr; Non-Payable.</div></div>
+          <div class="f"><span class="lbl">Payroll category <span class="chip new">renamed</span></span>
+            <div class="sel">Earning <span>&#9662;</span></div>
+            <div class="hint">Was &ldquo;Allowance&rdquo;. Benefit in Kind (BIK) is a new option.</div></div>
+        </div>
+      </div>
+
+      <div class="sec" style="background:#fbfbfe">
+        <h2>Ordinary Rate of Pay (ORP) calculation <span class="chip new">new</span></h2>
+        <div class="tick"><span class="box on"></span>
+          <span><b>Add to Overtime ORP calculation</b><div class="hint">This item joins the base the overtime formula divides by 26 and 8.</div></span></div>
+        <div class="tick"><span class="box"></span>
+          <span><b>Add to Unpaid Leave ORP calculation</b><div class="hint">This item joins the base used when a day of unpaid leave is deducted.</div></span></div>
+        <div class="verdict v-ok">Each box works on its own &mdash; an item can be in both, one or neither.
+          On the day this ships every item is set to match what it does today, so no overtime and no unpaid
+          leave changes until you change it.</div>
+      </div>
+
+      <div class="sec">
+        <h2>Calculation</h2>
+        <div class="grid">
+          <div class="f"><span class="lbl">Input type</span><div class="sel">Fixed amount <span>&#9662;</span></div></div>
+          <div class="f"><span class="lbl">Amount</span><div class="inp">500.00</div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h2>Statutory configuration</h2>
+        <div class="grid">
+          <div class="f"><span class="lbl">EPF</span><div class="sel">Yes <span>&#9662;</span></div></div>
+          <div class="f"><span class="lbl">SOCSO</span><div class="sel">Yes <span>&#9662;</span></div></div>
+          <div class="f"><span class="lbl">EIS</span><div class="sel">Yes <span>&#9662;</span></div></div>
+          <div class="f"><span class="lbl">PCB / Tax</span><div class="sel">Yes <span>&#9662;</span></div></div>
+        </div>
+      </div>
+
+      <div class="foot"><span class="btn">Cancel</span><span class="btn p">Save</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">Your example, and the one thing we want to check with you</div>
+  <div class="body">
+    <table>
+      <tr><th>Pay item</th><th class="n">Amount</th><th>Overtime ORP</th><th>Note</th></tr>
+      <tr><td>Basic Salary</td><td class="n">2,500.00</td><td><span class="chip ok">included</span></td><td>Always part of the base</td></tr>
+      <tr><td>Allowance</td><td class="n">500.00</td><td><span class="chip ok">included</span></td><td>Counts today too</td></tr>
+      <tr><td>Deduction</td><td class="n">200.00</td><td><span class="chip amber">only if you tick it</span></td><td>Not ticked by default</td></tr>
+    </table>
+    <div class="verdict v-amber">Your example takes 200 off the overtime base to reach 2,800. We can do
+      that &mdash; the tick box allows it &mdash; but Malaysian employment law works overtime out from the
+      ordinary rate of pay based on wages, and taking deductions off that base lowers overtime pay. So no
+      deduction is ticked by default, and the screen warns you when you tick one for overtime. We would
+      rather it asked than did it quietly.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head">What is not changing</div>
+  <div class="body">
+    <table>
+      <tr><td>Your 29 pay items and how they are treated today</td><td class="n"><span class="chip ok">untouched</span></td></tr>
+      <tr><td>EPF, SOCSO, EIS, PCB, the EA form, CP39, KWSP and PERKESO</td><td class="n"><span class="chip ok">untouched</span></td></tr>
+      <tr><td>Your overtime formula</td><td class="n"><span class="chip ok">keeps working</span></td></tr>
+      <tr><td>&ldquo;Automatic&rdquo; on the Payroll Category &mdash; 6 of your 29 items use it</td><td class="n"><span class="chip amber">renamed, not removed</span></td></tr>
+    </table>
+  </div>
+</div>
+
+</div>

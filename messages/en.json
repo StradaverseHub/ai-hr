@@ -10413,7 +10413,8 @@
     "login": {
       "title": "Sign in",
       "devNote": "This is a development build — the identity switcher is used instead of a real login.",
-      "enterApp": "Enter the app"
+      "enterApp": "Enter the app",
+      "demoNote": "You are signing in to a demonstration environment. Choose an identity to explore the product with — no password is needed, and the data you see is sample data."
     },
     "invite": {
       "title": "You've been invited",
@@ -10422,7 +10423,8 @@
       "expiryNote": "This invitation link can only be used once and expires after a few days.",
       "devNote": "This is a development build — invitations are activated against the real sign-in service, which is not configured here.",
       "invalidTitle": "This invitation is no longer valid",
-      "invalidBody": "It may have already been used, or it has expired. Ask your administrator to send you a new one."
+      "invalidBody": "It may have already been used, or it has expired. Ask your administrator to send you a new one.",
+      "demoNote": "This is a demonstration environment, so invitations are not activated against the live sign-in service. Continue into the product to explore it with sample data."
     },
     "reset": {
       "title": "Reset your password",
