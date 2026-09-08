@@ -1,0 +1,231 @@
+<meta charset="utf-8">
+<title>Leave types — tab 3, what they are entitled to</title>
+<!--
+  a6fe37fc revision 4, Phase 3 design deliverable. SKETCH.
+
+  EVERY CONTROL EXISTS TODAY. The only change is that they are on ONE tab instead of split between
+  step 1 (General setting: earning method, rounding, carry forward) and step 3 (Entitlement: the tables),
+  with the balance card and its three sub-forms arriving from step 2's application-rules grid.
+
+  THE HEALTH STRIP IS NOT NEW EITHER: lib/leave-config-health.ts already derives every finding drawn
+  here (earning method set · tables in force · rules in force · tables reached by no rule) and already
+  renders as a traffic light. This tab shows the one leave type's answer; the card above the list shows
+  all 25.
+
+  CUSTOMER DATA, from the Phase 1 audit only: Annual Leave carries 16 entitlement tables in force and 2
+  eligibility rules; 4 eligibility rules exist across the whole tenant; 45 template lineages exist and
+  all 45 are in force. NO TABLE NAMES AND NO DAY FIGURES ARE DRAWN — the audit recorded how many there
+  are, not what they are called or what they grant, and a mockup must not invent them. The name column
+  is therefore drawn as a placeholder and said to be one, on the image.
+
+  ⚠️ "AT LEAST 14 REACH NOBODY" IS ARITHMETIC ON THOSE TWO AUDIT FIGURES, NOT A THIRD MEASUREMENT, AND
+  THE IMAGE SAYS SO. An eligibility rule points at exactly ONE table
+  (entitlement_eligibility_rule.template_lineage_id, db/schema.ts:1831), so two rules reach at most two
+  of the sixteen: at least fourteen are reached by none. It is 16 − 2 with a reason. The true figure is
+  14 only if the two rules point at different tables; if they point at the same one it is 15, and nobody
+  has counted which. An earlier draft of this image printed a bare "14 tables no rule reaches" beside
+  two figures that WERE measured, which reads as a third measurement — it is not. The exact list is
+  already computable and already named on the screen (lib/leave-config-health.ts returns
+  tablesWithoutRule: string[], by name, never as "some"), so the build round that renders this strip
+  prints the customer's real list and this estimate stops being needed. The amber squares are drawn to
+  the arithmetic, not to a count, and the strip is labelled "at least".
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .pane{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;margin-bottom:20px}
+  .split{display:grid;grid-template-columns:214px 1fr}
+  .rail{border-right:1px solid var(--border);background:#fbfbfe;padding:9px 0}
+  .rail .rh{display:flex;justify-content:space-between;align-items:center;padding:2px 12px 8px;gap:6px}
+  .rail .rh span{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700}
+  .rail .add{font-size:10.5px;color:var(--primary);font-weight:650}
+  .rail .i{padding:5px 12px;font-size:12px;color:#3b3b46;display:flex;align-items:center;gap:7px}
+  .rail .i.on{background:#eef2ff;color:var(--primary);font-weight:650;box-shadow:inset 2px 0 0 var(--primary)}
+  .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .dot.r{background:#dc2626}.dot.a{background:#d97706}.dot.g{background:#16a34a}
+  .rail .more{padding:7px 12px 2px;font-size:10.5px;color:var(--mf)}
+  .tabs{display:flex;border-bottom:1px solid var(--border);padding:0 14px;flex-wrap:wrap}
+  .tab{padding:9px 12px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent;white-space:nowrap}
+  .tab b{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;
+         background:#eceef5;color:#4b4b57;font-size:9.5px;margin-right:5px;vertical-align:1px}
+  .tab.on{color:var(--primary);font-weight:650;border-bottom-color:var(--primary)}
+  .tab.on b{background:var(--primary);color:#fff}
+  .inner{padding:15px 16px}
+  h2.s{margin:0 0 3px;font-size:12.5px;font-weight:700}
+  p.h{margin:0 0 10px;font-size:11px;color:var(--mf)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 16px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 14px}
+  .f label{display:block;font-size:10.5px;font-weight:600;color:#4b4b57;margin-bottom:3px}
+  .in{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12px;background:#fff;color:#22222c}
+  .in.sel::after{content:"⌄";float:right;color:var(--mf)}
+  .in.ro{background:#f4f5fa;color:#63636f}
+  .box{border:1px solid var(--border);border-radius:9px;padding:11px 12px;background:#fbfbfe;margin-top:12px}
+  .box h3{margin:0 0 7px;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+  .grey{background:#eceef5;color:#4b4b57}
+  .amber{background:#fef3c7;color:#92400e}
+  .ok{background:#d1fae5;color:#065f46}
+  .red{background:#fee2e2;color:#991b1b}
+  .blue{background:#e0e7ff;color:#3730a3}
+  .note{font-size:10.5px;color:var(--mf);margin:7px 0 0}
+  .cb{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;margin-bottom:6px}
+  .cb i{width:13px;height:13px;border:1px solid #b9bad0;border-radius:3px;flex:0 0 auto;margin-top:2px;background:#fff}
+  .cb i.on{background:var(--primary);border-color:var(--primary)}
+  .save{display:inline-block;margin-top:10px;padding:6px 13px;border-radius:7px;background:var(--primary);color:#fff;
+        font-size:11.5px;font-weight:650}
+  .save.o{background:#fff;color:#3b3b46;border:1px solid var(--border)}
+  .health{border:1px solid #fcd9a4;background:#fffbf2;border-radius:10px;padding:11px 13px}
+  .health h3{margin:0 0 6px;font-size:12px;font-weight:700;color:#92400e;display:flex;align-items:center;gap:7px}
+  .hrow{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px}
+  .hitem{background:#fff;border:1px solid #f2e2c6;border-radius:7px;padding:4px 9px}
+  .hitem b{font-weight:700}
+  .strip{display:flex;flex-wrap:wrap;gap:3px;margin-top:8px}
+  .sq{width:15px;height:15px;border-radius:3px;border:1px solid}
+  .sq.g{background:#d1fae5;border-color:#6ee7b7}
+  .sq.a{background:#fde68a;border-color:#f0c14b}
+  table.t{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+  table.t th{text-align:left;font-weight:700;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--mf);
+             font-size:9.5px;text-transform:uppercase;letter-spacing:.05em}
+  table.t td{padding:6px 8px;border-bottom:1px solid #f1f2f8}
+  table.t tr:last-child td{border-bottom:none}
+  .bar{display:inline-block;height:9px;border-radius:3px;background:#dfe1ee}
+  .lnk{color:var(--primary);font-size:11.5px}
+</style>
+<div class="wrap">
+
+<p class="cap"><b>Leave types &mdash; tab 3, what they are entitled to.</b> A sketch for approval; wording,
+spacing and colours will differ. Everything drawn exists today &mdash; the earning method, rounding and
+carry forward are moved here from <i>General setting</i>, the balance card and its three sub-forms from
+<i>Leave application rules</i>, and the tables and rules are already on this step. The engine that turns
+these into a number of days is unchanged.</p>
+
+<div class="pane">
+  <div class="split">
+    <div class="rail">
+      <div class="rh"><span>Leave type</span><span class="add">+ Add</span></div>
+      <div class="i on"><i class="dot a"></i>Annual Leave</div>
+      <div class="i"><i class="dot a"></i>Sick Leave</div>
+      <div class="i"><i class="dot r"></i>Hospitalisation Leave</div>
+      <div class="i"><i class="dot r"></i>Maternity Leave</div>
+      <div class="i"><i class="dot r"></i>Paternity Leave</div>
+      <div class="i"><i class="dot r"></i>Compassionate Leave</div>
+      <div class="i"><i class="dot r"></i>Marriage Leave</div>
+      <div class="i"><i class="dot r"></i>Study Leave</div>
+      <div class="i"><i class="dot r"></i>Exam Leave</div>
+      <div class="more">&hellip; 16 more</div>
+    </div>
+    <div>
+      <div class="tabs">
+        <div class="tab"><b>1</b>The leave type</div>
+        <div class="tab"><b>2</b>Who is eligible</div>
+        <div class="tab on"><b>3</b>What they are entitled to</div>
+        <div class="tab"><b>4</b>How it is applied for</div>
+        <div class="tab"><b>5</b>Who approves it</div>
+      </div>
+      <div class="inner">
+
+        <div class="health">
+          <h3>Annual Leave grants days to some people, not all <span class="chip amber">needs attention</span></h3>
+          <div class="hrow">
+            <span class="hitem">Earning method <b>set</b></span>
+            <span class="hitem"><b>16</b> entitlement tables in force</span>
+            <span class="hitem"><b>2</b> eligibility rules in force</span>
+            <span class="hitem">at least <b>14</b> tables no rule reaches <span class="chip grey">16 &minus; 2, not counted</span></span>
+          </div>
+          <div class="strip">
+            <i class="sq g"></i><i class="sq g"></i>
+            <i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i>
+            <i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i>
+            <i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i>
+          </div>
+          <p class="note">A table says <i>how many days</i>. A rule says <i>who gets that table</i>. Each rule
+            points at one table, so your two rules can reach at most two of your sixteen &mdash; <b>at least
+            fourteen have no rule pointing at them and nobody can receive them</b>. That figure is your sixteen
+            minus your two, not a separate count: the screen itself will name the exact tables when it is built,
+            and it may turn out to be fifteen if both rules point at the same table. This is your configuration,
+            not a fault in the system &mdash; and it is the same on the new screens as on the old ones, because
+            it is your data.</p>
+        </div>
+
+        <h2 class="s" style="margin-top:14px">How days are earned</h2>
+        <p class="h">Moved here from <i>General setting</i>. This is the first half of &ldquo;how many days&rdquo;;
+          the tables below are the second.</p>
+        <div class="grid3">
+          <div class="f"><label>Earning method</label><div class="in sel">Granted in full at the start of the year</div></div>
+          <div class="f"><label>Accrual day</label><div class="in ro">&mdash; not used by this method</div></div>
+          <div class="f"><label>Rounding</label><div class="in sel">Round to the nearest half day</div></div>
+        </div>
+
+        <div class="box">
+          <h3>Carry forward <span class="chip grey">moved here from General setting</span></h3>
+          <div class="cb"><i class="on"></i><span>Unused days may be carried into the next leave year</span></div>
+          <div class="grid4">
+            <div class="f"><label>Maximum days</label><div class="in">&mdash;</div></div>
+            <div class="f"><label>Or percentage</label><div class="in">&mdash;</div></div>
+            <div class="f"><label>Carried days expire</label><div class="in sel">After a number of months</div></div>
+            <div class="f"><label>Months</label><div class="in">&mdash;</div></div>
+          </div>
+          <div class="cb" style="margin-top:9px"><i></i><span>Include days still being earned when carrying forward</span></div>
+          <div class="save o">Save</div>
+        </div>
+
+        <div class="box">
+          <h3>Entitlement tables <span class="chip amber">16 in force</span>
+              <span class="lnk" style="margin-left:auto">See all 25 leave types &rarr;</span></h3>
+          <table class="t">
+            <tr><th style="width:38%">Table</th><th>In force since</th><th>Reached by</th><th></th></tr>
+            <tr><td><i class="bar" style="width:120px"></i></td><td>&mdash;</td><td>1 eligibility rule</td><td><span class="chip ok">in use</span></td></tr>
+            <tr><td><i class="bar" style="width:96px"></i></td><td>&mdash;</td><td>1 eligibility rule</td><td><span class="chip ok">in use</span></td></tr>
+            <tr><td><i class="bar" style="width:134px"></i></td><td>&mdash;</td><td>no rule</td><td><span class="chip amber">reaches nobody</span></td></tr>
+            <tr><td><i class="bar" style="width:108px"></i></td><td>&mdash;</td><td>no rule</td><td><span class="chip amber">reaches nobody</span></td></tr>
+            <tr><td colspan="4" style="color:#63636f">&hellip; 12 more &nbsp; <span class="lnk">Show all 16</span></td></tr>
+          </table>
+          <p class="note"><b>Your table names are not drawn here, and neither is the split.</b> The audit recorded
+            how many tables you have, not what they are called or which two your rules point at &mdash; the grey
+            bars are where your own names will appear, and the two &ldquo;in use&rdquo; rows show the <i>shape</i>
+            of the answer, not which of your tables they are. The built screen names them, because the system can
+            already work that out.</p>
+          <div class="save o">+ Add a table</div>
+        </div>
+
+        <div class="box">
+          <h3>Who gets which table <span class="chip amber">2 rules for this type &middot; 4 in the whole company</span></h3>
+          <table class="t">
+            <tr><th style="width:38%">Rule</th><th>Points at</th><th>In force</th><th>Reaches</th></tr>
+            <tr><td><i class="bar" style="width:104px"></i></td><td><i class="bar" style="width:80px"></i></td><td>&mdash;</td><td>count employees</td></tr>
+            <tr><td><i class="bar" style="width:88px"></i></td><td><i class="bar" style="width:96px"></i></td><td>&mdash;</td><td>count employees</td></tr>
+          </table>
+          <p class="note">Same rules, same records and the same one matcher as today &mdash; this is the existing
+            Entitlement tables screen, filtered to Annual Leave. Nothing is duplicated.</p>
+          <div class="save o">+ Add a rule</div>
+        </div>
+
+        <div class="box">
+          <h3>Balance rules <span class="chip blue">moved here from Leave application rules</span></h3>
+          <div class="grid2">
+            <div class="f"><label>Balance is taken from</label><div class="in sel">Its own balance</div></div>
+            <div class="f"><label>Maximum an employee may go into deficit</label><div class="in ro">&mdash; not allowed</div></div>
+          </div>
+          <div class="cb" style="margin-top:9px"><i></i><span>Allow an application that takes the balance negative</span></div>
+          <div class="cb"><i></i><span>Allow the uncovered part of an application to become unpaid leave</span></div>
+          <div class="save o">Save</div>
+        </div>
+
+        <div class="box">
+          <h3>Run earned accrual <span class="chip grey">unchanged</span></h3>
+          <p class="note" style="margin-top:0">Post earned days for a chosen year and population. This is the
+            existing job, in the tab about entitlement rather than four steps away from it.</p>
+          <div class="save o">Run earned accrual&hellip;</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>

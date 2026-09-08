@@ -1,0 +1,241 @@
+<meta charset="utf-8">
+<title>Leave types — tabs 1 and 2</title>
+<!--
+  a6fe37fc revision 4, Phase 3 design deliverable. SKETCH.
+
+  EVERY CONTROL DRAWN HERE ALREADY EXISTS AND ALREADY SAVES. Nothing is a new capability:
+   · Tab 1 fields are leave_type.code / name / description / paid / leave_unit / year_cycle_override /
+     visible_to_employee / employee_can_apply / ess_placement / colour / icon / ess_view_config /
+     send_to_payroll — each written today by its own tri-state sub-form (app/admin/actions.ts).
+   · The "Statutory" row is leave_type.role, read-only on purpose (it is what refuses employee_can_apply
+     = false on a lawful entitlement). It has no editor today and must not gain one.
+   · Tab 2 fields are the eligibility JSONB (gender / marital / min service / probation) plus the eight
+     organisation axes of core/leave-org-criteria.ts — one ChipMultiSelect each, exactly as today.
+   · The undated-axes caveat is the code's own UNDATED_ELIGIBILITY_AXES, already surfaced.
+
+  THE CUSTOMER'S OWN DATA, from the Phase 1 audit and nothing else: 25 leave types; Annual Leave 16
+  entitlement tables in force against 2 eligibility rules; Sick Leave 5 against 1; seven types with
+  2-3 tables and zero rules; 4 eligibility rules in the whole tenant. No day figures are drawn, because
+  the audit records counts and not figures.
+
+  ⚠️ "AT LEAST 14 OF THE 16" IS ARITHMETIC ON TWO OF THOSE AUDIT FIGURES, NOT A THIRD MEASUREMENT.
+  An eligibility rule points at exactly ONE table (entitlement_eligibility_rule.template_lineage_id,
+  db/schema.ts:1831), so two rules reach at most two of the sixteen: at least fourteen are reached by
+  none. It is 16 − 2 with a reason, and the row on the image says so rather than printing a bare count
+  beside two measured ones. The exact list IS computable — lib/leave-config-health.ts returns
+  tablesWithoutRule: string[] by name — and the built screen prints it.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .pane{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;margin-bottom:20px}
+  .ph{padding:13px 16px;border-bottom:1px solid var(--border)}
+  .ph h1{margin:0;font-size:19px;font-weight:650}
+  .ph p{margin:3px 0 0;font-size:11.5px;color:var(--mf)}
+  .map{padding:9px 16px;border-bottom:1px solid var(--border);background:#fbfbfe;
+       display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px}
+  .map .g{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700;margin-left:3px}
+  .map .g:first-child{margin-left:0}
+  .map .n{padding:3px 9px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;color:#3b3b46;background:#fff}
+  .map .n.on{border-color:var(--primary);color:var(--primary);font-weight:650;background:#eef2ff}
+  .map .sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+  .split{display:grid;grid-template-columns:214px 1fr;min-height:400px}
+  .rail{border-right:1px solid var(--border);background:#fbfbfe;padding:9px 0}
+  .rail .rh{display:flex;justify-content:space-between;align-items:center;padding:2px 12px 8px;gap:6px}
+  .rail .rh span{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700}
+  .rail .add{font-size:10.5px;color:var(--primary);font-weight:650}
+  .rail .i{padding:5px 12px;font-size:12px;color:#3b3b46;display:flex;align-items:center;gap:7px}
+  .rail .i.on{background:#eef2ff;color:var(--primary);font-weight:650;box-shadow:inset 2px 0 0 var(--primary)}
+  .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .dot.r{background:#dc2626}.dot.a{background:#d97706}.dot.g{background:#16a34a}
+  .rail .more{padding:7px 12px 2px;font-size:10.5px;color:var(--mf)}
+  .work{padding:0}
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 14px;flex-wrap:wrap}
+  .tab{padding:9px 12px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent;white-space:nowrap}
+  .tab b{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;
+         background:#eceef5;color:#4b4b57;font-size:9.5px;margin-right:5px;vertical-align:1px}
+  .tab.on{color:var(--primary);font-weight:650;border-bottom-color:var(--primary)}
+  .tab.on b{background:var(--primary);color:#fff}
+  .inner{padding:15px 16px}
+  h2.s{margin:0 0 3px;font-size:12.5px;font-weight:700}
+  p.h{margin:0 0 10px;font-size:11px;color:var(--mf)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 16px}
+  .f label{display:block;font-size:10.5px;font-weight:600;color:#4b4b57;margin-bottom:3px}
+  .in{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12px;background:#fff;color:#22222c}
+  .in.sel::after{content:"⌄";float:right;color:var(--mf)}
+  .in.ro{background:#f4f5fa;color:#63636f}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;border:1px solid var(--border);border-radius:7px;padding:5px 6px;background:#fff;min-height:30px}
+  .cp{padding:2px 8px;border-radius:999px;font-size:10.5px;background:#eef2ff;color:#3730a3;font-weight:600}
+  .cp.off{background:#f4f5fa;color:#8a8a95;font-weight:500}
+  .box{border:1px solid var(--border);border-radius:9px;padding:11px 12px;background:#fbfbfe;margin-top:12px}
+  .box.ro{background:#f8f9fd}
+  .box h3{margin:0 0 6px;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:7px}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+  .grey{background:#eceef5;color:#4b4b57}
+  .amber{background:#fef3c7;color:#92400e}
+  .ok{background:#d1fae5;color:#065f46}
+  .note{font-size:10.5px;color:var(--mf);margin:7px 0 0}
+  .cb{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;margin-bottom:6px}
+  .cb i{width:13px;height:13px;border:1px solid #b9bad0;border-radius:3px;flex:0 0 auto;margin-top:2px;background:#fff}
+  .cb i.on{background:var(--primary);border-color:var(--primary)}
+  .cb i.dis{background:#e9eaf2;border-color:#d6d7e4}
+  .cb span.d{color:#8a8a95}
+  .save{display:inline-block;margin-top:10px;padding:6px 13px;border-radius:7px;background:var(--primary);color:#fff;
+        font-size:11.5px;font-weight:650}
+  .save.o{background:#fff;color:#3b3b46;border:1px solid var(--border)}
+  .rule{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #eff0f7;font-size:11.5px}
+  .rule:last-child{border-bottom:none}
+  .mut{color:var(--mf)}
+</style>
+<div class="wrap">
+
+<p class="cap"><b>Leave types &mdash; tabs 1 and 2.</b> A sketch for approval before anything is built;
+wording, spacing and colours will differ. Every control drawn already exists and already saves today &mdash;
+this is where they sit, not new capability. The leave type list on the left is unchanged.</p>
+
+<!-- ─────────── TAB 1 ─────────── -->
+<div class="pane">
+  <div class="ph">
+    <h1>Leave types</h1>
+    <p>25 leave types. The heading is the same string the menu shows &mdash; today this screen reads &ldquo;Leave configuration&rdquo;.</p>
+  </div>
+  <div class="map">
+    <span class="g">Configure</span>
+    <span class="n on">Leave types</span><span class="n">Approval chains</span><span class="n">Entitlement tables</span><span class="n">Company rules</span>
+    <span class="sep"></span><span class="g">Run</span>
+    <span class="n">Generate entitlement</span><span class="n">Adjustments</span><span class="n">Import leave data</span>
+    <span class="sep"></span><span class="g">Records</span>
+    <span class="n">Entitlement configuration record</span><span class="n">Balance record</span><span class="n">Audit trail</span>
+  </div>
+  <div class="split">
+    <div class="rail">
+      <div class="rh"><span>Leave type</span><span class="add">+ Add</span></div>
+      <div class="i on"><i class="dot a"></i>Annual Leave</div>
+      <div class="i"><i class="dot a"></i>Sick Leave</div>
+      <div class="i"><i class="dot r"></i>Hospitalisation Leave</div>
+      <div class="i"><i class="dot r"></i>Maternity Leave</div>
+      <div class="i"><i class="dot r"></i>Paternity Leave</div>
+      <div class="i"><i class="dot r"></i>Compassionate Leave</div>
+      <div class="i"><i class="dot r"></i>Marriage Leave</div>
+      <div class="i"><i class="dot r"></i>Study Leave</div>
+      <div class="i"><i class="dot r"></i>Exam Leave</div>
+      <div class="i"><i class="dot g"></i>Emergency Leave</div>
+      <div class="i"><i class="dot g"></i>Replacement Leave</div>
+      <div class="more">&hellip; 14 more</div>
+    </div>
+    <div class="work">
+      <div class="tabs">
+        <div class="tab on"><b>1</b>The leave type</div>
+        <div class="tab"><b>2</b>Who is eligible</div>
+        <div class="tab"><b>3</b>What they are entitled to</div>
+        <div class="tab"><b>4</b>How it is applied for</div>
+        <div class="tab"><b>5</b>Who approves it</div>
+      </div>
+      <div class="inner">
+        <h2 class="s">Annual Leave</h2>
+        <p class="h">What this leave type is called, and how it behaves.</p>
+
+        <div class="grid3">
+          <div class="f"><label>Code</label><div class="in">ANNUAL</div></div>
+          <div class="f"><label>Name</label><div class="in">Annual Leave</div></div>
+          <div class="f"><label>Paid</label><div class="in sel">Paid leave</div></div>
+        </div>
+        <div class="grid3" style="margin-top:10px">
+          <div class="f"><label>Managed in</label><div class="in sel">Days</div></div>
+          <div class="f"><label>Leave year</label><div class="in sel">Follow the company cycle</div></div>
+          <div class="f"><label>Statutory role &nbsp;<span class="chip grey">read-only</span></label><div class="in ro">Annual &mdash; a lawful entitlement</div></div>
+        </div>
+        <div class="f" style="margin-top:10px"><label>Description</label><div class="in" style="min-height:44px"></div></div>
+        <div class="save">Save</div>
+
+        <div class="box">
+          <h3>Shown to employees</h3>
+          <div class="grid3">
+            <div class="f"><label>Placement on the employee&rsquo;s leave tab</label><div class="in sel">Primary card</div></div>
+            <div class="f"><label>Colour</label><div class="in sel">Blue</div></div>
+            <div class="f"><label>Icon</label><div class="in sel">Calendar</div></div>
+          </div>
+          <div class="cb" style="margin-top:9px"><i class="on"></i><span>Employees may apply for this leave type</span></div>
+          <p class="note">Hidden is set by the placement control above, so the decision is only offered once.</p>
+          <div class="save o">Save</div>
+        </div>
+
+        <div class="box">
+          <h3>Payroll <span class="chip grey">moves here from the Payroll impact screen</span></h3>
+          <div class="cb"><i></i><span>Send an approved application of this type to the payroll module</span></div>
+          <div class="cb"><i class="dis"></i><span class="d">Affects payroll deduction &mdash; derived from Paid / unpaid, not set here</span></div>
+          <div class="save o">Save</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── TAB 2 ─────────── -->
+<div class="pane">
+  <div class="split">
+    <div class="rail">
+      <div class="rh"><span>Leave type</span><span class="add">+ Add</span></div>
+      <div class="i on"><i class="dot a"></i>Annual Leave</div>
+      <div class="i"><i class="dot a"></i>Sick Leave</div>
+      <div class="i"><i class="dot r"></i>Hospitalisation Leave</div>
+      <div class="i"><i class="dot r"></i>Maternity Leave</div>
+      <div class="more">&hellip; 21 more</div>
+    </div>
+    <div class="work">
+      <div class="tabs">
+        <div class="tab"><b>1</b>The leave type</div>
+        <div class="tab on"><b>2</b>Who is eligible</div>
+        <div class="tab"><b>3</b>What they are entitled to</div>
+        <div class="tab"><b>4</b>How it is applied for</div>
+        <div class="tab"><b>5</b>Who approves it</div>
+      </div>
+      <div class="inner">
+        <h2 class="s">Who may take Annual Leave at all</h2>
+        <p class="h">Leave every field empty to mean &ldquo;anyone&rdquo;. This gate decides who may
+          <i>apply</i>; how many days they get is the next tab.</p>
+
+        <div class="grid2">
+          <div class="f"><label>Gender</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Marital status</label><div class="chips"><span class="cp off">any</span></div></div>
+        </div>
+        <div class="grid3" style="margin-top:10px">
+          <div class="f"><label>Minimum service</label><div class="in">&mdash;</div></div>
+          <div class="f"><label>Counted in</label><div class="in sel">Months</div></div>
+          <div class="f"><label>Probation status</label><div class="in sel">No restriction</div></div>
+        </div>
+
+        <h2 class="s" style="margin-top:14px">Organisation</h2>
+        <p class="h">The eight organisation-assignment fields, from the same catalogue the rest of the product uses.</p>
+        <div class="grid2">
+          <div class="f"><label>Division</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Branch</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Region</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Line</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Section</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Team</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Base</label><div class="chips"><span class="cp off">any</span></div></div>
+          <div class="f"><label>Employment category</label><div class="chips"><span class="cp off">any</span></div></div>
+        </div>
+        <div class="save">Save</div>
+
+        <div class="box ro">
+          <h3>Which entitlement rules reach this type <span class="chip grey">read-only &mdash; set on tab 3</span></h3>
+          <div class="rule"><span>2 eligibility rules in force point at an Annual Leave table</span><span class="mut">tab 3</span></div>
+          <div class="rule"><span>at least 14 of the 16 tables in force are reached by no rule &mdash; 16 minus your 2 rules, not a separate count</span><span class="chip amber">nobody receives them</span></div>
+          <div class="rule"><span>4 eligibility rules exist across the whole company</span><span class="mut">all leave types</span></div>
+          <p class="note">Gender, nationality, religion, race and job grade are not dated in this system, so a
+            rule narrowing by them is always read at today&rsquo;s value &mdash; even when the question is about
+            a past date. Everything else is read as at the date asked for.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>

@@ -1,0 +1,165 @@
+<meta charset="utf-8">
+<title>Company rules</title>
+<!--
+  a6fe37fc revision 4, Phase 3 design deliverable. SKETCH. THE ONE NEW SCREEN.
+
+  IT ADDS NO SETTING. All four cards exist today, on four different surfaces:
+   · Half-day full deduction — today rendered INSIDE every leave type's Condition step (25 copies of one
+     company decision). One ChipMultiSelect over companies + one Save (setLeaveHalfDayFullDeductionCompanies).
+   · Leave encashment policy — today on the Payroll impact screen (setLeaveEncashmentPolicy), per company.
+   · Replacement leave policy — today its own screen (setToilPolicy), one company at a time via ?company=.
+   · Shared leave groups — today at the foot of the Leave types screen (tenant-level combined limits).
+
+  THE BANNER AND THE CROSS-LINK ARE LOAD-BEARING, NOT DECORATION. runToilExpiry and
+  closeReplacementLeaveYear stay on /admin/toil because they are NOT gated by the toil entitlement: a
+  lapsed add-on does not cancel days already banked, and for a First-Schedule-eligible employee that debt
+  is statutory. Absorbing them behind a configuration screen would silently re-gate it.
+
+  NO CUSTOMER DATA IS DRAWN beyond company placeholders — the audit records no company names, so none are
+  invented; the company selector is shown with its own label and a neutral entry.
+
+  ⚠️ ONE CONTROL WAS REMOVED FROM AN EARLIER DRAFT OF THIS IMAGE, DELIBERATELY. It drew a
+  "Rounding / Nearest half day" select on the Replacement leave card. THERE IS NO SUCH SETTING:
+  toil_policy (db/schema.ts:4238-4278) has enabled, accrualBasis, expiryDays/expiryUnit/expiryMonths,
+  onExpiry, allowFirstScheduleEligible, autoAccrueOnApproval, carryForwardAtYearEnd,
+  employeeRequestEnabled, replacementLeaveFrom and requestEligibility — no rounding column;
+  app/admin/leave/replacement/page.tsx renders no rounding control; and core/toil.ts's only `round` is
+  `round2`, a 2-decimal-place helper, not a configurable mode. Drawing it would have promised a new
+  column, a migration number this design does not have, and a decision about every accrual already
+  banked. A MOCKUP IS A PROMISE AND A PICTURE CANNOT HEDGE (scripts/mockup/README.md), so the control is
+  gone and the field now shows `on_expiry`, which exists and already saves.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .pane{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
+  .ph{padding:13px 16px;border-bottom:1px solid var(--border)}
+  .ph h1{margin:0;font-size:19px;font-weight:650}
+  .ph p{margin:3px 0 0;font-size:11.5px;color:var(--mf)}
+  .map{padding:9px 16px;border-bottom:1px solid var(--border);background:#fbfbfe;
+       display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px}
+  .map .g{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700;margin-left:3px}
+  .map .g:first-child{margin-left:0}
+  .map .n{padding:3px 9px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;color:#3b3b46;background:#fff}
+  .map .n.on{border-color:var(--primary);color:var(--primary);font-weight:650;background:#eef2ff}
+  .map .sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+  .inner{padding:15px 16px}
+  .card{border:1px solid var(--border);border-radius:10px;background:#fbfbfe;padding:12px 14px;margin-bottom:12px}
+  .card h2{margin:0 0 3px;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card p.h{margin:0 0 10px;font-size:11px;color:var(--mf)}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+  .grey{background:#eceef5;color:#4b4b57}
+  .blue{background:#e0e7ff;color:#3730a3}
+  .amber{background:#fef3c7;color:#92400e}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;border:1px solid var(--border);border-radius:7px;padding:6px 7px;background:#fff}
+  .cp{padding:2px 9px;border-radius:999px;font-size:10.5px;background:#eef2ff;color:#3730a3;font-weight:600}
+  .cp.off{background:#f4f5fa;color:#8a8a95;font-weight:500}
+  .f label{display:block;font-size:10.5px;font-weight:600;color:#4b4b57;margin-bottom:3px}
+  .in{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12px;background:#fff;color:#22222c}
+  .in.sel::after{content:"⌄";float:right;color:var(--mf)}
+  .in.ro{background:#f1f2f8;color:#7b7b88}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 16px}
+  .cb{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;margin-bottom:6px}
+  .cb i{width:13px;height:13px;border:1px solid #b9bad0;border-radius:3px;flex:0 0 auto;margin-top:2px;background:#fff}
+  .cb i.on{background:var(--primary);border-color:var(--primary)}
+  .save{display:inline-block;margin-top:10px;padding:6px 13px;border-radius:7px;background:#fff;color:#3b3b46;
+        border:1px solid var(--border);font-size:11.5px;font-weight:650}
+  .note{font-size:10.5px;color:var(--mf);margin:8px 0 0}
+  .banner{border:1px solid #fcd9a4;background:#fffbf2;border-radius:9px;padding:9px 11px;font-size:11.5px;
+          color:#7c4a06;margin-bottom:10px}
+  .lnk{color:var(--primary);font-weight:600}
+  table.t{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px}
+  table.t th{text-align:left;font-weight:700;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--mf);
+             font-size:9.5px;text-transform:uppercase;letter-spacing:.05em}
+  table.t td{padding:6px 8px;border-bottom:1px solid #f1f2f8}
+  table.t tr:last-child td{border-bottom:none}
+  .bar{display:inline-block;height:9px;border-radius:3px;background:#dfe1ee}
+</style>
+<div class="wrap">
+
+<p class="cap"><b>Company rules &mdash; the one new screen.</b> A sketch for approval; wording, spacing and
+colours will differ. <b>It adds no setting.</b> These four already exist and already save &mdash; they are
+gathered here because each belongs to a company or to the whole organisation, not to one leave type.
+Today they sit on four different surfaces, and the first of them is drawn 25 times, once inside every
+leave type.</p>
+
+<div class="pane">
+  <div class="ph">
+    <h1>Company rules</h1>
+    <p>Leave settings that belong to a company, not to a single leave type.</p>
+  </div>
+  <div class="map">
+    <span class="g">Configure</span>
+    <span class="n">Leave types</span><span class="n">Approval chains</span><span class="n">Entitlement tables</span><span class="n on">Company rules</span>
+    <span class="sep"></span><span class="g">Run</span>
+    <span class="n">Generate entitlement</span><span class="n">Adjustments</span><span class="n">Import leave data</span>
+    <span class="sep"></span><span class="g">Records</span>
+    <span class="n">Entitlement configuration record</span><span class="n">Balance record</span><span class="n">Audit trail</span>
+  </div>
+  <div class="inner">
+
+    <div class="card">
+      <h2>Half-day leave <span class="chip blue">drawn once &mdash; today it appears inside all 25 leave types</span></h2>
+      <p class="h">Companies where a half-day application deducts a whole day from the balance.</p>
+      <div class="chips"><span class="cp off">no company selected</span></div>
+      <p class="note">An empty selection is a real, saved decision: no company deducts a full day. It is not
+        the same as &ldquo;not set up yet&rdquo;.</p>
+      <div class="save">Save</div>
+    </div>
+
+    <div class="card">
+      <h2>Leave encashment <span class="chip blue">moved from the Payroll impact screen</span></h2>
+      <p class="h">How unused leave is converted to pay, per company.</p>
+      <table class="t">
+        <tr><th style="width:36%">Company</th><th>Encashment</th><th>Days that may be encashed</th><th></th></tr>
+        <tr><td><i class="bar" style="width:110px"></i></td><td>Off</td><td>&mdash;</td><td><span class="chip grey">Edit</span></td></tr>
+        <tr><td><i class="bar" style="width:92px"></i></td><td>Off</td><td>&mdash;</td><td><span class="chip grey">Edit</span></td></tr>
+      </table>
+      <p class="note">Company names are not drawn in this sketch &mdash; the grey bars are where your own
+        company list will appear.</p>
+    </div>
+
+    <div class="card">
+      <h2>Replacement leave <span class="chip blue">moved from its own screen</span></h2>
+      <p class="h">How days worked on a rest day or holiday are banked as replacement leave. One company at a
+        time, exactly as today.</p>
+      <div class="banner">
+        <b>Settling replacement leave stays where it is.</b> Expiring banked days and closing a replacement-leave
+        year are <span class="lnk">on the Replacement leave balances screen &rarr;</span> and are deliberately not
+        moved here: they must keep working even if the add-on lapses, because days already banked are still owed.
+      </div>
+      <div class="g3">
+        <div class="f"><label>Company</label><div class="in sel">Choose a company</div></div>
+        <div class="f"><label>Banked days expire after</label><div class="in">&mdash; months</div></div>
+        <div class="f"><label>When they expire</label><div class="in sel">Convert to pay</div></div>
+      </div>
+      <div class="cb" style="margin-top:9px"><i></i><span>Bank replacement leave automatically when an
+        overtime record on a rest day is approved</span></div>
+      <div class="save">Save</div>
+      <p class="note"><b>Every field on this card already exists and already saves today</b> &mdash; they are
+        the ones on your Replacement leave screen, gathered here. Nothing is added. There is no rounding
+        setting for replacement leave anywhere in the system, so none is drawn: adding one would mean a new
+        stored field, a database change this plan does not include, and a decision about the days already
+        banked &mdash; a separate request, not part of this one.</p>
+    </div>
+
+    <div class="card">
+      <h2>Shared leave groups <span class="chip blue">moved from the foot of the Leave types screen</span></h2>
+      <p class="h">Leave types that share one combined limit, so days taken against one reduce the others.</p>
+      <table class="t">
+        <tr><th style="width:36%">Group</th><th>Leave types in it</th><th>Combined limit</th><th></th></tr>
+        <tr><td colspan="4" style="color:#63636f;padding:12px 8px">No shared groups yet. <span class="lnk">+ Add a group</span></td></tr>
+      </table>
+      <p class="note">A group is an organisation-wide setting, not a property of one leave type &mdash; which is
+        why it was never at home on the Leave types screen.</p>
+    </div>
+
+  </div>
+</div>
+
+</div>
