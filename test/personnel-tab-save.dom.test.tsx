@@ -51,6 +51,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
 
 import { TabSaveScope } from '../components/tab-save-scope';
+import { EmployeeSwitcher } from '../app/admin/personnel/employee-switcher';
 import { firstDirtyGuard, __resetUnsavedGuards } from '../lib/unsaved-changes';
 import type { TabSaveResult } from '../lib/personnel-tab-sections';
 
@@ -464,5 +465,62 @@ describe('§6 leaving with unsaved changes asks first', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Name required'));
     expect(screen.getByText('tab:profile')).toBeInTheDocument();
     expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe('Ali bin Hassan');
+  });
+});
+
+describe('§7 "Open another employee" asks too — the switcher navigates programmatically', () => {
+  /**
+   * The scope's own screen-leaving guard watches anchor clicks and `beforeunload`. The Search Employee
+   * box does neither: it calls `router.push`. That is one of the routes the reporter named ("Open another
+   * employee"), so the switcher consults the same registry the tab strip does. Nothing but a render can
+   * show that it actually does — a source grep would pass on the import alone.
+   */
+  const EMPLOYEES = [
+    { employmentId: 'ffffffff-0000-0000-0000-000000000001', name: 'Siti Nurhaliza', employeeCode: 'E-0002', company: 'Acme', department: 'Finance' },
+  ];
+
+  const renderWithSwitcher = (save: SaveFn) =>
+    render(
+      <>
+        <Screen save={save} />
+        <NextIntlClientProvider locale="en" messages={messages}>
+          <EmployeeSwitcher employees={EMPLOYEES} currentEmploymentId={EMPLOYMENT_ID} tab="profile" />
+        </NextIntlClientProvider>
+      </>,
+    );
+
+  it('prompts before jumping, and jumps once the edits are discarded', async () => {
+    const user = userEvent.setup();
+    renderWithSwitcher(saveMock(async () => ok(['person'])));
+
+    const { name, saveBtn } = fields();
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+
+    await user.type(screen.getByRole('combobox', { name: /search/i }), 'Siti');
+    await user.click(await screen.findByRole('option', { name: /Siti Nurhaliza/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Unsaved changes')).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Discard Changes' }));
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith(
+        '/admin/personnel/ffffffff-0000-0000-0000-000000000001?tab=profile',
+      ),
+    );
+  });
+
+  it('a clean screen jumps straight away', async () => {
+    const user = userEvent.setup();
+    renderWithSwitcher(saveMock(async () => ok(['person'])));
+
+    await user.type(screen.getByRole('combobox', { name: /search/i }), 'Siti');
+    await user.click(await screen.findByRole('option', { name: /Siti Nurhaliza/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { EmployeeName, inputCls } from '@/components/ui';
 import { SWITCHER_RESULT_CAP, matchEmployees, switcherHref, type SwitcherEmployee } from './employee-search';
+import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
 /**
  * c002b3c3 — "Search Employee": type part of an Employee ID or a name and go straight to that person's
@@ -53,9 +54,23 @@ export function EmployeeSwitcher({
     [employees, query],
   );
 
+  /**
+   * 420ebab5 part two — "Open another employee" is one of the ways the reporter named for leaving a
+   * profile with unsaved edits, and this one navigates PROGRAMMATICALLY. The save scope's own guard
+   * watches anchor clicks and `beforeunload`, and a `router.push` is neither, so the switcher has to ask
+   * for itself. Same registry the tab strip uses (lib/unsaved-changes.ts); when no scope is mounted — the
+   * Personnel listing, where this is also rendered — `firstDirtyGuard()` is null and the jump is
+   * immediate, exactly as before.
+   */
   const go = (employmentId: string) => {
     setOpen(false);
-    startTransition(() => router.push(switcherHref(employmentId, tab)));
+    const jump = () => startTransition(() => router.push(switcherHref(employmentId, tab)));
+    const guard = firstDirtyGuard();
+    if (guard) {
+      guard.prompt(jump);
+      return;
+    }
+    jump();
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
