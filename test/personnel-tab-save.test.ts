@@ -23,6 +23,10 @@
  * The behaviour of the scope in a browser — the change summary, the edited-field marking, Discard, and
  * the Save/Discard/Cancel prompt — is in test/personnel-tab-save.dom.test.tsx, which renders it.
  *
+ * r255 — the other three consolidated tabs (Bank & Statutory, Attendance, Employment) are pinned in
+ * test/personnel-tab-save-tabs.test.ts, including the one thing that is NOT a repeat of this file: the
+ * ORDER the Bank & Statutory sections are written in, which decides whose value survives.
+ *
  * next/navigation and next/cache are stubbed inert and requireAdmin is stubbed to the seeded admin, so
  * the real FormData → service → database path runs. `saveProfileTabAction` itself does NOT redirect (it
  * returns a result), which is the whole point of §3.
@@ -47,7 +51,11 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { saveProfileTabAction } from '../app/admin/personnel/[employmentId]/actions';
-import { PROFILE_TAB_SECTION_ORDER, SECTION_FIELD_PREFIX } from '../lib/personnel-tab-sections';
+import {
+  ALL_PERSONNEL_TAB_SECTIONS,
+  PROFILE_TAB_SECTION_ORDER,
+  SECTION_FIELD_PREFIX,
+} from '../lib/personnel-tab-sections';
 import { UNSAVED_GUARD_ATTR } from '../lib/unsaved-changes';
 
 const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
@@ -407,12 +415,31 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       expect(page.indexOf('{emergencyContactPanel}')).toBeGreaterThan(close);
     });
 
-    it('the marker appears on exactly the five (a) forms and nowhere else', () => {
-      const ids = [...PAGE().matchAll(/data-save-section="([a-z]+)"/g)].map((m) => m[1]);
-      const identityIds = [...IDENTITY().matchAll(/data-save-section="([a-z]+)"/g)].map((m) => m[1]);
-      expect([...ids, ...identityIds].sort()).toEqual(
-        [...PROFILE_TAB_SECTION_ORDER].sort(),
-      );
+    /**
+     * r255 UPDATED THIS CASE RATHER THAN REPLACING IT. When it was written the Profile tab was the only
+     * consolidated tab, so "exactly the five (a) forms" and "exactly the markers that exist" were the same
+     * sentence. Three more tabs are consolidated now, so the SECOND sentence is the one that carries the
+     * safety — no marker may exist anywhere that the section map does not declare — and it is checked
+     * against `ALL_PERSONNEL_TAB_SECTIONS`, which is `PERSONNEL_TAB_SECTIONS` flattened. The Profile half
+     * is still pinned exactly, by §2's `PROFILE_TAB_SECTION_ORDER` assertion.
+     *
+     * Why this is the load-bearing guard: a marker is the ONLY thing that puts a form under a tab-wide
+     * Save and its Discard. Adding one to a money-affecting child-record form would be a two-character
+     * diff, invisible in review, and would make Discard lie. To do it now you must also add the id to
+     * lib/personnel-tab-sections.ts — a file whose whole purpose is to be read — or this fails.
+     */
+    it('every consolidated-save marker on the screen is one the section map declares, and no others exist', () => {
+      const markers = (src: string) => [...src.matchAll(/data-save-section="([a-z]+)"/g)].map((m) => m[1]);
+      const found = [
+        ...markers(PAGE()),
+        ...markers(IDENTITY()),
+        ...markers(stripComments(read('components/bank-info-card.tsx'))),
+        ...markers(stripComments(read('components/identity-tax-card.tsx'))),
+      ].sort();
+      expect(found).toEqual([...ALL_PERSONNEL_TAB_SECTIONS].sort());
+      // No id is claimed twice — two cards sharing one marker would have their payloads merged and one
+      // service would be handed the other's fields.
+      expect(new Set(found).size).toBe(found.length);
     });
 
     it('the two consolidated cards are still the only place their writers are wired to a form', () => {
@@ -448,8 +475,12 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
     it('the five (a) cards no longer carry a Save button of their own', () => {
       const page = PAGE();
       const scope = page.slice(page.indexOf('<TabSaveScope'), page.indexOf('</TabSaveScope>'));
-      // Scoped to the consolidated cards, NOT to the whole file: `saveDetails` is also the label on the
-      // Attendance tab's Holiday Calendar card, which is bucket (a) but is not consolidated this round.
+      // Scoped to the FIRST scope in the file, which is the Profile tab's — the other three tabs are
+      // pinned the same way in test/personnel-tab-save-tabs.test.ts. r255 UPDATED this note rather than
+      // deleting it: it used to say `saveDetails` was excluded because the Holiday Calendar card it labels
+      // "is bucket (a) but is not consolidated this round". That is no longer true — the Attendance tab is
+      // consolidated and that button is gone — so the reason the assertion is scoped is now simply that
+      // each scope is checked against its own cards.
       expect(scope).not.toContain("t('saveDetails')");
       expect(scope).not.toContain("t('saveComplianceFields')");
       expect(scope).not.toContain("t('saveContact')");

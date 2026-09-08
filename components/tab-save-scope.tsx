@@ -8,11 +8,15 @@
  * whose forms carry `data-save-section="<id>"` — bucket (a) of
  * docs/audits/420ebab5-personnel-save-classification.md, the plain field edits that overwrite a value on
  * the person or employment record. Bucket (b) — adding a dependant, terminating a CP38 order, archiving a
- * qualification, recording a salary revision — is rendered OUTSIDE this component by the page. That is
- * the safety argument, and it is structural rather than a list: this scope cannot read, mark, pack or
- * reset a control it does not contain, so "Discard Changes" can never appear to undo a recorded salary
- * revision. If a (b) card ever needs to move under a tab-wide Save, the classification has to change
- * first — not this file.
+ * qualification, recording a salary revision — is not among them. That is the safety argument, and it is
+ * structural rather than a list: this scope reads, marks, packs and resets ONLY `[data-save-section]`
+ * subtrees, so "Discard Changes" can never appear to undo a recorded salary revision. If a (b) card ever
+ * needs to move under a tab-wide Save, the classification has to change first — not this file.
+ *
+ * r255 — "rendered outside this component" is how the page keeps most of bucket (b) away, and it is no
+ * longer the whole story: the Employment tab's company-transfer form lives inside the very card that
+ * carries the Employment Dates section. THE MARKER, NOT THE SUBTREE, IS THE FENCE. Both guards below were
+ * corrected to test it.
  *
  * THE FENCE IS NOT WEAKENED BY THE SUBMIT GUARD FURTHER DOWN. That guard asks before a bucket (b) form
  * writes, because its `redirect()` re-renders the screen and would throw the tab's pending edits away
@@ -44,6 +48,15 @@
  * THE SAVE READS THE DOM, NOT THE CHANGE STATE. `changes` is recomputed from events and is therefore, by
  * construction, one keystroke behind anything else handling the same keystroke. `save()` re-diffs the
  * live DOM at the instant it runs, so what is written is always what the admin can see.
+ *
+ * WHAT DISCARD REACHES, STATED PLAINLY (r255). The remount below resets the scope's whole subtree to its
+ * server-rendered state, and on the Employment tab that subtree also contains two forms the tab does not
+ * own — the company-transfer form and the company-change navigation form, which live inside the same card
+ * as the Employment Dates form. Nothing they hold is a recorded act (their controls are all
+ * `defaultValue=""` or the current company, so the reset lands them exactly where the server drew them),
+ * and nothing of theirs is ever read, marked, packed or counted: lib/tab-save-dom.ts only ever walks
+ * `[data-save-section]` subtrees. What Discard can undo is therefore still only what the change summary
+ * listed. It cannot reach a WRITE it did not make — no dependant, no salary revision, no CP38 order.
  *
  * DISCARD REMOUNTS; SAVE DOES NOT. Restoring `input.value` by hand on a discard looks right and is wrong:
  * the Combobox and the other islands hold their selection in React state, so a hand-restored hidden value
@@ -369,8 +382,10 @@ export function TabSaveScope({
    * form's `action` listener only in the BUBBLE phase (`!inCapturePhase` in accumulateSinglePhaseListeners),
    * so stopping propagation at the document on the way DOWN means the action is never dispatched at all —
    * measured, not assumed. And it has to be on the document rather than on this component's subtree,
-   * because the bucket (b) forms are elsewhere: the emergency-contact register sits below the scope, and
-   * its add/edit forms render inside a Radix dialog, portalled to `document.body`.
+   * because bucket (b) forms are BOTH outside and inside it: the emergency-contact register sits below the
+   * scope and renders its add/edit forms inside a Radix dialog portalled to `document.body`, while the
+   * Employment tab's company-transfer form sits INSIDE the same card as the Employment Dates form the tab
+   * does own. What separates the two kinds is the section marker, not the subtree — see the test below.
    *
    * NOTHING IS RE-IMPLEMENTED. On Save or Discard the guard replays the ORIGINAL submit —
    * `form.requestSubmit(submitter)`, carrying the button that was pressed so a `formAction` still applies,
@@ -381,7 +396,6 @@ export function TabSaveScope({
   const replayingRef = useRef<HTMLFormElement | null>(null);
   useEffect(() => {
     if (!dirty) return;
-    const root = contentRef.current;
     const onSubmit = (e: Event) => {
       const form = e.target;
       if (!(form instanceof HTMLFormElement)) return;
@@ -390,9 +404,17 @@ export function TabSaveScope({
         replayingRef.current = null;
         return;
       }
-      // The tab's own cards are handled by the scope-local submit guard, which knows how to turn one into
-      // the consolidated save rather than a prompt.
-      if (root?.contains(form)) return;
+      // A CONSOLIDATED CARD is handled by the scope-local submit guard below, which knows how to turn one
+      // into the consolidated save rather than a prompt.
+      //
+      // r255 — the test is the SECTION MARKER, and it used to be "is this form inside the scope's
+      // subtree?", which was wrong the moment a tab put a bucket (b) form inside a consolidated card. The
+      // Employment tab does exactly that: the company-transfer form and the `method="get"` company-change
+      // navigation form both live INSIDE the Employment Information card, above the Employment Dates form
+      // that carries the marker. Under the old test both were invisible to this guard AND to the
+      // scope-local one, so submitting either took the reader's unsaved date edits with it, silently, in a
+      // redirect — the exact loss this guard exists to stop.
+      if (form.matches(SECTION_SELECTOR)) return;
       if (form.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
       const submitter = (e as SubmitEvent).submitter;
       e.preventDefault();

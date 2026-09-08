@@ -959,3 +959,130 @@ describe('§12 a bucket (b) write is a way off the tab too', () => {
     expect((save.mock.calls[0]![0] as FormData).get('section.person.fullName')).toBe('Ali bin Hassan');
   });
 });
+
+/**
+ * ── §13 (r255) THE BUCKET (b) FORM THAT LIVES INSIDE A CONSOLIDATED CARD ────────────────────────────
+ *
+ * Until r255 every bucket (b) form on this screen sat outside the scope's subtree, and §12's guard was
+ * written to match: it skipped any form the scope CONTAINED, on the assumption that a contained form was
+ * one of the tab's own cards. The Employment tab breaks that assumption. Its company-transfer form and
+ * its `method="get"` company-change navigation form both render INSIDE the Employment Information card,
+ * above the Employment Dates form that carries the section marker — so under the old test they were
+ * skipped by the document guard AND ignored by the scope-local one, and submitting either took the
+ * reader's unsaved date edits with it in a redirect, silently.
+ *
+ * THE FENCE IS THE MARKER, NOT THE SUBTREE. That is what these cases pin, from both sides: the contained
+ * (b) form still asks before it writes, and it is still invisible to the change count, the payload and
+ * Discard's restore — a Discard must never look like it undid a company transfer.
+ */
+function EmploymentScreen({
+  save,
+  transfer = async () => undefined,
+}: {
+  save: (fd: FormData) => Promise<TabSaveResult>;
+  transfer?: (fd: FormData) => Promise<void>;
+}) {
+  return (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <TabSaveScope tabKey="job" employmentId={EMPLOYMENT_ID} saveAction={save}>
+        {/* ONE card, two forms — exactly the shape of employmentInfoCard on the real page. */}
+        <div data-testid="employment-info-card">
+          {/* BUCKET (b): an audited company transfer with a pre-transaction gate. No marker, own button. */}
+          <form data-testid="company-transfer" action={transfer}>
+            <label>
+              <span>New Department</span>
+              <input name="departmentId" defaultValue="" />
+            </label>
+            <button type="submit">Confirm company change</button>
+          </form>
+          {/* BUCKET (a): the Employment Dates form the tab's one Save owns. */}
+          <form data-save-section="employment">
+            <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
+            <label>
+              <span>Confirmation Date</span>
+              <input name="confirmationDate" defaultValue="2026-07-01" />
+            </label>
+          </form>
+        </div>
+      </TabSaveScope>
+    </NextIntlClientProvider>
+  );
+}
+
+describe('§13 a bucket (b) form INSIDE a consolidated card is still fenced off, and still asks', () => {
+  const dirtyTheDates = async (user: ReturnType<typeof userEvent.setup>) => {
+    const date = screen.getByLabelText('Confirmation Date') as HTMLInputElement;
+    await user.clear(date);
+    await user.type(date, '2026-09-30');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+  };
+
+  it('editing the (b) form arms nothing: not the count, not the payload, and Discard leaves it alone', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['employment']));
+    render(<EmploymentScreen save={save} />);
+
+    const dept = screen.getByLabelText('New Department') as HTMLInputElement;
+    await user.type(dept, 'Finance');
+    // It is inside the scope's subtree, so the DOM listeners see the keystrokes — and still nothing arms.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    expect(screen.queryByText('1 change')).not.toBeInTheDocument();
+
+    await dirtyTheDates(user);
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const sent = save.mock.calls[0]![0] as FormData;
+    expect(sent.get('sections')).toBe('employment');
+    expect(sent.get('section.employment.confirmationDate')).toBe('2026-09-30');
+    // Nothing of the transfer form's is in the payload under any namespace.
+    expect([...sent.keys()].some((k) => k.includes('departmentId'))).toBe(false);
+  });
+
+  it('submitting it while the dates are dirty ASKS first — the old subtree test let this through', async () => {
+    const user = userEvent.setup();
+    const transfer = vi.fn(async () => undefined);
+    render(<EmploymentScreen save={saveMock(async () => ok(['employment']))} transfer={transfer} />);
+    await dirtyTheDates(user);
+
+    await user.click(screen.getByRole('button', { name: 'Confirm company change' }));
+
+    // The write that reloads the screen — and with it the unsaved dates — has not happened.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(transfer).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Unsaved changes')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(transfer).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Confirmation Date') as HTMLInputElement).value).toBe('2026-09-30');
+  });
+
+  it('Save writes the tab and only then replays the transfer, unchanged', async () => {
+    const user = userEvent.setup();
+    const transfer = vi.fn(async () => undefined);
+    const save = saveMock(async () => ok(['employment']));
+    render(<EmploymentScreen save={save} transfer={transfer} />);
+    await dirtyTheDates(user);
+
+    await user.click(screen.getByRole('button', { name: 'Confirm company change' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(transfer).toHaveBeenCalledTimes(1));
+  });
+
+  it('the tab’s own card still saves rather than prompting — the marker is what tells them apart', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['employment']));
+    render(<EmploymentScreen save={save} />);
+    await dirtyTheDates(user);
+
+    // Enter inside the marked form is the consolidated save, not an "unsaved changes" dialog.
+    await user.type(screen.getByLabelText('Confirmation Date'), '{Enter}');
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});

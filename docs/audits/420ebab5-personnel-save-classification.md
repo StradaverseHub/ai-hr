@@ -183,3 +183,53 @@ Four findings follow from that table, and they should be settled before any code
   money-affecting action from (b) into (a) is exactly the regression that makes Discard lie, and it
   would be invisible in review. Part two should carry a guard that asserts each of the 22 (b) forms
   still stands on its own, with its own submit button.
+
+---
+
+## What was actually built, and where it stopped (r254 · r255)
+
+**r254** shipped the Profile tab: five (a) cards under one Save, the change summary, Discard, and the
+prompt on every way off the screen. **r255** shipped the other three tabs the table above says can be
+consolidated honestly — Bank & Statutory (4), Attendance (3) and Employment (1) — and left Payroll,
+Family and Qualification alone, deliberately. Twelve of the sixteen (a) forms are now under a tab Save.
+
+**Finding 1 held, with one correction worth recording.** Bank & Statutory was NOT the mechanical repeat
+of Profile it looks like, and the difference is the ORDER rather than the plumbing. The Statutory
+(Malaysia) form carries **no residency control at all**, so its writer sends `isResident: false` on
+every save; the Income Tax (PCB) card's setter re-derives that same column from the `taxResidency` the
+admin picks. Per-card buttons hid this because the two writes could never share a request. Under one
+Save they do, and statutory-then-tax is the only order that leaves the residency the admin chose —
+the other way round moves an employee onto non-resident flat-rate PCB from an EPF-number edit.
+`BANK_STATUTORY_TAB_SECTION_ORDER` states it and `test/personnel-tab-save-tabs.test.ts` §1 fails if it
+is reordered. (The `isResident: false` that a lone statutory save writes today is unchanged by any of
+this; it is pre-existing, and `taxResidency` is what every current reader prefers.)
+
+**Finding 4 generalised: the fence is the MARKER, not the subtree.** The Employment tab has a bucket (b)
+form — the audited company transfer — rendered INSIDE the same card as the (a) Employment Dates form,
+so "bucket (b) is rendered outside the scope" stopped being the whole safety argument. Nothing reads,
+marks, packs or resets anything but a `[data-save-section]` subtree, which is what actually holds; the
+r254 guard that asked "is this form inside the scope?" was corrected to ask "does it carry the marker?",
+because under the old test a company transfer threw the reader's unsaved dates away with no prompt.
+
+**Attendance cost a reordering, and it is the one visible change this round makes to a tab.** Its three
+(a) cards were not contiguous — Work Location and Shift Arrangement (both (b)) sat between Holiday
+Calendar and Clocking & Geofencing. A tab-wide Save must enclose a contiguous run, so the two (b) cards
+moved ABOVE the scope: the tab now reads Work Location → Shift Arrangement → Holiday Calendar →
+Clocking & Geofencing, which also puts the one Save/Discard pair at the foot of the tab. Item
+52a30630's "Holiday Calendar pinned first" is the decision that gave way, and it is recorded in the
+page rather than silently dropped.
+
+**Finding 3 stands: Payroll still keeps its per-card saves,** and the reason is now sharper than
+"until Profile has proved the pattern". Its three (a) forms are not contiguous either — Payment Method
+is rendered INSIDE the Basic Salary card, Payroll Policy is second, and TP3 is sixth, with Pay Items,
+CP38 and Leave Encashment between them. Consolidating the tab therefore means BOTH a reordering that
+drags TP3 up past three money-affecting registers AND a Save/Discard pair sitting under the card whose
+own headline control records an effective-dated salary revision. The marker fence would keep Discard
+away from that revision, but the CONTROL WOULD STILL READ as covering it, which is the fault this
+document exists to prevent. That trade is the reporter's to make, not a builder's.
+
+**Findings 2 is unchanged and is owed to the reporter in words: Family and Qualification cannot be
+consolidated at all.** Every form on both is a child record — a dependant, a qualification — so a
+tab-wide "Save Changes" there would have nothing to save and a tab-wide "Discard Changes" would cover
+nothing. The original request names Family explicitly; the honest answer is that those two tabs already
+work the way the rest of the screen is being moved towards, one deliberate act at a time.

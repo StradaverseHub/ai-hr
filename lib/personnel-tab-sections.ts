@@ -39,9 +39,13 @@ export const PROFILE_TAB_SECTION_ORDER = ['person', 'compliance', 'contact', 'ic
 
 export type ProfileTabSection = (typeof PROFILE_TAB_SECTION_ORDER)[number];
 
-export function isProfileTabSection(value: string): value is ProfileTabSection {
-  return (PROFILE_TAB_SECTION_ORDER as readonly string[]).includes(value);
-}
+/**
+ * r255 — there is no per-tab `isXSection` guard any more, and the absence is deliberate. One shared
+ * `runTabSave` (app/admin/personnel/[employmentId]/actions.ts) validates every request against THE TAB'S
+ * OWN order list, so the vocabulary and the write order are the same declaration and cannot drift apart.
+ * A hand-written guard per tab was four chances for one to be forgotten on a new tab, which would let a
+ * section name the tab does not own reach a writer.
+ */
 
 /**
  * What a consolidated per-tab save reports back.
@@ -58,3 +62,86 @@ export type TabSaveResult = {
   failedSection?: string;
   error?: string;
 };
+
+/**
+ * ── r255 · THE REMAINING TABS ────────────────────────────────────────────────────────────────────────
+ *
+ * r254 shipped the Profile tab. These are the other three tabs whose bucket (a) forms could be folded
+ * under one Save honestly. Each list is that tab's own section ids, IN THE ORDER the consolidated action
+ * writes them; the reasoning for each order is on the constant.
+ *
+ * Payroll is deliberately ABSENT and must not be added without re-doing the classification: its three
+ * field edits (`setPaymentMethod`, `assignPolicy`, `setTp3`) sit among six child-record cards including
+ * the effective-dated salary revision, and one of them — Payment Method — is rendered INSIDE the Basic
+ * Salary card itself. A Save/Discard pair at the foot of that tab would read as covering a recorded
+ * revision, which is the exact control-that-lies the classification exists to prevent. Family and
+ * Qualification are absent for the opposite reason: they have no bucket (a) form at all, so a tab-wide
+ * Save would have nothing to save.
+ */
+
+/**
+ * Bank & Statutory. The ONLY tab with no bucket (b) form at all, so its Save covers the whole tab with
+ * nothing left over.
+ *
+ * THE ORDER IS NOT ARBITRARY AND IS NOT THE CLIENT'S. `setStatutoryProfileMY` is a FULL-ROW overwrite of
+ * the columns it writes, and `setStatutoryAction` therefore reads the stored row and passes back every
+ * column its own form no longer carries (bank, tax, TP3, zakat). Two consequences:
+ *
+ *  1. It must run FIRST. It writes `isResident` on every save, and the Income Tax card's setter
+ *     (`setTaxProfileMY`) re-derives that same column from `taxResidency`. With tax LAST, a save of both
+ *     cards ends with the residency the admin actually chose; the other way round the statutory write
+ *     would land on top of it.
+ *  2. Its pass-throughs read the row AT THE MOMENT IT RUNS, so whichever of bank/tax has already
+ *     committed is what it carries forward. Running it first means it carries the stored values forward
+ *     and the partial writers then land their own — no ordering hazard either way, which is why bank and
+ *     others follow rather than lead.
+ */
+export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'others'] as const;
+
+/**
+ * Attendance. Two of the tab's four cards are bucket (b) — Work Location and Shift Arrangement both
+ * append a DATED record (a transfer movement event, a shift period) rather than overwriting a value —
+ * so they keep their own buttons and are rendered ABOVE the save scope, outside it.
+ *
+ * The three here are independent writers on the employment row with no shared column, so the order is
+ * simply the reading order of the cards.
+ */
+export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'clocking', 'geofencing'] as const;
+
+/**
+ * Employment (the `job` tab). One section: the Employment Dates card.
+ *
+ * ABSENT IS NOT BLANK here more sharply than anywhere else on the screen. `setEmploymentInfo` reads an
+ * absent field as "leave as-is" and a present-but-empty one as "clear to NULL", and this card
+ * deliberately no longer carries the eight flat org columns or the two service dates. The namespaced
+ * wire format is what keeps that true: the section is unpacked back into exactly the fields the card
+ * posted, so a field the card dropped stays dropped.
+ *
+ * The tab's other three cards — the company transfer, the Direct Superior reporting line and the
+ * delegations — are bucket (b) (an audited transfer with a pre-transaction gate, a bitemporal line
+ * tagged as a movement, and two windowed records) and keep their own buttons.
+ */
+export const JOB_TAB_SECTION_ORDER = ['employment'] as const;
+
+/**
+ * Every consolidated tab and the sections it owns — the single list a guard can read.
+ *
+ * The classification (docs/audits/420ebab5-personnel-save-classification.md) is a document, and documents
+ * rot. This map is the same statement in a form that fails a build: test/personnel-tab-save.test.ts
+ * asserts that the `data-save-section` markers actually present in the rendered source are EXACTLY these
+ * ids and no others, so a later change that quietly moved a money-affecting child-record form under a
+ * tab-wide Save would have to edit this map first — in a file whose whole purpose is to be read.
+ */
+export const PERSONNEL_TAB_SECTIONS = {
+  profile: PROFILE_TAB_SECTION_ORDER,
+  bankStatutory: BANK_STATUTORY_TAB_SECTION_ORDER,
+  attendance: ATTENDANCE_TAB_SECTION_ORDER,
+  job: JOB_TAB_SECTION_ORDER,
+} as const;
+
+export type PersonnelSaveTab = keyof typeof PERSONNEL_TAB_SECTIONS;
+
+/** Every section id across every consolidated tab, deduplicated — the marker allow-list. */
+export const ALL_PERSONNEL_TAB_SECTIONS: readonly string[] = Object.values(PERSONNEL_TAB_SECTIONS).flatMap(
+  (ids) => [...ids],
+);

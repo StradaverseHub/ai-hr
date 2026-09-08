@@ -50,7 +50,9 @@ import { mapEpfUiMode } from '@/lib/epf-mode-map';
 // 420ebab5 part two — the section contract the consolidated per-tab Save shares with the page and the
 // client scope. It lives outside this file because a `'use server'` module may only export async functions.
 import {
-  isProfileTabSection,
+  ATTENDANCE_TAB_SECTION_ORDER,
+  BANK_STATUTORY_TAB_SECTION_ORDER,
+  JOB_TAB_SECTION_ORDER,
   PROFILE_TAB_SECTION_ORDER,
   SECTION_FIELD_PREFIX,
   SECTIONS_FIELD,
@@ -871,14 +873,25 @@ export async function setPersonAction(formData: FormData) {
  * in setPersonAction: parse the unified value (state OR HR-defined group) and hand it to the audited service
  * (setEmploymentHolidayCalendar appends the DomainEvent). requireAdmin gates it like the profile actions.
  */
+/**
+ * r255 420ebab5 — the WRITE half of the Holiday Calendar card (see `applyStatutorySection`).
+ */
+async function applyHolidayCalendarSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const employmentId = String(formData.get('employmentId'));
+  await setEmploymentHolidayCalendar(s, {
+    employmentId,
+    selection: parseHolidayCalendar(formData.get('holidayCalendar')),
+  });
+}
+
 export async function setEmploymentHolidayCalendarAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await setEmploymentHolidayCalendar(s, {
-      employmentId,
-      selection: parseHolidayCalendar(formData.get('holidayCalendar')),
-    });
+    await applyHolidayCalendarSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1005,8 +1018,19 @@ export async function setComplianceFieldsAction(formData: FormData) {
  * on failure, ?toast=Saved on success (landing back on the same tab via withTab). A blank input is an
  * explicit clear-to-null; number inputs come through as strings and are parsed/validated in the service.
  */
-export async function setEmploymentInfoAction(formData: FormData) {
-  const s = await requireAdmin();
+/**
+ * r255 420ebab5 — the WRITE half of the Employment Dates card (see `applyStatutorySection`).
+ *
+ * ABSENT IS NOT BLANK, and this is the sharpest case of it on the screen — `str` returns `undefined` for a
+ * field the form does not carry ("leave as-is") and `null` for one it carries empty ("clear to NULL"). The
+ * consolidated payload is namespaced per section (lib/personnel-tab-sections.ts) precisely so that the
+ * fields this card deliberately dropped — the eight flat org columns, the two service dates, the extended
+ * confirmation date — stay dropped when it is saved through the tab-wide door.
+ */
+async function applyEmploymentInfoSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
   const employmentId = String(formData.get('employmentId'));
   // Helper: a present-but-blank field is an explicit clear (null); an ABSENT field is untouched (undefined).
   //
@@ -1021,56 +1045,62 @@ export async function setEmploymentInfoAction(formData: FormData) {
     const t = String(v).trim();
     return t === '' ? null : t;
   };
+  await setEmploymentInfo(s, {
+    employmentId,
+    // 89ea527b — hiredOn (Group Join Date) and joinDate are deliberately NOT read from this form. Both
+    // left the Employment Dates card and are now movement-only: Group Join Date Correction writes
+    // hiredOn, Join Date Change writes joinDate, and setEmploymentInfo ignores either field unless the
+    // call carries the matching movement tag. Not reading them here means a forged field by that name
+    // is dropped twice over — the Employment tab has no path to the two service dates at all.
+    probationMonths: str('probationMonths'),
+    probationDays: str('probationDays'),
+    confirmationDate: str('confirmationDate'),
+    resignationNoticeMonths: str('resignationNoticeMonths'),
+    resignationNoticeDays: str('resignationNoticeDays'),
+    resignationDate: str('resignationDate'),
+    shortNoticeMonths: str('shortNoticeMonths'),
+    shortNoticeDays: str('shortNoticeDays'),
+    // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
+    // server-side, never submitted.
+    // d27961e3 — extendedConfirmationDate is deliberately NOT read from the form: Extended/Final
+    // Confirmation Date left the Employment Dates card, and probation extensions are managed exclusively
+    // through the Movement module (createMovementEventAction → 'probationExtension'). A forged form field
+    // by that name is ignored here AND by setEmploymentInfo (movement-tag gated).
+    probationValue: str('probationValue'),
+    probationUnit: str('probationUnit'),
+    extendedProbationValue: str('extendedProbationValue'),
+    extendedProbationUnit: str('extendedProbationUnit'),
+    noticeBeforeConfirmationValue: str('noticeBeforeConfirmationValue'),
+    noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
+    noticeAfterConfirmationValue: str('noticeAfterConfirmationValue'),
+    noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
+    tenderResignationDate: str('tenderResignationDate'),
+    lastWorkingDate: str('lastWorkingDate'),
+    // 8590615a — the Contract Information block. It is rendered ONLY for an employee whose current open
+    // assignment is 'contract', so for everybody else these three are absent from the FormData and `str`
+    // maps them to `undefined` (untouched) — which is also what stops setEmploymentInfo's
+    // both-dates-required check from firing on a non-contract save. contractEndDate is the pre-existing
+    // employment-review column, written here on purpose so the two screens share one date.
+    contractStartDate: str('contractStartDate'),
+    contractEndDate: str('contractEndDate'),
+    contractRemark: str('contractRemark'),
+    // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
+    // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
+    // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation
+    // Assignment form; their sole writer is now core/movement.ts's comparison-form leg. This action covers
+    // the Employment Dates group only — and, since 89ea527b, not its two join dates either.
+  });
+  // R45 7527ea5f — confirmation date drives probation-eligibility entitlement; recompute the current cycle
+  // when it changes. (The hire date drives service bands but no longer reaches this action — a Group Join
+  // Date Correction goes through createMovementEvent → setEmploymentInfo instead.)
+  await recomputeEntitlement(s, employmentId, 'employment_info_changed');
+}
+
+export async function setEmploymentInfoAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
   try {
-    await setEmploymentInfo(s, {
-      employmentId,
-      // 89ea527b — hiredOn (Group Join Date) and joinDate are deliberately NOT read from this form. Both
-      // left the Employment Dates card and are now movement-only: Group Join Date Correction writes
-      // hiredOn, Join Date Change writes joinDate, and setEmploymentInfo ignores either field unless the
-      // call carries the matching movement tag. Not reading them here means a forged field by that name
-      // is dropped twice over — the Employment tab has no path to the two service dates at all.
-      probationMonths: str('probationMonths'),
-      probationDays: str('probationDays'),
-      confirmationDate: str('confirmationDate'),
-      resignationNoticeMonths: str('resignationNoticeMonths'),
-      resignationNoticeDays: str('resignationNoticeDays'),
-      resignationDate: str('resignationDate'),
-      shortNoticeMonths: str('shortNoticeMonths'),
-      shortNoticeDays: str('shortNoticeDays'),
-      // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
-      // server-side, never submitted.
-      // d27961e3 — extendedConfirmationDate is deliberately NOT read from the form: Extended/Final
-      // Confirmation Date left the Employment Dates card, and probation extensions are managed exclusively
-      // through the Movement module (createMovementEventAction → 'probationExtension'). A forged form field
-      // by that name is ignored here AND by setEmploymentInfo (movement-tag gated).
-      probationValue: str('probationValue'),
-      probationUnit: str('probationUnit'),
-      extendedProbationValue: str('extendedProbationValue'),
-      extendedProbationUnit: str('extendedProbationUnit'),
-      noticeBeforeConfirmationValue: str('noticeBeforeConfirmationValue'),
-      noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
-      noticeAfterConfirmationValue: str('noticeAfterConfirmationValue'),
-      noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
-      tenderResignationDate: str('tenderResignationDate'),
-      lastWorkingDate: str('lastWorkingDate'),
-      // 8590615a — the Contract Information block. It is rendered ONLY for an employee whose current open
-      // assignment is 'contract', so for everybody else these three are absent from the FormData and `str`
-      // maps them to `undefined` (untouched) — which is also what stops setEmploymentInfo's
-      // both-dates-required check from firing on a non-contract save. contractEndDate is the pre-existing
-      // employment-review column, written here on purpose so the two screens share one date.
-      contractStartDate: str('contractStartDate'),
-      contractEndDate: str('contractEndDate'),
-      contractRemark: str('contractRemark'),
-      // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
-      // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
-      // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation
-      // Assignment form; their sole writer is now core/movement.ts's comparison-form leg. This action covers
-      // the Employment Dates group only — and, since 89ea527b, not its two join dates either.
-    });
-    // R45 7527ea5f — confirmation date drives probation-eligibility entitlement; recompute the current cycle
-    // when it changes. (The hire date drives service bands but no longer reaches this action — a Group Join
-    // Date Correction goes through createMovementEvent → setEmploymentInfo instead.)
-    await recomputeEntitlement(s, employmentId, 'employment_info_changed');
+    await applyEmploymentInfoSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1233,109 +1263,127 @@ export async function removePersonPhotoAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/**
+ * r255 420ebab5 — the WRITE half of the Statutory (Malaysia) card, with no session lookup, no
+ * `revalidatePath` and no redirect. Same split as `applyPersonSection` above: the card's own action and the
+ * Bank & Statutory tab's consolidated "Save Changes" (`saveBankStatutoryTabAction`) reach the SAME pack
+ * setter with the SAME payload, so the consolidated door cannot grow its own copy that drifts.
+ *
+ * Read `BANK_STATUTORY_TAB_SECTION_ORDER` before changing where this runs in a consolidated save: this is a
+ * FULL-ROW overwrite that passes the stored bank/tax/TP3/zakat columns back through, and it writes
+ * `isResident` on every call — so it goes FIRST and the Income Tax card, which re-derives that column from
+ * `taxResidency`, goes after it.
+ */
+async function applyStatutorySection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  if (!pack) throw new Error('No localization pack for MY');
+  // Zakat election RELOCATED to Payroll > Transaction Entry > Zakat (feedback 58755260): this form no
+  // longer carries zakat fields, but the setter is a FULL overwrite of the statutory row — so read
+  // the current election and pass it through unchanged. Without this, every Personnel statutory
+  // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
+  const current = await pack.statutory.get(s, personId);
+  // Item 8b5334db — IC + the tax fields (taxNumber/taxCategory/numChildren/residency) were split out of this
+  // full-row statutory form onto the Profile tab (IC → setIcAction) and the dedicated Identification & Tax card
+  // (tax → setTaxAction). This form no longer carries those inputs, but setStatutoryProfileMY is a FULL overwrite
+  // of the columns it writes — so read the stored values and pass them through unchanged (same pass-through trap
+  // the bank/TP3/zakat fields already guard against). The three NEW columns (taxResidency/childReliefMode/
+  // employerBearsTax) are NOT in setStatutoryProfileMY's write set, so they are untouched here regardless.
+  if (!current) throw new Error('Save the IC number on the Profile tab first, then the EPF / SOCSO details.');
+  // Item e3ce0d4d — icNumber is now nullable (non-Malaysian rows are passport-identified). Item 35524d1f —
+  // this used to coerce that null to '' on purpose, to make the setter's IC validation fire and refuse the
+  // save; that turned "no MyKad" into "cannot record EPF/SOCSO at all" for exactly the passport holders
+  // e3ce0d4d set out to support. The setter now accepts a null, so pass the stored value straight through.
+  const icNumber = current.icNumber;
+  await pack.statutory.set(s, {
+    personId,
+    icNumber,
+    epfNumber: (formData.get('epfNumber') as string) || undefined,
+    // Item 5a461b99 — "SOCSO & EIS Number". For a Malaysian employee with a blank number, normalise to
+    // their IC number server-side (mirrors the form default); non-Malaysians keep manual entry. The
+    // `nationality` hidden field is the RSC page's emp.nationality (used only for this convenience default).
+    socsoNumber: pack.statutory.defaultSocsoEisNumber({
+      socsoNumber: (formData.get('socsoNumber') as string) || null,
+      icNumber,
+      nationality: (formData.get('nationality') as string) || null,
+    }),
+    // Tax fields now owned by the Identification & Tax card (setTaxAction) — pass the stored values through so
+    // an EPF/SOCSO save never wipes them (this setter is a full overwrite of the columns it writes).
+    taxNumber: current.taxNumber ?? undefined,
+    taxCategory: current.taxCategory ?? 1,
+    numChildren: current.numChildren ?? 0,
+    // Item a7271737 — SOCSO & EIS CATEGORY is now the single per-scheme control (consolidation approved). The
+    // legacy subject_to_socso / eis_eligible booleans are DERIVED from the category by setStatutoryProfileMY
+    // (= category !== 'none'), so this form sends the category and the setter keeps the booleans in sync. The
+    // setter defends against an out-of-range value (falls back to the boolean, then 'auto').
+    socsoCategory: (() => {
+      const c = String(formData.get('socsoCategory') ?? 'auto');
+      return c === 'first' || c === 'second' || c === 'none' ? c : 'auto';
+    })(),
+    eisCategory: String(formData.get('eisCategory') ?? 'auto') === 'none' ? 'none' : 'auto',
+    // Item 5a461b99 — "Subject to SKBBK" stays its own switch (SKBBK is not part of the SOCSO category).
+    subjectToSkbbk: formData.get('subjectToSkbbk') === 'on',
+    employerBearsSocso: formData.get('employerBearsSocso') === 'on',
+    employerBearsEis: formData.get('employerBearsEis') === 'on',
+    employerBearsSkbbk: formData.get('employerBearsSkbbk') === 'on',
+    // Item 0d9bb2da — "Employer bears EPF Contribution" on the EPF card. This full-row setter always sends
+    // the checkbox state so the flag round-trips correctly.
+    employerBearsEpf: formData.get('employerBearsEpf') === 'on',
+    isResident: formData.get('isResident') === 'on',
+    epfCitizenship: (() => {
+      const c = String(formData.get('epfCitizenship') ?? 'citizen');
+      return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
+    })(),
+    // EPF contribution mode (Wave 2B, ADR-0046). The UI surfaces five named categories; mapEpfUiMode
+    // maps them down to the three lawful KWSP enum values + the rates to persist HERE (never trust the
+    // client to send a clean enum). resolveEpfElection() additionally nulls rates for any
+    // non-voluntary_excess mode, so auto/none always persist with both rates null.
+    ...mapEpfUiMode(
+      formData.get('epfMode') as string | null,
+      formData.get('epfEmployeeRate') as string | null,
+      formData.get('epfEmployerRate') as string | null,
+    ),
+    // Bank fields RELOCATED to their own Bank Information card with a dedicated partial save (setBankAction,
+    // item ef720d3a). This form no longer carries them, but setStatutoryProfileMY is a FULL overwrite of the
+    // bank columns — so read the stored values and pass them through unchanged. Without this, every statutory
+    // save would silently wipe the salary-payment bank details (the same trap the TP3 + zakat pass-throughs
+    // guard against). The four custom-holder columns are NOT in setStatutoryProfileMY's write set, so they
+    // are untouched here regardless.
+    bankName: current?.bankName ?? undefined,
+    bankAccountNo: current?.bankAccountNo ?? undefined,
+    // TP3 opening balances RELOCATED to the Payroll tab (item a6a47698) with their own partial save
+    // (setTp3Action). This form no longer carries the four TP3 columns, but the setter is a FULL
+    // overwrite of the statutory row — so read the stored values and pass them through unchanged.
+    // Without this, every Personnel statutory save would silently wipe the opening balances the TP3
+    // card wrote (exactly the trap the zakat pass-through below already guards against).
+    tp3Year: current?.tp3Year ?? null,
+    tp3NetRemuneration: current?.tp3NetRemuneration != null ? Number(current.tp3NetRemuneration) : null,
+    tp3EpfClaimed: current?.tp3EpfClaimed != null ? Number(current.tp3EpfClaimed) : null,
+    tp3PcbPaid: current?.tp3PcbPaid != null ? Number(current.tp3PcbPaid) : null,
+    // tp3ZakatPaid is never on this form (it comes from payroll-history import) — pass the stored
+    // value through so a statutory save doesn't silently null an imported zakat opening balance.
+    tp3ZakatPaid: current?.tp3ZakatPaid != null ? Number(current.tp3ZakatPaid) : null,
+    // Zakat election pass-through (owned by Payroll > Transaction Entry > Zakat since 58755260): the
+    // stored decimal percent goes back in as-is (it is already ÷100), so the election round-trips
+    // bit-for-bit through the full-overwrite setter.
+    zakatActive: current?.zakatActive ?? false,
+    zakatState: current?.zakatState ?? null,
+    zakatMethod: current?.zakatMethod ?? null,
+    zakatPercent: current?.zakatPercent != null ? Number(current.zakatPercent) : null,
+    zakatFixed: current?.zakatFixed != null ? Number(current.zakatFixed) : null,
+    zakatEffectiveFrom: current?.zakatEffectiveFrom ?? null,
+    zakatEffectiveTo: current?.zakatEffectiveTo ?? null,
+  });
+}
+
 export async function setStatutoryAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const personId = String(formData.get('personId'));
-  const pack = packFor('MY');
   try {
-    if (!pack) throw new Error('No localization pack for MY');
-    // Zakat election RELOCATED to Payroll > Transaction Entry > Zakat (feedback 58755260): this form no
-    // longer carries zakat fields, but the setter is a FULL overwrite of the statutory row — so read
-    // the current election and pass it through unchanged. Without this, every Personnel statutory
-    // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
-    const current = await pack.statutory.get(s, personId);
-    // Item 8b5334db — IC + the tax fields (taxNumber/taxCategory/numChildren/residency) were split out of this
-    // full-row statutory form onto the Profile tab (IC → setIcAction) and the dedicated Identification & Tax card
-    // (tax → setTaxAction). This form no longer carries those inputs, but setStatutoryProfileMY is a FULL overwrite
-    // of the columns it writes — so read the stored values and pass them through unchanged (same pass-through trap
-    // the bank/TP3/zakat fields already guard against). The three NEW columns (taxResidency/childReliefMode/
-    // employerBearsTax) are NOT in setStatutoryProfileMY's write set, so they are untouched here regardless.
-    if (!current) throw new Error('Save the IC number on the Profile tab first, then the EPF / SOCSO details.');
-    // Item e3ce0d4d — icNumber is now nullable (non-Malaysian rows are passport-identified). Item 35524d1f —
-    // this used to coerce that null to '' on purpose, to make the setter's IC validation fire and refuse the
-    // save; that turned "no MyKad" into "cannot record EPF/SOCSO at all" for exactly the passport holders
-    // e3ce0d4d set out to support. The setter now accepts a null, so pass the stored value straight through.
-    const icNumber = current.icNumber;
-    await pack.statutory.set(s, {
-      personId,
-      icNumber,
-      epfNumber: (formData.get('epfNumber') as string) || undefined,
-      // Item 5a461b99 — "SOCSO & EIS Number". For a Malaysian employee with a blank number, normalise to
-      // their IC number server-side (mirrors the form default); non-Malaysians keep manual entry. The
-      // `nationality` hidden field is the RSC page's emp.nationality (used only for this convenience default).
-      socsoNumber: pack.statutory.defaultSocsoEisNumber({
-        socsoNumber: (formData.get('socsoNumber') as string) || null,
-        icNumber,
-        nationality: (formData.get('nationality') as string) || null,
-      }),
-      // Tax fields now owned by the Identification & Tax card (setTaxAction) — pass the stored values through so
-      // an EPF/SOCSO save never wipes them (this setter is a full overwrite of the columns it writes).
-      taxNumber: current.taxNumber ?? undefined,
-      taxCategory: current.taxCategory ?? 1,
-      numChildren: current.numChildren ?? 0,
-      // Item a7271737 — SOCSO & EIS CATEGORY is now the single per-scheme control (consolidation approved). The
-      // legacy subject_to_socso / eis_eligible booleans are DERIVED from the category by setStatutoryProfileMY
-      // (= category !== 'none'), so this form sends the category and the setter keeps the booleans in sync. The
-      // setter defends against an out-of-range value (falls back to the boolean, then 'auto').
-      socsoCategory: (() => {
-        const c = String(formData.get('socsoCategory') ?? 'auto');
-        return c === 'first' || c === 'second' || c === 'none' ? c : 'auto';
-      })(),
-      eisCategory: String(formData.get('eisCategory') ?? 'auto') === 'none' ? 'none' : 'auto',
-      // Item 5a461b99 — "Subject to SKBBK" stays its own switch (SKBBK is not part of the SOCSO category).
-      subjectToSkbbk: formData.get('subjectToSkbbk') === 'on',
-      employerBearsSocso: formData.get('employerBearsSocso') === 'on',
-      employerBearsEis: formData.get('employerBearsEis') === 'on',
-      employerBearsSkbbk: formData.get('employerBearsSkbbk') === 'on',
-      // Item 0d9bb2da — "Employer bears EPF Contribution" on the EPF card. This full-row setter always sends
-      // the checkbox state so the flag round-trips correctly.
-      employerBearsEpf: formData.get('employerBearsEpf') === 'on',
-      isResident: formData.get('isResident') === 'on',
-      epfCitizenship: (() => {
-        const c = String(formData.get('epfCitizenship') ?? 'citizen');
-        return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
-      })(),
-      // EPF contribution mode (Wave 2B, ADR-0046). The UI surfaces five named categories; mapEpfUiMode
-      // maps them down to the three lawful KWSP enum values + the rates to persist HERE (never trust the
-      // client to send a clean enum). resolveEpfElection() additionally nulls rates for any
-      // non-voluntary_excess mode, so auto/none always persist with both rates null.
-      ...mapEpfUiMode(
-        formData.get('epfMode') as string | null,
-        formData.get('epfEmployeeRate') as string | null,
-        formData.get('epfEmployerRate') as string | null,
-      ),
-      // Bank fields RELOCATED to their own Bank Information card with a dedicated partial save (setBankAction,
-      // item ef720d3a). This form no longer carries them, but setStatutoryProfileMY is a FULL overwrite of the
-      // bank columns — so read the stored values and pass them through unchanged. Without this, every statutory
-      // save would silently wipe the salary-payment bank details (the same trap the TP3 + zakat pass-throughs
-      // guard against). The four custom-holder columns are NOT in setStatutoryProfileMY's write set, so they
-      // are untouched here regardless.
-      bankName: current?.bankName ?? undefined,
-      bankAccountNo: current?.bankAccountNo ?? undefined,
-      // TP3 opening balances RELOCATED to the Payroll tab (item a6a47698) with their own partial save
-      // (setTp3Action). This form no longer carries the four TP3 columns, but the setter is a FULL
-      // overwrite of the statutory row — so read the stored values and pass them through unchanged.
-      // Without this, every Personnel statutory save would silently wipe the opening balances the TP3
-      // card wrote (exactly the trap the zakat pass-through below already guards against).
-      tp3Year: current?.tp3Year ?? null,
-      tp3NetRemuneration: current?.tp3NetRemuneration != null ? Number(current.tp3NetRemuneration) : null,
-      tp3EpfClaimed: current?.tp3EpfClaimed != null ? Number(current.tp3EpfClaimed) : null,
-      tp3PcbPaid: current?.tp3PcbPaid != null ? Number(current.tp3PcbPaid) : null,
-      // tp3ZakatPaid is never on this form (it comes from payroll-history import) — pass the stored
-      // value through so a statutory save doesn't silently null an imported zakat opening balance.
-      tp3ZakatPaid: current?.tp3ZakatPaid != null ? Number(current.tp3ZakatPaid) : null,
-      // Zakat election pass-through (owned by Payroll > Transaction Entry > Zakat since 58755260): the
-      // stored decimal percent goes back in as-is (it is already ÷100), so the election round-trips
-      // bit-for-bit through the full-overwrite setter.
-      zakatActive: current?.zakatActive ?? false,
-      zakatState: current?.zakatState ?? null,
-      zakatMethod: current?.zakatMethod ?? null,
-      zakatPercent: current?.zakatPercent != null ? Number(current.zakatPercent) : null,
-      zakatFixed: current?.zakatFixed != null ? Number(current.zakatFixed) : null,
-      zakatEffectiveFrom: current?.zakatEffectiveFrom ?? null,
-      zakatEffectiveTo: current?.zakatEffectiveTo ?? null,
-    });
+    await applyStatutorySection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1377,22 +1425,32 @@ export async function setTp3Action(formData: FormData) {
  * setTp3Action). requireAdmin gates it like setStatutoryAction; the pack setter validates require-when-enabled
  * and appends the `employee.bank.updated` DomainEvent.
  */
+/**
+ * r255 420ebab5 — the WRITE half of the Bank Information card (see `applyStatutorySection`).
+ */
+async function applyBankSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  if (!pack) throw new Error('No localization pack for MY');
+  await pack.statutory.setBank(s, {
+    personId,
+    bankName: (formData.get('bankName') as string) || null,
+    bankAccountNo: (formData.get('bankAccountNo') as string) || null,
+    enableCustomHolderName: formData.get('enableCustomHolderName') === 'on',
+    customHolderName: (formData.get('customHolderName') as string) || null,
+    enableCustomHolderId: formData.get('enableCustomHolderId') === 'on',
+    customHolderId: (formData.get('customHolderId') as string) || null,
+  });
+}
+
 export async function setBankAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const personId = String(formData.get('personId'));
-  const pack = packFor('MY');
   try {
-    if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setBank(s, {
-      personId,
-      bankName: (formData.get('bankName') as string) || null,
-      bankAccountNo: (formData.get('bankAccountNo') as string) || null,
-      enableCustomHolderName: formData.get('enableCustomHolderName') === 'on',
-      customHolderName: (formData.get('customHolderName') as string) || null,
-      enableCustomHolderId: formData.get('enableCustomHolderId') === 'on',
-      customHolderId: (formData.get('customHolderId') as string) || null,
-    });
+    await applyBankSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1489,29 +1547,16 @@ export async function setPassportAction(formData: FormData) {
 /**
  * 420ebab5 part two — ONE "Save Changes" for the whole Profile tab.
  *
- * WHAT IT IS NOT. It is not a blanket write. Effective dating (ADR-0001/0003) means a save CLOSES the
- * current version of a record and INSERTS a new one rather than updating a row in place, and each card on
- * this tab reaches a different service that does that its own way. So this action does exactly what five
- * separate saves did: it unpacks each card's OWN payload — the same fields, the same hidden inputs, the
- * same absences — and hands it to that card's own service, in a declared order, through the very same
- * `apply*Section` helpers the five per-card actions above call. Nothing here writes a table.
+ * The mechanics are `runTabSave` below, shared with the other three consolidated tabs; read its note for
+ * what a consolidated save is and (more importantly) what it is not. What is specific to THIS tab:
  *
- * ABSENT IS NOT BLANK, so the payload is namespaced rather than flattened. `setEmploymentInfo` and the
- * profile writers read an absent field as "leave as-is" and a present-but-empty one as "clear to NULL",
- * and several cards deliberately carry a sibling's value through as a hidden input. Flattening five forms
- * into one bag of names would collide those (`fullName` is a real input on Personal Details and a hidden
- * carry-through on Contact & Address) and would silently start posting fields a form no longer carries.
- * Each field therefore arrives as `section.<id>.<field>` and is unpacked back into that section's own
- * FormData, byte for byte.
- *
- * ONLY DIRTY SECTIONS ARE WRITTEN. The client names them in `sections`; a card the admin did not touch is
- * not in the list, its service is never called, and no event is appended for it. That also means an
- * untouched card cannot be re-saved as a side effect of editing its neighbour.
- *
- * IT RETURNS RATHER THAN REDIRECTS, unlike every per-card action on this screen — see TabSaveResult
- * (lib/personnel-tab-sections.ts). A redirect cannot say which of five writes failed, and the
- * classification requires a per-section failure rather than one all-or-nothing error. On a failure the
- * sections already committed are named in `saved` so the client can mark exactly those clean.
+ * ABSENT IS NOT BLANK, so the payload is namespaced rather than flattened. The profile writers read an
+ * absent field as "leave as-is" and a present-but-empty one as "clear to NULL", and several cards
+ * deliberately carry a sibling's value through as a hidden input. Flattening five forms into one bag of
+ * names would collide those (`fullName` is a real input on Personal Details and a hidden carry-through on
+ * Contact & Address) and would silently start posting fields a form no longer carries. Each field
+ * therefore arrives as `section.<id>.<field>` and is unpacked back into that section's own FormData, byte
+ * for byte.
  *
  * BUCKET (b) IS NOT REACHABLE FROM HERE. Emergency contacts, dependants, qualifications, CP38 orders,
  * encashment adjustments, compensation revisions and pay items are discrete acts with their own buttons
@@ -1520,28 +1565,137 @@ export async function setPassportAction(formData: FormData) {
  */
 export async function saveProfileTabAction(formData: FormData): Promise<TabSaveResult> {
   const s = await requireAdmin();
+  return runTabSave(s, formData, PROFILE_TAB_SECTION_ORDER, {
+    person: applyPersonSection,
+    compliance: applyComplianceSection,
+    contact: applyContactAddressSection,
+    ic: applyIcSection,
+    passport: applyPassportSection,
+  });
+}
+
+/**
+ * r255 420ebab5 — ONE "Save Changes" for the Bank & Statutory tab.
+ *
+ * THIS TAB IS NOT THE MECHANICAL REPEAT OF PROFILE THAT THE WRITE-UP ASSUMED, and the difference is the
+ * ORDER, not the plumbing. `setStatutoryProfileMY` is a FULL-ROW overwrite of the columns it writes, and
+ * two of those columns belong to cards that are not it:
+ *
+ *  · `isResident`. The Statutory (Malaysia) form does not carry an `isResident` control at all, so
+ *    `applyStatutorySection` always sends `false` for it, and the Income Tax (PCB) card's setter
+ *    (`setTaxProfileMY`) re-derives the SAME column from the `taxResidency` the admin picked. With tax
+ *    LAST the residency on screen is what survives the request; the other way round the statutory write
+ *    would land on top of it and quietly make a resident non-resident. That ordering is pinned by
+ *    test/personnel-tab-save-tabs.test.ts, not merely written down.
+ *  · the bank / TP3 / zakat pass-throughs, which `applyStatutorySection` reads from the STORED row at the
+ *    moment it runs. Statutory going first means it carries the stored values forward and the partial
+ *    writers (bank, tax) then land their own on top — so no card can be undone by a sibling in the same
+ *    request.
+ *
+ * A CONSEQUENCE WORTH KNOWING. `applyStatutorySection` refuses outright when the person has no statutory
+ * row yet ("Save the IC number on the Profile tab first"). Because it runs FIRST, a request that carries
+ * BOTH statutory and bank edits on such an employee saves neither and says so — where today's per-card
+ * Bank button would have saved the bank details alone. Editing only the Bank card still writes only the
+ * Bank card: an untouched section is never in `sections` and its service is never called.
+ */
+export async function saveBankStatutoryTabAction(formData: FormData): Promise<TabSaveResult> {
+  const s = await requireAdmin();
+  return runTabSave(s, formData, BANK_STATUTORY_TAB_SECTION_ORDER, {
+    statutory: applyStatutorySection,
+    tax: applyTaxSection,
+    bank: applyBankSection,
+    others: applyOthersStatutorySection,
+  });
+}
+
+/**
+ * r255 420ebab5 — ONE "Save Changes" for the Attendance tab's three field-edit cards.
+ *
+ * Work Location and Shift Arrangement are NOT here and must never be added: each appends a DATED record
+ * (a transfer movement event, a shift period the service refuses to back-insert) rather than overwriting
+ * a value, so "Discard" could not put anything back. They keep their own buttons and the page renders
+ * them outside the scope — see docs/audits/420ebab5-personnel-save-classification.md.
+ */
+export async function saveAttendanceTabAction(formData: FormData): Promise<TabSaveResult> {
+  const s = await requireAdmin();
+  return runTabSave(s, formData, ATTENDANCE_TAB_SECTION_ORDER, {
+    holiday: applyHolidayCalendarSection,
+    clocking: applyClockingLocationsSection,
+    geofencing: applyGeofencingSection,
+  });
+}
+
+/**
+ * r255 420ebab5 — ONE "Save Changes" for the Employment (job) tab's single field-edit card.
+ *
+ * One section is not a degenerate case of this pattern, it is the point of it: the tab now behaves like
+ * every other consolidated tab (a change summary, a Discard, and a prompt before the reader walks away)
+ * instead of like the one card that still had a button. The company transfer, the Direct Superior line
+ * and the two delegation forms stay bucket (b) with their own buttons.
+ *
+ * ABSENT IS NOT BLANK, and `setEmploymentInfo` reads it that way more sharply than anything else on the
+ * screen — see `applyEmploymentInfoSection`. The namespaced wire format is what keeps the fields this
+ * card deliberately dropped (the eight flat org columns, the two service dates) dropped.
+ */
+export async function saveJobTabAction(formData: FormData): Promise<TabSaveResult> {
+  const s = await requireAdmin();
+  return runTabSave(s, formData, JOB_TAB_SECTION_ORDER, {
+    employment: applyEmploymentInfoSection,
+  });
+}
+
+/**
+ * The one engine behind every consolidated per-tab Save. Four tabs, one loop — a second copy of this is
+ * how the four would drift apart, and the classification's safety rests on all four behaving identically.
+ *
+ * WHAT IT IS NOT. It is not a blanket write. Effective dating (ADR-0001/0003) means a save CLOSES the
+ * current version of a record and INSERTS a new one rather than updating a row in place, and each card
+ * reaches a different service that does that its own way. So this does exactly what the separate per-card
+ * saves did: it unpacks each card's OWN payload — the same fields, the same hidden inputs, the same
+ * absences — and hands it to that card's own service, in the DECLARED order, through the very same
+ * `apply*Section` helpers the per-card actions call. Nothing here writes a table.
+ *
+ * ONLY DIRTY SECTIONS ARE WRITTEN. The client names them in `sections`; a card the admin did not touch is
+ * not in the list, its service is never called, and no event is appended for it.
+ *
+ * A SECTION NAME THE TAB DOES NOT OWN IS REFUSED OUTRIGHT, before anything is written. That is the bucket
+ * (b) fence expressed on the server: the tab's order list is the whole vocabulary, so a crafted payload
+ * naming `compensation` cannot reach a salary revision through a tab's Save.
+ *
+ * IT RETURNS RATHER THAN REDIRECTS, unlike every per-card action on this screen — see TabSaveResult
+ * (lib/personnel-tab-sections.ts). A redirect cannot say WHICH write failed, and the classification
+ * requires a per-section failure rather than one all-or-nothing error. On a failure the sections already
+ * committed are named in `saved` so the client can mark exactly those clean and leave the rest edited.
+ */
+async function runTabSave(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+  order: readonly string[],
+  writers: Record<string, (s: Awaited<ReturnType<typeof requireAdmin>>, fd: FormData) => Promise<void>>,
+): Promise<TabSaveResult> {
   const employmentId = String(formData.get('employmentId'));
   const requested = String(formData.get(SECTIONS_FIELD) ?? '')
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
 
-  const unknown = requested.filter((x) => !isProfileTabSection(x));
+  const unknown = requested.filter((x) => !order.includes(x));
   if (unknown.length > 0) {
     return { ok: false, saved: [], failedSection: unknown[0], error: `Unknown section: ${unknown[0]}` };
   }
 
   const saved: string[] = [];
-  // The DECLARED order, never the client's — see lib/personnel-tab-sections.ts for why it is fixed.
-  for (const section of PROFILE_TAB_SECTION_ORDER) {
+  // The DECLARED order, never the client's — see lib/personnel-tab-sections.ts for why each is fixed.
+  for (const section of order) {
     if (!requested.includes(section)) continue;
-    const sectionData = sectionFormData(formData, section, employmentId);
+    const write = writers[section];
+    // Unreachable while the map covers the order list (pinned by test/personnel-tab-save-tabs.test.ts);
+    // refusing rather than skipping means a section that lost its writer can never report itself saved.
+    if (!write) {
+      return { ok: false, saved, failedSection: section, error: `No writer for section: ${section}` };
+    }
     try {
-      if (section === 'person') await applyPersonSection(s, sectionData);
-      else if (section === 'compliance') await applyComplianceSection(s, sectionData);
-      else if (section === 'contact') await applyContactAddressSection(s, sectionData);
-      else if (section === 'ic') await applyIcSection(s, sectionData);
-      else if (section === 'passport') await applyPassportSection(s, sectionData);
+      await write(s, sectionFormData(formData, section, employmentId));
       saved.push(section);
     } catch (e) {
       // Best-effort revalidate for whatever DID commit before the failure, then report which card broke.
@@ -1606,36 +1760,46 @@ function collectChildReliefTable(formData: FormData): Record<string, { full: num
   return out;
 }
 
+/**
+ * r255 420ebab5 — the WRITE half of the Income Tax (PCB) card (see `applyStatutorySection`).
+ */
+async function applyTaxSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  if (!pack) throw new Error('No localization pack for MY');
+  await pack.statutory.setTax(s, {
+    personId,
+    taxNumber: (formData.get('taxNumber') as string) || null,
+    taxCategory: Number(formData.get('taxCategory')) || 1,
+    taxResidency: (formData.get('taxResidency') as string) || 'resident',
+    numChildren: Number(formData.get('numChildren')) || 0,
+    childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
+    employerBearsTax: formData.get('employerBearsTax') === 'on',
+    // Item d64d0df4 — Disabled Individual is a Yes/No SELECT, not a checkbox, so read the value rather
+    // than `=== 'on'`. Anything other than an explicit 'yes' (including a missing field, which is what a
+    // caller predating this control sends) is No — the default that reproduces today's PCB exactly.
+    disabledIndividual: formData.get('disabledIndividual') === 'yes',
+    // Item d64d0df4 — Disabled Spouse, same Yes/No select shape as the field above. Anything other
+    // than an explicit 'yes' (including a missing field) is No.
+    disabledSpouse: formData.get('disabledSpouse') === 'yes',
+    // Item d64d0df4 — the 'auto_table' category grid, posted as one field per category+share
+    // ("childRelief_<category>_full" / "_half"). Collected here into the stored shape and handed to
+    // the pack setter, which validates it (whole numbers ≥ 0, unknown keys dropped, empty ⇒ null).
+    // NOTE it is sent on EVERY save, not only in auto_table mode: the setter overwrites the whole tax
+    // column set, so omitting it in another mode would erase a grid the admin keyed earlier and would
+    // silently move their tax the next time they switched back.
+    childReliefTable: collectChildReliefTable(formData),
+  });
+}
+
 export async function setTaxAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const personId = String(formData.get('personId'));
-  const pack = packFor('MY');
   try {
-    if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setTax(s, {
-      personId,
-      taxNumber: (formData.get('taxNumber') as string) || null,
-      taxCategory: Number(formData.get('taxCategory')) || 1,
-      taxResidency: (formData.get('taxResidency') as string) || 'resident',
-      numChildren: Number(formData.get('numChildren')) || 0,
-      childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
-      employerBearsTax: formData.get('employerBearsTax') === 'on',
-      // Item d64d0df4 — Disabled Individual is a Yes/No SELECT, not a checkbox, so read the value rather
-      // than `=== 'on'`. Anything other than an explicit 'yes' (including a missing field, which is what a
-      // caller predating this control sends) is No — the default that reproduces today's PCB exactly.
-      disabledIndividual: formData.get('disabledIndividual') === 'yes',
-      // Item d64d0df4 — Disabled Spouse, same Yes/No select shape as the field above. Anything other
-      // than an explicit 'yes' (including a missing field) is No.
-      disabledSpouse: formData.get('disabledSpouse') === 'yes',
-      // Item d64d0df4 — the 'auto_table' category grid, posted as one field per category+share
-      // ("childRelief_<category>_full" / "_half"). Collected here into the stored shape and handed to
-      // the pack setter, which validates it (whole numbers ≥ 0, unknown keys dropped, empty ⇒ null).
-      // NOTE it is sent on EVERY save, not only in auto_table mode: the setter overwrites the whole tax
-      // column set, so omitting it in another mode would erase a grid the admin keyed earlier and would
-      // silently move their tax the next time they switched back.
-      childReliefTable: collectChildReliefTable(formData),
-    });
+    await applyTaxSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1660,15 +1824,8 @@ export async function setTaxAction(formData: FormData) {
 export async function setOthersStatutoryAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const personId = String(formData.get('personId'));
-  const pack = packFor('MY');
-  const hrdfChoice = formData.get('subjectToHrdf');
   try {
-    if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setOthersStatutory(s, {
-      personId,
-      subjectToHrdf: hrdfChoice === 'yes' ? true : hrdfChoice === 'no' ? false : null,
-    });
+    await applyOthersStatutorySection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1676,15 +1833,54 @@ export async function setOthersStatutoryAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/**
+ * r255 420ebab5 — the WRITE half of the Others Statutory card (see `applyStatutorySection`).
+ *
+ * DECLARED AFTER ITS ACTION ON PURPOSE, unlike its four siblings. Two guards read this file as text and
+ * slice it from `export async function setOthersStatutoryAction` — one to the end of the file
+ * (test/hrdf-subject.test.ts), one to the next exported action (test/hrdf-registration-visibility.test.ts) —
+ * to assert that the "Subject to HRDF" tri-state is still mapped rather than collapsed to a checkbox's 'on'.
+ * Moving the mapping ABOVE the action would put it outside both slices and quietly retire two guards that
+ * pin a real bug (feedback 57840a6e: a collapsed checkbox pinned employees to an explicit No).
+ */
+async function applyOthersStatutorySection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  const hrdfChoice = formData.get('subjectToHrdf');
+  if (!pack) throw new Error('No localization pack for MY');
+  await pack.statutory.setOthersStatutory(s, {
+    personId,
+    subjectToHrdf: hrdfChoice === 'yes' ? true : hrdfChoice === 'no' ? false : null,
+  });
+}
+
 /** ADR-0070 — set-based replace of an employee's assigned clocking sites. */
+/**
+ * r255 420ebab5 — the WRITE half of the Clocking Locations card (see `applyStatutorySection`).
+ *
+ * The multi-select posts one entry per ticked site and NOTHING when the admin unticks them all, which is
+ * the set-based replace this service expects. `buildTabPayload` (lib/tab-save-dom.ts) packs a multi-select
+ * the same way a real form post does, so "clear every site" survives the consolidated door.
+ */
+async function applyClockingLocationsSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const employmentId = String(formData.get('employmentId'));
+  await setEmployeeClockingLocations(s, {
+    employmentId,
+    clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
+  });
+}
+
 export async function setEmployeeClockingLocationsAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await setEmployeeClockingLocations(s, {
-      employmentId,
-      clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
-    });
+    await applyClockingLocationsSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1693,15 +1889,30 @@ export async function setEmployeeClockingLocationsAction(formData: FormData) {
 }
 
 /** ADR-0070 — enable/disable geofencing for one employee + set its radius (metres). */
+/**
+ * r255 420ebab5 — the WRITE half of the Geofencing controls (see `applyStatutorySection`).
+ *
+ * `enabled` is a checkbox and `radiusM` an optional override: an unticked box posts nothing, and a blank
+ * radius means "use each site's own". `buildTabPayload` skips unticked checkboxes exactly as a form post
+ * does, so both defaults survive the consolidated door.
+ */
+async function applyGeofencingSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const employmentId = String(formData.get('employmentId'));
+  await setGeofencing(s, {
+    employmentId,
+    enabled: formData.get('enabled') === 'on',
+    radiusM: formData.get('radiusM') ? Number(formData.get('radiusM')) : null,
+  });
+}
+
 export async function setGeofencingAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await setGeofencing(s, {
-      employmentId,
-      enabled: formData.get('enabled') === 'on',
-      radiusM: formData.get('radiusM') ? Number(formData.get('radiusM')) : null,
-    });
+    await applyGeofencingSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
