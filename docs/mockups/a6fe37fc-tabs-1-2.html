@@ -17,6 +17,13 @@
   entitlement tables in force against 2 eligibility rules; Sick Leave 5 against 1; seven types with
   2-3 tables and zero rules; 4 eligibility rules in the whole tenant. No day figures are drawn, because
   the audit records counts and not figures.
+
+  ⚠️ "AT LEAST 14 OF THE 16" IS ARITHMETIC ON TWO OF THOSE AUDIT FIGURES, NOT A THIRD MEASUREMENT.
+  An eligibility rule points at exactly ONE table (entitlement_eligibility_rule.template_lineage_id,
+  db/schema.ts:1831), so two rules reach at most two of the sixteen: at least fourteen are reached by
+  none. It is 16 − 2 with a reason, and the row on the image says so rather than printing a bare count
+  beside two measured ones. The exact list IS computable — lib/leave-config-health.ts returns
+  tablesWithoutRule: string[] by name — and the built screen prints it.
 -->
 <style>
   :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
@@ -220,7 +227,7 @@ this is where they sit, not new capability. The leave type list on the left is u
         <div class="box ro">
           <h3>Which entitlement rules reach this type <span class="chip grey">read-only &mdash; set on tab 3</span></h3>
           <div class="rule"><span>2 eligibility rules in force point at an Annual Leave table</span><span class="mut">tab 3</span></div>
-          <div class="rule"><span>14 of the 16 tables in force are reached by no rule</span><span class="chip amber">nobody receives them</span></div>
+          <div class="rule"><span>at least 14 of the 16 tables in force are reached by no rule &mdash; 16 minus your 2 rules, not a separate count</span><span class="chip amber">nobody receives them</span></div>
           <div class="rule"><span>4 eligibility rules exist across the whole company</span><span class="mut">all leave types</span></div>
           <p class="note">Gender, nationality, religion, race and job grade are not dated in this system, so a
             rule narrowing by them is always read at today&rsquo;s value &mdash; even when the question is about

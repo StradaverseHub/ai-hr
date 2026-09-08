@@ -5,7 +5,7 @@
 
   EVERY CONTROL EXISTS TODAY. The only change is that they are on ONE tab instead of split between
   step 1 (General setting: earning method, rounding, carry forward) and step 3 (Entitlement: the tables),
-  with the three balance cards arriving from step 2's application-rules grid.
+  with the balance card and its three sub-forms arriving from step 2's application-rules grid.
 
   THE HEALTH STRIP IS NOT NEW EITHER: lib/leave-config-health.ts already derives every finding drawn
   here (earning method set · tables in force · rules in force · tables reached by no rule) and already
@@ -17,6 +17,18 @@
   all 45 are in force. NO TABLE NAMES AND NO DAY FIGURES ARE DRAWN — the audit recorded how many there
   are, not what they are called or what they grant, and a mockup must not invent them. The name column
   is therefore drawn as a placeholder and said to be one, on the image.
+
+  ⚠️ "AT LEAST 14 REACH NOBODY" IS ARITHMETIC ON THOSE TWO AUDIT FIGURES, NOT A THIRD MEASUREMENT, AND
+  THE IMAGE SAYS SO. An eligibility rule points at exactly ONE table
+  (entitlement_eligibility_rule.template_lineage_id, db/schema.ts:1831), so two rules reach at most two
+  of the sixteen: at least fourteen are reached by none. It is 16 − 2 with a reason. The true figure is
+  14 only if the two rules point at different tables; if they point at the same one it is 15, and nobody
+  has counted which. An earlier draft of this image printed a bare "14 tables no rule reaches" beside
+  two figures that WERE measured, which reads as a third measurement — it is not. The exact list is
+  already computable and already named on the screen (lib/leave-config-health.ts returns
+  tablesWithoutRule: string[], by name, never as "some"), so the build round that renders this strip
+  prints the customer's real list and this estimate stops being needed. The amber squares are drawn to
+  the arithmetic, not to a count, and the strip is labelled "at least".
 -->
 <style>
   :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
@@ -88,7 +100,7 @@
 
 <p class="cap"><b>Leave types &mdash; tab 3, what they are entitled to.</b> A sketch for approval; wording,
 spacing and colours will differ. Everything drawn exists today &mdash; the earning method, rounding and
-carry forward are moved here from <i>General setting</i>, the three balance cards from
+carry forward are moved here from <i>General setting</i>, the balance card and its three sub-forms from
 <i>Leave application rules</i>, and the tables and rules are already on this step. The engine that turns
 these into a number of days is unchanged.</p>
 
@@ -123,7 +135,7 @@ these into a number of days is unchanged.</p>
             <span class="hitem">Earning method <b>set</b></span>
             <span class="hitem"><b>16</b> entitlement tables in force</span>
             <span class="hitem"><b>2</b> eligibility rules in force</span>
-            <span class="hitem"><b>14</b> tables no rule reaches</span>
+            <span class="hitem">at least <b>14</b> tables no rule reaches <span class="chip grey">16 &minus; 2, not counted</span></span>
           </div>
           <div class="strip">
             <i class="sq g"></i><i class="sq g"></i>
@@ -131,10 +143,13 @@ these into a number of days is unchanged.</p>
             <i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i>
             <i class="sq a"></i><i class="sq a"></i><i class="sq a"></i><i class="sq a"></i>
           </div>
-          <p class="note">A table says <i>how many days</i>. A rule says <i>who gets that table</i>. Fourteen of
-            your sixteen tables have no rule pointing at them, so nobody can receive them. This is your
-            configuration, not a fault in the system &mdash; and it is the same on the new screens as on the old
-            ones, because it is your data.</p>
+          <p class="note">A table says <i>how many days</i>. A rule says <i>who gets that table</i>. Each rule
+            points at one table, so your two rules can reach at most two of your sixteen &mdash; <b>at least
+            fourteen have no rule pointing at them and nobody can receive them</b>. That figure is your sixteen
+            minus your two, not a separate count: the screen itself will name the exact tables when it is built,
+            and it may turn out to be fifteen if both rules point at the same table. This is your configuration,
+            not a fault in the system &mdash; and it is the same on the new screens as on the old ones, because
+            it is your data.</p>
         </div>
 
         <h2 class="s" style="margin-top:14px">How days are earned</h2>
@@ -168,11 +183,13 @@ these into a number of days is unchanged.</p>
             <tr><td><i class="bar" style="width:96px"></i></td><td>&mdash;</td><td>1 eligibility rule</td><td><span class="chip ok">in use</span></td></tr>
             <tr><td><i class="bar" style="width:134px"></i></td><td>&mdash;</td><td>no rule</td><td><span class="chip amber">reaches nobody</span></td></tr>
             <tr><td><i class="bar" style="width:108px"></i></td><td>&mdash;</td><td>no rule</td><td><span class="chip amber">reaches nobody</span></td></tr>
-            <tr><td colspan="4" style="color:#63636f">&hellip; 12 more, all reaching nobody &nbsp; <span class="lnk">Show all 16</span></td></tr>
+            <tr><td colspan="4" style="color:#63636f">&hellip; 12 more &nbsp; <span class="lnk">Show all 16</span></td></tr>
           </table>
-          <p class="note"><b>Your table names are not drawn here.</b> The audit recorded how many tables you have,
-            not what they are called, and this sketch does not invent them &mdash; the grey bars are where your own
-            names will appear.</p>
+          <p class="note"><b>Your table names are not drawn here, and neither is the split.</b> The audit recorded
+            how many tables you have, not what they are called or which two your rules point at &mdash; the grey
+            bars are where your own names will appear, and the two &ldquo;in use&rdquo; rows show the <i>shape</i>
+            of the answer, not which of your tables they are. The built screen names them, because the system can
+            already work that out.</p>
           <div class="save o">+ Add a table</div>
         </div>
 

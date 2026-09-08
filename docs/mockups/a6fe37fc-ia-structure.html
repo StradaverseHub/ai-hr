@@ -9,7 +9,13 @@
      earning | carry; ESS_SUB_STEP_KEYS = criteria | rules) and app/admin/leave/payroll/page.tsx.
    · Every setting name is a real stored column on leave_type (db/schema.ts) written by a real
      tri-state sub-form in app/admin/actions.ts.
-   · The counts (58 settings, 24 sub-forms, 4 steps, 6 sub-steps) are counted, not estimated.
+   · The counts (58 settings, 24 sub-forms, 4 steps, 6 sub-steps) are counted, not estimated, and the
+     derivation is written out in the design document's §1.2 so a reader can reproduce them:
+     62 columns on leave_type minus id/tenantId/createdAt/archivedAt = 58; 23 marker-bearing <form>
+     elements in leave-type-panel.tsx (26 markers — three forms carry two each) plus the one sub-form on
+     the Payroll impact screen = 24. The Leave application rules grid holds TEN cards plus the
+     company-wide half-day slot (eleven break-inside-avoid blocks, which is what
+     test/leave-condition-substeps.test.ts:389 asserts), written by TWELVE sub-forms.
    · Leave type names and the table/rule counts are the customer's own, from the Phase 1 audit.
 
   WHAT IS DELIBERATELY NOT DRAWN: no day figures, no employee names, no entitlement table names —
@@ -71,9 +77,10 @@
 <div class="wrap">
 
 <p class="cap"><b>Leave Configuration — proposed structure.</b> A sketch for approval before anything is
-built. Wording, spacing and colours will differ. Nothing below changes how leave days are calculated:
-the same engine, the same tables, the same 261 approval rules, rearranged so each setting sits under the
-question it answers.</p>
+built. Wording, spacing and colours will differ. <b>Every screen here is a new screen, and all ten of
+today&rsquo;s are deleted once their replacement is proven.</b> What is <i>not</i> replaced is what your leave
+records depend on: the same engine, the same tables, the same 261 approval rules &mdash; with each setting
+now under the question it answers.</p>
 
 <!-- ───────────────────────── 1. the five questions ───────────────────────── -->
 <div class="card">
@@ -90,9 +97,14 @@ question it answers.</p>
       <span class="g">Records</span>
       <span class="nn">Entitlement configuration record</span><span class="nn">Balance record</span><span class="nn">Audit trail</span>
     </div>
-    <p class="cap" style="margin:12px 0 0">Ten destinations — the same number as today. What changes is
-      <b>where each setting sits</b>. Only <b>Company rules</b> is new, and it exists because four settings
-      that belong to a company are currently spread across three screens and one leave-type step.</p>
+    <p class="cap" style="margin:12px 0 0"><b>A new module at new addresses.</b> Every screen above is a new
+      page, and all ten of today&rsquo;s Leave Config pages are deleted once their replacement is proven
+      &mdash; about 5,800 lines of screen code, including the 3,367-line leave type panel. Old addresses keep
+      working as redirects so no bookmark breaks. Nine of the ten answer a question one of today&rsquo;s
+      screens already answers, so what you will notice is <b>where each setting sits</b>; only
+      <b>Company rules</b> is a destination that does not exist at all today, and it exists because four
+      settings that belong to a company are currently spread across three screens and one leave-type step.
+      Your leave records, your 261 approval rules and the code that turns rules into days are untouched.</p>
   </div>
 </div>
 
@@ -132,7 +144,7 @@ question it answers.</p>
             <span class="sub">Criteria</span>
             <span class="set">Gender</span><span class="set">Marital status</span><span class="set">Minimum service</span>
             <span class="set">Probation status</span><span class="set">8 organisation axes</span>
-            <span class="sub">Leave application rules &mdash; twelve cards</span>
+            <span class="sub">Leave application rules &mdash; ten cards, twelve sub-forms</span>
             <span class="set">Durations</span><span class="set">Supporting document</span>
             <span class="set">Backdating limit</span><span class="set">Advance notice</span>
             <span class="set">Duplicate policy</span><span class="set">Day type inclusion</span>
@@ -167,8 +179,8 @@ question it answers.</p>
 
       <div class="col">
         <h3>Proposed <span class="chip new">5 tabs, one per question</span></h3>
-        <p class="s">The same 58 settings and the same 24 sub-forms &mdash; each with its save marker intact
-          &mdash; under the question it answers.</p>
+        <p class="s">The same 58 settings, on new pages &mdash; each sub-form rewritten with its save marker
+          intact &mdash; under the question it answers.</p>
 
         <div class="tabbox">
           <div class="t"><span>1 &nbsp;The leave type</span><span class="n">what it is called, how it behaves</span></div>
@@ -277,9 +289,9 @@ question it answers.</p>
         <td>One question, two views of the <span class="k">same rows</span>: Tab 2 for the type&rsquo;s gate, Tab 3 for the rules that reach it.</td>
       </tr>
       <tr>
-        <td><i>Leave application rules</i> holds twelve cards, three of which are about <span class="k">balance</span>, not about applying.</td>
+        <td><i>Leave application rules</i> holds ten cards, and one of them &mdash; the balance card, three sub-forms &mdash; is about <span class="k">balance</span>, not about applying.</td>
         <td>The card grid is a bucket, not a category.</td>
-        <td>The three balance cards move to <span class="k">Tab 3</span>.</td>
+        <td>The balance card and its three sub-forms move to <span class="k">Tab 3</span>.</td>
       </tr>
     </table>
   </div>

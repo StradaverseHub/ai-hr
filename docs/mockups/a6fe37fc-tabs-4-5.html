@@ -3,7 +3,7 @@
 <!--
   a6fe37fc revision 4, Phase 3 design deliverable. SKETCH.
 
-  TAB 4 draws the existing Leave Application Rules cards, minus the three balance cards that move to tab 3
+  TAB 4 draws the existing Leave Application Rules cards, minus the balance card (three sub-forms) that moves to tab 3
   and minus the company-wide half-day card that moves to Company rules. Every field is a real column:
   durations · requires_document + mandatory_after_days + allowed_mime_types + max_doc_bytes +
   employee_remark_required + hr_remark_required · backdating_limit_days · min_advance_days +
@@ -21,6 +21,17 @@
   NO CUSTOMER DATA IS INVENTED. The chain steps drawn are the product's own vocabulary
   (direct manager · department head · HR admin). The 261 figure is the audit's count of the tenant's
   leave_approval_policy rows.
+
+  ⚠️ ONE CONTROL WAS REMOVED FROM AN EARLIER DRAFT OF THIS IMAGE, DELIBERATELY. The Exceptions card
+  carried a "+ Add an exception" button. THERE IS NO ADD PATH AND THIS DESIGN CANNOT BUILD ONE:
+  LEAVE_OVERRIDE_TRIGGERS (core/leave-override.ts:46) is a CLOSED two-value set —
+  'advance_notice_not_met' and 'insufficient_balance' — and each value names a place core/leave.ts
+  ALREADY detects and throws ("the rule replaces the throw, it never adds a new check").
+  components/leave-type-panel.tsx:2854-2858 renders exactly those two rows from an inline literal. A
+  third exception is therefore new engine vocabulary PLUS a new detection site inside core/leave.ts,
+  which §0 of the design commits to not touching — a separate item with its own plan, not a button.
+  A MOCKUP IS A PROMISE AND A PICTURE CANNOT HEDGE (scripts/mockup/README.md), so the button is gone and
+  the card now says on the image why there are exactly two rows.
 -->
 <style>
   :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
@@ -85,7 +96,7 @@
 <div class="wrap">
 
 <p class="cap"><b>Leave types &mdash; tabs 4 and 5.</b> A sketch for approval; wording, spacing and colours
-will differ. Tab 4 is the existing application-rule cards with the three balance cards moved out to tab 3
+will differ. Tab 4 is the existing application-rule cards with the balance card moved out to tab 3
 and the company-wide half-day card moved out to Company rules. Tab 5 is <b>read-only except one control</b>
 &mdash; see the note on it.</p>
 
@@ -179,7 +190,13 @@ and the company-wide half-day card moved out to Company rules. Tab 5 is <b>read-
               <tr><td>Not enough notice given</td><td>Convert to another leave type</td><td><span class="chip grey">off</span></td></tr>
               <tr><td>Not enough balance</td><td>Split &mdash; pay what is covered, the rest unpaid</td><td><span class="chip grey">off</span></td></tr>
             </table>
-            <div class="save">+ Add an exception</div>
+            <div class="save">Save</div>
+            <p class="note" style="margin-top:6px"><b>There are exactly two rows and there is no way to add a
+              third.</b> An exception can only step in where the system already stops an application, and
+              those are the only two places it does: not enough notice, and not enough balance. A new kind
+              of exception would mean changing the part of the system that calculates and checks leave
+              &mdash; the part this plan deliberately does not touch. If you want one, it is a separate
+              request and we will plan it on its own.</p>
           </div>
 
           <div class="c">

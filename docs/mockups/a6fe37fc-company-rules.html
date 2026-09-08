@@ -17,6 +17,17 @@
 
   NO CUSTOMER DATA IS DRAWN beyond company placeholders — the audit records no company names, so none are
   invented; the company selector is shown with its own label and a neutral entry.
+
+  ⚠️ ONE CONTROL WAS REMOVED FROM AN EARLIER DRAFT OF THIS IMAGE, DELIBERATELY. It drew a
+  "Rounding / Nearest half day" select on the Replacement leave card. THERE IS NO SUCH SETTING:
+  toil_policy (db/schema.ts:4238-4278) has enabled, accrualBasis, expiryDays/expiryUnit/expiryMonths,
+  onExpiry, allowFirstScheduleEligible, autoAccrueOnApproval, carryForwardAtYearEnd,
+  employeeRequestEnabled, replacementLeaveFrom and requestEligibility — no rounding column;
+  app/admin/leave/replacement/page.tsx renders no rounding control; and core/toil.ts's only `round` is
+  `round2`, a 2-decimal-place helper, not a configurable mode. Drawing it would have promised a new
+  column, a migration number this design does not have, and a decision about every accrual already
+  banked. A MOCKUP IS A PROMISE AND A PICTURE CANNOT HEDGE (scripts/mockup/README.md), so the control is
+  gone and the field now shows `on_expiry`, which exists and already saves.
 -->
 <style>
   :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
@@ -125,11 +136,16 @@ leave type.</p>
       <div class="g3">
         <div class="f"><label>Company</label><div class="in sel">Choose a company</div></div>
         <div class="f"><label>Banked days expire after</label><div class="in">&mdash; months</div></div>
-        <div class="f"><label>Rounding</label><div class="in sel">Nearest half day</div></div>
+        <div class="f"><label>When they expire</label><div class="in sel">Convert to pay</div></div>
       </div>
       <div class="cb" style="margin-top:9px"><i></i><span>Bank replacement leave automatically when an
         overtime record on a rest day is approved</span></div>
       <div class="save">Save</div>
+      <p class="note"><b>Every field on this card already exists and already saves today</b> &mdash; they are
+        the ones on your Replacement leave screen, gathered here. Nothing is added. There is no rounding
+        setting for replacement leave anywhere in the system, so none is drawn: adding one would mean a new
+        stored field, a database change this plan does not include, and a decision about the days already
+        banked &mdash; a separate request, not part of this one.</p>
     </div>
 
     <div class="card">

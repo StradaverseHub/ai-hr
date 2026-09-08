@@ -13,6 +13,19 @@
   THE NUMBERS ARE THE AUDIT'S: 261 leave_approval_policy rows, 297 leave_ledger, 42 leave_request,
   115 leave_entitlement_recalc_audit, 45 entitlement_template lineages, 25 leave_type. No employee names,
   no company names and no chains are invented — the chain drawn is the product's own vocabulary.
+
+  ⚠️ THE REPLAY RUNS AGAINST THE PRODUCTION DATABASE ITSELF, NOT A COPY, AND THIS IMAGE SAYS SO.
+  An earlier draft said "run on a copy of your live data" while the migration-order document said it
+  connects to production the way scripts/convert-approval-rules.ts does. Both cannot be true, and the
+  weaker claim was the one facing the customer. There is no rehearsal copy of this tenant, and a replay
+  against one would prove nothing about the rows that route real requests. What makes it safe is the
+  shape, not the target: reads only, inside one transaction that always rolls back, and no --apply flag.
+
+  ⚠️ THE "REMOVED" PANEL LISTS THE TEN PAGE COMPONENTS BY NAME. An earlier draft listed two items and
+  explained the shortfall with the reporter's do-not-drop-a-table instruction, which covers the TABLES
+  and says nothing about the screens — an argument against removal wearing the approved plan's clothes.
+  The approved plan says the opposite: "the old Leave Configuration screens come out and a new module
+  goes in". They do.
 -->
 <style>
   :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
@@ -66,8 +79,10 @@
 <div class="wrap">
 
 <p class="cap"><b>Leave Configuration &mdash; the order of build, cutover and removal.</b> A sketch of the
-plan for approval. <b>Something works at every point</b>, no table is created or dropped, no migration is
-needed, and the code that turns your rules into a number of days is not touched at any step.</p>
+plan for approval. <b>All ten of today&rsquo;s Leave Config screens are deleted and replaced</b>, in the order
+below and never before the replacement is proven. <b>Something works at every point</b>, no table is created
+or dropped, no migration is needed, and the code that turns your rules into a number of days is not touched
+at any step.</p>
 
 <!-- ─────────── the order ─────────── -->
 <div class="card">
@@ -88,20 +103,25 @@ needed, and the code that turns your rules into a number of days is not touched 
     <div class="round">
       <div class="rn">2</div>
       <div>
-        <p class="rt">The leave type gets its five tabs</p>
-        <p class="rd">Same screen, same address, same leave type list, same settings and same saves &mdash;
-          rearranged into the five questions. Two settings come home to the leave type: sending to payroll,
-          and splitting a multi-day application.</p>
+        <p class="rt">The new leave type screen &mdash; built beside the old one</p>
+        <p class="rd">A brand new screen at a new address, organised as the five questions. Same leave type
+          list, same settings, same saves. Two settings come home to the leave type: sending to payroll, and
+          splitting a multi-day application. <b>Nothing is removed in this round</b> &mdash; your existing
+          screen is still the one the menu opens.</p>
       </div>
-      <div class="rw"><b>What you can use</b>Everything. The old bookmarks and the old address still work.</div>
+      <div class="rw"><b>What you can use</b>Everything, unchanged. The new screen is there to look at; the old
+        one is still the working one.</div>
     </div>
 
     <div class="round">
       <div class="rn">3</div>
       <div>
-        <p class="rt">Company rules</p>
-        <p class="rd">The four settings that belong to a company gather on one screen. Each one leaves its old
-          place in the same change that gives it a new one, so no setting is ever editable in two places.</p>
+        <p class="rt">The rest of the new module &mdash; still beside the old screens</p>
+        <p class="rd">The new <b>Company rules</b> screen, gathering four settings that belong to a company and
+          are on four different surfaces today. Plus new pages for entitlement tables, generating, adjustments,
+          importing and the two record screens &mdash; same flows, new pages. <b>Still nothing removed.</b>
+          For these rounds a setting is editable on both the new screen and the old one; both write the same
+          place, and round 5 closes it.</p>
       </div>
       <div class="rw"><b>What you can use</b>Everything. Settling replacement leave stays where it is.</div>
     </div>
@@ -109,7 +129,7 @@ needed, and the code that turns your rules into a number of days is not touched 
     <div class="round">
       <div class="rn">4</div>
       <div>
-        <p class="rt">Approval &mdash; showing what is already there</p>
+        <p class="rt">Approval &mdash; the new chain screen, and showing what is already there</p>
         <p class="rd">Tab 5 shows the chain that reaches each leave type. And the rules whose department or
           position scope no screen has displayed since the old rule list was removed become visible again &mdash;
           to read, not to edit.</p>
@@ -121,20 +141,23 @@ needed, and the code that turns your rules into a number of days is not touched 
     <div class="round">
       <div class="rn">5</div>
       <div>
-        <p class="rt">Names</p>
-        <p class="rd">Every screen&rsquo;s heading becomes the name the menu gives it. Four screens do this
-          today; this makes it all ten &mdash; including the busiest one, which still reads
-          &ldquo;Leave configuration&rdquo;.</p>
+        <p class="rt">Cutover &mdash; the menu moves and the ten old screens are deleted</p>
+        <p class="rd">One screen at a time, ten times: the menu points at the new screen, the old page is
+          deleted and its address becomes a redirect. Every screen&rsquo;s heading becomes the name the menu
+          gives it &mdash; four screens do that today, all ten replacements do &mdash; including the busiest
+          one, which still reads &ldquo;Leave configuration&rdquo;. The approval check runs before and after
+          every one of the ten.</p>
       </div>
-      <div class="rw"><b>What you can use</b>Everything.</div>
+      <div class="rw"><b>What you can use</b>Everything. Each screen is only switched off once its replacement
+        is the one you are already using.</div>
     </div>
 
     <div class="round">
       <div class="rn">6</div>
       <div>
-        <p class="rt">Removal &mdash; and only of what has a proven home</p>
-        <p class="rd">The old step-and-sub-step machinery goes, and the emptied Payroll impact screen becomes a
-          redirect so old links still arrive. Nothing else is deleted.</p>
+        <p class="rt">The last tidy-up</p>
+        <p class="rd">The leftovers, once nothing points at them: the code that remembered which of the old
+          steps you had open, and any wording no screen shows any more. The redirects stay forever.</p>
       </div>
       <div class="rw"><b>What you can use</b>Everything.</div>
     </div>
@@ -183,7 +206,7 @@ needed, and the code that turns your rules into a number of days is not touched 
     </div>
 
     <div class="strip">
-      <span class="si">Run on a copy of your live data, in a transaction that <b>always rolls back</b> &mdash; it writes nothing</span>
+      <span class="si">Reads your live data directly &mdash; in a transaction that <b>always rolls back</b>, and it can only read: <b>it writes nothing, ever</b></span>
       <span class="si">Run again automatically on every build</span>
       <span class="si">Also reports which of the 261 rules <b>never win for anybody</b></span>
     </div>
@@ -217,17 +240,38 @@ needed, and the code that turns your rules into a number of days is not touched 
         </ul>
       </div>
       <div class="kb r">
-        <h4><span class="chip red">removed</span></h4>
+        <h4><span class="chip red">removed &mdash; all ten screens</span></h4>
         <ul>
-          <li>The step-and-sub-step arrangement inside a leave type</li>
-          <li>One screen &mdash; Payroll impact &mdash; once both its settings have moved, and it becomes a redirect rather than a dead link</li>
+          <li><b>Leave configuration</b> (the leave type screen) &mdash; page and its 3,367-line panel</li>
+          <li><b>Approval chain</b> &middot; <b>Replacement leave</b> &middot; <b>Payroll impact</b></li>
+          <li><b>Entitlement tables</b> &middot; <b>Generate entitlement</b> &middot; <b>Adjustments</b> &middot; <b>Import leave data</b></li>
+          <li><b>Entitlement archive</b> &middot; <b>Balance record</b></li>
+          <li>The step-and-sub-step arrangement inside a leave type, and the four headings that did not match the menu</li>
+          <li>About <b>5,800 lines</b> of screen code, replaced by new screens at new addresses</li>
         </ul>
         <p style="font-size:11px;color:#7f1d1d;margin:9px 0 0">
-          That is deliberately less than &ldquo;delete everything&rdquo;. Your own instruction says not to drop a
-          table that holds both settings and real records, and your leave tables are exactly that &mdash; so the
-          tables stay, and the code that reads them stays with them.</p>
+          Every old address becomes a redirect, so nothing you have bookmarked breaks. <b>What is not
+          deleted is your data and the code that reads it</b> &mdash; your own instruction says not to drop a
+          table that holds both settings and real records, and your leave tables are exactly that. The one
+          thing we keep beyond that instruction is the set of save routines behind the forms: the new forms
+          write the same fields through them, so replacing them would mean writing the same thing twice.
+          Say the word and we will list them for you.</p>
       </div>
     </div>
+
+    <div class="fail" style="border-color:#c7d2fe;background:#f5f6ff">
+      <h4 style="color:#3730a3">One recommendation, which you can say no to</h4>
+      <p style="color:#3b3b46">We will build exactly what is drawn above. This is the one place we say what we
+        would do differently, and if you approve the plan as it stands we will not raise it again.
+        <b>Six of the ten screens</b> &mdash; entitlement tables, generating, adjustments, importing and the two
+        record screens &mdash; were each rebuilt to a shape you approved within the last year, and nothing in
+        your request is about them. Rebuilding them costs a round each and gives you a screen you cannot tell
+        apart from the one it replaced. Our suggestion would be to rebuild the leave type screen and the
+        approval screen, add Company rules, and move the other six behind the new addresses without rewriting
+        them &mdash; the same menu, the same five tabs, four rounds instead of six. Your call, and approving
+        the plan is a complete answer.</p>
+    </div>
+
   </div>
 </div>
 
