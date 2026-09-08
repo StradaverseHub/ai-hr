@@ -301,9 +301,11 @@ export function HistoryTable({
                             }
                           />
                           {Number(st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(st.cp38)} />}
-                          {/* Zakat — informational only: PCB is ALREADY net of this (LHDN §E.5 offset). Muted. */}
+                          {/* 3a092cf0 — a real deduction line now, un-muted, with the amount alone in the
+                              figure column and the offset note on the label. Third of the three surfaces
+                              that render this payslip section; see app/me/payslip/[payslipId]/page.tsx. */}
                           {Number(st.zakat) > 0 && (
-                            <Row label={tSlip('zakat')} value={`${rm(st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
+                            <Row label={`${tSlip('zakat')} · ${tSlip('zakatOffsetNote')}`} value={rm(st.zakat)} />
                           )}
                           {/* 6b4ca488 — no minus prefix; see the note on the same line in
                               app/payroll/individual-payslip/page.tsx. `b.totalDeductions` is a positive

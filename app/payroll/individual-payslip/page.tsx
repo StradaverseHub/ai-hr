@@ -766,8 +766,11 @@ export default async function IndividualPayslipPage({
               }
             />
             {Number(b.st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(b.st.cp38)} />}
+            {/* 3a092cf0 — a real deduction line now, un-muted, with the amount alone in the figure column
+                and the offset note on the label. See app/me/payslip/[payslipId]/page.tsx for the full
+                note; the two surfaces render one payslip and must not print it differently. */}
             {Number(b.st.zakat) > 0 && (
-              <Row label={tSlip('zakat')} value={`${rm(b.st.zakat)} · ${tSlip('zakatOffsetNote')}`} muted />
+              <Row label={`${tSlip('zakat')} · ${tSlip('zakatOffsetNote')}`} value={rm(b.st.zakat)} />
             )}
             {/* e2632276 — the unpaid-leave and absence halves of the old unnamed lump, each with its own
                 day count. `residual` is what is left of Other deductions once they come out of it, so

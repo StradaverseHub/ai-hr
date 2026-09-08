@@ -73,6 +73,15 @@ export type PayslipPdfData = {
   eisEmployee: number;
   pcb: number;
   cp38: number;
+  /**
+   * 3a092cf0 — THE DOCUMENT HAD NO ZAKAT LINE AT ALL, and until the kernel was fixed that was invisibly
+   * consistent: total_deductions excluded the zakat, so a box printing EPF/SOCSO/EIS/PCB/CP38 and the
+   * absence lines added up exactly. The kernel now charges zakat, so a document without this row would
+   * print a TOTAL DEDUCTIONS larger than the rows above it by the zakat — a payslip that does not add up,
+   * which is precisely the complaint this item was raised about. 0 ⇒ no row ⇒ every payslip for an
+   * employee with no zakat election prints exactly the document it printed before.
+   */
+  zakat: number;
   otherDeductions: number;
   /** e2632276 — this payslip's OWN record of the two halves of `otherDeductions`, with their day counts.
    *  Absent (`any:false`) on every payslip issued before it shipped ⇒ the single lumped row is printed
@@ -192,6 +201,8 @@ export type PayslipPdfLabels = {
   eis: string;
   pcb: string;
   cp38: string;
+  /** 3a092cf0 — the zakat deduction row. Resolved from `me.payslip.zakat`, the label the screens use. */
+  zakat: string;
   otherDeductions: string;
   // e2632276 — the two NAMED absence lines. `daysUnit` is the bare word ("days" / "hari" / ...) appended
   // to the count as a `sub`; it is composed rather than an ICU plural so no locale can throw for a missing
@@ -308,6 +319,10 @@ export function buildPayslipPdfData(
     eisEmployee: eb.employee.eis,
     pcb: eb.employee.pcb,
     cp38: n(st.cp38),
+    // 3a092cf0 — read straight off the payslip's own snapshot, like every other deduction here. NOT
+    // employer-borne-adjusted: there is no "Employer bears zakat" control, so `eb.employee` has no zakat
+    // leg and the figure the employee paid is the figure the slip stamped.
+    zakat: n(st.zakat),
     otherDeductions: n(p.otherDeductions),
     absence: payslipAbsenceLines(p.statutory, p.otherDeductions),
     totalDeductions: n(p.totalDeductions),
@@ -598,6 +613,11 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     { label: t.eis, amount: d.eisEmployee },
     { label: t.pcb, amount: d.pcb },
     ...(d.cp38 > 0 ? [{ label: t.cp38, amount: d.cp38 }] : []),
+    // 3a092cf0 — the zakat line, so the box adds up to the TOTAL DEDUCTIONS it prints. It sits after the
+    // tax lines because that is where it sits on both screens and because that is the order it is
+    // applied in: the §E.5 offset reduces the PCB above it first, and what is charged here is what
+    // survived that. Absent when there is no election, which is every payslip issued before this item.
+    ...(d.zakat > 0 ? [{ label: t.zakat, amount: d.zakat }] : []),
     // e2632276 — the unpaid-leave and absence halves, each named and carrying its day count in the row's
     // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
     // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.

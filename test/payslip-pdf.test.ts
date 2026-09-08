@@ -38,6 +38,9 @@ const labels: PayslipPdfLabels = {
   eis: 'EIS',
   pcb: 'PCB',
   cp38: 'CP38',
+  // 3a092cf0 — the zakat deduction row's label. Required, so tsc is what stops the document
+  // dropping a line the screens print.
+  zakat: 'Zakat',
   otherDeductions: 'Other deductions',
   // e2632276 — the two named absence lines that come OUT of "Other deductions".
   unpaidLeaveLine: 'Unpaid leave',
@@ -105,6 +108,9 @@ const data: PayslipPdfData = {
   eisEmployee: 9.9,
   pcb: 350,
   cp38: 0,
+  // 3a092cf0 — no election on this fixture, so no zakat row: the document it renders is
+  // byte-for-byte the one it rendered before the line existed.
+  zakat: 0,
   otherDeductions: 0,
   // e2632276 — no stamp on this fixture ⇒ the pre-feature path: no named lines, residual === otherDeductions.
   absence: { unpaidLeave: null, absent: null, residual: 0, showResidual: false, any: false },
@@ -240,6 +246,53 @@ describe('ADR-0036 — payslip PDF', () => {
     expect(withCp38).toContain('MYR 200.00');
     // And a zero CP38 omits the row entirely rather than printing a 0.00 line nobody asked about.
     expect(drawnText(await renderPayslipPdf({ ...data, cp38: 0 }, labels))).not.toContain('CP38');
+  });
+
+  /**
+   * 3a092cf0 — THE DOCUMENT HAD NO ZAKAT ROW AT ALL, and until the kernel was fixed that was invisibly
+   * consistent: `total_deductions` excluded the zakat, so a box printing EPF/SOCSO/EIS/PCB and nothing
+   * else added up exactly. The kernel charges zakat now, so a document without the row would print a
+   * TOTAL DEDUCTIONS larger than the rows above it by the zakat — a payslip that does not add up, which
+   * is the complaint the item was raised about, reproduced in the one artefact an employee keeps.
+   *
+   * The figures are SIG01's own, measured on production 2026-09-08: gross 4,308.00, EPF 410.00,
+   * SOCSO 18.75, EIS 7.50, PCB 0.00 (7.90 zeroed by the RM10 remittance floor), zakat 30.00 —
+   * total 466.25, net 3,841.75.
+   *
+   * The assertion is ARITHMETIC OVER THE DRAWN PAGE, not a substring: the amounts on the deduction
+   * rows are read back beside their labels and summed, and the sum must equal the total the box
+   * prints. Asserting only that 'Zakat' appears somewhere would pass on a document that printed the
+   * row and left it out of the total — which is precisely the defect.
+   */
+  it('prints a Zakat row, and the deduction rows then SUM to the TOTAL DEDUCTIONS it prints', async () => {
+    const sig01: PayslipPdfData = {
+      ...data,
+      basic: 3708, allowance: 600, overtime: 0, bonus: 0, gross: 4308,
+      epfEmployee: 410, socsoEmployee: 18.75, socsoSkbbk: 0, eisEmployee: 7.5, pcb: 0, cp38: 0,
+      zakat: 30, otherDeductions: 0,
+      totalDeductions: 466.25, net: 3841.75,
+    };
+    const pl = drawnPlacements(await renderPayslipPdf(sig01, labels));
+    /** The amount drawn on the SAME baseline as `label` — how a reader reads a row off the page. */
+    const amountBeside = (label: string) => {
+      const row = placed(pl, label);
+      if (!row) throw new Error(`no row labelled ${label} on the page`);
+      const amt = pl.find((r) => r.page === row.page && Math.abs(r.y - row.y) < 1.5 && r.x > row.x && r.text.startsWith('MYR'));
+      if (!amt) throw new Error(`row ${label} drew no amount`);
+      return Number(amt.text.replace(/^MYR\s*/, '').replace(/,/g, ''));
+    };
+
+    expect(amountBeside('Zakat')).toBe(30);
+    // Every employee-side deduction line the box prints, added up the way the reporter added them up.
+    const lines = ['EPF', 'SOCSO', 'EIS', 'PCB', 'Zakat'].map(amountBeside);
+    expect(Math.round(lines.reduce((a, b) => a + b, 0) * 100) / 100).toBe(466.25);
+    // …and that is the total the box itself prints, so the column reconciles on the page.
+    expect(amountBeside('TOTAL DEDUCTIONS')).toBe(466.25);
+
+    // No election ⇒ no row, so every payslip for an employee without zakat prints exactly the document
+    // it printed before this line existed.
+    expect(drawnText(await renderPayslipPdf({ ...sig01, zakat: 0, totalDeductions: 436.25, net: 3871.75 }, labels)))
+      .not.toContain('Zakat');
   });
 
   // 3c473773 — the employer-borne disclosure block. Printed only when the payslip carries one; absent on

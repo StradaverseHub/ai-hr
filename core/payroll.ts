@@ -5438,8 +5438,35 @@ export async function generatePayslips(
       const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
       // Item 5a461b99 — subtract any employer-borne employee shares so they are NOT deducted from net pay
       // (employerBorneTotal is 0 unless an "Employer bears" flag is set ⇒ byte-identical default path).
+      //
+      // ── 3a092cf0 — `st.zakat` IS A DEDUCTION AND WAS MISSING FROM THIS SUM ──────────────────────────
+      // Measured on production 2026-09-08: SIG01's 2026-01 slip carried EPF 410.00 + SOCSO 18.75 +
+      // SKBBK 0 + EIS 7.50 + PCB 0.00 = total_deductions 436.25 with a zakat of 30.00 printed beside it.
+      // The zakat was shown, never taken, and left in the employee's pay. Because `totalDeductionsRaw`
+      // and `net` below are both composed FROM this figure the omission propagated consistently, so
+      // every affected payslip reconciled with itself and nothing looked wrong — nine payslips, four
+      // employees, seven runs, 2,569.23 never deducted.
+      //
+      // ⚠️ THIS IS NOT A DOUBLE CHARGE, and the distinction is the whole item. `st.pcb` reaching here is
+      // ALREADY NET of this month's zakat: the pack applies the §E.5 offset inside `pcbMonth` and records
+      // what survived it as `pcbMeta.trace.zakatLeftover`. So where tax exceeds the zakat the PCB line has
+      // already fallen by the full amount and adding it back here leaves the total unchanged to the cent
+      // (test/zakat-in-total-deductions-3a092cf0.test.ts runs two identical employees side by side to say
+      // so). Where it does not — SIG01's shape, tax of 7.90 zeroed by the §E.3 RM10 REMITTANCE FLOOR
+      // rather than by the offset — `zakatLeftover` is the whole election and the whole election is owed.
+      // The double charge is prevented by the offset. It was never prevented by this omission; the
+      // omission simply did not collect the money.
+      //
+      // Zakat is never employer-borne (there is no "Employer bears zakat" control), so it is deliberately
+      // outside `employerBorneTotal` and cannot be funded away from the employee.
       const statDeductions = round2(
-        st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb - employerBorneTotal,
+        st.epfEmployee +
+          st.socsoEmployee +
+          st.socsoSkbbk +
+          st.eisEmployee +
+          st.pcb +
+          st.zakat -
+          employerBorneTotal,
       );
       // M#16 (EA s.24 net-floor): clamp EVERY post-tax deduction in priority order so net ≥ 0 BY
       // CONSTRUCTION, never as a downstream patch. Headroom after statutory + unpaid is the cash that
