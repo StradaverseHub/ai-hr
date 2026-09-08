@@ -13,23 +13,35 @@
  * SO THE FORMS STAY. Each consolidated card keeps its own `<form>`, its own hidden inputs and its own
  * `action={…}`. That binding is NOT a no-JavaScript fallback, and an earlier version of this note claimed
  * it was: HTML's implicit submission fires only for a form with no submit button AND exactly one field
- * that blocks it, and four of the five consolidated cards carry several such fields, so with the bundle
- * blocked no keystroke can post them at all (only the compliance card, whose lone blocking field is the
- * date of birth, still submits implicitly — which is the case the scope's guards exist for). The binding
- * stays because it is still the only place each card's writer is wired to a form, because a form React
- * has bound is what the scope's submit guard intercepts, and because a `<form>` with no action at all
- * would POST to the current URL. What changes is that the card's own Save button is gone and the form
- * carries `data-save-section="<id>"`. This module reads those
+ * that blocks it, and most of the twelve consolidated cards carry several such fields. Not all of them
+ * do, though, and the count matters less than the list: the compliance card (its lone blocking field is
+ * the date of birth) and the Geofencing form (one number input) each have EXACTLY one and can therefore
+ * still be posted by an Enter keystroke, and the Holiday Calendar form is a single `<select>` whose Enter
+ * several browsers submit on regardless of the spec's counting rule. Those are the cases the scope's
+ * capture-phase keydown guard and its scope-local submit guard exist for; both turn the keystroke into
+ * the consolidated save rather than a one-card post.
+ * The binding stays because it is still the only place each card's writer is wired to a form, because a
+ * form React has bound is what the scope's submit guard intercepts, and because a `<form>` with no action
+ * at all would POST to the current URL. What changes is that the card's own Save button is gone and the
+ * form carries `data-save-section="<id>"`. This module reads those
  * subtrees: it snapshots them, diffs them, marks what moved, and packs the dirty ones into ONE FormData
  * with each section's fields namespaced, so the server can hand each section's own payload to each
  * section's own service, in order (ADR-0001/0003 effective dating — a save closes a version and inserts a
  * new one; it is never one blanket write).
  *
- * WHAT IS DELIBERATELY NOT HERE. Nothing in this file looks at a form's action, and nothing outside a
- * `[data-save-section]` subtree is ever read, marked, packed or reset. That is the bucket (b) fence from
- * docs/audits/420ebab5-personnel-save-classification.md expressed in code: add-a-dependant, terminate-a-CP38,
- * record-a-salary-revision and the other 19 discrete acts are not merely excluded by a list that could rot
- * — they are unreachable, because the page renders them OUTSIDE the scope entirely.
+ * WHAT IS DELIBERATELY NOT HERE, AND WHY PLACEMENT IS NOT THE ARGUMENT. Nothing in this file looks at a
+ * form's action, and nothing outside a `[data-save-section]` subtree is ever read, marked, packed or
+ * reset. That is the bucket (b) fence from docs/audits/420ebab5-personnel-save-classification.md
+ * expressed in code: add-a-dependant, terminate-a-CP38, record-a-salary-revision and the other discrete
+ * acts are excluded by the MARKER, not by a list that could rot.
+ *
+ * r255 corrected the sentence that used to close this note — "they are unreachable, because the page
+ * renders them OUTSIDE the scope entirely". That is no longer true and must not be relied on: the
+ * Employment tab renders the audited company-transfer form (bucket b) and the `method="get"`
+ * company-change form (bucket c) INSIDE the same Employment Information card that carries the Employment
+ * Dates section, and the scope wraps that card. Being outside the scope is a convenience, not the fence.
+ * A reader who trusts placement instead of the marker will eventually put a money-affecting card inside a
+ * scope and assume something protects it; nothing but the marker does.
  */
 
 /** Marks a `<form>` (or any element) whose named controls belong to the tab's consolidated Save. */

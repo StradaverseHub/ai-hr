@@ -6,13 +6,21 @@
  *
  * ── WHY BANK & STATUTORY NEEDED MEASURING BEFORE IT NEEDED CODE ─────────────────────────────────────
  * `setStatutoryProfileMY` is a FULL-ROW overwrite of the columns it writes. The Statutory (Malaysia) form
- * carries no residency control at all, so `applyStatutorySection` always sends `isResident: false` — and
- * the Income Tax (PCB) card's setter re-derives that SAME column from the `taxResidency` the admin picks.
- * With per-card buttons the two writes could never share a request, so the page reload between them hid
- * it. Under one Save they do share a request, and the ORDER decides whose value survives: statutory first
- * and tax second leaves the residency the admin chose; the other way round silently makes a resident
- * non-resident, which moves their PCB. §1 is that assertion, and it fails if
- * BANK_STATUTORY_TAB_SECTION_ORDER is reordered.
+ * carries no residency control at all — and `applyStatutorySection` used to read one anyway
+ * (`formData.get('isResident') === 'on'`), so it sent `isResident: false` on EVERY save. The Income Tax
+ * (PCB) card's setter re-derives that same column from the `taxResidency` the admin picks, which is what
+ * usually put it back and what hid the defect while every card had its own button.
+ *
+ * IT WAS NOT INERT. `is_resident` reaches the payroll kernel SEPARATELY from `flatTaxRate`
+ * (core/payroll.ts), and it decides the outcome exactly when `taxResidency` is 'resident' and the flat
+ * rate is therefore null: `resident === false` alone charges flat 30% with no reliefs (RM8,000/month =
+ * 514.20 as a resident, 2,400.00 with the flag off). So a LONE statutory save — an EPF-number edit and
+ * nothing else — moved a resident onto the non-resident basis. r255 fixed the writer: the flag is now
+ * derived from the STORED `tax_residency` rather than from a control the form does not have.
+ *
+ * §1 pins BOTH halves: the lone statutory save must leave the residency untouched (the money guard), and
+ * the declared BANK_STATUTORY_TAB_SECTION_ORDER must still be statutory-first because that writer's
+ * pass-throughs read the stored row at the moment it runs.
  *
  * ── WHAT THE OTHER SECTIONS PIN ─────────────────────────────────────────────────────────────────────
  * §2  the full-row pass-throughs: bank details written in the SAME request as a statutory edit survive.
@@ -192,16 +200,60 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
   describe('§1 Bank & Statutory writes in the DECLARED order, and that is what keeps the residency', () => {
     it('the order is statutory → tax → bank → others, and the statutory card carries no residency control', () => {
       expect([...BANK_STATUTORY_TAB_SECTION_ORDER]).toEqual(['statutory', 'tax', 'bank', 'others']);
-      // The reason the order matters, pinned at its source: the form the admin sees has no `isResident`
-      // input, so `applyStatutorySection` sends `false` on every save and the tax card is the only place
-      // the real answer comes from. If a residency control were ever added to the statutory form, this
-      // assertion would fail and the ordering argument above would have to be re-derived.
+      // The form the admin sees has no `isResident` input; the tax card is the only place the real answer
+      // comes from. If a residency control were ever added to the statutory form, this assertion would
+      // fail and the whole argument below would have to be re-derived.
       const page = PAGE();
       const from = page.indexOf('<form action={setStatutoryAction}');
       const statutoryForm = page.slice(from, page.indexOf('</form>', from));
       expect(from).toBeGreaterThan(-1);
       expect(statutoryForm).not.toContain('name="isResident"');
-      expect(ACTIONS()).toContain("isResident: formData.get('isResident') === 'on'");
+      // …and the writer must NOT read that absent control. Reading it is the defect: it sent `false` on
+      // every save and put the employee on flat-rate PCB (see the file header). The value comes from the
+      // stored row instead. Source-pinned as well as behaviour-pinned, because the behaviour test below
+      // would still pass if someone reintroduced the read on a form that happened to post the field.
+      const actions = ACTIONS();
+      expect(actions, 'the statutory writer must not read a residency control the form does not have')
+        .not.toContain("isResident: formData.get('isResident')");
+      expect(actions).toContain("isResident: current.taxResidency != null ? current.taxResidency === 'resident'");
+    });
+
+    it('a LONE statutory save leaves the residency alone — an EPF edit cannot move the tax basis', async () => {
+      // THE MONEY GUARD. `is_resident` reaches the payroll kernel separately from `flatTaxRate`, and with
+      // `tax_residency` = 'resident' the flat rate is null — so `is_resident = false` on its own charges
+      // flat 30% PCB with no reliefs. This is the case no second card corrects: the admin opens Bank &
+      // Statutory, edits the EPF number, presses the tab's one Save, and touches nothing else.
+      await seedStatutory({ isResident: true });
+      await setTaxProfileMY(adminCtx(base), { personId, taxResidency: 'resident' });
+      expect((await readStatutory(personId)).isResident).toBe(true);
+
+      const result = await saveBankStatutoryTabAction(
+        payload(['statutory'], statutoryFields('EPF-ONLY'), employmentId, 'bankStatutory'),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.saved).toEqual(['statutory']);
+
+      const row = await readStatutory(personId);
+      expect(row.epfNumber, 'the edit the admin actually made').toBe('EPF-ONLY');
+      expect(row.isResident, 'an EPF-number edit must not move an employee onto flat-rate PCB').toBe(true);
+      expect(row.taxResidency).toBe('resident');
+    });
+
+    it('a LONE statutory save on a NON-resident leaves them non-resident too', async () => {
+      // The mirror case: deriving from the stored residency must not flip the flag the other way either.
+      await seedStatutory();
+      await setTaxProfileMY(adminCtx(base), { personId, taxResidency: 'non_resident' });
+      expect((await readStatutory(personId)).isResident).toBe(false);
+
+      const result = await saveBankStatutoryTabAction(
+        payload(['statutory'], statutoryFields('EPF-NR'), employmentId, 'bankStatutory'),
+      );
+      expect(result.ok).toBe(true);
+
+      const row = await readStatutory(personId);
+      expect(row.epfNumber).toBe('EPF-NR');
+      expect(row.isResident).toBe(false);
+      expect(row.taxResidency).toBe('non_resident');
     });
 
     it('a statutory edit saved WITH a residency change ends on the residency the admin chose', async () => {
@@ -222,11 +274,11 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(result.ok).toBe(true);
 
       const row = await readStatutory(personId);
-      // THE ASSERTION THIS FILE EXISTS FOR, and it is checked FIRST on purpose — a reordering of
-      // BANK_STATUTORY_TAB_SECTION_ORDER must be caught by the money consequence, not merely by the
-      // bookkeeping assertion below it. Statutory writes is_resident=false on every save because its form
-      // has no such control; tax re-derives it from the residency. Run tax first and this is false — an
-      // employee silently moved onto non-resident flat-rate PCB by an EPF-number edit.
+      // The residency the admin picked must survive a request that also carries a statutory edit. Since
+      // r255's fix this holds in EITHER order — the statutory writer derives the flag from the stored
+      // `tax_residency` instead of inventing one — which is the point: the correctness no longer depends
+      // on a declared order being remembered. Before the fix, tax-first left this `false` and moved the
+      // employee onto flat-rate PCB.
       expect(row.isResident, 'the residency the admin chose must survive the same request').toBe(true);
       expect(row.epfNumber).toBe('EPF-NEW');
       expect(row.taxResidency).toBe('resident');
@@ -573,6 +625,13 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // …and they still submit on their own.
       expect(page).toContain('action={setLocationAction}');
       expect(page).toContain('action={setDefaultShiftAction}');
+      // The two (b) cards leave the contiguous run BELOW it, not above it. Above it reads better for the
+      // Save bar (the bar ends up last on the tab) and was tried first — but it pushes Holiday Calendar
+      // off the top and reverses item 52a30630. test/personnel-holiday-grade-relocation.test.ts (5) is
+      // the guard on the reading order itself; this one pins the structural half.
+      expect(attendancePanel.indexOf('{holidayCalendarCard}')).toBeLessThan(
+        attendancePanel.indexOf('{locationCard}'),
+      );
     });
 
     it('Employment: the company transfer sits inside the same card and keeps its OWN button and no marker', () => {
@@ -612,6 +671,30 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(page).not.toContain("tc('save')}");
       expect(stripComments(read('components/bank-info-card.tsx'))).not.toContain("t('bankSave')");
       expect(stripComments(read('components/identity-tax-card.tsx'))).not.toContain("t('identityTaxSave')");
+    });
+
+    it('every scope NAMES the cards its Save owns, because on three tabs the bar is not the last thing', () => {
+      // A tab Save encloses a CONTIGUOUS run, so on Profile, Attendance and Employment the sticky bar
+      // renders above cards it does not cover (emergency contacts; Work Location + Shift Arrangement;
+      // Direct Superior + delegations). A bar reading only "Save Changes" there is a control that appears
+      // to do something it does not — edit the Direct Superior, press the Save above it, and it answers
+      // "No unsaved changes". `covers` prints the owned card names on the bar. It is a required prop, so
+      // tsc already refuses a scope without one; this pins that each tab names its OWN cards.
+      const page = PAGE();
+      // The card names live in ONE map above the panels rather than inline on each scope: three existing
+      // guards slice a tab panel from its key to the first `),`, and an inline `covers={[t('a'), t('b')]}`
+      // would truncate all three (see the note on `tabSaveCovers`).
+      expect(page).toContain("profile: [t('personalDetails'), t('contactAddressTitle')]");
+      expect(page).toContain("bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')]");
+      expect(page).toContain("attendance: [t('holidayCalendarCardTitle'), tc('cardTitle')]");
+      expect(page).toContain("job: [t('employmentInfo.title')]");
+      // Four scopes, four `covers` — no scope may render a bare bar.
+      expect(page.match(/<TabSaveScope/g)?.length).toBe(4);
+      expect(page.match(/covers=\{tabSaveCovers\./g)?.length).toBe(4);
+      // And the bar actually prints it (the key exists in all six locales — pinned by the i18n parity suite).
+      expect(stripComments(read('components/tab-save-scope.tsx'))).toContain(
+        "{t('covers', { cards: covers.join(', ') })}",
+      );
     });
 
     it('every section the map declares has a writer in its tab action, and no tab has a stray one', () => {

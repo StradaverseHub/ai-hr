@@ -18,6 +18,15 @@
  * carries the Employment Dates section. THE MARKER, NOT THE SUBTREE, IS THE FENCE. Both guards below were
  * corrected to test it.
  *
+ * AND THE BAR SAYS WHAT IT COVERS, because on three of the four tabs it is NOT the last thing on the tab.
+ * A tab Save can only enclose a CONTIGUOUS run of cards, and every tab except Bank & Statutory has bucket
+ * (b) cards that have to sit outside that run — so the sticky bar renders above cards it does not own.
+ * A bar reading only "Save Changes" would then be a control that appears to do something it does not
+ * (press it after editing the Direct Superior and it answers "No unsaved changes"); the `covers` prop
+ * makes it name its own cards instead. The alternative — pushing the scope to the foot of every tab —
+ * was tried and rejected: on Attendance it silently reversed item 52a30630's "Holiday Calendar pinned
+ * first", trading an honest control for a wrong reading order.
+ *
  * THE FENCE IS NOT WEAKENED BY THE SUBMIT GUARD FURTHER DOWN. That guard asks before a bucket (b) form
  * writes, because its `redirect()` re-renders the screen and would throw the tab's pending edits away
  * unannounced. Asking is all it does: it never reads, marks, packs or resets that form, it replays the
@@ -121,6 +130,7 @@ export function TabSaveScope({
   tabKey,
   employmentId,
   saveAction,
+  covers,
   children,
 }: {
   /** The tab this scope belongs to — submitted so the action can land the reader back on it. */
@@ -128,6 +138,18 @@ export function TabSaveScope({
   employmentId: string;
   /** The consolidated server action, handed down by the RSC page (the established RSC→client pattern). */
   saveAction: (formData: FormData) => Promise<TabSaveResult>;
+  /**
+   * THE NAMES OF THE CARDS THIS SAVE OWNS, already translated by the page, printed on the bar itself.
+   *
+   * Required, not optional, and that is the point. Only Bank & Statutory has a scope that covers its
+   * whole tab; on Profile, Attendance and Employment the bar sits above cards it does NOT cover (the
+   * emergency-contact register, Work Location and Shift Arrangement, the Direct Superior line and the
+   * delegations) because a tab Save must enclose a CONTIGUOUS run of cards and those cards are bucket
+   * (b). A sticky bar with nothing but "Save Changes" on it reads as covering everything below it, which
+   * is precisely the control-that-lies the classification exists to prevent — so it says what it covers,
+   * and a new tab cannot be wired up without answering the question.
+   */
+  covers: string[];
   children: ReactNode;
 }) {
   const t = useTranslations('components.tabSave');
@@ -492,6 +514,13 @@ export function TabSaveScope({
         data-tab-save-bar
         className="sticky bottom-3 z-30 rounded-[1.25rem] border border-border bg-card/95 p-3 shadow-[var(--shadow-card)] backdrop-blur"
       >
+        {/* WHAT THIS BAR COVERS, on the bar. See the `covers` prop: the scope encloses a contiguous run of
+            the tab's field-edit cards, and on three of the four tabs there are cards below it that keep
+            their own Save button. Naming them is what stops the bar reading as "Save everything on this
+            tab". */}
+        <p data-tab-save-covers className="mb-2 text-xs text-muted-foreground">
+          {t('covers', { cards: covers.join(', ') })}
+        </p>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
             {dirty ? (

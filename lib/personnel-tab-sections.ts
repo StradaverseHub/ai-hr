@@ -85,23 +85,31 @@ export type TabSaveResult = {
  *
  * THE ORDER IS NOT ARBITRARY AND IS NOT THE CLIENT'S. `setStatutoryProfileMY` is a FULL-ROW overwrite of
  * the columns it writes, and `setStatutoryAction` therefore reads the stored row and passes back every
- * column its own form no longer carries (bank, tax, TP3, zakat). Two consequences:
+ * column its own form no longer carries (bank, tax, TP3, zakat). Its pass-throughs read the row AT THE
+ * MOMENT IT RUNS, so whichever of bank/tax has already committed is what it carries forward. Running it
+ * FIRST means it carries the stored values forward and the partial writers then land their own on top,
+ * which is why bank and others follow rather than lead.
  *
- *  1. It must run FIRST. It writes `isResident` on every save, and the Income Tax card's setter
- *     (`setTaxProfileMY`) re-derives that same column from `taxResidency`. With tax LAST, a save of both
- *     cards ends with the residency the admin actually chose; the other way round the statutory write
- *     would land on top of it.
- *  2. Its pass-throughs read the row AT THE MOMENT IT RUNS, so whichever of bank/tax has already
- *     committed is what it carries forward. Running it first means it carries the stored values forward
- *     and the partial writers then land their own — no ordering hazard either way, which is why bank and
- *     others follow rather than lead.
+ * WHAT THIS ORDER IS NO LONGER LOAD-BEARING FOR, corrected in r255 after the money path was measured.
+ * `applyStatutorySection` used to send `isResident` from a control the Statutory (Malaysia) form has
+ * never carried, so it wrote `is_resident = false` on every save and the Income Tax card's setter
+ * (`setTaxProfileMY`), which re-derives that column from `taxResidency`, was the only thing that put it
+ * back. That made the order the difference between a resident and a flat-rate non-resident — and it left
+ * a LONE statutory save (an EPF-number edit and nothing else) writing the wrong tax basis with no second
+ * card to correct it. The helper now derives the flag from the stored `tax_residency`, so neither order
+ * can move a residency and a lone save cannot either. The order stays declared, and stays pinned by a
+ * test, because a fixed write order is what makes the outcome independent of DOM order and of which
+ * field the admin touched first.
  */
 export const BANK_STATUTORY_TAB_SECTION_ORDER = ['statutory', 'tax', 'bank', 'others'] as const;
 
 /**
  * Attendance. Two of the tab's four cards are bucket (b) — Work Location and Shift Arrangement both
  * append a DATED record (a transfer movement event, a shift period) rather than overwriting a value —
- * so they keep their own buttons and are rendered ABOVE the save scope, outside it.
+ * so they keep their own buttons and are rendered BELOW the save scope, outside it. (r255 first put them
+ * above it, which moved Holiday Calendar off the top of the tab and quietly reversed item 52a30630's
+ * "Holiday Calendar pinned first". The scope leads the tab instead, and the Save bar names the cards it
+ * owns rather than relying on being last.)
  *
  * The three here are independent writers on the employment row with no shared column, so the order is
  * simply the reading order of the cards.

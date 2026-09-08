@@ -21,7 +21,14 @@
  *      NO holidayCalendar / gradeId fields (the selects are gone from that form) PRESERVES both an existing
  *      holiday calendar and an existing grade. Before the split, setPersonAction unconditionally re-wrote
  *      both columns from the now-absent fields and would have nulled them.
+ *  (5) THE READING ORDER, added in r255 because it had just been reversed with nothing to catch it. This
+ *      item's other half is a LAYOUT decision — "Holiday Calendar pinned first on the Attendance tab" —
+ *      and 420ebab5's consolidated Save moved it to third while grouping the tab's field-edit cards into
+ *      one contiguous run. Guards (1)-(4) all passed, because they test writers and events and no test
+ *      anywhere pinned the order the reporter actually asked for. A decision that only lives in prose is
+ *      a decision the next round can undo by accident, so it lives here now.
  */
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -199,5 +206,51 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     expect(after.workState).toBe('Johor');
     expect(after.holidayGroupId).toBeNull();
     expect(after.gradeId).toBe(grade.id);
+  });
+
+  it('(5) the Attendance tab still OPENS with the Holiday Calendar card, and Leave with the Grade card', () => {
+    // AGENTS 27 — a source-scanning guard must not be answerable by a comment. Strip line comments first:
+    // one of the page's `//` notes contains the characters that open a block comment, and stripping blocks
+    // first makes that note swallow real JSX. (Same stripper as test/personnel-tab-save-tabs.test.ts.)
+    const src = readFileSync(
+      new URL('../app/admin/personnel/[employmentId]/page.tsx', import.meta.url),
+      'utf8',
+    );
+    const page = src
+      .split('\n')
+      .filter((line) => {
+        const t = line.trim();
+        return !(t.startsWith('//') || t.startsWith('* ') || t === '*');
+      })
+      .join('\n')
+      .replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '');
+
+    /** One panel of the `panels` map, sliced from its own key up to the key that follows it. */
+    const panel = (key: string, next: string) => {
+      const from = page.indexOf(`${key}: (`);
+      const to = page.indexOf(next, from);
+      expect(from, `the ${key} panel exists`).toBeGreaterThan(-1);
+      expect(to, `${next} follows the ${key} panel`).toBeGreaterThan(from);
+      return page.slice(from, to);
+    };
+    const card = (panelSrc: string, name: string) => {
+      const at = panelSrc.indexOf(`{${name}}`);
+      expect(at, `${name} renders on this tab`).toBeGreaterThan(-1);
+      return at;
+    };
+
+    // Attendance: Holiday Calendar first, ahead of Work Location, Shift Arrangement and Clocking. r255's
+    // consolidated Save has to enclose a contiguous run of the tab's field-edit cards, and the first
+    // attempt bought that by rendering the two dated-record cards ABOVE the run — which pushed this card
+    // to third. Whatever a later round does about grouping, THIS card opens the tab.
+    const attendance = panel('attendance', 'bankStatutory: (');
+    const holiday = card(attendance, 'holidayCalendarCard');
+    expect(holiday, 'Holiday Calendar before Work Location').toBeLessThan(card(attendance, 'locationCard'));
+    expect(holiday, 'Holiday Calendar before Shift Arrangement').toBeLessThan(card(attendance, 'defaultShiftCard'));
+    expect(holiday, 'Holiday Calendar before Clocking & Geofencing').toBeLessThan(card(attendance, 'clockingCard'));
+
+    // Leave: the same decision's other half — Grade pinned above the balance card.
+    const leave = panel('leave', 'documents: ');
+    expect(card(leave, 'gradeCard')).toBeLessThan(card(leave, 'leaveBalanceCard'));
   });
 });

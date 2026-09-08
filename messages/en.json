@@ -8581,6 +8581,7 @@
       "saveFailed": "Could not save your changes",
       "noChanges": "No unsaved changes",
       "changedCount": "Unsaved changes: {count}",
+      "covers": "This Save covers: {cards}",
       "reviewChanges": "Review changes",
       "hideChanges": "Hide changes",
       "colField": "Field",

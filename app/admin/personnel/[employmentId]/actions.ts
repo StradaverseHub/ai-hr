@@ -1270,9 +1270,22 @@ export async function removePersonPhotoAction(formData: FormData) {
  * setter with the SAME payload, so the consolidated door cannot grow its own copy that drifts.
  *
  * Read `BANK_STATUTORY_TAB_SECTION_ORDER` before changing where this runs in a consolidated save: this is a
- * FULL-ROW overwrite that passes the stored bank/tax/TP3/zakat columns back through, and it writes
- * `isResident` on every call — so it goes FIRST and the Income Tax card, which re-derives that column from
- * `taxResidency`, goes after it.
+ * FULL-ROW overwrite that passes the stored bank/tax/TP3/zakat columns back through, so it goes FIRST and
+ * the partial writers (tax, bank, others) land their own values on top of it.
+ *
+ * r255 fix — IT NO LONGER INVENTS A RESIDENCY. This helper used to read an `isResident` checkbox off the
+ * posted form — a control THIS FORM HAS NEVER CARRIED — so every statutory save wrote
+ * `is_resident = false`, including a lone one. (The expression itself is not quoted here: a guard in
+ * test/personnel-tab-save-tabs.test.ts §1 scans this file for it, and AGENTS 27 — source-scanning guards
+ * do not strip comments — means spelling it out would fail the very guard that pins the fix.)
+ *
+ * IT IS NOT COSMETIC. The payroll kernel takes `resident` separately from `flatTaxRate`
+ * (core/payroll.ts), and with `tax_residency` still
+ * 'resident' the flat rate is null — so `resident === false` alone charges the flat 30% non-resident PCB
+ * with no reliefs (measured: RM8,000/month → 514.20 as a resident, 2,400.00 with the flag off). The
+ * residency now comes from the STORED row, derived by the same rule `setTaxProfileMY` syncs it with
+ * (`localization/my/statutory.ts` — only 'resident' is a full-MTD resident; the three incentive statuses
+ * are not), which also self-heals a row an earlier save had already knocked out of step.
  */
 async function applyStatutorySection(
   s: Awaited<ReturnType<typeof requireAdmin>>,
@@ -1332,7 +1345,11 @@ async function applyStatutorySection(
     // Item 0d9bb2da — "Employer bears EPF Contribution" on the EPF card. This full-row setter always sends
     // the checkbox state so the flag round-trips correctly.
     employerBearsEpf: formData.get('employerBearsEpf') === 'on',
-    isResident: formData.get('isResident') === 'on',
+    // NOT `formData.get('isResident')` — this form carries no such control, so reading one wrote `false`
+    // on every save and moved the employee onto flat-rate PCB (see the header note). `tax_residency` is
+    // the column the Income Tax (PCB) card owns and is NOT NULL, so it is the answer; `isResident` is the
+    // legacy mirror of it and is only the fallback for a row from before that column existed.
+    isResident: current.taxResidency != null ? current.taxResidency === 'resident' : (current.isResident ?? true),
     epfCitizenship: (() => {
       const c = String(formData.get('epfCitizenship') ?? 'citizen');
       return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
@@ -1577,16 +1594,17 @@ export async function saveProfileTabAction(formData: FormData): Promise<TabSaveR
 /**
  * r255 420ebab5 — ONE "Save Changes" for the Bank & Statutory tab.
  *
- * THIS TAB IS NOT THE MECHANICAL REPEAT OF PROFILE THAT THE WRITE-UP ASSUMED, and the difference is the
- * ORDER, not the plumbing. `setStatutoryProfileMY` is a FULL-ROW overwrite of the columns it writes, and
- * two of those columns belong to cards that are not it:
+ * THIS TAB IS NOT THE MECHANICAL REPEAT OF PROFILE THAT THE WRITE-UP ASSUMED. `setStatutoryProfileMY` is a
+ * FULL-ROW overwrite of the columns it writes, and some of those columns belong to cards that are not it:
  *
- *  · `isResident`. The Statutory (Malaysia) form does not carry an `isResident` control at all, so
- *    `applyStatutorySection` always sends `false` for it, and the Income Tax (PCB) card's setter
- *    (`setTaxProfileMY`) re-derives the SAME column from the `taxResidency` the admin picked. With tax
- *    LAST the residency on screen is what survives the request; the other way round the statutory write
- *    would land on top of it and quietly make a resident non-resident. That ordering is pinned by
- *    test/personnel-tab-save-tabs.test.ts, not merely written down.
+ *  · `isResident`. The Statutory (Malaysia) form does not carry an `isResident` control at all, and until
+ *    r255's fix `applyStatutorySection` read one anyway and therefore sent `false` on EVERY save — a lone
+ *    statutory save included, which is how an employee whose `tax_residency` still said 'resident' ended
+ *    up charged the flat 30% non-resident PCB. It now derives the flag from the stored `tax_residency`
+ *    instead of inventing it, so this card can no longer move a residency in either order. The order
+ *    below is still declared and still pinned by test/personnel-tab-save-tabs.test.ts, but it is now a
+ *    deterministic-outcome guarantee rather than the only thing standing between an EPF-number edit and
+ *    a wrong tax rate.
  *  · the bank / TP3 / zakat pass-throughs, which `applyStatutorySection` reads from the STORED row at the
  *    moment it runs. Statutory going first means it carries the stored values forward and the partial
  *    writers (bank, tax) then land their own on top — so no card can be undone by a sibling in the same

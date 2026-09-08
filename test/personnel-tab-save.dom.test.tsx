@@ -84,7 +84,7 @@ function Screen({
 }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save}>
+      <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Personal Details']}>
         <form data-save-section="person">
           <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
           <input type="hidden" name="personId" defaultValue={PERSON_ID} />
@@ -186,6 +186,16 @@ describe('§1 one Save per tab, and it starts out with nothing to do', () => {
     // A disabled Save must also be an unclickable one — the payload and the dirty state are the same fact.
     await userEvent.click(saveBtn);
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('the bar SAYS which cards it covers, because on three of the four tabs it is not the last thing', () => {
+    // r255 — the scope encloses a CONTIGUOUS run of the tab's field-edit cards, so on Profile,
+    // Attendance and Employment the sticky bar renders above cards it does not cover (emergency
+    // contacts; Work Location + Shift Arrangement; Direct Superior + delegations). Left unlabelled it is
+    // a control that appears to do something it does not: edit the Direct Superior, press the Save above
+    // it, and the bar answers "No unsaved changes". `covers` is what stops that reading.
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+    expect(screen.getByText('This Save covers: Personal Details')).toBeInTheDocument();
   });
 });
 
@@ -666,7 +676,7 @@ describe('§9 a section that appears LATER has been edited zero times', () => {
     const [showIc, setShowIc] = useState(false);
     return (
       <NextIntlClientProvider locale="en" messages={messages}>
-        <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save}>
+        <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Personal Details']}>
           <form data-save-section="person">
             <label>
               <span>Full Name</span>
@@ -984,7 +994,7 @@ function EmploymentScreen({
 }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TabSaveScope tabKey="job" employmentId={EMPLOYMENT_ID} saveAction={save}>
+      <TabSaveScope tabKey="job" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Employment Information']}>
         {/* ONE card, two forms — exactly the shape of employmentInfoCard on the real page. */}
         <div data-testid="employment-info-card">
           {/* BUCKET (b): an audited company transfer with a pre-transaction gate. No marker, own button. */}
