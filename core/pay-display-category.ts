@@ -28,7 +28,12 @@
 /** The boxes an operator can put a pay item in — the reporter's own list (their table: BASIC / OT15 /
  *  BONUS / CLAIM / ALLOW / DED). `reimbursement` is deliberately NOT among them: it has no distinct box on
  *  any payslip in this product, so offering it would promise a line that cannot appear. */
-export const PAY_DISPLAY_CATEGORIES = ['basic', 'overtime', 'bonus', 'allowance', 'claim', 'deduction'] as const;
+//  711adcd2 adds `bik` — Benefit in Kind. The reporter's own pairing is Category = Non-Payable with
+//  Payroll Category = Benefit in Kind (BIK), and a non-payable item is RECORDED, never paid: it never
+//  reaches a cash bucket at all (core/payroll.ts pushes it to `recordLines`), so the label describes
+//  exactly the line it is put on. What it may NOT do is re-box money that WAS paid — see
+//  resolveDisplayCategory's third refusal below.
+export const PAY_DISPLAY_CATEGORIES = ['basic', 'overtime', 'bonus', 'allowance', 'claim', 'deduction', 'bik'] as const;
 export type PayDisplayCategory = (typeof PAY_DISPLAY_CATEGORIES)[number];
 
 /** The kernel's cash buckets (core/payroll.ts earningsOf). Repeated here rather than imported because that
@@ -62,10 +67,16 @@ export function defaultCategoryOfBucket(bucket: PayKernelBucket): PayDisplayCate
 /**
  * Resolve the box for one contribution.
  *
- * Two refusals, both deliberate:
+ * Three refusals, all deliberate:
  *  - a DEDUCTION contribution is always the deduction box. A display setting must never be able to turn a
  *    deduction into an earning (or the reverse): gross and net would stop reconciling on screen.
  *  - `deduction` declared on an EARNING contribution falls back to the bucket default, for the same reason.
+ *  - 711adcd2: `bik` declared on a CASH contribution falls back to the bucket default. A Benefit in Kind is
+ *    by definition not cash; a non-payable item never reaches this function (it is recorded, not bucketed),
+ *    so anything that DOES reach it here was actually paid. Printing paid money under a non-cash heading
+ *    would both mislabel it and break the invariant every payslip renderer relies on — that the five cash
+ *    boxes sum to gross. The tick is still stored and still shown on the Pay Items screen; it simply
+ *    cannot move a paid ringgit out of the box it was paid in.
  *
  * An unclassified row (null — a legacy row the backfill could not classify, or one created before 0393)
  * keeps the inference. Deleting the inference is what would silently lose a legacy row's box.
@@ -78,6 +89,7 @@ export function resolveDisplayCategory(
   if (bucket === 'deduct') return 'deduction';
   if (declared == null) return fallback;
   if (declared === 'deduction') return fallback;
+  if (declared === 'bik') return fallback; // 711adcd2 — see the third refusal above.
   return (PAY_DISPLAY_CATEGORIES as readonly string[]).includes(declared)
     ? (declared as PayDisplayCategory)
     : fallback;

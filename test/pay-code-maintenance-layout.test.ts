@@ -32,15 +32,39 @@ describe('13b7517b — Input Type removed from the maintenance form only', () =>
   });
 });
 
-describe('13b7517b — three-card structure in order', () => {
+describe('13b7517b — card structure in order (711adcd2: four cards, and full width)', () => {
   const basicAt = formSrc.indexOf("t('sectionBasic')");
+  const orpAt = formSrc.indexOf("t('sectionOrp')");
   const payAt = formSrc.indexOf("t('sectionPaySettings')");
   const statutoryAt = formSrc.indexOf("t('sectionConfig')");
 
-  it('renders Basic Information, then Pay Settings, then Government Statutory Configuration', () => {
+  it('renders General Information, then Ordinary Rate of Pay, then Calculation, then Statutory Configuration', () => {
+    // 711adcd2 UPDATES 13b7517b's three-card case rather than replacing it: the three cards are all still
+    // here, in the same relative order, and the reporter's ORP card is inserted SECOND — beside Category,
+    // which is the setting it took over from, and above the mechanics of how the amount is worked out.
     expect(basicAt).toBeGreaterThan(-1);
-    expect(payAt).toBeGreaterThan(basicAt);
+    expect(orpAt).toBeGreaterThan(basicAt);
+    expect(payAt).toBeGreaterThan(orpAt);
     expect(statutoryAt).toBeGreaterThan(payAt);
+  });
+
+  it('is FULL WIDTH, with Back top-left and Cancel/Save bottom-right', () => {
+    // The screen was capped at max-w-3xl, which is what the reporter's redesign asked us to lift.
+    expect(formSrc).not.toContain('max-w-3xl');
+    expect(formSrc).toContain('back={{ href: LIST');
+    const toolbarAt = formSrc.indexOf('justify-end');
+    expect(toolbarAt).toBeGreaterThan(statutoryAt);
+  });
+
+  it('the two ORP tick boxes are submitted by NAME and are never disabled', () => {
+    // A disabled control posts nothing, and the action reads an absent field as UNTICKED — so disabling a
+    // box would silently clear a stored flag and re-price somebody's overtime. The deduction case is a
+    // warning, never a lock. (Asserted on the island, which is where the controls live.)
+    const orpSrc = read(DIR, 'orp-config.tsx');
+    expect(orpSrc).toContain('name="orpUnpaidLeave"');
+    expect(orpSrc).toContain('name="orpOvertime"');
+    expect(orpSrc).not.toContain('disabled');
+    expect(orpSrc).toContain('orpDeductionWarning');
   });
 
   it('Pay Settings holds the rounding select and the pay-rule editor; the statutory card holds the flags + hint', () => {
@@ -65,9 +89,34 @@ describe('13b7517b — three-card structure in order', () => {
 });
 
 describe('13b7517b — headings say what each card is for (en)', () => {
-  it('renames Payroll Configuration and introduces Pay Settings', () => {
-    expect(en.payComponents.sectionConfig).toBe('Government Statutory Configuration');
-    expect(en.payComponents.sectionPaySettings).toBe('Pay Settings');
-    expect(en.payComponents.sectionBasic).toBe('Basic Information');
+  it('the headings are the four the reporter drew', () => {
+    // 711adcd2 UPDATES 13b7517b's case with the reporter's own section names. The KEYS are unchanged —
+    // only their English values — so no locale loses a string and no screen loses a heading.
+    expect(en.payComponents.sectionBasic).toBe('General Information');
+    expect(en.payComponents.sectionOrp).toBe('Ordinary Rate of Pay (ORP) Calculation');
+    expect(en.payComponents.sectionPaySettings).toBe('Calculation');
+    expect(en.payComponents.sectionConfig).toBe('Statutory Configuration');
+  });
+
+  it('the renamed vocabulary reads as the reporter asked, in every locale', () => {
+    // Category: Allowance -> Earning, Non-Payable (BIK) -> Non-Payable. Payroll Category: Allowance ->
+    // Earning, plus Benefit in Kind (BIK), and "Automatic (from Statutory Settings)" renamed rather than
+    // removed — six of the reporter's 29 items are on it and it decides nothing statutory.
+    expect(en.payComponents.kind_allowance).toBe('Earning');
+    expect(en.payComponents.kind_non_payable).toBe('Non-Payable');
+    expect(en.payComponents.displayCategory_allowance).toBe('Earning');
+    expect(en.payComponents.displayCategory_bik).toBe('Benefit in Kind (BIK)');
+    expect(en.payComponents.displayCategory_auto).toBe('Work it out automatically');
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(readFileSync(join(__dirname, '..', 'messages', `${loc}.json`), 'utf8'));
+      for (const k of ['sectionOrp', 'sectionOrpHint', 'orpUnpaidLeaveLabel', 'orpUnpaidLeaveHint', 'orpOvertimeLabel', 'orpOvertimeHint', 'orpDeductionWarning', 'orpStatutoryNote', 'displayCategory_bik']) {
+        expect(m.payComponents[k], `payComponents.${k} in ${loc}`).toBeTruthy();
+      }
+      // Not left in English: each locale's own words, not a copy of ours.
+      if (loc !== 'en') {
+        expect(m.payComponents.sectionOrp, `${loc} sectionOrp translated`).not.toBe(en.payComponents.sectionOrp);
+        expect(m.payComponents.orpOvertimeLabel, `${loc} orpOvertimeLabel translated`).not.toBe(en.payComponents.orpOvertimeLabel);
+      }
+    }
   });
 });

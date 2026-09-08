@@ -25,6 +25,13 @@
  * allowances, defined as items ranking strictly BELOW the one reading it (isFixedAllowanceComponent +
  * resolvePayComponentSet), which is what keeps it unable to reintroduce the cycle the planner refuses.
  *
+ * ── 711adcd2: the aggregate's membership becomes a TICK BOX ────────────────────────────────────────
+ * `pay_component.orp_overtime` (migration 0456) now answers "does this item count towards the sum?", in
+ * place of the item's KIND. payItemFeedsOvertimeOrp is the single predicate; isFixedAllowanceComponent
+ * stays as the pre-0456 test it replaced the policy half of, and as the fallback for any caller with no
+ * flag. The STRUCTURAL clauses — never BASIC, never statutory, rule null-or-fixed — are not delegated to
+ * the tick box: the last of them is the acyclicity guarantee the paragraph above depends on.
+ *
  * ── 61bf109d: Input Type redesign + Formula Setting ────────────────────────────────────────────────
  * NO EXPRESSION STRINGS. A formula is an AST-shaped VALUE (a seed operand folded left-to-right through a
  * term list), so there is no `eval`, no `new Function`, no dynamic import of expression text, and no parser
@@ -434,6 +441,88 @@ export function isFixedAllowanceComponent(code: string, kind: string | null | un
   return rule == null || rule.kind === 'fixed';
 }
 
+/**
+ * 711adcd2 — THE SAME QUESTION, ASKED OF A TICK BOX INSTEAD OF A KIND.
+ *
+ * Does this pay item count towards the `fixed_allowances` operand? Until migration 0456 the answer was
+ * `isFixedAllowanceComponent` above: the item's KIND decided, and every non-statutory fixed `allowance`
+ * counted whether the operator wanted it to or not. `pay_component.orp_overtime` is now the answer to the
+ * POLICY half of that question, and only the policy half.
+ *
+ * WHAT THE TICK BOX MAY DECIDE, AND WHAT IT MAY NOT.
+ *   • It replaces the `kind === 'allowance'` clause, and nothing else. That clause was a policy guess
+ *     ("the reporter asked for All Fixed ALLOWANCE"), which is exactly the kind of decision an operator
+ *     should be making instead of us.
+ *   • The three clauses BELOW it are structural and stay in code, where a tick box cannot switch them off:
+ *       – never BASIC. It is seeded with kind 'allowance' and no rule, so it passes every other test, and
+ *         counting it pays basic salary twice inside `basic + fixed_allowances`.
+ *       – never a statutory line. Reading a legislated figure into pay through an aggregate is the same
+ *         violation validatePayRuleAgainstCatalog already refuses for a named `component` operand.
+ *       – rule null or `fixed`. THIS ONE IS THE ACYCLICITY GUARANTEE. An item with no rule has no
+ *         dependencies at all, so nothing in the sum can depend, directly or transitively, on the item
+ *         that reads the sum. Let a tick box override it and a rule-driven item re-enters the aggregate
+ *         and reintroduces the cycle planResolutionOrder exists to refuse.
+ *
+ * BYTE-IDENTICAL BY CONSTRUCTION, TWICE OVER. `orpOvertime` undefined/null means "this caller has no flag"
+ * — a unit test, the AI validator, any pre-0456 call site — and the expression falls back to the exact
+ * kind test, so nothing that does not supply the column can change behaviour. And migration 0456 backfills
+ * the column to exactly that kind test's policy half, so the callers that DO supply it get the same answer
+ * on day one as well.
+ *
+ * A DEDUCTION MAY BE TICKED AND IS STILL NOT SUMMED HERE, and that is the FOURTH structural clause. The
+ * approved plan permits an operator to tick one and requires the editor to warn, but explicitly rules out
+ * acting on the reporter's worked example (2,500 + 500 − 200): under EA s.60I overtime is struck from the
+ * ordinary rate of pay derived from WAGES, and subtracting a deduction from that base lowers statutory
+ * overtime pay. Adding it as a POSITIVE — which is the only thing this aggregate can structurally do with
+ * a row, since a sum has no sign — would be worse: it would RAISE overtime by the size of a deduction.
+ * There is no reading of "include this deduction" that is both implementable here and correct, so the tick
+ * is recorded, warned about on the screen in those words, and moves nothing. See the notBuilt entry.
+ */
+export function payItemFeedsOvertimeOrp(
+  code: string,
+  kind: string | null | undefined,
+  rule: PayRule | null,
+  /** pay_component.orp_overtime. undefined / null ⇒ the caller has no flag ⇒ the pre-0456 kind test. */
+  orpOvertime?: boolean | null,
+): boolean {
+  if (normCode(code) === BASIC_PAY_CODE) return false;
+  if (isStatutoryComponent(code, kind)) return false;
+  if (kind === 'deduction') return false;
+  if (!(rule == null || rule.kind === 'fixed')) return false;
+  return orpOvertime ?? kind === 'allowance';
+}
+
+/**
+ * 711adcd2 — THE OTHER TICK BOX: does this pay item join basic salary in the base the UNPAID-LEAVE (and
+ * the equal-by-definition ABSENCE) daily rate is struck from?
+ *
+ * MEASURED FIRST, THEN BUILT. Before 0456 the answer was "no item does". core/payroll.ts computes the
+ * deduction as `basicRaw / unpaidDivisor × days` — the unfactored monthly basic over a policy-configured
+ * divisor — with no allowance term, no pay item, and no `fixed_allowances` anywhere in the expression. So
+ * migration 0456 backfills the column FALSE on every row and this predicate answers false for every caller
+ * that does not supply a flag. That is what keeps release day byte-identical, and it matters more here than
+ * on the overtime side: the unpaid deduction is PRE-statutory (it reduces wagesExOt and hrdfBase), so a
+ * wrong `true` would have moved EPF, SOCSO, EIS and PCB along with the deduction.
+ *
+ * THE STRUCTURAL CLAUSES, as on the overtime side, are not the operator's to switch off:
+ *   • never BASIC — it IS the base; adding it would strike the daily rate off twice the salary.
+ *   • never a statutory line — a legislated figure is not wages an operator may add to a rate.
+ *   • never a DEDUCTION. The reporter's worked example subtracts one (2,500 + 500 − 200 = 2,800); the
+ *     approved plan refuses to implement that, and adding a deduction as a POSITIVE instead would be worse.
+ *     A ticked deduction is stored and warned about on the screen, and moves no base. See the notBuilt note.
+ */
+export function payItemFeedsUnpaidLeaveOrp(
+  code: string,
+  kind: string | null | undefined,
+  /** pay_component.orp_unpaid_leave. undefined / null ⇒ the caller has no flag ⇒ the pre-0456 answer, false. */
+  orpUnpaidLeave?: boolean | null,
+): boolean {
+  if (normCode(code) === BASIC_PAY_CODE) return false;
+  if (isStatutoryComponent(code, kind)) return false;
+  if (kind === 'deduction') return false;
+  return orpUnpaidLeave === true;
+}
+
 /** A catalog row as the graph planner needs to see it. */
 export type PayRuleCatalogNode = {
   code: string;
@@ -442,6 +531,8 @@ export type PayRuleCatalogNode = {
   kind?: string | null;
   /** Archived items may not be referenced: a formula pointing at a retired code would silently read 0. */
   archived?: boolean;
+  /** 711adcd2 — pay_component.orp_overtime. Absent ⇒ the pre-0456 kind test (payItemFeedsOvertimeOrp). */
+  orpOvertime?: boolean | null;
 };
 
 export type ResolutionPlan =
@@ -483,7 +574,7 @@ export function planResolutionOrder(nodes: readonly PayRuleCatalogNode[]): Resol
     // and the set it sums is whatever the catalog holds at the time, which is the point of the feature.
     const aggregated = payRuleReadsFixedAllowanceTotal(node.rule)
       ? [...byCode.entries()]
-          .filter(([c, n]) => c !== code && !n.archived && isFixedAllowanceComponent(c, n.kind, n.rule))
+          .filter(([c, n]) => c !== code && !n.archived && payItemFeedsOvertimeOrp(c, n.kind, n.rule, n.orpOvertime))
           .map(([c]) => c)
       : [];
     for (const dep of [...payRuleDependencies(node.rule), ...aggregated].sort()) {
@@ -776,6 +867,14 @@ export type ResolvablePayComponent = {
    *  Both OPTIONAL: absent ⇒ false ⇒ every pre-existing caller behaves exactly as before. */
   nonPayable?: boolean;
   oneOff?: boolean;
+  /** 711adcd2 — pay_component.orp_overtime, the tick box that replaced the aggregate's kind test. OPTIONAL
+   *  for the same reason `kind` is: absent ⇒ the caller has no flag ⇒ payItemFeedsOvertimeOrp falls back to
+   *  the pre-0456 kind test ⇒ every pre-existing caller resolves byte-identically. */
+  orpOvertime?: boolean | null;
+  /** 711adcd2 — pay_component.orp_unpaid_leave. Read by the kernel's unpaid-leave base, NOT by the
+   *  `fixed_allowances` aggregate: the two ORP bases are independent, which is the point of the feature.
+   *  Absent ⇒ false ⇒ the pre-0456 answer (nothing but basic salary feeds that base). */
+  orpUnpaidLeave?: boolean | null;
 };
 
 /**
@@ -832,8 +931,12 @@ export function resolvePayComponentSet(
     // holds for any future pinned code, that one holds when there is no caller to pin anything.
     // r168 verification — nonPayable/oneOff rows are NOT money this run pays out of the catalog, so
     // they are not money the aggregate may total. See ResolvablePayComponent for the measurement.
+    // 711adcd2 — the membership test is now the TICK BOX (payItemFeedsOvertimeOrp), not the kind. The two
+    // exclusions in front of it are unchanged and are NOT delegated to the flag: a pinned code and a
+    // nonPayable/oneOff row are not money this engine pays out of the catalog, so they are not money the
+    // aggregate may total however the operator has ticked them.
     const fa =
-      !pinned.has(code) && !c.nonPayable && !c.oneOff && isFixedAllowanceComponent(code, c.kind, c.rule);
+      !pinned.has(code) && !c.nonPayable && !c.oneOff && payItemFeedsOvertimeOrp(code, c.kind, c.rule, c.orpOvertime);
     const ra = payRuleReadsFixedAllowanceTotal(c.rule);
     if (g) {
       g.idx.push(i);

@@ -5735,9 +5735,35 @@ export const payComponent = pgTable(
     // printed under Bonus. NULL = unclassified ⇒ core/payroll.ts keeps inferring exactly as before, which
     // is what stops a legacy row losing its box silently. Values constrained in the DB (0393) and
     // app-side (core/pay-display-category.ts).
+    // 711adcd2 adds 'bik' (Benefit in Kind) — the reporter's Category = Non-Payable pairing. Migration
+    // 0456 widens 0393's CHECK constraint to match; the two vocabularies are pinned in step by
+    // test/pay-display-category.test.ts.
     displayCategory: text('display_category').$type<
-      'basic' | 'overtime' | 'bonus' | 'allowance' | 'claim' | 'deduction' | null
+      'basic' | 'overtime' | 'bonus' | 'allowance' | 'claim' | 'deduction' | 'bik' | null
     >(),
+    // ── 711adcd2 (migration 0456) — THE TWO ORP TICK BOXES ────────────────────────────────────────
+    // Which ordinary-rate-of-pay base this pay item feeds. Two INDEPENDENT switches: either, both or
+    // neither. Before 0456 there was no switch at all — inclusion was decided by the item's KIND — so the
+    // migration backfills each column to exactly what the code decided on the day it ran, which is the
+    // whole safety property (see db/migrations/0456_pay_item_orp_flags.sql).
+    //
+    // orp_overtime — does this item count towards the `fixed_allowances` operand a tenant's own overtime
+    //   formula reads (core/pay-rule.ts)? It replaces ONLY the `kind = 'allowance'` half of
+    //   isFixedAllowanceComponent. The three STRUCTURAL clauses (never BASIC, never a statutory line,
+    //   rule null-or-fixed) are safety, not policy, and stay in code where a tick box cannot switch them
+    //   off: the last of them is what makes the aggregate acyclic. Backfilled TRUE for exactly the
+    //   non-statutory, non-BASIC `allowance` rows the kind test selected.
+    //   IT DOES NOT REACH THE STATUTORY OVERTIME ENGINE. localization/my/payroll.ts overtimePay is fed
+    //   `compensation.basic_salary + compensation.monthly_allowance` (core/payroll.ts
+    //   prefillOvertimeFromAttendance) — Personnel COLUMNS, not pay items — and no flag here changes that.
+    //
+    // orp_unpaid_leave — does this item's amount join basic salary in the base the unpaid-leave (and the
+    //   equal-by-definition absence) daily rate is struck from? Backfilled FALSE on EVERY row, because
+    //   MEASURED, nothing but basic salary feeds it today: core/payroll.ts computes
+    //   `basicRaw / unpaidDivisor × days`, with no allowance and no pay item anywhere in it. A `true`
+    //   backfill would have RAISED every unpaid-leave deduction on release day.
+    orpOvertime: boolean('orp_overtime').notNull().default(false),
+    orpUnpaidLeave: boolean('orp_unpaid_leave').notNull().default(false),
     // Whether the amount prorates for a mid-period joiner/leaver.
     prorates: boolean('prorates').notNull().default(true),
     // Wave 1 (ADR-0035 1A): which annual EA-form (Borang EA / C.P.8A Part B) line this component maps to,
