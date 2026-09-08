@@ -8567,6 +8567,25 @@
       "confirm": "Confirm",
       "cancel": "Cancel"
     },
+    "tabSave": {
+      "saveChanges": "Save Changes",
+      "discardChanges": "Discard Changes",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "savedToast": "Changes saved",
+      "saveFailed": "Could not save your changes",
+      "noChanges": "No unsaved changes",
+      "changedCount": "Unsaved changes: {count}",
+      "reviewChanges": "Review changes",
+      "hideChanges": "Hide changes",
+      "colField": "Field",
+      "colOriginal": "Original",
+      "colNew": "New value",
+      "editedBadge": "Edited",
+      "emptyValue": "—",
+      "unsavedTitle": "Unsaved changes",
+      "unsavedBody": "You have made changes that have not been saved. Do you want to save them before leaving?"
+    },
     "themeToggle": {
       "toggle": "Toggle theme"
     }

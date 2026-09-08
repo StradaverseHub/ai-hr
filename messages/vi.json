@@ -8567,6 +8567,25 @@
       "confirm": "Xác nhận",
       "cancel": "Hủy"
     },
+    "tabSave": {
+      "saveChanges": "Lưu thay đổi",
+      "discardChanges": "Hủy thay đổi",
+      "cancel": "Hủy bỏ",
+      "saving": "Đang lưu…",
+      "savedToast": "Đã lưu thay đổi",
+      "saveFailed": "Không thể lưu các thay đổi của bạn",
+      "noChanges": "Không có thay đổi chưa lưu",
+      "changedCount": "Thay đổi chưa lưu: {count}",
+      "reviewChanges": "Xem lại thay đổi",
+      "hideChanges": "Ẩn thay đổi",
+      "colField": "Trường",
+      "colOriginal": "Giá trị cũ",
+      "colNew": "Giá trị mới",
+      "editedBadge": "Đã sửa",
+      "emptyValue": "—",
+      "unsavedTitle": "Thay đổi chưa lưu",
+      "unsavedBody": "Bạn đã thực hiện những thay đổi chưa được lưu. Bạn có muốn lưu chúng trước khi rời đi không?"
+    },
     "themeToggle": {
       "toggle": "Chuyển giao diện"
     }

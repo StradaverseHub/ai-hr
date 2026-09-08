@@ -22,7 +22,15 @@
  * 35b7af0a GROUP 8 — the Nationality picker and the Identity No (NRIC) field themselves now come from
  * components/identity-fields.tsx, the shared group the Create New Employee wizard renders too. Only the
  * PERSONNEL-SPECIFIC parts stayed here: the context that makes the fork live without a reload, the two
- * `<form>` shells with their server actions and Save buttons, and the passport block.
+ * `<form>` shells with their server actions, and the passport block.
+ *
+ * 420ebab5 PART TWO — the two Save buttons that used to sit at the foot of these forms are GONE. Both
+ * cards are bucket (a) (docs/audits/420ebab5-personnel-save-classification.md): plain identity fields
+ * overwritten in place, which the Profile tab's one "Save Changes" now covers. `data-save-section` is how
+ * components/tab-save-scope.tsx finds each form's payload; `action={…}` STAYS, because it is still the
+ * real POST target when the client bundle does not run, and because these two forms are the only place
+ * `setIcAction` / `setPassportAction` are wired to a card. The consolidated action reaches the same two
+ * services through the same helpers — it does not re-implement them.
  *
  * WHY THE PASSPORT BLOCK IS NOT SHARED WITH THE WIZARD. It is not a field-definition question, it is a
  * write-path one. `setPassportProfileMY` makes the number/issue/expiry trio MANDATORY for a non-Malaysian,
@@ -35,7 +43,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
-import { Field, btnPrimary, inputCls } from '@/components/ui';
+import { Field, inputCls } from '@/components/ui';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/countries';
 import {
   IdentityNumberField,
@@ -153,7 +161,7 @@ export function IdentityFields({
           name/defaultValue box inside this server-action form, with IcDobAutofill still deriving the DOB
           from a valid MyKad into the sibling compliance form's input (id=profile-dob-input). */}
       {isMY && (
-        <form action={setIcAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
+        <form action={setIcAction} data-save-section="ic" className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
           <input type="hidden" name="employmentId" value={employmentId} />
           <input type="hidden" name="personId" value={personId} />
           <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('identityNricTitle')}</p>
@@ -175,16 +183,13 @@ export function IdentityFields({
               className={inputCls}
             />
           </Field>
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveIc')}</button>
-          </div>
         </form>
       )}
 
       {/* Passport Information — shown for EVERY employee. The number/issue/expiry required attrs apply
           only for non-Malaysians; the server re-derives requiredness from the person record (a Malaysian's
           passport is optional but all-or-nothing). Issuing country + remark are always optional. */}
-      <form action={setPassportAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
+      <form action={setPassportAction} data-save-section="passport" className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
         <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('passportInfoTitle')}</p>
@@ -227,9 +232,6 @@ export function IdentityFields({
           <textarea name="passportRemark" rows={2} defaultValue={passportRemark} className={`${inputCls} sm:col-span-4`} />
         </Field>
         <p className="text-xs text-muted-foreground sm:col-span-4">{t('passportHint')}</p>
-        <div className="sm:col-span-4 flex justify-end">
-          <button className={btnPrimary}>{t('savePassport')}</button>
-        </div>
       </form>
     </>
   );

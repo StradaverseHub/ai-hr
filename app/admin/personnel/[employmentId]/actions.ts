@@ -47,6 +47,15 @@ import { packFor } from '@/localization/registry';
 // CHILD_RELIEF_CATEGORY_KEYS is the same list expressed for the ruleset side.
 import { CHILD_RELIEF_CATEGORIES } from '@/core/dependents';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
+// 420ebab5 part two — the section contract the consolidated per-tab Save shares with the page and the
+// client scope. It lives outside this file because a `'use server'` module may only export async functions.
+import {
+  isProfileTabSection,
+  PROFILE_TAB_SECTION_ORDER,
+  SECTION_FIELD_PREFIX,
+  SECTIONS_FIELD,
+  type TabSaveResult,
+} from '@/lib/personnel-tab-sections';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -800,36 +809,54 @@ const orNull = (v: FormDataEntryValue | null): string | null => {
   return s === '' ? null : s;
 };
 
+/**
+ * 420ebab5 part two — the WRITE half of the Personal Details card, with no session lookup, no
+ * `revalidatePath` and no redirect.
+ *
+ * It exists so that the card's own action (below) and the Profile tab's consolidated "Save Changes"
+ * (`saveProfileTabAction`) reach the SAME services with the SAME payload, instead of the consolidated save
+ * growing its own copy that could drift. Effective dating (ADR-0001/0003) is why a consolidated save must
+ * not become one blanket write: each card still calls its own service, in order, and the services still
+ * close-and-insert rather than update in place.
+ */
+async function applyPersonSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const employmentId = String(formData.get('employmentId'));
+  await updatePerson(s, {
+    personId: String(formData.get('personId')),
+    fullName: String(formData.get('fullName') ?? ''),
+    primaryEmail: String(formData.get('primaryEmail') ?? ''),
+    phone: (formData.get('phone') as string) || null,
+    // b4682879 Personal Details — new independent name parts + PDPA-sensitive demographics.
+    // 8c284478 — Salutation (catalog-backed dropdown before Full Name; blank allowed → null).
+    salutation: orNull(formData.get('salutation')),
+    firstName: orNull(formData.get('firstName')),
+    lastName: orNull(formData.get('lastName')),
+    preferredName: orNull(formData.get('preferredName')),
+    religion: orNull(formData.get('religion')),
+    race: orNull(formData.get('race')),
+    nationality: orNull(formData.get('nationality')),
+  });
+  // Employee ID (feedback 38668d9b): HR keys/corrects the company's real staff ID on the identity card.
+  // The service validates + tenant-uniqueness-checks and no-ops when unchanged (no spurious event).
+  await setEmployeeCode(s, {
+    employmentId,
+    employeeCode: String(formData.get('employeeCode') ?? ''),
+  });
+  // Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (setEmploymentHolidayCalendarAction)
+  // and Grade RELOCATED to the Leave tab (setEmploymentGradeAction). Their selects no longer live on this
+  // Personal Details form, so the previously-unconditional writes here are DELETED: keeping them would read
+  // the now-absent fields as null/'' and WIPE both employment columns on every Personal Details save. The
+  // two target-tab forms own those writes now.
+}
+
 export async function setPersonAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await updatePerson(s, {
-      personId: String(formData.get('personId')),
-      fullName: String(formData.get('fullName') ?? ''),
-      primaryEmail: String(formData.get('primaryEmail') ?? ''),
-      phone: (formData.get('phone') as string) || null,
-      // b4682879 Personal Details — new independent name parts + PDPA-sensitive demographics.
-      // 8c284478 — Salutation (catalog-backed dropdown before Full Name; blank allowed → null).
-      salutation: orNull(formData.get('salutation')),
-      firstName: orNull(formData.get('firstName')),
-      lastName: orNull(formData.get('lastName')),
-      preferredName: orNull(formData.get('preferredName')),
-      religion: orNull(formData.get('religion')),
-      race: orNull(formData.get('race')),
-      nationality: orNull(formData.get('nationality')),
-    });
-    // Employee ID (feedback 38668d9b): HR keys/corrects the company's real staff ID on the identity card.
-    // The service validates + tenant-uniqueness-checks and no-ops when unchanged (no spurious event).
-    await setEmployeeCode(s, {
-      employmentId,
-      employeeCode: String(formData.get('employeeCode') ?? ''),
-    });
-    // Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (setEmploymentHolidayCalendarAction)
-    // and Grade RELOCATED to the Leave tab (setEmploymentGradeAction). Their selects no longer live on this
-    // Personal Details form, so the previously-unconditional writes here are DELETED: keeping them would read
-    // the now-absent fields as null/'' and WIPE both employment columns on every Personal Details save. The
-    // two target-tab forms own those writes now.
+    await applyPersonSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -893,39 +920,46 @@ export async function setEmploymentHolidayCalendarAction(formData: FormData) {
  * optional provenance marker set by the "Same as Permanent Address" client island — recorded on the audit
  * event as HOW the save happened, never any address VALUE (PDPA).
  */
+async function applyContactAddressSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const via = String(formData.get('addressCopyVia') ?? '') === 'copy-permanent' ? 'copy-permanent' : undefined;
+  await updatePerson(s, {
+    personId: String(formData.get('personId')),
+    fullName: String(formData.get('fullName') ?? ''),
+    primaryEmail: String(formData.get('primaryEmail') ?? ''),
+    phone: orNull(formData.get('phone')),
+    // bf953339 — `phone` IS the Mobile Phone Number (label-only rename); homePhone joins it in Contact &
+    // Address, and the Correspondence block carries its OWN mobile/home pair. All three are presence-gated
+    // profile fields (like personalEmail), so sibling forms that omit them can never clobber them.
+    homePhone: orNull(formData.get('homePhone')),
+    correspondenceMobilePhone: orNull(formData.get('correspondenceMobilePhone')),
+    correspondenceHomePhone: orNull(formData.get('correspondenceHomePhone')),
+    personalEmail: orNull(formData.get('personalEmail')),
+    via,
+    permanentAddressLine1: orNull(formData.get('permanentAddressLine1')),
+    permanentAddressLine2: orNull(formData.get('permanentAddressLine2')),
+    permanentAddressLine3: orNull(formData.get('permanentAddressLine3')),
+    permanentPostcode: orNull(formData.get('permanentPostcode')),
+    permanentCity: orNull(formData.get('permanentCity')),
+    permanentState: orNull(formData.get('permanentState')),
+    permanentCountry: orNull(formData.get('permanentCountry')),
+    correspondenceAddressLine1: orNull(formData.get('correspondenceAddressLine1')),
+    correspondenceAddressLine2: orNull(formData.get('correspondenceAddressLine2')),
+    correspondenceAddressLine3: orNull(formData.get('correspondenceAddressLine3')),
+    correspondencePostcode: orNull(formData.get('correspondencePostcode')),
+    correspondenceCity: orNull(formData.get('correspondenceCity')),
+    correspondenceState: orNull(formData.get('correspondenceState')),
+    correspondenceCountry: orNull(formData.get('correspondenceCountry')),
+  });
+}
+
 export async function setContactAddressAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const via = String(formData.get('addressCopyVia') ?? '') === 'copy-permanent' ? 'copy-permanent' : undefined;
   try {
-    await updatePerson(s, {
-      personId: String(formData.get('personId')),
-      fullName: String(formData.get('fullName') ?? ''),
-      primaryEmail: String(formData.get('primaryEmail') ?? ''),
-      phone: orNull(formData.get('phone')),
-      // bf953339 — `phone` IS the Mobile Phone Number (label-only rename); homePhone joins it in Contact &
-      // Address, and the Correspondence block carries its OWN mobile/home pair. All three are presence-gated
-      // profile fields (like personalEmail), so sibling forms that omit them can never clobber them.
-      homePhone: orNull(formData.get('homePhone')),
-      correspondenceMobilePhone: orNull(formData.get('correspondenceMobilePhone')),
-      correspondenceHomePhone: orNull(formData.get('correspondenceHomePhone')),
-      personalEmail: orNull(formData.get('personalEmail')),
-      via,
-      permanentAddressLine1: orNull(formData.get('permanentAddressLine1')),
-      permanentAddressLine2: orNull(formData.get('permanentAddressLine2')),
-      permanentAddressLine3: orNull(formData.get('permanentAddressLine3')),
-      permanentPostcode: orNull(formData.get('permanentPostcode')),
-      permanentCity: orNull(formData.get('permanentCity')),
-      permanentState: orNull(formData.get('permanentState')),
-      permanentCountry: orNull(formData.get('permanentCountry')),
-      correspondenceAddressLine1: orNull(formData.get('correspondenceAddressLine1')),
-      correspondenceAddressLine2: orNull(formData.get('correspondenceAddressLine2')),
-      correspondenceAddressLine3: orNull(formData.get('correspondenceAddressLine3')),
-      correspondencePostcode: orNull(formData.get('correspondencePostcode')),
-      correspondenceCity: orNull(formData.get('correspondenceCity')),
-      correspondenceState: orNull(formData.get('correspondenceState')),
-      correspondenceCountry: orNull(formData.get('correspondenceCountry')),
-    });
+    await applyContactAddressSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -940,16 +974,23 @@ export async function setContactAddressAction(formData: FormData) {
  * A blank select or date input ("") is an explicit clear-to-null. Marital status here does NOT change the
  * PCB/tax bracket (a separate statutory field) — surfaced on-screen.
  */
+async function applyComplianceSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  await setPersonComplianceFields(s, {
+    employmentId: String(formData.get('employmentId')),
+    gender: (formData.get('gender') as string) || null,
+    maritalStatus: (formData.get('maritalStatus') as string) || null,
+    dateOfBirth: (formData.get('dateOfBirth') as string) || null,
+  });
+}
+
 export async function setComplianceFieldsAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await setPersonComplianceFields(s, {
-      employmentId,
-      gender: (formData.get('gender') as string) || null,
-      maritalStatus: (formData.get('maritalStatus') as string) || null,
-      dateOfBirth: (formData.get('dateOfBirth') as string) || null,
-    });
+    await applyComplianceSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1365,24 +1406,22 @@ export async function setBankAction(formData: FormData) {
  * SEEDS the statutory row (IC is the notNull identity) — setIcProfileMY upserts. requireAdmin gates it; the pack
  * setter validates the IC and appends `employee.ic.updated`.
  */
-export async function setIcAction(formData: FormData) {
-  const s = await requireAdmin();
+async function applyIcSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
   const employmentId = String(formData.get('employmentId'));
   const personId = String(formData.get('personId'));
   const pack = packFor('MY');
   const icRaw = String(formData.get('icNumber') ?? '');
-  try {
-    if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setIc(s, {
-      personId,
-      icNumber: icRaw,
-      // e4b541c6 — read by VALUE, not by presence: the field is always submitted, so an untouched blank
-      // must clear rather than be read as "keep" (the presence-is-a-value trap, AGENTS 17).
-      oldIcNumber: (formData.get('oldIcNumber') as string) ?? '',
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
+  if (!pack) throw new Error('No localization pack for MY');
+  await pack.statutory.setIc(s, {
+    personId,
+    icNumber: icRaw,
+    // e4b541c6 — read by VALUE, not by presence: the field is always submitted, so an untouched blank
+    // must clear rather than be read as "keep" (the presence-is-a-value trap, AGENTS 17).
+    oldIcNumber: (formData.get('oldIcNumber') as string) ?? '',
+  });
   // Item 354a500d — server-side safety net for the IC → Date-of-Birth autofill. When the entered IC yields a
   // valid derived DOB, persist it through the audited setPersonComplianceFields path (fires person.updated) so
   // the derivation holds even if the client wrapper didn't run (JS off / API import). `dobOnlyIfEmpty` guarantees
@@ -1396,6 +1435,16 @@ export async function setIcAction(formData: FormData) {
       // non-fatal — IC persisted; DOB autofill is a convenience.
     }
   }
+}
+
+export async function setIcAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await applyIcSection(s, formData);
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
@@ -1408,27 +1457,125 @@ export async function setIcAction(formData: FormData) {
  * statutory row (UPSERT) — but with NO IC (ic_number stays null) and SKIPS MyKad validation. Remark and
  * issuing country are optional; appends `employee.passport.updated`.
  */
+async function applyPassportSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const pack = packFor('MY');
+  if (!pack) throw new Error('No localization pack for MY');
+  await pack.statutory.setPassport(s, {
+    personId: String(formData.get('personId')),
+    passportNumber: (formData.get('passportNumber') as string) || null,
+    passportIssueDate: (formData.get('passportIssueDate') as string) || null,
+    passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,
+    passportRemark: (formData.get('passportRemark') as string) || null,
+    passportIssuingCountry: (formData.get('passportIssuingCountry') as string) || null,
+    passportIssuingCountryCode: (formData.get('passportIssuingCountryCode') as string) || null,
+  });
+}
+
 export async function setPassportAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const personId = String(formData.get('personId'));
-  const pack = packFor('MY');
   try {
-    if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setPassport(s, {
-      personId,
-      passportNumber: (formData.get('passportNumber') as string) || null,
-      passportIssueDate: (formData.get('passportIssueDate') as string) || null,
-      passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,
-      passportRemark: (formData.get('passportRemark') as string) || null,
-      passportIssuingCountry: (formData.get('passportIssuingCountry') as string) || null,
-      passportIssuingCountryCode: (formData.get('passportIssuingCountryCode') as string) || null,
-    });
+    await applyPassportSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * 420ebab5 part two — ONE "Save Changes" for the whole Profile tab.
+ *
+ * WHAT IT IS NOT. It is not a blanket write. Effective dating (ADR-0001/0003) means a save CLOSES the
+ * current version of a record and INSERTS a new one rather than updating a row in place, and each card on
+ * this tab reaches a different service that does that its own way. So this action does exactly what five
+ * separate saves did: it unpacks each card's OWN payload — the same fields, the same hidden inputs, the
+ * same absences — and hands it to that card's own service, in a declared order, through the very same
+ * `apply*Section` helpers the five per-card actions above call. Nothing here writes a table.
+ *
+ * ABSENT IS NOT BLANK, so the payload is namespaced rather than flattened. `setEmploymentInfo` and the
+ * profile writers read an absent field as "leave as-is" and a present-but-empty one as "clear to NULL",
+ * and several cards deliberately carry a sibling's value through as a hidden input. Flattening five forms
+ * into one bag of names would collide those (`fullName` is a real input on Personal Details and a hidden
+ * carry-through on Contact & Address) and would silently start posting fields a form no longer carries.
+ * Each field therefore arrives as `section.<id>.<field>` and is unpacked back into that section's own
+ * FormData, byte for byte.
+ *
+ * ONLY DIRTY SECTIONS ARE WRITTEN. The client names them in `sections`; a card the admin did not touch is
+ * not in the list, its service is never called, and no event is appended for it. That also means an
+ * untouched card cannot be re-saved as a side effect of editing its neighbour.
+ *
+ * IT RETURNS RATHER THAN REDIRECTS, unlike every per-card action on this screen — see TabSaveResult
+ * (lib/personnel-tab-sections.ts). A redirect cannot say which of five writes failed, and the
+ * classification requires a per-section failure rather than one all-or-nothing error. On a failure the
+ * sections already committed are named in `saved` so the client can mark exactly those clean.
+ *
+ * BUCKET (b) IS NOT REACHABLE FROM HERE. Emergency contacts, dependants, qualifications, CP38 orders,
+ * encashment adjustments, compensation revisions and pay items are discrete acts with their own buttons
+ * and their own confirmations. None of them is in PROFILE_TAB_SECTION_ORDER, none of them is inside the
+ * client save scope on the page, and a section name this action does not recognise is refused outright.
+ */
+export async function saveProfileTabAction(formData: FormData): Promise<TabSaveResult> {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const requested = String(formData.get(SECTIONS_FIELD) ?? '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const unknown = requested.filter((x) => !isProfileTabSection(x));
+  if (unknown.length > 0) {
+    return { ok: false, saved: [], failedSection: unknown[0], error: `Unknown section: ${unknown[0]}` };
+  }
+
+  const saved: string[] = [];
+  // The DECLARED order, never the client's — see lib/personnel-tab-sections.ts for why it is fixed.
+  for (const section of PROFILE_TAB_SECTION_ORDER) {
+    if (!requested.includes(section)) continue;
+    const sectionData = sectionFormData(formData, section, employmentId);
+    try {
+      if (section === 'person') await applyPersonSection(s, sectionData);
+      else if (section === 'compliance') await applyComplianceSection(s, sectionData);
+      else if (section === 'contact') await applyContactAddressSection(s, sectionData);
+      else if (section === 'ic') await applyIcSection(s, sectionData);
+      else if (section === 'passport') await applyPassportSection(s, sectionData);
+      saved.push(section);
+    } catch (e) {
+      // Best-effort revalidate for whatever DID commit before the failure, then report which card broke.
+      if (saved.length > 0) revalidatePath(`/admin/personnel/${employmentId}`);
+      return { ok: false, saved, failedSection: section, error: (e as Error).message };
+    }
+  }
+
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  return { ok: true, saved };
+}
+
+/**
+ * Rebuild one card's own FormData out of the consolidated payload.
+ *
+ * `employmentId` is forced to the ONE the request carries at top level rather than trusted per-section:
+ * five hidden copies of the same id are five chances for a crafted payload to point one write at another
+ * employment. Everything else is taken verbatim, including absences — an unpacked section must be
+ * indistinguishable from what that card would have posted alone, or the "absent means leave as-is"
+ * contract breaks. `tab` is carried through because the per-card actions' redirect helper reads it.
+ */
+function sectionFormData(formData: FormData, section: string, employmentId: string): FormData {
+  const prefix = `${SECTION_FIELD_PREFIX}.${section}.`;
+  const out = new FormData();
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    const field = key.slice(prefix.length);
+    if (field === 'employmentId') continue;
+    out.append(field, value);
+  }
+  out.set('employmentId', employmentId);
+  const tab = formData.get('tab');
+  if (tab != null) out.set('tab', String(tab));
+  return out;
 }
 
 /**

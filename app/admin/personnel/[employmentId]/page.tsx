@@ -68,6 +68,8 @@ import {
   setEmploymentHolidayCalendarAction,
   setPersonAction,
   setPersonPhotoAction,
+  // 420ebab5 part two — the Profile tab's consolidated Save. Calls the SAME per-section services, in order.
+  saveProfileTabAction,
   removePersonPhotoAction,
   setStatutoryAction,
   setTp3Action,
@@ -143,6 +145,8 @@ import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actio
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
+// 420ebab5 part two — the Profile tab's one Save/Discard, and the consolidated action behind it.
+import { TabSaveScope } from '@/components/tab-save-scope';
 // c002b3c3 — the Personnel module's Search Employee switcher (shared with the listing).
 import { EmployeeSwitcher } from '../employee-switcher';
 // Rung 5c (ADR-0080 D1) — statutory profile reads, the SOCSO/EIS default and the state pick-list all
@@ -872,13 +876,22 @@ export default async function EmployeePage({
 
   const profilePanel = admin ? (
     <>
+      {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
+          only (Personal Details, the compliance fields, Identity/Passport, Contact & Address): plain field
+          edits that overwrite a value on the person record, which is what a single Save — and therefore a
+          single Discard — can honestly cover. The Emergency Contact register is bucket (b) and is rendered
+          BELOW, OUTSIDE the scope, so the tab's Discard cannot reach it; see
+          docs/audits/420ebab5-personnel-save-classification.md. Each card keeps its own <form>, its own
+          hidden carry-through inputs and its own action (the no-JS fallback); what it loses is its own Save
+          button, and it gains data-save-section so the scope can pack it. */}
+      <TabSaveScope tabKey="profile" employmentId={emp.employmentId} saveAction={saveProfileTabAction}>
       {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
           switch between IC (Malaysian) and Passport (non-Malaysian) fields instantly. The Card shell + all the
           server-action forms stay Server Components; only the nationality picker + identity block are client. */}
       <IdentityProvider initialNationality={emp.nationality}>
       <Card id="section-personal-details">
         <SectionHeader title={t('personalDetails')} />
-        <form action={setPersonAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+        <form action={setPersonAction} data-save-section="person" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <input type="hidden" name="personId" value={emp.personId} />
           {/* primaryEmail / phone are owned by the Contact card; carried through so this save keeps them. */}
@@ -952,9 +965,6 @@ export default async function EmployeePage({
               setEmploymentHolidayCalendarAction) and Grade RELOCATED to the Leave tab (gradeCard →
               setEmploymentGradeAction). HTML forms can't span tab panels, so both selects physically moved
               into their own forms in the target panels; setPersonAction no longer writes either column. */}
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveDetails')}</button>
-          </div>
         </form>
 
         {/* Wave 2A-1 / #24 + b4682879: gender + marital status (leave eligibility) and date of birth
@@ -962,6 +972,7 @@ export default async function EmployeePage({
             separate from the instant-write core fields above. */}
         <form
           action={setComplianceFieldsAction}
+          data-save-section="compliance"
           className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
@@ -982,9 +993,6 @@ export default async function EmployeePage({
               the server→client boundary (the r123 fault). */}
           <PersonDetailsFields mode="form" gender={emp.gender} maritalStatus={emp.marital} />
           <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveComplianceFields')}</button>
-          </div>
         </form>
 
         {/* Item e3ce0d4d / 55865c32 — Identity Information. IdentityFields (client) renders BOTH sections for
@@ -1014,7 +1022,7 @@ export default async function EmployeePage({
 
       <Card id="section-contact-address">
         <SectionHeader title={t('contactAddressTitle')} />
-        <form action={setContactAddressAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+        <form action={setContactAddressAction} data-save-section="contact" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <input type="hidden" name="personId" value={emp.personId} />
           {/* fullName is owned by the Personal Details card; carried through so this save keeps it. */}
@@ -1131,12 +1139,13 @@ export default async function EmployeePage({
               <input id="corr-home-phone" name="correspondenceHomePhone" defaultValue={emp.correspondenceHomePhone ?? ''} className={inputCls} />
             </Field>
           </div>
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveContact')}</button>
-          </div>
         </form>
       </Card>
+      </TabSaveScope>
 
+      {/* Bucket (b): adding, editing or deleting an emergency contact is a record in a register — choosing a
+          new Primary demotes the previous holder — so it keeps its own buttons and its own confirmations,
+          and sits OUTSIDE the save scope where a tab-wide Discard cannot appear to cover it. */}
       {emergencyContactPanel}
     </>
   ) : null;
