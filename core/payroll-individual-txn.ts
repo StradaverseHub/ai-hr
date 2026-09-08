@@ -23,7 +23,7 @@
  * Substrate discipline: every write appends a DomainEvent. Payloads are redaction-safe (reference ids + kind,
  * no cleartext amounts — ADR-0030 Layer-0 precedent, mirroring setEmploymentPayComponent).
  */
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -45,6 +45,7 @@ import {
   resolvePayrollPermission,
   type BatchScope,
 } from './payroll';
+import { employedByCompanyDuring } from './employment-company';
 import { settingEnabled } from './entitlements';
 
 const money = (v: number) => Number(v).toFixed(2);
@@ -166,8 +167,14 @@ export type BatchScopeReason = (typeof BATCH_SCOPE_REASONS)[number];
  * import's downloadable error report and any future caller all say the same thing about one situation.
  *
  * `employeeName` is a person's own name, not a translated word — it is safe to carry through a service
- * boundary that must otherwise stay locale-free (see `txnImportReason`). `payPeriod` is the ISO month;
- * the CATALOGUE formats it, because a month name written here would be English in six locales.
+ * boundary that must otherwise stay locale-free (see `txnImportReason`).
+ *
+ * `payPeriod` CROSSES AS THE RAW ISO MONTH, 'YYYY-MM', AND EVERY CATALOGUE INTERPOLATES IT VERBATIM —
+ * no locale turns it into a month name today, so what the operator reads is "2026-05" in all six. (An
+ * earlier version of this note claimed the catalogue formats it; it does not, and a reader who went
+ * looking for that formatting step would not find one.) It crosses as DATA rather than as a built
+ * string because that is what leaves the choice open: a locale that later wants "Mei 2026" can add the
+ * date skeleton at its own key without this boundary — or any of its callers — changing.
  */
 export type BatchScopeRefusalDetail = {
   /** The run's pay month, 'YYYY-MM'. */
@@ -175,6 +182,19 @@ export type BatchScopeRefusalDetail = {
   /** The excluded employee, as the operator knows them (full name, else employee code). */
   employeeName: string;
   reason: BatchScopeReason;
+  /**
+   * r255 — CAN THIS REFUSAL BE RESOLVED BY WIDENING THE RUN? True only when the employment is
+   * period-active on the run's company (the dated window the reprocess ADD classification applies), i.e.
+   * when `addEmploymentToBatchScope` would both succeed AND leave a run that can still be closed.
+   *
+   * The screen offers "Add {employee} to this run" ONLY when this is true. Offering it otherwise marks a
+   * processed run for a recalculation nobody can perform — the added person has no payslip, so the
+   * Reprocess screen never lists them, `reprocessSelectedEmployees` classifies them 'neither', and
+   * `removeEmployeePayroll` has nothing to remove: the run cannot be closed again without a full reset.
+   * A refusal with no way forward is what this round set out to remove; a BUTTON with no way forward
+   * would have been worse than the refusal it replaced.
+   */
+  canAddToRun: boolean;
 };
 
 /** Thrown when the batch's scope (departments / explicit employments) excludes the chosen employment.
@@ -194,6 +214,31 @@ export class EmploymentNotInBatchScopeError extends Error {
   ) {
     super(`Employment ${employmentId} is not in the scope of batch ${batchId}.`);
     this.name = 'EmploymentNotInBatchScopeError';
+  }
+}
+
+/**
+ * r255 — Thrown when a run is asked to take on somebody who was NOT EMPLOYED during its pay month.
+ *
+ * WHY WIDENING HAS TO REFUSE THIS AND NOT MERELY DECLINE TO HELP. `addEmploymentToBatchScope` widens the
+ * scope and, on a processed run, marks the employment for recalculation in the same transaction. The
+ * mark is what Close refuses past — and the only things that can CLEAR it are a reprocess that writes
+ * the person a payslip, a removal of a payslip they have, or a full reset of the run. All three of those
+ * apply the dated window (`hiredOn <= period end`, `terminatedOn` null-or-`>= period start`, employed by
+ * the company during the window), so an employment outside it can be marked and then never unmarked: the
+ * operator is left holding a processed run they cannot close and cannot repair from any screen.
+ *
+ * So the window is tested BEFORE the widening, with the same three facts the reprocess ADD
+ * classification reads, and the refusal names the run and the month rather than widening into a dead end.
+ */
+export class EmploymentNotActiveInPeriodError extends Error {
+  constructor(
+    public readonly employmentId: string,
+    public readonly batchId: string,
+    public readonly payPeriod: string,
+  ) {
+    super(`Employment ${employmentId} was not employed during ${payPeriod}, so batch ${batchId} cannot cover it.`);
+    this.name = 'EmploymentNotActiveInPeriodError';
   }
 }
 
@@ -749,16 +794,56 @@ export type BulkTxnRow = {
 };
 
 /**
+ * r255 — WAS THIS EMPLOYMENT EMPLOYED BY THE RUN'S COMPANY DURING THE RUN'S MONTH?
+ *
+ * The dated window, read off the same three facts `reprocessSelectedEmployees` uses to classify a
+ * payslip-less employment as ADDED (core/payroll.ts) and `listPayslipLessEligible` uses to decide who the
+ * Reprocess screen may offer: employed by the company during the window (dated, not the column alone —
+ * 3c88d593), hired on or before the period end, and not terminated before the period start.
+ *
+ * IT MUST STAY THE SAME WINDOW AS THOSE TWO. Widening a processed run marks the employment for
+ * recalculation; only a reprocess can clear that mark, and a reprocess applies exactly this test. A
+ * window that admitted anybody those two would reject would hand the operator a run that cannot be
+ * closed and cannot be repaired. (Kept here rather than imported so this ledger owns its own guard;
+ * `employedByCompanyDuring` — the one part that is genuinely subtle — IS shared.)
+ */
+async function isEmployedDuringPeriod(
+  tx: Tx,
+  p: { employmentId: string; companyId: string; payPeriod: string },
+): Promise<boolean> {
+  const [y, m] = p.payPeriod.split('-').map(Number);
+  const periodStart = `${p.payPeriod}-01`;
+  const periodEnd = `${p.payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+  const [row] = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(
+      and(
+        eq(employment.id, p.employmentId),
+        employedByCompanyDuring(p.companyId, periodStart, periodEnd),
+        lte(employment.hiredOn, periodEnd),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+      ),
+    )
+    .limit(1);
+  return row != null;
+}
+
+/**
  * 4b909202 — BUILD THE SCOPE REFUSAL, WITH THE FACTS IT HAS TO NAME.
  *
  * Reached only on the failing branch of C4, which is why it may afford a query: the excluded person's
  * own name is what makes the sentence readable, and paying for it on every successful save would be
  * paying for it a thousand times to use it once. C3 has already proved the employment row exists, so
  * the fallbacks below cover only the impossible.
+ *
+ * r255 — AND WHETHER THE OFFER THAT GOES WITH IT IS HONEST. `canAddToRun` is the dated window, asked
+ * here so the screen decides whether to show "Add {employee} to this run" from the SERVICE's answer
+ * rather than from a guess. Same failing branch, so the happy path still pays for nothing.
  */
 async function batchScopeRefusal(
   tx: Tx,
-  p: { employmentId: string; batchId: string; payPeriod: string; scope: BatchScope | null },
+  p: { employmentId: string; batchId: string; companyId: string; payPeriod: string; scope: BatchScope | null },
 ): Promise<EmploymentNotInBatchScopeError> {
   const [who] = await tx
     .select({ name: person.fullName, employeeCode: employment.employeeCode })
@@ -773,6 +858,11 @@ async function batchScopeRefusal(
     payPeriod: p.payPeriod,
     employeeName: who?.name?.trim() || who?.employeeCode || p.employmentId,
     reason,
+    canAddToRun: await isEmployedDuringPeriod(tx, {
+      employmentId: p.employmentId,
+      companyId: p.companyId,
+      payPeriod: p.payPeriod,
+    }),
   });
 }
 
@@ -817,10 +907,27 @@ export type BatchScopeAddResult = {
  * guard C3 uses (`employment.company_id`), deliberately: admitting somebody C3 would then reject would
  * hand the operator a "fixed" run that refuses the very save the fix was for.
  *
+ * r255 — AND IT REFUSES SOMEBODY THE RUN'S MONTH DOES NOT COVER (`EmploymentNotActiveInPeriodError`).
+ * This is the guard the first cut lacked, and its absence turned the way forward into a worse dead end
+ * than the refusal it replaced: a leaver whose employment ended before the month, widened onto a
+ * PROCESSED run, was marked for a recalculation that no screen could ever perform — not the Reprocess
+ * screen (`listPayslipLessEligible` applies the dated window, so it never lists them), not
+ * `reprocessSelectedEmployees` (it classifies them 'neither' and throws), not `removeEmployeePayroll`
+ * (they have no payslip to remove) — leaving a run that could only be un-marked by resetting the whole
+ * month to draft. `isEmployedDuringPeriod` is the same window all three of those apply, asked BEFORE the
+ * widening, so what this admits is exactly what the reprocess can finish.
+ *
  * PERMISSION. On a PROCESSED run this commits the operator to a reprocessing, which is exactly the
  * authority `payroll.reprocess.selective` gates on the Reprocess screen, so it is asserted here too. A
  * DRAFT run's scope has never been permission-gated beyond the screen's own company fence
  * (`updateBatchScope` asserts none), and this does not invent a gate that path has never had.
+ *
+ * r255 — CONCURRENCY. The scope is a READ-MODIFY-WRITE of one jsonb column, so the batch row is locked
+ * FOR UPDATE and the scope re-read from the LOCKED row before anything is computed from it — exactly
+ * what `markBatchNeedsRecalc` does, and for the same reason it does it: two admins pressing "Add to this
+ * run" for two different people on the same run within the same instant would otherwise both read the
+ * pre-add scope and the second write would drop the first person. (The `loadWritableBatch` read above
+ * stays: it is the company/period/status resolution, and its status is re-asserted from the locked row.)
  */
 export function addEmploymentToBatchScope(
   ctx: SessionContext,
@@ -836,15 +943,38 @@ export function addEmploymentToBatchScope(
     if (!emp || emp.companyId !== batch.companyId) {
       throw new CompanyMismatchError(emp?.companyId ?? 'unknown', batch.companyId);
     }
-    if (batch.status === 'processed' && !(await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId))) {
+    // r255 — SERIALISE THE READ-MODIFY-WRITE. Everything below is computed from `prevScope`, so the read
+    // that produces it must hold the row: two concurrent adds that both read the pre-add scope would each
+    // write their own person over the other's. The status is re-read with it and re-asserted, so a run
+    // closed between `loadWritableBatch` and this lock is refused rather than widened — and the
+    // permission below is decided on the LOCKED status, so a run processed in that same gap cannot be
+    // widened without the authority a processed run demands.
+    const [locked] = await tx
+      .select({ scope: payrollBatch.scope, status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .for('update')
+      .limit(1);
+    if (!locked || !WRITABLE_BATCH_STATUSES.includes(locked.status as WritableBatchStatus)) throw new BatchNotDraftError();
+    const status = locked.status as WritableBatchStatus;
+    const prevScope = (locked.scope as BatchScope | null) ?? null;
+
+    if (status === 'processed' && !(await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId))) {
       throw new PayrollPermissionDeniedError('payroll.reprocess.selective');
     }
 
-    const prevScope = batch.scope;
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, prevScope);
     // A null resolved set is a WHOLE-COMPANY run: it has no list to widen and already covers this person.
     if (scopeIds === null || scopeIds.includes(p.employmentId)) {
-      return { added: false, markedForRecalc: false, payPeriod: batch.payPeriod, status: batch.status };
+      return { added: false, markedForRecalc: false, payPeriod: batch.payPeriod, status };
+    }
+
+    // r255 — THE DATED WINDOW, before anything is written. Asked only on the branch that would actually
+    // widen: somebody the run ALREADY covers is not being added to it, so refusing them here would be a
+    // refusal of something nobody asked for. See the note above for what marking an employment outside
+    // this window does to a processed run.
+    if (!(await isEmployedDuringPeriod(tx, { employmentId: p.employmentId, companyId: batch.companyId, payPeriod: batch.payPeriod }))) {
+      throw new EmploymentNotActiveInPeriodError(p.employmentId, p.batchId, batch.payPeriod);
     }
 
     const nextScope: BatchScope = {
@@ -872,9 +1002,9 @@ export function addEmploymentToBatchScope(
     await markBatchNeedsRecalc(tx, ctx, { batchId: p.batchId, employmentIds: [p.employmentId] });
     return {
       added: true,
-      markedForRecalc: batch.status === 'processed',
+      markedForRecalc: status === 'processed',
       payPeriod: batch.payPeriod,
-      status: batch.status,
+      status,
     };
   });
 }
@@ -966,7 +1096,13 @@ export function createIndividualTxnsBulk(
     if (scopeIds !== null && target.batchId != null) {
       for (const eid of employmentIds) {
         if (!scopeIds.includes(eid)) {
-          throw await batchScopeRefusal(tx, { employmentId: eid, batchId: target.batchId, payPeriod, scope });
+          throw await batchScopeRefusal(tx, {
+            employmentId: eid,
+            batchId: target.batchId,
+            companyId: targetCompanyId,
+            payPeriod,
+            scope,
+          });
         }
       }
     }

@@ -19,6 +19,7 @@ import {
   AmountNotPositiveError,
   CompanyMismatchError,
   ComponentRequiredError,
+  EmploymentNotActiveInPeriodError,
   EmploymentNotInBatchScopeError,
   EmptyEmployeeSelectionError,
   DuplicateTxnRowError,
@@ -55,7 +56,12 @@ const txnErrorKey = (e: unknown): string =>
   // the generic key would tell the operator the transaction was wrong; it was not, their authority was.
   e instanceof PayrollPermissionDeniedError
     ? 'addToRunDenied'
-    : e instanceof TxnDateOutOfPeriodError
+    : // r255 — the run's month does not cover this person at all, so widening it would mark them for a
+      // reprocess no screen can perform. Its own key: "you may not" and "this cannot help you" are two
+      // different things to be told, and only one of them is about authority.
+      e instanceof EmploymentNotActiveInPeriodError
+      ? 'addToRunNotEmployed'
+      : e instanceof TxnDateOutOfPeriodError
     ? 'dateOutOfPeriod'
     : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
       // rather than one interpolated sentence: the screen resolves an error key with no values, and the
@@ -107,14 +113,26 @@ export type TxnScopeFix = { batchId: string; employmentId: string };
  * One place, so the two create paths and the edit/delete paths cannot drift on how a refusal reads. The
  * scope refusal is the only one that carries values (and the only one that carries an offer); everything
  * else resolves exactly as it did, through the same `txnErrorKey` chain and with no values at all.
+ *
+ * r255 — AND THE OFFER IS ONLY MADE WHEN IT LEADS SOMEWHERE. `detail.canAddToRun` is the SERVICE's own
+ * answer to "would widening this run actually help?" — false when the run's month does not cover this
+ * employment at all, in which case adding them would mark a processed run for a reprocess that no screen
+ * can perform. The same flag chooses the tail of the sentence, so the copy and the button agree: no
+ * button, and the message says to use a different run instead of offering one that cannot be pressed.
  */
 function txnFailure(e: unknown): Extract<TxnActionResult, { ok: false }> {
   if (e instanceof EmploymentNotInBatchScopeError) {
+    const canAdd = e.detail.canAddToRun;
     return {
       ok: false,
       error: 'employeeNotInScope',
-      errorValues: { employee: e.detail.employeeName, period: e.detail.payPeriod, scope: e.detail.reason },
-      scopeFix: { batchId: e.batchId, employmentId: e.employmentId },
+      errorValues: {
+        employee: e.detail.employeeName,
+        period: e.detail.payPeriod,
+        scope: e.detail.reason,
+        canAdd: canAdd ? 'yes' : 'no',
+      },
+      ...(canAdd ? { scopeFix: { batchId: e.batchId, employmentId: e.employmentId } } : {}),
     };
   }
   return { ok: false, error: txnErrorKey(e) };

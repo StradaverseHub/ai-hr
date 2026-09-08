@@ -25,7 +25,7 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, terminateEmployment } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import {
@@ -35,14 +35,28 @@ import {
   closeBatch,
   createBatch,
   generatePayslips,
+  listPayslipLessEligible,
+  reprocessSelectedEmployees,
 } from '../core/payroll';
 import {
   addEmploymentToBatchScope,
   createIndividualTxnsBulk,
+  EmploymentNotActiveInPeriodError,
   EmploymentNotInBatchScopeError,
 } from '../core/payroll-individual-txn';
 import { txnImportReason } from '../core/payroll-txn-import';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setSetting, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  setSetting,
+  type Base,
+} from './harness';
 
 describe('4b909202 — the scope refusal names the run, and offers to widen it', () => {
   let base: Base;
@@ -136,7 +150,14 @@ describe('4b909202 — the scope refusal names the run, and offers to widen it',
     expect(err.batchId).toBe(batchId);
     expect(err.employmentId).toBe(outside.employmentId);
     // The three values the new message interpolates. Without these the sentence is the old anonymous one.
-    expect(err.detail).toEqual({ payPeriod: '2026-05', employeeName: 'Ops Omar', reason: 'departments' });
+    expect(err.detail).toEqual({
+      payPeriod: '2026-05',
+      employeeName: 'Ops Omar',
+      reason: 'departments',
+      // r255 — and whether the offer that goes with the sentence leads anywhere. Omar is employed all
+      // through May, so widening this run genuinely resolves the refusal and the button is honest.
+      canAddToRun: true,
+    });
   });
 
   it('distinguishes a NAMED-LIST run from a departments run, and a run that is both', async () => {
@@ -301,6 +322,160 @@ describe('4b909202 — the scope refusal names the run, and offers to widen it',
     expect(row.needsRecalcAt).toBeNull();
   });
 
+  // ───────────── r255 — the way forward has to LEAD somewhere ─────────────
+
+  /**
+   * THE ONE THAT MATTERS. The first cut of this round shipped a button that widened a processed run and
+   * marked the added employment for recalculation — and stopped there, having proved only that the mark
+   * was set. Setting a mark is not a way forward; CLEARING it is. Nothing can clear it but a reprocess
+   * that writes the person a payslip, so this test walks the operator's whole path: refused → added →
+   * offered by the Reprocess screen → reprocessed → the run closes. If any link breaks, the button hands
+   * the operator a run they cannot close, which is worse than the refusal it replaced.
+   */
+  it('the employee it adds to a PROCESSED run is one the reprocess can FINISH — and the run then closes', async () => {
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+    await hire('Finance Fay', base.deptA);
+    const outside = await hire('Ops Omar', base.deptB);
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { departmentIds: [base.deptA] },
+    });
+    await generatePayslips(a, { batchId });
+    expect((await batchRow(batchId)).status).toBe('processed');
+
+    // Refused, then added — the round's own flow.
+    await expect(save(a, batchId, outside.employmentId)).rejects.toBeInstanceOf(EmploymentNotInBatchScopeError);
+    expect(await addEmploymentToBatchScope(a, { batchId, employmentId: outside.employmentId })).toMatchObject({
+      added: true,
+      markedForRecalc: true,
+    });
+    await expect(closeBatch(a, { batchId })).rejects.toBeInstanceOf(BatchNeedsRecalculationError);
+
+    // 1. The Reprocess screen can SEE them. This read is what builds that screen's candidate rows, and it
+    //    applies the dated window — a person outside it is offered by nothing and the run is stuck.
+    const eligible = await listPayslipLessEligible(a, { batchId });
+    expect(
+      eligible.map((r) => r.employmentId),
+      'the added employee is not on the Reprocess screen, so the mark can never be cleared',
+    ).toContain(outside.employmentId);
+    expect(eligible.find((r) => r.employmentId === outside.employmentId)?.blockers).toEqual([]);
+
+    // 2. And the reprocess COMPLETES, writing them a first payslip on this run.
+    const job = await reprocessSelectedEmployees(a, {
+      batchId,
+      employmentIds: [outside.employmentId],
+      reason: 'added from Transaction Entry',
+    });
+    expect(job.status).toBe('completed');
+    const [slip] = await owner.db
+      .select({ id: schema.payslip.id, version: schema.payslip.version, net: schema.payslip.netPay })
+      .from(schema.payslip)
+      .where(eq(schema.payslip.employmentId, outside.employmentId));
+    expect(slip, 'the reprocess wrote no payslip for the employee the button added').toBeTruthy();
+    expect(slip.version).toBe(1);
+    expect(Number(slip.net)).toBeGreaterThan(0);
+
+    // 3. The mark is gone, and the run the operator was handed can actually be closed.
+    const done = await batchRow(batchId);
+    expect(done.needsRecalcAt).toBeNull();
+    expect(done.recalcEmploymentIds).toBeNull();
+    await closeBatch(a, { batchId });
+    expect((await batchRow(batchId)).status).toBe('closed');
+  });
+
+  /**
+   * THE OTHER HALF OF THE SAME RULE. An employment the run's MONTH does not cover can never be reprocessed
+   * onto it — `listPayslipLessEligible` will not list it and `reprocessSelectedEmployees` classifies it
+   * 'neither' — so widening the run onto it would set a mark with no way to clear it. Refuse instead.
+   */
+  it('refuses to widen a PROCESSED run onto a leaver, rather than marking a recalculation nobody can perform', async () => {
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+    await hire('Finance Fay', base.deptA);
+    const leaver = await hire('Left Larry', base.deptB);
+    await terminateEmployment(a, { employmentId: leaver.employmentId, terminationDate: '2026-03-31' });
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { departmentIds: [base.deptA] },
+    });
+    await generatePayslips(a, { batchId });
+
+    await expect(addEmploymentToBatchScope(a, { batchId, employmentId: leaver.employmentId })).rejects.toBeInstanceOf(
+      EmploymentNotActiveInPeriodError,
+    );
+    // Nothing moved: not the scope, and — the part that would have been unrecoverable — not the mark.
+    const row = await batchRow(batchId);
+    expect(row.scope).toEqual({ departmentIds: [base.deptA] });
+    expect(row.needsRecalcAt).toBeNull();
+    expect(row.recalcEmploymentIds).toBeNull();
+    // Which is the whole point: the run the operator was left with is still closeable.
+    await closeBatch(a, { batchId });
+    expect((await batchRow(batchId)).status).toBe('closed');
+  });
+
+  it('tells the screen NOT to offer the widening when widening cannot help', async () => {
+    const a = adminCtx(base);
+    const leaver = await hire('Left Larry', base.deptB);
+    await terminateEmployment(a, { employmentId: leaver.employmentId, terminationDate: '2026-03-31' });
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { departmentIds: [base.deptA] },
+    });
+    const err = (await save(a, batchId, leaver.employmentId).catch((e: unknown) => e)) as EmploymentNotInBatchScopeError;
+    expect(err).toBeInstanceOf(EmploymentNotInBatchScopeError);
+    // The flag `txnFailure` reads to decide whether to attach `scopeFix` — i.e. whether the screen renders
+    // "Add {employee} to this run" at all. False here, so the operator is not offered a dead end.
+    expect(err.detail.canAddToRun).toBe(false);
+  });
+
+  /**
+   * r255 — TWO ADMINS, ONE RUN, AND NEITHER PERSON LOST.
+   *
+   * `scope` is a read-modify-write of one jsonb column, so the read has to hold the row. This drives that
+   * directly: a transaction takes the batch row's lock, commits somebody else's widening under it, and a
+   * real `addEmploymentToBatchScope` runs against the same row while the lock is held. With the FOR UPDATE
+   * the add waits and reads the COMMITTED scope; without it the add reads the pre-widening scope straight
+   * through and its own UPDATE (which blocks either way) writes the other person out of existence.
+   */
+  it('serialises two adds to the same run — the second reads the committed scope and MERGES', async () => {
+    const a = adminCtx(base);
+    const first = await hire('Ops Omar', base.deptB);
+    const second = await hire('Ops Olga', base.deptB);
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { departmentIds: [base.deptA] },
+    });
+
+    let pending!: Promise<unknown>;
+    await owner.db.transaction(async (tx) => {
+      await tx
+        .select({ id: schema.payrollBatch.id })
+        .from(schema.payrollBatch)
+        .where(eq(schema.payrollBatch.id, batchId))
+        .for('update');
+      // The other admin's add, committed inside the lock this transaction holds.
+      await tx
+        .update(schema.payrollBatch)
+        .set({ scope: { departmentIds: [base.deptA], employmentIds: [first.employmentId] } })
+        .where(eq(schema.payrollBatch.id, batchId));
+      // Ours starts while that lock is still held — on its own connection, so it really does contend.
+      pending = addEmploymentToBatchScope(a, { batchId, employmentId: second.employmentId });
+      // Long enough that an UNLOCKED read has certainly already happened and gone stale.
+      await new Promise((r) => setTimeout(r, 400));
+    });
+    expect(await pending).toMatchObject({ added: true });
+
+    expect(
+      (await batchRow(batchId)).scope,
+      'the second add overwrote the first — the scope read did not hold the row',
+    ).toEqual({ departmentIds: [base.deptA], employmentIds: [first.employmentId, second.employmentId] });
+  });
+
   it('a run that already covers the employee is a no-op success, not a second entry in its list', async () => {
     const a = adminCtx(base);
     const inside = await hire('Finance Fay', base.deptA);
@@ -346,9 +521,37 @@ describe('4b909202 — the refusal reads the same way in every locale', () => {
     }
   });
 
+  /**
+   * r255 — THE SENTENCE AND THE BUTTON HAVE TO AGREE. The screen offers "Add {employee} to this run" only
+   * when the service says widening would help (`detail.canAddToRun`), so the copy has to have a second
+   * ending for when it would not — otherwise the operator reads "add this employee to the run" beside no
+   * button at all. A locale that kept the single-ended sentence renders the wrong advice, which key
+   * parity (test/i18n-coverage.test.ts) cannot see.
+   */
+  it('the individual-screen refusal has BOTH endings — one for when adding helps, one for when it cannot', () => {
+    for (const loc of LOCALES) {
+      const s = at(load(loc), 'payroll.transactions.individual.employeeNotInScope') as string;
+      expect(typeof s, `${loc}`).toBe('string');
+      expect(s, `${loc} must branch on whether the run can be widened`).toContain('{canAdd, select,');
+      for (const branch of ['yes {', 'other {']) {
+        expect(s, `${loc} missing canAdd branch ${branch}`).toContain(branch);
+      }
+    }
+  });
+
   it('the way forward is offered in every locale, and translated rather than copied from English', () => {
     const en = load('en');
-    for (const key of ['addToRunCta', 'addToRunDone', 'addToRunDoneRecalc', 'addToRunBusy', 'addToRunDenied']) {
+    for (const key of [
+      'addToRunCta',
+      'addToRunDone',
+      'addToRunDoneRecalc',
+      'addToRunBusy',
+      'addToRunDenied',
+      // r255 — the two refusals the branch added: the value-free variant page.tsx's `?error=` path
+      // resolves, and the "this month does not cover them" refusal the widening now throws.
+      'employeeNotInScopeNoDetail',
+      'addToRunNotEmployed',
+    ]) {
       const dotted = `payroll.transactions.individual.${key}`;
       const enText = at(en, dotted) as string;
       expect(typeof enText, `en ${key}`).toBe('string');

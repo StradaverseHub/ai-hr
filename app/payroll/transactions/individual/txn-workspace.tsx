@@ -1433,9 +1433,13 @@ export function TxnWorkspace({
     startTransition(async () => {
       const res = await addEmployeeToRunAction(fix);
       if (!res.ok) {
-        // The offer STAYS on screen for a transient failure but not for a refusal of authority: either
-        // way the operator now reads why, and pressing it again is theirs to decide.
         setFormError(t(res.error as never));
+        // r255 — THE OFFER SURVIVES A REFUSAL THAT PRESSING AGAIN COULD RESOLVE, AND ONLY THAT. A denial
+        // of authority is one somebody else can grant, so the button stays and the operator reads why.
+        // "Not employed in that month" can never become true by pressing again — the server only reaches
+        // it if the employment was terminated between the refusal and this click, which is exactly when a
+        // button still offering the impossible would be at its most misleading.
+        if (res.error === 'addToRunNotEmployed') setScopeFix(null);
         return;
       }
       setScopeFix(null);
