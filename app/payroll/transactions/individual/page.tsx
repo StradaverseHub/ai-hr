@@ -145,7 +145,11 @@ export default async function IndividualTransactionPage({
     'notDraft',
     'amountNotPositive',
     'companyMismatch',
-    'employeeNotInScope',
+    // 4b909202 — `employeeNotInScope` is NOT in this set any more, and its absence is the point. This
+    // path resolves an error name arrived at through `?error=` (the pre-44129979 redirect shape) and can
+    // supply no values; the scope refusal now names the run, the employee and the reason, so resolving
+    // it here would either throw on the missing values or print a sentence with holes in it. It reaches
+    // the operator through the action result instead, which carries them — see `txnFailure`.
     'rowIncomplete',
     'duplicateRow',
     'periodInvalid',

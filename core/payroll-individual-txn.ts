@@ -38,9 +38,11 @@ import {
 } from '../db/schema';
 import {
   BatchNotDraftError,
+  PayrollPermissionDeniedError,
   daysInMonth,
   markBatchNeedsRecalc,
   resolveBatchScopeFilter,
+  resolvePayrollPermission,
   type BatchScope,
 } from './payroll';
 import { settingEnabled } from './entitlements';
@@ -147,13 +149,48 @@ export class CompanyMismatchError extends Error {
   }
 }
 
+/**
+ * WHY A SCOPED RUN EXCLUDES SOMEBODY, as a token the screens turn into a sentence.
+ *
+ * 4b909202 — an operator reads "the run was set up for the Finance department" and "the run names its
+ * own list of people" as two different situations with two different fixes, and the old refusal said
+ * neither. `mixed` is a run that carries both dimensions at once, which is neither of those sentences
+ * and must not be told as though it were one of them.
+ */
+export const BATCH_SCOPE_REASONS = ['departments', 'employees', 'mixed'] as const;
+export type BatchScopeReason = (typeof BATCH_SCOPE_REASONS)[number];
+
+/**
+ * The facts a scope refusal has to be able to name. Built at the throw site (where the run and the
+ * employee are both already resolved) rather than re-derived by whoever catches it, so the screen, the
+ * import's downloadable error report and any future caller all say the same thing about one situation.
+ *
+ * `employeeName` is a person's own name, not a translated word — it is safe to carry through a service
+ * boundary that must otherwise stay locale-free (see `txnImportReason`). `payPeriod` is the ISO month;
+ * the CATALOGUE formats it, because a month name written here would be English in six locales.
+ */
+export type BatchScopeRefusalDetail = {
+  /** The run's pay month, 'YYYY-MM'. */
+  payPeriod: string;
+  /** The excluded employee, as the operator knows them (full name, else employee code). */
+  employeeName: string;
+  reason: BatchScopeReason;
+};
+
 /** Thrown when the batch's scope (departments / explicit employments) excludes the chosen employment.
  *  A scoped batch narrows generation to a subset; the ledger FK does not enforce membership, so an
- *  out-of-scope row would be silently ignored at generation — reject it here instead (C4). */
+ *  out-of-scope row would be silently ignored at generation — reject it here instead (C4).
+ *
+ *  4b909202 — IT CARRIES ITS DETAIL. This is the refusal the reporter quoted ("This employee is not
+ *  included in the selected payroll run"), and the complaint was not that it fires: it is that it names
+ *  nothing. It has never been about the run's STATUS — it fires identically on a draft — so a message
+ *  that leaves the operator guessing sends them to look at the wrong thing entirely. `detail` is
+ *  required rather than optional precisely so no future throw site can reintroduce the bare sentence. */
 export class EmploymentNotInBatchScopeError extends Error {
   constructor(
     public readonly employmentId: string,
     public readonly batchId: string,
+    public readonly detail: BatchScopeRefusalDetail,
   ) {
     super(`Employment ${employmentId} is not in the scope of batch ${batchId}.`);
     this.name = 'EmploymentNotInBatchScopeError';
@@ -712,6 +749,137 @@ export type BulkTxnRow = {
 };
 
 /**
+ * 4b909202 — BUILD THE SCOPE REFUSAL, WITH THE FACTS IT HAS TO NAME.
+ *
+ * Reached only on the failing branch of C4, which is why it may afford a query: the excluded person's
+ * own name is what makes the sentence readable, and paying for it on every successful save would be
+ * paying for it a thousand times to use it once. C3 has already proved the employment row exists, so
+ * the fallbacks below cover only the impossible.
+ */
+async function batchScopeRefusal(
+  tx: Tx,
+  p: { employmentId: string; batchId: string; payPeriod: string; scope: BatchScope | null },
+): Promise<EmploymentNotInBatchScopeError> {
+  const [who] = await tx
+    .select({ name: person.fullName, employeeCode: employment.employeeCode })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  const hasDepartments = (p.scope?.departmentIds ?? []).length > 0;
+  const hasEmployments = (p.scope?.employmentIds ?? []).length > 0;
+  const reason: BatchScopeReason = hasDepartments && hasEmployments ? 'mixed' : hasDepartments ? 'departments' : 'employees';
+  return new EmploymentNotInBatchScopeError(p.employmentId, p.batchId, {
+    payPeriod: p.payPeriod,
+    employeeName: who?.name?.trim() || who?.employeeCode || p.employmentId,
+    reason,
+  });
+}
+
+/** What `addEmploymentToBatchScope` did. `added: false` means the run already covered this person —
+ *  a whole-company run, or one whose list already names them — which is a no-op, never a failure. */
+export type BatchScopeAddResult = {
+  added: boolean;
+  /** True when the run was PROCESSED and now owes a recalculation for this employment. */
+  markedForRecalc: boolean;
+  payPeriod: string;
+  status: WritableBatchStatus;
+};
+
+/**
+ * 4b909202 — ADD ONE EMPLOYEE TO A RUN'S SCOPE, from Transaction Entry.
+ *
+ * WHY THIS EXISTS. The C4 refusal above is correct and stays: a run set up for two departments must not
+ * quietly pay somebody outside them. What it lacked was a way forward — the operator was told "no" and
+ * left with nothing but "reset the run" or "key it somewhere else". This is the way forward, and it is
+ * the ONE genuinely new piece of 4b909202.
+ *
+ * AN EXPLICIT-EMPLOYMENT EXCEPTION, NOT A REWRITTEN DEPARTMENT CHOICE. A run scoped to "Finance" was
+ * scoped that way on purpose, and the operator adding one person from Operations is not retracting that
+ * decision — they are naming one exception to it. Appending to `scope.employmentIds` records exactly
+ * that, keeps the departments intact, and survives the person later moving department (a department
+ * scope resolves to its CURRENT assignees, so rewriting the choice would also drag in everybody else
+ * who joined). It is byte-for-byte the same widening `generatePayslips` performs when the Reprocess
+ * screen adds somebody to a processed run (fbcf706d work item 5, core/payroll.ts) — the same shape, the
+ * same `payroll-batch.scope-widened` event — so one situation leaves one kind of trace in the run's
+ * History whichever screen reached it.
+ *
+ * AND ON A PROCESSED RUN IT MARKS THE PERSON FOR RECALCULATION, in the same transaction. Widening the
+ * scope alone would be worse than the refusal it replaces: the transaction would save, the run would say
+ * nothing, and the newly added person would simply not be on the payslips — silent, and indistinguishable
+ * from working. The mark is what puts them in front of the selective reprocess, which writes a FIRST
+ * payslip for an employment that has none on the run (the ADDED classification, core/payroll.ts), and
+ * which the run's own Close refuses to run past.
+ *
+ * REFUSALS IT KEEPS. `loadWritableBatch` throws `BatchNotDraftError` for a CLOSED run, which is the
+ * request's own rule and 0011's trigger-level fact — a closed run is not widened by this or anything
+ * else. The employment must belong to the run's company, tested with the SAME predicate C4's sibling
+ * guard C3 uses (`employment.company_id`), deliberately: admitting somebody C3 would then reject would
+ * hand the operator a "fixed" run that refuses the very save the fix was for.
+ *
+ * PERMISSION. On a PROCESSED run this commits the operator to a reprocessing, which is exactly the
+ * authority `payroll.reprocess.selective` gates on the Reprocess screen, so it is asserted here too. A
+ * DRAFT run's scope has never been permission-gated beyond the screen's own company fence
+ * (`updateBatchScope` asserts none), and this does not invent a gate that path has never had.
+ */
+export function addEmploymentToBatchScope(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string },
+): Promise<BatchScopeAddResult> {
+  return withTenant(ctx, async (tx) => {
+    const batch = await loadWritableBatch(tx, p.batchId);
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp || emp.companyId !== batch.companyId) {
+      throw new CompanyMismatchError(emp?.companyId ?? 'unknown', batch.companyId);
+    }
+    if (batch.status === 'processed' && !(await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId))) {
+      throw new PayrollPermissionDeniedError('payroll.reprocess.selective');
+    }
+
+    const prevScope = batch.scope;
+    const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, prevScope);
+    // A null resolved set is a WHOLE-COMPANY run: it has no list to widen and already covers this person.
+    if (scopeIds === null || scopeIds.includes(p.employmentId)) {
+      return { added: false, markedForRecalc: false, payPeriod: batch.payPeriod, status: batch.status };
+    }
+
+    const nextScope: BatchScope = {
+      ...(prevScope?.departmentIds?.length ? { departmentIds: prevScope.departmentIds } : {}),
+      employmentIds: [...new Set([...(prevScope?.employmentIds ?? []), p.employmentId])],
+    };
+    await tx.update(payrollBatch).set({ scope: nextScope }).where(eq(payrollBatch.id, p.batchId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.scope-widened',
+      actor: actorOf(ctx),
+      payload: {
+        batchId: p.batchId,
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        addedEmploymentIds: [p.employmentId],
+        reason: 'individual-transaction-entry',
+        before: prevScope,
+        after: nextScope,
+      },
+    });
+    // No-op on a draft (it recalculates by being generated); the mark is the processed run's whole point.
+    await markBatchNeedsRecalc(tx, ctx, { batchId: p.batchId, employmentIds: [p.employmentId] });
+    return {
+      added: true,
+      markedForRecalc: batch.status === 'processed',
+      payPeriod: batch.payPeriod,
+      status: batch.status,
+    };
+  });
+}
+
+/**
  * 1.2.2 — Save a whole grid of dated one-off transactions for ONE OR MANY employees against ONE draft
  * batch, in a SINGLE transaction (the wizard's Step 4 "save all valid entries in one transaction"). The
  * same grid of rows is recorded for EVERY selected employee (a cartesian product: rows × employees), so a
@@ -789,10 +957,17 @@ export function createIndividualTxnsBulk(
     // employments). A null/empty scope means "whole company" (already company-matched above), so no
     // membership check is needed then. Unattached writes have no batch scope (target.scope is null);
     // attach-on-generate only stamps in-scope employments onto the eventual run.
+    //
+    // 4b909202 — THE REFUSAL NAMES THE RUN, THE EMPLOYEE AND THE REASON. The check itself is unchanged
+    // and deliberately so: it tests MEMBERSHIP, never status, and firing on a draft run is correct. What
+    // changed is that it no longer refuses anonymously. `batchScopeRefusal` reads the excluded person's
+    // name, which is why it is only reached on the failing branch — the happy path pays for nothing.
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, scope);
     if (scopeIds !== null && target.batchId != null) {
       for (const eid of employmentIds) {
-        if (!scopeIds.includes(eid)) throw new EmploymentNotInBatchScopeError(eid, target.batchId);
+        if (!scopeIds.includes(eid)) {
+          throw await batchScopeRefusal(tx, { employmentId: eid, batchId: target.batchId, payPeriod, scope });
+        }
       }
     }
 

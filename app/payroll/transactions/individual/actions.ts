@@ -3,12 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { BatchNotDraftError, batchEditImpact } from '@/core/payroll';
+import { BatchNotDraftError, PayrollPermissionDeniedError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
 import { deriveIndividualTxnAmount, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
 import {
+  addEmploymentToBatchScope,
   createIndividualTxnsBulk,
   getIndividualTxn,
   updateIndividualTxn,
@@ -49,7 +50,12 @@ import {
 
 /** Map a typed individual-transaction error to a friendly key the client resolves against its catalog. */
 const txnErrorKey = (e: unknown): string =>
-  e instanceof TxnDateOutOfPeriodError
+  // 4b909202 — the only action on this screen that asks for a payroll permission is the add-to-run
+  // below, and on a PROCESSED run it asks for the same one the Reprocess screen does. Refusing with
+  // the generic key would tell the operator the transaction was wrong; it was not, their authority was.
+  e instanceof PayrollPermissionDeniedError
+    ? 'addToRunDenied'
+    : e instanceof TxnDateOutOfPeriodError
     ? 'dateOutOfPeriod'
     : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
       // rather than one interpolated sentence: the screen resolves an error key with no values, and the
@@ -91,6 +97,29 @@ const txnErrorKey = (e: unknown): string =>
                           ? 'notDraft'
                           : (e as Error).message;
 
+/** 4b909202 — WHO to add and to WHICH run, for the offer the scope refusal now carries. Both ids come
+ *  off the thrown error, so the screen cannot offer to widen a run the service did not actually refuse. */
+export type TxnScopeFix = { batchId: string; employmentId: string };
+
+/**
+ * 4b909202 — TURN A THROWN SERVICE ERROR INTO THE SCREEN'S FAILURE.
+ *
+ * One place, so the two create paths and the edit/delete paths cannot drift on how a refusal reads. The
+ * scope refusal is the only one that carries values (and the only one that carries an offer); everything
+ * else resolves exactly as it did, through the same `txnErrorKey` chain and with no values at all.
+ */
+function txnFailure(e: unknown): Extract<TxnActionResult, { ok: false }> {
+  if (e instanceof EmploymentNotInBatchScopeError) {
+    return {
+      ok: false,
+      error: 'employeeNotInScope',
+      errorValues: { employee: e.detail.employeeName, period: e.detail.payPeriod, scope: e.detail.reason },
+      scopeFix: { batchId: e.batchId, employmentId: e.employmentId },
+    };
+  }
+  return { ok: false, error: txnErrorKey(e) };
+}
+
 export type TxnActionResult =
   | {
       ok: true;
@@ -105,7 +134,18 @@ export type TxnActionResult =
        */
       recalcBatchId?: string;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * 4b909202 — ICU values for `error`, when the key takes any. The screen resolves the key against
+       * its OWN catalogue (the six locales), so what crosses this boundary is data — a person's name, an
+       * ISO month, and a token — never a built sentence, which would be English in six languages.
+       */
+      errorValues?: Record<string, string>;
+      /** Present only on the scope refusal: the run this employee could be added to. */
+      scopeFix?: TxnScopeFix;
+    };
 
 /**
  * 49e7e0a2 — what a save onto THIS run is about to make out of date, read on demand when the form
@@ -533,7 +573,7 @@ export async function createIndividualTxnDayGridAction(input: {
       ...(targetImpact?.status === 'processed' && input.batchId ? { recalcBatchId: input.batchId } : {}),
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return txnFailure(e);
   }
 }
 
@@ -595,7 +635,7 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
       ...(targetImpact?.status === 'processed' && input.batchId ? { recalcBatchId: input.batchId } : {}),
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return txnFailure(e);
   }
 }
 
@@ -653,6 +693,50 @@ export async function updateIndividualTxnAction(
       ...(existing.recalcOnEdit && existing.batchId ? { recalcBatchId: existing.batchId } : {}),
     };
   } catch (e) {
+    return txnFailure(e);
+  }
+}
+
+/** What the add-to-run offer did. `added: false` is a SUCCESS: the run already covered this employee
+ *  (somebody else widened it first, or the run is whole-company), so the save the operator came to make
+ *  will now go through — which is the only thing they asked for. */
+export type TxnScopeAddResult =
+  | { ok: true; added: boolean; markedForRecalc: boolean; payPeriod: string; recalcBatchId?: string }
+  | { ok: false; error: string };
+
+/**
+ * 4b909202 — ADD THE REFUSED EMPLOYEE TO THE RUN, the way forward the scope refusal now offers.
+ *
+ * The ids are the ones the SERVICE put on the error it threw, round-tripped through the screen, so this
+ * cannot be used to widen a run the operator was never refused on — and it is fenced to their own
+ * companies regardless, exactly as every other action here is, before the service is reached at all.
+ *
+ * It deliberately does NOT save the transaction. Widening a run and posting money onto it are two
+ * decisions, they have two different audit trails, and folding them into one click would mean an
+ * operator who wanted to reconsider the amount had already changed the run. The screen re-submits the
+ * form itself once this returns, from the values still on screen.
+ */
+export async function addEmployeeToRunAction(input: TxnScopeFix): Promise<TxnScopeAddResult> {
+  const { s, scopeIds } = await scopedAdmin();
+  if (!input.batchId || !input.employmentId) return { ok: false, error: 'periodInvalid' };
+  // The run must live in a company this admin administers — the same fence, read the same way, as
+  // `fetchBatchImpactAction`. A run outside it reads as absent rather than as a refusal, so this can
+  // never confirm that some other tenant-mate company holds a run with that id.
+  const impact = await batchEditImpact(s, { batchId: input.batchId });
+  if (!impact || !scopeIds.includes(impact.companyId)) return { ok: false, error: 'txnNotFound' };
+  try {
+    const r = await addEmploymentToBatchScope(s, { batchId: input.batchId, employmentId: input.employmentId });
+    revalidatePath('/payroll/transactions/individual');
+    return {
+      ok: true,
+      added: r.added,
+      markedForRecalc: r.markedForRecalc,
+      payPeriod: r.payPeriod,
+      // Same contract as a save: the run that now owes a recalculation, so the screen can link the
+      // operator straight to it. Set from the SERVICE's own answer, never re-derived here.
+      ...(r.markedForRecalc ? { recalcBatchId: input.batchId } : {}),
+    };
+  } catch (e) {
     return { ok: false, error: txnErrorKey(e) };
   }
 }
@@ -672,6 +756,6 @@ export async function deleteIndividualTxnAction(input: { id: string }): Promise<
       ...(existing.recalcOnEdit && existing.batchId ? { recalcBatchId: existing.batchId } : {}),
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return txnFailure(e);
   }
 }
