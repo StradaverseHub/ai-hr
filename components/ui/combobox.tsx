@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { inputCls } from '@/components/ui';
+import { ENTER_OWNER_ATTR } from '@/lib/tab-save-dom';
 
 /**
  * Combobox (59047802) — a reusable, searchable, keyboard-navigable single-select. Built for the Personnel
@@ -15,6 +16,16 @@ import { inputCls } from '@/components/ui';
  * LEGACY-VALUE TOLERANCE (parity with ProfileOptionSelect): if the stored `value` is not among `options`
  * (renamed / deactivated / free-text-imported), it is shown as an extra, PRE-SELECTED entry tagged with
  * `legacySuffix` so a Save never blanks it. Clearing to "" (the placeholder row) is always allowed.
+ *
+ * IT OWNS THE ENTER KEY, and says so in the markup. Enter while the list is open commits the highlighted
+ * row — the documented selection gesture — and a page-level listener that also acts on Enter must not run
+ * first and read the value this keystroke is about to replace. 420ebab5: the Personnel tab-wide Save did
+ * exactly that from a CAPTURE-phase listener (React dispatches this handler on the way back up), saving
+ * the OLD nationality and then marking the tab clean, so the admin's pick vanished with a "Changes saved"
+ * toast over it. `data-enter-owner` on the root is how such a listener is told to stand aside; see
+ * ENTER_OWNER_SELECTOR in lib/tab-save-dom.ts. Nothing is lost by standing aside: `onKeyDown` below calls
+ * `preventDefault()` whenever the list is open, so a surrounding <form> can never be implicitly submitted
+ * by this keystroke either.
  *
  * Pure presentation — no data deps — so it is safe to import from either client or (indirectly) RSC trees.
  */
@@ -142,7 +153,7 @@ export function Combobox({
   };
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative" {...{ [ENTER_OWNER_ATTR]: 'combobox' }}>
       {/* The value the surrounding <form> submits — same field name a native <select> would post. Absent
           when no `name` was given: a controlled caller holds the value in state and submits it as JSON. */}
       {name !== undefined && <input type="hidden" name={name} value={selected} />}

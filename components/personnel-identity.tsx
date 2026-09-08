@@ -27,10 +27,14 @@
  * 420ebab5 PART TWO — the two Save buttons that used to sit at the foot of these forms are GONE. Both
  * cards are bucket (a) (docs/audits/420ebab5-personnel-save-classification.md): plain identity fields
  * overwritten in place, which the Profile tab's one "Save Changes" now covers. `data-save-section` is how
- * components/tab-save-scope.tsx finds each form's payload; `action={…}` STAYS, because it is still the
- * real POST target when the client bundle does not run, and because these two forms are the only place
- * `setIcAction` / `setPassportAction` are wired to a card. The consolidated action reaches the same two
- * services through the same helpers — it does not re-implement them.
+ * components/tab-save-scope.tsx finds each form's payload; `action={…}` STAYS because these two forms are
+ * the only place `setIcAction` / `setPassportAction` are wired to a card, and because a `<form>` with no
+ * action would POST to the current URL. It is NOT a no-JavaScript fallback — an earlier version of this
+ * note said it was, and that was wrong: implicit submission needs a form with no submit button AND
+ * exactly one field that blocks it, and both cards here carry several (icNumber + oldIcNumber; passport
+ * number + two dates), so with the bundle blocked neither can be posted by any keystroke. The
+ * consolidated action reaches the same two services through the same helpers — it does not re-implement
+ * them.
  *
  * WHY THE PASSPORT BLOCK IS NOT SHARED WITH THE WIZARD. It is not a field-definition question, it is a
  * write-path one. `setPassportProfileMY` makes the number/issue/expiry trio MANDATORY for a non-Malaysian,

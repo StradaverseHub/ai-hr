@@ -48,6 +48,7 @@ import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { saveProfileTabAction } from '../app/admin/personnel/[employmentId]/actions';
 import { PROFILE_TAB_SECTION_ORDER, SECTION_FIELD_PREFIX } from '../lib/personnel-tab-sections';
+import { UNSAVED_GUARD_ATTR } from '../lib/unsaved-changes';
 
 const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
 
@@ -414,10 +415,34 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       );
     });
 
-    it('the two consolidated cards keep their server actions as the no-JavaScript fallback', () => {
+    it('the two consolidated cards are still the only place their writers are wired to a form', () => {
+      // NOT a no-JavaScript fallback — an earlier version of this test said so and was wrong. Implicit
+      // submission needs a form with no submit button AND exactly one field that blocks it; both cards
+      // here carry several, so with the bundle blocked neither can be posted by any keystroke. The
+      // binding is pinned because it is the sole wiring of setIcAction / setPassportAction, and because a
+      // <form> with no action at all would POST to the current URL.
       const identity = IDENTITY();
       expect(identity).toContain('action={setIcAction} data-save-section="ic"');
       expect(identity).toContain('action={setPassportAction} data-save-section="passport"');
+    });
+
+    /**
+     * The workbook anchor is the one same-origin `<a>` on this screen that is NOT a link to a page: its
+     * click downloads a spreadsheet and leaves the reader where they were. The screen-leaving guard
+     * intercepts same-origin anchors while a tab is dirty, so without the opt-out it turned that download
+     * into an "Unsaved changes" dialog followed by a router.push at a route with no page to render. The
+     * behaviour is pinned in test/personnel-tab-save.dom.test.tsx §10; what can only be pinned HERE is
+     * that the real anchor still carries the attribute.
+     */
+    it('the Employment History workbook anchor stays exempt from the unsaved-changes guard', () => {
+      // `<a[\s>]` and not `<a`, so `<article`/`<aside` cannot be mistaken for an anchor.
+      const anchors = PAGE()
+        .split(/<a[\s>]/)
+        .slice(1)
+        .map((chunk) => chunk.slice(0, chunk.indexOf('>')));
+      const exportAnchor = anchors.find((tag) => tag.includes('movement-export'));
+      expect(exportAnchor, 'the Export to Excel anchor is still a bare <a> on this page').toBeDefined();
+      expect(exportAnchor).toContain(`${UNSAVED_GUARD_ATTR}="ignore"`);
     });
 
     it('the five (a) cards no longer carry a Save button of their own', () => {

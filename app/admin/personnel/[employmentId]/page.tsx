@@ -882,8 +882,12 @@ export default async function EmployeePage({
           single Discard — can honestly cover. The Emergency Contact register is bucket (b) and is rendered
           BELOW, OUTSIDE the scope, so the tab's Discard cannot reach it; see
           docs/audits/420ebab5-personnel-save-classification.md. Each card keeps its own <form>, its own
-          hidden carry-through inputs and its own action (the no-JS fallback); what it loses is its own Save
-          button, and it gains data-save-section so the scope can pack it. */}
+          hidden carry-through inputs and its own action — NOT as a no-JS fallback, which is what this note
+          used to claim: with the per-card buttons gone, only a form left with exactly ONE implicit-submit
+          blocker can still be posted without the bundle, and of these five that is the compliance card
+          alone. The action stays because it is still where each writer is wired to its card and because a
+          <form> with no action would POST to the current URL. What each card loses is its own Save button,
+          and it gains data-save-section so the scope can pack it. */}
       <TabSaveScope tabKey="profile" employmentId={emp.employmentId} saveAction={saveProfileTabAction}>
       {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
           switch between IC (Malaysian) and Passport (non-Malaysian) fields instantly. The Card shell + all the
@@ -3190,8 +3194,15 @@ export default async function EmployeePage({
             payload, so the prefetch buys nothing and the click still does a hard navigation. The
             payroll grid-export anchor next door is a bare <a> for the same reason; the Leave
             employee-records link is a <Link> and pays this cost today. */}
+        {/* 420ebab5 part two — INVISIBLE to the unsaved-changes guard, deliberately. That guard intercepts
+            same-origin anchor clicks while a tab holds unsaved edits, because an in-app <Link> is a
+            client-side navigation beforeunload never sees. This anchor is not a link to a page: the click
+            downloads a workbook and leaves the reader exactly where they were, so intercepting it would
+            raise an "Unsaved changes" dialog for an action that loses nothing and then router.push at a
+            route handler that has no page to render. See UNSAVED_GUARD_ATTR in lib/unsaved-changes.ts. */}
         <a
           href={`/admin/personnel/${employmentId}/movement-export`}
+          data-unsaved-guard="ignore"
           className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           {t('movement.exportExcel')}

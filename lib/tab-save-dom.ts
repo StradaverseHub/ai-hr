@@ -11,9 +11,15 @@
  * section would suddenly post every other section's fields.
  *
  * SO THE FORMS STAY. Each consolidated card keeps its own `<form>`, its own hidden inputs and its own
- * `action={…}` (which is also the no-JavaScript fallback — Next renders a real POST target, so a browser
- * with the bundle blocked still saves that one card exactly as it did before). What changes is that the
- * card's own Save button is gone and the form carries `data-save-section="<id>"`. This module reads those
+ * `action={…}`. That binding is NOT a no-JavaScript fallback, and an earlier version of this note claimed
+ * it was: HTML's implicit submission fires only for a form with no submit button AND exactly one field
+ * that blocks it, and four of the five consolidated cards carry several such fields, so with the bundle
+ * blocked no keystroke can post them at all (only the compliance card, whose lone blocking field is the
+ * date of birth, still submits implicitly — which is the case the scope's guards exist for). The binding
+ * stays because it is still the only place each card's writer is wired to a form, because a form React
+ * has bound is what the scope's submit guard intercepts, and because a `<form>` with no action at all
+ * would POST to the current URL. What changes is that the card's own Save button is gone and the form
+ * carries `data-save-section="<id>"`. This module reads those
  * subtrees: it snapshots them, diffs them, marks what moved, and packs the dirty ones into ONE FormData
  * with each section's fields namespaced, so the server can hand each section's own payload to each
  * section's own service, in order (ADR-0001/0003 effective dating — a save closes a version and inserts a
@@ -29,6 +35,25 @@
 /** Marks a `<form>` (or any element) whose named controls belong to the tab's consolidated Save. */
 export const SECTION_ATTR = 'data-save-section';
 export const SECTION_SELECTOR = `[${SECTION_ATTR}]`;
+
+/**
+ * Marks a widget that HANDLES ENTER ITSELF, so the consolidated save must keep its hands off the key.
+ *
+ * This is the fix for a silent data-loss bug, not a nicety. The scope's Enter guard listens in the
+ * CAPTURE phase on the tab root; React attaches its own listeners at the root container and dispatches
+ * `onKeyDown` on the way back up. So for a widget that commits its selection in `onKeyDown` — the
+ * Combobox (components/ui/combobox.tsx), whose documented gesture is type / ArrowDown / Enter — the
+ * scope's listener runs FIRST. Saving from there packed the value the user had just replaced, and the
+ * post-save re-baseline then adopted the replacement as "already saved", so the change was gone AND the
+ * tab read clean. A widget that owns Enter also already calls `preventDefault()`, so skipping it cannot
+ * let an implicit submission through.
+ *
+ * The ARIA shapes are a safety net for a widget nobody remembered to mark: an element that declares
+ * `aria-autocomplete`, or lives inside a listbox/combobox, is by definition consuming its own keys.
+ */
+export const ENTER_OWNER_ATTR = 'data-enter-owner';
+export const ENTER_OWNER_SELECTOR =
+  `[${ENTER_OWNER_ATTR}],[aria-autocomplete],[role="listbox"],[role="option"],[role="combobox"]`;
 
 // The wire format lives in lib/personnel-tab-sections.ts so the `'use server'` action can read it without
 // importing this module, which is full of DOM types a server bundle has no business carrying.
@@ -174,6 +199,33 @@ export function readTab(root: ParentNode, blankLabel = '—'): TabSnapshot {
 }
 
 /**
+ * Give a section that has NO baseline yet the one it should have had: whatever it is showing right now.
+ *
+ * A tab does not necessarily render every section at mount. The Identity No (NRIC) card is conditional on
+ * the live nationality (components/personnel-identity.tsx, item 357faecf), so on a non-Malaysian employee
+ * it is absent when the baseline is taken and appears later, already filled with the value the SERVER
+ * rendered. Without this, `diffTab` fell back to "there was nothing here before" and reported every
+ * non-empty field in it as an unsaved edit the instant it appeared — a change summary that lied to the
+ * reader, a section packed into the payload, and a spurious `employee.ic.updated` event for a number
+ * nobody touched. A section that has just appeared has been edited exactly zero times, so its current
+ * state IS its last-saved state. A section that unmounts KEEPS its snapshot, so a card that comes back
+ * is still measured against the baseline it had before it went away.
+ */
+export function baselineNewSections(
+  root: ParentNode,
+  snapshot: TabSnapshot,
+  blankLabel = '\u2014',
+): TabSnapshot {
+  let next = snapshot;
+  for (const section of sectionElements(root)) {
+    const id = sectionId(section);
+    if (Object.prototype.hasOwnProperty.call(next, id)) continue;
+    next = { ...next, [id]: readSection(section, blankLabel) };
+  }
+  return next;
+}
+
+/**
  * Is this hidden input something the ADMIN can see and change, or plumbing?
  *
  * Both kinds sit in these forms. The Combobox island (components/ui/combobox.tsx) is a visible control
@@ -198,6 +250,9 @@ export function diffTab(root: ParentNode, snapshot: TabSnapshot, blankLabel = '\
   const changes: FieldChange[] = [];
   for (const section of sectionElements(root)) {
     const id = sectionId(section);
+    // `?? {}` is a defensive floor only — a section with no baseline is meant to be given one by
+    // `baselineNewSections` before it is diffed, or a card that merely APPEARED would read as fully
+    // edited. See that function for why.
     const before = snapshot[id] ?? {};
     const now = readSection(section, blankLabel);
     // One entry PER FIELD NAME, not per control: a radio group is several controls posting one value, and

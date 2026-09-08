@@ -18,6 +18,21 @@
  * floor, which is precisely "stay put and keep the edits".
  */
 
+/**
+ * An anchor the unsaved-changes guard must NOT intercept — put it on the `<a>` itself or on a container.
+ *
+ * The guard watches document clicks while a tab is dirty because an in-app `<Link>` is a CLIENT-SIDE
+ * navigation that `beforeunload` never sees. A handful of anchors on these screens are deliberately NOT
+ * links to a page: the Employment History "Export to Excel" anchor is a bare `<a>` pointing at a route
+ * handler that returns a workbook, and clicking it downloads a file without leaving the screen at all.
+ * Intercepting one of those replaces a download with an "Unsaved changes" dialog and then a `router.push`
+ * at a route that has no RSC payload to render — a prompt for an action that loses nothing, followed by a
+ * navigation nobody asked for. Anything the guard skips here is still covered by `beforeunload`, which
+ * DOES fire for the hard navigation a bare `<a>` performs.
+ */
+export const UNSAVED_GUARD_ATTR = 'data-unsaved-guard';
+export const UNSAVED_GUARD_IGNORE_SELECTOR = `[${UNSAVED_GUARD_ATTR}="ignore"]`;
+
 export type UnsavedGuard = {
   /** True while the scope holds edits that have not been written. */
   isDirty: () => boolean;

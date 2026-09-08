@@ -32,7 +32,7 @@
  */
 import { useState } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
@@ -51,6 +51,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
 
 import { TabSaveScope } from '../components/tab-save-scope';
+import { Combobox } from '../components/ui/combobox';
 import { EmployeeSwitcher } from '../app/admin/personnel/employee-switcher';
 import { firstDirtyGuard, __resetUnsavedGuards } from '../lib/unsaved-changes';
 import type { TabSaveResult } from '../lib/personnel-tab-sections';
@@ -60,9 +61,18 @@ const PERSON_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const SAVED_NAME = 'Ali bin Ahmad';
 const SAVED_EMAIL = 'ali@acme.test';
 
+const NATIONALITIES = [
+  { value: 'malaysian', label: 'Malaysian' },
+  { value: 'singaporean', label: 'Singaporean' },
+];
+
 /**
  * The two Profile cards that share one Save, shaped like the real ones: separate forms, each with the
  * sibling's value carried through as a hidden input, plus one bucket (b) card OUTSIDE the scope.
+ *
+ * The Nationality picker is the REAL components/ui/combobox.tsx, not a stand-in. §8 exists because that
+ * component commits its selection from a React `onKeyDown` — i.e. on the BUBBLE phase, after the scope's
+ * capture-phase Enter guard — and a stubbed select could never reproduce that ordering.
  */
 function Screen({ save }: { save: (fd: FormData) => Promise<TabSaveResult> }) {
   return (
@@ -85,6 +95,17 @@ function Screen({ save }: { save: (fd: FormData) => Promise<TabSaveResult> }) {
               <option value="hindu">Hindu</option>
             </select>
           </label>
+          <div data-field-wrapper="nationality">
+            <Combobox
+              name="nationality"
+              value="malaysian"
+              options={NATIONALITIES}
+              placeholder="Not set"
+              searchPlaceholder="Search nationality"
+              noResultsLabel="No matches"
+              legacySuffix="(legacy)"
+            />
+          </div>
         </form>
         <form data-save-section="contact">
           <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
@@ -97,6 +118,14 @@ function Screen({ save }: { save: (fd: FormData) => Promise<TabSaveResult> }) {
           </label>
         </form>
       </TabSaveScope>
+
+      {/* The two anchor shapes the screen-leaving guard has to tell apart: a real in-app link, and the
+          Employment History workbook anchor, which is bare BY DESIGN and downloads without going
+          anywhere (app/admin/personnel/[employmentId]/page.tsx). */}
+      <a href="/admin/personnel">Back to list</a>
+      <a href={`/admin/personnel/${EMPLOYMENT_ID}/movement-export`} data-unsaved-guard="ignore">
+        Export to Excel
+      </a>
 
       {/* BUCKET (b) — a discrete, money-affecting act with its own button, rendered outside the scope the
           way the page renders the Emergency Contact register and the Payroll tab's salary revision. */}
@@ -522,5 +551,319 @@ describe('§7 "Open another employee" asks too — the switcher navigates progra
 
     await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('§8 THE ENTER KEY — a widget that owns it keeps it', () => {
+  /**
+   * THE BUG THIS SECTION EXISTS FOR was silent data loss, and the worst kind: the change vanished AND the
+   * screen said everything was saved.
+   *
+   * The scope guards Enter from a CAPTURE-phase listener on the tab root, because HTML's implicit
+   * submission would otherwise still post the one card left with a single blocking field. React dispatches
+   * `onKeyDown` on the way back UP, so for the Combobox — whose documented gesture is type / ArrowDown /
+   * Enter — the guard ran first: `buildTabPayload` read the pre-selection DOM, the save wrote the OLD
+   * nationality, and `rebaselineSections` then read the now-committed DOM and adopted the value nobody had
+   * written as the new baseline. Result: the admin's pick gone, the tab clean, a success toast.
+   *
+   * `save()` re-diffing the live DOM is the second half of the fix and is why the pick below is packed
+   * correctly when the admin does press Save.
+   */
+  const openNationality = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('button', { name: 'Malaysian' }));
+    const search = await screen.findByPlaceholderText('Search nationality');
+    await waitFor(() => expect(search).toHaveFocus());
+    return search;
+  };
+
+  const nationalityInput = () =>
+    document.querySelector('input[name="nationality"]') as HTMLInputElement;
+
+  it('Enter commits the pick, submits nothing, and NEVER saves the value it just replaced', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    render(<Screen save={save} />);
+    const { name } = fields();
+
+    // Something else must already be dirty, or `save()` no-ops on an empty section list and the fault is
+    // invisible. This is exactly the shape an admin lands in: correct the name, then fix the nationality.
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(screen.getByText('Unsaved changes: 1')).toBeInTheDocument());
+
+    await openNationality(user);
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    // THE ASSERTION THIS TEST EXISTS FOR: picking an option is not a save.
+    expect(save).not.toHaveBeenCalled();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    // …and the pick reached the value the form posts, so the tab is MORE dirty, not clean.
+    await waitFor(() => expect(nationalityInput().value).toBe('singaporean'));
+    await waitFor(() => expect(screen.getByText('Unsaved changes: 2')).toBeInTheDocument());
+  });
+
+  it('the review table reads the pick by its LABEL, old against new', async () => {
+    const user = userEvent.setup();
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+
+    await openNationality(user);
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    await user.click(await screen.findByRole('button', { name: 'Review changes' }));
+    const row = document.querySelector('[data-change-row="person.nationality"]') as HTMLTableRowElement;
+    expect(row).not.toBeNull();
+    expect(within(row).getByText('Malaysian')).toBeInTheDocument();
+    expect(within(row).getByText('Singaporean')).toBeInTheDocument();
+  });
+
+  it('the pick the admin made is what the consolidated Save posts', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    render(<Screen save={save} />);
+
+    await openNationality(user);
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    const saveBtn = screen.getByRole('button', { name: 'Save Changes' });
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+    await user.click(saveBtn);
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect((save.mock.calls[0]![0] as FormData).get('section.person.nationality')).toBe('singaporean');
+  });
+
+  it('Enter in a plain text field still runs the tab-wide save', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    render(<Screen save={save} />);
+    const { name } = fields();
+
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan{Enter}');
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect((save.mock.calls[0]![0] as FormData).get('section.person.fullName')).toBe('Ali bin Hassan');
+  });
+});
+
+describe('§9 a section that appears LATER has been edited zero times', () => {
+  /**
+   * The Identity No (NRIC) card renders only while the nationality is Malaysian (item 357faecf), so on a
+   * non-Malaysian employee it is simply absent when the baseline is taken. Without a baseline of its own
+   * it used to be diffed against "there was nothing here before", so the server-rendered IC number it
+   * arrived with was reported as an unsaved edit, packed into the payload, and re-written — appending an
+   * `employee.ic.updated` event for a number nobody had touched — while the change table told the reader
+   * they had typed something they had not.
+   */
+  function ConditionalScreen({ save }: { save: (fd: FormData) => Promise<TabSaveResult> }) {
+    const [showIc, setShowIc] = useState(false);
+    return (
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save}>
+          <form data-save-section="person">
+            <label>
+              <span>Full Name</span>
+              <input name="fullName" defaultValue={SAVED_NAME} />
+            </label>
+          </form>
+          {showIc && (
+            <form data-save-section="ic">
+              <input type="hidden" name="personId" defaultValue={PERSON_ID} />
+              <label>
+                <span>Identity No</span>
+                <input name="icNumber" defaultValue="770101011234" />
+              </label>
+            </form>
+          )}
+        </TabSaveScope>
+        <button type="button" onClick={() => setShowIc((v) => !v)}>
+          Toggle NRIC
+        </button>
+      </NextIntlClientProvider>
+    );
+  }
+
+  it('the card arrives clean, and is neither counted nor packed until it is actually edited', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['ic']));
+    render(<ConditionalScreen save={save} />);
+
+    await user.click(screen.getByRole('button', { name: 'Toggle NRIC' }));
+    const ic = await screen.findByLabelText('Identity No');
+
+    // THE ASSERTION: a card that merely appeared reports no change.
+    await waitFor(() => expect(ic).toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 40));
+    expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+    expect(document.querySelector('[data-change-row="ic.icNumber"]')).toBeNull();
+    expect(ic).not.toHaveAttribute('data-edited');
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+
+    // …and once it IS edited it behaves like any other section.
+    await user.clear(ic);
+    await user.type(ic, '900101015030');
+    await waitFor(() => expect(screen.getByText('Unsaved changes: 1')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const fd = save.mock.calls[0]![0] as FormData;
+    expect(fd.get('sections')).toBe('ic');
+    expect(fd.get('section.ic.icNumber')).toBe('900101015030');
+  });
+});
+
+describe('§10 the screen-leaving guard intercepts LINKS, not downloads', () => {
+  /**
+   * The guard watches document clicks while the tab is dirty because an in-app link is a client-side
+   * navigation `beforeunload` never sees. The Employment History "Export to Excel" anchor is deliberately
+   * a bare `<a>` at a route handler that returns a workbook: clicking it downloads a file and leaves the
+   * reader exactly where they were. Intercepting it turned a download into an "Unsaved changes" dialog
+   * followed by a router.push at a route with no page to render.
+   */
+  /**
+   * What the guard did with this click, read from a BUBBLE-phase listener — which is the only honest
+   * vantage point, because the guard runs in the capture phase and an intercepted click never reaches
+   * the bubble phase at all (it calls stopPropagation as well as preventDefault). So:
+   *   'intercepted' — the bubble listener never fired: the guard swallowed the click.
+   *   'through'     — the click arrived intact, default not prevented: the browser will follow the href.
+   * The listener prevents the default itself, purely to stop jsdom logging an unimplemented navigation.
+   */
+  const clickVerdict = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
+    const seen: boolean[] = [];
+    const spy = (e: Event) => {
+      seen.push(e.defaultPrevented);
+      e.preventDefault();
+    };
+    document.addEventListener('click', spy);
+    try {
+      await user.click(screen.getByRole('link', { name: label }));
+    } finally {
+      document.removeEventListener('click', spy);
+    }
+    if (seen.length === 0) return 'intercepted';
+    return seen[0] ? 'prevented' : 'through';
+  };
+
+  const makeDirty = async (user: ReturnType<typeof userEvent.setup>) => {
+    const { name, saveBtn } = fields();
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+  };
+
+  it('leaves the export anchor alone — no prompt, no router.push, no preventDefault', async () => {
+    const user = userEvent.setup();
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+    await makeDirty(user);
+
+    expect(await clickVerdict(user, 'Export to Excel')).toBe('through');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+    // The edit is still there, still unsaved, still offered.
+    expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe('Ali bin Hassan');
+    expect(screen.getByText('Unsaved changes: 1')).toBeInTheDocument();
+  });
+
+  it('but still stops a real in-app link and asks first', async () => {
+    const user = userEvent.setup();
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+    await makeDirty(user);
+
+    expect(await clickVerdict(user, 'Back to list')).toBe('intercepted');
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Unsaved changes')).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Discard Changes' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/admin/personnel'));
+  });
+});
+
+describe('§11 browser Back asks too', () => {
+  /**
+   * "Click Back" is one of the five routes the reporter listed, and the only one neither `beforeunload`
+   * nor the click guard can see: an App Router history pop is a client-side navigation with no unload and
+   * no anchor. The guard is a history sentinel — one extra entry at the same url, pushed the first time
+   * the tab goes dirty, so the reader's Back press pops THAT instead of leaving the screen.
+   */
+  const back = async () => {
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+  };
+
+  const makeDirty = async (user: ReturnType<typeof userEvent.setup>) => {
+    const { name, saveBtn } = fields();
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+  };
+
+  it('a clean tab never touches history, and a Back on it is left alone', async () => {
+    const pushState = vi.spyOn(window.history, 'pushState');
+    const go = vi.spyOn(window.history, 'go').mockImplementation(() => undefined);
+    try {
+      render(<Screen save={saveMock(async () => ok(['person']))} />);
+      expect(pushState).not.toHaveBeenCalled();
+
+      await back();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(go).not.toHaveBeenCalled();
+    } finally {
+      pushState.mockRestore();
+      go.mockRestore();
+    }
+  });
+
+  it('a dirty tab arms the sentinel, prompts on Back, and only leaves once the edits are dealt with', async () => {
+    const user = userEvent.setup();
+    const pushState = vi.spyOn(window.history, 'pushState');
+    const go = vi.spyOn(window.history, 'go').mockImplementation(() => undefined);
+    try {
+      render(<Screen save={saveMock(async () => ok(['person']))} />);
+      await makeDirty(user);
+      await waitFor(() => expect(pushState).toHaveBeenCalled());
+
+      await back();
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('Unsaved changes')).toBeInTheDocument();
+      // THE ASSERTION: the reader has NOT gone anywhere yet.
+      expect(go).not.toHaveBeenCalled();
+      expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe('Ali bin Hassan');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(go).not.toHaveBeenCalled();
+
+      // Back again, this time discarding: past the re-armed sentinel AND the entry it shadows.
+      await back();
+      const again = await screen.findByRole('dialog');
+      await user.click(within(again).getByRole('button', { name: 'Discard Changes' }));
+      await waitFor(() => expect(go).toHaveBeenCalledWith(-2));
+      expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe(SAVED_NAME);
+    } finally {
+      pushState.mockRestore();
+      go.mockRestore();
+    }
+  });
+
+  it('once the edits are saved, Back is completed rather than questioned', async () => {
+    const user = userEvent.setup();
+    const pushState = vi.spyOn(window.history, 'pushState');
+    const go = vi.spyOn(window.history, 'go').mockImplementation(() => undefined);
+    try {
+      render(<Screen save={saveMock(async () => ok(['person']))} />);
+      await makeDirty(user);
+      await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+      await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+
+      await back();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      // The sentinel is still on the stack, so one step back from it is the reader's real destination.
+      expect(go).toHaveBeenCalledWith(-1);
+    } finally {
+      pushState.mockRestore();
+      go.mockRestore();
+    }
   });
 });

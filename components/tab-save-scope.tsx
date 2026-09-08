@@ -18,14 +18,27 @@
  * carry a sibling's value as a hidden input; and the writers read an ABSENT field as "leave as-is". One
  * merged form would collide duplicate names and start posting fields a card deliberately dropped. So the
  * markup is unchanged apart from losing its per-card Save button, and lib/tab-save-dom.ts reads each
- * subtree separately. The forms even keep their `action={…}`, which is the no-JavaScript fallback.
+ * subtree separately. The forms keep their `action={…}` — NOT as a no-JavaScript fallback, which is what
+ * an earlier version of this note wrongly claimed. Implicit submission needs a form with no submit button
+ * AND exactly one field that blocks it, and four of the five cards carry several, so with the bundle
+ * blocked they cannot be posted by any keystroke. The binding stays because it is still the only place
+ * each card's writer is wired to a form, because a bound form is what the submit guard below intercepts,
+ * and because a `<form>` with no action at all would POST to the current URL.
  *
- * ENTER NO LONGER SUBMITS ONE CARD. With the per-card Save buttons gone, HTML's implicit submission still
- * fires for a form left with exactly one field that blocks it (the compliance card, whose only such field
- * is the date of birth). A capture-phase keydown guard turns Enter into the consolidated save instead.
- * The submit guard beside it is a second line: React's form-action plugin runs its listener from the ROOT
- * container, so an inner capture listener cannot be relied on to beat it — the keydown guard is what
- * actually makes it impossible for a submit event to exist.
+ * ENTER NO LONGER SUBMITS ONE CARD — AND NO LONGER SAVES ONE EITHER. The compliance card is the one form
+ * left with exactly one blocking field (the date of birth), so HTML's implicit submission can still fire
+ * there; a capture-phase keydown guard turns that into the consolidated save. It stands aside for two
+ * kinds of target. A TEXTAREA / BUTTON / A owns the key by HTML's own rules. And a widget marked
+ * `data-enter-owner` (ENTER_OWNER_SELECTOR, lib/tab-save-dom.ts) commits its own selection on this
+ * keystroke — in React's BUBBLE phase, which is AFTER this capture listener. Saving from here was silent
+ * data loss: the payload was built from the pre-selection DOM, so the tab saved the value the admin had
+ * just replaced, and the post-save re-baseline then adopted the replacement as already-written, leaving
+ * the pick gone and the tab reading clean under a "Changes saved" toast. Such a widget calls
+ * `preventDefault()` itself, so standing aside cannot let an implicit submission through.
+ *
+ * THE SAVE READS THE DOM, NOT THE CHANGE STATE. `changes` is recomputed from events and is therefore, by
+ * construction, one keystroke behind anything else handling the same keystroke. `save()` re-diffs the
+ * live DOM at the instant it runs, so what is written is always what the admin can see.
  *
  * DISCARD REMOUNTS; SAVE DOES NOT. Restoring `input.value` by hand on a discard looks right and is wrong:
  * the Combobox and the other islands hold their selection in React state, so a hand-restored hidden value
@@ -49,10 +62,12 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Button } from '@/components/ui';
-import { registerUnsavedGuard } from '@/lib/unsaved-changes';
+import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 import {
+  baselineNewSections,
   buildTabPayload,
   diffTab,
+  ENTER_OWNER_SELECTOR,
   markEditedFields,
   readSection,
   readTab,
@@ -63,6 +78,18 @@ import {
   type TabSnapshot,
 } from '@/lib/tab-save-dom';
 import type { TabSaveResult } from '@/lib/personnel-tab-sections';
+
+/**
+ * The marker our own history entry carries, so a `popstate` can be told from a router navigation and the
+ * entry can be recognised again after `personnel-tabs.tsx` replaceStates a `?tab=` onto it.
+ */
+const HISTORY_SENTINEL_KEY = '__tabSaveUnsavedSentinel';
+
+/** One extra history entry at the CURRENT url, so the next Back press lands here instead of leaving. */
+function pushHistorySentinel(): void {
+  const state = (window.history.state ?? {}) as Record<string, unknown>;
+  window.history.pushState({ ...state, [HISTORY_SENTINEL_KEY]: true }, '', window.location.href);
+}
 
 function sameChanges(a: FieldChange[], b: FieldChange[]): boolean {
   if (a.length !== b.length) return false;
@@ -103,6 +130,10 @@ export function TabSaveScope({
   const recompute = useCallback(() => {
     const root = contentRef.current;
     if (!root) return;
+    // A card that was not on screen when the baseline was taken (the NRIC card appears only while the
+    // nationality is Malaysian) gets its baseline the moment it appears, or every non-empty field in it
+    // would read as an unsaved edit nobody made. See `baselineNewSections`.
+    snapshotRef.current = baselineNewSections(root, snapshotRef.current, blankLabel);
     const next = diffTab(root, snapshotRef.current, blankLabel);
     markEditedFields(root, next, editedLabel);
     setChanges((prev) => (sameChanges(prev, next) ? prev : next));
@@ -137,6 +168,7 @@ export function TabSaveScope({
         if (!sections.includes(id)) continue;
         snapshotRef.current = { ...snapshotRef.current, [id]: readSection(section, blankLabel) };
       }
+      snapshotRef.current = baselineNewSections(root, snapshotRef.current, blankLabel);
       const next = diffTab(root, snapshotRef.current, blankLabel);
       markEditedFields(root, next, editedLabel);
       setChanges(next);
@@ -182,7 +214,14 @@ export function TabSaveScope({
     (onDone?: () => void) => {
       const root = contentRef.current;
       if (!root) return;
-      const dirtySections = Array.from(new Set(changes.map((c) => c.section)));
+      // WHAT IS ON SCREEN, not what the last event pass recorded. `changes` is derived from input/change/
+      // click/keyup and a rAF pass, so it necessarily lags anything that handles the SAME keystroke later
+      // in the same dispatch — which is how a save came to be packed from a Combobox's pre-selection
+      // value and then re-baselined over the admin's actual pick. Re-diffing here removes that whole class
+      // of race: the payload is built from the DOM as it stands at the instant Save runs.
+      snapshotRef.current = baselineNewSections(root, snapshotRef.current, blankLabel);
+      const live = diffTab(root, snapshotRef.current, blankLabel);
+      const dirtySections = Array.from(new Set(live.map((c) => c.section)));
       if (dirtySections.length === 0) {
         onDone?.();
         return;
@@ -209,7 +248,7 @@ export function TabSaveScope({
         onDone?.();
       });
     },
-    [changes, employmentId, rebaselineSections, router, saveAction, t, tabKey],
+    [blankLabel, employmentId, rebaselineSections, router, saveAction, t, tabKey],
   );
 
   const discard = useCallback(() => {
@@ -227,6 +266,11 @@ export function TabSaveScope({
       if (!target || !target.closest(SECTION_SELECTOR)) return;
       const tag = target.tagName;
       if (tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'A') return;
+      // A widget that OWNS Enter commits its own selection on this keystroke, from React's bubble-phase
+      // handler — after this capture listener. Acting here would save the value it is about to replace
+      // and then adopt the replacement as the new baseline, losing the edit AND reporting the tab clean.
+      // It calls preventDefault() itself, so nothing can be implicitly submitted by standing aside.
+      if (target.closest(ENTER_OWNER_SELECTOR)) return;
       e.preventDefault();
       save();
     };
@@ -265,10 +309,10 @@ export function TabSaveScope({
     [],
   );
 
-  // Leaving the SCREEN. `beforeunload` covers reload / close / an external address; the capture-phase
-  // click guard covers in-app links (back to the list, another employee, any nav item), which are
-  // client-side navigations `beforeunload` never sees. Browser Back on a client-side history entry is not
-  // interceptable by either and is the one gap — recorded in the round write-up rather than papered over.
+  // Leaving the SCREEN. `beforeunload` covers reload / close / an external address and the hard
+  // navigation a bare `<a>` performs; the capture-phase click guard covers in-app links (back to the
+  // list, another employee, any nav item), which are client-side navigations `beforeunload` never sees;
+  // and the popstate guard below covers browser Back / Forward.
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -279,6 +323,10 @@ export function TabSaveScope({
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const anchor = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
       if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+      // An anchor that is not a link to a page — the Employment History workbook route is a bare `<a>`
+      // whose click downloads a file and leaves nobody anywhere. Prompting there would be a dialog for an
+      // action that loses nothing, followed by a router.push at a route with no page to render.
+      if (anchor.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
       let url: URL;
       try {
         url = new URL(anchor.href, window.location.href);
@@ -299,6 +347,51 @@ export function TabSaveScope({
       document.removeEventListener('click', onClick, true);
     };
   }, [dirty, ask, router]);
+
+  /**
+   * BROWSER BACK / FORWARD — "Click Back" is one of the routes the reporter named, and it is the one
+   * neither `beforeunload` nor the click guard can see: an App Router history pop is a client-side
+   * navigation with no unload and no anchor, and Next 16 exposes no navigation-cancel hook.
+   *
+   * SO THE GUARD IS A HISTORY SENTINEL. The first time the tab goes dirty we push one extra entry with
+   * the SAME url as the page. A Back press then pops that entry instead of leaving: nothing on screen
+   * changes, and `popstate` tells us what happened. Still dirty → we re-push the sentinel (so a second
+   * Back is caught too) and ask; choosing Save or Discard traverses -2, past the sentinel and past the
+   * entry it shadows, which is exactly the one step back the reader asked for. Already clean → the
+   * sentinel has done its job, so we complete the reader's Back with -1 instead of prompting.
+   *
+   * WHY ARMED ONCE AND NOT PER DIRTY/CLEAN CYCLE. Popping the sentinel on every save would mean a
+   * history traversal racing `router.refresh()`, and — worse — a traversal fired after the reader had
+   * ALREADY left through the prompt's own Save/Discard, sending them a step further back than they
+   * asked. Leaving it armed costs one extra Back press's worth of nothing on a page that was edited, and
+   * a page nobody edited never arms it at all.
+   */
+  const sentinelArmedRef = useRef(false);
+  useEffect(() => {
+    if (!dirty || sentinelArmedRef.current || typeof window === 'undefined') return;
+    pushHistorySentinel();
+    sentinelArmedRef.current = true;
+  }, [dirty]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPopState = () => {
+      if (!sentinelArmedRef.current) return;
+      if (!dirtyRef.current) {
+        // Nothing to lose — finish the journey the reader started.
+        sentinelArmedRef.current = false;
+        window.history.go(-1);
+        return;
+      }
+      pushHistorySentinel();
+      askRef.current(() => {
+        sentinelArmedRef.current = false;
+        window.history.go(-2);
+      });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const closePrompt = () => {
     proceedRef.current = null;
