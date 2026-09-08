@@ -11,7 +11,7 @@ import {
 import { isStatutoryComponent } from '@/core/pay-rule';
 import { requireAdmin } from '@/lib/authz';
 import type { PayRule } from '@/core/pay-rule';
-import { Card, ErrorBanner, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { OrpConfig } from './orp-config';
 import { PayRuleEditor } from './pay-rule-editor';
 import { StatutoryConfig } from './statutory-config';
@@ -67,11 +67,16 @@ export async function ComponentForm({
     .map((c) => ({ code: c.code, name: c.label ?? c.name }));
 
   return (
-    // 711adcd2 — FULL WIDTH. The screen used to carry a three-column width cap here, which is what put the
-    // reporter's four sections into a narrow strip with the ORP card they asked for having nowhere to go.
-    // The cap's class name is deliberately not written out anywhere in this file, comments included: the
-    // layout guard scans this source for it and does not strip comments (AGENTS 27).
-    <div className="w-full space-y-6">
+    // 711adcd2 — FULL WIDTH, THROUGH THE SHARED CONSTANT. The screen used to carry a width cap here, which
+    // is what put the reporter's four sections into a narrow strip with the ORP card they asked for having
+    // nowhere to go. The cap's class name is deliberately not written out anywhere in this file, comments
+    // included: the layout guard scans this source for it and does not strip comments (AGENTS 27).
+    //
+    // `pageWideCls` rather than its literal value: test/payroll-screens-layout.test.ts requires every
+    // widened screen to APPLY the named constant, so the module's width stays ONE decision in one place
+    // instead of a string each screen re-types and can drift on. This file previously spelled the same
+    // characters out by hand, which is why the guard failed it even though the rendering was already right.
+    <div className={pageWideCls}>
       <PageHeader
         title={editing ? t('editTitle', { code: component!.code }) : copy ? t('copyTitle') : t('createTitle')}
         back={{ href: LIST, label: t('backToList') }}

@@ -131,6 +131,9 @@ const WIDENED_LATER = [
   // 7ad37961 (r210) — the Edit TP1 Relief page. See NARROW_FORMS in section C for why the single-record
   // exception no longer holds for it.
   'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
+  // 711adcd2 (r254) — the Pay Item form, for the SAME reason and on the reporter's own drawing. See
+  // NARROW_FORMS in section C.
+  'app/admin/pay-components/component-form.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
@@ -335,6 +338,22 @@ describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () 
  * So the test of this list is the SHAPE OF THE RECORD, not its cardinality: a form whose fields fit a
  * reading column belongs here; a form that is really a table of items does not. Everything else on the
  * list is still the first kind, and widening one of them still needs its own argument here.
+ *
+ * ── THE SECOND EXIT, AND ITS ARGUMENT (r254, 711adcd2) ──────────────────────────────────────────────
+ * `app/admin/pay-components/component-form.tsx` was on this list and has moved to WIDENED_LATER. This is
+ * NOT the rule being softened for a second time; it is the same test applied to a record that changed
+ * shape, and the reporter is the one who changed it. 711adcd2 splits the Pay Item into FOUR titled
+ * sections they drew themselves — General Information, Ordinary Rate of Pay, Calculation, Statutory
+ * Configuration — and the approved plan asks in as many words for "a full-width layout with the sections
+ * you drew", with Back top-left and Cancel/Save bottom-right. A four-section screen carrying two
+ * independent ORP tick boxes and the whole statutory panel is no longer "a handful of fields in a
+ * reading column"; inside a 48rem cap it is one very tall list, which is exactly the complaint that moved
+ * the TP1 page out.
+ *
+ * ⚠️ AND THIS CASE IS UPDATED RATHER THAN DELETED, DELIBERATELY. The guard pinned a decision the reporter
+ * has now reversed for ONE screen, and the other five entries below still hold — a fixed-transaction row,
+ * a zakat election, an EA document, and the two loan forms are all still the first kind. Deleting the
+ * case to make a red gate green would have retired the rule for all six.
  */
 const NARROW_FORMS = [
   'app/payroll/transactions/fixed/[id]/page.tsx',
@@ -342,7 +361,6 @@ const NARROW_FORMS = [
   'app/payroll/reports/ea/[employmentId]/page.tsx',
   'app/admin/loans/new/page.tsx',
   'app/admin/loans/[id]/page.tsx',
-  'app/admin/pay-components/component-form.tsx',
 ] as const;
 
 describe('152fea7f · C — the single-record forms were deliberately NOT swept in', () => {
