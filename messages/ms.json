@@ -8572,6 +8572,25 @@
       "confirm": "Sahkan",
       "cancel": "Batal"
     },
+    "tabSave": {
+      "saveChanges": "Simpan Perubahan",
+      "discardChanges": "Buang Perubahan",
+      "cancel": "Batal",
+      "saving": "Menyimpan…",
+      "savedToast": "Perubahan disimpan",
+      "saveFailed": "Perubahan anda tidak dapat disimpan",
+      "noChanges": "Tiada perubahan belum disimpan",
+      "changedCount": "Perubahan belum disimpan: {count}",
+      "reviewChanges": "Semak perubahan",
+      "hideChanges": "Sembunyikan perubahan",
+      "colField": "Medan",
+      "colOriginal": "Asal",
+      "colNew": "Nilai baharu",
+      "editedBadge": "Disunting",
+      "emptyValue": "—",
+      "unsavedTitle": "Perubahan belum disimpan",
+      "unsavedBody": "Anda telah membuat perubahan yang belum disimpan. Adakah anda mahu menyimpannya sebelum keluar?"
+    },
     "themeToggle": {
       "toggle": "Tukar tema"
     }

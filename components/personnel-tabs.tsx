@@ -24,6 +24,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
 /** Window event a tour engine dispatches with a CSS selector to make the tab holding it visible. */
 export const TOUR_REVEAL_EVENT = 'tour:reveal';
@@ -63,7 +64,7 @@ export function ClientTabs<K extends string>({
   activeRef.current = active;
   const shellRef = useRef<HTMLDivElement>(null);
 
-  const selectTab = (key: K) => {
+  const commitTab = (key: K) => {
     setActive(key);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -71,6 +72,26 @@ export function ClientTabs<K extends string>({
       // Preserve every other param (from, asOf, …); replaceState avoids a server round-trip and scroll reset.
       window.history.replaceState(window.history.state, '', url.toString());
     }
+  };
+
+  /**
+   * 420ebab5 part two — a tab with unsaved edits asks before it is left.
+   *
+   * The panels stay MOUNTED when hidden (see the note above), so a switch does not itself lose anything;
+   * what it loses is the reader's sight of the edit, and with a consolidated per-tab Save the whole point
+   * is that an edit is not written until Save is pressed. So the tab strip asks the save scope
+   * (components/tab-save-scope.tsx) first. The two are sibling islands with no common React ancestor, so
+   * they meet through lib/unsaved-changes.ts — and when nothing is registered, or nothing is dirty, this
+   * is the identical immediate switch it always was.
+   */
+  const selectTab = (key: K) => {
+    if (key === active) return;
+    const guard = firstDirtyGuard();
+    if (guard) {
+      guard.prompt(() => commitTab(key));
+      return;
+    }
+    commitTab(key);
   };
 
   useEffect(() => {

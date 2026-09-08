@@ -231,6 +231,22 @@ body {
   animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) 6;
 }
 
+/* 420ebab5 part two — an edited-but-unsaved field marks itself.
+   The marks are ATTRIBUTES set from JavaScript (lib/tab-save-dom.ts markEditedFields), not Tailwind
+   classes, because they land on server-rendered nodes the client bundle never re-renders — and because a
+   class string assembled at runtime is invisible to Tailwind's source scan, so the rule would never be
+   emitted. `data-edited` is on the control; `data-edited-field` is on the Field label around it, which is
+   what carries the small "Edited" caption in whatever locale the page is in. */
+[data-edited='true'] {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 22%, transparent);
+}
+label[data-edited-field='true'] > span:first-child::after {
+  content: ' · ' attr(data-edited-label);
+  color: var(--ring);
+  font-weight: 600;
+}
+
 /* Clean print output for statutory documents (EA statement, etc.) — hide app
    chrome and flatten the floating shell so the full document prints. */
 @media print {

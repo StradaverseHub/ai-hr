@@ -8572,6 +8572,25 @@
       "confirm": "确认",
       "cancel": "取消"
     },
+    "tabSave": {
+      "saveChanges": "保存更改",
+      "discardChanges": "放弃更改",
+      "cancel": "取消",
+      "saving": "正在保存…",
+      "savedToast": "更改已保存",
+      "saveFailed": "无法保存您的更改",
+      "noChanges": "没有未保存的更改",
+      "changedCount": "未保存的更改：{count}",
+      "reviewChanges": "查看更改",
+      "hideChanges": "隐藏更改",
+      "colField": "字段",
+      "colOriginal": "原值",
+      "colNew": "新值",
+      "editedBadge": "已修改",
+      "emptyValue": "—",
+      "unsavedTitle": "未保存的更改",
+      "unsavedBody": "您所做的更改尚未保存。离开前要保存这些更改吗？"
+    },
     "themeToggle": {
       "toggle": "切换主题"
     }
