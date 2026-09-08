@@ -18,17 +18,9 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-07 (r226-r252 SHIPPED · ⛔ r253 BUILT AND GATED BUT **NOT DEPLOYED** · THE DEMO SIGNS IN AT /login · THE DASHBOARD IS FAST FOR NON-ADMINS)
+## CURRENT STATE — snapshot 2026-09-08 (r226-r253 SHIPPED · FIVE OF SIX r253 ITEMS CLOSED · THE DEMO SIGNS IN AT /login · THE DASHBOARD IS FAST FOR NON-ADMINS)
 
-⛔ **`main` IS AHEAD OF PRODUCTION AND THAT IS THE FIRST THING TO FIX.** `main@7fd982e6` carries r253 —
-six approved board items, gate GREEN across 6 chunks — and production is still on **`2db7011f` (r252)**.
-The deploy never started: **SSH to 203.142.6.241:8288 times out** (host UP, ping 21ms, ports 80/443 open,
-8288 and 22 filtered; this machine's network is fine). When SSH is back, deploy r253 the normal way —
-rsync → `deploy.sh` → **zero-change `rsync -azi --dry-run` read as TEXT, not as a line count** → confirm
-the watermark is still `1781862555000` (r253 carries NO migration) → then mark the six items deployed on
-the board. **Nothing from r253 is marked deployed and nothing should be until that has actually run.**
-
-**`main@2db7011f` IS WHAT RUNS ON PRODUCTION (r252, 2026-09-07)** — verified by an
+**`main@210e2843` IS WHAT RUNS ON PRODUCTION (r253, 2026-09-08)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
 which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
 and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
@@ -323,21 +315,27 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r253 (2026-09-07) — SIX APPROVED ITEMS, BUILT AND GATED GREEN. ⛔ **NOT DEPLOYED — THE BOX IS UNREACHABLE.** `main@7fd982e6`.
+### r253 (2026-09-08) — SIX APPROVED ITEMS. **DEPLOYED `main@210e2843`** after a 19-hour block on SSH.
 
-⛔ **READ THIS FIRST. r253 IS FINISHED CODE SITTING ON `main` THAT PRODUCTION HAS NEVER SEEN.** Every
-gate passed — tsc clean, **GATE GREEN across all 6 chunks (780 files, peak-disk 55-71%)**, the browser
-project green (2 files, 10 passed + 1 expected fail), `next build` clean — and then the deploy could not
-start: **SSH to 203.142.6.241:8288 times out.** Diagnosed rather than assumed: the host is UP (ping 0%
-loss, 21ms) and ports 80 and 443 are OPEN, but 8288 AND 22 are closed/filtered, while github.com:443 and
-1.1.1.1:443 are fine from here — so it is that box's SSH, not this machine's network and not a dead
-server. **Nothing is marked deployed on the board and nothing should be until the rsync + deploy.sh +
-zero-change dry-run + watermark check have actually run.**
+**DEPLOYED 2026-09-08 10:4x.** tsc clean · **GATE GREEN across all 6 chunks (780 files, peak-disk
+55-71%)** · browser project green (2 files, 10 passed + 1 expected fail) · `next build` clean · zero-change
+`rsync -azi --dry-run` (read as TEXT, and genuinely empty) · watermark still `371 / 1781862555000`, which
+is correct because **r253 carries NO migration** · service active, `GET localhost:3000/` → 401 · features
+re-verified by RENDERING on the box, not by trusting deploy.sh.
 
-⚠️ **AND A WARNING ABOUT HOW THAT WAS NEARLY MISREPORTED.** The first proof-of-arrival check was
-`rsync -azi --dry-run … | wc -l`, which printed **2** — and 2 is not 0, but the two lines were
-`ssh: connect … timed out` and `rsync: unexpected end of file`, NOT two changed files. A line count is
-not a change count when the transport can fail. Read the dry run's TEXT.
+⚠️ **IT WAS BLOCKED FOR 19 HOURS AND THE HOST LOOKED HEALTHY THROUGHOUT.** SSH to 203.142.6.241:8288 timed
+out from this machine while ping ran at 19ms with 0% loss and ports 80/443 answered. **Ports 80/443 on that
+IP are Odoo, not this app** — nginx there redirects to `/odoo`, so "the host serves HTTP" proves nothing
+about the HR box and is a false comfort. 22, 2222, 8288 and 8289 were all filtered; the LAN route
+(`10.20.30.20:8288`, the default in scripts/improve/release.ts) gave *connection refused* rather than a
+timeout, which is the tell that the packet arrived and was rejected instead of dropped. The egress IP was
+IDENTICAL before and after (149.88.106.138), so the "my address rotated" theory was wrong. It cleared on
+its own; nothing here was changed to fix it.
+
+⚠️ **A LINE COUNT IS NOT A CHANGE COUNT.** The first proof-of-arrival check was
+`rsync -azi --dry-run … | wc -l`, which printed **2** — two ERROR lines (`ssh: connect … timed out`,
+`rsync: unexpected end of file`), not two changed files. Read the dry run's TEXT. On the real deploy it
+was genuinely empty with exit 0.
 
 **WHAT SHIPPED INTO `main` — six workstreams, six worktrees, six branches, merged and gated:**
 `8041aa84` Transactions → Transaction Entry · `b372e923` a Payroll Result link on every reprocess row ·
@@ -404,6 +402,20 @@ keys. `i18n-check.mjs` cannot see either failure.
 
 **`CHUNKS=6` IS THE NEW FLOOR AND IT WAS MEASURED, NOT GUESSED.** At 780 files six chunks peaked at
 **55-71%**, against five chunks' 87-94% at 769 files last round. No environmental failures.
+
+**BOARD STATUS AFTER THIS ROUND — FIVE CLOSED, ONE DELIBERATELY LEFT OPEN.** `8041aa84`, `b372e923`,
+`9da61c86`, `2983802f` and `d75b0c11` are marked deployed (`build_ref = r253 main@210e2843`).
+**`420ebab5` IS NOT MARKED DEPLOYED AND MUST NOT BE**: its approved plan promised the reporter TWO parts,
+and only part one (the clickable row) shipped. Marking it closed would tell them the one-Save-per-tab work
+is done when it has not started. Part two is staged behind this round's
+`docs/audits/420ebab5-personnel-save-classification.md`.
+
+⚠️ **TWO THINGS ARE STILL OWED TO THE REPORTER IN WORDS, AND NEITHER IS A CODE TASK.**
+1. `d75b0c11` — the approved plan told them the filter memory "already works". It did not, for the path
+   they used. The fix shipped, but the board has no edit-in-place for an approved plan (pushing one resets
+   the status), so per AGENTS 31 the correction belongs in an item raised BACK to them, near the top.
+2. `420ebab5` — they should be told part one is live and part two is next, rather than inferring it from
+   an item that never closes.
 
 **STILL OWED ON THE BOARD, deliberately NOT built this round:** `a6fe37fc` (the approved plan promises the
 reporter a structure-and-screens review BEFORE building — building it would break that promise) ·
