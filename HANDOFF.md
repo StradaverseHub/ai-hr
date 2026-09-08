@@ -18,13 +18,13 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-08 (r226-r253 SHIPPED · FIVE OF SIX r253 ITEMS CLOSED · THE DEMO SIGNS IN AT /login · THE DASHBOARD IS FAST FOR NON-ADMINS)
+## CURRENT STATE — snapshot 2026-09-08 (r226-r254 SHIPPED · BOARD HAS 3 APPROVED, ALL DELIBERATELY OPEN · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
 
-**`main@210e2843` IS WHAT RUNS ON PRODUCTION (r253, 2026-09-08)** — verified by an
+**`main@bd17c7ab` IS WHAT RUNS ON PRODUCTION (r254, 2026-09-08)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
 which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
 and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
-**Migration `0455` VERIFIED APPLIED, not assumed:** 371 migrations, watermark `1781862555000`, and
+**Migration `0456` VERIFIED APPLIED, not assumed:** 372 migrations, watermark `1781862556000`, and
 `pg_indexes` on the box returns
 `CREATE INDEX domain_event_recent_idx ON public.domain_event USING btree (tenant_id, occurred_at DESC)`.
 `0454` remains applied from r238, `0452`/`0453` from r236.
@@ -314,6 +314,71 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r254 (2026-09-08) — FOUR APPROVED ITEMS. **DEPLOYED `main@bd17c7ab`**, one closed, three deliberately left open.
+
+**DEPLOYED.** tsc clean · **GATE GREEN across all 6 chunks (785 files)** · browser project green · shadow
+PASS 372/372 · `next build` clean · zero-change `rsync -azi --dry-run` read as TEXT · watermark
+`372 / 1781862556000` · service active, `GET localhost:3000/` → 401 · backfill verified IN THE DATABASE.
+
+**WHAT SHIPPED.** `711adcd2` the ORP tick boxes + Category renames + the full-width Pay Item screen
+(migration `0456`) · `759dfc7d` stage one, Family on drafts including materialisation at activation ·
+`420ebab5` part two, one Save per tab — PROFILE TAB ONLY · `a6fe37fc` the Leave Configuration structure
+and mockups, which are a DESIGN deliverable awaiting the reporter's review, not code.
+
+⚠️ **THE PREMISE CHECK WAS THE MOST VALUABLE THING IN THE ROUND, AND IT SAVED A PAY INCIDENT.** The
+approved plan told the reporter that overtime inclusion is decided today "by TYPE, not by a tick box".
+Measured, that is HALF TRUE and the false half is the one a backfill would have aimed at:
+  · **The statutory engine** (core/payroll.ts:2611-2628 → pack.payroll.overtimePay) reads
+    `compensation.basicSalary` + `compensation.monthlyAllowance` — COLUMNS. **No pay item takes any part
+    in it.** `backfillEmploymentComponentsFromCompensation` mirrors the column INTO a component one-way,
+    so the two stores can and do diverge.
+  · **A tenant's own `formula` rule** reading the `fixed_allowances` operand is the path the plan
+    describes, and the only one the tick box can configure.
+  · **UNPAID LEAVE HAS NO PAY-ITEM INPUT AT ALL** — it is `basicRaw / unpaidDivisor × days`. So the honest
+    backfill is FALSE on every row. Had it been set TRUE "to preserve behaviour" it would have moved EPF,
+    SOCSO, EIS, PCB and HRDF with it, because the unpaid deduction is PRE-statutory (it reduces wagesExOt
+    and hrdfBase). **Verified on production after deploy: 24 of 25 allowances ticked for overtime, 0 for
+    unpaid leave, 0 on every deduction — and the ONE allowance excluded is BASIC**, which is correct
+    because it IS the base. No non-payable or statutory row is ticked anywhere.
+
+⚠️ **AND THE VERIFY PASS STILL FOUND TWO MONEY DEFECTS THE BUILD INTRODUCED — HAND-FIXED PER 23b.**
+  1. `payItemFeedsUnpaidLeaveOrp` had three structural clauses and NO nonPayable/oneOff clause, while its
+     overtime sibling refused those rows AT ITS CALL SITE. That asymmetry let a record-only item raise a
+     real deduction: basic 6000 + a ticked non-payable 500 + 2 unpaid days wrote **419.35 instead of
+     387.10**, taking all five statutory bases with it. The clause now lives INSIDE the predicate, once,
+     for both engines.
+  2. `previewPayRule`'s projection omitted `nonPayable`, so the kernel's `!c.nonPayable` guard was INERT
+     in the preview and live in the run — a ticked BIK of 300 previewed as 300 and paid 0.00, on the very
+     screen an operator uses to set an overtime rate. And the form pre-ticked Overtime on EVERY new item
+     (`?? true`), so this was reachable with no deliberate tick. The default is now the pre-0456 KIND test.
+
+**THE GATE WENT RED ONCE, ON A GUARD PINNING THE DECISION THIS ROUND REVERSES (AGENTS 18).**
+`152fea7f · C` asserted that `component-form.tsx` keeps a reading-width cap; the approved plan asks for
+"a full-width layout with the sections you drew". Resolved the way that guard's OWN header sets out for
+the TP1 page in r210 — "the SHAPE OF THE RECORD, not its cardinality" — so it moved to `WIDENED_LATER`
+with its argument written beside TP1's. **The case was UPDATED, not deleted:** the other five entries
+still hold, and deleting it to green a red gate would have retired the rule for all six. The guard then
+caught a second, real thing: `WIDENED_LATER` requires the named `pageWideCls` to be APPLIED, and the file
+hand-wrote its literal value as a string.
+
+⚠️⚠️ **THREE GATES WERE OOM-KILLED, AND THE CAUSE WAS THE RAM DISK ITSELF — NOT THE WORKERS.** See the
+Traps entry. Short version: the 8GB RAM disk IS memory on an 18GB machine, cutting workers 10 → 6 → 4
+never touched the biggest consumer, and all three runs died in chunk 2. **The cluster is now ON DISK**
+(`AIHR_RAMDISK_GB=0`) and the gate went green first try at 6 chunks / 6 workers, 59-61% disk.
+
+**BOARD: ONE CLOSED, THREE OPEN ON PURPOSE.** `711adcd2` deployed. `759dfc7d` is stage one of five tabs.
+`420ebab5` has only the Profile tab consolidated — and the fix pass MEASURED that **Family and
+Qualification cannot be consolidated at all** (every form on them is a child record, so a tab-wide Save
+would have nothing to save and a tab-wide Discard would cover nothing); the reporter named Family
+explicitly and must be told in words. `a6fe37fc` is waiting on THEIR review, which is what its plan
+promised.
+
+**TWO THINGS SHIPPED DIFFERENTLY FROM THE 711adcd2 TICKET, both deliberate and both owed to the reporter:**
+a ticked DEDUCTION is stored and warned about but moves neither base (the plan refused their worked
+example as wrong under EA s.60I, and adding a deduction as a POSITIVE would be worse); and a Benefit in
+Kind paid as CASH still prints in its normal box, because a sixth cash box would break the invariant every
+payslip renderer relies on — the five cash boxes sum to gross.
 
 ### r253 (2026-09-08) — SIX APPROVED ITEMS. **DEPLOYED `main@210e2843`** after a 19-hour block on SSH.
 
@@ -1336,6 +1401,41 @@ chunk 5 peaked at **94%** — against the 58-79% that made five chunks look safe
 went red with ZERO AssertionErrors; all 10 files passed on a rebuilt cluster. The floor and the ceiling
 have converged, so treat the next zero-AssertionError red as the disk again and **go to `CHUNKS=6` before
 diagnosing anything**. The suite grows every round; this number needs re-measuring, not re-assuming.
+
+### ⚠️ THE 8GB RAM DISK *IS* MEMORY — AND IT IS WHY A GATE GETS OOM-KILLED, NOT THE WORKER COUNT (r254)
+
+Three consecutive full gates were killed by the OS for low memory. The worker count was cut 10 → 6 → 4
+between them and **all three died in chunk 2 anyway**, which is the tell: if workers were the constraint,
+fewer of them would have got further.
+
+**The cluster lives on a RAM DISK, so the cluster is resident memory.** This machine has 18GB; the RAM
+disk is 8GB and was holding **4.6GB of live data** when the first gate died; other apps (EDR 1.3GB, a
+diskimages-helper, browsers) hold ~4GB. That leaves ~6GB for Postgres, Node and the workers — and no
+worker setting touches the biggest consumer. **`peak-disk` stayed at 55-72% throughout, so the disk
+signal says nothing about this failure**; do not reach for `CHUNKS` here (that is the lever for rule 12's
+disk exhaustion, which is a different failure with a different symptom).
+
+**THE FIX IS THE MODE THE SCRIPT ALREADY DOCUMENTS:** `AIHR_RAMDISK_GB=0` rebuilds ON DISK, "no ceiling;
+for a bare full run" (scripts/dev-db-rebuild.sh:51). Free memory went 48% → 56% and the gate then passed
+first try at 6 chunks / 6 workers, 59-61% disk. It is slower — SSD rather than RAM — which is the right
+way round on a memory-bound machine.
+
+**⚠️ TWO THINGS THAT WILL BITE WHOEVER DOES THIS NEXT.**
+1. **PASS `AIHR_RAMDISK_GB=0` TO THE GATE, not just to a hand-run rebuild.** `gate-chunked.sh` rebuilds
+   the cluster PER CHUNK, so without it the first chunk silently recreates the 8GB RAM disk and the
+   problem comes straight back.
+2. **DO NOT just run the script with `AIHR_RAMDISK_GB=0` while `$DATA` is still the RAM-disk symlink.**
+   The on-disk branch is `elif [ -d "$DATA" ]`, and `-d` FOLLOWS the link, so `mv` moves the LINK — and
+   `$DATA.wedged-<ts>` then points at the RUNNING cluster. The script's own header records a real instance
+   that sat there for three days. Dismantle it by hand instead: `pg_ctl stop`, confirm `[ -L "$DATA" ]`
+   and `rm -f` the link (NEVER `rm -rf`), `umount` the mount, `hdiutil detach $(cat /tmp/aihr-ramdisk.dev)`,
+   and only then rebuild.
+
+**AND AN OOM KILL TAKES POSTGRES WITH IT.** The first thing run afterwards failed with
+`ECONNREFUSED 127.0.0.1:5433` and ZERO AssertionErrors — which reads like a broken test file and is not.
+A dead cluster and a broken harness look identical; check `psql -tAc 'select 1'` before diagnosing code.
+(Rule 10b's symlink check still applies after every kill — it was clean all three times here, because the
+kills landed mid-chunk rather than mid-rebuild.)
 
 ### ⚠️ A TEST THAT ASSERTS AN ORDERED ARRAY FROM A QUERY WITH NO `ORDER BY` IS A TIME BOMB, AND A NEW INDEX DETONATES IT (r252)
 
