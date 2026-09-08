@@ -486,7 +486,8 @@ describe('§3 everything entered on a draft survives Activate, field by field', 
   it('a draft with NO family activates exactly as it always did, and creates no family rows', async () => {
     // Every draft written before this item has no `family` key. It must still create the same employee.
     const ctx = adminCtx(b);
-    const { family: _dropped, ...noFamily } = fullDraft();
+    const noFamily: EmployeeDraftData = { ...fullDraft() };
+    delete noFamily.family;
     const { id } = await saveEmployeeDraft(ctx, { data: noFamily, currentStep: 4 });
     const { employmentId } = await completeEmployeeDraft(ctx, id);
     const [emp] = await owner.db
@@ -518,8 +519,17 @@ describe('§4 a family the writer would refuse stops the activation BEFORE anyth
       data: fullDraft({ family: [{ fullName: 'Farah Aziz', relationship: 'spouse', gender: 'lady' }] }),
       currentStep: 5,
     });
-    await expect(completeEmployeeDraft(ctx, id)).rejects.toThrow(/Family member 1/);
+    const err = await completeEmployeeDraft(ctx, id).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    // THE COUNTS ARE ASSERTED FIRST, and deliberately so. Both halves fail without the pre-flight, but
+    // they fail differently: the message only says WHICH layer refused, while this says whether an
+    // employee was left behind. Checking the message first would report "expected /Family member 1/,
+    // got 'Dependent gender is invalid.'" and bury the fact that a person, an employment, a statutory
+    // row and a salary had already been committed — which is the actual defect.
     expect(await counts()).toEqual(before);
+    expect(err?.message).toMatch(/Family member 1/);
     // The draft survives the refusal — losing the typed work would be the worse failure.
     expect(await getEmployeeDraft(ctx, id)).not.toBeNull();
   });
