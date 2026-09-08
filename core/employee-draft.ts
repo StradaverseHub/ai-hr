@@ -38,9 +38,15 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { company, employeeDraft, employeeIdConfig, person, tenantCounter } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
-import { hireEmployee } from './org';
+// 759dfc7d stage 2 — the writers behind the Profile and Employment tabs. `updatePerson` owns the person
+// columns AND (through its emergency block) the primary emergency contact; `setEmploymentInfo` owns the
+// probation / notice / contract periods and the eight flat organisation columns. Both are the SAME writers
+// the Personnel screen's own Save buttons call, which is the plan's rule: creation on completion goes
+// through the existing writers, never a bespoke insert.
+import { hireEmployee, setEmploymentInfo, updatePerson, type EmploymentInfoInput, type PersonProfileFields } from './org';
 import { issueLegacyEmployeeCode, setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
+import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
 import { listLeaveTypes } from './read';
 import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employee-id-config';
 // 06f0cb8f — "is this Employee ID free?" spans employment AND employee_draft now. One definition, in its
@@ -51,12 +57,16 @@ import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
 import {
   draftFamily,
+  draftHasPassport,
   draftLabel,
+  draftTaxResidency,
   missingForCreation,
   missingToCreate,
   stepKey,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
+  type EmployeeDraftProfile,
+  type EmployeeDraftStatutory,
 } from '../lib/employee-draft-schema';
 // 759dfc7d — the family the draft captured becomes real rows at Activate. Both of these live in
 // core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
@@ -593,6 +603,19 @@ export async function completeEmployeeDraft(
   const family = draftFamilyToDependents(data);
   await assertDependentsValid(ctx, family);
 
+  // ── The catalog-backed picks, judged BEFORE anything is created (item 759dfc7d stage 2) ─────────
+  // Same discipline, same reason: `updatePerson` and `setEmploymentInfo` both refuse a value that is not
+  // an ACTIVE profile_option, and both of them run after `hireEmployee` has committed. A draft picked one
+  // of these weeks ago and an administrator may have retired the option since — a refusal HR can act on
+  // now, rather than an employee created with half a profile. `assertProfileValueAllowed` is the SAME
+  // check those writers make (legacy tolerance included: `null` as the legacy value here, because a person
+  // that does not exist yet has nothing stored to be tolerant of).
+  await withTenant(ctx, async (tx) => {
+    for (const { category, value } of draftCatalogValues(data)) {
+      await assertProfileValueAllowed(tx, category, value, null);
+    }
+  });
+
   const types = await listLeaveTypes(ctx);
   const { employmentId, personId } = await hireEmployee(ctx, {
     // 35b7af0a group 8 — the nationality is seeded on the person HERE, at creation, because everything
@@ -661,12 +684,141 @@ export async function completeEmployeeDraft(
       eisCategory:
         (str(s.eisCategory) as 'auto' | 'none' | undefined) ??
         (boolOrUndef(s.eisEligible) === false ? 'none' : undefined),
-      isResident: boolOrUndef(s.isResident),
+      // 759dfc7d stage 2 — the tax RESIDENCY the draft now asks for, folded back into the legacy boolean
+      // this full-row setter takes. `setTax` below writes the four-value column itself; this keeps the two
+      // in step even for a draft that never reaches that call.
+      isResident: (() => {
+        const r = draftTaxResidency(s);
+        return r === undefined ? undefined : r === 'resident';
+      })(),
       epfCitizenship: citizenship(s.epfCitizenship),
       bankName: str(s.bankName),
       bankAccountNo: str(s.bankAccountNo),
+      // 759dfc7d stage 2 — the SOCSO / EIS / SKBBK eligibility and employer-bears controls the Personnel
+      // Bank & Statutory card has always had and the draft could not reach. Passed as booleans; an
+      // untouched checkbox is `undefined` and the setter's own default (false) applies, which is the
+      // column default and therefore byte-identical to what a pre-stage-2 draft created.
+      subjectToSkbbk: s.subjectToSkbbk,
+      employerBearsSocso: s.employerBearsSocso,
+      employerBearsEis: s.employerBearsEis,
+      employerBearsSkbbk: s.employerBearsSkbbk,
+      employerBearsEpf: s.employerBearsEpf,
+    });
+
+    // ── The three PARTIAL statutory writers, over the row `set` has just seeded ───────────────────
+    // Each owns columns the full-row setter above does not write, and each throws NoStatutoryProfileError
+    // when there is no row — which is why they are inside this branch and not beside it.
+
+    // Bank Information: the custom payment holder (pay the salary into a third party's account). A full
+    // overwrite of the six bank columns, so the bank name and account number are passed through — omitting
+    // them would blank what `set` wrote one statement ago. Called only when a holder is actually in use;
+    // otherwise this would append an `employee.bank.updated` event to every activation saying nothing.
+    if (s.enableCustomHolderName || s.enableCustomHolderId) {
+      await pack.statutory.setBank(ctx, {
+        personId,
+        bankName: str(s.bankName) ?? null,
+        bankAccountNo: str(s.bankAccountNo) ?? null,
+        enableCustomHolderName: s.enableCustomHolderName ?? false,
+        customHolderName: str(s.customHolderName) ?? null,
+        enableCustomHolderId: s.enableCustomHolderId ?? false,
+        customHolderId: str(s.customHolderId) ?? null,
+      });
+    }
+
+    // Income Tax (PCB): residency, child-relief mode and the three relief/bearing flags — none of which
+    // `set` can write. Also a full overwrite of the tax columns, so tax number, category and children ride
+    // along for the same reason the bank columns do. Called only when the draft carries one of the fields
+    // `set` cannot reach: for every other draft `set` has already written the same tax picture, and a
+    // second write would only add an `employee.tax.updated` event recording no change.
+    if (
+      draftTaxResidency(s) !== undefined ||
+      str(s.childReliefMode) !== undefined ||
+      s.employerBearsTax !== undefined ||
+      s.disabledIndividual !== undefined ||
+      s.disabledSpouse !== undefined
+    ) {
+      await pack.statutory.setTax(ctx, {
+        personId,
+        taxNumber: str(s.taxNumber) ?? null,
+        taxCategory: numOrUndef(s.taxCategory),
+        numChildren: numOrUndef(s.numChildren),
+        taxResidency: draftTaxResidency(s),
+        childReliefMode: str(s.childReliefMode),
+        employerBearsTax: s.employerBearsTax,
+        disabledIndividual: s.disabledIndividual,
+        disabledSpouse: s.disabledSpouse,
+      });
+    }
+
+    // Others Statutory: the tri-state HRDF override. '' means "follow the company's registration default"
+    // and is the stored null, so an untouched select writes nothing at all.
+    if (str(s.subjectToHrdf) !== undefined) {
+      await pack.statutory.setOthersStatutory(ctx, {
+        personId,
+        subjectToHrdf: s.subjectToHrdf === 'yes',
+      });
+    }
+  }
+
+  // ── Identity No (NRIC): the OLD card (item 759dfc7d stage 2) ───────────────────────────────────
+  // `set` above writes `ic_number` but has no argument for `old_ic_number` — the pre-1990 card the CP39
+  // asks for. `setIc` is the writer that owns both, and it UPSERTS, so it is safe whether or not the
+  // branch above ran. Called only when there is an old card to record: with a blank one it would either
+  // no-op or re-write the IC that has just been stored, and append a second identity event for neither.
+  if (str(p.oldIcNumber) !== undefined) {
+    await pack.statutory.setIc(ctx, {
+      personId,
+      icNumber: icNumber ?? '',
+      oldIcNumber: str(p.oldIcNumber) ?? null,
     });
   }
+
+  // ── Passport Information (item 759dfc7d stage 2) ───────────────────────────────────────────────
+  // Called ONLY when the draft carries a passport at all, and `draftHasPassport` is shared with the
+  // completeness rule so the two cannot drift. This gate is load-bearing rather than an optimisation:
+  // `setPassportProfileMY` makes the number/issue/expiry trio MANDATORY for a non-Malaysian employee, so
+  // calling it unconditionally would refuse to activate every foreign hire whose passport HR has not
+  // collected yet — a hire that succeeds perfectly well today. The half-entered case is refused earlier,
+  // by `missingByStep`, before anything is created.
+  if (draftHasPassport(p)) {
+    await pack.statutory.setPassport(ctx, {
+      personId,
+      passportNumber: str(p.passportNumber) ?? null,
+      passportIssueDate: str(p.passportIssueDate) ?? null,
+      passportExpiryDate: str(p.passportExpiryDate) ?? null,
+      passportIssuingCountry: str(p.passportIssuingCountry) ?? null,
+      passportIssuingCountryCode: str(p.passportIssuingCountryCode) ?? null,
+      passportRemark: str(p.passportRemark) ?? null,
+    });
+  }
+
+  // ── The rest of the Profile tab (item 759dfc7d stage 2) ────────────────────────────────────────
+  // Names, demographics, both address blocks and the primary emergency contact, through the SAME
+  // `updatePerson` the Personnel Profile tab's own Save calls. Not best-effort, unlike the compliance
+  // block below: everything here is what the reporter typed and asked to keep, so a refusal must be
+  // reported rather than swallowed — which is exactly why the catalog pre-flight above runs BEFORE the
+  // hire, leaving nothing here that can realistically fail.
+  const profileFields = draftPersonProfileFields(p);
+  if (Object.keys(profileFields).length > 0) {
+    await updatePerson(ctx, {
+      personId,
+      // updatePerson's required core trio. `hireEmployee` has just written all three from these same
+      // values, so this re-states them rather than changing them — the writer keeps name/email notNull
+      // and would reject a payload without them.
+      fullName: str(p.fullName)!,
+      primaryEmail: str(p.primaryEmail)!,
+      phone: str(p.phone) ?? null,
+      ...profileFields,
+    });
+  }
+
+  // ── The rest of the Employment tab (item 759dfc7d stage 2) ─────────────────────────────────────
+  // Probation, notice period, contract information and the eight flat organisation columns, through
+  // `setEmploymentInfo` — the same writer the Personnel Employment tab saves with, and untagged, which is
+  // what confines it to exactly the columns a plain save may touch (the Join Dates, the grade and the
+  // effective-dated assignment are movement-only and are `hireEmployee`'s to set).
+  const employmentInfo = draftEmploymentInfo(e);
+  if (employmentInfo) await setEmploymentInfo(ctx, { employmentId, ...employmentInfo });
 
   // Gender / marital status / date of birth are compliance-gated fields with their own writer. An
   // explicitly typed DOB wins; otherwise the IC derives one, exactly as setIcAction and the importer
@@ -792,8 +944,180 @@ export function draftFamilyToDependents(data: EmployeeDraftData): DependentInput
   );
 }
 
-function hasAnyStatutory(s: Record<string, string | undefined>): boolean {
-  return Object.values(s).some((v) => (v ?? '').trim() !== '');
+/**
+ * Does this draft carry ANY statutory detail — i.e. must a statutory row exist for the new employee?
+ *
+ * 759dfc7d stage 2 WIDENED THE TYPE AND THAT IS THE WHOLE FIX. It used to take
+ * `Record<string, string | undefined>` and call `.trim()` on every value; the Bank & Statutory tab now
+ * carries CHECKBOXES, so the section holds booleans, and `(false).trim` is a TypeError — every activation
+ * of a draft with a ticked box would have thrown here, before anything was written. A boolean counts when
+ * it is `true`: an untouched checkbox is `undefined`, and a box ticked and un-ticked again is `false`,
+ * which is the column default and therefore not a reason to conjure a statutory row.
+ */
+function hasAnyStatutory(s: EmployeeDraftStatutory): boolean {
+  return Object.values(s as Record<string, string | boolean | undefined>).some((v) =>
+    typeof v === 'boolean' ? v : (v ?? '').trim() !== '',
+  );
+}
+
+/**
+ * THE DRAFT'S PROFILE → `updatePerson`'s optional field set, field for field (item 759dfc7d stage 2).
+ *
+ * EXPORTED SO IT CAN BE TESTED WITHOUT A DATABASE, for the same reason `draftFamilyToDependents` is:
+ * `test/employee-draft-tabs.test.ts` walks the draft's own profile keys and fails if one of them reaches
+ * no writer. A field HR types on a draft and Activate silently drops is the single failure this item
+ * exists to prevent, and an inline object literal gives a test nothing to walk.
+ *
+ * ONLY NON-BLANK VALUES ARE CARRIED. `updatePerson` reads an absent key as "leave unchanged" and a
+ * present-but-empty one as "clear to NULL"; on a person created seconds earlier the two are the same
+ * write, but they are NOT the same audit record — `person.updated` lists the field names a save carried,
+ * and listing thirty fields nobody filled in would make the event useless for reconstructing what HR
+ * actually entered.
+ *
+ * FULL NAME, EMAIL AND PHONE ARE ABSENT ON PURPOSE. They are `updatePerson`'s required core trio rather
+ * than part of this optional set, and `hireEmployee` has already written them from the draft; the caller
+ * passes them separately.
+ */
+export function draftPersonProfileFields(p: EmployeeDraftProfile): PersonProfileFields {
+  const out: Record<string, string> = {};
+  const put = (k: keyof PersonProfileFields, v: string | undefined) => {
+    const s = str(v);
+    if (s !== undefined) out[k] = s;
+  };
+  // Personal Details.
+  put('salutation', p.salutation);
+  put('firstName', p.firstName);
+  put('lastName', p.lastName);
+  put('preferredName', p.preferredName);
+  put('religion', p.religion);
+  put('race', p.race);
+  // `nationality` is NOT here: `hireEmployee` seeds it on the person at creation (35b7af0a group 8), and
+  // writing it a second time would only add a redundant field name to the audit event.
+  // Contact & Address.
+  put('homePhone', p.homePhone);
+  put('personalEmail', p.personalEmail);
+  put('permanentAddressLine1', p.permanentAddressLine1);
+  put('permanentAddressLine2', p.permanentAddressLine2);
+  put('permanentAddressLine3', p.permanentAddressLine3);
+  put('permanentPostcode', p.permanentPostcode);
+  put('permanentCity', p.permanentCity);
+  put('permanentState', p.permanentState);
+  put('permanentCountry', p.permanentCountry);
+  put('correspondenceAddressLine1', p.correspondenceAddressLine1);
+  put('correspondenceAddressLine2', p.correspondenceAddressLine2);
+  put('correspondenceAddressLine3', p.correspondenceAddressLine3);
+  put('correspondencePostcode', p.correspondencePostcode);
+  put('correspondenceCity', p.correspondenceCity);
+  put('correspondenceState', p.correspondenceState);
+  put('correspondenceCountry', p.correspondenceCountry);
+  put('correspondenceMobilePhone', p.correspondenceMobilePhone);
+  put('correspondenceHomePhone', p.correspondenceHomePhone);
+  // Emergency Contact — updatePerson routes these five into person_emergency_contact's primary row.
+  put('emergencyContactName', p.emergencyContactName);
+  put('emergencyContactRelationship', p.emergencyContactRelationship);
+  put('emergencyContactPhone', p.emergencyContactPhone);
+  put('emergencyContactPhone2', p.emergencyContactPhone2);
+  put('emergencyContactAddress', p.emergencyContactAddress);
+  return out as PersonProfileFields;
+}
+
+/**
+ * THE DRAFT'S EMPLOYMENT → `setEmploymentInfo`'s input, field for field (item 759dfc7d stage 2).
+ *
+ * WHAT IS NOT HERE IS THE INTERESTING HALF. Department, Position, Cost Centre, Grade, Employment Type,
+ * the Join Dates and the provisional/contract END date are all `hireEmployee`'s business and are written
+ * there; this call only carries what that writer has no argument for. `contractEndDate` in particular is
+ * deliberately absent: `hireEmployee` already copies a contract hire's `provisionalEndOn` into
+ * `employment.contract_end_date` (item 8590615a), so sending it again from a second draft key is how the
+ * two copies of one date start to disagree.
+ *
+ * Returns `null` when the draft carries none of these, so the caller can skip the write — and therefore
+ * the `employment.info.updated` event — entirely, exactly as it skips the statutory row.
+ */
+export function draftEmploymentInfo(e: EmployeeDraftData['employment']): Omit<EmploymentInfoInput, 'employmentId'> | null {
+  const emp = e ?? {};
+  const out: Record<string, string> = {};
+  const put = (k: keyof EmploymentInfoInput, v: string | undefined) => {
+    const s = str(v);
+    if (s !== undefined) out[k] = s;
+  };
+  // Probation Information. A unit with no value beside it is meaningless on its own — the select always
+  // has a value ('month' by default) — so the unit rides along only when its value does.
+  if (str(emp.probationValue) !== undefined) {
+    put('probationValue', emp.probationValue);
+    put('probationUnit', emp.probationUnit ?? 'month');
+  }
+  if (str(emp.extendedProbationValue) !== undefined) {
+    put('extendedProbationValue', emp.extendedProbationValue);
+    put('extendedProbationUnit', emp.extendedProbationUnit ?? 'month');
+  }
+  put('confirmationDate', emp.confirmationDate);
+  // Notice Period Information.
+  if (str(emp.noticeBeforeConfirmationValue) !== undefined) {
+    put('noticeBeforeConfirmationValue', emp.noticeBeforeConfirmationValue);
+    put('noticeBeforeConfirmationUnit', emp.noticeBeforeConfirmationUnit ?? 'month');
+  }
+  if (str(emp.noticeAfterConfirmationValue) !== undefined) {
+    put('noticeAfterConfirmationValue', emp.noticeAfterConfirmationValue);
+    put('noticeAfterConfirmationUnit', emp.noticeAfterConfirmationUnit ?? 'month');
+  }
+  // Contract Information — only for a contract hire, matching the tab that renders it. A start date left
+  // behind by someone who switched the type back to full-time is not written, exactly as the Personnel
+  // tab stops showing (and stops posting) the block.
+  if ((str(emp.employmentType) ?? 'full_time') === 'contract') {
+    put('contractStartDate', emp.contractStartDate);
+    put('contractRemark', emp.contractRemark);
+  }
+  // The eight flat organisation columns.
+  put('orgDivision', emp.orgDivision);
+  put('orgBranch', emp.orgBranch);
+  put('orgRegion', emp.orgRegion);
+  put('orgLine', emp.orgLine);
+  put('orgSection', emp.orgSection);
+  put('orgTeam', emp.orgTeam);
+  put('orgBase', emp.orgBase);
+  put('employmentCategory', emp.employmentCategory);
+  return Object.keys(out).length === 0 ? null : (out as Omit<EmploymentInfoInput, 'employmentId'>);
+}
+
+/**
+ * The catalog-backed values on a draft, paired with the catalog each must belong to (item 759dfc7d
+ * stage 2). Pure, so the pre-flight in `completeEmployeeDraft` and any test can read the same list.
+ *
+ * THIS LIST IS WHY ACTIVATION IS STILL ALL-OR-NOTHING. `updatePerson` and `setEmploymentInfo` validate
+ * every one of these against the tenant's `profile_option` catalog and THROW on a value that is not an
+ * active option — and both of them run after `hireEmployee` has committed. A draft can easily hold such a
+ * value without anyone having done anything wrong: HR picks a Race, an administrator retires that option
+ * a week later, and the draft is activated the week after. Judged here, before anything is created, that
+ * is a refusal HR can act on; judged three writes later it is an employee with half a profile.
+ *
+ * `nationality` is absent deliberately: `hireEmployee` writes it and has never validated it, so adding it
+ * here would newly REFUSE drafts that activate perfectly well today.
+ */
+export function draftCatalogValues(data: EmployeeDraftData): { category: ProfileOptionCategory; value: string }[] {
+  const p = data.profile ?? {};
+  const e = data.employment ?? {};
+  const pairs: [ProfileOptionCategory, string | undefined][] = [
+    ['salutation', p.salutation],
+    ['religion', p.religion],
+    ['race', p.race],
+    ['state', p.permanentState],
+    ['country', p.permanentCountry],
+    ['state', p.correspondenceState],
+    ['country', p.correspondenceCountry],
+    ['relationship', p.emergencyContactRelationship],
+    ['division', e.orgDivision],
+    ['branch', e.orgBranch],
+    ['region', e.orgRegion],
+    ['line', e.orgLine],
+    ['section', e.orgSection],
+    ['team', e.orgTeam],
+    ['base', e.orgBase],
+    ['category', e.employmentCategory],
+  ];
+  return pairs
+    .map(([category, v]) => ({ category, value: str(v) }))
+    .filter((x): x is { category: ProfileOptionCategory; value: string } => x.value !== undefined);
 }
 function numOrUndef(v: string | undefined): number | undefined {
   const s = (v ?? '').replace(/[,_]/g, '').trim();

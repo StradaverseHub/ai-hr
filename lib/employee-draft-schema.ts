@@ -57,6 +57,71 @@ export type EmployeeDraftProfile = {
    *  it is optional in the type as well as in the rules — an old draft must still open and still create. */
   nationality?: string;
   icNumber?: string;
+
+  // ── 759dfc7d stage 2 — the rest of the ACTIVE record's Profile tab ─────────────────────────────
+  // Every field below has a counterpart on `app/admin/personnel/[employmentId]` Profile and a writer
+  // that `completeEmployeeDraft` calls at Activate. The names are the WRITERS' names, not the form's:
+  // `salutation`…`race` and the two address blocks are `PersonProfileFields` keys (core/org.ts
+  // updatePerson), the passport five are `PassportInput` keys (the pack's statutory.setPassport), and
+  // the emergency five are the `PrimaryEmergencyContact` keys updatePerson routes into the register.
+  // Naming them anything else would put a translation step between the draft and the writer, and a
+  // translation step is where a field goes missing — the failure this whole item exists to prevent.
+
+  /** Personal Details — catalog-backed (profile_option `salutation`), like religion and race. */
+  salutation?: string;
+  firstName?: string;
+  lastName?: string;
+  preferredName?: string;
+  /** Catalog-backed (profile_option `religion`). */
+  religion?: string;
+  /** Catalog-backed (profile_option `race`). */
+  race?: string;
+
+  /** Identity No (NRIC) — the pre-1990 card, stored beside `icNumber` on the statutory row. */
+  oldIcNumber?: string;
+
+  /** Passport Information. All-or-nothing: see `missingByStep`, which refuses a partial trio BEFORE
+   *  `hireEmployee` runs, because `setPassportProfileMY` would otherwise refuse it afterwards. */
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportExpiryDate?: string;
+  passportIssuingCountry?: string;
+  passportIssuingCountryCode?: string;
+  passportRemark?: string;
+
+  /** Contact & Address. `phone` above IS the Mobile Phone Number (the label-only rename bf953339). */
+  homePhone?: string;
+  personalEmail?: string;
+  permanentAddressLine1?: string;
+  permanentAddressLine2?: string;
+  permanentAddressLine3?: string;
+  permanentPostcode?: string;
+  permanentCity?: string;
+  /** Catalog-backed (profile_option `state`). */
+  permanentState?: string;
+  /** Catalog-backed (profile_option `country`). */
+  permanentCountry?: string;
+  correspondenceAddressLine1?: string;
+  correspondenceAddressLine2?: string;
+  correspondenceAddressLine3?: string;
+  correspondencePostcode?: string;
+  correspondenceCity?: string;
+  /** Catalog-backed (profile_option `state`). */
+  correspondenceState?: string;
+  /** Catalog-backed (profile_option `country`). */
+  correspondenceCountry?: string;
+  correspondenceMobilePhone?: string;
+  correspondenceHomePhone?: string;
+
+  /** Emergency Contact — the PRIMARY row of `person_emergency_contact`, written through updatePerson's
+   *  single-contact block (core/emergency-contacts.ts writeSingleEmergencyContactInTx). The register's
+   *  further rows are a list, and a list on a draft is the Family pattern; not built this round. */
+  emergencyContactName?: string;
+  /** Catalog-backed (profile_option `relationship`). */
+  emergencyContactRelationship?: string;
+  emergencyContactPhone?: string;
+  emergencyContactPhone2?: string;
+  emergencyContactAddress?: string;
 };
 
 export type EmployeeDraftEmployment = {
@@ -69,6 +134,50 @@ export type EmployeeDraftEmployment = {
   employmentType?: string;
   hiredOn?: string;
   provisionalEndOn?: string;
+
+  // ── 759dfc7d stage 2 — the rest of the ACTIVE record's Employment tab ──────────────────────────
+  // `setEmploymentInfo` (core/org.ts) key names, for the same reason the profile block above uses the
+  // writer's names. Only the fields that WRITER accepts without a movement tag are here: the Join
+  // Dates, the grade and the organisation assignment are movement-only on an active employment, and on
+  // a draft they are set by `hireEmployee` from the fields already above.
+  //
+  // RESIGNATION INFORMATION IS DELIBERATELY ABSENT. `setEmploymentInfo` would take tenderResignationDate
+  // / resignationDate / lastWorkingDate, and the active tab shows them — but nobody has resigned before
+  // they have joined, and the reporter's own tab breakdown for Employment lists four sections, of which
+  // resignation is not one. A draft that could record a last working day before a first one is a bug
+  // waiting to be filed, not parity.
+
+  /** Probation Information — value + unit ('month' | 'week' | 'day'), the 955c7de4 shape. */
+  probationValue?: string;
+  probationUnit?: string;
+  extendedProbationValue?: string;
+  extendedProbationUnit?: string;
+  confirmationDate?: string;
+
+  /** Notice Period Information. */
+  noticeBeforeConfirmationValue?: string;
+  noticeBeforeConfirmationUnit?: string;
+  noticeAfterConfirmationValue?: string;
+  noticeAfterConfirmationUnit?: string;
+
+  /** Contract Information (8590615a) — shown only for a contract hire, exactly as on the active tab.
+   *  The END date is `provisionalEndOn` above and is NOT duplicated here: `hireEmployee` already copies
+   *  a contract hire's provisional end into `employment.contract_end_date`, so a second draft key for
+   *  the same date is a second chance for the two to disagree. */
+  contractStartDate?: string;
+  contractRemark?: string;
+
+  /** The eight flat organisation columns, catalog-backed (profile_option division/branch/…/category).
+   *  View-only on an active employment because they move through Movement; a draft has no movement
+   *  history, so this is where their first value is keyed. */
+  orgDivision?: string;
+  orgBranch?: string;
+  orgRegion?: string;
+  orgLine?: string;
+  orgSection?: string;
+  orgTeam?: string;
+  orgBase?: string;
+  employmentCategory?: string;
 };
 
 export type EmployeeDraftStatutory = {
@@ -89,7 +198,92 @@ export type EmployeeDraftStatutory = {
   eisEligible?: string;
   isResident?: string;
   epfCitizenship?: string;
+
+  // ── 759dfc7d stage 2 — the rest of the ACTIVE record's Bank & Statutory tab ────────────────────
+  // Three writers back this tab and the keys below are theirs: most go to the full-row
+  // `StatutoryInput` (the pack's statutory.set), the four custom-holder fields to `BankInput`
+  // (statutory.setBank), the tax block to `TaxInput` (statutory.setTax) and `subjectToHrdf` to
+  // `OthersStatutoryInput` (statutory.setOthersStatutory). All four run at Activate, in that order,
+  // and each is a partial write over the row the first one seeds.
+  //
+  // BOOLEANS ARE BOOLEANS here, as they are on a family member and for the same reason: these are
+  // checkboxes, which have no intermediate text form, and a second encoding is a second thing for the
+  // materialiser to decode. The tri-state `subjectToHrdf` is the exception — its control is a
+  // three-option select whose '' means "follow the company default" — so it stays a string.
+
+  /** Bank Information — pay this employee's salary into another person's account. Require-when-enabled
+   *  is enforced by `missingByStep` BEFORE the hire, because `setBankProfileMY` enforces it after. */
+  enableCustomHolderName?: boolean;
+  customHolderName?: string;
+  enableCustomHolderId?: boolean;
+  customHolderId?: string;
+
+  /** EPF. `epfMode` is the EPF Category select; the two rates are PERCENTAGES as typed (11, 13…), and
+   *  the materialiser divides by 100 exactly as the Personnel card's action does. */
+  epfMode?: string;
+  epfEmployeeRate?: string;
+  epfEmployerRate?: string;
+  employerBearsEpf?: boolean;
+
+  /** SOCSO / EIS / SKBBK eligibility and who funds the employee's share. */
+  subjectToSkbbk?: boolean;
+  employerBearsSocso?: boolean;
+  employerBearsEis?: boolean;
+  employerBearsSkbbk?: boolean;
+
+  /** Income Tax (PCB). `taxResidency` is the four-value control the Personnel card has ('resident',
+   *  'non_resident', 'rep', 'knowledge_worker'); `isResident` above is the LEGACY yes/no the wizard
+   *  used to ask, kept so a draft saved before this change still activates identically — see
+   *  `draftTaxResidency`. */
+  taxResidency?: string;
+  childReliefMode?: string;
+  employerBearsTax?: boolean;
+  disabledIndividual?: boolean;
+  disabledSpouse?: boolean;
+
+  /** Others Statutory. '' ⇒ null ⇒ follow the company's HRDF registration default. */
+  subjectToHrdf?: string;
 };
+
+/**
+ * The tax residency a draft means, from either of the two controls it may carry (item 759dfc7d).
+ *
+ * `isResident` was the wizard's own yes/no and is what every draft saved before this item has. The
+ * Personnel card has always had FOUR residencies — a Returning Expert and a Knowledge Worker are both
+ * "resident" to a yes/no and are taxed differently — so the draft now asks the same four. Mapping the
+ * legacy answer forward here rather than at the writer keeps the rule in one place and lets the tab
+ * render the old draft on the right option instead of a blank select.
+ *
+ * Returns undefined when neither is set, which means "leave the column at its default" — NOT 'resident'.
+ */
+export function draftTaxResidency(s: EmployeeDraftStatutory): string | undefined {
+  const explicit = (s.taxResidency ?? '').trim();
+  if (explicit !== '') return explicit;
+  const legacy = (s.isResident ?? '').trim();
+  if (legacy === 'yes') return 'resident';
+  if (legacy === 'no') return 'non_resident';
+  return undefined;
+}
+
+/**
+ * The three passport fields `setPassportProfileMY` treats as one (item 759dfc7d).
+ *
+ * Exported because BOTH the completeness rule below and `completeEmployeeDraft` need the same answer to
+ * the same question — "is there a passport on this draft at all?" — and they must not drift: the rule
+ * refuses a HALF-entered passport, and the materialiser skips the writer entirely when there is none.
+ * If the second lost track of the first, a non-Malaysian draft with no passport (perfectly legal today)
+ * would hit `PassportRequiredError` after the employee had already been created.
+ */
+export function draftHasPassport(p: EmployeeDraftProfile): boolean {
+  return [
+    p.passportNumber,
+    p.passportIssueDate,
+    p.passportExpiryDate,
+    p.passportIssuingCountry,
+    p.passportIssuingCountryCode,
+    p.passportRemark,
+  ].some((v) => (v ?? '').trim() !== '');
+}
 
 export type EmployeeDraftPayroll = {
   basicSalary?: string;
@@ -196,6 +390,26 @@ export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll', 'fa
 export type DraftStepKey = (typeof DRAFT_STEPS)[number];
 
 /**
+ * THE SCREEN ORDER — the tabs, left to right (item 759dfc7d stage 2).
+ *
+ * IT IS THE ACTIVE RECORD'S ORDER, not this file's. `app/admin/personnel/[employmentId]` shows Profile,
+ * Family, Employment, … Bank & Statutory, Payroll, and the whole point of the item is that an
+ * administrator meets ONE screen shape: a draft whose tabs ran in a different order would still be a
+ * second thing to learn, which is the complaint. The four tabs a draft does not get — Movement,
+ * Attendance, Leave, Documents — are simply absent; they describe things that have happened to an
+ * employment, and a draft has none.
+ *
+ * IT IS A SECOND CONSTANT AND NOT A REORDERING OF `DRAFT_STEPS`, deliberately. That array is the STORAGE
+ * contract: `STEP_NUMBERS` is keyed off it and `employee_draft.current_step` on production rows points
+ * into it, 5 included and retired. Screen order and storage order are two different facts about the same
+ * five keys, and the moment they were one constant, moving a tab would have moved every parked draft.
+ *
+ * Both list exactly the same keys — `test/employee-draft-tabs.test.ts` §1 fails if they ever diverge, so
+ * a tab added to one and forgotten in the other cannot ship.
+ */
+export const DRAFT_TABS = ['profile', 'family', 'employment', 'statutory', 'payroll'] as const;
+
+/**
  * THE STORED STEP NUMBER, DECLARED RATHER THAN COUNTED — and 5 IS BURNED.
  *
  * `employee_draft.current_step` is a pointer into a list that has already changed once. Until item
@@ -266,6 +480,18 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
   // so a typo is named on the step that owns it rather than at Activate.
   const profile: string[] = [];
   if (!blank(p.dateOfBirth) && !DRAFT_DATE_RE.test((p.dateOfBirth ?? '').trim())) profile.push('dateOfBirth');
+  // 759dfc7d stage 2 — the same FORMAT rule for the two passport dates, and for the same reason: a date
+  // that is not ISO reaches Postgres as a `date` and throws there, and `setPassportProfileMY` runs AFTER
+  // `hireEmployee` has committed. Named on the tab that owns them instead.
+  if ([p.passportIssueDate, p.passportExpiryDate].some((d) => !blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim())))
+    profile.push('passportDate');
+  // ALL-OR-NOTHING PASSPORT. `setPassportProfileMY` refuses a partial block (PassportRequiredError) and,
+  // for a non-Malaysian, refuses an absent one too — but only when it is CALLED, and the materialiser
+  // calls it only when the draft carries a passport at all (`draftHasPassport`, shared with it so the two
+  // cannot drift). So the one refusal a draft can actually walk into is a half-entered block, and it is
+  // judged here where nothing has been created yet rather than after the employee exists.
+  if (draftHasPassport(p) && (blank(p.passportNumber) || blank(p.passportIssueDate) || blank(p.passportExpiryDate)))
+    profile.push('passportIncomplete');
 
   const employment: string[] = [];
   if (blank(e.departmentId)) employment.push('department');
@@ -274,6 +500,24 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
   else if (!DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())) employment.push('hiredOn');
   if (!blank(e.provisionalEndOn) && !DRAFT_DATE_RE.test((e.provisionalEndOn ?? '').trim()))
     employment.push('provisionalEndOn');
+  // 759dfc7d stage 2 — Probation / Contract dates and the four period values, judged here for the reason
+  // the whole tab set is judged here: `setEmploymentInfo` runs AFTER `hireEmployee` has committed, and it
+  // throws on a non-ISO date and on a period that is not a whole number of 0 or more. A refusal now costs
+  // nothing; the same refusal three writes later leaves a half-activated employee.
+  if (
+    [e.confirmationDate, e.contractStartDate].some((d) => !blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim()))
+  )
+    employment.push('employmentDate');
+  if (
+    [e.probationValue, e.extendedProbationValue, e.noticeBeforeConfirmationValue, e.noticeAfterConfirmationValue].some(
+      (v) => {
+        if (blank(v)) return false;
+        const n = Number((v ?? '').trim());
+        return !Number.isInteger(n) || n < 0;
+      },
+    )
+  )
+    employment.push('periodValue');
 
   // Bank & Statutory has no REQUIRED field of its own — every value on it is optional in the writers
   // that consume it. The one rule it does carry is the importer's: bank name and account number are
@@ -281,6 +525,12 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
   const s = data.statutory ?? {};
   const statutory: string[] = [];
   if (blank(s.bankName) !== blank(s.bankAccountNo)) statutory.push('bankAccount');
+  // 759dfc7d stage 2 — REQUIRE-WHEN-ENABLED for the custom payment holder, the rule `setBankProfileMY`
+  // enforces server-side (IncompleteCustomHolderError). It runs after the hire, so a tick with nothing
+  // beside it is caught here: paying a salary into "a third party" with no name is not a half-filled
+  // form, it is an unpayable instruction.
+  if (s.enableCustomHolderName && blank(s.customHolderName)) statutory.push('customHolderName');
+  if (s.enableCustomHolderId && blank(s.customHolderId)) statutory.push('customHolderId');
 
   const payroll: string[] = [];
   const salary = Number((pay.basicSalary ?? '').replace(/[,_]/g, ''));
