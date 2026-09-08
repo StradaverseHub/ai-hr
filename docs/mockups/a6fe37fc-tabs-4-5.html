@@ -1,0 +1,264 @@
+<meta charset="utf-8">
+<title>Leave types — tabs 4 and 5</title>
+<!--
+  a6fe37fc revision 4, Phase 3 design deliverable. SKETCH.
+
+  TAB 4 draws the existing Leave Application Rules cards, minus the three balance cards that move to tab 3
+  and minus the company-wide half-day card that moves to Company rules. Every field is a real column:
+  durations · requires_document + mandatory_after_days + allowed_mime_types + max_doc_bytes +
+  employee_remark_required + hr_remark_required · backdating_limit_days · min_advance_days +
+  min_advance_day_type · max_days_per_leave_year + max_days_period · max_consecutive_days +
+  max_consecutive_unit · duplicate_application_policy · day_type_inclusion · override_rules ·
+  custom_messages.
+
+  TAB 5 IS READ-ONLY EXCEPT ONE CONTROL, AND THAT IS DELIBERATE. e4238594 removed a per-leave-type
+  approval EDITOR from this panel because it was a second editor over the same leave_approval_policy rows
+  the Approval screen creates, and the reporter rejected replacing it with a link or a placeholder. So
+  this tab ANSWERS "which chain reaches this type" — resolved by the same core/leave-approval-policy.ts
+  the live request path uses — and every control that CHANGES a chain stays on Approval chains. The one
+  editable control is per_date_approval, which is a column on the leave type and belongs to it.
+
+  NO CUSTOMER DATA IS INVENTED. The chain steps drawn are the product's own vocabulary
+  (direct manager · department head · HR admin). The 261 figure is the audit's count of the tenant's
+  leave_approval_policy rows.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .pane{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;margin-bottom:20px}
+  .split{display:grid;grid-template-columns:214px 1fr}
+  .rail{border-right:1px solid var(--border);background:#fbfbfe;padding:9px 0}
+  .rail .rh{display:flex;justify-content:space-between;align-items:center;padding:2px 12px 8px;gap:6px}
+  .rail .rh span{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700}
+  .rail .add{font-size:10.5px;color:var(--primary);font-weight:650}
+  .rail .i{padding:5px 12px;font-size:12px;color:#3b3b46;display:flex;align-items:center;gap:7px}
+  .rail .i.on{background:#eef2ff;color:var(--primary);font-weight:650;box-shadow:inset 2px 0 0 var(--primary)}
+  .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .dot.r{background:#dc2626}.dot.a{background:#d97706}.dot.g{background:#16a34a}
+  .rail .more{padding:7px 12px 2px;font-size:10.5px;color:var(--mf)}
+  .tabs{display:flex;border-bottom:1px solid var(--border);padding:0 14px;flex-wrap:wrap}
+  .tab{padding:9px 12px;font-size:12px;color:var(--mf);border-bottom:2px solid transparent;white-space:nowrap}
+  .tab b{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;border-radius:50%;
+         background:#eceef5;color:#4b4b57;font-size:9.5px;margin-right:5px;vertical-align:1px}
+  .tab.on{color:var(--primary);font-weight:650;border-bottom-color:var(--primary)}
+  .tab.on b{background:var(--primary);color:#fff}
+  .inner{padding:15px 16px}
+  h2.s{margin:0 0 3px;font-size:12.5px;font-weight:700}
+  p.h{margin:0 0 11px;font-size:11px;color:var(--mf)}
+  .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .c{border:1px solid var(--border);border-radius:9px;padding:10px 11px;background:#fbfbfe}
+  .c h3{margin:0 0 7px;font-size:11.5px;font-weight:700}
+  .f{margin-bottom:7px}
+  .f label{display:block;font-size:10px;font-weight:600;color:#4b4b57;margin-bottom:3px}
+  .in{border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px;background:#fff;color:#22222c}
+  .in.sel::after{content:"⌄";float:right;color:var(--mf)}
+  .in.ro{background:#f1f2f8;color:#7b7b88}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .cb{display:flex;align-items:flex-start;gap:6px;font-size:11px;margin-bottom:5px}
+  .cb i{width:12px;height:12px;border:1px solid #b9bad0;border-radius:3px;flex:0 0 auto;margin-top:2px;background:#fff}
+  .cb i.on{background:var(--primary);border-color:var(--primary)}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+  .grey{background:#eceef5;color:#4b4b57}
+  .blue{background:#e0e7ff;color:#3730a3}
+  .ok{background:#d1fae5;color:#065f46}
+  .amber{background:#fef3c7;color:#92400e}
+  .save{display:inline-block;margin-top:4px;padding:5px 11px;border-radius:6px;background:#fff;color:#3b3b46;
+        border:1px solid var(--border);font-size:11px;font-weight:650}
+  .note{font-size:10.5px;color:var(--mf);margin:8px 0 0}
+  .box{border:1px solid var(--border);border-radius:9px;padding:12px 13px;background:#fbfbfe;margin-top:12px}
+  .box.ro{background:#f8f9fd}
+  .box h3{margin:0 0 8px;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 2px}
+  .stepn{border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:650}
+  .arr{color:#9a9ab0;font-size:13px}
+  table.t{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px}
+  table.t th{text-align:left;font-weight:700;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--mf);
+             font-size:9.5px;text-transform:uppercase;letter-spacing:.05em}
+  table.t td{padding:6px 8px;border-bottom:1px solid #f1f2f8}
+  table.t tr:last-child td{border-bottom:none}
+  .lnk{color:var(--primary);font-size:11.5px;font-weight:600}
+</style>
+<div class="wrap">
+
+<p class="cap"><b>Leave types &mdash; tabs 4 and 5.</b> A sketch for approval; wording, spacing and colours
+will differ. Tab 4 is the existing application-rule cards with the three balance cards moved out to tab 3
+and the company-wide half-day card moved out to Company rules. Tab 5 is <b>read-only except one control</b>
+&mdash; see the note on it.</p>
+
+<!-- ─────────── TAB 4 ─────────── -->
+<div class="pane">
+  <div class="split">
+    <div class="rail">
+      <div class="rh"><span>Leave type</span><span class="add">+ Add</span></div>
+      <div class="i on"><i class="dot a"></i>Annual Leave</div>
+      <div class="i"><i class="dot a"></i>Sick Leave</div>
+      <div class="i"><i class="dot r"></i>Hospitalisation Leave</div>
+      <div class="more">&hellip; 22 more</div>
+    </div>
+    <div>
+      <div class="tabs">
+        <div class="tab"><b>1</b>The leave type</div>
+        <div class="tab"><b>2</b>Who is eligible</div>
+        <div class="tab"><b>3</b>What they are entitled to</div>
+        <div class="tab on"><b>4</b>How it is applied for</div>
+        <div class="tab"><b>5</b>Who approves it</div>
+      </div>
+      <div class="inner">
+        <h2 class="s">What an application for Annual Leave has to satisfy</h2>
+        <p class="h">Each card saves on its own, so changing one rule never touches another.</p>
+        <div class="cards">
+
+          <div class="c">
+            <h3>How it may be taken</h3>
+            <div class="cb"><i class="on"></i><span>Full day</span></div>
+            <div class="cb"><i class="on"></i><span>Half day &mdash; morning</span></div>
+            <div class="cb"><i class="on"></i><span>Half day &mdash; afternoon</span></div>
+            <div class="cb"><i></i><span>By the hour</span></div>
+            <div class="save">Save</div>
+          </div>
+
+          <div class="c">
+            <h3>Supporting document</h3>
+            <div class="cb"><i></i><span>A document is required</span></div>
+            <div class="f"><label>Only when longer than</label><div class="in ro">&mdash; days</div></div>
+            <div class="f"><label>File types accepted</label><div class="in ro">PDF, JPEG, PNG</div></div>
+            <div class="cb"><i></i><span>The employee must give a reason</span></div>
+            <div class="save">Save</div>
+          </div>
+
+          <div class="c">
+            <h3>Notice and backdating</h3>
+            <div class="two">
+              <div class="f"><label>Notice needed</label><div class="in">&mdash;</div></div>
+              <div class="f"><label>Counted in</label><div class="in sel">Calendar days</div></div>
+            </div>
+            <div class="f"><label>May be dated back up to</label><div class="in">&mdash; days</div></div>
+            <div class="save">Save</div>
+          </div>
+
+          <div class="c">
+            <h3>Length limits</h3>
+            <div class="two">
+              <div class="f"><label>Most days per leave year</label><div class="in">&mdash;</div></div>
+              <div class="f"><label>Counted over</label><div class="in sel">The leave year</div></div>
+            </div>
+            <div class="two">
+              <div class="f"><label>Most days in a row</label><div class="in">&mdash;</div></div>
+              <div class="f"><label>Counted in</label><div class="in sel">Calendar days</div></div>
+            </div>
+            <div class="save">Save</div>
+          </div>
+
+          <div class="c">
+            <h3>Overlapping applications</h3>
+            <div class="f"><label>When a date is already booked</label>
+              <div class="in sel">Allow another application</div></div>
+            <p class="note" style="margin-top:2px">Applies to pending and approved applications on an
+              overlapping date.</p>
+            <div class="save">Save</div>
+          </div>
+
+          <div class="c">
+            <h3>Which days are counted</h3>
+            <div class="cb"><i></i><span>Off days</span></div>
+            <div class="cb"><i></i><span>Rest days</span></div>
+            <div class="cb"><i></i><span>Public holidays</span></div>
+            <div class="cb"><i></i><span>Company holidays</span></div>
+            <div class="cb"><i></i><span>Shutdown days</span></div>
+            <div class="save">Save</div>
+          </div>
+
+          <div class="c" style="grid-column:span 2">
+            <h3>Exceptions <span class="chip grey">off unless you switch one on</span></h3>
+            <table class="t">
+              <tr><th style="width:44%">When this happens</th><th>Do this instead of refusing</th><th></th></tr>
+              <tr><td>Not enough notice given</td><td>Convert to another leave type</td><td><span class="chip grey">off</span></td></tr>
+              <tr><td>Not enough balance</td><td>Split &mdash; pay what is covered, the rest unpaid</td><td><span class="chip grey">off</span></td></tr>
+            </table>
+            <div class="save">+ Add an exception</div>
+          </div>
+
+          <div class="c">
+            <h3>Your own wording <span class="chip blue">moved beside the rules</span></h3>
+            <p class="note" style="margin-top:0">Replace the message an employee sees when one of the rules
+              above blocks their application. Blank means use ours.</p>
+            <div class="f"><label>Notice not met</label><div class="in ro">&mdash;</div></div>
+            <div class="save">Save</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── TAB 5 ─────────── -->
+<div class="pane">
+  <div class="split">
+    <div class="rail">
+      <div class="rh"><span>Leave type</span><span class="add">+ Add</span></div>
+      <div class="i on"><i class="dot a"></i>Annual Leave</div>
+      <div class="i"><i class="dot a"></i>Sick Leave</div>
+      <div class="i"><i class="dot r"></i>Hospitalisation Leave</div>
+      <div class="more">&hellip; 22 more</div>
+    </div>
+    <div>
+      <div class="tabs">
+        <div class="tab"><b>1</b>The leave type</div>
+        <div class="tab"><b>2</b>Who is eligible</div>
+        <div class="tab"><b>3</b>What they are entitled to</div>
+        <div class="tab"><b>4</b>How it is applied for</div>
+        <div class="tab on"><b>5</b>Who approves it</div>
+      </div>
+      <div class="inner">
+        <h2 class="s">Who approves Annual Leave</h2>
+        <p class="h">This tab <b>shows</b> the chain and does not change it. Approval chains are built and
+          assigned in one place &mdash; a second editor here is exactly what you asked us to remove.</p>
+
+        <div class="box ro">
+          <h3>The chain that reaches this leave type <span class="chip grey">read-only</span>
+              <span class="lnk" style="margin-left:auto">Change it on Approval chains &rarr;</span></h3>
+          <div class="chain">
+            <span class="stepn">1 &nbsp;Direct manager</span><span class="arr">&rarr;</span>
+            <span class="stepn">2 &nbsp;Department head</span><span class="arr">&rarr;</span>
+            <span class="stepn">3 &nbsp;HR admin</span>
+          </div>
+          <table class="t">
+            <tr><th style="width:34%">Applies to</th><th>Chain comes from</th><th>Escalation</th></tr>
+            <tr><td>Every company, every grade</td><td>An assigned approval template</td><td>After 3 days, to the next level</td></tr>
+          </table>
+          <p class="note">Resolved by the same code that resolves a real application, so what you read here is
+            what an employee&rsquo;s request will actually do. Of your <b>261</b> approval rules, this is the one
+            that wins for this leave type at company level; more specific rules win for the people they name.</p>
+        </div>
+
+        <div class="box">
+          <h3>Splitting a multi-day application <span class="chip blue">moved here from General setting</span></h3>
+          <div class="cb"><i></i><span>Split a multi-day application into one day at a time, so an approver may
+            accept some dates and decline others</span></div>
+          <p class="note" style="margin-top:2px">This is a setting on the leave type, so it is edited here.</p>
+          <div class="save">Save</div>
+        </div>
+
+        <div class="box ro">
+          <h3>Rules that are not built from a template <span class="chip amber">restored &mdash; read-only</span></h3>
+          <table class="t">
+            <tr><th style="width:40%">Scope</th><th>Chain</th><th></th></tr>
+            <tr><td>Business unit &middot; department &middot; position</td><td>Its own steps, not a template</td>
+                <td><span class="chip amber">no screen shows this today</span></td></tr>
+          </table>
+          <p class="note">These columns are stored, they decide who approves, and since the old rule matrix was
+            removed <b>nothing displays them</b>. Showing them answers &ldquo;why did this go to that
+            approver?&rdquo; without bringing back a second editor. The full list is on Approval chains.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>

@@ -1,0 +1,288 @@
+<meta charset="utf-8">
+<title>Leave Configuration — the proposed structure</title>
+<!--
+  a6fe37fc revision 4, Phase 3 design deliverable. SKETCH.
+
+  WHAT IS DRAWN AND WHERE IT COMES FROM — nothing here is invented:
+   · The BEFORE column is the real arrangement, read out of components/leave-type-panel.tsx
+     (STEP_KEYS = general | ess | entitlement | custom; GENERAL_SUB_STEP_KEYS = details | yearType |
+     earning | carry; ESS_SUB_STEP_KEYS = criteria | rules) and app/admin/leave/payroll/page.tsx.
+   · Every setting name is a real stored column on leave_type (db/schema.ts) written by a real
+     tri-state sub-form in app/admin/actions.ts.
+   · The counts (58 settings, 24 sub-forms, 4 steps, 6 sub-steps) are counted, not estimated.
+   · Leave type names and the table/rule counts are the customer's own, from the Phase 1 audit.
+
+  WHAT IS DELIBERATELY NOT DRAWN: no day figures, no employee names, no entitlement table names —
+  the audit records counts, not names, and a mockup must not invent the customer's data.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f4f5fa;--mf:#63636f;--border:#e7e8f1}
+  *{box-sizing:border-box}
+  body{margin:0;padding:26px;background:var(--bg);color:var(--fg);
+       font:13px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;overflow:hidden}
+  .head{padding:11px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;
+        display:flex;align-items:center;gap:9px}
+  .body{padding:16px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .bad{background:#fee2e2;color:#991b1b}
+  .ok{background:#d1fae5;color:#065f46}
+  .new{background:#e0e7ff;color:#3730a3}
+  .grey{background:#eceef5;color:#4b4b57}
+  .cap{font-size:11.5px;color:var(--mf);margin:0 0 14px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .col h3{margin:0 0 4px;font-size:12.5px;font-weight:700}
+  .col p.s{margin:0 0 10px;font-size:11px;color:var(--mf)}
+  .stepbox{border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden;background:#fff}
+  .stepbox>.t{padding:6px 11px;font-size:11.5px;font-weight:650;background:#f7f8fd;border-bottom:1px solid var(--border);
+              display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .stepbox>.c{padding:8px 11px;display:flex;flex-wrap:wrap;gap:5px}
+  .set{padding:2px 8px;border:1px solid var(--border);border-radius:6px;font-size:10.5px;background:#fbfbfe;color:#3b3b46}
+  .set.mv{border-color:#fca5a5;background:#fef2f2;color:#7f1d1d}
+  .set.in{border-color:#a5b4fc;background:#eef2ff;color:#3730a3}
+  .sub{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);font-weight:700;
+       width:100%;margin:5px 0 1px}
+  .tabbox{border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden;background:#fff}
+  .tabbox>.t{padding:6px 11px;font-size:11.5px;font-weight:650;background:#eef2ff;color:#3730a3;
+             border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px}
+  .tabbox>.c{padding:8px 11px;display:flex;flex-wrap:wrap;gap:5px}
+  .n{font-size:10px;color:var(--mf);font-weight:600}
+  .map{padding:9px 14px;border:1px solid var(--border);border-radius:11px;background:#fbfbfe;
+       display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+  .map .g{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mf);font-weight:700;margin-left:4px}
+  .map .g:first-child{margin-left:0}
+  .map .nn{padding:3px 9px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;color:#3b3b46;background:#fff}
+  .map .nn.on{border-color:var(--primary);color:var(--primary);font-weight:650;background:#eef2ff}
+  .map .nn.plus{border-color:#a5b4fc;background:#eef2ff;color:#3730a3;font-weight:650}
+  .map .sep{width:1px;align-self:stretch;background:var(--border);margin:0 3px}
+  table.fix{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.fix th{text-align:left;font-weight:700;padding:6px 9px;border-bottom:1px solid var(--border);color:var(--mf);
+               font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+  table.fix td{padding:7px 9px;border-bottom:1px solid #f1f2f8;vertical-align:top}
+  table.fix tr:last-child td{border-bottom:none}
+  .k{font-weight:650}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--mf);margin-top:6px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:4px;border:1px solid}
+  .sw.r{background:#fef2f2;border-color:#fca5a5}
+  .sw.b{background:#eef2ff;border-color:#a5b4fc}
+  .sw.g{background:#fbfbfe;border-color:var(--border)}
+</style>
+<div class="wrap">
+
+<p class="cap"><b>Leave Configuration — proposed structure.</b> A sketch for approval before anything is
+built. Wording, spacing and colours will differ. Nothing below changes how leave days are calculated:
+the same engine, the same tables, the same 261 approval rules, rearranged so each setting sits under the
+question it answers.</p>
+
+<!-- ───────────────────────── 1. the five questions ───────────────────────── -->
+<div class="card">
+  <div class="head">The five questions a leave type has to answer <span class="chip new">the whole structure</span></div>
+  <div class="body">
+    <div class="map">
+      <span class="g">Configure</span>
+      <span class="nn on">Leave types</span><span class="nn">Approval chains</span>
+      <span class="nn">Entitlement tables</span><span class="nn plus">Company rules &nbsp;· new</span>
+      <span class="sep"></span>
+      <span class="g">Run</span>
+      <span class="nn">Generate entitlement</span><span class="nn">Adjustments</span><span class="nn">Import leave data</span>
+      <span class="sep"></span>
+      <span class="g">Records</span>
+      <span class="nn">Entitlement configuration record</span><span class="nn">Balance record</span><span class="nn">Audit trail</span>
+    </div>
+    <p class="cap" style="margin:12px 0 0">Ten destinations — the same number as today. What changes is
+      <b>where each setting sits</b>. Only <b>Company rules</b> is new, and it exists because four settings
+      that belong to a company are currently spread across three screens and one leave-type step.</p>
+  </div>
+</div>
+
+<!-- ───────────────────────── 2. before / after ───────────────────────── -->
+<div class="card">
+  <div class="head">Where a leave type&rsquo;s settings live &mdash; today, and proposed</div>
+  <div class="body">
+    <div class="two">
+
+      <div class="col">
+        <h3>Today <span class="chip bad">4 steps · 6 sub-steps · 2 screens</span></h3>
+        <p class="s">58 stored settings, written by 24 independent sub-forms. The arrangement records the
+          order things were built.</p>
+
+        <div class="stepbox">
+          <div class="t"><span>Step 1 &mdash; General setting</span><span class="n">4 sub-steps</span></div>
+          <div class="c">
+            <span class="sub">Details</span>
+            <span class="set">Code</span><span class="set">Name</span><span class="set">Description</span>
+            <span class="set">Paid / unpaid</span><span class="set">Leave unit</span>
+            <span class="set mv">Per-date approval</span>
+            <span class="sub">Leave year type</span>
+            <span class="set">Leave year cycle override</span>
+            <span class="sub">Earning method</span>
+            <span class="set mv">Earning method</span><span class="set mv">Accrual day</span>
+            <span class="set mv">Rounding method</span><span class="set mv">Rounding threshold</span><span class="set mv">Rounding bands</span>
+            <span class="sub">Carry forward policy</span>
+            <span class="set mv">Carry forward on / off</span><span class="set mv">Maximum</span><span class="set mv">Percentage</span>
+            <span class="set mv">Expiry mode</span><span class="set mv">Expiry months</span><span class="set mv">Expiry month / day</span>
+            <span class="set mv">Include earned</span>
+          </div>
+        </div>
+
+        <div class="stepbox">
+          <div class="t"><span>Step 2 &mdash; Condition</span><span class="n">2 sub-steps</span></div>
+          <div class="c">
+            <span class="sub">Criteria</span>
+            <span class="set">Gender</span><span class="set">Marital status</span><span class="set">Minimum service</span>
+            <span class="set">Probation status</span><span class="set">8 organisation axes</span>
+            <span class="sub">Leave application rules &mdash; twelve cards</span>
+            <span class="set">Durations</span><span class="set">Supporting document</span>
+            <span class="set">Backdating limit</span><span class="set">Advance notice</span>
+            <span class="set">Duplicate policy</span><span class="set">Day type inclusion</span>
+            <span class="set mv">Negative balance</span><span class="set mv">Maximum negative</span>
+            <span class="set mv">Balance source</span><span class="set mv">Allow unpaid leave</span>
+            <span class="set mv">Half-day deduction &mdash; company-wide, drawn on all 25 types</span>
+          </div>
+        </div>
+
+        <div class="stepbox">
+          <div class="t"><span>Step 3 &mdash; Entitlement</span><span class="n">no sub-steps</span></div>
+          <div class="c">
+            <span class="set">Entitlement tables + employee eligibility</span>
+            <span class="set">Run earned accrual</span>
+          </div>
+        </div>
+
+        <div class="stepbox">
+          <div class="t"><span>Step 4 &mdash; Custom settings</span><span class="n">no sub-steps</span></div>
+          <div class="c">
+            <span class="set">Employee visibility</span><span class="set">Self-service placement</span>
+            <span class="set">Custom messages</span><span class="set">Employee leave view</span>
+            <span class="set mv">Formula explanations</span><span class="set">Colour &amp; icon</span>
+          </div>
+        </div>
+
+        <div class="stepbox">
+          <div class="t"><span>A second screen &mdash; Payroll impact</span><span class="n">per leave type</span></div>
+          <div class="c"><span class="set mv">Send to payroll module</span></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <h3>Proposed <span class="chip new">5 tabs, one per question</span></h3>
+        <p class="s">The same 58 settings and the same 24 sub-forms &mdash; each with its save marker intact
+          &mdash; under the question it answers.</p>
+
+        <div class="tabbox">
+          <div class="t"><span>1 &nbsp;The leave type</span><span class="n">what it is called, how it behaves</span></div>
+          <div class="c">
+            <span class="set">Code</span><span class="set">Name</span><span class="set">Description</span>
+            <span class="set">Paid / unpaid</span><span class="set">Leave unit</span>
+            <span class="set">Leave year cycle override</span>
+            <span class="set">Employee visibility</span><span class="set">Self-service placement</span>
+            <span class="set">Employee leave view</span><span class="set">Colour &amp; icon</span>
+            <span class="set in">Send to payroll module &nbsp;&larr; from Payroll impact</span>
+          </div>
+        </div>
+
+        <div class="tabbox">
+          <div class="t"><span>2 &nbsp;Who is eligible</span><span class="n">who may take it at all</span></div>
+          <div class="c">
+            <span class="set">Gender</span><span class="set">Marital status</span><span class="set">Minimum service</span>
+            <span class="set">Probation status</span><span class="set">8 organisation axes</span>
+            <span class="set in">Which entitlement rules reach this type &nbsp;&mdash; read-only</span>
+          </div>
+        </div>
+
+        <div class="tabbox">
+          <div class="t"><span>3 &nbsp;What they are entitled to</span><span class="n">how many days, and who gets which table</span></div>
+          <div class="c">
+            <span class="set in">Earning method &nbsp;&larr; from General</span>
+            <span class="set in">Accrual day</span><span class="set in">Rounding method / threshold / bands</span>
+            <span class="set in">Carry forward &mdash; all seven controls &nbsp;&larr; from General</span>
+            <span class="set">Entitlement tables + employee eligibility</span>
+            <span class="set">Run earned accrual</span>
+            <span class="set in">Negative balance &amp; maximum &nbsp;&larr; from Condition</span>
+            <span class="set in">Balance source</span><span class="set in">Allow unpaid leave</span>
+            <span class="set in">Formula explanations</span>
+          </div>
+        </div>
+
+        <div class="tabbox">
+          <div class="t"><span>4 &nbsp;How it is applied for</span><span class="n">what an application must satisfy</span></div>
+          <div class="c">
+            <span class="set">Durations</span><span class="set">Supporting document</span>
+            <span class="set">Backdating limit</span><span class="set">Advance notice + unit</span>
+            <span class="set">Maximum days per leave year</span><span class="set">Maximum consecutive days</span>
+            <span class="set">Duplicate policy</span><span class="set">Day type inclusion</span>
+            <span class="set">Override rules</span><span class="set in">Custom messages &mdash; beside the rule each one overrides</span>
+          </div>
+        </div>
+
+        <div class="tabbox">
+          <div class="t"><span>5 &nbsp;Who approves it</span><span class="n">read-only &mdash; edited on Approval chains</span></div>
+          <div class="c">
+            <span class="set in">The chain that reaches this type</span>
+            <span class="set in">Its ordered steps</span><span class="set in">Escalation</span>
+            <span class="set in">Per-date approval &nbsp;&larr; from General</span>
+          </div>
+        </div>
+
+        <div class="tabbox">
+          <div class="t"><span>Company rules &mdash; a separate screen</span><span class="n">not a property of one leave type</span></div>
+          <div class="c">
+            <span class="set in">Half-day deduction &nbsp;&mdash; drawn once, not 25 times</span>
+            <span class="set in">Leave encashment policy</span>
+            <span class="set in">Replacement leave policy</span>
+            <span class="set in">Shared leave groups</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="legend">
+      <span><i class="sw g"></i>stays where it is</span>
+      <span><i class="sw r"></i>moves &mdash; it is filed under the wrong question today</span>
+      <span><i class="sw b"></i>arrives here</span>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 3. six things it fixes ───────────────────────── -->
+<div class="card">
+  <div class="head">The six things that read as arbitrary today, and where each one goes</div>
+  <div class="body">
+    <table class="fix">
+      <tr><th style="width:44%">What you find today</th><th style="width:26%">Why it reads as arbitrary</th><th>Proposed</th></tr>
+      <tr>
+        <td><span class="k">Earning method, rounding and carry forward</span> are in <i>General setting</i>. The step called <i>Entitlement</i> holds the day tables.</td>
+        <td>Two halves of one question &mdash; <i>how many days</i> &mdash; two steps apart.</td>
+        <td>Both in <span class="k">Tab 3 &middot; What they are entitled to</span>.</td>
+      </tr>
+      <tr>
+        <td><span class="k">Per-date approval</span> is in <i>General setting</i>.</td>
+        <td>It is an approval behaviour, four steps from anything else about approval.</td>
+        <td><span class="k">Tab 5 &middot; Who approves it</span>.</td>
+      </tr>
+      <tr>
+        <td><span class="k">Send to payroll module</span> is a per-leave-type setting on a different screen.</td>
+        <td>Every other per-type setting is on the leave type.</td>
+        <td><span class="k">Tab 1 &middot; The leave type</span>.</td>
+      </tr>
+      <tr>
+        <td>The <span class="k">company-wide half-day deduction</span> card renders inside every leave type&rsquo;s Condition step.</td>
+        <td>One company decision, drawn 25 times.</td>
+        <td><span class="k">Company rules</span>, once.</td>
+      </tr>
+      <tr>
+        <td><span class="k">&ldquo;Who qualifies&rdquo;</span> is answered in three places: the type&rsquo;s own criteria, the entitlement eligibility rules, and the approval assignment scope.</td>
+        <td>Three surfaces, one question &mdash; the complaint that started this item.</td>
+        <td>One question, two views of the <span class="k">same rows</span>: Tab 2 for the type&rsquo;s gate, Tab 3 for the rules that reach it.</td>
+      </tr>
+      <tr>
+        <td><i>Leave application rules</i> holds twelve cards, three of which are about <span class="k">balance</span>, not about applying.</td>
+        <td>The card grid is a bucket, not a category.</td>
+        <td>The three balance cards move to <span class="k">Tab 3</span>.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+</div>
