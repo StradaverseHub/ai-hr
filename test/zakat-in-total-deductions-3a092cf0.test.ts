@@ -201,6 +201,17 @@ describe('3a092cf0 — zakat belongs in Total Deductions', () => {
     expect(slip.otherDeductions).toBe(0);
     expect(displayedDeductionLines(slip.st) + slip.otherDeductions).toBe(slip.totalDeductions);
     expect(money(slip.gross - slip.totalDeductions)).toBe(slip.net);
+
+    // 3a092cf0 — AND THE SLIP SAYS SO ON ITS OWN BLOB. Every display surface gates on this stamp to
+    // decide whether to print zakat as a COUNTED deduction, because a slip written before this round has
+    // a total that excludes it and would otherwise render lines that sum above its own total. Without
+    // this assertion the stamp is unguarded: the kernel could stop writing it and every new payslip would
+    // silently render as legacy — zakat charged but shown as informational — which is the reporter's
+    // original complaint returning by a different door.
+    expect(
+      (slip.st as unknown as { zakatInTotal?: unknown }).zakatInTotal,
+      'the kernel must stamp the slip it just charged zakat on',
+    ).toBe(true);
   });
 
   /**
@@ -266,5 +277,48 @@ describe('3a092cf0 — zakat belongs in Total Deductions', () => {
       expect(displayedDeductionLines(s.st) + s.otherDeductions).toBe(s.totalDeductions);
       expect(money(s.gross - s.totalDeductions)).toBe(s.net);
     }
+  });
+  /**
+   * ⚠️ THE VERIFY PASS FOUND THIS, AND THE FIX ITSELF CREATED IT. Putting zakat into `statDeductions`
+   * put it OUTSIDE the EA s.24 net-floor clamp, which guards only the manual deduction, CP38 and the
+   * loan. Measured on the first build: basic 1,000 with a 2,000 election gave total_deductions 2,116.65
+   * and a NET PAY OF -1,116.65 — silently, with no clamp entry and no warning.
+   *
+   * Zakat is charged through the clamp chain now, so net >= 0 by construction.
+   */
+  it('an election larger than take-home is clamped — never a negative net', async () => {
+    const a = await entitledCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Over Take Home', primaryEmail: 'overzakat@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await setCompensation(a, {
+      employmentId: e.employmentId,
+      basicSalary: 1000,
+      monthlyAllowance: 0,
+      effectiveFrom: '2026-01-01',
+    });
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101012222',
+      taxCategory: 1,
+      subjectToSkbbk: false,
+      zakatActive: true,
+      zakatMethod: 'fixed',
+      // Far more than the take-home this basic can produce.
+      zakatFixed: 2000,
+    });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
+    await generatePayslips(a, { batchId });
+    const slip = await slipFor(a, e.employmentId, '2026-02');
+
+    expect(slip.net, 'EA s.24 — net pay can never go negative').toBeGreaterThanOrEqual(0);
+    expect(slip.totalDeductions).toBeLessThanOrEqual(slip.gross);
+    // And the arithmetic still reconciles at whatever the clamp allowed.
+    expect(money(slip.gross - slip.totalDeductions)).toBe(slip.net);
   });
 });

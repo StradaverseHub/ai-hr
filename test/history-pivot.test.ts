@@ -286,7 +286,10 @@ describe('080de5cf — the History grid pivot', () => {
     const grid = pivotHistoryGrid({
       rows: [
         slip({
-          statutory: { epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45, zakat: 200 },
+          // `zakatInTotal` marks this as a slip written by the post-3a092cf0 kernel, i.e. one whose
+          // stored totalDeductions already counts the zakat. Without the stamp the pivot must NOT
+          // subtract it — that is the legacy case, asserted separately below.
+          statutory: { epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45, zakat: 200, zakatInTotal: true },
           totalDeductions: '630.00',
           net: '2990.00',
         }),
@@ -301,6 +304,34 @@ describe('080de5cf — the History grid pivot', () => {
     // row, on the one screen whose purpose is reconciliation.
     expect(rowFor(grid.rows, 'OTHER_DED')!.months[0]).toBe(0);
     expect(sumMonth(grid.rows, 'deduction', 0)).toBe(630);
+  });
+
+  /**
+   * 3a092cf0 — AND A PRE-FIX PAYSLIP MUST BE BYTE-IDENTICAL, which is the half the verify pass caught.
+   *
+   * Nine stored payslips carry a zakat and their `totalDeductions` is the OLD figure that excludes it.
+   * Subtracting a named zakat line out of a total that never contained it drives the residual NEGATIVE:
+   * measured against SIG01's real stored row, "Other deductions -30.00". filterGridRows only hides a row
+   * when EVERY month is zero, so the negative survives hide-zero and reaches the screen — and for the two
+   * slips on CLOSED runs it could never be corrected.
+   *
+   * No `zakatInTotal` stamp ⇒ the pivot computes the residual exactly as it did before this round.
+   */
+  it('a PRE-fix payslip keeps its residual — the zakat is not subtracted from a total that excludes it', () => {
+    const grid = pivotHistoryGrid({
+      rows: [
+        slip({
+          // SIG01's real stored row: zakat on the blob, NO stamp, and a total that excludes it.
+          statutory: { epfEmployee: 410, socsoEmployee: 18.75, eisEmployee: 7.5, pcb: 0, zakat: 30 },
+          totalDeductions: '436.25',
+          net: '3871.75',
+        }),
+      ],
+      year: 2026,
+    });
+    const other = rowFor(grid.rows, 'OTHER_DED');
+    // 436.25 - (410 + 18.75 + 0 + 7.5 + 0) = 0. Before the gate this was -30.
+    expect(other ? other.months[0] : 0, 'a legacy slip must not produce a negative residual').toBe(0);
   });
 
   it('employer-borne statutory is deducted from the EMPLOYEE line, not left to contradict the total', () => {

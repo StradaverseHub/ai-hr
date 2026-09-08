@@ -126,6 +126,10 @@ export async function PayrollAdjustmentsPanel({
               {t('prefillShiftDiff')}
             </Button>
           </form>
+          {/* 3a092cf0 — REGULAR RUNS ONLY, matching prefillLoans above and prefillTp1 below. A zakat
+              election is a monthly amount; offering it on an additional run applied it twice in one
+              month once zakat joined the deduction total. The service refuses it too. */}
+          {isRegular && (
           <form action={prefillFixedZakatAction}>
             <input type="hidden" name="batchId" value={batch.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
@@ -133,6 +137,7 @@ export async function PayrollAdjustmentsPanel({
               {t('prefillFixedZakat')}
             </Button>
           </form>
+          )}
           {/* a1d82340 rev 3 — TP1 self-relief. This action has existed since the TP1 screen shipped and
               was rendered by NO screen: five of the six bridges had a button here and this one did not.
               An employee could submit their relief, HR could see it, and it could never reach a payslip.

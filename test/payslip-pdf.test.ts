@@ -111,6 +111,9 @@ const data: PayslipPdfData = {
   // 3a092cf0 — no election on this fixture, so no zakat row: the document it renders is
   // byte-for-byte the one it rendered before the line existed.
   zakat: 0,
+  // 3a092cf0 — this base fixture is a POST-fix slip (its total counts zakat). The legacy case is
+  // exercised explicitly below, because that is the one that regressed history.
+  zakatCountedInTotal: true,
   otherDeductions: 0,
   // e2632276 — no stamp on this fixture ⇒ the pre-feature path: no named lines, residual === otherDeductions.
   absence: { unpaidLeave: null, absent: null, residual: 0, showResidual: false, any: false },
@@ -293,6 +296,46 @@ describe('ADR-0036 — payslip PDF', () => {
     // it printed before this line existed.
     expect(drawnText(await renderPayslipPdf({ ...sig01, zakat: 0, totalDeductions: 436.25, net: 3871.75 }, labels)))
       .not.toContain('Zakat');
+  });
+
+  /**
+   * 3a092cf0 — AND A PAYSLIP WRITTEN BEFORE THIS ITEM MUST RENDER EXACTLY AS IT ALWAYS DID.
+   *
+   * This is the half that protects history, and it is not hypothetical: nine stored payslips carry a
+   * zakat (4 employees, 7 runs, 2,569.23), and their `total_deductions` is the OLD figure that excludes
+   * it. Printing the counted row on those documents would make the drawn rows sum ABOVE the printed
+   * TOTAL DEDUCTIONS — the exact defect this item exists to remove, inflicted on documents that cannot
+   * be re-issued. Two of the nine are on CLOSED runs, frozen at trigger level by migration 0011, so for
+   * those it would be permanent.
+   *
+   * The discriminator is the payslip's OWN stamp, exactly as payslipEmployerBorne does it: no
+   * `zakatInTotal` on the blob ⇒ a pre-fix slip ⇒ no counted row.
+   */
+  it('a PRE-fix payslip prints no counted Zakat row, and still adds up to its own stored total', async () => {
+    // SIG01's ACTUAL stored row: zakat 30 on the blob, but total_deductions 436.25 excludes it.
+    const legacy = {
+      ...data,
+      epfEmployee: 410, socsoEmployee: 18.75, eisEmployee: 7.5, pcb: 0,
+      zakat: 30, zakatCountedInTotal: false, otherDeductions: 0,
+      gross: 4308, totalDeductions: 436.25, net: 3871.75,
+    };
+    const pl = drawnPlacements(await renderPayslipPdf(legacy, labels));
+    const amountBeside = (label: string) => {
+      const row = placed(pl, label);
+      if (!row) throw new Error(`no row labelled ${label} on the page`);
+      const amt = pl.find((r) => r.page === row.page && Math.abs(r.y - row.y) < 1.5 && r.x > row.x && r.text.startsWith('MYR'));
+      if (!amt) throw new Error(`row ${label} drew no amount`);
+      return Number(amt.text.replace(/^MYR\s*/, '').replace(/,/g, ''));
+    };
+
+    // No counted zakat row — the document keeps the shape it has always had.
+    expect(placed(pl, 'Zakat'), 'a pre-fix payslip must not print a counted Zakat row').toBeUndefined();
+
+    // And it reconciles against its OWN stored total, read off the drawn page rather than asserted
+    // from the fixture — the same technique as the post-fix case above.
+    const lines = ['EPF', 'SOCSO', 'EIS', 'PCB'].map(amountBeside);
+    expect(Math.round(lines.reduce((a, b) => a + b, 0) * 100) / 100).toBe(436.25);
+    expect(amountBeside('TOTAL DEDUCTIONS')).toBe(436.25);
   });
 
   // 3c473773 — the employer-borne disclosure block. Printed only when the payslip carries one; absent on

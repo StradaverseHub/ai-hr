@@ -5,6 +5,9 @@ import { recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-li
 // 3c88d593 (r206) — which days of the period a payslip claims, read from the payslip's OWN record.
 // Pure and dependency-free for the same reason as the import above.
 import { payslipSegmentOf, type PayslipCoverage } from '@/core/payslip-segment';
+// 3a092cf0 — whether THIS payslip's stored total already counts its zakat. Pure and dependency-free,
+// like the two above, so this pure pivot stays pure.
+import { payslipZakatLine, type PayslipZakatSnapshot } from '@/core/payslip-zakat-line';
 import { deriveHistoryBreakdown } from './history-breakdown';
 
 /**
@@ -382,9 +385,23 @@ function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
   // an over-stated "Other deductions" on a reconciliation screen, and no way for an operator to tell
   // which line was the real one. The rule this file lives by is that every named line is taken OUT of the
   // residual before it is printed; zakat is a named line now, so it is subtracted here.
-  const zakat = num(st.zakat);
+  // 3a092cf0 — SUBTRACT THE ZAKAT ONLY FROM A SLIP WHOSE TOTAL ACTUALLY CONTAINS IT.
+  //
+  // `b.totalDeductions` is the STORED figure. On a slip written before this item that total EXCLUDES the
+  // zakat, so subtracting a named zakat line out of it drives the residual NEGATIVE — measured against
+  // SIG01's real stored row: "Other deductions -30.00", and filterGridRows only hides a row when EVERY
+  // month is zero, so the negative survives hide-zero and reaches the screen.
+  //
+  // The payslip's own stamp is the authority (core/payslip-zakat-line.ts). Counted ⇒ it is inside the
+  // total and comes out of the residual. Not counted ⇒ it was never in the total, so the residual is
+  // computed exactly as it was before this round and the pre-existing slip is byte-identical.
+  const zakatLine = payslipZakatLine(st as PayslipZakatSnapshot);
+  const zakat = zakatLine.amount;
   const otherDeductions = round2(
-    b.totalDeductions - (emp.epf + emp.socso + emp.skbbk + emp.eis + emp.pcb) - cp38 - zakat,
+    b.totalDeductions -
+      (emp.epf + emp.socso + emp.skbbk + emp.eis + emp.pcb) -
+      cp38 -
+      (zakatLine.countedInTotal ? zakat : 0),
   );
 
   // 0253dc7c — the wage bases, straight out of the payslip's own stamp. `null` (a pre-r187 run) is

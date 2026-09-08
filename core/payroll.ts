@@ -132,6 +132,28 @@ export class BatchNotDraftError extends Error {
 }
 
 /**
+ * 3a092cf0 — a MONTHLY election may only be stamped onto the month's REGULAR run.
+ *
+ * The zakat prefill was offered on every draft batch, an additional/off-cycle one included, and the
+ * kernel's manual tier then applied the same election a second time. Measured on a branch build: basic
+ * 6000 with a 90.00 monthly election, regular run + bonus run, 180.00 deducted.
+ *
+ * ⚠️ IT WAS HARMLESS UNTIL ZAKAT JOINED THE DEDUCTION TOTAL, which is why nothing had surfaced it: the
+ * duplicate stamp moved no money while zakat was excluded from `statDeductions`. Fixing that exclusion
+ * turned a dormant bookkeeping duplicate into a real double charge, so the two changes ship together.
+ *
+ * The screen already hides the control on a non-regular run (`isRegular &&` in adjustments-panel.tsx,
+ * as it does for loans and TP1). This is the SERVER half — a hidden control is not a guard, and this one
+ * now costs money.
+ */
+export class AdditionalRunPrefillNotAllowedError extends Error {
+  constructor(public readonly what: string) {
+    super(`A ${what} election is monthly and can only be prefilled onto the month's regular run`);
+    this.name = 'AdditionalRunPrefillNotAllowedError';
+  }
+}
+
+/**
  * 49e7e0a2 — Close is refused while the run still owes a recalculation.
  *
  * The window that lets a one-off transaction be corrected after a run is processed is only safe because
@@ -2428,12 +2450,27 @@ export async function prefillFixedZakat(
         payPeriod: payrollBatch.payPeriod,
         status: payrollBatch.status,
         scope: payrollBatch.scope,
+        runType: payrollBatch.runType,
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
+    // ⚠️ REGULAR RUNS ONLY, AND THIS GATE IS WORTH REAL MONEY SINCE 3a092cf0.
+    //
+    // A zakat election is a MONTHLY amount. Stamping it onto an additional/off-cycle run as well applies
+    // the same election twice in one month: the regular run charges it, then the bonus run charges it
+    // again through the manual tier. Measured on a branch build — basic 6000 with a 90.00 election —
+    // a regular run plus a bonus run deducted 180.00 against a 90.00 election.
+    //
+    // It was HARMLESS UNTIL NOW and that is the trap: before zakat joined the deduction total, the
+    // duplicate stamp changed no figure anybody was paid, so nothing surfaced it. Putting zakat in the
+    // total turned a dormant bookkeeping duplicate into money.
+    //
+    // `prefillLoans` and `prefillTp1Deductions` are already gated this way, both in this file and on the
+    // adjustments panel; this one was the odd one out on both sides.
+    if (batch.runType !== 'regular') throw new AdditionalRunPrefillNotAllowedError('zakat');
 
     const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;
@@ -3373,7 +3410,14 @@ export async function generatePayslips(
     // clamp is never silent. Empty ⇒ no event (byte-identical no-clamp path).
     const deductionClampsByEmp = new Map<
       string,
-      { manualRequested: number; manualApplied: number; cp38Requested: number; cp38Applied: number; loanRequested: number; loanApplied: number }
+      {
+        manualRequested: number; manualApplied: number;
+        cp38Requested: number; cp38Applied: number;
+        loanRequested: number; loanApplied: number;
+        // 3a092cf0 — optional so every existing reader and every existing test row is unchanged; a
+        // clamped zakat is new and only the paths that set it carry it.
+        zakatRequested?: number; zakatApplied?: number;
+      }
     >();
     // c7fdfcf6 (Payroll Schedule) — the company-level cut-off schedule (company_payroll_config day columns +
     // the company-default policy's config). Loaded ONCE; each transaction type's window resolves against it,
@@ -5459,14 +5503,15 @@ export async function generatePayslips(
       //
       // Zakat is never employer-borne (there is no "Employer bears zakat" control), so it is deliberately
       // outside `employerBorneTotal` and cannot be funded away from the employee.
+      // ⚠️ ZAKAT IS NOT IN HERE, AND THAT IS THE SECOND HALF OF 3a092cf0. It IS charged — see
+      // `slipZakat` below — but it is charged through the s.24 clamp chain rather than beside the
+      // legislated legs. Putting it here (the branch's first attempt) had two measured consequences:
+      // a 2,000 election against a 1,000 basic produced a NET PAY OF -1,116.65 with no clamp and no
+      // warning, because `statDeductions` is never clamped; and it silently consumed headroom AHEAD of
+      // a court/LHDN-ordered CP38, re-prioritising an employee's voluntary election above a legal
+      // order. Neither was a decision anybody made.
       const statDeductions = round2(
-        st.epfEmployee +
-          st.socsoEmployee +
-          st.socsoSkbbk +
-          st.eisEmployee +
-          st.pcb +
-          st.zakat -
-          employerBorneTotal,
+        st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb - employerBorneTotal,
       );
       // M#16 (EA s.24 net-floor): clamp EVERY post-tax deduction in priority order so net ≥ 0 BY
       // CONSTRUCTION, never as a downstream patch. Headroom after statutory + unpaid is the cash that
@@ -5485,16 +5530,43 @@ export async function generatePayslips(
       const afterManual = round2(avail - manualApplied);
       const cp38Applied = Math.max(0, Math.min(rawCp38, afterManual));
       const afterCp38 = round2(afterManual - cp38Applied);
-      const slipLoan = Math.max(0, Math.min(rawLoan, afterCp38));
+      // 3a092cf0 — ZAKAT, CLAMPED, AND DELIBERATELY BEHIND CP38.
+      //
+      // The ORDER is the decision: CP38 is a court/LHDN direction to deduct, zakat is an amount the
+      // employee elected, so the election must not displace the order. It sits ahead of the loan for the
+      // mirror reason — ADR-0060 already makes the company loan the lowest claim on the cash.
+      //
+      // Clamped for the same reason every line here is: EA s.24 means net ≥ 0 BY CONSTRUCTION. An
+      // election larger than take-home is not a typo-only case — 100815 carries 890.53/911.83 a month,
+      // and a month mostly consumed by unpaid leave leaves less than that.
+      //
+      // ⚠️ A CLAMPED ZAKAT LEAVES THE PCB OFFSET OVER-APPLIED: §E.5 reduced the PCB by the FULL election
+      // upstream, so recovering less than that here means the month collected neither the tax nor all of
+      // the zakat. That cannot be silently reconciled inside the kernel — it is an operator decision
+      // about an election they set — so it is recorded as a clamp and the batch warns, exactly as it
+      // does for a clamped CP38 or loan. Never silent.
+      const rawZakat = round2(st.zakat);
+      const zakatApplied = Math.max(0, Math.min(rawZakat, afterCp38));
+      const slipZakat = zakatApplied;
+      const afterZakat = round2(afterCp38 - zakatApplied);
+      const slipLoan = Math.max(0, Math.min(rawLoan, afterZakat));
       // 1.2.3 CP38 + the manual deduction fold into the SINGLE extra-deduction source: otherDeductions
       // (line below) and totalDeductions/net then reflect them automatically — no separate add-to-total.
       const slipExtraDeduct = round2(manualApplied + cp38Applied);
       // Record any deduction the headroom could not fully recover so the batch warns (M#16) — never silent.
-      if (manualApplied + 0.005 < rawManual || cp38Applied + 0.005 < rawCp38 || slipLoan + 0.005 < rawLoan) {
+      if (
+        manualApplied + 0.005 < rawManual ||
+        cp38Applied + 0.005 < rawCp38 ||
+        slipLoan + 0.005 < rawLoan ||
+        // 3a092cf0 — a zakat the headroom could not fully recover is warned like any other clamp. It
+        // matters MORE than the others because the PCB offset upstream already assumed the full amount.
+        zakatApplied + 0.005 < rawZakat
+      ) {
         deductionClampsByEmp.set(e.employmentId, {
           manualRequested: rawManual, manualApplied,
           cp38Requested: rawCp38, cp38Applied,
           loanRequested: rawLoan, loanApplied: slipLoan,
+          zakatRequested: rawZakat, zakatApplied,
         });
       }
       // Record the ACTUAL loan recovered (cents) so applyLoansForBatch advances the ledger by the clamped
@@ -5505,7 +5577,13 @@ export async function generatePayslips(
       // payslip stores already reflect the policy; net is then re-derived from the rounded components so it
       // reconciles, then net-rounding (if any) applies last.
       const roundedGross = applyRounding(grossPay, cfg?.rounding?.earnings);
-      const totalDeductionsRaw = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
+      // 3a092cf0 — `slipZakat` is its OWN term rather than folded into `slipExtraDeduct`. That constant
+      // becomes `otherDeductions` on the stored row, and Transaction View's pivot subtracts a named zakat
+      // out of that residual; folding it in would double-count it there and print a negative
+      // "Other deductions". Separate term ⇒ the total counts it once and the residual stays clean.
+      const totalDeductionsRaw = round2(
+        statDeductions + slipUnpaid + slipExtraDeduct + slipZakat + slipLoan,
+      );
       let totalDeductions = applyRounding(totalDeductionsRaw, cfg?.rounding?.deductions);
       let net = applyRounding(round2(roundedGross - totalDeductions), cfg?.rounding?.netPay);
       // 1d — negative-net handling. 'set_zero' floors a negative net at 0; 'retain'/null leaves it (the s.24
@@ -5647,6 +5725,25 @@ export async function generatePayslips(
         statutory: {
           ...st,
           ...statutoryProvenance,
+          // 3a092cf0 — THE STAMP THAT SAYS "THIS SLIP'S TOTAL ALREADY COUNTS THE ZAKAT".
+          //
+          // Zakat joined `statDeductions` in this round, so a slip written from here reconciles: its
+          // deduction lines sum to its stored total. Every slip written BEFORE it does not — its total
+          // excludes the zakat that is nonetheless on the blob. A screen or a PDF that simply started
+          // printing zakat as a counted deduction would therefore make every historical payslip
+          // contradict itself, which is the exact complaint that raised this item, and it would be
+          // PERMANENT for the two 2026-01 slips on closed runs that can never be recalculated.
+          //
+          // So the display asks the PAYSLIP'S OWN BLOB whether its total counts the zakat, exactly as
+          // `payslipEmployerBorne` and `payslipAbsenceLines` ask about theirs (core/payslip-employer-borne
+          // .ts rule 1: "READ THE PAYSLIP'S OWN BLOB. Never re-derive from the employee's CURRENT flags").
+          // Absent ⇒ a pre-3a092cf0 slip ⇒ render exactly as it does today. Present ⇒ count it.
+          //
+          // Stamped unconditionally rather than only when zakat > 0: "this run counted zakat" is a fact
+          // about the ENGINE that wrote the slip, not about the amount. A slip with no zakat and no stamp
+          // would otherwise be indistinguishable from a legacy slip, and the first zakat election after an
+          // upgrade would look historical.
+          zakatInTotal: true,
           ...(slipOvertime > 0 && otSourceByEmp.get(e.employmentId)
             ? { otSource: otSourceByEmp.get(e.employmentId) }
             : {}),

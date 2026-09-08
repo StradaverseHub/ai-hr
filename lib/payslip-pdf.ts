@@ -23,6 +23,7 @@ import { formatMoney } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
+import { payslipZakatLine } from '../core/payslip-zakat-line';
 // 6b134681 / 417d4937 — the ONE derivation of "which named pay items explain this figure, and how is a
 // line labelled". Shared with the ESS payslip screen and Transaction View → History so the printed
 // document cannot itemise a total differently from the screen it was printed from.
@@ -82,6 +83,8 @@ export type PayslipPdfData = {
    * employee with no zakat election prints exactly the document it printed before.
    */
   zakat: number;
+  /** 3a092cf0 — does this payslip's STORED total already include the zakat above? Off its own blob. */
+  zakatCountedInTotal: boolean;
   otherDeductions: number;
   /** e2632276 — this payslip's OWN record of the two halves of `otherDeductions`, with their day counts.
    *  Absent (`any:false`) on every payslip issued before it shipped ⇒ the single lumped row is printed
@@ -323,6 +326,7 @@ export function buildPayslipPdfData(
     // employer-borne-adjusted: there is no "Employer bears zakat" control, so `eb.employee` has no zakat
     // leg and the figure the employee paid is the figure the slip stamped.
     zakat: n(st.zakat),
+    zakatCountedInTotal: payslipZakatLine(st).countedInTotal,
     otherDeductions: n(p.otherDeductions),
     absence: payslipAbsenceLines(p.statutory, p.otherDeductions),
     totalDeductions: n(p.totalDeductions),
@@ -617,7 +621,12 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // tax lines because that is where it sits on both screens and because that is the order it is
     // applied in: the §E.5 offset reduces the PCB above it first, and what is charged here is what
     // survived that. Absent when there is no election, which is every payslip issued before this item.
-    ...(d.zakat > 0 ? [{ label: t.zakat, amount: d.zakat }] : []),
+    // 3a092cf0 — ONLY on a slip whose stored total actually counts it. `d.zakatCountedInTotal` comes
+    // from the payslip's own stamp (core/payslip-zakat-line.ts). A pre-3a092cf0 document keeps the
+    // shape it has always had: no counted row, and the informational note below still explains the
+    // offset — otherwise the drawn rows would sum ABOVE the TOTAL DEDUCTIONS printed underneath them,
+    // which is the very defect this item exists to remove, inflicted on history.
+    ...(d.zakat > 0 && d.zakatCountedInTotal ? [{ label: t.zakat, amount: d.zakat }] : []),
     // e2632276 — the unpaid-leave and absence halves, each named and carrying its day count in the row's
     // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
     // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.
