@@ -882,7 +882,8 @@
         "editFamilyTitle": "Sửa thành viên gia đình",
         "viewFamilyTitle": "Xem thành viên gia đình",
         "deleteFamilyConfirmTitle": "Xóa hồ sơ thành viên gia đình?",
-        "deleteFamilyConfirmBody": "Thao tác này xóa thành viên gia đình khỏi sổ đăng ký gia đình. Nếu khoản giảm trừ cho con ở chế độ tự động, số con được giảm trừ của nhân viên sẽ được cập nhật tương ứng."
+        "deleteFamilyConfirmBody": "Thao tác này xóa thành viên gia đình khỏi sổ đăng ký gia đình. Nếu khoản giảm trừ cho con ở chế độ tự động, số con được giảm trừ của nhân viên sẽ được cập nhật tương ứng.",
+        "cancel": "Hủy"
       },
       "qualification": {
         "title": "Thông tin bằng cấp",
@@ -1647,7 +1648,10 @@
         "numChildren": "Số con",
         "isResident": "Cư trú thuế",
         "monthlyAllowance": "Phụ cấp hàng tháng",
-        "rateAmount": "Mức đơn giá"
+        "rateAmount": "Mức đơn giá",
+        "familyMemberName": "Tên thành viên gia đình",
+        "familyMemberRelationship": "Quan hệ thành viên gia đình",
+        "familyMemberDate": "Ngày của thành viên gia đình"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",
@@ -1675,7 +1679,8 @@
         "profile": "Chi tiết hồ sơ",
         "employment": "Việc làm",
         "statutory": "Ngân hàng & Luật định",
-        "payroll": "Lương"
+        "payroll": "Lương",
+        "family": "Gia đình"
       },
       "notSet": "— Chưa đặt —",
       "selectPrompt": "— Chọn —",

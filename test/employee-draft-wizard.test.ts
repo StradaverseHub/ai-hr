@@ -139,9 +139,16 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(m.employment).toEqual(['department', 'employmentType', 'hiredOn']);
     expect(m.statutory).toEqual([]); // nothing on Bank & Statutory is required by any writer
     expect(m.payroll).toEqual(['basicSalary']);
-    // Review is GONE — Activate replaced it. `missingByStep` must not still be shaped around a step the
-    // form no longer has.
-    expect(Object.keys(m)).toEqual(['profile', 'employment', 'statutory', 'payroll']);
+    // ITEM 759dfc7d ADDED `family`, AND IT REQUIRES NOTHING. Most new joiners have no family record to
+    // enter, so a step that demanded one would block every one of them; what the rule does judge is a
+    // member somebody DID add (see test/employee-draft-family.test.ts §1).
+    expect(m.family).toEqual([]);
+    // Review is GONE — Activate replaced it, and `missingByStep` must not still be shaped around a step
+    // the form no longer has. The list is ALSO order-sensitive, which is why this case pins it rather
+    // than a set: the 1-based position of each key is `employee_draft.current_step` on rows already
+    // sitting in production, so a new step may only ever be APPENDED. Inserting `family` in the
+    // reporter's preferred tab order would silently reopen every existing draft on a different step.
+    expect(Object.keys(m)).toEqual(['profile', 'employment', 'statutory', 'payroll', 'family']);
   });
 
   it('a complete draft has nothing outstanding', () => {
@@ -319,6 +326,10 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       { employment: { provisionalEndOn: 'nope' } },
       { statutory: { bankName: 'Maybank' } },
       { payroll: { basicSalary: '1', payMode: 'hourly' } },
+      // item 759dfc7d — the Family step's three names. Swept from the same rule for the same reason:
+      // a family field added without a label would otherwise reach HR as a raw `fields.familyMemberX`.
+      { family: [{}] },
+      { family: [{ fullName: 'A', relationship: 'child', dateOfBirth: 'nope' }] },
     ];
     const names = new Set([
       ...trip.flatMap((d) => missingForCreation(d)),

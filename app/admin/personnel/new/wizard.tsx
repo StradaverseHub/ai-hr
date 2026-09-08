@@ -53,12 +53,17 @@ import type { ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DRAFT_STEPS,
+  draftFamily,
   missingByStep,
   missingForCreation,
   stepKey,
+  stepNumber,
   type DraftStepKey,
   type EmployeeDraftData,
+  type EmployeeDraftFamilyMember,
 } from '@/lib/employee-draft-schema';
+// 759dfc7d — the Family tab, the first of the active record's tabs a draft gets (plan work item 1).
+import { DraftFamilyStep } from './family-step';
 import { saveDraftAction, discardDraftAction, createEmployeeAction } from './actions';
 
 type Option = { id: string; label: string; companies?: string; businessUnitId?: string; buCompanies?: string };
@@ -77,6 +82,8 @@ export function EmployeeWizard({
   grades,
   managers,
   nationalityOptions,
+  relationshipOptions,
+  countryOptions,
 }: {
   today: string;
   draftId: string;
@@ -95,6 +102,11 @@ export function EmployeeWizard({
   /** 35b7af0a group 8 — the tenant's nationality catalog (System Labels > Profile Options), the SAME list
    *  the Personnel profile card offers. PLAIN DATA, like every other prop crossing this boundary. */
   nationalityOptions: ComboboxOption[];
+  /** 759dfc7d — the `dependentRelationship` and `country` catalogs the Family step needs, resolved on the
+   *  server exactly as the Personnel Family tab resolves them. Empty is meaningful for the first: the step
+   *  falls back to the five built-in relationships, so an unseeded tenant never sees a blank dropdown. */
+  relationshipOptions: { value: string; label: string }[];
+  countryOptions: { value: string; label: string }[];
 }) {
   const t = useTranslations('people.wizard');
   const router = useRouter();
@@ -126,6 +138,14 @@ export function EmployeeWizard({
     setData((d) => ({ ...d, [section]: { ...(d[section] ?? {}), ...patch } }));
   };
 
+  /** 759dfc7d — family needs its own setter: `set` MERGES an object into a section, and merging into a
+   *  LIST is how a removed member comes back (index 2 of a shorter array survives the spread). The whole
+   *  array is replaced instead. */
+  const setFamily = (family: EmployeeDraftFamilyMember[]) => {
+    setSaved(false);
+    setData((d) => ({ ...d, family }));
+  };
+
   const visible = (o: Option, withBu: boolean) =>
     hireOptionVisible({
       optCompanies: o.companies ?? '',
@@ -145,7 +165,10 @@ export function EmployeeWizard({
     startTransition(async () => {
       setError(null);
       try {
-        await saveDraftAction(id, data, DRAFT_STEPS.indexOf(nextStep ?? step) + 1);
+        // `stepNumber`, NOT `indexOf + 1`: the stored number is declared in employee-draft-schema.ts
+        // (5 is the retired `review` slot and stays retired), so counting positions here would write the
+        // wrong number for every step after it.
+        await saveDraftAction(id, data, stepNumber(nextStep ?? step));
         setSaved(true);
         if (nextStep) setStep(nextStep);
         router.refresh();
@@ -170,7 +193,7 @@ export function EmployeeWizard({
     startTransition(async () => {
       setError(null);
       try {
-        const res = await createEmployeeAction(id, data, DRAFT_STEPS.indexOf(step) + 1);
+        const res = await createEmployeeAction(id, data, stepNumber(step));
         router.push(`/admin/personnel/${res.employmentId}?from=personnel`);
       } catch (e) {
         setError((e as Error).message);
@@ -637,6 +660,20 @@ export function EmployeeWizard({
               />
             </Field>
           </div>
+        )}
+
+        {/* 759dfc7d — FAMILY. The one tab of the active record a draft could never have, because
+            `employee_dependent` is keyed to a person and a draft creates none. It is edited into the
+            draft's own blob here and materialised into real rows at Activate. It sits OUTSIDE the
+            two-column grid the other steps use: its own card carries a table and a dialog, and it
+            manages its own layout so it matches the Personnel Family tab rather than this form. */}
+        {step === 'family' && (
+          <DraftFamilyStep
+            members={draftFamily(data)}
+            onChange={setFamily}
+            relationshipOptions={relationshipOptions}
+            countryOptions={countryOptions}
+          />
         )}
 
       </Card>

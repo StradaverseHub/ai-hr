@@ -89,18 +89,33 @@ export default async function CreateEmployeePage({
     );
   }
 
-  const [departments, positions, costCenters, businessUnits, grades, managerCandidates, nationalities] =
-    await Promise.all([
-      listDepartments(session),
-      listPositions(session, { companyIds: scopeIds }),
-      listCostCenters(session, { companyIds: scopeIds }),
-      listBusinessUnits(session, { companyIds: scopeIds }),
-      listJobGrades(session),
-      listManagerCandidates(session, { companyIds: scopeIds }),
-      // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
-      // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
-      listProfileOptions(session, 'nationality', { activeOnly: true }),
-    ]);
+  const [
+    departments,
+    positions,
+    costCenters,
+    businessUnits,
+    grades,
+    managerCandidates,
+    nationalities,
+    dependentRelationships,
+    countries,
+  ] = await Promise.all([
+    listDepartments(session),
+    listPositions(session, { companyIds: scopeIds }),
+    listCostCenters(session, { companyIds: scopeIds }),
+    listBusinessUnits(session, { companyIds: scopeIds }),
+    listJobGrades(session),
+    listManagerCandidates(session, { companyIds: scopeIds }),
+    // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
+    // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
+    listProfileOptions(session, 'nationality', { activeOnly: true }),
+    // 759dfc7d — the two catalogs the Family step needs, read the SAME way the Personnel Family tab reads
+    // them: active options only, so a relationship HR can pick on a draft is one `assertDependentsValid`
+    // will still accept at Activate. An empty dependentRelationship catalog is not an error — the step
+    // falls back to the five built-ins, exactly as that tab does.
+    listProfileOptions(session, 'dependentRelationship', { activeOnly: true }),
+    listProfileOptions(session, 'country', { activeOnly: true }),
+  ]);
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
   const labelCompanyCsv = async (kind: string): Promise<Map<string, string>> => {
@@ -178,6 +193,8 @@ export default async function CreateEmployeePage({
           label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
         }))}
         nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
+        relationshipOptions={dependentRelationships.map((o) => ({ value: o.value, label: o.label }))}
+        countryOptions={countries.map((o) => ({ value: o.value, label: o.label }))}
       />
     </div>
   );

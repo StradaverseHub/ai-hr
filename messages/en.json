@@ -899,7 +899,8 @@
         "editFamilyTitle": "Edit family member",
         "viewFamilyTitle": "View family member",
         "deleteFamilyConfirmTitle": "Remove family member record?",
-        "deleteFamilyConfirmBody": "This removes the family member from the family register. If child relief is on automatic mode, the employee's child-relief count is refreshed accordingly."
+        "deleteFamilyConfirmBody": "This removes the family member from the family register. If child relief is on automatic mode, the employee's child-relief count is refreshed accordingly.",
+        "cancel": "Cancel"
       },
       "qualification": {
         "title": "Qualification Information",
@@ -1647,7 +1648,10 @@
         "numChildren": "Number of children",
         "isResident": "Tax resident",
         "monthlyAllowance": "Monthly allowance",
-        "rateAmount": "Rate amount"
+        "rateAmount": "Rate amount",
+        "familyMemberName": "Family member name",
+        "familyMemberRelationship": "Family member relationship",
+        "familyMemberDate": "Family member date"
       },
       "employmentType": {
         "full_time": "Full-time",
@@ -1675,7 +1679,8 @@
         "profile": "Profile details",
         "employment": "Employment",
         "statutory": "Bank & Statutory",
-        "payroll": "Payroll"
+        "payroll": "Payroll",
+        "family": "Family"
       },
       "notSet": "— Not set —",
       "selectPrompt": "— Select —",

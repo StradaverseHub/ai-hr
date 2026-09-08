@@ -882,7 +882,8 @@
         "editFamilyTitle": "Sunting ahli keluarga",
         "viewFamilyTitle": "Lihat ahli keluarga",
         "deleteFamilyConfirmTitle": "Buang rekod ahli keluarga?",
-        "deleteFamilyConfirmBody": "Ini membuang ahli keluarga daripada daftar keluarga. Jika pelepasan anak dalam mod automatik, kiraan pelepasan anak pekerja akan dikemas kini sewajarnya."
+        "deleteFamilyConfirmBody": "Ini membuang ahli keluarga daripada daftar keluarga. Jika pelepasan anak dalam mod automatik, kiraan pelepasan anak pekerja akan dikemas kini sewajarnya.",
+        "cancel": "Batal"
       },
       "qualification": {
         "title": "Maklumat Kelayakan",
@@ -1647,7 +1648,10 @@
         "numChildren": "Bilangan anak",
         "isResident": "Pemastautin cukai",
         "monthlyAllowance": "Elaun bulanan",
-        "rateAmount": "Jumlah kadar"
+        "rateAmount": "Jumlah kadar",
+        "familyMemberName": "Nama ahli keluarga",
+        "familyMemberRelationship": "Hubungan ahli keluarga",
+        "familyMemberDate": "Tarikh ahli keluarga"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",
@@ -1675,7 +1679,8 @@
         "profile": "Butiran profil",
         "employment": "Pekerjaan",
         "statutory": "Bank & Statutori",
-        "payroll": "Gaji"
+        "payroll": "Gaji",
+        "family": "Keluarga"
       },
       "notSet": "— Tidak ditetapkan —",
       "selectPrompt": "— Pilih —",

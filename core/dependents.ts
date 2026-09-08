@@ -36,16 +36,39 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { company, employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
 import { requirePackFor } from '../localization/registry';
+// item 759dfc7d — the closed value sets, shared with the browser (see the re-export block below).
+import {
+  CHILD_RELIEF_CATEGORIES,
+  CHILD_RELIEF_PERCENTAGES,
+  DEPENDENT_GENDERS,
+  DEPENDENT_MARRIAGE_STATUSES,
+  DEPENDENT_RELATIONSHIPS,
+  childAgeYears,
+  type DependentRelationship,
+} from '../lib/dependent-vocabulary';
 
 /**
- * The BUILT-IN relationship values (rendered as static i18n labels in the UI). ea36b7fa — these five are no
- * longer the ONLY accepted values: the profile_option catalog category below lets a tenant add custom
- * relationship types (Grandparent, Guardian, …), which persist as their catalog `value` and are treated as
- * 'other' for all field/relief gating (spouse fields and child tax relief key off the built-ins only). The
- * built-ins stay ALWAYS valid server-side — deactivating one in the catalog only hides it from NEW picks.
+ * THE CLOSED VALUE SETS NOW LIVE IN `lib/dependent-vocabulary.ts` and are re-exported here unchanged
+ * (item 759dfc7d). They had to move because a CLIENT component — the draft's Family form — cannot import
+ * this module (it pulls the pg driver via db/client), and a second copy of the lists in the browser is
+ * how the draft screen and the Personnel screen would come to accept different values. Re-exported rather
+ * than relocated at the call sites so every existing `from '../core/dependents'` import keeps working and
+ * this stays the one place a server caller needs to know about.
  */
-export const DEPENDENT_RELATIONSHIPS = ['spouse', 'child', 'parent', 'sibling', 'other'] as const;
-export type DependentRelationship = (typeof DEPENDENT_RELATIONSHIPS)[number];
+export {
+  DEPENDENT_RELATIONSHIPS,
+  DEPENDENT_GENDERS,
+  DEPENDENT_MARRIAGE_STATUSES,
+  CHILD_RELIEF_CATEGORIES,
+  CHILD_RELIEF_PERCENTAGES,
+  dependentPanelOf,
+} from '../lib/dependent-vocabulary';
+export type {
+  DependentRelationship,
+  DependentGender,
+  DependentMarriageStatus,
+  ChildReliefCategory,
+} from '../lib/dependent-vocabulary';
 
 /**
  * ea36b7fa — the profile_option category backing the Family tab's Relationship dropdown (System Settings >
@@ -55,35 +78,6 @@ export type DependentRelationship = (typeof DEPENDENT_RELATIONSHIPS)[number];
  * one-directional.
  */
 export const DEPENDENT_RELATIONSHIP_CATEGORY = 'dependentRelationship' as const;
-
-/** Allowed gender values (optional). */
-export const DEPENDENT_GENDERS = ['male', 'female', 'undisclosed'] as const;
-export type DependentGender = (typeof DEPENDENT_GENDERS)[number];
-
-/** Allowed spouse marriage-status values (optional; only meaningful for a spouse record). */
-export const DEPENDENT_MARRIAGE_STATUSES = ['married', 'divorced', 'widowed', 'separated'] as const;
-export type DependentMarriageStatus = (typeof DEPENDENT_MARRIAGE_STATUSES)[number];
-
-/**
- * Item 6c635212 — Malaysia Income Tax (PCB / TP1) child-relief categories, the five LHDN s.48 cases:
- *   under_18         — child under 18
- *   study_preu       — 18+, unmarried, in full-time pre-university study (A-Levels, matriculation, etc.)
- *   study_tertiary   — 18+, unmarried, in full-time diploma / degree (and above) study
- *   disabled         — disabled child (OKU)
- *   disabled_study   — disabled child in full-time (diploma / degree and above) study
- * Only meaningful for a `child` record; validate-or-ignore otherwise. Nullable = not yet configured.
- */
-export const CHILD_RELIEF_CATEGORIES = [
-  'under_18',
-  'study_preu',
-  'study_tertiary',
-  'disabled',
-  'disabled_study',
-] as const;
-export type ChildReliefCategory = (typeof CHILD_RELIEF_CATEGORIES)[number];
-
-/** Allowed relief shares when parents split the claim (LHDN: 100% one parent, or 50% each). */
-export const CHILD_RELIEF_PERCENTAGES = [100, 50] as const;
 
 export class DependentValidationError extends Error {
   constructor(message: string) {
@@ -210,17 +204,15 @@ export type ChildReliefEligibilityRow = Pick<
 };
 
 /**
- * Item 5988053a — whole-year age from a DOB string as of `asOf`. Pure (no DB, no 'use client'); this is the
- * ONE age rule in the codebase: the detail page's Age column/field and the eligibility predicate below both
- * use it (formerly a private dobAgeYears copy on page.tsx). Null when no/invalid DOB. The 365.25-day divisor
- * is preserved as-is from the original implementations; changing it is a separate behavioural change.
+ * Item 5988053a — whole-year age from a DOB string as of `asOf`. THE ONE age rule in the codebase: the
+ * detail page's Age column/field and the eligibility predicate below both use it (formerly a private
+ * dobAgeYears copy on page.tsx).
+ *
+ * ITS BODY MOVED to `lib/dependent-vocabulary.ts` (item 759dfc7d) so the draft's Family form — a client
+ * component, which cannot import this module — shows the same Age from the same function rather than a
+ * third copy of the arithmetic. Re-exported here so every existing caller is untouched.
  */
-export function childAgeYears(dob: string | null | undefined, asOf: Date = new Date()): number | null {
-  if (!dob) return null;
-  const ms = Date.parse(`${dob}T00:00:00Z`);
-  if (Number.isNaN(ms)) return null;
-  return Math.floor((asOf.getTime() - ms) / (365.25 * 24 * 60 * 60 * 1000));
-}
+export { childAgeYears } from '../lib/dependent-vocabulary';
 
 /**
  * Item 5988053a — the per-row eligibility predicate, extracted from eligibleChildReliefCount so there is
@@ -537,61 +529,185 @@ export function listDependents(
 }
 
 /**
+ * One family member's fields, WITHOUT the person it belongs to. Named because there are now two writers
+ * that take exactly this — `addDependent` (one record, its own transaction) and `materialiseDependents`
+ * (a whole set, one transaction) — and a shape they shared by accident would be a shape that could drift.
+ */
+export type DependentInput = {
+  fullName: string;
+  relationship: string;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  icOrPassport?: string | null;
+  isBeneficiary?: boolean;
+  phone?: string | null;
+  remarks?: string | null;
+} & DependentExtraInput;
+
+/**
+ * THE INSERT ITSELF, inside a caller-owned transaction — the one place a family record is created.
+ *
+ * Extracted from `addDependent` (item 759dfc7d) so that activating a draft can write a whole family in a
+ * SINGLE transaction without a second copy of the column mapping, the validation and the event. A second
+ * copy is the r73 Decision 3 failure mode exactly: one writer falls behind a column the other gained, and
+ * a field entered on the draft is silently dropped at Activate.
+ */
+async function insertDependentInTx(
+  tx: Tx,
+  ctx: SessionContext,
+  personId: string,
+  p: DependentInput,
+): Promise<{ id: string }> {
+  const fullName = (p.fullName ?? '').trim();
+  if (fullName === '') throw new DependentValidationError('Dependent name is required.');
+  // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
+  await assertRelationshipAllowed(tx, p.relationship);
+  const gender = normGender(p.gender);
+  const [row] = await tx
+    .insert(employeeDependent)
+    .values({
+      tenantId: ctx.tenantId,
+      personId,
+      fullName,
+      relationship: p.relationship,
+      dateOfBirth: trimOrNull(p.dateOfBirth),
+      gender,
+      icOrPassport: trimOrNull(p.icOrPassport),
+      isBeneficiary: p.isBeneficiary ?? false,
+      phone: trimOrNull(p.phone),
+      remarks: trimOrNull(p.remarks),
+      ...extraColumnsForAdd(p.relationship, p),
+    })
+    .returning({ id: employeeDependent.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employee-dependent',
+    aggregateId: row.id,
+    eventType: 'dependent.added',
+    actor: actorOf(ctx),
+    subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, personId),
+    // ADR-0030 Layer 0: no name/IC/DOB — relationship + the beneficiary flag only.
+    payload: { relationship: p.relationship, isBeneficiary: p.isBeneficiary ?? false },
+  });
+  return { id: row.id };
+}
+
+/**
  * Add a family/dependent record (admin-only via RLS WITH CHECK is_admin()). Validates the mandatory
  * full_name + relationship (∈ allowed set) and optional gender, then appends `dependent.added` — PII
  * (name/IC/DOB) stays OUT of the payload, which carries the relationship + a flag only.
  */
 export async function addDependent(
   ctx: SessionContext,
-  p: {
-    personId: string;
-    fullName: string;
-    relationship: string;
-    dateOfBirth?: string | null;
-    gender?: string | null;
-    icOrPassport?: string | null;
-    isBeneficiary?: boolean;
-    phone?: string | null;
-    remarks?: string | null;
-  } & DependentExtraInput,
+  p: { personId: string } & DependentInput,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
-  const res = await withTenant(ctx, async (tx) => {
-    const fullName = (p.fullName ?? '').trim();
-    if (fullName === '') throw new DependentValidationError('Dependent name is required.');
-    // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
-    await assertRelationshipAllowed(tx, p.relationship);
-    const gender = normGender(p.gender);
-    const [row] = await tx
-      .insert(employeeDependent)
-      .values({
-        tenantId: ctx.tenantId,
-        personId: p.personId,
-        fullName,
-        relationship: p.relationship,
-        dateOfBirth: trimOrNull(p.dateOfBirth),
-        gender,
-        icOrPassport: trimOrNull(p.icOrPassport),
-        isBeneficiary: p.isBeneficiary ?? false,
-        phone: trimOrNull(p.phone),
-        remarks: trimOrNull(p.remarks),
-        ...extraColumnsForAdd(p.relationship, p),
-      })
-      .returning({ id: employeeDependent.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employee-dependent',
-      aggregateId: row.id,
-      eventType: 'dependent.added',
-      actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
-      // ADR-0030 Layer 0: no name/IC/DOB — relationship + the beneficiary flag only.
-      payload: { relationship: p.relationship, isBeneficiary: p.isBeneficiary ?? false },
-    });
-    return { id: row.id };
-  });
+  const res = await withTenant(ctx, (tx) => insertDependentInTx(tx, ctx, p.personId, p));
   // R46 47146ea3 — refresh the PCB child count from the register. Runs after commit, never throws.
   const childReliefSync = await syncChildReliefFromFamily(ctx, p.personId);
   return { ...res, childReliefSync };
+}
+
+/**
+ * WILL THIS SET OF FAMILY MEMBERS BE ACCEPTED? Asked BEFORE anything is created (item 759dfc7d).
+ *
+ * Activating a draft creates the person, the employment, the statutory row and the compensation through
+ * four writers that each own their transaction, and only then materialises the family. So a family member
+ * carrying a value the writer refuses — a gender outside the set, a relationship that is not a built-in
+ * and not an ACTIVE catalog option, a relief share that is neither 100 nor 50 — would fail AFTER an
+ * employee already existed. That is the "half-activated employee" this item exists to prevent, so the
+ * whole set is judged here first, against the same normalisers the insert uses, and a refusal costs
+ * nothing because nothing has been written.
+ *
+ * It runs in ONE read-only transaction (the catalog lookup needs the caller's RLS session) and reports
+ * the member's POSITION rather than its name: an error message is not a place to put a child's name.
+ */
+export async function assertDependentsValid(ctx: SessionContext, members: DependentInput[]): Promise<void> {
+  if (members.length === 0) return;
+  await withTenant(ctx, async (tx) => {
+    for (const [i, m] of members.entries()) {
+      const at = (msg: string) => new DependentValidationError(`Family member ${i + 1}: ${msg}`);
+      if ((m.fullName ?? '').trim() === '') throw at('Dependent name is required.');
+      try {
+        await assertRelationshipAllowed(tx, m.relationship);
+        normGender(m.gender);
+        // Relationship-gated exactly as `extraColumnsForAdd` gates the columns: a spouse-only or
+        // child-only value on the wrong relationship is IGNORED by the writer, so judging it here would
+        // refuse an activation the writer would have accepted.
+        if (m.relationship === 'spouse') normMarriageStatus(m.marriageStatus);
+        if (m.relationship === 'child') {
+          normChildReliefCategory(m.childReliefCategory);
+          normChildReliefPercentage(m.childReliefPercentage);
+        }
+      } catch (e) {
+        throw at(e instanceof Error ? e.message : String(e));
+      }
+    }
+  });
+}
+
+/**
+ * TURN A DRAFT'S CAPTURED FAMILY INTO REAL RECORDS — the materialisation step of Activate (item 759dfc7d).
+ *
+ * A draft is one jsonb blob and creates no person, so `employee_dependent` — which is keyed to a PERSON —
+ * has nowhere to live until Activate. This is the moment it gets one.
+ *
+ * ALL-OR-NOTHING. Every member is inserted in ONE transaction, so a failure on the fourth cannot leave
+ * three behind. A family half-carried across is worse than an activation that refused, because nothing on
+ * screen afterwards says which members made it.
+ *
+ * IDEMPOTENT. A member whose (name, relationship, date of birth) already exists on this person is SKIPPED
+ * rather than inserted again, so running this twice cannot duplicate a family. The comparison deliberately
+ * includes ARCHIVED rows: a record somebody removed after activation must stay removed, not reappear.
+ * There is no id to match on — `employee_dependent` has no draft-provenance column and this item adds no
+ * migration — so the natural key is the honest one, and its one cost is stated plainly: two members with
+ * the same name, relationship and date of birth (identically-named twins with no DOB) collapse to one on a
+ * REPEAT run. On the first run — the only one a normal activation performs — nothing is skipped at all.
+ *
+ * The child-relief sync runs once at the end rather than per member (it is derived from the whole
+ * register, so N-1 of N syncs would be wasted work), and only when something was actually created.
+ */
+export async function materialiseDependents(
+  ctx: SessionContext,
+  p: { personId: string; members: DependentInput[] },
+): Promise<{ created: string[]; skipped: number; childReliefSync: ChildReliefSyncResult }> {
+  if (p.members.length === 0) return { created: [], skipped: 0, childReliefSync: NO_SYNC('unchanged') };
+  const res = await withTenant(ctx, async (tx) => {
+    const existing = await tx
+      .select({
+        fullName: employeeDependent.fullName,
+        relationship: employeeDependent.relationship,
+        dateOfBirth: employeeDependent.dateOfBirth,
+      })
+      .from(employeeDependent)
+      .where(eq(employeeDependent.personId, p.personId));
+    // A MULTISET, not a set: two identical rows already on the person absorb two identical members.
+    const seen = new Map<string, number>();
+    for (const r of existing) seen.set(dependentNaturalKey(r), (seen.get(dependentNaturalKey(r)) ?? 0) + 1);
+
+    const created: string[] = [];
+    let skipped = 0;
+    for (const m of p.members) {
+      const k = dependentNaturalKey(m);
+      const n = seen.get(k) ?? 0;
+      if (n > 0) {
+        seen.set(k, n - 1);
+        skipped += 1;
+        continue;
+      }
+      created.push((await insertDependentInTx(tx, ctx, p.personId, m)).id);
+    }
+    return { created, skipped };
+  });
+  const childReliefSync =
+    res.created.length > 0 ? await syncChildReliefFromFamily(ctx, p.personId) : NO_SYNC('unchanged');
+  return { ...res, childReliefSync };
+}
+
+/** The idempotency key described on `materialiseDependents`. Name is compared case- and space-insensitively
+ *  because "Aisyah  Binti Ali" and "aisyah binti ali" are the same child typed twice, not two children. */
+function dependentNaturalKey(r: { fullName: string; relationship: string; dateOfBirth?: string | null }): string {
+  const name = (r.fullName ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return `${name}\u0000${(r.relationship ?? '').trim()}\u0000${(r.dateOfBirth ?? '').trim()}`;
 }
 
 async function loadDependent(tx: Tx, id: string) {
