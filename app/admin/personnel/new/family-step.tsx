@@ -72,12 +72,26 @@ export function DraftFamilyStep({
     if ((DEPENDENT_RELATIONSHIPS as readonly string[]).includes(r)) return t(`rel.${r}` as 'rel.spouse');
     return relationshipOptions.find((o) => o.value === r)?.label ?? r;
   };
+  /**
+   * The catalog, LABELLED THE WAY THE PERSONNEL TAB LABELS IT (`activeRelationshipOptions` on
+   * app/admin/personnel/[employmentId]/page.tsx): a BUILT-IN value keeps its static i18n label whatever
+   * the catalog row carries, and only a CUSTOM value is data-labelled. Passing `o.label` straight through
+   * is not cosmetic — migration 0305 seeded every existing tenant's `dependentRelationship` rows with
+   * `label = value`, so the raw catalog label is the lowercase machine value. That put an untranslated
+   * "spouse" in this dropdown one click away from a table cell (and a Personnel tab) reading "Pasangan".
+   * Same rule, same fallback: an unseeded catalog gives the five built-ins.
+   */
+  const activeOptions =
+    relationshipOptions.length > 0
+      ? relationshipOptions.map((o) => ({ value: o.value, label: relLabel(o.value) }))
+      : DEPENDENT_RELATIONSHIPS.map((r) => ({ value: r, label: relLabel(r) }));
   // An EDITED member whose stored relationship is no longer an active catalog option must still render and
   // still re-save — the same legacy tolerance `relationshipOptionsFor` gives the Personnel dialog.
   const optionsFor = (m: EmployeeDraftFamilyMember | null) => {
-    const base = relationshipOptions.length > 0 ? relationshipOptions : DEPENDENT_RELATIONSHIPS.map((r) => ({ value: r, label: relLabel(r) }));
     const cur = (m?.relationship ?? '').trim();
-    return cur !== '' && !base.some((o) => o.value === cur) ? [...base, { value: cur, label: relLabel(cur) }] : base;
+    return cur !== '' && !activeOptions.some((o) => o.value === cur)
+      ? [...activeOptions, { value: cur, label: relLabel(cur) }]
+      : activeOptions;
   };
 
   // Display order only. The stored array keeps insertion order, so `at` indexes the ORIGINAL array and a
@@ -270,8 +284,25 @@ function MemberFields({
   onChange: (patch: Partial<EmployeeDraftFamilyMember>) => void;
 }) {
   const t = useTranslations('people.detail.family');
+  // One key only, and it lives a level up: the legacy-value suffix is shared with every other
+  // catalog-backed select on the Personnel screen, so it is NOT re-worded here.
+  const tDetail = useTranslations('people.detail');
   const rel = (value.relationship ?? '').trim();
   const panel = rel === '' ? null : dependentPanelOf(rel);
+
+  /**
+   * LEGACY TOLERANCE FOR THE STUDY COUNTRY, the same one `ProfileOptionSelect` gives the Personnel
+   * dialog: `countryOptions` is loaded active-only, so a stored country whose catalog option has since
+   * been deactivated matches nothing and a plain `<select>` collapses to the placeholder — the screen
+   * then reads "not set" while the blob still holds the value and Activate still writes it. Rendered as
+   * an extra, pre-selected option instead, suffixed so HR can see it is off-catalog. Same order as
+   * ProfileOptionSelect: the legacy row sits directly under the placeholder.
+   */
+  const storedCountry = (value.studyCountry ?? '').trim();
+  const countryChoices =
+    storedCountry !== '' && !countryOptions.some((o) => o.value === storedCountry)
+      ? [{ value: storedCountry, label: `${storedCountry} ${tDetail('optionLegacySuffix')}` }, ...countryOptions]
+      : countryOptions;
   const ro = readOnly ? { disabled: true } : {};
   const box = `${inputCls}${readOnly ? ' bg-muted/50' : ''}`;
 
@@ -393,7 +424,7 @@ function MemberFields({
                   {...ro}
                 >
                   <option value="">{t('genderUnset')}</option>
-                  {countryOptions.map((o) => (
+                  {countryChoices.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>

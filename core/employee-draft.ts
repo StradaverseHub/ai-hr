@@ -744,9 +744,21 @@ export async function completeEmployeeDraft(
  * gives a test nothing to walk.
  *
  * The conversions are the only judgement here, and each is the same one the rest of this file already
- * makes: '' means absent (`str`), a number arrives as the `<select>`'s string (`numOrUndef`), and an
- * unticked checkbox is `false`/`null` exactly as `extraColumnsForAdd` defaults it. Nothing is dropped
- * for being empty — `null` is passed through so the writer stores a null rather than skipping a column.
+ * makes: '' means absent (`str`) and a number arrives as the `<select>`'s string (`numOrUndef`). Nothing
+ * is dropped for being empty — `null` is passed through so the writer stores a null rather than skipping
+ * a column.
+ *
+ * AN UNTICKED CHECKBOX IS `false`, NOT `undefined`, FOR EVERY ONE OF THE FIVE — including the three the
+ * register stores as a tri-state (`spouseWorking`, `isStudent`, `childTaxRelief`). The draft's form only
+ * writes a checkbox ON CHANGE, so a box HR looked at and left alone is simply missing from the blob;
+ * mapping that absence to `null` made the SAME GESTURE store a different thing on the two screens,
+ * because the Personnel Family tab posts a `__present` marker beside each box and turns an unticked one
+ * into `false`. For `childTaxRelief` that is not a cosmetic difference: `isChildReliefEligible`
+ * short-circuits on `childTaxRelief != null`, so a null falls through to the age/student inference and a
+ * child HR deliberately did not claim would still be counted into `num_children` — and therefore into
+ * PCB — the moment child_relief_mode is switched to 'auto'. `false` is the explicit opt-out that gesture
+ * means. The relationship gating stays the writer's: `extraColumnsForAdd` nulls whichever of the three
+ * does not belong to the member's panel, so a `false` on a field this form never rendered cannot land.
  */
 export function draftFamilyToDependents(data: EmployeeDraftData): DependentInput[] {
   return draftFamily(data).map(
@@ -765,16 +777,16 @@ export function draftFamilyToDependents(data: EmployeeDraftData): DependentInput
       deceasedOn: str(m.deceasedOn) ?? null,
       marriageDate: str(m.marriageDate) ?? null,
       marriageStatus: str(m.marriageStatus) ?? null,
-      spouseWorking: m.spouseWorking ?? null,
+      spouseWorking: m.spouseWorking ?? false,
       occupation: str(m.occupation) ?? null,
       companyName: str(m.companyName) ?? null,
       employerAddress: str(m.employerAddress) ?? null,
-      isStudent: m.isStudent ?? null,
+      isStudent: m.isStudent ?? false,
       schoolName: str(m.schoolName) ?? null,
       studyLevel: str(m.studyLevel) ?? null,
       studyCountry: str(m.studyCountry) ?? null,
       childReliefCategory: str(m.childReliefCategory) ?? null,
-      childTaxRelief: m.childTaxRelief ?? null,
+      childTaxRelief: m.childTaxRelief ?? false,
       childReliefPercentage: numOrUndef(m.childReliefPercentage) ?? null,
     }),
   );

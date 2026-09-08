@@ -188,21 +188,50 @@ export function draftFamily(data: EmployeeDraftData): EmployeeDraftFamilyMember[
  * field at all and shows a tick from the moment it opens. That is correct and deliberate: they are
  * details, and the reporter's complaint was exactly that details were blocking creation.
  *
- * ITEM 759dfc7d ADDS `family`, AND ADDS IT AT THE END rather than in the reporter's tab order. The
- * 1-based position IS `employee_draft.current_step` on rows already sitting in production, so inserting
- * anywhere but the end would silently reopen every existing draft on a different step. The tab ORDER the
- * reporter asked for is the screen's business (work item 2 of the plan re-points the tabs); the numbers
- * here only have to stay stable.
+ * ITEM 759dfc7d ADDS `family`, AND ADDS IT AT THE END rather than in the reporter's tab order. The tab
+ * ORDER the reporter asked for is the screen's business (work item 2 of the plan re-points the tabs);
+ * what may not move is the NUMBER each step is stored as — see STEP_NUMBERS below.
  */
 export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll', 'family'] as const;
 export type DraftStepKey = (typeof DRAFT_STEPS)[number];
 
+/**
+ * THE STORED STEP NUMBER, DECLARED RATHER THAN COUNTED — and 5 IS BURNED.
+ *
+ * `employee_draft.current_step` is a pointer into a list that has already changed once. Until item
+ * 06f0cb8f (c33d5518) the list was profile/employment/statutory/payroll/REVIEW and the wizard wrote
+ * `indexOf(step) + 1`, so a draft left on the Review step is sitting in production RIGHT NOW as
+ * `current_step = 5`. Removing `review` made 5 fall off the end and clamp to `payroll`, which is where
+ * that cohort has reopened ever since.
+ *
+ * Numbering positionally would now hand 5 to `family` and silently move those drafts onto a tab they
+ * have never seen. So the mapping is explicit, `family` is 6, and 5 stays retired: `stepKey(5)` still
+ * resolves to `payroll`. The general rule below (a number naming no step resolves to the last step
+ * BEFORE it) means the next step retired here costs nothing either.
+ */
+const STEP_NUMBERS: Record<DraftStepKey, number> = {
+  profile: 1,
+  employment: 2,
+  statutory: 3,
+  payroll: 4,
+  family: 6,
+};
+
 /** 1-based step number ↔ key. `current_step` on the row is this number. */
 export function stepNumber(key: DraftStepKey): number {
-  return DRAFT_STEPS.indexOf(key) + 1;
+  return STEP_NUMBERS[key];
 }
 export function stepKey(n: number): DraftStepKey {
-  return DRAFT_STEPS[Math.min(Math.max(n, 1), DRAFT_STEPS.length) - 1];
+  const exact = DRAFT_STEPS.find((k) => STEP_NUMBERS[k] === n);
+  if (exact) return exact;
+  const first = DRAFT_STEPS[0];
+  const last = DRAFT_STEPS[DRAFT_STEPS.length - 1];
+  if (n <= STEP_NUMBERS[first]) return first;
+  if (n >= STEP_NUMBERS[last]) return last;
+  // A number INSIDE the range that names no step — today only the retired `review` slot. Resolve it to
+  // the last step before it, so a draft parked on a step that no longer exists reopens where it has been
+  // reopening rather than jumping forward onto whatever inherited its number.
+  return [...DRAFT_STEPS].reverse().find((k) => STEP_NUMBERS[k] < n) ?? first;
 }
 
 const blank = (v: string | undefined) => (v ?? '').trim() === '';

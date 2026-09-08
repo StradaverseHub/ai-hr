@@ -28,6 +28,8 @@ import {
   draftFamily,
   missingByStep,
   missingForCreation,
+  stepKey,
+  stepNumber,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
 } from '../lib/employee-draft-schema';
@@ -39,7 +41,7 @@ import {
   getEmployeeDraft,
   saveEmployeeDraft,
 } from '../core/employee-draft';
-import { listDependents, materialiseDependents } from '../core/dependents';
+import { isChildReliefEligible, listDependents, materialiseDependents } from '../core/dependents';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -176,10 +178,44 @@ afterAll(async () => {
 // ── §1 the rule ───────────────────────────────────────────────────────────────────────────────────
 describe('§1 what a draft family blocks, and what it deliberately does not', () => {
   it('Family is a step, and it is the LAST one — the numbers already on production rows must not move', () => {
-    // `employee_draft.current_step` is a 1-based POSITION into this list. Inserting `family` anywhere but
-    // the end silently reopens every draft sitting on production on a different step, which is a data
-    // migration disguised as a UI change.
+    // `employee_draft.current_step` is a POINTER INTO A LIST, and appending to the list is not enough on
+    // its own. Until item 06f0cb8f the fifth step was `review` and the wizard wrote `indexOf(step) + 1`,
+    // so drafts parked on Review are sitting in production as `current_step = 5`. Numbering `family`
+    // positionally would hand it that same 5 and reopen that cohort on a tab they have never seen — a
+    // data migration disguised as a UI change. So 5 stays RETIRED and `family` is 6.
     expect(DRAFT_STEPS).toEqual(['profile', 'employment', 'statutory', 'payroll', 'family']);
+    expect(stepNumber('payroll')).toBe(4);
+    expect(stepNumber('family')).toBe(6);
+    expect(stepKey(5)).toBe('payroll');
+    // …and nothing else moved: every live step still round-trips, and the clamps still clamp.
+    for (const k of DRAFT_STEPS) expect(stepKey(stepNumber(k))).toBe(k);
+    expect(stepKey(0)).toBe('profile');
+    expect(stepKey(99)).toBe('family');
+  });
+
+  it('a draft saved BEFORE this change reopens where its owner left it, not on the new Family step', async () => {
+    const ctx = adminCtx(b);
+    // A REAL ROW, WRITTEN BY THE SAME WRITER PRODUCTION USES — `current_step = 5` is exactly what the
+    // pre-06f0cb8f wizard stored for a draft parked on the retired Review step
+    // (`DRAFT_STEPS.indexOf('review') + 1`). Since Review was removed that 5 has reopened on Payroll, and
+    // this item must not move it.
+    const { id } = await saveEmployeeDraft(ctx, {
+      data: { profile: { fullName: 'Legacy Draft' }, payroll: { basicSalary: '5000' } },
+      currentStep: 5,
+    });
+    const legacy = await getEmployeeDraft(ctx, id);
+    expect(legacy!.currentStep).toBe(5);
+    expect(stepKey(legacy!.currentStep)).toBe('payroll');
+
+    // And the new step is still reachable: saving ON Family stores 6, and 6 reopens Family.
+    await saveEmployeeDraft(ctx, {
+      id,
+      data: { profile: { fullName: 'Legacy Draft' }, family: [SPOUSE] },
+      currentStep: stepNumber('family'),
+    });
+    const reopened = await getEmployeeDraft(ctx, id);
+    expect(reopened!.currentStep).toBe(6);
+    expect(stepKey(reopened!.currentStep)).toBe('family');
   });
 
   it('NO family member is required — most new joiners have none, and a step that demanded one would block them', () => {
@@ -291,13 +327,17 @@ describe('§2 the draft carries EVERY field the dependent writer accepts', () =>
     // The child gating is the WRITER's business, so the mapper carries the value across regardless and
     // lets `extraColumnsForAdd` null it — judging it here would put the rule in two places.
     expect(m.childReliefPercentage).toBe(50);
-    // An unticked checkbox is `false` for the two the writer defaults to false, and `null` for the three
-    // it stores as a tri-state — the same defaults `extraColumnsForAdd` applies.
+    // AN UNTICKED CHECKBOX IS `false` FOR ALL FIVE, tri-states included — the same thing the identical
+    // gesture stores on the Personnel Family tab, which posts a `__present` marker beside each box and
+    // turns an unticked one into `false`. `null` there is "nobody has said", and for `childTaxRelief`
+    // that is not cosmetic: `isChildReliefEligible` short-circuits on `childTaxRelief != null`, so a null
+    // falls through to the age/student inference and a child HR deliberately left unclaimed would still
+    // be counted into num_children — and therefore PCB — the moment child_relief_mode goes to 'auto'.
     expect(m.isBeneficiary).toBe(false);
     expect(m.isDeceased).toBe(false);
-    expect(m.spouseWorking).toBeNull();
-    expect(m.isStudent).toBeNull();
-    expect(m.childTaxRelief).toBeNull();
+    expect(m.spouseWorking).toBe(false);
+    expect(m.isStudent).toBe(false);
+    expect(m.childTaxRelief).toBe(false);
   });
 });
 
@@ -481,6 +521,40 @@ describe('§3 everything entered on a draft survives Activate, field by field', 
     expect(comp.paymentTerm).toBe('monthly');
     expect(comp.validFrom).toBe('2026-06-01');
     expect(comp.remarks).toBe('Initial package');
+  });
+
+  it('a child whose relief box was never ticked is stored as an explicit NO, not as "nobody has said"', async () => {
+    // THE DEFECT THIS PINS, and it is a PCB defect rather than a cosmetic one. The draft's checkbox only
+    // writes on change, so a box HR looked at and left alone is absent from the blob. Mapping that
+    // absence to `null` made the SAME GESTURE mean something different on the two screens: the Personnel
+    // Family tab posts a `__present` marker and stores `false`, and `isChildReliefEligible`
+    // short-circuits on `childTaxRelief != null` — so the null falls through to the under-18 inference
+    // and the child is counted into num_children the moment child_relief_mode is switched to 'auto'.
+    const ctx = adminCtx(b);
+    const untouched: EmployeeDraftFamilyMember = {
+      key: 'k-untouched',
+      fullName: 'Aiman Rizq',
+      relationship: 'child',
+      dateOfBirth: '2015-01-01', // comfortably under 18: the inference WOULD say eligible
+    };
+    const { id } = await saveEmployeeDraft(ctx, {
+      data: fullDraft({ family: [untouched] }),
+      currentStep: stepNumber('family'),
+    });
+    const { employmentId } = await completeEmployeeDraft(ctx, id);
+    const [emp] = await owner.db
+      .select({ personId: schema.employment.personId })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, employmentId));
+    const [row] = await owner.db
+      .select()
+      .from(schema.employeeDependent)
+      .where(eq(schema.employeeDependent.personId, emp.personId));
+    expect(row.childTaxRelief).toBe(false);
+    expect(row.isStudent).toBe(false);
+    // …and the consequence, judged by the rule payroll actually uses: an explicit NO is not counted.
+    // With a null here this same row reads `true`, because the child is under 18.
+    expect(isChildReliefEligible(row)).toBe(false);
   });
 
   it('a draft with NO family activates exactly as it always did, and creates no family rows', async () => {

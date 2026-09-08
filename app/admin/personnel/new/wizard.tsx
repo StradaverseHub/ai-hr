@@ -57,6 +57,7 @@ import {
   missingByStep,
   missingForCreation,
   stepKey,
+  stepNumber,
   type DraftStepKey,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
@@ -164,7 +165,10 @@ export function EmployeeWizard({
     startTransition(async () => {
       setError(null);
       try {
-        await saveDraftAction(id, data, DRAFT_STEPS.indexOf(nextStep ?? step) + 1);
+        // `stepNumber`, NOT `indexOf + 1`: the stored number is declared in employee-draft-schema.ts
+        // (5 is the retired `review` slot and stays retired), so counting positions here would write the
+        // wrong number for every step after it.
+        await saveDraftAction(id, data, stepNumber(nextStep ?? step));
         setSaved(true);
         if (nextStep) setStep(nextStep);
         router.refresh();
@@ -189,7 +193,7 @@ export function EmployeeWizard({
     startTransition(async () => {
       setError(null);
       try {
-        const res = await createEmployeeAction(id, data, DRAFT_STEPS.indexOf(step) + 1);
+        const res = await createEmployeeAction(id, data, stepNumber(step));
         router.push(`/admin/personnel/${res.employmentId}?from=personnel`);
       } catch (e) {
         setError((e as Error).message);

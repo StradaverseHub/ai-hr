@@ -78,18 +78,29 @@ const REL_OPTIONS = [
 ];
 const COUNTRY_OPTIONS = [{ value: 'Malaysia', label: 'Malaysia' }];
 
-const mount = (members: EmployeeDraftFamilyMember[]) => {
+type Opts = { relationshipOptions?: { value: string; label: string }[]; countryOptions?: { value: string; label: string }[] };
+const mount = (members: EmployeeDraftFamilyMember[], o: Opts = {}) => {
   const onChange = vi.fn();
   const r = wrap(
     <DraftFamilyStep
       members={members}
       onChange={onChange}
-      relationshipOptions={REL_OPTIONS}
-      countryOptions={COUNTRY_OPTIONS}
+      relationshipOptions={o.relationshipOptions ?? REL_OPTIONS}
+      countryOptions={o.countryOptions ?? COUNTRY_OPTIONS}
     />,
   );
   return { onChange, ...r };
 };
+
+/**
+ * THE CATALOG AS MIGRATION 0305 ACTUALLY SEEDED IT on every tenant that existed before the
+ * dependentRelationship category did: `SELECT t.id, d.category, d.value, d.value, d.sort_order` — the
+ * LABEL IS THE LOWERCASE VALUE. That seeding is safe only because both Family screens render the
+ * built-ins from static i18n labels, so it is the fixture these tests must use; hand-written pretty
+ * labels ('Spouse', 'Child') would hide the very fault this catalog causes.
+ */
+const SEEDED_0305 = ['spouse', 'child', 'parent', 'sibling', 'other'].map((v) => ({ value: v, label: v }));
+const REL = messages.people.detail.family.rel;
 
 /** Every value currently held by a control inside the open dialog — what HR can see and change. */
 const dialogValues = () => {
@@ -214,6 +225,67 @@ describe('the draft Family step renders the same record the Personnel Family tab
       expect((el as HTMLInputElement).disabled, `${(el as HTMLInputElement).value} enabled in View`).toBe(true);
     }
     expect(within(dlg).queryByRole('button', { name: messages.people.detail.family.save })).toBeNull();
+  });
+
+  it('the relationship dropdown is labelled in the viewer\'s language, not with the raw catalog value', async () => {
+    // THE DEFECT THIS PINS. Passing the catalog's `label` straight into the dropdown listed a lowercase,
+    // untranslated "spouse / child / parent / sibling / other" on every tenant migration 0305 seeded —
+    // in all six locales — while the table cell one line above, and the Personnel Family tab this step
+    // mirrors, both read the localised built-in label. Same rule as `activeRelationshipOptions` there: a
+    // BUILT-IN value keeps its static i18n label whatever the catalog row says.
+    mount([], { relationshipOptions: SEEDED_0305 });
+    await userEvent.click(screen.getByRole('button', { name: messages.people.detail.family.add }));
+    const select = within(screen.getByRole('dialog')).getByRole('combobox') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      messages.people.detail.family.relationshipPlaceholder,
+      REL.spouse,
+      REL.child,
+      REL.parent,
+      REL.sibling,
+      REL.other,
+    ]);
+    // The VALUES are untouched — this is a labelling rule, and the value is what Activate stores.
+    expect([...select.options].map((o) => o.value)).toEqual(['', 'spouse', 'child', 'parent', 'sibling', 'other']);
+  });
+
+  it('the table cell and the dropdown one click away cannot disagree about the same member', async () => {
+    // The contradiction the raw label produced, stated as the reporter would meet it: the row reads
+    // "Spouse" and opening it to edit reads "spouse".
+    mount([SPOUSE], { relationshipOptions: SEEDED_0305 });
+    expect(screen.getByRole('cell', { name: REL.spouse })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: messages.people.detail.family.edit }));
+    const select = within(screen.getByRole('dialog')).getAllByRole('combobox')[0] as HTMLSelectElement;
+    expect(select.value).toBe('spouse');
+    expect(select.selectedOptions[0].textContent).toBe(REL.spouse);
+  });
+
+  it('a CUSTOM relationship the tenant added is still labelled from the catalog — only built-ins are i18n', async () => {
+    // The other half of the rule: the catalog is not ignored, it is deferred to for everything the six
+    // locales cannot know about.
+    mount([], { relationshipOptions: [...SEEDED_0305, { value: 'guardian', label: 'Legal Guardian' }] });
+    await userEvent.click(screen.getByRole('button', { name: messages.people.detail.family.add }));
+    const select = within(screen.getByRole('dialog')).getByRole('combobox') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toContain('Legal Guardian');
+    expect([...select.options].map((o) => o.textContent)).toContain(REL.spouse);
+  });
+
+  it('a stored study country the catalog no longer offers still renders, marked as an existing value', async () => {
+    // THE DEFECT THIS PINS. `countryOptions` is loaded active-only, so deactivating a country in System
+    // Labels made a child's stored study country match nothing and the select collapse to the
+    // placeholder — the screen reading "not set" while the blob still held the value and Activate still
+    // wrote it. Same legacy tolerance `ProfileOptionSelect` gives the Personnel dialog, suffix included.
+    const { onChange } = mount([{ ...CHILD, studyCountry: 'Brunei' }], {
+      countryOptions: [{ value: 'Malaysia', label: 'Malaysia' }],
+    });
+    await userEvent.click(screen.getByRole('button', { name: messages.people.detail.family.edit }));
+    const dlg = screen.getByRole('dialog');
+    const select = within(dlg).getByLabelText(messages.people.detail.family.studyCountry) as HTMLSelectElement;
+    expect(select.value).toBe('Brunei');
+    expect(select.selectedOptions[0].textContent).toBe(`Brunei ${messages.people.detail.optionLegacySuffix}`);
+    // …and it must SURVIVE a save from that dialog rather than being silently blanked.
+    await userEvent.click(within(dlg).getByRole('button', { name: messages.people.detail.family.save }));
+    const [next] = onChange.mock.calls[0] as [EmployeeDraftFamilyMember[]];
+    expect(next[0].studyCountry).toBe('Brunei');
   });
 
   it('a stored relationship the catalog no longer offers still renders and still re-saves', async () => {
