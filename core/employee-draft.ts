@@ -50,12 +50,18 @@ import { requirePackFor } from '../localization/registry';
 import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
 import {
+  draftFamily,
   draftLabel,
   missingForCreation,
   missingToCreate,
   stepKey,
   type EmployeeDraftData,
+  type EmployeeDraftFamilyMember,
 } from '../lib/employee-draft-schema';
+// 759dfc7d — the family the draft captured becomes real rows at Activate. Both of these live in
+// core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
+// set of normalisers and ONE event, so a field the Personnel screen gains cannot be dropped here.
+import { assertDependentsValid, materialiseDependents, type DependentInput } from './dependents';
 
 /** Standing entitlements granted on hire — the same three the hire form and the importer grant. */
 const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
@@ -577,6 +583,16 @@ export async function completeEmployeeDraft(
 
   const nationality = str(p.nationality);
 
+  // ── The family, judged BEFORE anything is created (item 759dfc7d) ───────────────────────────────
+  // `materialiseDependents` can only run once a PERSON exists, which is to say after `hireEmployee` has
+  // committed. So every refusal the dependent writer is capable of has to be provoked HERE, while the
+  // cost of one is still nothing: a gender outside the set, a relationship that is neither built-in nor
+  // an active catalog option, a relief share that is neither 100 nor 50. The name / relationship /
+  // date-format rules were already covered by `missingForCreation` above — between the two, nothing the
+  // writer can reject survives to the far side of the hire.
+  const family = draftFamilyToDependents(data);
+  await assertDependentsValid(ctx, family);
+
   const types = await listLeaveTypes(ctx);
   const { employmentId, personId } = await hireEmployee(ctx, {
     // 35b7af0a group 8 — the nationality is seeded on the person HERE, at creation, because everything
@@ -683,6 +699,20 @@ export async function completeEmployeeDraft(
     remarks: str(pay.remarks),
   });
 
+  // ── MATERIALISE THE FAMILY (item 759dfc7d) ─────────────────────────────────────────────────────
+  // The last write before the draft stops existing, and the reason it is last is the child-relief sync:
+  // `materialiseDependents` refreshes `employee_statutory_my.num_children` from the register when the
+  // person is on automatic child relief, so it has to run AFTER `pack.statutory.set` has written that
+  // row — the other order would have the statutory writer overwrite what the family just derived.
+  //
+  // ALL-OR-NOTHING AMONG THE MEMBERS: every insert is in ONE transaction inside that service, so a
+  // failure on the fourth child cannot leave three behind with nothing on screen to say which. It is not,
+  // and cannot be, one transaction with the hire — this function has never been one transaction (see the
+  // header) and making it one would mean reaching inside four services that own their own. What replaces
+  // that guarantee is the `assertDependentsValid` pre-flight above: the set is judged while nothing has
+  // been written, so the realistic ways this could fail late have already been spent.
+  await materialiseDependents(ctx, { personId, members: family });
+
   // Only now: the draft has become an employee, so it stops existing as a draft. THE RESERVATION GOES
   // WITH IT — deleting the row releases the held code, and it must, because the employment now carries
   // that same code and two live claims on one ID is the state the hold exists to prevent. Deliberately
@@ -701,6 +731,53 @@ export async function completeEmployeeDraft(
   });
 
   return { employmentId };
+}
+
+/**
+ * THE DRAFT'S FAMILY → THE DEPENDENT WRITER'S INPUT, field for field (item 759dfc7d).
+ *
+ * EXPORTED SO IT CAN BE TESTED WITHOUT A DATABASE, and tested it is: `test/employee-draft-family.test.ts`
+ * §2 walks `DependentInput`'s own keys and fails if any one of them is not carried across. That is the
+ * point of the function existing at all rather than being an inline object literal — a field that the
+ * Personnel screen gains and this mapping forgets is exactly the silent drop the reporter is describing
+ * ("The system should retain all information already entered during Draft status"), and an inline literal
+ * gives a test nothing to walk.
+ *
+ * The conversions are the only judgement here, and each is the same one the rest of this file already
+ * makes: '' means absent (`str`), a number arrives as the `<select>`'s string (`numOrUndef`), and an
+ * unticked checkbox is `false`/`null` exactly as `extraColumnsForAdd` defaults it. Nothing is dropped
+ * for being empty — `null` is passed through so the writer stores a null rather than skipping a column.
+ */
+export function draftFamilyToDependents(data: EmployeeDraftData): DependentInput[] {
+  return draftFamily(data).map(
+    (m: EmployeeDraftFamilyMember): DependentInput => ({
+      fullName: (m.fullName ?? '').trim(),
+      relationship: (m.relationship ?? '').trim(),
+      dateOfBirth: str(m.dateOfBirth) ?? null,
+      gender: str(m.gender) ?? null,
+      icOrPassport: str(m.icOrPassport) ?? null,
+      isBeneficiary: m.isBeneficiary ?? false,
+      phone: str(m.phone) ?? null,
+      remarks: str(m.remarks) ?? null,
+      passportNumber: str(m.passportNumber) ?? null,
+      residentialAddress: str(m.residentialAddress) ?? null,
+      isDeceased: m.isDeceased ?? false,
+      deceasedOn: str(m.deceasedOn) ?? null,
+      marriageDate: str(m.marriageDate) ?? null,
+      marriageStatus: str(m.marriageStatus) ?? null,
+      spouseWorking: m.spouseWorking ?? null,
+      occupation: str(m.occupation) ?? null,
+      companyName: str(m.companyName) ?? null,
+      employerAddress: str(m.employerAddress) ?? null,
+      isStudent: m.isStudent ?? null,
+      schoolName: str(m.schoolName) ?? null,
+      studyLevel: str(m.studyLevel) ?? null,
+      studyCountry: str(m.studyCountry) ?? null,
+      childReliefCategory: str(m.childReliefCategory) ?? null,
+      childTaxRelief: m.childTaxRelief ?? null,
+      childReliefPercentage: numOrUndef(m.childReliefPercentage) ?? null,
+    }),
+  );
 }
 
 function hasAnyStatutory(s: Record<string, string | undefined>): boolean {

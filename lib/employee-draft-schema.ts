@@ -100,12 +100,79 @@ export type EmployeeDraftPayroll = {
   remarks?: string;
 };
 
+/**
+ * ONE FAMILY MEMBER, CAPTURED ON A DRAFT — item 759dfc7d, work item 1.
+ *
+ * WHY IT LIVES IN THE BLOB AND NOWHERE ELSE. `employee_dependent` is keyed to a PERSON, and the whole
+ * point of a draft is that no person exists yet ("a draft still creates no person and no employment" —
+ * db/schema.ts employeeDraft). So a family member entered before Activate has literally nowhere else to
+ * be stored, and `completeEmployeeDraft` materialises these entries into real rows at the moment the
+ * person is created (core/dependents.ts `materialiseDependents`).
+ *
+ * THE FIELD SET IS `DependentInput`'s, NAME FOR NAME, and that is deliberate rather than convenient:
+ * a draft field with no counterpart on the writer is a field HR types and Activate silently drops — the
+ * exact failure this item exists to prevent. `test/employee-draft-family.test.ts` §2 asserts the two
+ * shapes still agree, field by field, so adding a column to `employee_dependent` without adding it here
+ * fails a test instead of losing somebody's spouse's employer address.
+ *
+ * BOOLEANS ARE BOOLEANS, unlike the string-typed sections above. Those are strings because they mirror
+ * text inputs the wizard round-trips verbatim; a checkbox has no such intermediate form, and storing
+ * 'yes'/'no' would add a second encoding for `materialiseDependents` to decode. jsonb holds both.
+ * `childReliefPercentage` stays a STRING because its control is a `<select>` whose value is '100' | '50'
+ * | '' — parsed once, at materialisation, exactly as `basicSalary` is.
+ */
+export type EmployeeDraftFamilyMember = {
+  /** Stable per-row key for the editor's list. UI-only: `materialiseDependents` never reads it, and the
+   *  natural key (name, relationship, date of birth) is what makes activation idempotent. */
+  key?: string;
+  fullName?: string;
+  relationship?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  icOrPassport?: string;
+  isBeneficiary?: boolean;
+  phone?: string;
+  remarks?: string;
+  passportNumber?: string;
+  residentialAddress?: string;
+  isDeceased?: boolean;
+  deceasedOn?: string;
+  marriageDate?: string;
+  marriageStatus?: string;
+  spouseWorking?: boolean;
+  occupation?: string;
+  companyName?: string;
+  employerAddress?: string;
+  isStudent?: boolean;
+  schoolName?: string;
+  studyLevel?: string;
+  studyCountry?: string;
+  childReliefCategory?: string;
+  childTaxRelief?: boolean;
+  /** '100' | '50' | '' — the `<select>`'s own value; parsed at materialisation. */
+  childReliefPercentage?: string;
+};
+
 export type EmployeeDraftData = {
   profile?: EmployeeDraftProfile;
   employment?: EmployeeDraftEmployment;
   statutory?: EmployeeDraftStatutory;
   payroll?: EmployeeDraftPayroll;
+  /** Item 759dfc7d — the Family tab's records, held here until Activate creates the person they belong to. */
+  family?: EmployeeDraftFamilyMember[];
 };
+
+/**
+ * The draft's family list, defensively. `data` is jsonb and therefore opaque to SQL and to the type
+ * system alike: a draft written before this item has no `family` at all, and nothing stops a hand-edited
+ * row carrying an object or a string where an array belongs. Every reader goes through here so a
+ * malformed blob reads as "no family" instead of throwing on `.map`.
+ */
+export function draftFamily(data: EmployeeDraftData): EmployeeDraftFamilyMember[] {
+  const f = data.family;
+  if (!Array.isArray(f)) return [];
+  return f.filter((m): m is EmployeeDraftFamilyMember => !!m && typeof m === 'object' && !Array.isArray(m));
+}
 
 /**
  * The CONTINUE-A-DRAFT steps, in order. `key` doubles as the i18n key under `people.wizard.steps`.
@@ -120,8 +187,14 @@ export type EmployeeDraftData = {
  * gender, marital status. None of them is required by any writer, so this step now carries no required
  * field at all and shows a tick from the moment it opens. That is correct and deliberate: they are
  * details, and the reporter's complaint was exactly that details were blocking creation.
+ *
+ * ITEM 759dfc7d ADDS `family`, AND ADDS IT AT THE END rather than in the reporter's tab order. The
+ * 1-based position IS `employee_draft.current_step` on rows already sitting in production, so inserting
+ * anywhere but the end would silently reopen every existing draft on a different step. The tab ORDER the
+ * reporter asked for is the screen's business (work item 2 of the plan re-points the tabs); the numbers
+ * here only have to stay stable.
  */
-export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll'] as const;
+export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll', 'family'] as const;
 export type DraftStepKey = (typeof DRAFT_STEPS)[number];
 
 /** 1-based step number ↔ key. `current_step` on the row is this number. */
@@ -188,7 +261,31 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
   if ((pay.payMode === 'daily' || pay.payMode === 'hourly') && !(Number(pay.rateAmount) > 0))
     payroll.push('rateAmount');
 
-  return { profile, employment, statutory, payroll };
+  // ── Family (item 759dfc7d) ──────────────────────────────────────────────────────────────────────
+  // NO FAMILY MEMBER IS REQUIRED — most new joiners have nothing to record here, and a step that
+  // demanded one would block every one of them. What IS required is that a member somebody DID add can
+  // actually be written, because `materialiseDependents` runs AFTER `hireEmployee` has committed: a
+  // nameless member discovered there fails an activation that has already created an employee, which is
+  // the half-activated state this whole item exists to prevent. Judged here instead, where the cost of a
+  // refusal is nothing, and re-judged on the server by `completeEmployeeDraft` before anything is written.
+  //
+  // The value-set rules (gender, the relationship catalog, marriage status, the relief category and
+  // share) are NOT duplicated here: they need the tenant's catalog, so they belong to the server's
+  // `assertDependentsValid`, which also runs before `hireEmployee`. Between them the two cover every
+  // refusal the writer can make.
+  const familySet = new Set<string>();
+  for (const m of draftFamily(data)) {
+    if (blank(m.fullName)) familySet.add('familyMemberName');
+    if (blank(m.relationship)) familySet.add('familyMemberRelationship');
+    // Every date the register stores. A value that is not ISO reaches Postgres as a `date` and throws
+    // there — after the employee exists — so it is named here, on the step that owns it.
+    for (const d of [m.dateOfBirth, m.marriageDate, m.deceasedOn]) {
+      if (!blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim())) familySet.add('familyMemberDate');
+    }
+  }
+  const family = [...familySet];
+
+  return { profile, employment, statutory, payroll, family };
 }
 
 /**

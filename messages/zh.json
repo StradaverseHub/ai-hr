@@ -882,7 +882,8 @@
         "editFamilyTitle": "编辑家庭成员",
         "viewFamilyTitle": "查看家庭成员",
         "deleteFamilyConfirmTitle": "移除家庭成员记录？",
-        "deleteFamilyConfirmBody": "这将从家庭名册中移除该家庭成员。如果子女减免处于自动模式，员工的子女减免人数将相应刷新。"
+        "deleteFamilyConfirmBody": "这将从家庭名册中移除该家庭成员。如果子女减免处于自动模式，员工的子女减免人数将相应刷新。",
+        "cancel": "取消"
       },
       "qualification": {
         "title": "学历资历信息",
@@ -1647,7 +1648,10 @@
         "numChildren": "子女人数",
         "isResident": "税务居民",
         "monthlyAllowance": "每月津贴",
-        "rateAmount": "费率金额"
+        "rateAmount": "费率金额",
+        "familyMemberName": "家庭成员姓名",
+        "familyMemberRelationship": "家庭成员关系",
+        "familyMemberDate": "家庭成员日期"
       },
       "employmentType": {
         "full_time": "全职",
@@ -1675,7 +1679,8 @@
         "profile": "个人资料明细",
         "employment": "雇佣信息",
         "statutory": "银行与法定",
-        "payroll": "薪资"
+        "payroll": "薪资",
+        "family": "家庭"
       },
       "notSet": "— 未设置 —",
       "selectPrompt": "— 请选择 —",
