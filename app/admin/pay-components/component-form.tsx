@@ -148,7 +148,12 @@ export async function ComponentForm({
             // base. An operator who creates an item and never opens this card therefore gets exactly the
             // pre-0456 behaviour, which is the same promise migration 0456 keeps for the existing 29.
             orpUnpaidLeave={component?.orpUnpaidLeave ?? false}
-            orpOvertime={component?.orpOvertime ?? true}
+            // ⚠️ KIND-AWARE, and it was not. `?? true` pre-ticked Overtime on EVERY new item, so creating
+            // the reporter's own pairing (Category = Non-Payable + Payroll Category = Benefit in Kind) and
+            // saving without ever opening this card stored orp_overtime = true — which then made the admin
+            // preview quote a figure the run does not pay. The pre-0456 answer was the KIND test, and this
+            // is that test: a new Earning fed the aggregate, nothing else did.
+            orpOvertime={component?.orpOvertime ?? (component?.kind ?? 'allowance') === 'allowance'}
             kind={component?.kind ?? 'allowance'}
           />
         </Card>

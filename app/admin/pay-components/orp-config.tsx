@@ -51,7 +51,17 @@ export function OrpConfig({
     return () => select.removeEventListener('change', sync);
   }, []);
 
-  const warn = liveKind === 'deduction' && (unpaid || overtime);
+  /**
+   * ⚠️ THE WARNING COVERS NON-PAYABLE TOO, AND THAT IS A FIX, NOT A TIDY-UP. It used to name only
+   * `deduction`, so an operator could tick either box on a RECORD-ONLY item (kind `non_payable`, e.g. a
+   * Benefit in Kind) and be told nothing — while the unpaid-leave accumulator went on to raise a real
+   * deduction out of money the run never pays, taking EPF, SOCSO, EIS, PCB and HRDF with it because the
+   * unpaid deduction is pre-statutory. Both engines now refuse these rows structurally
+   * (core/pay-rule.ts), so the tick genuinely does nothing — and a control that silently does nothing is
+   * the thing this warning exists to prevent.
+   */
+  const structurallyIgnored = liveKind === 'deduction' || liveKind === 'non_payable' || liveKind === 'contribution';
+  const warn = structurallyIgnored && (unpaid || overtime);
 
   return (
     <div ref={ref} className="space-y-3">

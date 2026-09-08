@@ -510,16 +510,29 @@ export function payItemFeedsOvertimeOrp(
  *   • never a DEDUCTION. The reporter's worked example subtracts one (2,500 + 500 − 200 = 2,800); the
  *     approved plan refuses to implement that, and adding a deduction as a POSITIVE instead would be worse.
  *     A ticked deduction is stored and warned about on the screen, and moves no base. See the notBuilt note.
+ *   • never a NON-PAYABLE or ONE-OFF row. ⚠️ THIS CLAUSE WAS MISSING AND IT MOVED REAL MONEY. Without it a
+ *     record-only item (kind `non_payable`, e.g. a Benefit in Kind) that an operator ticked raised the
+ *     unpaid-leave daily rate out of money the run never pays: measured on this branch, basic 6000 with a
+ *     ticked non-payable 500 and 2 unpaid days wrote otherDeductions 419.35 instead of 387.10. And because
+ *     the unpaid deduction is PRE-statutory (it reduces wagesExOt and hrdfBase), EPF, SOCSO, EIS, PCB and
+ *     HRDF all moved with it. The overtime side already refused exactly these rows — at its CALL SITE
+ *     rather than in its predicate — and that asymmetry is what let this through. The rule now lives HERE,
+ *     once, for both: what the operator ticks is a preference; what the engine may pay is not theirs to
+ *     switch off.
  */
 export function payItemFeedsUnpaidLeaveOrp(
   code: string,
   kind: string | null | undefined,
   /** pay_component.orp_unpaid_leave. undefined / null ⇒ the caller has no flag ⇒ the pre-0456 answer, false. */
   orpUnpaidLeave?: boolean | null,
+  /** pay_component.is_non_payable / a one-off transaction row — money this run does not pay out of the catalog. */
+  nonPayable?: boolean | null,
+  oneOff?: boolean | null,
 ): boolean {
   if (normCode(code) === BASIC_PAY_CODE) return false;
   if (isStatutoryComponent(code, kind)) return false;
   if (kind === 'deduction') return false;
+  if (nonPayable === true || oneOff === true) return false;
   return orpUnpaidLeave === true;
 }
 

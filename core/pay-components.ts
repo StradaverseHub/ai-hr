@@ -987,6 +987,15 @@ async function resolveRuleForEmploymentTx(
       // right up until the first operator un-ticked an item — and would then have quoted the OLD overtime
       // figure on the very screen they were using to change it.
       orpOvertime: payComponent.orpOvertime,
+      // 711adcd2 fix — AND `nonPayable`, for the third time and the sharpest edge of the three. The
+      // kernel's own guard is `!c.nonPayable && !c.oneOff && payItemFeedsOvertimeOrp(…)`, so leaving this
+      // out did not merely omit a field: it made that guard INERT here while it stayed live in the run.
+      // Measured on this branch before the fix — a non-payable BIKCAR of 300, ticked, made previewPayRule
+      // answer 300 where generatePayslips paid 0.00. That is the preview lying about the run on the very
+      // screen an operator uses to set an overtime rate, which is the one thing this projection exists to
+      // prevent. `one_off` is not a catalog column (it is a per-transaction property), so recurring rows
+      // are never one-offs and the kernel's `!c.oneOff` half is satisfied structurally here.
+      nonPayable: payComponent.isNonPayable,
     })
     .from(employmentPayComponent)
     .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
@@ -1014,14 +1023,18 @@ async function resolveRuleForEmploymentTx(
   // employee does not have it yet — a brand-new pay code still resolves).
   const set = recurring
     .filter((r) => r.code.trim().toUpperCase() !== code)
-    .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null, orpOvertime: r.orpOvertime as boolean | null }));
+    .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null, orpOvertime: r.orpOvertime as boolean | null, nonPayable: r.nonPayable === true }));
   const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
   // The item UNDER EDIT takes its flag from the row on disk (the form does not send it to the preview),
   // and `undefined` there falls back to the kind test — the same answer the pre-0456 preview gave. Its own
   // membership never changes its own figure anyway: the aggregate is the sum of items ranked strictly
   // BELOW the one reading it, which is what makes it acyclic.
   const targetOrp = recurring.find((r) => r.code.trim().toUpperCase() === code)?.orpOvertime ?? null;
-  set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null, orpOvertime: targetOrp });
+  // The item under edit: its stored nonPayable, for the same reason as the projection above. `p.kind`
+  // is the PENDING kind (the operator may be changing it in the form), but nonPayable is not on the
+  // form's preview payload, so the disk value is the honest answer here.
+  const targetNonPayable = recurring.find((r) => r.code.trim().toUpperCase() === code)?.nonPayable === true;
+  set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null, orpOvertime: targetOrp, nonPayable: targetNonPayable });
   const targetIdx = set.length - 1;
 
   // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the answer

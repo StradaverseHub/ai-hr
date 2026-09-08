@@ -218,6 +218,37 @@ describe('711adcd2 — the switch is real, not decorative', () => {
     expect(payItemFeedsUnpaidLeaveOrp('EPF', 'allowance', true)).toBe(false);
     expect(payItemFeedsUnpaidLeaveOrp('HOUSING', 'allowance', true)).toBe(true);
   });
+
+  /**
+   * ⚠️ THE VERIFY PASS FOUND THIS ONE AND IT MOVED REAL MONEY, SO IT IS PINNED HERE RATHER THAN LEFT TO
+   * the two engines to agree by coincidence.
+   *
+   * `payItemFeedsUnpaidLeaveOrp` shipped with three structural clauses (not BASIC, not statutory, not a
+   * deduction) and NO nonPayable/oneOff clause, while its overtime sibling refused exactly those rows at
+   * its CALL SITE. That asymmetry is what let a RECORD-ONLY item through: measured on this branch, basic
+   * 6000 with a ticked non-payable of 500 and 2 unpaid days wrote otherDeductions 419.35 instead of
+   * 387.10 — and because the unpaid deduction is PRE-statutory (it reduces wagesExOt and hrdfBase), EPF,
+   * SOCSO, EIS, PCB and HRDF all moved with it.
+   *
+   * The rule now lives in ONE place for both engines. What the operator ticks is a preference; what the
+   * engine may pay out of the catalog is not theirs to switch off.
+   */
+  it('a RECORD-ONLY or ONE-OFF row is refused however it is ticked — both engines, one rule', () => {
+    // The row that shipped the defect: a ticked non-payable, which the accumulator used to total.
+    expect(
+      payItemFeedsUnpaidLeaveOrp('BIKCAR', 'non_payable', true, true, false),
+      'a non-payable raised the unpaid-leave rate out of money nobody is paid',
+    ).toBe(false);
+    expect(
+      payItemFeedsUnpaidLeaveOrp('ADHOC', 'allowance', true, false, true),
+      'a one-off is not recurring wages and cannot be part of a daily rate',
+    ).toBe(false);
+    // The kind alone is not the test — an ALLOWANCE row flagged non-payable is still refused.
+    expect(payItemFeedsUnpaidLeaveOrp('HOUSING', 'allowance', true, true, false)).toBe(false);
+    // …and the honest positive still passes, so the clause narrows nothing it should not.
+    expect(payItemFeedsUnpaidLeaveOrp('HOUSING', 'allowance', true, false, false)).toBe(true);
+    expect(payItemFeedsUnpaidLeaveOrp('HOUSING', 'allowance', true), 'flags omitted ⇒ still admitted').toBe(true);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -439,6 +470,56 @@ describe('711adcd2 — the admin PREVIEW answers for the tick boxes, not for the
     expect(after.ok).toBe(true);
     if (!after.ok) return;
     expect(after.amount, 'the preview follows the tick box').toBeCloseTo((5000 + 500) / 26, 6);
+  });
+
+  /**
+   * ⚠️ THE SECOND HALF OF THE SAME DRIFT, AND THE VERIFY PASS FOUND IT: the projection selected `kind`
+   * and the flag but NOT `nonPayable`, so the kernel's own guard — `!c.nonPayable && !c.oneOff && …` —
+   * was INERT in the preview while it stayed live in the run. A ticked record-only item therefore counted
+   * here and not there: measured before the fix, a non-payable of 300 made the preview answer 300 where
+   * generatePayslips paid 0.00. That is the preview lying about the run on the very screen an operator
+   * uses to set an overtime rate.
+   */
+  it('a ticked RECORD-ONLY item counts in neither the preview nor the run', async () => {
+    const a = await entitledCtx(b);
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const e = await makeEmp('PreviewRecordOnly');
+    await setCompensation(a, { employmentId: e, basicSalary: 5000, effectiveFrom: '2020-01-01' });
+    const base = {
+      includedInEpf: true,
+      includedInSocsoEis: true,
+      includedInPcb: true,
+      includedInHrdfBase: false,
+      prorates: false,
+      roundingMethod: 'none',
+    } as const;
+    await upsertPayComponent(a, { code: 'HOUSING', name: 'Housing', kind: 'allowance', isNonPayable: false, ...base });
+    // A Benefit in Kind: recorded, never paid — and deliberately TICKED for overtime.
+    await upsertPayComponent(a, {
+      code: 'BIKCAR', name: 'Company car', kind: 'non_payable', isNonPayable: true, ...base,
+      orpOvertime: true, orpUnpaidLeave: false,
+    });
+    const items = await listPayComponents(a);
+    const idOf = (c: string) => items.find((x) => x.code === c)!.id;
+    for (const [code, amount] of [['HOUSING', 500], ['BIKCAR', 300]] as const) {
+      await setEmploymentPayComponent(a, { employmentId: e, componentId: idOf(code), amount, effectiveFrom: '2020-01-01' });
+    }
+    const rule: PayRule = {
+      kind: 'formula',
+      start: { ref: 'basic' },
+      terms: [{ op: '+', operand: { ref: 'fixed_allowances' } }, { op: '/', operand: { ref: 'number', value: 26 } }],
+    };
+    const preview = await previewPayRule(a, {
+      code: 'OTAGG', rule, kind: 'allowance', prorates: false, employmentId: e,
+      periodStart: '2026-05-01', periodEnd: '2026-05-31',
+    });
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    // HOUSING only. If BIKCAR were counted this would be (5000 + 800) / 26.
+    expect(
+      preview.amount,
+      'the preview counted money the run will never pay — the guard was inert here',
+    ).toBeCloseTo((5000 + 500) / 26, 6);
   });
 });
 

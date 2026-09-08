@@ -4522,7 +4522,10 @@ export async function generatePayslips(
         // statutory line, never a deduction — are in core/pay-rule.ts beside the overtime one.
         // The `if` is the byte-identity guarantee, not an optimisation: with 0456's backfill no row is
         // ticked, so `roundAmount` is never called here and the accumulator stays exactly 0.
-        if (payItemFeedsUnpaidLeaveOrp(c.code, c.kind, c.orpUnpaidLeave)) {
+        // `c.nonPayable` / `c.oneOff` are passed EXPLICITLY rather than left to the branches below: the
+        // record-only exits at 4552 and 4601 are further down the loop, so a non-payable row reaches this
+        // accumulator and would raise the rate out of money nobody is paid. See the predicate's header.
+        if (payItemFeedsUnpaidLeaveOrp(c.code, c.kind, c.orpUnpaidLeave, c.nonPayable, c.oneOff)) {
           orpUnpaidLeaveExtra = round2(orpUnpaidLeaveExtra + roundAmount(resolved, c.rounding));
         }
         // ── LHDN PCB 2026 declared classification (feedback 09b554e9) ──
