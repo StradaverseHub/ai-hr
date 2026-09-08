@@ -12,6 +12,7 @@ import { isStatutoryComponent } from '@/core/pay-rule';
 import { requireAdmin } from '@/lib/authz';
 import type { PayRule } from '@/core/pay-rule';
 import { Card, ErrorBanner, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { OrpConfig } from './orp-config';
 import { PayRuleEditor } from './pay-rule-editor';
 import { StatutoryConfig } from './statutory-config';
 import { createComponentAction, updateComponentAction } from './actions';
@@ -66,7 +67,11 @@ export async function ComponentForm({
     .map((c) => ({ code: c.code, name: c.label ?? c.name }));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    // 711adcd2 — FULL WIDTH. The screen used to carry a three-column width cap here, which is what put the
+    // reporter's four sections into a narrow strip with the ORP card they asked for having nowhere to go.
+    // The cap's class name is deliberately not written out anywhere in this file, comments included: the
+    // layout guard scans this source for it and does not strip comments (AGENTS 27).
+    <div className="w-full space-y-6">
       <PageHeader
         title={editing ? t('editTitle', { code: component!.code }) : copy ? t('copyTitle') : t('createTitle')}
         back={{ href: LIST, label: t('backToList') }}
@@ -129,6 +134,28 @@ export async function ComponentForm({
             </Field>
             <p className="text-xs text-muted-foreground sm:col-span-3">{t('displayCategoryHint')}</p>
           </div>
+        </Card>
+
+        {/* 711adcd2 — ORDINARY RATE OF PAY. Second card, exactly where the reporter drew it: the two
+            questions it asks are about the item's IDENTITY (what kind of money is this, and which rates
+            does it feed), so they belong beside Category, above the mechanics of how the amount is worked
+            out. Both boxes are independent — either, both or neither. */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('sectionOrp')}</h2>
+          <OrpConfig
+            // Defaults for a BRAND-NEW item mirror what the system did before the switch existed: a new
+            // Earning fed the overtime aggregate automatically, and nothing at all fed the unpaid-leave
+            // base. An operator who creates an item and never opens this card therefore gets exactly the
+            // pre-0456 behaviour, which is the same promise migration 0456 keeps for the existing 29.
+            orpUnpaidLeave={component?.orpUnpaidLeave ?? false}
+            // ⚠️ KIND-AWARE, and it was not. `?? true` pre-ticked Overtime on EVERY new item, so creating
+            // the reporter's own pairing (Category = Non-Payable + Payroll Category = Benefit in Kind) and
+            // saving without ever opening this card stored orp_overtime = true — which then made the admin
+            // preview quote a figure the run does not pay. The pre-0456 answer was the KIND test, and this
+            // is that test: a new Earning fed the aggregate, nothing else did.
+            orpOvertime={component?.orpOvertime ?? (component?.kind ?? 'allowance') === 'allowance'}
+            kind={component?.kind ?? 'allowance'}
+          />
         </Card>
 
         {/* Pay Settings (13b7517b) — calculation concerns grouped in their own card: the rounding method
@@ -215,15 +242,17 @@ export async function ComponentForm({
           </div>
         </Card>
 
-        {/* Bottom toolbar — Save, Save & New (saves then reopens a blank screen), Cancel back to the list. */}
-        <div className="flex items-center gap-3">
-          <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>
-          <button name="intent" value="saveAndNew" className={btnGhost}>
-            {t('saveAndNew')}
-          </button>
+        {/* Bottom toolbar — 711adcd2 puts Cancel and Save at the bottom RIGHT, as drawn, with Back already
+            top-left in the PageHeader. Save & New keeps its place between them: it is a save, not a third
+            destructive choice, and removing it would take away a shortcut this screen has always had. */}
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Link href={LIST} className="text-sm font-medium text-muted-foreground hover:text-foreground">
             {t('cancelEdit')}
           </Link>
+          <button name="intent" value="saveAndNew" className={btnGhost}>
+            {t('saveAndNew')}
+          </button>
+          <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>
         </div>
       </form>
     </div>

@@ -95,6 +95,12 @@ function componentFields(formData: FormData): PayComponentInput {
     // ALWAYS supplies it, so a save is authoritative; blank ⇒ null ⇒ the box falls back to the pre-0393
     // inference. It changes DISPLAY only — no statutory flag, base or form reads it.
     displayCategory: String(formData.get('displayCategory') ?? '') || null,
+    // 711adcd2 — the two ORP tick boxes. The form ALWAYS renders both, so an absent field means UNTICKED
+    // rather than "not supplied", and a save is authoritative for both columns. That is why neither
+    // checkbox may ever be rendered disabled: a disabled control posts nothing, which reads here as a
+    // deliberate untick and would silently drop a pay item out of somebody's overtime rate.
+    orpUnpaidLeave: bool(formData, 'orpUnpaidLeave'),
+    orpOvertime: bool(formData, 'orpOvertime'),
   };
 }
 

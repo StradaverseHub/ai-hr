@@ -358,8 +358,17 @@ describe('3c473773 — declaring the box moves the LABEL, never the MONEY', () =
   it('the vocabulary the DB accepts is the vocabulary the app offers', () => {
     // A category the CHECK constraint refuses would fall back to the inference and look like the setting
     // had been ignored — the very complaint this item answers.
-    const sql = read('db/migrations/0393_pay_component_display_category.sql');
+    //
+    // 711adcd2 UPDATES this case rather than replacing it. 0393 wrote the constraint and the six words it
+    // knew about; 0456 REPLACES that constraint to admit a seventh, 'bik'. A CHECK cannot be widened in
+    // place, so the vocabulary is now spread over two migrations and the assertion has to read both — the
+    // property under test is unchanged and is still exactly "every word the app offers, the DB accepts".
+    const sql =
+      read('db/migrations/0393_pay_component_display_category.sql') +
+      read('db/migrations/0456_pay_item_orp_flags.sql');
     for (const c of PAY_DISPLAY_CATEGORIES) expect(sql).toContain(`'${c}'`);
+    // …and the LAST word on the constraint is 0456's, so a database migrated through both accepts 'bik'.
+    expect(read('db/migrations/0456_pay_item_orp_flags.sql')).toContain('pay_component_display_category_check');
     expect(EMPLOYER_BORNE_KEYS).toEqual(['epf', 'socso', 'skbbk', 'eis', 'tax']);
   });
 });

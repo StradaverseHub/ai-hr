@@ -92,7 +92,7 @@ import { TP1_COUNTABLE_COLUMNS, tp1CountForYear } from './tax-relief';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
-import { resolvePayComponentSet, type PayRuleScope } from './pay-rule';
+import { payItemFeedsUnpaidLeaveOrp, resolvePayComponentSet, type PayRuleScope } from './pay-rule';
 // Feedback 3c473773 — the payslip-box vocabulary. PRESENTATION ONLY: nothing imported here reaches a
 // statutory base, a stored payslip column, or any EA/CP39/KWSP/PERKESO grouping.
 import { defaultCategoryOfBucket, resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
@@ -3882,6 +3882,17 @@ export async function generatePayslips(
       // TXN_DEDUCTION). Optional so every recurring-row literal stays valid; absent ⇒ recurring.
       // Read by core/pay-rule.ts's fixed_allowances aggregate, which must NOT total one-offs.
       oneOff?: boolean;
+      // 711adcd2 — pay_component.orp_overtime (migration 0456): the tick box that decides whether this item
+      // counts towards the fixed_allowances aggregate a tenant's overtime formula reads. It REPLACED the
+      // aggregate's kind test, and 0456 backfilled it to exactly that test, so a run is byte-identical
+      // until an operator changes a box. It reaches nothing else — in particular it does NOT reach
+      // prefillOvertimeFromAttendance, which monetises statutory OT from the Personnel compensation
+      // columns and never looks at a pay item.
+      orpOvertime: boolean;
+      // 711adcd2 — pay_component.orp_unpaid_leave: does this item's amount join basic salary in the base
+      // the unpaid-leave (and equal-by-definition absence) daily rate is struck from? 0456 backfilled it
+      // FALSE on every row, because measured, that base is `basicRaw` alone today.
+      orpUnpaidLeave: boolean;
       // LHDN PCB 2026 classification (feedback 09b554e9). epfBonus2012 routes the amount down the
       // additional-remuneration EPF path regardless of the SOCSO flag; pcbRemunerationType (when declared)
       // overrides the epf/socso stream inference; pcbExemptionCode selects the annual exemption cap.
@@ -3910,6 +3921,9 @@ export async function generatePayslips(
         pcb: payComponent.includedInPcb,
         hrdf: payComponent.includedInHrdfBase,
         nonPayable: payComponent.isNonPayable,
+        // 711adcd2 — the two ORP tick boxes (migration 0456). See the CompRow comments.
+        orpOvertime: payComponent.orpOvertime,
+        orpUnpaidLeave: payComponent.orpUnpaidLeave,
         prorates: payComponent.prorates,
         rounding: payComponent.roundingMethod,
         rule: payComponent.rule, // Payroll Setup — read for the resolver (null on every legacy row).
@@ -4091,6 +4105,14 @@ export async function generatePayslips(
                 pcb: t.compPcb ?? false,
                 hrdf: t.compHrdf ?? false,
                 nonPayable: t.compNonPayable ?? false,
+                // 711adcd2 — a BATCH component is a ONE-OFF, and neither ORP base is a one-off's business:
+                // both are monthly rates struck from what the employee is paid every month. `oneOff: true`
+                // below already keeps it out of the `fixed_allowances` aggregate (r168's own measurement),
+                // and false here keeps it out of the unpaid-leave base for the identical reason. These are
+                // deliberately NOT read off the catalog row: an operator ticking a pay item for the monthly
+                // ORP must not thereby have a single keyed one-off raise a daily rate for one month.
+                orpOvertime: false,
+                orpUnpaidLeave: false,
                 prorates: t.compProrates ?? false,
                 prorateOverride: null,
                 rule: null, // keyed amount is authoritative — never re-derive via a catalog rule
@@ -4109,8 +4131,8 @@ export async function generatePayslips(
                 displayCategory: t.compDisplayCategory ?? null,
               }
             : t.kind === 'earning'
-              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
-              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', oneOff: true, amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null };
+              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, orpOvertime: false, orpUnpaidLeave: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
+              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', oneOff: true, amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, orpOvertime: false, orpUnpaidLeave: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null };
         const list = batchCompByEmp.get(t.employmentId) ?? [];
         list.push(row);
         batchCompByEmp.set(t.employmentId, list);
@@ -4254,7 +4276,10 @@ export async function generatePayslips(
     // item, and a run with moved===false stamps nothing at all, which is what keeps every other payslip
     // byte-identical.
     type DisplayTally = Record<PayDisplayCategory, number>;
-    const emptyTally = (): DisplayTally => ({ basic: 0, overtime: 0, bonus: 0, allowance: 0, claim: 0, deduction: 0 });
+    // 711adcd2 — `bik` joins the vocabulary (Benefit in Kind), and stays 0 by construction: a non-payable
+    // item never reaches a cash bucket, and resolveDisplayCategory refuses `bik` on one that did. The key
+    // exists so DisplayTally stays a total Record over PAY_DISPLAY_CATEGORIES rather than a partial one.
+    const emptyTally = (): DisplayTally => ({ basic: 0, overtime: 0, bonus: 0, allowance: 0, claim: 0, deduction: 0, bik: 0 });
 
     const earningsOf = (
       e: { employmentId: string; basic: unknown; allowance: unknown },
@@ -4306,6 +4331,11 @@ export async function generatePayslips(
       // reconciled against the OT caps downstream). `displayMoved` is false whenever nothing was
       // re-categorised, and the kernel then stamps no overlay at all.
       display: DisplayTally; displayMoved: boolean; displayOtOutbound: number;
+      // 711adcd2 (migration 0456) — the sum of the recurring pay items TICKED "Add to Unpaid Leave ORP
+      // Calculation". UNFACTORED, deliberately: it joins `basicRaw`, which is itself the unfactored monthly
+      // basic, so a mid-month joiner's daily rate is not shortened twice. 0 on every path until an operator
+      // ticks a box (0456 backfills the column false everywhere), which is what makes this byte-identical.
+      orpUnpaidLeaveExtra: number;
     } => {
       if (!typedComponents) {
         const basicRaw = Number(e.basic);
@@ -4344,6 +4374,9 @@ export async function generatePayslips(
           display: emptyTally(),
           displayMoved: false,
           displayOtOutbound: 0,
+          // 711adcd2 — the legacy path has no typed pay items at all, so there is nothing to tick and
+          // nothing to add: the unpaid-leave base stays `basicRaw`, exactly as it always was.
+          orpUnpaidLeaveExtra: 0,
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
@@ -4351,6 +4384,8 @@ export async function generatePayslips(
       let epfWageExcluded = 0, epfAdditionalExcluded = 0, socsoWageExcluded = 0, socsoWageExtra = 0;
       // 2333b7fb — and the four deduction-side reductions, accumulated in the `kind === 'deduction'` branch.
       let epfWageDeduction = 0, socsoWageDeduction = 0, pcbWageDeduction = 0, hrdfWageDeduction = 0;
+      // 711adcd2 — the unpaid-leave ORP base's pay-item half. See the return type.
+      let orpUnpaidLeaveExtra = 0;
       const recordLines: PayslipRecordLine[] = [];
       // Feedback 862ed0ad — per-component provenance for the CASH buckets. recordLines already itemises
       // record-only components, which is why one-off items could always be broken down; the PAID recurring
@@ -4478,6 +4513,21 @@ export async function generatePayslips(
         currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf };
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
+        // ── 711adcd2 — "Add to Unpaid Leave ORP Calculation" ──────────────────────────────────────
+        // Placed HERE, above every branch below, so the base is built from the same set of items on every
+        // route through the loop rather than from whichever branches happen to fall through. The amount is
+        // the UNFACTORED resolved figure (`resolved`, not `applied`): it joins `basicRaw`, which is the
+        // unfactored monthly basic, and prorating one side of a daily rate but not the other would shorten
+        // a mid-month joiner's rate twice. The predicate's structural clauses — never BASIC, never a
+        // statutory line, never a deduction — are in core/pay-rule.ts beside the overtime one.
+        // The `if` is the byte-identity guarantee, not an optimisation: with 0456's backfill no row is
+        // ticked, so `roundAmount` is never called here and the accumulator stays exactly 0.
+        // `c.nonPayable` / `c.oneOff` are passed EXPLICITLY rather than left to the branches below: the
+        // record-only exits at 4552 and 4601 are further down the loop, so a non-payable row reaches this
+        // accumulator and would raise the rate out of money nobody is paid. See the predicate's header.
+        if (payItemFeedsUnpaidLeaveOrp(c.code, c.kind, c.orpUnpaidLeave, c.nonPayable, c.oneOff)) {
+          orpUnpaidLeaveExtra = round2(orpUnpaidLeaveExtra + roundAmount(resolved, c.rounding));
+        }
         // ── LHDN PCB 2026 declared classification (feedback 09b554e9) ──
         // Optional Deduction: the amount reduces this month's PCB exactly like an approved TP1 deduction
         // (fed into LP₁ below), capped by the LP code's remaining ANNUAL headroom (YTD replay). Cash-wise
@@ -4616,7 +4666,7 @@ export async function generatePayslips(
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -5013,9 +5063,25 @@ export async function generatePayslips(
       // timeOffRate is null and the whole figure stays the single legacy expression, byte-identical.
       const unpaidDaysAll = unpaidByEmp.get(e.employmentId) ?? 0;
       const timeOffDays = Math.min(unpaidTimeOffByEmp.get(e.employmentId) ?? 0, unpaidDaysAll);
+      // ── 711adcd2 (migration 0456) — THE UNPAID-LEAVE ORP BASE. ────────────────────────────────────
+      // Until now this base was `basicRaw` and nothing else, on every one of the three rates below. It is
+      // now `basicRaw` PLUS the pay items an operator has ticked "Add to Unpaid Leave ORP Calculation"
+      // (earningsOf accumulates them; core/pay-rule.ts payItemFeedsUnpaidLeaveOrp is the predicate).
+      //
+      // THE ZERO SHORT-CIRCUIT IS THE BYTE-IDENTITY GUARANTEE, not an optimisation — the same device the
+      // `absentDays === 0` line below uses. 0456 backfills the column false on every row, so `extra` is 0
+      // on release day and this expression IS `basicRaw`, the identical `number` value, never a `round2`
+      // of it that could differ in the last place. Only an operator deliberately ticking a box makes the
+      // arithmetic change, which is the promise the approved plan made.
+      //
+      // WHY IT MATTERS MORE HERE THAN ON THE OVERTIME SIDE: `unpaidDeduction` is PRE-statutory (wagesExOt
+      // and hrdfBase subtract it below), so raising this base does not only raise the deduction — it lowers
+      // the EPF, SOCSO, EIS, PCB and HRDF bases with it. The screen says so where the box is ticked.
+      const orpUnpaidBase =
+        en.orpUnpaidLeaveExtra === 0 ? basicRaw : round2(basicRaw + en.orpUnpaidLeaveExtra);
       const timeOffRate =
         timeOffDays > 0
-          ? unpaidTimeOffDailyRate(basicRaw, cfg, {
+          ? unpaidTimeOffDailyRate(orpUnpaidBase, cfg, {
               calendarDaysInMonth: dim,
               cutoffDays: salaryCutoffDaysByEmp.get(e.employmentId) ?? dim,
               workingDays: workingDaysInPeriodFor(e.employmentId),
@@ -5031,8 +5097,8 @@ export async function generatePayslips(
       const unpaidLeaveAmount = daily
         ? 0
         : timeOffRate !== null
-          ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
-          : round2((basicRaw / unpaidDivisor) * unpaidDaysAll);
+          ? round2((orpUnpaidBase / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
+          : round2((orpUnpaidBase / unpaidDivisor) * unpaidDaysAll);
       // e2632276 — ABSENCE, at exactly the unpaid-leave daily rate: the same `basicRaw` (the UNFACTORED
       // monthly basic, so the rate is not shortened for a mid-month joiner or leaver) over the same
       // policy-configured `unpaidDivisor`, rounded ONCE on the amount — the per-day rate is never rounded
@@ -5050,7 +5116,9 @@ export async function generatePayslips(
       // keeps the switched-off path from evaluating `basicRaw / unpaidDivisor` at all, so no divisor value
       // — including a pathological 0, which would make `Infinity * 0` NaN and poison `unpaidDeduction` —
       // can change a figure on a payslip nobody switched this on for.
-      const absentAmount = daily || absentDays === 0 ? 0 : round2((basicRaw / unpaidDivisor) * absentDays);
+      // e2632276's ABSENCE rate is "exactly the unpaid-leave daily rate", so 711adcd2's base change rides
+      // it deliberately: two different bases for one rate would be a second definition of the same number.
+      const absentAmount = daily || absentDays === 0 ? 0 : round2((orpUnpaidBase / unpaidDivisor) * absentDays);
       // Both halves ride INSIDE unpaidDeduction on purpose: wagesExOt and hrdfBase below subtract it, which
       // is what makes the absence deduction PRE-statutory (EPF / SOCSO / EIS / PCB are worked out on the
       // reduced wage) — the treatment a `kind='deduction'` pay code could never have, because a pay code is

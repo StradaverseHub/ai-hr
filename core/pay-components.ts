@@ -35,6 +35,7 @@ import { addDaysIso, addMonths, monthOf, monthRange } from '../lib/roster-month'
 // timezone (the repo rule this file's addDaysIso comment states from the other side).
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
+  isFixedAllowanceComponent,
   payRuleDependencies as payRuleDependenciesOf,
   payRuleDerivesAmount,
   payRuleInputUnit,
@@ -153,7 +154,21 @@ export function seedPayComponentCatalog(ctx: SessionContext) {
       if (existing) {
         await tx.update(payComponent).set(flagsOf(c)).where(eq(payComponent.id, existing));
       } else {
-        await tx.insert(payComponent).values({ tenantId: ctx.tenantId, code: c.code, name: c.name, kind: c.kind, ...flagsOf(c) });
+        // 711adcd2 — a FRESHLY PROVISIONED tenant must get the same aggregate membership an established
+        // one gets from migration 0456's backfill, or the same seeded MEAL allowance would feed a tenant's
+        // overtime formula on one tenant and not on another. Derived from the SAME pre-0456 predicate the
+        // backfill encodes (a seed row carries no rule, so `null` is its rule), never hand-listed.
+        // INSERT ONLY: the update branch above deliberately does not touch the flags, because re-running
+        // the seed must never silently un-tick a box an operator set.
+        await tx.insert(payComponent).values({
+          tenantId: ctx.tenantId,
+          code: c.code,
+          name: c.name,
+          kind: c.kind,
+          ...flagsOf(c),
+          orpOvertime: isFixedAllowanceComponent(c.code, c.kind, null),
+          orpUnpaidLeave: false,
+        });
         created += 1;
       }
     }
@@ -325,6 +340,17 @@ export type PayComponentInput = {
   // caller keep the classification migration 0393 wrote. '' / null ⇒ stored NULL ⇒ the box is inferred, as
   // it was before 0393. An unrecognised value never persists (cleanDisplayCategory).
   displayCategory?: string | null;
+  // ── 711adcd2 (migration 0456) — THE TWO ORP TICK BOXES ────────────────────────────────────────────
+  // undefined ⇒ "not supplied" ⇒ the stored value survives, exactly as `displayCategory` above: the seed,
+  // every backfill and every pre-existing caller must not wipe what 0456 backfilled. The maintenance form
+  // ALWAYS supplies both, so a UI save is authoritative.
+  //   orpOvertime      — count this item towards the `fixed_allowances` operand a tenant's own overtime
+  //                      formula reads (core/pay-rule.ts payItemFeedsOvertimeOrp).
+  //   orpUnpaidLeave   — add this item's amount to the base the unpaid-leave / absence daily rate is
+  //                      struck from (core/payroll.ts). Backfilled false everywhere: today that base is
+  //                      basic salary alone.
+  orpOvertime?: boolean;
+  orpUnpaidLeave?: boolean;
 };
 
 // ── LHDN PCB 2026 classification validation (feedback 09b554e9) ──
@@ -375,6 +401,13 @@ export const STATUTORY_RELEVANT_FIELDS = [
   'epfBonus2012',
   'pcbRemunerationType',
   'pcbExemptionCode',
+  // 711adcd2 — BOTH ORP tick boxes are statutory-relevant, and this is not a judgement call. Un-ticking
+  // an item for overtime changes the `fixed_allowances` operand a tenant's overtime formula reads, so the
+  // overtime figure on an already-processed run is no longer what today's setup would produce. Ticking one
+  // for unpaid leave is stronger still: that deduction is PRE-statutory, so it moves EPF, SOCSO, EIS, PCB
+  // and HRDF with it. A run that is stale must SAY it is stale rather than sit there looking agreed.
+  'orpOvertime',
+  'orpUnpaidLeave',
 ] as const;
 
 export function isStatutoryRelevantChange(changed: readonly string[]): boolean {
@@ -424,6 +457,28 @@ const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLin
 // kernel would not recognise.
 const displayCategoryOf = (p: PayComponentInput) =>
   p.displayCategory === undefined ? {} : { displayCategory: cleanDisplayCategory(p.displayCategory) };
+// 711adcd2 — the two ORP tick boxes, stored on exactly the displayCategoryOf discipline above: BOTH
+// undefined ⇒ not supplied ⇒ {} ⇒ migration 0456's backfilled values survive untouched. This is the whole
+// reason a legacy caller (the seed, a backfill, a test fixture, the CSV importer) cannot silently re-price
+// somebody's overtime by saving a pay item for an unrelated reason.
+const orpOf = (p: PayComponentInput) =>
+  p.orpOvertime === undefined && p.orpUnpaidLeave === undefined
+    ? {}
+    : { orpOvertime: p.orpOvertime ?? false, orpUnpaidLeave: p.orpUnpaidLeave ?? false };
+/**
+ * 711adcd2 — the same, for an INSERT, where "leave the stored value alone" has no meaning because there is
+ * no stored value. Falling through to the column default (false) would be a real behaviour change and it is
+ * how a regression got here: before the switch existed, creating a fixed Earning made it feed a tenant's
+ * overtime formula IMMEDIATELY, by its kind. A caller that expresses no opinion — the seed, the CSV
+ * importer, a fixture, a future service — must therefore get the PRE-0456 answer for the row it is writing,
+ * not "excluded". Exactly the same predicate migration 0456's backfill encodes, applied to one new row.
+ *
+ * The maintenance form always supplies both, so an operator's explicit untick still wins here.
+ */
+const orpOfInsert = (p: PayComponentInput, rule: PayRule | null) =>
+  p.orpOvertime === undefined && p.orpUnpaidLeave === undefined
+    ? { orpOvertime: isFixedAllowanceComponent(p.code, p.kind, rule), orpUnpaidLeave: false }
+    : { orpOvertime: p.orpOvertime ?? false, orpUnpaidLeave: p.orpUnpaidLeave ?? false };
 // LHDN PCB 2026 classification storage (feedback 09b554e9): all three undefined ⇒ "not supplied" ⇒ leave the
 // stored values untouched (legacy caller). Supplied: EPF Bonus 2012 only sticks with EPF ticked, and the two
 // PCB fields are cleared to null when PCB itself is unticked (an untaxed code carries no PCB classification).
@@ -490,7 +545,7 @@ export async function createPayComponent(ctx: SessionContext, p: PayComponentInp
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory'] as const;
+const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
 
 // ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
 // A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
@@ -500,10 +555,10 @@ const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoE
  *  code is rejected as such rather than silently reading 0). */
 async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogNode[]> {
   const rows = await tx
-    .select({ code: payComponent.code, rule: payComponent.rule, kind: payComponent.kind, archivedAt: payComponent.archivedAt })
+    .select({ code: payComponent.code, rule: payComponent.rule, kind: payComponent.kind, archivedAt: payComponent.archivedAt, orpOvertime: payComponent.orpOvertime })
     .from(payComponent)
     .where(eq(payComponent.tenantId, tenantId));
-  return rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null }));
+  return rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null, orpOvertime: r.orpOvertime }));
 }
 
 /**
@@ -528,10 +583,16 @@ async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> 
       // graph, which is exactly the kind of quietly-wrong number this column exists to prevent.
       kind: payComponent.kind,
       archivedAt: payComponent.archivedAt,
+      // 711adcd2 — and the TICK BOX, for the identical reason `kind` is here: it is now the aggregate's
+      // membership test, so a rank planned without it would describe the pre-0456 graph. Omitting it would
+      // not pay a wrong figure (resolvePayComponentSet re-derives the ordering from the same predicate),
+      // but it would persist a resolution_order that misdescribes the graph the moment an operator
+      // un-ticks an item an overtime formula ranks against.
+      orpOvertime: payComponent.orpOvertime,
     })
     .from(payComponent)
     .where(eq(payComponent.tenantId, tenantId));
-  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null })));
+  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null, orpOvertime: r.orpOvertime })));
   if (!plan.ok) return;
   for (const r of rows) {
     const next = plan.order.get(r.code.trim().toUpperCase()) ?? 0;
@@ -571,7 +632,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     let id: string;
     let changed: string[] = [];
     if (existing) {
-      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), rule, ...(label !== undefined ? { label } : {}) };
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOf(p), rule, ...(label !== undefined ? { label } : {}) };
       changed = DIFF_FIELDS.filter((f) => {
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
@@ -583,7 +644,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), rule })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -921,6 +982,20 @@ async function resolveRuleForEmploymentTx(
       // about formulas using the new operand. Selecting it is what keeps "same evaluator" true in fact
       // and not just in the call graph.
       kind: payComponent.kind,
+      // 711adcd2 — and the TICK BOX, for exactly the same reason and with a sharper edge. `kind` and the
+      // flag agreed on the day 0456 ran, so a preview that read only the kind would have looked correct
+      // right up until the first operator un-ticked an item — and would then have quoted the OLD overtime
+      // figure on the very screen they were using to change it.
+      orpOvertime: payComponent.orpOvertime,
+      // 711adcd2 fix — AND `nonPayable`, for the third time and the sharpest edge of the three. The
+      // kernel's own guard is `!c.nonPayable && !c.oneOff && payItemFeedsOvertimeOrp(…)`, so leaving this
+      // out did not merely omit a field: it made that guard INERT here while it stayed live in the run.
+      // Measured on this branch before the fix — a non-payable BIKCAR of 300, ticked, made previewPayRule
+      // answer 300 where generatePayslips paid 0.00. That is the preview lying about the run on the very
+      // screen an operator uses to set an overtime rate, which is the one thing this projection exists to
+      // prevent. `one_off` is not a catalog column (it is a per-transaction property), so recurring rows
+      // are never one-offs and the kernel's `!c.oneOff` half is satisfied structurally here.
+      nonPayable: payComponent.isNonPayable,
     })
     .from(employmentPayComponent)
     .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
@@ -938,6 +1013,8 @@ async function resolveRuleForEmploymentTx(
   const pending: PayRuleCatalogNode[] = catalog.map((n) =>
     n.code.trim().toUpperCase() === code ? { ...n, rule: p.rule } : n,
   );
+  // 711adcd2 — no `orpOvertime` on this synthetic node: a code that is not in the catalog yet has no
+  // stored flag, and `undefined` is exactly "no flag ⇒ the kind test", which is what it had before.
   if (!pending.some((n) => n.code.trim().toUpperCase() === code)) pending.push({ code, rule: p.rule, kind: p.kind });
   const plan = planResolutionOrder(pending);
   const rankOf = (c: string) => (plan.ok ? (plan.order.get(c.trim().toUpperCase()) ?? 0) : 0);
@@ -946,9 +1023,18 @@ async function resolveRuleForEmploymentTx(
   // employee does not have it yet — a brand-new pay code still resolves).
   const set = recurring
     .filter((r) => r.code.trim().toUpperCase() !== code)
-    .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null }));
+    .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null, orpOvertime: r.orpOvertime as boolean | null, nonPayable: r.nonPayable === true }));
   const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
-  set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null });
+  // The item UNDER EDIT takes its flag from the row on disk (the form does not send it to the preview),
+  // and `undefined` there falls back to the kind test — the same answer the pre-0456 preview gave. Its own
+  // membership never changes its own figure anyway: the aggregate is the sum of items ranked strictly
+  // BELOW the one reading it, which is what makes it acyclic.
+  const targetOrp = recurring.find((r) => r.code.trim().toUpperCase() === code)?.orpOvertime ?? null;
+  // The item under edit: its stored nonPayable, for the same reason as the projection above. `p.kind`
+  // is the PENDING kind (the operator may be changing it in the form), but nonPayable is not on the
+  // form's preview payload, so the disk value is the honest answer here.
+  const targetNonPayable = recurring.find((r) => r.code.trim().toUpperCase() === code)?.nonPayable === true;
+  set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null, orpOvertime: targetOrp, nonPayable: targetNonPayable });
   const targetIdx = set.length - 1;
 
   // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the answer
