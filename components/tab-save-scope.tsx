@@ -14,6 +14,11 @@
  * revision. If a (b) card ever needs to move under a tab-wide Save, the classification has to change
  * first — not this file.
  *
+ * THE FENCE IS NOT WEAKENED BY THE SUBMIT GUARD FURTHER DOWN. That guard asks before a bucket (b) form
+ * writes, because its `redirect()` re-renders the screen and would throw the tab's pending edits away
+ * unannounced. Asking is all it does: it never reads, marks, packs or resets that form, it replays the
+ * card's OWN submit unchanged, and Cancel leaves the write undone.
+ *
  * WHY THE CARDS STAY SEPARATE `<form>`s. Each posts a different payload to a different service; several
  * carry a sibling's value as a hidden input; and the writers read an ABSENT field as "leave as-is". One
  * merged form would collide duplicate names and start posting fields a card deliberately dropped. So the
@@ -312,7 +317,10 @@ export function TabSaveScope({
   // Leaving the SCREEN. `beforeunload` covers reload / close / an external address and the hard
   // navigation a bare `<a>` performs; the capture-phase click guard covers in-app links (back to the
   // list, another employee, any nav item), which are client-side navigations `beforeunload` never sees;
-  // and the popstate guard below covers browser Back / Forward.
+  // the submit guard below covers a bucket (b) write, whose redirect re-renders the screen; and the
+  // popstate guard after it covers browser Back / Forward. The tab strip (personnel-tabs.tsx) and the
+  // Search Employee switcher reach the same prompt through lib/unsaved-changes.ts. That is every route
+  // the reporter listed.
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -347,6 +355,60 @@ export function TabSaveScope({
       document.removeEventListener('click', onClick, true);
     };
   }, [dirty, ask, router]);
+
+  /**
+   * A BUCKET (b) WRITE IS ALSO A WAY OFF THIS TAB, and it was the one route nothing watched.
+   *
+   * Adding an emergency contact, archiving a qualification, recording a salary revision — each of those is
+   * a server action whose `redirect()` re-renders the screen. That is neither an anchor click nor a
+   * document unload nor a history pop, so an unsaved Full Name edit went with it, silently, with no
+   * Save / Discard / Cancel. The loss predates the consolidated save (per-card saves reloaded too), but
+   * this scope's promise — the system will not let you wander off and lose work — has to cover it.
+   *
+   * It is a CAPTURE-phase listener on `document`, and both halves of that matter. React 19 accumulates a
+   * form's `action` listener only in the BUBBLE phase (`!inCapturePhase` in accumulateSinglePhaseListeners),
+   * so stopping propagation at the document on the way DOWN means the action is never dispatched at all —
+   * measured, not assumed. And it has to be on the document rather than on this component's subtree,
+   * because the bucket (b) forms are elsewhere: the emergency-contact register sits below the scope, and
+   * its add/edit forms render inside a Radix dialog, portalled to `document.body`.
+   *
+   * NOTHING IS RE-IMPLEMENTED. On Save or Discard the guard replays the ORIGINAL submit —
+   * `form.requestSubmit(submitter)`, carrying the button that was pressed so a `formAction` still applies,
+   * which is the same gesture components/ui/confirm-submit.tsx already uses on this screen. The replay is
+   * let through by the ref below, so the guard cannot see its own echo. Cancel drops it: no write, edits
+   * kept, reader where they were.
+   */
+  const replayingRef = useRef<HTMLFormElement | null>(null);
+  useEffect(() => {
+    if (!dirty) return;
+    const root = contentRef.current;
+    const onSubmit = (e: Event) => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      // Our own replay coming back round.
+      if (replayingRef.current === form) {
+        replayingRef.current = null;
+        return;
+      }
+      // The tab's own cards are handled by the scope-local submit guard, which knows how to turn one into
+      // the consolidated save rather than a prompt.
+      if (root?.contains(form)) return;
+      if (form.closest(UNSAVED_GUARD_IGNORE_SELECTOR)) return;
+      const submitter = (e as SubmitEvent).submitter;
+      e.preventDefault();
+      e.stopPropagation();
+      ask(() => {
+        replayingRef.current = form;
+        if (submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement) {
+          form.requestSubmit(submitter);
+        } else {
+          form.requestSubmit();
+        }
+      });
+    };
+    document.addEventListener('submit', onSubmit, true);
+    return () => document.removeEventListener('submit', onSubmit, true);
+  }, [dirty, ask]);
 
   /**
    * BROWSER BACK / FORWARD — "Click Back" is one of the routes the reporter named, and it is the one

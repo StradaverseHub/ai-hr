@@ -74,7 +74,14 @@ const NATIONALITIES = [
  * component commits its selection from a React `onKeyDown` — i.e. on the BUBBLE phase, after the scope's
  * capture-phase Enter guard — and a stubbed select could never reproduce that ordering.
  */
-function Screen({ save }: { save: (fd: FormData) => Promise<TabSaveResult> }) {
+function Screen({
+  save,
+  revision = async () => undefined,
+}: {
+  save: (fd: FormData) => Promise<TabSaveResult>;
+  /** The bucket (b) card's OWN server action, as a real React 19 form action — see §12. */
+  revision?: (fd: FormData) => Promise<void>;
+}) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
       <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save}>
@@ -129,7 +136,7 @@ function Screen({ save }: { save: (fd: FormData) => Promise<TabSaveResult> }) {
 
       {/* BUCKET (b) — a discrete, money-affecting act with its own button, rendered outside the scope the
           way the page renders the Emergency Contact register and the Payroll tab's salary revision. */}
-      <form data-testid="salary-revision">
+      <form data-testid="salary-revision" action={revision}>
         <label>
           <span>New Basic Salary</span>
           <input name="amount" defaultValue="5000" />
@@ -865,5 +872,90 @@ describe('§11 browser Back asks too', () => {
       pushState.mockRestore();
       go.mockRestore();
     }
+  });
+});
+
+describe('§12 a bucket (b) write is a way off the tab too', () => {
+  /**
+   * The route nothing used to watch. Adding an emergency contact, archiving a qualification, recording a
+   * salary revision — each is a server action whose `redirect()` re-renders the screen, which is neither
+   * an anchor click nor an unload nor a history pop. An unsaved Full Name edit went with it silently.
+   *
+   * The fence of §4 is untouched by this and must stay untouched: the (b) card is still invisible to the
+   * change count, still absent from the payload, still not restored by Discard. What changes is only that
+   * the tab now ASKS before that card's write throws the pending edits away.
+   *
+   * `action={revision}` is a real React 19 form action, not an onSubmit spy, because the whole question is
+   * whether a document capture listener runs before React dispatches it.
+   */
+  const makeDirty = async (user: ReturnType<typeof userEvent.setup>) => {
+    const { name, saveBtn } = fields();
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+  };
+
+  it('a clean tab lets the write straight through, exactly as before', async () => {
+    const user = userEvent.setup();
+    const revision = vi.fn(async () => undefined);
+    render(<Screen save={saveMock(async () => ok(['person']))} revision={revision} />);
+
+    await user.click(screen.getByRole('button', { name: 'Record revision' }));
+
+    await waitFor(() => expect(revision).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a dirty tab asks first, and Cancel writes nothing while keeping the edits', async () => {
+    const user = userEvent.setup();
+    const revision = vi.fn(async () => undefined);
+    render(<Screen save={saveMock(async () => ok(['person']))} revision={revision} />);
+    await makeDirty(user);
+
+    await user.click(screen.getByRole('button', { name: 'Record revision' }));
+
+    // THE ASSERTION THIS SECTION EXISTS FOR, checked after the action would have had time to run: the
+    // write that reloads the screen — and with it the pending edit — has not happened.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(revision).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Unsaved changes')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(revision).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe('Ali bin Hassan');
+  });
+
+  it('Discard drops the tab edits and then replays the original submit', async () => {
+    const user = userEvent.setup();
+    const revision = vi.fn(async () => undefined);
+    render(<Screen save={saveMock(async () => ok(['person']))} revision={revision} />);
+    await makeDirty(user);
+
+    await user.click(screen.getByRole('button', { name: 'Record revision' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Discard Changes' }));
+
+    // Replayed, not re-implemented — the card's own action runs, once.
+    await waitFor(() => expect(revision).toHaveBeenCalledTimes(1));
+    expect((screen.getByLabelText('Full Name') as HTMLInputElement).value).toBe(SAVED_NAME);
+  });
+
+  it('Save writes the tab first and only then replays the submit', async () => {
+    const user = userEvent.setup();
+    const revision = vi.fn(async () => undefined);
+    const save = saveMock(async () => ok(['person']));
+    render(<Screen save={save} revision={revision} />);
+    await makeDirty(user);
+
+    await user.click(screen.getByRole('button', { name: 'Record revision' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(revision).toHaveBeenCalledTimes(1));
+    expect((save.mock.calls[0]![0] as FormData).get('section.person.fullName')).toBe('Ali bin Hassan');
   });
 });
