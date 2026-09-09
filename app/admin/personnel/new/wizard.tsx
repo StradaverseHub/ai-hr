@@ -1,21 +1,44 @@
 'use client';
 
 /**
- * CONTINUE A DRAFT — the rest of a new employee's details (item 6d671f44, reshaped by 06f0cb8f).
+ * A DRAFT EMPLOYEE RECORD — the same tabs an activated employee opens (item 6d671f44, reshaped by
+ * 06f0cb8f, moved onto tabs by 759dfc7d work item 2).
  *
- * IT IS NO LONGER THE CREATION FORM. The record already exists by the time this screen opens: Create
+ * THE FILE IS STILL CALLED `wizard.tsx` AND IT IS NO LONGER A WIZARD. The five-step form is gone: no
+ * step strip, no Back, no Next, no order imposed on the person filling it in. What is here instead is
+ * `ClientTabs` — literally the shell (components/personnel-tabs.tsx) the activated employee's record
+ * uses — showing five of that record's own tabs. The filename is kept only because four tests address
+ * this module by path; this header is the correction.
+ *
+ * IT IS NOT THE CREATION FORM EITHER. The record already exists by the time this screen opens: Create
  * (`create-form.tsx`) asked four questions and reserved the Employee ID. What is left is everything an
  * employment actually needs, and none of it is blocking anything — HR fills it in over the following days
  * and presses ACTIVATE when it is complete.
  *
- * FOUR STEPS: Profile Details · Employment · Bank & Statutory · Payroll. Each shows a tick when it has
- * everything it needs and a warning when it does not, computed by ONE shared rule
- * (`lib/employee-draft-schema` `missingByStep`) that the server re-runs before it will create anything.
- * REVIEW IS GONE: it existed to gate one button at the end of a five-step form, and Activate — reachable
- * from every step, naming exactly what is outstanding — is that review.
+ * FIVE TABS: Profile · Employment · Bank & Statutory · Payroll · Family, labelled from
+ * `people.wizard.tabs.*`, which test/draft-record-tabs.test.ts pins EQUAL to `people.detail.tabs.*` in
+ * all six locales — so the words on a draft and the words on the record it becomes cannot drift. The
+ * cards inside each tab carry the record's own section names the same way (`people.wizard.sections.*`,
+ * pinned against the same detail keys). The six tabs a draft does NOT get — Career Movement, Attendance,
+ * Leave, Documents, Qualification and Others — are ABSENT rather than empty: four of them describe
+ * things that have happened to an employment, and a draft has none. See DRAFT_TABS in
+ * lib/employee-draft-schema.ts for the rule, and for why Qualification waits.
  *
- * SAVE DRAFT works from any step and does not validate; that is the entire point of a draft. Only
- * Activate validates, and only then does an employment exist.
+ * WHAT MAKES IT A DRAFT SURVIVED THE MOVE, and each half is asserted rather than hoped for:
+ *   - SAVE DRAFT works from any tab and DOES NOT VALIDATE. A draft that refused to save until it was
+ *     complete would not be a draft, and the reporter's ask is "keep what I have and come back to it".
+ *   - Nothing is validated until Activate, which re-runs ONE shared rule
+ *     (`lib/employee-draft-schema` `missingByTab`) that the server runs again before it creates anything.
+ *   - The screen keeps saying what is outstanding, BY TAB, immediately above the button it governs, and
+ *     each name is a link that moves the shell to that tab (`selectRef`).
+ *   - A "Draft — pending activation" badge sits in the record header, so the status is a LABEL ON THE
+ *     RECORD rather than a different kind of screen.
+ *
+ * THE DRAFT IS STILL ONE jsonb BLOB — route A of the plan, and route B stays rejected. A draft creates no
+ * person and no employment, which is what keeps it out of headcount, payroll, leave and every report, and
+ * out of RLS's way. Real rows in a 'draft' state would invert that invariant and every consumer would
+ * have to learn to exclude them. So these tabs read and write `employee_draft.data`, and this change
+ * carries no migration at all.
  *
  * TWO THINGS ARE READ-ONLY HERE, and the server refuses to be told otherwise (`saveEmployeeDraft` pins
  * them): the COMPANY, because it decided which numbering rule the held ID came from, and the EMPLOYEE ID
@@ -29,11 +52,23 @@
  * `CrossCompanyError` guard in `core/org.ts` remains the last line of defence, exactly as before.
  */
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Check, AlertCircle } from 'lucide-react';
-import { Button, Card, EmployeeCode, Field, inputCls } from '@/components/ui';
+import { Badge, Button, Card, EmployeeCode, Field, SectionHeader, inputCls } from '@/components/ui';
+// 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
+// A second strip would be a second set of tab behaviours to keep in step: the unsaved-changes guard, the
+// `?tab=` written into the address bar on every switch (and read back on load, `openingTab` below), and
+// the guided-tour reveal.
+//
+// WHAT KEEPS A HALF-TYPED VALUE ACROSS A TAB SWITCH IS NOT THE SHELL — say it here because the plausible
+// wrong answer is easy to write down. `data` lives in `useState` in THIS component, above <ClientTabs>,
+// and every input on every tab is controlled from it, so a value is in the record the moment it is typed
+// and the panel is only a view of it. The shell does keep hidden panels mounted, which is what preserves
+// the DOM state of the activated record's UNCONTROLLED server-rendered forms; unmounting them would cost
+// this screen nothing. test/draft-record-tabs.dom.test.tsx proves the mechanism that is real, by reading a
+// value back from the header and the outstanding list while the panel it was typed into is hidden.
+import { ClientTabs } from '@/components/personnel-tabs';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Personnel profile card.
 import { PersonDetailsFields } from '@/components/person-details-fields';
 // 35b7af0a group 2 — the Pay Mode / Payment Term / Rate group, shared with the Personnel Payroll tab.
@@ -52,13 +87,13 @@ import { IdentityNumberField, NationalityPicker } from '@/components/identity-fi
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
-  DRAFT_STEPS,
+  DRAFT_TABS,
   draftFamily,
-  missingByStep,
+  missingByTab,
   missingForCreation,
-  stepKey,
+  openingTab,
   stepNumber,
-  type DraftStepKey,
+  type DraftTabKey,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
 } from '@/lib/employee-draft-schema';
@@ -74,6 +109,7 @@ export function EmployeeWizard({
   reservedEmployeeCode,
   initialData,
   initialStep,
+  initialTab,
   companies,
   businessUnits,
   departments,
@@ -92,6 +128,10 @@ export function EmployeeWizard({
   reservedEmployeeCode: string | null;
   initialData: EmployeeDraftData;
   initialStep: number;
+  /** 759dfc7d — the `?tab=` the shell itself wrote into the address bar, read back by the server page.
+   *  Present on a reload or a shared link, absent when the draft is opened from the Personnel list; the
+   *  stored `initialStep` is the fallback, and an unknown value is ignored (`openingTab`). */
+  initialTab?: string;
   companies: Option[];
   businessUnits: Option[];
   departments: Option[];
@@ -112,7 +152,16 @@ export function EmployeeWizard({
   const router = useRouter();
   const id = draftId;
   const [data, setData] = useState<EmployeeDraftData>(initialData);
-  const [step, setStep] = useState<DraftStepKey>(stepKey(initialStep));
+  // WHICH TAB IS OPEN, MIRRORED — the shell owns it, this copy exists only so a save can record it as
+  // `employee_draft.current_step` and a draft picked up two days later reopens where it was left. The
+  // shell tells us on every switch (`onTabChange`); `selectTabRef` is the other direction, for the
+  // outstanding-list links.
+  // WHERE THE SCREEN OPENS: the `?tab=` in the address bar if it names one of these five tabs, otherwise
+  // the stored step. Resolved ONCE here and used for both the shell's `defaultTab` and this mirror, so a
+  // Save pressed on a URL-opened tab writes the number of the tab actually on screen.
+  const openingKey = openingTab(initialTab, initialStep);
+  const [tab, setTab] = useState<DraftTabKey>(openingKey);
+  const selectTabRef = useRef<((key: DraftTabKey) => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -130,7 +179,7 @@ export function EmployeeWizard({
   // when the hire is a contract hire, so it is labelled that way (the field itself is unchanged).
   const isContractHire = (data.employment?.employmentType ?? 'full_time') === 'contract';
 
-  const missing = useMemo(() => missingByStep(data), [data]);
+  const missing = useMemo(() => missingByTab(data), [data]);
   const outstanding = useMemo(() => missingForCreation(data), [data]);
 
   const set = <K extends keyof EmployeeDraftData>(section: K, patch: Partial<NonNullable<EmployeeDraftData[K]>>) => {
@@ -161,16 +210,16 @@ export function EmployeeWizard({
   const orgEmpty = (opts: Option[]) =>
     companyId !== '' && opts.length > 0 && opts.every((o) => !visible(o, false));
 
-  const saveDraft = (nextStep?: DraftStepKey) =>
+  /** SAVE. Deliberately unvalidated, from whichever tab is open — that is the whole of what a draft is. */
+  const saveDraft = () =>
     startTransition(async () => {
       setError(null);
       try {
         // `stepNumber`, NOT `indexOf + 1`: the stored number is declared in employee-draft-schema.ts
         // (5 is the retired `review` slot and stays retired), so counting positions here would write the
-        // wrong number for every step after it.
-        await saveDraftAction(id, data, stepNumber(nextStep ?? step));
+        // wrong number for every tab after it — and would move the drafts already parked on 5.
+        await saveDraftAction(id, data, stepNumber(tab));
         setSaved(true);
-        if (nextStep) setStep(nextStep);
         router.refresh();
       } catch (e) {
         setError((e as Error).message);
@@ -193,87 +242,60 @@ export function EmployeeWizard({
     startTransition(async () => {
       setError(null);
       try {
-        const res = await createEmployeeAction(id, data, stepNumber(step));
+        const res = await createEmployeeAction(id, data, stepNumber(tab));
         router.push(`/admin/personnel/${res.employmentId}?from=personnel`);
       } catch (e) {
         setError((e as Error).message);
       }
     });
 
-  const stepIndex = DRAFT_STEPS.indexOf(step);
-  const go = (delta: number) => {
-    const next = DRAFT_STEPS[Math.min(Math.max(stepIndex + delta, 0), DRAFT_STEPS.length - 1)];
-    setStep(next);
+  /**
+   * THE TAB LABELS — one STATIC `t()` per tab, never a computed key built from the tab name.
+   *
+   * A template key is invisible to test/i18n-coverage.test.ts check C, and these five keys are the whole
+   * point of the change: they carry the ACTIVE RECORD'S OWN WORDS onto the draft (pinned equal to
+   * `people.detail.tabs.*` in all six locales by test/draft-record-tabs.test.ts). Written as a Record so
+   * TypeScript refuses a tab with no label, and so the ORDER still comes from DRAFT_TABS rather than
+   * from whatever order somebody typed them in here.
+   */
+  const tabLabel: Record<DraftTabKey, string> = {
+    profile: t('tabs.profile'),
+    job: t('tabs.job'),
+    bankStatutory: t('tabs.bankStatutory'),
+    payroll: t('tabs.payroll'),
+    family: t('tabs.family'),
   };
+  const tabs = DRAFT_TABS.map((key) => ({ key, label: tabLabel[key] }));
 
-  return (
-    <div className="space-y-6">
-      {/* THE RECORD THAT ALREADY EXISTS (item 06f0cb8f) — its held Employee ID, its name and its company,
-          the three things Create settled. Shown at the top, unmissable and unmoving, because the single
-          biggest change this item makes is that HR is now editing something rather than filling in a form
-          that might yet become something. `EmployeeCode` is the same monospaced treatment the employee
-          list and the profile screen give the ID, so the number reads as identical in all three places. */}
-      <Card className="flex flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3">
-        <div>
-          <div className="text-xs font-medium text-muted-foreground">{t('fields.employeeCode')}</div>
-          <div className="mt-0.5">
-            {employeeCode ? (
-              <EmployeeCode code={employeeCode} />
-            ) : (
-              // A draft from before this item holds no ID; it is issued at Activate, as it always was.
-              <span className="text-sm text-muted-foreground">{t('employeeId.issuedAtActivate')}</span>
-            )}
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-xs font-medium text-muted-foreground">{t('fields.fullName')}</div>
-          <div className="mt-0.5 truncate text-sm font-medium">
-            {data.profile?.fullName?.trim() || t('untitledDraft')}
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-xs font-medium text-muted-foreground">{t('fields.company')}</div>
-          <div className="mt-0.5 truncate text-sm">
-            {companies.find((c) => c.id === companyId)?.label ?? '—'}
-          </div>
-        </div>
-        <p className="basis-full text-xs text-muted-foreground">{t('companyFixedAfterCreate')}</p>
-      </Card>
-
-      {/* Progress strip. A step is complete when its own required fields are satisfied — the same rule
-          the server enforces, so a tick can never promise something Activate will refuse. */}
-      <nav aria-label={t('progressLabel')} className="flex flex-wrap gap-2">
-        {DRAFT_STEPS.map((k, i) => {
-          const done = missing[k].length === 0;
-          const current = k === step;
-          return (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setStep(k)}
-              aria-current={current ? 'step' : undefined}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-                current ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:bg-muted'
-              }`}
-            >
-              <span className="text-xs tabular-nums text-muted-foreground">{i + 1}</span>
-              {t(`steps.${k}`)}
-              {done && <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden />}
-              {!done && <AlertCircle className="size-3.5 text-amber-600 dark:text-amber-400" aria-hidden />}
-            </button>
-          );
-        })}
-      </nav>
-
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-          {error}
-        </div>
-      )}
-
-      <Card className="p-5">
-        {step === 'profile' && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  /**
+   * THE FIVE PANELS, ONE PER TAB — the SAME fields the wizard's five steps carried, regrouped under the
+   * SAME card names the activated record uses.
+   *
+   * NOTHING WAS RE-ASKED AND NOTHING WAS DROPPED IN THE MOVE. Every control below is the one that was on
+   * the step of the same name a commit ago, including the shared field groups 35b7af0a consolidated
+   * (Nationality + Identity No, Date of Birth + Age, Gender + Marital Status, Bank, EPF, SOCSO/EIS, Tax
+   * Category, Pay Mode/Term/Rate) — those already render the RECORD'S OWN labels, because they are the
+   * record's own components. What this change adds around them is the record's tab names and the
+   * record's card names, so the two screens finally read as one.
+   *
+   * THE CARDS PER TAB AND WHY THEY ARE SPLIT THAT WAY: the activated record puts the person's name and
+   * identity on "Personal details" and the e-mail and phone on "Contact & address"; it puts the bank on
+   * "Bank Information", EPF/SOCSO/EIS on "Statutory (Malaysia)" and the tax fields on "Identification &
+   * Tax"; and it groups Employment under "Organisation" and "Employment Dates". The draft now does the
+   * same, and `people.wizard.sections.*` is pinned to the record's own keys so the words cannot drift.
+   *
+   * WHAT IS DELIBERATELY NOT HERE: the record's ADDRESS lines, TP3, pay items, CP38, encashment,
+   * emergency contacts, compensation revisions — every one of them is either a child-record register or a
+   * column the draft blob has never carried. Adding a control for a field `completeEmployeeDraft` cannot
+   * write is exactly the silent drop this item exists to prevent, so a field arrives on this screen only
+   * when the activation path can carry it.
+   */
+  const panels: Partial<Record<DraftTabKey, ReactNode>> = {
+    profile: (
+      <>
+        <Card>
+          <SectionHeader title={t('sections.personalDetails')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             {/* Full Name and Email were asked at Create and are STILL editable here — the plan pins
                 only the Company and the Employee ID, and a name typed with a typo must not cost HR the
                 whole record. The Employee ID block that used to sit above them is gone from this screen:
@@ -284,14 +306,6 @@ export function EmployeeWizard({
                 className={inputCls}
                 value={data.profile?.fullName ?? ''}
                 onChange={(e) => set('profile', { fullName: e.target.value })}
-              />
-            </Field>
-            <Field label={t('fields.primaryEmail')}>
-              <input
-                type="email"
-                className={inputCls}
-                value={data.profile?.primaryEmail ?? ''}
-                onChange={(e) => set('profile', { primaryEmail: e.target.value })}
               />
             </Field>
             {/* 35b7af0a group 8 — Nationality and the Identity No (NRIC) are the SAME field group the
@@ -314,13 +328,6 @@ export function EmployeeWizard({
               icNumber={data.profile?.icNumber}
               onChange={(icNumber) => set('profile', { icNumber })}
             />
-            <Field label={t('fields.phone')}>
-              <input
-                className={inputCls}
-                value={data.profile?.phone ?? ''}
-                onChange={(e) => set('profile', { phone: e.target.value })}
-              />
-            </Field>
             {/* 35b7af0a group 3 — Date of Birth is the SAME field group the Personnel profile card renders
                 (components/birth-date-fields.tsx), and it brings the Age with it. The wizard had a bare date
                 box and NO age, because the age counter lived in core/leave.ts — a server module a client
@@ -352,10 +359,38 @@ export function EmployeeWizard({
               onMaritalStatusChange={(v) => set('profile', { maritalStatus: v })}
             />
           </div>
-        )}
-
-        {step === 'employment' && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        </Card>
+        <Card>
+          <SectionHeader title={t('sections.contactAddress')} />
+          {/* THE TWO FIELDS CREATE ASKED FOR, still editable — the plan pins only the Company and the
+              Employee ID, and an e-mail typed with a typo must not cost HR the whole record. They sit
+              under the record's own "Contact & address" heading rather than beside the name, which is
+              where the activated record keeps them. */}
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+            <Field label={t('fields.primaryEmail')}>
+              <input
+                type="email"
+                className={inputCls}
+                value={data.profile?.primaryEmail ?? ''}
+                onChange={(e) => set('profile', { primaryEmail: e.target.value })}
+              />
+            </Field>
+            <Field label={t('fields.phone')}>
+              <input
+                className={inputCls}
+                value={data.profile?.phone ?? ''}
+                onChange={(e) => set('profile', { phone: e.target.value })}
+              />
+            </Field>
+          </div>
+        </Card>
+      </>
+    ),
+    job: (
+      <>
+        <Card>
+          <SectionHeader title={t('sections.organisation')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             {/* The company USED to be a second, editable copy here (bd271009 made it read-only). It is
                 gone entirely now: it is in the header card above, on every step, because since 06f0cb8f it
                 is not merely "chosen elsewhere" but FIXED — the held Employee ID came from this company's
@@ -469,6 +504,11 @@ export function EmployeeWizard({
                 <option value="intern">{t('employmentType.intern')}</option>
               </select>
             </Field>
+          </div>
+        </Card>
+        <Card>
+          <SectionHeader title={t('sections.employmentDates')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <Field label={t('fields.hiredOn')}>
               <input
                 type="date"
@@ -502,10 +542,14 @@ export function EmployeeWizard({
               </p>
             </Field>
           </div>
-        )}
-
-        {step === 'statutory' && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        </Card>
+      </>
+    ),
+    bankStatutory: (
+      <>
+        <Card>
+          <SectionHeader title={t('sections.bank')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             {/* 35b7af0a group 5 — Bank and Bank Account Number are the SAME field group the Personnel Bank
                 Information card renders (components/bank-account-fields.tsx). The wizard's Bank was a
                 FREE-TEXT box where that card has been a pick-from-the-BNM-catalog select since item
@@ -513,7 +557,7 @@ export function EmployeeWizard({
                 human, shows unremarkably on the Personnel screen, and only surfaces when the first salary
                 payment file is built for that employee. A bank name already typed into a draft is
                 preserved as its own option rather than silently rewritten. The all-or-nothing rule stays
-                the wizard's hint (missingByStep enforces it). */}
+                the wizard's hint (missingByTab enforces it). */}
             <BankAccountFields
               mode="controlled"
               bankName={data.statutory?.bankName}
@@ -521,6 +565,11 @@ export function EmployeeWizard({
               hint={t('hints.bankAccount')}
               onChange={(patch) => set('statutory', patch)}
             />
+          </div>
+        </Card>
+        <Card>
+          <SectionHeader title={t('sections.statutoryMalaysia')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are the SAME field group the Personnel
                 Bank & Statutory tab renders (components/epf-registration-fields.tsx). The wizard's private
                 copy had drifted in wording and carried a fourth "— Not set —" citizenship option that
@@ -562,6 +611,11 @@ export function EmployeeWizard({
               country="MY"
               onChange={(patch) => set('statutory', patch)}
             />
+          </div>
+        </Card>
+        <Card>
+          <SectionHeader title={t('sections.identityTax')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <Field label={t('fields.taxNumber')}>
               <input
                 className={inputCls}
@@ -603,10 +657,13 @@ export function EmployeeWizard({
               </select>
             </Field>
           </div>
-        )}
-
-        {step === 'payroll' && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        </Card>
+      </>
+    ),
+    payroll: (
+      <Card>
+        <SectionHeader title={t('sections.compensation')} />
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             <Field label={t('fields.basicSalary')}>
               <input
                 type="number"
@@ -634,7 +691,7 @@ export function EmployeeWizard({
                 carried the rule: it showed a bare Rate box on every hire, including monthly ones where a
                 rate means nothing. Now the box appears only for a non-monthly pay mode, is labelled
                 "per day" / "per hour", and is required for daily/hourly — the same rule
-                `missingByStep` already enforced invisibly and `setCompensation` enforces server-side.
+                `missingByTab` already enforced invisibly and `setCompensation` enforces server-side.
 
                 CLEARING THE RATE ON A SWITCH BACK TO MONTHLY is a wizard-only concern, hence the patch
                 here rather than inside the shared component. On the Personnel form the Rate input simply
@@ -659,40 +716,112 @@ export function EmployeeWizard({
                 onChange={(e) => set('payroll', { remarks: e.target.value })}
               />
             </Field>
+        </div>
+      </Card>
+    ),
+    /* 759dfc7d work item 1 — FAMILY, the one tab of the activated record a draft could never have had,
+       because `employee_dependent` is keyed to a person and a draft creates none. It is edited into the
+       draft's own blob and materialised into real rows at Activate. It brings its OWN card (titled from
+       `people.detail.family.title`, the record's own key) because it is a register with a table and a
+       dialog rather than a grid of fields. */
+    family: (
+      <DraftFamilyStep
+        members={draftFamily(data)}
+        onChange={setFamily}
+        relationshipOptions={relationshipOptions}
+        countryOptions={countryOptions}
+      />
+    ),
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* THE RECORD THAT ALREADY EXISTS (item 06f0cb8f) — its held Employee ID, its name and its company,
+          the three things Create settled. Shown at the top, unmissable and unmoving, because the single
+          biggest change this item makes is that HR is now editing something rather than filling in a form
+          that might yet become something. `EmployeeCode` is the same monospaced treatment the employee
+          list and the profile screen give the ID, so the number reads as identical in all three places. */}
+      <Card className="flex flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3">
+        <div>
+          <div className="text-xs font-medium text-muted-foreground">{t('fields.employeeCode')}</div>
+          <div className="mt-0.5">
+            {employeeCode ? (
+              <EmployeeCode code={employeeCode} />
+            ) : (
+              // A draft from before this item holds no ID; it is issued at Activate, as it always was.
+              <span className="text-sm text-muted-foreground">{t('employeeId.issuedAtActivate')}</span>
+            )}
           </div>
-        )}
-
-        {/* 759dfc7d — FAMILY. The one tab of the active record a draft could never have, because
-            `employee_dependent` is keyed to a person and a draft creates none. It is edited into the
-            draft's own blob here and materialised into real rows at Activate. It sits OUTSIDE the
-            two-column grid the other steps use: its own card carries a table and a dialog, and it
-            manages its own layout so it matches the Personnel Family tab rather than this form. */}
-        {step === 'family' && (
-          <DraftFamilyStep
-            members={draftFamily(data)}
-            onChange={setFamily}
-            relationshipOptions={relationshipOptions}
-            countryOptions={countryOptions}
-          />
-        )}
-
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-medium text-muted-foreground">{t('fields.fullName')}</div>
+          <div className="mt-0.5 truncate text-sm font-medium">
+            {data.profile?.fullName?.trim() || t('untitledDraft')}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-medium text-muted-foreground">{t('fields.company')}</div>
+          <div className="mt-0.5 truncate text-sm">
+            {companies.find((c) => c.id === companyId)?.label ?? '—'}
+          </div>
+        </div>
+        {/* 759dfc7d work item 2 — THE STATUS IS A LABEL ON THE RECORD, which is the plan's own sentence:
+            "shown as a label on the record — Draft, pending activation — rather than as a different kind
+            of screen". It sits in the header beside the ID, the name and the company, so what is
+            different about this record is one badge rather than a whole other layout. `ml-auto` puts it
+            at the far end of the header row, where the activated record's own status chip sits. */}
+        <Badge variant="warning" className="ml-auto normal-case">
+          {t('draftStatus')}
+        </Badge>
+        <p className="basis-full text-xs text-muted-foreground">{t('companyFixedAfterCreate')}</p>
       </Card>
 
-      {/* WHAT ACTIVATE IS STILL WAITING FOR. This is what the Review step used to be, minus the step:
-          named in place, immediately above the button it governs, on every step rather than only the last
-          one. A disabled button that does not say why is the thing this replaces. */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* THE RECORD'S OWN TAB SHELL. `defaultTab` reopens the draft where it was left — `openingTab`
+          prefers the `?tab=` the shell itself wrote into the address bar (so a reloaded or shared link
+          opens the tab it names, exactly as the activated record does) and falls back to the stored
+          `current_step`, including the retired 5, mapped onto a tab that still exists.
+          `onTabChange` mirrors the switch back so the next save records it; `selectRef` is how the
+          outstanding list below moves the shell, through the shell's OWN guarded switch rather than
+          around it. `emptyLabel` can never actually show here (every one of the five tabs has a panel),
+          and is passed because the shell requires a real string rather than a placeholder. */}
+      <ClientTabs
+        tabs={tabs}
+        panels={panels}
+        emptyLabel={t('tabs.empty')}
+        defaultTab={openingKey}
+        ariaLabel={t('progressLabel')}
+        selectRef={selectTabRef}
+        onTabChange={setTab}
+      />
+
+      {/* WHAT ACTIVATE IS STILL WAITING FOR — the plan's "the screen still says what is outstanding".
+          Named in place, immediately above the button it governs, and visible from EVERY tab rather than
+          on a step at the end; a disabled button that does not say why is the thing this replaces.
+          `tabLabel[k]`, not a computed key: the outstanding list names the same tab the strip does,
+          and it names it with the record's word for it. The name is the way to reach it — the button
+          calls the shell's OWN `selectTab` through `selectRef`, so a jump is the identical switch a
+          click on the strip is. That matters beyond tidiness: the draft registers no unsaved-changes
+          scope today (nothing here is written until Save), and routing through the shell means it
+          inherits the prompt automatically on the day one is added, instead of being the one path
+          around it. */}
       {outstanding.length > 0 && (
         <div className="rounded-lg border border-border px-4 py-3 text-sm">
           <div className="font-medium">{t('activateNeeds')}</div>
           <ul className="mt-1.5 space-y-0.5 text-xs text-amber-700 dark:text-amber-400">
-            {DRAFT_STEPS.filter((k) => missing[k].length > 0).map((k) => (
+            {DRAFT_TABS.filter((k) => missing[k].length > 0).map((k) => (
               <li key={k}>
                 <button
                   type="button"
                   className="font-medium underline underline-offset-2"
-                  onClick={() => setStep(k)}
+                  onClick={() => selectTabRef.current?.(k)}
                 >
-                  {t(`steps.${k}`)}
+                  {tabLabel[k]}
                 </button>
                 {' — '}
                 {missing[k].map((f) => t(`fields.${f}`)).join(', ')}
@@ -702,17 +831,11 @@ export function EmployeeWizard({
         </div>
       )}
 
+      {/* BACK AND NEXT ARE GONE with the wizard they belonged to. A draft is filled in over days in
+          whatever order suits whoever is filling it in, so the tabs above are the navigation and there is
+          no "next" for a screen with no sequence. What is left is the three things that act on the whole
+          record: Save, Discard, Activate. */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={() => go(-1)} disabled={stepIndex === 0 || pending}>
-          {t('back')}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => go(1)}
-          disabled={stepIndex === DRAFT_STEPS.length - 1 || pending}
-        >
-          {t('next')}
-        </Button>
         {/* Deliberately UNVALIDATED: a draft that refused to save until it was complete would not be
             a draft. The reporter's whole ask is "keep what I have and come back to it". */}
         <Button variant="secondary" onClick={() => saveDraft()} disabled={pending}>

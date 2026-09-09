@@ -23,7 +23,7 @@
  * Personnel screen gains and this form forgets fails a test instead of quietly vanishing at Activate.
  *
  * NOTHING HERE VALIDATES BEYOND WHAT A DRAFT ALLOWS. A half-typed family member saves with the rest of
- * the draft; `missingByStep(...).family` is what names it as outstanding, and the server re-runs that
+ * the draft; `missingByTab(...).family` is what names it as outstanding, and the server re-runs that
  * rule (plus the catalog rules in `assertDependentsValid`) before Activate creates anything at all.
  */
 

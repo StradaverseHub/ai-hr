@@ -73,17 +73,31 @@ describe('the list screen is no longer a data-entry surface', () => {
 });
 
 describe('the dedicated screen carries the whole job', () => {
-  it('is a step-by-step form with the four continue steps — and NO review step', () => {
-    for (const step of ['profile', 'employment', 'statutory', 'payroll']) {
-      expect(wizard.includes(`step === '${step}'`), step).toBe(true);
+  it('is the ACTIVE RECORD\'S OWN TAB SHELL now, not a step-by-step form (759dfc7d work item 2)', () => {
+    // THE STEP-BY-STEP FORM IS GONE, and its absence is the change. It used to render one step at a time
+    // behind `{step === 'profile' && …}` with a Back and a Next; the reporter's objection was that the
+    // same person, once activated, opened a screen with different tabs, different section names and a
+    // different layout — two screens to learn for one employee.
+    for (const step of ['profile', 'employment', 'statutory', 'payroll', 'review']) {
+      expect(wizard.includes(`step === '${step}'`), step).toBe(false);
     }
-    // Review is GONE (item 06f0cb8f). It existed to gate one button at the end of a five-step form;
-    // Activate — reachable from every step and naming exactly what is outstanding — replaced it. A
-    // review step that came back would be a step whose only content is what the button already says.
-    expect(wizard.includes("step === 'review'")).toBe(false);
-    // The step label is a COMPUTED key (`t(`steps.${k}`)`), which is why
-    // test/employee-draft-wizard.test.ts resolves every one of its values in all six locales.
-    expect(wizard).toContain('t(`steps.${k}`)');
+    // What replaced it is the SHELL THE ACTIVATED RECORD USES, imported rather than reimplemented, so a
+    // second tab strip cannot drift from the first.
+    expect(wizard).toContain("import { ClientTabs } from '@/components/personnel-tabs'");
+    expect(wizard).toContain('<ClientTabs');
+    // Five tabs, each labelled by a STATIC key (never `t(`tabs.${k}`)`) so i18n coverage check C sees it,
+    // and test/draft-record-tabs.test.ts pins each value equal to the record's own `people.detail.tabs`.
+    for (const tab of ['profile', 'job', 'bankStatutory', 'payroll', 'family']) {
+      expect(wizard.includes(`t('tabs.${tab}')`), tab).toBe(true);
+    }
+    // And the four tabs a draft must NOT get — they describe things that have happened to an employment,
+    // and a draft has none — are not smuggled in as empty panels.
+    for (const absent of ['careerMovement', 'attendance', 'leave', 'documents', 'qualification', 'others']) {
+      expect(wizard.includes(`t('tabs.${absent}')`), absent).toBe(false);
+    }
+    // Back and Next went with the sequence they moved along.
+    expect(wizard).not.toContain("t('back')");
+    expect(wizard).not.toContain("t('next')");
   });
 
   it('saves a draft WITHOUT validating, and only validates on Activate', () => {

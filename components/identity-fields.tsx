@@ -40,7 +40,7 @@
  *
  * LABELS ARE READ WHERE THEY LIVE — `people.detail.*`, the Personnel card's own keys. The wizard's
  * `fields.icNumber` and `hints.icNumber` are retired with this change. Checked first, per the trap that
- * nearly cost three keys in r159: `missingByStep` never returns 'icNumber' — the IC is optional by design
+ * nearly cost three keys in r159: `missingByTab` never returns 'icNumber' — the IC is optional by design
  * (item e3ce0d4d made the column nullable so a passport holder can be employed) — so the Review step's
  * computed t(`fields.${f}`) cannot ask for either of them.
  *
@@ -120,7 +120,7 @@ export function NationalityPicker(
  * The data stays and the field reappears if the nationality is ever corrected.
  *
  * MANDATORY ONLY IN `form` MODE. A Malaysian employee must have an NRIC, and the Personnel card has always
- * marked it required. The wizard deliberately does not: `missingByStep` never returns 'icNumber', because
+ * marked it required. The wizard deliberately does not: `missingByTab` never returns 'icNumber', because
  * making the wizard stricter than `hireEmployee` and the bulk importer is exactly how the three ways of
  * creating an employee drift apart (lib/employee-draft-schema.ts's header states the rule).
  */

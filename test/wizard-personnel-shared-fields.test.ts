@@ -566,10 +566,10 @@ describe('§3f group 6 — Tax Category is one component, and the wizard stops l
 
   it('retiring fields.taxCategory is safe from the computed-key trap', () => {
     // r159 nearly deleted three keys that survive no literal grep because the Review step renders
-    // t(`fields.${f}`) from whatever missingByStep returns. Checked by READING the function, not grepping:
+    // t(`fields.${f}`) from whatever missingByTab returns. Checked by READING the function, not grepping:
     // it never pushes 'taxCategory', so nothing can ask for the retired key.
     const schema = read('lib/employee-draft-schema.ts');
-    const fn = schema.slice(schema.indexOf('export function missingByStep'));
+    const fn = schema.slice(schema.indexOf('export function missingByTab'));
     expect(fn.slice(0, fn.indexOf('export function missingForCreation'))).not.toContain("'taxCategory'");
   });
 });
@@ -749,7 +749,7 @@ describe('§3h group 8 — Identity is one group, and the wizard finally asks fo
     // the wizard: item e3ce0d4d made the column nullable for passport holders, and lib/employee-draft-schema
     // states that a wizard stricter than hireEmployee and the bulk importer is how the three drift apart.
     const schema = read('lib/employee-draft-schema.ts');
-    const fn = schema.slice(schema.indexOf('export function missingByStep'));
+    const fn = schema.slice(schema.indexOf('export function missingByTab'));
     const body = fn.slice(0, fn.indexOf('export function missingForCreation'));
     expect(body).not.toContain("'icNumber'");
     expect(body).not.toContain("'nationality'");

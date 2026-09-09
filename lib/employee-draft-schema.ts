@@ -2,7 +2,7 @@
  * The Create New Employee wizard's shape and its completeness rules — item 6d671f44.
  *
  * Client-safe (no DB imports), because the SAME rules decide three things and they must not drift:
- *   - which steps show a tick and which show a warning, in the browser;
+ *   - which tabs report something outstanding and which are clear, in the browser;
  *   - whether the Activate button is enabled;
  *   - whether `completeEmployeeDraft` will actually accept the draft, on the server.
  * The server re-runs BOTH rules authoritatively — this module is shared, not trusted.
@@ -175,63 +175,106 @@ export function draftFamily(data: EmployeeDraftData): EmployeeDraftFamilyMember[
 }
 
 /**
- * The CONTINUE-A-DRAFT steps, in order. `key` doubles as the i18n key under `people.wizard.steps`.
+ * THE TABS A DRAFT GETS, in order — and every `key` is the ACTIVE EMPLOYEE RECORD'S OWN TAB KEY.
  *
- * ITEM 06f0cb8f REMOVED `review`. It existed to gate one button at the end of a five-step form; the form
- * now ends at Activate, which is available from every step and is itself the review — it names exactly
- * what is outstanding and refuses until nothing is. A step whose only content is a list of what the
- * button beneath it already says is a step nobody reads.
+ * ITEM 759dfc7d WORK ITEM 2 IS WHY THESE ARE TABS AND NOT STEPS. The draft used to be a five-step
+ * wizard with its own vocabulary (`employment`, `statutory`) and its own labels; an activated employee
+ * opened a tabbed record with different words for the same sections, so HR had two screens to learn for
+ * one person. These keys are now `PersonnelTabKey` values — `profile`, `job`, `bankStatutory`,
+ * `payroll`, `family` — and the screen labels them from `people.wizard.tabs.*`, which
+ * test/draft-record-tabs.test.ts pins EQUAL to `people.detail.tabs.*` in all six locales. A label can
+ * therefore no longer drift between the draft and the record it becomes.
  *
- * `profile` SURVIVES BUT MEANS SOMETHING NARROWER: Company, Full Name and Email left it for the Create
- * screen, so what remains is Profile Details — nationality, identity number, phone, date of birth,
- * gender, marital status. None of them is required by any writer, so this step now carries no required
- * field at all and shows a tick from the moment it opens. That is correct and deliberate: they are
- * details, and the reporter's complaint was exactly that details were blocking creation.
+ * WHICH TABS A DRAFT DOES NOT GET, and why it is a rule rather than a list: Career Movement, Attendance,
+ * Leave and Documents describe things that have HAPPENED to an employment, and a draft deliberately has
+ * no employment for them to have happened to (db/schema.ts employeeDraft — "a draft still creates no
+ * person and no employment"). Qualification and Others follow activation too; the plan says so in the
+ * reporter's own words and invites them to reject it if they want Qualification earlier.
  *
- * ITEM 759dfc7d ADDS `family`, AND ADDS IT AT THE END rather than in the reporter's tab order. The tab
- * ORDER the reporter asked for is the screen's business (work item 2 of the plan re-points the tabs);
- * what may not move is the NUMBER each step is stored as — see STEP_NUMBERS below.
+ * THE ORDER IS THE PLAN'S OWN LIST — Profile, Employment, Bank & Statutory, Payroll, Family — which is
+ * also the order the old steps ran in, and keeping it is not cosmetic. `stepNumber`/`stepKey` below map
+ * this list onto `employee_draft.current_step`, a column already full of numbers written by the old
+ * form; re-ordering the list would change which tab a stored number reopens on. The active record shows
+ * Family SECOND rather than last, and that one difference is the price of not moving those numbers.
+ *
+ * `profile` MEANS SOMETHING NARROWER than it did before 06f0cb8f: Company, Full Name and Email are asked
+ * at Create, so what remains is nationality, identity number, phone, date of birth, gender, marital
+ * status. None is required by any writer, so this tab carries no required field at all and is complete
+ * from the moment it opens — deliberately, because the reporter's complaint was that details blocked
+ * creation.
+ *
+ * THE OLD KEYS `employment` AND `statutory` ARE GONE FROM THIS VOCABULARY, but NOT from the stored blob:
+ * `EmployeeDraftData` still has `data.employment` and `data.statutory`, because those names are written
+ * into every draft row on production and renaming them would orphan the lot. The tab key names the
+ * SCREEN section; the data key names the STORED section; `missingByTab` is where the two meet.
  */
-export const DRAFT_STEPS = ['profile', 'employment', 'statutory', 'payroll', 'family'] as const;
-export type DraftStepKey = (typeof DRAFT_STEPS)[number];
+export const DRAFT_TABS = ['profile', 'job', 'bankStatutory', 'payroll', 'family'] as const;
+export type DraftTabKey = (typeof DRAFT_TABS)[number];
 
 /**
  * THE STORED STEP NUMBER, DECLARED RATHER THAN COUNTED — and 5 IS BURNED.
  *
- * `employee_draft.current_step` is a pointer into a list that has already changed once. Until item
+ * `employee_draft.current_step` is a pointer into a list that has already changed twice. Until item
  * 06f0cb8f (c33d5518) the list was profile/employment/statutory/payroll/REVIEW and the wizard wrote
  * `indexOf(step) + 1`, so a draft left on the Review step is sitting in production RIGHT NOW as
  * `current_step = 5`. Removing `review` made 5 fall off the end and clamp to `payroll`, which is where
  * that cohort has reopened ever since.
  *
- * Numbering positionally would now hand 5 to `family` and silently move those drafts onto a tab they
+ * ITEM 759dfc7d WORK ITEM 2 CHANGED THE KEYS AND DELIBERATELY NOT THE NUMBERS. `employment` became
+ * `job` and `statutory` became `bankStatutory` when the screen moved onto the record's tabs, but each
+ * kept the number it already had, so a draft saved by the old wizard reopens on exactly the tab it was
+ * left on. The COLUMN is still called `current_step` and is still an integer — there is no migration
+ * here, which is the point: the draft is one jsonb blob plus this pointer, and neither changed shape.
+ *
+ * Numbering positionally would hand 5 to `family` and silently move the Review cohort onto a tab they
  * have never seen. So the mapping is explicit, `family` is 6, and 5 stays retired: `stepKey(5)` still
- * resolves to `payroll`. The general rule below (a number naming no step resolves to the last step
- * BEFORE it) means the next step retired here costs nothing either.
+ * resolves to `payroll`. The general rule below (a number naming no tab resolves to the last tab BEFORE
+ * it) means the next tab retired here costs nothing either.
  */
-const STEP_NUMBERS: Record<DraftStepKey, number> = {
+const STEP_NUMBERS: Record<DraftTabKey, number> = {
   profile: 1,
-  employment: 2,
-  statutory: 3,
+  job: 2,
+  bankStatutory: 3,
   payroll: 4,
   family: 6,
 };
 
-/** 1-based step number ↔ key. `current_step` on the row is this number. */
-export function stepNumber(key: DraftStepKey): number {
+/** 1-based step number ↔ tab key. `current_step` on the row is this number. */
+export function stepNumber(key: DraftTabKey): number {
   return STEP_NUMBERS[key];
 }
-export function stepKey(n: number): DraftStepKey {
-  const exact = DRAFT_STEPS.find((k) => STEP_NUMBERS[k] === n);
+export function stepKey(n: number): DraftTabKey {
+  const exact = DRAFT_TABS.find((k) => STEP_NUMBERS[k] === n);
   if (exact) return exact;
-  const first = DRAFT_STEPS[0];
-  const last = DRAFT_STEPS[DRAFT_STEPS.length - 1];
+  const first = DRAFT_TABS[0];
+  const last = DRAFT_TABS[DRAFT_TABS.length - 1];
   if (n <= STEP_NUMBERS[first]) return first;
   if (n >= STEP_NUMBERS[last]) return last;
-  // A number INSIDE the range that names no step — today only the retired `review` slot. Resolve it to
-  // the last step before it, so a draft parked on a step that no longer exists reopens where it has been
+  // A number INSIDE the range that names no tab — today only the retired `review` slot. Resolve it to
+  // the last tab before it, so a draft parked on a step that no longer exists reopens where it has been
   // reopening rather than jumping forward onto whatever inherited its number.
-  return [...DRAFT_STEPS].reverse().find((k) => STEP_NUMBERS[k] < n) ?? first;
+  return [...DRAFT_TABS].reverse().find((k) => STEP_NUMBERS[k] < n) ?? first;
+}
+
+/**
+ * WHICH TAB THE DRAFT OPENS ON — `?tab=` first, the stored step second.
+ *
+ * The tab shell reflects every switch into the address bar as `?tab=<key>` (components/personnel-tabs.tsx
+ * `commitTab`), so for anyone who has been on the screen the URL is the FRESHER of the two statements:
+ * `current_step` is only written when Save is pressed. A reloaded or shared draft link must therefore
+ * reopen the tab the URL names — which is exactly what the ACTIVATED record does with the same parameter
+ * (app/admin/personnel/[employmentId]/page.tsx passes it straight to `defaultTab`), and unifying those two
+ * screens is the whole of item 759dfc7d work item 2. A URL that names a tab it will not open is worse
+ * than no parameter at all.
+ *
+ * THE STORED STEP REMAINS THE FALLBACK, and it is the one that carries the reporter's actual need: a
+ * draft picked up two days later from the Personnel list arrives with no `?tab=` at all and must still
+ * reopen where it was left. An unknown value — a misspelling, or one of the six tabs a draft does not
+ * get — is IGNORED rather than an error, because a tab name in a URL is a bookmark, not an instruction.
+ */
+export function openingTab(tabParam: string | null | undefined, currentStep: number): DraftTabKey {
+  const named = DRAFT_TABS.find((k) => k === tabParam);
+  return named ?? stepKey(currentStep);
 }
 
 const blank = (v: string | undefined) => (v ?? '').trim() === '';
@@ -249,13 +292,24 @@ export const DRAFT_DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Field names (not messages) still outstanding before a Draft can be ACTIVATED, grouped by the step that
- * owns them. An empty array for a step is what puts a tick on it.
+ * Field names (not messages) still outstanding before a Draft can be ACTIVATED, grouped by THE TAB that
+ * owns them. An empty array for a tab is what clears its "still needed" line.
+ *
+ * ITEM 759dfc7d WORK ITEM 2 RENAMED THIS FROM `missingByStep`, and the rename is the whole point of the
+ * rename: it is still THE ONE RULE, run in the browser to say what a tab is missing and re-run
+ * authoritatively by `completeEmployeeDraft` (through `missingForCreation`) before anything is created.
+ * Moving the screen onto tabs must not create a second, screen-shaped copy of it — a draft that showed
+ * one list and refused for another is exactly how "the system should retain all information already
+ * entered" turns into a surprise at the last button.
+ *
+ * THE KEYS ARE TAB KEYS, THE SECTIONS IT READS ARE STORED KEYS. `job` is judged from `data.employment`
+ * and `bankStatutory` from `data.statutory`, because the blob's section names are written into every
+ * draft row on production and are not renamed here. See the note on DRAFT_TABS.
  *
  * Returns FIELD names so the caller translates; returning English here would put UI strings in a
  * module the server also imports.
  */
-export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, string[]> {
+export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, string[]> {
   const p = data.profile ?? {};
   const e = data.employment ?? {};
   const pay = data.payroll ?? {};
@@ -263,24 +317,24 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
   // PROFILE DETAILS HAS NO REQUIRED FIELD (item 06f0cb8f). Company, Full Name and Email moved to the
   // Create screen and are `missingToCreate`'s business; what is left here is optional in every writer
   // downstream. The one rule it keeps is a FORMAT rule: a date of birth that is not ISO cannot be stored,
-  // so a typo is named on the step that owns it rather than at Activate.
+  // so a typo is named on the tab that owns it rather than at Activate.
   const profile: string[] = [];
   if (!blank(p.dateOfBirth) && !DRAFT_DATE_RE.test((p.dateOfBirth ?? '').trim())) profile.push('dateOfBirth');
 
-  const employment: string[] = [];
-  if (blank(e.departmentId)) employment.push('department');
-  if (blank(e.employmentType)) employment.push('employmentType');
-  if (blank(e.hiredOn)) employment.push('hiredOn');
-  else if (!DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())) employment.push('hiredOn');
+  const job: string[] = [];
+  if (blank(e.departmentId)) job.push('department');
+  if (blank(e.employmentType)) job.push('employmentType');
+  if (blank(e.hiredOn)) job.push('hiredOn');
+  else if (!DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())) job.push('hiredOn');
   if (!blank(e.provisionalEndOn) && !DRAFT_DATE_RE.test((e.provisionalEndOn ?? '').trim()))
-    employment.push('provisionalEndOn');
+    job.push('provisionalEndOn');
 
   // Bank & Statutory has no REQUIRED field of its own — every value on it is optional in the writers
   // that consume it. The one rule it does carry is the importer's: bank name and account number are
   // all-or-nothing, because half a bank instruction cannot pay anybody.
   const s = data.statutory ?? {};
-  const statutory: string[] = [];
-  if (blank(s.bankName) !== blank(s.bankAccountNo)) statutory.push('bankAccount');
+  const bankStatutory: string[] = [];
+  if (blank(s.bankName) !== blank(s.bankAccountNo)) bankStatutory.push('bankAccount');
 
   const payroll: string[] = [];
   const salary = Number((pay.basicSalary ?? '').replace(/[,_]/g, ''));
@@ -291,7 +345,7 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
     payroll.push('rateAmount');
 
   // ── Family (item 759dfc7d) ──────────────────────────────────────────────────────────────────────
-  // NO FAMILY MEMBER IS REQUIRED — most new joiners have nothing to record here, and a step that
+  // NO FAMILY MEMBER IS REQUIRED — most new joiners have nothing to record here, and a tab that
   // demanded one would block every one of them. What IS required is that a member somebody DID add can
   // actually be written, because `materialiseDependents` runs AFTER `hireEmployee` has committed: a
   // nameless member discovered there fails an activation that has already created an employee, which is
@@ -307,14 +361,14 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
     if (blank(m.fullName)) familySet.add('familyMemberName');
     if (blank(m.relationship)) familySet.add('familyMemberRelationship');
     // Every date the register stores. A value that is not ISO reaches Postgres as a `date` and throws
-    // there — after the employee exists — so it is named here, on the step that owns it.
+    // there — after the employee exists — so it is named here, on the tab that owns it.
     for (const d of [m.dateOfBirth, m.marriageDate, m.deceasedOn]) {
       if (!blank(d) && !DRAFT_DATE_RE.test((d ?? '').trim())) familySet.add('familyMemberDate');
     }
   }
   const family = [...familySet];
 
-  return { profile, employment, statutory, payroll, family };
+  return { profile, job, bankStatutory, payroll, family };
 }
 
 /**
@@ -325,8 +379,8 @@ export function missingByStep(data: EmployeeDraftData): Record<DraftStepKey, str
  * had changed, when what changed is that a second, much shorter rule now runs first.
  */
 export function missingForCreation(data: EmployeeDraftData): string[] {
-  const byStep = missingByStep(data);
-  return DRAFT_STEPS.flatMap((k) => byStep[k]);
+  const byTab = missingByTab(data);
+  return DRAFT_TABS.flatMap((k) => byTab[k]);
 }
 
 /**

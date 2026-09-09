@@ -1722,21 +1722,12 @@
       "backLabel": "Back to Personnel Management",
       "title": "Create new employee",
       "description": "The record and its Employee ID already exist. Fill in the rest and press Activate — progress is saved at any point.",
-      "progressLabel": "Creation steps",
-      "steps": {
-        "profile": "Profile details",
-        "employment": "Employment",
-        "statutory": "Bank & Statutory",
-        "payroll": "Payroll",
-        "family": "Family"
-      },
+      "progressLabel": "Record sections",
       "notSet": "— Not set —",
       "selectPrompt": "— Select —",
       "yes": "Yes",
       "no": "No",
       "untitledDraft": "Unnamed draft",
-      "back": "Back",
-      "next": "Next",
       "saveDraft": "Save draft",
       "saving": "Saving…",
       "draftSaved": "Draft saved",
@@ -1768,7 +1759,26 @@
       "activate": "Activate",
       "activating": "Activating…",
       "activateNeeds": "Activate still needs:",
-      "discardReleasesTip": "Discarding returns the Employee ID only when it was the most recent one issued. Otherwise the number stays used and the sequence skips it."
+      "discardReleasesTip": "Discarding returns the Employee ID only when it was the most recent one issued. Otherwise the number stays used and the sequence skips it.",
+      "tabs": {
+        "profile": "Profile",
+        "job": "Employment",
+        "bankStatutory": "Bank & Statutory",
+        "payroll": "Payroll",
+        "family": "Family",
+        "empty": "Nothing to show here."
+      },
+      "sections": {
+        "personalDetails": "Personal details",
+        "contactAddress": "Contact & address",
+        "organisation": "Organisation",
+        "employmentDates": "Employment Dates",
+        "bank": "Bank Information",
+        "statutoryMalaysia": "Statutory (Malaysia)",
+        "identityTax": "Identification & Tax",
+        "compensation": "Basic Salary"
+      },
+      "draftStatus": "Draft — pending activation"
     }
   },
   "leave": {

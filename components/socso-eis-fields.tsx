@@ -35,7 +35,7 @@
  *
  * LABELS ARE READ WHERE THEY LIVE — `people.detail.*`, the Personnel card's own keys. The wizard's
  * `fields.socsoNumber` and `fields.eisEligible` are retired with this change. Checked first, per the trap
- * that nearly cost three keys in r159: `missingByStep` never returns either name, so the Review step's
+ * that nearly cost three keys in r159: `missingByTab` never returns either name, so the Review step's
  * computed t(`fields.${f}`) cannot ask for them.
  */
 import { useTranslations } from 'next-intl';

@@ -24,9 +24,9 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import {
-  DRAFT_STEPS,
+  DRAFT_TABS,
   draftFamily,
-  missingByStep,
+  missingByTab,
   missingForCreation,
   stepKey,
   stepNumber,
@@ -177,28 +177,34 @@ afterAll(async () => {
 
 // ── §1 the rule ───────────────────────────────────────────────────────────────────────────────────
 describe('§1 what a draft family blocks, and what it deliberately does not', () => {
-  it('Family is a step, and it is the LAST one — the numbers already on production rows must not move', () => {
+  it('Family is a TAB, and it is the LAST one — the numbers already on production rows must not move', () => {
     // `employee_draft.current_step` is a POINTER INTO A LIST, and appending to the list is not enough on
     // its own. Until item 06f0cb8f the fifth step was `review` and the wizard wrote `indexOf(step) + 1`,
     // so drafts parked on Review are sitting in production as `current_step = 5`. Numbering `family`
     // positionally would hand it that same 5 and reopen that cohort on a tab they have never seen — a
     // data migration disguised as a UI change. So 5 stays RETIRED and `family` is 6.
-    expect(DRAFT_STEPS).toEqual(['profile', 'employment', 'statutory', 'payroll', 'family']);
+    // 759dfc7d work item 2 renamed the KEYS onto the active record's own tab vocabulary (`employment` →
+    // `job`, `statutory` → `bankStatutory`) and deliberately moved NO number: each tab kept the number it
+    // already had, which is why a draft written by the old wizard reopens on the tab it was left on.
+    expect(DRAFT_TABS).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'family']);
+    expect(stepNumber('profile')).toBe(1);
+    expect(stepNumber('job')).toBe(2);
+    expect(stepNumber('bankStatutory')).toBe(3);
     expect(stepNumber('payroll')).toBe(4);
     expect(stepNumber('family')).toBe(6);
     expect(stepKey(5)).toBe('payroll');
-    // …and nothing else moved: every live step still round-trips, and the clamps still clamp.
-    for (const k of DRAFT_STEPS) expect(stepKey(stepNumber(k))).toBe(k);
+    // …and nothing else moved: every live tab still round-trips, and the clamps still clamp.
+    for (const k of DRAFT_TABS) expect(stepKey(stepNumber(k))).toBe(k);
     expect(stepKey(0)).toBe('profile');
     expect(stepKey(99)).toBe('family');
   });
 
-  it('a draft saved BEFORE this change reopens where its owner left it, not on the new Family step', async () => {
+  it('a draft saved BEFORE this change reopens where its owner left it, not on the new Family tab', async () => {
     const ctx = adminCtx(b);
     // A REAL ROW, WRITTEN BY THE SAME WRITER PRODUCTION USES — `current_step = 5` is exactly what the
     // pre-06f0cb8f wizard stored for a draft parked on the retired Review step
-    // (`DRAFT_STEPS.indexOf('review') + 1`). Since Review was removed that 5 has reopened on Payroll, and
-    // this item must not move it.
+    // (`DRAFT_STEPS.indexOf('review') + 1`, the list DRAFT_TABS descends from). Since Review was
+    // removed that 5 has reopened on Payroll, and neither this item nor the move onto tabs may move it.
     const { id } = await saveEmployeeDraft(ctx, {
       data: { profile: { fullName: 'Legacy Draft' }, payroll: { basicSalary: '5000' } },
       currentStep: 5,
@@ -207,7 +213,7 @@ describe('§1 what a draft family blocks, and what it deliberately does not', ()
     expect(legacy!.currentStep).toBe(5);
     expect(stepKey(legacy!.currentStep)).toBe('payroll');
 
-    // And the new step is still reachable: saving ON Family stores 6, and 6 reopens Family.
+    // And the new tab is still reachable: saving ON Family stores 6, and 6 reopens Family.
     await saveEmployeeDraft(ctx, {
       id,
       data: { profile: { fullName: 'Legacy Draft' }, family: [SPOUSE] },
@@ -218,11 +224,11 @@ describe('§1 what a draft family blocks, and what it deliberately does not', ()
     expect(stepKey(reopened!.currentStep)).toBe('family');
   });
 
-  it('NO family member is required — most new joiners have none, and a step that demanded one would block them', () => {
-    expect(missingByStep({}).family).toEqual([]);
-    expect(missingByStep({ family: [] }).family).toEqual([]);
+  it('NO family member is required — most new joiners have none, and a tab that demanded one would block them', () => {
+    expect(missingByTab({}).family).toEqual([]);
+    expect(missingByTab({ family: [] }).family).toEqual([]);
     // …and a complete member is silent too.
-    expect(missingByStep({ family: [SPOUSE, CHILD, PARENT] }).family).toEqual([]);
+    expect(missingByTab({ family: [SPOUSE, CHILD, PARENT] }).family).toEqual([]);
   });
 
   it('a member somebody DID add must be writable — a nameless one is named BEFORE the employee exists', () => {
@@ -230,20 +236,20 @@ describe('§1 what a draft family blocks, and what it deliberately does not', ()
     // the writer refuses would fail an activation that has already created an employee — the half-activated
     // state this whole item exists to prevent. The rule moves that refusal to a moment where it costs
     // nothing, and the server re-runs it (`completeEmployeeDraft` → `missingForCreation`) before writing.
-    expect(missingByStep({ family: [{ relationship: 'child' }] }).family).toEqual(['familyMemberName']);
-    expect(missingByStep({ family: [{ fullName: 'Someone' }] }).family).toEqual(['familyMemberRelationship']);
+    expect(missingByTab({ family: [{ relationship: 'child' }] }).family).toEqual(['familyMemberName']);
+    expect(missingByTab({ family: [{ fullName: 'Someone' }] }).family).toEqual(['familyMemberRelationship']);
     // Every date the register stores, not just the date of birth: each reaches Postgres as a `date`.
     for (const bad of [
       { fullName: 'A', relationship: 'child', dateOfBirth: '02/11/2009' },
       { fullName: 'A', relationship: 'spouse', marriageDate: 'last August' },
       { fullName: 'A', relationship: 'parent', deceasedOn: '2020-13-45' },
     ]) {
-      expect(missingByStep({ family: [bad] }).family).toEqual(['familyMemberDate']);
+      expect(missingByTab({ family: [bad] }).family).toEqual(['familyMemberDate']);
     }
   });
 
   it('three broken members produce three names, not nine — the list is what HR reads, not a count', () => {
-    const broken = missingByStep({ family: [{}, {}, {}] }).family;
+    const broken = missingByTab({ family: [{}, {}, {}] }).family;
     expect(broken).toEqual(['familyMemberName', 'familyMemberRelationship']);
   });
 
@@ -259,16 +265,19 @@ describe('§1 what a draft family blocks, and what it deliberately does not', ()
     expect(draftFamily({ family: [null, 'x', SPOUSE] as unknown as EmployeeDraftFamilyMember[] })).toEqual([SPOUSE]);
   });
 
-  it('every computed translation key the Family step adds resolves, in all six locales', () => {
-    // `t(`steps.${k}`)` and `t(`fields.${f}`)` are invisible to test/i18n-coverage.test.ts check C.
+  it('every computed translation key the Family tab adds resolves, in all six locales', () => {
+    // `t(`fields.${f}`)` is invisible to test/i18n-coverage.test.ts check C. (The TAB label used to be a
+    // computed `t(`steps.${k}`)` too; 759dfc7d work item 2 made it a static `t('tabs.family')` borrowed
+    // from the activated record, pinned equal to it in test/draft-record-tabs.test.ts — so what has to be
+    // checked here is that the borrowed key resolves, not that the retired one still does.)
     for (const loc of LOCALES) {
       const msgs = JSON.parse(read(`messages/${loc}.json`));
-      expect(String(msgs.people?.wizard?.steps?.family ?? '').trim(), `${loc} steps.family`).not.toBe('');
+      expect(String(msgs.people?.wizard?.tabs?.family ?? '').trim(), `${loc} tabs.family`).not.toBe('');
       const names = new Set(
         [
           { family: [{}] },
           { family: [{ fullName: 'A', relationship: 'child', dateOfBirth: 'nope' }] },
-        ].flatMap((d) => missingByStep(d as EmployeeDraftData).family),
+        ].flatMap((d) => missingByTab(d as EmployeeDraftData).family),
       );
       expect(names.size).toBeGreaterThan(0);
       for (const f of names) {

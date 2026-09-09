@@ -1722,21 +1722,12 @@
       "backLabel": "Kembali ke Pengurusan Kakitangan",
       "title": "Cipta pekerja baharu",
       "description": "Rekod dan ID Pekerjanya sudah wujud. Isi selebihnya dan tekan Aktifkan — kemajuan disimpan pada bila-bila masa.",
-      "progressLabel": "Langkah penciptaan",
-      "steps": {
-        "profile": "Butiran profil",
-        "employment": "Pekerjaan",
-        "statutory": "Bank & Statutori",
-        "payroll": "Gaji",
-        "family": "Keluarga"
-      },
+      "progressLabel": "Bahagian rekod",
       "notSet": "— Tidak ditetapkan —",
       "selectPrompt": "— Pilih —",
       "yes": "Ya",
       "no": "Tidak",
       "untitledDraft": "Draf tanpa nama",
-      "back": "Kembali",
-      "next": "Seterusnya",
       "saveDraft": "Simpan draf",
       "saving": "Menyimpan…",
       "draftSaved": "Draf disimpan",
@@ -1768,7 +1759,26 @@
       "activate": "Aktifkan",
       "activating": "Mengaktifkan…",
       "activateNeeds": "Pengaktifan masih memerlukan:",
-      "discardReleasesTip": "Membuang draf mengembalikan ID Pekerja hanya jika ia yang terakhir dikeluarkan. Jika tidak, nombor itu kekal terpakai dan urutan akan melangkaunya."
+      "discardReleasesTip": "Membuang draf mengembalikan ID Pekerja hanya jika ia yang terakhir dikeluarkan. Jika tidak, nombor itu kekal terpakai dan urutan akan melangkaunya.",
+      "tabs": {
+        "profile": "Profil",
+        "job": "Pekerjaan",
+        "bankStatutory": "Bank & Berkanun",
+        "payroll": "Gaji",
+        "family": "Keluarga",
+        "empty": "Tiada apa-apa untuk dipaparkan di sini."
+      },
+      "sections": {
+        "personalDetails": "Butiran peribadi",
+        "contactAddress": "Hubungan & alamat",
+        "organisation": "Organisasi",
+        "employmentDates": "Tarikh Pekerjaan",
+        "bank": "Maklumat Bank",
+        "statutoryMalaysia": "Berkanun (Malaysia)",
+        "identityTax": "Pengenalan & Cukai",
+        "compensation": "Gaji Asas"
+      },
+      "draftStatus": "Draf — menunggu pengaktifan"
     }
   },
   "leave": {
