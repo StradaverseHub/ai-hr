@@ -8629,12 +8629,13 @@
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",
-      "untemplatedTitle": "非模板生成的规则",
-      "untemplatedHint": "这些审批规则自带审批步骤而非引用模板，因此不会出现在上方的指派清单中。它们仍然决定谁来审批申请。",
-      "untemplatedReadOnly": "只读。若要更改审批人，请在上方区块中把模板指派给相应的公司、假期类型与员工。",
-      "untemplatedEmpty": "所有生效的审批规则都由模板生成，因此决定申请去向的内容已全部显示在上方。",
+      "scopesTitle": "带有自身适用范围或审批流程的规则",
+      "scopesHint": "这些生效规则要么限定到某个业务单位、部门或职位（上方的指派清单并不显示这些），要么自带审批步骤而非引用模板。两者都决定谁来审批申请，因此这里逐条列出并附上实际生效的审批流程。",
+      "scopesReadOnly": "只读。若要更改审批人，请在上方区块中把模板指派给相应的公司、假期类型与员工。",
+      "scopesEmpty": "没有生效的审批规则按业务单位、部门或职位限定范围，也没有任何规则自带审批步骤。",
       "colScope": "适用范围",
       "scopeAllEmployees": "公司全体员工",
+      "scopeUnknown": "（未知）",
       "chainEmptyFallback": "没有自己的步骤 — 这些申请回退到全组织默认流程。",
       "readoutTitle": "谁审批此假期类型",
       "readoutHint": "当没有更具体的规则适用于该员工时，此假期类型的申请所走的流程。只读 — 请在「审批链」中修改。",
@@ -8645,6 +8646,7 @@
       "escalationOn": "{days, plural, other {# 个工作日}}后升级至{target}。",
       "escalationOff": "未启用升级。",
       "otherRules": "本公司另有 {n, plural, other {# 条规则}}，可能因员工不同而把此假期类型导向其他流程。",
+      "candidateRules": "本公司有 {n, plural, other {# 条规则}} 限定于此假期类型；当它们都不匹配时，适用上方显示的审批流程。",
       "readoutManageLink": "前往「审批链」修改"
     }
   },

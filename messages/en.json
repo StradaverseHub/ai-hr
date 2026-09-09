@@ -8629,12 +8629,13 @@
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",
-      "untemplatedTitle": "Rules not built from a template",
-      "untemplatedHint": "These approval rules carry their own steps instead of a template, so they do not appear in the assignment list above. They still decide who approves a request.",
-      "untemplatedReadOnly": "Read-only. To change who approves, assign a template to the companies, leave types and employees it should cover in the section above.",
-      "untemplatedEmpty": "Every active approval rule is built from a template, so everything that routes a request is shown above.",
+      "scopesTitle": "Rules with their own scope or chain",
+      "scopesHint": "These active rules either narrow to a business unit, department or position — which the assignment list above does not show — or carry their own steps instead of a template. Both decide who approves a request, so each is listed here with the chain that actually applies.",
+      "scopesReadOnly": "Read-only. To change who approves, assign a template to the companies, leave types and employees it should cover in the section above.",
+      "scopesEmpty": "No active approval rule narrows by business unit, department or position, and none carries steps of its own.",
       "colScope": "Applies to",
       "scopeAllEmployees": "Everyone in the company",
+      "scopeUnknown": "(unknown)",
       "chainEmptyFallback": "No steps of its own — these requests fall back to the org-wide default flow.",
       "readoutTitle": "Who approves this leave type",
       "readoutHint": "The flow a request for this leave type reaches when no narrower rule applies to the employee. Read-only — change it on Approval chain.",
@@ -8645,6 +8646,7 @@
       "escalationOn": "Escalates after {days, plural, one {# working day} other {# working days}} to {target}.",
       "escalationOff": "Escalation off.",
       "otherRules": "{n, plural, one {# other rule} other {# other rules}} in this company can route this leave type differently, depending on the employee.",
+      "candidateRules": "{n, plural, one {# rule in this company is} other {# rules in this company are}} scoped to this leave type; the chain above is what applies when none of them matches.",
       "readoutManageLink": "Change this on Approval chain"
     }
   },

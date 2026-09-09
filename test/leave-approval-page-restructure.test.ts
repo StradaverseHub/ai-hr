@@ -35,7 +35,12 @@ const manager = fs.readFileSync(MANAGER, 'utf8');
  * absence assertions below run against the source with commentary stripped, and the structural ones
  * (imports, JSX tags) are anchored so a comment cannot satisfy them either.
  */
-const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
+const stripComments = (src: string) =>
+  // ⚠️ THE COMMENT GOES, THE LINE STAYS. Deleting whole lines containing `//` (the repo's older helper
+  // shape) only ever ADDS edges in an import ratchet, but every assertion below is an ABSENCE check —
+  // where the same blindness REMOVES evidence and fails silent. `<form action={x}> // note` stripped to
+  // nothing satisfies both "no `<form`" and "no `action={`". `://` is left alone so a URL survives.
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
 const pageCode = stripComments(page);
 const dict = (loc: string) => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
 

@@ -173,6 +173,83 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
   });
 }
 
+/**
+ * a6fe37fc R4 FIX — EVERY ACTIVE RULE THAT NARROWS BY BUSINESS UNIT, DEPARTMENT OR POSITION, whatever
+ * built it. A read-only projection: it enumerates rows, it ranks nothing.
+ *
+ * ⚠️ WHY THIS EXISTS BESIDE `listTemplateAssignments`, WHICH READS THE SAME TABLE. That list describes an
+ * assignment by its template, company, leave type and EMPLOYEE scope (grade / grade group / employment
+ * type / day range) — it deliberately selects none of the three ORG columns, and the assignment table
+ * renders none of them. `ruleMatches` reads all three on every request (core/leave-approval-policy.ts),
+ * so they decide who approves; since `706d34e8` removed the Workflow Matrix nothing has displayed them
+ * (IA §4.1).
+ *
+ * ⚠️ AND WHY `listLegacyApprovalRules` CANNOT FIND THEM. Its predicate is
+ * `template_id is null or leave_type_id is null`, but `convertLegacyApprovalRules` COPIES
+ * business_unit_id / department_id / position_id onto each row it expands and STAMPS a template_id
+ * (core/leave-approval-consolidation.ts). On a converted tenant — which production is, r94 ran
+ * scripts/convert-approval-rules.ts there: 51 assignments converted, and afterwards zero active rules
+ * matched that predicate — every org-scoped rule carries a template and a leave type, so that enumeration
+ * returns none of them. Filtering it is how the restoration ended up showing nothing on exactly the data
+ * it was built for.
+ *
+ * Tenant-wide, like `listTemplateAssignments`: `leave_approval_policy` is readable across the tenant (the
+ * requester resolves their own chain in their own transaction), so the CALLER must trim the result to the
+ * companies in view — see app/admin/leave-config/approval-readout.tsx.
+ */
+export type OrgScopedApprovalRule = {
+  id: string;
+  companyId: string;
+  ruleName: string | null;
+  /** null = the rule applies to EVERY leave type. */
+  leaveTypeId: string | null;
+  businessUnitId: string | null;
+  departmentId: string | null;
+  positionId: string | null;
+  gradeId: string | null;
+  gradeGroupId: string | null;
+  employmentType: EmploymentType | null;
+  minDays: number | null;
+  maxDays: number | null;
+  /** The row's OWN chain. Empty on a template-driven row, whose effective chain is the template's. */
+  levels: LeaveLevelKind[];
+  templateId: string | null;
+};
+
+/** Every ACTIVE rule carrying at least one of the three org-scope columns, across the tenant. */
+export async function listOrgScopedApprovalRules(ctx: SessionContext): Promise<OrgScopedApprovalRule[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: leaveApprovalPolicy.id,
+        companyId: leaveApprovalPolicy.companyId,
+        ruleName: leaveApprovalPolicy.ruleName,
+        leaveTypeId: leaveApprovalPolicy.leaveTypeId,
+        businessUnitId: leaveApprovalPolicy.businessUnitId,
+        departmentId: leaveApprovalPolicy.departmentId,
+        positionId: leaveApprovalPolicy.positionId,
+        gradeId: leaveApprovalPolicy.gradeId,
+        gradeGroupId: leaveApprovalPolicy.gradeGroupId,
+        employmentType: leaveApprovalPolicy.employmentType,
+        minDays: leaveApprovalPolicy.minDays,
+        maxDays: leaveApprovalPolicy.maxDays,
+        levels: leaveApprovalPolicy.levels,
+        templateId: leaveApprovalPolicy.templateId,
+      })
+      .from(leaveApprovalPolicy)
+      .where(
+        and(
+          eq(leaveApprovalPolicy.active, true),
+          sql`(${leaveApprovalPolicy.businessUnitId} is not null
+               or ${leaveApprovalPolicy.departmentId} is not null
+               or ${leaveApprovalPolicy.positionId} is not null)`,
+        ),
+      )
+      .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt);
+    return rows.map((r) => ({ ...r, levels: sanitizeLevels(r.levels) }));
+  });
+}
+
 export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTemplateInput) {
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {

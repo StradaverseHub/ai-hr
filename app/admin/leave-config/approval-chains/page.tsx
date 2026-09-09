@@ -27,7 +27,7 @@ import {
   unassignApprovalTemplateAction,
 } from '../../leave-approval/actions';
 import { LeaveConfigPreviewNote } from '../preview-note';
-import { UntemplatedApprovalRules, loadUntemplatedApprovalRules } from '../approval-readout';
+import { ApprovalRuleScopes, loadApprovalRuleScopes } from '../approval-readout';
 
 /**
  * a6fe37fc ROUND 4 — APPROVAL CHAINS at its new address (`/admin/leave-config/approval-chains`).
@@ -53,10 +53,18 @@ import { UntemplatedApprovalRules, loadUntemplatedApprovalRules } from '../appro
  *
  * ═══ WHAT IS GENUINELY NEW HERE, AND IT IS A RESTORATION RATHER THAN A REARRANGEMENT ═══
  *
- * The read-only "rules not built from a template" list at the foot. Those rules' business unit /
- * department / position scope and their own chains are STORED, are READ by `resolveApprovalChain`, DECIDE
- * WHO APPROVES, and have been shown NOWHERE since `706d34e8` removed the Workflow Matrix (IA §4.1). It is
- * a read-out, not that editor coming back — see `../approval-readout.tsx`'s header for the full
+ * The read-only list at the foot, of every active rule whose SCOPE OR CHAIN no other list shows. A
+ * rule's business unit / department / position scope and its own chain are STORED, are READ by
+ * `resolveApprovalChain`, DECIDE WHO APPROVES, and have been shown NOWHERE since `706d34e8` removed the
+ * Workflow Matrix (IA §4.1).
+ *
+ * ⚠️ IT IS NOT LIMITED TO THE TEMPLATE-LESS ROWS, and that distinction is the whole delivery.
+ * `convertLegacyApprovalRules` copies those three org columns onto the rows it expands and stamps a
+ * template_id on them, and r94 ran that conversion on production — so on the customer's tenant EVERY
+ * org-scoped rule carries a template, and a list filtered to `template_id is null` renders empty on
+ * exactly the data the restoration exists for. `loadApprovalRuleScopes` reads both populations.
+ *
+ * It is a read-out, not that editor coming back — see `../approval-readout.tsx`'s header for the full
  * reasoning, and `test/leave-approval-page-restructure.test.ts` for the case that carries it.
  *
  * A SAVE MADE HERE LANDS ON THE OLD SCREEN — `app/admin/leave-approval/actions.ts` redirects to its own
@@ -102,10 +110,16 @@ export default async function LeaveConfigApprovalChainsPage({
   ]);
   const assignments = allAssignments.filter((a) => companyIds.includes(a.companyId));
 
-  /* IA §4.1 — the rows no screen has shown since 706d34e8. Scoped to the companies in view by the SAME
-     list the assignments above are filtered by, because `leave_approval_policy` is readable tenant-wide
-     and the company filter is what keeps a company-scoped admin inside their own scope. */
-  const untemplated = await loadUntemplatedApprovalRules(s, companies);
+  /* IA §4.1 — the rows whose scope or chain no screen has shown since 706d34e8. Scoped to the companies
+     in view by the SAME list the assignments above are filtered by, because `leave_approval_policy` is
+     readable tenant-wide and the company filter is what keeps a company-scoped admin inside their own
+     scope.
+
+     ⚠️ `templates` IS PASSED IN, ALREADY READ ABOVE. A template-driven rule's effective chain is its
+     template's, and this table lists template-driven rules — the converted ones that narrow by business
+     unit, department or position. Re-reading the templates inside the loader would be a third round-trip
+     for rows sitting in memory two lines up. */
+  const ruleScopes = await loadApprovalRuleScopes(s, companies, templates, tr('scopeUnknown'));
 
   const escalationLabels: EscalationLabels = {
     title: t('escalationTitle'),
@@ -320,7 +334,7 @@ export default async function LeaveConfigApprovalChainsPage({
           </section>
 
           {/* ══ Section 3 — THE RESTORATION (IA §4.1). Read-only: no form, no action, no edit. ══ */}
-          <UntemplatedApprovalRules rows={untemplated} />
+          <ApprovalRuleScopes rows={ruleScopes} />
         </>
       )}
     </div>

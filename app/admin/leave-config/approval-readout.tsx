@@ -14,7 +14,12 @@ import {
   type LeaveLevelKind,
 } from '@/core/leave-approval-policy';
 import { listLegacyApprovalRules } from '@/core/leave-approval-consolidation';
-import { listApprovalTemplates } from '@/core/leave-approval-template';
+import {
+  listApprovalTemplates,
+  listOrgScopedApprovalRules,
+  type ApprovalTemplate,
+  type OrgScopedApprovalRule,
+} from '@/core/leave-approval-template';
 import { Card, SectionHeader } from '@/components/ui';
 import { leaveConfigScreenHref } from '@/components/leave-config-map';
 
@@ -47,10 +52,14 @@ import { leaveConfigScreenHref } from '@/components/leave-config-map';
  * that drifts from that one is the defect this item exists to remove, and a read-out that answered
  * differently from the engine would be worse than no read-out.
  *
- * The "not built from a template" list is the same story one level down: `listLegacyApprovalRules`
- * (core/leave-approval-consolidation.ts) is the ONE enumeration of the rows the Assignment Template
- * screen cannot own, and it is what `scripts/convert-approval-rules.ts` counts. This file filters its
- * result; it does not re-derive it with a second `template_id is null` query that could drift from it.
+ * The rule list is the same story one level down. It enumerates through TWO pack services and builds no
+ * query of its own: `listLegacyApprovalRules` (core/leave-approval-consolidation.ts) for the rows that
+ * carry no template — the ONE enumeration `scripts/convert-approval-rules.ts` counts, never re-derived
+ * here with a second `template_id is null` query that could drift from it — and
+ * `listOrgScopedApprovalRules` (core/leave-approval-template.ts) for the rows that narrow by business
+ * unit, department or position, which that first enumeration cannot see once they carry a template. The
+ * second read is not a duplicate of the first: it answers a different question about a different
+ * population, and `loadApprovalRuleScopes` below says why the round needed both.
  *
  * SERVER COMPONENTS, deliberately, like every other node in this module: `getTranslations` and plain
  * markup, nothing crossing a boundary (r123 took a production tab down by handing a closure across one;
@@ -95,11 +104,11 @@ function ChainSteps({ levels, labels }: { levels: LeaveLevelKind[]; labels: Reco
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
-// 1. The rules that are NOT built from a template — the IA §4.1 restoration
+// 1. The rules whose scope or chain no other list shows — the IA §4.1 restoration
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** One template-less rule, with every scoping id already resolved to the name an administrator reads. */
-export type UntemplatedApprovalRuleRow = {
+/** One listed rule, with every scoping id already resolved to the name an administrator reads. */
+export type ApprovalRuleScopeRow = {
   id: string;
   companyName: string;
   ruleName: string | null;
@@ -114,42 +123,74 @@ export type UntemplatedApprovalRuleRow = {
   employmentType: string | null;
   minDays: number | null;
   maxDays: number | null;
-  /** The rule's OWN ordered chain. Template-less by construction, so this is its effective chain. */
+  /** The EFFECTIVE ordered chain: the template's steps when template-driven, else the row's own. */
   levels: LeaveLevelKind[];
+  /** The template this rule draws its chain from, when it has one. null = the chain is the row's own. */
+  templateName: string | null;
 };
 
 /**
- * Every ACTIVE rule in the given companies that carries no template.
+ * Every ACTIVE rule in the given companies whose ROUTING DETAIL is shown by no other list.
  *
- * ⚠️ THE FILTER IS `templateId === null`, AND THE OTHER HALF OF `listLegacyApprovalRules` IS DELIBERATELY
- * NOT SHOWN HERE. That enumeration returns two kinds of row — `no-template` and `any-leave-type` — and a
- * row with a template but a null `leave_type_id` IS already on screen: `listTemplateAssignments` returns
- * every active row that carries a template, including the null-leave-type ones, and the assignment list
- * groups them with `firstLeaveTypeId === null`. Listing those again here would be the duplication
- * `706d34e8` removed, in a new place. Only the rows NO surface can show are restored.
+ * ⚠️ THE POPULATION IS TWO KINDS OF ROW, AND THE SECOND ONE IS WHY THIS FUNCTION WAS WRONG BEFORE.
  *
- * ⚠️ SCOPED TO THE CALLER'S COMPANIES BY THE CALLER'S OWN LIST. `leave_approval_policy` is readable
- * tenant-wide (the requester resolves their own chain inside their own transaction — see the table's RLS
- * note), so this read returns the whole tenant and the company filter is what keeps a company-scoped
- * admin seeing only their own companies (IA §6.4). It is the same filter the assignment list applies.
+ *   a. **No template.** Its chain lives on the row, and the assignment list — which lists rows BY their
+ *      template — cannot show a row that has none. `listLegacyApprovalRules` is that enumeration, and it
+ *      is the one `scripts/convert-approval-rules.ts` counts.
+ *   b. **An org scope**: business unit, department or position, WHETHER OR NOT IT CARRIES A TEMPLATE.
+ *      `listTemplateAssignments` does not select those three columns and the assignment table does not
+ *      render them, so a templated row's org scope is invisible there.
  *
- * ⚠️ THE SEVEN CATALOGUE READS ONLY HAPPEN WHEN THERE IS SOMETHING TO LABEL. A tenant whose rules are
- * all template-driven — which is what `scripts/convert-approval-rules.ts` converted production towards —
- * gets ONE query, not eight, on every render of this page. The e4238594 / 706d34e8 precedent, applied
- * before the fact: an embed's data prep left behind is a fan of queries per render for a surface that
- * draws nothing.
+ * The first version of this file filtered to (a) alone, and that made the restoration RENDER NOTHING ON
+ * THE DATA IT WAS BUILT FOR. `convertLegacyApprovalRules` COPIES the three org columns onto every row it
+ * expands and stamps a template_id on it (core/leave-approval-consolidation.ts), and r94 ran that
+ * conversion on production — after which no active rule matched `template_id is null or leave_type_id is
+ * null` at all. So on the customer's tenant every org-scoped rule is a case (b) row, the (a) list is
+ * empty, and the columns that decide who approves stayed exactly as invisible as before the round.
+ * `listOrgScopedApprovalRules` (core/leave-approval-template.ts) is the read that finds them.
+ *
+ * ⚠️ A CASE (b) ROW IS ALSO A LINE IN THE ASSIGNMENT LIST, AND THAT IS NOT THE DUPLICATION `706d34e8`
+ * REMOVED. That duplication was a second EDITOR over the same rows. This shows a DIFFERENT FACT about the
+ * row — the org scope and the chain the assignment list omits — with no way to change it. Only rows whose
+ * detail is genuinely unshown are listed: a templated rule with no org scope (including a templated
+ * wildcard-leave-type rule, which the assignment list groups under `firstLeaveTypeId === null`) is not
+ * here, because that list already describes it in full.
+ *
+ * ⚠️ SCOPED TO THE CALLER'S COMPANIES BY THE CALLER'S OWN LIST, ON BOTH READS. `leave_approval_policy` is
+ * readable tenant-wide (the requester resolves their own chain inside their own transaction — see the
+ * table's RLS note), so neither read is scoped by RLS and the company filter is what keeps a
+ * company-scoped admin seeing only their own companies (IA §6.4). It is the same filter the assignment
+ * list applies.
+ *
+ * ⚠️ THE SIX CATALOGUE READS ONLY HAPPEN WHEN THERE IS SOMETHING TO LABEL — a tenant with no such rule
+ * gets two queries, not eight, on every render (the e4238594 / 706d34e8 precedent applied before the
+ * fact). `templates` is the list the page has ALREADY read for the template manager; re-reading it here
+ * would be a third round-trip for rows already in memory.
  */
-export async function loadUntemplatedApprovalRules(
+export async function loadApprovalRuleScopes(
   s: SessionContext,
   companies: { id: string; name: string }[],
-): Promise<UntemplatedApprovalRuleRow[]> {
+  templates: ApprovalTemplate[],
+  /** Rendered in a scope cell whose id resolves to no catalogue row at all — see `nameOf` below. */
+  unknownLabel: string,
+): Promise<ApprovalRuleScopeRow[]> {
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
-  const legacy = await withTenant(s, (tx) => listLegacyApprovalRules(tx));
-  const untemplated = legacy.filter((r) => r.templateId === null && companyName.has(r.companyId));
-  if (untemplated.length === 0) return [];
+  const [legacy, orgScoped] = await Promise.all([
+    withTenant(s, (tx) => listLegacyApprovalRules(tx)),
+    listOrgScopedApprovalRules(s),
+  ]);
 
-  // Archived labels are INCLUDED: a rule may still point at one, it still routes, and "(unknown)" in the
-  // scope column is exactly the invisibility this read-out exists to end.
+  // Union BY RULE ID: a template-less rule that also narrows by department is one line, not two.
+  const listed = new Map<string, OrgScopedApprovalRule>();
+  for (const r of legacy) if (r.templateId === null && companyName.has(r.companyId)) listed.set(r.id, r);
+  for (const r of orgScoped) if (companyName.has(r.companyId)) listed.set(r.id, r);
+  const rules = [...listed.values()];
+  if (rules.length === 0) return [];
+
+  // Archived labels are INCLUDED: a rule may still point at one, it still routes, and hiding it is
+  // exactly the invisibility this read-out exists to end. `unknownLabel` is therefore reached only by an
+  // id with no row at all — a hard-deleted org unit — where printing the raw UUID would read as data
+  // corruption on the one screen whose job is to explain why a request went where it went.
   const [leaveTypes, businessUnits, departments, positions, grades, gradeGroups] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listBusinessUnits(s, { includeArchived: true }),
@@ -160,7 +201,7 @@ export async function loadUntemplatedApprovalRules(
   ]);
   const nameOf = <T extends { id: string }>(rows: T[], pick: (r: T) => string) => {
     const byId = new Map(rows.map((r) => [r.id, pick(r)]));
-    return (id: string | null) => (id === null ? null : (byId.get(id) ?? id));
+    return (id: string | null) => (id === null ? null : (byId.get(id) ?? unknownLabel));
   };
   const leaveTypeName = nameOf(leaveTypes, (x) => x.name);
   const businessUnitName = nameOf(businessUnits, (x) => x.name);
@@ -169,28 +210,47 @@ export async function loadUntemplatedApprovalRules(
   const gradeName = nameOf(grades, (x) => `${x.code} — ${x.name}`);
   const gradeGroupName = nameOf(gradeGroups, (x) => x.name);
 
-  return untemplated.map((r) => ({
-    id: r.id,
-    companyName: companyName.get(r.companyId) ?? r.companyId,
-    ruleName: r.ruleName,
-    leaveTypeName: leaveTypeName(r.leaveTypeId),
-    businessUnit: businessUnitName(r.businessUnitId),
-    department: departmentName(r.departmentId),
-    position: positionName(r.positionId),
-    jobGrade: gradeName(r.gradeId),
-    gradeGroup: gradeGroupName(r.gradeGroupId),
-    employmentType: r.employmentType,
-    minDays: r.minDays,
-    maxDays: r.maxDays,
-    levels: r.levels,
-  }));
+  // THE EFFECTIVE CHAIN, stated exactly as `decideApproval` states it (core/leave-approval-policy.ts's
+  // `effectiveLevels`): a template-driven row's chain is its template's — and only while that template is
+  // ACTIVE, because `loadApprovalRuleSet` reads active templates only, so a row pointing at a deactivated
+  // one resolves to nothing and falls through to the org-wide default. Rendering the deactivated
+  // template's steps here would tell an administrator a chain applies that does not.
+  const activeTemplateLevels = new Map(templates.filter((x) => x.active).map((x) => [x.id, x.levels]));
+  const templateNameById = new Map(templates.map((x) => [x.id, x.name]));
+
+  return rules
+    .map((r) => ({
+      id: r.id,
+      companyName: companyName.get(r.companyId) ?? r.companyId,
+      ruleName: r.ruleName,
+      leaveTypeName: leaveTypeName(r.leaveTypeId),
+      businessUnit: businessUnitName(r.businessUnitId),
+      department: departmentName(r.departmentId),
+      position: positionName(r.positionId),
+      jobGrade: gradeName(r.gradeId),
+      gradeGroup: gradeGroupName(r.gradeGroupId),
+      employmentType: r.employmentType,
+      minDays: r.minDays,
+      maxDays: r.maxDays,
+      levels: r.templateId === null ? r.levels : (activeTemplateLevels.get(r.templateId) ?? []),
+      templateName: r.templateId === null ? null : (templateNameById.get(r.templateId) ?? null),
+    }))
+    // Two reads merged into one table need ONE order, and it must not depend on which read produced a
+    // row: company, then leave type, then rule name, then id as the final tie-break.
+    .sort(
+      (a, b) =>
+        a.companyName.localeCompare(b.companyName) ||
+        (a.leaveTypeName ?? '').localeCompare(b.leaveTypeName ?? '') ||
+        (a.ruleName ?? '').localeCompare(b.ruleName ?? '') ||
+        a.id.localeCompare(b.id),
+    );
 }
 
 /**
  * The read-only list. NO form, NO action, NO edit affordance — see this file's header for why that is
  * the whole point rather than an omission.
  */
-export async function UntemplatedApprovalRules({ rows }: { rows: UntemplatedApprovalRuleRow[] }) {
+export async function ApprovalRuleScopes({ rows }: { rows: ApprovalRuleScopeRow[] }) {
   const t = await getTranslations('leaveApproval');
   const tr = await getTranslations('admin.leaveConfigApprovalChains');
   const labels = Object.fromEntries(
@@ -198,7 +258,7 @@ export async function UntemplatedApprovalRules({ rows }: { rows: UntemplatedAppr
   ) as Record<LeaveLevelKind, string>;
 
   /** Every non-wildcard dimension of one rule, as `label: value` chips. Empty = matches everyone. */
-  const scopeOf = (r: UntemplatedApprovalRuleRow): string[] => {
+  const scopeOf = (r: ApprovalRuleScopeRow): string[] => {
     const out: string[] = [];
     if (r.businessUnit) out.push(`${t('businessUnit')}: ${r.businessUnit}`);
     if (r.department) out.push(`${t('department')}: ${r.department}`);
@@ -217,14 +277,20 @@ export async function UntemplatedApprovalRules({ rows }: { rows: UntemplatedAppr
        the HTML for a translated label is a FALSE POSITIVE because Next.js embeds the whole i18n catalogue
        in the payload (HANDOFF → Rendering and verification). A data attribute that exists in exactly one
        component is the cheapest thing that can only come from this component actually rendering. */
-    <Card data-readout="untemplated-approval-rules">
-      <SectionHeader title={tr('untemplatedTitle')} count={rows.length} />
+    <Card data-readout="approval-rule-scopes">
+      <SectionHeader title={tr('scopesTitle')} count={rows.length} />
       <div className="space-y-3 px-4 py-3">
-        <p className="text-xs text-muted-foreground">{tr('untemplatedHint')}</p>
-        <p className="text-xs text-muted-foreground">{tr('untemplatedReadOnly')}</p>
+        <p className="text-xs text-muted-foreground">{tr('scopesHint')}</p>
+        <p className="text-xs text-muted-foreground">{tr('scopesReadOnly')}</p>
         {rows.length === 0 ? (
+          /* ⚠️ IT CLAIMS ONLY WHAT THE TWO READS CAN SUPPORT — that no rule narrows by business unit,
+             department or position and none carries its own steps. The string this replaced said
+             "everything that routes a request is shown above", which on a converted tenant was the ONLY
+             sentence the restoration ever rendered and told an administrator nothing was hidden at the
+             exact moment the most-hidden thing was hidden. An absent box asserts nothing; a sentence
+             asserting completeness that is false is worse than the gap it fills. */
           <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-            {tr('untemplatedEmpty')}
+            {tr('scopesEmpty')}
           </p>
         ) : (
           /* Wide content scrolls inside its own box — the page body never scrolls sideways. */
@@ -265,7 +331,7 @@ export async function UntemplatedApprovalRules({ rows }: { rows: UntemplatedAppr
                           </ul>
                         )}
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="space-y-1 px-2 py-2">
                         {r.levels.length === 0 ? (
                           /* `decideApproval` falls through to the org-wide default (then the built-in
                              chain) when the winning rule's effective chain resolves empty — said out
@@ -274,6 +340,11 @@ export async function UntemplatedApprovalRules({ rows }: { rows: UntemplatedAppr
                         ) : (
                           <ChainSteps levels={r.levels} labels={labels} />
                         )}
+                        {/* WHERE THE CHAIN COMES FROM — the one fact that separates the two kinds of row
+                            in this table, reusing tab 5's vocabulary rather than a second copy of it. */}
+                        <span className="block text-xs text-muted-foreground">
+                          {r.templateName === null ? tr('sourceRule') : tr('sourceTemplate', { name: r.templateName })}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -363,14 +434,27 @@ export async function LeaveTypeApprovalReadout({
     const winner = decision.ruleId === null ? null : (rules.find((r) => r.id === decision.ruleId) ?? null);
     const templateName =
       winner?.templateId == null ? null : (data.templateNameById.get(winner.templateId) ?? null);
-    // Every OTHER active rule in this company that could apply to this leave type (its own type, or the
-    // company-wide wildcard). Each one carries at least one narrowing dimension — a second fully-wildcard
-    // row for the same company + leave type is forbidden by `leave_approval_policy_wildcard_uq` — so each
-    // one genuinely can win for some employee, or for some day count, and change the answer above.
-    const others = rules.filter(
-      (r) => (r.leaveTypeId === null || r.leaveTypeId === leaveTypeId) && r.id !== decision.ruleId,
-    ).length;
-    return { company: c, decision, templateName, others, esc: data.escalationByCompany.get(c.id) ?? null };
+    // Every active rule in this company that is scoped to this leave type (its own type, or the
+    // company-wide wildcard), MINUS the one that won — if one won.
+    //
+    // ⚠️ "OTHER" IS ONLY TRUE WHEN THERE IS A WINNER. `decision.ruleId` is null on BOTH fallback paths:
+    // no rule matched, and — less obviously — a rule matched but its effective chain resolved empty (a
+    // deactivated template), which `decideApproval` reports without naming the rule. Calling every
+    // candidate an "other rule" there implies a primary rule that does not exist, and in the second case
+    // counts the rule that DID match as one of the others. So the two situations get two sentences:
+    // `otherRules` when a rule won, `candidateRules` — which claims only that the rules are scoped to
+    // this leave type — when none did.
+    const scoped = rules.filter((r) => r.leaveTypeId === null || r.leaveTypeId === leaveTypeId);
+    const wonByRule = decision.ruleId !== null;
+    const others = wonByRule ? scoped.filter((r) => r.id !== decision.ruleId).length : scoped.length;
+    return {
+      company: c,
+      decision,
+      templateName,
+      others,
+      wonByRule,
+      esc: data.escalationByCompany.get(c.id) ?? null,
+    };
   });
 
   return (
@@ -385,7 +469,7 @@ export async function LeaveTypeApprovalReadout({
           <p className="text-xs text-muted-foreground">{t('emptyScope')}</p>
         ) : (
           <ul className="divide-y divide-border">
-            {rows.map(({ company, decision, templateName, others, esc }) => (
+            {rows.map(({ company, decision, templateName, others, wonByRule, esc }) => (
               <li key={company.id} className="space-y-1.5 py-2 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className="text-sm font-medium">{company.name}</span>
@@ -411,7 +495,11 @@ export async function LeaveTypeApprovalReadout({
                       })
                     : tr('escalationOff')}
                 </p>
-                {others > 0 && <p className="text-xs text-muted-foreground">{tr('otherRules', { n: others })}</p>}
+                {others > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {wonByRule ? tr('otherRules', { n: others }) : tr('candidateRules', { n: others })}
+                  </p>
+                )}
               </li>
             ))}
           </ul>

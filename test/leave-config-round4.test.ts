@@ -60,9 +60,16 @@ const consolidationSrc = read('core/leave-approval-consolidation.ts');
 /**
  * COMMENTS ARE NOT CODE — the r134 rule. An honest header NAMES what it is not doing ("no form, no
  * action"), so an absence assertion over the raw file would report correct code as wrong.
+ *
+ * ⚠️ IT STRIPS THE COMMENT, NOT THE LINE, AND THE DIFFERENCE IS THE WHOLE GUARD. The repo's older helper
+ * deleted every line CONTAINING `//`, which in the import ratchet only ever ADDED edges (r159 took that
+ * trade deliberately). Here the assertions below are ABSENCE checks, where the same blindness REMOVES
+ * evidence and fails silent: `<form action={x}> // note` stripped to the empty string satisfies both
+ * "no `<form`" and "no `action={`", and a write path smuggled in behind a trailing comment would pass.
+ * Only the comment is removed, and `://` is left alone so a URL in a string literal survives intact.
  */
 const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
 const pageCode = stripComments(page);
 const readoutCode = stripComments(readout);
 
@@ -117,14 +124,21 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     expect(pageCode).toContain('const companies = all.filter((c) => scopeIds.includes(c.id));');
     expect(pageCode).toContain('assignments = allAssignments.filter((a) => companyIds.includes(a.companyId))');
     // The read-out is handed the SAME already-trimmed list, never `all`.
-    expect(pageCode).toContain('loadUntemplatedApprovalRules(s, companies)');
+    expect(pageCode).toContain('loadApprovalRuleScopes(s, companies, templates,');
     expect(
-      /loadUntemplatedApprovalRules\(s,\s*all\)/.test(pageCode),
+      /loadApprovalRuleScopes\(s,\s*all\b/.test(pageCode),
       'the read-only rule list is fed the UNTRIMMED company list — a company-scoped admin would see ' +
         'approval rules belonging to companies they do not manage',
     ).toBe(false);
-    // …and the loader itself scopes by the list it is given rather than trusting the read.
-    expect(readoutCode).toContain('legacy.filter((r) => r.templateId === null && companyName.has(r.companyId))');
+    // …and the loader itself scopes by the list it is given rather than trusting the read. BOTH reads:
+    // `leave_approval_policy` is readable tenant-wide, so a filter missing from either one leaks the
+    // other's rows (test/leave-approval-scope-readout.test.ts proves this against a real second company).
+    expect(readoutCode).toContain(
+      'for (const r of legacy) if (r.templateId === null && companyName.has(r.companyId)) listed.set(r.id, r);',
+    );
+    expect(readoutCode).toContain(
+      'for (const r of orgScoped) if (companyName.has(r.companyId)) listed.set(r.id, r);',
+    );
   });
 
   it('is NOT on the leave config map — the menu moves at the Round 5 cutover, not now', () => {
@@ -204,9 +218,9 @@ describe('a6fe37fc R4 · the approval editor is MOUNTED at the new address, not 
 // 3. The restoration — read-only, and structurally so
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('a6fe37fc R4 · the rules NOT built from a template get a surface back (IA §4.1)', () => {
+describe('a6fe37fc R4 · the rules whose scope or chain nothing shows get a surface back (IA §4.1)', () => {
   it('the list is on the page, and it shows the three scope columns that have been invisible', () => {
-    expect(page).toContain('<UntemplatedApprovalRules rows={untemplated} />');
+    expect(page).toContain('<ApprovalRuleScopes rows={ruleScopes} />');
     // The three dimensions `706d34e8` took the only display of. Each one is READ by `ruleMatches` and
     // decides who approves; showing them is the whole point of the round.
     for (const dim of ['businessUnit', 'department', 'position']) {
@@ -218,6 +232,38 @@ describe('a6fe37fc R4 · the rules NOT built from a template get a surface back 
     }
     // The effective chain, which is what actually answers "who approves this".
     expect(readoutCode).toContain('<ChainSteps levels={r.levels}');
+  });
+
+  it('reads the CONVERTED rows too — a template does not make an org scope visible', () => {
+    // ⚠️ THE FIX THIS FILE EXISTS TO PIN. The first version filtered the whole list to
+    // `templateId === null`, and `convertLegacyApprovalRules` COPIES business_unit_id / department_id /
+    // position_id onto the rows it expands while STAMPING a template_id on them. r94 ran that conversion
+    // on production, after which no active rule matched `template_id is null or leave_type_id is null` —
+    // so the restoration rendered EMPTY on the only data it was built for, and the columns that decide
+    // who approves stayed exactly as hidden as before the round.
+    //
+    // This case is static; test/leave-approval-scope-readout.test.ts plants the converted shape
+    // (template_id NOT NULL + department_id set) in a real database and reads the department NAME back
+    // out of this loader. Both are needed: the source guard cannot see which rows a query returns, and
+    // the database test cannot see that the page still mounts the component.
+    expect(readoutCode).toContain('listOrgScopedApprovalRules(s)');
+    expect(read('core/leave-approval-template.ts')).toContain(
+      'export async function listOrgScopedApprovalRules(',
+    );
+    // The projection's predicate names the three columns and nothing about a template — a rule that
+    // narrows by department is listed WHETHER OR NOT it was built from one.
+    const core = stripComments(read('core/leave-approval-template.ts'));
+    const projection = core.slice(core.indexOf('export async function listOrgScopedApprovalRules('));
+    for (const col of ['businessUnitId', 'departmentId', 'positionId']) {
+      expect(projection.slice(0, projection.indexOf('.orderBy'))).toContain(`${col}} is not null`);
+    }
+    expect(
+      /templateId\}\s*is (not )?null/.test(projection.slice(0, projection.indexOf('.orderBy'))),
+      'the org-scope read filters on template_id — which is precisely how the converted rows went ' +
+        'missing from the restoration in the first place',
+    ).toBe(false);
+    // Only ACTIVE rules: an archived rule routes nothing and belongs on no screen.
+    expect(projection).toContain('eq(leaveApprovalPolicy.active, true)');
   });
 
   it('has NO write path: no form, no action, no edit affordance anywhere in the read-out', () => {
@@ -245,9 +291,17 @@ describe('a6fe37fc R4 · the rules NOT built from a template get a surface back 
     const actions = read('app/admin/leave-approval/actions.ts');
     expect(actions).not.toContain('saveLeaveApprovalRuleAction');
     expect(actions).not.toContain('archiveLeaveApprovalRuleAction');
+    // The widened read is READ-ONLY too: a projection beside `listTemplateAssignments` must not have
+    // grown a write, or the "no second editor" property moves out of this file's reach.
+    const projection = stripComments(read('core/leave-approval-template.ts'));
+    const body = projection.slice(projection.indexOf('export async function listOrgScopedApprovalRules('));
+    const fn = body.slice(0, body.indexOf('\nexport '));
+    for (const write of ['tx.insert', 'tx.update', 'tx.delete', 'appendEvent']) {
+      expect(fn.includes(write), `listOrgScopedApprovalRules performs a ${write}`).toBe(false);
+    }
   });
 
-  it('enumerates through the ONE legacy enumeration, and queries nothing itself', () => {
+  it('enumerates through the PACK SERVICES, and builds no query of its own', () => {
     // `listLegacyApprovalRules` is what scripts/convert-approval-rules.ts counts and what the migration
     // order's precondition check reads. A second `template_id is null` query here could drift from it,
     // and then the screen and the conversion script would disagree about what is left to convert.
@@ -260,15 +314,30 @@ describe('a6fe37fc R4 · the rules NOT built from a template get a surface back 
     ).toBe(false);
   });
 
-  it('shows only the rows NO surface can show — a templated wildcard rule is NOT listed twice', () => {
-    // `listLegacyApprovalRules` returns two kinds: `no-template` and `any-leave-type`. A row WITH a
-    // template but a null leave type is already on screen — `listTemplateAssignments` returns every
-    // active row that carries a template, including those, and the assignment list groups them with
-    // `firstLeaveTypeId === null`. Listing them again here would be the duplication 706d34e8 removed.
+  it('lists a rule ONCE, and leaves the fully-described assignment rows to the assignment list', () => {
+    // The two reads overlap on a rule that is both template-less AND org-scoped, so the union is keyed
+    // by rule id. And a templated rule with NO org scope is still excluded: `listTemplateAssignments`
+    // returns every active row that carries a template — including the null-leave-type ones, which the
+    // assignment list groups under `firstLeaveTypeId === null` — with the employee scope it renders.
+    // Listing those again would be the duplication 706d34e8 removed, in a new place.
+    expect(readoutCode).toContain('const listed = new Map<string, OrgScopedApprovalRule>();');
     expect(readoutCode).toContain('r.templateId === null');
     expect(read('core/leave-approval-template.ts')).toContain(
       'sql`${leaveApprovalPolicy.templateId} is not null`',
     );
+  });
+
+  it('says where each listed rule’s chain comes from, and never prints a raw id in a scope cell', () => {
+    // Two kinds of row share the table now, so each says which it is — reusing tab 5's vocabulary
+    // rather than a second copy of it.
+    expect(readoutCode).toContain("tr('sourceTemplate', { name: r.templateName })");
+    // A scoping id that resolves to NO catalogue row must read as "(unknown)", not as a UUID: a raw id
+    // in a scope cell reads as data corruption on the one screen whose job is to explain routing.
+    expect(readoutCode).toContain('byId.get(id) ?? unknownLabel');
+    expect(
+      readoutCode.includes('byId.get(id) ?? id'),
+      'an unresolved scoping id falls back to printing the raw UUID',
+    ).toBe(false);
   });
 });
 
@@ -315,6 +384,19 @@ describe('a6fe37fc R4 · tab 5 answers its own title, read-only (IA §2.2)', () 
     // The narrower rules are COUNTED rather than averaged into one answer — a per-employee answer needs
     // an employee, and this tab has none.
     expect(readoutCode).toContain("tr('otherRules', { n: others })");
+  });
+
+  it('only says "other rule" when a rule actually WON', () => {
+    // `decision.ruleId` is null on BOTH fallback paths — no rule matched, and (less obviously) a rule
+    // matched but its effective chain resolved empty, which `decideApproval` reports without naming the
+    // rule (core/leave-approval-policy.ts). Calling every candidate an "other rule" there implies a
+    // primary rule that does not exist, and in the second case counts the rule that DID match among the
+    // others. Two situations, two sentences.
+    expect(readoutCode).toContain(
+      "wonByRule ? tr('otherRules', { n: others }) : tr('candidateRules', { n: others })",
+    );
+    expect(readoutCode).toContain('const wonByRule = decision.ruleId !== null;');
+    expect(policySrc).toContain("return { levels: set.tenantDefaultLevels, ruleId: null, source: 'tenant-default' };");
   });
 
   it('links to Approval chains through the MAP, so the link and the menu cannot disagree', () => {
@@ -366,12 +448,13 @@ describe('a6fe37fc R4 · every new label ships in all six locales with real tran
   // case skips them entirely and this is the pinning site.
   const NEW_KEYS = [
     'pageDescription',
-    'untemplatedTitle',
-    'untemplatedHint',
-    'untemplatedReadOnly',
-    'untemplatedEmpty',
+    'scopesTitle',
+    'scopesHint',
+    'scopesReadOnly',
+    'scopesEmpty',
     'colScope',
     'scopeAllEmployees',
+    'scopeUnknown',
     'chainEmptyFallback',
     'readoutTitle',
     'readoutHint',
@@ -382,6 +465,7 @@ describe('a6fe37fc R4 · every new label ships in all six locales with real tran
     'escalationOn',
     'escalationOff',
     'otherRules',
+    'candidateRules',
     'readoutManageLink',
   ] as const;
 
@@ -412,12 +496,79 @@ describe('a6fe37fc R4 · every new label ships in all six locales with real tran
     const ns = (messages.admin as Record<string, Record<string, string>>).leaveConfigApprovalChains;
     // A bare "{n} rules" reads wrong in English at n=1 and is unformattable in the four locales whose
     // plural rules differ; next-intl throws FORMATTING_ERROR at RENDER time on a malformed one.
-    expect(ns.otherRules, `${loc}.otherRules`).toMatch(/\{n,\s*plural,/);
-    expect(ns.otherRules).toContain('other {');
-    expect(ns.otherRules).toContain('#');
+    for (const k of ['otherRules', 'candidateRules'] as const) {
+      expect(ns[k], `${loc}.${k}`).toMatch(/\{n,\s*plural,/);
+      expect(ns[k]).toContain('other {');
+      expect(ns[k]).toContain('#');
+    }
     expect(ns.escalationOn, `${loc}.escalationOn`).toMatch(/\{days,\s*plural,/);
     expect(ns.escalationOn).toContain('{target}');
     expect(ns.sourceTemplate, `${loc}.sourceTemplate`).toContain('{name}');
+  });
+
+  it.each(LOCALES)('%s FORMATS every new message — not just carries it (the r127 lesson, one level up)', async (loc) => {
+    // A key that exists but is malformed throws FORMATTING_ERROR at RENDER time and returns a 200 with
+    // the panel missing — the same failure class as MISSING_MESSAGE, and equally invisible to tsc, the
+    // suite and `next build`. Regex-matching `{n, plural,` proves the shape; RUNNING the formatter
+    // proves it formats. `createTranslator` is next-intl's own core, so this is the same code path the
+    // server component takes.
+    const { createTranslator } = await import('next-intl');
+    const messages = (await import(`../messages/${loc}.json`)).default as Record<string, unknown>;
+    // ⚠️ `onError` IS LOAD-BEARING. next-intl SWALLOWS a MISSING_MESSAGE or FORMATTING_ERROR by default
+    // and hands back the key, so a malformed ICU string still returns a non-empty string and an
+    // assertion on the output alone passes. Rethrowing is what turns the render-time failure into a
+    // test-time one — which is the whole reason this case exists.
+    const t = createTranslator({
+      locale: loc,
+      messages,
+      namespace: 'admin.leaveConfigApprovalChains',
+      onError: (e) => {
+        throw e;
+      },
+    });
+    const args: Record<string, Record<string, unknown>[]> = {
+      sourceTemplate: [{ name: 'Standard' }],
+      escalationOn: [
+        { days: 1, target: 'HR' },
+        { days: 3, target: 'HR' },
+      ],
+      otherRules: [{ n: 0 }, { n: 1 }, { n: 2 }, { n: 5 }],
+      candidateRules: [{ n: 0 }, { n: 1 }, { n: 2 }, { n: 5 }],
+    };
+    for (const k of NEW_KEYS) {
+      for (const bag of args[k] ?? [{}]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const out = (t as any)(k, bag) as string;
+        expect(typeof out, `${loc} · ${k} did not format`).toBe('string');
+        expect(out.trim().length, `${loc} · ${k} formatted to nothing`).toBeGreaterThan(0);
+        expect(out, `${loc} · ${k} left a placeholder unformatted`).not.toMatch(/\{[a-z]+,\s*plural/i);
+      }
+    }
+  });
+
+  it('the empty state claims ONLY what the two reads can support (AGENTS 28)', async () => {
+    // ⚠️ THE STRING THIS REPLACED SAID: "Every active approval rule is built from a template, so
+    // everything that routes a request is shown above." On a fully-converted tenant — which production
+    // is — that sentence was the ONLY thing the restoration ever rendered, and its second clause told an
+    // administrator nothing was hidden at the exact moment the most-hidden thing was hidden. An absent
+    // box asserts nothing; a sentence asserting completeness that is false is worse than the gap it
+    // fills. The replacement states the predicate of the two reads and stops there.
+    for (const loc of LOCALES) {
+      const messages = (await import(`../messages/${loc}.json`)).default as Record<string, unknown>;
+      const ns = (messages.admin as Record<string, Record<string, string>>).leaveConfigApprovalChains;
+      expect(
+        /everything that routes|semua yang menghalakan|已全部显示|அனைத்தும் மேலே|ทุกสิ่งที่กำหนดเส้นทาง|tất cả những gì định tuyến/.test(
+          ns.scopesEmpty,
+        ),
+        `${loc}.scopesEmpty still claims that everything routing a request is shown`,
+      ).toBe(false);
+    }
+    // …and it names the three columns whose absence it is actually reporting, in English at least.
+    const en = (await import('../messages/en.json')).default as Record<string, unknown>;
+    const ns = (en.admin as Record<string, Record<string, string>>).leaveConfigApprovalChains;
+    for (const word of ['business unit', 'department', 'position']) {
+      expect(ns.scopesEmpty.toLowerCase(), `en.scopesEmpty does not mention ${word}`).toContain(word);
+    }
   });
 
   it('reuses the existing approval vocabulary rather than duplicating it in a new namespace', async () => {
