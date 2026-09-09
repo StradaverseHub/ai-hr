@@ -232,6 +232,24 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     expect(PAGE.includes("t('fileAttendanceRequest')")).toBe(true);
   });
 
+  it('keeps every guided-tour anchor the /me walkthrough targets (r259)', () => {
+    // lib/module-tours.json drives the My Profile walkthrough by CSS selector. A rebuilt page that drops
+    // an anchor does not error and does not fail to render — the tour simply has nothing to spotlight and
+    // the step is silently skipped, which is invisible to types, to a 200 and to every other test here.
+    // Four of the five moved card in this round, so this is the case that proves they moved WITH it.
+    const tours = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../lib/module-tours.json'), 'utf8')) as {
+      me: { steps: { target: string | null; route: string }[] };
+    };
+    const onThisPage = tours.me.steps.filter((st) => st.route === '/me' && st.target);
+    expect(onThisPage.length, 'the /me walkthrough has steps').toBeGreaterThan(3);
+    for (const st of onThisPage) {
+      const attr = st.target!.replace(/^\[|\]$/g, '').replace(/"/g, '"');
+      expect(PAGE.includes(attr), `the /me walkthrough targets ${st.target} and the page no longer has it`).toBe(
+        true,
+      );
+    }
+  });
+
   it('keeps the geofenced punch on /me (311ad7ba) — only the request forms travelled', () => {
     // /me is one of only two places a punch can be made. A relocation that took the clock control with the
     // forms would remove that, quietly, on a change nobody read as touching clocking.

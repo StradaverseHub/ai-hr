@@ -224,6 +224,19 @@ describe('r259 — the field-visibility list is a deliverable, and it is kept ho
     }
   });
 
+  it('and names each Personnel-shaped card by the words that are actually on screen', () => {
+    // The document is what the reporter reads. A card renamed on the Personnel side renames it here too —
+    // that is the whole design — and the document would then describe a screen that no longer exists.
+    // When this fails, update the table under "The shape" and re-show the document; do not relax the case.
+    const enDetail = CATALOGS.en.people as Record<string, unknown>;
+    const missing: string[] = [];
+    for (const key of Object.values(ME_SECTION_TITLE_KEY).flat()) {
+      const title = leaf(leaf(enDetail, 'detail'), key);
+      if (typeof title === 'string' && !DOC.includes(title)) missing.push(`${key} = "${title}"`);
+    }
+    expect(missing, `cards on screen but not named in the document: ${missing.join(', ')}`).toEqual([]);
+  });
+
   it('every withheld field names a tab the screen has (or all of them)', () => {
     const valid = new Set<string>([...ME_TABS, 'all']);
     for (const f of ME_HIDDEN_FIELDS) {

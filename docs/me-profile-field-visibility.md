@@ -24,12 +24,17 @@ record an administrator sees:
 
 | Tab | The card(s) on it |
 | --- | --- |
-| **Profile** | Personal Details · Contact & Address · Emergency Contact |
+| **Profile** | Personal details · Contact & address · Emergency contact |
 | **Employment** | Employment Information · Direct Superior · (other current positions, if any) |
-| **Bank & Statutory** | Bank Information · Statutory (Malaysia) · Others Statutory · Request a change |
-| **Payroll** | Basic Salary · My Payslips · Personal Tax Relief (TP1) · My Loans |
-| **Family** | Family & Dependants |
-| **Documents** | Annual Tax Statement (EA) · Review Outcome · Resignation |
+| **Bank & Statutory** | Bank Information · Statutory (Malaysia) · Others Statutory · Bank, tax & personal (request a change) |
+| **Payroll** | Basic Salary · My payslips · Personal tax relief (TP1) · My loans |
+| **Family** | Family & Dependents Information |
+| **Documents** | Tax statement (EA) · Review outcome · Resignation |
+
+The first card on each of the first five tabs carries the **same name HR sees**, letter for letter, because
+it is the same catalogue entry. The rest are the employee's own lists — payslips, tax relief, loans, EA
+statements, the resignation form — which have no Personnel counterpart at all, so there is no second name
+for them to drift from.
 
 The tab names are not copies of the Personnel screen's words — they are the **same catalogue entries**,
 read from the same place. Rename a tab on the Personnel side and it renames here. That is what stops the

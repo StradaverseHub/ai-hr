@@ -60,23 +60,10 @@ export function ReadField({
  * reads across the screen instead of being scrolled past". Four columns matches the Personnel cards'
  * `sm:grid-cols-4`, so a section that reads as one band there reads as one band here.
  */
-export function ReadCard({
-  title,
-  count,
-  intro,
-  children,
-  id,
-}: {
-  title: string;
-  count?: number;
-  intro?: string;
-  children: ReactNode;
-  id?: string;
-}) {
+export function ReadCard({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
     <Card id={id}>
-      <SectionHeader title={title} count={count} />
-      {intro && <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{intro}</p>}
+      <SectionHeader title={title} />
       <div className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
     </Card>
   );

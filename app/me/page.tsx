@@ -7,7 +7,12 @@ import { listLoansForEmployment } from '@/core/loans';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
 import { isChildReliefEligible, childAgeYears } from '@/core/dependents';
-import { serviceYearsMonthsDaysAt } from '@/core/leave';
+// ADR-0080 D9/D11 — through the leave pack's FACADE, never core/leave directly. The Personnel screen
+// imports the same function from core/ as audited kernel-contract debt (test/pack-drift-allowlist.json);
+// that list only ever shrinks, so a new consumer joins the facade rather than the debt. Same function,
+// same arithmetic — which is the point: a service figure on My Profile and the same figure on the
+// Personnel record must come from one piece of calendar math.
+import { serviceYearsMonthsDaysAt } from '@/packs/leave/service';
 import { MeReviewCard } from './review-card';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceClockButton, LocationNotice } from '@/components/attendance-clock-button';
