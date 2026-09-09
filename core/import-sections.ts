@@ -65,6 +65,10 @@ import { primaryEmergencyContactSql } from './emergency-contacts';
 import { addDependent, DEPENDENT_GENDERS, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode } from '../lib/employee-code';
+// The reporting-line edge below opens "today", and today is a WALL-CLOCK question: this product
+// runs at UTC+8, so a UTC date names yesterday between 00:00 and 08:00 MYT (guarded by
+// test/today-in-myt-drift.test.ts, which is what caught this).
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { IMPORT_RUN_ERROR_CAP, type ImportRecord, type ImportRunError } from './import';
 import {
   classifyForeignColumns,
@@ -1120,7 +1124,7 @@ export async function commitSectionImport(
           lineType: 'administrative',
           // The edge opens today, not on the hire date: this is a CHANGE of manager on somebody who is
           // already employed, and backdating it to their joining date would rewrite history.
-          validFrom: new Date().toISOString().slice(0, 10),
+          validFrom: todayInKualaLumpur(),
         });
       }
       step = 'dependent';
