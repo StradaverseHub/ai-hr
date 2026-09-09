@@ -4573,16 +4573,23 @@ export function myEmployment(ctx: SessionContext) {
  * what /me's profile tab already depends on. Returns null when the principal is linked to no person at
  * all (a true platform login), which is the one case with genuinely nothing to show.
  *
- * Costs a query ONLY on that fallback path: `ctx.personId` null short-circuits before opening the
- * transaction body, and an employed viewer never reaches this function at all (see lib/viewer.ts).
+ * Costs NOTHING on the no-person path, and that is why the guard is OUTSIDE `withTenant` rather than
+ * the first line inside it. `withTenant` opens a `db.transaction` and issues four `select set_config(...)`
+ * statements BEFORE the callback body runs (db/client.ts), so a guard inside the callback still bought a
+ * BEGIN + 4 statements + COMMIT for a principal there was never anything to look up for — on every
+ * authenticated page render. Returning before the call is what actually makes it free. (An employed
+ * viewer never reaches this function at all; see lib/viewer.ts.)
  */
-export function myPersonName(ctx: SessionContext) {
+export async function myPersonName(ctx: SessionContext) {
+  // Bound to a const so the narrowing survives into the callback — TS re-widens `ctx.personId` inside a
+  // closure, and the point of this guard is that the query below can only run with a real id.
+  const personId = ctx.personId;
+  if (!personId) return null;
   return withTenant(ctx, async (tx) => {
-    if (!ctx.personId) return null;
     const [row] = await tx
       .select({ name: person.fullName })
       .from(person)
-      .where(eq(person.id, ctx.personId))
+      .where(eq(person.id, personId))
       .limit(1);
     return row?.name ?? null;
   });

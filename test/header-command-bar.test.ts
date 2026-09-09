@@ -29,9 +29,18 @@ describe('top-bar centred search (app/layout.tsx + components/command-bar.tsx)',
     const header = layoutSrc.slice(layoutSrc.indexOf('<header'), layoutSrc.indexOf('</header>'));
     // Mobile: auto centre track (icon-only trigger); side tracks minmax(0,1fr) so they can shrink.
     expect(header).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
-    // sm+: a real minmax(0,28rem) centre track — a bare `auto` track would size to content and the
-    // w-full trigger would never widen, silently defeating the feature.
-    expect(header).toContain('sm:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]');
+    // sm+: a real BOUNDED centre track — a bare `auto` track would size to content and the w-full
+    // trigger would never widen, silently defeating the feature.
+    //
+    // r256 made the max a two-step: the centre's ceiling is taken straight off BOTH side tracks, and at
+    // 28rem everywhere the account corner's name and Employee ID measured 0px at 1280 and 1440. It is
+    // 20rem below 2xl and 28rem from 2xl up. So what is pinned here is the PROPERTY this test exists
+    // for — bounded, not `auto`, and wide enough to be a real track — while the exact ceilings, which
+    // are a measured budget, are pinned by test/topbar-overlap-guard.test.ts.
+    const centre = header.match(/sm:grid-cols-\[minmax\(0,1fr\)_minmax\(0,(\d+)rem\)_minmax\(0,1fr\)\]/);
+    expect(centre, 'sm+ must keep a bounded minmax centre track').not.toBeNull();
+    expect(Number(centre![1])).toBeGreaterThanOrEqual(18);
+    expect(header).toContain('2xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]');
   });
 
   it("trigger carries aria-label={t('placeholder')} (WCAG 2.5.3 label-in-name)", () => {

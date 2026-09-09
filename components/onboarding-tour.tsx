@@ -5,11 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
 import { completeOnboardingAction } from '@/app/onboarding-actions';
-import type { TourStep } from '@/lib/onboarding-tour';
+import { START_TOUR_EVENT, type TourStep } from '@/lib/onboarding-tour';
 import { btnGhost, btnPrimary } from '@/components/ui';
-
-/** Custom event other components dispatch to (re)start a tour: detail.tourId selects which one. */
-export const START_TOUR_EVENT = 'aihr:start-tour';
 
 const PAD = 8; // spotlight padding around the target
 const BUBBLE_W = 320;

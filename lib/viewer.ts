@@ -58,8 +58,10 @@ export type ViewerIdentity = {
  *   3. `employed: false` with NO name — `session.personId` is null, a platform login attached to no
  *      person. There is genuinely nothing to show, so the menu renders a localized "Platform account".
  *
- * The extra person read happens ONLY in states 2 and 3, i.e. never for an ordinary employee, and it
- * short-circuits without a query when there is no `personId` at all.
+ * The extra person read happens ONLY in states 2 and 3, i.e. never for an ordinary employee, and with no
+ * `personId` at all it returns before `withTenant` is even called — no transaction, no `set_config`
+ * round-trip. (It used to short-circuit INSIDE the transaction callback, which is not the same thing and
+ * cost a BEGIN + four statements + COMMIT per render for a login there was nothing to look up for.)
  */
 export async function viewerIdentity(s: SessionContext): Promise<ViewerIdentity> {
   const me = await viewerEmployment(s);

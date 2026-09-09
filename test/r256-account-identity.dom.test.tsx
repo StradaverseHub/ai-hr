@@ -14,10 +14,12 @@
  * build` and a 200 response. All six locales are swept below; the structural half (every en key present
  * in every locale) stays with test/i18n-coverage.test.ts, and neither replaces reading a dev-server log.
  *
- * Scope note (inherited from client-pager.dom.test.tsx): jsdom applies no CSS and computes no layout, so
- * this catches rendering and interaction logic, not a visual regression. The responsive rule — the name
- * gives way below md, the avatar and the Employee ID stay — is a class on an element that is present in
- * the DOM either way, so it is asserted as a class, which is what it is.
+ * ⚠️ SCOPE NOTE, AND r256 PROVED IT IS NOT A FORMALITY. jsdom applies no CSS and computes no layout, so
+ * this file catches rendering and interaction logic, not a visual regression — the responsive rule is a
+ * class on an element that is in the DOM either way, so it is asserted as a class, which is what it is.
+ * Everything below was green while the name and the Employee ID rendered at ZERO PIXELS at 1280 and
+ * 1440. What a person can actually SEE is measured in real Chromium by
+ * test/topbar-identity-width.browser.test.tsx; this file and that one are not substitutes.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
@@ -58,6 +60,18 @@ const trigger = (container: HTMLElement): HTMLElement =>
   container.querySelector<HTMLElement>('button[aria-haspopup="menu"]')!;
 
 /**
+ * The LEAF span carrying exactly this text. `find(s => s.textContent === text)` is not enough: when a
+ * viewer has no Employee ID the stacked column's own textContent is the name too, and the column comes
+ * first in document order — so a class assertion would read the wrapper's classes and pass whatever the
+ * name span says. (That is not hypothetical: it made the first draft of the two narrow-window tests
+ * below vacuous.)
+ */
+const leafWithText = (root: HTMLElement, text: string): HTMLElement =>
+  [...root.querySelectorAll<HTMLElement>('span')].find(
+    (s) => s.textContent === text && s.children.length === 0,
+  )!;
+
+/**
  * Elements that render NOTHING: no text, no element children, not decorative. A blank <span> where a name
  * or a code should be is exactly what the plan forbids for an account with no employment, and it is
  * invisible to a text assertion — this is what catches it.
@@ -89,12 +103,28 @@ describe('fbf6abd0 — the corner says who is signed in', () => {
   it('keeps the Employee ID (and the avatar) when the narrow-window rule drops the name', () => {
     const { container } = wrap(<UserMenu name="Nurul Aisyah binti Karim" employeeCode="EMP-2201" employed />);
     const t = trigger(container);
-    const name = [...t.querySelectorAll('span')].find((s) => s.textContent === 'Nurul Aisyah binti Karim')!;
-    const code = [...t.querySelectorAll('span')].find((s) => s.textContent === 'EMP-2201')!;
+    const name = leafWithText(t, 'Nurul Aisyah binti Karim');
+    const code = leafWithText(t, 'EMP-2201');
     // The name is the half that gives way; the code carries no `hidden` class at any breakpoint.
     expect(name.className).toContain('hidden');
     expect(name.className).toContain('md:block');
     expect(code.className).not.toContain('hidden');
+  });
+
+  it('keeps the NAME below md when there is no Employee ID to take its place', () => {
+    // r256: the name used to be `hidden md:block` unconditionally and the whole column `hidden md:flex`
+    // when there was no code — so on a narrow window an account with no Employee ID (a leaver, an
+    // administrator, an employment whose code is null) lost EVERY identifying string and showed two
+    // initials. One line always survives: the code when there is one, otherwise the name.
+    const { container } = wrap(<UserMenu name="HR Admin" employeeCode={null} employed={false} />);
+    expect(leafWithText(trigger(container), 'HR Admin').className).not.toContain('hidden');
+  });
+
+  it('gives a login with no person at all its label at every width, not a bare glyph', () => {
+    // Case 4 has no initials to fall back on, so hiding the label below md left a corner that identified
+    // nobody. The localized label is the only identifying string that exists here.
+    const { container } = wrap(<UserMenu name={null} employeeCode={null} employed={false} />);
+    expect(leafWithText(trigger(container), 'Platform account').className).not.toContain('hidden');
   });
 
   it('the menu repeats the pair, links to the viewer’s own profile, and holds Log out', async () => {
@@ -112,6 +142,9 @@ describe('fbf6abd0 — the corner says who is signed in', () => {
     );
     // Log out MOVED here from beside the theme toggle — it is one click further, never gone.
     expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
+    // So did the tour launcher (r256): the right cluster had no room left for both a help icon and a
+    // name, and measurement said the name was the one being squeezed to zero.
+    expect(within(menu).getByRole('menuitem', { name: 'Take a tour' })).toBeInTheDocument();
     expect(blankElements(container)).toEqual([]);
   });
 
@@ -141,8 +174,13 @@ describe('fbf6abd0 — the corner says who is signed in', () => {
     const menu = screen.getByRole('menu');
     expect(menu).toHaveTextContent('HR Admin');
     expect(menu).toHaveTextContent('No employee record');
-    // No employment, so /me has nothing to show them.
-    expect(within(menu).queryByRole('menuitem', { name: 'View my profile' })).toBeNull();
+    // r256: the profile link is NOT withheld from them. It was, on the reasoning that /me would only say
+    // "not linked" — but the left rail offers the same /me to the same person, so gating it here made two
+    // surfaces disagree, and it was this persona the corner withheld it from.
+    expect(within(menu).getByRole('menuitem', { name: 'View my profile' })).toHaveAttribute(
+      'href',
+      PROFILE_HREF,
+    );
     expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
     expect(blankElements(container)).toEqual([]);
   });
@@ -158,8 +196,8 @@ describe('fbf6abd0 — the corner says who is signed in', () => {
     const menu = screen.getByRole('menu');
     expect(menu).toHaveTextContent('Platform account');
     expect(menu).toHaveTextContent('No employee record');
-    // /me would only tell them they are not linked to an employee record, which the menu just said.
-    expect(within(menu).queryByRole('menuitem', { name: 'View my profile' })).toBeNull();
+    // Same route the left rail offers this same login, and /me explains the unlinked case in words.
+    expect(within(menu).getByRole('menuitem', { name: 'View my profile' })).toBeInTheDocument();
     // Log out is the one thing such an account must still be able to do.
     expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
     expect(blankElements(container)).toEqual([]);
@@ -185,7 +223,7 @@ describe('fbf6abd0 — the account corner is translated in all six locales', () 
       expect(topbar.signedInAs).not.toBe('Signed in as');
       expect(topbar.noEmployeeRecord).not.toBe('No employee record');
     }
-    // The employed case first (the profile link only exists here), then the fallback.
+    // The employed case first, then the fallback (which now carries the profile link too).
     const { container, unmount } = wrap(
       <UserMenu name="Nurul Aisyah binti Karim" employeeCode="EMP-2201" employed />,
       locale,
@@ -203,5 +241,9 @@ describe('fbf6abd0 — the account corner is translated in all six locales', () 
     expect(trigger(fallback.container)).toHaveTextContent(topbar.platformAccount);
     await userEvent.click(trigger(fallback.container));
     expect(screen.getByRole('menu')).toHaveTextContent(topbar.noEmployeeRecord);
+    // "Take a tour" moved into this menu in r256 and is read from the onboarding catalog, not topbar —
+    // a locale missing that key paints MISSING_MESSAGE in the account menu on every screen.
+    const launch = (messages as { onboarding: Record<string, string> }).onboarding.launch;
+    expect(screen.getByRole('menu')).toHaveTextContent(launch);
   });
 });

@@ -21,6 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
+import { myPersonName } from '../core/read';
 import { viewerIdentity } from '../lib/viewer';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -117,6 +118,25 @@ describe('fbf6abd0 — the topbar identity is read from the viewer’s EMPLOYMEN
       employeeCode: null,
       employed: false,
     });
+  });
+
+  it('costs NOTHING for a principal with no person — it never opens the transaction', async () => {
+    // r256. The docblocks on core/read.ts and lib/viewer.ts claim the no-person path short-circuits
+    // "without a query". It did not: the guard was the FIRST LINE INSIDE the withTenant callback, and
+    // withTenant opens a db.transaction and issues four `select set_config(...)` statements before the
+    // callback body runs (db/client.ts) — so a platform login paid a BEGIN + 4 statements + COMMIT on
+    // every authenticated page render, for a lookup there was nothing to look up.
+    //
+    // THE PROBE, and why it discriminates the two placements exactly: withTenant REFUSES a context with
+    // no tenantId, loudly. A context that is both person-less and tenant-less therefore resolves to null
+    // if the guard runs first, and throws "withTenant was called without a valid session context" if it
+    // runs inside the callback. Nothing else about this call is meaningful — it is a placement probe.
+    await expect(myPersonName({ tenantId: '', personId: null } as SessionContext)).resolves.toBeNull();
+    // And the same context DOES throw once there is a person to look up, which is the proof that the
+    // probe is discriminating on the guard rather than on some other early return.
+    await expect(myPersonName({ tenantId: '', personId: base.deptA } as SessionContext)).rejects.toThrow(
+      /valid session context/,
+    );
   });
 
   it('a leaver whose login still resolves keeps their name and loses the Employee ID', async () => {

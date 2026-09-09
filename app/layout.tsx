@@ -14,7 +14,6 @@ import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
-import { TourLauncher } from '@/components/tour-launcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
@@ -170,11 +169,30 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
                   centred regardless of what each cluster contains (dev switcher hidden in production,
-                  bell variants, …). The centre track is minmax(0,28rem) on sm+ so the w-full trigger has
-                  a real track to fill — a bare `auto` track would size to content and never widen it. */}
-              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]">
+                  bell variants, …). The centre track is bounded on sm+ so the w-full trigger has a real
+                  track to fill — a bare `auto` track would size to content and never widen it.
+
+                  ⚠️ THE CENTRE TRACK'S MAX IS A BUDGET TAKEN FROM BOTH SIDE TRACKS, and r256 measured
+                  what that cost. The shell is body p-4 + a 232px rail + gap-4, so the header is
+                  `viewport − 280`: 1000px at 1280, 1160px at 1440. A 28rem centre left each side track
+                  243px / 323px, and the account corner's name and Employee ID rendered at ZERO width on
+                  both — the identification this header exists to carry was invisible on exactly the
+                  laptop sizes most people use. 20rem below 2xl hands each side track +64px (the search
+                  TRIGGER is an icon + a placeholder + a ⌘K hint, nowhere near 448px of content); 28rem
+                  returns at 2xl, where there is room for both. Measured in a real engine at 1280 and
+                  1440 by test/topbar-identity-width.browser.test.tsx — change these numbers and that
+                  test re-measures them. */}
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]">
+                {/* Left cluster = WHERE you are working. The CompanySwitcher MOVED here from the right
+                    cluster (r256): this track is a full 1fr — 243px at 1280, 563px at 1920 — carrying
+                    one static group label, while the switcher was being crushed to 27px on the right
+                    (its label gone entirely at 1280) by six other controls. Group name and company
+                    scope are the same question and now sit together; the right cluster is now only
+                    "you". `Demo Group` is shrink-0 so the switcher stays the one compressible child
+                    here, exactly as it was on the right. */}
                 <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground/80">Demo Group</span>
+                  <span className="shrink-0 font-medium text-foreground/80">Demo Group</span>
+                  <CompanySwitcher companies={allowed} selected={scopeIds} />
                   {showDevSwitcher && (
                     <>
                       <span
@@ -198,13 +216,23 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <CommandBar />
                 </div>
                 {/* Right cluster (overlap guard d9b81f8d): min-w-0 lets the 1fr track constrain the
-                    cluster, and every child must stay shrink-capable or fixed-size — the
-                    CompanySwitcher compresses first (min-w-0 + truncate in its component); a
+                    cluster, and every child must stay shrink-capable or fixed-size — the UserMenu is
+                    the one compressible child left (min-w-0 + truncate in its component); a
                     non-shrinkable child re-introduces the leftward spill over the centre search
-                    track that justify-end produces on overflow. Gap tightens and the divider drops
-                    on narrower windows so less-important chrome trims before anything collides. */}
-                <div className="flex min-w-0 items-center justify-end gap-2 xl:gap-2.5">
-                  <CompanySwitcher companies={allowed} selected={scopeIds} />
+                    track that justify-end produces on overflow. The divider drops below md so
+                    less-important chrome trims before anything collides.
+
+                    ⚠️ THIS CLUSTER IS A FIXED BUDGET AND IT IS FULL. Measured at a 1280 viewport: the
+                    track is 307px, the divider + three 36px icon buttons + four 8px gaps take 141px,
+                    and the account trigger gets the remaining 166 — against the 161 it needs to show
+                    "Aisyah Rahman" over "EMP-0001". FIVE PIXELS. Two controls had to leave in r256 to
+                    buy even that (CompanySwitcher to the left cluster, TourLauncher into the account
+                    menu) and the centre track gave back 64px. ADDING A CONTROL HERE TAKES THE NAME
+                    AWAY AGAIN, and does it SILENTLY: the cluster does not overflow, the name truncates
+                    to nothing. test/topbar-overlap-guard.test.ts pins this child list — it fails on a
+                    new control rather than letting one land unmeasured — and
+                    test/topbar-identity-width.browser.test.tsx re-measures the result at 1280/1440. */}
+                <div className="flex min-w-0 items-center justify-end gap-2 2xl:gap-2.5">
                   <div className="hidden h-5 w-px shrink-0 bg-border md:block" />
                   {/* 3-tab bell for EVERY role (1514d366). The legacy count-only bell is retired — the
                       Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
@@ -225,9 +253,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <span data-tour="theme">
                     <ThemeToggle />
                   </span>
-                  <TourLauncher />
-                  {/* Log out lives INSIDE this menu now (fbf6abd0). It is one extra click, and it is what
-                      keeps the corner from crowding once the name and Employee ID sit beside it. */}
+                  {/* Log out and "Take a tour" live INSIDE this menu now (fbf6abd0, r256). Each is one
+                      extra click, and together they are what buys the corner room to say who you are on
+                      a 1280px laptop. The tour launcher was also the control the cluster was already
+                      squeezing: measured at 20px wide instead of 36, its icon clipped. */}
                   <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} />
                 </div>
               </header>

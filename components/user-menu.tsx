@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ChevronDown, UserRound } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { LogoutButton } from '@/components/logout-button';
+import { TourLauncher } from '@/components/tour-launcher';
 import { cn } from '@/lib/utils';
 
 /**
@@ -14,7 +15,7 @@ import { cn } from '@/lib/utils';
  * The reporter's complaint was that nothing on any screen says which account you are working under, and
  * that it matters most for an HR administrator, who spends the day inside other people's records. So the
  * name and the Employee ID are ALWAYS ON THE PAGE, not only inside the menu: the menu exists to hold the
- * profile link and Log out (which moved here from beside the theme toggle) without crowding the header.
+ * profile link, the tour launcher and Log out (all of which moved here) without crowding the header.
  *
  * ── PROPS ARE ALREADY-RESOLVED VALUES, DELIBERATELY ───────────────────────────────────────────────────
  * `name` / `employeeCode` / `employed` come from `lib/viewer.ts`, i.e. the signed-in person's own
@@ -26,27 +27,53 @@ import { cn } from '@/lib/utils';
  *   1. employed, with an Employee ID → name over the ID. The ordinary case.
  *   2. employed, NO Employee ID → name alone in the corner; the menu says "No Employee ID" rather than
  *      printing an empty line. `employment.employee_code` is nullable, so this is reachable in real data.
- *   3. NOT employed but NAMED → their own name, the menu adds "No employee record", and THE PROFILE LINK
- *      IS HIDDEN (/me would only tell them they are not linked, which the menu already said). This is a
- *      seeded HR administrator who was never hired into a company, and equally a leaver whose login
- *      still resolves — a named human either way, so labelling them "Platform account" would be wrong.
- *      A dev-server render is what surfaced this case; it is not hypothetical.
+ *   3. NOT employed but NAMED → their own name, and the menu adds "No employee record". This is a seeded
+ *      HR administrator who was never hired into a company, and equally a leaver whose login still
+ *      resolves — a named human either way, so labelling them "Platform account" would be wrong. A
+ *      dev-server render is what surfaced this case; it is not hypothetical.
  *   4. NOT employed and NOT named (`name == null`) → a login attached to no person at all. `app_user`
  *      carries neither name nor email, so there is nothing to show but the localized "Platform account"
  *      beside a neutral glyph.
  * In every case the corner renders a real, readable control — never an empty span, and never nothing.
  *
- * ── NARROW WINDOWS ────────────────────────────────────────────────────────────────────────────────────
- * The NAME gives way below `md` and the avatar + Employee ID remain, so the identification never
- * disappears entirely; the full pair is one click away in the menu. With no ID to keep (cases 2-4) the
- * whole text column drops instead of leaving a zero-width flex item behind the header's gap.
+ * ── THE PROFILE LINK IS UNCONDITIONAL, AND THAT IS THE FIX, NOT THE OVERSIGHT ─────────────────────────
+ * It was first gated on `employed`, on the reasoning that /me would only tell an unlinked account it is
+ * not linked. But the LEFT RAIL already offers "My workspace" → /me to every viewer, so gating it here
+ * made two surfaces disagree about the same route for the same person — and the persona this item was
+ * raised for (the seeded HR administrator: a person row, no employment) was exactly the one the corner
+ * withheld it from. /me answers the unlinked case with a written explanation, which is a better
+ * destination than a menu that quietly has one fewer row than the rail promised.
  *
- * ── IT IS A FLEX ITEM OF THE RIGHT CLUSTER (overlap guard d9b81f8d) ───────────────────────────────────
+ * ── NARROW WINDOWS: ONE LINE, NEVER ZERO ──────────────────────────────────────────────────────────────
+ * Below `md` the column keeps exactly ONE line: the Employee ID when there is one (it is the shorter,
+ * more precise identifier and the avatar already carries the initials), otherwise the name — or, in case
+ * 4, the "Platform account" label, which is the only identifying text a login with no person behind it
+ * has. It used to keep NONE for cases 2-4, so an account with no Employee ID showed two initials and an
+ * arrow. The pair is one click away in the menu at every width.
+ *
+ * ⚠️ THAT IS THE RULE; BELOW md THERE IS CURRENTLY NO ROOM FOR IT, and the rule is not a claim that
+ * there is. Measured at 390px: the header's right track is 129px while the bell + language + theme
+ * buttons alone want 124px and the account pill wants 65 more — the cluster is ~65px over capacity
+ * before the identity is given a single pixel, so every text line in it renders at zero width and the
+ * trigger itself is squeezed to 14px. That is a header with no narrow-window design rather than a class
+ * to tweak (the rail is 232px from `sm` up; the search track is 320px at 768), it predates this feature,
+ * and r256 improved it by ~80px by taking two controls out of the cluster without curing it. It needs
+ * its own item. What this rule buys today is that nothing has to change here when that item lands.
+ *
+ * ── IT IS THE ONE COMPRESSIBLE CHILD OF THE RIGHT CLUSTER (overlap guard d9b81f8d) ────────────────────
  * min-w-0 on the wrapper + max-w-full on the trigger + truncating labels: this control compresses
- * instead of spilling leftward over the centre search track. test/topbar-overlap-guard.test.ts pins it.
+ * instead of spilling leftward over the centre search track. That is also why the header had to make
+ * ROOM for it rather than trust the classes — being compressible is what let it compress to nothing.
+ * r256 measured the corner in a real browser and found the name and the Employee ID at ZERO width on
+ * every laptop-class viewport (0px of 87 needed at 1280 and 1440; whole only at 1920), because the
+ * cluster it lives in was already saturated. The fix is the header's, not this file's: the
+ * CompanySwitcher moved to the left cluster and the TourLauncher into this menu, and the centre search
+ * track gave back 64px below 2xl. test/topbar-identity-width.browser.test.tsx re-measures it at 1280
+ * and 1440 in real Chromium with real Tailwind, and test/topbar-overlap-guard.test.ts pins the child
+ * list of the cluster so a new control cannot arrive without a fresh measurement.
  */
 
-/** The signed-in person's own profile screen — the same route the sidebar's "My Profile" row opens. */
+/** The signed-in person's own profile screen — the same route the sidebar's "My workspace" row opens. */
 export const PROFILE_HREF = '/me';
 
 export function UserMenu({
@@ -73,7 +100,7 @@ export function UserMenu({
 
   const named = name != null && name.trim() !== '';
   const displayName = named ? name!.trim() : t('platformAccount');
-  // Only case 1 has a value to keep in the corner on a narrow window.
+  // Only case 1 has an Employee ID to show.
   const code = employed && employeeCode != null && employeeCode.trim() !== '' ? employeeCode.trim() : null;
 
   return (
@@ -96,12 +123,24 @@ export function UserMenu({
             <UserRound className="size-4" aria-hidden="true" />
           </span>
         )}
-        <span className={cn('flex min-w-0 flex-col leading-tight', !code && 'hidden md:flex')}>
-          <span className="hidden max-w-[10rem] truncate text-xs font-semibold text-foreground md:block">
+        <span className="flex min-w-0 flex-col leading-tight">
+          {/* Below md the name yields ONLY when the Employee ID is there to take its place. With no code
+              (cases 2-4) the name — or the "Platform account" label — is the one identifying string that
+              exists, so it stays at every width; hiding it left a login with no employment showing two
+              initials and nothing else. The narrow ceiling is tighter than the wide one for the same
+              reason the whole control is min-w-0: it truncates, it never sets a width floor. */}
+          <span
+            className={cn(
+              'max-w-[7rem] truncate text-xs font-semibold text-foreground md:max-w-[10rem]',
+              code && 'hidden md:block',
+            )}
+          >
             {displayName}
           </span>
           {code && (
-            <span className="max-w-[10rem] truncate text-[11px] font-medium text-muted-foreground">{code}</span>
+            <span className="max-w-[7rem] truncate text-[11px] font-medium text-muted-foreground md:max-w-[10rem]">
+              {code}
+            </span>
           )}
         </span>
         <ChevronDown
@@ -138,16 +177,16 @@ export function UserMenu({
               </div>
             </div>
             <div className="my-1 h-px bg-border" />
-            {employed && (
-              <Link
-                href={PROFILE_HREF}
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                {t('viewProfile')}
-              </Link>
-            )}
+            <Link
+              href={PROFILE_HREF}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              {t('viewProfile')}
+            </Link>
+            {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
+            <TourLauncher variant="menu" onSelect={() => setOpen(false)} />
             <LogoutButton variant="menu" />
           </div>
         </>
