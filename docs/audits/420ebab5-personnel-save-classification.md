@@ -183,3 +183,93 @@ Four findings follow from that table, and they should be settled before any code
   money-affecting action from (b) into (a) is exactly the regression that makes Discard lie, and it
   would be invisible in review. Part two should carry a guard that asserts each of the 22 (b) forms
   still stands on its own, with its own submit button.
+
+---
+
+## What was actually built, and where it stopped (r254 · r255)
+
+**r254** shipped the Profile tab: five (a) cards under one Save, the change summary, Discard, and the
+prompt on every way off the screen. **r255** shipped the other three tabs the table above says can be
+consolidated honestly — Bank & Statutory (4), Attendance (3) and Employment (1) — and left Payroll,
+Family and Qualification alone, deliberately. Twelve of the sixteen (a) forms are now under a tab Save.
+
+**Finding 1 held, and measuring it turned up a live money defect that r255 fixed.** Bank & Statutory was
+NOT the mechanical repeat of Profile it looks like. The Statutory (Malaysia) form carries **no residency
+control at all**, and its writer nonetheless read one — `formData.get('isResident') === 'on'` — so it
+sent `isResident: false` on **every** save, a lone one included. The Income Tax (PCB) card's setter
+re-derives that same column from the `taxResidency` the admin picks, which is why per-card buttons
+usually papered over it: whoever saved the tax card next put the column back.
+
+**An earlier draft of this section called that residual inert. It was wrong, and this is the correction.**
+`taxResidency` is preferred only for computing `flatTaxRate`; `is_resident` is passed to the payroll
+kernel *separately* (`core/payroll.ts` → `resident`), and it decides the outcome precisely when
+`taxResidency` is `'resident'` and `flatTaxRate` is therefore null — `localization/my/payroll.ts` reads
+`flatTaxRate != null ? flatTaxRate : resident === false ? 0.3 : null`, and
+`localization/my/multicycle-worksheet.ts` (the sign-off worksheet) carries the identical pair. Measured
+against the kernel: RM8,000/month with `{resident: true, flatTaxRate: null}` gives PCB **514.20**; the
+same input with `{resident: false}` gives **2,400.00**, byte-identical to the explicit non-resident flat
+path. So an admin who edited only the EPF number, on an employee whose tax residency still said
+`resident`, moved them onto flat 30% PCB with no reliefs.
+
+**The fix is in the writer, not in the ordering.** `applyStatutorySection` now derives the flag from the
+STORED `tax_residency` (the same rule `setTaxProfileMY` syncs it with) instead of reading a control that
+does not exist, so a lone statutory save leaves the residency alone and a row an earlier save had already
+knocked out of step self-heals on the next one. `BANK_STATUTORY_TAB_SECTION_ORDER` stays declared and
+stays pinned by `test/personnel-tab-save-tabs.test.ts` §1 — the statutory writer is still a full-row
+overwrite whose pass-throughs read the row at the moment it runs, so a fixed order is what keeps the
+outcome independent of DOM order — but the order is no longer the only thing standing between an
+EPF-number edit and the wrong tax basis. §1 now also pins the lone-save case directly.
+
+**Finding 4 generalised: the fence is the MARKER, not the subtree.** The Employment tab has a bucket (b)
+form — the audited company transfer — rendered INSIDE the same card as the (a) Employment Dates form,
+so "bucket (b) is rendered outside the scope" stopped being the whole safety argument. Nothing reads,
+marks, packs or resets anything but a `[data-save-section]` subtree, which is what actually holds; the
+r254 guard that asked "is this form inside the scope?" was corrected to ask "does it carry the marker?",
+because under the old test a company transfer threw the reader's unsaved dates away with no prompt.
+
+**Attendance cost a reordering, and it is the one visible change this round makes to a tab.** Its three
+(a) cards were not contiguous — Work Location and Shift Arrangement (both (b)) sat between Holiday
+Calendar and Clocking & Geofencing. A tab-wide Save must enclose a contiguous run, so the two (b) cards
+moved OUT of it. They moved **below** the scope, and the tab now reads Holiday Calendar → Clocking &
+Geofencing → Work Location → Shift Arrangement.
+
+The first attempt moved them *above* instead, which put the Save/Discard pair at the foot of the tab but
+pushed Holiday Calendar down to third and so reversed item 52a30630's "Holiday Calendar pinned first" —
+a reporter-specified decision, reversed as a side effect of a save-button change, with no guard to catch
+it. The pinned reading order wins.
+`test/personnel-holiday-grade-relocation.test.ts` (5) now asserts that this tab still opens with the
+Holiday Calendar card, so the next round cannot repeat the swap silently.
+
+**Which forces the general rule: the Save bar names the cards it owns.** Only Bank & Statutory has a
+scope covering its whole tab. On Profile, Attendance and Employment the contiguous (a) run has to lead
+the tab, so the sticky bar renders above cards it does **not** cover — the emergency-contact register,
+Work Location and Shift Arrangement, the Direct Superior line and the delegations. A bar reading only
+"Save Changes" there is a control that appears to do something it does not: edit the Direct Superior,
+press the Save above it, and it answers "No unsaved changes". `TabSaveScope` therefore takes a required
+`covers` prop and prints those card names on the bar ("This Save covers: …"), which is also what makes it
+safe for a scope not to be last on its tab. Requiring the prop means a new consolidated tab cannot be
+wired up without answering the question.
+
+**Finding 3 stands: Payroll still keeps its per-card saves,** and the reason is now sharper than
+"until Profile has proved the pattern". Its three (a) forms are not contiguous either — Payment Method
+is rendered INSIDE the Basic Salary card, Payroll Policy is second, and TP3 is sixth, with Pay Items,
+CP38 and Leave Encashment between them. Consolidating the tab therefore means BOTH a reordering that
+drags TP3 up past three money-affecting registers AND a Save/Discard pair sitting under the card whose
+own headline control records an effective-dated salary revision. The marker fence would keep Discard
+away from that revision, but the CONTROL WOULD STILL READ as covering it, which is the fault this
+document exists to prevent. That trade is the reporter's to make, not a builder's.
+
+**Payroll is therefore still saved card by card, and the reporter should be told that in those words** —
+the board plan said every plain field card would lose its button, and on Payroll three have not: Payment
+Method (inside the Basic Salary card), Payroll Policy and TP3. The `covers` label added at the end of
+r255 removes half the objection (a bar can now name the three cards it owns instead of implying it owns
+the tab), but not the other half: the cards are still not contiguous, so consolidating still requires
+moving TP3 up past Pay Items, CP38 and Leave Encashment. If the reporter wants it, the shape is:
+compensation → policy → TP3 → pay items → CP38 → encashment → zakat, with the scope on the first three
+and the bar naming them.
+
+**Findings 2 is unchanged and is owed to the reporter in words: Family and Qualification cannot be
+consolidated at all.** Every form on both is a child record — a dependant, a qualification — so a
+tab-wide "Save Changes" there would have nothing to save and a tab-wide "Discard Changes" would cover
+nothing. The original request names Family explicitly; the honest answer is that those two tabs already
+work the way the rest of the screen is being moved towards, one deliberate act at a time.

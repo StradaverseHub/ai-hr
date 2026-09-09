@@ -8588,6 +8588,7 @@
       "saveFailed": "Không thể lưu các thay đổi của bạn",
       "noChanges": "Không có thay đổi chưa lưu",
       "changedCount": "Thay đổi chưa lưu: {count}",
+      "covers": "Lưu này áp dụng cho: {cards}",
       "reviewChanges": "Xem lại thay đổi",
       "hideChanges": "Ẩn thay đổi",
       "colField": "Trường",

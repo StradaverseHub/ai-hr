@@ -10,8 +10,6 @@ import { BankAccountFields } from '@/components/bank-account-fields';
 // components/epf-election.tsx.
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
-const btnPrimary =
-  'inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -32,8 +30,11 @@ export type BankInfoDefaults = {
 };
 
 /**
- * Bank Information card (item ef720d3a). Dedicated, visually-separated card with its OWN save (the server
- * action `action`, a partial update of only the bank + custom-holder columns — setBankAction). The bank name
+ * Bank Information card (item ef720d3a). Dedicated, visually-separated card whose writer is a PARTIAL
+ * update of only the bank + custom-holder columns (setBankAction) — since 420ebab5 part two the card no
+ * longer has a Save button of its own and the Bank & Statutory tab's one "Save Changes" covers it, but the
+ * partial-write property is unchanged and is what keeps a bank edit from touching the statutory row. The
+ * bank name
  * is a pick-from-catalog select (no more free text); the two custom-payment-holder switches reveal their
  * value box only when on, and the value is required-when-enabled (client here + server in setBankProfileMY).
  * This is a client island so the reveal/require behaviour is interactive; the page renders it as JSX only,
@@ -63,7 +64,14 @@ export function BankInfoCard({
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold text-foreground">{t('bankCardTitle')}</h3>
       </div>
-      <form action={action} className="flex flex-col gap-6 p-4">
+      {/* 420ebab5 PART TWO (r255) — the card's own Save button is GONE and the Bank & Statutory tab's one
+          "Save Changes" covers it. `data-save-section` is how components/tab-save-scope.tsx finds this
+          form's payload; `action={…}` STAYS because this is the only place `setBankAction` is wired to a
+          card, and because a `<form>` with no action at all would POST to the current URL. It is NOT a
+          no-JavaScript fallback: implicit submission needs a form with no submit button AND exactly one
+          field that blocks it, and this card carries several. The consolidated action reaches the same
+          pack setter through the same `applyBankSection` helper — it does not re-implement it. */}
+      <form action={action} data-save-section="bank" className="flex flex-col gap-6 p-4">
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
 
@@ -141,9 +149,6 @@ export function BankInfoCard({
           </div>
         </fieldset>
 
-        <div className="flex items-end justify-end">
-          <button className={btnPrimary}>{t('bankSave')}</button>
-        </div>
       </form>
     </div>
   );

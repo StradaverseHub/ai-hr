@@ -70,6 +70,9 @@ import {
   setPersonPhotoAction,
   // 420ebab5 part two — the Profile tab's consolidated Save. Calls the SAME per-section services, in order.
   saveProfileTabAction,
+  saveBankStatutoryTabAction,
+  saveAttendanceTabAction,
+  saveJobTabAction,
   removePersonPhotoAction,
   setStatutoryAction,
   setTp3Action,
@@ -874,6 +877,27 @@ export default async function EmployeePage({
     </Card>
   );
 
+  // 420ebab5 part two (r255) — WHAT EACH TAB'S ONE SAVE ACTUALLY OWNS, printed on the bar itself.
+  //
+  // A tab Save can only enclose a CONTIGUOUS run of cards, and on three of the four tabs that run cannot
+  // be the whole tab: Profile keeps the emergency-contact register below it, Attendance keeps Work
+  // Location and Shift Arrangement, Employment keeps the Direct Superior line and the delegations. So the
+  // sticky Save/Discard bar renders ABOVE cards it does not cover, and a bar that said only "Save Changes"
+  // there would be a control that appears to do something it does not — press it after changing the Direct
+  // Superior and it answers "No unsaved changes". TabSaveScope requires this prop, so a new consolidated
+  // tab cannot be added without answering the question.
+  //
+  // Declared HERE rather than inline in the panels because several source-shape guards slice a tab panel
+  // from its key to the first `),` (test/statutory-my-layout.test.ts, test/personnel-bank-statutory-tab.ts,
+  // test/bank-custom-holder.test.ts) — an inline `covers={[t('x'), t('y')]}` puts a `),` inside the panel
+  // and truncates every one of those slices.
+  const tabSaveCovers = {
+    profile: [t('personalDetails'), t('contactAddressTitle')],
+    bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
+    attendance: [t('holidayCalendarCardTitle'), tc('cardTitle')],
+    job: [t('employmentInfo.title')],
+  };
+
   const profilePanel = admin ? (
     <>
       {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
@@ -888,7 +912,12 @@ export default async function EmployeePage({
           alone. The action stays because it is still where each writer is wired to its card and because a
           <form> with no action would POST to the current URL. What each card loses is its own Save button,
           and it gains data-save-section so the scope can pack it. */}
-      <TabSaveScope tabKey="profile" employmentId={emp.employmentId} saveAction={saveProfileTabAction}>
+      <TabSaveScope
+        tabKey="profile"
+        employmentId={emp.employmentId}
+        saveAction={saveProfileTabAction}
+        covers={tabSaveCovers.profile}
+      >
       {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
           switch between IC (Malaysian) and Passport (non-Malaysian) fields instantly. The Card shell + all the
           server-action forms stay Server Components; only the nationality picker + identity block are client. */}
@@ -2258,7 +2287,12 @@ export default async function EmployeePage({
   const clockingCard = admin && !emp.terminatedOn ? (
     <Card id="section-clocking-location">
       <SectionHeader title={tc('cardTitle')} />
-          <form action={setEmployeeClockingLocationsAction} className="space-y-3 p-4">
+          {/* 420ebab5 part two (r255) — both forms in this card lose their Save buttons to the Attendance
+              tab's one "Save Changes", and each becomes its own section: they write two different
+              services (a set-based replace of the assigned sites, and the geofencing toggle + radius
+              override), so folding them into one payload would be exactly the blanket write the
+              consolidated save is not. An untouched one is not in `sections` and is never called. */}
+          <form action={setEmployeeClockingLocationsAction} data-save-section="clocking" className="space-y-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <Field label={tc('assignedLocations')}>
               <select
@@ -2298,9 +2332,8 @@ export default async function EmployeePage({
             ) : assignedClockingLocationIds.size === 0 && emp.locationId ? (
               <p className="text-xs text-muted-foreground">{tc('noAssignedSites')}</p>
             ) : null}
-            <button className={btnPrimary}>{tc('save')}</button>
           </form>
-          <form action={setGeofencingAction} className="flex flex-wrap items-end gap-3 border-t border-border p-4">
+          <form action={setGeofencingAction} data-save-section="geofencing" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <label className="flex items-center gap-2 pb-2 text-sm text-muted-foreground">
               <input type="checkbox" name="enabled" defaultChecked={emp.geofencingEnabled} />
@@ -2322,7 +2355,6 @@ export default async function EmployeePage({
                 className={`${inputCls} w-36`}
               />
             </Field>
-            <button className={btnPrimary}>{tc('save')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tc('hint')}</p>
     </Card>
@@ -2807,7 +2839,15 @@ export default async function EmployeePage({
   const statutoryCard = admin ? (
     <Card>
       <SectionHeader title={t('statutoryMalaysia')} />
-      <form action={setStatutoryAction} className="flex flex-col gap-6 p-4">
+      {/* 420ebab5 part two (r255) — the card's own Save button is gone; the Bank & Statutory tab's one
+          "Save Changes" covers it. This form goes FIRST in a consolidated request
+          (BANK_STATUTORY_TAB_SECTION_ORDER): it is a FULL-ROW overwrite whose pass-throughs read the
+          stored row at the moment it runs, so running it first lets the partial writers (tax, bank,
+          others) land their own values on top of it. It carries NO residency control and no longer
+          writes one either — `applyStatutorySection` derives `isResident` from the stored
+          `tax_residency` the Income Tax (PCB) section owns, because reading a control that is not here
+          wrote `is_resident = false` on every save and charged flat-rate PCB. */}
+      <form action={setStatutoryAction} data-save-section="statutory" className="flex flex-col gap-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <input type="hidden" name="personId" value={emp.personId} />
 
@@ -2935,16 +2975,15 @@ export default async function EmployeePage({
             update of only the four TP3 columns); this statutory form no longer carries them, and its
             full-row overwrite setStatutoryAction passes the stored TP3 + zakat values through unchanged
             so relocating the UI can never wipe them. */}
-        <div className="flex items-end justify-end">
-          <button className={btnPrimary}>{t('saveStatutory')}</button>
-        </div>
       </form>
 
       {/* Item df09f22a — Income Tax (PCB) is a Malaysia statutory payroll item, so the Identification & Tax
           island is nested INSIDE this Statutory (Malaysia) card as an "Income Tax (PCB)" section (visual merge).
-          It keeps its OWN <form action={setTaxAction}> + Save button (embedded mode) rather than folding into the
-          full-row setStatutoryAction form — the two-action design is preserved so one save can't overwrite the
-          other. Rendered as a sibling of the statutory form inside the same Card (no nested forms). */}
+          It keeps its OWN <form action={setTaxAction}> rather than folding into the full-row
+          setStatutoryAction form — the two-action design is preserved so one save can't overwrite the
+          other. Rendered as a sibling of the statutory form inside the same Card (no nested forms).
+          420ebab5 part two (r255) — what it no longer keeps is a Save BUTTON: the tab's one "Save Changes"
+          writes both forms, statutory first and tax second, for the residency reason on that form above. */}
       {/* 7ee14bbc — `taxNumberSharedWith` (computed above) is the names of the OTHER people in this
           company already filed under this employee's income tax reference number. Shown beside the
           field itself so a duplicate is caught where it is typed rather than on the CP39 at filing
@@ -3019,7 +3058,11 @@ export default async function EmployeePage({
   const othersStatutoryCard = admin ? (
     <Card>
       <SectionHeader title={t('othersStatutoryTitle')} />
-      <form action={setOthersStatutoryAction} className="flex flex-col gap-3 p-4">
+      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the tab's one
+          "Save Changes" writes it last, after statutory / tax / bank. Nothing else about the tri-state
+          changes: the select still posts ''/yes/no and `applyOthersStatutorySection` still maps all three
+          (a collapse back to a checkbox was feedback 57840a6e's defect). */}
+      <form action={setOthersStatutoryAction} data-save-section="others" className="flex flex-col gap-3 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <input type="hidden" name="personId" value={emp.personId} />
         <p className="text-xs text-muted-foreground">{t('othersStatutoryHint')}</p>
@@ -3055,9 +3098,6 @@ export default async function EmployeePage({
         {statutory?.subjectToHrdf !== true && companyHrdfUnregistered && (
           <p className="text-xs text-muted-foreground">{t('subjectToHrdfCompanyUnregisteredNote')}</p>
         )}
-        <div className="flex items-end justify-end">
-          <button className={btnPrimary}>{t('othersStatutorySave')}</button>
-        </div>
       </form>
     </Card>
   ) : null;
@@ -3952,7 +3992,15 @@ export default async function EmployeePage({
           sole remaining concern here. setEmploymentInfoAction no longer submits the eight org fields, and its
           helper maps an absent field to `undefined` (untouched) rather than null (clear), so saving dates
           cannot disturb the organisation values. */}
-      <form action={setEmploymentInfoAction} className="space-y-6 p-4">
+      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the Employment tab's one
+          "Save Changes" covers it. ABSENT IS NOT BLANK here more sharply than anywhere else on the screen:
+          `setEmploymentInfo` reads a field this form does not carry as "leave as-is". The consolidated
+          payload is namespaced per section, so this form is unpacked back into exactly the fields it
+          posted and the eight flat org columns / two service dates it deliberately dropped stay dropped.
+          The two company-change forms ABOVE, inside this same card, are bucket (b) and (c): they keep
+          their own controls, and submitting either while the tab is dirty raises the Save / Discard /
+          Cancel prompt rather than throwing the pending edits away in a redirect. */}
+      <form action={setEmploymentInfoAction} data-save-section="employment" className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
 
         {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
@@ -4145,9 +4193,6 @@ export default async function EmployeePage({
         </fieldset>
 
         <p className="text-xs text-muted-foreground">{t('employmentInfo.superiorNote')}</p>
-        <div className="flex justify-end">
-          <button className={btnPrimary}>{t('employmentInfo.save')}</button>
-        </div>
       </form>
     </Card>
   ) : null;
@@ -4297,7 +4342,12 @@ export default async function EmployeePage({
   const holidayCalendarCard = admin ? (
     <Card id="section-holiday-calendar">
       <SectionHeader title={t('holidayCalendarCardTitle')} />
-      <form action={setEmploymentHolidayCalendarAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the Attendance tab's one
+          "Save Changes" covers it. Enter is not left dangling: the scope's capture-phase keydown guard
+          turns any Enter inside a marked section into the consolidated save, which matters most for the
+          Geofencing form below, whose radius box is the one field on this tab that can still trigger HTML's
+          implicit submission now that its button has gone. */}
+      <form action={setEmploymentHolidayCalendarAction} data-save-section="holiday" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <Field label={t('holidayCalendar')}>
           <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
@@ -4320,9 +4370,6 @@ export default async function EmployeePage({
             </optgroup>
           </select>
         </Field>
-        <div className="sm:col-span-3 flex justify-end">
-          <button className={btnPrimary}>{t('saveDetails')}</button>
-        </div>
       </form>
     </Card>
   ) : null;
@@ -4450,9 +4497,32 @@ export default async function EmployeePage({
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
     profile: profilePanel,
     family: familyPanel,
+    // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
+    // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
+    // inside the tab's save scope. The Direct Superior card and the Delegations card stay OUTSIDE it: a
+    // reporting line is bitemporal and TAGGED AS A MOVEMENT (it opens a Reporting Line Change row on the
+    // Employment History), and a delegation is a windowed record that is started and ended. Neither is a
+    // value a Discard could put back, so both keep their own buttons — see
+    // docs/audits/420ebab5-personnel-save-classification.md.
+    //
+    // THE SAVE BAR IS THEREFORE NOT AT THE FOOT OF THIS TAB, and it says so. It renders at the end of the
+    // scope, above two cards it does not cover, because a tab Save can only enclose a CONTIGUOUS run and
+    // Employment Information is the card that has to lead this tab. `covers` prints the card names on the
+    // bar so it cannot read as "Save everything below me" — press it after changing the Direct Superior
+    // and the bar answers "No unsaved changes", which is exactly the control-that-lies the classification
+    // exists to prevent unless the bar has already said what it owns.
     job: (
       <>
-        {employmentInfoCard}
+        {admin && (
+          <TabSaveScope
+            tabKey="job"
+            employmentId={emp.employmentId}
+            saveAction={saveJobTabAction}
+            covers={tabSaveCovers.job}
+          >
+            {employmentInfoCard}
+          </TabSaveScope>
+        )}
         {directSuperiorCard}
         {delegationsCard}
       </>
@@ -4475,14 +4545,39 @@ export default async function EmployeePage({
     // The const definitions (setLocationAction / setDefaultShiftAction / setEmployeeClockingLocationsAction
     // + setGeofencingAction) are untouched — only their render location moved, so the full-row-overwrite
     // <form>s and every mounted input stay byte-identical and no server logic or event emission changed.
-    // Order mirrors an attendance setup flow: Work Location → Shift Arrangement → Clocking & Geofencing.
+    // That relocation ordered them as a setup flow (Work Location → Shift Arrangement → Clocking &
+    // Geofencing); item 52a30630 then pinned Holiday Calendar above all three when it moved onto this tab.
+    //
+    // 420ebab5 part two (r255) — THE ORDER MOVED, AND IT MOVED FOR THE FENCE, NOT FOR TASTE. The tab's
+    // three bucket (a) forms are Holiday Calendar and the two in Clocking & Geofencing, and a tab-wide
+    // Save has to enclose a CONTIGUOUS run of cards — but Work Location and Shift Arrangement sat between
+    // them. Those two are bucket (b): each appends a DATED record (a transfer movement event; a shift
+    // period the service refuses to back-insert) rather than overwriting a value, so a Discard could not
+    // put anything back and they keep their own buttons. They therefore move OUT of the run.
+    //
+    // THEY MOVE BELOW IT, NOT ABOVE IT — corrected within r255. Putting them above the scope did put the
+    // Save/Discard pair at the foot of the tab, but it also pushed Holiday Calendar down to third and so
+    // silently reversed item 52a30630's "Holiday Calendar pinned first", a decision the reporter asked
+    // for on a screen they specified. The pinned reading order wins; the bar's honesty is bought instead
+    // by `covers`, which prints on the bar the names of the two cards it owns, so a bar that is not last
+    // on the tab still cannot read as covering what is under it. Guarded by
+    // test/personnel-holiday-grade-relocation.test.ts (5), so the next round cannot repeat the swap.
     attendance: (
       <>
-        {/* Item 52a30630 — Holiday Calendar relocated from Profile onto this tab, pinned first. */}
-        {holidayCalendarCard}
+        {admin && (
+          <TabSaveScope
+            tabKey="attendance"
+            employmentId={emp.employmentId}
+            saveAction={saveAttendanceTabAction}
+            covers={tabSaveCovers.attendance}
+          >
+            {/* Item 52a30630 — Holiday Calendar relocated from Profile onto this tab, pinned first. */}
+            {holidayCalendarCard}
+            {clockingCard}
+          </TabSaveScope>
+        )}
         {locationCard}
         {defaultShiftCard}
-        {clockingCard}
       </>
     ),
     // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single
@@ -4493,15 +4588,30 @@ export default async function EmployeePage({
     // Item ef720d3a — the dedicated Bank Information card (bankCard) is pinned FIRST on this tab, above the
     // statutory registration/EPF/SOCSO card. Bank details are the most-referenced payment attribute, and the
     // card is visually separated with its own save (setBankAction), per the redesign request.
+    // 420ebab5 part two (r255) — this is the ONLY tab with no bucket (b) form on it at all, so its one
+    // "Save Changes" covers the whole tab with nothing left over and the reading order is untouched. All
+    // four cards are plain field edits; the ORDER THEY ARE WRITTEN IN is not this JSX order but the
+    // declared one in lib/personnel-tab-sections.ts (statutory → tax → bank → others), because the
+    // statutory form is a FULL-ROW overwrite whose pass-throughs read the stored row at the moment it
+    // runs, so it goes first and the partial writers land their own values on top of it.
     bankStatutory: (
       <>
-        {bankCard}
-        {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
-            (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
-        {statutoryCard}
-        {/* Feedback 0df0c635 — Others Statutory pinned BELOW the existing statutory cards (reporter-specified
-            order: Statutory (Malaysia) → Tax Information → Others Statutory). */}
-        {othersStatutoryCard}
+        {admin && (
+          <TabSaveScope
+            tabKey="bankStatutory"
+            employmentId={emp.employmentId}
+            saveAction={saveBankStatutoryTabAction}
+            covers={tabSaveCovers.bankStatutory}
+          >
+            {bankCard}
+            {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
+                (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
+            {statutoryCard}
+            {/* Feedback 0df0c635 — Others Statutory pinned BELOW the existing statutory cards (reporter-specified
+                order: Statutory (Malaysia) → Tax Information → Others Statutory). */}
+            {othersStatutoryCard}
+          </TabSaveScope>
+        )}
       </>
     ),
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The

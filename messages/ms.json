@@ -8588,6 +8588,7 @@
       "saveFailed": "Perubahan anda tidak dapat disimpan",
       "noChanges": "Tiada perubahan belum disimpan",
       "changedCount": "Perubahan belum disimpan: {count}",
+      "covers": "Simpan ini merangkumi: {cards}",
       "reviewChanges": "Semak perubahan",
       "hideChanges": "Sembunyikan perubahan",
       "colField": "Medan",
