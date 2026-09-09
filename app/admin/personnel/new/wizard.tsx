@@ -58,7 +58,16 @@ import { useTranslations } from 'next-intl';
 import { Badge, Button, Card, EmployeeCode, Field, SectionHeader, inputCls } from '@/components/ui';
 // 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
 // A second strip would be a second set of tab behaviours to keep in step: the unsaved-changes guard, the
-// `?tab=` reflection, and panels staying MOUNTED when hidden so a half-typed value survives a switch.
+// `?tab=` written into the address bar on every switch (and read back on load, `openingTab` below), and
+// the guided-tour reveal.
+//
+// WHAT KEEPS A HALF-TYPED VALUE ACROSS A TAB SWITCH IS NOT THE SHELL — say it here because the plausible
+// wrong answer is easy to write down. `data` lives in `useState` in THIS component, above <ClientTabs>,
+// and every input on every tab is controlled from it, so a value is in the record the moment it is typed
+// and the panel is only a view of it. The shell does keep hidden panels mounted, which is what preserves
+// the DOM state of the activated record's UNCONTROLLED server-rendered forms; unmounting them would cost
+// this screen nothing. test/draft-record-tabs.dom.test.tsx proves the mechanism that is real, by reading a
+// value back from the header and the outstanding list while the panel it was typed into is hidden.
 import { ClientTabs } from '@/components/personnel-tabs';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Personnel profile card.
 import { PersonDetailsFields } from '@/components/person-details-fields';
@@ -82,7 +91,7 @@ import {
   draftFamily,
   missingByTab,
   missingForCreation,
-  stepKey,
+  openingTab,
   stepNumber,
   type DraftTabKey,
   type EmployeeDraftData,
@@ -100,6 +109,7 @@ export function EmployeeWizard({
   reservedEmployeeCode,
   initialData,
   initialStep,
+  initialTab,
   companies,
   businessUnits,
   departments,
@@ -118,6 +128,10 @@ export function EmployeeWizard({
   reservedEmployeeCode: string | null;
   initialData: EmployeeDraftData;
   initialStep: number;
+  /** 759dfc7d — the `?tab=` the shell itself wrote into the address bar, read back by the server page.
+   *  Present on a reload or a shared link, absent when the draft is opened from the Personnel list; the
+   *  stored `initialStep` is the fallback, and an unknown value is ignored (`openingTab`). */
+  initialTab?: string;
   companies: Option[];
   businessUnits: Option[];
   departments: Option[];
@@ -142,7 +156,11 @@ export function EmployeeWizard({
   // `employee_draft.current_step` and a draft picked up two days later reopens where it was left. The
   // shell tells us on every switch (`onTabChange`); `selectTabRef` is the other direction, for the
   // outstanding-list links.
-  const [tab, setTab] = useState<DraftTabKey>(stepKey(initialStep));
+  // WHERE THE SCREEN OPENS: the `?tab=` in the address bar if it names one of these five tabs, otherwise
+  // the stored step. Resolved ONCE here and used for both the shell's `defaultTab` and this mirror, so a
+  // Save pressed on a URL-opened tab writes the number of the tab actually on screen.
+  const openingKey = openingTab(initialTab, initialStep);
+  const [tab, setTab] = useState<DraftTabKey>(openingKey);
   const selectTabRef = useRef<((key: DraftTabKey) => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -764,9 +782,11 @@ export function EmployeeWizard({
         </div>
       )}
 
-      {/* THE RECORD'S OWN TAB SHELL. `defaultTab` reopens the draft on the tab it was left on —
-          `stepKey` maps the stored `current_step` number, including the retired 5, onto a tab that still
-          exists. `onTabChange` mirrors the switch back so the next save records it; `selectRef` is how the
+      {/* THE RECORD'S OWN TAB SHELL. `defaultTab` reopens the draft where it was left — `openingTab`
+          prefers the `?tab=` the shell itself wrote into the address bar (so a reloaded or shared link
+          opens the tab it names, exactly as the activated record does) and falls back to the stored
+          `current_step`, including the retired 5, mapped onto a tab that still exists.
+          `onTabChange` mirrors the switch back so the next save records it; `selectRef` is how the
           outstanding list below moves the shell, through the shell's OWN guarded switch rather than
           around it. `emptyLabel` can never actually show here (every one of the five tabs has a panel),
           and is passed because the shell requires a real string rather than a placeholder. */}
@@ -774,7 +794,7 @@ export function EmployeeWizard({
         tabs={tabs}
         panels={panels}
         emptyLabel={t('tabs.empty')}
-        defaultTab={stepKey(initialStep)}
+        defaultTab={openingKey}
         ariaLabel={t('progressLabel')}
         selectRef={selectTabRef}
         onTabChange={setTab}

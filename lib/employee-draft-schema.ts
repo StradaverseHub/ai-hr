@@ -256,6 +256,27 @@ export function stepKey(n: number): DraftTabKey {
   return [...DRAFT_TABS].reverse().find((k) => STEP_NUMBERS[k] < n) ?? first;
 }
 
+/**
+ * WHICH TAB THE DRAFT OPENS ON — `?tab=` first, the stored step second.
+ *
+ * The tab shell reflects every switch into the address bar as `?tab=<key>` (components/personnel-tabs.tsx
+ * `commitTab`), so for anyone who has been on the screen the URL is the FRESHER of the two statements:
+ * `current_step` is only written when Save is pressed. A reloaded or shared draft link must therefore
+ * reopen the tab the URL names — which is exactly what the ACTIVATED record does with the same parameter
+ * (app/admin/personnel/[employmentId]/page.tsx passes it straight to `defaultTab`), and unifying those two
+ * screens is the whole of item 759dfc7d work item 2. A URL that names a tab it will not open is worse
+ * than no parameter at all.
+ *
+ * THE STORED STEP REMAINS THE FALLBACK, and it is the one that carries the reporter's actual need: a
+ * draft picked up two days later from the Personnel list arrives with no `?tab=` at all and must still
+ * reopen where it was left. An unknown value — a misspelling, or one of the six tabs a draft does not
+ * get — is IGNORED rather than an error, because a tab name in a URL is a bookmark, not an instruction.
+ */
+export function openingTab(tabParam: string | null | undefined, currentStep: number): DraftTabKey {
+  const named = DRAFT_TABS.find((k) => k === tabParam);
+  return named ?? stepKey(currentStep);
+}
+
 const blank = (v: string | undefined) => (v ?? '').trim() === '';
 
 /**

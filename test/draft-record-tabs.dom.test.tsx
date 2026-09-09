@@ -11,9 +11,13 @@
  * THE THREE FAULTS IT IS WRITTEN AGAINST, each of which passes tsc, the suite and a 200:
  *   1. A tab that renders but is EMPTY, because a panel was wired to the wrong key. The tab strip would
  *      still read correctly and every string assertion would still pass.
- *   2. A value LOST ON A TAB SWITCH. The shell keeps hidden panels mounted for exactly this reason; a
- *      panel that unmounted instead would lose a half-typed address every time HR looked at Payroll,
- *      which is the "do not require the administrator to re-enter the information" failure in miniature.
+ *   2. A value LOST ON A TAB SWITCH — HR types an address, looks at Payroll, comes back and it is gone:
+ *      the "do not require the administrator to re-enter the information" failure in miniature. WHAT
+ *      PREVENTS IT is that the wizard holds `data` in `useState` ABOVE the tab shell and renders every
+ *      input controlled from it. Hidden panels staying mounted is NOT the mechanism — unmount them and
+ *      this screen still keeps every value — so this file guards the real one: what is typed on a tab is
+ *      readable from the header and the outstanding list, both of which render OUTSIDE the shell, while
+ *      the panel it was typed into is hidden.
  *   3. SAVE STARTING TO VALIDATE. A draft that refuses to save until it is complete is not a draft, and
  *      that regression is invisible until somebody with half a record presses the button.
  *
@@ -71,7 +75,8 @@ const freshDraft = (): EmployeeDraftData => ({
   employment: { companyId: 'co-1' },
 });
 
-const wrap = (data: EmployeeDraftData = freshDraft(), initialStep = 1) =>
+/** `initialTab` is the `?tab=` the server page reads off the URL; absent is the ordinary case. */
+const wrap = (data: EmployeeDraftData = freshDraft(), initialStep = 1, initialTab?: string) =>
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <EmployeeWizard
@@ -80,6 +85,7 @@ const wrap = (data: EmployeeDraftData = freshDraft(), initialStep = 1) =>
         reservedEmployeeCode="ABC00100"
         initialData={data}
         initialStep={initialStep}
+        initialTab={initialTab}
         {...OPTIONS}
       />
     </NextIntlClientProvider>,
@@ -91,7 +97,8 @@ const tabNames = () => within(tabStrip()).getAllByRole('tab').map((b) => b.textC
 const openTab = async (name: string) => {
   await userEvent.click(within(tabStrip()).getByRole('tab', { name }));
 };
-/** The panel currently on screen. Hidden panels stay MOUNTED, so "visible" is the whole question. */
+/** The panel currently on screen. Every panel is in the DOM (the shell hides rather than unmounts them),
+ *  so which one is VISIBLE is the whole question — never "which one exists". */
 const shownPanel = () => {
   const panels = [...document.querySelectorAll('[data-tabpanel]')] as HTMLElement[];
   const open = panels.filter((p) => !p.hidden);
@@ -143,6 +150,31 @@ describe('the draft opens on the SAME tabs an activated employee opens', () => {
     const onJob = wrap(freshDraft(), 2);
     expect(shownPanel().dataset.tabpanel).toBe('job');
     onJob.unmount();
+    wrap(freshDraft(), 6);
+    expect(shownPanel().dataset.tabpanel).toBe('family');
+  });
+
+  it('a link that NAMES a tab opens that tab — `?tab=` beats the stored step, as it does on the record', async () => {
+    // The shell writes `?tab=<key>` into the address bar on every switch, so for anyone who has been on
+    // this screen the URL is the fresher of the two statements: `current_step` is only written when Save
+    // is pressed. A reloaded or shared draft link must therefore reopen the tab it names — the activated
+    // record has always done this with the same parameter, and a URL that names a tab it will not open is
+    // worse than no parameter at all.
+    const linked = wrap(freshDraft(), 1, 'payroll');
+    expect(shownPanel().dataset.tabpanel, '?tab=payroll on a draft stored at step 1').toBe('payroll');
+    // …and the Save that follows records THAT tab, so the link and the stored step stop disagreeing.
+    await userEvent.click(screen.getByRole('button', { name: messages.people.wizard.saveDraft }));
+    const [, , step] = saveDraftAction.mock.calls[0] as unknown as [string, EmployeeDraftData, number];
+    expect(step, 'Payroll is stored step 4').toBe(4);
+    linked.unmount();
+
+    // A tab this draft does not have is a bookmark, not an instruction: ignored, and the stored step wins.
+    const bogus = wrap(freshDraft(), 2, 'attendance');
+    expect(shownPanel().dataset.tabpanel, '?tab=attendance names a tab a draft never gets').toBe('job');
+    bogus.unmount();
+
+    // And with no `?tab=` at all — a draft opened from the Personnel list two days later — the stored step
+    // is still the whole answer.
     wrap(freshDraft(), 6);
     expect(shownPanel().dataset.tabpanel).toBe('family');
   });
@@ -201,8 +233,9 @@ describe('each tab carries the record\'s own section names and the draft\'s own 
 // ── what makes it a draft ─────────────────────────────────────────────────────────────────────────
 describe('it is still a draft: nothing is lost, nothing is demanded', () => {
   it('a value typed on one tab is still there after visiting another and coming back', async () => {
-    // THE FAULT: hidden panels unmounting. HR types a phone number, checks the salary on Payroll, comes
-    // back, and the phone number is gone — "re-enter the information", which is the whole complaint.
+    // THE FAULT: HR types a phone number, checks the salary on Payroll, comes back, and the phone number
+    // is gone — "re-enter the information", which is the whole complaint. (The test BELOW is the one that
+    // holds the mechanism; this one is the administrator's own round trip through the screen.)
     wrap();
     // Profile: a phone number, on the Contact & address card.
     await userEvent.type(within(shownPanel()).getByLabelText(messages.people.wizard.fields.phone), '+60123456789');
@@ -236,6 +269,44 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     expect(data.profile?.phone).toBe('+60123456789');
     expect(data.employment?.departmentId).toBe('dp-1');
     expect(data.payroll?.basicSalary).toBe('5200');
+  });
+
+  it('what is typed lives ABOVE the tab shell — the header and the outstanding list read it while its panel is hidden', async () => {
+    // THE MECHANISM, GUARDED RATHER THAN ASSERTED IN A COMMENT. It is tempting to credit the survival of
+    // a half-typed value to the shell keeping hidden panels mounted; that is not what does it, and a
+    // reader who believes it would "optimise" the shell to unmount and think they had broken this screen.
+    // What does it is that the wizard owns `data` in `useState` above <ClientTabs> and renders controlled
+    // inputs from it — so a value is in the RECORD the moment it is typed, not in the panel. The two
+    // readers below prove exactly that: both render OUTSIDE the shell, and both are right about a value
+    // whose own panel is hidden. Neither could be if the value lived in the panel's DOM.
+    wrap();
+    const name = within(shownPanel()).getByLabelText(messages.people.wizard.fields.fullName) as HTMLInputElement;
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Nadia binti Yusof');
+
+    // Fill in a department on the Employment tab too — one of the things Activate is still waiting for.
+    await openTab(messages.people.detail.tabs.job);
+    await userEvent.selectOptions(
+      within(shownPanel()).getByLabelText(messages.people.wizard.fields.department),
+      'dp-1',
+    );
+
+    // Now stand on a THIRD tab, so both panels typed into are hidden.
+    await openTab(messages.people.detail.tabs.payroll);
+    expect((document.querySelector('[data-tabpanel="profile"]') as HTMLElement).hidden).toBe(true);
+    expect((document.querySelector('[data-tabpanel="job"]') as HTMLElement).hidden).toBe(true);
+
+    // Reader one: the record header, above the tab strip, carries the name typed on the hidden Profile tab.
+    const header = screen.getByText(messages.people.wizard.draftStatus).closest('div') as HTMLElement;
+    expect(header.textContent, 'the header, rendered outside the tab shell').toContain('Nadia binti Yusof');
+
+    // Reader two: the "Activate still needs" list, below the tab strip, has dropped Department — it is
+    // computed from the same `data`, so the hidden Employment tab's edit reached it.
+    const outstanding = screen.getByText(messages.people.wizard.activateNeeds).parentElement as HTMLElement;
+    expect(outstanding.textContent, 'Department was filled in on a tab that is now hidden')
+      .not.toContain(messages.people.wizard.fields.department);
+    expect(outstanding.textContent, 'and the rest is still outstanding')
+      .toContain(messages.people.wizard.fields.basicSalary);
   });
 
   it('SAVE works with the record deliberately half-empty, and sends the tab it was pressed on', async () => {

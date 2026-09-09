@@ -195,8 +195,12 @@ export function ClientTabs<K extends string>({
 
       {tabs.map((tab) => {
         const panel = panels[tab.key];
-        // Panels stay mounted (hidden, not unmounted) so form state / server-action targets survive a
-        // tab switch and there is zero re-render cost when returning to a tab.
+        // Panels stay mounted (hidden, not unmounted) so the DOM state of the UNCONTROLLED inputs inside
+        // a server-rendered panel — this page's per-section forms, and their server-action targets —
+        // survives a tab switch, and so returning to a tab costs no re-render. Note what this does NOT
+        // mean: a caller that holds its own state ABOVE this shell and renders controlled inputs from it
+        // (the draft record, app/admin/personnel/new/wizard.tsx) does not depend on staying mounted at
+        // all — its values would survive an unmount. Do not credit this line for that.
         const hasContent = panel != null && (!Array.isArray(panel) || panel.length > 0);
         return (
           <div

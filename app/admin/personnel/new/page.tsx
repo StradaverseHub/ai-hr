@@ -47,7 +47,10 @@ import { EmployeeWizard } from './wizard';
 export default async function CreateEmployeePage({
   searchParams,
 }: {
-  searchParams: Promise<{ draft?: string; error?: string }>;
+  // `tab` is the SAME parameter the activated record takes (app/admin/personnel/[employmentId]/page.tsx):
+  // the shared tab shell writes it on every switch, and the screen it names is the one that must open on a
+  // reload or a shared link. Declared here so the draft honours it instead of only writing it.
+  searchParams: Promise<{ draft?: string; error?: string; tab?: string }>;
 }) {
   await requireAdmin();
   const t = await getTranslations('people.wizard');
@@ -168,6 +171,7 @@ export default async function CreateEmployeePage({
         reservedEmployeeCode={draft.reservedEmployeeCode}
         initialData={withProbationDefault(draft.data, probationDefault)}
         initialStep={draft.currentStep}
+        initialTab={sp.tab}
         companies={companies.map((c) => ({ id: c.id, label: c.name }))}
         businessUnits={businessUnits.map((b) => ({
           id: b.id,

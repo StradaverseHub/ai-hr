@@ -16,7 +16,8 @@
  * the other fails here.
  *
  * WHAT IS PINNED WHERE:
- *   §1  the tab vocabulary — DRAFT_TABS is the record's own tab keys, and which tabs a draft must not get
+ *   §1  the tab vocabulary — DRAFT_TABS is the record's own tab keys, which tabs a draft must not get,
+ *       and WHERE A DRAFT REOPENS: the stored step, and the `?tab=` a shared link names
  *   §2  the words — wizard.tabs.* === detail.tabs.*, wizard.sections.* === the record's own card titles
  *   §3  the Draft status label, in every locale, and the wizard-only strings that had to survive
  *
@@ -26,7 +27,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DRAFT_TABS, missingByTab, stepKey, stepNumber } from '../lib/employee-draft-schema';
+import { DRAFT_TABS, missingByTab, openingTab, stepKey, stepNumber } from '../lib/employee-draft-schema';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -78,6 +79,36 @@ describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it i
     expect(stepKey(5)).toBe('payroll');
     expect(stepKey(2)).toBe('job');
     expect(stepKey(3)).toBe('bankStatutory');
+  });
+
+  it('a draft link OPENS the tab it names — `?tab=` is honoured, not merely written', () => {
+    // The shell writes `?tab=<key>` on every switch. Writing it and then ignoring it on load is the worst
+    // of the three options: the address bar would name a tab the screen refuses to open, and a link
+    // shared with a colleague would land them somewhere else. The activated record honours the same
+    // parameter, and this item exists to make the two screens one.
+    expect(openingTab('payroll', 1), 'the URL beats the stored step').toBe('payroll');
+    expect(openingTab('family', 1)).toBe('family');
+    // The stored step is the fallback, and it is the ordinary case: a draft reopened from the Personnel
+    // list carries no `?tab=` at all.
+    expect(openingTab(undefined, 3), 'no ?tab= — the stored step decides').toBe('bankStatutory');
+    expect(openingTab(undefined, 5), 'the retired step 5 still reopens on Payroll').toBe('payroll');
+    // An unknown value is a bookmark, not an instruction: ignored, never an error — including the six
+    // tabs a draft does not get, which a link copied off an activated record would name.
+    expect(openingTab('attendance', 2), 'a tab a draft never gets').toBe('job');
+    expect(openingTab('', 2)).toBe('job');
+    expect(openingTab('Payroll', 2), 'the key is exact — not case-folded').toBe('job');
+  });
+
+  it('the server page READS `tab` off the URL and hands it to the screen', () => {
+    // `openingTab` can only be honoured if the parameter reaches it: this is the wiring between the URL
+    // and the screen, and it is one line in a server component that no unit test would otherwise see.
+    const page = read('app/admin/personnel/new/page.tsx');
+    expect(page, 'the draft page must declare the `tab` search param')
+      .toMatch(/searchParams: Promise<\{[^}]*tab\?: string/);
+    expect(page, 'and pass it to the screen').toContain('initialTab={sp.tab}');
+    // And the screen must resolve it rather than take it literally — an unknown tab key must not blank
+    // the shell out.
+    expect(read(WIZARD)).toContain('openingTab(initialTab, initialStep)');
   });
 });
 
