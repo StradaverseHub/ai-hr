@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { listShiftsForTenant } from '@/core/roster';
 import { formatBreakDisplay } from '@/core/shift-break-display';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
+import { shiftChipClass } from '@/lib/shift-visual';
 import { archiveShiftAction, copyShiftAction, deleteShiftAction, unarchiveShiftAction } from './shift-actions';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -90,11 +91,27 @@ export default async function ShiftSettingsPage({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {shifts.map((sh) => {
-                    const brk = formatBreakDisplay(sh.breakPeriods, sh.breakMinutes);
+                    // 6340aecb — the flexible pair is passed so the mismatch badge does not fire on a
+                    // shift whose break IS an allowance; a flexible shift shows its allowance instead.
+                    const brk = formatBreakDisplay(sh.breakPeriods, sh.breakMinutes, {
+                      enabled: sh.flexibleBreakEnabled,
+                      minutes: sh.flexibleBreakMinutes,
+                    });
+                    // 6340aecb — the shift's own colour, previewed exactly as the Duty Roster paints it.
+                    // Null (every shift until somebody picks one) renders the plain code cell as before.
+                    const chip = shiftChipClass(sh.color);
                     const deactivated = sh.archivedAt != null;
                     return (
                       <tr key={sh.id}>
-                        <td className="px-4 py-2.5 font-medium">{sh.code ?? '—'}</td>
+                        <td className="px-4 py-2.5 font-medium">
+                          {chip ? (
+                            <span className={`rounded px-1.5 py-0.5 ${chip}`} title={t('shiftColorLabel')}>
+                              {sh.code ?? '—'}
+                            </span>
+                          ) : (
+                            (sh.code ?? '—')
+                          )}
+                        </td>
                         <td className="px-4 py-2.5">
                           {sh.name}
                           {sh.crossesMidnight && (
@@ -140,6 +157,12 @@ export default async function ShiftSettingsPage({
                             <span className="text-muted-foreground">{t('noBreak')}</span>
                           ) : (
                             <span className="tabular-nums">{brk.text}</span>
+                          )}
+                          {/* 6340aecb — the allowance, said in the column that shows what comes off a day. */}
+                          {brk.flexibleMinutes != null && (
+                            <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-400">
+                              {t('breakFlexibleBadge', { minutes: brk.flexibleMinutes })}
+                            </span>
                           )}
                           {brk.mismatchMinutes != null && (
                             <span

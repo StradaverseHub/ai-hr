@@ -4060,6 +4060,28 @@ export const shift = pgTable(
     // approved plan never described).
     halfDayFirstOut: time('half_day_first_out'),
     halfDaySecondIn: time('half_day_second_in'),
+    // ── 6340aecb · Shift Settings redesign (migration 0457) ──────────────────────────────────────────
+    // DISPLAY ONLY, and the only new column here that is. One of the fixed 8-token palette in
+    // lib/shift-visual.ts (SHIFT_COLOR_TOKENS; a DB CHECK backs the service validation, mirroring
+    // leave_type.color / migration 0179). Shown on the Shift list and used to tint this shift's cells on
+    // the DUTY ROSTER (the reporter's point 7). NULL — every row before 0457 — is a first-class value:
+    // components/roster-grid.tsx keeps its rotating position-keyed palette for an uncoloured shift, so the
+    // roster is pixel-identical until somebody picks a colour. NEVER read for scheduling, attendance or pay.
+    color: text('color'),
+    // THE FLEXIBLE BREAK, and this one MOVES MINUTES — break handling feeds worked minutes, which feed
+    // overtime, which payroll reads. A flexible break is an ALLOWANCE, not a clock window: the employee may
+    // take up to `flexibleBreakMinutes` whenever they like, so there is no window for the engine to test the
+    // clocking against. core/attendance.ts therefore deducts the allowance itself (clamped to the day's
+    // span) instead of the punch's overlap with breakPeriods, and core/roster.ts writes the allowance into
+    // `break_minutes` on save so the scheduled-hours figure, the punch import and the hourly clamp cannot
+    // disagree with what the engine deducts. Fixed Break Start / Break End stay editable and stay stored
+    // (the reporter's point 12: the allowance applies even when a window is configured).
+    //
+    // DEFAULT false ⇒ every shift stored before 0457 keeps the exact deduction it has today. That is the
+    // approved plan's promise and it is pinned in ringgit by test/shift-colour-flex-break.test.ts, the same
+    // discipline 711adcd2's ORP flags needed and for the same reason.
+    flexibleBreakEnabled: boolean('flexible_break_enabled').notNull().default(false),
+    flexibleBreakMinutes: integer('flexible_break_minutes'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
