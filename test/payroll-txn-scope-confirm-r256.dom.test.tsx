@@ -20,20 +20,28 @@
  *   · a confirmed save refused for another reason takes the prompt down and shows the reason, rather
  *     than answering through a dialog still asking the question.
  *
+ *   · and the whole prompt renders against the REAL catalogue of each of the six locales — the last
+ *     block below — because a message that will not compile in ms or th shows up nowhere else.
+ *
  * jsdom applies no CSS and computes no layout, so this catches rendering and interaction logic, not a
- * visual regression, and it runs in English only — test/i18n-coverage.test.ts and the locale cases in
- * test/payroll-txn-scope-confirm-r256.test.ts cover the other five structurally.
+ * visual regression.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
+import ms from '../messages/ms.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import vi_ from '../messages/vi.json';
+import zh from '../messages/zh.json';
 import {
   TxnWorkspace,
   type TxnBatch,
   type TxnCompany,
   type TxnEmployee,
+  type TxnPayItem,
 } from '../app/payroll/transactions/individual/txn-workspace';
 import type { TxnPanel } from '../app/payroll/transactions/individual/existing-context';
 
@@ -46,15 +54,24 @@ vi.mock('sonner', () => ({ toast: { success: (...a: unknown[]) => toastSuccess(.
 
 const panelMock = vi.fn();
 const createMock = vi.fn();
+const dayGridMock = vi.fn();
 
 vi.mock('../app/payroll/transactions/individual/actions', () => ({
   fetchEmployeeTxnPanelAction: (...a: unknown[]) => panelMock(...a),
   fetchBatchImpactAction: () => Promise.resolve(null),
   fetchTxnDetailAction: () => Promise.resolve(null),
   previewTxnAmountAction: () => Promise.resolve({ ok: true, derived: false }),
-  previewTxnAmountsAction: () => Promise.resolve({ ok: true, derived: false }),
+  previewTxnAmountsAction: (input: { quantities: string[] }) =>
+    Promise.resolve({
+      ok: true,
+      derived: true,
+      amounts: input.quantities.map((q) => ({ quantity: q, amount: (100 * Number(q)).toFixed(2) })),
+      code: 'OT1_5',
+      inputUnit: 'hours',
+      zeroDivisor: null,
+    }),
   createIndividualTxnAction: (...a: unknown[]) => createMock(...a),
-  createIndividualTxnDayGridAction: () => Promise.resolve({ ok: true, id: 'n1', count: 1 }),
+  createIndividualTxnDayGridAction: (...a: unknown[]) => dayGridMock(...a),
   updateIndividualTxnAction: () => Promise.resolve({ ok: true }),
   deleteIndividualTxnAction: () => Promise.resolve({ ok: true }),
 }));
@@ -86,6 +103,16 @@ const BATCH: TxnBatch = {
   payrollCycleId: null,
 };
 const COMPANY: TxnCompany = { id: 'c1', name: 'Demo Group Holdings Bhd', currency: 'MYR' };
+/** per_hour, so a day is worth its own hours — which is what makes Day by day offerable at all. */
+const OT: TxnPayItem = {
+  id: 'ot15',
+  code: 'OT1_5',
+  name: 'Overtime 1.5',
+  kind: 'allowance',
+  derives: true,
+  inputUnit: 'hours',
+  variesByDay: true,
+};
 const EMPTY_PANEL: TxnPanel = {
   rows: [],
   totals: {
@@ -123,15 +150,15 @@ const REFUSAL_NO_WAY_FORWARD = {
   errorValues: { employee: 'Kim Chi', period: '2026-01', scope: 'departments', canAdd: 'no' },
 };
 
-function renderWorkspace() {
+function renderWorkspace(locale = 'en', msgs: unknown = messages, payItems: TxnPayItem[] = []) {
   panelMock.mockResolvedValue(EMPTY_PANEL);
   return render(
-    <NextIntlClientProvider locale="en" messages={messages}>
+    <NextIntlClientProvider locale={locale} messages={msgs as never}>
       <TxnWorkspace
         employees={[EMPLOYEE]}
         batches={[BATCH]}
         companies={[COMPANY]}
-        payItems={[]}
+        payItems={payItems}
         payrollCycles={[]}
         processHref="/payroll"
         requireComponent={false}
@@ -253,6 +280,42 @@ describe('r256 · one confirmation, two answers', () => {
   });
 
   /**
+   * THE DAY GRID ASKS THE SAME QUESTION AND ANSWERS IT THE SAME WAY.
+   *
+   * It is a second write path on the same screen, and the r255 shape had exactly one bug of this class:
+   * a control wired for the single entry and forgotten for the grid reads as working right up until an
+   * operator keys five days for somebody the run does not cover. Nothing but a render catches it —
+   * `confirmAddToRun` is optional on both actions, so a missing spread is tsc-clean.
+   */
+  it('the day grid raises the same prompt, and Continue re-submits the whole grid confirmed', async () => {
+    const user = userEvent.setup();
+    dayGridMock.mockResolvedValueOnce(REFUSAL_WITH_CONFIRM).mockResolvedValueOnce({
+      ok: true,
+      id: 'n1',
+      count: 1,
+      recalcBatchId: 'b1',
+      addedToRun: true,
+    });
+    renderWorkspace('en', messages, [OT]);
+    await user.click(await screen.findByRole('button', { name: /Kim Chi/ }));
+    await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('radio', { name: 'Day by day' }));
+    await user.type(screen.getByLabelText('Effective date'), '2026-01-15');
+    await user.type(screen.getByLabelText('Hours'), '2');
+    await user.click(screen.getByRole('button', { name: 'Save all dates' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(dayGridMock).toHaveBeenCalledTimes(2));
+    const first = dayGridMock.mock.calls[0][0] as Record<string, unknown>;
+    const second = dayGridMock.mock.calls[1][0] as Record<string, unknown>;
+    expect(first.confirmAddToRun).toBeUndefined();
+    expect(second.confirmAddToRun).toBe(true);
+    // The same grid, not a rebuilt one.
+    expect(second.lines).toEqual(first.lines);
+  });
+
+  /**
    * A CONFIRMED save can still be refused — the employment was terminated between the prompt and the
    * answer, or this operator lacks the authority a processed run demands. The prompt has to come down
    * before the reason is shown, or the operator reads an answer through a dialog still asking them.
@@ -271,5 +334,56 @@ describe('r256 · one confirmation, two answers', () => {
     expect(toastSuccess).not.toHaveBeenCalled();
     // Two calls and no more: a refused Continue does not retry itself.
     expect(createMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * AND THE SAME PROMPT IN ALL SIX LOCALES, RENDERED.
+ *
+ * scripts/i18n-check.mjs proves the six catalogues carry the same keys with the same placeholders, and
+ * the locale cases in test/payroll-txn-scope-confirm-r256.test.ts prove the ICU selects have all their
+ * branches. Neither can prove that next-intl actually COMPILES these messages: a malformed select or a
+ * stray brace in one locale paints the key path (`MISSING_MESSAGE`) or an un-substituted `{employee}`,
+ * in the browser only, with tsc, the suite, `next build` and a dev-server log all clean. The prompt is
+ * pure client state raised by a failed server action, so no URL a render check can request will ever
+ * show it. This drives it, in each locale, against that locale's real catalogue.
+ */
+describe.each([
+  ['en', messages],
+  ['ms', ms],
+  ['ta', ta],
+  ['th', th],
+  ['vi', vi_],
+  ['zh', zh],
+] as const)('r256 · %s — the prompt resolves against the real catalogue', (loc, m) => {
+  const ind = (m as unknown as { payroll: { transactions: { individual: Record<string, string> } } }).payroll
+    .transactions.individual;
+
+  it('asks the question, gives the grounds and names both answers', async () => {
+    const user = userEvent.setup();
+    createMock.mockResolvedValue(REFUSAL_WITH_CONFIRM);
+    renderWorkspace(loc, m);
+
+    await user.click(await screen.findByRole('button', { name: /Kim Chi/ }));
+    await user.click(await screen.findByRole('button', { name: ind.addTxn }));
+    await user.type(screen.getByLabelText(ind.colEffectiveDate), '2026-01-15');
+    await user.type(screen.getByLabelText(ind.amount), '500');
+    await user.click(screen.getByRole('button', { name: ind.save }));
+
+    // The entry form is itself a dialog and is still in the tree behind this one; the confirmation is
+    // rendered LAST, over it, which is what makes "the last dialog" the right one to read.
+    const dialogs = await screen.findAllByRole('dialog');
+    const dialog = dialogs[dialogs.length - 1];
+    const txt = dialog.textContent ?? '';
+    // next-intl paints the KEY PATH when a message will not compile and leaves `{placeholder}`
+    // un-substituted when an argument does not arrive. Both return 200 and pass every other gate.
+    expect(txt, `${loc}: unresolved ICU placeholder`).not.toMatch(/\{[a-zA-Z]/);
+    expect(txt, `${loc}: a raw key path, i.e. MISSING_MESSAGE`).not.toMatch(/payroll\.transactions/);
+    // The facts crossed as DATA and were interpolated by this locale's own sentence.
+    expect(txt, `${loc}: the question does not name the employee`).toContain('Kim Chi');
+    expect(txt, `${loc}: the question does not name the run`).toContain('2026-01');
+    // Two answers, both labelled in this locale.
+    expect(within(dialog).getByRole('button', { name: ind.scopeConfirmContinue })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: ind.cancel })).toBeInTheDocument();
   });
 });
