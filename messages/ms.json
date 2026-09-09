@@ -2589,9 +2589,7 @@
     "requests": "Permohonan",
     "noRequests": "Belum ada permohonan.",
     "myPositions": "{count, plural, one {Jawatan saya} other {Jawatan saya}}",
-    "joinedOn": "Menyertai {date}",
     "basicPlusAllowance": "Asas + elaun",
-    "costRecharged": "Kos dicaj semula: {percents}",
     "myDetails": "Butiran saya",
     "contactUpdatesImmediately": "Maklumat hubungan dikemas kini serta-merta.",
     "phoneLabel": "Telefon",
@@ -2981,7 +2979,10 @@
     "maSectionAll": "Semua",
     "maSectionAllHelp": "Setiap hari yang memerlukan tindakan anda.",
     "maFoundForYouAll": "Hari yang kami jumpa untuk anda",
-    "maEmptyAll": "Tiada apa-apa dalam tempoh ini memerlukan tindakan anda."
+    "maEmptyAll": "Tiada apa-apa dalam tempoh ini memerlukan tindakan anda.",
+    "myPerformanceLink": "Prestasi saya",
+    "performancePageDescription": "Matlamat, permintaan maklum balas dan sesi satu dengan satu anda.",
+    "complianceFieldsNeedApproval": "Tarikh lahir, jantina, status perkahwinan dan dokumen pengenalan anda diselenggara oleh HR. Mohon perubahan di bahagian Bank & Berkanun."
   },
   "approvals": {
     "title": "Kelulusan",

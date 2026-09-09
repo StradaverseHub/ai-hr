@@ -2589,9 +2589,7 @@
     "requests": "คำขอ",
     "noRequests": "ยังไม่มีคำขอ",
     "myPositions": "{count, plural, one {ตำแหน่งของฉัน} other {ตำแหน่งของฉัน}}",
-    "joinedOn": "เข้าร่วม {date}",
     "basicPlusAllowance": "พื้นฐาน + เบี้ยเลี้ยง",
-    "costRecharged": "ปันส่วนต้นทุน: {percents}",
     "myDetails": "ข้อมูลของฉัน",
     "contactUpdatesImmediately": "ข้อมูลติดต่ออัปเดตทันที",
     "phoneLabel": "โทรศัพท์",
@@ -2981,7 +2979,10 @@
     "maSectionAll": "ทั้งหมด",
     "maSectionAllHelp": "ทุกวันที่ต้องการการดำเนินการจากคุณ",
     "maFoundForYouAll": "วันที่เราพบสำหรับคุณ",
-    "maEmptyAll": "ในช่วงนี้ไม่มีสิ่งใดที่ต้องการการดำเนินการจากคุณ"
+    "maEmptyAll": "ในช่วงนี้ไม่มีสิ่งใดที่ต้องการการดำเนินการจากคุณ",
+    "myPerformanceLink": "ผลงานของฉัน",
+    "performancePageDescription": "เป้าหมาย คำขอความคิดเห็น และการพูดคุยแบบตัวต่อตัวของคุณ",
+    "complianceFieldsNeedApproval": "วันเกิด เพศ สถานภาพสมรส และเอกสารแสดงตนของคุณดูแลโดยฝ่ายบุคคล หากต้องการแก้ไข โปรดยื่นคำขอในหัวข้อ ธนาคารและตามกฎหมาย"
   },
   "approvals": {
     "title": "การอนุมัติ",

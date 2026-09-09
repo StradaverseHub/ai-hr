@@ -2589,9 +2589,7 @@
     "requests": "Yêu cầu",
     "noRequests": "Chưa có yêu cầu nào.",
     "myPositions": "{count, plural, one {Chức vụ của tôi} other {Chức vụ của tôi}}",
-    "joinedOn": "Gia nhập {date}",
     "basicPlusAllowance": "Cơ bản + phụ cấp",
-    "costRecharged": "Chi phí phân bổ lại: {percents}",
     "myDetails": "Thông tin của tôi",
     "contactUpdatesImmediately": "Thông tin liên hệ được cập nhật ngay lập tức.",
     "phoneLabel": "Điện thoại",
@@ -2981,7 +2979,10 @@
     "maSectionAll": "Tất cả",
     "maSectionAllHelp": "Mọi ngày cần bạn xử lý.",
     "maFoundForYouAll": "Những ngày chúng tôi tìm thấy cho bạn",
-    "maEmptyAll": "Trong kỳ này không có gì cần bạn xử lý."
+    "maEmptyAll": "Trong kỳ này không có gì cần bạn xử lý.",
+    "myPerformanceLink": "Hiệu suất của tôi",
+    "performancePageDescription": "Mục tiêu, yêu cầu phản hồi và các buổi trao đổi một-một của bạn.",
+    "complianceFieldsNeedApproval": "Ngày sinh, giới tính, tình trạng hôn nhân và giấy tờ tùy thân của bạn do bộ phận Nhân sự quản lý. Hãy gửi yêu cầu thay đổi ở mục Ngân hàng & Luật định."
   },
   "approvals": {
     "title": "Phê duyệt",
