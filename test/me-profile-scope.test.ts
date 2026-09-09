@@ -16,16 +16,21 @@
  * A plain employee is none of those for a colleague, so the row is invisible to them at the database.
  */
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
+import { updateOwnContact } from '../core/profile';
 import { employeeDetail } from '../core/read';
 import { myProfileRecord } from '../app/me/record';
+import { ME_WITHHELD_COLUMNS } from '../app/me/visible-fields';
+import { person } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import {
   adminCtx,
   closeAll,
   createAppUser,
   migrateTestDb,
+  owner,
   resetDb,
   seedBase,
   type Base,
@@ -90,6 +95,57 @@ describe('r259 — /me is scoped to the caller’s own employment', () => {
     expect(asAdmin?.employmentId).toBe(colleague.employmentId);
   });
 
+  it('shows the address its own Save button changes, and no other', async () => {
+    /**
+     * THE BLOCKER, PROVED THE WAY IT WAS FOUND: three DIFFERENT addresses planted in the three column
+     * families `person` carries, then the record the Contact & address card is built from is read back.
+     *
+     * The first cut of this round projected HR's `permanent_*` / `correspondence_*` pair and rendered it
+     * read-only directly above the contact self-edit fold-out — which posts the LEGACY
+     * `address_line1..country` names, the only ones `updateOwnContact` writes. So the employee saw one
+     * address, edited it, pressed Save, and the address on that same card did not move; the phone and
+     * personal email beside it did, because those columns are shared. That is what the assertions below
+     * would have caught: the permanent and correspondence sentinels reaching the page at all.
+     *
+     * The second half is the property stated positively — save, read back, and watch the DISPLAYED value
+     * move. A card can only pass both if what it prints and what it writes are one set of columns.
+     */
+    const mine = await hire('Selfreader');
+    const ctx = await employeeCtx(mine.personId);
+
+    await owner.db
+      .update(person)
+      .set({
+        addressLine1: 'ZZLEGACYLINE1',
+        city: 'ZZLEGACYCITY',
+        permanentAddressLine1: 'ZZPERMLINE1',
+        permanentCity: 'ZZPERMCITY',
+        correspondenceAddressLine1: 'ZZCORRLINE1',
+      })
+      .where(eq(person.id, mine.personId));
+
+    const before = await myProfileRecord(ctx);
+    const shown = JSON.stringify(before);
+    // The address the fold-out edits IS the address the card prints.
+    expect(shown.includes('ZZLEGACYLINE1'), 'the card does not show the address its Save button writes').toBe(true);
+    expect(shown.includes('ZZLEGACYCITY')).toBe(true);
+    // …and the family it cannot write is not on the card at all.
+    for (const unwritable of ['ZZPERMLINE1', 'ZZPERMCITY', 'ZZCORRLINE1']) {
+      expect(
+        shown.includes(unwritable),
+        `My Profile shows ${unwritable} — an address from a column family its Save button cannot change`,
+      ).toBe(false);
+    }
+
+    // Now the positive form: press Save with a new address and the DISPLAYED value moves.
+    await updateOwnContact(ctx, { addressLine1: 'ZZSAVEDLINE1', city: 'ZZSAVEDCITY', country: 'Malaysia' });
+    const after = await myProfileRecord(ctx);
+    expect(after!.contact.homeAddress.addressLine1, 'saving the address did not change what the card shows')
+      .toBe('ZZSAVEDLINE1');
+    expect(after!.contact.homeAddress.city).toBe('ZZSAVEDCITY');
+    expect(after!.contact.homeAddress.country).toBe('Malaysia');
+  });
+
   it('a principal linked to no employment gets nothing rather than somebody else’s record', async () => {
     await hire('Somebody');
     // A platform login: a real app_user with no person behind it.
@@ -111,19 +167,13 @@ describe('r259 — /me is scoped to the caller’s own employment', () => {
     const ctx = await employeeCtx(mine.personId);
     const record = await myProfileRecord(ctx);
 
+    // DRIVEN BY THE MANIFEST. This was a hand-written list of ten names, and a hand-written list is what
+    // let `payrollPolicyStatus` and `holidayGroupName` — both named in app/me/record.ts's own comment as
+    // deliberately not projected — be added to the projection with this file green. Every name now comes
+    // from `ME_HIDDEN_FIELDS[].columns`, the same declaration the reporter's document is written from.
     const flat = JSON.stringify(record);
-    for (const withheld of [
-      'blacklistReason',
-      'blacklistedAt',
-      'contractRemark',
-      'costAllocation',
-      'employerBearsEpf',
-      'employerBearsTax',
-      'childReliefTable',
-      'payrollPolicyName',
-      'remarks',
-      'createdByName',
-    ]) {
+    expect(ME_WITHHELD_COLUMNS.length, 'the withheld list names no columns at all').toBeGreaterThan(20);
+    for (const withheld of ME_WITHHELD_COLUMNS) {
       expect(flat.includes(`"${withheld}"`), `the employee record carries the withheld field ${withheld}`).toBe(
         false,
       );

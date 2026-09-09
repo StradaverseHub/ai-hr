@@ -109,33 +109,54 @@ export async function myProfileRecord(ctx: SessionContext) {
       mobilePhone: emp.phone,
       homePhone: emp.homePhone,
       personalEmail: emp.personalEmail,
-      permanent: {
-        line1: emp.permanentAddressLine1,
-        line2: emp.permanentAddressLine2,
-        line3: emp.permanentAddressLine3,
-        postcode: emp.permanentPostcode,
-        city: emp.permanentCity,
-        state: emp.permanentState,
-        country: emp.permanentCountry,
-      },
-      correspondence: {
-        line1: emp.correspondenceAddressLine1,
-        line2: emp.correspondenceAddressLine2,
-        line3: emp.correspondenceAddressLine3,
-        postcode: emp.correspondencePostcode,
-        city: emp.correspondenceCity,
-        state: emp.correspondenceState,
-        country: emp.correspondenceCountry,
-        mobilePhone: emp.correspondenceMobilePhone,
-        homePhone: emp.correspondenceHomePhone,
+      /**
+       * ── ONE ADDRESS, AND IT IS THE ONE THE SAVE BUTTON CHANGES ────────────────────────────────────
+       *
+       * `person` carries THREE address column families today: the legacy `address_line1..country` block
+       * that `core/profile.ts updateOwnContact` writes (the employee's own self-edit, ADR-0012 path one),
+       * and the `permanent_*` / `correspondence_*` pair that 3a25f5ee split out and that the Personnel
+       * Contact & Address card writes. Migration 0213 backfilled the legacy block INTO permanent, and the
+       * two have been free to diverge ever since.
+       *
+       * The first cut of this round projected the permanent/correspondence pair and rendered it read-only
+       * ABOVE the self-edit fold-out, which still posts the legacy names. That put two different addresses
+       * on one card under a Save button that moved neither of the ones displayed — the employee edits
+       * their address, saves, and the address printed on that same card does not move, while the phone
+       * and personal email beside it do (those columns are shared). It also broke the plan's own promise
+       * to the reporter: "My Profile will not hold a second copy of anybody's information ... there is
+       * only ever one master."
+       *
+       * So My Profile projects ONE family: the one the employee can actually change. Unifying the columns
+       * needs a migration and a decision about which family wins, which is neither this round's scope nor
+       * something to decide inside a read surface. Until then the card is honest — what it displays is
+       * what its Save button writes — and docs/me-profile-field-visibility.md tells the reporter, in their
+       * own language, that HR's Permanent / Correspondence address is not on this screen yet and why.
+       *
+       * The KEYS below are the form's `name=` attributes on purpose: app/me/page.tsx binds both the
+       * read-only fields and the fold-out's inputs to this one object, and
+       * test/me-profile-visibility.test.ts walks the form's own `name=` list and requires each address
+       * field to be displayed from it. Rename one here and the guard names the field that fell out.
+       */
+      homeAddress: {
+        addressLine1: emp.addressLine1,
+        addressLine2: emp.addressLine2,
+        addressLine3: emp.addressLine3,
+        postcode: emp.postcode,
+        city: emp.city,
+        state: emp.state,
+        country: emp.country,
       },
     },
+    // `remarks` is withheld (an HR note about the contact, not about the employee). `address` IS carried:
+    // the contact self-edit posts `emergencyContactAddress`, so it has to be on screen — a field that can
+    // be saved and cannot be seen is the same defect as an address that can be seen and cannot be saved.
     emergencyContacts: emergencyRows.map((c) => ({
       id: c.id,
       fullName: c.fullName,
       relationship: c.relationship,
       mobilePhone: c.mobilePhone,
       homePhone: c.homePhone,
+      address: c.address,
       priority: c.priority,
     })),
 

@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployments, myPayslips, myTaxRelief, myTaxReliefEmploymentIds, myEmploymentIdsAll, myAttendance } from '@/core/read';
 import { listLoansForEmployment } from '@/core/loans';
-import { myProfile, myProfileChangeRequests } from '@/core/profile';
+import { myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
 import { isChildReliefEligible, childAgeYears } from '@/core/dependents';
 // ADR-0080 D9/D11 — through the leave pack's FACADE, never core/leave directly. The Personnel screen
@@ -60,6 +60,15 @@ import {
  * Each now sits inside the card it belongs to, as a fold-out, so the record reads first and the way to
  * change a value is next to the value. Stage two widens which fields may be requested and adds the
  * rejection reason; stage three adds the per-field permission. Neither is built here.
+ *
+ * ── WHAT IS DISPLAYED IS WHAT SAVE CHANGES ──────────────────────────────────────────────────────────
+ * Every value on a card that also has a form on it is read from the SAME object that form defaults from
+ * and writes to. That sounds like housekeeping and is not: `person` carries two address column families
+ * (the employee's own, and HR's Permanent / Correspondence pair), and the first cut of this round showed
+ * HR's read-only above a fold-out that writes the employee's — an address an employee could edit, save,
+ * and watch not move. Only the family the Save button writes is on this screen; app/me/record.ts carries
+ * the full account and docs/me-profile-field-visibility.md carries the reporter's. The same rule is why
+ * the emergency-contact register prints the address the fold-out posts.
  *
  * ── SCOPE: THE EMPLOYEE'S OWN RECORD, AND NOTHING ELSE ──────────────────────────────────────────────
  * There is no employee picker, no id in the route, and no id in the query string. `myProfileRecord`
@@ -129,22 +138,6 @@ function Pill({ status, map, label }: { status: string; map: Record<string, stri
   );
 }
 
-/** Join the parts of a structured address into one displayable line, or null when nothing is recorded. */
-function addressLine(a: {
-  line1: string | null;
-  line2: string | null;
-  line3: string | null;
-  postcode: string | null;
-  city: string | null;
-  state: string | null;
-  country: string | null;
-}): string | null {
-  const parts = [a.line1, a.line2, a.line3, [a.postcode, a.city].filter(Boolean).join(' '), a.state, a.country]
-    .map((p) => (p ?? '').trim())
-    .filter(Boolean);
-  return parts.length ? parts.join(', ') : null;
-}
-
 export default async function MePage({
   searchParams,
 }: {
@@ -187,11 +180,14 @@ export default async function MePage({
   // My Payroll TP1 is leaver-safe: resolve ids by person, including terminated employments, so a resigned
   // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
   const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
-  const [payslips, taxRelief, attendance, profile, profileRequests, resignation, myLoans] = await Promise.all([
+  // NOTE — `myProfile(s)` used to be read here purely to default the contact fold-out's inputs. It is
+  // gone on purpose: the fold-out now defaults from `record.contact` / `record.emergencyContacts`, i.e.
+  // from the very object the card prints. Two reads of the same person row is exactly how a screen ends
+  // up displaying one value and saving another.
+  const [payslips, taxRelief, attendance, profileRequests, resignation, myLoans] = await Promise.all([
     myPayslips(s, employments.map((e) => e.employmentId)),
     myTaxRelief(s, taxReliefEmploymentIds),
     myAttendance(s, employmentId, 14),
-    myProfile(s),
     myProfileChangeRequests(s, employmentId),
     myResignation(s, employmentId),
     // 1.2.8 (ADR-0060): read-only "My loans" — RLS scopes to the caller's own employment. ESS NEVER calls
@@ -348,6 +344,11 @@ export default async function MePage({
   };
 
   const { profile: p, contact: c, employment: emp, statutory: st, compensation: comp } = record;
+  // The contact fold-out edits ONE emergency contact — `core/emergency-contacts.ts` routes those five
+  // field names into the highest-priority live record (Primary → Secondary → Other). `listEmergencyContacts`
+  // returns the register in that same rank order, so row one of the table below IS the row the fold-out
+  // writes: the same "what is displayed is what save changes" rule the address block above follows.
+  const primaryEmergencyContact = record.emergencyContacts[0] ?? null;
 
   // ── PROFILE TAB ───────────────────────────────────────────────────────────────────────────────────
   const profilePanel = (
@@ -367,7 +368,7 @@ export default async function MePage({
         <ReadField label={tp('birthDate')} value={p.dateOfBirth} notSet={notSet} />
         <ReadField label={tp('age')} value={p.dateOfBirth ? String(childAgeYears(p.dateOfBirth) ?? '') : null} notSet={tp('employmentInfo.notAvailable')} />
         <ReadGroup legend={tp('identityNricTitle')}>
-          <ReadField label={tp('identityNricTitle')} value={p.icNumber} notSet={notSet} />
+          <ReadField label={tp('icNumber')} value={p.icNumber} notSet={notSet} />
           <ReadField label={tp('oldIcNumber')} value={p.oldIcNumber} notSet={notSet} />
         </ReadGroup>
         <ReadGroup legend={tp('passportInfoTitle')}>
@@ -384,24 +385,21 @@ export default async function MePage({
         <ReadField label={tp('phone')} value={c.mobilePhone} notSet={notSet} />
         <ReadField label={tp('homePhone')} value={c.homePhone} notSet={notSet} />
         <ReadField label={tp('personalEmail')} value={c.personalEmail} notSet={notSet} />
-        <ReadGroup legend={tp('permanentAddressTitle')}>
-          <ReadField
-            label={tp('permanentAddressTitle')}
-            value={addressLine(c.permanent)}
-            notSet={notSet}
-            className="lg:col-span-4"
-          />
-        </ReadGroup>
-        <ReadGroup legend={tp('correspondenceAddressTitle')}>
-          <ReadField
-            label={tp('correspondenceAddressTitle')}
-            value={addressLine(c.correspondence)}
-            notSet={notSet}
-            className="lg:col-span-4"
-          />
-          <ReadField label={tp('phone')} value={c.correspondence.mobilePhone} notSet={notSet} />
-          <ReadField label={tp('homePhone')} value={c.correspondence.homePhone} notSet={notSet} />
-        </ReadGroup>
+        {/* ── THE HOME ADDRESS, AND IT IS THE ONE THE SAVE BUTTON BELOW CHANGES ─────────────────────
+            Read field and input are bound to the SAME `c.homeAddress.<name>`, field by field, with the
+            input's `name=` and the object's key spelled identically. That is not a coincidence to be
+            tidied away: test/me-profile-visibility.test.ts reads the `name=` list out of the form below
+            and requires every address field on it to be displayed from this object, so a value can never
+            again be shown from one column family and saved into another. app/me/record.ts explains which
+            three families `person` carries and why only this one is on the screen; the reporter's copy of
+            that answer is in docs/me-profile-field-visibility.md. */}
+        <ReadField label={tp('addressLine1')} value={c.homeAddress.addressLine1} notSet={notSet} className="lg:col-span-2" />
+        <ReadField label={tp('addressLine2')} value={c.homeAddress.addressLine2} notSet={notSet} className="lg:col-span-2" />
+        <ReadField label={tp('addressLine3')} value={c.homeAddress.addressLine3} notSet={notSet} className="lg:col-span-2" />
+        <ReadField label={tp('postcode')} value={c.homeAddress.postcode} notSet={notSet} />
+        <ReadField label={tp('city')} value={c.homeAddress.city} notSet={notSet} />
+        <ReadField label={tp('stateLabel')} value={c.homeAddress.state} notSet={notSet} />
+        <ReadField label={tp('country')} value={c.homeAddress.country} notSet={notSet} />
 
         {/* ADR-0012 path one — low-risk contact fields, saved straight to the person record under RLS.
             PRESERVED, not rebuilt: this is the same `myUpdateContact` form /me has always carried, moved
@@ -413,46 +411,46 @@ export default async function MePage({
           <p className="mt-2 text-xs text-muted-foreground">{t('contactUpdatesImmediately')}</p>
           <form action={myUpdateContact} className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label={t('phoneLabel')}>
-              <input name="phone" defaultValue={profile?.person?.phone ?? ''} className={inputCls} />
+              <input name="phone" defaultValue={c.mobilePhone ?? ''} className={inputCls} />
             </Field>
             <Field label={t('personalEmailLabel')}>
-              <input name="personalEmail" type="email" defaultValue={profile?.person?.personalEmail ?? ''} className={inputCls} />
+              <input name="personalEmail" type="email" defaultValue={c.personalEmail ?? ''} className={inputCls} />
             </Field>
             <Field label={t('addressLine1Label')} className="lg:col-span-2">
-              <input name="addressLine1" defaultValue={profile?.person?.addressLine1 ?? ''} className={inputCls} />
+              <input name="addressLine1" defaultValue={c.homeAddress.addressLine1 ?? ''} className={inputCls} />
             </Field>
             <Field label={t('addressLine2Label')} className="lg:col-span-2">
-              <input name="addressLine2" defaultValue={profile?.person?.addressLine2 ?? ''} className={inputCls} />
+              <input name="addressLine2" defaultValue={c.homeAddress.addressLine2 ?? ''} className={inputCls} />
             </Field>
             <Field label={t('addressLine3Label')} className="lg:col-span-2">
-              <input name="addressLine3" defaultValue={profile?.person?.addressLine3 ?? ''} className={inputCls} />
+              <input name="addressLine3" defaultValue={c.homeAddress.addressLine3 ?? ''} className={inputCls} />
             </Field>
             <Field label={t('postcodeLabel')}>
-              <input name="postcode" defaultValue={profile?.person?.postcode ?? ''} className={inputCls} />
+              <input name="postcode" defaultValue={c.homeAddress.postcode ?? ''} className={inputCls} />
             </Field>
             <Field label={t('cityLabel')}>
-              <input name="city" defaultValue={profile?.person?.city ?? ''} className={inputCls} />
+              <input name="city" defaultValue={c.homeAddress.city ?? ''} className={inputCls} />
             </Field>
             <Field label={t('stateLabel')}>
-              <input name="state" defaultValue={profile?.person?.state ?? ''} className={inputCls} />
+              <input name="state" defaultValue={c.homeAddress.state ?? ''} className={inputCls} />
             </Field>
             <Field label={t('countryLabel')}>
-              <input name="country" defaultValue={profile?.person?.country ?? ''} className={inputCls} />
+              <input name="country" defaultValue={c.homeAddress.country ?? ''} className={inputCls} />
             </Field>
             <Field label={t('emergencyContactLabel')}>
-              <input name="emergencyContactName" defaultValue={profile?.person?.emergencyContactName ?? ''} className={inputCls} />
+              <input name="emergencyContactName" defaultValue={primaryEmergencyContact?.fullName ?? ''} className={inputCls} />
             </Field>
             <Field label={t('emergencyRelationshipLabel')}>
-              <input name="emergencyContactRelationship" defaultValue={profile?.person?.emergencyContactRelationship ?? ''} className={inputCls} />
+              <input name="emergencyContactRelationship" defaultValue={primaryEmergencyContact?.relationship ?? ''} className={inputCls} />
             </Field>
             <Field label={t('emergencyPhoneLabel')}>
-              <input name="emergencyContactPhone" defaultValue={profile?.person?.emergencyContactPhone ?? ''} className={inputCls} />
+              <input name="emergencyContactPhone" defaultValue={primaryEmergencyContact?.mobilePhone ?? ''} className={inputCls} />
             </Field>
             <Field label={t('emergencyPhone2Label')}>
-              <input name="emergencyContactPhone2" defaultValue={profile?.person?.emergencyContactPhone2 ?? ''} className={inputCls} />
+              <input name="emergencyContactPhone2" defaultValue={primaryEmergencyContact?.homePhone ?? ''} className={inputCls} />
             </Field>
             <Field label={t('emergencyAddressLabel')} className="lg:col-span-4">
-              <input name="emergencyContactAddress" defaultValue={profile?.person?.emergencyContactAddress ?? ''} className={inputCls} />
+              <input name="emergencyContactAddress" defaultValue={primaryEmergencyContact?.address ?? ''} className={inputCls} />
             </Field>
             <div className="col-span-full">
               <Button type="submit" size="sm">
@@ -476,6 +474,9 @@ export default async function MePage({
                   <th className="py-2 pr-3 font-medium">{tp('emergency.relationship')}</th>
                   <th className="py-2 pr-3 font-medium">{tp('emergency.mobilePhone')}</th>
                   <th className="py-2 pr-3 font-medium">{tp('emergency.homePhone')}</th>
+                  {/* The self-edit fold-out posts `emergencyContactAddress`; a field that can be saved
+                      and cannot be seen is the same defect as an address shown from another column. */}
+                  <th className="py-2 pr-3 font-medium">{tp('emergency.address')}</th>
                   <th className="py-2 font-medium">{tp('emergency.priority')}</th>
                 </tr>
               </thead>
@@ -486,6 +487,7 @@ export default async function MePage({
                     <td className="py-2 pr-3">{ec.relationship ?? '—'}</td>
                     <td className="py-2 pr-3">{ec.mobilePhone ?? '—'}</td>
                     <td className="py-2 pr-3">{ec.homePhone ?? '—'}</td>
+                    <td className="py-2 pr-3">{ec.address ?? '—'}</td>
                     <td className="py-2">{priorityLabel(ec.priority)}</td>
                   </tr>
                 ))}
@@ -552,8 +554,18 @@ export default async function MePage({
       </ReadCard>
 
       {/* Concurrent multi-company employments (ADR-0009). Relocated here from the retired Overview tab —
-          it is employment information. The cost-recharge percentages that used to render beside each row
-          are deliberately NOT shown; see docs/me-profile-field-visibility.md. */}
+          it is employment information.
+
+          THE CONTRACTUAL PAY STAYS ON EVERY ROW. The first cut of this round dropped it, and for an
+          employee holding two active employments that deleted something they could previously see about
+          themselves: the Payroll tab's Basic Salary card is the CURRENT employment's compensation row and
+          nothing else, so the second employment's pay then rendered nowhere on the page. Withholding is a
+          decision the reporter gets to read in docs/me-profile-field-visibility.md; losing a figure in a
+          layout change is not. The cost-recharge percentages that used to render beside each row ARE
+          withheld, and that one is on the list.
+
+          Same arithmetic as the retired Overview card (basic + monthly allowance, from `myEmployments`),
+          so a figure an employee learned to recognise did not quietly change meaning under them. */}
       {employments.length > 1 && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('myPositions', { count: employments.length })} count={employments.length} />
@@ -563,6 +575,10 @@ export default async function MePage({
                 <div className="text-sm font-medium">{e.company}</div>
                 <div className="text-xs text-muted-foreground">
                   {e.position ?? '—'} · {e.department ?? '—'}
+                </div>
+                <div className="mt-1.5 flex justify-between gap-3 text-xs">
+                  <span className="text-muted-foreground">{t('basicPlusAllowance')}</span>
+                  <span className="tabular-nums">{rm(Number(e.basic ?? 0) + Number(e.allowance ?? 0))}</span>
                 </div>
               </li>
             ))}
@@ -686,12 +702,21 @@ export default async function MePage({
           why the increment was given, which is a conversation and not a field. See
           docs/me-profile-field-visibility.md. */}
       <ReadCard id="section-compensation" title={tp('compensation')}>
+        {/* WHOSE PAY, AND FOR WHICH EMPLOYMENT. This card is the compensation row of the employment /me
+            resolved from the session; an employee holding two of them (ADR-0009) would otherwise read one
+            unlabelled figure and have no way to tell which contract it belongs to. The other positions and
+            their pay are on the Employment tab's "My positions" card. */}
+        <ReadField label={tp('employmentInfo.company')} value={emp.company} notSet={notSet} />
         <ReadField label={tp('compensation')} value={comp ? Number(comp.basicSalary).toFixed(2) : null} notSet={notSet} />
         <ReadField label={tp('salaryCurrency')} value={comp?.currency ?? null} notSet={notSet} />
         <ReadField label={tp('effectiveDate')} value={comp?.validFrom ?? null} notSet={notSet} />
         <ReadField label={tp('paymentMethod')} value={paymentMethodLabel(record.paymentMethod)} notSet={tp('paymentMethodNotSet')} />
         <ReadField label={tp('payMode')} value={comp?.payMode ?? null} notSet={notSet} />
         <ReadField label={tp('paymentTerm')} value={comp?.paymentTerm ?? null} notSet={notSet} />
+        {/* Daily / hourly staff are paid from the rate, not the basic — it was already projected in
+            app/me/record.ts and simply never put on screen. Blank for a monthly contract, like any other
+            field that is not recorded. */}
+        <ReadField label={tp('rateAmount')} value={comp?.rateAmount ?? null} notSet={notSet} />
       </ReadCard>
 
       <Card className="overflow-hidden" data-tour="me-payslips">

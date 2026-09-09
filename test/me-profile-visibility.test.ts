@@ -29,7 +29,9 @@ import {
   ME_SECTION_TITLE_KEY,
   ME_TABS,
   ME_TAB_LABEL_KEY,
+  ME_UNRENDERED_PERSONNEL_FIELDS,
   ME_VISIBLE_FIELD_LABEL_KEYS,
+  ME_WITHHELD_COLUMNS,
 } from '../app/me/visible-fields';
 
 const root = path.resolve(__dirname, '..');
@@ -119,6 +121,144 @@ describe('r259 — My Profile carries the Personnel record’s shape', () => {
     expect(notOnScreen, `named in the manifest but never rendered: ${notOnScreen.join(', ')}`).toEqual([]);
   });
 
+  it('accounts for EVERY field the Personnel record renders — on screen, or on the withheld list', () => {
+    /**
+     * THE DIRECTION THAT SILENTLY DRIFTS, and the one this round was raised about one level down.
+     *
+     * The two cases above run manifest→Personnel and manifest→screen: they catch a key My Profile names
+     * that HR does not, and a key named but never rendered. Neither catches the opposite — a field ADDED
+     * to a Personnel group that never reaches the employee's copy of their own record. Nothing goes red,
+     * the two screens quietly become different shapes again, and the complaint that opened this item
+     * comes back.
+     *
+     * So the Personnel screen's OWN field list is read out of its source — every `label={t('…')}` on the
+     * page and on the shared field groups it mounts — and each key must be either rendered on My Profile
+     * or on `ME_UNRENDERED_PERSONNEL_FIELDS` with a reason. Adding a field to Personnel is then a choice
+     * to be made in writing, which is the whole point.
+     *
+     * When this fails: put the field on My Profile if the employee may see it, or add it to the map with
+     * a sentence saying why not. Do not delete the case.
+     */
+    const labelled = new Set<string>();
+    for (const m of PERSONNEL_SRC.matchAll(/label=\{t\(\s*'([A-Za-z0-9_.]+)'\s*\)\}/g)) labelled.add(m[1]);
+    // components/pay-structure-fields.tsx labels its three selects with a bare <span> rather than the
+    // shared `Field` component, so the pattern above cannot see them. Named here rather than by widening
+    // the pattern: every other <span> on that page is a hint, an empty-state or a legend, and matching
+    // those would turn this guard into a nag about text that is not a field at all.
+    for (const spanLabelled of ['payMode', 'paymentTerm', 'rateAmount']) labelled.add(spanLabelled);
+
+    expect(labelled.size, 'the Personnel field list came back empty — the extraction pattern is broken')
+      .toBeGreaterThan(100);
+
+    const shown = new Set(Object.values(ME_VISIBLE_FIELD_LABEL_KEYS).flat());
+    const unaccounted = [...labelled].filter(
+      (k) => !shown.has(k) && !(k in ME_UNRENDERED_PERSONNEL_FIELDS),
+    );
+    expect(
+      unaccounted.sort(),
+      'the Personnel record renders these fields and My Profile accounts for neither showing nor ' +
+        'withholding them — an employee would never see them on their own record and nothing would say ' +
+        `so: ${unaccounted.join(', ')}`,
+    ).toEqual([]);
+
+    // The map may not rot the other way either: a key that stopped being a Personnel field, or that is
+    // now shown, is a stale excuse.
+    const stale = Object.keys(ME_UNRENDERED_PERSONNEL_FIELDS).filter((k) => !labelled.has(k) || shown.has(k));
+    expect(stale, `these are excused but are no longer withheld Personnel fields: ${stale.join(', ')}`).toEqual([]);
+    for (const [key, why] of Object.entries(ME_UNRENDERED_PERSONNEL_FIELDS)) {
+      expect(why.length, `${key} is excused with no reason given`).toBeGreaterThan(30);
+    }
+  });
+
+  it('shows the address it saves — one column family on the card, not two', () => {
+    /**
+     * THE BLOCKER THIS CASE EXISTS FOR. The first cut of this round rendered HR's Permanent and
+     * Correspondence address bands read-only and put the contact self-edit fold-out directly beneath
+     * them — but that form posts the LEGACY `addressLine1..country` names, and `core/profile.ts
+     * updateOwnContact` writes only those columns. The employee saw two addresses on one card, edited
+     * one, pressed Save, and neither of the addresses in front of them moved — while the phone and
+     * personal email in the same form did, because those columns are shared. Two address families on one
+     * card is also the second copy the approved plan promised the reporter would never exist.
+     *
+     * The property, stated so it cannot be satisfied by a coincidence: every address field the form
+     * POSTS must be displayed on the same card, read from the SAME object, field by field. The runtime
+     * half — plant a different address in each family, prove the card shows the one the Save button
+     * changes — is in test/me-profile-scope.test.ts against a live database.
+     */
+    const formStart = ME_PAGE.indexOf('action={myUpdateContact}');
+    expect(formStart, 'the contact self-edit form is gone from /me').toBeGreaterThan(0);
+    const form = ME_PAGE.slice(formStart, ME_PAGE.indexOf('</form>', formStart));
+
+    const posted = [...form.matchAll(/name="([A-Za-z0-9]+)"/g)].map((m) => m[1]);
+    const ADDRESS = ['addressLine1', 'addressLine2', 'addressLine3', 'postcode', 'city', 'state', 'country'];
+    expect(
+      ADDRESS.filter((f) => !posted.includes(f)),
+      'the contact form no longer posts the whole home address',
+    ).toEqual([]);
+
+    // Displayed, from the one object — and defaulted from that same object, so the value in the input is
+    // the value in the field above it by construction rather than by two reads agreeing.
+    const notDisplayed = ADDRESS.filter((f) => !ME_PAGE.includes(`c.homeAddress.${f}`));
+    expect(
+      notDisplayed,
+      `these address fields are saved by the card's own Save button but are not displayed on it: ` +
+        notDisplayed.join(', '),
+    ).toEqual([]);
+    for (const f of ADDRESS) {
+      expect(
+        form.includes(`defaultValue={c.homeAddress.${f} ?? ''}`),
+        `the ${f} input is defaulted from something other than the object the card displays`,
+      ).toBe(true);
+    }
+
+    // And the second family is not on the screen at all, in any spelling.
+    for (const other of ['c.permanent', 'c.correspondence', 'permanentAddress', 'correspondenceAddress']) {
+      expect(
+        ME_PAGE.includes(other),
+        `/me renders ${other} — a second address family the Save button below it cannot change`,
+      ).toBe(false);
+    }
+    // Same rule for the emergency contact: the fold-out posts an address, so the register must print one.
+    expect(posted.includes('emergencyContactAddress')).toBe(true);
+    expect(ME_PAGE.includes("tp('emergency.address')"), 'the emergency address is saved but never shown').toBe(true);
+  });
+
+  it('keeps the pay of EVERY concurrent position, and says which company each figure belongs to', () => {
+    /**
+     * A LAYOUT CHANGE MAY NOT DELETE A FIGURE. The retired Overview tab printed "Basic + allowance" for
+     * each of an employee's concurrent employments (ADR-0009 — two active contracts across the group's
+     * companies is a real, seeded case). The first cut of this round moved that list onto the Employment
+     * tab and dropped the figures on the way, while the Payroll tab's Basic Salary card shows the CURRENT
+     * employment's compensation row only — so the second employment's contractual pay rendered nowhere at
+     * all, on neither the withheld list nor the not-built list. Withholding is a decision the reporter
+     * reads; losing something in a move is not.
+     *
+     * When this fails: put the figure back, or add it to ME_HIDDEN_FIELDS with a reason the reporter can
+     * read. Do not delete the case.
+     */
+    const start = ME_PAGE.indexOf("t('myPositions'");
+    expect(start, 'the concurrent-positions card is gone from /me').toBeGreaterThan(0);
+    const card = ME_PAGE.slice(start, ME_PAGE.indexOf('</Card>', start));
+    expect(
+      card.includes("t('basicPlusAllowance')"),
+      'the concurrent-positions card no longer names the pay it shows',
+    ).toBe(true);
+    expect(
+      /rm\(Number\(e\.basic \?\? 0\) \+ Number\(e\.allowance \?\? 0\)\)/.test(card),
+      'the concurrent-positions card no longer shows each position’s pay — the second employment’s ' +
+        'contractual pay would render nowhere on this screen',
+    ).toBe(true);
+    // …and the single-employment figure on the Payroll tab says whose contract it is.
+    const comp = ME_PAGE.indexOf("<ReadCard id=\"section-compensation\"");
+    expect(comp, 'the Basic Salary card is gone from /me').toBeGreaterThan(0);
+    const compCard = ME_PAGE.slice(comp, ME_PAGE.indexOf('</ReadCard>', comp));
+    expect(
+      compCard.includes("tp('employmentInfo.company')"),
+      'the Basic Salary card shows an unlabelled figure — an employee with two employments cannot tell ' +
+        'which contract it belongs to',
+    ).toBe(true);
+  });
+
   it('every key it borrows resolves in ALL SIX catalogues', () => {
     // Borrowing a key means inheriting its translations. A key that exists in en.json only would render
     // the English word on a Malay screen, which is the failure mode i18n-coverage check A exists for —
@@ -174,20 +314,16 @@ describe('r259 — the employee sees ONLY their own record', () => {
     // `employeeDetail` and the statutory pack read return the ADMINISTRATOR's row. The redaction is the
     // explicit projection in record.ts, so a `{...emp}` — or one more field appended in a hurry — is what
     // this case exists to catch.
-    for (const column of [
-      'blacklistReason',
-      'blacklistedAt',
-      'contractRemark',
-      'costAllocation',
-      'employerBearsEpf',
-      'employerBearsSocso',
-      'employerBearsEis',
-      'employerBearsTax',
-      'childReliefTable',
-      'payrollPolicyName',
-      'taxNumberSharedWith',
-      'createdByName',
-    ]) {
+    //
+    // DRIVEN BY THE MANIFEST, NOT BY A LIST OF ITS OWN. This used to be a hand-written array of twelve
+    // column names, which meant the guard protected twelve columns while the docstring above claimed it
+    // protected the withheld class — and `payrollPolicyStatus` and `holidayGroupName`, which
+    // app/me/record.ts's own comment names as deliberately not projected, could be added to the
+    // projection with both this file and test/me-profile-scope.test.ts staying green. Every name below
+    // now comes from `ME_HIDDEN_FIELDS[].columns`, so widening the guard is the same act as writing the
+    // reason down for the reporter.
+    expect(ME_WITHHELD_COLUMNS.length, 'the withheld list names no columns at all').toBeGreaterThan(20);
+    for (const column of ME_WITHHELD_COLUMNS) {
       expect(ME_RECORD.includes(`${column}:`), `record.ts projects the withheld field ${column}`).toBe(false);
       expect(ME_PAGE.includes(`.${column}`), `/me renders the withheld field ${column}`).toBe(false);
     }
