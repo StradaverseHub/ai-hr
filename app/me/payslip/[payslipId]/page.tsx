@@ -219,10 +219,15 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <Row label={t('eis')} value={rm(eb.employee.eis)} />
           <Row label={t('pcb')} value={rm(eb.employee.pcb)} />
           {Number(st.cp38) > 0 && <Row label={t('cp38')} value={rm(st.cp38)} />}
-          {/* 1.2.4 Zakat — informational only: PCB above is ALREADY net of this (LHDN §E.5 offset), so it
-              is NOT re-added to total deductions. Muted, shown only when there is an election this month. */}
+          {/* 3a092cf0 — A REAL DEDUCTION LINE, not an informational aside. This row used to be MUTED with
+              the amount and the offset note crammed into the value column, because the total below it
+              genuinely excluded the zakat: the kernel never charged it, so a full-strength row would have
+              made the column stop adding up. The kernel charges it now, so the row prints like every
+              deduction beside it — a plain tabular figure that the reader can add to the ones above.
+              The offset note moves to the LABEL, where it answers the question the reporter actually
+              asked (why is PCB zero and zakat 30?) without displacing the amount. */}
           {Number(st.zakat) > 0 && (
-            <Row label={t('zakat')} value={`${rm(st.zakat)} · ${t('zakatOffsetNote')}`} muted />
+            <Row label={`${t('zakat')} · ${t('zakatOffsetNote')}`} value={rm(st.zakat)} />
           )}
           {/* e2632276 — two named lines in place of the unnamed lump; the residual keeps the section
               summing to Total deductions, and is hidden when it nets to zero. */}

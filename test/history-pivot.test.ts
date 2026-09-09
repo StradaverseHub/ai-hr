@@ -19,7 +19,8 @@
  *     one month summed into a single cell and hid an entity transfer entirely;
  *   • a pay item coded BASIC must not merge with the synthetic BASIC line;
  *   • an unselected month contributes NOTHING, so the row total always equals what is on screen;
- *   • zakat is displayed but excluded from the deduction sum — PCB is already net of it;
+ *   • zakat is IN the deduction sum (3a092cf0) and is taken out of the OTHER_DED residual, so the money
+ *     is counted once and printed on one line;
  *   • an unregistered company's HRDF 0 is a policy statement, not a failed computation;
  *   • every dynamic row label resolves — a computed t() key is invisible to the static i18n scan.
  *
@@ -267,21 +268,70 @@ describe('080de5cf — the History grid pivot', () => {
     expect(rowFor(grid.rows, 'GROSS')!.total).toBe(3620);
   });
 
-  it('zakat is shown but never added to the deduction column — PCB is already net of it', () => {
-    // Adding it would deduct it twice. The payslip screen makes the same point in words; here it is the
-    // difference between a column that reconciles and one that quietly over-states what came off pay.
+  /**
+   * 3a092cf0 REVERSES THIS CASE, and the case is UPDATED rather than deleted because it pinned a
+   * decision that has now been overturned and the argument belongs beside it.
+   *
+   * IT USED TO ASSERT: "zakat is shown but never added to the deduction column — PCB is already net of
+   * it", with `reconciling: false` and a column summing to 430. The premise was true; the conclusion was
+   * not. `pcb` on the row beside it is ALREADY post-offset, so re-including the zakat cannot double it
+   * where the tax absorbed it — and where the tax did NOT absorb it (SIG01's shape: 7.90 of tax zeroed by
+   * the RM10 remittance floor, so the whole election survived as `zakatLeftover`) excluding it left the
+   * column short by exactly the money the employee owed and never paid. The kernel now charges zakat, so
+   * a deduction column that excluded it would not be the payslip's total any more.
+   *
+   * The fixture's total moves with it: 330 + 18.65 + 7.90 + 73.45 + 200 = 630.00.
+   */
+  it('zakat IS part of the deduction column, and the residual does not carry it a second time', () => {
     const grid = pivotHistoryGrid({
       rows: [
         slip({
-          statutory: { epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45, zakat: 200 },
+          // `zakatInTotal` marks this as a slip written by the post-3a092cf0 kernel, i.e. one whose
+          // stored totalDeductions already counts the zakat. Without the stamp the pivot must NOT
+          // subtract it — that is the legacy case, asserted separately below.
+          statutory: { epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45, zakat: 200, zakatInTotal: true },
+          totalDeductions: '630.00',
+          net: '2990.00',
         }),
       ],
       year: 2026,
     });
     const zakat = rowFor(grid.rows, 'ZAKAT')!;
     expect(zakat.months[0]).toBe(200);
-    expect(zakat.reconciling).toBe(false);
-    expect(sumMonth(grid.rows, 'deduction', 0)).toBe(430);
+    expect(zakat.reconciling).toBe(true);
+    // THE HALF THAT CATCHES THE DOUBLE PRINT. OTHER_DED is a residual over the named lines, so a zakat
+    // left out of that subtraction would land in it — 200 under "Other deductions" AND 200 on the ZAKAT
+    // row, on the one screen whose purpose is reconciliation.
+    expect(rowFor(grid.rows, 'OTHER_DED')!.months[0]).toBe(0);
+    expect(sumMonth(grid.rows, 'deduction', 0)).toBe(630);
+  });
+
+  /**
+   * 3a092cf0 — AND A PRE-FIX PAYSLIP MUST BE BYTE-IDENTICAL, which is the half the verify pass caught.
+   *
+   * Nine stored payslips carry a zakat and their `totalDeductions` is the OLD figure that excludes it.
+   * Subtracting a named zakat line out of a total that never contained it drives the residual NEGATIVE:
+   * measured against SIG01's real stored row, "Other deductions -30.00". filterGridRows only hides a row
+   * when EVERY month is zero, so the negative survives hide-zero and reaches the screen — and for the two
+   * slips on CLOSED runs it could never be corrected.
+   *
+   * No `zakatInTotal` stamp ⇒ the pivot computes the residual exactly as it did before this round.
+   */
+  it('a PRE-fix payslip keeps its residual — the zakat is not subtracted from a total that excludes it', () => {
+    const grid = pivotHistoryGrid({
+      rows: [
+        slip({
+          // SIG01's real stored row: zakat on the blob, NO stamp, and a total that excludes it.
+          statutory: { epfEmployee: 410, socsoEmployee: 18.75, eisEmployee: 7.5, pcb: 0, zakat: 30 },
+          totalDeductions: '436.25',
+          net: '3871.75',
+        }),
+      ],
+      year: 2026,
+    });
+    const other = rowFor(grid.rows, 'OTHER_DED');
+    // 436.25 - (410 + 18.75 + 0 + 7.5 + 0) = 0. Before the gate this was -30.
+    expect(other ? other.months[0] : 0, 'a legacy slip must not produce a negative residual').toBe(0);
   });
 
   it('employer-borne statutory is deducted from the EMPLOYEE line, not left to contradict the total', () => {

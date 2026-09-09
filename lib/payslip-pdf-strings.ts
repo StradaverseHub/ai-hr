@@ -140,6 +140,9 @@ export async function payslipPdfStrings(p: {
       eis: t('eis'),
       pcb: t('pcb'),
       cp38: t('cp38'),
+      // 3a092cf0 — the same key the two payslip screens print, so the document and the screen cannot
+      // name one deduction two different things.
+      zakat: t('zakat'),
       otherDeductions: t('otherDeductions'),
       // e2632276 — the two named absence lines + the bare "days" word appended to each count.
       unpaidLeaveLine: t('unpaidLeaveLine'),

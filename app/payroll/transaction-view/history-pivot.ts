@@ -5,6 +5,9 @@ import { recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-li
 // 3c88d593 (r206) — which days of the period a payslip claims, read from the payslip's OWN record.
 // Pure and dependency-free for the same reason as the import above.
 import { payslipSegmentOf, type PayslipCoverage } from '@/core/payslip-segment';
+// 3a092cf0 — whether THIS payslip's stored total already counts its zakat. Pure and dependency-free,
+// like the two above, so this pure pivot stays pure.
+import { payslipZakatLine, type PayslipZakatSnapshot } from '@/core/payslip-zakat-line';
 import { deriveHistoryBreakdown } from './history-breakdown';
 
 /**
@@ -138,7 +141,7 @@ const SYNTHETIC: {
   { key: 'overtime', code: 'OT', group: 'earning', reconciling: true },
   { key: 'bonus', code: 'BONUS', group: 'earning', reconciling: true },
   { key: 'claim', code: 'CLAIM', group: 'earning', reconciling: true },
-  // ── Deductions: these seven sum to total deductions, exactly (OTHER_DED absorbs the remainder) ──
+  // ── Deductions: these eight sum to total deductions, exactly (OTHER_DED absorbs the remainder) ──
   // 3c473773 issue 2 — the EMPLOYEE-BORNE figures, not the reported share. The employer-bears settings move
   // money onto the company and total deductions is already net of that; printing the reported share here
   // would put two contradictory numbers for one deduction on one screen (the defect that screen had).
@@ -149,10 +152,16 @@ const SYNTHETIC: {
   { key: 'pcb', code: 'PCB', group: 'deduction', reconciling: true },
   { key: 'cp38', code: 'CP38', group: 'deduction', reconciling: true },
   { key: 'otherDeductions', code: 'OTHER_DED', group: 'deduction', reconciling: true },
-  // Zakat is INFORMATIONAL: PCB is already net of it (LHDN §E.5 offset), so adding it to the deduction
-  // column would deduct it twice. Shown because an operator reconciling a Muslim employee's month expects
-  // to see it; excluded from the reconciling set for the same reason it is muted on the payslip.
-  { key: 'zakat', code: 'ZAKAT', group: 'deduction', reconciling: false },
+  // 3a092cf0 REVERSES THIS ROW'S DECISION, and the reasoning it replaces is worth stating because it
+  // sounds right. It read: "Zakat is INFORMATIONAL: PCB is already net of it (LHDN §E.5 offset), so adding
+  // it to the deduction column would deduct it twice." The premise is true and the conclusion does not
+  // follow. `pcb` on the row beside it is ALREADY the post-offset figure, so where the tax exceeded the
+  // zakat the column has already fallen by the whole amount and adding the ZAKAT row back leaves the sum
+  // unchanged. Where it did not — a tax under the RM10 remittance floor, which is SIG01's shape — the
+  // zakat was never taken off anything and excluding it left the column short by exactly the money the
+  // employee owed. The kernel now charges it (core/payroll.ts `statDeductions`), so a total that excluded
+  // it would no longer be the payslip's total at all.
+  { key: 'zakat', code: 'ZAKAT', group: 'deduction', reconciling: true },
   // ── Employer cost: never part of gross or net, so never part of a reconciling sum ──
   { key: 'epfEmployer', code: 'EPF_ER', group: 'employer', reconciling: false },
   { key: 'socsoEmployer', code: 'SOCSO_ER', group: 'employer', reconciling: false },
@@ -370,8 +379,29 @@ function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
   // Left unclamped on purpose: a carry-forward DEFERRAL is legitimately negative, and hiding that behind a
   // Math.max would make the column stop adding up in the one case worth seeing.
   const cp38 = num(st.cp38);
+  // 3a092cf0 — ZAKAT COMES OUT OF THE RESIDUAL TOO, and leaving it in was the second half of the same
+  // defect. `totalDeductions` now includes the zakat, so a residual that did not subtract it would carry
+  // the zakat into OTHER_DED while the ZAKAT row printed it again beside it: the same 30.00 on two lines,
+  // an over-stated "Other deductions" on a reconciliation screen, and no way for an operator to tell
+  // which line was the real one. The rule this file lives by is that every named line is taken OUT of the
+  // residual before it is printed; zakat is a named line now, so it is subtracted here.
+  // 3a092cf0 — SUBTRACT THE ZAKAT ONLY FROM A SLIP WHOSE TOTAL ACTUALLY CONTAINS IT.
+  //
+  // `b.totalDeductions` is the STORED figure. On a slip written before this item that total EXCLUDES the
+  // zakat, so subtracting a named zakat line out of it drives the residual NEGATIVE — measured against
+  // SIG01's real stored row: "Other deductions -30.00", and filterGridRows only hides a row when EVERY
+  // month is zero, so the negative survives hide-zero and reaches the screen.
+  //
+  // The payslip's own stamp is the authority (core/payslip-zakat-line.ts). Counted ⇒ it is inside the
+  // total and comes out of the residual. Not counted ⇒ it was never in the total, so the residual is
+  // computed exactly as it was before this round and the pre-existing slip is byte-identical.
+  const zakatLine = payslipZakatLine(st as PayslipZakatSnapshot);
+  const zakat = zakatLine.amount;
   const otherDeductions = round2(
-    b.totalDeductions - (emp.epf + emp.socso + emp.skbbk + emp.eis + emp.pcb) - cp38,
+    b.totalDeductions -
+      (emp.epf + emp.socso + emp.skbbk + emp.eis + emp.pcb) -
+      cp38 -
+      (zakatLine.countedInTotal ? zakat : 0),
   );
 
   // 0253dc7c — the wage bases, straight out of the payslip's own stamp. `null` (a pre-r187 run) is
@@ -404,7 +434,7 @@ function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
     pcb: emp.pcb,
     cp38,
     otherDeductions,
-    zakat: num(st.zakat),
+    zakat,
     epfEmployer: b.employerContributions.epf,
     socsoEmployer: b.employerContributions.socso,
     eisEmployer: b.employerContributions.eis,
