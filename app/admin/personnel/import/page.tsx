@@ -6,7 +6,7 @@ import { listCostCenters, listPositions } from '@/core/admin';
 import { listProfileOptions } from '@/core/profile-options';
 import { listEmployeeImportRuns } from '@/core/import';
 import { PageHeader } from '@/components/ui';
-import { EmployeeImport } from './employee-import';
+import { ImportWorkbench } from './import-workbench';
 import { ImportHistory } from './import-history';
 
 export default async function ImportPage() {
@@ -74,7 +74,10 @@ export default async function ImportPage() {
         <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
       ) : (
         <>
-          <EmployeeImport
+          {/* Item 2983802f — the FIRST step is now "what are you importing?". The workbench renders the
+              full 49-column importer (unchanged, and the default) or one of the four narrow section
+              importers; both read the same live catalogs below. */}
+          <ImportWorkbench
             companies={companies.map((c) => ({ id: c.id, name: c.name }))}
             defaultCompanyId={defaultCompanyId}
             reference={{

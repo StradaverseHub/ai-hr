@@ -93,16 +93,25 @@ export type ImportRunRow = {
 
 /**
  * "Did it succeed?" — derived, in ONE place, so the list, the badge and any future report agree.
- *   succeeded — every row in the file became an employee.
- *   partial   — some did, some did not.
- *   failed    — none did (an all-rejected file, or an empty one).
+ *   succeeded — nothing in the file was wrong: every row that had work to do was done.
+ *   partial   — some rows went in, some did not.
+ *   failed    — rows were rejected and none went in (an all-rejected file, or an empty one).
+ *
+ * 2983802f — WHY "IMPORTED NOTHING" IS NOT THE SAME AS "FAILED". The per-section importer UPDATES
+ * people who already exist, so its most ordinary happy path is a file every row of which is already
+ * correct: `importedRows` 0, `failedRows` 0, nothing wrong with any of it. Keying the badge on
+ * `importedRows === 0` alone painted that run red. The question the badge answers is "did anything go
+ * wrong?", and the honest answer to a run with no failures is no — a file with no rows at all is the
+ * one case where nothing having happened really is a failure.
  */
 export function importRunOutcome(r: {
   importedRows: number;
   failedRows: number;
+  totalRows?: number;
 }): 'succeeded' | 'partial' | 'failed' {
-  if (r.importedRows === 0) return 'failed';
-  return r.failedRows === 0 ? 'succeeded' : 'partial';
+  if (r.importedRows > 0) return r.failedRows === 0 ? 'succeeded' : 'partial';
+  if (r.failedRows > 0) return 'failed';
+  return (r.totalRows ?? 0) > 0 ? 'succeeded' : 'failed';
 }
 
 /** Columns the importer recognises. Required ones must be present and non-empty per row.
