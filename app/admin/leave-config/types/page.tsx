@@ -17,6 +17,7 @@ import {
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
 import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../approval-readout';
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
   archiveLeaveTypeAction,
@@ -149,6 +150,16 @@ export default async function LeaveConfigTypesPage({
       />
     </div>
   );
+  /**
+   * a6fe37fc ROUND 4 — TAB 5's READ-OUT, PREPARED ONCE FOR THE WHOLE PAGE.
+   *
+   * `loadLeaveTypeApprovalReadout` reads the tenant's active approval rules and templates in ONE
+   * `loadApprovalRuleSet` call plus one escalation read per company; every leave type's answer is then
+   * `decideApproval` over that set, in memory, with no I/O. A per-type read would turn this into
+   * `types × companies × 2` queries on a single render — which is the exact cost the approval replay's
+   * fix pass removed from the resolver (core/leave-approval-policy.ts's `ApprovalRuleSet` note).
+   */
+  const approvalReadout = await loadLeaveTypeApprovalReadout(s, companyOptions);
   const accrualSection = (
     <div className="space-y-1.5 border-t border-border pt-3">
       <span className="text-xs font-medium text-muted-foreground">{t('runEarnedAccrual')}</span>
@@ -364,6 +375,12 @@ export default async function LeaveConfigTypesPage({
                   formulaTemplate={formulaTemplate}
                   entitlementTablesSection={entitlementTablesSectionFor(lt.id)}
                   accrualSection={accrualSection}
+                  /* a6fe37fc Round 4 — tab 5's read-out, sliced per type from the ONE rule set read
+                     above. Server-composed and handed across the boundary as a rendered node, exactly
+                     like `entitlementTablesSection`: no closure crosses it (r123). */
+                  approvalReadoutSection={
+                    <LeaveTypeApprovalReadout data={approvalReadout} leaveTypeId={lt.id} />
+                  }
                   updateTypeAction={updateLeaveTypeAction}
                   archiveTypeAction={archiveLeaveTypeAction}
                   deleteTypeAction={deleteLeaveTypeAction}

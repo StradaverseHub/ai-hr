@@ -180,6 +180,7 @@ export function LeaveTypeTabs({
   formulaTemplate,
   entitlementTablesSection,
   accrualSection,
+  approvalReadoutSection,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -196,6 +197,16 @@ export function LeaveTypeTabs({
   entitlementTablesSection?: ReactNode;
   /** Run Earned Accrual — one server-composed node shared by every type. */
   accrualSection?: ReactNode;
+  /**
+   * a6fe37fc ROUND 4 — tab 5's READ-ONLY chain read-out: which chain reaches THIS leave type, its
+   * ordered steps and the escalation, per company. Server-composed for the same reason
+   * `entitlementTablesSection` is: it resolves through `decideApproval` — THE matcher — over a rule set
+   * this page reads ONCE, and a client-side copy of that ranking is the drift IA §2.3 forbids.
+   * READ-ONLY by design (IA §2.2): `e4238594` removed a per-leave-type Approval Workflow EDITOR from
+   * this exact panel as a duplicate of the Approval screen's, and this is the answer that sub-step
+   * never gave, not the sub-step coming back.
+   */
+  approvalReadoutSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -1363,6 +1374,14 @@ export function LeaveTypeTabs({
             </CardHeader>
             <CardContent id={`tab-approvers-${id}`} className="space-y-3">
               <p className="text-xs text-muted-foreground">{tTabs('tabHint.approvers')}</p>
+              {/* a6fe37fc ROUND 4 — THE READ-OUT ROUND 2 DEFERRED, and the reason this tab can answer
+                  its own title. Server-composed above (app/admin/leave-config/approval-readout.tsx):
+                  which chain reaches this leave type, where it came from, its ordered steps, the
+                  escalation, and how many other rules can route a particular employee elsewhere.
+                  READ-ONLY — every control that CHANGES a chain is on Approval chains, which it links
+                  to. It sits FIRST because it is the question the tab is named after; the per-date
+                  switch below is a property of the leave type, not of the chain. */}
+              {approvalReadoutSection}
               {/* F7 — per-date (partial) approval. IT ARRIVES HERE FROM *General setting*, where it sat
                   four steps from anything else about approval, and it is genuinely a property of the
                   leave type. Same form, same `partialApproval=1` marker, same column. The old screen

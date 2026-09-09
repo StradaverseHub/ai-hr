@@ -35,7 +35,12 @@ const manager = fs.readFileSync(MANAGER, 'utf8');
  * absence assertions below run against the source with commentary stripped, and the structural ones
  * (imports, JSX tags) are anchored so a comment cannot satisfy them either.
  */
-const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
+const stripComments = (src: string) =>
+  // ⚠️ THE COMMENT GOES, THE LINE STAYS. Deleting whole lines containing `//` (the repo's older helper
+  // shape) only ever ADDS edges in an import ratchet, but every assertion below is an ABSENCE check —
+  // where the same blindness REMOVES evidence and fails silent. `<form action={x}> // note` stripped to
+  // nothing satisfies both "no `<form`" and "no `action={`". `://` is left alone so a URL survives.
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
 const pageCode = stripComments(page);
 const dict = (loc: string) => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
 
@@ -306,6 +311,75 @@ describe('Approval Workflow page — two headed sections', () => {
     expect(page).toContain('targetRole: esc.targetRole');
     // Every company gets one now — the old "multi-step only" condition went with the switch.
     expect(page).not.toContain("t('escalationUnavailableSingleApprover')");
+  });
+});
+
+/**
+ * ═══ a6fe37fc ROUND 4 — THE CASE ABOVE, CARRIED FORWARD TO THE NEW ADDRESS ═══
+ *
+ * ⚠️ READ THIS BEFORE DELETING THE READ-ONLY LIST ON `/admin/leave-config/approval-chains` AS A
+ * REGRESSION. It looks like the Workflow Matrix coming back. It is not, and the difference is the whole
+ * reason `706d34e8`'s removal was safe in the first place:
+ *
+ *   · WHAT `706d34e8` REMOVED WAS A SECOND **EDITOR** over rows the Assignment Template section already
+ *     maintains. `assignApprovalTemplate` inserts and archives those very `leave_approval_policy` rows,
+ *     `listTemplateAssignments` lists every active one that carries a template, and each is individually
+ *     unassignable by ruleId. Two editors over one set of rows is the duplication the reporter raised the
+ *     item for, and it is what had to go.
+ *   · WHAT ROUND 4 ADDS IS A **READ-OUT** of a column that routes live requests. A rule's business unit /
+ *     department / position scope and its own chain are STORED, are READ by `resolveApprovalChain`, and
+ *     DECIDE WHO APPROVES — and since `706d34e8` no screen in the product displays them (IA §4.1). That
+ *     is what makes "why did this request go to that approver?" unanswerable today.
+ *   · A READ-OUT IS NOT AN EDITOR, AND THAT IS ENFORCED RATHER THAN PROMISED: the case below asserts the
+ *     new surface has no form, no action and no write path, and `test/leave-config-round4.test.ts`
+ *     asserts the same thing again over the file that draws it. If someone later gives it an Edit button,
+ *     both fail — which is the correct outcome, because THAT would be the matrix coming back.
+ *
+ * The `<WorkflowMatrix` absence assertion above stays pointed at the old page while the old page exists;
+ * it is re-pointed at the new one, not deleted, when Round 5 empties `/admin/leave/approval` into a
+ * redirect stub (docs/design/a6fe37fc-migration-order.md → Round 4/5). Both pages are asserted here now,
+ * so the cutover deletes one line rather than the case.
+ */
+describe('706d34e8 + a6fe37fc R4 — the matrix stays gone, and the read-out is not it', () => {
+  const NEW_PAGE = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
+  const READOUT = path.join(ROOT, 'app/admin/leave-config/approval-readout.tsx');
+
+  it('the new Approval chains page exists and renders no Workflow Matrix either', () => {
+    expect(fs.existsSync(NEW_PAGE), 'a6fe37fc Round 4 builds this page — see the migration order').toBe(true);
+    const newPage = stripComments(fs.readFileSync(NEW_PAGE, 'utf8'));
+    expect(newPage).not.toContain('<WorkflowMatrix');
+    expect(newPage).not.toContain('buildWorkflowMatrixLabels');
+    // The deleted files stay deleted at the new address too.
+    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-approval/workflow-matrix.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-approval/matrix-labels.ts'))).toBe(false);
+  });
+
+  it('the read-out shows the scope columns 706d34e8 left invisible — that is what it is FOR', () => {
+    // Stated POSITIVELY, because the failure this guards against is deletion, not addition. IA §4.1:
+    // these three columns are preserved by convertLegacyApprovalRules, read by resolveApprovalChain, and
+    // displayed by nothing since the matrix went.
+    const readout = fs.readFileSync(READOUT, 'utf8');
+    for (const dim of ['businessUnit', 'department', 'position']) {
+      expect(readout, `the read-out no longer shows a rule's ${dim} scope`).toContain(`r.${dim}`);
+    }
+  });
+
+  it('and it cannot WRITE — no form, no action, no per-rule editor anywhere in it', () => {
+    // This is the line between "a read-out of a routing column" and "the second editor 706d34e8
+    // removed". Asserted with commentary stripped: an honest header necessarily names what it is not
+    // doing (the r134 rule, same as the absence assertions above).
+    const readout = stripComments(fs.readFileSync(READOUT, 'utf8'));
+    for (const write of ['<form', 'action={', "'use server'", 'saveLeaveApprovalRuleAction', 'archiveLeaveApprovalRuleAction']) {
+      expect(
+        readout.includes(write),
+        `the Round 4 read-out contains \`${write}\` — a second editor over leave_approval_policy is ` +
+          `exactly what 706d34e8 removed. Read-only is the restoration; editable is the regression.`,
+      ).toBe(false);
+    }
+    // …and the per-rule server actions are still retired, so there is nothing for one to post to.
+    const actions = fs.readFileSync(path.join(ROOT, 'app/admin/leave-approval/actions.ts'), 'utf8');
+    expect(actions).not.toContain('saveLeaveApprovalRuleAction');
+    expect(actions).not.toContain('archiveLeaveApprovalRuleAction');
   });
 });
 
