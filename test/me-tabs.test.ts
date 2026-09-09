@@ -32,6 +32,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/me/page.tsx'), 'utf8');
+// r260 (9583deac stage two) — the "request a change" FORM and the Bank & Statutory tour anchor left
+// page.tsx for this component, which /me renders once per tab that offers requestable fields. Same
+// document, same server actions, one file further down; so the bindings and the tour anchors below are
+// searched across BOTH files. That is not a relaxation: an action or an anchor still has to be provably
+// present on the /me surface, it is simply no longer required to sit in one particular file of it.
+const REQUEST_CARD = fs.readFileSync(path.resolve(__dirname, '../app/me/request-change-card.tsx'), 'utf8');
+const ME_SURFACE = `${PAGE}\n${REQUEST_CARD}`;
 // afc29d75 — all six catalogues, so "the retired string is gone" is checked where it can actually still
 // be hiding. An unused key removed from en.json alone is the shape the unused-key check carries forever.
 const MESSAGES: Record<string, { me: Record<string, unknown> }> = Object.fromEntries(
@@ -90,7 +97,7 @@ const PERFORMANCE_PAGE_SRC = fs.readFileSync(
 describe('/me — tabbed My Workspace (311ad7ba)', () => {
   it('keeps every server-action binding present after the tab restructure', () => {
     for (const a of ACTIONS) {
-      expect(PAGE.includes(`action={${a}}`), `missing form action={${a}}`).toBe(true);
+      expect(ME_SURFACE.includes(`action={${a}}`), `missing form action={${a}}`).toBe(true);
     }
   });
 
@@ -226,7 +233,11 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
 
   it('/me no longer binds them, and links across instead', () => {
     for (const a of [...MOVED_ACTIONS, 'myRequestOvertime']) {
-      expect(PAGE.includes(`action={${a}}`), `${a} is still bound on /me — the forms are in two places`).toBe(false);
+      // Searched over the WHOLE /me surface, so a moved form cannot come back by hiding in the request
+      // card rather than in page.tsx.
+      expect(ME_SURFACE.includes(`action={${a}}`), `${a} is still bound on /me — the forms are in two places`).toBe(
+        false,
+      );
     }
     expect(PAGE.includes('href="/attendance/requests"')).toBe(true);
     expect(PAGE.includes("t('fileAttendanceRequest')")).toBe(true);
@@ -244,9 +255,18 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     expect(onThisPage.length, 'the /me walkthrough has steps').toBeGreaterThan(3);
     for (const st of onThisPage) {
       const attr = st.target!.replace(/^\[|\]$/g, '').replace(/"/g, '"');
-      expect(PAGE.includes(attr), `the /me walkthrough targets ${st.target} and the page no longer has it`).toBe(
-        true,
-      );
+      // r260 — one anchor is now written as a CONDITIONAL JSX prop on the shared request card
+      // (`data-tour={tab === 'bankStatutory' ? 'me-bank' : undefined}`), so the literal
+      // `data-tour="me-bank"` never appears in source even though it renders. Accept that form too, but
+      // only in its strict shape: the attribute must be bound AND its exact value must still be written
+      // somewhere on the surface, so deleting the anchor still fails this case.
+      const asProp = /^([\w-]+)="(.+)"$/.exec(attr);
+      const present =
+        ME_SURFACE.includes(attr) ||
+        (asProp !== null &&
+          ME_SURFACE.includes(`${asProp[1]}={`) &&
+          new RegExp(`['"]${asProp[2].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`).test(ME_SURFACE));
+      expect(present, `the /me walkthrough targets ${st.target} and the page no longer has it`).toBe(true);
     }
   });
 

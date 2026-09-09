@@ -167,10 +167,18 @@ function sanitizeProposed(raw: ProfileChangeProposed): ProfileChangeProposed {
 }
 
 /**
- * A rejection must say why. The plan promises the reporter exactly that, and this is the authority for
- * it — the same shape as leave's MissingRejectReasonError, thrown BEFORE the transaction opens so a
- * reasonless rejection never reaches the row. `profile_change_request_reject_reason_ck` (migration 0458)
- * is the second line of the same defence, underneath any future caller that forgets this one.
+ * A rejection must say why. The plan promises the reporter exactly that, and this is the SOLE authority
+ * for it — the same shape as leave's MissingRejectReasonError, thrown BEFORE the transaction opens so a
+ * reasonless rejection never reaches the row.
+ *
+ * ── AND IT IS DELIBERATELY NOT ALSO A DATABASE CONSTRAINT ───────────────────────────────────────────
+ * Migration 0458's first draft carried `CHECK (status <> 'rejected' OR decision_reason <> '') NOT VALID`
+ * as "a second line of the same defence". It was not a second line; it was a second RULE, applying to
+ * every writer of the row rather than to every rejection. NOT VALID skips the historical scan but is
+ * still enforced on the new row version of any UPDATE, and `core/pdpa.ts` erasePersonPii rewrites EVERY
+ * one of a subject's profile-change rows inside the single transaction an erasure runs in — so one
+ * pre-existing reasonless rejection would have aborted that employee's whole PDPA erasure. Rejecting is
+ * done HERE and nowhere else, so the rule is enforced here and nowhere else.
  */
 export class ProfileChangeReasonRequiredError extends Error {
   constructor() {
@@ -480,11 +488,10 @@ export async function decideProfileChange(
       // follow (see requestProfileChange): the log is append-only and PDPA erasure cannot reach it, so
       // it records that a decision carried a reason rather than the sentence itself. The sentence lives
       // on profile_change_request.decision_reason, which is RLS-scoped and erasable with the record.
-      payload: {
-        decision: p.decision,
-        deciderEmploymentId: p.deciderEmploymentId ?? null,
-        reasonGiven: reason !== null,
-      },
+      // Single-line, which is the repo convention AND what test/event-payload-pii-guard.test.ts can
+      // actually scan — it reads the remainder of the line containing `payload:`, so a wrapped object
+      // literal in the one core file that handles bank, IC and passport values would be unscanned.
+      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null, reasonGiven: reason !== null },
     });
     return { status: p.decision };
   });

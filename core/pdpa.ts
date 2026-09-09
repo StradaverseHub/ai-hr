@@ -160,9 +160,20 @@ export async function erasePersonPii(
         .where(eq(employeeStatutoryMy.personId, emp.personId));
     }
     // The mutable proposed-change store holds cleartext PII in jsonb → redact it for this subject.
+    //
+    // r260 (9583deac stage two) added `decision_reason`: an approver's free sentence ABOUT this employee
+    // ("The bank letter you attached is for a different account holder."), sitting in the same row as the
+    // cleartext being redacted on the line above. core/profile.ts keeps that sentence OUT of the
+    // append-only event log precisely because "it is RLS-scoped and erasable with the record" — so it has
+    // to actually be erased here, or that justification is false and the free text outlives the PII.
+    //
+    // This UPDATE touches EVERY one of the subject's rows whatever their status, which is why 0458 adds a
+    // plain nullable column and no CHECK: a rejected row is rewritten right here, and a table constraint
+    // on `status = 'rejected' → reason present` would abort the whole erasure transaction on any legacy
+    // rejection that has no reason. The rule lives at the decision instead (core/profile.ts).
     await tx
       .update(profileChangeRequest)
-      .set({ proposed: { redacted: true } })
+      .set({ proposed: { redacted: true }, decisionReason: null })
       .where(eq(profileChangeRequest.personId, emp.personId));
 
     // b4682879 — the profile photograph is biometric-adjacent personal data (identity scope). Delete it on

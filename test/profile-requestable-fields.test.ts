@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PROFILE_REQUESTABLE_FIELDS,
   PROFILE_REQUESTABLE_KEYS,
+  formatProposedValue,
   maskAccountNumber,
   requestableField,
   requestableFieldsForTab,
@@ -38,8 +39,22 @@ const CORE_PROFILE = read('core/profile.ts');
 const ME_ACTIONS = read('app/me/actions.ts');
 const REQUEST_CARD = read('app/me/request-change-card.tsx');
 const ME_PAGE = read('app/me/page.tsx');
+// The two screens an APPROVER reads a proposed change on. Both are held to the same renderer as /me.
+const PERSONNEL_PAGE = read('app/admin/personnel/page.tsx');
+const APPROVALS_PAGE = read('app/approvals/page.tsx');
+// The two documents the REPORTER reads. They are prose, so nothing else in the build can notice when a
+// number in them stops being true.
+const DOC_REQUESTS = read('docs/me-profile-change-requests.md');
+const DOC_VISIBILITY = read('docs/me-profile-field-visibility.md');
 const SCHEMA = read('db/schema.ts');
+const PDPA = read('core/pdpa.ts');
 const MIGRATION = read('db/migrations/0458_profile_change_decision_reason.sql');
+/** 0458 with its `--` commentary stripped: what Postgres is actually asked to DO, not what the header
+ *  explains it deliberately does not do. The header quotes the CHECK that was removed, so a naive grep
+ *  over the whole file would find the very thing this test exists to keep out. */
+const MIGRATION_SQL = MIGRATION.split('\n')
+  .filter((l) => !l.trim().startsWith('--'))
+  .join('\n');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const CATALOGS = Object.fromEntries(
@@ -182,15 +197,39 @@ describe('r260 — the requestable-field declaration', () => {
     }
   });
 
-  it('a rejection cannot be stored without a reason — service, schema and migration all say so', () => {
+  it('a rejection cannot be stored without a reason — enforced AT THE DECISION, never as a table CHECK', () => {
+    /**
+     * THIS CASE CHANGED SHAPE IN THE FIX PASS, AND IT IS STRICTLY STRONGER THAN THE ONE IT REPLACES.
+     *
+     * 0458 shipped its first draft with `CHECK (status <> 'rejected' OR btrim(decision_reason) <> '')
+     * NOT VALID`, and this case asserted the constraint was there. The adversarial verify pass proved on
+     * a live probe table that NOT VALID skips only the historical SCAN — it is STILL enforced against
+     * the new row version of every UPDATE. `core/pdpa.ts` erasePersonPii updates EVERY one of a
+     * subject's profile-change rows, no status filter, inside the single transaction the whole erasure
+     * runs in. So one legacy rejection with no reason (exactly the rows 0458 leaves blank on purpose)
+     * would have made that employee's PDPA erasure abort with nothing erased.
+     *
+     * So the constraint is gone and the assertion is inverted: the migration must add a NULLABLE column
+     * and nothing a writer of this table has to satisfy, and the rule must be provable at the decision
+     * instead. Two writers are named below by name, because "who rejects a request?" is the enumeration
+     * that got this wrong the first time.
+     */
     expect(CORE_PROFILE).toContain('export class ProfileChangeReasonRequiredError');
     expect(CORE_PROFILE).toContain("if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();");
     expect(SCHEMA).toContain("decisionReason: text('decision_reason')");
-    expect(MIGRATION).toContain('ADD COLUMN "decision_reason" text');
-    expect(MIGRATION).toContain('profile_change_request_reject_reason_ck');
-    // NOT VALID is load-bearing: rows rejected before this column existed have no reason and must not be
-    // back-filled with an invented one. See the migration's own header.
-    expect(MIGRATION).toContain('NOT VALID');
+    expect(MIGRATION_SQL).toContain('ADD COLUMN "decision_reason" text');
+    // The column is NULLABLE — a NOT NULL here would fail the ALTER outright on any table with rows.
+    expect(MIGRATION_SQL).not.toMatch(/decision_reason"?\s+text\s+not\s+null/i);
+    // NOTHING ELSE. No CHECK, valid or NOT VALID, and no constraint of any other kind.
+    expect(MIGRATION_SQL, '0458 must add no constraint — core/pdpa.ts rewrites these rows during an erasure').not.toMatch(
+      /ADD\s+CONSTRAINT/i,
+    );
+    expect(MIGRATION_SQL, '0458 must add no CHECK — see the erasure-abort case in this file').not.toMatch(/\bCHECK\s*\(/i);
+    // The OTHER writer of the table, named so a future constraint author meets it here.
+    expect(PDPA).toContain('.update(profileChangeRequest)');
+    // And the free-text reason is erased with the record — core/profile.ts keeps it out of the
+    // append-only event log on exactly that promise.
+    expect(PDPA).toContain('decisionReason: null');
     // An ALTER on an existing table inherits its policies and grants — the migration must SAY so rather
     // than leave the next reader to re-derive it (AGENTS rule 5).
     expect(MIGRATION).toMatch(/NO RLS OR GRANT CHANGES/);
@@ -228,13 +267,120 @@ describe('r260 — the requestable-field declaration', () => {
     expect(report, report.join('\n')).toEqual([]);
   });
 
-  it('a pending bank account number is masked exactly as the master one is', () => {
+  it('a pending bank account number is masked exactly as the master one is — the approver still reads it whole', () => {
     // One function, used by the record card AND by the pending annotation beside it. Printing the
     // requested number in full next to a masked master would defeat the masking on the same line.
+    // The APPROVER is the one audience that legitimately differs: they are checking the proposed number
+    // against a bank letter, and read it unmasked on the Personnel card anyway. That is why `mask` is a
+    // required argument of the shared renderer and not a default somebody can inherit by forgetting.
+    const t = (k: string) => k; // identity: this case is about the VALUE, not the wording
+    const acct = requestableField('bankAccountNo')!;
+    expect(acct.masked).toBe(true);
     expect(maskAccountNumber('1234567890')).toBe('•••• 7890');
     expect(maskAccountNumber(null)).toBeNull();
-    expect(requestableField('bankAccountNo')?.masked).toBe(true);
-    expect(REQUEST_CARD).toContain('if (field.masked) return maskAccountNumber(String(value))');
+    expect(formatProposedValue(acct, '1234567890', t, { mask: true })).toBe('•••• 7890');
+    expect(formatProposedValue(acct, '1234567890', t, { mask: false })).toBe('1234567890');
     expect(ME_PAGE).toContain('maskAccountNumber(st.bankAccountNo)');
+    expect(REQUEST_CARD).toContain('formatProposedValue(field, value, t, { mask: true })');
+  });
+
+  it('the count the reporter is given is the count that shipped', () => {
+    /**
+     * The first draft of these documents said "twenty-one fields" three times while the declaration
+     * carried twenty-four — in the one artefact written for somebody who cannot read the declaration,
+     * and who is being asked to approve a stage on the strength of it. The tables listed all
+     * twenty-four; only the number was wrong, which is exactly the kind of error prose keeps.
+     *
+     * So the number is spelled out here in words and checked. A field added or removed in the future
+     * fails this case, which is the moment to re-read the document rather than the moment after it has
+     * been sent to the reporter.
+     */
+    const WORDS: Record<number, string> = {
+      20: 'twenty',
+      21: 'twenty-one',
+      22: 'twenty-two',
+      23: 'twenty-three',
+      24: 'twenty-four',
+      25: 'twenty-five',
+      26: 'twenty-six',
+      27: 'twenty-seven',
+      28: 'twenty-eight',
+      29: 'twenty-nine',
+      30: 'thirty',
+    };
+    const total = PROFILE_REQUESTABLE_FIELDS.length;
+    const word = WORDS[total];
+    expect(word, `no spelled-out word for ${total} fields — extend WORDS above`).toBeTruthy();
+
+    for (const [name, doc] of [
+      ['docs/me-profile-change-requests.md', DOC_REQUESTS],
+      ['docs/me-profile-field-visibility.md', DOC_VISIBILITY],
+    ] as const) {
+      // `(?!-)` so plain "twenty" does not match inside "twenty-four".
+      const says = (w: string) => new RegExp(`\\b${w}\\b(?!-)`).test(doc);
+      const stale = Object.entries(WORDS)
+        .filter(([n, w]) => Number(n) !== total && says(w))
+        .map(([, w]) => w);
+      expect(stale, `${name} still tells the reporter "${stale.join('", "')}" — the declaration carries ${word}`).toEqual(
+        [],
+      );
+      expect(says(word), `${name} never states the field count (${word})`).toBe(true);
+    }
+    // And the per-tab split the document quotes, which is the half a reader can actually count.
+    expect(requestableFieldsForTab('profile').length).toBe(17);
+    expect(requestableFieldsForTab('bankStatutory').length).toBe(7);
+    expect(DOC_REQUESTS).toContain('seventeen on the Profile tab and seven on Bank & Statutory');
+  });
+
+  it('every screen that prints a proposed value uses the ONE renderer — nobody is shown a stored code', () => {
+    /**
+     * THE REGRESSION THIS CASE EXISTS FOR. /admin/personnel shipped
+     *   f.options?.find((opt) => opt.value === String(value))?.value
+     * — a no-op returning the string it had just matched on — so an approver read "Tax Category → 2"
+     * and "Gender → male" where the code it replaced printed "PCB → Married · spouse working", while
+     * My Profile printed the label for the same request in the same round. Two screens, one request,
+     * two different sentences: the opposite of the single-declaration property this round is sold on.
+     * Both queues now call the shared renderer, and this case fails if either stops.
+     */
+    const WORDS: Record<string, string> = {
+      pcbOption2: 'Married · spouse not working',
+      gender_male: 'Male',
+      marital_married: 'Married',
+      proposedCleared: '— cleared —',
+    };
+    const t = (k: string) => WORDS[k] ?? k;
+
+    const pcb = requestableField('taxCategory')!;
+    expect(formatProposedValue(pcb, '2', t, { mask: false })).toBe('Married · spouse not working');
+    // jsonb round-trips a number as a number — the approver must not read "2" because of a type.
+    expect(formatProposedValue(pcb, 2, t, { mask: false })).toBe('Married · spouse not working');
+    expect(formatProposedValue(requestableField('gender')!, 'male', t, { mask: false })).toBe('Male');
+    expect(formatProposedValue(requestableField('maritalStatus')!, 'married', t, { mask: false })).toBe('Married');
+    // A stored value outside the option set degrades to the value itself, never to a blank.
+    expect(formatProposedValue(requestableField('gender')!, 'martian', t, { mask: false })).toBe('martian');
+    // A cleared field says so in words rather than printing nothing.
+    expect(formatProposedValue(requestableField('preferredName')!, '', t, { mask: false })).toBe('— cleared —');
+    expect(formatProposedValue(requestableField('preferredName')!, null, t, { mask: false })).toBe('— cleared —');
+
+    for (const [name, src] of [
+      ['app/admin/personnel/page.tsx', PERSONNEL_PAGE],
+      ['app/approvals/page.tsx', APPROVALS_PAGE],
+      ['app/me/request-change-card.tsx', REQUEST_CARD],
+    ] as const) {
+      expect(src, `${name} must print a proposed value through the shared renderer`).toContain('formatProposedValue(');
+      // …and the exact no-op that shipped must never come back, on any of them.
+      expect(src, `${name} resolves a select option to its own .value — the reader gets the stored code`).not.toMatch(
+        /options\?\.find\([\s\S]{0,80}?\)\?\.value/,
+      );
+    }
+    // The approval queues resolve option words from the namespace the EMPLOYEE picked them in.
+    for (const [name, src] of [
+      ['app/admin/personnel/page.tsx', PERSONNEL_PAGE],
+      ['app/approvals/page.tsx', APPROVALS_PAGE],
+    ] as const) {
+      expect(src, `${name} must resolve option labels from PROFILE_REQUEST_OPTION_NAMESPACE`).toContain(
+        'getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE)',
+      );
+    }
   });
 });

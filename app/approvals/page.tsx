@@ -14,7 +14,11 @@ import { listProfileChangeRequests } from '@/core/profile';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 import { ProfileChangeDecide } from '@/components/profile-change-decide';
-import { requestableField } from '@/lib/profile-requestable-fields';
+import {
+  PROFILE_REQUEST_OPTION_NAMESPACE,
+  formatProposedValue,
+  requestableField,
+} from '@/lib/profile-requestable-fields';
 import { listPendingClaims } from '@/core/claims';
 import { listResignationRequests } from '@/core/offboarding';
 import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
@@ -146,6 +150,10 @@ export default async function ApprovalsPage({
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
   // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
   const tPeople = await getTranslations('people.detail');
+  // r260 — the option WORDS behind a proposed select (gender, marital status, PCB category) live in the
+  // namespace the employee picked them in. Resolved through the SHARED renderer so this queue and My
+  // Profile cannot end up describing one request two ways.
+  const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // fef49b9a — the tenant's own name for unpaid leave, resolved once for the whole page rather than per
   // row. Undefined when the tenant has no UNPAID type; leaveDisplaySplit then uses the translated label.
   const unpaidTypeName = (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
@@ -966,14 +974,21 @@ export default async function ApprovalsPage({
                         key the employee reads it under on their own record and HR reads it under on the
                         Personnel card (lib/profile-requestable-fields.ts). It used to print the raw
                         jsonb key: "bankAccountNo → 5566778899". With the widened field set that would
-                        have been twenty-one raw keys an approver had to translate in their head. */}
+                        have been twenty-four raw keys an approver had to translate in their head, and
+                        every select among them would have read as its stored code. */}
+                    {/* ONE FIELD PER LINE, for the same reason /admin/personnel is: the option labels
+                        an employee picks from contain ' · ' themselves ("2 · Married, spouse not
+                        working"), so joining the pairs with it made one field read as two. */}
                     <div className="text-xs text-muted-foreground">
-                      {Object.entries((r.proposed ?? {}) as Record<string, unknown>)
-                        .map(([k, v]) => {
-                          const f = requestableField(k);
-                          return f ? `${tPeople(f.labelKey)} → ${v}` : `${k} → ${v}`;
-                        })
-                        .join(' · ')}
+                      {Object.entries((r.proposed ?? {}) as Record<string, unknown>).map(([k, v]) => {
+                        const f = requestableField(k);
+                        // mask: false — the approver is checking the proposed account number against a
+                        // bank letter; the EMPLOYEE's own screen is the one that masks it.
+                        const line = f
+                          ? `${tPeople(f.labelKey)} → ${formatProposedValue(f, v, tMeOptions, { mask: false })}`
+                          : `${k} → ${v}`;
+                        return <div key={k}>{line}</div>;
+                      })}
                     </div>
                   </div>
                   <ProfileChangeDecide

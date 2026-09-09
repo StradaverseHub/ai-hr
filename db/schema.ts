@@ -4677,10 +4677,16 @@ export const profileChangeRequest = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     /**
      * 9583deac stage two (migration 0458) — the approver's words, shown to the EMPLOYEE beside their own
-     * request on My Profile. REQUIRED on a rejection (core/profile.ts throws before the transaction
-     * opens, and constraint `profile_change_request_reject_reason_ck` refuses the row underneath it);
-     * optional on an approval, where it records why the approver was satisfied. The constraint is
-     * NOT VALID so requests rejected before this column existed stay honestly blank.
+     * request on My Profile. REQUIRED on a rejection and optional on an approval.
+     *
+     * "Required" is enforced AT THE DECISION (core/profile.ts throws ProfileChangeReasonRequiredError
+     * before the transaction opens) and deliberately NOT by a CHECK on this table. The first draft of
+     * 0458 carried `CHECK (status <> 'rejected' OR decision_reason <> '') NOT VALID`; NOT VALID skips
+     * the historical scan but is STILL enforced on the new row version of every UPDATE, and
+     * core/pdpa.ts rewrites every one of a subject's rows during an erasure — so a legacy reasonless
+     * rejection would have aborted that employee's whole PDPA erasure. The rule belongs where the
+     * decision is made, not on a row every unrelated writer has to satisfy. Requests rejected before
+     * this column existed stay honestly blank.
      */
     decisionReason: text('decision_reason'),
     createdAt: createdAt(),

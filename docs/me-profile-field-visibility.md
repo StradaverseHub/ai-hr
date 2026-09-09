@@ -152,7 +152,7 @@ something were already there and were unchanged:
 - bank details, PCB category, number of children, date of birth, gender and marital status raise a
   **request** that waits for an administrator.
 
-**Stage two (r260) widened the second of those** from three areas to twenty-one named fields, added the
+**Stage two (r260) widened the second of those** from three areas to twenty-four named fields, added the
 rejection reason, and put a waiting request's value beside the master one rather than over it. The whole
 list, and what is deliberately left off it, is `docs/me-profile-change-requests.md` — written for you the
 same way this document is. Nothing on the withheld list below became requestable: an employee cannot ask

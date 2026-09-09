@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { Button, Card, Field, SectionHeader, inputCls } from '@/components/ui';
 import { myRequestProfileChange } from './actions';
 import {
-  maskAccountNumber,
+  formatProposedValue,
   requestableFieldsForTab,
   requestableField,
   type RequestableField,
@@ -55,7 +55,15 @@ export type MyProfileRequest = {
 };
 
 /**
- * A proposed value, rendered the way the employee's own record renders that field.
+ * A proposed value as the EMPLOYEE's own screen renders it — the shared renderer
+ * (lib/profile-requestable-fields.ts `formatProposedValue`), with this screen's one audience decision
+ * made: `mask: true`.
+ *
+ * The renderer is shared with both approval queues so a select never reads as a stored code on one
+ * screen and a sentence on the other; the masking is NOT shared, because a pending bank account number
+ * printed in full beside a master one masked to four digits would defeat the masking on the same line
+ * (the "bank account number is masked" decision in docs/me-profile-field-visibility.md), while the
+ * approver is being asked to check that number against a bank letter.
  *
  * `t` is the `me` namespace — the option labels (gender, marital status, PCB category) are `me.*` keys
  * and are the SAME ones the request form's own selects use, so the value in the queue reads exactly as
@@ -66,16 +74,7 @@ export function displayProposedValue(
   value: unknown,
   t: (key: string) => string,
 ): string {
-  if (value == null || String(value) === '') return t('proposedCleared');
-  // A pending bank account number is masked exactly as the master one is. Printing the requested number
-  // in full beside a masked master would defeat the masking on the same line — see the "bank account
-  // number is masked" decision in docs/me-profile-field-visibility.md.
-  if (field.masked) return maskAccountNumber(String(value)) ?? t('proposedCleared');
-  if (field.input === 'select') {
-    const opt = field.options?.find((o) => o.value === String(value));
-    return opt ? t(opt.labelKey) : String(value);
-  }
-  return String(value);
+  return formatProposedValue(field, value, t, { mask: true });
 }
 
 /**

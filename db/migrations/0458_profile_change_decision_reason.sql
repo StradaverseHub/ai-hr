@@ -25,29 +25,41 @@
 -- have needed both a policy and a GRANT; an ADD COLUMN needs neither, and saying so is cheaper than
 -- somebody re-deriving it during the next incident.
 --
--- ── THE CHECK IS `NOT VALID` ON PURPOSE ────────────────────────────────────────────────────────────
--- "A rejected request carries a reason" is the property the plan sells, and a constraint is the only
--- place it cannot be forgotten. But rows rejected BEFORE this migration have no reason and never will —
--- inventing one would be fabricating an administrator's words. `NOT VALID` is exactly that distinction:
--- Postgres enforces the check on every INSERT and on every UPDATE from here on, and does not scan the
--- history. So a rejection made from now on cannot be stored without a reason, and a rejection made last
--- month keeps saying nothing, honestly. (`decideProfileChange` refuses to re-decide a settled request,
--- so no historical row is ever updated back through this constraint.)
+-- ── AND THERE IS DELIBERATELY NO CHECK CONSTRAINT. THE FIRST DRAFT OF THIS FILE HAD ONE. ───────────
+-- The rule "a rejected request carries a reason" was written here first, as
+--   CHECK (status <> 'rejected' OR btrim(decision_reason) <> '') NOT VALID
+-- on the theory that NOT VALID enforces it on every future write while leaving pre-existing rejections
+-- honestly blank. The theory was wrong about WHICH future writes, and the adversarial verify pass proved
+-- it on a live probe table rather than by reading code:
+--
+--   A NOT VALID CHECK is still enforced against the NEW ROW VERSION OF EVERY UPDATE. It skips the
+--   historical SCAN; it does not skip the row you touch.
+--
+-- And this table has a SECOND writer that nobody enumerating "who rejects a request?" would think of:
+-- `core/pdpa.ts` erasePersonPii does
+--   `tx.update(profileChangeRequest).set({ proposed: { redacted: true } }).where(personId = ...)`
+-- over EVERY one of the subject's rows, with no status filter, inside the ONE transaction the whole
+-- erasure runs in. So on any deployment already holding a rejection with no reason — exactly the legacy
+-- rows this migration deliberately leaves blank — a PDPA erasure for that employee would have hit the
+-- constraint on the redaction UPDATE and rolled the ENTIRE erasure back. Nothing erased, for a statutory
+-- obligation with a deadline, because of a presentation rule about an approver's wording.
+--
+-- The rule itself is not in doubt and is not weakened: `decideProfileChange` (core/profile.ts) throws
+-- ProfileChangeReasonRequiredError BEFORE opening its transaction, both admin surfaces mark the reason
+-- `required` on the reject form, and test/me-profile-change-requests.test.ts pins it. What changed is
+-- WHERE it lives — at the decision, which is the only place a rejection is ever made, instead of on the
+-- row, where every unrelated writer of the row inherits it. A data rule must not be able to take an
+-- erasure down with it.
 
 ALTER TABLE "profile_change_request" ADD COLUMN "decision_reason" text;--> statement-breakpoint
 
-ALTER TABLE "profile_change_request"
-  ADD CONSTRAINT "profile_change_request_reject_reason_ck"
-  CHECK (
-    "status" <> 'rejected'
-    OR ("decision_reason" IS NOT NULL AND btrim("decision_reason") <> '')
-  ) NOT VALID;--> statement-breakpoint
-
 COMMENT ON COLUMN "profile_change_request"."decision_reason" IS
   '9583deac stage two - the approver''s words, shown to the EMPLOYEE on My Profile beside their own '
-  'request. REQUIRED when status = ''rejected'' (constraint profile_change_request_reject_reason_ck, '
-  'NOT VALID so pre-existing rejections are left honestly blank rather than back-filled); optional on '
-  'an approval, where it records why the approver was satisfied.';--> statement-breakpoint
+  'request. REQUIRED when status = ''rejected'', enforced at the decision in core/profile.ts '
+  '(ProfileChangeReasonRequiredError) and NOT by a table constraint: core/pdpa.ts rewrites every one of '
+  'a subject''s rows during an erasure, and a CHECK here would have aborted that erasure over any '
+  'pre-existing reasonless rejection. Optional on an approval, where it records why the approver was '
+  'satisfied. Erased with the record - erasePersonPii NULLs it alongside the redaction of proposed.';--> statement-breakpoint
 
 -- REPORT, so the release note can state what the switch found rather than assert it.
 DO $$
@@ -55,6 +67,6 @@ DECLARE total int; rejected_before int;
 BEGIN
   SELECT count(*), count(*) FILTER (WHERE status = 'rejected')
     INTO total, rejected_before FROM "profile_change_request";
-  RAISE NOTICE '0458 profile-change decision reason: % request(s) on file, % already rejected and left with a NULL reason (expected - the constraint is NOT VALID and nothing is back-filled)',
+  RAISE NOTICE '0458 profile-change decision reason: % request(s) on file, % already rejected and left with a NULL reason (expected - nothing is back-filled, and no constraint is added that a later UPDATE of those rows could trip over)',
     total, rejected_before;
 END $$;

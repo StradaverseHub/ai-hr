@@ -14,7 +14,8 @@ Three things changed. Nothing else about approval changed — the same people ap
 ## 1. The list of fields an employee may ask to change
 
 Before this round the answer was three areas: bank details, the PCB category, and the number of children.
-It is now **twenty-one fields**, and here is the whole list. Everything on it is something the employee
+It is now **twenty-four fields** — seventeen on the Profile tab and seven on Bank & Statutory — and
+here is the whole list. Everything on it is something the employee
 already sees on their own record, and something **you** hold the master copy of.
 
 ### On the Profile tab
@@ -113,7 +114,7 @@ colleague's request by its identifier under a colleague's login and getting noth
 
 - **Nothing reaches the master record without a decision.** A request that is waiting changes nothing at
   all; a request that is rejected changes nothing at all. That is the safety property of the whole change,
-  and it is tested by reading every one of those twenty-one columns before a request, again while it
+  and it is tested by reading every one of those twenty-four columns before a request, again while it
   waits, and again after it is refused, and requiring them to be identical.
 - **Who approves has not changed.** An administrator, never the person who asked, exactly as before. The
   plan says single-level approval is what stage two builds and invites you to reject if you want
@@ -125,10 +126,12 @@ colleague's request by its identifier under a colleague's login and getting noth
 
 ## Still to come in stage three
 
-- The setting that controls, **field by field**, which of the twenty-one above an employee may ask about.
+- The setting that controls, **field by field**, which of the twenty-four above an employee may ask about.
 - The setting that controls **who approves**, and an approval screen showing the current value beside the
   requested one for the approver as well as for the employee.
 
 Neither is built. The approver's queue today names each proposed field by the same words the employee and
-HR both read it under, which is the groundwork for both — a permission, a request and a record cannot end
-up calling one field three different things.
+HR both read it under, and prints the requested VALUE the same way too — where the employee sees
+“Married · spouse working”, so does the approver, rather than the tax code that is stored underneath.
+That is the groundwork for both settings: a permission, a request and a record cannot end up calling one
+field three different things.

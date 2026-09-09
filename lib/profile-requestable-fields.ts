@@ -191,3 +191,49 @@ export function requestableFieldsForTab(tab: RequestableField['tab']): readonly 
 export function maskAccountNumber(no?: string | null): string | null {
   return no ? `•••• ${String(no).slice(-4)}` : null;
 }
+
+/**
+ * The i18n namespace that resolves an option's `labelKey` and the "cleared" wording below.
+ *
+ * The option labels are `me.*` keys because the request FORM is on My Profile and picks from exactly
+ * these words. Every other screen that prints a proposed value — the two approval queues — must resolve
+ * them from the SAME namespace, or an approver reads a different sentence from the employee who chose
+ * it. Named here once so no caller has to remember which namespace that was.
+ */
+export const PROFILE_REQUEST_OPTION_NAMESPACE = 'me' as const;
+
+/**
+ * ONE PROPOSED VALUE, RENDERED. THE ONLY RENDERER — EVERY SCREEN THAT SHOWS A PROPOSED VALUE CALLS THIS.
+ *
+ * ── WHY IT LIVES HERE AND NOT ON A SCREEN ───────────────────────────────────────────────────────────
+ * It did live on a screen for one round, and the two screens immediately disagreed: My Profile resolved
+ * a select to its label ("PCB → Married · spouse working") while /admin/personnel resolved it to
+ * `.value` — a no-op returning the string it had just matched on — and printed "Tax Category → 2" and
+ * "Gender → male" to the person deciding a pay-affecting change. An approver signing off a PCB category
+ * must not be reading an LHDN code. Both screens now call this function, so they cannot drift again;
+ * test/profile-requestable-fields.test.ts fails the build if a surface hand-rolls its own version.
+ *
+ * `t` resolves PROFILE_REQUEST_OPTION_NAMESPACE (`me`).
+ *
+ * ── `mask` IS REQUIRED, ON PURPOSE ──────────────────────────────────────────────────────────────────
+ * The one thing the two audiences legitimately differ on is the bank account number: the EMPLOYEE reads
+ * their own record masked to the last four digits, so a pending value printed in full beside it would
+ * defeat the masking on the same line; the APPROVER is being asked to check that very number against a
+ * bank letter and has always been shown it in full (they can read it unmasked on the Personnel card
+ * anyway). That is a decision each caller must make out loud, so there is no default to inherit by
+ * forgetting.
+ */
+export function formatProposedValue(
+  field: RequestableField,
+  value: unknown,
+  t: (key: string) => string,
+  opts: { mask: boolean },
+): string {
+  if (value == null || String(value) === '') return t('proposedCleared');
+  if (field.masked && opts.mask) return maskAccountNumber(String(value)) ?? t('proposedCleared');
+  if (field.input === 'select') {
+    const opt = field.options?.find((o) => o.value === String(value));
+    return opt ? t(opt.labelKey) : String(value);
+  }
+  return String(value);
+}
