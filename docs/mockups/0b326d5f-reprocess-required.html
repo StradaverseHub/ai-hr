@@ -1,0 +1,53 @@
+<meta charset="utf-8"><title>0b326d5f — Reprocess Required, shown where you look</title>
+<!-- MEASURED ON PRODUCTION 2026-09-08/09: six batches carry needs_recalc_at right now — 2026-08 (1
+     employee), 2026-07 (1), 2026-06 (3), 2026-05 (1), 2026-04 (2), 2026-03 (2) — and payroll_reprocess_job
+     holds 103 rows. close is already refused while pending (core/payroll.ts:150). The months and counts
+     below are those real ones.
+     NOT DRAWN: a fourth value in the status FILTER. db/schema.ts:5259 records the deliberate decision that
+     this is an attribute of a processed run, not a fourth payroll status; the plan proposes keeping it that
+     way and invites a reject. Drawing a filter option would promise the bigger change. -->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --amberbg:#fffbeb;--amber:#b45309;--goodbg:#f0fdf4;--goodfg:#15803d}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+ .proc{background:var(--muted);color:var(--mf)} .need{background:#fef3c7;color:var(--amber)}
+ .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+ .lnk{color:var(--primary);text-decoration:underline;font-weight:600}
+ .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+</style>
+<div class="card">
+  <h1>Payroll Process listing — your six affected runs</h1>
+  <p class="sub">Measured on your live system. The system already knows these results are out of date and
+    already refuses to close them; the listing just does not say so.</p>
+  <div class="lbl">Today</div>
+  <table><tr><th>Period</th><th>Status</th><th>What the admin can tell</th></tr>
+    <tr><td>August 2026</td><td><span class="pill proc">Processed</span></td><td class="sub" style="margin:0">nothing</td></tr>
+    <tr><td>July 2026</td><td><span class="pill proc">Processed</span></td><td class="sub" style="margin:0">nothing</td></tr>
+    <tr><td>June 2026</td><td><span class="pill proc">Processed</span></td><td class="sub" style="margin:0">nothing</td></tr>
+  </table>
+  <div class="lbl" style="margin-top:14px">Proposed</div>
+  <table><tr><th>Period</th><th>Status</th><th>Affected</th><th></th></tr>
+    <tr><td>August 2026</td><td><span class="pill need">Reprocess Required</span></td><td>1 employee</td><td><span class="lnk">Reprocess them</span></td></tr>
+    <tr><td>July 2026</td><td><span class="pill need">Reprocess Required</span></td><td>1 employee</td><td><span class="lnk">Reprocess them</span></td></tr>
+    <tr><td>June 2026</td><td><span class="pill need">Reprocess Required</span></td><td>3 employees</td><td><span class="lnk">Reprocess them</span></td></tr>
+    <tr><td>May 2026</td><td><span class="pill need">Reprocess Required</span></td><td>1 employee</td><td><span class="lnk">Reprocess them</span></td></tr>
+    <tr><td>April 2026</td><td><span class="pill need">Reprocess Required</span></td><td>2 employees</td><td><span class="lnk">Reprocess them</span></td></tr>
+    <tr><td>March 2026</td><td><span class="pill need">Reprocess Required</span></td><td>2 employees</td><td><span class="lnk">Reprocess them</span></td></tr>
+  </table>
+  <p class="sub" style="margin-top:9px">The link opens the selective reprocess with exactly those people already
+    picked. When the last one is done the run goes back to Processed on its own.</p>
+  <div class="note">
+    <b>One deliberate difference from the request, and it is worth knowing.</b> "Reprocess Required" is shown
+    as a state of a Processed run rather than becoming a fourth value alongside Draft, Processed and Closed.
+    The listing reads exactly as asked; underneath, every report, filter, permission and export that already
+    understands "processed" keeps working — and a run needing reprocessing genuinely is still processed, just
+    stale. If you want it to be a fourth status everywhere, reject the plan and say so.
+  </div>
+</div>

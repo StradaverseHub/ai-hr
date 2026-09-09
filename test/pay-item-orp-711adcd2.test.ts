@@ -276,8 +276,24 @@ describe('711adcd2 — migration 0456 writes the rule this file tests', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0].idx).toBe(456);
     expect(hits[0].when).toBe(1781862556000);
-    // Appended, never re-sorted: the allocated entry is the last one in the file.
-    expect(journal.entries[journal.entries.length - 1].tag).toBe('0456_pay_item_orp_flags');
+    // APPENDED, NEVER RE-SORTED — pinned as the INVARIANT, not as a position.
+    //
+    // ⚠️ THIS ASSERTION USED TO READ `entries[entries.length - 1].tag === '0456…'`, i.e. "the allocated
+    // entry is the LAST one in the file". That was true the day it was written and false the moment the
+    // next migration landed: r256's 0457_shift_colour_flex_break appended normally and turned this green
+    // test red, in a file that has nothing to do with shifts. A test that only passes until the next
+    // round is a time bomb, and it fails in a way that looks like the NEW round broke something.
+    //
+    // What the case was actually defending is AGENTS 22: the journal is append-only and must never be
+    // re-sorted. So assert that — 0456 sits exactly where it was appended, after 0455 and ahead of
+    // whatever came later, with idx strictly ascending across the join. That holds for every future
+    // migration and still fails loudly if anybody re-sorts the file.
+    const at = journal.entries.findIndex((e) => e.tag === '0456_pay_item_orp_flags');
+    expect(at, 'the allocated entry is in the journal').toBeGreaterThan(0);
+    expect(journal.entries[at - 1].idx, 'appended AFTER its predecessor').toBeLessThan(456);
+    for (const later of journal.entries.slice(at + 1)) {
+      expect(later.idx, 'everything after it was appended after it, never sorted in front').toBeGreaterThan(456);
+    }
   });
 
   it('widens the payroll-category vocabulary the database accepts to include Benefit in Kind', () => {

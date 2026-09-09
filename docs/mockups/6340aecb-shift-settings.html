@@ -1,0 +1,64 @@
+<meta charset="utf-8"><title>6340aecb — Shift Settings, organised</title>
+<!-- MEASURED 2026-09-09, db/schema.ts `shift` + app/admin/attendance/shift-form.tsx:
+     ALREADY EXIST — halfDayFirstOut / halfDaySecondIn (request point 9, rendered at :236-238), earlyIn /
+     lateOut (point 8, the fields to be RELABELLED, at :220 and :223), startTime/endTime, breakMinutes,
+     breakPeriods, grace minutes, crossesMidnight, lateOutNextDay.
+     GENUINELY ABSENT — a shift colour, and the flexible break. Both need new columns.
+     NOT DRAWN: the Duty Roster itself (the colour must reach it, but its redesign is not this item), and
+     any behaviour for Flexible beyond the duration, because break handling feeds worked minutes and
+     therefore overtime — the plan says it defaults OFF and must be proved byte-identical. -->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --goodbg:#f0fdf4;--goodfg:#15803d;--newbg:#eef2ff;--newfg:#312e81}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} h2{font-size:13px;margin:14px 0 8px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .sec{border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:12px}
+ .st{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin-bottom:9px}
+ .grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:11px}
+ .f{border:1px solid var(--border);border-radius:9px;padding:8px 10px}
+ .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600}
+ .v{font-size:13px;margin-top:2px}
+ .tag{display:inline-block;padding:0 6px;border-radius:999px;font-size:9px;font-weight:700;margin-left:5px}
+ .exists{background:var(--goodbg);color:var(--goodfg)} .newt{background:var(--newbg);color:var(--newfg)}
+ .sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:5px}
+ .mf{color:var(--mf)}
+</style>
+<div class="card">
+  <h1>Shift Configuration — Morning Shift</h1>
+  <p class="sub">Full width, grouped into sections. Green = the setting already exists today; blue = new.</p>
+  <div class="sec"><div class="st">Shift identification</div>
+    <div class="grid">
+      <div class="f"><div class="k">Shift name</div><div class="v">Morning Shift<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Shift code</div><div class="v">AM<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Shift colour</div><div class="v"><span class="sw" style="background:#4f46e5"></span>Indigo<span class="tag newt">new</span></div></div>
+      <div class="f"><div class="k">Used on the roster</div><div class="v mf">yes<span class="tag newt">new</span></div></div>
+    </div></div>
+  <div class="sec"><div class="st">Working times</div>
+    <div class="grid">
+      <div class="f"><div class="k">Shift start time</div><div class="v">08:00<span class="tag exists">renamed</span></div></div>
+      <div class="f"><div class="k">Shift time out</div><div class="v">17:00<span class="tag exists">renamed</span></div></div>
+      <div class="f"><div class="k">1st half end time</div><div class="v">12:30<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">2nd half start time</div><div class="v">13:30<span class="tag exists">exists</span></div></div>
+    </div>
+    <p class="sub" style="margin:9px 0 0">The half-day timings are already stored — they are being surfaced,
+      not built. The two renames are labels only.</p></div>
+  <div class="sec"><div class="st">Breaks</div>
+    <div class="grid">
+      <div class="f"><div class="k">Break start time</div><div class="v">12:30<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Break end time</div><div class="v">13:30<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Flexible break</div><div class="v">On<span class="tag newt">new</span></div></div>
+      <div class="f"><div class="k">Allowed duration</div><div class="v">60 minutes<span class="tag newt">new</span></div></div>
+    </div>
+    <p class="sub" style="margin:9px 0 0">Flexible applies even when a fixed break window is set. It is OFF for
+      every existing shift, so nobody's attendance or overtime changes until you turn it on.</p></div>
+  <div class="sec"><div class="st">General controls</div>
+    <div class="grid">
+      <div class="f"><div class="k">Late grace</div><div class="v">10 min<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Early leave grace</div><div class="v">10 min<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Crosses midnight</div><div class="v">No<span class="tag exists">exists</span></div></div>
+      <div class="f"><div class="k">Time sequence</div><div class="v">Validated<span class="tag newt">new</span></div></div>
+    </div></div>
+</div>

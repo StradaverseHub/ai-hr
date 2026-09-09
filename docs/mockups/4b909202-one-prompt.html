@@ -1,0 +1,52 @@
+<meta charset="utf-8"><title>4b909202 — one prompt instead of a message and a button</title>
+<!-- The reporter quoted our DEPLOYED message verbatim ("Kim Chi is not one of the people covered by the
+     2026-01 payroll run"), so the left panel is the real shipped text, not an invention. r255 built the
+     two-step; this item is the reject our own plan invited.
+     NOT DRAWN: the not-employed-in-period refusal, which must NOT offer Continue — described in words
+     because drawing a disabled Continue would imply it is sometimes pressable. -->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--info:#eef2ff}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+ .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:6px}
+ .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+ .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+ .banner{border-radius:10px;padding:12px 14px;font-size:12.5px}
+ .b-bad{background:var(--badbg);border:1px solid #fecaca;color:#7f1d1d}
+ .modal{border:1px solid #c7d2fe;background:var(--info);border-radius:12px;padding:15px 17px}
+ .btn{display:inline-block;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600}
+ .btn-p{background:var(--primary);color:#fff} .btn-g{border:1px solid var(--border);background:#fff}
+ .mf{color:var(--mf)}
+</style>
+<div class="card">
+  <h1>Adding a transaction for someone the processed run does not cover</h1>
+  <p class="sub">Same moment, same decision — asked once instead of stated then acted on.</p>
+  <div class="cols">
+    <div><div class="lbl">Today <span class="pill bad">a message, then a second button</span></div>
+      <div class="banner b-bad">Kim Chi is not one of the people covered by the 2026-01 payroll run.
+        That run was created for the Finance department only.</div>
+      <div style="margin-top:9px"><span class="btn btn-p">Add Kim Chi to this run</span>
+        <span class="btn btn-g" style="margin-left:6px">Cancel</span></div>
+      <p class="sub" style="margin-top:9px">It reads as a refusal, and the way forward is a separate control
+        you have to notice.</p>
+    </div>
+    <div><div class="lbl">Proposed <span class="pill good">one question</span></div>
+      <div class="modal">
+        <div style="font-weight:700;margin-bottom:7px">Payroll run already processed</div>
+        <div>This payroll run has already been processed, and Kim Chi is not currently included in it.<br><br>
+          Do you want to add Kim Chi to the run and continue recording the transaction?</div>
+        <div style="margin-top:13px"><span class="btn btn-p">Continue</span>
+          <span class="btn btn-g" style="margin-left:6px">Cancel</span></div>
+      </div>
+      <p class="sub" style="margin-top:9px"><b>Continue</b> adds the employee, saves the transaction and marks
+        them for reprocessing — in one step. <b>Cancel</b> writes nothing at all.</p>
+    </div>
+  </div>
+  <p class="sub" style="margin-top:6px">If the employee genuinely cannot be added — they had already left before
+    that period — the prompt is not offered and the reason is given instead, rather than a Continue that
+    could not work.</p>
+</div>

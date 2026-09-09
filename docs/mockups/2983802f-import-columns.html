@@ -1,0 +1,96 @@
+<meta charset="utf-8">
+<title>2983802f — What the import template already carries, and what would change</title>
+<!--
+  Mockup for 2983802f rev2 (contested). Its FIRST job is the correction (AGENTS 31): the reporter says
+  the import "still does not support importing all employee information fields" and that multi-company
+  is missing. Both are measurably untrue of the deployed build, so the picture lists the real columns
+  rather than arguing in prose.
+  MEASURED 2026-09-09 from lib/import-schema.ts IMPORT_COLUMNS on the deployed build (main@8cce048f):
+    6 required + 43 optional = 49 main-sheet columns, exactly as grouped below, plus the Family second
+    sheet (import-schema.ts:187). `company` optional-per-row since d8471481.
+  NOT DRAWN: the per-section templates themselves (that is the NEW work and their column split is not
+  decided), and Attendance / Leave / Career Movement, which the plan explicitly declines.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb;--amber:#b45309;--newbg:#eef2ff}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 4px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .grp{margin-bottom:11px}
+ .gt{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin-bottom:5px}
+ .col{display:inline-block;background:var(--goodbg);color:var(--goodfg);border:1px solid #bbf7d0;
+      border-radius:6px;padding:1px 7px;font-size:11px;margin:0 4px 4px 0;font-family:ui-monospace,monospace}
+ .new{background:var(--newbg);color:#312e81;border-color:#c7d2fe}
+ .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+ .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;background:var(--goodbg);color:var(--goodfg)}
+ table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;padding:6px 9px;background:var(--muted)}
+ td{padding:7px 9px;border-top:1px solid var(--border)}
+ .mf{color:var(--mf)}
+</style>
+<div class="card">
+  <h1>Every column the template carries today <span class="pill">49 columns + a Family sheet</span></h1>
+  <p class="sub">Read off the live system on 9 September 2026. Green means it is in the template now.</p>
+  <div class="grp"><div class="gt">Required</div>
+    <span class="col">full_name</span><span class="col">email</span><span class="col">department</span>
+    <span class="col">hired_on</span><span class="col">ic_number</span><span class="col">basic_salary</span></div>
+  <div class="grp"><div class="gt">Company &amp; identity</div>
+    <span class="col">company</span><span class="col">employee_code</span><span class="col">phone</span>
+    <span class="col">position</span><span class="col">cost_center</span><span class="col">employment_type</span></div>
+  <div class="grp"><div class="gt">Passport</div>
+    <span class="col">passport_number</span><span class="col">passport_issue_date</span>
+    <span class="col">passport_expiry_date</span><span class="col">passport_issuing_country</span></div>
+  <div class="grp"><div class="gt">Address</div>
+    <span class="col">address_line_1</span><span class="col">address_line_2</span><span class="col">address_line_3</span>
+    <span class="col">postcode</span><span class="col">city</span><span class="col">state</span><span class="col">country</span></div>
+  <div class="grp"><div class="gt">Emergency contact</div>
+    <span class="col">emergency_contact_name</span><span class="col">emergency_contact_relationship</span>
+    <span class="col">emergency_contact_phone</span><span class="col">emergency_contact_home_phone</span>
+    <span class="col">emergency_contact_address</span></div>
+  <div class="grp"><div class="gt">Probation &amp; notice</div>
+    <span class="col">probation_end_date</span><span class="col">probation_months</span><span class="col">probation_days</span>
+    <span class="col">confirmation_date</span><span class="col">resignation_notice_months</span>
+    <span class="col">resignation_notice_days</span><span class="col">direct_superior</span></div>
+  <div class="grp"><div class="gt">Bank &amp; statutory</div>
+    <span class="col">bank_name</span><span class="col">bank_account_no</span><span class="col">epf_number</span>
+    <span class="col">socso_number</span><span class="col">tax_number</span><span class="col">tax_category</span>
+    <span class="col">num_children</span><span class="col">eis_eligible</span><span class="col">is_resident</span>
+    <span class="col">epf_citizenship</span></div>
+  <div class="grp"><div class="gt">Payroll</div>
+    <span class="col">monthly_allowance</span><span class="col">pay_mode</span><span class="col">payment_term</span>
+    <span class="col">rate_amount</span></div>
+  <div class="grp"><div class="gt">Family — a SECOND SHEET in the same file</div>
+    <span class="col">one row per family member, keyed to the employee</span></div>
+  <div class="note">
+    <b>Multi-company already works too.</b> Fill in the Company column per row and each employee is matched
+    to that company by legal name, label or registration number — and their department, position and cost
+    centre are checked against <i>that</i> company. The preview shows which company every row resolved to
+    before anything is written. One file, many companies, no need to import company by company.
+  </div>
+</div>
+
+<div class="card">
+  <h2>What would actually change</h2>
+  <p class="sub">The new work is the shape of the import, not the fields in it.</p>
+  <table>
+    <tr><th>Today</th><th>Proposed</th></tr>
+    <tr><td>One wide template with all 49 columns</td>
+        <td><b>Choose a section first</b> — Profile, Employment, Bank &amp; Statutory, or Family — and get a
+            template with only that section's columns</td></tr>
+    <tr><td>Creates new employees only</td>
+        <td><b>Employee ID decides</b>: matches an existing person, the file updates them; no match, it
+            creates them. The preview says which, per row, before you confirm</td></tr>
+    <tr><td class="mf">n/a</td>
+        <td>A blank cell means <b>leave this as it is</b>, never "clear it" — so a Bank &amp; Statutory file
+            cannot wipe an address by omitting it</td></tr>
+  </table>
+  <div class="note" style="margin-top:12px">
+    <b>Attendance, Leave and Career Movement are deliberately not in this plan.</b> They are transaction
+    records with their own rules about periods, approvals and what may be changed after the fact — not
+    employee information. They need their own design, and folding them in here is the fastest way to get
+    all of it wrong.
+  </div>
+</div>
