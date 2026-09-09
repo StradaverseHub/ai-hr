@@ -429,7 +429,12 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
      * lib/personnel-tab-sections.ts — a file whose whole purpose is to be read — or this fails.
      */
     it('every consolidated-save marker on the screen is one the section map declares, and no others exist', () => {
-      const markers = (src: string) => [...src.matchAll(/data-save-section="([a-z]+)"/g)].map((m) => m[1]);
+      // r256 widened the character class from `[a-z]+`. It was not cosmetic: the Payroll tab's third
+      // section id is `tp3`, and under the old pattern that marker matched NOTHING — the guard would have
+      // reported it missing from the page while it was sitting there, i.e. failed for the wrong reason and
+      // then been "fixed" by deleting the id from the map. A marker the allow-list cannot even spell is a
+      // marker it cannot police.
+      const markers = (src: string) => [...src.matchAll(/data-save-section="([a-z0-9]+)"/g)].map((m) => m[1]);
       const found = [
         ...markers(PAGE()),
         ...markers(IDENTITY()),

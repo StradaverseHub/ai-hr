@@ -70,13 +70,13 @@ export type TabSaveResult = {
  * under one Save honestly. Each list is that tab's own section ids, IN THE ORDER the consolidated action
  * writes them; the reasoning for each order is on the constant.
  *
- * Payroll is deliberately ABSENT and must not be added without re-doing the classification: its three
- * field edits (`setPaymentMethod`, `assignPolicy`, `setTp3`) sit among six child-record cards including
- * the effective-dated salary revision, and one of them — Payment Method — is rendered INSIDE the Basic
- * Salary card itself. A Save/Discard pair at the foot of that tab would read as covering a recorded
- * revision, which is the exact control-that-lies the classification exists to prevent. Family and
- * Qualification are absent for the opposite reason: they have no bucket (a) form at all, so a tab-wide
- * Save would have nothing to save.
+ * r256 UPDATED THIS NOTE RATHER THAN REPLACING IT. It used to end "Payroll is deliberately ABSENT and
+ * must not be added without re-doing the classification", and the two reasons it gave were real: the
+ * tab's three field edits sit among six child-record cards including the effective-dated salary revision,
+ * and one of them — Payment Method — is rendered INSIDE the Basic Salary card itself. Both were answered
+ * rather than waived; see PAYROLL_TAB_SECTION_ORDER below for which mechanism answered which. Family and
+ * Qualification are still absent, and for a reason no mechanism can answer: they have no bucket (a) form
+ * at all, so a tab-wide Save there would have nothing to save and a tab-wide Discard would cover nothing.
  */
 
 /**
@@ -132,6 +132,46 @@ export const ATTENDANCE_TAB_SECTION_ORDER = ['holiday', 'clocking', 'geofencing'
 export const JOB_TAB_SECTION_ORDER = ['employment'] as const;
 
 /**
+ * Payroll — r256, the LAST tab with a bucket (a) form still on its own button, and the one the audit
+ * (docs/audits/420ebab5-personnel-save-classification.md, finding 3) held back twice.
+ *
+ * THE TWO OBJECTIONS, AND WHAT ANSWERED EACH. The audit's finding 3 refused this tab on two grounds, and
+ * neither is waived here:
+ *
+ *  1. "A Save/Discard pair at the foot of that tab would read as covering a recorded salary revision."
+ *     Answered by `covers` (r255): the bar prints the names of the cards it owns — "How This Employee Is
+ *     Paid", "Payroll policy", "Previous employment this year (TP3 / opening balances)" — so it names a
+ *     SUB-SECTION of the Basic Salary card rather than the card, and never claims the revision. The
+ *     mechanical half was already true before the label existed: the fence is the MARKER, not the
+ *     subtree, so `setCompensationAction`'s dialog is not read, marked, packed or reset even though it
+ *     lives inside a card the scope encloses. That is the Employment tab's shape exactly — the audited
+ *     company transfer sits inside the same card as the Employment Dates section — and it is why
+ *     Payment Method being nested inside Basic Salary stopped being disqualifying.
+ *  2. "Consolidating still requires moving TP3 up past Pay Items, CP38 and Leave Encashment."
+ *     Not answered — ACCEPTED, and it is the one visible change r256 makes. A tab Save can only enclose a
+ *     CONTIGUOUS run, so the three field-edit cards have to lead the tab: Basic Salary (which carries
+ *     Payment Method) → Payroll policy → TP3, then the three registers, then the read-only zakat summary.
+ *     The audit named this exact shape as the one to build if the reporter wanted the tab, and the
+ *     reporter's own request names Payroll among the tabs to consolidate. It reverses no pinned decision:
+ *     feedback 326f0b5e pinned compensation FIRST (still first) and R46 79eb7151 pinned the policy card
+ *     SECOND (still second); TP3's sixth slot came from item a6a47698 simply appending it on relocation
+ *     and was pinned by nothing. test/personnel-payroll-tab-order.test.ts now pins the new run.
+ *
+ * THE ORDER IS THE READING ORDER, and unlike Bank & Statutory that is not load-bearing. These are three
+ * INDEPENDENT writers with no column in common: `setEmploymentPaymentMethod` writes
+ * `employment.payment_method`, `assignPolicy` writes `employment.payroll_policy_id`, and `setTp3` writes
+ * four columns on the person's statutory row. None is a full-row overwrite, so none can undo a sibling in
+ * the same request and no order can change the outcome. It is declared anyway, because every other tab's
+ * is, and because a fixed order is what keeps the result independent of DOM order.
+ *
+ * WHAT IS NOT HERE AND MUST NEVER BE. `compensation` (the effective-dated salary revision — the
+ * classification's own worked example of what a Discard must never appear to cover), the pay-item rows,
+ * both CP38 forms and both encashment forms. Six of the seven cards on this tab contain a bucket (b)
+ * form; only three field edits fold, and they are these.
+ */
+export const PAYROLL_TAB_SECTION_ORDER = ['payment', 'policy', 'tp3'] as const;
+
+/**
  * Every consolidated tab and the sections it owns — the single list a guard can read.
  *
  * The classification (docs/audits/420ebab5-personnel-save-classification.md) is a document, and documents
@@ -145,6 +185,7 @@ export const PERSONNEL_TAB_SECTIONS = {
   bankStatutory: BANK_STATUTORY_TAB_SECTION_ORDER,
   attendance: ATTENDANCE_TAB_SECTION_ORDER,
   job: JOB_TAB_SECTION_ORDER,
+  payroll: PAYROLL_TAB_SECTION_ORDER,
 } as const;
 
 export type PersonnelSaveTab = keyof typeof PERSONNEL_TAB_SECTIONS;

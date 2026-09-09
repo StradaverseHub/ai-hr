@@ -73,6 +73,7 @@ import {
   saveBankStatutoryTabAction,
   saveAttendanceTabAction,
   saveJobTabAction,
+  savePayrollTabAction,
   removePersonPhotoAction,
   setStatutoryAction,
   setTp3Action,
@@ -891,11 +892,30 @@ export default async function EmployeePage({
   // from its key to the first `),` (test/statutory-my-layout.test.ts, test/personnel-bank-statutory-tab.ts,
   // test/bank-custom-holder.test.ts) — an inline `covers={[t('x'), t('y')]}` puts a `),` inside the panel
   // and truncates every one of those slices.
+  /**
+   * r256 — A BAR MUST NOT NAME A CARD THE READER CANNOT SEE, and two of the cards named below are not
+   * always on the screen. `clockingCard` and `payrollPolicyCard` are both gated `admin && !emp.terminatedOn`,
+   * so on a TERMINATED employment they render as nothing at all — while the bar went on printing
+   * "Clocking locations & geofencing" and "Payroll policy". That is the same control-that-lies fault
+   * `covers` was added to prevent, pointing the other way: instead of a bar that quietly owns less than
+   * the tab, a bar that claims MORE than it owns, naming a card that is nowhere on the page.
+   *
+   * Found by rendering the screen rather than by a test — the shipped Attendance bar had the defect too
+   * (r255), which is why this drops the name for BOTH tabs and not only for the one r256 adds. Payment
+   * Method keeps its name on a terminated employment: that card IS rendered, with its select disabled, so
+   * naming it describes something the reader can actually see.
+   */
+  const whenLive = (...names: string[]): string[] => (emp.terminatedOn ? [] : names);
   const tabSaveCovers = {
     profile: [t('personalDetails'), t('contactAddressTitle')],
     bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
-    attendance: [t('holidayCalendarCardTitle'), tc('cardTitle')],
+    attendance: [t('holidayCalendarCardTitle'), ...whenLive(tc('cardTitle'))],
     job: [t('employmentInfo.title')],
+    // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
+    // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
+    // salary revision. Naming the card would be the exact control-that-lies the classification exists
+    // to prevent; `payMethodGroup` is the heading the reader actually sees above the control.
+    payroll: [t('payMethodGroup'), ...whenLive(tp('assignTitle')), t('tp3SectionTitle')],
   };
 
   const profilePanel = admin ? (
@@ -2185,7 +2205,7 @@ export default async function EmployeePage({
   const payrollPolicyCard = admin && !emp.terminatedOn ? (
     <Card id="section-payroll-policy">
       <SectionHeader title={tp('assignTitle')} />
-          <form action={assignPolicyAction} className="flex flex-wrap items-end gap-3 p-4">
+          <form action={assignPolicyAction} data-save-section="policy" className="flex flex-wrap items-end gap-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <Field label={tp('assignLabel')}>
               <select name="policyId" defaultValue={emp.payrollPolicyId ?? ''} className={inputCls}>
@@ -2195,7 +2215,6 @@ export default async function EmployeePage({
                 ))}
               </select>
             </Field>
-            <button className={btnPrimary}>{tp('assignSave')}</button>
           </form>
           {emp.payrollPolicyId && emp.payrollPolicyStatus !== 'active' && (
             <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
@@ -2804,7 +2823,7 @@ export default async function EmployeePage({
               Bank Transfer is validated server-side against the employee's bank name + account number
               (setEmploymentPaymentMethod); a missing destination is rejected with an explanatory toast
               rather than saved as an unpayable row. */}
-          <form action={setPaymentMethodAction} className="flex flex-col gap-1.5">
+          <form action={setPaymentMethodAction} data-save-section="payment" className="flex flex-col gap-1.5">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <span className="text-xs font-medium text-muted-foreground">{t('paymentMethod')}</span>
             <div className="flex gap-2">
@@ -2821,7 +2840,6 @@ export default async function EmployeePage({
                   </option>
                 ))}
               </select>
-              {!emp.terminatedOn && <button className={btnPrimary}>{t('paymentMethodSave')}</button>}
             </div>
           </form>
         </div>
@@ -3110,7 +3128,7 @@ export default async function EmployeePage({
   const tp3Card = admin ? (
     <Card id="section-tp3">
       <SectionHeader title={t('tp3SectionTitle')} />
-      <form action={setTp3Action} className="flex flex-col gap-3 p-4">
+      <form action={setTp3Action} data-save-section="tp3" className="flex flex-col gap-3 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <input type="hidden" name="personId" value={emp.personId} />
         <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
@@ -3127,9 +3145,6 @@ export default async function EmployeePage({
           <Field label={t('tp3PcbPaid')}>
             <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
           </Field>
-        </div>
-        <div className="flex items-end justify-end">
-          <button className={btnPrimary}>{t('tp3Save')}</button>
         </div>
       </form>
     </Card>
@@ -4627,14 +4642,43 @@ export default async function EmployeePage({
     // it sat below pay components, CP38, encashment, TP3 and zakat, so from the Salary section at the top of
     // the tab they looked absent. Basic Salary and the policy that decides how it is paid now read together.
     // compensationCard stays FIRST (feedback 326f0b5e) — Basic Salary must still open at the top.
+    //
+    // 420ebab5 part two (r256) — THE LAST TAB TO GET ONE SAVE, and the order moved to make it possible.
+    // The audit (docs/audits/420ebab5-personnel-save-classification.md, finding 3) held this tab back
+    // twice on two grounds. The first is answered: `covers` names the cards the bar owns, and the fence
+    // is the MARKER not the subtree, so Payment Method living INSIDE compensationCard puts nothing else
+    // in that card under the tab's Save — setCompensationAction's revision dialog carries no marker and
+    // is never read, packed or reset. The second is not answered but ACCEPTED and is the visible change:
+    // a tab Save can only enclose a CONTIGUOUS run, so the three field-edit cards lead the tab and TP3
+    // moves up from sixth to third, past Pay Items, CP38 and Leave Encashment.
+    //
+    // NOTHING PINNED IS REVERSED. compensationCard stays FIRST (feedback 326f0b5e — Basic Salary must
+    // open at the top with no scrolling) and payrollPolicyCard stays SECOND (R46 79eb7151 — Pay Mode and
+    // Payment Term read together with the salary they govern). TP3's sixth slot was never a decision:
+    // item a6a47698 appended it when it relocated here from Bank & Statutory, and no guard held it.
+    // test/personnel-payroll-tab-order.test.ts now pins the new run so this cannot drift back silently.
+    //
+    // The four cards BELOW the scope keep their own buttons and their own confirmations, and every one of
+    // them is bucket (b) or read-only: pay items (a dated fixed transaction), CP38 (a court-ordered
+    // deduction, added and terminated), leave encashment (adjust / unfreeze — money out), and the zakat
+    // summary, which is read-only and edited solely at /payroll/transactions/zakat.
     payroll: (
       <>
-        {compensationCard}
-        {payrollPolicyCard}
+        {admin && (
+          <TabSaveScope
+            tabKey="payroll"
+            employmentId={emp.employmentId}
+            saveAction={savePayrollTabAction}
+            covers={tabSaveCovers.payroll}
+          >
+            {compensationCard}
+            {payrollPolicyCard}
+            {tp3Card}
+          </TabSaveScope>
+        )}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
-        {tp3Card}
         {zakatSummaryCard}
       </>
     ),

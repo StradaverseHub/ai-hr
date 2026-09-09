@@ -17,6 +17,10 @@ import {
   type MovementKind,
 } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
+// r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
+// assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
+// door reaches the same service directly, under requireAdmin, so both write through one implementation.
+import { assignPolicy } from '@/core/payroll-policy';
 // 18504ca6 — the Shift arrangement card writes through the DATED ladder now, not the flat in-place update.
 import {
   assignEmployeeShiftDated,
@@ -53,6 +57,7 @@ import {
   ATTENDANCE_TAB_SECTION_ORDER,
   BANK_STATUTORY_TAB_SECTION_ORDER,
   JOB_TAB_SECTION_ORDER,
+  PAYROLL_TAB_SECTION_ORDER,
   PROFILE_TAB_SECTION_ORDER,
   SECTION_FIELD_PREFIX,
   SECTIONS_FIELD,
@@ -1203,25 +1208,53 @@ export async function setEmploymentBlacklistAction(formData: FormData) {
  * invariant and emits `employment.payment-method.changed`. A MissingBankForTransferError surfaces through the
  * standard ?error= toast, so HR is told exactly what is missing instead of silently saving an unpayable row.
  */
+async function applyPaymentMethodSection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const raw = String(formData.get('paymentMethod') ?? '').trim();
+  // A present-but-unrecognised value is a tampered/stale submit — reject rather than silently ignore
+  // (same posture as setEmploymentAssignmentAction's employmentType guard). r256 — this now THROWS rather
+  // than redirecting, because the consolidated door has to report WHICH card refused; the per-card action
+  // below turns the throw back into the same `?error=` redirect it always produced.
+  if (raw !== '' && !(PAYMENT_METHODS as readonly string[]).includes(raw)) {
+    throw new Error('Payment method is invalid.');
+  }
+  await setEmploymentPaymentMethod(s, {
+    employmentId: String(formData.get('employmentId')),
+    paymentMethod: raw === '' ? null : (raw as PaymentMethod),
+  });
+}
+
 export async function setPaymentMethodAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const raw = String(formData.get('paymentMethod') ?? '').trim();
-  // A present-but-unrecognised value is a tampered/stale submit — reject rather than silently ignore
-  // (same posture as setEmploymentAssignmentAction's employmentType guard).
-  if (raw !== '' && !(PAYMENT_METHODS as readonly string[]).includes(raw)) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent('Payment method is invalid.')}`));
-  }
   try {
-    await setEmploymentPaymentMethod(s, {
-      employmentId,
-      paymentMethod: raw === '' ? null : (raw as PaymentMethod),
-    });
+    await applyPaymentMethodSection(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * r256 420ebab5 — assign (or clear) the employee's payroll policy from the Payroll tab's one Save.
+ *
+ * The per-card door (`assignPolicyAction`, app/admin/payroll-policy/actions.ts) stays exactly as it is and
+ * is still what the form's `action=` points at; it resolves its session through `getSession()` and the
+ * service re-checks the role. This helper reaches the SAME `assignPolicy` service under `requireAdmin`,
+ * which is the stricter of the two — a consolidated save can never be a looser door than the card it
+ * replaces. `assignPolicy` itself validates that the policy belongs to the employment's own company
+ * (RLS cannot catch a same-tenant cross-company mis-assignment) and appends
+ * `employment.payroll-policy.assigned`.
+ */
+async function applyPolicySection(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const raw = String(formData.get('policyId') ?? '').trim();
+  await assignPolicy(s, { employmentId: String(formData.get('employmentId')), policyId: raw || null });
 }
 
 /**
@@ -1414,20 +1447,26 @@ export async function setStatutoryAction(formData: FormData) {
  * dedicated partial-update action that leaves the rest of the statutory row untouched. requireAdmin gates
  * it exactly like setStatutoryAction; the pack setter appends the DomainEvent.
  */
+async function applyTp3Section(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  formData: FormData,
+): Promise<void> {
+  const pack = packFor('MY');
+  if (!pack) throw new Error('No localization pack for MY');
+  await pack.statutory.setTp3(s, {
+    personId: String(formData.get('personId')),
+    tp3Year: Number(formData.get('tp3Year')) || null,
+    tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
+    tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
+    tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
+  });
+}
+
 export async function setTp3Action(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  const personId = String(formData.get('personId'));
-  const pack = packFor('MY');
   try {
-    if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setTp3(s, {
-      personId,
-      tp3Year: Number(formData.get('tp3Year')) || null,
-      tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
-      tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
-      tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
-    });
+    await applyTp3Section(s, formData);
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -1659,6 +1698,37 @@ export async function saveJobTabAction(formData: FormData): Promise<TabSaveResul
   const s = await requireAdmin();
   return runTabSave(s, formData, JOB_TAB_SECTION_ORDER, {
     employment: applyEmploymentInfoSection,
+  });
+}
+
+/**
+ * r256 420ebab5 — ONE "Save Changes" for the Payroll tab's three field-edit cards, and the last tab the
+ * classification says can be consolidated at all.
+ *
+ * THIS IS THE TAB THE AUDIT HELD BACK TWICE, so what it may reach is worth stating rather than implying.
+ * Six of the seven cards on the Payroll tab contain a bucket (b) form, and NONE of them is reachable from
+ * here: the effective-dated salary revision (`setCompensationAction` — the classification's own worked
+ * example of what a Discard must never appear to cover), the pay-item rows, both CP38 forms and both
+ * encashment forms. `PAYROLL_TAB_SECTION_ORDER` is the whole vocabulary this action accepts and
+ * `runTabSave` refuses anything else BEFORE writing a byte, so a payload naming `compensation` cannot
+ * record a salary revision through this door — pinned by test/personnel-tab-save-tabs.test.ts §5.
+ *
+ * PAYMENT METHOD IS NESTED INSIDE THE BASIC SALARY CARD and that is fine, because the fence is the
+ * MARKER and not the subtree. The revision dialog shares that card and carries no `data-save-section`, so
+ * the client never reads, marks, packs or resets it; the same shape the Employment tab already ships,
+ * where the audited company transfer sits inside the Employment Dates card. What keeps the BAR honest is
+ * separate and is `covers`: it names "How This Employee Is Paid", not "Basic Salary".
+ *
+ * THE THREE WRITERS ARE INDEPENDENT — `employment.payment_method`, `employment.payroll_policy_id`, four
+ * columns on the person's statutory row — with no column in common and no full-row overwrite among them,
+ * so unlike Bank & Statutory the declared order is a determinism guarantee rather than a correctness one.
+ */
+export async function savePayrollTabAction(formData: FormData): Promise<TabSaveResult> {
+  const s = await requireAdmin();
+  return runTabSave(s, formData, PAYROLL_TAB_SECTION_ORDER, {
+    payment: applyPaymentMethodSection,
+    policy: applyPolicySection,
+    tp3: applyTp3Section,
   });
 }
 
