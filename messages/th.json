@@ -458,10 +458,6 @@
       "pcbSingle": "โสด",
       "pcbMarriedSpouseNotWorking": "สมรส · คู่สมรสไม่ทำงาน",
       "pcbMarriedSpouseWorking": "สมรส · คู่สมรสทำงาน",
-      "fieldBank": "ธนาคาร",
-      "fieldAccount": "บัญชี",
-      "fieldPcb": "PCB",
-      "fieldChildren": "บุตร",
       "noChanges": "ไม่มีการเปลี่ยนแปลง",
       "fullNamePlaceholder": "Aisyah Rahman",
       "emailPlaceholder": "aisyah@demo.test",
@@ -550,7 +546,8 @@
       "absentEmployeeType": "ประเภทพนักงาน",
       "exportXlsx": "ส่งออก",
       "exportAria": "ส่งออกรายชื่อพนักงานที่กรองแล้วเป็น Excel",
-      "exportTitle": "พนักงาน"
+      "exportTitle": "พนักงาน",
+      "rejectReasonPlaceholder": "เหตุผลที่ปฏิเสธ (จำเป็น)"
     },
     "switcher": {
       "ariaLabel": "ค้นหาพนักงาน",
@@ -2603,7 +2600,6 @@
     "changesNeedApproval": "การเปลี่ยนแปลงต้องได้รับอนุมัติจากผู้ดูแลระบบก่อนจึงจะมีผลต่อค่าจ้างของคุณ",
     "bank": "ธนาคาร",
     "account": "บัญชี",
-    "pcbCategory": "ประเภท PCB",
     "dependentChildren": "บุตรที่อยู่ในอุปการะ",
     "requestAChange": "ขอเปลี่ยนแปลง",
     "bankNameLabel": "ชื่อธนาคาร",
@@ -2617,11 +2613,6 @@
     "pcbSingle": "โสด",
     "pcbMarriedSpouseNotWorking": "สมรส · คู่สมรสไม่ทำงาน",
     "pcbMarriedSpouseWorking": "สมรส · คู่สมรสทำงาน",
-    "proposedBankName": "ชื่อธนาคาร",
-    "proposedAccountNo": "เลขที่บัญชี",
-    "proposedPcbCategory": "ประเภท PCB",
-    "proposedChildren": "บุตร",
-    "proposedChange": "เปลี่ยนแปลง",
     "myPayslips": "สลิปเงินเดือนของฉัน",
     "noPayslipsYet": "ยังไม่มีสลิปเงินเดือน สลิปจะแสดงที่นี่เมื่อรอบการจ่ายเงินเดือนปิดและเผยแพร่แล้ว",
     "selectMonth": "เดือนจ่ายเงินเดือน",
@@ -2982,7 +2973,15 @@
     "maEmptyAll": "ในช่วงนี้ไม่มีสิ่งใดที่ต้องการการดำเนินการจากคุณ",
     "myPerformanceLink": "ผลงานของฉัน",
     "performancePageDescription": "เป้าหมาย คำขอความคิดเห็น และการพูดคุยแบบตัวต่อตัวของคุณ",
-    "complianceFieldsNeedApproval": "วันเกิด เพศ สถานภาพสมรส และเอกสารแสดงตนของคุณดูแลโดยฝ่ายบุคคล หากต้องการแก้ไข โปรดยื่นคำขอในหัวข้อ ธนาคารและตามกฎหมาย"
+    "complianceFieldsNeedApproval": "ชื่อ วันเกิด เพศ สถานภาพสมรส และเอกสารแสดงตนของคุณอยู่ในความดูแลของฝ่ายบุคคล ใช้ “ขอแก้ไขข้อมูล” ที่ด้านล่างของแท็บนี้เพื่อขอแก้ไข",
+    "requestChangeProfileHeading": "ข้อมูลส่วนตัว ตัวตน และเอกสาร",
+    "myChangeRequests": "คำขอแก้ไขของฉัน",
+    "noChangeRequests": "คุณยังไม่ได้ขอแก้ไขข้อมูลใด ๆ",
+    "requestedOn": "ขอเมื่อ {date}",
+    "decidedOn": "ตอบกลับเมื่อ {date}",
+    "decisionReasonLabel": "เหตุผล:",
+    "proposedCleared": "— ล้างค่า —",
+    "requestedPendingLabel": "ขอแล้ว รออนุมัติ:"
   },
   "approvals": {
     "title": "การอนุมัติ",

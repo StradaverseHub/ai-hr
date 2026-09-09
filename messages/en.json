@@ -458,10 +458,6 @@
       "pcbSingle": "Single",
       "pcbMarriedSpouseNotWorking": "Married · spouse not working",
       "pcbMarriedSpouseWorking": "Married · spouse working",
-      "fieldBank": "Bank",
-      "fieldAccount": "Account",
-      "fieldPcb": "PCB",
-      "fieldChildren": "Children",
       "noChanges": "No changes",
       "fullNamePlaceholder": "Aisyah Rahman",
       "emailPlaceholder": "aisyah@demo.test",
@@ -550,7 +546,8 @@
       "absentEmployeeType": "Employee Type",
       "exportXlsx": "Export",
       "exportAria": "Export the filtered employee list to Excel",
-      "exportTitle": "Employees"
+      "exportTitle": "Employees",
+      "rejectReasonPlaceholder": "Reason for rejecting (required)"
     },
     "switcher": {
       "ariaLabel": "Search employee",
@@ -2603,7 +2600,6 @@
     "changesNeedApproval": "Changes need admin approval before they affect your pay.",
     "bank": "Bank",
     "account": "Account",
-    "pcbCategory": "PCB category",
     "dependentChildren": "Dependent children",
     "requestAChange": "Request a change",
     "bankNameLabel": "Bank name",
@@ -2617,11 +2613,6 @@
     "pcbSingle": "Single",
     "pcbMarriedSpouseNotWorking": "Married · spouse not working",
     "pcbMarriedSpouseWorking": "Married · spouse working",
-    "proposedBankName": "Bank name",
-    "proposedAccountNo": "Account no.",
-    "proposedPcbCategory": "PCB category",
-    "proposedChildren": "Children",
-    "proposedChange": "change",
     "myPayslips": "My payslips",
     "noPayslipsYet": "No payslips available yet. A payslip appears here once its payroll run is closed and released.",
     "selectMonth": "Payroll month",
@@ -2982,7 +2973,15 @@
     "maEmptyAll": "Nothing in this period needs anything from you.",
     "myPerformanceLink": "My performance",
     "performancePageDescription": "Your goals, feedback requests and one-to-one check-ins.",
-    "complianceFieldsNeedApproval": "Date of birth, gender, marital status and your identity documents are kept by HR. Ask for a change under Bank & Statutory."
+    "complianceFieldsNeedApproval": "Your name, date of birth, gender, marital status and identity documents are kept by HR. Use “Request a change” at the bottom of this tab to ask for a correction.",
+    "requestChangeProfileHeading": "Personal details, identity & documents",
+    "myChangeRequests": "My change requests",
+    "noChangeRequests": "You have not asked for any changes yet.",
+    "requestedOn": "Asked on {date}",
+    "decidedOn": "answered on {date}",
+    "decisionReasonLabel": "Reason:",
+    "proposedCleared": "— cleared —",
+    "requestedPendingLabel": "Requested, waiting for approval:"
   },
   "approvals": {
     "title": "Approvals",

@@ -21,11 +21,18 @@
  * app/admin/personnel/[employmentId]/page.tsx or by a shared component both screens mount — so a rename
  * on the Personnel side turns the suite red instead of silently splitting the two screens again.
  *
- * ── SCOPE OF THIS ROUND ─────────────────────────────────────────────────────────────────────────────
- * Stage one is a READ surface. The two write paths that already existed on /me (the direct contact
- * self-edit, and the approval-gated change request — ADR-0012, core/profile.ts) are preserved exactly as
- * they were; nothing new may be edited from this screen. Stages two and three widen which fields may be
- * requested and add the per-field permission setting; neither is built here.
+ * ── SCOPE ───────────────────────────────────────────────────────────────────────────────────────────
+ * Stage one (r259) was a READ surface: the two write paths that already existed on /me (the direct
+ * contact self-edit, and the approval-gated change request — ADR-0012, core/profile.ts) were preserved
+ * exactly as they were.
+ *
+ * Stage two (r260) WIDENED the second of those. Which fields may be asked about is declared once in
+ * `lib/profile-requestable-fields.ts`, and every `labelKey` there is an entry of
+ * `ME_VISIBLE_FIELD_LABEL_KEYS` below — enforced by test/profile-requestable-fields.test.ts, so an
+ * employee can never be offered a change to a field they are not shown, and a request, a record and (in
+ * stage three) a permission can never call one field by three different names. Stage two also added the
+ * rejection reason. Stage three — the per-field permission SETTING and the approver-choice setting — is
+ * still not built.
  */
 
 /** The six tabs the plan names, in the order it names them. Personnel's own keys. */
@@ -68,7 +75,9 @@ export const ME_SECTION_TITLE_KEY: Record<MeTabKey, readonly string[]> = {
 
 /** Cards that exist only on the employee's own screen — no Personnel counterpart, so `me.*` titles. */
 export const ME_SELF_SERVICE_SECTIONS: Record<MeTabKey, readonly string[]> = {
-  profile: [],
+  // r260 stage two — the Profile tab gained its own "request a change" card, so the control to correct a
+  // wrong passport number sits under the wrong passport number rather than on the Bank tab.
+  profile: ['requestChangeProfileHeading'],
   job: [],
   bankStatutory: ['approvalGatedHeading'],
   payroll: ['myPayslips', 'taxReliefTp1', 'myLoans'],
@@ -391,6 +400,12 @@ export const ME_VISIBLE_FIELD_LABEL_KEYS: Record<MeTabKey, readonly string[]> = 
   bankStatutory: [
     'bank',
     'bankAccount',
+    // r260 — the PCB category is now named with PERSONNEL'S OWN key. It used to render `me.pcbCategory`,
+    // a second wording for a field HR already names `people.detail.taxCategoryLabel` on the
+    // Identification & Tax card (components/tax-category-field.tsx, the 35b7af0a shared group). That is
+    // precisely the drift this manifest exists to prevent, and stage two had to fix it because the field
+    // is requestable: a request, a record and a permission may not call one field three things.
+    'taxCategoryLabel',
     'epfNumber',
     'epfCitizenship',
     'socsoEisNumber',

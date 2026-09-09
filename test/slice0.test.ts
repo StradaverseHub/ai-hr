@@ -1729,7 +1729,9 @@ describe('ESS — profile self-service (ADR-0012)', () => {
       employmentId: E.employmentId,
       proposed: { bankName: 'NoBank', bankAccountNo: '0000' },
     });
-    await decideProfileChange(a, { requestId, decision: 'rejected' });
+    // r260 stage two — a rejection now REQUIRES a reason (ProfileChangeReasonRequiredError), and the
+    // employee is shown it. The property this case pins is unchanged: refusing applies nothing.
+    await decideProfileChange(a, { requestId, decision: 'rejected', reason: 'Account is not in your name.' });
     expect((await getStatutoryProfileMY(a, E.personId))?.bankAccountNo).toBe('111122223333');
   });
 

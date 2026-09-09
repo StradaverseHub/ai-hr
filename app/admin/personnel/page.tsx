@@ -10,10 +10,14 @@ import {
   listEmployeesPage,
 } from '@/core/read';
 import { listProfileChangeRequests } from '@/core/profile';
+// r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
+// without a reason, and the declaration that names each proposed field the way both screens name it.
+import { ProfileChangeDecide } from '@/components/profile-change-decide';
+import { requestableField } from '@/lib/profile-requestable-fields';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
-import { Button, Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
@@ -41,23 +45,33 @@ import { EmployeeSwitcher } from './employee-switcher';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
-/** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
+/**
+ * Render a proposed change bundle as human-readable "field → value" pairs.
+ *
+ * ── r260 STAGE TWO: NAMED FROM THE DECLARATION, NOT FROM AN `if` LADDER ─────────────────────────────
+ * This used to test four field names by hand, so the widened set (lib/profile-requestable-fields.ts —
+ * twenty-one fields across `person` and `employee_statutory_my`) would have arrived here as
+ * "No changes": an approver being asked to approve a bundle the screen refused to describe. It now
+ * walks the declaration, and each field is named by the SAME `people.detail.*` key the employee reads it
+ * under on their own record — the property the plan asks for, that a request and a record can never call
+ * one field two things. `tp` is that catalogue; `t` (people.list) stays for the empty case.
+ */
 function describeProposed(
   p: unknown,
   t: Awaited<ReturnType<typeof getTranslations>>,
+  tp: Awaited<ReturnType<typeof getTranslations>>,
 ): string {
-  const PCB_LABEL: Record<number, string> = {
-    1: t('pcbSingle'),
-    2: t('pcbMarriedSpouseNotWorking'),
-    3: t('pcbMarriedSpouseWorking'),
-  };
   const o = (p ?? {}) as Record<string, unknown>;
   const parts: string[] = [];
-  if (o.bankName != null) parts.push(`${t('fieldBank')} → ${o.bankName}`);
-  if (o.bankAccountNo != null) parts.push(`${t('fieldAccount')} → ${o.bankAccountNo}`);
-  if (o.taxCategory != null)
-    parts.push(`${t('fieldPcb')} → ${PCB_LABEL[Number(o.taxCategory)] ?? o.taxCategory}`);
-  if (o.numChildren != null) parts.push(`${t('fieldChildren')} → ${o.numChildren}`);
+  for (const [key, value] of Object.entries(o)) {
+    const f = requestableField(key);
+    if (!f) continue;
+    const shown =
+      f.input === 'select'
+        ? (f.options?.find((opt) => opt.value === String(value))?.value ?? String(value))
+        : String(value ?? '');
+    parts.push(`${tp(f.labelKey)} → ${shown === '' ? tp('optionNotSet') : shown}`);
+  }
   return parts.length ? parts.join(' · ') : t('noChanges');
 }
 
@@ -113,6 +127,9 @@ export default async function PeoplePage({
   await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
+  // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
+  // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
+  const tPeopleDetail = await getTranslations('people.detail');
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const { s: session, scopeIds } = await scopedSession();
@@ -490,24 +507,19 @@ export default async function PeoplePage({
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <div className="text-sm font-medium">{r.employee}</div>
-                  <div className="text-xs text-muted-foreground">{describeProposed(r.proposed, t)}</div>
+                  <div className="text-xs text-muted-foreground">{describeProposed(r.proposed, t, tPeopleDetail)}</div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <form action={decideProfileChangeAction}>
-                    <input type="hidden" name="requestId" value={r.id} />
-                    <input type="hidden" name="decision" value="approved" />
-                    <Button type="submit" size="sm">
-                      {t('approve')}
-                    </Button>
-                  </form>
-                  <form action={decideProfileChangeAction}>
-                    <input type="hidden" name="requestId" value={r.id} />
-                    <input type="hidden" name="decision" value="rejected" />
-                    <Button type="submit" size="sm" variant="outline">
-                      {t('reject')}
-                    </Button>
-                  </form>
-                </div>
+                <ProfileChangeDecide
+                  action={decideProfileChangeAction}
+                  requestId={r.id}
+                  idFieldName="requestId"
+                  labels={{
+                    approve: t('approve'),
+                    reject: t('reject'),
+                    reasonPlaceholder: t('rejectReasonPlaceholder'),
+                    yourRequest: t('approve'),
+                  }}
+                />
               </li>
             ))}
           </ul>

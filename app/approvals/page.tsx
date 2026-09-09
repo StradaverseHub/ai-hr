@@ -11,6 +11,10 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 import { dayTypesForPairs, listAttendanceCorrections } from '@/core/attendance';
 import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
+// r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
+// without a reason, and the declaration that names each proposed field the way both screens name it.
+import { ProfileChangeDecide } from '@/components/profile-change-decide';
+import { requestableField } from '@/lib/profile-requestable-fields';
 import { listPendingClaims } from '@/core/claims';
 import { listResignationRequests } from '@/core/offboarding';
 import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
@@ -139,6 +143,9 @@ export default async function ApprovalsPage({
   const category = parseApprovalCategory(categoryParam, { admin });
   const t = await getTranslations('approvals');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
+  // r260 — Personnel Management's own field labels, so a proposed profile change is named in the
+  // approver's queue exactly as the employee reads it on their record and HR reads it on the card.
+  const tPeople = await getTranslations('people.detail');
   // fef49b9a — the tenant's own name for unpaid leave, resolved once for the whole page rather than per
   // row. Undefined when the tenant has no UNPAID type; leaveDisplaySplit then uses the translated label.
   const unpaidTypeName = (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
@@ -955,18 +962,27 @@ export default async function ApprovalsPage({
                       {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                       {r.employee}
                     </div>
+                    {/* r260 stage two — each proposed field named by the SAME people.detail catalogue
+                        key the employee reads it under on their own record and HR reads it under on the
+                        Personnel card (lib/profile-requestable-fields.ts). It used to print the raw
+                        jsonb key: "bankAccountNo → 5566778899". With the widened field set that would
+                        have been twenty-one raw keys an approver had to translate in their head. */}
                     <div className="text-xs text-muted-foreground">
                       {Object.entries((r.proposed ?? {}) as Record<string, unknown>)
-                        .map(([k, v]) => `${k} → ${v}`)
+                        .map(([k, v]) => {
+                          const f = requestableField(k);
+                          return f ? `${tPeople(f.labelKey)} → ${v}` : `${k} → ${v}`;
+                        })
                         .join(' · ')}
                     </div>
                   </div>
-                  <DecideButtons
+                  <ProfileChangeDecide
                     action={approveProfileChangeAction}
-                    id={r.id}
+                    requestId={r.id}
+                    idFieldName="id"
                     disabled={mine(r.personId)}
-                    labels={decideLabels}
-                    nav={nav}
+                    labels={{ ...decideLabels, reasonPlaceholder: t('rejectReasonPlaceholder') }}
+                    hidden={<NavFields nav={nav} />}
                   />
                 </li>
               ))}

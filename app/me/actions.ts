@@ -63,6 +63,9 @@ import {
 } from '@/db/schema';
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
+// 9583deac stage two — the ONE declaration of which fields an employee may ask to change. This action
+// reads it instead of naming seven fields by hand; see that file's header.
+import { PROFILE_REQUESTABLE_FIELDS } from '@/lib/profile-requestable-fields';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { readTp1FormInput } from '@/lib/tp1-form-input';
 import { addResignationAttachment, submitResignation, withdrawResignation } from '@/core/offboarding';
@@ -623,25 +626,31 @@ export async function myUpdateContact(formData: FormData) {
   redirect('/me?toast=Profile+updated');
 }
 
+/**
+ * Ask for a change to any field `lib/profile-requestable-fields.ts` declares (9583deac stage two).
+ *
+ * ── ONE LOOP, NOT A LIST OF NAMES ───────────────────────────────────────────────────────────────────
+ * This used to read seven `formData.get('…')` calls by hand, which is exactly why the request form, the
+ * sanitiser and the applier could each know a different set of fields. It now walks the declaration, so
+ * "which fields may be asked about" is answered in ONE place and this action cannot fall behind the form
+ * that posts to it.
+ *
+ * BLANK MEANS "LEAVE IT ALONE" — unchanged semantics, and the reason the form is not pre-filled. A key
+ * only enters the proposal when the employee actually typed or picked something; `core/profile.ts`
+ * `sanitizeProposed` then validates the value and drops anything it does not recognise.
+ *
+ * THE EMPLOYMENT IS THE SESSION'S — `resolveMe()` resolves it from `ctx.personId`, never from the form.
+ * A hidden employment id in this form would be the whole scope of My Profile undone by one input.
+ */
 export async function myRequestProfileChange(formData: FormData) {
   const { s, employmentId } = await resolveMe();
-  // Only carry the fields the employee actually filled — the rest are left unchanged.
   const proposed: ProfileChangeProposed = {};
-  const bankName = String(formData.get('bankName') ?? '').trim();
-  const bankAccountNo = String(formData.get('bankAccountNo') ?? '').trim();
-  const taxCategory = String(formData.get('taxCategory') ?? '').trim();
-  const numChildren = String(formData.get('numChildren') ?? '').trim();
-  if (bankName) proposed.bankName = bankName;
-  if (bankAccountNo) proposed.bankAccountNo = bankAccountNo;
-  if (taxCategory) proposed.taxCategory = Number(taxCategory);
-  if (numChildren) proposed.numChildren = Number(numChildren);
-  // #24: compliance-sensitive identity fields are requested here (approval-gated), not self-applied.
-  const dateOfBirth = String(formData.get('dateOfBirth') ?? '').trim();
-  const gender = String(formData.get('gender') ?? '').trim();
-  const maritalStatus = String(formData.get('maritalStatus') ?? '').trim();
-  if (dateOfBirth) proposed.dateOfBirth = dateOfBirth;
-  if (gender) proposed.gender = gender;
-  if (maritalStatus) proposed.maritalStatus = maritalStatus;
+  for (const field of PROFILE_REQUESTABLE_FIELDS) {
+    const raw = String(formData.get(field.key) ?? '').trim();
+    if (!raw) continue;
+    (proposed as Record<string, string | number>)[field.key] =
+      field.input === 'number' || field.key === 'taxCategory' ? Number(raw) : raw;
+  }
   try {
     await requestProfileChange(s, { employmentId, proposed });
   } catch (e) {

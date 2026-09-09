@@ -34,7 +34,7 @@ record an administrator sees:
 
 | Tab | The card(s) on it |
 | --- | --- |
-| **Profile** | Personal details · Contact & address · Emergency contact |
+| **Profile** | Personal details · Contact & address · Emergency contact · Personal details, identity & documents (request a change — added in stage two) |
 | **Employment** | Employment Information · Direct Superior · (other current positions, with the pay of each, if any) |
 | **Bank & Statutory** | Bank Information · Statutory (Malaysia) · Others Statutory · Bank, tax & personal (request a change) |
 | **Payroll** | Basic Salary · My payslips · Personal tax relief (TP1) · My loans |
@@ -145,15 +145,27 @@ a request ambiguous the first time it was used.
 enough to confirm which account is on file without the full number rendering onto a shared screen or into
 a screenshot. That is how My Profile has always shown it; nothing changed.
 
-**Nothing new became editable.** Stage one shows the record. The two ways to change something were
-already there and are unchanged:
+**Nothing new became editable in stage one.** Stage one showed the record. The two ways to change
+something were already there and were unchanged:
 
 - low-risk contact details (mobile, personal email, home address, emergency contact) save immediately;
 - bank details, PCB category, number of children, date of birth, gender and marital status raise a
   **request** that waits for an administrator.
 
-Stage two widens which fields may be requested and adds the rejection reason. Stage three adds the
-setting that controls, field by field, what an employee may ask to change, and who approves it.
+**Stage two (r260) widened the second of those** from three areas to twenty-one named fields, added the
+rejection reason, and put a waiting request's value beside the master one rather than over it. The whole
+list, and what is deliberately left off it, is `docs/me-profile-change-requests.md` — written for you the
+same way this document is. Nothing on the withheld list below became requestable: an employee cannot ask
+to change a field they are not shown, and the build fails if the two lists ever disagree.
+
+One label moved as part of that, and it belongs in this document because it is a field name you read.
+**"PCB category" on the Bank & Statutory tab is now "Tax Category"** — Personnel Management's own name for
+it, the one on the Identification & Tax card. It had been the one field on this screen still carrying a
+second wording of its own, which is exactly the drift this whole item was raised about. Same field, same
+value, HR's name for it.
+
+Stage three adds the setting that controls, field by field, what an employee may ask to change, and who
+approves it.
 
 ---
 

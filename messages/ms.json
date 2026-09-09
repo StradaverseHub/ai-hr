@@ -458,10 +458,6 @@
       "pcbSingle": "Bujang",
       "pcbMarriedSpouseNotWorking": "Berkahwin · pasangan tidak bekerja",
       "pcbMarriedSpouseWorking": "Berkahwin · pasangan bekerja",
-      "fieldBank": "Bank",
-      "fieldAccount": "Akaun",
-      "fieldPcb": "PCB",
-      "fieldChildren": "Anak",
       "noChanges": "Tiada perubahan",
       "fullNamePlaceholder": "Aisyah Rahman",
       "emailPlaceholder": "aisyah@demo.test",
@@ -550,7 +546,8 @@
       "absentEmployeeType": "Jenis Pekerja",
       "exportXlsx": "Eksport",
       "exportAria": "Eksport senarai pekerja yang ditapis ke Excel",
-      "exportTitle": "Pekerja"
+      "exportTitle": "Pekerja",
+      "rejectReasonPlaceholder": "Sebab penolakan (wajib)"
     },
     "switcher": {
       "ariaLabel": "Cari pekerja",
@@ -2603,7 +2600,6 @@
     "changesNeedApproval": "Perubahan memerlukan kelulusan pentadbir sebelum menjejaskan gaji anda.",
     "bank": "Bank",
     "account": "Akaun",
-    "pcbCategory": "Kategori PCB",
     "dependentChildren": "Anak tanggungan",
     "requestAChange": "Mohon perubahan",
     "bankNameLabel": "Nama bank",
@@ -2617,11 +2613,6 @@
     "pcbSingle": "Bujang",
     "pcbMarriedSpouseNotWorking": "Berkahwin · pasangan tidak bekerja",
     "pcbMarriedSpouseWorking": "Berkahwin · pasangan bekerja",
-    "proposedBankName": "Nama bank",
-    "proposedAccountNo": "No. akaun",
-    "proposedPcbCategory": "Kategori PCB",
-    "proposedChildren": "Anak",
-    "proposedChange": "perubahan",
     "myPayslips": "Slip gaji saya",
     "noPayslipsYet": "Tiada slip gaji lagi. Slip gaji akan dipaparkan di sini setelah pemprosesan gaji ditutup dan dikeluarkan.",
     "selectMonth": "Bulan gaji",
@@ -2982,7 +2973,15 @@
     "maEmptyAll": "Tiada apa-apa dalam tempoh ini memerlukan tindakan anda.",
     "myPerformanceLink": "Prestasi saya",
     "performancePageDescription": "Matlamat, permintaan maklum balas dan sesi satu dengan satu anda.",
-    "complianceFieldsNeedApproval": "Tarikh lahir, jantina, status perkahwinan dan dokumen pengenalan anda diselenggara oleh HR. Mohon perubahan di bahagian Bank & Berkanun."
+    "complianceFieldsNeedApproval": "Nama, tarikh lahir, jantina, status perkahwinan dan dokumen pengenalan anda disimpan oleh HR. Gunakan “Mohon perubahan” di bahagian bawah tab ini untuk memohon pembetulan.",
+    "requestChangeProfileHeading": "Butiran peribadi, identiti & dokumen",
+    "myChangeRequests": "Permohonan perubahan saya",
+    "noChangeRequests": "Anda belum memohon sebarang perubahan.",
+    "requestedOn": "Dimohon pada {date}",
+    "decidedOn": "dijawab pada {date}",
+    "decisionReasonLabel": "Sebab:",
+    "proposedCleared": "— dikosongkan —",
+    "requestedPendingLabel": "Dimohon, menunggu kelulusan:"
   },
   "approvals": {
     "title": "Kelulusan",

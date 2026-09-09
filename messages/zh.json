@@ -458,10 +458,6 @@
       "pcbSingle": "单身",
       "pcbMarriedSpouseNotWorking": "已婚 · 配偶无业",
       "pcbMarriedSpouseWorking": "已婚 · 配偶在职",
-      "fieldBank": "银行",
-      "fieldAccount": "账号",
-      "fieldPcb": "PCB",
-      "fieldChildren": "子女",
       "noChanges": "无变更",
       "fullNamePlaceholder": "Aisyah Rahman",
       "emailPlaceholder": "aisyah@demo.test",
@@ -550,7 +546,8 @@
       "absentEmployeeType": "员工类型",
       "exportXlsx": "导出",
       "exportAria": "将筛选后的员工列表导出为 Excel",
-      "exportTitle": "员工"
+      "exportTitle": "员工",
+      "rejectReasonPlaceholder": "拒绝理由（必填）"
     },
     "switcher": {
       "ariaLabel": "搜索员工",
@@ -2603,7 +2600,6 @@
     "changesNeedApproval": "变更需经管理员批准后方可影响您的薪酬。",
     "bank": "银行",
     "account": "账号",
-    "pcbCategory": "PCB 类别",
     "dependentChildren": "受抚养子女",
     "requestAChange": "申请变更",
     "bankNameLabel": "银行名称",
@@ -2617,11 +2613,6 @@
     "pcbSingle": "单身",
     "pcbMarriedSpouseNotWorking": "已婚 · 配偶无业",
     "pcbMarriedSpouseWorking": "已婚 · 配偶在职",
-    "proposedBankName": "银行名称",
-    "proposedAccountNo": "账号",
-    "proposedPcbCategory": "PCB 类别",
-    "proposedChildren": "子女",
-    "proposedChange": "变更",
     "myPayslips": "我的工资单",
     "noPayslipsYet": "暂无工资单。工资单将在薪资批次关闭并发布后显示。",
     "selectMonth": "工资月份",
@@ -2982,7 +2973,15 @@
     "maEmptyAll": "本期间没有需要你处理的事项。",
     "myPerformanceLink": "我的绩效",
     "performancePageDescription": "您的目标、反馈请求和一对一面谈记录。",
-    "complianceFieldsNeedApproval": "出生日期、性别、婚姻状况和身份证件由人力资源部保管。如需更改，请在「银行与法定」页面提出申请。"
+    "complianceFieldsNeedApproval": "您的姓名、出生日期、性别、婚姻状况及身份证件由人力资源部保管。请使用本页下方的“申请更改”提出更正申请。",
+    "requestChangeProfileHeading": "个人资料、身份与证件",
+    "myChangeRequests": "我的更改申请",
+    "noChangeRequests": "您尚未提出任何更改申请。",
+    "requestedOn": "申请于 {date}",
+    "decidedOn": "{date} 已答复",
+    "decisionReasonLabel": "原因：",
+    "proposedCleared": "— 已清空 —",
+    "requestedPendingLabel": "已申请，等待审批："
   },
   "approvals": {
     "title": "审批",

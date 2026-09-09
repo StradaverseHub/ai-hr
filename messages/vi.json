@@ -458,10 +458,6 @@
       "pcbSingle": "Độc thân",
       "pcbMarriedSpouseNotWorking": "Đã kết hôn · vợ/chồng không đi làm",
       "pcbMarriedSpouseWorking": "Đã kết hôn · vợ/chồng đi làm",
-      "fieldBank": "Ngân hàng",
-      "fieldAccount": "Tài khoản",
-      "fieldPcb": "PCB",
-      "fieldChildren": "Số con",
       "noChanges": "Không có thay đổi",
       "fullNamePlaceholder": "Aisyah Rahman",
       "emailPlaceholder": "aisyah@demo.test",
@@ -550,7 +546,8 @@
       "absentEmployeeType": "Loại nhân viên",
       "exportXlsx": "Xuất",
       "exportAria": "Xuất danh sách nhân viên đã lọc ra Excel",
-      "exportTitle": "Nhân viên"
+      "exportTitle": "Nhân viên",
+      "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)"
     },
     "switcher": {
       "ariaLabel": "Tìm nhân viên",
@@ -2603,7 +2600,6 @@
     "changesNeedApproval": "Các thay đổi cần được quản trị viên phê duyệt trước khi ảnh hưởng đến lương của bạn.",
     "bank": "Ngân hàng",
     "account": "Tài khoản",
-    "pcbCategory": "Loại PCB",
     "dependentChildren": "Con phụ thuộc",
     "requestAChange": "Yêu cầu thay đổi",
     "bankNameLabel": "Tên ngân hàng",
@@ -2617,11 +2613,6 @@
     "pcbSingle": "Độc thân",
     "pcbMarriedSpouseNotWorking": "Đã kết hôn · vợ/chồng không đi làm",
     "pcbMarriedSpouseWorking": "Đã kết hôn · vợ/chồng đi làm",
-    "proposedBankName": "Tên ngân hàng",
-    "proposedAccountNo": "Số tài khoản",
-    "proposedPcbCategory": "Loại PCB",
-    "proposedChildren": "Số con",
-    "proposedChange": "thay đổi",
     "myPayslips": "Phiếu lương của tôi",
     "noPayslipsYet": "Chưa có phiếu lương. Phiếu lương sẽ xuất hiện sau khi kỳ lương được chốt và phát hành.",
     "selectMonth": "Tháng trả lương",
@@ -2982,7 +2973,15 @@
     "maEmptyAll": "Trong kỳ này không có gì cần bạn xử lý.",
     "myPerformanceLink": "Hiệu suất của tôi",
     "performancePageDescription": "Mục tiêu, yêu cầu phản hồi và các buổi trao đổi một-một của bạn.",
-    "complianceFieldsNeedApproval": "Ngày sinh, giới tính, tình trạng hôn nhân và giấy tờ tùy thân của bạn do bộ phận Nhân sự quản lý. Hãy gửi yêu cầu thay đổi ở mục Ngân hàng & Luật định."
+    "complianceFieldsNeedApproval": "Họ tên, ngày sinh, giới tính, tình trạng hôn nhân và giấy tờ nhân thân của bạn do bộ phận Nhân sự quản lý. Hãy dùng “Yêu cầu thay đổi” ở cuối tab này để đề nghị chỉnh sửa.",
+    "requestChangeProfileHeading": "Thông tin cá nhân, nhân thân & giấy tờ",
+    "myChangeRequests": "Yêu cầu thay đổi của tôi",
+    "noChangeRequests": "Bạn chưa yêu cầu thay đổi nào.",
+    "requestedOn": "Yêu cầu ngày {date}",
+    "decidedOn": "đã trả lời ngày {date}",
+    "decisionReasonLabel": "Lý do:",
+    "proposedCleared": "— đã xoá —",
+    "requestedPendingLabel": "Đã yêu cầu, đang chờ duyệt:"
   },
   "approvals": {
     "title": "Phê duyệt",
