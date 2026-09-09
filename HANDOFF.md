@@ -18,13 +18,13 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-10 (r226-r258 SHIPPED · BOARD HAS 2 APPROVED, BOTH IN BUILD · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
+## CURRENT STATE — snapshot 2026-09-10 (r226-r259 SHIPPED · BOARD HAS 2 APPROVED, BOTH MULTI-ROUND AND MID-FLIGHT · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
 
-**`main@073fc745` IS WHAT RUNS ON PRODUCTION (r258, 2026-09-10)** — verified by an
+**`main@afb6b785` IS WHAT RUNS ON PRODUCTION (r259, 2026-09-10)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines, read as TEXT. Not by
 `deploy.sh` succeeding, which is not proof; and not by a line count, which is not a change count.
 (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode and it is
-gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 03:41:41.
+gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 05:48:51.
 **373 migrations applied and `0457` IS STILL THE LAST ONE — neither r257 nor r258 carried a migration**, and
 `information_schema` on the box returns all three new `shift` columns with the promised defaults
 (`color` NULL, `flexible_break_enabled` false, `flexible_break_minutes` NULL). Its `RAISE NOTICE`
@@ -333,6 +333,53 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r259 (2026-09-10) — LEAVE CONFIG ROUND 3 AND MY PROFILE STAGE ONE. **DEPLOYED `main@afb6b785`**, no migration.
+
+**Verified:** zero-line `rsync -azi --dry-run`; service active, `GET /` -> 401, `BUILD_ID` 05:48:51, **373
+migrations — still nothing since `0457`**, zero `MISSING_MESSAGE` since restart. Gate: **810 files, all
+six chunks exit=0.** And, for the first time, the routing proof ran AFTER a deploy:
+**"✓ every baseline routing case still reaches the same approver — 0 failure(s), 0 changed"** across 2,808
+cases.
+
+**Shipped:** `a6fe37fc` Round 3 — the remaining seven leave-config screens, `company-rules` being the one
+genuinely new one (it gathers four settings that live on four different surfaces today) · `9583deac`
+stage one — My Profile rebuilt in the Personnel record's shape, a READ surface, with the field-visibility
+list written down as a deliverable.
+
+⚠️ **THE DEPLOY RSYNC ATE THE BASELINE, AND THE VERIFY THAT WOULD HAVE PROVEN THE DEPLOY SAFE IS WHAT
+FOUND OUT.** r258 wrote it to `/opt/ai-hr/approval-baseline.json` — the path the script's own header
+documented. `--delete` removes anything on the box that is not in the tree (AGENTS 8), so the next deploy
+deleted it and `--verify` failed with "no such baseline file". Nothing was lost only because it had
+already been committed to `docs/baselines/`. The documented invocation now names the repo path, which is
+what the design meant by "commit it": version-controlled, carried by every deploy, tamper-evident.
+
+**THE MY PROFILE BLOCKER WAS A CARD SHOWING TWO ADDRESSES WITH A SAVE BUTTON THAT CHANGED NEITHER.** The
+verifier proved it live with planted sentinels, not by reading code: the read-only bands bound
+`person.permanent*` / `person.correspondence*` (what Personnel writes) while the fold-out beneath bound
+the legacy `address_line1..country` (what `updateOwnContact` writes) — so an employee edited their
+address, saved, and the address on the same card did not move, while phone and personal email on that
+same card DID, because those columns are shared. The fix took the harder option: DROP the two Personnel
+bands rather than render the legacy one read-only too, because two column families on one card is exactly
+the "second copy of anybody's information" the approved plan promised the reporter would never exist.
+
+**AND THE FORKED FIELD LIST WAS THE DRIFT THE ITEM WAS RAISED ABOUT, ONE LEVEL DOWN.** Stage one was
+briefed to reuse the Personnel section components; the build re-listed every field by hand, sharing only
+the label KEYS. A field added to a Personnel group would silently never appear on /me and nothing would
+go red. Closed with the guard that runs in the Personnel -> /me direction: every field Personnel renders
+must be on /me or on the withheld list. Proved by adding a field to Personnel and watching it fail.
+
+**ALSO RESTORED: pay that had gone missing for concurrent employments.** For an employee with two active
+employments the old Overview tab showed "Basic + allowance" per position; the rebuild dropped the figures
+and showed one unlabelled figure for the primary employment. The second employment's pay rendered
+nowhere — on neither the withheld list nor notBuilt. Restored, labelled by company.
+
+**A GUARD THAT FAILS ON PURPOSE AT ROUND 5.** company-rules renders `?saved=` / `?warning=` / `?error=`
+banners — including a banking-risk warning — that cannot appear there yet, because the action still
+redirects to the old screen. Rather than wire it (a Round 5 act) or delete it, the round added a case that
+asserts the redirect constant still points at the old screen. **The Round 5 commit that repoints it will
+FAIL that test**, and the failure message tells that round the banners have just become live UI and must
+be re-read on the new screen.
 
 ### r258 (2026-09-10) — THREE ITEMS, PLUS THE PRODUCTION BASELINE. **DEPLOYED `main@073fc745`**, no migration.
 
