@@ -522,11 +522,17 @@ describe('4b909202 — the refusal reads the same way in every locale', () => {
   });
 
   /**
-   * r255 — THE SENTENCE AND THE BUTTON HAVE TO AGREE. The screen offers "Add {employee} to this run" only
-   * when the service says widening would help (`detail.canAddToRun`), so the copy has to have a second
-   * ending for when it would not — otherwise the operator reads "add this employee to the run" beside no
-   * button at all. A locale that kept the single-ended sentence renders the wrong advice, which key
-   * parity (test/i18n-coverage.test.ts) cannot see.
+   * r255 — THE SENTENCE AND THE WAY FORWARD HAVE TO AGREE. The screen offers a way forward only when the
+   * service says widening would help (`detail.canAddToRun`), so the copy has to have a second ending for
+   * when it would not — otherwise the operator reads "add this employee to the run" beside nothing that
+   * could do it. A locale that kept the single-ended sentence renders the wrong advice, which key parity
+   * (test/i18n-coverage.test.ts) cannot see.
+   *
+   * r256 — STILL BOTH, AND THE `no` ENDING IS NOW THE ONE THE SCREEN ACTUALLY RENDERS. A refusal the
+   * operator CAN resolve became the confirmation prompt, so this message reaches the entry form only on
+   * the refusal that has no way forward — the leaver. The `yes` ending stays because the ACTION still
+   * returns this key with `canAdd: 'yes'` for any consumer that cannot render a prompt, and a message
+   * that told a widenable refusal it was a leaver would be false. Two endings, one situation each.
    */
   it('the individual-screen refusal has BOTH endings — one for when adding helps, one for when it cannot', () => {
     for (const loc of LOCALES) {
@@ -539,16 +545,32 @@ describe('4b909202 — the refusal reads the same way in every locale', () => {
     }
   });
 
+  /**
+   * r256 — THE KEYS THIS CASE NAMES CHANGED WITH THE SHAPE, AND THE CASE ITSELF DID NOT.
+   *
+   * r255's way forward was a message plus a separate "Add {employee} to this run" button, so this case
+   * listed that button's four keys (`addToRunCta` / `addToRunBusy` / `addToRunDone` /
+   * `addToRunDoneRecalc`). The reporter rejected that shape — it is the reject our own plan invited — and
+   * asked for ONE confirmation with Continue and Cancel, so those four are retired from all six locales
+   * and the prompt's own keys take their place here. What is being asserted has not moved an inch: the
+   * way forward out of a scope refusal must exist in every locale and must be TRANSLATED, not English
+   * copied through, which key parity (test/i18n-coverage.test.ts) cannot see.
+   *
+   * The two refusals below are r255's and are NOT retired: `addToRunNotEmployed` is still thrown (now
+   * from inside the confirmed save) and `employeeNotInScopeNoDetail` is still what page.tsx's `?error=`
+   * path resolves.
+   */
   it('the way forward is offered in every locale, and translated rather than copied from English', () => {
     const en = load('en');
     for (const key of [
-      'addToRunCta',
-      'addToRunDone',
-      'addToRunDoneRecalc',
-      'addToRunBusy',
+      'scopeConfirmTitle',
+      'scopeConfirmBody',
+      'scopeConfirmEffect',
+      'scopeConfirmContinue',
+      'scopeConfirmBusy',
+      'scopeConfirmSaved',
+      'scopeConfirmSavedRecalc',
       'addToRunDenied',
-      // r255 — the two refusals the branch added: the value-free variant page.tsx's `?error=` path
-      // resolves, and the "this month does not cover them" refusal the widening now throws.
       'employeeNotInScopeNoDetail',
       'addToRunNotEmployed',
     ]) {

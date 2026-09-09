@@ -8,7 +8,6 @@ import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
 import {
-  addEmployeeToRunAction,
   createIndividualTxnAction,
   createIndividualTxnDayGridAction,
   deleteIndividualTxnAction,
@@ -20,7 +19,7 @@ import {
   updateIndividualTxnAction,
   type TxnActionResult,
   type TxnBatchImpact,
-  type TxnScopeFix,
+  type TxnScopeConfirm,
 } from './actions';
 import { buildTxnGroups, type TxnPanel, type TxnPanelRow } from './existing-context';
 import {
@@ -406,13 +405,22 @@ export function TxnWorkspace({
   const [formBaseline, setFormBaseline] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
   /**
-   * 4b909202 — THE WAY FORWARD OUT OF A SCOPE REFUSAL, when the last save produced one.
+   * r256 — THE ONE CONFIRMATION, AND THE SAVE IT IS ASKING ABOUT.
    *
-   * Set from the ACTION's own report and from nothing else: the run and the employee are the pair the
-   * SERVICE refused, so the screen can never offer to widen a run it merely guessed at. Cleared on every
-   * subsequent attempt, so a refusal that has been dealt with cannot leave a stale offer on screen.
+   * r255 put a message on screen and then a separate "Add {employee} to this run" button beside it, and
+   * the reporter rejected exactly that: they want to be asked once, with Continue and Cancel, at the
+   * point of save. So the refusal no longer becomes an error the operator has to act on — it becomes this
+   * question, and answering it re-runs the save that raised it.
+   *
+   * `detail` is the ACTION's own report and nothing else: the run and the employee are the pair the
+   * SERVICE refused, so the screen can never offer to widen a run it merely guessed at, and the prompt is
+   * only ever built when the service said widening would help (`canAddToRun`).
+   *
+   * `retry` IS THE SAME SAVE, CONFIRMED — a closure over the very submit that failed, so Continue cannot
+   * become a second write path that drifts from the first. It is why the entry form stays open and
+   * untouched underneath: the values it re-sends are the values the operator is still looking at.
    */
-  const [scopeFix, setScopeFix] = useState<TxnScopeFix | null>(null);
+  const [scopeConfirm, setScopeConfirm] = useState<{ detail: TxnScopeConfirm; retry: () => void } | null>(null);
   /** 4e403268 — the listing's shape: the flat line-per-row list, or grouped by month + pay item with the
    *  days one click away. Flat stays the default so nobody's screen changes under them. */
   const [listView, setListView] = useState<'flat' | 'grouped'>('flat');
@@ -1012,11 +1020,13 @@ export function TxnWorkspace({
   const dirty =
     (form != null && JSON.stringify(form) !== formBaseline) || (daily != null && JSON.stringify(daily) !== formBaseline);
 
-  /** 4b909202 — the error and the offer that goes with it are one thing and are cleared as one. An offer
-   *  left standing after the operator has changed the employee or the run would widen the WRONG run. */
+  /** 4b909202 — the error and the way forward that goes with it are one thing and are cleared as one. A
+   *  confirmation left standing after the operator has changed the employee or the run would ask about —
+   *  and, answered, widen — the WRONG run. r256: `askScopeConfirm` calls this and then sets its own, so
+   *  clearing here is what guarantees exactly one of the two is ever on screen. */
   const clearFormError = () => {
     setFormError(null);
-    setScopeFix(null);
+    setScopeConfirm(null);
   };
   const openForm = (next: FormState) => {
     setForm(next);
@@ -1287,7 +1297,7 @@ export function TxnWorkspace({
   /** The ONE write path for the form, so "Save", "Save & add another" and the save-before-switching
    *  button in the unsaved-changes dialog cannot drift apart. An edit patches the row; anything else —
    *  including the save of a Duplicate — is an ordinary create. */
-  const runSave = async (f: FormState): Promise<TxnActionResult> => {
+  const runSave = async (f: FormState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
     const r = resolveItem(f);
     const quantity = f.quantity.trim() === '' ? null : Number(f.quantity);
@@ -1326,6 +1336,10 @@ export function TxnWorkspace({
           // The chosen cycle rides ALONGSIDE the run: where a run of that cycle already exists the row
           // attaches to it, and where none does this is what routes it when one is generated.
           intendedCycleId: resolvedCycleId || null,
+          // r256 — the operator answered Continue to the scope prompt, so this save may widen the run
+          // onto them. Only ever set by `scopeConfirm.retry`, which is a closure over the save that was
+          // refused — an ordinary Save never carries it, and the service re-checks everything anyway.
+          ...(confirmed ? { confirmAddToRun: true } : {}),
           ...common,
         });
   };
@@ -1341,7 +1355,7 @@ export function TxnWorkspace({
    * The AMOUNT sent per line is the server's own figure where the item calculates. It is re-derived on the
    * write regardless, so this is "what was on screen", not a number the browser gets a vote on.
    */
-  const runDailySave = async (d: DailyState): Promise<TxnActionResult & { count?: number }> => {
+  const runDailySave = async (d: DailyState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult & { count?: number }> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
     const opt = itemByValue.get(d.item) ?? itemOptions[0];
     const componentId = opt.fromMaster ? componentIdOf(opt.value) : null;
@@ -1354,6 +1368,8 @@ export function TxnWorkspace({
       kind: opt.kind,
       componentId,
       unit: requiredUnit ?? null,
+      // r256 — see `runSave`: Continue on the one scope prompt, never an ordinary Save.
+      ...(confirmed ? { confirmAddToRun: true } : {}),
       lines: d.lines.map((l) => ({
         txnDate: l.txnDate,
         amount: Number(dailyAmountFor(l) ?? 0),
@@ -1365,7 +1381,7 @@ export function TxnWorkspace({
     });
   };
 
-  const submitDaily = () => {
+  const submitDaily = (confirmed?: TxnScopeConfirm | null) => {
     if (!daily) return;
     const bad = dailyInvalid(daily);
     if (bad) {
@@ -1374,16 +1390,17 @@ export function TxnWorkspace({
     }
     const d = daily;
     startTransition(async () => {
-      const res = await runDailySave(d);
+      const res = await runDailySave(d, confirmed);
       if (!res.ok) {
+        if (askScopeConfirm(res, () => submitDaily(res.confirmAddToRun))) return;
         setFormError(t(res.error as never, res.errorValues as never));
-        setScopeFix(res.scopeFix ?? null);
         return;
       }
       clearFormError();
+      setScopeConfirm(null);
       refreshPanel();
       if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
-      toast.success(t('dayGridSaved', { count: res.count ?? d.lines.length }));
+      toast.success(savedMessage(t('dayGridSaved', { count: res.count ?? d.lines.length }), res, confirmed));
       // Land the operator on the grouped view, where the days they just keyed are one line with a total —
       // which is the thing they came to see and the reason grouping is part of this item at all.
       setListView('grouped');
@@ -1391,7 +1408,7 @@ export function TxnWorkspace({
     });
   };
 
-  const submitForm = (addAnother: boolean) => {
+  const submitForm = (addAnother: boolean, confirmed?: TxnScopeConfirm | null) => {
     if (!form) return;
     const bad = formInvalid(form);
     if (bad) {
@@ -1400,75 +1417,72 @@ export function TxnWorkspace({
     }
     const f = form;
     startTransition(async () => {
-      const res = await runSave(f);
+      const res = await runSave(f, confirmed);
       if (!res.ok) {
+        if (askScopeConfirm(res, () => submitForm(addAnother, res.confirmAddToRun))) return;
         setFormError(t(res.error as never, res.errorValues as never));
-        setScopeFix(res.scopeFix ?? null);
         return;
       }
       clearFormError();
+      setScopeConfirm(null);
       refreshPanel();
       if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
-      toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
+      toast.success(savedMessage(t(f.mode === 'edit' ? 'updated' : 'created'), res, confirmed));
       if (addAnother && f.mode === 'create') openForm(blankForm(f.payPeriod));
       else closeForm();
     });
   };
 
   /**
-   * 4b909202 — ADD THE REFUSED EMPLOYEE TO THE RUN, then make the save that was refused.
+   * r256 — THE ONE PROMPT, ASKED AT THE POINT OF SAVE.
    *
-   * TWO SERVER CALLS, DELIBERATELY. Widening a payroll run and posting money onto it are separate
-   * decisions with separate audit trails, and the service will not fold them into one write (see
-   * `addEmployeeToRunAction`). What this spares the operator is having to make the second decision by
-   * hand: the entry is still on screen, so the retry is the SAME save through the SAME path
-   * (`submitForm` / `submitDaily`), never a second write path that could drift from them.
+   * A failed save that carries `confirmAddToRun` is not an error to put in front of the operator: it is
+   * the service saying "this run does not cover them, and widening it would work". So the message is
+   * swallowed and the question is asked instead — which is precisely the change the reporter asked for
+   * after rejecting r255's message-then-button. The refusal the operator CANNOT resolve (a leaver; the
+   * service withholds `confirmAddToRun` for it) falls through and is shown as text, with no Continue,
+   * because pressing Continue there would mark a recalculation no screen can complete.
    *
-   * The pair it sends is the pair the SERVICE refused — carried back on the error, not assembled here —
-   * so a run the operator was never refused on cannot be widened from this screen.
+   * `retry` is the caller's own submit, re-invoked with the confirmation. Nothing about the entry is
+   * rebuilt here, so Continue cannot save something other than what was refused.
+   *
+   * Returns true when it took the failure, so the caller stops.
    */
-  const addToRun = () => {
-    const fix = scopeFix;
-    if (!fix) return;
-    startTransition(async () => {
-      const res = await addEmployeeToRunAction(fix);
-      if (!res.ok) {
-        setFormError(t(res.error as never));
-        // r255 — THE OFFER SURVIVES A REFUSAL THAT PRESSING AGAIN COULD RESOLVE, AND ONLY THAT. A denial
-        // of authority is one somebody else can grant, so the button stays and the operator reads why.
-        // "Not employed in that month" can never become true by pressing again — the server only reaches
-        // it if the employment was terminated between the refusal and this click, which is exactly when a
-        // button still offering the impossible would be at its most misleading.
-        if (res.error === 'addToRunNotEmployed') setScopeFix(null);
-        return;
-      }
-      setScopeFix(null);
-      toast.success(
-        t(res.markedForRecalc ? 'addToRunDoneRecalc' : 'addToRunDone', {
-          employee: selected?.name ?? '',
-          period: res.payPeriod,
-        }),
-      );
-      // Same contract as a save: the run that now owes a recalculation, reported by the action.
-      if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
-      if (form) submitForm(false);
-      else if (daily) submitDaily();
+  const askScopeConfirm = (res: Extract<TxnActionResult, { ok: false }>, retry: () => void): boolean => {
+    if (!res.confirmAddToRun) {
+      // A CONFIRMED save can still be refused — the employment was terminated in the meantime, or this
+      // operator lacks the authority a processed run demands. Take the prompt down before the caller
+      // writes the message, or the operator reads an answer through a dialog still asking the question.
+      setScopeConfirm(null);
+      return false;
+    }
+    clearFormError();
+    setScopeConfirm({ detail: res.confirmAddToRun, retry });
+    return true;
+  };
+
+  /** The success line for a save that ALSO widened the run, which is three things happening rather than
+   *  one and must not be reported as a bare "Transaction created". `addedToRun` is the action's own
+   *  answer (the service widened, in the same transaction); `recalcBatchId` says the run was processed,
+   *  so the person is now waiting to be reprocessed and the operator has to be told. Any other save keeps
+   *  the message it has always had. */
+  const savedMessage = (fallback: string, res: Extract<TxnActionResult, { ok: true }>, confirmed?: TxnScopeConfirm | null) => {
+    if (!res.addedToRun || !confirmed) return fallback;
+    return t(res.recalcBatchId ? 'scopeConfirmSavedRecalc' : 'scopeConfirmSaved', {
+      employee: confirmed.employee,
+      period: confirmed.period,
     });
   };
 
-  /** The form's error and — when it was the scope refusal — the offer that resolves it. Built once and
-   *  rendered under BOTH machines (single entry and the day grid), because it is one situation and the
-   *  request's whole complaint was that it did not read the same way everywhere. */
-  const formErrorBlock = formError ? (
-    <div className="space-y-2">
-      <p className="text-sm text-destructive">{formError}</p>
-      {scopeFix && (
-        <Button type="button" size="sm" variant="secondary" onClick={addToRun} disabled={isPending}>
-          {isPending ? t('addToRunBusy') : t('addToRunCta', { employee: selected?.name ?? '' })}
-        </Button>
-      )}
-    </div>
-  ) : null;
+  /** Cancel writes nothing — not the widening, not the transaction — and leaves the entry exactly as it
+   *  was, so the operator can change the run, the month or the employee and try again. */
+  const cancelScopeConfirm = () => setScopeConfirm(null);
+
+  /** The form's error. r256 — it no longer carries a control: the way forward out of a scope refusal is
+   *  the confirmation prompt, and what still lands here is the refusal that has no way forward. Built
+   *  once and rendered under BOTH machines (single entry and the day grid), because it is one situation
+   *  and the request's whole complaint was that it did not read the same way everywhere. */
+  const formErrorBlock = formError ? <p className="text-sm text-destructive">{formError}</p> : null;
 
   const doDelete = (id: string) => {
     startTransition(async () => {
@@ -1531,7 +1545,7 @@ export function TxnWorkspace({
   };
   /** Save first, then switch (or close) — and if the save fails, do NEITHER. Navigating away from a
    *  failed save is exactly the loss this dialog exists to prevent. */
-  const saveThenSwitch = () => {
+  const saveThenSwitch = (confirmed?: TxnScopeConfirm | null) => {
     // 4e403268 — the unsaved-changes dialog protects whichever machine is open. A day grid is unsaved work
     // in exactly the same sense, so Save-then-switch has to be able to save one.
     if (daily) {
@@ -1543,14 +1557,18 @@ export function TxnWorkspace({
       }
       const d = daily;
       startTransition(async () => {
-        const res = await runDailySave(d);
+        const res = await runDailySave(d, confirmed);
         if (res.ok) {
-          toast.success(t('dayGridSaved', { count: res.count ?? d.lines.length }));
+          setScopeConfirm(null);
+          toast.success(savedMessage(t('dayGridSaved', { count: res.count ?? d.lines.length }), res, confirmed));
           completeSwitch();
         } else {
+          // r256 — the gate closes either way: the question on screen becomes the scope confirmation, and
+          // the switch waits for its answer. Continue re-enters HERE, so a confirmed save still completes
+          // the switch the operator asked for; Cancel leaves them on the entry with nothing written.
           cancelGate();
+          if (askScopeConfirm(res, () => saveThenSwitch(res.confirmAddToRun))) return;
           setFormError(t(res.error as never, res.errorValues as never));
-          setScopeFix(res.scopeFix ?? null);
         }
       });
       return;
@@ -1564,16 +1582,17 @@ export function TxnWorkspace({
     }
     const f = form;
     startTransition(async () => {
-      const res = await runSave(f);
+      const res = await runSave(f, confirmed);
       if (res.ok) {
-        toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
+        setScopeConfirm(null);
+        toast.success(savedMessage(t(f.mode === 'edit' ? 'updated' : 'created'), res, confirmed));
         // Deliberately NOT carried across the switch: the banner names a run the operator is leaving, and
         // the run's own page (and its History) is where the mark persists. `completeSwitch` clears it.
         completeSwitch();
       } else {
         cancelGate();
+        if (askScopeConfirm(res, () => saveThenSwitch(res.confirmAddToRun))) return;
         setFormError(t(res.error as never, res.errorValues as never));
-        setScopeFix(res.scopeFix ?? null);
       }
     });
   };
@@ -2443,7 +2462,7 @@ export function TxnWorkspace({
                 <div className="flex flex-wrap items-center gap-2">
                   {/* ONE save for every line. Not "save each row" — the service writes the whole set in one
                       transaction, so a failure on line nine cannot leave lines one to eight behind. */}
-                  <Button type="button" size="sm" onClick={submitDaily} disabled={isPending}>
+                  <Button type="button" size="sm" onClick={() => submitDaily()} disabled={isPending}>
                     {isPending ? t('saving') : t('dayGridSave')}
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
@@ -2886,9 +2905,57 @@ export function TxnWorkspace({
                   (form != null && formInvalid(form) != null) ||
                   (daily != null && dailyInvalid(daily) != null)
                 }
-                onClick={saveThenSwitch}
+                onClick={() => saveThenSwitch()}
               >
                 {t('save')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* r256 — THE ONE CONFIRMATION. One question, two answers, in the place the operator was already
+          working. It replaces r255's message-plus-button, which the reporter rejected: that read like a
+          rejection followed by a control they had to find, and it committed the widening in a separate
+          transaction from the money it was widened for.
+
+          Continue re-runs the SAME save with the confirmation, and the service widens the run, writes the
+          transaction and marks the reprocessing as ONE transaction — so there is no state in which the
+          employee is on the run and the entry was never saved. Cancel writes nothing at all and leaves
+          the entry untouched underneath.
+
+          It is rendered LAST, over the entry prompt it is asking about, exactly as the unsaved-changes
+          gate above is. There is no × and no backdrop dismissal: the two answers are the two answers, and
+          a third way out that looks like neither is how an operator ends up unsure what was saved. */}
+      {scopeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg">
+            <h3 className="text-sm font-semibold text-foreground">
+              {t('scopeConfirmTitle', { employee: scopeConfirm.detail.employee, period: scopeConfirm.detail.period })}
+            </h3>
+            {/* WHY the run does not cover them — the same three facts the refusal named, because a question
+                the operator cannot see the grounds for is not a question they can answer. */}
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('scopeConfirmBody', {
+                employee: scopeConfirm.detail.employee,
+                period: scopeConfirm.detail.period,
+                scope: scopeConfirm.detail.scope,
+              })}
+            </p>
+            {/* And what Continue will DO — including, on a processed run, that it marks a reprocessing.
+                Leaving that unsaid would make Continue look smaller than it is. */}
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('scopeConfirmEffect', {
+                employee: scopeConfirm.detail.employee,
+                processed: scopeConfirm.detail.processed ? 'yes' : 'no',
+              })}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={cancelScopeConfirm} disabled={isPending}>
+                {t('cancel')}
+              </Button>
+              <Button type="button" size="sm" onClick={scopeConfirm.retry} disabled={isPending}>
+                {isPending ? t('scopeConfirmBusy') : t('scopeConfirmContinue')}
               </Button>
             </div>
           </div>

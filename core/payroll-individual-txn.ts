@@ -187,12 +187,17 @@ export type BatchScopeRefusalDetail = {
    * period-active on the run's company (the dated window the reprocess ADD classification applies), i.e.
    * when `addEmploymentToBatchScope` would both succeed AND leave a run that can still be closed.
    *
-   * The screen offers "Add {employee} to this run" ONLY when this is true. Offering it otherwise marks a
+   * r256 — THE SCREEN OFFERS **CONTINUE** ONLY WHEN THIS IS TRUE, and states the reason instead when it
+   * is not. (r255 gated a separate "Add {employee} to this run" button on the same flag; the button is
+   * gone, the flag and everything it protects are not.) Offering a way forward otherwise marks a
    * processed run for a recalculation nobody can perform — the added person has no payslip, so the
    * Reprocess screen never lists them, `reprocessSelectedEmployees` classifies them 'neither', and
    * `removeEmployeePayroll` has nothing to remove: the run cannot be closed again without a full reset.
-   * A refusal with no way forward is what this round set out to remove; a BUTTON with no way forward
+   * A refusal with no way forward is what this round set out to remove; a PROMPT with no way forward
    * would have been worse than the refusal it replaced.
+   *
+   * It is advisory, never the enforcement. `createIndividualTxnsBulk` re-asks the same window inside the
+   * widening transaction, so a Continue pressed on a stale prompt is refused rather than honoured.
    */
   canAddToRun: boolean;
 };
@@ -838,8 +843,12 @@ async function isEmployedDuringPeriod(
  * the fallbacks below cover only the impossible.
  *
  * r255 — AND WHETHER THE OFFER THAT GOES WITH IT IS HONEST. `canAddToRun` is the dated window, asked
- * here so the screen decides whether to show "Add {employee} to this run" from the SERVICE's answer
- * rather than from a guess. Same failing branch, so the happy path still pays for nothing.
+ * here so the screen decides whether to offer a way forward at all from the SERVICE's answer rather than
+ * from a guess. Same failing branch, so the happy path still pays for nothing.
+ *
+ * r256 — the refusal is now what BUILDS THE PROMPT rather than what replaces it: on the save the operator
+ * has not yet confirmed, these are the facts the confirmation asks its question with. The throw is
+ * unchanged, and it is still what an unconfirmed save gets.
  */
 async function batchScopeRefusal(
   tx: Tx,
@@ -870,7 +879,14 @@ async function batchScopeRefusal(
  *  a whole-company run, or one whose list already names them — which is a no-op, never a failure. */
 export type BatchScopeAddResult = {
   added: boolean;
-  /** True when the run was PROCESSED and now owes a recalculation for this employment. */
+  /**
+   * True when the run was PROCESSED and now owes a recalculation for this employment.
+   *
+   * r256 — "owes", not "this call wrote the mark". `addEmploymentToBatchScopeTx` writes it when asked to
+   * (`markForRecalc`), and the save path deliberately does not ask, because it marks once for its whole
+   * submission at the end of the SAME transaction. Either way the transaction that widens the run is the
+   * transaction that marks it, which is the invariant this flag reports.
+   */
   markedForRecalc: boolean;
   payPeriod: string;
   status: WritableBatchStatus;
@@ -924,89 +940,118 @@ export type BatchScopeAddResult = {
  *
  * r255 — CONCURRENCY. The scope is a READ-MODIFY-WRITE of one jsonb column, so the batch row is locked
  * FOR UPDATE and the scope re-read from the LOCKED row before anything is computed from it — exactly
- * what `markBatchNeedsRecalc` does, and for the same reason it does it: two admins pressing "Add to this
- * run" for two different people on the same run within the same instant would otherwise both read the
- * pre-add scope and the second write would drop the first person. (The `loadWritableBatch` read above
- * stays: it is the company/period/status resolution, and its status is re-asserted from the locked row.)
+ * what `markBatchNeedsRecalc` does, and for the same reason it does it: two admins confirming a save for
+ * two different people on the same run within the same instant would otherwise both read the pre-add
+ * scope and the second write would drop the first person. (The `loadWritableBatch` read above stays: it
+ * is the company/period/status resolution, and its status is re-asserted from the locked row.)
+ *
+ * r256 — THIS IS NOW THE THIN ENTRY POINT, and the save path is the busy one. The body moved into
+ * `addEmploymentToBatchScopeTx` below so `createIndividualTxnsBulk` can run it inside the transaction
+ * that also writes the transaction row. This export stays because it is a whole decision on its own — one
+ * transaction, its own mark — and because every guard above is asserted against it directly by the suite.
  */
 export function addEmploymentToBatchScope(
   ctx: SessionContext,
   p: { batchId: string; employmentId: string },
 ): Promise<BatchScopeAddResult> {
-  return withTenant(ctx, async (tx) => {
-    const batch = await loadWritableBatch(tx, p.batchId);
-    const [emp] = await tx
-      .select({ companyId: employment.companyId })
-      .from(employment)
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    if (!emp || emp.companyId !== batch.companyId) {
-      throw new CompanyMismatchError(emp?.companyId ?? 'unknown', batch.companyId);
-    }
-    // r255 — SERIALISE THE READ-MODIFY-WRITE. Everything below is computed from `prevScope`, so the read
-    // that produces it must hold the row: two concurrent adds that both read the pre-add scope would each
-    // write their own person over the other's. The status is re-read with it and re-asserted, so a run
-    // closed between `loadWritableBatch` and this lock is refused rather than widened — and the
-    // permission below is decided on the LOCKED status, so a run processed in that same gap cannot be
-    // widened without the authority a processed run demands.
-    const [locked] = await tx
-      .select({ scope: payrollBatch.scope, status: payrollBatch.status })
-      .from(payrollBatch)
-      .where(eq(payrollBatch.id, p.batchId))
-      .for('update')
-      .limit(1);
-    if (!locked || !WRITABLE_BATCH_STATUSES.includes(locked.status as WritableBatchStatus)) throw new BatchNotDraftError();
-    const status = locked.status as WritableBatchStatus;
-    const prevScope = (locked.scope as BatchScope | null) ?? null;
+  return withTenant(ctx, (tx) => addEmploymentToBatchScopeTx(tx, ctx, { ...p, markForRecalc: true }));
+}
 
-    if (status === 'processed' && !(await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId))) {
-      throw new PayrollPermissionDeniedError('payroll.reprocess.selective');
-    }
+/**
+ * r256 — THE WIDENING, INSIDE THE CALLER'S TRANSACTION.
+ *
+ * Everything `addEmploymentToBatchScope` does, minus the transaction. It exists because the two-step it
+ * was built for is gone: the operator is now asked ONE question at the point of save, and Continue has
+ * to widen the run AND write the transaction AND mark the recalculation as a single unit. The two-step
+ * could not: `addEmployeeToRunAction` committed the widening, and then the re-submitted save committed
+ * (or failed to commit) the row in a SECOND transaction — a window in which the run had been widened and
+ * the money it was widened for was never posted. Nobody could see that from either screen. A single
+ * prompt must not preserve it, so the widening moved in here and the caller owns the transaction.
+ *
+ * `markForRecalc` is FALSE for the save path, and that is not a relaxation: `createIndividualTxnsBulk`
+ * marks once at the end of the same transaction, naming every payee it touched — which includes the one
+ * this widened. Marking here as well would append two `payroll-batch.recalc-required` events saying the
+ * same thing about the same run in the same instant. TRUE for the standalone entry point above, which
+ * has no such trailing mark and whose whole contract is that widening a processed run never happens
+ * quietly.
+ */
+async function addEmploymentToBatchScopeTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; markForRecalc: boolean },
+): Promise<BatchScopeAddResult> {
+  const batch = await loadWritableBatch(tx, p.batchId);
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp || emp.companyId !== batch.companyId) {
+    throw new CompanyMismatchError(emp?.companyId ?? 'unknown', batch.companyId);
+  }
+  // r255 — SERIALISE THE READ-MODIFY-WRITE. Everything below is computed from `prevScope`, so the read
+  // that produces it must hold the row: two concurrent adds that both read the pre-add scope would each
+  // write their own person over the other's. The status is re-read with it and re-asserted, so a run
+  // closed between `loadWritableBatch` and this lock is refused rather than widened — and the
+  // permission below is decided on the LOCKED status, so a run processed in that same gap cannot be
+  // widened without the authority a processed run demands.
+  const [locked] = await tx
+    .select({ scope: payrollBatch.scope, status: payrollBatch.status })
+    .from(payrollBatch)
+    .where(eq(payrollBatch.id, p.batchId))
+    .for('update')
+    .limit(1);
+  if (!locked || !WRITABLE_BATCH_STATUSES.includes(locked.status as WritableBatchStatus)) throw new BatchNotDraftError();
+  const status = locked.status as WritableBatchStatus;
+  const prevScope = (locked.scope as BatchScope | null) ?? null;
 
-    const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, prevScope);
-    // A null resolved set is a WHOLE-COMPANY run: it has no list to widen and already covers this person.
-    if (scopeIds === null || scopeIds.includes(p.employmentId)) {
-      return { added: false, markedForRecalc: false, payPeriod: batch.payPeriod, status };
-    }
+  if (status === 'processed' && !(await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId))) {
+    throw new PayrollPermissionDeniedError('payroll.reprocess.selective');
+  }
 
-    // r255 — THE DATED WINDOW, before anything is written. Asked only on the branch that would actually
-    // widen: somebody the run ALREADY covers is not being added to it, so refusing them here would be a
-    // refusal of something nobody asked for. See the note above for what marking an employment outside
-    // this window does to a processed run.
-    if (!(await isEmployedDuringPeriod(tx, { employmentId: p.employmentId, companyId: batch.companyId, payPeriod: batch.payPeriod }))) {
-      throw new EmploymentNotActiveInPeriodError(p.employmentId, p.batchId, batch.payPeriod);
-    }
+  const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, prevScope);
+  // A null resolved set is a WHOLE-COMPANY run: it has no list to widen and already covers this person.
+  if (scopeIds === null || scopeIds.includes(p.employmentId)) {
+    return { added: false, markedForRecalc: false, payPeriod: batch.payPeriod, status };
+  }
 
-    const nextScope: BatchScope = {
-      ...(prevScope?.departmentIds?.length ? { departmentIds: prevScope.departmentIds } : {}),
-      employmentIds: [...new Set([...(prevScope?.employmentIds ?? []), p.employmentId])],
-    };
-    await tx.update(payrollBatch).set({ scope: nextScope }).where(eq(payrollBatch.id, p.batchId));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'payroll-batch',
-      aggregateId: p.batchId,
-      eventType: 'payroll-batch.scope-widened',
-      actor: actorOf(ctx),
-      payload: {
-        batchId: p.batchId,
-        companyId: batch.companyId,
-        payPeriod: batch.payPeriod,
-        addedEmploymentIds: [p.employmentId],
-        reason: 'individual-transaction-entry',
-        before: prevScope,
-        after: nextScope,
-      },
-    });
-    // No-op on a draft (it recalculates by being generated); the mark is the processed run's whole point.
-    await markBatchNeedsRecalc(tx, ctx, { batchId: p.batchId, employmentIds: [p.employmentId] });
-    return {
-      added: true,
-      markedForRecalc: status === 'processed',
+  // r255 — THE DATED WINDOW, before anything is written. Asked only on the branch that would actually
+  // widen: somebody the run ALREADY covers is not being added to it, so refusing them here would be a
+  // refusal of something nobody asked for. See the note above for what marking an employment outside
+  // this window does to a processed run.
+  if (!(await isEmployedDuringPeriod(tx, { employmentId: p.employmentId, companyId: batch.companyId, payPeriod: batch.payPeriod }))) {
+    throw new EmploymentNotActiveInPeriodError(p.employmentId, p.batchId, batch.payPeriod);
+  }
+
+  const nextScope: BatchScope = {
+    ...(prevScope?.departmentIds?.length ? { departmentIds: prevScope.departmentIds } : {}),
+    employmentIds: [...new Set([...(prevScope?.employmentIds ?? []), p.employmentId])],
+  };
+  await tx.update(payrollBatch).set({ scope: nextScope }).where(eq(payrollBatch.id, p.batchId));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'payroll-batch',
+    aggregateId: p.batchId,
+    eventType: 'payroll-batch.scope-widened',
+    actor: actorOf(ctx),
+    payload: {
+      batchId: p.batchId,
+      companyId: batch.companyId,
       payPeriod: batch.payPeriod,
-      status,
-    };
+      addedEmploymentIds: [p.employmentId],
+      reason: 'individual-transaction-entry',
+      before: prevScope,
+      after: nextScope,
+    },
   });
+  // No-op on a draft (it recalculates by being generated); the mark is the processed run's whole point.
+  if (p.markForRecalc) await markBatchNeedsRecalc(tx, ctx, { batchId: p.batchId, employmentIds: [p.employmentId] });
+  return {
+    added: true,
+    markedForRecalc: status === 'processed',
+    payPeriod: batch.payPeriod,
+    status,
+  };
 }
 
 /**
@@ -1048,8 +1093,28 @@ export function createIndividualTxnsBulk(
      * REGULAR run collects exactly as it does now.
      */
     intendedCycleId?: string | null;
+    /**
+     * r256 — THE OPERATOR ANSWERED "CONTINUE" TO THE ONE PROMPT, so a run that does not cover a payee is
+     * widened onto them HERE, inside this transaction, instead of refusing.
+     *
+     * WHY IT IS A PARAMETER OF THE SAVE AND NOT A SECOND CALL. r255 shipped two steps — a refusal, then
+     * a separate "Add {employee} to this run" button that widened the run in its OWN transaction and left
+     * the screen to re-submit the save in another. Between the two commits the run had been widened for
+     * money that was never posted, and neither screen could show that; a browser closed in the gap left it
+     * permanently. The reporter asked for one question with two answers, and one question with two answers
+     * is only honest if Continue is one commit: widen, insert, mark — or none of them.
+     *
+     * IT AUTHORISES NOTHING BY ITSELF. Every guard the standalone widening applies still applies, in this
+     * transaction: the run must be writable (a CLOSED run still refuses outright), the employment must
+     * belong to the run's company, the employment must be PERIOD-ACTIVE (`EmploymentNotActiveInPeriodError`
+     * — see `addEmploymentToBatchScopeTx`; a leaver is refused whatever the operator pressed, because
+     * marking them starts a recalculation no screen can finish), and widening a PROCESSED run still
+     * demands `payroll.reprocess.selective`. A refusal from any of them rolls the whole save back, which
+     * is exactly what "Cancel writes nothing" has to mean for a Continue that could not be honoured.
+     */
+    widenScopeIfNeeded?: boolean;
   },
-): Promise<{ ids: string[] }> {
+): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
   return withTenant(ctx, async (tx) => {
     // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
     const employmentIds = [...new Set(p.employmentIds)];
@@ -1093,9 +1158,13 @@ export function createIndividualTxnsBulk(
     // changed is that it no longer refuses anonymously. `batchScopeRefusal` reads the excluded person's
     // name, which is why it is only reached on the failing branch — the happy path pays for nothing.
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, scope);
+    // r256 — the payees this save WIDENED the run onto, for the caller's success message. Empty on every
+    // save that needed no widening, which is every save on a whole-company or already-covering run.
+    const widenedEmploymentIds: string[] = [];
     if (scopeIds !== null && target.batchId != null) {
       for (const eid of employmentIds) {
-        if (!scopeIds.includes(eid)) {
+        if (scopeIds.includes(eid)) continue;
+        if (!p.widenScopeIfNeeded) {
           throw await batchScopeRefusal(tx, {
             employmentId: eid,
             batchId: target.batchId,
@@ -1104,6 +1173,20 @@ export function createIndividualTxnsBulk(
             scope,
           });
         }
+        // r256 — Continue. The widening runs in THIS transaction and keeps every guard it has ever had
+        // (period-active, company, writable status, and the reprocess authority on a processed run); a
+        // throw from any of them takes the inserts below down with it. It does NOT mark here — the one
+        // mark at the end of this transaction names every payee, this one included.
+        const widened = await addEmploymentToBatchScopeTx(tx, ctx, {
+          batchId: target.batchId,
+          employmentId: eid,
+          markForRecalc: false,
+        });
+        // `added: false` means somebody else's widening got there first — a success, not a widening of
+        // ours to report. Either way the run now covers them, so the local set has to say so before the
+        // next payee is tested against it.
+        if (widened.added) widenedEmploymentIds.push(eid);
+        scopeIds.push(eid);
       }
     }
 
@@ -1183,10 +1266,16 @@ export function createIndividualTxnsBulk(
     // 49e7e0a2 — one mark for the whole submission, naming every payee it touched, appended once rather
     // than once per row: the mark is a statement about the RUN, and N identical marks would be N history
     // entries saying the same thing.
-    if (target.batchId != null && target.status === 'processed') {
+    //
+    // r256 — AND A SAVE THAT WIDENED THE RUN ALWAYS ASKS, whatever `target.status` said. `target` was
+    // read before the widening took the batch row's lock, so on a run processed in that gap it is stale;
+    // the widening itself re-asserts the LOCKED status (and demands the reprocess authority on it), and
+    // `markBatchNeedsRecalc` re-reads it under the same lock and no-ops on a draft. Asking is therefore
+    // free on a draft and is the only thing that closes the window on a processed one.
+    if (target.batchId != null && (target.status === 'processed' || widenedEmploymentIds.length > 0)) {
       await markBatchNeedsRecalc(tx, ctx, { batchId: target.batchId, employmentIds });
     }
-    return { ids };
+    return { ids, widenedEmploymentIds };
   });
 }
 

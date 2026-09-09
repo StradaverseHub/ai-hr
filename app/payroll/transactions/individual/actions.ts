@@ -9,7 +9,6 @@ import { buildTxnPanel, type TxnPanel } from './existing-context';
 import { deriveIndividualTxnAmount, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
 import {
-  addEmploymentToBatchScope,
   createIndividualTxnsBulk,
   getIndividualTxn,
   updateIndividualTxn,
@@ -103,9 +102,31 @@ const txnErrorKey = (e: unknown): string =>
                           ? 'notDraft'
                           : (e as Error).message;
 
-/** 4b909202 — WHO to add and to WHICH run, for the offer the scope refusal now carries. Both ids come
- *  off the thrown error, so the screen cannot offer to widen a run the service did not actually refuse. */
-export type TxnScopeFix = { batchId: string; employmentId: string };
+/**
+ * r256 — THE ONE QUESTION THE SCREEN ASKS, as data.
+ *
+ * The reporter rejected r255's two steps — a refusal that read like a rejection, then a separate "Add
+ * {employee} to this run" button — and asked to be asked once, with Continue and Cancel. This is what the
+ * prompt is built from, and every field is a FACT the service produced rather than a sentence: the
+ * employee's own name, the run's ISO month, the scope token and whether the run is already processed. The
+ * screen turns them into a question in the operator's own locale; nothing here is ever English prose.
+ *
+ * The pair of ids comes off the thrown error, so a Continue cannot widen a run the service did not
+ * actually refuse — and the ids are re-fenced to the caller's companies and re-guarded by the service on
+ * the confirmed save regardless.
+ */
+export type TxnScopeConfirm = {
+  batchId: string;
+  employmentId: string;
+  /** The excluded employee, as the operator knows them. */
+  employee: string;
+  /** The run's pay month, 'YYYY-MM'. Crosses raw; the catalogue interpolates it verbatim. */
+  period: string;
+  /** Which kind of scope excludes them — the ICU select token, never a translated word. */
+  scope: string;
+  /** True when Continue also marks a reprocessing, which is the half the prompt must not leave unsaid. */
+  processed: boolean;
+};
 
 /**
  * 4b909202 — TURN A THROWN SERVICE ERROR INTO THE SCREEN'S FAILURE.
@@ -117,10 +138,20 @@ export type TxnScopeFix = { batchId: string; employmentId: string };
  * r255 — AND THE OFFER IS ONLY MADE WHEN IT LEADS SOMEWHERE. `detail.canAddToRun` is the SERVICE's own
  * answer to "would widening this run actually help?" — false when the run's month does not cover this
  * employment at all, in which case adding them would mark a processed run for a reprocess that no screen
- * can perform. The same flag chooses the tail of the sentence, so the copy and the button agree: no
- * button, and the message says to use a different run instead of offering one that cannot be pressed.
+ * can perform. The same flag chooses the tail of the sentence, so the copy and the way forward agree.
+ *
+ * r256 — AND WHAT IT NOW PRODUCES IS A QUESTION, NOT A DEAD END. When `canAddToRun` is true the failure
+ * carries `confirmAddToRun`, and the screen renders the ONE prompt (Continue / Cancel) instead of an
+ * error; Continue re-submits the same save confirmed, and the service does the widening, the insert and
+ * the mark in one transaction. When it is FALSE nothing is attached and the operator reads the refusal —
+ * the `canAdd` branch of the same message, which says the run's month does not cover this person and to
+ * use a different run. That is the r255 guard, unchanged and deliberately so: Continue on a leaver marks
+ * a recalculation no screen can complete.
+ *
+ * `error` and `errorValues` are set either way. A consumer that cannot render a prompt (the `?error=`
+ * banner, a future caller) still gets a complete sentence rather than silence.
  */
-function txnFailure(e: unknown): Extract<TxnActionResult, { ok: false }> {
+function txnFailure(e: unknown, target?: { processed: boolean }): Extract<TxnActionResult, { ok: false }> {
   if (e instanceof EmploymentNotInBatchScopeError) {
     const canAdd = e.detail.canAddToRun;
     return {
@@ -132,7 +163,18 @@ function txnFailure(e: unknown): Extract<TxnActionResult, { ok: false }> {
         scope: e.detail.reason,
         canAdd: canAdd ? 'yes' : 'no',
       },
-      ...(canAdd ? { scopeFix: { batchId: e.batchId, employmentId: e.employmentId } } : {}),
+      ...(canAdd
+        ? {
+            confirmAddToRun: {
+              batchId: e.batchId,
+              employmentId: e.employmentId,
+              employee: e.detail.employeeName,
+              period: e.detail.payPeriod,
+              scope: e.detail.reason,
+              processed: target?.processed ?? false,
+            },
+          }
+        : {}),
     };
   }
   return { ok: false, error: txnErrorKey(e) };
@@ -151,6 +193,14 @@ export type TxnActionResult =
        * same transaction as the write, so this is never set for a write that did not land.
        */
       recalcBatchId?: string;
+      /**
+       * r256 — this save also WIDENED the run onto its payee, because the operator answered Continue.
+       * Reported so the confirmation's success message can say all three things that happened (added,
+       * saved, and — with `recalcBatchId` — marked for reprocessing) rather than the bare "created" of a
+       * save that widened nothing. It is the SERVICE's own answer: `widenedEmploymentIds`, non-empty only
+       * when this transaction actually appended the employee to the run's scope.
+       */
+      addedToRun?: boolean;
     }
   | {
       ok: false;
@@ -161,8 +211,12 @@ export type TxnActionResult =
        * ISO month, and a token — never a built sentence, which would be English in six languages.
        */
       errorValues?: Record<string, string>;
-      /** Present only on the scope refusal: the run this employee could be added to. */
-      scopeFix?: TxnScopeFix;
+      /**
+       * r256 — present only on a scope refusal the operator CAN resolve: the facts the one confirmation
+       * prompt asks its question with. Absent when `canAddToRun` is false, which is how the screen knows
+       * not to offer Continue.
+       */
+      confirmAddToRun?: TxnScopeConfirm;
     };
 
 /**
@@ -542,6 +596,11 @@ export async function createIndividualTxnDayGridAction(input: {
   /** c11e81aa — the chosen Pay Cycle for the WHOLE grid; see TxnFormInput.intendedCycleId. */
   intendedCycleId: string | null;
   lines: DayByDayLineInput[];
+  /**
+   * r256 — the operator answered Continue to the one confirmation. See `createIndividualTxnAction`; the
+   * flag authorises nothing on its own and every guard is re-applied inside the write transaction.
+   */
+  confirmAddToRun?: boolean;
 }): Promise<TxnActionResult & { count?: number }> {
   const { s, scopeIds } = await scopedAdmin();
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
@@ -577,11 +636,12 @@ export async function createIndividualTxnDayGridAction(input: {
         sourceRef: null,
       });
     }
-    const { ids } = await createIndividualTxnsBulk(s, {
+    const { ids, widenedEmploymentIds } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
       employmentIds: [input.employmentId],
       rows,
       intendedCycleId: input.intendedCycleId,
+      ...(input.confirmAddToRun ? { widenScopeIfNeeded: true } : {}),
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -589,9 +649,10 @@ export async function createIndividualTxnDayGridAction(input: {
       id: ids[0],
       count: ids.length,
       ...(targetImpact?.status === 'processed' && input.batchId ? { recalcBatchId: input.batchId } : {}),
+      ...(widenedEmploymentIds.length ? { addedToRun: true } : {}),
     };
   } catch (e) {
-    return txnFailure(e);
+    return txnFailure(e, { processed: targetImpact?.status === 'processed' });
   }
 }
 
@@ -608,7 +669,24 @@ export async function createIndividualTxnDayGridAction(input: {
  * screen's Duplicate action. They are unrelated — one rejects a double paste, the other copies a row on
  * purpose — and the reader who conflates them will assume Duplicate is blocked.
  */
-export async function createIndividualTxnAction(input: TxnFormInput): Promise<TxnActionResult> {
+export async function createIndividualTxnAction(
+  input: TxnFormInput & {
+    /**
+     * r256 — THE OPERATOR PRESSED CONTINUE ON THE ONE PROMPT.
+     *
+     * It is a re-submission of the SAME save, not a second write path: the values are the ones still on
+     * screen, and the only difference is that the run may now be widened onto this employee rather than
+     * refusing. The widening, the insert and the recalculation mark then happen in ONE service
+     * transaction (`widenScopeIfNeeded`), which is what the reporter's single prompt has to mean — r255's
+     * two steps could commit the widening and then fail to commit the money.
+     *
+     * IT GRANTS NO AUTHORITY. A browser can send it on any save; the service still refuses a closed run,
+     * a company mismatch, an employment the run's month does not cover, and — on a processed run — an
+     * operator without `payroll.reprocess.selective`, and any of those rolls the whole save back.
+     */
+    confirmAddToRun?: boolean;
+  },
+): Promise<TxnActionResult> {
   const { s, scopeIds } = await scopedAdmin();
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
   if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
@@ -630,7 +708,7 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
       unit: input.unit,
       typed: input.amount,
     });
-    const { ids } = await createIndividualTxnsBulk(s, {
+    const { ids, widenedEmploymentIds } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
       employmentIds: [input.employmentId],
       rows: [
@@ -645,15 +723,17 @@ export async function createIndividualTxnAction(input: TxnFormInput): Promise<Tx
         },
       ],
       intendedCycleId: input.intendedCycleId,
+      ...(input.confirmAddToRun ? { widenScopeIfNeeded: true } : {}),
     });
     revalidatePath('/payroll/transactions/individual');
     return {
       ok: true,
       id: ids[0],
       ...(targetImpact?.status === 'processed' && input.batchId ? { recalcBatchId: input.batchId } : {}),
+      ...(widenedEmploymentIds.length ? { addedToRun: true } : {}),
     };
   } catch (e) {
-    return txnFailure(e);
+    return txnFailure(e, { processed: targetImpact?.status === 'processed' });
   }
 }
 
@@ -715,49 +795,21 @@ export async function updateIndividualTxnAction(
   }
 }
 
-/** What the add-to-run offer did. `added: false` is a SUCCESS: the run already covered this employee
- *  (somebody else widened it first, or the run is whole-company), so the save the operator came to make
- *  will now go through — which is the only thing they asked for. */
-export type TxnScopeAddResult =
-  | { ok: true; added: boolean; markedForRecalc: boolean; payPeriod: string; recalcBatchId?: string }
-  | { ok: false; error: string };
-
-/**
- * 4b909202 — ADD THE REFUSED EMPLOYEE TO THE RUN, the way forward the scope refusal now offers.
+/*
+ * r256 — `addEmployeeToRunAction` / `TxnScopeAddResult` ARE GONE, AND THAT IS THE POINT OF THE ROUND.
  *
- * The ids are the ones the SERVICE put on the error it threw, round-tripped through the screen, so this
- * cannot be used to widen a run the operator was never refused on — and it is fenced to their own
- * companies regardless, exactly as every other action here is, before the service is reached at all.
+ * They were the server half of r255's separate "Add {employee} to this run" button: widen the run in one
+ * transaction, then let the screen re-submit the save in another. The reporter rejected that shape (the
+ * reject our own plan invited), and the two-transaction gap it left — run widened, money never posted,
+ * nothing on any screen saying so — is exactly what a single prompt must not preserve. Continue now goes
+ * through the ordinary save with `confirmAddToRun`, and the widening happens inside the same transaction
+ * as the insert and the mark. Deleting these rather than leaving them unused is deliberate: an exported
+ * server action is a live entry point, and one that can widen a run on its own would keep the window open
+ * for anything that ever called it.
  *
- * It deliberately does NOT save the transaction. Widening a run and posting money onto it are two
- * decisions, they have two different audit trails, and folding them into one click would mean an
- * operator who wanted to reconsider the amount had already changed the run. The screen re-submits the
- * form itself once this returns, from the values still on screen.
+ * `addEmploymentToBatchScope` (core) is NOT deleted. It is the widening itself, it is what the confirmed
+ * save runs inside its transaction, and the suite asserts its guards against it directly.
  */
-export async function addEmployeeToRunAction(input: TxnScopeFix): Promise<TxnScopeAddResult> {
-  const { s, scopeIds } = await scopedAdmin();
-  if (!input.batchId || !input.employmentId) return { ok: false, error: 'periodInvalid' };
-  // The run must live in a company this admin administers — the same fence, read the same way, as
-  // `fetchBatchImpactAction`. A run outside it reads as absent rather than as a refusal, so this can
-  // never confirm that some other tenant-mate company holds a run with that id.
-  const impact = await batchEditImpact(s, { batchId: input.batchId });
-  if (!impact || !scopeIds.includes(impact.companyId)) return { ok: false, error: 'txnNotFound' };
-  try {
-    const r = await addEmploymentToBatchScope(s, { batchId: input.batchId, employmentId: input.employmentId });
-    revalidatePath('/payroll/transactions/individual');
-    return {
-      ok: true,
-      added: r.added,
-      markedForRecalc: r.markedForRecalc,
-      payPeriod: r.payPeriod,
-      // Same contract as a save: the run that now owes a recalculation, so the screen can link the
-      // operator straight to it. Set from the SERVICE's own answer, never re-derived here.
-      ...(r.markedForRecalc ? { recalcBatchId: input.batchId } : {}),
-    };
-  } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
-  }
-}
 
 /** Delete one transaction (allowed while unattached, or on a draft or processed run — the service
  *  enforces it, and marks a processed run for recalculation as it goes). */
