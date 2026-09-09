@@ -18,17 +18,18 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-08 (r226-r254 SHIPPED · BOARD HAS 3 APPROVED, ALL DELIBERATELY OPEN · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
+## CURRENT STATE — snapshot 2026-09-09 (r226-r256 SHIPPED · BOARD HAS 1 APPROVED, DELIBERATELY OPEN · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
 
-**`main@bd17c7ab` IS WHAT RUNS ON PRODUCTION (r254, 2026-09-08)** — verified by an
-`rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines. Not by `deploy.sh` succeeding,
-which is not proof. (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode
-and it is gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX.
-**Migration `0456` VERIFIED APPLIED, not assumed:** 372 migrations, watermark `1781862556000`, and
-`pg_indexes` on the box returns
-`CREATE INDEX domain_event_recent_idx ON public.domain_event USING btree (tenant_id, occurred_at DESC)`.
-`0454` remains applied from r238, `0452`/`0453` from r236.
-**371 migrations applied. `0455` IS THE LAST ONE** — r247, r239, r240 and r245 carried none.
+**`main@69b6dc38` IS WHAT RUNS ON PRODUCTION (r256, 2026-09-09)** — verified by an
+`rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines, read as TEXT. Not by
+`deploy.sh` succeeding, which is not proof; and not by a line count, which is not a change count.
+(`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode and it is
+gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 22:28:08.
+**Migration `0457` VERIFIED APPLIED, not assumed: 373 migrations applied, `0457` IS THE LAST ONE**, and
+`information_schema` on the box returns all three new `shift` columns with the promised defaults
+(`color` NULL, `flexible_break_enabled` false, `flexible_break_minutes` NULL). Its `RAISE NOTICE`
+reported **11 shifts, 0 coloured, 0 flexible** — the change shipped inert, as designed.
+`0456` remains applied from r254, `0455` from r252, `0454` from r238, `0452`/`0453` from r236.
 
 **THE DASHBOARD IS FIXED AND THE NUMBERS ARE FROM THE BOX, not from this Mac** (r252, measured after
 deploy with `curl` on localhost:3000, three warm runs each): **employee 0.74-0.84s** (was 4.4s locally on
@@ -37,7 +38,12 @@ a production-data restore, and the owner reported 8.5s), **manager 1.0-1.4s** (w
 well). Manager is now the slowest identity; nothing about it is pathological, it simply sees the most.
 
 
-**✅ ALL FOUR APPROVED ITEMS ARE CLOSED (r247, 2026-09-05). THE BOARD HAS NOTHING BUILDABLE.**
+**BOARD: ONE APPROVED ITEM, DELIBERATELY OPEN.** `420ebab5` (Personnel Management — list, detail
+view and tabs) has now been BUILT THREE TIMES and closed none of them; it is held open rather than
+marked done. Everything else approved was closed by r256 — see that entry. The four items below are the
+r247 closures, kept because their findings still stand.
+
+**✅ ALL FOUR APPROVED ITEMS WERE CLOSED (r247, 2026-09-05).**
 - `cd63bd91` Haji Leave — `deployed`, `build_ref = no-code-change`. It already worked; Delete is offered
   on Leave Configuration and cascades the two approval rules. Their leave type was never unset — NULL is
   the company DEFAULT chain, not a non-match.
@@ -315,264 +321,81 @@ not work** — there is no board item to carry them, because the item is already
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
 
-### r254 (2026-09-08) — FOUR APPROVED ITEMS. **DEPLOYED `main@bd17c7ab`**, one closed, three deliberately left open.
+### r256 (2026-09-09) — EIGHT WORKSTREAMS, SEVEN ITEMS CLOSED. **DEPLOYED `main@69b6dc38`**, migration `0457`.
 
-**DEPLOYED.** tsc clean · **GATE GREEN across all 6 chunks (785 files)** · browser project green · shadow
-PASS 372/372 · `next build` clean · zero-change `rsync -azi --dry-run` read as TEXT · watermark
-`372 / 1781862556000` · service active, `GET localhost:3000/` → 401 · backfill verified IN THE DATABASE.
+**Verified on the box, not assumed:** `rsync -azi --delete --dry-run` from mainwt returned ZERO lines
+(read as TEXT — a line count is not a change count, r253's trap). Service active, `GET localhost:3000/`
+-> 401, `BUILD_ID` written 22:28:08 and the service Ready 7s later. **373 migrations applied, `0457` is
+the watermark**, and all three new `shift` columns are present with the defaults the plan promised.
 
-**WHAT SHIPPED.** `711adcd2` the ORP tick boxes + Category renames + the full-width Pay Item screen
-(migration `0456`) · `759dfc7d` stage one, Family on drafts including materialisation at activation ·
-`420ebab5` part two, one Save per tab — PROFILE TAB ONLY · `a6fe37fc` the Leave Configuration structure
-and mockups, which are a DESIGN deliverable awaiting the reporter's review, not code.
+**`0457` shipped INERT and the migration says so out loud.** Its `RAISE NOTICE` reported, on production:
+**11 shifts, 0 with a colour, 0 with a flexible break.** That is the whole safety property — the flexible
+break moves worked minutes, worked minutes feed overtime, and overtime is what payroll reads, so the
+switch is installed OFF by DEFAULT rather than by a backfill that could be wrong. Rehearsed twice before
+it went: `gate:shadow` (373/373 against production's live-shaped schema) and, because a schema-only dump
+has no rows, a populated table by hand — 3 shifts survived with `break_minutes` intact, all three CHECKs
+rejected bad states, and a legitimate colour + allowance was accepted.
 
-⚠️ **THE PREMISE CHECK WAS THE MOST VALUABLE THING IN THE ROUND, AND IT SAVED A PAY INCIDENT.** The
-approved plan told the reporter that overtime inclusion is decided today "by TYPE, not by a tick box".
-Measured, that is HALF TRUE and the false half is the one a backfill would have aimed at:
-  · **The statutory engine** (core/payroll.ts:2611-2628 → pack.payroll.overtimePay) reads
-    `compensation.basicSalary` + `compensation.monthlyAllowance` — COLUMNS. **No pay item takes any part
-    in it.** `backfillEmploymentComponentsFromCompensation` mirrors the column INTO a component one-way,
-    so the two stores can and do diverge.
-  · **A tenant's own `formula` rule** reading the `fixed_allowances` operand is the path the plan
-    describes, and the only one the tick box can configure.
-  · **UNPAID LEAVE HAS NO PAY-ITEM INPUT AT ALL** — it is `basicRaw / unpaidDivisor × days`. So the honest
-    backfill is FALSE on every row. Had it been set TRUE "to preserve behaviour" it would have moved EPF,
-    SOCSO, EIS, PCB and HRDF with it, because the unpaid deduction is PRE-statutory (it reduces wagesExOt
-    and hrdfBase). **Verified on production after deploy: 24 of 25 allowances ticked for overtime, 0 for
-    unpaid leave, 0 on every deduction — and the ONE allowance excluded is BASIC**, which is correct
-    because it IS the base. No non-payable or statutory row is ticked anywhere.
+⚠️ **AN EARLIER PRODUCTION READ SAID `0 shifts` AND IT WAS RLS, NOT AN EMPTY TABLE.** `select count(*)
+from shift` as the APP role returns 0 with no tenant context. The real answer (11) came from
+`MIGRATION_DATABASE_URL`. Do not conclude "nothing to migrate" from a count taken through RLS.
 
-⚠️ **AND THE VERIFY PASS STILL FOUND TWO MONEY DEFECTS THE BUILD INTRODUCED — HAND-FIXED PER 23b.**
-  1. `payItemFeedsUnpaidLeaveOrp` had three structural clauses and NO nonPayable/oneOff clause, while its
-     overtime sibling refused those rows AT ITS CALL SITE. That asymmetry let a record-only item raise a
-     real deduction: basic 6000 + a ticked non-payable 500 + 2 unpaid days wrote **419.35 instead of
-     387.10**, taking all five statutory bases with it. The clause now lives INSIDE the predicate, once,
-     for both engines.
-  2. `previewPayRule`'s projection omitted `nonPayable`, so the kernel's `!c.nonPayable` guard was INERT
-     in the preview and live in the run — a ticked BIK of 300 previewed as 300 and paid 0.00, on the very
-     screen an operator uses to set an overtime rate. And the form pre-ticked Overtime on EVERY new item
-     (`?? true`), so this was reachable with no deliberate tick. The default is now the pre-0456 KIND test.
+**Items closed:** `f1bbc572` global labels (the filter tested the label's ORIGIN company and never
+consulted `isGlobal`, so 59 Global labels behaved as company-specific) · `fbf6abd0` the topbar identity ·
+`b372e923` the reprocess screen's employee name becomes the link the run screen already had ·
+`0b326d5f` Reprocess Required · `4b909202` one prompt instead of a refusal plus a button ·
+`6340aecb` shift colour + flexible break · `858a1128` statutory forms.
+**`420ebab5` (Personnel tabs) IS DELIBERATELY STILL `approved`** — third round running; it has been built
+three times and closed none of them.
 
-**THE GATE WENT RED ONCE, ON A GUARD PINNING THE DECISION THIS ROUND REVERSES (AGENTS 18).**
-`152fea7f · C` asserted that `component-form.tsx` keeps a reading-width cap; the approved plan asks for
-"a full-width layout with the sections you drew". Resolved the way that guard's OWN header sets out for
-the TP1 page in r210 — "the SHAPE OF THE RECORD, not its cardinality" — so it moved to `WIDENED_LATER`
-with its argument written beside TP1's. **The case was UPDATED, not deleted:** the other five entries
-still hold, and deleting it to green a red gate would have retired the rule for all six. The guard then
-caught a second, real thing: `WIDENED_LATER` requires the named `pageWideCls` to be APPLIED, and the file
-hand-wrote its literal value as a string.
+**TWO PARENT HAND-FIXES, BOTH CAUGHT BY THE GATE RATHER THAN BY A BUILDER:**
 
-⚠️⚠️ **THREE GATES WERE OOM-KILLED, AND THE CAUSE WAS THE RAM DISK ITSELF — NOT THE WORKERS.** See the
-Traps entry. Short version: the 8GB RAM disk IS memory on an 18GB machine, cutting workers 10 → 6 → 4
-never touched the biggest consumer, and all three runs died in chunk 2. **The cluster is now ON DISK**
-(`AIHR_RAMDISK_GB=0`) and the gate went green first try at 6 chunks / 6 workers, 59-61% disk.
+1. **A TEST THAT PINNED A POSITION INSTEAD OF AN INVARIANT IS A TIME BOMB.** r254's
+   `test/pay-item-orp-711adcd2.test.ts` asserted `0456` was the LAST journal entry. `0457` broke it —
+   one AssertionError, chunk 5, on code that was completely correct. Rewritten to pin what actually
+   matters (the entry exists, everything before it has a lower idx, everything after a higher one), so
+   the next migration cannot break it. **Assert the append-only property, never the tail.**
 
-**BOARD: ONE CLOSED, THREE OPEN ON PURPOSE.** `711adcd2` deployed. `759dfc7d` is stage one of five tabs.
-`420ebab5` has only the Profile tab consolidated — and the fix pass MEASURED that **Family and
-Qualification cannot be consolidated at all** (every form on them is a child record, so a tab-wide Save
-would have nothing to save and a tab-wide Discard would cover nothing); the reporter named Family
-explicitly and must be told in words. `a6fe37fc` is waiting on THEIR review, which is what its plan
-promised.
+2. **THE NEW BROWSER TEST COULD NEVER RUN, AND IT FAILED IN A WAY THAT BLAMED THE COMPONENT.**
+   `test/topbar-identity-width.browser.test.tsx` reaches `UserMenu` through `await import(...)` — it has
+   to, so `vi.mock('@/app/auth-actions')` lands before `lib/session` -> `db/client` opens a connection.
+   That hides the component's import graph from Vite's STATIC dep scanner, so `lucide-react` was
+   discovered at RUNTIME, forcing a SECOND optimize pass and a SECOND copy of React: react-dom installed
+   the hook dispatcher on one copy and lucide-react read the other, giving nine
+   `TypeError: Cannot read properties of null (reading 'useContext')` thrown from inside a library that
+   had nothing to do with it. On a cold cache it was worse — all three browser files failed to IMPORT
+   ("Vite unexpectedly reloaded a test"), so the suite reported red having run zero assertions.
+   Fixed in `vitest.browser.config.ts` with `resolve.dedupe` + `optimizeDeps.include`.
+   **Those nine geometry assertions — name and Employee ID whole at 1280/1440/1512 — had never once
+   executed. They pass now, so `fbf6abd0` has real-browser evidence for the first time.**
 
-**TWO THINGS SHIPPED DIFFERENTLY FROM THE 711adcd2 TICKET, both deliberate and both owed to the reporter:**
-a ticked DEDUCTION is stored and warned about but moves neither base (the plan refused their worked
-example as wrong under EA s.60I, and adding a deduction as a POSITIVE would be worse); and a Benefit in
-Kind paid as CASH still prints in its normal box, because a sixth cash box would break the invariant every
-payslip renderer relies on — the five cash boxes sum to gross.
+**Gate:** 799 files across 6 chunks, every chunk exit=0, run with `AIHR_RAMDISK_GB=0` (the 8GB RAM disk
+IS memory on an 18GB machine and OOM-killed three gates last round). Locale audit base-aware: +71 keys,
+**0 dropped edits, 0 untranslated**. Rule 19 freeze re-checked twice — all eight `r256/*` branches at
+`ahead=0` before the gate AND again before the rsync.
 
-### r253 (2026-09-08) — SIX APPROVED ITEMS. **DEPLOYED `main@210e2843`** after a 19-hour block on SSH.
+### r255 (2026-09-09) — THREE ITEMS. **DEPLOYED `main@8cce048f`**. The money one was hand-fixed, not delegated.
 
-**DEPLOYED 2026-09-08 10:4x.** tsc clean · **GATE GREEN across all 6 chunks (780 files, peak-disk
-55-71%)** · browser project green (2 files, 10 passed + 1 expected fail) · `next build` clean · zero-change
-`rsync -azi --dry-run` (read as TEXT, and genuinely empty) · watermark still `371 / 1781862555000`, which
-is correct because **r253 carries NO migration** · service active, `GET localhost:3000/` → 401 · features
-re-verified by RENDERING on the box, not by trusting deploy.sh.
+**`core/payroll.ts` was deducting zakat OUTSIDE the EA 1955 s.24 net-floor clamp.** `statDeductions`
+summed EPF + SOCSO + SKBBK + EIS + PCB and simply omitted `st.zakat`, so the clamp that exists to stop
+statutory deductions driving net pay below the floor never saw it. Hand-fixed per rule 23b (**anything
+money-affecting is hand-fixed on the first pass, never delegated**): zakat moved into the clamp chain
+**after CP38**, because a court order outranks a voluntary election. It is carried as its own term
+(`slipZakat`) rather than folded into `slipExtraDeduct` — that becomes `otherDeductions` and would have
+double-counted in the pivot.
 
-⚠️ **IT WAS BLOCKED FOR 19 HOURS AND THE HOST LOOKED HEALTHY THROUGHOUT.** SSH to 203.142.6.241:8288 timed
-out from this machine while ping ran at 19ms with 0% loss and ports 80/443 answered. **Ports 80/443 on that
-IP are Odoo, not this app** — nginx there redirects to `/odoo`, so "the host serves HTTP" proves nothing
-about the HR box and is a false comfort. 22, 2222, 8288 and 8289 were all filtered; the LAN route
-(`10.20.30.20:8288`, the default in scripts/improve/release.ts) gave *connection refused* rather than a
-timeout, which is the tell that the packet arrived and was rejected instead of dropped. The egress IP was
-IDENTICAL before and after (149.88.106.138), so the "my address rotated" theory was wrong. It cleared on
-its own; nothing here was changed to fix it.
+**Historical payslips must not silently change shape.** `core/payslip-zakat-line.ts` gates on a literal
+`zakatInTotal === true` stamp, so a payslip issued before the fix renders EXACTLY as it did. Same family
+as `payslipEmployerBorne` / `payslipAbsenceLines`: **read the payslip's own blob, never re-derive from
+today's flags.**
 
-⚠️ **A LINE COUNT IS NOT A CHANGE COUNT.** The first proof-of-arrival check was
-`rsync -azi --dry-run … | wc -l`, which printed **2** — two ERROR lines (`ssh: connect … timed out`,
-`rsync: unexpected end of file`), not two changed files. Read the dry run's TEXT. On the real deploy it
-was genuinely empty with exit 0.
 
-**WHAT SHIPPED INTO `main` — six workstreams, six worktrees, six branches, merged and gated:**
-`8041aa84` Transactions → Transaction Entry · `b372e923` a Payroll Result link on every reprocess row ·
-`420ebab5` part one, the whole employee row opens the employee · `9da61c86` the System Settings
-master-data lists page · `2983802f` the import template catches up with the employee record ·
-`d75b0c11` the Payroll Process filter selection survives the run flow's actions.
+### r252 · r253 · r254 — ALL SHIPPED AND DEPLOYED. Full entries in `docs/HANDOFF-HISTORY.md`.
 
-**THE ROUND'S REAL LESSON: ALL SIX BUILT GREEN AND FIVE WERE WRONG.** Every workstream reported tsc
-clean and targeted tests passing. The adversarial verify pass then returned **27 findings, 5 of 6 verdict
-`fix-first`**, including a BLOCKER and six majors. A gate would have shipped every one of them. AGENTS 23
-holds exactly as written, for the fourth round running.
-
-⚠️ **WE TOLD THE REPORTER `d75b0c11` "ALREADY WORKS" AND WE WERE WRONG. THEY MUST BE TOLD (AGENTS 31).**
-The approved plan said the Payroll Process filter memory was already built, on a production measurement
-that was real but incomplete: it tested LINK navigation, which does work. It does not survive an ACTION.
-`closeAction` (app/payroll/actions.ts:650), `generateAction` (:127), `unlockAction` (:599) and
-`reprocessSelectedAction` (:500) all redirected to a hardcoded path with no `from`, and the posting forms
-carried only `batchId`. **The reporter's exact complaint reproduces:** list → Year 2026 + January → open a
-processed run → Close payroll → land on `?toast=Payroll+closed` → Back → September 2026. Worse, the
-builder's own case G asserted that a missing `from` resolves to `/payroll` — it pinned the bug as correct.
-Fixed via new `lib/return-to.ts withPayrollFrom(destination, raw)` across all four actions plus the
-Anomalies chain and the wizard's draft-adjustment panel, on the refusal branch as well as the success one.
-
-⚠️ **THE BLOCKER: `position: relative` ON A `<tr>` IS DROPPED BY WEBKIT, AND THE FIX WAS FOUND BY
-MEASUREMENT, NOT BY REASONING.** The clickable-row overlay was pinned to the `<tr>`. A WKWebView probe
-against system WebKit 605.1.15 (Safari 26.5) showed the row computes as **static**, so `elementFromPoint`
-answered with the LAST row's anchor for every probe on the page — other rows' cells, the paragraph below
-the table, the top of the content area. The positioning context moved to the `<td>` (padding and
-positioning on the same box, so no gaps between cells). **The agent REJECTED the parent's suggested fix on
-measurement:** a block wrapper inside the cell is only as tall as its own content, so the top and bottom of
-every short cell answered with no link — dead bands across the table, in Chromium. That measurement is
-recorded in `app/admin/personnel/row-link.tsx`, along with an explicit "not measured, so not claimed"
-clause for older Safari.
-
-⚠️ **`test/personnel-row-click.browser.test.tsx` IS NOT IN THE GATE.** `vitest.browser.config.ts` keeps
-the browser project out of `pnpm vitest run` by design, so the full gate does NOT run it. It must be run
-separately (`pnpm test:browser`) or a regression in that file is invisible. It was run for this round.
-
-**THE OTHER MAJORS, ALL FIXED:** every keystroke in the three master-data grids fired a client navigation
-(now returns without navigating when the target query equals the current one — chosen over a debounce,
-which would only delay the one useful reset); **adding a holiday no longer showed the new row** (new
-`holidayFollowPath()` looks the row up in the same list the screen builds and redirects to its page,
-dropping only a filter that would hide it); `passport_issuing_country` was validated against the `country`
-catalog instead of the issuing-country one; and the plan's promised `from` never reached the new reprocess
-links, which also pointed at a different result screen from the one the run screen uses.
-
-**FOUR FINDINGS WERE DECLINED WITH REASONS, AND THAT WAS THE RIGHT OUTCOME.** The strongest: restoring
-mouse text-selection inside an employee row is impossible without reintroducing the dead zones the item
-exists to remove — an overlay is the topmost hit target by construction. The trade is now stated in
-`row-link.tsx` rather than left to be rediscovered; a copy affordance on the Employee ID cell would be a
-new item, not a change to this one.
-
-**THE MERGE NEEDED HAND-RESOLUTION AND THE GROUPING RULE ONLY HELD FOR FIVE OF SIX.** `payroll-filter` and
-`reprocess-link` both fixed the reprocess screen for different reasons and collided on five files. Kept
-BOTH features: the shared `withPayrollFrom`/`withQueryParam` helpers over a duplicate local `to()`; ONE
-copy of a variable pair both branches had invented under different names (`carriedFrom`/`carry` vs
-`listBack`/`listFrom`); and `payrollResultHref(batch, employmentId, backHref)` so the run screen's link
-both points at the shared destination and carries the selection.
-
-**LOCALE AUDIT WAS BASE-AWARE, NOT PARITY-ONLY (19b).** Four branches each touched all six locale files.
-Diffed base vs merged vs every side: +32 keys in each of the six, perfect parity, **zero branch edits
-dropped by the merge**, and **zero values left as English** in ms/ta/th/vi/zh across all 39 new/changed
-keys. `i18n-check.mjs` cannot see either failure.
-
-**`CHUNKS=6` IS THE NEW FLOOR AND IT WAS MEASURED, NOT GUESSED.** At 780 files six chunks peaked at
-**55-71%**, against five chunks' 87-94% at 769 files last round. No environmental failures.
-
-**BOARD STATUS AFTER THIS ROUND — FIVE CLOSED, ONE DELIBERATELY LEFT OPEN.** `8041aa84`, `b372e923`,
-`9da61c86`, `2983802f` and `d75b0c11` are marked deployed (`build_ref = r253 main@210e2843`).
-**`420ebab5` IS NOT MARKED DEPLOYED AND MUST NOT BE**: its approved plan promised the reporter TWO parts,
-and only part one (the clickable row) shipped. Marking it closed would tell them the one-Save-per-tab work
-is done when it has not started. Part two is staged behind this round's
-`docs/audits/420ebab5-personnel-save-classification.md`.
-
-⚠️ **TWO THINGS ARE STILL OWED TO THE REPORTER IN WORDS, AND NEITHER IS A CODE TASK.**
-1. `d75b0c11` — the approved plan told them the filter memory "already works". It did not, for the path
-   they used. The fix shipped, but the board has no edit-in-place for an approved plan (pushing one resets
-   the status), so per AGENTS 31 the correction belongs in an item raised BACK to them, near the top.
-2. `420ebab5` — they should be told part one is live and part two is next, rather than inferring it from
-   an item that never closes.
-
-**STILL OWED ON THE BOARD, deliberately NOT built this round:** `a6fe37fc` (the approved plan promises the
-reporter a structure-and-screens review BEFORE building — building it would break that promise) ·
-`711adcd2` (changes what feeds overtime pay; AGENTS 23b says money-affecting work is hand-fixed on the
-first pass, not delegated) · `420ebab5` part two (one Save per tab — staged behind the 35-form
-classification this round produced at `docs/audits/420ebab5-personnel-save-classification.md`).
-
-### r252 (2026-09-07) — THE 8.5-SECOND DASHBOARD WAS ONE MISSING INDEX AND AN RLS FUNCTION CALLED PER ROW. Migration `0455`.
-
-**DEPLOYED — `main@2db7011f`.** tsc clean · shadow PASS (371/371 against the live-shaped schema) · **gate
-GREEN across all 5 chunks (769 files), plus chunk 1 re-verified against the FINAL tree (154 files, 2277
-tests, exit 0)** because an inert edit landed after that chunk had started · `next build` clean · zero-change
-`rsync -azi --dry-run` · watermark `1781862555000` and the index read back out of `pg_indexes` on the box.
-Verified by RE-TIMING THE DEPLOYED APP ON PRODUCTION (employee 0.78s, manager 1.2s, admin 0.17s), not by
-trusting the deploy.
-
-⚠️ **AND THE FIRST ATTEMPT TO RE-VERIFY CHUNK 1 WAS A FALSE RED — 89 files, 457 tests.** It was run WITHOUT
-the per-chunk cluster rebuild the gate does, straight after chunk 5 had left the RAM disk at 87%; `df`
-showed **100%, 4.0 KiB free**. `AssertionError` count **0**, with `could not extend file`, `recovery mode`,
-`not yet accepting connections` and 10x `ECONNREFUSED`. After `./scripts/dev-db-rebuild.sh`: 154/154 files,
-2277/2277 tests, exit 0. The discriminator worked exactly as the trap above says it does — but note the
-trap now has a second trigger: **running a chunk-sized batch by hand is not the same as the gate running
-it, because the gate rebuilds the cluster first.**
-
-**THE REPORT** was "why does it take so long to go into the page after selecting the user?" — and the
-answer only existed in the production data. On the seeded dev database every identity was fast, which is
-why nobody had seen it. So production was dumped (structure + rows, minus three FORCE RLS tables that
-`pg_dump` cannot read), restored locally as `ai_hr_prof`, and the bug reproduced on the first request:
-
-| identity | before | after |
-|---|---|---|
-| HR Admin | 0.36s | **0.08s** |
-| employee | 4.4s | **0.31s** |
-| manager | 5.7s | **0.46s** |
-
-**THE DIAGNOSIS, MEASURED IN THREE STEPS AND NOT INFERRED.** `app/page.tsx` was instrumented (marks around
-every await, one per member of its six-call `Promise.all`) and the whole gap was ONE read: `recentActivity`
-— the eight-row activity card — at **4,369ms for a non-admin against 35ms for the admin**. `EXPLAIN` said
-why:
-
-```
-Limit (actual time=4081.805..4081.806 rows=8)
-  -> Sort (top-N heapsort)
-    -> Seq Scan on domain_event (actual time=0.591..4081.612 rows=858)
-         Filter: (tenant_id = …) AND (app.is_admin() OR (… AND app.can_see_employment(subject_employment_id)))
-         Rows Removed by Filter: 9418
-Execution Time: 4081.830 ms
-```
-
-**`app.is_admin()` takes no row, so it SHORT-CIRCUITS the OR and an admin's predicate is a constant. Everyone
-else pays `app.can_see_employment()` — a SECURITY DEFINER function with four EXISTS branches, two of them
-recursive (reporting line, department tree) — ONCE PER ROW.** And there was no index on `occurred_at` (the
-five that existed all serve lookups BY key), so "the 8 newest" was a sort, and a sort must see every row:
-10,276 calls to a recursive function to return eight rows.
-
-**THE FIX IS TWO HALVES IN TWO FILES AND EITHER ONE ALONE SILENTLY DEGRADES.**
-- `0455` adds `domain_event (tenant_id, occurred_at DESC)`. The planner now walks in time order and stops
-  once eight rows have passed the policy: **4,082ms → 60ms, 169 function calls instead of 10,276.**
-- `core/read.ts` bounds `recentActivity` to a **30-day window**. The index alone does not bound the WORST
-  case — someone who can see almost nothing (a new joiner on day one) still walks to the end, measured at
-  525ms and growing forever at ~133 events/day. The window makes the worst case a function of the ACTIVITY
-  RATE rather than the table's AGE: **525ms → 183ms, and it stays there.**
-
-It costs nothing on screen: inside 30 days an employee has 159 visible events and a manager 1,014, against
-a card that shows eight. All three identities still render a full eight-row card (newest items 54m–14h old).
-
-⚠️ **A CLAIM IN THE FIRST DRAFT OF THIS ROUND WAS WRONG AND IS CORRECTED IN THE CODE.** The migration, the
-schema comment and the test all said DESC was "the part that matters" — that an ascending index could not
-stop early. **Measured, it is false:** an ascending index gives `Index Scan Backward` at identical cost
-(183ms either way). DESC still ships, because it states the intent and matches every other newest-first
-index here, but `test/recent-activity-bounded.test.ts` asserts the COLUMNS and deliberately does not assert
-the direction — pinning it would have been pinning a preference while calling it a performance property.
-
-**`test/recent-activity-bounded.test.ts` (4 cases) was verified NON-VACUOUS by reverting each half from a
-`cp` copy:** strip the window → the "EXCLUDES ones older than it" case and the source-shape case both fail;
-make the migration build an ascending index → the direction case failed, which is what exposed the wrong
-claim above.
-
-⚠️ **AND THE INDEX DETONATED A TIME BOMB IN THE HARNESS — see Traps.** The gate came back red on
-`payroll-config.test.ts` with `created` moved from the front of an asserted array to the back. Cause:
-`eventTypesFor` (test/harness.ts) had **no ORDER BY**, and 118 test files call it, most asserting an exact
-ordered array. They were all relying on the order Postgres happened to return rows in — and adding an
-index changed the plan. Fixed at the source with `orderBy(asc(sequence))`, which is exactly the append
-order every caller means. `latestEventPayload` directly below it already sorted by sequence in JS, so the
-guarantee was understood and merely absent here.
-
-**`auditEvents` HAS THE SAME SHAPE AND IS NOT AFFECTED** — `/admin/audit` is `requireAdmin`, so
-`app.is_admin()` short-circuits there. `recentActivity` was the only exposed reader; this was checked, not
-assumed.
-
-**THE PRODUCTION COPY IS GONE.** `ai_hr_prof` dropped, `prod.dump` and every rendered page deleted — it was
-83 real people with IC numbers and salaries, and it existed only to be profiled.
+r252 the 8.5-second dashboard was one missing index plus an RLS function called per row (`0455`;
+employee 4.4s -> 0.78s measured on the box) · r253 six approved items, `main@210e2843`, after a 19-hour
+block on SSH · r254 four approved items, `main@bd17c7ab`, migration `0456`, one closed and three
+deliberately left open.
 
 ### r245 · r246 · r247 · r248 · r249 · r250 · r251 — ALL SHIPPED. Full entries in `docs/HANDOFF-HISTORY.md`.
 

@@ -241,6 +241,31 @@ a real round:
     status), so the correction goes in the item you raise back to them — `68147833` carries it — and it
     goes near the TOP, not buried under the good news.
 
+32. **PIN THE INVARIANT, NEVER THE TAIL — A TEST THAT ASSERTS A POSITION IS A TIME BOMB WITH A FUSE THE
+    NEXT ROUND LIGHTS.** r254 asserted its migration was the LAST journal entry; `0457` broke it in r256,
+    producing one AssertionError on a chunk of completely correct code and costing a full re-gate. The
+    fix is not a bigger number — assert what is actually true forever (the entry EXISTS; everything
+    before it has a lower idx, everything after a higher one). Same shape anywhere you are tempted by
+    `[length - 1]`, "the newest row", or "the last commit".
+
+33. **A COUNT TAKEN THROUGH RLS IS NOT A ROW COUNT.** `select count(*) from shift` as the APP role with
+    no tenant context returns **0** on a table holding 11 rows — indistinguishable from an empty table,
+    and it will happily talk you out of a migration that matters. Read production facts through
+    `MIGRATION_DATABASE_URL`, and treat a suspiciously empty answer as a question about your session,
+    not about the data. Same family as rule 24's `git -C <missing dir>` printing 0.
+
+34. **VITE'S DEP SCANNER IS STATIC, SO A DYNAMIC IMPORT IN A BROWSER TEST DUPLICATES REACT — AND THE
+    ERROR BLAMES AN INNOCENT LIBRARY.** A test that must reach a component through `await import(...)`
+    (to land a `vi.mock` before a module opens a DB connection) hides that component's whole import
+    graph. Those deps get discovered at RUNTIME, forcing a second optimize pass and a second copy of
+    React; react-dom then installs the hook dispatcher on one copy while the component reads the other,
+    and you get `Cannot read properties of null (reading 'useContext')` thrown from inside lucide-react.
+    On a COLD cache it is worse — every browser file fails to import ("Vite unexpectedly reloaded a
+    test") and the suite reports red having run **zero** assertions. `resolve.dedupe` plus
+    `optimizeDeps.include` in `vitest.browser.config.ts`; anything a browser test reaches only
+    dynamically belongs in that list. **And check that a new test's assertions ever EXECUTED** — these
+    nine had never run once.
+
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round
 depends on** → verify → mark deployed. `GET /` returning 401 is the healthy password gate. Proof of
