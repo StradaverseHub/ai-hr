@@ -18,14 +18,14 @@ any of them):**
   diff.
 - **Keep this file under ~700 lines.** If it is longer, something here belongs in history.
 
-## CURRENT STATE — snapshot 2026-09-10 (r226-r257 SHIPPED · BOARD HAS 3 APPROVED + 2 RAISED CORRECTIONS AWAITING THE REPORTER · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
+## CURRENT STATE — snapshot 2026-09-10 (r226-r258 SHIPPED · BOARD HAS 2 APPROVED, BOTH IN BUILD · THE LOCAL CLUSTER IS ON DISK, NOT THE RAM DISK)
 
-**`main@9cc51ea2` IS WHAT RUNS ON PRODUCTION (r257, 2026-09-10)** — verified by an
+**`main@073fc745` IS WHAT RUNS ON PRODUCTION (r258, 2026-09-10)** — verified by an
 `rsync -azi --delete --dry-run` from **mainwt** that returned ZERO lines, read as TEXT. Not by
 `deploy.sh` succeeding, which is not proof; and not by a line count, which is not a change count.
 (`next-env.d.ts` alone is also a zero-change result — Next rewrites it per build mode and it is
-gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 01:20:04.
-**373 migrations applied and `0457` IS STILL THE LAST ONE — r257 carried NO migration**, and
+gitignored.) Service active, `GET localhost:3000/` → 401 ON THE BOX, `BUILD_ID` fresh at 03:41:41.
+**373 migrations applied and `0457` IS STILL THE LAST ONE — neither r257 nor r258 carried a migration**, and
 `information_schema` on the box returns all three new `shift` columns with the promised defaults
 (`color` NULL, `flexible_break_enabled` false, `flexible_break_minutes` NULL). Its `RAISE NOTICE`
 reported **11 shifts, 0 coloured, 0 flexible** — the change shipped inert, as designed.
@@ -37,6 +37,15 @@ a production-data restore, and the owner reported 8.5s), **manager 1.0-1.4s** (w
 0.16-0.19s** (was 0.36s — the admin gained too, because the sort it no longer does was costing it as
 well). Manager is now the slowest identity; nothing about it is pathological, it simply sees the most.
 
+
+**BOARD AFTER r258.** `759dfc7d`, `4df29517`, `afdf71e2` and `8c9ba51a` are DEPLOYED. **Approved and in
+build right now (r259): `a6fe37fc` Round 3** (the remaining seven leave-config screens, company-rules the
+only genuinely new one) **and `9583deac` stage one** (My Profile rebuilt on the Personnel tab shape, a
+READ surface; the field-visibility list is a deliverable of that round, not an implementation detail).
+`b2b31767` is OPEN and awaiting the reporter — the 171-unreachable-rules finding above.
+⚠️ **ROUND 5 IS THE ONE THAT NEEDS CARE**: it deletes the ten old pages, and `--verify` against the
+committed baseline runs on production before that deploy. Rounds 3 and 4 add only.
+The paragraph below is the superseded r257 board note, kept for its reasoning:
 
 **BOARD AFTER r257.** `420ebab5` and `2983802f` are DEPLOYED. Approved and waiting: **`a6fe37fc`**
 (Leave Configuration — Round 1 of 6 is built and deployed; Round 2 is BLOCKED on `8c9ba51a` below),
@@ -324,6 +333,57 @@ not work** — there is no board item to carry them, because the item is already
 **The two `c6bb5f5a` halves r227 did not deliver are now ON THE BOARD** (`afc29d75`, `568b8f0b`) with the
 questions that block them (`a8f525cf`, `3cbfe5e2`) — see the board list above. They are no longer owed
 silently, which is what this block used to record.
+
+### r258 (2026-09-10) — THREE ITEMS, PLUS THE PRODUCTION BASELINE. **DEPLOYED `main@073fc745`**, no migration.
+
+**Verified:** zero-line `rsync -azi --dry-run` read as text; service active, `GET /` -> 401, `BUILD_ID`
+03:41:41, **373 migrations — still no migration since `0457`**, zero `MISSING_MESSAGE` since restart.
+Gate: **803 files, 6 chunks, all exit=0.**
+
+**Shipped:** `759dfc7d` the draft employee record moved off the five-step wizard onto the SAME tab shell
+an activated employee uses · `4df29517` the duplicate Loans menu row removed · `a6fe37fc` **Round 2 of 6**,
+the new leave type screen at `/admin/leave-config/types` built ALONGSIDE the old one, which is untouched
+and still what the menu links to.
+
+⚠️ **THE PRODUCTION APPROVAL BASELINE IS CAPTURED AND COMMITTED** (`docs/baselines/a6fe37fc-approval-baseline.json`),
+which completes Round 1's exit condition. **The reporter approved `8c9ba51a` first** — that item existed
+only to get their answer, and carried the correction that the approved plan had told them this check runs
+against a copy when both design documents say it reads production. Nothing was pointed at their database
+until they said yes. The run reported "0 failure(s). Nothing was written to the database." The file holds
+UUIDs, employment-type enums and role tokens only — checked before committing, no personal data.
+
+**AND IT FOUND SOMETHING WORTH MORE THAN THE BASELINE.** Coverage over the live configuration: **245
+active approval rules, 74 ever win, 171 NEVER do**, and of 2,808 routing decisions only 962 are decided
+by a rule while **1,846 fall through to the built-in chain**. Two thirds of leave approvals are not
+routed by the customer's rules at all. Raised as `b2b31767`. This is the same shape as the r254 audit
+finding (16 entitlement tables in force against 2 rules): **the configuration is the problem, not the
+code**, and it is now measured rather than asserted.
+
+**THE VERIFY PASS CAUGHT A BUILD REPORTING A GUARD IT NEVER RAN.** `leave-types` reported "52 files green,
+including every directory-walking guard" while `test/leave-pack-drift.test.ts` was RED: the three new
+files import `core/leave*` and `ALWAYS_ALLOWED` had `app/admin/leave/` but nothing for
+`app/admin/leave-config/`. Hand-fixed structurally — the new prefix declared beside its sibling, NOT added
+to `test/pack-drift-allowlist.json`, which is audited debt that may only shrink (AGENTS 15). The decision
+had to happen this round: IA §2.0 puts all ten screens under that path, so Rounds 3-5 inherit it.
+
+**THE OTHER MAJOR WAS A STALE DESIGN DOCUMENT, WHICH IS WORSE THAN STALE CODE.** Two live surfaces of the
+screen being replaced were absent from the new one and recorded NOWHERE — the Employee Balances link
+(r242's own fix for "an HR admin came here and found nothing pointing at it") and the
+negative-balance-with-no-limit list (r126's "THE LIST THE PLAN PROMISED"). Both landed BEFORE the design's
+baseline, so IA §3.1's function table never listed them — **and the round's anti-drop guard is keyed to
+that table, so it could not see them go.** A table-keyed guard is only as complete as its table. Both
+surfaces were carried onto the new screen, the table corrected 46 -> 48 functions with a dated note, and
+the guard extended.
+
+**ALSO FIXED, AND IT IS THE DEFECT CLASS THIS WHOLE ITEM EXISTS TO AVOID:** the marker guard pinned that
+each sub-form posts its marker, id and name — but not that it still posts the FIELDS that marker's action
+branch READS. A field lost from a marker-carrying form saves and wipes its own column with the suite
+green. `MARKER_FIELDS` now maps all 27 markers to the fields their branch actually reads, asserted in both
+directions.
+
+**`759dfc7d`'s survival test is the shape to copy:** it reads the property names off the draft schema
+types and fails if any is missing from a table naming the column it lands in — so it cannot go stale as
+fields are added, which is exactly how a field gets silently dropped at Activate.
 
 ### r257 (2026-09-10) — THREE APPROVED ITEMS BUILT, TWO RETURNED AS PLANS. **DEPLOYED `main@9cc51ea2`**, no migration.
 
