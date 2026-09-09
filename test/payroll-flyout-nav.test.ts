@@ -53,9 +53,14 @@ const EXPECTED_SET = [
   // remaining hrefs are still the retired tab strip's, character for character.
   { href: '/payroll', labelKey: 'payrollProcess' },
   { href: '/payroll/transactions', labelKey: 'payrollTransactions' },
-  // 6d72816e — an ADDITION, like statutory-forms and individual-payslip below. The /admin/loans SCREEN
-  // already existed and was reachable only from a card on the Transactions hub; this is its menu row.
-  { href: '/admin/loans', labelKey: 'loans' },
+  // 4df29517 — /admin/loans is REMOVED from this set, the THIRD removal it has ever taken (efe1d230's
+  // /payroll/guide was the first, ADR-0083 r233's /payroll/control-tower the second). Recorded here
+  // rather than quietly dropped, because a deletion from this list is exactly what this guard exists to
+  // catch. THE DESTINATION IS NOT LOST: /admin/loans is still reached from the Transaction Entry hub
+  // card (app/payroll/transactions/page.tsx), which is where it was reachable from before 6d72816e added
+  // this row. The screen, its three routes and its lib/permissions.ts entry are untouched, so it remains
+  // grantable and revocable per person. This reverses 6d72816e on the reporter's own request: with both
+  // doors present they reported the same screen being offered twice in one menu.
   // 2ef69d1e — an ADDITION, like statutory-forms / individual-payslip / loans. Back Pay (Arrears) is a
   // NEW screen, so the guard's promise ("no destination lost, no href renamed") is untouched: every
   // original entry above and below is character for character what it was.

@@ -82,8 +82,13 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   '/payroll/setup': 1,
   '/payroll/transactions': 2,
   // 6d72816e — staff loans are a payroll INPUT: a recurring deduction reserved onto a regular draft
-  // run (ADR-0060, core/loans.ts). Same phase as the other transaction keying screens, so it lands
-  // immediately after Transactions (`sort` is stable and the row sits there literally).
+  // run (ADR-0060, core/loans.ts). Same phase as the other transaction keying screens.
+  // 4df29517 — KEPT DELIBERATELY THOUGH THE MENU ROW IS GONE. This map answers "which payroll phase
+  // does this screen belong to", which is still 2: the screen exists, and it is still reached from the
+  // Transaction Entry hub. It only FEEDS the fly-out's ordering, and test/payroll-phase-order.test.ts
+  // asserts nav -> rank ("every menu row has a declared rank"), never rank -> nav, so an entry with no
+  // row is not stale by that guard's definition. Removing it would also have to be undone if the row
+  // ever returns. Reviewed, not overlooked.
   '/admin/loans': 2,
   // 2ef69d1e — Back Pay is a payroll INPUT like the other transaction keying screens: it works out what
   // a backdated salary revision owes and posts it as one-off transactions on the current run. Same phase

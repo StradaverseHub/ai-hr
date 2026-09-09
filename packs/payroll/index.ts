@@ -153,7 +153,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, HandCoins, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileText, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -199,11 +199,14 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // Workflow Guide row that used to sit above it is retired with its page (see phases.ts).
     { href: '/payroll', labelKey: 'payrollProcess', icon: Banknote },
     { href: '/payroll/transactions', labelKey: 'payrollTransactions', icon: ArrowLeftRight },
-    // 6d72816e — staff loans. The SCREEN already existed at /admin/loans (registered in
-    // lib/permissions.ts, reachable only from a card on the Transactions hub); what was missing was a
-    // menu row, which is why the reporter concluded loans were not in Payroll. Href VERBATIM so the
-    // existing bookmarks and the Transactions-hub card keep pointing at the same screen.
-    { href: '/admin/loans', labelKey: 'loans', icon: HandCoins },
+    // 4df29517 — THE LOANS ROW IS GONE, AND THIS IS 6d72816e REVERSED ON THE REPORTER'S OWN REQUEST.
+    // 6d72816e added a menu row for /admin/loans because the screen was reachable only from a card on
+    // the Transactions hub and the reporter concluded loans were not in Payroll. Having both, they now
+    // report the opposite complaint: the same screen offered twice in one menu. There was never a second
+    // Loans screen — the row and the hub card were two doors onto /admin/loans — so removing the row
+    // loses no destination. The card (app/payroll/transactions/page.tsx) is the surviving door, and a
+    // staff loan belongs there: it is a payroll INPUT, keyed before a run like the other transactions.
+    // The SCREEN, its three routes and its lib/permissions.ts entry are untouched and still grantable.
     // 2ef69d1e — Back Pay (Arrears). Ranked into the same TRANSACTIONS phase as the keying screens
     // (phases.ts rank 2) and written literally here after Loans, so it lands between Transactions and
     // Transaction View — which is where the approved plan puts it. `sort` is stable, so its literal
