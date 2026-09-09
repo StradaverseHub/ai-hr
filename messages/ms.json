@@ -8499,13 +8499,20 @@
     }
   },
   "topbar": {
+    "accountMenu": "Menu akaun",
     "allCompanies": "Semua syarikat",
-    "companyCount": "{count, plural, one {# syarikat} other {# syarikat}}",
     "companyContext": "Konteks syarikat",
+    "companyCount": "{count, plural, one {# syarikat} other {# syarikat}}",
     "deselectAll": "Nyahpilih semua",
     "devAs": "dev sebagai",
+    "employeeIdLabel": "ID Pekerja",
+    "noEmployeeId": "Tiada ID Pekerja",
+    "noEmployeeRecord": "Tiada rekod pekerja",
     "noRole": "tiada peranan",
-    "selectAll": "Pilih semua"
+    "platformAccount": "Akaun platform",
+    "selectAll": "Pilih semua",
+    "signedInAs": "Log masuk sebagai",
+    "viewProfile": "Lihat Profil Saya"
   },
   "components": {
     "plannedAbsences": {

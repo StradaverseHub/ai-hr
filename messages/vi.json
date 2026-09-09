@@ -8499,13 +8499,20 @@
     }
   },
   "topbar": {
+    "accountMenu": "Menu tài khoản",
     "allCompanies": "Tất cả công ty",
-    "companyCount": "{count, plural, one {# công ty} other {# công ty}}",
     "companyContext": "Bối cảnh công ty",
+    "companyCount": "{count, plural, one {# công ty} other {# công ty}}",
     "deselectAll": "Bỏ chọn tất cả",
     "devAs": "dev với tư cách",
+    "employeeIdLabel": "Mã nhân viên",
+    "noEmployeeId": "Chưa có mã nhân viên",
+    "noEmployeeRecord": "Không có hồ sơ nhân viên",
     "noRole": "không có vai trò",
-    "selectAll": "Chọn tất cả"
+    "platformAccount": "Tài khoản hệ thống",
+    "selectAll": "Chọn tất cả",
+    "signedInAs": "Đang đăng nhập với tư cách",
+    "viewProfile": "Xem hồ sơ của tôi"
   },
   "components": {
     "plannedAbsences": {

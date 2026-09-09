@@ -8499,13 +8499,20 @@
     }
   },
   "topbar": {
+    "accountMenu": "账户菜单",
     "allCompanies": "全部公司",
-    "companyCount": "{count, plural, one {# 家公司} other {# 家公司}}",
     "companyContext": "公司上下文",
+    "companyCount": "{count, plural, one {# 家公司} other {# 家公司}}",
     "deselectAll": "取消全选",
     "devAs": "以…身份开发",
+    "employeeIdLabel": "员工编号",
+    "noEmployeeId": "未设置员工编号",
+    "noEmployeeRecord": "无员工记录",
     "noRole": "无角色",
-    "selectAll": "全选"
+    "platformAccount": "平台账户",
+    "selectAll": "全选",
+    "signedInAs": "当前登录身份",
+    "viewProfile": "查看我的资料"
   },
   "components": {
     "plannedAbsences": {

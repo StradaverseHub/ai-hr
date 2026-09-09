@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import type { SessionContext } from '@/db/client';
-import { myEmployment } from '@/core/read';
+import { viewerEmployment } from '@/lib/viewer';
 import { noticesForEmployment, popupNoticeFor, unreadNoticeCount } from '@/core/notice';
 import { dismissNoticePopupAction } from '@/app/notices/actions';
 import { NoticeBoardCard } from './notice-board-card';
@@ -20,7 +20,9 @@ import { NoticePopup } from './notice-popup';
  *
  * This file opens ONE namespace, so every key below is checked. The hosts just mount the slots.
  *
- * Both slots resolve `myEmployment` themselves and render NOTHING when there is none — a principal with
+ * Both slots resolve the viewer's employment themselves (through `viewerEmployment`, the memoised seam
+ * lib/viewer.ts added for the topbar identity — same row, one query per request instead of two) and
+ * render NOTHING when there is none — a principal with
  * no employment (an admin login not attached to a person) has no notices, which is correct rather than an
  * error, and neither surface should be a special case in its host.
  */
@@ -28,7 +30,7 @@ import { NoticePopup } from './notice-popup';
 /** The dashboard's Notice Board card. Returns null when the viewer has no employment. */
 export async function NoticeBoardCardSlot({ s }: { s: SessionContext }) {
   const t = await getTranslations('notices');
-  const me = await myEmployment(s);
+  const me = await viewerEmployment(s);
   if (!me) return null;
   const rows = await noticesForEmployment(s, me.employmentId);
   const unread = unreadNoticeCount(rows);
@@ -53,7 +55,7 @@ export async function NoticeBoardCardSlot({ s }: { s: SessionContext }) {
  */
 export async function NoticePopupSlot({ s }: { s: SessionContext }) {
   const t = await getTranslations('notices');
-  const me = await myEmployment(s);
+  const me = await viewerEmployment(s);
   if (!me) return null;
   const due = popupNoticeFor(await noticesForEmployment(s, me.employmentId));
   if (!due) return null;

@@ -4564,6 +4564,42 @@ export function myEmployment(ctx: SessionContext) {
 }
 
 /**
+ * The principal's own display name, INDEPENDENT of any employment (fbf6abd0).
+ *
+ * `myEmployment` above is the right source for the topbar's name + Employee ID, but it answers NOTHING
+ * for a principal with no ACTIVE employment — and that is not only the abstract "platform account" case.
+ * The seeded HR administrator is exactly it: a real, named person (`app_user.person_id` set) who was
+ * never hired into a company, so every employment-shaped read returns null for them. Labelling that
+ * human "Platform account" in the corner would be worse than the blank this item is fixing.
+ *
+ * So: name first from the employment (which also carries the Employee ID), and only when there is none,
+ * from the person. RLS-scoped like every read here — `person` is readable for one's own row, which is
+ * what /me's profile tab already depends on. Returns null when the principal is linked to no person at
+ * all (a true platform login), which is the one case with genuinely nothing to show.
+ *
+ * Costs NOTHING on the no-person path, and that is why the guard is OUTSIDE `withTenant` rather than
+ * the first line inside it. `withTenant` opens a `db.transaction` and issues four `select set_config(...)`
+ * statements BEFORE the callback body runs (db/client.ts), so a guard inside the callback still bought a
+ * BEGIN + 4 statements + COMMIT for a principal there was never anything to look up for — on every
+ * authenticated page render. Returning before the call is what actually makes it free. (An employed
+ * viewer never reaches this function at all; see lib/viewer.ts.)
+ */
+export async function myPersonName(ctx: SessionContext) {
+  // Bound to a const so the narrowing survives into the callback — TS re-widens `ctx.personId` inside a
+  // closure, and the point of this guard is that the query below can only run with a real id.
+  const personId = ctx.personId;
+  if (!personId) return null;
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ name: person.fullName })
+      .from(person)
+      .where(eq(person.id, personId))
+      .limit(1);
+    return row?.name ?? null;
+  });
+}
+
+/**
  * Resolve a SELECTED employment to its person + header details, for the HR TP1-on-behalf screen
  * (Standardize-TP1, item 0cde61f3). RLS-scoped: an admin sees any employment in their tenant/scope; a
  * non-admin only their own — so this cannot be used to widen access. `personId` is the trusted key the

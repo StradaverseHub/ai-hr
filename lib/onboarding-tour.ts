@@ -26,6 +26,17 @@ export type Tour = { id: string; steps: TourStep[] };
 
 export const WELCOME_TOUR_ID = 'welcome';
 
+/**
+ * The window event that (re)starts a tour (`detail.tourId` selects which one). It lives HERE, in the leaf data module, and not on the tour
+ * COMPONENT that listens for it — r256, and the reason is a real import edge: every launcher that
+ * dispatches it (components/tour-launcher.tsx, components/guide-tour-button.tsx) had to import
+ * components/onboarding-tour.tsx for one string, which drags in `@/app/onboarding-actions` — a server
+ * action, so `lib/session` → `db/client` → postgres. Harmless while only the shell used it; the moment
+ * the account menu did, a component test importing the menu was importing a database driver (and in a
+ * real browser, dying on `Buffer is not defined`). A shared constant belongs below both sides.
+ */
+export const START_TOUR_EVENT = 'aihr:start-tour';
+
 const MANAGER_UP = ['manager', 'hr_admin', 'super_admin'];
 const ADMIN = ['hr_admin', 'super_admin'];
 
