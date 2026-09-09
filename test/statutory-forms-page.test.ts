@@ -31,6 +31,9 @@ import { REGISTERED_ROUTES } from '../lib/permissions';
 import { payrollPack } from '../packs/payroll';
 import { PAYROLL_NAV_PHASE } from '../packs/payroll/phases';
 import { yearOptions } from '../lib/hr-date';
+// r256 — the ONE rule that decides what a form's criteria step asks for, read here so this file's TP1
+// case can state the answer rather than grep for the substitution that used to produce it.
+import { parseDestination } from '../app/payroll/statutory-forms/criteria';
 import en from '../messages/en.json';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -278,7 +281,12 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       expect(ns[`fidelity_${st}_hint`], `fidelity_${st}_hint`).toBeTruthy();
     }
     for (const o of ['pdf', 'xlsx', 'csv', 'print', 'file']) expect(ns[`output_${o}`], `output_${o}`).toBeTruthy();
-    for (const k of ['legendTitle', 'noAction', 'chipMonth', 'chipYear', 'shelfReady', 'search', 'searchPlaceholder', 'searchNoMatch', 'searchClear', 'openEmployeeList']) {
+    // r256 — `chipMonth` / `chipYear` LEFT THIS LIST BECAUSE THEY LEFT THE PRODUCT. They rendered a
+    // CONCRETE period on each card ("Month · August 2026"), which the directory no longer has: it lists
+    // forms with no period chosen, so a card now carries its cadence and the period is asked for on the
+    // form's own criteria step. `dueByShort` went the same way, with the computed deadline it printed.
+    // The keys are deleted in all six locales rather than left behind as strings nothing renders.
+    for (const k of ['legendTitle', 'noAction', 'shelfReady', 'search', 'searchPlaceholder', 'searchNoMatch', 'searchClear', 'openEmployeeList']) {
       expect(ns[k], k).toBeTruthy();
     }
   });
@@ -291,7 +299,7 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
    */
   it('keeps braces out of every key the cards render without arguments', () => {
     const ns = en.payroll.statutoryForms as Record<string, string>;
-    const INTERPOLATED = new Set(['chipMonth', 'chipYear', 'shelfReady']);
+    const INTERPOLATED = new Set(['shelfReady']);
     const rendered = [
       ...MY_STATUTORY_LINKS.flatMap((l) => [l.labelKey, l.hintKey, l.descriptionKey]),
       // r220 — the extra actions' words and tooltips are rendered with no arguments too.
@@ -312,7 +320,11 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
 
 describe('the landing page is a directory, not a second generator', () => {
   it('renders only pack entries that are submissions', () => {
-    expect(PAGE).toContain('all.filter((r) => r.submission != null)');
+    // r256 UPDATED THE EXPRESSION, NOT THE RULE. The filter is unchanged — an entry without `submission`
+    // is the internal contributions overview, not a form anybody files — but its source moved: the
+    // directory no longer takes a companyId, so it reads `listStatutoryCatalog` (the admin's whole company
+    // scope, deduplicated by form id) instead of `listReports` for one chosen company.
+    expect(PAGE).toContain('catalog.reports.filter((r) => r.submission != null)');
   });
 
   it('does not generate anything itself', () => {
@@ -325,9 +337,19 @@ describe('the landing page is a directory, not a second generator', () => {
   });
 
   it('links each form to its own generation screen, not to the general Reports page', () => {
-    expect(PAGE).toContain('/payroll/statutory-forms/${encodeURIComponent(reportId)}');
-    // The bounce this redesign removes: "Open form" used to land on Reports beside a dropdown of every
-    // other report, a warning banner and a generation history.
+    /**
+     * r256 UPDATED WHERE THE PATH IS BUILT, NOT WHERE IT GOES. Each form still ends on its own
+     * `[formId]` screen and never on Reports — but the directory has no company, year or month to put in
+     * that link, so the card now opens the form's CRITERIA STEP and the step's GET form posts to the
+     * report path. Both halves are asserted, in the two files that own them: a card that linked straight
+     * to `[formId]` with nothing chosen would just bounce back to the step it skipped.
+     */
+    expect(PAGE).toContain('criteriaHref(r.id)');
+    expect(read('app/payroll/statutory-forms/criteria.ts')).toContain(
+      '/payroll/statutory-forms/${encodeURIComponent(reportId)}',
+    );
+    // The bounce the 6babf4f6 redesign removed: "Open form" used to land on Reports beside a dropdown of
+    // every other report, a warning banner and a generation history.
     expect(PAGE).not.toContain('/payroll/reports?companyId=');
   });
 
@@ -1084,9 +1106,15 @@ describe('what the shelves say about the forms that are not built', () => {
     expect(fs.existsSync(path.join(ROOT, 'lib/tp1-pdf.ts'))).toBe(true);
     // …and the reason the href stops at the list: the month page refuses an employment it cannot resolve.
     expect(read('app/payroll/transactions/tp1/[year]/[month]/page.tsx')).toContain('if (!emp) notFound()');
-    // `{year}` is the ONLY placeholder this screen substitutes for a link besides `{companyId}`; a
-    // `{month}` in an href would ship verbatim into the address bar.
-    expect(PAGE).toContain("href.replace('{companyId}', encodeURIComponent(companyId)).replace('{year}', year)");
+    /**
+     * r256 MOVED WHO FILLS THE PLACEHOLDER IN, AND KEPT WHAT THE PLACEHOLDER MEANS. The landing page used
+     * to substitute `{companyId}` and `{year}` out of its own filter bar; it has no filter bar now, so a
+     * templated href is handed to the criteria step, which reads the placeholders and draws exactly those
+     * boxes. TP1's `{year}` is why its step asks for a year and NOT a company — its screen takes no
+     * companyId, and a Company select on it would be a box that goes nowhere.
+     */
+    expect(PAGE).not.toContain("href.replace('{companyId}'");
+    expect(parseDestination(tp1.href).criteria.map((c) => c.kind)).toEqual(['year']);
     expect(tp1.href).not.toContain('{month}');
     // It is no longer marked unbuilt anywhere, and its planned strings went with it.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).not.toContain('lhdn.tp1');

@@ -37,6 +37,8 @@ import { packFor } from '../localization/registry';
 // Rung 5a (ADR-0080 D1): report/EA types come from the pack CONTRACT, never from localization/my.
 import type {
   EaStatement,
+  FormFidelity,
+  FormOutput,
   PlannedFormDef,
   ReportDef,
   ReportResult,
@@ -65,10 +67,28 @@ function reportsForCountry(country: string | null): ReportDef[] {
   return packFor(country)?.reports ?? [];
 }
 
-/** Report definitions (metadata only) available for a company's jurisdiction. */
-export async function listReports(ctx: SessionContext, companyId: string) {
-  const country = await companyCountry(ctx, companyId);
-  return reportsForCountry(country).map((r) => ({
+/**
+ * ONE report definition, narrowed to what a catalog screen may see: metadata, never a generator.
+ *
+ * r256 — EXTRACTED FROM `listReports` SO THE COMPANY-LESS CATALOG BELOW CANNOT DRIFT FROM IT. The
+ * Statutory Forms directory no longer picks a company before it lists forms, so it reads the catalog
+ * through `listStatutoryCatalog`; a second hand-written projection there is how one of the two would
+ * quietly stop carrying `fidelity` and start drawing a form with no status chip on it.
+ */
+export type StatutoryReportCard = {
+  id: string;
+  label: string;
+  cadence: ReportDef['cadence'];
+  periodKind: ReportDef['periodKind'];
+  submission: NonNullable<ReportDef['submission']> | null;
+  descriptionKey: string | null;
+  outputs: readonly FormOutput[] | null;
+  fidelity: FormFidelity | null;
+  shelfOrder: number | null;
+};
+
+function reportCard(r: ReportDef): StatutoryReportCard {
+  return {
     id: r.id,
     label: r.label,
     cadence: r.cadence,
@@ -85,7 +105,72 @@ export async function listReports(ctx: SessionContext, companyId: string) {
     outputs: r.outputs ?? null,
     fidelity: r.fidelity ?? null,
     shelfOrder: r.shelfOrder ?? null,
-  }));
+  };
+}
+
+/** Report definitions (metadata only) available for a company's jurisdiction. */
+export async function listReports(ctx: SessionContext, companyId: string) {
+  const country = await companyCountry(ctx, companyId);
+  return reportsForCountry(country).map(reportCard);
+}
+
+/**
+ * r256 (item 858a1128) — THE WHOLE STATUTORY CATALOG, WITH NO COMPANY CHOSEN.
+ *
+ * WHY THIS EXISTS. Statutory Forms used to ask for Company, Payroll Year and Payroll Month before it
+ * would show you a single form name — the period chosen before the form, which is the reverse of the
+ * order an HR operator works in. The directory now lists the forms first and asks each form for what it
+ * actually needs afterwards, so it has no `companyId` to resolve a jurisdiction with.
+ *
+ * IT RESOLVES THE JURISDICTIONS THE ADMIN CAN ACTUALLY REACH, not a hardcoded one. The caller hands in
+ * its company scope; this reads their DISTINCT countries in ONE query and unions the packs' catalogs.
+ * A tenant whose companies are all Malaysian gets exactly the MY catalog it got before; a tenant that
+ * later spans two jurisdictions gets both, deduplicated by form id rather than listed twice.
+ *
+ * STILL METADATA ONLY, and that is the whole point: nothing here computes a figure, and no entry
+ * carries a generator. Deduplication is FIRST-WINS across the three collections at once, so an id can
+ * never appear as both a generatable report and a planned one.
+ */
+export type StatutoryCatalog = {
+  reports: StatutoryReportCard[];
+  links: StatutoryFormLink[];
+  planned: PlannedFormDef[];
+};
+
+export async function listStatutoryCatalog(
+  ctx: SessionContext,
+  companyIds: string[],
+): Promise<StatutoryCatalog> {
+  if (companyIds.length === 0) return { reports: [], links: [], planned: [] };
+  const countries = await withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ country: company.country })
+      .from(company)
+      .where(inArray(company.id, companyIds));
+    return [...new Set(rows.map((r) => r.country).filter((c): c is string => !!c))];
+  });
+  const out: StatutoryCatalog = { reports: [], links: [], planned: [] };
+  const seen = new Set<string>();
+  for (const country of countries) {
+    const pack = packFor(country);
+    if (!pack) continue;
+    for (const r of pack.reports) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.reports.push(reportCard(r));
+    }
+    for (const l of pack.statutoryLinks) {
+      if (seen.has(l.id)) continue;
+      seen.add(l.id);
+      out.links.push(l);
+    }
+    for (const pf of pack.plannedForms) {
+      if (seen.has(pf.id)) continue;
+      seen.add(pf.id);
+      out.planned.push(pf);
+    }
+  }
+  return out;
 }
 
 /**
