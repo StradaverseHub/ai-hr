@@ -604,6 +604,20 @@ export const SCREENS: readonly ScreenEntry[] = [
       // grant or revoke. Its `export` sibling is a route handler, not a guarded page, so it is not
       // listed (the reverse-completeness check walks page.tsx files).
       '/payroll/statutory-forms/[formId]',
+      // r256 858a1128: the per-form CRITERIA step, between the directory and the figures. Same scopedAdmin
+      // key as the directory that links to it and as the [formId] screen it submits to — access is
+      // UNCHANGED by that item, so it deliberately does NOT get a screen key of its own: a separate column
+      // would let an administrator grant Statutory Forms while revoking the only way into a form on it.
+      // It reads the pack catalog and the admin's own company list and generates nothing. Registered here
+      // because test/function-access.test.ts checks reverse completeness: a guarded page with no matrix
+      // column fails the suite rather than silently becoming a screen nobody can grant or revoke.
+      '/payroll/statutory-forms/open',
+      // r256 858a1128: the C.P.8A (EA) employee selection — step two of the EA's own two-step flow (company
+      // + year on the criteria step above, then the people here). Same scopedAdmin key for the same reason
+      // as its two siblings, and it needs one on its own account too: it lists the year's paid population
+      // by name, employee ID, department and status. Its `download` sibling is a route handler, not a
+      // guarded page, so it is not listed — the reverse-completeness check walks page.tsx files.
+      '/payroll/statutory-forms/ea',
       // 88076362: the CP22 review step, between the joiner list on the statutory-form directory and the
       // download. Same scopedAdmin key as the directory that links to it (statutory-forms/page.tsx builds
       // the href twice, for the due list and the watchlist) — it shows one joiner's full particulars, name,

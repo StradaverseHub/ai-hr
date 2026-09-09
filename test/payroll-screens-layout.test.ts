@@ -246,6 +246,12 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     'app/payroll/borang-a/preview/page.tsx',
     'app/payroll/cp39/preview/page.tsx',
     'app/payroll/statutory-forms/[formId]/page.tsx',
+    // r256 858a1128 — the per-form CRITERIA step. Section C's category exactly: three selects and two
+    // buttons, answering "which company, which year, which month" for ONE form before anything is
+    // produced. `max-w-3xl`, because a prompt stretched across a 27" monitor puts its label at one edge
+    // and its select at the other. Its two siblings are NOT exceptions — the directory and the EA
+    // employee selection are both lists, and both are on pageWideCls.
+    'app/payroll/statutory-forms/open/page.tsx',
     // One-record previews and forms — section C's category.
     'app/payroll/cp22/[employmentId]/preview/page.tsx',
     'app/payroll/reports/ea/[employmentId]/page.tsx',

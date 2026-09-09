@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
@@ -37,6 +37,21 @@ import { recordReportAction } from './actions';
  * built here, because a hard block needs each form's own required-field list and that arrives with each
  * form's own build. What exists is unchanged — readiness named per person (components/statutory-report-
  * panel.tsx) and the readiness gate on the two agency upload files below.
+ *
+ * ── r256 (item 858a1128): NOTHING IS GENERATED UNTIL SOMEBODY HAS SAID WHAT FOR ─────────────────────
+ *
+ * THIS SCREEN USED TO GENERATE ON ARRIVAL, WHATEVER THE URL SAID. A bare `/payroll/statutory-forms/my.epf`
+ * fell back to the admin's first company and to the month just ended, and produced a statutory return for
+ * a company and a period nobody had chosen — which is the same fault, one level down, as the directory
+ * asking for a period before it would name a form. The fallbacks are GONE: an arrival that does not name
+ * a company, a year, and (for a monthly form) a month is sent to that form's own criteria step, which asks
+ * for exactly those and comes back here with them in the address.
+ *
+ * ⚠️ EVERY EXISTING DEEP LINK STILL GENERATES DIRECTLY, AND THAT IS WHY THE REDIRECT IS ON ABSENCE RATHER
+ * THAN ON A NEW FLAG. This screen is bookmarked monthly, and the bookmarks carry `companyId`, `year` and
+ * `month` (or the legacy `periodKey`) because that is what the shelf has always put in them — so they are
+ * fully specified, and they land on the figures exactly as they did. Requiring a `?generate=1` would have
+ * broken every one of them for no gain.
  *
  * 587ee719 — `lang` IS ACCEPTED AND CARRIED, NOT RENDERED. The two EA shelf entries (my.ea.en / my.ea.ms)
  * land on this screen's CP8D employee list, and the language they were chosen for has to survive the trip
@@ -77,13 +92,6 @@ const outBtn =
 const fileBtn =
   'rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300';
 
-/** Default to the month just ENDED — the one whose submission is actually open. */
-function previousMonth(today: string): string {
-  const y = Number(today.slice(0, 4));
-  const m = Number(today.slice(5, 7));
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-}
-
 export default async function StatutoryFormPage({
   params,
   searchParams,
@@ -120,11 +128,21 @@ export default async function StatutoryFormPage({
   const sp = await searchParams;
 
   const companies = (await listCompanies(s)).filter((c) => !c.archivedAt && scopeIds.includes(c.id));
-  // An out-of-scope companyId in the URL falls back to the first company this admin CAN administer, rather
-  // than being honoured. Same rule the export route applies, so the two cannot disagree again.
-  const requested = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : '';
-  const companyId = requested || companies[0]?.id || '';
-  const reports = companyId ? await listReports(s, companyId) : [];
+  /**
+   * r256 — THE CRITERIA STEP FOR THIS FORM, when the URL has not said what to generate.
+   *
+   * It is built here rather than imported so this file has one place that knows where "unspecified" goes,
+   * and it carries the form's own id — the step then asks for exactly what this form takes.
+   */
+  const criteriaHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(formId)}`;
+  // An out-of-scope companyId in the URL is treated as ABSENT rather than honoured — the same rule the
+  // export route applies, so the two cannot disagree again.
+  //
+  // ⚠️ r256 — AND ABSENT NO LONGER MEANS "the first company this admin can administer". That fallback
+  // produced a statutory return under a company name nobody had chosen; it is now the criteria step.
+  const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : '';
+  if (!companyId) redirect(criteriaHref);
+  const reports = await listReports(s, companyId);
   const def = reports.find((r) => r.id === formId);
   // Unknown id, or a form this company's jurisdiction does not have. One answer for both, so the URL
   // cannot be used to enumerate what other packs register.
@@ -132,9 +150,19 @@ export default async function StatutoryFormPage({
 
   const today = todayInKualaLumpur();
   const annual = def.periodKind === 'year';
-  const fallback = /^\d{4}-\d{2}$/.test(sp.periodKey ?? '') ? sp.periodKey! : previousMonth(today);
-  const year = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : fallback.slice(0, 4);
-  const month = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? sp.month! : fallback.slice(5, 7);
+  // The legacy `periodKey` (YYYY-MM) is still ACCEPTED and still counts as having named the period: links
+  // to this screen exist in the wild, and a redesign that quietly stopped resolving them would send every
+  // one of those bookmarks back to a criteria step for criteria they already carry.
+  const legacy = /^\d{4}-\d{2}$/.test(sp.periodKey ?? '') ? sp.periodKey! : '';
+  const namedYear = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : '';
+  const namedMonth = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? sp.month! : '';
+  // r256 — a period nobody named is a question, not a default. An annual form is never asked for a month,
+  // here or on the criteria step: `periodKind` decides both, so the two cannot disagree about what the
+  // form covers.
+  if (!namedYear && !legacy) redirect(criteriaHref);
+  if (!annual && !namedMonth && !legacy) redirect(criteriaHref);
+  const year = namedYear || legacy.slice(0, 4);
+  const month = namedMonth || legacy.slice(5, 7);
   // An annual form is filed for a YEAR: showing it a month filter would invite somebody to believe the
   // figures below are August's when they are the whole year's.
   const periodKey = annual ? year : `${year}-${month}`;
@@ -167,13 +195,23 @@ export default async function StatutoryFormPage({
    * employee for the tax year — and 587ee719 already threads `eaLang` through here so a name hands back
    * that person's EA. The list was never wrong. Only its self-description was.
    *
+   * ⚠️ r256 (item 858a1128) — THE EA ROWS NO LONGER LAND HERE, AND THIS BLOCK IS KEPT BECAUSE BOOKMARKS DO.
+   * They open `/payroll/statutory-forms/ea`, a picker of their own with the search, select-all and clear
+   * the reporter asked for, and the population fact above moved into the catalog as `populationReportId`
+   * rather than being deleted. Every `…/my.cp8d?…&lang=ms` link already in somebody's browser still
+   * resolves here and still renames the page after the row it came from, which is what this block is for.
+   *
    * The title comes from the EA shelf rows' OWN label keys, so the row you pressed and the page you land
    * on cannot drift apart; `def.label` stays the answer for every other arrival, including Form E from
    * its own row.
    */
   const eaTitle = eaLang ? t(eaLang === 'ms' ? 'link_ea_ms' : 'link_ea_en') : null;
   const heading = eaTitle ?? def.label;
-  const backHref = `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&year=${year}&month=${month}${
+  // r256 — Back returns to the DIRECTORY, on the shelf this form sits on. It no longer carries the year
+  // and month: the directory has no period on it any more, and a link that still named one would be
+  // asserting a filter that is not there. `companyId` rides along because the CP22 worklist at the foot of
+  // that page does read it.
+  const backHref = `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}${
     def.submission ? `&body=${def.submission.body}` : ''
   }`;
   const exportHref = (format: string) =>

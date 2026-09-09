@@ -1,0 +1,177 @@
+/**
+ * r256 (item 858a1128) — WHAT A STATUTORY FORM HAS TO BE TOLD BEFORE IT CAN BE PRODUCED.
+ *
+ * ONE module, three readers: the directory (which decides whether a card opens a criteria step or goes
+ * straight through), the criteria step itself (which draws exactly the boxes named here), and
+ * test/statutory-forms-criteria-858a1128.test.ts (which checks the answer for every entry the pack
+ * actually registers). The defect this shape exists to prevent lives in the CONTRACT between those files
+ * — a directory that sent a form to a step which then asked for the wrong thing would be tsc-clean and
+ * green on any test of either half — so the rule is written once and read three times.
+ *
+ * IT IS DERIVED FROM THE DESTINATION, NEVER FROM THE FORM'S NAME OR ID. A catalog href declares its own
+ * placeholders, so Form TP1 (`?year={year}`) asks for a year and not a company, the two C.P.8A (EA) rows
+ * ask for a company and a year and NEVER a month, and a monthly report asks for all three. That is the
+ * reporter's complaint answered at its root: the EA stopped asking for a Payroll Month because the thing
+ * it opens does not take one, not because a screen was taught to special-case it.
+ */
+
+/** The three things a destination can ask to have chosen, in the order they are drawn. */
+export type CriterionKind = 'company' | 'year' | 'month';
+
+const PLACEHOLDER: Record<string, CriterionKind> = {
+  '{companyId}': 'company',
+  '{year}': 'year',
+  '{month}': 'month',
+};
+
+/**
+ * Does this href need something chosen before it can be opened at all?
+ *
+ * The ONE test that decides whether a shelf card goes through the criteria step. An entry with no
+ * placeholder (the CP22 worklist anchor) is one press, exactly as it always was.
+ */
+export const TEMPLATED = /\{(?:companyId|year|month)\}/;
+
+/** The criteria step for one catalog entry, addressed by the entry's own id. */
+export const criteriaHref = (formId: string) =>
+  `/payroll/statutory-forms/open?form=${encodeURIComponent(formId)}`;
+
+export type ParsedDestination = {
+  /** The form's `action` — the path with every parameter stripped off. */
+  action: string;
+  /** The boxes to draw, in href order. `field` is the DESTINATION's own parameter name. */
+  criteria: { kind: CriterionKind; field: string }[];
+  /** Everything that is not a placeholder, carried through unchanged (the EA rows' `lang=en`). */
+  hidden: { name: string; value: string }[];
+};
+
+/**
+ * Split a catalog href into its action, the criteria it needs, and the parameters that ride along.
+ *
+ * The FIELD NAME is the destination's, never the placeholder's: `?year={year}` asks for a year and posts
+ * it back as `year`, and a destination that later spelled it `taxYear` would keep working without this
+ * module being touched.
+ */
+export function parseDestination(href: string): ParsedDestination {
+  const [action, query = ''] = href.split('?');
+  const criteria: { kind: CriterionKind; field: string }[] = [];
+  const hidden: { name: string; value: string }[] = [];
+  for (const pair of query.split('&').filter(Boolean)) {
+    const eq = pair.indexOf('=');
+    const name = eq === -1 ? pair : pair.slice(0, eq);
+    const value = eq === -1 ? '' : pair.slice(eq + 1);
+    const kind = PLACEHOLDER[value];
+    if (kind) criteria.push({ kind, field: name });
+    else hidden.push({ name, value: decodeURIComponent(value) });
+  }
+  return { action, criteria, hidden };
+}
+
+/**
+ * The criteria a generatable REPORT takes. It has no href — it is addressed by its own id and reads plain
+ * search params, the exact shape `[formId]` has read since 6babf4f6 and the shape every existing bookmark
+ * carries.
+ *
+ * `periodKind` is the ONLY input, and it is the same field `[formId]` uses to decide whether to draw a
+ * month select beside the figures — so the step and the screen it opens cannot disagree about what the
+ * form covers.
+ */
+export function reportDestination(
+  reportId: string,
+  periodKind: 'month' | 'year' | 'event',
+): ParsedDestination {
+  return {
+    action: `/payroll/statutory-forms/${encodeURIComponent(reportId)}`,
+    criteria: [
+      { kind: 'company', field: 'companyId' },
+      { kind: 'year', field: 'year' },
+      // A month UNLESS the form is filed for a year — the same `periodKind === 'year'` test `[formId]`
+      // applies, written the same way round, so a `periodKind` this catalog does not use today cannot make
+      // the two disagree by one of them defaulting to "monthly" and the other to "annual".
+      ...(periodKind === 'year' ? [] : [{ kind: 'month' as const, field: 'month' }]),
+    ],
+    hidden: [],
+  };
+}
+
+/**
+ * r256 — THE PERIOD THE STEP ARRIVES SHOWING, and why it is not simply "now".
+ *
+ * A criteria step opens with its selects already set, and whatever they are set to is what an operator who
+ * presses the button without reading gets. The first cut of this page set the year to `today.slice(0, 4)`
+ * and rolled only the MONTH back, which is wrong twice a year in ways that only show up in the season when
+ * these forms are actually filed:
+ *
+ *   • On 5 January the month rolled to December and the year did not, so CP39 arrived on `2026-12` —
+ *     eleven months in the FUTURE — and generated an empty return for a month that has not happened.
+ *   • Through the whole of January, February and March — the C.P.8A / Form E filing season — the annual
+ *     rows arrived on the year that had just BEGUN. Pressing Continue on the EA in February 2027 opened the
+ *     2027 population: one month of pay, printed under a tax document's name (AGENTS 28). The year being
+ *     filed in that window is 2026.
+ *
+ * THREE RULES, BECAUSE THERE ARE THREE KINDS OF FORM HERE, and the shape of the destination says which:
+ *
+ *   1. A form that takes a MONTH is filed for the month just ENDED — the submission that is actually open,
+ *      the same sentence app/payroll/statutory-forms/page.tsx has carried since it had a period picker. The
+ *      year rolls back WITH it, which is the half that was missing.
+ *   2. A form with no month whose destination is an annual SUBMISSION (Form E / CP8D, and the two C.P.8A
+ *      rows, whose population is that same report) is filed in arrears: through the filing season it is
+ *      last year's return that is open, and from April the next one to be prepared is the year in progress.
+ *   3. Anything else with a year and no month — Form TP1, whose destination is not one of this pack's
+ *      reports at all — is a declaration for the year IN PROGRESS, and `/payroll/transactions/tp1` defaults
+ *      to that same current assessment year. Defaulting it into last year would put HR on a closed year's
+ *      declarations for a quarter of every year.
+ *
+ * `today` IS THE TENANT'S, NEVER `new Date()` — between 00:00 and 08:00 MYT the UTC date is still
+ * yesterday's, and on 1 January that is a whole year out (lib/hr-date.ts, and the same reason
+ * app/payroll/dashboard-logic.ts gives).
+ */
+
+/**
+ * The last month of the Malaysian annual-filing season: the C.P.8A reaches employees by the last day of
+ * February and Form E is filed by 31 March, so up to and including March the year being worked on is the
+ * one that closed.
+ */
+const FILING_SEASON_LAST_MONTH = 3;
+
+/**
+ * The report a destination ultimately draws its figures from, by id — `undefined` when it opens something
+ * that is not one of this pack's reports.
+ *
+ * TWO WAYS AN ENTRY CAN NAME ONE, and both are the pack's own words rather than this module's: a link that
+ * opens a report directly carries it in its href (`my.borang-e` → `/payroll/statutory-forms/my.cp8d`), and
+ * a link that opens the LIST OF PEOPLE in one declares `populationReportId` (the two C.P.8A rows → `my.cp8d`).
+ * `my.tp1` opens `/payroll/transactions/tp1` and declares neither, so it resolves to nothing — which is how
+ * rule 3 above tells itself apart from rule 2 without any screen naming a form.
+ */
+export function destinationReportId(action: string, populationReportId?: string): string | undefined {
+  if (populationReportId) return populationReportId;
+  const m = /^\/payroll\/statutory-forms\/([^/]+)$/.exec(action);
+  return m ? decodeURIComponent(m[1]) : undefined;
+}
+
+/**
+ * What the step's selects should arrive showing, for one destination, as of the tenant's `today`.
+ *
+ * `target` is the destination's own report (see `destinationReportId`) or nothing. Pure, so
+ * test/statutory-forms-criteria-858a1128.test.ts can run it over the pack's OWN entries on the two dates
+ * the naive default got wrong — 5 January and 5 March — rather than grep for a formula.
+ */
+export function defaultCriteria(
+  today: string,
+  criteria: readonly { kind: CriterionKind }[],
+  target?: { periodKind: 'month' | 'year' | 'event'; submission?: unknown } | null,
+): { year: string; month: string } {
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  // Rule 1 — the month just ENDED, year and month together, so January reaches back into last December.
+  const ended =
+    m === 1
+      ? { year: String(y - 1), month: '12' }
+      : { year: String(y), month: String(m - 1).padStart(2, '0') };
+  if (criteria.some((c) => c.kind === 'month')) return ended;
+  // Rule 2 — an annual return, filed after the year it covers has closed. Rule 3 is the fall-through.
+  const filedInArrears = target?.periodKind === 'year' && target.submission != null;
+  const inSeason = m <= FILING_SEASON_LAST_MONTH;
+  return { year: String(filedInArrears && inSeason ? y - 1 : y), month: ended.month };
+}

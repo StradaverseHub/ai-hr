@@ -197,8 +197,36 @@ export type StatutoryFormLink = {
   hintKey: string;
   body: StatutoryBodyKey;
   cadence: 'monthly' | 'annual' | 'event';
-  /** Target route. Placeholders: `{companyId}`, `{year}`. */
+  /** Target route. Placeholders: `{companyId}`, `{year}`, `{month}`. */
   href: string;
+  /**
+   * r256 (item 858a1128) — WHAT THE BUTTON ON THE CRITERIA STEP SAYS, when "Generate form" would be a lie.
+   *
+   * The directory now hands every templated entry to a criteria step, whose button reads `criteria_generate`
+   * — because pressing it is the moment the form is produced. That is untrue of exactly one shape of entry:
+   * the two C.P.8A (EA) rows, where company + year is the FIRST of two steps and the employee selection is
+   * the second. Those rows name `criteria_continue` instead. The alternative — the step deciding from the
+   * destination path — is the screen naming forms again, which is what this catalog exists to prevent.
+   *
+   * Optional ⇒ every other entry's step is byte-identical.
+   */
+  criteriaLabelKey?: string;
+  /**
+   * r256 (item 858a1128) — WHICH GENERATED REPORT SUPPLIES THIS ENTRY'S PEOPLE, when it opens a list of
+   * them rather than a document.
+   *
+   * The two C.P.8A (EA) rows are the only entries with one, and it names `my.cp8d`. An EA is one statement
+   * per PERSON, so the row cannot open "the EA" — it opens the year's employee list, and the EA population
+   * IS the CP8D population (one row per employee for the tax year). Until this round that fact was encoded
+   * as a destination: the rows' hrefs pointed straight at `/payroll/statutory-forms/my.cp8d`, and the
+   * employee picker was the CP8D figures table with the names linked. The picker is its own screen now, so
+   * the fact has to be declared rather than implied.
+   *
+   * IT STAYS IN THE CATALOG, NOT IN THE SCREEN. A page that hardcoded `my.cp8d` would be the app naming one
+   * jurisdiction's report id — the thing this whole registry exists to stop — and a jurisdiction whose EA
+   * population comes from somewhere else would need the screen edited rather than its pack.
+   */
+  populationReportId?: string;
   /** 587ee719 — i18n key for the card's fuller description. Optional ⇒ existing entries unchanged. */
   descriptionKey?: string;
   /** 587ee719 — what this entry produces, as chips. */
@@ -1885,7 +1913,15 @@ export const MY_REPORTS: ReportDef[] = [
  */
 export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // The EA statement is per EMPLOYEE, so it has no single company-wide table to open. The year's
-  // employee list IS the CP8D screen — every row there links to that person's EA for the year.
+  // employee list IS the CP8D population — one row per employee for the tax year.
+  //
+  // ⚠️ r256 (item 858a1128) — THE SENTENCE ABOVE USED TO END "…IS THE CP8D SCREEN", AND IT NO LONGER DOES.
+  // The population is unchanged; where you meet it is not. Both rows now open a two-step flow of their own
+  // — company + year, then an employee selection with search by name and by employee ID, select all and
+  // clear — because the reporter's complaint was that the EA asked for a Payroll Month it does not use and
+  // then handed over a table of figures rather than a list of people to pick from. `populationReportId`
+  // carries the CP8D link that the href used to carry; the CP8D figures screen is untouched and its own
+  // row still opens it.
   //
   // 587ee719 — TWO ENTRIES, ONE RENDERER. The reporter listed "C.P.8A (EA) – English" and
   // "C.P.8A (EA) – BM" as separate forms, and until this round they were not: app/me/ea/[employmentId]/pdf
@@ -1938,8 +1974,10 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     descriptionKey: 'desc_ea_en',
     body: 'lhdn',
     cadence: 'annual',
-    href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=en',
+    href: '/payroll/statutory-forms/ea?companyId={companyId}&year={year}&lang=en',
     actionLabelKey: 'openForm',
+    criteriaLabelKey: 'criteria_continue',
+    populationReportId: 'my.cp8d',
     secondaryHref: '/payroll/ea/blank?lang=en',
     secondaryLabelKey: 'link_ea_blank_en',
     secondaryTitleKey: 'link_ea_blank_title',
@@ -1958,8 +1996,10 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     descriptionKey: 'desc_ea_ms',
     body: 'lhdn',
     cadence: 'annual',
-    href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}&lang=ms',
+    href: '/payroll/statutory-forms/ea?companyId={companyId}&year={year}&lang=ms',
     actionLabelKey: 'openForm',
+    criteriaLabelKey: 'criteria_continue',
+    populationReportId: 'my.cp8d',
     secondaryHref: '/payroll/ea/blank?lang=ms',
     secondaryLabelKey: 'link_ea_blank_ms',
     secondaryTitleKey: 'link_ea_blank_title',
@@ -2053,7 +2093,7 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     descriptionKey: 'desc_cp22',
     body: 'lhdn',
     cadence: 'event',
-    href: '/payroll/statutory-forms?companyId={companyId}#worklist',
+    href: '/payroll/statutory-forms#worklist',
     actionLabelKey: 'openWorklist',
     secondaryHref: '/payroll/cp22/blank',
     secondaryLabelKey: 'link_cp22_blank',
