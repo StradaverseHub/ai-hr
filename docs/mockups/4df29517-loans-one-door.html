@@ -1,0 +1,125 @@
+<meta charset="utf-8">
+<title>4df29517 — Loans: one screen, one way in</title>
+<!--
+  Mockup for 4df29517 (Payroll — remove the duplicate Loans sub-menu).
+
+  MEASURED ON main@9ff16b23, 2026-09-10. Nothing invented.
+    THERE IS ONLY ONE LOANS SCREEN. Both routes the reporter lists open the SAME page, /admin/loans:
+      · packs/payroll/index.ts:206 — { href: '/admin/loans', labelKey: 'loans' }, the Payroll menu row.
+      · app/payroll/transactions/page.tsx:110 — href="/admin/loans", the Transaction Entry hub card.
+    So this is not two screens duplicating each other; it is one screen with two doors.
+
+    THE HISTORY, from test/payroll-flyout-nav.test.ts:56-58 verbatim: "6d72816e — an ADDITION ... The
+    /admin/loans SCREEN already existed and was reachable only from a card on the Transactions hub;
+    this is its menu row." The reporter is asking us to take that addition back out, which returns the
+    screen to exactly the arrangement it had before.
+
+    The menu rows drawn on the left are the real ones and in the real order (packs/payroll/index.ts,
+    ordered by payrollNavRank): Payroll Process · Settings · Transaction Entry · Loans · Back Pay ·
+    Transaction View · Individual Payslip · Statutory Adjustment · Reports · Statutory Forms.
+
+  WHAT IS DELIBERATELY NOT DRAWN:
+    - The Loans screen itself. It does not change in any way — not a field, not a button, not a
+      permission. Drawing it would imply otherwise.
+    - The other Transaction Entry cards' contents; only their titles are real.
+    - Icons are approximated as neutral glyphs rather than the product's lucide set.
+  Tokens from app/globals.css; everything inline (render.ts blocks external requests).
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--badbg:#fef2f2;--badfg:#b91c1c;--goodbg:#f0fdf4;--goodfg:#15803d;--amberbg:#fffbeb}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 6px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:600;margin-bottom:8px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .bad{background:var(--badbg);color:var(--badfg)} .good{background:var(--goodbg);color:var(--goodfg)}
+  .menu{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
+  .mrow{display:flex;align-items:center;gap:9px;padding:6px 11px;font-size:12px;border-bottom:1px solid #f2f3f7}
+  .mrow:last-child{border-bottom:0}
+  .mrow .g{width:15px;text-align:center;color:var(--mf);font-size:11px}
+  .mhead{background:var(--muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf)}
+  .gone{background:var(--badbg)}
+  .gone span.t{text-decoration:line-through;color:#7f1d1d}
+  .keep{background:var(--goodbg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+  .hub{border:1px solid var(--border);border-radius:10px;padding:10px 11px;background:#fcfcfe}
+  .hub b{font-size:12px} .hub p{margin:3px 0 0;font-size:11px;color:var(--mf)}
+  .hub.on{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,70,229,.10)}
+  .arrow{font-size:11px;color:var(--mf);margin:8px 0 0}
+  .note{background:var(--amberbg);border:1px solid #fcd34d;border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+  .ok{background:var(--goodbg);border:1px solid #bbf7d0;border-radius:10px;padding:11px 13px;font-size:12px;color:#14532d}
+</style>
+
+<div class="card">
+  <h1>Loans — the same screen, reached two ways</h1>
+  <p class="sub">Sketch: wording, spacing and colours will differ. Both routes below open the identical
+    page. Nothing about the Loans screen itself changes.</p>
+
+  <div class="cols">
+    <div>
+      <div class="lbl">Today <span class="pill bad">Two doors</span></div>
+      <div class="menu">
+        <div class="mrow mhead"><span class="g"></span>Payroll</div>
+        <div class="mrow"><span class="g">▸</span>Payroll Process</div>
+        <div class="mrow"><span class="g">▸</span>Settings</div>
+        <div class="mrow"><span class="g">▸</span>Transaction Entry</div>
+        <div class="mrow gone"><span class="g">▸</span><span class="t">Loans</span>
+          <span class="pill bad" style="margin-left:auto">removed</span></div>
+        <div class="mrow"><span class="g">▸</span>Back Pay</div>
+        <div class="mrow"><span class="g">▸</span>Transaction View</div>
+        <div class="mrow"><span class="g">▸</span>Individual Payslip</div>
+        <div class="mrow"><span class="g">▸</span>Statutory Adjustment</div>
+        <div class="mrow"><span class="g">▸</span>Reports</div>
+        <div class="mrow"><span class="g">▸</span>Statutory Forms</div>
+      </div>
+      <p class="arrow">Door 1 — the menu row, straight to Loans.</p>
+    </div>
+
+    <div>
+      <div class="lbl">Proposed <span class="pill good">One door, the one that groups it correctly</span></div>
+      <div class="menu">
+        <div class="mrow mhead"><span class="g"></span>Payroll</div>
+        <div class="mrow"><span class="g">▸</span>Payroll Process</div>
+        <div class="mrow"><span class="g">▸</span>Settings</div>
+        <div class="mrow keep"><span class="g">▸</span><b>Transaction Entry</b>
+          <span class="pill good" style="margin-left:auto">Loans lives in here</span></div>
+        <div class="mrow"><span class="g">▸</span>Back Pay</div>
+        <div class="mrow"><span class="g">▸</span>Transaction View</div>
+        <div class="mrow"><span class="g">▸</span>Individual Payslip</div>
+        <div class="mrow"><span class="g">▸</span>Statutory Adjustment</div>
+        <div class="mrow"><span class="g">▸</span>Reports</div>
+        <div class="mrow"><span class="g">▸</span>Statutory Forms</div>
+      </div>
+      <div class="grid2">
+        <div class="hub"><b>Fixed Transactions</b><p>Recurring amounts</p></div>
+        <div class="hub"><b>Individual Entry</b><p>One employee at a time</p></div>
+        <div class="hub on"><b>Loans</b><p>Staff loans and their repayment schedule</p></div>
+        <div class="hub"><b>Adjustments</b><p>Corrections to a run</p></div>
+      </div>
+      <p class="arrow">Door 2 — the Transaction Entry card, unchanged and still there.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What is actually being removed</h2>
+  <div class="ok">
+    <b>One menu row. Nothing else.</b> The Loans screen keeps every field, every button and every
+    permission it has today. Anyone who can open Loans now can still open it afterwards, and anyone whose
+    access you have turned off stays turned off — the screen is still listed on your access settings by
+    name, exactly as it is now.
+  </div>
+  <div class="note" style="margin-top:11px">
+    <b>This is a return to how it used to be, not a new arrangement.</b> Loans was originally reachable
+    only from the Transaction Entry card; the menu row was added later. Taking it back out puts Loans
+    where a payroll input belongs — beside the other things you key in before a run — instead of offering
+    the same screen twice in one menu.
+  </div>
+  <p class="sub" style="margin-top:10px">Existing links and bookmarks to the Loans screen keep working.
+    Its address does not change.</p>
+</div>
