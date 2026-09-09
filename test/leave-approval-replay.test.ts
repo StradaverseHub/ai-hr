@@ -22,14 +22,29 @@
  *     three, where grade groups' SET NULL would have re-routed 205 live rules without erroring.
  *   • §2.3 — COVERAGE. A replay over rules that never match proves nothing about them, so the harness
  *     reports which rules ever WIN.
- *   • The script has NO apply mode and documents an invocation that actually runs on the server.
+ *   • The script has NO apply mode, refuses malformed options rather than guessing at them, and documents
+ *     an invocation that actually runs on the server.
+ *
+ * ADDED IN THE FIX PASS, and it is the property the whole round exists for:
+ *   • A ROUTING CHANGE THAT REACHES ANY LIVE EMPLOYEE MUST FAIL THE VERIFY. That is stronger than "a chain
+ *     that moved for a baseline employment who is still a routing subject", and the difference is not
+ *     academic: a routing tuple is shared, the baseline names it after ONE arbitrary member, and ordinary
+ *     turnover between the baseline and the verify changes which member that is. Matched by employment, a
+ *     departed representative took her still-employed colleagues' whole tuple out of the comparison, and
+ *     `--verify` printed "✓ every baseline routing case still reaches the same approver" and exited 0 while
+ *     the routing had genuinely moved. The `gone` case below used to be tested only with a tuple that had
+ *     emptied completely, which is the one shape where matching by employment gives the right answer.
+ *   • WHAT IT COSTS THE DATABASE IT IS POINTED AT. A harness that runs against a customer's live database
+ *     needs a known cost, so the round-trip count is asserted to be constant in the grid's size.
  */
 import { eq } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   resolveApprovalChain,
   resolveApprovalDecision,
@@ -43,7 +58,11 @@ import {
   diffApprovalRouting,
   listRoutingSubjects,
   replayApprovalRouting,
+  replayVerdictFails,
+  routingTupleKey,
   verifyApprovalRouting,
+  type BaselineSubject,
+  type RoutingReplay,
 } from '../core/leave-approval-consolidation';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -65,6 +84,23 @@ const hire = (name: string, departmentId?: string) =>
     gradeId: null,
     hiredOn: '2024-01-01',
   });
+
+/**
+ * EXACTLY what `scripts/replay-approval-routing.ts` writes into the committed baseline file. Written once,
+ * here, so these tests cannot accidentally verify against richer material than the file on the box holds —
+ * the whole blocker this suite now pins was a baseline that stored too little.
+ */
+const baselineSubjectsOf = (replay: RoutingReplay): BaselineSubject[] =>
+  replay.subjects.map((s) => ({ employmentId: s.employmentId, companyId: s.companyId, attrs: s.attrs }));
+
+/** A `Tx` that counts `select()` calls and otherwise IS the transaction, for the round-trip bound below. */
+const countingTx = (tx: Tx, bump: () => void): Tx =>
+  ({
+    select: (...args: unknown[]) => {
+      bump();
+      return (tx.select as unknown as (...a: unknown[]) => unknown).apply(tx, args);
+    },
+  }) as unknown as Tx;
 
 /** A rule that only reaches Finance (deptA) on SICK — the "targeted rule" of §2.4. */
 async function seedTargetedRule(): Promise<string> {
@@ -234,7 +270,7 @@ describe('a6fe37fc §2.2 — the verdict: what a --verify run calls a FAILURE', 
   it('a chain that moved for a LIVE employee is a failure, and is named', async () => {
     await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const baseline = await replayApprovalRouting(systemCtx());
-    const baselineSubjects = baseline.subjects.map((s) => ({ employmentId: s.employmentId, companyId: s.companyId }));
+    const baselineSubjects = baselineSubjectsOf(baseline);
 
     // The configuration really changes between the two runs — the rule now reaches Finance on ANNUAL.
     await owner.db.insert(schema.leaveApprovalPolicy).values({
@@ -256,31 +292,144 @@ describe('a6fe37fc §2.2 — the verdict: what a --verify run calls a FAILURE', 
     expect(verdict.gone).toEqual([]);
   });
 
-  it('a baseline employment that is no longer a routing subject is reported but is NOT a failure', async () => {
+  it('a baseline routing tuple with NO active employment left in it is reported but is NOT a failure', async () => {
     await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const baseline = await replayApprovalRouting(systemCtx());
-    const baselineSubjects = baseline.subjects.map((s) => ({ employmentId: s.employmentId, companyId: s.companyId }));
+    const baselineSubjects = baselineSubjectsOf(baseline);
     expect(baselineSubjects.map((s) => s.employmentId)).toContain(adaEmploymentId);
+    const adaTuple = routingTupleKey(b.companyId, baseline.subjects[0].attrs);
 
-    // Ada leaves. §2.5: terminated employments are excluded — a terminated employee submits no leave.
+    // Ada leaves, and she was the only employment in her tuple. §2.5: terminated employments are excluded —
+    // a terminated employee submits no leave, and a tuple nobody is in routes nobody.
     await owner.db
       .update(schema.employment)
       .set({ terminatedOn: '2025-01-01' })
       .where(eq(schema.employment.id, adaEmploymentId));
 
     const after = await replayApprovalRouting(systemCtx());
+    // THE PRECONDITION that makes `gone` the right answer, asserted rather than assumed: nobody active is
+    // in that tuple any more. Without this the test passes for a tuple that merely changed representative.
+    expect(after.subjects.some((sub) => sub.tupleKey === adaTuple)).toBe(false);
+
     const verdict = verifyApprovalRouting(baseline.chains, after, baselineSubjects);
     expect(verdict.changed).toEqual([]);
     expect(verdict.gone.length).toBeGreaterThan(0);
+    expect(replayVerdictFails(verdict)).toBe(false);
     // Still named — a company, not an empty string — so a suspicious number of them is visible.
     expect(verdict.gone[0].employmentId).toBe(adaEmploymentId);
     expect(verdict.gone[0].companyId).toBe(b.companyId);
   });
 
+  /**
+   * THE CASE THE CUTOVER GATE EXISTS FOR, AND THE ONE THAT USED TO PASS WHILE ROUTING HAD MOVED.
+   *
+   * A routing tuple is shared by everyone with the same scoping attributes, and the baseline names it after
+   * ONE arbitrary member (`listRoutingSubjects` keeps whichever row Postgres returned first; there is no
+   * ORDER BY). Between a baseline and a verify there is ordinary staff turnover. If a case is matched by the
+   * employment it is named after, then the moment that employment leaves, the whole tuple drops out of the
+   * comparison — colleagues still in it and all — and `--verify` prints "✓ every baseline routing case still
+   * reaches the same approver" and exits 0 while a live employee's approver has genuinely moved.
+   */
+  it('a routing change is a FAILURE for the colleague still in the tuple, even after the baseline representative has left', async () => {
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    // Ada and Bob are both Finance (deptA), same grade, same employment type: ONE routing tuple.
+    const bob = await hire('Bob');
+    const baseline = await replayApprovalRouting(systemCtx());
+    const baselineSubjects = baselineSubjectsOf(baseline);
+    expect(baseline.subjects).toHaveLength(1);
+    expect(baseline.subjects[0].employmentCount).toBe(2);
+    const representative = baseline.subjects[0].employmentId;
+    const survivor = [adaEmploymentId, bob.employmentId].find((id) => id !== representative);
+    expect(survivor).toBeDefined();
+
+    // 1. ORDINARY TURNOVER: whoever the baseline happened to name leaves. Nothing about routing changed.
+    await owner.db
+      .update(schema.employment)
+      .set({ terminatedOn: '2025-01-01' })
+      .where(eq(schema.employment.id, representative));
+
+    // 2. A REAL ROUTING BREAK lands on the tuple the survivor is still in: Finance ANNUAL now goes to
+    //    payroll instead of the company default chain.
+    await owner.db.insert(schema.leaveApprovalPolicy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      ruleName: 'Finance annual leave',
+      leaveTypeId: b.annualLeaveTypeId,
+      departmentId: b.deptA,
+      levels: ['payroll'],
+    });
+
+    const after = await replayApprovalRouting(systemCtx());
+    // The survivor really is still active and really is still in the same tuple.
+    expect(after.subjects).toHaveLength(1);
+    expect(after.subjects[0].employmentId).toBe(survivor);
+    expect(after.subjects[0].tupleKey).toBe(baseline.subjects[0].tupleKey);
+
+    const verdict = verifyApprovalRouting(baseline.chains, after, baselineSubjects);
+
+    // THE PROPERTY: a routing change that reaches ANY live employee fails the verify.
+    expect(replayVerdictFails(verdict)).toBe(true);
+    const moved = verdict.changed.filter((d) => d.leaveTypeId === b.annualLeaveTypeId);
+    expect(moved.length).toBeGreaterThan(0);
+    // Named against the employee who is STILL HERE, so the operator can look up somebody who exists.
+    expect(moved[0].employmentId).toBe(survivor);
+    expect(moved[0].companyId).toBe(b.companyId);
+    expect(moved[0].before).toBe('direct_manager → hr_admin');
+    expect(moved[0].after).toBe('payroll');
+    // …and it is NOT written off as a departure. The tuple still has a live member.
+    expect(verdict.gone).toEqual([]);
+  });
+
+  it('a change of representative with no routing change is not reported as anything at all', async () => {
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    const bob = await hire('Bob');
+    const baseline = await replayApprovalRouting(systemCtx());
+    const baselineSubjects = baselineSubjectsOf(baseline);
+    const representative = baseline.subjects[0].employmentId;
+
+    await owner.db
+      .update(schema.employment)
+      .set({ terminatedOn: '2025-01-01' })
+      .where(eq(schema.employment.id, representative));
+
+    const after = await replayApprovalRouting(systemCtx());
+    expect(after.subjects[0].employmentId).toBe([adaEmploymentId, bob.employmentId].find((id) => id !== representative));
+
+    // Matching by tuple must not turn ordinary turnover into noise either: nothing moved, so nothing is
+    // reported — not a failure, not a departure, and not a new case.
+    const verdict = verifyApprovalRouting(baseline.chains, after, baselineSubjects);
+    expect(verdict.changed).toEqual([]);
+    expect(verdict.gone).toEqual([]);
+    expect(verdict.added).toBe(0);
+    expect(replayVerdictFails(verdict)).toBe(false);
+  });
+
+  it('a baseline case naming an employment the baseline does not list is a FAILURE, never a silent skip', async () => {
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    const baseline = await replayApprovalRouting(systemCtx());
+    // A truncated or hand-edited baseline: a case with no subject to associate it with. It cannot be
+    // checked, and an unchecked case must never be reported as passed.
+    const verdict = verifyApprovalRouting(baseline.chains, baseline, []);
+    expect(verdict.unmatched.length).toBe(baseline.chains.size);
+    expect(verdict.gone).toEqual([]);
+    expect(replayVerdictFails(verdict)).toBe(true);
+
+    // Two subjects claiming the SAME tuple is the other way a hand-edited baseline becomes unassociable:
+    // both would re-key onto one live representative and silently overwrite each other.
+    const subjects = baselineSubjectsOf(baseline);
+    const duplicated = verifyApprovalRouting(baseline.chains, baseline, [
+      ...subjects,
+      { ...subjects[0], employmentId: randomUUID() },
+    ]);
+    expect(duplicated.unmatched.length).toBe(baseline.chains.size);
+    expect(duplicated.changed).toEqual([]);
+    expect(replayVerdictFails(duplicated)).toBe(true);
+  });
+
   it('a leave type added since the baseline is counted as new, not as a difference', async () => {
     await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const baseline = await replayApprovalRouting(systemCtx());
-    const baselineSubjects = baseline.subjects.map((s) => ({ employmentId: s.employmentId, companyId: s.companyId }));
+    const baselineSubjects = baselineSubjectsOf(baseline);
 
     await owner.db
       .insert(schema.leaveType)
@@ -338,8 +487,85 @@ describe('a6fe37fc §2.3 — coverage: which rules ever WIN', () => {
   });
 });
 
+describe('a6fe37fc — what the replay COSTS the production database it is pointed at', () => {
+  /**
+   * A HARNESS THAT RUNS AGAINST A CUSTOMER'S LIVE DATABASE HAS TO HAVE A KNOWN COST.
+   *
+   * The grid is (routing tuple × leave type × day probe), and the day-probe set grows with the number of
+   * distinct min/max bounds across the tenant's rules — with 261 rules it is not 3 probes, it is potentially
+   * hundreds. Resolution used to re-read every active rule and every active template PER CELL, and
+   * `--coverage` walked the same grid a second time, so the round-trip count was `4 × cells`, unbounded and
+   * unmeasured, inside one transaction held open against production.
+   *
+   * The bound asserted here is the real one: the number of database round-trips does not depend on the
+   * grid's size at all. Growing the grid 50-fold must not add a single query.
+   */
+  it('resolves the whole grid in a CONSTANT number of round-trips, however large the grid', async () => {
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    await seedTargetedRule();
+    await hire('Grace', b.deptB);
+
+    const measure = (dayProbes: number[]) =>
+      withTenant(systemCtx(), async (tx) => {
+        const { subjects } = await listRoutingSubjects(tx);
+        const types = await tx.select({ id: schema.leaveType.id }).from(schema.leaveType);
+        const leaveTypeIds = types.map((t) => t.id);
+        let snapshotQueries = 0;
+        const snap = await approvalRoutingSnapshot(
+          countingTx(tx, () => { snapshotQueries += 1; }),
+          subjects,
+          leaveTypeIds,
+          dayProbes,
+        );
+        let coverageQueries = 0;
+        const cov = await approvalRoutingCoverage(
+          countingTx(tx, () => { coverageQueries += 1; }),
+          subjects,
+          leaveTypeIds,
+          dayProbes,
+        );
+        return { cells: snap.size, decisions: cov.decisions, snapshotQueries, coverageQueries };
+      });
+
+    const small = await measure([1]);
+    const large = await measure(Array.from({ length: 50 }, (_, i) => i));
+
+    // The grid really did grow — otherwise the assertion below is about nothing.
+    expect(small.cells).toBeGreaterThan(0);
+    expect(large.cells).toBe(small.cells * 50);
+    expect(large.decisions).toBe(large.cells);
+
+    // Two reads for a snapshot (the rules, the templates); three for coverage (those two plus the rule
+    // listing it names rules by). The same numbers for a 50× larger grid.
+    expect(small.snapshotQueries).toBe(2);
+    expect(large.snapshotQueries).toBe(2);
+    expect(small.coverageQueries).toBe(3);
+    expect(large.coverageQueries).toBe(3);
+  });
+
+  it('holds its transaction open only for the reads — the grid is resolved after it has rolled back', async () => {
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
+    await seedTargetedRule();
+    const replay = await replayApprovalRouting(systemCtx(), { coverage: true });
+    // Same answers as resolving inside the transaction one cell at a time (the promoted snapshot function,
+    // which the 241817ef conversion proof still calls with a `tx`).
+    const inTx = await withTenant(systemCtx(), (tx) =>
+      approvalRoutingSnapshot(tx, replay.subjects, replay.leaveTypeIds, replay.dayProbes),
+    );
+    expect([...replay.chains.entries()].sort()).toEqual([...inTx.entries()].sort());
+    expect(replay.coverage?.decisions).toBe(replay.chains.size);
+  });
+});
+
 describe('a6fe37fc — the replay script points at production, so its SHAPE is the safety', () => {
   const source = () => readFileSync(new URL('../scripts/replay-approval-routing.ts', import.meta.url), 'utf8');
+  const scriptPath = fileURLToPath(new URL('../scripts/replay-approval-routing.ts', import.meta.url));
+  const runScript = (args: string[]) =>
+    spawnSync(process.execPath, ['--import', 'tsx', scriptPath, ...args], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      encoding: 'utf8',
+      env: { ...process.env, MIGRATION_DATABASE_URL: '' },
+    });
 
   it('has no apply mode and no write, and says so', () => {
     const src = source();
@@ -366,4 +592,30 @@ describe('a6fe37fc — the replay script points at production, so its SHAPE is t
   it('reads production through MIGRATION_DATABASE_URL, exactly as the conversion script does', () => {
     expect(source()).toContain('MIGRATION_DATABASE_URL');
   });
+
+  /**
+   * The script's own advertised property is that malformed input is REFUSED, not guessed at — that is the
+   * whole reason an operator can be trusted with a tool pointed at production. `--baseline` used to take
+   * the next argv element whatever it was, so on the box `--baseline --coverage` would have written a
+   * production baseline to a file literally called `--coverage`, with the coverage report silently off.
+   */
+  it('refuses a --baseline/--verify whose filename is missing, instead of swallowing the next option', () => {
+    const swallowed = runScript(['--baseline', '--coverage']);
+    expect(swallowed.status).toBe(2);
+    expect(swallowed.stderr).toContain('--baseline require(s) a filename');
+
+    const verify = runScript(['--verify', '--coverage']);
+    expect(verify.status).toBe(2);
+    expect(verify.stderr).toContain('--verify require(s) a filename');
+
+    // …and an unknown option is still refused, which is the property this one was supposed to share.
+    const unknown = runScript(['--apply']);
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toContain('unknown option(s): --apply');
+
+    // A well-formed pair still parses: it gets past the option checks to the connection guard.
+    const wellFormed = runScript(['--baseline', '/tmp/a6fe37fc-not-written.json', '--coverage']);
+    expect(wellFormed.status).toBe(1);
+    expect(wellFormed.stderr).toContain('requires MIGRATION_DATABASE_URL');
+  }, 60_000);
 });

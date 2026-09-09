@@ -309,6 +309,24 @@ snapshot := for each subject s, leave type t, day probe d:
 Any key whose value differs is a failure, reported as **company · employment · leave type · days ·
 before-chain · after-chain** — named, never counted, so the operator can look the employee up.
 
+**Across two RUNS, a case is matched by its tuple, not by the employment it is named after.** Within one
+transaction the subject list is identical on both sides, so the key above is enough. Between a committed
+baseline and a `--verify` weeks later it is not: `listRoutingSubjects` keeps one *arbitrary* representative
+per tuple (no `ORDER BY`, and none is needed), and ordinary staff turnover changes which colleague that
+is. So the baseline stores each tuple's **attributes** — its identity, never replayed — and a verify
+re-keys the baseline onto today's representatives before diffing. A baseline case counts as *not compared*
+only when **no active employment is in that tuple at all**. Matched by employment instead, a departed
+representative silently removes her still-employed colleagues' whole tuple from the comparison, and the
+verify can print *"every baseline routing case still reaches the same approver"* and exit 0 while a live
+employee's approver has moved. Baseline files therefore carry `version: 2`; a version-1 file is refused,
+not read on a best-effort basis.
+
+**What it costs the database.** The replay's transaction issues a **constant eight statements per tenant**
+whatever the grid's size — the two read-only statements, the subject join, the leave types, the day-range
+bounds, the two rule-set reads, and (only with `--coverage`) the rule listing. The rules are read once and
+the grid is resolved afterwards, in memory, so a tenant with 261 rules and a large day-probe set does not
+hold a long transaction open against production or pin its vacuum horizon.
+
 Three places it runs, and all three are required:
 
 | Where | When | What it proves |
@@ -354,7 +372,8 @@ that injection, or it is not yet the acceptance test.**
 * **Pending requests keep their snapshotted steps** (ADR-0071 §g), so a mid-flight approval is unaffected
   by any of this by design.
 * **Terminated employments are excluded**, matching `listRoutingSubjects`. A terminated employee submits
-  no leave.
+  no leave — but a *tuple* is only excluded when nobody active is left in it, never merely because the
+  employment the baseline named it after has gone.
 * **`resolveApprovalChain` is scoped to the requesting employment's own current assignment**
   (ADR-0071 1(f)). The replay inherits that scope exactly, because it calls the same function.
 

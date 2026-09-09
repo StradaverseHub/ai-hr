@@ -24,7 +24,8 @@
  * the same proof, then rolls back on purpose — so "it would be routing-neutral" is a measured result, not
  * a prediction.
  *
- * Resolution itself is untouched: this module calls the real `resolveApprovalChain`, never a local copy,
+ * Resolution itself is untouched: this module calls the real matcher (`decideApproval`, which
+ * `resolveApprovalChain` is a wrapper over), never a local copy,
  * so the proof cannot drift away from what production actually does.
  *
  * ONE THING THE PROOF CANNOT COVER, stated here because it is the real cost of the item rather than a
@@ -44,7 +45,8 @@
  * and `diffSnapshots` were promoted, unchanged, to `approvalRoutingSnapshot` and `diffApprovalRouting`,
  * and three functions were added around them — `approvalRoutingCoverage` (which rules ever WIN),
  * `replayApprovalRouting` (one read-only transaction that always rolls back: the shape that makes running
- * against production safe) and `verifyApprovalRouting` (which findings are FAILURES).
+ * against production safe) and `verifyApprovalRouting` (which findings are FAILURES — matched by ROUTING
+ * TUPLE, so a tuple whose representative has since left is still checked through the colleagues in it).
  * `scripts/replay-approval-routing.ts` is a CLI over those, and nothing it has to be right about lives
  * only in the script — a script runs by hand on the server, where no gate can see it.
  */
@@ -62,11 +64,12 @@ import {
   leaveType,
 } from '../db/schema';
 import {
-  resolveApprovalChain,
-  resolveApprovalDecision,
+  decideApproval,
+  loadApprovalRuleSet,
   sanitizeLevels,
   type ApprovalDecisionSource,
   type ApprovalMatchAttrs,
+  type ApprovalRuleSet,
   type LeaveLevelKind,
 } from './leave-approval-policy';
 
@@ -203,7 +206,7 @@ export async function listLegacyApprovalRules(tx: Tx): Promise<LegacyApprovalRul
  * A distinct set of scoping attributes some active employment actually has, with one representative
  * employment id and how many employments share it.
  *
- * Resolution is a PURE function of (companyId, attrs, leaveTypeId, days) — `resolveApprovalChain` reads
+ * Resolution is a PURE function of (companyId, attrs, leaveTypeId, days) — the matcher reads
  * nothing else about the requester — so comparing one representative per distinct tuple compares every
  * employment that shares it. That is what makes "prove it for every active employment" affordable: a
  * production tenant has hundreds of employments but only dozens of distinct routing tuples.
@@ -249,25 +252,47 @@ export async function listRoutingSubjects(
       gradeGroupId: r.gradeGroupId ?? null,
       employmentType: r.employmentType ?? null,
     };
-    const key = [
-      r.companyId,
-      attrs.businessUnitId,
-      attrs.departmentId,
-      attrs.positionId,
-      attrs.gradeId,
-      attrs.gradeGroupId,
-      attrs.employmentType,
-    ].join('|');
-    const hit = byTuple.get(key);
+    const tupleKey = routingTupleKey(r.companyId, attrs);
+    const hit = byTuple.get(tupleKey);
     if (hit) hit.employmentCount += 1;
-    else byTuple.set(key, { companyId: r.companyId, employmentId: r.employmentId, employmentCount: 1, attrs });
+    else byTuple.set(tupleKey, { companyId: r.companyId, tupleKey, employmentId: r.employmentId, employmentCount: 1, attrs });
   }
   return { subjects: [...byTuple.values()], employmentsCovered: rows.length };
 }
 
+/**
+ * THE IDENTITY OF A ROUTING TUPLE — the attributes that DECIDE the answer, and nothing else.
+ *
+ * a6fe37fc Round 1 fix pass. This exists because a tuple's REPRESENTATIVE is not its identity. The
+ * representative is one arbitrary employment (`listRoutingSubjects` keeps whichever row Postgres returned
+ * first; there is no ORDER BY, and there deliberately need not be). If a baseline is keyed by the
+ * representative alone, then ordinary staff turnover — the representative leaves, colleagues who share her
+ * tuple stay — makes the tuple unrecognisable at verify time, and a routing change that moved those
+ * colleagues' approver is silently dropped from the comparison instead of failing the cutover.
+ *
+ * Keyed on this instead, a tuple is matched across a change of representative, and a baseline case is
+ * "gone" only when the tuple has NO live member left. Note what is NOT in the key: `days` is a probe, not
+ * an attribute of the employee, and the employment id is a name, not an identity.
+ */
+export function routingTupleKey(companyId: string, attrs: ApprovalMatchAttrs): string {
+  return JSON.stringify([
+    companyId,
+    attrs.businessUnitId ?? null,
+    attrs.departmentId ?? null,
+    attrs.positionId ?? null,
+    attrs.gradeId ?? null,
+    attrs.gradeGroupId ?? null,
+    attrs.employmentType ?? null,
+  ]);
+}
+
 export type RoutingSubject = {
   companyId: string;
-  /** One employment that has this exact tuple — named in a difference so the operator can look it up. */
+  /** `routingTupleKey(companyId, attrs)` — what makes this tuple the SAME tuple across two replays, even
+   *  when the employment representing it has changed. */
+  tupleKey: string;
+  /** One employment that has this exact tuple — named in a difference so the operator can look it up.
+   *  Arbitrary, and it may differ between two runs; never use it as the tuple's identity. */
   employmentId: string;
   employmentCount: number;
   attrs: ApprovalMatchAttrs;
@@ -313,11 +338,34 @@ export async function approvalRoutingSnapshot(
   leaveTypeIds: string[],
   dayProbes: number[],
 ): Promise<Map<string, string>> {
+  return approvalRoutingSnapshotOf(await loadApprovalRuleSet(tx), subjects, leaveTypeIds, dayProbes);
+}
+
+/**
+ * The snapshot itself, over a rule set ALREADY READ — pure, and therefore free of round-trips.
+ *
+ * a6fe37fc Round 1 fix pass. The grid walk used to issue two queries PER CELL, because it called
+ * `resolveApprovalChain` and that re-reads every active rule and template on every call. On the tenant this
+ * harness exists for that is unbounded: cells = tuples × leave types × day probes, and the probe set grows
+ * with the number of distinct min/max bounds across 261 rules. Now the rules are read ONCE per snapshot and
+ * the walk is arithmetic. It is still the SAME ranking a real request runs — `decideApproval` is the one
+ * matcher, and `resolveApprovalChain` is a wrapper over it — so nothing about what is proven changed.
+ *
+ * Each CALL must be given a freshly-loaded rule set: `convertLegacyApprovalRules` snapshots, writes, and
+ * re-snapshots inside one transaction, and its second snapshot must see the writes. `approvalRoutingSnapshot`
+ * above loads one per call for exactly that reason.
+ */
+export function approvalRoutingSnapshotOf(
+  ruleSet: ApprovalRuleSet,
+  subjects: RoutingSubject[],
+  leaveTypeIds: string[],
+  dayProbes: number[],
+): Map<string, string> {
   const snap = new Map<string, string>();
   for (const s of subjects) {
     for (const leaveTypeId of leaveTypeIds) {
       for (const days of dayProbes) {
-        const chain = await resolveApprovalChain(tx, s.companyId, leaveTypeId, { ...s.attrs, days });
+        const chain = decideApproval(ruleSet, s.companyId, leaveTypeId, { ...s.attrs, days }).levels;
         snap.set(`${s.employmentId}|${leaveTypeId}|${days}`, chain.join(' → '));
       }
     }
@@ -385,7 +433,7 @@ export type ApprovalRoutingCoverage = {
  *
  * a6fe37fc migration order §2.3. A replay over rules that never match proves nothing about them, so the
  * harness reports the rules that never won rather than letting a clean diff imply they were checked. It
- * calls `resolveApprovalDecision` — the SAME matcher `resolveApprovalChain` wraps — so a rule credited
+ * calls `decideApproval` — the SAME matcher `resolveApprovalChain` wraps — so a rule credited
  * with a win here is a rule that would route a real request, not one a second ranking thinks would.
  *
  * Read-only. Kept separate from `approvalRoutingSnapshot` (rather than folded into it) because that
@@ -397,7 +445,18 @@ export async function approvalRoutingCoverage(
   leaveTypeIds: string[],
   dayProbes: number[],
 ): Promise<ApprovalRoutingCoverage> {
-  const rows = await tx
+  return approvalRoutingCoverageOf(
+    await loadApprovalRuleSet(tx),
+    await listActiveApprovalRules(tx),
+    subjects,
+    leaveTypeIds,
+    dayProbes,
+  );
+}
+
+/** Every active rule, in a stable order, with the columns a coverage report NAMES a rule by. */
+export async function listActiveApprovalRules(tx: Tx): Promise<ActiveApprovalRule[]> {
+  return tx
     .select({
       id: leaveApprovalPolicy.id,
       companyId: leaveApprovalPolicy.companyId,
@@ -407,14 +466,35 @@ export async function approvalRoutingCoverage(
     .from(leaveApprovalPolicy)
     .where(eq(leaveApprovalPolicy.active, true))
     .orderBy(leaveApprovalPolicy.companyId, leaveApprovalPolicy.createdAt);
+}
 
+export type ActiveApprovalRule = {
+  id: string;
+  companyId: string;
+  ruleName: string | null;
+  leaveTypeId: string | null;
+};
+
+/**
+ * The coverage walk over material ALREADY READ — pure, and therefore free of round-trips.
+ *
+ * a6fe37fc Round 1 fix pass, same reason as `approvalRoutingSnapshotOf`: `--coverage` walks the whole grid
+ * a SECOND time, so per-cell reads doubled an already unbounded cost.
+ */
+export function approvalRoutingCoverageOf(
+  ruleSet: ApprovalRuleSet,
+  rows: ActiveApprovalRule[],
+  subjects: RoutingSubject[],
+  leaveTypeIds: string[],
+  dayProbes: number[],
+): ApprovalRoutingCoverage {
   const wins = new Map<string, number>();
   const bySource: Record<ApprovalDecisionSource, number> = { rule: 0, 'tenant-default': 0, fallback: 0 };
   let decisions = 0;
   for (const s of subjects) {
     for (const leaveTypeId of leaveTypeIds) {
       for (const days of dayProbes) {
-        const d = await resolveApprovalDecision(tx, s.companyId, leaveTypeId, { ...s.attrs, days });
+        const d = decideApproval(ruleSet, s.companyId, leaveTypeId, { ...s.attrs, days });
         decisions += 1;
         bySource[d.source] += 1;
         if (d.ruleId) wins.set(d.ruleId, (wins.get(d.ruleId) ?? 0) + 1);
@@ -450,14 +530,27 @@ export type RoutingReplay = {
   readOnlyEnforced: boolean;
 };
 
-/** Internal signal that the replay finished; throwing it rolls the transaction back. The replay NEVER
- *  commits, so there is no success path out of the transaction and no flag that could add one. */
+/** What the replay READS inside its read-only transaction. Everything else it produces is arithmetic over
+ *  this, done after the transaction has rolled back. */
+type ReplayReads = {
+  subjects: RoutingSubject[];
+  employmentsCovered: number;
+  leaveTypeIds: string[];
+  dayProbes: number[];
+  ruleSet: ApprovalRuleSet;
+  /** Only read when a coverage report was asked for. */
+  ruleListing: ActiveApprovalRule[] | null;
+  readOnlyEnforced: boolean;
+};
+
+/** Internal signal that the replay's READS finished; throwing it rolls the transaction back. The replay
+ *  NEVER commits, so there is no success path out of the transaction and no flag that could add one. */
 class ReplayComplete extends Error {
-  readonly replay: RoutingReplay;
-  constructor(replay: RoutingReplay) {
-    super('replay complete');
+  readonly reads: ReplayReads;
+  constructor(reads: ReplayReads) {
+    super('replay reads complete');
     this.name = 'ReplayComplete';
-    this.replay = replay;
+    this.reads = reads;
   }
 }
 
@@ -473,9 +566,18 @@ class ReplayComplete extends Error {
  *   · READS ONLY — enforced by Postgres (`SET TRANSACTION READ ONLY`), not by this module's good
  *     intentions, and the enforcement is read back and returned so a caller can assert it.
  *   · ONE TRANSACTION THAT ALWAYS ROLLS BACK — the only way out is `ReplayComplete`, thrown after the
- *     reads. There is no commit path to add a write to later.
+ *     reads. There is no commit path to add a write to later, and a transaction that somehow returned
+ *     normally is treated as a bug rather than a result.
  *   · NO APPLY MODE. `convertLegacyApprovalRules` has one because it converts; this replays. Nothing here
  *     takes a write option, and nothing may be given one.
+ *
+ * WHAT THE TRANSACTION COSTS (a6fe37fc Round 1 fix pass). It issues a CONSTANT number of statements — the
+ * two read-only statements, the subject join, the leave types, the day-range bounds, the two rule-set reads
+ * and, only with `coverage`, the rule listing: eight, whatever the grid's size. It used to issue two per
+ * grid cell, and `coverage` walked the grid a second time, so a tenant with 261 rules could have held the
+ * customer's production database in one open transaction for hundreds of thousands of round-trips — which
+ * also pins the vacuum horizon for as long as it runs. Resolving the grid is now pure arithmetic over the
+ * rule set and happens AFTER the transaction has rolled back.
  *
  * `extraLeaveTypeIds` / `extraDayProbes` exist for `--verify`: a baseline's grid is unioned in so the two
  * snapshots line up key-for-key even when a leave type or a day-range bound was added since. They only
@@ -485,8 +587,9 @@ export async function replayApprovalRouting(
   ctx: SessionContext,
   opts: { extraLeaveTypeIds?: string[]; extraDayProbes?: number[]; coverage?: boolean } = {},
 ): Promise<RoutingReplay> {
+  let reads: ReplayReads;
   try {
-    return await withTenant(ctx, async (tx) => {
+    await withTenant(ctx, async (tx) => {
       // Belt and braces, in that order: the transaction is made read-only by the DATABASE before a single
       // row is read, so even a future edit that tried to write would fail rather than succeed quietly.
       await tx.execute(sql`SET TRANSACTION READ ONLY`);
@@ -501,76 +604,171 @@ export async function replayApprovalRouting(
       const dayProbes = [...new Set([...(await approvalDayProbes(tx)), ...(opts.extraDayProbes ?? [])])].sort(
         (a, b) => a - b,
       );
-
-      const chains = await approvalRoutingSnapshot(tx, subjects, leaveTypeIds, dayProbes);
-      const coverage = opts.coverage
-        ? await approvalRoutingCoverage(tx, subjects, leaveTypeIds, dayProbes)
-        : null;
+      const ruleSet = await loadApprovalRuleSet(tx);
+      const ruleListing = opts.coverage ? await listActiveApprovalRules(tx) : null;
 
       throw new ReplayComplete({
-        tenantId: ctx.tenantId,
         subjects,
         employmentsCovered,
         leaveTypeIds,
         dayProbes,
-        chains,
-        coverage,
+        ruleSet,
+        ruleListing,
         readOnlyEnforced,
       });
     });
+    // Unreachable by construction, and asserted rather than assumed: the only way out of the block above is
+    // the throw. A future edit that added a `return` would be adding a COMMIT path to a replay.
+    throw new Error('replayApprovalRouting: the transaction returned instead of rolling back.');
   } catch (e) {
-    if (e instanceof ReplayComplete) return e.replay;
-    throw e;
+    if (!(e instanceof ReplayComplete)) throw e;
+    reads = e.reads;
   }
+
+  // Outside the transaction now — pure arithmetic over rows already read.
+  const chains = approvalRoutingSnapshotOf(reads.ruleSet, reads.subjects, reads.leaveTypeIds, reads.dayProbes);
+  const coverage = reads.ruleListing
+    ? approvalRoutingCoverageOf(
+        reads.ruleSet,
+        reads.ruleListing,
+        reads.subjects,
+        reads.leaveTypeIds,
+        reads.dayProbes,
+      )
+    : null;
+  return {
+    tenantId: ctx.tenantId,
+    subjects: reads.subjects,
+    employmentsCovered: reads.employmentsCovered,
+    leaveTypeIds: reads.leaveTypeIds,
+    dayProbes: reads.dayProbes,
+    chains,
+    coverage,
+    readOnlyEnforced: reads.readOnlyEnforced,
+  };
 }
 
 /** What a `--verify` run found, split by what each finding MEANS. */
 export type ReplayVerdict = {
-  /** Cases whose chain moved for an employment that is STILL an active routing subject. THIS IS THE
-   *  FAILURE — it is the promise ("the same approver, for the same real employee") not being kept. */
+  /** Cases whose routing tuple STILL HAS A LIVE MEMBER and whose chain moved. THIS IS THE FAILURE — it is
+   *  the promise ("the same approver, for the same real employee") not being kept. Named against whichever
+   *  employment represents the tuple TODAY, which is a live one by construction. */
   changed: RoutingDifference[];
-  /** Cases from the baseline whose employment is no longer an active routing subject — terminated, or with
-   *  no open assignment. NOT a failure: migration order §2.5 excludes terminated employments because a
-   *  terminated employee submits no leave. Reported by name anyway, so a suspicious number of them is
-   *  visible instead of silently swallowed. */
+  /** Cases from the baseline whose routing tuple has NO active employment left in it — everybody who had
+   *  those attributes has been terminated, has lost their open assignment, or has moved to a different
+   *  tuple. NOT a failure: migration order §2.5 excludes terminated employments because a terminated
+   *  employee submits no leave, and a tuple nobody is in routes nobody. Reported by name anyway, so a
+   *  suspicious number of them is visible instead of silently swallowed. */
   gone: RoutingDifference[];
-  /** Cases that exist now and did not at baseline (a new employment, or a new leave type). Not a
+  /** Cases that exist now and did not at baseline (a new routing tuple, or a new leave type). Not a
    *  difference — there is no "before" chain for them to have moved from. */
   added: number;
+  /** Baseline keys that could not be associated with a routing tuple at all — the employment is absent from
+   *  the baseline's own subject list, or two subjects claim the same tuple. A hand-edited or truncated
+   *  baseline; A FAILURE, because an unassociable case is an UNCHECKED case and this harness may not report
+   *  an unchecked case as passed. */
+  unmatched: string[];
 };
 
-/** The baseline stores only what a difference needs to NAME a company for an employment that has since
- *  left. Attributes are deliberately not stored: a verify must resolve against today's org data. */
-export type BaselineSubject = { employmentId: string; companyId: string };
+/** One baseline subject: the tuple's OWN identity, plus a representative to name it by.
+ *
+ *  a6fe37fc Round 1 fix pass — `attrs` is stored, and it is the fix. It is NOT replayed: a verify always
+ *  resolves against today's org data (§2.5 — an employee who changed department gets a different chain
+ *  tomorrow, correctly). It is stored because it is the tuple's IDENTITY, and without it a tuple whose
+ *  representative has since left cannot be re-associated with the colleagues still in it, so a real routing
+ *  change for those colleagues drops out of the comparison instead of failing the cutover. */
+export type BaselineSubject = { employmentId: string; companyId: string; attrs: ApprovalMatchAttrs };
+
+/** What a `gone` case's "after" chain says: there is no chain, because there is nobody to route. */
+export const NO_LIVE_TUPLE_MEMBER = '(no active employment has this routing tuple)';
 
 /**
  * Compare a replay against a committed baseline and say which findings are FAILURES.
  *
- * a6fe37fc Round 1. This judgement — "a moved chain for a live employee fails the cutover; a chain that
- * belonged to someone who has since left does not" — is the acceptance test's whole opinion, so it lives
- * here where the gate runs it, not inside a CLI that only ever runs by hand on the server. A branch that
- * decides whether a release may proceed and is exercised nowhere is exactly the kind of thing that is
- * discovered to be wrong during the release it was written for.
+ * a6fe37fc Round 1. This judgement — "a moved chain for a live employee fails the cutover; a chain nobody
+ * is routed by any more does not" — is the acceptance test's whole opinion, so it lives here where the gate
+ * runs it, not inside a CLI that only ever runs by hand on the server. A branch that decides whether a
+ * release may proceed and is exercised nowhere is exactly the kind of thing that is discovered to be wrong
+ * during the release it was written for.
+ *
+ * MATCHED BY TUPLE, NOT BY PERSON, and that is the whole correctness of it. Between a baseline and a verify
+ * there is ordinary staff turnover, and `listRoutingSubjects` picks ONE arbitrary representative per tuple
+ * with no ORDER BY — so the employment a baseline case is named after is routinely not the employment that
+ * represents the same tuple today, whether or not anybody left. Splitting on "is this baseline employment
+ * one of today's representatives?" therefore discards live tuples wholesale: it reported Ada's tuple as
+ * `gone` when Ada left, while her colleague Bob — still active, still in that tuple — had had his approver
+ * moved by a new rule. `changed: 0`, exit 0, and the routing had genuinely moved. A tuple is `gone` only
+ * when NOTHING active is in it.
  */
 export function verifyApprovalRouting(
   before: Map<string, string>,
   replay: RoutingReplay,
   baselineSubjects: BaselineSubject[],
 ): ReplayVerdict {
-  const live = new Set(replay.subjects.map((s) => s.employmentId));
-  // Employments that have since left are carried as stubs purely so a `gone` line can name its company
-  // rather than an empty string. They resolve nothing — they are not subjects any more.
-  const stubs: RoutingSubject[] = baselineSubjects
-    .filter((s) => !live.has(s.employmentId))
-    .map((s) => ({ companyId: s.companyId, employmentId: s.employmentId, employmentCount: 0, attrs: {} }));
-  const differences = diffApprovalRouting(before, replay.chains, [...replay.subjects, ...stubs]);
+  const todayByTuple = new Map(replay.subjects.map((s) => [s.tupleKey, s]));
+  /** baseline employment → the subject representing the SAME tuple today, or null when nobody is in it. */
+  const successor = new Map<string, RoutingSubject | null>();
+  const baselineCompany = new Map<string, string>();
+  // A capture emits one subject per DISTINCT tuple, so two baseline subjects sharing a tuple means the file
+  // was edited by hand. Their cases would re-key onto the same live representative and quietly overwrite one
+  // another, so they are left unassociated and reported as unchecked instead.
+  const seen = new Set<string>();
+  const duplicated = new Set<string>();
+  for (const bs of baselineSubjects) {
+    const key = routingTupleKey(bs.companyId, bs.attrs);
+    if (seen.has(key)) duplicated.add(key);
+    seen.add(key);
+  }
+  for (const bs of baselineSubjects) {
+    baselineCompany.set(bs.employmentId, bs.companyId);
+    const key = routingTupleKey(bs.companyId, bs.attrs);
+    if (duplicated.has(key)) continue;
+    successor.set(bs.employmentId, todayByTuple.get(key) ?? null);
+  }
+
+  // Re-key the baseline onto today's representatives, so the two maps line up tuple-for-tuple.
+  const rekeyed = new Map<string, string>();
+  const gone: RoutingDifference[] = [];
+  const unmatched: string[] = [];
+  for (const [key, was] of before) {
+    const [employmentId, leaveTypeId, days] = key.split('|');
+    if (!successor.has(employmentId)) {
+      unmatched.push(key);
+      continue;
+    }
+    const live = successor.get(employmentId) ?? null;
+    if (!live) {
+      gone.push({
+        companyId: baselineCompany.get(employmentId) ?? '',
+        employmentId,
+        leaveTypeId,
+        days: Number(days),
+        before: was,
+        after: NO_LIVE_TUPLE_MEMBER,
+      });
+      continue;
+    }
+    rekeyed.set(`${live.employmentId}|${leaveTypeId}|${days}`, was);
+  }
+
+  // Every remaining baseline case belongs to a tuple that still has a live member, so every difference here
+  // is a live employee's approver moving. A baseline case the replay did not resolve at all surfaces as
+  // `(unresolved)` and is likewise a failure — the caller unions the baseline's grid in precisely so that
+  // cannot happen quietly.
+  const changed = diffApprovalRouting(rekeyed, replay.chains, replay.subjects);
   let added = 0;
-  for (const key of replay.chains.keys()) if (!before.has(key)) added += 1;
-  return {
-    changed: differences.filter((d) => live.has(d.employmentId)),
-    gone: differences.filter((d) => !live.has(d.employmentId)),
-    added,
-  };
+  for (const key of replay.chains.keys()) if (!rekeyed.has(key)) added += 1;
+  return { changed, gone, added, unmatched };
+}
+
+/**
+ * DOES THIS VERDICT FAIL THE CUTOVER? The exit code of `--verify`, decided here rather than in the CLI so
+ * the gate asserts the same rule the operator's exit status is computed from.
+ *
+ * `gone` deliberately does not fail: a tuple no active employment is in routes nobody (§2.5).
+ */
+export function replayVerdictFails(verdict: ReplayVerdict): boolean {
+  return verdict.changed.length > 0 || verdict.unmatched.length > 0;
 }
 
 // ──────────────────────────── conversion ────────────────────────────

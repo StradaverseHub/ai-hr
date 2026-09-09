@@ -18,8 +18,12 @@
 //   · ONE TRANSACTION PER TENANT THAT ALWAYS ROLLS BACK — `replayApprovalRouting` leaves its transaction by
 //     throwing, so there is no commit path for a later edit to hang a write on.
 //   · THERE IS NO APPLY MODE, AND MUST NEVER BE ONE. scripts/convert-approval-rules.ts has one because it
-//     converts; this one replays. Unknown options are REJECTED rather than ignored, so an operator who
-//     reaches for a write flag out of habit gets an error instead of a surprise.
+//     converts; this one replays. Malformed options are REJECTED rather than guessed at — an unknown flag,
+//     and a `--baseline`/`--verify` whose filename is missing, both exit 2 — so an operator who reaches for
+//     a write flag out of habit gets an error instead of a surprise.
+//   · A SHORT TRANSACTION. It issues a CONSTANT eight statements per tenant however large the grid is (the
+//     rules are read once and the grid is resolved afterwards, in memory), so it does not hold a long
+//     transaction open against the customer's database or pin its vacuum horizon.
 // Tenants are enumerated through MIGRATION_DATABASE_URL exactly as convert-approval-rules.ts does; the
 // resolution itself runs on the ordinary app connection, under RLS, so it sees exactly what a real leave
 // request sees.
@@ -44,6 +48,13 @@
 // and exits 1 if there is one. `--coverage` additionally reports which rules ever WIN, because a replay
 // over rules that never match proves nothing about them; it combines with either mode.
 //
+// A BASELINE CASE IS MATCHED BY ITS ROUTING TUPLE, NOT BY THE PERSON IT IS NAMED AFTER. The grid collapses
+// employments to one representative per distinct set of routing attributes, and which colleague represents
+// a tuple is arbitrary and changes with ordinary staff turnover. So the baseline stores each tuple's
+// attributes — its identity — and a case counts as "no longer checked" only when NOTHING active is in that
+// tuple. Keyed by the representative alone, a verify would report "every case still reaches the same
+// approver" while the colleagues of a departed representative had had their approver moved.
+//
 // PROVING THE HARNESS CAN FAIL (migration order §2.4) IS DELIBERATELY NOT A MODE OF THIS SCRIPT. The
 // injection §2.4 describes — blanking one targeted rule's leave_type_id, which this codebase reads as the
 // company-wide wildcard rather than as a non-match — is a WRITE, and this script does not write. It lives
@@ -57,7 +68,9 @@ import { company, leaveType, tenant } from '../db/schema';
 // front door and an operator script is as much a consumer as a screen is.
 import {
   replayApprovalRouting,
+  replayVerdictFails,
   verifyApprovalRouting,
+  type ApprovalMatchAttrs,
   type ApprovalRoutingCoverage,
   type RoutingDifference,
 } from '../packs/leave/service';
@@ -67,8 +80,10 @@ type BaselineTenant = {
   tenantId: string;
   tenantName: string;
   employmentsCovered: number;
-  /** Only what a difference needs to name a company — attributes are deliberately NOT stored (see below). */
-  subjects: { employmentId: string; companyId: string }[];
+  /** One entry per ROUTING TUPLE: the attributes that decide the answer (the tuple's identity, so a verify
+   *  can still find the tuple after the employment named here has left), plus a representative to name it
+   *  by. The attributes are never replayed — a verify resolves against today's org data. */
+  subjects: { employmentId: string; companyId: string; attrs: ApprovalMatchAttrs }[];
   leaveTypeIds: string[];
   dayProbes: number[];
   /** `employmentId|leaveTypeId|days` → chain. */
@@ -77,12 +92,17 @@ type BaselineTenant = {
 
 type BaselineFile = {
   kind: 'approval-routing-baseline';
-  version: 1;
+  version: 2;
   capturedAt: string;
   tenants: BaselineTenant[];
 };
 
 const BASELINE_KIND = 'approval-routing-baseline';
+/** Bumped from 1 in the a6fe37fc Round 1 fix pass: a version-1 baseline stored no tuple attributes, so a
+ *  verify against one could not tell "this tuple's representative left, and her colleagues are still in it"
+ *  from "this tuple is empty" — and reported a live employee's moved approver as `gone` rather than as a
+ *  failure. Such a file cannot be verified safely and is refused rather than read on a best-effort basis. */
+const BASELINE_VERSION = 2;
 /** Differences are named, not counted — but a wall of 50,000 lines helps nobody either. */
 const MAX_DIFFERENCES_PRINTED = 200;
 const MAX_UNREACHED_RULES_PRINTED = 50;
@@ -94,16 +114,30 @@ const USAGE = [
   '  --verify <file>    re-resolve and report every routing case whose chain moved; exits 1 if any did',
   '  --coverage         also report which rules ever win, and which never do',
   '',
+  '  <file> is required where shown; a following option is not a filename.',
+  '',
   '  There is no apply mode. This script only reads, inside a transaction that always rolls back.',
 ].join('\n');
 
-type Parsed = { baselineOut: string | null; verifyIn: string | null; coverage: boolean; bad: string[] };
+type Parsed = {
+  baselineOut: string | null;
+  verifyIn: string | null;
+  coverage: boolean;
+  bad: string[];
+  /** Options given without the filename they require. */
+  needsValue: string[];
+};
 
 /** Unknown options are collected and REFUSED, never ignored: an operator reaching for a write flag must get
- *  an error, not silence. */
+ *  an error, not silence.
+ *
+ *  So is a MISSING filename. `--baseline` used to take the next argv element whatever it was, so
+ *  `--baseline --coverage` wrote a production baseline to a file literally named `--coverage` with the
+ *  coverage report silently switched off — guessing at malformed input, which is the opposite of what this
+ *  script advertises. A following option is not a filename; say so and exit. */
 function parseArgs(argv: string[]): Parsed {
   const known = new Set(['--baseline', '--verify', '--coverage']);
-  const out: Parsed = { baselineOut: null, verifyIn: null, coverage: false, bad: [] };
+  const out: Parsed = { baselineOut: null, verifyIn: null, coverage: false, bad: [], needsValue: [] };
   for (let i = 0; i < argv.length; i++) {
     const raw = argv[i];
     const at = raw.startsWith('--') ? raw.indexOf('=') : -1;
@@ -117,7 +151,18 @@ function parseArgs(argv: string[]): Parsed {
       out.coverage = true;
       continue;
     }
-    const value = inline ?? argv[++i] ?? '';
+    let value = inline;
+    if (value === null) {
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith('--')) {
+        value = next;
+        i += 1;
+      }
+    }
+    if (value === null || value === '') {
+      out.needsValue.push(flag);
+      continue;
+    }
     if (flag === '--baseline') out.baselineOut = value;
     else out.verifyIn = value;
   }
@@ -160,9 +205,17 @@ function printCoverage(
 }
 
 async function main() {
-  const { baselineOut, verifyIn, coverage, bad } = parseArgs(process.argv.slice(2));
+  const { baselineOut, verifyIn, coverage, bad, needsValue } = parseArgs(process.argv.slice(2));
   if (bad.length) {
     console.error(`replay-approval-routing: unknown option(s): ${bad.join(' ')}`);
+    console.error(USAGE);
+    process.exit(2);
+  }
+  if (needsValue.length) {
+    console.error(
+      `replay-approval-routing: ${needsValue.join(' and ')} require(s) a filename, and a following option is ` +
+        'not one. Malformed input is refused here, never guessed at.',
+    );
     console.error(USAGE);
     process.exit(2);
   }
@@ -191,6 +244,16 @@ async function main() {
     const parsed = JSON.parse(readFileSync(verifyIn, 'utf8')) as BaselineFile;
     if (parsed?.kind !== BASELINE_KIND) {
       console.error(`replay-approval-routing: ${verifyIn} is not an approval-routing baseline.`);
+      process.exit(2);
+    }
+    if (parsed.version !== BASELINE_VERSION) {
+      // Refused, not read on a best-effort basis. A version-1 file has no tuple attributes, and a verify
+      // that cannot identify a tuple cannot tell a live employee's moved approver from a departure.
+      console.error(
+        `replay-approval-routing: ${verifyIn} is a version-${String(parsed.version)} baseline; this script ` +
+          `reads version ${BASELINE_VERSION}. Re-capture it with --baseline — an older baseline cannot be ` +
+          'verified against, only guessed at.',
+      );
       process.exit(2);
     }
     baseline = parsed;
@@ -262,10 +325,16 @@ async function main() {
           tenantId: t.id,
           tenantName: t.name,
           employmentsCovered: replay.employmentsCovered,
-          // Attributes are NOT stored, on purpose: a verify must read today's org data. An employee who
-          // changed department gets a different chain tomorrow, and correctly so (migration order §2.5) —
-          // replaying yesterday's attributes would hide that instead of showing it.
-          subjects: replay.subjects.map((s) => ({ employmentId: s.employmentId, companyId: s.companyId })),
+          // The tuple's ATTRIBUTES are stored, and they are the tuple's identity — not a chain to replay.
+          // A verify still resolves against today's org data (an employee who changed department gets a
+          // different chain tomorrow, and correctly so — migration order §2.5); what the attributes buy is
+          // the ability to recognise the SAME tuple tomorrow when the employment named beside them has
+          // left and a colleague represents it instead.
+          subjects: replay.subjects.map((s) => ({
+            employmentId: s.employmentId,
+            companyId: s.companyId,
+            attrs: s.attrs,
+          })),
           leaveTypeIds: replay.leaveTypeIds,
           dayProbes: replay.dayProbes,
           chains: Object.fromEntries(replay.chains),
@@ -279,15 +348,20 @@ async function main() {
           // The judgement about what counts as a FAILURE lives in core (and runs on every gate), not here:
           // a chain that moved for a live employee breaks the promise; one belonging to somebody who has
           // since left does not.
-          const { changed, gone, added } = verifyApprovalRouting(
+          const verdict = verifyApprovalRouting(
             new Map(Object.entries(priorEntry.chains)),
             replay,
             priorEntry.subjects,
           );
+          const { changed, gone, added, unmatched } = verdict;
 
-          if (changed.length) {
+          // The exit code is `replayVerdictFails`, which the gate asserts — not a condition written out
+          // again here where nothing checks it. The ✓ is printed only when the verdict actually passes.
+          if (replayVerdictFails(verdict)) {
             failures += 1;
             changedTotal += changed.length;
+          }
+          if (changed.length) {
             console.error(`  ✗ ${t.name}: ${changed.length} routing case(s) reach a DIFFERENT approver than the baseline:`);
             for (const d of changed.slice(0, MAX_DIFFERENCES_PRINTED)) {
               console.error(`      ${describeDifference(d, companyName, (id) => typeName(id))}`);
@@ -295,15 +369,23 @@ async function main() {
             if (changed.length > MAX_DIFFERENCES_PRINTED) {
               console.error(`      … and ${changed.length - MAX_DIFFERENCES_PRINTED} more`);
             }
-          } else {
+          }
+          if (unmatched.length) {
+            console.error(
+              `  ✗ ${t.name}: ${unmatched.length} baseline case(s) name an employment the baseline's own ` +
+                'subject list does not contain, so they could not be checked at all. The baseline file is ' +
+                'truncated or hand-edited; re-capture it.',
+            );
+          }
+          if (!replayVerdictFails(verdict)) {
             console.log(`      ✓ every baseline routing case still reaches the same approver.`);
           }
           if (gone.length) {
             const employments = new Set(gone.map((d) => d.employmentId));
             console.log(
-              `      ${employments.size} employment(s) in the baseline are no longer active routing subjects ` +
-                `(${gone.length} case(s) not compared): ${[...employments].slice(0, 10).join(', ')}` +
-                `${employments.size > 10 ? ' …' : ''}`,
+              `      ${employments.size} baseline routing tuple(s) have no active employment left in them ` +
+                `(${gone.length} case(s) not compared — nobody is routed by them). Represented at baseline by: ` +
+                `${[...employments].slice(0, 10).join(', ')}${employments.size > 10 ? ' …' : ''}`,
             );
           }
           if (added) console.log(`      ${added} routing case(s) are new since the baseline (a new employment or leave type).`);
@@ -335,7 +417,7 @@ async function main() {
   if (baselineOut && failures === 0) {
     const file: BaselineFile = {
       kind: BASELINE_KIND,
-      version: 1,
+      version: BASELINE_VERSION,
       capturedAt: new Date().toISOString(),
       tenants: captured,
     };
