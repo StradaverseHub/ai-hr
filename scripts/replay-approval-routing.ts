@@ -34,10 +34,17 @@
 // also keeps the credentials on the box:
 //
 //   cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
-//     node --import tsx scripts/replay-approval-routing.ts --baseline /opt/ai-hr/approval-baseline.json
+//     node --import tsx scripts/replay-approval-routing.ts --baseline docs/baselines/a6fe37fc-approval-baseline.json
+//
+// ⚠️ THE BASELINE PATH MUST BE INSIDE THE REPOSITORY, AND THAT IS NOT A STYLE PREFERENCE.
+// r259 wrote it to /opt/ai-hr/approval-baseline.json — the server root — and the next deploy
+// DELETED it: the deploy rsync carries --delete (AGENTS 8), so anything on the box that is not in
+// the tree is removed. `--verify` then failed with "no such baseline file" on the very run that was
+// meant to prove the deploy changed no approver. Under docs/baselines/ the file is version-controlled,
+// travels with every deploy, and is tamper-evident — which is the whole point of a "before" picture.
 //
 //   cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
-//     node --import tsx scripts/replay-approval-routing.ts --verify /opt/ai-hr/approval-baseline.json
+//     node --import tsx scripts/replay-approval-routing.ts --verify docs/baselines/a6fe37fc-approval-baseline.json
 //
 //   cd /opt/ai-hr && set -a && . ./.env.production && set +a && \
 //     node --import tsx scripts/replay-approval-routing.ts --coverage
