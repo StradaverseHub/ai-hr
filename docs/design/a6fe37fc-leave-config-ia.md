@@ -213,7 +213,7 @@ migration order). `components/leave-sub-step-bar.tsx` itself is **not** deleted 
 | The four employee-facing leave screens | §3.4. Out of scope, must keep working after every round. |
 | The four existing redirect stubs | Bookmarks. They are repointed at the new addresses, not removed. |
 
-**Nothing among the 46 functions is dropped.** §3 maps every one onto a named destination. If any of them
+**Nothing among the 48 functions is dropped.** §3 maps every one onto a named destination. If any of them
 should in fact go, say which and it comes out in the round that builds its screen — a function nobody
 wants is cheaper to delete than to rebuild.
 
@@ -281,8 +281,19 @@ states and the audit's §5 explains the cost of breaking.
 
 ## 3. Every function of the current screens, and where it goes
 
-The failure mode for a rebuild is silently dropping a function, so this is the complete list. **46
+The failure mode for a rebuild is silently dropping a function, so this is the complete list. **48
 functions across 10 screens and 4 redirect stubs.**
+
+> **CORRECTION, r258 (2026-09-10) — this list was two functions short, and the omission was invisible.**
+> F47 and F48 below are on the Leave types screen *today*: the Employee Balances link (`r242`,
+> `3a3f5a2d`) and the "allowing a negative balance with no limit" list (`r126`, `9861b8a4`). Both landed
+> **before** this document's baseline (`main@0c01befc`) and neither was written down, so §3.1 said 32
+> when the screen had 34. That mattered more than a miscount: Round 2's anti-drop guard
+> (`test/leave-config-types-tabs.test.ts`) is **keyed to this table**, so a function missing from it is
+> a function no guard can see going. Round 2's first build did drop both, and the omission was caught in
+> review rather than by a test. **A table-keyed guard is only as complete as its table.**
+
+
 
 **Every one of the ten pages below is deleted (§2.0). No function is.** "Where it lands" names the new
 screen that must carry it before the old page may be removed, and *(same behaviour)* means the
@@ -324,8 +335,16 @@ that is the cheaper direction.
 | F28 | Self-service placement: primary / secondary / hidden | **Tab 1 · The leave type** |
 | F29 | Custom validation messages shown when a rule blocks an application | **Tab 4 · How it is applied for** — beside the rule each message overrides |
 | F30 | Employee leave view configuration (which breakdown components the employee sees) | **Tab 1 · The leave type** |
-| F31 | Formula explanations | **Tab 3 · What they are entitled to** |
+| F31 | Formula explanations | **Tab 1 · The leave type** *(deliberate deviation from this row, recorded r258)*. It shares ONE form and ONE submit with F30's employee leave view configuration — that form posts `essView=1` **and** `formula=1` together (`2bc2f2a3` merged them), and `updateLeaveTypeAction` reads both markers off the same FormData. Splitting it onto Tab 3 would put two tabs on one save: either two forms writing one column pair, or a form on Tab 3 that must re-post Tab 1's fields — the marker footgun this whole round exists to avoid. So F31 stays beside F30 on Tab 1, and the design record says so rather than the code and the table quietly disagreeing. |
 | F32 | Visual: colour token + icon | **Tab 1 · The leave type** |
+| F47 | **Header link to Employee Balances** (`/leave/employee-balances`) — the Leave Inquiry way in | **Leave types** header, at the UNCHANGED address. `r242` (`3a3f5a2d`) added it because an HR admin who wanted to look one person's balances up came to Leave Config and found nothing pointing at Leave Inquiry; Employee Balances' own rail carries the other two tabs, so one link reaches all three. It is not a Leave Configuration screen and Round 5 does not move it. **Dropping this at the cutover re-creates the exact complaint r242 answered.** |
+| F48 | **"Leave types allowing a negative balance with no limit set"** — the page-level list naming every type whose negative-balance switch is on with no floor | **Leave types** header area (all types), beside F2's health card. `r126` (`9861b8a4`): the approval permission the switch unlocks is inert until a floor is entered, so those types are a decision left half-made and it has to be visible page-level rather than buried inside each type's own tab. Same predicate on both screens (`allowNegativeBalance === true && maxNegativeBalance == null && !archivedAt`), rendered only when the set is non-empty. |
+
+Two pieces of page furniture travel with this screen and are **not** functions of it, named here because
+Round 2 dropped them once already: the area map (`<LeaveConfigMap current="leaveTypes" />`, `569c9cfa` —
+without it a leave-config screen can reach no other leave-config screen), and the onboarding tour anchor
+`data-tour="leave-config"` (`lib/module-tours.json` → leave · config, whose `route` is repointed at the
+Round 5 cutover). Both are on the new screen.
 
 ### 3.2 The other nine screens
 
@@ -447,7 +466,7 @@ this does — and *replacing what is underneath them*, which it deliberately doe
   the migration order treats it as a hard rule. A rewritten form that drops its marker is a data-loss
   bug that no type checker sees.
 * **The ten page components are deleted and rebuilt; no server action changes signature and no service
-  changes at all.** The same 46 functions, the same writes, the same reads — at new addresses, out of
+  changes at all.** The same 48 functions, the same writes, the same reads — at new addresses, out of
   new files. That is what makes the approval replay of §2 of the migration order a meaningful acceptance
   test: if the reads and writes were changing too, "the same chain comes out" would prove much less.
 

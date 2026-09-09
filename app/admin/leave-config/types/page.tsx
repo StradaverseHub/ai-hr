@@ -16,7 +16,7 @@ import {
 } from '../../leave/entitlements/templates/entitlement-tables-block';
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigHealthCard } from '@/components/leave/leave-config-health';
-import { leaveConfigScreenTitle } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenTitle } from '@/components/leave-config-map';
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
   archiveLeaveTypeAction,
@@ -51,6 +51,14 @@ import {
  * signature and no new action is written, and every leave-type action redirects to a module constant
  * (`ENTITLEMENTS`, app/admin/_redirects.ts). Re-pointing it would move every save on the OLD screen too,
  * which is a Round 5 act. The note under the heading says so rather than letting it look like a fault.
+ *
+ * ⚠️ TWO PAGE-LEVEL SURFACES IA §3.1's TABLE NEVER LISTED, AND THIS SCREEN NEARLY LOST (r258 fix pass).
+ * Both landed BEFORE the design's baseline (main@0c01befc) and the 32-function table was written without
+ * them, so the anti-drop guard — which is keyed to that table — could not see them go. They are carried
+ * here and the table now lists them as F47 / F48:
+ *   · the Employee Balances link (r242 3a3f5a2d), the way in the reporter went looking for;
+ *   · the "allowing a negative balance with no limit" list (r126 9861b8a4).
+ * The area map and the tour anchor came across with them, for the reasons at their sites below.
  *
  * WHAT IS NOT HERE, and where it goes (IA §3.1, none of it dropped):
  *   · the company-wide Half-Day Deduction card and Shared Leave Groups — they are COMPANY / tenant
@@ -118,6 +126,16 @@ export default async function LeaveConfigTypesPage({
     grades: entitlementTablesData.activeGrades,
     today: entitlementTablesData.today,
   });
+  // r126 9861b8a4 — CARRIED FROM THE OLD SCREEN (r258 fix pass). Leave types set to allow a negative
+  // balance with NO floor: the approval permission the switch unlocks is not active on them, so the
+  // decision is left half-made and must be visible rather than buried inside each type's tab 3. It was
+  // absent from IA §3.1's function table (it landed before the design's baseline, main@0c01befc), which
+  // is why the anti-drop guard could not see it going missing; §3.1 now lists it as F48.
+  // The predicate is the old screen's, character for character — one reading, two screens, until Round 5
+  // deletes the old one.
+  const negativeBalanceNeedsLimit = types.filter(
+    (lt) => lt.allowNegativeBalance === true && lt.maxNegativeBalance == null && !lt.archivedAt,
+  );
   /** Tab 3's Entitlement Tables, scoped to one type — the ONE node on this page that legitimately
    *  cannot be shared, because the filter IS the item. */
   const entitlementTablesSectionFor = (leaveTypeId: string) => (
@@ -173,12 +191,28 @@ export default async function LeaveConfigTypesPage({
             <Link href="/admin/leave/entitlements/ledger-archive" className="text-sm underline">
               {t('balanceRecordAction')}
             </Link>
+            {/* r242 3a3f5a2d — THE WAY IN THE REPORTER WENT LOOKING FOR, CARRIED ACROSS (r258 fix pass).
+                An HR admin who wants to look one person's balances up came here, to Leave Config, and found
+                nothing pointing at Leave Inquiry; this link is the whole of that fix, and Employee Balances'
+                own rail carries the other two tabs, so one link reaches all three. Dropping it at the Round 5
+                cutover would re-create the exact complaint r242 answered — it was missing from IA §3.1
+                (it landed before the design's baseline, main@0c01befc) and §3.1 now lists it as F47.
+                THE ADDRESS IS UNCHANGED ON PURPOSE: /leave/employee-balances is not a Leave Config screen and
+                Round 5 does not move it. */}
+            <Link href="/leave/employee-balances" className="text-sm underline">
+              {t('employeeBalancesAction')}
+            </Link>
             <Link href="/admin/leave/import" className={btnPrimary}>
               {t('importAction')}
             </Link>
           </div>
         }
       />
+      {/* The area map, CARRIED ACROSS (r258 fix pass): without it this screen has no way to reach its
+          sibling leave-config screens at all, which is a worse map than the one the old screen has.
+          `current="leaveTypes"` because this IS that screen — the map names screens, not addresses, and
+          Round 5 repoints the entry here. ADDITIVE: everything below it is unchanged. */}
+      <LeaveConfigMap current="leaveTypes" />
       {/* Said out loud, because a screen that saves and then navigates somewhere else reads as broken.
           Both halves are true only during Rounds 2–4 and the note goes with them at the cutover. */}
       <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -190,7 +224,35 @@ export default async function LeaveConfigTypesPage({
           every tab below assumes that question has already been asked. */}
       <LeaveConfigHealthCard rows={configHealth} />
 
-      <Card>
+      {/* r126 9861b8a4 — THE LIST THE PLAN PROMISED, CARRIED ACROSS (r258 fix pass). Rendered only when the
+          set is non-empty: a permanent empty banner is furniture, and furniture stops being read. */}
+      {negativeBalanceNeedsLimit.length > 0 && (
+        <Card>
+          <SectionHeader
+            title={t('negativeBalanceNeedsLimitTitle')}
+            count={negativeBalanceNeedsLimit.length}
+          />
+          <div className="space-y-2 px-4 py-3">
+            <p className="text-xs text-muted-foreground">{t('negativeBalanceNeedsLimitHelp')}</p>
+            <ul className="flex flex-wrap gap-2">
+              {negativeBalanceNeedsLimit.map((lt) => (
+                <li
+                  key={lt.id}
+                  className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+                >
+                  {lt.name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
+
+      {/* `data-tour="leave-config"` is the onboarding tour's anchor for the leave-config step
+          (lib/module-tours.json → leave · config). Its `route` still names the OLD address, so the step
+          still runs there; carrying the anchor means Round 5 repoints one route string and the tour keeps
+          working, instead of a tour step that silently finds nothing. */}
+      <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
         <LeaveTypeWorkspace
           items={workspaceItems.map((lt) => ({

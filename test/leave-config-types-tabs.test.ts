@@ -192,6 +192,192 @@ describe('a6fe37fc R2 · rule 1 — every sub-form keeps its tri-state marker an
   });
 });
 
+/**
+ * Rule 1, ONE LEVEL DOWN — and this is the level the defect lives at.
+ *
+ * ⚠️ THE FIRST DRAFT OF THIS FILE STOPPED ONE LEVEL ABOVE THE FAILURE IT EXISTS TO CATCH. It pinned that
+ * every form posts its marker, its `id` and its hidden `name` — but not that the form still posts the
+ * FIELDS the marker's branch in `updateLeaveTypeAction` reads. That gap is not academic: renaming the
+ * shipped `name="hrRemarkRequired"` to `hrRemarkRequiredXX` left this suite 87/87 GREEN and `tsc` clean,
+ * while every save of the document form would have written `hr_remark_required = false` — the marker is
+ * present, so the branch runs, and an absent checkbox reads as OFF. "It saves, and it wipes its own
+ * column", which is precisely the class the round was briefed to make impossible.
+ *
+ * So: for each marker, the fields its branch actually reads, checked against the FORM THAT CARRIES IT
+ * rather than against the two files as a whole — a field that drifts into a neighbouring form is posted
+ * on the wrong save and is exactly as lost.
+ *
+ * The table is kept honest in BOTH directions: every entry must also be a field `app/admin/actions.ts`
+ * really reads (second case), and every marker on the screen must appear in the table (third case), so
+ * neither a stale row nor a new marker with no row can sit here unnoticed.
+ */
+const actionsSrc = read('app/admin/actions.ts');
+
+/** A field one marker's branch reads: how it appears in the form, and how the action reads it. */
+type PostedField = { label: string; inForm: RegExp; inAction: RegExp };
+
+/** `name="x"`, read as `fd.get('x')` / `formData.getAll('x')` / the rules action's `num('x')`. */
+const posted = (name: string): PostedField => ({
+  label: `name="${name}"`,
+  inForm: new RegExp(`name="${name}"`),
+  inAction: new RegExp(`(?:\\.get(?:All)?|num)\\('${name}'\\)`),
+});
+
+/** A field rendered once per key — `name={`prefix_${k}suffix`}`, read the same way in the action. */
+const postedPerKey = (prefix: string, suffix = ''): PostedField => ({
+  label: `name={\`${prefix}\${…}${suffix}\`}`,
+  inForm: new RegExp('name=\\{`' + prefix + '\\$\\{[^}]+\\}' + suffix + '`\\}'),
+  inAction: new RegExp('\\.get\\(`' + prefix + '\\$\\{[^}]+\\}' + suffix + '`\\)'),
+});
+
+/** The eight organisation-assignment pickers: one descriptor drives the form AND the action's loop. */
+const ORG_PICKERS: PostedField = {
+  label: 'the ORG_ASSIGNMENT_CRITERIA pickers (name={c.key})',
+  inForm: /ORG_ASSIGNMENT_CRITERIA\.map\([\s\S]*?name=\{c\.key\}/,
+  inAction: /getAll\(c\.key\)/,
+};
+
+/** Marker → every field its branch reads. Derived from app/admin/actions.ts, branch by branch. */
+const MARKER_FIELDS: Record<(typeof MARKERS)[number], PostedField[]> = {
+  // updateLeaveTypeAction — `identityFields` also carries the audit `reason`, which the action reads on
+  // EVERY save but only this form renders.
+  identity: [posted('description'), posted('paid'), posted('code'), posted('reason')],
+  leaveUnit: [posted('leaveUnitValue')],
+  yearCycle: [posted('yearCycleValue')],
+  visibility: [posted('employeeCanApply')],
+  placement: [posted('placementValue')],
+  visual: [posted('color'), posted('icon')],
+  essView: [postedPerKey('essView_')],
+  formula: [postedPerKey('formula_', '_description'), postedPerKey('formula_', '_formula')],
+  payrollImpact: [posted('sendToPayroll')],
+  eligibility: [
+    posted('gender'),
+    posted('maritalStatus'),
+    posted('minServiceMonths'),
+    posted('minServiceUnit'),
+    posted('probation'),
+    ORG_PICKERS,
+  ],
+  // setLeaveTypeRulesAction — the earning half and the rounding half ride two markers on ONE form.
+  earningRendered: [posted('method'), posted('accrualDay')],
+  roundingMethodRendered: [posted('roundingMethod'), posted('roundingBands')],
+  carryBlockRendered: [
+    posted('carryForwardEnabled'),
+    posted('carryForwardMax'),
+    posted('carryForwardPercent'),
+    posted('carryForwardExpiryMode'),
+    posted('carryForwardExpiryMonths'),
+    posted('carryForwardExpiryMonth'),
+    posted('carryForwardExpiryDay'),
+    posted('carryForwardIncludeEarned'),
+  ],
+  negativeBalance: [posted('allowNegativeBalanceValue'), posted('maxNegativeBalance')],
+  balanceSource: [posted('balanceSourceMode'), posted('balanceSourceTypeId')],
+  allowUpl: [posted('allowUnpaidLeaveValue')],
+  durations: [posted('duration')],
+  document: [
+    posted('requiresDocument'),
+    posted('mandatoryAfterDays'),
+    posted('allowedMimeType'),
+    posted('maxFileSizeMb'),
+    posted('employeeRemarkRequired'),
+    posted('hrRemarkRequired'),
+  ],
+  applicationLimits: [posted('maxDaysPerLeaveYear'), posted('maxDaysPeriod')],
+  maxConsecutive: [posted('maxConsecutiveDays'), posted('maxConsecutiveUnit')],
+  // Each rule's custom message rides ITS OWN rule's marker — one sub-form, one atomic save.
+  backdating: [posted('backdatingLimitDays'), posted('customMessageBackdating')],
+  minAdvance: [posted('minAdvanceDays'), posted('minAdvanceDayType'), posted('customMessageMinAdvance')],
+  overrideRules: [postedPerKey('override_'), postedPerKey('overrideOn_')],
+  duplicatePolicy: [posted('duplicatePolicyValue')],
+  dayTypeInclusion: [postedPerKey('dayType_')],
+  applyNotice: [posted('enableApplyNotice'), posted('customMessageApplyNotice')],
+  partialApproval: [posted('perDateApproval')],
+};
+
+/**
+ * A form's SCOPE is its body plus the source of every component it mounts (transitively). Three of these
+ * forms render their fields through a local helper — RoundingBandsEditor, CarryExpiryFields,
+ * ViewConfigExplanationFields — and a body-only scan would call those fields missing.
+ */
+const COMPONENT_SOURCE = new Map<string, string>(
+  [tabsSrc, formsSrc].flatMap((src) => {
+    const decls = [...src.matchAll(/^(?:export )?function ([A-Z][A-Za-z0-9]*)\s*\(/gm)];
+    return decls.map(
+      (d, i) =>
+        [d[1], src.slice(d.index!, i + 1 < decls.length ? decls[i + 1].index! : src.length)] as [string, string],
+    );
+  }),
+);
+
+function withMountedComponents(body: string, seen = new Set<string>()): string {
+  let out = body;
+  for (const m of body.matchAll(/<([A-Z][A-Za-z0-9]*)/g)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    const block = COMPONENT_SOURCE.get(m[1]);
+    if (block) out += `\n${withMountedComponents(block, seen)}`;
+  }
+  return out;
+}
+
+/** Every `<form>` in the two new files, each with its mounted components folded in. */
+const FORM_SCOPES = [tabsSrc, formsSrc].flatMap((src) =>
+  src
+    .split('<form')
+    .slice(1)
+    .map((chunk) => chunk.slice(0, chunk.indexOf('</form>')))
+    .map((body) => ({ body, scope: withMountedComponents(body) })),
+);
+
+const scopeCarrying = (marker: string): string | null =>
+  FORM_SCOPES.find((f) => f.body.includes(`name="${marker}" value="1"`))?.scope ?? null;
+
+describe('a6fe37fc R2 · rule 1 one level down — the marker’s form still posts the fields its branch READS', () => {
+  it.each(Object.entries(MARKER_FIELDS))('the %s form posts every field its branch reads', (marker, fields) => {
+    const scope = scopeCarrying(marker);
+    expect(scope, `no form in the new screen carries the ${marker} marker`).not.toBeNull();
+    for (const field of fields) {
+      expect(
+        field.inForm.test(scope!),
+        `the form carrying '${marker}' no longer posts ${field.label}, and updateLeaveTypeAction/` +
+          `setLeaveTypeRulesAction still READS it under that marker — every save through this form would ` +
+          `write the absent reading (false / null / cleared) over whatever is stored`,
+      ).toBe(true);
+    }
+  });
+
+  it('every field in the table is one app/admin/actions.ts actually reads', () => {
+    for (const [marker, fields] of Object.entries(MARKER_FIELDS)) {
+      for (const field of fields) {
+        expect(
+          field.inAction.test(actionsSrc),
+          `${marker} · ${field.label} is not read by app/admin/actions.ts — the table has gone stale, which ` +
+            `makes the case above assert a field nothing consumes`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('the table covers every marker on the screen — a new marker cannot arrive without its fields', () => {
+    expect(Object.keys(MARKER_FIELDS).sort()).toEqual([...MARKERS].sort());
+  });
+
+  it('the two fields the action reads and NO editor renders are absent HERE exactly as they are there', () => {
+    // `roundingThreshold` (8fec719e retired the control) and `maxBalanceDays` (never had one on this
+    // screen) are read by setLeaveTypeRulesAction but rendered by neither editor: absence means CLEAR for
+    // the first and PRESERVE for the second, and that is today's behaviour on both screens. Pinned as an
+    // equality so the pair cannot drift apart while the two screens are live side by side.
+    for (const field of ['roundingThreshold', 'maxBalanceDays']) {
+      expect(panelSrc.includes(`name="${field}"`), `the old panel renders ${field}`).toBe(false);
+      expect(
+        newScreen.includes(`name="${field}"`),
+        `${field} is rendered on one of the two live screens and not the other`,
+      ).toBe(panelSrc.includes(`name="${field}"`));
+    }
+  });
+});
+
 describe('a6fe37fc R2 · rule 2 — no new server action, no changed signature', () => {
   it('posts only the four existing leave-type actions', () => {
     for (const action of [
@@ -262,8 +448,14 @@ describe('a6fe37fc R2 · the two settings that move onto the leave type', () => 
 });
 
 describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the move', () => {
-  // IA §3.1 maps 32 functions off the old screen; every one of them writes or reads a named field, so
-  // the field is what a rewrite can silently lose. One representative field per function.
+  // IA §3.1 maps the old screen's functions onto the new one; every one of them writes or reads a named
+  // field, so the field is what a rewrite can silently lose. One representative field per function.
+  //
+  // ⚠️ THIS LIST IS ONLY AS COMPLETE AS THE TABLE IT IS KEYED TO, AND THE TABLE WAS NOT COMPLETE. F47 and
+  // F48 below are on the old screen today and were missing from §3.1 — both landed BEFORE the design's
+  // baseline (main@0c01befc) — so the first draft of this guard could not see the new screen drop them.
+  // They are in §3.1 now, and they are pinned here. A function absent from the table is invisible to a
+  // table-keyed guard: when a surface is found missing, the DOCUMENT is half the fix.
   it.each([
     ['F6 details', 'name="description"'],
     ['F6 leave unit', 'name="leaveUnitValue"'],
@@ -318,6 +510,70 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(pageSrc).toContain('leaveConfigHealthAll(');
     expect(pageSrc).toContain('<LeaveConfigHealthCard');
     expect(pageSrc).toContain('tablesReachNobody(h)');
+  });
+
+  it('F47 the Employee Balances way in (r242) is on the header, at its unchanged address', () => {
+    // r242 3a3f5a2d exists because an HR admin looking one person's balances up came to Leave Config and
+    // found nothing pointing at Leave Inquiry. Dropping it at the cutover re-creates that exact complaint.
+    expect(pageSrc).toContain('href="/leave/employee-balances"');
+    expect(pageSrc).toContain("t('employeeBalancesAction')");
+    // The old screen keeps its copy until Round 5 deletes it — neither screen is the fix on its own.
+    expect(read('app/admin/leave/entitlements/page.tsx')).toContain('href="/leave/employee-balances"');
+  });
+
+  it('F48 the negative-balance-needs-a-limit list (r126) survived, predicate and all', () => {
+    // 9861b8a4's list of types set to allow a negative balance with NO floor: the permission the switch
+    // unlocks is inert on them, and the half-made decision has to be visible somewhere page-level.
+    expect(pageSrc).toContain('negativeBalanceNeedsLimit');
+    expect(pageSrc).toContain("t('negativeBalanceNeedsLimitTitle')");
+    expect(pageSrc).toContain("t('negativeBalanceNeedsLimitHelp')");
+    // The PREDICATE, not just the card: a list built on a different rule is a different list.
+    expect(pageSrc).toContain('lt.allowNegativeBalance === true && lt.maxNegativeBalance == null && !lt.archivedAt');
+    // Rendered only when non-empty — a permanent empty banner is furniture, and furniture stops being read.
+    expect(pageSrc).toContain('negativeBalanceNeedsLimit.length > 0 &&');
+  });
+
+  it('F6 the identity form is still behind the Rename toggle, with Discard beside Save', () => {
+    // The old panel keeps a leave type's name and code read-only until an administrator asks for them
+    // (components/leave-type-panel.tsx `editingName`). The first draft of this screen rendered the form
+    // always-open and called that "presentation only": it is not — an always-editable name field beside a
+    // Save button is a different screen to work on, and the round's framing is that only the ARRANGEMENT
+    // changes. Pinned here so the toggle cannot be dropped a second time without saying so.
+    expect(tabsSrc).toContain('const [editingName, setEditingName] = useState(false);');
+    expect(tabsSrc).toContain('{editingName ? (');
+    expect(tabsSrc).toContain("onClick={() => setEditingName(true)}");
+    expect(tabsSrc).toContain("onClick={() => setEditingName(false)}");
+    expect(tabsSrc).toContain("{t('rename')}");
+    expect(tabsSrc).toContain("{t('discardChanges')}");
+    // The gate must sit on the IDENTITY form — the one that posts `identity=1` — not on some other block.
+    const open = tabsSrc.indexOf('{editingName ? (');
+    const closes = tabsSrc.indexOf('</form>', open);
+    const identityForm = tabsSrc.slice(open, closes);
+    expect(identityForm).toContain('name="identity" value="1"');
+    expect(identityForm).toContain('name="name" defaultValue={name}');
+    // Discard sits INSIDE the open form; Rename sits in the closed branch after it. Either one on the
+    // wrong side of that boundary is a control an administrator cannot reach.
+    expect(identityForm).toContain('onClick={() => setEditingName(false)}');
+    expect(tabsSrc.indexOf('onClick={() => setEditingName(true)}')).toBeGreaterThan(closes);
+  });
+
+  it('the sibling navigation and the tour anchor came across with the screen', () => {
+    // Without the map this screen cannot reach any other leave-config screen at all; `current="leaveTypes"`
+    // because it IS that screen — the map names screens, not addresses.
+    expect(pageSrc).toContain('<LeaveConfigMap current="leaveTypes" />');
+    // lib/module-tours.json → leave · config anchors on this attribute. Its `route` still names the old
+    // address until Round 5, so carrying the anchor is what makes that repoint a one-line change.
+    expect(pageSrc).toContain('data-tour="leave-config"');
+    const tours = JSON.parse(read('lib/module-tours.json')) as Record<
+      string,
+      { id: string; steps: { id: string; route: string; target: string | null }[] }
+    >;
+    const step = Object.values(tours)
+      .flatMap((m) => m.steps)
+      .find((x) => x.target === '[data-tour="leave-config"]');
+    expect(step, 'the leave-config tour step no longer anchors on this attribute').toBeTruthy();
+    // Still pointed at the OLD address: this round adds a screen and repoints nothing (Round 5 does).
+    expect(step!.route).toBe('/admin/leave/entitlements');
   });
 });
 

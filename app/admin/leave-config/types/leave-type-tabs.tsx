@@ -268,6 +268,16 @@ export function LeaveTypeTabs({
 
   const [activeTab, setActiveTab] = useState<TabKey>('identity');
   const [applyNoticeEnabled, setApplyNoticeEnabled] = useState<boolean>(!!customMessages?.applyNotice);
+  /**
+   * r258 fix pass — THE RENAME TOGGLE, RESTORED. The first draft of this screen rendered the identity
+   * form always-open and said in a comment that this was "presentation only". It is not: on the old panel
+   * a leave type's name and code are read-only until an administrator asks for them (components/
+   * leave-type-panel.tsx:1745), and an always-editable name field beside a Save button is a different
+   * screen to work on — one keystroke in the wrong box and a Save on any other control renames the type.
+   * The round's own framing is that only the ARRANGEMENT changes, so the toggle comes across: closed
+   * shows the type-level row (Rename · archive / delete), open shows the form with Save + Discard.
+   */
+  const [editingName, setEditingName] = useState(false);
 
   /**
    * Hydration. The payload is the SAME `leaveTypeCards:<id>` the old panel writes, because both screens
@@ -416,146 +426,156 @@ export function LeaveTypeTabs({
             <CardContent id={`tab-identity-${id}`} className="space-y-3">
               <p className="text-xs text-muted-foreground">{tTabs('tabHint.identity')}</p>
               {/* F6 — code, name, description, paid/unpaid and the leave unit. TWO markers, one submit:
-                  `identity=1` (name / description / paid / code) and `leaveUnit=1` (leave_unit). The
-                  old screen hid this behind a Rename toggle; the fields are always editable here, which
-                  is presentation only — same form, same markers, same action. */}
-              <form action={updateTypeAction} className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <input type="hidden" name="id" value={id} />
-                {/* marker: tells the action to touch name / description / paid / code (tri-state guard) */}
-                <input type="hidden" name="identity" value="1" />
-                <Field label={t('codeLabel')}>
-                  {codeLocked ? (
-                    // No `name` attr ⇒ nothing posted ⇒ the code column is untouched (tri-state).
-                    <input
-                      value={code}
-                      readOnly
-                      aria-label={t('codeLabel')}
-                      title={t('codeReadOnlyHint')}
-                      className={`${inputCls} w-full cursor-not-allowed opacity-70`}
-                    />
-                  ) : (
-                    <input
-                      name="code"
-                      defaultValue={code}
-                      aria-label={t('codeLabel')}
-                      title={t('codeEditableHint')}
-                      className={`${inputCls} w-full`}
-                    />
-                  )}
-                </Field>
-                <Field label={t('nameLabel')}>
-                  <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-full`} />
-                </Field>
-                <Field label={t('reasonLabel')}>
-                  <input
-                    name="reason"
-                    type="text"
-                    maxLength={500}
-                    aria-label={t('reasonLabel')}
-                    placeholder={t('reasonPlaceholder')}
-                    className={`${inputCls} w-full`}
-                  />
-                </Field>
-                {/* marker: tells the action to touch leave_unit (tri-state guard) */}
-                <input type="hidden" name="leaveUnit" value="1" />
-                <div className="flex items-end gap-3">
-                  <Field label={t('leaveUnitLabel')} className="min-w-0 flex-1">
-                    <select
-                      name="leaveUnitValue"
-                      defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'}
-                      aria-label={t('leaveUnitLabel')}
-                      title={t('leaveUnitHelp')}
-                      className={`${inputCls} w-full`}
-                    >
-                      <option value="day">{t('leaveUnitDay')}</option>
-                      <option value="hour">{t('leaveUnitHour')}</option>
-                    </select>
-                  </Field>
-                  {/* The `identity=1` marker above means an unchecked box is a real "unpaid" choice, not
-                      "untouched". Applies to future leave only. */}
-                  <Field label={t('paidLabel')}>
-                    <div className="flex h-9 items-center">
+                  `identity=1` (name / description / paid / code) and `leaveUnit=1` (leave_unit). Behind
+                  the SAME Rename toggle the old panel uses (restored in the r258 fix pass): the name and
+                  the code are read-only until an administrator asks to change them. */}
+              {editingName ? (
+                <form action={updateTypeAction} className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <input type="hidden" name="id" value={id} />
+                  {/* marker: tells the action to touch name / description / paid / code (tri-state guard) */}
+                  <input type="hidden" name="identity" value="1" />
+                  <Field label={t('codeLabel')}>
+                    {codeLocked ? (
+                      // No `name` attr ⇒ nothing posted ⇒ the code column is untouched (tri-state).
                       <input
-                        type="checkbox"
-                        name="paid"
-                        defaultChecked={paid}
-                        aria-label={t('paidLabel')}
-                        className="size-4 rounded"
+                        value={code}
+                        readOnly
+                        aria-label={t('codeLabel')}
+                        title={t('codeReadOnlyHint')}
+                        className={`${inputCls} w-full cursor-not-allowed opacity-70`}
                       />
-                    </div>
+                    ) : (
+                      <input
+                        name="code"
+                        defaultValue={code}
+                        aria-label={t('codeLabel')}
+                        title={t('codeEditableHint')}
+                        className={`${inputCls} w-full`}
+                      />
+                    )}
                   </Field>
-                </div>
-                <Field label={t('descriptionLabel')} className="col-span-full">
-                  <textarea
-                    name="description"
-                    defaultValue={description ?? ''}
-                    aria-label={t('descriptionLabel')}
-                    placeholder={t('descriptionPlaceholder')}
-                    rows={3}
-                    className={`${inputCls} h-auto min-h-[4.5rem] w-full resize-y`}
-                  />
-                </Field>
-                <div className="col-span-full flex items-center gap-2">
-                  <ConfirmSubmit
-                    size="sm"
-                    variant="default"
-                    title={t('saveConfirmTitle')}
-                    description={t('saveConfirmDescription')}
-                    confirmLabel={t('saveConfirmConfirm')}
-                  >
-                    {t('save')}
-                  </ConfirmSubmit>
-                </div>
-              </form>
-
-              {/* Archive / unarchive / delete — the type-level actions. They post their own actions and
-                  carry no tri-state marker, so they touch no configuration column. */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span>{t('typeLabel')}</span>
-                {archived ? (
-                  <form action={archiveTypeAction}>
-                    <input type="hidden" name="id" value={id} />
-                    <input type="hidden" name="archived" value="false" />
-                    <Button type="submit" size="sm" variant="ghost">
-                      {t('unarchive')}
-                    </Button>
-                  </form>
-                ) : inUse ? (
-                  <form action={archiveTypeAction}>
-                    <input type="hidden" name="id" value={id} />
-                    <input type="hidden" name="archived" value="true" />
-                    <Button type="submit" size="sm" variant="ghost">
-                      {t('archive')}
-                    </Button>
-                  </form>
-                ) : (
-                  <form action={deleteTypeAction}>
-                    <input type="hidden" name="id" value={id} />
-                    {/* The confirmation NAMES what a delete cascades rather than counting it, because one
-                        branch of that cascade changes a leave type that is NOT being deleted. */}
+                  <Field label={t('nameLabel')}>
+                    <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-full`} />
+                  </Field>
+                  <Field label={t('reasonLabel')}>
+                    <input
+                      name="reason"
+                      type="text"
+                      maxLength={500}
+                      aria-label={t('reasonLabel')}
+                      placeholder={t('reasonPlaceholder')}
+                      className={`${inputCls} w-full`}
+                    />
+                  </Field>
+                  {/* marker: tells the action to touch leave_unit (tri-state guard) */}
+                  <input type="hidden" name="leaveUnit" value="1" />
+                  <div className="flex items-end gap-3">
+                    <Field label={t('leaveUnitLabel')} className="min-w-0 flex-1">
+                      <select
+                        name="leaveUnitValue"
+                        defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'}
+                        aria-label={t('leaveUnitLabel')}
+                        title={t('leaveUnitHelp')}
+                        className={`${inputCls} w-full`}
+                      >
+                        <option value="day">{t('leaveUnitDay')}</option>
+                        <option value="hour">{t('leaveUnitHour')}</option>
+                      </select>
+                    </Field>
+                    {/* The `identity=1` marker above means an unchecked box is a real "unpaid" choice, not
+                        "untouched". Applies to future leave only. */}
+                    <Field label={t('paidLabel')}>
+                      <div className="flex h-9 items-center">
+                        <input
+                          type="checkbox"
+                          name="paid"
+                          defaultChecked={paid}
+                          aria-label={t('paidLabel')}
+                          className="size-4 rounded"
+                        />
+                      </div>
+                    </Field>
+                  </div>
+                  <Field label={t('descriptionLabel')} className="col-span-full">
+                    <textarea
+                      name="description"
+                      defaultValue={description ?? ''}
+                      aria-label={t('descriptionLabel')}
+                      placeholder={t('descriptionPlaceholder')}
+                      rows={3}
+                      className={`${inputCls} h-auto min-h-[4.5rem] w-full resize-y`}
+                    />
+                  </Field>
+                  <div className="col-span-full flex items-center gap-2">
                     <ConfirmSubmit
                       size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive"
-                      title={t('deleteTypeConfirmTitle')}
-                      description={[
-                        t('deleteTypeConfirmDescription'),
-                        cascadeApprovalRules.length > 0
-                          ? t('deleteTypeCascadeRules', { names: cascadeApprovalRules.join(', ') })
-                          : null,
-                        cascadeBalanceSourceOf.length > 0
-                          ? t('deleteTypeCascadeBalanceSource', { names: cascadeBalanceSourceOf.join(', ') })
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join('\n\n')}
-                      confirmLabel={t('deleteConfirmLabel')}
+                      variant="default"
+                      title={t('saveConfirmTitle')}
+                      description={t('saveConfirmDescription')}
+                      confirmLabel={t('saveConfirmConfirm')}
                     >
-                      {t('delete')}
+                      {t('save')}
                     </ConfirmSubmit>
-                  </form>
-                )}
-              </div>
+                    {/* Save opens a confirmation; this leaves the edit without saving. Together they are the
+                        "Save changes / Discard changes / Cancel" choice a7194511 built for the reporter. */}
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
+                      {t('discardChanges')}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                /* Closed: the type-level row. Rename opens the form above; archive / unarchive / delete post
+                   their own actions and carry no tri-state marker, so they touch no configuration column. */
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>{t('typeLabel')}</span>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingName(true)}>
+                    {t('rename')}
+                  </Button>
+                  {archived ? (
+                    <form action={archiveTypeAction}>
+                      <input type="hidden" name="id" value={id} />
+                      <input type="hidden" name="archived" value="false" />
+                      <Button type="submit" size="sm" variant="ghost">
+                        {t('unarchive')}
+                      </Button>
+                    </form>
+                  ) : inUse ? (
+                    <form action={archiveTypeAction}>
+                      <input type="hidden" name="id" value={id} />
+                      <input type="hidden" name="archived" value="true" />
+                      <Button type="submit" size="sm" variant="ghost">
+                        {t('archive')}
+                      </Button>
+                    </form>
+                  ) : (
+                    <form action={deleteTypeAction}>
+                      <input type="hidden" name="id" value={id} />
+                      {/* The confirmation NAMES what a delete cascades rather than counting it, because one
+                          branch of that cascade changes a leave type that is NOT being deleted. */}
+                      <ConfirmSubmit
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        title={t('deleteTypeConfirmTitle')}
+                        description={[
+                          t('deleteTypeConfirmDescription'),
+                          cascadeApprovalRules.length > 0
+                            ? t('deleteTypeCascadeRules', { names: cascadeApprovalRules.join(', ') })
+                            : null,
+                          cascadeBalanceSourceOf.length > 0
+                            ? t('deleteTypeCascadeBalanceSource', { names: cascadeBalanceSourceOf.join(', ') })
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join('\n\n')}
+                        confirmLabel={t('deleteConfirmLabel')}
+                      >
+                        {t('delete')}
+                      </ConfirmSubmit>
+                    </form>
+                  )}
+                </div>
+              )}
 
               {/* F8 — the leave year cycle. Its own form and its own `yearCycle=1` marker: the cycle is
                   decided BEFORE the rules that operate inside it, and it is a property of the type. */}
