@@ -11,6 +11,19 @@
  * source-order assertion is the exact, deterministic contract for "Basic Salary opens at the top".
  * (Mounting the full server component against the DB would exercise data loading, not the ordering
  * concern this item is about.)
+ *
+ * ── r256 (420ebab5 part two) UPDATED THIS FILE RATHER THAN REPLACING IT ────────────────────────────
+ * The Payroll tab now has ONE "Save Changes" for its three field-edit cards, and a tab Save can only
+ * enclose a CONTIGUOUS run of cards. Its three bucket (a) cards were not contiguous: Payment Method is
+ * rendered inside Basic Salary (first), the payroll policy is second, and TP3 was SIXTH — behind Pay
+ * Items, CP38 and Leave Encashment. So TP3 moved up to third and the (a) run now leads the tab.
+ *
+ * 326f0b5e IS NOT REVERSED AND MUST NOT BE. compensationCard is still FIRST — that is this file's
+ * original subject and the assertions below are unchanged. R46 79eb7151's "policy directly under Basic
+ * Salary" is likewise still true. What moved is TP3, whose sixth slot was never a decision anybody took:
+ * item a6a47698 appended it when it relocated the card here from Bank & Statutory, and no guard held it.
+ * The new run is pinned below so the next round cannot drift it back and quietly break the contiguity the
+ * tab's Save depends on — see docs/audits/420ebab5-personnel-save-classification.md finding 3.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -50,5 +63,32 @@ describe('Personnel — Payroll tab renders Basic Salary first (326f0b5e)', () =
 
   it('compensationCard precedes payComponentsCard specifically (the previously-first card)', () => {
     expect(frag.indexOf('{compensationCard}')).toBeLessThan(frag.indexOf('{payComponentsCard}'));
+  });
+});
+
+describe('Personnel — Payroll tab: the field-edit run leads the tab (420ebab5 r256)', () => {
+  const src = readFileSync(PAGE, 'utf8');
+  const frag = payrollFragment(src);
+
+  it('the three cards under the tab Save are contiguous and first: compensation → policy → TP3', () => {
+    const at = (c: string) => {
+      const i = frag.indexOf(`{${c}}`);
+      expect(i, `${c} renders on the Payroll tab`).toBeGreaterThan(-1);
+      return i;
+    };
+    expect(at('compensationCard')).toBeLessThan(at('payrollPolicyCard'));
+    expect(at('payrollPolicyCard')).toBeLessThan(at('tp3Card'));
+    // Contiguous: nothing the tab Save does NOT own may sit between them, or the scope could not wrap
+    // them without swallowing a child-record register.
+    for (const outsider of ['payComponentsCard', 'cp38Card', 'encashmentCard', 'zakatSummaryCard']) {
+      expect(at('tp3Card'), `${outsider} must not break the run`).toBeLessThan(at(outsider));
+    }
+  });
+
+  it('TP3 moved up from sixth — the three money registers now follow the consolidated run', () => {
+    // Before r256 the order was compensation → policy → payComponents → cp38 → encashment → tp3 → zakat.
+    // This is the assertion that would have failed then, and the one that fails if it drifts back.
+    expect(frag.indexOf('{tp3Card}')).toBeLessThan(frag.indexOf('{cp38Card}'));
+    expect(frag.indexOf('{tp3Card}')).toBeLessThan(frag.indexOf('{encashmentCard}'));
   });
 });

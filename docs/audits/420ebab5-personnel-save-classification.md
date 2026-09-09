@@ -273,3 +273,72 @@ consolidated at all.** Every form on both is a child record — a dependant, a q
 tab-wide "Save Changes" there would have nothing to save and a tab-wide "Discard Changes" would cover
 nothing. The original request names Family explicitly; the honest answer is that those two tabs already
 work the way the rest of the screen is being moved towards, one deliberate act at a time.
+
+---
+
+## r256 — Payroll consolidated, and the two things measuring it turned up
+
+**Every tab that CAN be consolidated now is.** r256 took the last one: Payroll's three field edits —
+`setPaymentMethod`, `assignPolicy`, `setTp3` — are under one Save, so all sixteen bucket (a) forms are
+now under a tab Save and no bucket (a) form on the screen still carries its own button. The remaining
+buttons on the screen are all bucket (b) or bucket (c).
+
+**Finding 3 was answered, not waived.** It refused Payroll on two grounds, and each was handled on its
+own terms rather than argued away:
+
+1. *"A Save/Discard pair would read as covering a recorded salary revision."* Two separate mechanisms
+   answer this, and both were already in the code before r256 wanted them. The MECHANICAL half is r255's
+   correction that the fence is the MARKER and not the subtree: `setCompensationAction`'s dialog carries
+   no `data-save-section`, so nothing reads, marks, packs or resets it even though it shares a card with
+   Payment Method. That is the Employment tab's shape exactly — the audited company transfer sits inside
+   the Employment Dates card — so the nesting stopped being disqualifying the moment that landed. The
+   HONESTY half is `covers`: the bar prints "How This Employee Is Paid", the heading the reader sees
+   above the control, and never "Basic Salary". Naming the card would have been the fault this document
+   exists to prevent; naming the sub-section is not.
+2. *"Consolidating still requires moving TP3 up past Pay Items, CP38 and Leave Encashment."* ACCEPTED,
+   and it is the one visible change r256 makes to a tab. The order is now compensation → policy → TP3 →
+   pay items → CP38 → encashment → zakat, which is the shape this document itself named. **It reverses
+   nothing anyone decided**: feedback 326f0b5e pinned compensation FIRST (still first) and R46 79eb7151
+   pinned the policy card SECOND (still second); TP3's sixth slot came from item a6a47698 simply
+   appending it when it relocated the card here, and no guard held it. That is not an assumption — the
+   pre-existing guard was re-run against the reverted order and its 326f0b5e cases passed while only the
+   new r256 cases failed. `test/personnel-payroll-tab-order.test.ts` now pins the new run, with the
+   original case kept and its docblock updated rather than replaced.
+
+### The defect the round found, which no test would have
+
+**A bar can lie by claiming MORE than it owns, and two of them did.** `covers` was added so a bar could
+not silently own LESS than the tab it sits on. The mirror fault went unnoticed: `clockingCard` and
+`payrollPolicyCard` are both gated `admin && !emp.terminatedOn`, so on a **terminated employment** they
+render as nothing at all — while the bar went on printing "Clocking locations & geofencing" and
+"Payroll policy". Measured on a terminated employee, the Attendance bar named two cards with one on the
+screen; Payroll would have shipped naming three with two.
+
+**Attendance shipped that way in r255.** It is fixed here too, because it is the same one-line mechanism
+and leaving it would mean knowingly shipping a control that names a card the reader cannot find.
+
+**It was found by rendering the screen, not by a test**, which is the point worth recording: the source
+guards all passed, tsc passed, the suite passed, and the page returned 200. What exposed it was reading
+the rendered `data-tab-save-covers` text against the `data-save-section` markers actually present, for a
+terminated employment and an active one. `whenLive()` drops a name the reader cannot see;
+`test/personnel-tab-save-tabs.test.ts` §6 pins it AND enumerates the conditionally-rendered cards inside
+a scope, so a third one cannot be added without answering the question.
+
+Payment Method keeps its name on a terminated employment: that card IS rendered, with its select
+disabled, so naming it describes something the reader can actually see.
+
+### Where the item now stands
+
+| tab | consolidated? |
+|---|---|
+| Profile · Bank & Statutory · Attendance · Employment · **Payroll** | yes — every bucket (a) form on the screen |
+| Family · Qualification | **no, and not "not yet"** — see below |
+| Movement · Documents · Others · Leave | nothing to consolidate (no bucket (a) form) |
+
+**The item cannot be closed as literally written, and this is the sentence the reporter is owed.** The
+original request lists Family among the tabs that should get one Save button. Family and Qualification
+cannot have one. Every form on both tabs is a child record — adding a family member, archiving a
+qualification — so a tab-wide "Save Changes" there would be a button with nothing to save, and a
+tab-wide "Discard Changes" would be a button that covers nothing. This is not a limit of the current
+build that a later round could lift; it is what those two tabs are. Everything else the request asked
+for is built.
