@@ -65,6 +65,7 @@ export type ApprovalMatchAttrs = {
 /** A resolvable rule row (only the fields resolution needs). */
 type RuleRow = {
   id: string;
+  companyId: string;
   leaveTypeId: string | null;
   businessUnitId: string | null;
   departmentId: string | null;
@@ -136,19 +137,54 @@ function beats(a: RuleRow, b: RuleRow): boolean {
   return a.createdAt.getTime() > b.createdAt.getTime();
 }
 
-/** Resolve the ordered approver levels for a request: the most-specific matching active rule wins, then the
- *  company default, then the built-in fallback. Runs inside the request transaction (so under the
- *  requester's RLS, which is why the policy is readable tenant-wide). Resolution is scoped to the passed
- *  attributes, which come from the requesting employment's OWN current assignment only (ADR-0071 1(f)). */
-export async function resolveApprovalChain(
-  tx: Tx,
-  companyId: string,
-  leaveTypeId: string | null,
-  attrs: ApprovalMatchAttrs = {},
-): Promise<LeaveLevelKind[]> {
+/** Where a resolved chain came from. `'rule'` is the only source that names a rule — the other two mean
+ *  no rule won, so there is nothing to name. */
+export type ApprovalDecisionSource = 'rule' | 'tenant-default' | 'fallback';
+
+/** The whole answer to "who approves this request", not only the chain: WHICH rule won, and WHERE the
+ *  chain came from when none did. The extra two fields are what lets the approval replay report coverage —
+ *  which of a tenant's rules ever actually win — without a second ranking of the same rows. */
+export type ApprovalDecision = {
+  levels: LeaveLevelKind[];
+  /** The winning rule's id when `source === 'rule'`; null for the tenant default and the built-in chain. */
+  ruleId: string | null;
+  source: ApprovalDecisionSource;
+};
+
+/**
+ * Every active rule and template a decision can draw on, READ ONCE.
+ *
+ * a6fe37fc Round 1 fix pass — the replay resolves a whole GRID of (routing tuple x leave type x day probe)
+ * cases, and `resolveApprovalDecision` re-read every active rule and every active template on EVERY call.
+ * Against the tenant this harness exists for (261 rules, and a day-probe set that grows with the number of
+ * distinct min/max bounds) that is two fresh queries per cell, doubled again when `--coverage` walks the
+ * same grid — an unbounded number of round-trips inside one transaction held open against the customer's
+ * production database. Reading the rules once and ranking in memory makes the round-trip count CONSTANT in
+ * the grid size. It is the same rows and the same ranking either way: `decideApproval` below is the only
+ * ranking there is, and `resolveApprovalDecision` is it plus the two reads.
+ */
+export type ApprovalRuleSet = {
+  /** Active rules grouped by company — a decision only ever considers the requester's own company. */
+  rulesByCompany: Map<string, RuleRow[]>;
+  /** Active template id -> its sanitised ordered levels. */
+  templateLevels: Map<string, LeaveLevelKind[]>;
+  /** The tenant-default template's levels; empty when the tenant has none. */
+  tenantDefaultLevels: LeaveLevelKind[];
+};
+
+/**
+ * Read the active rules and templates a decision needs. `companyId` narrows the rule read exactly as the
+ * per-request path always did; omitting it reads the whole tenant's active rules in one go, which is what
+ * the replay wants (it resolves for every company in the tenant).
+ *
+ * Runs inside the caller's transaction, so under the caller's RLS — the same reads, in the same place, as
+ * before this was hoisted out of `resolveApprovalDecision`.
+ */
+export async function loadApprovalRuleSet(tx: Tx, companyId?: string): Promise<ApprovalRuleSet> {
   const rules = (await tx
     .select({
       id: leaveApprovalPolicy.id,
+      companyId: leaveApprovalPolicy.companyId,
       leaveTypeId: leaveApprovalPolicy.leaveTypeId,
       businessUnitId: leaveApprovalPolicy.businessUnitId,
       departmentId: leaveApprovalPolicy.departmentId,
@@ -164,12 +200,13 @@ export async function resolveApprovalChain(
     })
     .from(leaveApprovalPolicy)
     .where(
-      and(eq(leaveApprovalPolicy.companyId, companyId), eq(leaveApprovalPolicy.active, true)),
+      companyId === undefined
+        ? eq(leaveApprovalPolicy.active, true)
+        : and(eq(leaveApprovalPolicy.companyId, companyId), eq(leaveApprovalPolicy.active, true)),
     )) as RuleRow[];
 
-  // 6fadb036: fetch the tenant's ACTIVE templates once (few rows). A rule with template_id draws its chain
-  // from the template; the tenant-default template is the fallback just above the built-in chain. Runs under
-  // the requester's tx (RLS scopes to the tenant), same reason the policy itself is readable tenant-wide.
+  // 6fadb036: the tenant's ACTIVE templates (few rows). A rule with template_id draws its chain from the
+  // template; the tenant-default template is the fallback just above the built-in chain.
   const templates = await tx
     .select({
       id: leaveApprovalTemplate.id,
@@ -178,6 +215,13 @@ export async function resolveApprovalChain(
     })
     .from(leaveApprovalTemplate)
     .where(eq(leaveApprovalTemplate.active, true));
+
+  const rulesByCompany = new Map<string, RuleRow[]>();
+  for (const r of rules) {
+    const bucket = rulesByCompany.get(r.companyId);
+    if (bucket) bucket.push(r);
+    else rulesByCompany.set(r.companyId, [r]);
+  }
   const templateLevels = new Map<string, LeaveLevelKind[]>();
   let tenantDefaultLevels: LeaveLevelKind[] = [];
   for (const t of templates) {
@@ -185,12 +229,34 @@ export async function resolveApprovalChain(
     templateLevels.set(t.id, lv);
     if (t.isTenantDefault) tenantDefaultLevels = lv;
   }
+  return { rulesByCompany, templateLevels, tenantDefaultLevels };
+}
+
+/**
+ * THE RANKING — match -> specificity -> tie-break -> effective levels -> tenant default -> fallback.
+ *
+ * a6fe37fc Round 1 — THIS IS THE ONE MATCHER. `resolveApprovalDecision` is this function plus its two
+ * reads, `resolveApprovalChain` is a one-line wrapper over that, and the approval replay calls this
+ * directly over a rule set it read ONCE. The ranking below must never be copied anywhere else: a second
+ * ranking of the same rules that drifts from this one is exactly the defect the Leave Configuration
+ * replacement exists to remove, and a replay run against a copy of the matcher would prove nothing about
+ * how production routes a request.
+ *
+ * Pure: it performs no I/O, which is what lets the replay resolve a whole grid outside the transaction it
+ * read the rules in.
+ */
+export function decideApproval(
+  set: ApprovalRuleSet,
+  companyId: string,
+  leaveTypeId: string | null,
+  attrs: ApprovalMatchAttrs = {},
+): ApprovalDecision {
   // The effective ordered chain of a rule: the template's levels when template-driven (and the template is
   // active), else the row's own levels.
   const effectiveLevels = (r: RuleRow): LeaveLevelKind[] =>
-    r.templateId ? (templateLevels.get(r.templateId) ?? []) : sanitizeLevels(r.levels);
+    r.templateId ? (set.templateLevels.get(r.templateId) ?? []) : sanitizeLevels(r.levels);
 
-  const matching = rules.filter((r) => ruleMatches(r, leaveTypeId, attrs));
+  const matching = (set.rulesByCompany.get(companyId) ?? []).filter((r) => ruleMatches(r, leaveTypeId, attrs));
   if (matching.length) {
     let best = matching[0];
     let bestScore = specificity(best);
@@ -202,12 +268,41 @@ export async function resolveApprovalChain(
       }
     }
     const lv = effectiveLevels(best);
-    if (lv.length) return lv;
+    if (lv.length) return { levels: lv, ruleId: best.id, source: 'rule' };
   }
   // No matching rule (or its effective chain resolved empty): fall back to the org-wide default template,
-  // then the built-in chain.
-  if (tenantDefaultLevels.length) return tenantDefaultLevels;
-  return FALLBACK_CHAIN;
+  // then the built-in chain. Neither names a rule, so `ruleId` is null — a coverage report must not credit
+  // a win to a rule that did not win.
+  if (set.tenantDefaultLevels.length) {
+    return { levels: set.tenantDefaultLevels, ruleId: null, source: 'tenant-default' };
+  }
+  return { levels: FALLBACK_CHAIN, ruleId: null, source: 'fallback' };
+}
+
+/** Resolve the approver decision for a request: the most-specific matching active rule wins, then the
+ *  tenant-default template, then the built-in fallback. Runs inside the request transaction (so under the
+ *  requester's RLS, which is why the policy is readable tenant-wide). Resolution is scoped to the passed
+ *  attributes, which come from the requesting employment's OWN current assignment only (ADR-0071 1(f)).
+ *
+ *  The two reads plus `decideApproval` — deliberately no ranking of its own. */
+export async function resolveApprovalDecision(
+  tx: Tx,
+  companyId: string,
+  leaveTypeId: string | null,
+  attrs: ApprovalMatchAttrs = {},
+): Promise<ApprovalDecision> {
+  return decideApproval(await loadApprovalRuleSet(tx, companyId), companyId, leaveTypeId, attrs);
+}
+
+/** The ordered approver levels for a request — every existing caller's entry point, and deliberately a
+ *  one-line wrapper: it must have no ranking of its own to drift from `resolveApprovalDecision`'s. */
+export async function resolveApprovalChain(
+  tx: Tx,
+  companyId: string,
+  leaveTypeId: string | null,
+  attrs: ApprovalMatchAttrs = {},
+): Promise<LeaveLevelKind[]> {
+  return (await resolveApprovalDecision(tx, companyId, leaveTypeId, attrs)).levels;
 }
 
 /** The company-default chain, for the admin editor.
