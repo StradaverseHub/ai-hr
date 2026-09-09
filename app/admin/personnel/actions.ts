@@ -20,13 +20,21 @@ import { decideProfileChange } from '@/core/profile';
  * probation months (r79a / 4fb8b75a step 3), never trusted from the client; and the three standing
  * leave grants (ANNUAL / SICK / HOSPITALIZATION) are still made on hire.
  */
+/**
+ * r260 stage two (9583deac) — REJECTING ASKS FOR A REASON. `decideProfileChange` refuses a reasonless
+ * rejection (ProfileChangeReasonRequiredError), so this reads the `reason` that
+ * `components/profile-change-decide.tsx` posts from its required textarea. An approval may carry one as
+ * a note; the employee is shown either on My Profile beside their own request.
+ */
 export async function decideProfileChangeAction(formData: FormData) {
   const session = await requireAdmin();
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
   try {
     await decideProfileChange(session, {
       requestId: String(formData.get('requestId')),
       decision,
+      reason,
     });
   } catch (e) {
     redirect(`/admin/personnel?error=${encodeURIComponent((e as Error).message)}`);

@@ -172,12 +172,20 @@ export async function approveTravelAction(formData: FormData) {
   done(`Travel ${decision}`, nav);
 }
 
+/**
+ * r260 stage two (9583deac) — a rejection carries the approver's REASON, and the employee is shown it
+ * on their own screen. `decideProfileChange` throws ProfileChangeReasonRequiredError when a rejection
+ * arrives without one (and migration 0458's CHECK refuses the row underneath that), so the reason is not
+ * an optional extra this action may drop: `components/profile-change-decide.tsx` posts it as `reason`
+ * from a `required` textarea, and this reads it. An approval may carry one too — an approver's note.
+ */
 export async function approveProfileChangeAction(formData: FormData) {
   const s = await getSession();
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
   try {
-    await decideProfileChange(s, { requestId: String(formData.get('id')), decision });
+    await decideProfileChange(s, { requestId: String(formData.get('id')), decision, reason });
   } catch (e) {
     fail(e, nav);
   }

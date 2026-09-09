@@ -20,6 +20,10 @@ import { ClientTabs } from '@/components/personnel-tabs';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myProfileRecord } from './record';
 import { ReadCard, ReadField, ReadGroup } from './read-field';
+// r260 stage two (9583deac) — the request card and the pending-value projection. One declaration of
+// which fields may be asked about (lib/profile-requestable-fields.ts) feeds both.
+import { RequestChangeCard, pendingProposedByKey } from './request-change-card';
+import { maskAccountNumber } from '@/lib/profile-requestable-fields';
 import { ME_TABS, ME_TAB_LABEL_KEY, type MeTabKey } from './visible-fields';
 
 // a7cbd895: the Leave tab (and its dialogs/forms/reads) moved wholesale to /leave — "My Absence" in the
@@ -29,7 +33,6 @@ import { ME_TABS, ME_TAB_LABEL_KEY, type MeTabKey } from './visible-fields';
 import {
   myCheckIn,
   myCheckOut,
-  myRequestProfileChange,
   mySubmitResignation,
   myUpdateContact,
   myWithdrawResignation,
@@ -50,16 +53,20 @@ import {
  * again. app/me/visible-fields.ts holds that mapping and test/me-profile-visibility.test.ts asserts every
  * key it names is one the Personnel screen actually renders.
  *
- * ── IT IS A READ SURFACE ────────────────────────────────────────────────────────────────────────────
- * Stage one shows the record; it does not add a way to change it. The two write paths that already
- * existed here are PRESERVED EXACTLY, because ADR-0012's two-paths-by-risk mechanism is live and this
- * round must not build a second one:
- *   • the direct contact self-edit (`myUpdateContact`) — low-risk fields, saved immediately;
- *   • the approval-gated change request (`myRequestProfileChange`) — bank, PCB category, dependants and
- *     the compliance-sensitive identity fields, which wait for an administrator.
- * Each now sits inside the card it belongs to, as a fold-out, so the record reads first and the way to
- * change a value is next to the value. Stage two widens which fields may be requested and adds the
- * rejection reason; stage three adds the per-field permission. Neither is built here.
+ * ── r260 · STAGE TWO: THE SAME TWO WRITE PATHS, ONE OF THEM WIDENED ─────────────────────────────────
+ * ADR-0012's two-paths-by-risk mechanism is live and neither stage may build a second one:
+ *   • the direct contact self-edit (`myUpdateContact`) — low-risk fields, saved immediately. UNCHANGED;
+ *   • the approval-gated change request — now `<RequestChangeCard>`, mounted once per tab that carries
+ *     requestable fields, offering the set declared in `lib/profile-requestable-fields.ts` rather than
+ *     the seven names this page used to hard-code. Same store, same approval guard, more fields.
+ * Each sits inside the card it belongs to, as a fold-out, so the record reads first and the way to
+ * change a value is next to the value.
+ *
+ * A CHANGE THAT IS WAITING IS DRAWN BESIDE THE MASTER VALUE, NEVER OVER IT — `pendingFor(key)` below
+ * feeds every read field's `pending` prop, and the disabled input keeps showing what the record actually
+ * says. That is the plan's own sentence: "so nobody is confused about which one is real."
+ *
+ * Stage three — the per-field permission SETTING and the approver-choice setting — is NOT built here.
  *
  * ── WHAT IS DISPLAYED IS WHAT SAVE CHANGES ──────────────────────────────────────────────────────────
  * Every value on a card that also has a form on it is read from the SAME object that form defaults from
@@ -95,11 +102,6 @@ const LEGACY_TAB: Record<string, MeTabKey> = { overview: 'profile', pay: 'payrol
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const REQUEST_STATUS: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-};
 const ATT_STATUS: Record<string, string> = {
   present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   late: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -113,22 +115,6 @@ const PCB_LABEL_KEY: Record<number, string> = {
   2: 'pcbMarriedSpouseNotWorking',
   3: 'pcbMarriedSpouseWorking',
 };
-// Maps proposed-change field → translation leaf key (resolved via t() where rendered).
-const PROPOSED_LABEL_KEY: Record<string, string> = {
-  bankName: 'proposedBankName',
-  bankAccountNo: 'proposedAccountNo',
-  taxCategory: 'proposedPcbCategory',
-  numChildren: 'proposedChildren',
-  dateOfBirth: 'dateOfBirthLabel',
-  gender: 'genderLabel',
-  maritalStatus: 'maritalLabel',
-};
-const maskAcct = (no?: string | null) => (no ? `•••• ${no.slice(-4)}` : null);
-function summarizeProposed(p: unknown, t: (key: string) => string): string {
-  const o = (p ?? {}) as Record<string, unknown>;
-  const keys = Object.keys(o).filter((k) => k in PROPOSED_LABEL_KEY);
-  return keys.length ? keys.map((k) => t(PROPOSED_LABEL_KEY[k])).join(', ') : t('proposedChange');
-}
 
 function Pill({ status, map, label }: { status: string; map: Record<string, string>; label?: string }) {
   return (
@@ -188,12 +174,31 @@ export default async function MePage({
     myPayslips(s, employments.map((e) => e.employmentId)),
     myTaxRelief(s, taxReliefEmploymentIds),
     myAttendance(s, employmentId, 14),
-    myProfileChangeRequests(s, employmentId),
+    myProfileChangeRequests(s),
     myResignation(s, employmentId),
     // 1.2.8 (ADR-0060): read-only "My loans" — RLS scopes to the caller's own employment. ESS NEVER calls
     // a loan write service (the loan write methods are admin-only; this is a read helper).
     listLoansForEmployment(s, employmentId),
   ]);
+  /**
+   * ── r260 STAGE TWO: A CHANGE THAT IS WAITING IS DRAWN BESIDE THE MASTER VALUE, NEVER OVER IT ──────
+   *
+   * The plan's promise, in the reporter's words: "A field with a request waiting shows both values —
+   * what it is now and what was asked for — so nobody is confused about which one is real."
+   *
+   * So every read card below keeps printing the MASTER value exactly as it did in stage one, and a
+   * pending request adds a second line under the field it would change. The map is keyed by the
+   * proposed-field key from lib/profile-requestable-fields.ts — the same key the request form posts and
+   * the same key core/profile.ts applies — so a field can never show a pending value under the wrong
+   * label. Nothing here reads the request store a second time: `profileRequests` is the employee's own
+   * history, already scoped to `ctx.personId` by `myProfileChangeRequests`.
+   */
+  const pendingValues = pendingProposedByKey(profileRequests, t);
+  const pendingFor = (key: string) => {
+    const value = pendingValues.get(key);
+    return value === undefined ? null : { value, label: t('requestedPendingLabel') };
+  };
+
   // Group TP1 rows by company — each entity files its own PCB, so a single blended YTD would mislead.
   const taxReliefByCompany = taxRelief.rows.reduce<Record<string, typeof taxRelief.rows>>((acc, r) => {
     (acc[r.company] ??= []).push(r);
@@ -355,27 +360,27 @@ export default async function MePage({
     <>
       <ReadCard id="section-personal-details" title={tp('personalDetails')}>
         <ReadField label={tp('employeeIdLabel')} value={p.employeeCode} notSet={notSet} />
-        <ReadField label={tp('salutation')} value={p.salutation} notSet={notSet} />
-        <ReadField label={tp('fullNameIc')} value={p.fullName} notSet={notSet} className="lg:col-span-2" />
-        <ReadField label={tp('firstName')} value={p.firstName} notSet={notSet} />
-        <ReadField label={tp('lastName')} value={p.lastName} notSet={notSet} />
-        <ReadField label={tp('preferredName')} value={p.preferredName} notSet={notSet} />
-        <ReadField label={tp('nationality')} value={p.nationality} notSet={notSet} />
-        <ReadField label={tp('religion')} value={p.religion} notSet={notSet} />
-        <ReadField label={tp('race')} value={p.race} notSet={notSet} />
-        <ReadField label={tp('gender')} value={genderLabel(p.gender)} notSet={notSet} />
-        <ReadField label={tp('maritalStatus')} value={maritalLabel(p.maritalStatus)} notSet={notSet} />
-        <ReadField label={tp('birthDate')} value={p.dateOfBirth} notSet={notSet} />
+        <ReadField label={tp('salutation')} value={p.salutation} notSet={notSet} pending={pendingFor('salutation')} />
+        <ReadField label={tp('fullNameIc')} value={p.fullName} notSet={notSet} className="lg:col-span-2" pending={pendingFor('fullName')} />
+        <ReadField label={tp('firstName')} value={p.firstName} notSet={notSet} pending={pendingFor('firstName')} />
+        <ReadField label={tp('lastName')} value={p.lastName} notSet={notSet} pending={pendingFor('lastName')} />
+        <ReadField label={tp('preferredName')} value={p.preferredName} notSet={notSet} pending={pendingFor('preferredName')} />
+        <ReadField label={tp('nationality')} value={p.nationality} notSet={notSet} pending={pendingFor('nationality')} />
+        <ReadField label={tp('religion')} value={p.religion} notSet={notSet} pending={pendingFor('religion')} />
+        <ReadField label={tp('race')} value={p.race} notSet={notSet} pending={pendingFor('race')} />
+        <ReadField label={tp('gender')} value={genderLabel(p.gender)} notSet={notSet} pending={pendingFor('gender')} />
+        <ReadField label={tp('maritalStatus')} value={maritalLabel(p.maritalStatus)} notSet={notSet} pending={pendingFor('maritalStatus')} />
+        <ReadField label={tp('birthDate')} value={p.dateOfBirth} notSet={notSet} pending={pendingFor('dateOfBirth')} />
         <ReadField label={tp('age')} value={p.dateOfBirth ? String(childAgeYears(p.dateOfBirth) ?? '') : null} notSet={tp('employmentInfo.notAvailable')} />
         <ReadGroup legend={tp('identityNricTitle')}>
-          <ReadField label={tp('icNumber')} value={p.icNumber} notSet={notSet} />
-          <ReadField label={tp('oldIcNumber')} value={p.oldIcNumber} notSet={notSet} />
+          <ReadField label={tp('icNumber')} value={p.icNumber} notSet={notSet} pending={pendingFor('icNumber')} />
+          <ReadField label={tp('oldIcNumber')} value={p.oldIcNumber} notSet={notSet} pending={pendingFor('oldIcNumber')} />
         </ReadGroup>
         <ReadGroup legend={tp('passportInfoTitle')}>
-          <ReadField label={tp('passportNumber')} value={p.passportNumber} notSet={notSet} />
-          <ReadField label={tp('passportIssuingCountry')} value={p.passportIssuingCountry} notSet={notSet} />
-          <ReadField label={tp('passportIssueDate')} value={p.passportIssueDate} notSet={notSet} />
-          <ReadField label={tp('passportExpiryDate')} value={p.passportExpiryDate} notSet={notSet} />
+          <ReadField label={tp('passportNumber')} value={p.passportNumber} notSet={notSet} pending={pendingFor('passportNumber')} />
+          <ReadField label={tp('passportIssuingCountry')} value={p.passportIssuingCountry} notSet={notSet} pending={pendingFor('passportIssuingCountry')} />
+          <ReadField label={tp('passportIssueDate')} value={p.passportIssueDate} notSet={notSet} pending={pendingFor('passportIssueDate')} />
+          <ReadField label={tp('passportExpiryDate')} value={p.passportExpiryDate} notSet={notSet} pending={pendingFor('passportExpiryDate')} />
         </ReadGroup>
         <p className="col-span-full text-xs text-muted-foreground">{t('complianceFieldsNeedApproval')}</p>
       </ReadCard>
@@ -496,6 +501,12 @@ export default async function MePage({
           </div>
         )}
       </Card>
+
+      {/* r260 stage two — asking to correct your name, your particulars or an identity document. The
+          Profile tab's own request card: the fields it offers are exactly the ones read on this tab, so
+          the control to correct a wrong passport number sits under the wrong passport number rather than
+          three tabs away. lib/profile-requestable-fields.ts decides which those are. */}
+      <RequestChangeCard tab="profile" title={t('requestChangeProfileHeading')} requests={profileRequests} />
     </>
   );
 
@@ -592,26 +603,27 @@ export default async function MePage({
   const bankStatutoryPanel = (
     <>
       <ReadCard id="section-bank" title={tp('bankCardTitle')}>
-        <ReadField label={tp('bank')} value={st.bankName} notSet={notSet} />
+        <ReadField label={tp('bank')} value={st.bankName} notSet={notSet} pending={pendingFor('bankName')} />
         {/* Masked, exactly as /me has always masked it: the employee confirms which account is on file
             without the full number rendering into a shared screen or a screenshot. */}
-        <ReadField label={tp('bankAccount')} value={maskAcct(st.bankAccountNo)} notSet={notSet} />
+        <ReadField label={tp('bankAccount')} value={maskAccountNumber(st.bankAccountNo)} notSet={notSet} pending={pendingFor('bankAccountNo')} />
       </ReadCard>
 
       <ReadCard id="section-statutory" title={tp('statutoryMalaysia')}>
-        <ReadField label={tp('epfNumber')} value={st.epfNumber} notSet={notSet} />
+        <ReadField label={tp('epfNumber')} value={st.epfNumber} notSet={notSet} pending={pendingFor('epfNumber')} />
         <ReadField label={tp('epfCitizenship')} value={epfCitizenshipLabel(st.epfCitizenship)} notSet={notSet} />
-        <ReadField label={tp('socsoEisNumber')} value={st.socsoNumber} notSet={notSet} />
+        <ReadField label={tp('socsoEisNumber')} value={st.socsoNumber} notSet={notSet} pending={pendingFor('socsoNumber')} />
         <ReadField label={tp('socsoCategoryLabel')} value={socsoCategoryLabel(st.socsoCategory)} notSet={notSet} />
         <ReadField label={tp('eisCategoryLabel')} value={eisCategoryLabel(st.eisCategory)} notSet={notSet} />
-        <ReadField label={tp('taxNumber')} value={st.taxNumber} notSet={notSet} />
+        <ReadField label={tp('taxNumber')} value={st.taxNumber} notSet={notSet} pending={pendingFor('taxNumber')} />
         <ReadField label={tp('incomeTaxResident')} value={yesNo(st.isResident)} notSet={notSet} />
         <ReadField
-          label={t('pcbCategory')}
+          label={tp('taxCategoryLabel')}
           value={st.taxCategory ? t(PCB_LABEL_KEY[st.taxCategory] ?? 'pcbSingle') : null}
           notSet={notSet}
+          pending={pendingFor('taxCategory')}
         />
-        <ReadField label={tp('childrenPcbRelief')} value={st.numChildren == null ? null : String(st.numChildren)} notSet={notSet} />
+        <ReadField label={tp('childrenPcbRelief')} value={st.numChildren == null ? null : String(st.numChildren)} notSet={notSet} pending={pendingFor('numChildren')} />
         <ReadField label={tp('disabledIndividualLabel')} value={yesNo(st.disabledIndividual)} notSet={notSet} />
         <ReadField label={tp('disabledSpouseLabel')} value={yesNo(st.disabledSpouse)} notSet={notSet} />
       </ReadCard>
@@ -620,78 +632,13 @@ export default async function MePage({
         <ReadField label={tp('subjectToHrdf')} value={yesNo(st.subjectToHrdf)} notSet={notSet} />
       </ReadCard>
 
-      {/* ADR-0012 path two — the approval-gated request. PRESERVED, not rebuilt: the mechanism already
+      {/* ADR-0012 path two — the approval-gated request. WIDENED, not rebuilt: the mechanism already
           exists (core/profile.ts → profile_change_request → an administrator's decision through
-          assertCanDecide) and this round must not build a second one. Every field it carries is
-          pay-affecting or compliance-sensitive, which is why it lives on this tab. Stage two widens the
-          field list and adds the rejection reason; stage three adds the per-field permission. */}
-      <Card id="section-request-change" data-tour="me-bank">
-        <SectionHeader title={t('approvalGatedHeading')} subtitle={t('changesNeedApproval')} />
-        <div className="p-4">
-          <details>
-            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('requestAChange')}
-            </summary>
-            <form action={myRequestProfileChange} className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label={t('bankNameLabel')}>
-                <input name="bankName" placeholder="Maybank" className={inputCls} />
-              </Field>
-              <Field label={t('accountNoLabel')}>
-                <input name="bankAccountNo" placeholder="1234567890" className={inputCls} />
-              </Field>
-              <Field label={t('pcbCategory')}>
-                <select name="taxCategory" defaultValue="" className={inputCls}>
-                  <option value="">{t('noChangeOption')}</option>
-                  <option value="1">{t('pcbOption1')}</option>
-                  <option value="2">{t('pcbOption2')}</option>
-                  <option value="3">{t('pcbOption3')}</option>
-                </select>
-              </Field>
-              <Field label={t('dependentChildren')}>
-                <input type="number" name="numChildren" min="0" placeholder="—" className={inputCls} />
-              </Field>
-              <Field label={t('dateOfBirthLabel')}>
-                <input type="date" name="dateOfBirth" defaultValue="" className={inputCls} />
-              </Field>
-              <Field label={t('genderLabel')}>
-                <select name="gender" defaultValue="" className={inputCls}>
-                  <option value="">{t('noChangeOption')}</option>
-                  <option value="male">{t('gender_male')}</option>
-                  <option value="female">{t('gender_female')}</option>
-                  <option value="undisclosed">{t('gender_undisclosed')}</option>
-                </select>
-              </Field>
-              <Field label={t('maritalLabel')}>
-                <select name="maritalStatus" defaultValue="" className={inputCls}>
-                  <option value="">{t('noChangeOption')}</option>
-                  <option value="single">{t('marital_single')}</option>
-                  <option value="married">{t('marital_married')}</option>
-                  <option value="divorced">{t('marital_divorced')}</option>
-                  <option value="widowed">{t('marital_widowed')}</option>
-                  <option value="separated">{t('marital_separated')}</option>
-                  <option value="other">{t('marital_other')}</option>
-                </select>
-              </Field>
-              <p className="col-span-full text-xs text-muted-foreground">{t('leaveBlankToKeep')}</p>
-              <div className="col-span-full">
-                <Button type="submit" size="sm">
-                  {t('submitForApproval')}
-                </Button>
-              </div>
-            </form>
-          </details>
-          {profileRequests.length > 0 && (
-            <ul className="mt-4 space-y-1.5 border-t border-border pt-3 text-xs">
-              {profileRequests.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-2">
-                  <span className="truncate text-muted-foreground">{summarizeProposed(r.proposed, t)}</span>
-                  <Pill status={r.status} map={REQUEST_STATUS} label={t(`leaveStatus.${r.status}`)} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
+          assertCanDecide) and stage two must not build a second one. What changed is WHICH fields it
+          offers — lib/profile-requestable-fields.ts, one declaration, read by the form, the action, the
+          sanitiser and the applier — and that a rejection now carries a reason the employee is shown.
+          The card renders only this tab's fields; the Profile tab has its own. */}
+      <RequestChangeCard tab="bankStatutory" title={t('approvalGatedHeading')} requests={profileRequests} />
     </>
   );
 

@@ -458,10 +458,6 @@
       "pcbSingle": "திருமணமாகாதவர்",
       "pcbMarriedSpouseNotWorking": "திருமணமானவர் · துணை வேலை செய்யவில்லை",
       "pcbMarriedSpouseWorking": "திருமணமானவர் · துணை வேலை செய்கிறார்",
-      "fieldBank": "வங்கி",
-      "fieldAccount": "கணக்கு",
-      "fieldPcb": "PCB",
-      "fieldChildren": "குழந்தைகள்",
       "noChanges": "மாற்றங்கள் இல்லை",
       "fullNamePlaceholder": "Aisyah Rahman",
       "emailPlaceholder": "aisyah@demo.test",
@@ -550,7 +546,8 @@
       "absentEmployeeType": "பணியாளர் வகை",
       "exportXlsx": "ஏற்றுமதி",
       "exportAria": "வடிகட்டிய பணியாளர் பட்டியலை Excel ஆக ஏற்றுமதி செய்",
-      "exportTitle": "பணியாளர்கள்"
+      "exportTitle": "பணியாளர்கள்",
+      "rejectReasonPlaceholder": "நிராகரிப்பதற்கான காரணம் (கட்டாயம்)"
     },
     "switcher": {
       "ariaLabel": "பணியாளரைத் தேடு",
@@ -2603,7 +2600,6 @@
     "changesNeedApproval": "மாற்றங்கள் உங்கள் ஊதியத்தைப் பாதிக்கும் முன் நிர்வாக ஒப்புதல் தேவை.",
     "bank": "வங்கி",
     "account": "கணக்கு",
-    "pcbCategory": "PCB வகை",
     "dependentChildren": "சார்ந்த குழந்தைகள்",
     "requestAChange": "மாற்றம் கோரு",
     "bankNameLabel": "வங்கிப் பெயர்",
@@ -2617,11 +2613,6 @@
     "pcbSingle": "திருமணமாகாதவர்",
     "pcbMarriedSpouseNotWorking": "திருமணமானவர் · துணை வேலை செய்யவில்லை",
     "pcbMarriedSpouseWorking": "திருமணமானவர் · துணை வேலை செய்கிறார்",
-    "proposedBankName": "வங்கிப் பெயர்",
-    "proposedAccountNo": "கணக்கு எண்.",
-    "proposedPcbCategory": "PCB வகை",
-    "proposedChildren": "குழந்தைகள்",
-    "proposedChange": "மாற்றம்",
     "myPayslips": "என் ஊதியச் சீட்டுகள்",
     "noPayslipsYet": "இதுவரை ஊதியச் சீட்டு இல்லை. ஊதியச் செயலாக்கம் முடிந்து வெளியிடப்பட்ட பின் இங்கு தோன்றும்.",
     "selectMonth": "ஊதிய மாதம்",
@@ -2982,7 +2973,15 @@
     "maEmptyAll": "இந்தக் காலகட்டத்தில் உங்களிடமிருந்து எதுவும் தேவைப்படவில்லை.",
     "myPerformanceLink": "எனது செயல்திறன்",
     "performancePageDescription": "உங்கள் இலக்குகள், கருத்துக் கோரிக்கைகள் மற்றும் தனிப்பட்ட சந்திப்புகள்.",
-    "complianceFieldsNeedApproval": "பிறந்த தேதி, பாலினம், திருமண நிலை மற்றும் உங்கள் அடையாள ஆவணங்கள் மனிதவளத் துறையால் பராமரிக்கப்படுகின்றன. மாற்றம் தேவைப்பட்டால் வங்கி & சட்டரீதியான பகுதியில் கோரிக்கை வைக்கவும்."
+    "complianceFieldsNeedApproval": "உங்கள் பெயர், பிறந்த தேதி, பாலினம், திருமண நிலை மற்றும் அடையாள ஆவணங்கள் மனிதவள துறையால் பராமரிக்கப்படுகின்றன. திருத்தம் கோர இந்தத் தாவலின் கீழுள்ள “மாற்றம் கோருங்கள்” பயன்படுத்தவும்.",
+    "requestChangeProfileHeading": "தனிப்பட்ட விவரங்கள், அடையாளம் & ஆவணங்கள்",
+    "myChangeRequests": "எனது மாற்றக் கோரிக்கைகள்",
+    "noChangeRequests": "நீங்கள் இதுவரை எந்த மாற்றத்தையும் கோரவில்லை.",
+    "requestedOn": "{date} அன்று கோரப்பட்டது",
+    "decidedOn": "{date} அன்று பதிலளிக்கப்பட்டது",
+    "decisionReasonLabel": "காரணம்:",
+    "proposedCleared": "— நீக்கப்பட்டது —",
+    "requestedPendingLabel": "கோரப்பட்டது, ஒப்புதலுக்குக் காத்திருக்கிறது:"
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",

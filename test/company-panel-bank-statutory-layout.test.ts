@@ -464,7 +464,23 @@ describe('Bank Account: the company debit account is not masked here', () => {
   });
 
   it('the EMPLOYEE-facing masks elsewhere stay exactly as they were', () => {
-    expect(read('app/me/page.tsx'), 'app/me still masks an employee account').toContain('`•••• ${no.slice(-4)}`');
+    // r260 (9583deac stage two): the employee-side mask MOVED — the four-digit literal now lives in
+    // lib/profile-requestable-fields.ts `maskAccountNumber`, because /me has to mask the master value
+    // and the pending requested value the same way and two copies of that rule would have drifted.
+    // Both halves are asserted, so this stays a check that the mask EXISTS and is APPLIED on /me,
+    // rather than a check that one file still contains a string.
+    expect(
+      read('lib/profile-requestable-fields.ts'),
+      'the shared employee-account mask (maskAccountNumber) still truncates to four digits',
+    ).toContain('`•••• ${String(no).slice(-4)}`');
+    expect(read('app/me/page.tsx'), 'app/me still masks an employee account').toContain(
+      'maskAccountNumber(st.bankAccountNo)',
+    );
+    // …and the pending value drawn beside it is masked by the same function, not printed in full.
+    expect(
+      read('app/me/request-change-card.tsx'),
+      'a pending account number on /me is masked by the same rule as the master one',
+    ).toContain('formatProposedValue(field, value, t, { mask: true })');
     expect(read('lib/audit-format.ts'), 'the audit formatter still masks sensitive values').toContain(
       '`•••• ${s.slice(-4)}`',
     );

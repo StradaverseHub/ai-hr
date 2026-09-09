@@ -3,14 +3,40 @@
  *  - low-risk contact fields → direct self-edit of `person` (RLS confines it to the caller's
  *    own row; this is the only writer that runs under an employee session and it never touches
  *    name/email/identity);
- *  - pay-affecting fields (bank, dependents, PCB category on employee_statutory_my) → a change
- *    request an admin approves before it applies. Reuses the shared `assertCanDecide` guard.
+ *  - everything else the employee may ask to change → a change request an admin approves before it
+ *    applies. Reuses the shared `assertCanDecide` guard.
+ *
+ * ── r260 · STAGE TWO OF BOARD ITEM 9583deac: WIDENED, NOT REBUILT ───────────────────────────────────
+ * The approved plan corrects an earlier build note of our own that said stage two needed a request
+ * store. It did not: this file and `profile_change_request` (migration 0029) have implemented the
+ * request-and-approve path since ADR-0012. Stage two changes three things and nothing else:
+ *
+ *   1. WHICH FIELDS may be proposed. Was seven names hard-coded across this file, the /me form and the
+ *      /me action; is now `lib/profile-requestable-fields.ts`, one declaration that all three read, and
+ *      whose keys are the SAME `people.detail.*` names the visibility manifest uses — so a permission
+ *      (stage three) and a request can never disagree about what a field is called.
+ *   2. A REJECTION MUST SAY WHY, and the employee is shown the sentence
+ *      (ProfileChangeReasonRequiredError + `decision_reason`, migration 0458). The only genuinely new
+ *      thing in the schema this round.
+ *   3. THE EMPLOYEE'S OWN HISTORY is scoped by the session rather than by a passed id, and returns the
+ *      decision reason so "waiting / approved / rejected, and why" is answerable on their own screen.
+ *
+ * What did NOT change, and must not be read as unchanged by accident: the approval authority
+ * (admin-only, never self, through `assertCanDecide`), the fact that a pending request touches nothing,
+ * and the audit rule that the event log records field NAMES and never values.
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
 import { assertCanDecide } from './approvals';
+// 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
+// both screens, and which table/column an approval writes it to. See the header of that file.
+import {
+  PROFILE_REQUESTABLE_FIELDS,
+  requestableField,
+  type ProfileRequestTarget,
+} from '../lib/profile-requestable-fields';
 // 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
 import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
 // 35b7af0a — the person master lists, defined in a CLIENT-SAFE module and re-exported below (see the note
@@ -39,41 +65,126 @@ const oneOf = (v: unknown, allowed: readonly string[]): string | null => {
 // test/marital-master-enum.test.ts asserts that with `toBe`.
 export { GENDERS, MARITAL_STATUSES };
 
+/**
+ * ── STAGE TWO (r260, board item 9583deac): THE PROPOSABLE KEYS ARE A DECLARATION, NOT A LIST HERE ───
+ *
+ * `lib/profile-requestable-fields.ts` names every field an employee may ask to change, the
+ * `people.detail.*` key it is called by on both screens, and the table + column an approval writes it
+ * to. This type is the same set expressed for the type-checker; `sanitizeProposed` and the apply half of
+ * `decideProfileChange` both walk the declaration, so widening the set is one edit in one file rather
+ * than an edit here, an edit in the sanitiser, an edit in the applier and an edit in the form.
+ */
 export type ProfileChangeProposed = {
   // Pay-affecting statutory fields (employee_statutory_my).
   bankName?: string | null;
   bankAccountNo?: string | null;
   taxCategory?: number;
   numChildren?: number;
+  // Stage two — the registration numbers an employee is issued and HR files returns against.
+  epfNumber?: string | null;
+  socsoNumber?: string | null;
+  taxNumber?: string | null;
+  // Stage two — the identity documents on the statutory row, read on the employee's Profile tab.
+  icNumber?: string | null;
+  oldIcNumber?: string | null;
+  passportNumber?: string | null;
+  passportIssueDate?: string | null;
+  passportExpiryDate?: string | null;
+  passportIssuingCountry?: string | null;
   // Compliance-sensitive identity fields on `person` (ADR-0012 §refinement, #24): date of birth drives
   // age-based statutory (EPF senior/SOCSO/retirement), marital status drives the PCB category, and gender
   // gates maternity/paternity eligibility — so a self-edit goes through approval, not a direct write.
   dateOfBirth?: string | null;
   gender?: string | null;
   maritalStatus?: string | null;
+  // Stage two — the name block and the personal particulars. NOT on the self-edit path and never will
+  // be: `person.full_name` prints on the payslip, the EA statement and the bank file.
+  salutation?: string | null;
+  fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  preferredName?: string | null;
+  nationality?: string | null;
+  religion?: string | null;
+  race?: string | null;
 };
 
-/** Keep only the recognised, sanitised keys — the bundle is a jsonb patch we later apply. */
+/** ISO calendar date, the only date shape a proposal may carry. */
+const isoDate = (v: unknown): string | null | undefined => {
+  // Accept a clear (null / '') or a well-formed ISO date only; a malformed value is DROPPED (never
+  // written) so a bad DOB can't reach the age-band statutory math (EPF/SOCSO, core/payroll.ts).
+  const d = clean(v);
+  if (d === null) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
+};
+
+/**
+ * Keep only the recognised, sanitised keys — the bundle is a jsonb patch we later apply.
+ *
+ * DRIVEN BY THE DECLARATION. Every key must be one `lib/profile-requestable-fields.ts` names, and its
+ * `input` decides how the value is cleaned: `select` is whitelisted against the declaration's own
+ * options, `date` must be ISO, `number` is coerced to a non-negative integer, `text` is trimmed to
+ * null-or-value. An unknown key is silently dropped, exactly as before — a form that posts junk gets
+ * nothing stored rather than an error that tells a prober which names exist.
+ */
 function sanitizeProposed(raw: ProfileChangeProposed): ProfileChangeProposed {
-  const out: ProfileChangeProposed = {};
-  if (raw.bankName !== undefined) out.bankName = clean(raw.bankName);
-  if (raw.bankAccountNo !== undefined) out.bankAccountNo = clean(raw.bankAccountNo);
-  if (raw.taxCategory !== undefined && [1, 2, 3].includes(Number(raw.taxCategory))) {
-    out.taxCategory = Number(raw.taxCategory);
+  const out: Record<string, string | number | null> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value === undefined) continue;
+    const field = requestableField(key);
+    if (!field) continue;
+    if (field.input === 'select') {
+      // The declaration's own option values, plus the two module master lists it mirrors — GENDERS and
+      // MARITAL_STATUSES stay the authority for those two so a rule value elsewhere in the product
+      // (leave eligibility) can never name a status this path would refuse.
+      const allowed =
+        key === 'gender' ? GENDERS : key === 'maritalStatus' ? MARITAL_STATUSES : (field.options ?? []).map((o) => o.value);
+      const picked = oneOf(value, allowed);
+      if (key === 'taxCategory') {
+        // Stored as an LHDN integer, and it is NOT NULL with a default — so an unrecognised value is
+        // dropped rather than turned into a null that the column would refuse on apply.
+        if (picked !== null) out[key] = Number(picked);
+      } else {
+        // Text-valued selects: an unrecognised value means "clear it", the behaviour since #24.
+        out[key] = picked;
+      }
+      continue;
+    }
+    if (field.input === 'date') {
+      const d = isoDate(value);
+      if (d === undefined) continue; // malformed — dropped, never written
+      out[key] = d;
+      continue;
+    }
+    if (field.input === 'number') {
+      if (!Number.isFinite(Number(value))) continue;
+      out[key] = Math.max(0, Math.floor(Number(value)));
+      continue;
+    }
+    out[key] = clean(value);
   }
-  if (raw.numChildren !== undefined && Number.isFinite(Number(raw.numChildren))) {
-    out.numChildren = Math.max(0, Math.floor(Number(raw.numChildren)));
+  return out as ProfileChangeProposed;
+}
+
+/**
+ * A rejection must say why. The plan promises the reporter exactly that, and this is the SOLE authority
+ * for it — the same shape as leave's MissingRejectReasonError, thrown BEFORE the transaction opens so a
+ * reasonless rejection never reaches the row.
+ *
+ * ── AND IT IS DELIBERATELY NOT ALSO A DATABASE CONSTRAINT ───────────────────────────────────────────
+ * Migration 0458's first draft carried `CHECK (status <> 'rejected' OR decision_reason <> '') NOT VALID`
+ * as "a second line of the same defence". It was not a second line; it was a second RULE, applying to
+ * every writer of the row rather than to every rejection. NOT VALID skips the historical scan but is
+ * still enforced on the new row version of any UPDATE, and `core/pdpa.ts` erasePersonPii rewrites EVERY
+ * one of a subject's profile-change rows inside the single transaction an erasure runs in — so one
+ * pre-existing reasonless rejection would have aborted that employee's whole PDPA erasure. Rejecting is
+ * done HERE and nowhere else, so the rule is enforced here and nowhere else.
+ */
+export class ProfileChangeReasonRequiredError extends Error {
+  constructor() {
+    super('A reason is required to reject a profile change request');
+    this.name = 'ProfileChangeReasonRequiredError';
   }
-  if (raw.dateOfBirth !== undefined) {
-    // Accept a clear (null / '') or a well-formed ISO date only; a malformed value is dropped (never
-    // written) so a bad DOB can't reach the age-band statutory math (EPF/SOCSO, core/payroll.ts).
-    const d = clean(raw.dateOfBirth);
-    out.dateOfBirth = d === null ? null : /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
-    if (out.dateOfBirth === undefined) delete out.dateOfBirth;
-  }
-  if (raw.gender !== undefined) out.gender = oneOf(raw.gender, GENDERS);
-  if (raw.maritalStatus !== undefined) out.maritalStatus = oneOf(raw.maritalStatus, MARITAL_STATUSES);
-  return out;
 }
 
 /** The caller's own profile: editable contact fields + a read-only summary of the
@@ -188,8 +299,14 @@ export async function updateOwnContact(
   });
 }
 
-/** Propose a change to pay-affecting fields. RLS confines the insert to the caller's own
- *  employment; approval (admin-only) applies it. */
+/**
+ * Propose a change to any field `lib/profile-requestable-fields.ts` declares. RLS confines the insert to
+ * the caller's own employment; approval (admin-only) applies it, and nothing before that touches the
+ * master record.
+ *
+ * `numChildren` (num_children) is `NOT NULL DEFAULT 0` and `taxCategory` is `NOT NULL DEFAULT 1`; both
+ * are sanitised to a value or dropped, never to null, so an approval cannot violate the column.
+ */
 export async function requestProfileChange(
   ctx: SessionContext,
   p: { employmentId: string; proposed: ProfileChangeProposed },
@@ -224,12 +341,34 @@ export async function requestProfileChange(
   });
 }
 
-/** Decide a profile change. Admin-only (bank/tax data is not a manager's call) and never
- *  self — approval applies the proposed patch to the statutory profile. */
+/**
+ * Decide a profile change. Admin-only (bank/tax data is not a manager's call) and never self —
+ * approval applies the proposed patch, rejection applies NOTHING.
+ *
+ * ── THE SAFETY PROPERTY OF THE WHOLE OF STAGE TWO ───────────────────────────────────────────────────
+ * A pending request must never reach the master record without a decision, and a rejected one must never
+ * be applied at all. Structurally: the write set is built inside `if (p.decision === 'approved')` and
+ * there is no other writer in this function — the only thing a rejection touches is the request row's
+ * own status, decider, timestamp and reason. `test/me-profile-change-requests.test.ts` pins it by
+ * reading the master columns byte-for-byte either side of a rejection.
+ *
+ * ── AND A REJECTION MUST SAY WHY ────────────────────────────────────────────────────────────────────
+ * `reason` is REQUIRED when rejecting (ProfileChangeReasonRequiredError, thrown before the transaction
+ * opens) and optional when approving. It is stored on the request and shown to the EMPLOYEE on their own
+ * screen — which is the point of it, and the one thing in stage two the schema did not already have.
+ */
 export async function decideProfileChange(
   ctx: SessionContext,
-  p: { requestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
+  p: {
+    requestId: string;
+    decision: 'approved' | 'rejected';
+    deciderEmploymentId?: string;
+    /** The approver's words. Required to reject; optional on an approval. */
+    reason?: string | null;
+  },
 ) {
+  const reason = clean(p.reason);
+  if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   return withTenant(ctx, async (tx) => {
     const [req] = await tx
       .select()
@@ -246,13 +385,44 @@ export async function decideProfileChange(
     }
 
     if (p.decision === 'approved') {
-      const proposed = (req.proposed ?? {}) as ProfileChangeProposed;
+      const proposed = (req.proposed ?? {}) as Record<string, unknown>;
+      /**
+       * THE WRITE SETS ARE BUILT FROM THE DECLARATION, one entry per field, so a field added to
+       * lib/profile-requestable-fields.ts is applied on approval without a second edit here. Before
+       * stage two this was an `if` ladder of four names beside another of three, and the two ladders
+       * were the reason "requestable" and "appliable" could quietly become different sets: a key could
+       * be accepted into `proposed`, wait in the queue, be approved — and land nowhere.
+       */
+      const setFor = (target: ProfileRequestTarget): Record<string, unknown> => {
+        const out: Record<string, unknown> = {};
+        for (const f of PROFILE_REQUESTABLE_FIELDS) {
+          if (f.target !== target) continue;
+          if (proposed[f.key] === undefined) continue;
+          out[f.column] = proposed[f.key];
+        }
+        return out;
+      };
       // Pay-affecting statutory fields → employee_statutory_my (needs a statutory profile to apply to).
-      const statSet: Record<string, unknown> = {};
-      if (proposed.bankName !== undefined) statSet.bankName = proposed.bankName;
-      if (proposed.bankAccountNo !== undefined) statSet.bankAccountNo = proposed.bankAccountNo;
-      if (proposed.taxCategory !== undefined) statSet.taxCategory = proposed.taxCategory;
-      if (proposed.numChildren !== undefined) statSet.numChildren = proposed.numChildren;
+      const statSet = setFor('statutory');
+      // The IC is uniquely indexed per tenant (employee_statutory_my_ic_uq, partial on NOT NULL). An
+      // approval that collides would surface as a raw Postgres unique violation in a redirect's query
+      // string; checked here instead so the approver is told what is wrong in a sentence. Inside the
+      // transaction and under RLS, so it reads only rows this approver may already see.
+      if (typeof statSet.icNumber === 'string' && statSet.icNumber !== '') {
+        const [clash] = await tx
+          .select({ id: employeeStatutoryMy.id })
+          .from(employeeStatutoryMy)
+          .where(
+            and(
+              eq(employeeStatutoryMy.icNumber, statSet.icNumber),
+              sql`${employeeStatutoryMy.personId} <> ${req.personId}`,
+            ),
+          )
+          .limit(1);
+        if (clash) {
+          throw new Error('That identity number is already filed against another employee.');
+        }
+      }
       if (Object.keys(statSet).length > 0) {
         const [existing] = await tx
           .select({ id: employeeStatutoryMy.id })
@@ -276,11 +446,14 @@ export async function decideProfileChange(
           payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(statSet) },
         });
       }
-      // #24: compliance-sensitive identity fields → person (no statutory profile required).
-      const personSet: Record<string, unknown> = {};
-      if (proposed.dateOfBirth !== undefined) personSet.dateOfBirth = proposed.dateOfBirth;
-      if (proposed.gender !== undefined) personSet.gender = proposed.gender;
-      if (proposed.maritalStatus !== undefined) personSet.maritalStatus = proposed.maritalStatus;
+      // #24 + stage two: identity, name and personal particulars → person (no statutory profile
+      // required). `person.full_name` is NOT NULL, so a proposal that would blank it is dropped rather
+      // than written — the request stays approved and the rest of it applies, which is the same
+      // treatment sanitizeProposed gives a malformed date.
+      const personSet = setFor('person');
+      if ('fullName' in personSet && (personSet.fullName == null || personSet.fullName === '')) {
+        delete personSet.fullName;
+      }
       if (Object.keys(personSet).length > 0) {
         await tx.update(person).set(personSet).where(eq(person.id, req.personId));
         await appendEvent(tx, {
@@ -301,6 +474,7 @@ export async function decideProfileChange(
         status: p.decision,
         decidedByEmploymentId: p.deciderEmploymentId ?? null,
         decidedAt: sql`now()`,
+        decisionReason: reason,
       })
       .where(eq(profileChangeRequest.id, req.id));
     await appendEvent(tx, {
@@ -310,7 +484,14 @@ export async function decideProfileChange(
       eventType: `profile-change.${p.decision}`,
       actor: actorOf(ctx),
       subjectEmploymentId: req.employmentId,
-      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
+      // The REASON IS NOT AUDITED INTO THE EVENT LOG, deliberately, and for the same rule the values
+      // follow (see requestProfileChange): the log is append-only and PDPA erasure cannot reach it, so
+      // it records that a decision carried a reason rather than the sentence itself. The sentence lives
+      // on profile_change_request.decision_reason, which is RLS-scoped and erasable with the record.
+      // Single-line, which is the repo convention AND what test/event-payload-pii-guard.test.ts can
+      // actually scan — it reads the remainder of the line containing `payload:`, so a wrapped object
+      // literal in the one core file that handles bank, IC and passport values would be unscanned.
+      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null, reasonGiven: reason !== null },
     });
     return { status: p.decision };
   });
@@ -418,6 +599,8 @@ export function listProfileChangeRequests(
         employeeCode: employment.employeeCode,
         proposed: profileChangeRequest.proposed,
         status: profileChangeRequest.status,
+        decisionReason: profileChangeRequest.decisionReason,
+        decidedAt: profileChangeRequest.decidedAt,
         createdAt: profileChangeRequest.createdAt,
       })
       .from(profileChangeRequest)
@@ -436,18 +619,38 @@ export function listProfileChangeRequests(
   );
 }
 
-/** The caller's own recent profile-change requests (the /me history). */
-export function myProfileChangeRequests(ctx: SessionContext, employmentId: string, limit = 5) {
+/**
+ * The caller's own profile-change requests — the /me history, and the source of the pending values My
+ * Profile draws BESIDE the master ones.
+ *
+ * ── IT TAKES NO ID, AND THAT IS THE SECURITY PROPERTY ───────────────────────────────────────────────
+ * Stage one made `myProfileRecord` resolve the employment from `ctx.personId` for exactly this reason
+ * (app/me/record.ts's header). This used to take an `employmentId` parameter: the /me page passed its
+ * own, and RLS would have refused a colleague's rows anyway — but a parameter is a way in that a future
+ * caller can get wrong, and "scoped by the session" is a property you can read off the signature. So the
+ * subject is `ctx.personId` and there is nothing to pass. A principal linked to no person gets an empty
+ * list rather than everybody's. Pinned by test/me-profile-change-requests.test.ts, which calls it under
+ * a colleague's session and expects nothing back.
+ *
+ * `limit` defaults to the whole recent history rather than five: the plan promises "You can see the
+ * status of your own requests: waiting, approved or rejected", and a rejection that scrolled off the
+ * bottom after five newer requests is a promise not kept.
+ */
+export function myProfileChangeRequests(ctx: SessionContext, limit = 50) {
+  const personId = ctx.personId;
+  if (!personId) return Promise.resolve([]);
   return withTenant(ctx, (tx) =>
     tx
       .select({
         id: profileChangeRequest.id,
         proposed: profileChangeRequest.proposed,
         status: profileChangeRequest.status,
+        decisionReason: profileChangeRequest.decisionReason,
+        decidedAt: profileChangeRequest.decidedAt,
         createdAt: profileChangeRequest.createdAt,
       })
       .from(profileChangeRequest)
-      .where(eq(profileChangeRequest.employmentId, employmentId))
+      .where(eq(profileChangeRequest.personId, personId))
       .orderBy(desc(profileChangeRequest.createdAt))
       .limit(limit),
   );

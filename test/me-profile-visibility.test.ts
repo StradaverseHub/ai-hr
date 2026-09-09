@@ -40,6 +40,9 @@ const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
 const ME_PAGE = read('app/me/page.tsx');
 const ME_RECORD = read('app/me/record.ts');
 const READ_FIELD = read('app/me/read-field.tsx');
+// r260 — the request form moved off the page and into its own card, mounted once per tab. Cases that
+// used to grep ME_PAGE for the form now grep this.
+const REQUEST_CARD = read('app/me/request-change-card.tsx');
 const DOC = read('docs/me-profile-field-visibility.md');
 const PERSONNEL_PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
 
@@ -59,6 +62,11 @@ const PERSONNEL_COMPONENTS = [
   'components/socso-eis-fields.tsx',
   'components/identity-tax-card.tsx',
   'components/bank-account-fields.tsx',
+  // r260 — /me now names the PCB category with Personnel's own `taxCategoryLabel` key rather than a
+  // second `me.pcbCategory` wording of its own, and this is the shared group that renders it on the
+  // Personnel card (35b7af0a group six). Without it here the manifest→Personnel case would report the
+  // key as "rendered nowhere on the Personnel screen", which is false.
+  'components/tax-category-field.tsx',
   'components/bank-info-card.tsx',
   'components/salary-history-table.tsx',
   'components/pay-structure-fields.tsx',
@@ -381,17 +389,43 @@ describe('r259 — the field-visibility list is a deliverable, and it is kept ho
   });
 });
 
-describe('r259 — the two existing write paths were preserved, not rebuilt', () => {
-  it('keeps ADR-0012’s two paths exactly as they were', () => {
+describe('r259/r260 — the two existing write paths were widened, not rebuilt', () => {
+  it('keeps ADR-0012’s two paths, and neither has been replaced by a second mechanism', () => {
     // The correction the reporter was given: a request-and-approve path ALREADY EXISTS
-    // (db/schema.ts profile_change_request + core/profile.ts). This round must not build a second one,
-    // and must not remove the first.
+    // (db/schema.ts profile_change_request + core/profile.ts). Neither stage may build a second one,
+    // and neither may remove the first.
     expect(ME_PAGE).toContain('action={myUpdateContact}');
-    expect(ME_PAGE).toContain('action={myRequestProfileChange}');
-    // Stage two and stage three are NOT this round. A rejection-reason box or a per-field permission
-    // control appearing here would mean a stage was built ahead of its plan.
-    for (const ahead of ['rejectionReason', 'rejectReason', 'fieldPermission']) {
-      expect(ME_PAGE.includes(ahead), `${ahead} belongs to a later stage`).toBe(false);
+    expect(REQUEST_CARD).toContain('action={myRequestProfileChange}');
+  });
+
+  it('r260: STAGE TWO IS BUILT — the request card, and the decision reason shown to the employee', () => {
+    /**
+     * THIS CASE REPLACES A STAGE-ONE ASSERTION THAT SAID THE OPPOSITE, and the reversal is deliberate
+     * rather than a relaxation (AGENTS rule 18). Stage one asserted that no rejection-reason wording
+     * appeared on /me, because a reason box then would have meant stage two was built ahead of its
+     * plan. Stage two IS that plan, so the assertion now runs the other way: the employee must be able
+     * to read the approver's reason, and the request card must exist on BOTH tabs that carry
+     * requestable fields.
+     */
+    expect(REQUEST_CARD).toContain('decisionReason');
+    expect(ME_PAGE).toContain('<RequestChangeCard tab="profile"');
+    expect(ME_PAGE).toContain('<RequestChangeCard tab="bankStatutory"');
+    // The master value is what the record shows; the request is drawn BESIDE it. So the read field
+    // still prints `value` and the pending value is a separate prop — never the same one.
+    expect(READ_FIELD).toContain('pending?: { value: string; label: string } | null');
+    expect(
+      /const shown = value == null \|\| value === '' \? notSet : value;/.test(READ_FIELD),
+      'the read field no longer shows the MASTER value — a pending request must never replace it',
+    ).toBe(true);
+  });
+
+  it('r260: STAGE THREE IS NOT BUILT — no per-field permission, no approver-choice setting', () => {
+    // The plan tells the reporter stage three follows: "A setting that controls, field by field, which
+    // information an employee may ask to change" and "A setting that controls who approves". Neither
+    // may appear early, and the single-approver decision the plan states out loud must still hold.
+    for (const ahead of ['fieldPermission', 'approverChoice', 'approvalChain', 'secondApprover']) {
+      expect(ME_PAGE.includes(ahead), `${ahead} belongs to stage three`).toBe(false);
+      expect(REQUEST_CARD.includes(ahead), `${ahead} belongs to stage three`).toBe(false);
     }
   });
 });

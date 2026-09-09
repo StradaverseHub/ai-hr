@@ -4652,10 +4652,14 @@ export const profileChangeStatusEnum = pgEnum('profile_change_status', [
   'rejected',
 ]);
 
-// Pay-affecting profile changes the employee proposes on /me (bank account, dependents, PCB
-// category — all on employee_statutory_my). An admin or their manager approves before it takes
-// effect (ADR-0012). `proposed` is a jsonb patch; approval applies only the keys it carries.
+// Profile changes the employee proposes on /me. An admin approves before any of it takes effect
+// (ADR-0012). `proposed` is a jsonb patch; approval applies only the keys it carries.
 // Low-risk contact fields are edited directly on `person` and do NOT pass through here.
+//
+// 9583deac stage two (r260) widened WHICH fields may be proposed — from bank / PCB category /
+// dependants to the declared set in lib/profile-requestable-fields.ts, which also says which of the two
+// tables below each key is applied to. The table itself did not change shape for that: a jsonb patch was
+// already indifferent to how many keys it carries.
 export const profileChangeRequest = pgTable(
   'profile_change_request',
   {
@@ -4671,6 +4675,20 @@ export const profileChangeRequest = pgTable(
     status: profileChangeStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
+    /**
+     * 9583deac stage two (migration 0458) — the approver's words, shown to the EMPLOYEE beside their own
+     * request on My Profile. REQUIRED on a rejection and optional on an approval.
+     *
+     * "Required" is enforced AT THE DECISION (core/profile.ts throws ProfileChangeReasonRequiredError
+     * before the transaction opens) and deliberately NOT by a CHECK on this table. The first draft of
+     * 0458 carried `CHECK (status <> 'rejected' OR decision_reason <> '') NOT VALID`; NOT VALID skips
+     * the historical scan but is STILL enforced on the new row version of every UPDATE, and
+     * core/pdpa.ts rewrites every one of a subject's rows during an erasure — so a legacy reasonless
+     * rejection would have aborted that employee's whole PDPA erasure. The rule belongs where the
+     * decision is made, not on a row every unrelated writer has to satisfy. Requests rejected before
+     * this column existed stay honestly blank.
+     */
+    decisionReason: text('decision_reason'),
     createdAt: createdAt(),
   },
   (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status)],

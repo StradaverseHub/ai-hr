@@ -10,10 +10,18 @@ import {
   listEmployeesPage,
 } from '@/core/read';
 import { listProfileChangeRequests } from '@/core/profile';
+// r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
+// without a reason, and the declaration that names each proposed field the way both screens name it.
+import { ProfileChangeDecide } from '@/components/profile-change-decide';
+import {
+  PROFILE_REQUEST_OPTION_NAMESPACE,
+  formatProposedValue,
+  requestableField,
+} from '@/lib/profile-requestable-fields';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
-import { Button, Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
@@ -41,24 +49,44 @@ import { EmployeeSwitcher } from './employee-switcher';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
-/** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
+/**
+ * Render a proposed change bundle as human-readable "field → value" pairs.
+ *
+ * ── r260 STAGE TWO: NAMED FROM THE DECLARATION, NOT FROM AN `if` LADDER ─────────────────────────────
+ * This used to test four field names by hand, so the widened set (lib/profile-requestable-fields.ts —
+ * twenty-four fields across `person` and `employee_statutory_my`) would have arrived here as
+ * "No changes": an approver being asked to approve a bundle the screen refused to describe. It now
+ * walks the declaration, and each field is named by the SAME `people.detail.*` key the employee reads it
+ * under on their own record — the property the plan asks for, that a request and a record can never call
+ * one field two things. `tp` is that catalogue; `t` (people.list) stays for the empty case.
+ *
+ * ── AND THE VALUE IS RENDERED BY THE SHARED RENDERER, NOT BY THIS SCREEN ────────────────────────────
+ * The first draft resolved a select option to `opt.value` — a no-op returning the string it had just
+ * matched on — so this queue printed "Tax Category → 2" and "Gender → male" where the code it replaced
+ * printed "PCB → Married · spouse working", while My Profile, in the same round, printed the label. An
+ * approver deciding a pay-affecting PCB change was being shown an LHDN code, and the two screens
+ * disagreed about one request, which is the exact opposite of what this round is for. `tMe` is the
+ * namespace those option labels live in (PROFILE_REQUEST_OPTION_NAMESPACE) — the same words the employee
+ * picked from. `mask: false`: an approver checks the proposed account number against a bank letter, and
+ * already reads it unmasked on the Personnel card.
+ *
+ * It returns one string PER FIELD rather than one joined line, because resolving the labels made the old
+ * ' · ' join ambiguous: "2 · Married, spouse not working" is ONE PCB label and read as two fields.
+ */
 function describeProposed(
   p: unknown,
   t: Awaited<ReturnType<typeof getTranslations>>,
-): string {
-  const PCB_LABEL: Record<number, string> = {
-    1: t('pcbSingle'),
-    2: t('pcbMarriedSpouseNotWorking'),
-    3: t('pcbMarriedSpouseWorking'),
-  };
+  tp: Awaited<ReturnType<typeof getTranslations>>,
+  tMe: Awaited<ReturnType<typeof getTranslations>>,
+): string[] {
   const o = (p ?? {}) as Record<string, unknown>;
   const parts: string[] = [];
-  if (o.bankName != null) parts.push(`${t('fieldBank')} → ${o.bankName}`);
-  if (o.bankAccountNo != null) parts.push(`${t('fieldAccount')} → ${o.bankAccountNo}`);
-  if (o.taxCategory != null)
-    parts.push(`${t('fieldPcb')} → ${PCB_LABEL[Number(o.taxCategory)] ?? o.taxCategory}`);
-  if (o.numChildren != null) parts.push(`${t('fieldChildren')} → ${o.numChildren}`);
-  return parts.length ? parts.join(' · ') : t('noChanges');
+  for (const [key, value] of Object.entries(o)) {
+    const f = requestableField(key);
+    if (!f) continue;
+    parts.push(`${tp(f.labelKey)} → ${formatProposedValue(f, value, tMe, { mask: false })}`);
+  }
+  return parts.length ? parts : [t('noChanges')];
 }
 
 /** people.list message key per catalogue column — ONE map, read by the <th> row, the picker and the
@@ -113,6 +141,12 @@ export default async function PeoplePage({
   await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
+  // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
+  // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
+  const tPeopleDetail = await getTranslations('people.detail');
+  // r260 — and the option WORDS (gender, marital status, PCB category) come from the namespace the
+  // employee picked them in, so the approver reads the sentence they chose and not its stored code.
+  const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const { s: session, scopeIds } = await scopedSession();
@@ -490,24 +524,27 @@ export default async function PeoplePage({
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <div className="text-sm font-medium">{r.employee}</div>
-                  <div className="text-xs text-muted-foreground">{describeProposed(r.proposed, t)}</div>
+                  {/* ONE FIELD PER LINE. The pairs used to be joined with ' · ', which was unambiguous
+                      only while the values were raw: the PCB labels the employee picks from are
+                      themselves "2 · Married, spouse not working", so a joined line read as two fields
+                      where there was one. An approver reads a pay-affecting bundle here. */}
+                  <div className="text-xs text-muted-foreground">
+                    {describeProposed(r.proposed, t, tPeopleDetail, tMeOptions).map((line) => (
+                      <div key={line}>{line}</div>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <form action={decideProfileChangeAction}>
-                    <input type="hidden" name="requestId" value={r.id} />
-                    <input type="hidden" name="decision" value="approved" />
-                    <Button type="submit" size="sm">
-                      {t('approve')}
-                    </Button>
-                  </form>
-                  <form action={decideProfileChangeAction}>
-                    <input type="hidden" name="requestId" value={r.id} />
-                    <input type="hidden" name="decision" value="rejected" />
-                    <Button type="submit" size="sm" variant="outline">
-                      {t('reject')}
-                    </Button>
-                  </form>
-                </div>
+                <ProfileChangeDecide
+                  action={decideProfileChangeAction}
+                  requestId={r.id}
+                  idFieldName="requestId"
+                  labels={{
+                    approve: t('approve'),
+                    reject: t('reject'),
+                    reasonPlaceholder: t('rejectReasonPlaceholder'),
+                    yourRequest: t('approve'),
+                  }}
+                />
               </li>
             ))}
           </ul>

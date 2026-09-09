@@ -28,13 +28,26 @@ import type { ReactNode } from 'react';
  * quietly become different renderings of the same idea.
  */
 
-/** One label + one value, rendered the way the Personnel screen renders a view-only field. */
+/**
+ * One label + one value, rendered the way the Personnel screen renders a view-only field.
+ *
+ * ── r260 STAGE TWO: `pending` DRAWS A REQUESTED VALUE BESIDE THE MASTER ONE, NEVER OVER IT ──────────
+ * The approved plan's wording, which this prop exists to keep: "A field with a request waiting shows
+ * both values — what it is now and what was asked for — so nobody is confused about which one is real."
+ *
+ * So the disabled input keeps showing the MASTER value, unchanged and in the same place it was before a
+ * request existed, and the requested value is a second line underneath it, labelled as awaited. The
+ * alternative — swapping the displayed value for the requested one and marking it "pending" — is the
+ * failure the sentence describes: an employee would read their record and see a number that is not yet
+ * their number, on the same screen their payslip is generated from.
+ */
 export function ReadField({
   label,
   value,
   notSet,
   className,
   title,
+  pending,
 }: {
   label: string;
   /** Already-resolved display text. Null/undefined/'' all render `notSet`. */
@@ -44,11 +57,23 @@ export function ReadField({
   notSet: string;
   className?: string;
   title?: string;
+  /**
+   * A change waiting on an approver: the requested value, already resolved to display text by the
+   * caller, and the caller's own "requested, awaiting approval" wording. Absent (the ordinary case)
+   * renders exactly what this component rendered in stage one, byte for byte.
+   */
+  pending?: { value: string; label: string } | null;
 }) {
   const shown = value == null || value === '' ? notSet : value;
   return (
     <Field label={label} className={className}>
       <input value={shown} disabled readOnly aria-readonly="true" title={title} className={inputCls} />
+      {pending ? (
+        <p className="mt-1 flex flex-wrap items-baseline gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+          <span className="font-medium">{pending.label}</span>
+          <span className="font-semibold">{pending.value}</span>
+        </p>
+      ) : null}
     </Field>
   );
 }
