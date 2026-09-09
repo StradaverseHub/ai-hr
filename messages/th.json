@@ -8496,13 +8496,20 @@
     }
   },
   "topbar": {
+    "accountMenu": "เมนูบัญชี",
     "allCompanies": "ทุกบริษัท",
-    "companyCount": "{count, plural, one {# บริษัท} other {# บริษัท}}",
     "companyContext": "บริบทบริษัท",
+    "companyCount": "{count, plural, one {# บริษัท} other {# บริษัท}}",
     "deselectAll": "ล้างการเลือกทั้งหมด",
     "devAs": "พัฒนาในฐานะ",
+    "employeeIdLabel": "รหัสพนักงาน",
+    "noEmployeeId": "ไม่มีรหัสพนักงาน",
+    "noEmployeeRecord": "ไม่มีข้อมูลพนักงาน",
     "noRole": "ไม่มีบทบาท",
-    "selectAll": "เลือกทั้งหมด"
+    "platformAccount": "บัญชีระบบ",
+    "selectAll": "เลือกทั้งหมด",
+    "signedInAs": "เข้าสู่ระบบในชื่อ",
+    "viewProfile": "ดูโปรไฟล์ของฉัน"
   },
   "components": {
     "plannedAbsences": {

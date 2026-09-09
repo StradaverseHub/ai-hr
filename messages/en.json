@@ -8496,13 +8496,20 @@
     }
   },
   "topbar": {
+    "accountMenu": "Account menu",
     "allCompanies": "All companies",
-    "companyCount": "{count, plural, one {# company} other {# companies}}",
     "companyContext": "Company context",
+    "companyCount": "{count, plural, one {# company} other {# companies}}",
     "deselectAll": "Deselect all",
     "devAs": "dev as",
+    "employeeIdLabel": "Employee ID",
+    "noEmployeeId": "No Employee ID",
+    "noEmployeeRecord": "No employee record",
     "noRole": "no role",
-    "selectAll": "Select all"
+    "platformAccount": "Platform account",
+    "selectAll": "Select all",
+    "signedInAs": "Signed in as",
+    "viewProfile": "View my profile"
   },
   "components": {
     "plannedAbsences": {

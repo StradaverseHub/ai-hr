@@ -12,13 +12,14 @@ import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
-import { LogoutButton } from '@/components/logout-button';
+import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
 import { TourLauncher } from '@/components/tour-launcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
@@ -92,6 +93,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
   // there is no open/closed state to persist (stale cookies in existing browsers are unused and
   // harmless). rail_collapsed handling is unchanged.
+  // fbf6abd0 — WHO IS SIGNED IN. The name + Employee ID shown in the top right, read from the viewer's
+  // own EMPLOYMENT and PERSON (lib/viewer.ts), never from lib/principals.ts: that list is the dev/demo
+  // switcher and is empty on a real deployment, which is exactly why the header used to carry no
+  // identity at all. It always resolves to something renderable — an employed viewer, a named principal
+  // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
+  // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
+  const viewer = await viewerIdentity(session);
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
@@ -218,7 +226,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     <ThemeToggle />
                   </span>
                   <TourLauncher />
-                  <LogoutButton />
+                  {/* Log out lives INSIDE this menu now (fbf6abd0). It is one extra click, and it is what
+                      keeps the corner from crowding once the name and Employee ID sit beside it. */}
+                  <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} />
                 </div>
               </header>
               {/* `relative` is load-bearing: sr-only helpers are position:absolute, and with no

@@ -22,6 +22,7 @@ const SWITCHER = fs.readFileSync(
   'utf8',
 );
 const COMMAND_BAR = fs.readFileSync(path.resolve(__dirname, '../components/command-bar.tsx'), 'utf8');
+const USER_MENU = fs.readFileSync(path.resolve(__dirname, '../components/user-menu.tsx'), 'utf8');
 
 describe('topbar — search box and company switcher keep to their own lanes', () => {
   it('header keeps the three-lane grid template (bounded centre track, minmax(0,1fr) sides)', () => {
@@ -44,6 +45,19 @@ describe('topbar — search box and company switcher keep to their own lanes', (
 
   it('company switcher label truncates with a ceiling, not a fixed floor', () => {
     expect(SWITCHER).toContain('min-w-0 max-w-[14rem] truncate');
+  });
+
+  /**
+   * fbf6abd0 added a SECOND text-bearing child to the right cluster — the account menu, carrying a
+   * person's name and their Employee ID, both of which are arbitrarily long. It is exactly the shape of
+   * child this file exists to keep shrink-capable, so it arrives with the same chain as the company
+   * switcher: min-w-0 wrapper (the flex item), max-w-full trigger, and truncating labels with a ceiling.
+   */
+  it('account menu flex item can compress below its name/ID width', () => {
+    expect(USER_MENU).toContain('<div className="relative min-w-0">');
+    expect(USER_MENU).toContain('flex min-w-0 max-w-full items-center');
+    // Both labels: the name and the Employee ID each truncate rather than setting a width floor.
+    expect(USER_MENU.match(/max-w-\[10rem\] truncate/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
   it('command bar trigger tolerates a narrow centre track (icon + ellipsised placeholder)', () => {
