@@ -278,6 +278,29 @@ a real round:
     Close over the parent's own `WORK` entry instead, and prefer `(build, w) =>` to re-deriving `w` from
     `build`.
 
+36. **"ALL THE GUARDS ARE GREEN" IS A CLAIM, NOT A RESULT — AND IT HAS BEEN FALSE TWICE IN THREE ROUNDS.**
+    r258's leave-types build reported "52 files green, including every directory-walking guard" while
+    `test/leave-pack-drift.test.ts` was RED and had never been run. r260's profile build reported
+    "23 files / 288 tests, exit 0" while three static guards were red and neither of their files appears
+    in its list. Both times the verify pass found it by running the guards itself; both times the parent's
+    full gate would otherwise have gone red after the merge. **Require the LIST of files run, compare it
+    against the files that actually grep the directories you touched, and treat any guard named in a
+    report but absent from the list as unrun.** A source-scanning guard is DB-free and takes seconds —
+    there is no excuse for inferring its result.
+
+37. **A `NOT VALID` CHECK CONSTRAINT IS STILL ENFORCED ON EVERY UPDATE, SO IT CAN BREAK A WRITER THAT HAS
+    NOTHING TO DO WITH YOUR FEATURE.** `NOT VALID` skips the scan of EXISTING rows; it does not exempt
+    them from future writes. r260 added one to `profile_change_request` requiring a reason on a rejection,
+    deliberately leaving legacy rejections blank — and `core/pdpa.ts` updates EVERY row for the subject,
+    with no status filter, inside the single atomic erasure transaction. One legacy reasonless rejection
+    would therefore have aborted the whole PDPA erasure for that employee, erasing nothing. **The suite
+    could not see it**: every test database is migrated fresh, so the legacy row it needs cannot exist
+    there. The defence written in the migration header enumerated the callers the author thought of and
+    missed the eraser — which is the general lesson. **Enforce a rule about how a row is DECIDED in the
+    service that decides it; keep the column nullable.** Before adding any constraint to an existing
+    table, list every writer of that table (`grep` for the table name), not just the ones your feature
+    calls.
+
 **Deploy is automatic after a green gate** (owner's standing override of ADR-0045): tsc → full suite
 → `next build` → rehearsal (if migration) → merge → rsync → `deploy.sh` → **run any script the round
 depends on** → verify → mark deployed. `GET /` returning 401 is the healthy password gate. Proof of
