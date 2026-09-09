@@ -36,11 +36,11 @@
  *      (test/function-access.test.ts fails both ways); a new route ON the map before Round 5 would put two
  *      entries for one job in front of the administrator.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
+import { LEAVE_CONFIG_MAP, leaveConfigScreenHref } from '../components/leave-config-map';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -441,6 +441,163 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     // `tr('pickerSelectedCount')` throws FORMATTING_ERROR — the ICU variable is supplied on the client as
     // the selection changes. Caught by render-verify, not by tsc, the build or the suite.
     expect(src.companyRules).toContain("tr.raw('pickerSelectedCount')");
+  });
+
+  it('F4/F26 the half-day picker offers the adminOnly WRITE scope, never the page-wide company list', () => {
+    // ⚠️ SECURITY-ADJACENT, AND UNTIL r259 PINNED BY NOTHING AT ALL. The verify pass proved the gap at
+    // runtime rather than asserting it: swapping `listCompanies(s, { adminOnly: true })` for
+    // `listCompanies(s)` on this page passed this file, leave-config-map, leave-pack-drift,
+    // server-client-boundary and function-access — 87/87 green — because every one of them checks what
+    // the page RENDERS, never which company set it renders it from.
+    //
+    // The company UPDATE policy is admin-for-company (`app.is_admin_for`, migration 0016's WITH CHECK),
+    // so `listCompanies(s)` — what the rest of this page reads, for the filter and for the "who may
+    // SUBMIT" criterion — is WIDER than the set the write can reach. Feeding the picker that wider list
+    // would let a company-scoped hr_admin tick or untick a company whose row
+    // core.setLeaveHalfDayFullDeductionCompanies then silently refuses: the screen and the database
+    // disagreeing, with no error and nothing on screen to see. It is also the OLD screen's scope
+    // character for character — test/leave-condition-substeps.test.ts pins the same call on
+    // /admin/leave/entitlements, and a different scope here would be a different control.
+    //
+    // Asserted STRUCTURALLY — which name the adminOnly read is bound to, and which list the picker is
+    // handed — rather than by a bare `toContain('adminOnly')`: keeping the call while handing the picker
+    // `visible` is the same defect with the reassuring string still in the file.
+    const batch = /const \[([^\]]+)\] = await Promise\.all\(\[([\s\S]*?)\n\s*\]\);/.exec(src.companyRules);
+    expect(
+      batch,
+      'Company rules no longer batches its reads in one Promise.all — re-point this case at wherever ' +
+        '`halfDayCompanies` is now bound, never drop it',
+    ).not.toBeNull();
+    const names = batch![1].split(',').map((x) => x.trim());
+    const calls = batch![2]
+      .split('\n')
+      .map((l) => l.trim().replace(/,$/, ''))
+      .filter(Boolean);
+    const i = names.indexOf('halfDayCompanies');
+    expect(i, '`halfDayCompanies` is no longer read on Company rules').toBeGreaterThan(-1);
+    expect(
+      calls[i],
+      "the half-day picker's company list is no longer the adminOnly scope — a company-scoped hr_admin " +
+        'would be offered companies whose row the write can never reach, and the untick would vanish on save',
+    ).toBe('listCompanies(s, { adminOnly: true })');
+
+    // …and that narrower list is what the PICKER is handed. Scoped to the form, so a wider list read
+    // elsewhere on the page for a different question cannot satisfy it.
+    const form = scopeFor('setLeaveHalfDayFullDeductionCompaniesAction');
+    expect(form, 'no form on Company rules posts setLeaveHalfDayFullDeductionCompaniesAction').not.toBeNull();
+    expect(form!).toContain('companies={halfDayCompanies.map((c) => ({ value: c.id, label: c.name }))}');
+    for (const wider of ['companies', 'visible', 'shown']) {
+      expect(
+        new RegExp(`companies=\\{${wider}\\b`).test(form!),
+        `the half-day picker is fed \`${wider}\`, which is wider than the set the write can reach`,
+      ).toBe(false);
+    }
+    // The ticked state is derived from the SAME narrow list: derived from a wider one, the card would
+    // show ticks for companies the picker does not even offer.
+    expect(src.companyRules).toContain(
+      'const halfDayEnabledCompanyIds = halfDayCompanies.filter((c) => c.leaveHalfDayFullDeduction).map((c) => c.id);',
+    );
+  });
+
+  it('the three save banners on Company rules are DORMANT until Round 5, and this says so out loud', () => {
+    // ⚠️ THIS CASE IS A DISCLOSURE, NOT A FEATURE CLAIM, and it is here so nobody reads dead markup as
+    // live UI. The `?error=` / `?saved=` / `?warning=` params those banners read are produced by
+    // `setToilPolicyAction`, which redirects to the `LEAVE_REPLACEMENT` module constant — the OLD screen
+    // — so today all three land THERE, which does render them (app/admin/leave/replacement/page.tsx).
+    // None of the three can appear on this page: r259's verify pass rendered it 55 times and no banner
+    // path was ever taken. Nothing is lost meanwhile; the copy that is live is the old screen's.
+    //
+    // They are rendered here anyway, deliberately. `warning=` is the Phase-B #14 premium-equivalent
+    // BANKING-RISK warning, which was produced on every qualifying save for months and silently dropped
+    // because the screen it landed on did not read the param. Shipping the screen that absorbs
+    // Replacement leave WITHOUT the banner would set that up to happen a second time, at the exact
+    // moment Round 5 repoints the constant. A screen that cannot show a warning it is about to be sent
+    // is the version of this worth refusing.
+    //
+    // ⚠️ WHEN ROUND 5 REPOINTS `LEAVE_REPLACEMENT` AT `/admin/leave-config/company-rules`, THIS CASE
+    // FAILS — that is the whole point of asserting the old constant. It is the reminder that these three
+    // banners have just become live UI, not a defect to route around: update the assertion in the
+    // cutover commit (docs/design/a6fe37fc-migration-order.md → Round 5).
+    expect(src.companyRules).toContain('const { error, warning, saved, company } = await searchParams;');
+    expect(src.companyRules).toContain('<ErrorBanner message={error} />');
+    expect(src.companyRules).toContain("tr('savedBanner')");
+    expect(src.companyRules).toContain('{warning}');
+    // The old screen still reads them, so the risk warning reaches an administrator TODAY.
+    expect(OLD.replacement).toContain('const { error, warning, saved, company } = await searchParams;');
+    // …and the action still returns there, which is what makes the copies above dormant. Both halves
+    // carry the same instruction, because either one is what a Round 5 commit trips over first.
+    const ROUND_5 =
+      'the `warning=` / `saved=` / `error=` params now land on /admin/leave-config/company-rules, so the ' +
+      'three banners asserted above have just become LIVE UI — including the premium-equivalent ' +
+      'banking-risk warning. Re-point this case at the new target and re-read the new screen; do not delete it.';
+    expect(
+      actionsSrc.includes("const LEAVE_REPLACEMENT = '/admin/leave/replacement';"),
+      `LEAVE_REPLACEMENT no longer names the old Replacement leave screen — if Round 5 has repointed it, ${ROUND_5}`,
+    ).toBe(true);
+    expect(
+      /const back = \(params: string\) =>\s+`\$\{LEAVE_REPLACEMENT\}/.test(actionsSrc),
+      `setToilPolicyAction no longer returns through LEAVE_REPLACEMENT — if Round 5 has repointed it, ${ROUND_5}`,
+    ).toBe(true);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────────
+// The preview module has ONE navigation direction, and it is OUT
+// ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('a6fe37fc R3 · every cross-screen link in the preview module points where the MAP points', () => {
+  // r259 finding 3: the module navigated two ways at once. `LeaveConfigMap` on all seven new pages links
+  // to the OLD addresses (the menu moves at the cutover, one commit per screen), while four of those same
+  // pages' back-links pointed back INTO `/admin/leave-config/`. Each half is defensible alone; together
+  // they put two answers to "where is the leave type screen" on one page, and Round 5 would have had to
+  // move one set and leave the other — the inverse of the cutover instinct.
+  //
+  // DIRECTION CHOSEN: **out**, at the address that is live today, resolved through the map itself so the
+  // two cannot drift. It is the direction that survives the cutover untouched — Round 5 empties each old
+  // page into a redirect stub aimed at the new module, so a link resolved through the map reaches the NEW
+  // screen the moment the old one goes, and the cutover moves `LEAVE_CONFIG_MAP` alone.
+  const MODULE = 'app/admin/leave-config';
+
+  /** Every page/component file in the module, walked — so a page added later cannot skip this. */
+  function walk(rel: string, out: string[] = []): string[] {
+    for (const e of readdirSync(resolve(here, '..', rel), { withFileTypes: true })) {
+      const p = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(p, out);
+      else if (/\.tsx?$/.test(e.name)) out.push(p);
+    }
+    return out;
+  }
+
+  const FILES = walk(MODULE);
+
+  it('the module has more than one page, or this walk is asserting nothing', () => {
+    expect(FILES.length).toBeGreaterThan(7);
+  });
+
+  it.each(FILES)('%s links at no OTHER screen inside the preview module', (rel) => {
+    // `href="…"`, `href={'…'}` and `back={{ href: '…' }}` all in one: the literal destinations only —
+    // a link resolved through `leaveConfigScreenHref` has no literal to find, which is the point.
+    const own = rel.replace(/^app/, '').replace(/\/page\.tsx$/, '');
+    const literals = [...read(rel).matchAll(/href[=:]\s*\{?\s*['"`]([^'"`]+)['"`]/g)].map((m) => m[1]);
+    const inward = literals.filter((h) => h.startsWith('/admin/leave-config') && h !== own);
+    expect(
+      inward,
+      `${rel} hard-links into the preview module while the map on the same page links out — resolve it ` +
+        `through leaveConfigScreenHref() so the back-link and the menu cannot give two answers`,
+    ).toEqual([]);
+  });
+
+  it('the four back-links resolve through the map, so the cutover moves ONE list', () => {
+    for (const k of ['entitlementTables', 'recordsEntitlement', 'recordsBalances', 'import'] as const) {
+      expect(
+        src[k],
+        `${SCREENS_BUILT[k].file} lost its back-link to the leave type screen, or hard-coded it again`,
+      ).toContain("leaveConfigScreenHref('leaveTypes')");
+    }
+    // And the direction that resolves to: the live screen today, which is the map's own href for it.
+    const fromMap = LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'leaveTypes')!.href;
+    expect(leaveConfigScreenHref('leaveTypes')).toBe(fromMap);
+    expect(leaveConfigScreenHref('leaveTypes')).toBe('/admin/leave/entitlements');
   });
 });
 

@@ -111,6 +111,37 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   },
 ];
 
+/**
+ * a6fe37fc ROUND 3 (r259 finding 3) — THE ADDRESS THE MAP GIVES A SCREEN, so a link to a screen can
+ * never disagree with the menu entry for it.
+ *
+ * ⚠️ THE PREVIEW MODULE HAD TWO NAVIGATION DIRECTIONS AT ONCE. The map on all seven new
+ * `/admin/leave-config/` pages links to the OLD addresses, while four of those same pages' back-links
+ * pointed back INTO the new module. Each half is defensible alone; together they put two answers to
+ * "where is the leave type screen" on one page, and they would have made Round 5 move one set and leave
+ * the other — the inverse of the cutover instinct.
+ *
+ * ⚠️ ONE DIRECTION NOW, AND IT IS **OUT** UNTIL ROUND 5: every cross-screen link inside the module
+ * resolves through here, so it points where the MAP points — at the screen that is live today. That is
+ * also the choice that survives the cutover untouched: Round 5 empties each old page into a redirect
+ * stub aimed at the new module (docs/design/a6fe37fc-migration-order.md → Round 5), so a link resolved
+ * here reaches the NEW screen the moment the old one goes, and the cutover moves `LEAVE_CONFIG_MAP`
+ * alone rather than hunting inbound links.
+ *
+ * `companyRules` is excluded by TYPE, not by a runtime fallback: it is the one screen id with no map
+ * entry until the cutover, so asking this function for its address is a mistake tsc should refuse rather
+ * than one this function should paper over with a guessed href.
+ */
+export type MappedLeaveConfigScreenId = Exclude<LeaveConfigScreenId, 'companyRules'>;
+
+const HREF_BY_ID = Object.fromEntries(
+  LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => [i.id, i.href] as const),
+) as Record<MappedLeaveConfigScreenId, string>;
+
+export function leaveConfigScreenHref(id: MappedLeaveConfigScreenId): string {
+  return HREF_BY_ID[id];
+}
+
 /** The heading for one screen — the SAME string the map shows for it. */
 export async function leaveConfigScreenTitle(id: LeaveConfigScreenId): Promise<string> {
   const t = await getTranslations('admin.leaveConfigMap');

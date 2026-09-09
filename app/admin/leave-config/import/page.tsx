@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Button, PageHeader } from '@/components/ui';
-import { LeaveConfigMap } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
 import { LeaveLedgerImport } from '../../leave/import/leave-ledger-import';
 import { LeaveConfigPreviewNote } from '../preview-note';
 
@@ -29,10 +29,13 @@ export default async function LeaveConfigImportPage() {
 
   return (
     <div className="space-y-6">
-      {/* `back` points at the NEW leave type screen — inside the new module, a back-link that leaves it
-          is a back-link that undoes the move. */}
+      {/* r259 — `back` is resolved through the area map below, which is the module's ONE navigation
+          direction: OUT, at the screen that is live today, until Round 5 repoints the map. It read
+          `/admin/leave-config/types`, which left this page telling the administrator two different things
+          about where the leave type screen is. It is also the old page's own back-link, character for
+          character (app/admin/leave/import/page.tsx). */}
       <PageHeader
-        back={{ href: '/admin/leave-config/types', label: t('backLabel') }}
+        back={{ href: leaveConfigScreenHref('leaveTypes'), label: t('backLabel') }}
         title={t('title')}
         description={t('description')}
         actions={

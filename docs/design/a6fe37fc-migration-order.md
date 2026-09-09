@@ -224,6 +224,31 @@ archive and approval keys — are deleted with the pages that owned them, so the
 `test/leave-config-map.test.ts` already enforces that every map href is a declared route on `leaveConfig`
 or `leaveApproval`, so the map and the permission registry are checked against each other automatically.
 
+**Inbound links move with the map, because there is only one list (r259).** Every cross-screen link inside
+`/admin/leave-config/` resolves through `leaveConfigScreenHref()` — the map's own href for that screen —
+rather than through a literal. Round 3 shipped with the two halves disagreeing (the map linked *out* to the
+old addresses while four back-links pointed back *into* the module), and the direction chosen was **out**:
+the address that is live today, and the one that survives this round untouched, since each old address
+becomes a redirect stub aimed at the new module in the same commit. So repointing `LEAVE_CONFIG_MAP` here
+moves the menu **and** every back-link on the seven pages together;
+`test/leave-config-round3.test.ts` → *"every cross-screen link in the preview module points where the MAP
+points"* fails on any literal reintroduced later.
+
+**Repointing the redirect constants is what turns three dormant banners on Company rules live, and the
+`warning=` one is a risk warning (r259).** `app/admin/_redirects.ts`'s `ENTITLEMENTS` / `LEAVE` /
+`GENERATE` / `ADJUSTMENTS` / `ENTITLEMENT_TEMPLATES` and `app/admin/actions.ts`'s private
+`LEAVE_REPLACEMENT` still name the OLD addresses, so every save made on a new screen in Rounds 2–4 lands
+back on the screen it will replace (that is what `LeaveConfigPreviewNote` tells the administrator). Company
+rules renders `?error=` / `?saved=` / `?warning=` today as **unreachable markup**: the params exist, the
+old Replacement leave screen reads them, and this one cannot be reached with them. It ships that way
+deliberately — `warning=` carries the Phase-B #14 premium-equivalent **banking-risk** warning, which was
+produced on every qualifying save for months and silently dropped because the screen it landed on did not
+read the param, and shipping the screen that ABSORBS Replacement leave without the banner would set that up
+to happen a second time at exactly this cutover. `test/leave-config-round3.test.ts` → *"the three save
+banners on Company rules are DORMANT until Round 5"* asserts the old constant, so **this commit is expected
+to fail that case**: re-point it at the new target, re-read the new screen with each param, and do not
+delete it.
+
 **The replay runs before and after every one of these ten commits.** Round 5 is where a live request path
 could change addresses without anyone noticing, and it is exactly what §2 exists for.
 

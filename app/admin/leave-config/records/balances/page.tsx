@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveLedgerArchiveCaptures, listLeaveLedgerResetArchive } from '@/packs/leave/service';
 import { Card, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { LeaveConfigMap } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
 
 /**
  * a6fe37fc ROUND 3 — THE MEDICAL / HOSPITALISATION BALANCE RECORD at its new address
@@ -100,7 +100,10 @@ export default async function LeaveConfigBalanceRecordPage({
             <a href={csvHref} className="text-sm underline">
               {t('downloadCsv')}
             </a>
-            <Link href="/admin/leave-config/types" className="ml-auto text-sm underline">
+            {/* r259 — resolved through the area map above, so this record and the menu beside it point
+                at the same leave type screen. OUT of the preview module until Round 5 repoints the map;
+                see components/leave-config-map.tsx → leaveConfigScreenHref. */}
+            <Link href={leaveConfigScreenHref('leaveTypes')} className="ml-auto text-sm underline">
               {t('backToEntitlements')}
             </Link>
           </form>

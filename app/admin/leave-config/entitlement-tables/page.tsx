@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
-import { LeaveConfigMap } from '@/components/leave-config-map';
+import { LeaveConfigMap, leaveConfigScreenHref } from '@/components/leave-config-map';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
@@ -80,9 +80,12 @@ export default async function LeaveConfigEntitlementTablesPage({
           <p className="text-muted-foreground">{t('intro')}</p>
           <p className="text-muted-foreground">{t('coexistNote')}</p>
           <p className="text-muted-foreground">{t('datedNote')}</p>
-          {/* Points at the NEW leave type screen (Round 2's), not the old one: inside the new module the
-              back-link must reach the module's own spine, or the administrator is walked out of it. */}
-          <Link href="/admin/leave-config/types" className="inline-block text-sm underline">
+          {/* r259 — ONE navigation direction inside the preview module, and it is OUT until Round 5. The
+              href comes from the SAME map this page renders above, so the back-link and the menu cannot
+              give two answers to "where is the leave type screen". It read `/admin/leave-config/types`
+              and that was the inconsistent half: the map on this very page walks the administrator to
+              `/admin/leave/…`. See components/leave-config-map.tsx → leaveConfigScreenHref. */}
+          <Link href={leaveConfigScreenHref('leaveTypes')} className="inline-block text-sm underline">
             {t('backToEntitlements')}
           </Link>
         </div>
