@@ -8587,6 +8587,7 @@
       },
       "item": {
         "leaveTypes": "Leave types",
+        "companyRules": "Company rules",
         "entitlementTables": "Entitlement tables",
         "approvalChain": "Approval chain",
         "replacementLeave": "Replacement leave",
@@ -8616,6 +8617,14 @@
         "application": "What an application for this leave type has to satisfy. Each card saves on its own.",
         "approvers": "The approval settings that belong to the leave type itself. Approval chains are built and assigned on the Approval chain screen."
       }
+    },
+    "leaveConfigPreview": {
+      "note": "This is a new Leave configuration screen, built alongside the one the menu still links to. Both save to the same records, and until the changeover a save made here returns you to the current screen."
+    },
+    "leaveConfigCompanyRules": {
+      "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
+      "intro": "These four settings are not properties of any one leave type, so they are set here once instead of being repeated on every leave type and spread across three screens.",
+      "introTwoEditors": "Each of them can still be changed on the screen it is on today. Both screens write the same record, and the older one is removed at the changeover."
     }
   },
   "topbar": {

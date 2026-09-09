@@ -361,6 +361,33 @@ export const SCREENS: readonly ScreenEntry[] = [
       // and the menu moves in Round 5, not now; test/leave-config-map.test.ts carries that exemption by
       // name, and test/leave-config-types-tabs.test.ts pins the absence so it cannot happen by accident.
       '/admin/leave-config/types',
+      // a6fe37fc ROUND 3 — the rest of the new module, SEVEN routes, all built alongside the screens
+      // they will replace and none of them replacing anything yet. They attach to THIS screen key for
+      // the same reason `/admin/leave-config/types` does one line up: same admin surface, same
+      // `requireAdmin` guard, so they are ROUTES rather than a new screenKey — the `/admin/leave/generate`
+      // precedent. THE SCREEN KEY IS NEVER RENAMED (see the note at the head of this file: a key "may key
+      // stored role configs", so renaming `leaveConfig` would silently drop every tenant's existing grant
+      // for the whole area). Only `href` moves, and not until Round 5.
+      //
+      // THE ROUTES AND THE PAGES LAND IN ONE COMMIT OR NEITHER: test/function-access.test.ts fails BOTH
+      // ways — a guarded page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on
+      // disk — so a page nobody can grant or revoke cannot ship.
+      //
+      // ALL SEVEN ARE DELIBERATELY **OFF** THE LEAVE CONFIG MAP. The map is the customer's menu for this
+      // area and the menu moves at the Round 5 cutover; test/leave-config-map.test.ts carries the
+      // `/admin/leave-config/` prefix exemption by name and test/leave-config-round3.test.ts pins the
+      // absence so it cannot happen by accident.
+      '/admin/leave-config/company-rules',
+      '/admin/leave-config/entitlement-tables',
+      '/admin/leave-config/generate',
+      '/admin/leave-config/adjustments',
+      '/admin/leave-config/import',
+      // The two read-only registers. Their `/export` route handlers are deliberately NOT listed and stay
+      // at their old addresses this round: the reverse-completeness scan reads page.tsx files only, and a
+      // route handler has no screen column to describe — the same reasoning as
+      // `/admin/leave/entitlements/ledger-archive`'s sibling above.
+      '/admin/leave-config/records/entitlement',
+      '/admin/leave-config/records/balances',
       // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
       // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
       // requireAdmin — so nobody who could open the leave page loses access). The route survives as an

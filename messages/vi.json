@@ -8587,6 +8587,7 @@
       },
       "item": {
         "leaveTypes": "Loại nghỉ phép",
+        "companyRules": "Quy định của công ty",
         "entitlementTables": "Bảng định mức",
         "approvalChain": "Chuỗi phê duyệt",
         "replacementLeave": "Nghỉ bù",
@@ -8616,6 +8617,14 @@
         "application": "Những điều kiện đơn xin nghỉ loại này phải đáp ứng. Mỗi thẻ lưu riêng.",
         "approvers": "Các thiết lập phê duyệt thuộc về chính loại nghỉ phép. Chuỗi phê duyệt được tạo và gán ở màn hình Chuỗi phê duyệt."
       }
+    },
+    "leaveConfigPreview": {
+      "note": "Đây là màn hình Cấu hình nghỉ phép mới, được xây dựng song song với màn hình mà menu vẫn đang liên kết tới. Cả hai lưu vào cùng một dữ liệu, và cho tới khi chuyển đổi hoàn tất, thao tác lưu tại đây sẽ đưa bạn về màn hình hiện tại."
+    },
+    "leaveConfigCompanyRules": {
+      "pageDescription": "Các thiết lập nghỉ phép thuộc về một công ty hoặc toàn tổ chức, được gom về một nơi.",
+      "intro": "Bốn thiết lập này không thuộc về riêng loại nghỉ phép nào, nên được đặt một lần tại đây thay vì lặp lại trên từng loại nghỉ phép và rải rác trên ba màn hình.",
+      "introTwoEditors": "Mỗi thiết lập trong số đó vẫn có thể thay đổi trên màn hình hiện đang chứa nó. Cả hai màn hình ghi vào cùng một dữ liệu, và màn hình cũ sẽ được gỡ bỏ khi chuyển đổi."
     }
   },
   "topbar": {

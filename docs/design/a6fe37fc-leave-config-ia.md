@@ -281,8 +281,9 @@ states and the audit's §5 explains the cost of breaking.
 
 ## 3. Every function of the current screens, and where it goes
 
-The failure mode for a rebuild is silently dropping a function, so this is the complete list. **48
-functions across 10 screens and 4 redirect stubs.**
+The failure mode for a rebuild is silently dropping a function, so this is the complete list. **50
+functions across 10 screens and 4 redirect stubs** (48 when this document was written; F47/F48 were added
+by r258 and F49/F50 by r259, each time because the OLD PAGE was re-read rather than the table trusted).
 
 > **CORRECTION, r258 (2026-09-10) — this list was two functions short, and the omission was invisible.**
 > F47 and F48 below are on the Leave types screen *today*: the Employee Balances link (`r242`,
@@ -348,6 +349,16 @@ Round 5 cutover). Both are on the new screen.
 
 ### 3.2 The other nine screens
 
+> **CORRECTION, r259 (2026-09-10) — this list was two functions short, in the same way §3.1 was.**
+> F49 and F50 below are on the Entitlement tables and Generate entitlement screens *today*: r212's
+> employee eligibility explain panel (`8ebf77ae`) and the generation-run log with its per-run CSV
+> download (`93249794`). Both landed **before** this document's baseline (`main@0c01befc`) and neither
+> was written down, so the F33 and F41 rows described only part of their screen. That matters for the
+> same reason F47/F48 did: Round 3's anti-drop guard (`test/leave-config-round3.test.ts`) is **keyed to
+> this table**, so a function missing from it is a function no guard can see going. The r258 lesson,
+> repeated one round later on a different screen: **a table-keyed guard is only as complete as its
+> table, and the old page — not the table — is the source of truth for what a screen does.**
+
 | # | Function today | Screen today | Where it lands |
 |---|---|---|---|
 | F33 | Entitlement tables + eligibility for **all** leave types side by side | Entitlement tables | **Entitlement tables** — new page, same shared block (same behaviour) |
@@ -364,6 +375,8 @@ Round 5 cutover). Both are on the new screen.
 | F44 | Leave ledger import: validate then commit | Import leave data | **Run › Import leave data** (same behaviour) |
 | F45 | Entitlement configuration record + CSV export | Entitlement archive | **Records › Entitlement configuration record** (same behaviour; the `/export` route handler moves with it) |
 | F46 | Medical & Hospitalisation balance record + CSV export | Ledger archive | **Records › balance record** (same behaviour; the `/export` route handler moves with it) |
+| F49 | **Employee eligibility explain panel** — search an employee, pick a leave type and a date, and read which entitlement rules exist, which are in force, and what about *this* person does not match; every answer addressable as a link, and every running rule linked to its editor | Entitlement tables | **Entitlement tables** — the same server component, re-mounted (same behaviour). r212 (`8ebf77ae`) built it as the answer to the reporter's original ticket, *"No eligibility rule reaches you"*, asked about a named employee. F33 named only the side-by-side tables, so a rebuild that carried F33 alone would have dropped a whole second Card and four GET parameters with nothing failing. |
+| F50 | **Generation-run log + per-run CSV download** — who ran a generation, for which year, over how many employees, how many passed, how many failed, how many days granted and forfeited; the counts stored verbatim by the engine at the moment of the run, never recomputed on read | Generate entitlement | **Run › Generate entitlement** (same behaviour; the `/export` route handler moves with it in Round 5). `93249794`'s request said *"Allow HR to download the processing log"*. F41 named only the five-step wizard, so the audit trail of every sweep ever run was invisible to a table-keyed guard. Recomputing these counts on read would quietly answer a question about last March with this morning's configuration, which is why they are stored. |
 
 ### 3.3 The redirect stubs — four today, fourteen after the removal
 

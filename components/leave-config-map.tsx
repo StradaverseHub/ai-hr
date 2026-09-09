@@ -48,6 +48,23 @@ import { getTranslations } from 'next-intl/server';
 
 /** Every screen in the area. The id is also its label key and its page heading. */
 export type LeaveConfigScreenId =
+  /**
+   * a6fe37fc ROUND 3 — `companyRules` IS A SCREEN ID WITH NO MAP ENTRY, AND THAT IS THE POINT.
+   *
+   * `/admin/leave-config/company-rules` is the one genuinely new destination in the redesign (IA §2.0.3):
+   * four settings that belong to a company or the tenant, today spread across three screens and one step
+   * inside every leave type. It is built ALONGSIDE those surfaces and replaces none of them yet, so it is
+   * deliberately absent from `LEAVE_CONFIG_MAP` below — the map is the customer's MENU and the menu moves
+   * at the Round 5 cutover, one commit per screen. Listing a half-migrated screen beside the ones it will
+   * absorb would put two entries for one job in front of the administrator.
+   *
+   * The id exists now for two reasons that both cost a round if deferred: the new page must be able to
+   * render the map at all (every leave-config screen reaching every other is the defect this component
+   * was built for), and `leaveConfigScreenTitle('companyRules')` gives that page its heading from the
+   * SAME key the menu entry will use — so Round 5 adds one line to the list rather than renaming a
+   * screen the customer has already learned. Every other id below is on the map; this one joins it there.
+   */
+  | 'companyRules'
   | 'leaveTypes'
   | 'entitlementTables'
   | 'approvalChain'
