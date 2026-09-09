@@ -20,6 +20,16 @@
  *  B. The FORM pages are deliberately still capped, so a future "make everything wide" sweep cannot take
  *     them with it. A form spread across a very wide screen is harder to fill in, not easier.
  *
+ *     6340aecb RE-POINTED THE SHIFT FORM'S ENTRY rather than deleting it. af7a8eb4's reasoning above is
+ *     about a one-column form; the Shift screen stopped being one. The reporter asked for the change in
+ *     as many words (request point 3 — "full-width layout to maximize the available screen space"), and
+ *     the redesign gave the screen four sections whose rows are 4-up grids: Working Times alone puts
+ *     Time in / Time out / Shift Start Time / Shift Time Out on ONE line, which a 48rem reading column
+ *     cannot hold. So the property that must not silently change is now the OPPOSITE one, and it is
+ *     pinned as such in WIDE_FORM_SCREENS — full width, and no page-level cap creeping back — instead of
+ *     the screen simply falling out of coverage. The forms that ARE still one column keep the original
+ *     case in NARROW_FORM_SCREENS.
+ *
  *  C. /admin/attendance no longer renders the create/edit form, and /admin/attendance-policy no longer
  *     renders the company work-schedule form. Those are the two things the reporter asked to stop seeing
  *     underneath the list they came to read.
@@ -61,12 +71,17 @@ const WIDE_LIST_SCREENS = [
   'app/attendance/requests/page.tsx',
 ];
 
-// The form pages, which keep a comfortable reading width on purpose.
+// The form pages that are one column of boxes, and keep a comfortable reading width on purpose.
 const NARROW_FORM_SCREENS = [
-  'app/admin/attendance/shift-form.tsx',
   'app/admin/attendance-policy/rules/rule-form.tsx',
   'app/admin/attendance-policy/schedule/page.tsx',
 ];
+
+// 6340aecb — the one form page that is full width ON PURPOSE (see B above). It gets the SAME pair of
+// assertions the list screens get, so the reversal is a pinned decision rather than an absence of one:
+// putting `mx-auto max-w-3xl` back on this screen must fail here, exactly as taking it off rule-form.tsx
+// would fail the case below.
+const WIDE_FORM_SCREENS = ['app/admin/attendance/shift-form.tsx'];
 
 describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(WIDE_LIST_SCREENS)('%s uses pageWideCls', (file) => {
@@ -82,7 +97,19 @@ describe('af7a8eb4 — Attendance screen layout', () => {
 
   it.each(NARROW_FORM_SCREENS)('%s keeps its reading-width cap', (file) => {
     const capped = classNameLiterals(read(file)).filter(capsPage);
-    expect(capped.length, `${file} is a FORM page and must stay capped, not stretch edge to edge`).toBeGreaterThan(0);
+    expect(capped.length, `${file} is a one-column FORM page and must stay capped, not stretch edge to edge`).toBeGreaterThan(0);
+  });
+
+  it.each(WIDE_FORM_SCREENS)('%s is full width on purpose (6340aecb, request point 3)', (file) => {
+    const src = read(file);
+    expect(src, `${file} must use the named pageWideCls constant, not a hand-written width`).toContain('pageWideCls');
+    const capped = classNameLiterals(src).filter(capsPage);
+    expect(
+      capped,
+      `${file} re-acquires a page-level width cap: ${capped.join(' | ')}. The reporter asked for this ` +
+        `screen edge to edge (request point 3) and its sections are 4-up grids — a reading-width cap here ` +
+        `is the regression, not the guard.`,
+    ).toEqual([]);
   });
 
   it('r227 — Attendance Irregularity does not re-acquire the correction column beside its table', () => {

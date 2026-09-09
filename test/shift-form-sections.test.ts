@@ -106,39 +106,138 @@ describe('6340aecb — the screen the reporter asked for', () => {
     expect(TIME_FIELDS).toContain('name="halfDayFirstOut"');
     expect(TIME_FIELDS).toContain('name="halfDaySecondIn"');
   });
+
+  /**
+   * The point-8 rename moved "earliest / latest accepted clocking" wording ONTO early_in / late_out. The
+   * Semi-Flexi variants of startTime / endTime still said "Earliest time in" / "Latest time out" — the
+   * phrases that had just been given away — and the redesign put all four boxes in ONE four-column row.
+   * Two boxes on one line both claiming to be the earliest is how an operator types the early-in value
+   * into start_time, which is a SCHEDULING column: it moves the shift span, netScheduledMinutes and the
+   * workday OT window. The hint underneath compounded it by naming "Time in" and "Time out", which are
+   * not on screen at all when the shift is Semi Flexi.
+   */
+  it('the Semi Flexi wording does not collide with the renamed pair, and the hint names real boxes', () => {
+    const en = JSON.parse(read('messages/en.json')) as { roster: Record<string, string>; admin: { attendancePolicy: Record<string, string> } };
+    const r = en.roster;
+    const ap = en.admin.attendancePolicy;
+
+    expect(TIME_FIELDS, 'the borrowed wording must not come back on start_time / end_time').not.toMatch(
+      /t\('(earliestTimeIn|latestTimeOut)'\)/,
+    );
+    expect(TIME_FIELDS, 'the Semi-Flexi pair is named for what it is: the window').toContain("t('semiFlexiWindowStart')");
+    expect(TIME_FIELDS).toContain("t('semiFlexiWindowEnd')");
+
+    // The hint NAMES boxes, so it has to follow the same type switch the boxes do.
+    expect(TIME_FIELDS, 'the clock-window hint is type-aware').toContain("ta('shiftClockWindowHintSemi')");
+    expect(ap.shiftClockWindowHint, 'the Normal hint names the Normal boxes').toContain(r.timeIn);
+    expect(ap.shiftClockWindowHint).toContain(r.timeOut);
+    expect(ap.shiftClockWindowHintSemi, 'the Semi hint names the Semi boxes').toContain(r.semiFlexiWindowStart);
+    expect(ap.shiftClockWindowHintSemi).toContain(r.semiFlexiWindowEnd);
+    // …and names no box that is absent on that shift type. The renamed pair IS on screen, so strip those
+    // two labels first — "Shift Time Out" must not be read as the "Time out" box.
+    const semiOnly = ap.shiftClockWindowHintSemi.split(ap.shiftEarlyIn).join('').split(ap.shiftLateOut).join('');
+    expect(semiOnly, 'a Semi Flexi shift has no "Time in" box for the hint to name').not.toContain(r.timeIn);
+    expect(semiOnly, 'and no "Time out" box either').not.toContain(r.timeOut);
+
+    // The sequence hint (request point 13) is drawn by the SERVER component, which cannot follow a type
+    // dropdown that lives in the client island — so it must name NO box whose label changes with the type.
+    // It used to say "the shift start time cannot be after Time in", which is wrong on half the shifts.
+    const seqOnly = ap.shiftTimeSequenceHint.split(ap.shiftEarlyIn).join('').split(ap.shiftLateOut).join('');
+    for (const [label, value] of [
+      ['Time in', r.timeIn],
+      ['Time out', r.timeOut],
+      ['the Semi-Flexi window pair', r.semiFlexiWindowStart],
+      ['the Semi-Flexi window pair', r.semiFlexiWindowEnd],
+    ] as const) {
+      expect(seqOnly, `the sequence hint renders on BOTH shift types, so it must not name ${label}`).not.toContain(value);
+    }
+  });
+
+  it('the Fixed tick is not left telling the operator to untick a control it has disabled', () => {
+    // Semi Flexi already forced every break flexible; 6340aecb's shift-level allowance does the same, so
+    // the tick is disabled in BOTH states — and the sentence beside it has to stop saying "Untick it".
+    expect(TIME_FIELDS, 'the tick is decided for the operator whenever every break is flexible').toContain(
+      'disabled={semiFlexi || flexOn}',
+    );
+    expect(TIME_FIELDS, 'and the hint says so instead of asking for an impossible click').toContain(
+      "t('breakFixedLockedHint')",
+    );
+  });
 });
 
 /**
- * EVERY LABEL ON THE REDESIGNED SCREEN RESOLVES.
+ * EVERY LABEL ON THE REDESIGNED SCREEN RESOLVES — IN THE NAMESPACE IT IS ACTUALLY ASKED FROM.
  *
  * A 200 is not a render check: a MISSING_MESSAGE passes tsc, passes the suite and still returns a page.
- * test/i18n-coverage.test.ts's check C only walks files that use ONE namespace, and both files here use
- * two (roster + admin.attendancePolicy), so neither is covered by it — which is precisely the gap a
+ * test/i18n-coverage.test.ts's check C only walks files that use ONE namespace, and all three files here
+ * use two (roster + admin.attendancePolicy), so none is covered by it — which is precisely the gap a
  * redesign that moves fields between two components falls into.
+ *
+ * ⚠️ THE FIRST VERSION OF THIS GUARD WAS ALMOST VACUOUS, AND A VERIFIER PROVED IT. It kept a key only when
+ * it resolved in NEITHER namespace, so the one mistake a two-namespace file actually makes — reaching for
+ * the WRONG TRANSLATOR — could not fail it: changing `ta('shiftEarlyIn')` to `t('shiftEarlyIn')` in
+ * components/shift-time-fields.tsx (where `t` is bound to `roster`, which has no such key) renders a
+ * literal MISSING_MESSAGE on screen and left all nine cases GREEN. Worse, the two files disagree about
+ * what `t` MEANS: in shift-time-fields.tsx `t` is roster and `ta` is admin.attendancePolicy, while in
+ * shift-form.tsx `t` is admin.attendancePolicy and `tr` is roster. A guard that pools the namespaces
+ * cannot see that at all.
+ *
+ * So the binding is read off each file's own `useTranslations` / `getTranslations` call, and every key is
+ * checked against the namespace of the translator it was asked through — nothing else.
  */
 describe('6340aecb — every message key the shift screen asks for exists', () => {
   const en = JSON.parse(read('messages/en.json')) as Record<string, unknown>;
-  const NS = ['admin.attendancePolicy', 'roster'] as const;
   const lookup = (dotted: string): unknown =>
     dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), en);
 
-  /** Static t()/tr()/ta() calls, plus the values of the *_KEY maps those calls index. */
-  function keysUsed(src: string): string[] {
-    const out = new Set<string>();
-    for (const m of src.matchAll(/\b(?:t|tr|ta)\('([A-Za-z0-9_.]+)'/g)) out.add(m[1]);
-    for (const block of src.matchAll(/const [A-Z_]+_KEY[^=]*=\s*\{([^}]*)\}/g)) {
-      for (const v of block[1].matchAll(/'([A-Za-z0-9_]+)'/g)) out.add(v[1]);
-    }
-    return [...out].sort();
+  /** `const t = useTranslations('roster')` / `const t = await getTranslations('admin.attendancePolicy')`
+   *  ⇒ alias → namespace, per file. This is the whole point of the guard: the alias is not the namespace. */
+  function translatorNamespaces(src: string): Map<string, string> {
+    const out = new Map<string, string>();
+    const re = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\('([A-Za-z0-9_.]+)'\)/g;
+    for (const m of src.matchAll(re)) out.set(m[1], m[2]);
+    return out;
   }
 
-  for (const [label, src] of [
-    ['app/admin/attendance/shift-form.tsx', FORM],
-    ['components/shift-time-fields.tsx', TIME_FIELDS],
+  /** Every (namespace, key) this file asks for: static `alias('key')` calls, plus the values of the
+   *  `*_KEY` maps a call indexes — `ta(DAY_KEY[d])` asks all seven of DAY_KEY's values through `ta`. */
+  function askedFor(src: string): { ns: string; key: string; where: string }[] {
+    const aliases = translatorNamespaces(src);
+    expect(aliases.size, 'the guard must be able to see which namespace each translator is bound to').toBeGreaterThan(0);
+    // Longest first: `(t|tr)` would try `t` against `tr('…')` before `tr`, and a lucky backtrack is not a
+    // property worth relying on.
+    const names = [...aliases.keys()].sort((a, b) => b.length - a.length).join('|');
+    const out: { ns: string; key: string; where: string }[] = [];
+    for (const m of src.matchAll(new RegExp(`\\b(${names})\\('([A-Za-z0-9_.]+)'`, 'g'))) {
+      out.push({ ns: aliases.get(m[1])!, key: m[2], where: `${m[1]}('${m[2]}')` });
+    }
+    for (const m of src.matchAll(new RegExp(`\\b(${names})\\(([A-Z][A-Z0-9_]*_KEY)\\b`, 'g'))) {
+      const block = src.match(new RegExp(`const ${m[2]}[^=]*=\\s*\\{([^}]*)\\}`));
+      expect(block, `${m[2]} must be a plain object literal this guard can read`).not.toBeNull();
+      for (const v of block![1].matchAll(/'([A-Za-z0-9_]+)'/g)) {
+        out.push({ ns: aliases.get(m[1])!, key: v[1], where: `${m[1]}(${m[2]}.…)` });
+      }
+    }
+    return out;
+  }
+
+  for (const [label, src, least] of [
+    ['app/admin/attendance/shift-form.tsx', FORM, 40],
+    ['components/shift-time-fields.tsx', TIME_FIELDS, 40],
+    ['components/shift-ot-window-fields.tsx', OT_FIELDS, 5],
   ] as const) {
-    it(`${label} — no key falls outside both namespaces`, () => {
-      const unresolved = keysUsed(src).filter((k) => NS.every((ns) => typeof lookup(`${ns}.${k}`) !== 'string'));
-      expect(unresolved, `these would render as MISSING_MESSAGE: ${unresolved.join(', ')}`).toEqual([]);
+    it(`${label} — every key resolves in the namespace its own translator is bound to`, () => {
+      const asked = askedFor(src);
+      // A parse that quietly stopped finding call sites would pass an empty filter. Pin the floor so the
+      // guard fails LOUDLY if the file's shape ever outruns the regexes above.
+      expect(asked.length, `${label}: the guard found almost no translator calls — has the file changed shape?`).toBeGreaterThanOrEqual(
+        least,
+      );
+      const unresolved = asked.filter(({ ns, key }) => typeof lookup(`${ns}.${key}`) !== 'string');
+      expect(
+        [...new Set(unresolved.map((a) => `${a.where} → no ${a.ns}.${a.key}`))],
+        'these render a literal MISSING_MESSAGE on the screen — the key is missing, or it was asked through the wrong translator',
+      ).toEqual([]);
     });
   }
 });

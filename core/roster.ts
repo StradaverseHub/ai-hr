@@ -295,6 +295,10 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   // clockingRequired=false on EVERY break (the reporter's fixed, non-editable rule); Normal/Full-Flexi keep
   // whatever flags were supplied (absent ⇒ unset, == legacy behaviour, so existing shifts stay byte-identical).
   const semiFlexi = type === 'semi_flexi';
+  // 6340aecb — read BEFORE the windows are normalised, because the shift-level switch decides what a
+  // window's own `flexible` flag is allowed to say (see the loop below). The validation of the ALLOWANCE
+  // still happens after the windows, where `span` and the window sum are both known.
+  const flexibleBreakEnabled = p.flexibleBreakEnabled === true;
   let breakPeriods: BreakPeriod[] | null = null;
   let breakMinutes = Math.trunc(p.breakMinutes ?? 0);
   if (!Number.isFinite(breakMinutes) || breakMinutes < 0) throw new Error('Break minutes must be a non-negative number');
@@ -309,7 +313,21 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       const out: BreakPeriod = { start, end };
       // Semi-Flexi overrides the flags; otherwise persist only flags that were explicitly set (keep the
       // stored JSON minimal so a plain break is { start, end } exactly as before).
-      const flexible = semiFlexi ? true : bp.flexible;
+      //
+      // 6340aecb — THE SHIFT-LEVEL FLEXIBLE BREAK OVERRIDES IT TOO, for the same reason and by the same
+      // rule. The two flags are about the same thing at two scales: `flexible` on a window says that
+      // window is a target rather than a clock to be kept, and the shift-level switch says the whole
+      // shift's break is an allowance the engine never tests any window against. A stored
+      // `flexible: false` beside `flexible_break_enabled = true` would be the record asserting both at
+      // once — a window the operator is told is FIXED that nothing will ever check. Only the shift-level
+      // switch has a reader (core/attendance.ts: `spannedBreak = flexibleBreak ?? spannedBreakMinutes(…)`
+      // — the allowance REPLACES the whole window computation, and spannedBreakMinutes never consults
+      // `bp.flexible` at all), so it is the one that wins, and the window flag is made to agree with it
+      // instead of being left to contradict it.
+      //
+      // With the switch OFF — every row stored before migration 0457, and every shift that never turns it
+      // on — this is `bp.flexible` unchanged, so nothing about an existing shift moves.
+      const flexible = semiFlexi || flexibleBreakEnabled ? true : bp.flexible;
       const clockingRequired = semiFlexi ? false : bp.clockingRequired;
       if (flexible != null) out.flexible = flexible;
       if (clockingRequired != null) out.clockingRequired = clockingRequired;
@@ -349,7 +367,6 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   //
   // OFF (absent, and every row stored before 0457) changes nothing at all: break_minutes keeps the value
   // computed above and the engine keeps the deduction it applies today.
-  const flexibleBreakEnabled = p.flexibleBreakEnabled === true;
   let flexibleBreakMinutes = optMinutes(p.flexibleBreakMinutes, 'Flexible break');
   if (flexibleBreakEnabled) {
     // Refused rather than stored: a flexible break with no allowance is a switch the engine cannot honour

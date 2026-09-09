@@ -147,9 +147,11 @@ describe('6340aecb — THE GOLDEN CASE: a shift without a flexible break compute
 describe('6340aecb — the flexible break, once it is switched on', () => {
   it('the allowance applies EVEN WHEN a break window is configured (the reporter’s point 12)', async () => {
     const sh = await dayShift({ flexibleBreakEnabled: true, flexibleBreakMinutes: 45 });
-    // The windows are still stored — Flexible does not delete the operator's intended break times.
+    // The windows are still stored — Flexible does not delete the operator's intended break times. Their
+    // own `flexible` flag is normalised to TRUE to agree with the shift-level switch (the dedicated
+    // describe below is where that rule is pinned); what must survive untouched are the TIMES.
     const row = await shiftRow(sh.id);
-    expect(row.breakPeriods).toEqual([{ start: '13:00:00', end: '14:00:00' }]);
+    expect(row.breakPeriods).toEqual([{ start: '13:00:00', end: '14:00:00', flexible: true }]);
     expect(row.flexibleBreakEnabled).toBe(true);
     expect(row.flexibleBreakMinutes).toBe(45);
     // A clocking that never overlaps 13:00–14:00 now loses the allowance, where it lost nothing before.
@@ -193,6 +195,57 @@ describe('6340aecb — the flexible break, once it is switched on', () => {
     expect(row.breakMinutes).toBe(60);
     const { out } = await punchDay(sh.id, '09:00:00', '12:00:00');
     expect(out.workedMinutes).toBe(180);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * "FLEXIBLE" NOW EXISTS AT TWO SCALES, AND THEY MUST NOT BE ABLE TO SAY OPPOSITE THINGS.
+ *
+ * f3321963 gave every break WINDOW its own `flexible` flag (BreakPeriod, db/schema.ts) months before
+ * migration 0457 added the SHIFT-level switch, so a row can carry both. Only one of them has a reader:
+ * core/attendance.ts computes `spannedBreak = flexibleBreak ?? spannedBreakMinutes(…)`, and
+ * spannedBreakMinutes filters on `paid` and never looks at `bp.flexible` at all. So the shift-level switch
+ * WINS — its allowance replaces the entire window computation — and core/roster.ts normalises the window
+ * flag to agree with it rather than leaving the record asserting "this break is fixed" about a window
+ * nothing will ever be checked against. It is the same rule, and the same line, Semi Flexi already used.
+ */
+describe('6340aecb — the shift-level switch and the per-window flag cannot disagree', () => {
+  it('a window posted as FIXED is stored flexible once the shift-level allowance is on', async () => {
+    const sh = await dayShift({
+      breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: false, clockingRequired: true }],
+      flexibleBreakEnabled: true,
+      flexibleBreakMinutes: 45,
+    });
+    expect((await shiftRow(sh.id)).breakPeriods).toEqual([
+      { start: '13:00:00', end: '14:00:00', flexible: true, clockingRequired: true },
+    ]);
+  });
+
+  it('…and with the switch OFF the window keeps exactly the flag it was given', async () => {
+    // The normalisation is reachable ONLY through the switch. Every shift that exists today leaves it off,
+    // so this is the case that says the rule above cannot touch them.
+    const sh = await dayShift({ breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: false }] });
+    const row = await shiftRow(sh.id);
+    expect(row.flexibleBreakEnabled).toBe(false);
+    expect(row.breakPeriods).toEqual([{ start: '13:00:00', end: '14:00:00', flexible: false }]);
+  });
+
+  it('the ALLOWANCE is what comes off the day — the window flag moves no minutes either way', async () => {
+    // Same shift, same punch, opposite window flags. Identical worked minutes is what "the shift-level
+    // switch wins" means in the only currency that matters here.
+    const asFixed = await dayShift({
+      breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: false }],
+      flexibleBreakEnabled: true,
+      flexibleBreakMinutes: 45,
+    });
+    const asFlexible = await dayShift({
+      breakPeriods: [{ start: '13:00:00', end: '14:00:00', flexible: true }],
+      flexibleBreakEnabled: true,
+      flexibleBreakMinutes: 45,
+    });
+    expect((await punchDay(asFixed.id, '09:00:00', '12:00:00')).out.workedMinutes).toBe(135);
+    expect((await punchDay(asFlexible.id, '09:00:00', '12:00:00')).out.workedMinutes).toBe(135);
   });
 });
 

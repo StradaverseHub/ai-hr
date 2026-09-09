@@ -226,9 +226,16 @@ export function ShiftTimeFields({
           </select>
         </Field>
 
-        {/* 1 + 2 — the SAME two stored columns either way; only the wording changes with the type. */}
+        {/* 1 + 2 — the SAME two stored columns either way; only the wording changes with the type.
+            6340aecb fix — the Semi-Flexi wording used to be "Earliest time in" / "Latest time out", which
+            after the point-8 rename sat in the SAME four-column row as early_in / late_out, now labelled
+            "Shift Start Time" / "Shift Time Out" and defined by the hint below as the earliest and latest
+            ACCEPTED CLOCKING. Two boxes on one line both claiming to be the earliest is how an operator
+            types the early-in value into start_time — which is a scheduling column, so it would move the
+            shift span, netScheduledMinutes and the OT window. The Semi-Flexi pair is named for what it
+            actually is: the window the required hours may be worked within. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label={semiFlexi ? t('earliestTimeIn') : t('timeIn')}>
+          <Field label={semiFlexi ? t('semiFlexiWindowStart') : t('timeIn')}>
             <input
               name="startTime"
               type="time"
@@ -238,7 +245,7 @@ export function ShiftTimeFields({
               className={inputCls}
             />
           </Field>
-          <Field label={semiFlexi ? t('latestTimeOut') : t('timeOut')}>
+          <Field label={semiFlexi ? t('semiFlexiWindowEnd') : t('timeOut')}>
             <input
               name="endTime"
               type="time"
@@ -251,8 +258,10 @@ export function ShiftTimeFields({
 
           {/* 6340aecb — THE RELABELLED PAIR (request point 8). The COLUMNS are untouched: early_in and
               late_out are read across attendance and payroll, and a column rename buys nothing the label
-              does not. Only the message VALUES changed, in all six locales. The hints stay because the two
-              new names sit beside Time in / Time out and the difference between them is the whole point. */}
+              does not. Only the message VALUES changed, in all six locales. The hint below stays, and is
+              type-aware, because these two names sit in the SAME row as the shift's own times — Time in /
+              Time out on a Normal shift, the flexi window on a Semi Flexi one — and the difference between
+              the two pairs is the whole point of the hint. */}
           <Field label={ta('shiftEarlyIn')}>
             <input name="earlyIn" type="time" defaultValue={defaultEarlyIn} className={inputCls} />
           </Field>
@@ -271,7 +280,14 @@ export function ShiftTimeFields({
             </label>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{ta('shiftClockWindowHint')}</p>
+        {/* The hint NAMES the boxes above it, so it has to follow the same type switch they do: the Normal
+            wording says "Time in and Time out", and on a Semi Flexi shift there is no box by either name. */}
+        {/* Two STATIC ta(...) calls rather than one call on a computed key: the i18n guard in
+            test/shift-form-sections.test.ts reads literal call sites, and a key it cannot see is a key it
+            cannot check. */}
+        <p className="text-xs text-muted-foreground">
+          {semiFlexi ? ta('shiftClockWindowHintSemi') : ta('shiftClockWindowHint')}
+        </p>
 
         {/* 3 — Total normal working hours. Hours + minutes on screen, MINUTES in the database. */}
         <div>
@@ -449,14 +465,18 @@ export function ShiftTimeFields({
                     {/* b8aa3466 — FIXED. Stored inverted as `flexible`, and only when the tick is OFF, so a
                         window saved before this release posts back byte-identically. Semi Flexi forces every
                         break flexible in core/roster.ts, so the tick is shown OFF and disabled there rather
-                        than letting the screen promise something the service will overwrite. */}
+                        than letting the screen promise something the service will overwrite.
+                        6340aecb — the SHIFT-LEVEL flexible break does the same, and for the same reason: with
+                        an allowance on, the engine never tests the clocking against any window, so a ticked
+                        FIXED here would be a promise nothing keeps. core/roster.ts forces the stored flag to
+                        match, so what the operator sees is what the row will hold. */}
                     <label
-                      className={`inline-flex items-center gap-1 pb-2 text-xs text-muted-foreground ${semiFlexi ? 'opacity-60' : 'cursor-pointer'}`}
+                      className={`inline-flex items-center gap-1 pb-2 text-xs text-muted-foreground ${semiFlexi || flexOn ? 'opacity-60' : 'cursor-pointer'}`}
                     >
                       <input
                         type="checkbox"
-                        disabled={semiFlexi}
-                        checked={semiFlexi ? false : bp.flexible !== true}
+                        disabled={semiFlexi || flexOn}
+                        checked={semiFlexi || flexOn ? false : bp.flexible !== true}
                         onChange={(e) => setBreak(i, { flexible: !e.target.checked })}
                         className="h-3.5 w-3.5 accent-primary"
                         aria-label={t('breakFixed')}
@@ -498,7 +518,12 @@ export function ShiftTimeFields({
             >
               {t('addBreak')}
             </button>
-            <span className="text-xs text-muted-foreground">{t('breakFixedHint')}</span>
+            {/* The Fixed tick is DISABLED on a Semi Flexi shift and once the shift-level allowance is on, so
+                the hint beside it must stop telling the operator to untick a control they cannot touch —
+                and must say WHY it is decided for them. */}
+            <span className="text-xs text-muted-foreground">
+              {semiFlexi || flexOn ? t('breakFixedLockedHint') : t('breakFixedHint')}
+            </span>
           </span>
         </div>
 
