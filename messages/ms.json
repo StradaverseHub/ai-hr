@@ -8587,6 +8587,25 @@
         "entitlementArchive": "Arkib kelayakan",
         "ledgerArchive": "Arkib lejar"
       }
+    },
+    "leaveConfigTypes": {
+      "pageDescription": "Satu jenis cuti, lima tab, mengikut susunan keputusan dibuat.",
+      "previewNote": "Ini skrin Jenis cuti yang baharu, dibina bersebelahan skrin yang masih dipautkan oleh menu. Kedua-duanya menyimpan ke rekod yang sama, dan sehingga pertukaran dibuat, simpanan di sini akan membawa anda kembali ke skrin semasa.",
+      "tabsLabel": "Tab konfigurasi jenis cuti",
+      "tab": {
+        "identity": "Jenis cuti",
+        "eligibility": "Siapa yang layak",
+        "entitlement": "Apa kelayakan mereka",
+        "application": "Cara ia dipohon",
+        "approvers": "Siapa yang meluluskan"
+      },
+      "tabHint": {
+        "identity": "Nama jenis cuti ini dan cara ia berfungsi.",
+        "eligibility": "Siapa yang boleh mengambil cuti ini. Medan yang dibiarkan kosong bermaksud sesiapa sahaja.",
+        "entitlement": "Berapa hari, dan siapa menerima jadual yang mana.",
+        "application": "Syarat yang mesti dipenuhi oleh permohonan cuti jenis ini. Setiap kad disimpan secara berasingan.",
+        "approvers": "Tetapan kelulusan yang menjadi milik jenis cuti ini sendiri. Rantaian kelulusan dibina dan diumpukkan pada skrin Rantaian kelulusan."
+      }
     }
   },
   "topbar": {

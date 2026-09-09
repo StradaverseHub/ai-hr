@@ -8587,6 +8587,25 @@
         "entitlementArchive": "Lưu trữ định mức",
         "ledgerArchive": "Lưu trữ sổ cái"
       }
+    },
+    "leaveConfigTypes": {
+      "pageDescription": "Một loại nghỉ phép, năm thẻ, theo thứ tự các quyết định được đưa ra.",
+      "previewNote": "Đây là màn hình Loại nghỉ phép mới, được xây dựng song song với màn hình mà menu vẫn đang liên kết tới. Cả hai đều lưu vào cùng một dữ liệu, và cho đến khi chuyển đổi hoàn tất, khi lưu tại đây bạn sẽ được đưa về màn hình hiện tại.",
+      "tabsLabel": "Các thẻ cấu hình loại nghỉ phép",
+      "tab": {
+        "identity": "Loại nghỉ phép",
+        "eligibility": "Ai đủ điều kiện",
+        "entitlement": "Được hưởng bao nhiêu",
+        "application": "Cách nộp đơn",
+        "approvers": "Ai phê duyệt"
+      },
+      "tabHint": {
+        "identity": "Loại nghỉ phép này tên là gì và hoạt động ra sao.",
+        "eligibility": "Ai được nghỉ loại này. Để trống một trường nghĩa là không giới hạn.",
+        "entitlement": "Bao nhiêu ngày, và ai áp dụng bảng định mức nào.",
+        "application": "Những điều kiện đơn xin nghỉ loại này phải đáp ứng. Mỗi thẻ lưu riêng.",
+        "approvers": "Các thiết lập phê duyệt thuộc về chính loại nghỉ phép. Chuỗi phê duyệt được tạo và gán ở màn hình Chuỗi phê duyệt."
+      }
     }
   },
   "topbar": {

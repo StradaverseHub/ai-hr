@@ -8587,6 +8587,25 @@
         "entitlementArchive": "Entitlement archive",
         "ledgerArchive": "Ledger archive"
       }
+    },
+    "leaveConfigTypes": {
+      "pageDescription": "One leave type, five tabs, in the order the decisions are made.",
+      "previewNote": "This is the new Leave types screen, built alongside the one the menu still links to. Both save to the same records, and until the changeover a save made here returns you to the current screen.",
+      "tabsLabel": "Leave type configuration tabs",
+      "tab": {
+        "identity": "The leave type",
+        "eligibility": "Who is eligible",
+        "entitlement": "What they are entitled to",
+        "application": "How it is applied for",
+        "approvers": "Who approves it"
+      },
+      "tabHint": {
+        "identity": "What this leave type is called, and how it behaves.",
+        "eligibility": "Who may take this leave at all. Leave a field empty to mean anyone.",
+        "entitlement": "How many days, and who receives which table.",
+        "application": "What an application for this leave type has to satisfy. Each card saves on its own.",
+        "approvers": "The approval settings that belong to the leave type itself. Approval chains are built and assigned on the Approval chain screen."
+      }
     }
   },
   "topbar": {

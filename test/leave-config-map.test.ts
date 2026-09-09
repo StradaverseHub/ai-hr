@@ -51,10 +51,29 @@ describe('a6fe37fc — the leave configuration map', () => {
   it('covers every leaveConfig route that is a real screen', () => {
     // The reverse direction, and the one that catches a screen going missing from the menu later. Only
     // `/admin/leave/entitlements` appears as both an href and a route, hence the set.
+    //
+    // ⚠️ THE ONE EXEMPTION, AND IT IS TEMPORARY BY CONSTRUCTION. a6fe37fc rebuilds this area as a new
+    // module under `/admin/leave-config/`, one screen per round, each built ALONGSIDE the old one so
+    // that "something works at every point" (docs/design/a6fe37fc-migration-order.md). A new screen is
+    // registered in `lib/permissions.ts` the moment its guarded page lands — test/function-access.test.ts
+    // requires exactly that — but it must NOT appear on this map yet: the map is the customer's menu,
+    // and the menu moves at the Round 5 cutover, one commit per screen, together with the redirect stub
+    // that empties the old page. Listing a half-migrated screen beside the one it will replace would put
+    // two entries with the same name in front of the administrator.
+    // The exemption is written as a PREFIX, not a list of routes, because Rounds 3 and 4 add six more of
+    // them; it disappears when Round 5 moves the hrefs, at which point every `/admin/leave-config/` route
+    // IS on the map and this filter matches nothing. Each new screen's own shape test pins that it is
+    // deliberately absent (test/leave-config-types-tabs.test.ts for the first of them), so the absence is
+    // asserted somewhere rather than merely tolerated here.
+    const NEW_MODULE_PREFIX = '/admin/leave-config/';
     const leaveConfig = SCREENS.find((s) => s.screenKey === 'leaveConfig')!;
     const onMap = new Set(mapItems.map((i) => i.href));
-    const missing = leaveConfig.routes.filter((r) => !onMap.has(r));
+    const missing = leaveConfig.routes
+      .filter((r) => !r.startsWith(NEW_MODULE_PREFIX))
+      .filter((r) => !onMap.has(r));
     expect(missing).toEqual([]);
+    // …and the old module is still complete: every screen the map is supposed to reach is registered.
+    expect(leaveConfig.routes.filter((r) => !r.startsWith(NEW_MODULE_PREFIX)).length).toBeGreaterThan(0);
   });
 
   it('groups the screens by what the administrator is doing', () => {
