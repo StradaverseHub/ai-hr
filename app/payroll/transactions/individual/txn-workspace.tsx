@@ -8,6 +8,7 @@ import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
 import {
+  addEmployeeToRunAction,
   createIndividualTxnAction,
   createIndividualTxnDayGridAction,
   deleteIndividualTxnAction,
@@ -19,6 +20,7 @@ import {
   updateIndividualTxnAction,
   type TxnActionResult,
   type TxnBatchImpact,
+  type TxnScopeFix,
 } from './actions';
 import { buildTxnGroups, type TxnPanel, type TxnPanelRow } from './existing-context';
 import {
@@ -403,6 +405,14 @@ export function TxnWorkspace({
   const [daily, setDaily] = useState<DailyState | null>(null);
   const [formBaseline, setFormBaseline] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
+  /**
+   * 4b909202 — THE WAY FORWARD OUT OF A SCOPE REFUSAL, when the last save produced one.
+   *
+   * Set from the ACTION's own report and from nothing else: the run and the employee are the pair the
+   * SERVICE refused, so the screen can never offer to widen a run it merely guessed at. Cleared on every
+   * subsequent attempt, so a refusal that has been dealt with cannot leave a stale offer on screen.
+   */
+  const [scopeFix, setScopeFix] = useState<TxnScopeFix | null>(null);
   /** 4e403268 — the listing's shape: the flat line-per-row list, or grouped by month + pay item with the
    *  days one click away. Flat stays the default so nobody's screen changes under them. */
   const [listView, setListView] = useState<'flat' | 'grouped'>('flat');
@@ -1002,35 +1012,41 @@ export function TxnWorkspace({
   const dirty =
     (form != null && JSON.stringify(form) !== formBaseline) || (daily != null && JSON.stringify(daily) !== formBaseline);
 
+  /** 4b909202 — the error and the offer that goes with it are one thing and are cleared as one. An offer
+   *  left standing after the operator has changed the employee or the run would widen the WRONG run. */
+  const clearFormError = () => {
+    setFormError(null);
+    setScopeFix(null);
+  };
   const openForm = (next: FormState) => {
     setForm(next);
     setDaily(null);
     setFormBaseline(JSON.stringify(next));
-    setFormError(null);
+    clearFormError();
   };
   const patchForm = (patch: Partial<FormState>) => {
     setForm((f) => (f ? { ...f, ...patch } : f));
-    setFormError(null);
+    clearFormError();
   };
   const openDaily = (next: DailyState) => {
     setDaily(next);
     setForm(null);
     setFormBaseline(JSON.stringify(next));
-    setFormError(null);
+    clearFormError();
   };
   const patchDaily = (patch: Partial<DailyState>) => {
     setDaily((d) => (d ? { ...d, ...patch } : d));
-    setFormError(null);
+    clearFormError();
   };
   const patchDailyLine = (key: string, patch: Partial<DayLine>) => {
     setDaily((d) => (d ? { ...d, lines: d.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) } : d));
-    setFormError(null);
+    clearFormError();
   };
   const closeForm = () => {
     setForm(null);
     setDaily(null);
     setFormBaseline('');
-    setFormError(null);
+    clearFormError();
   };
 
   /** 2da9937a — an item that calculates from hours (or days) OWNS the Input Type: the quantity has to land
@@ -1360,10 +1376,11 @@ export function TxnWorkspace({
     startTransition(async () => {
       const res = await runDailySave(d);
       if (!res.ok) {
-        setFormError(t(res.error as never));
+        setFormError(t(res.error as never, res.errorValues as never));
+        setScopeFix(res.scopeFix ?? null);
         return;
       }
-      setFormError(null);
+      clearFormError();
       refreshPanel();
       if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
       toast.success(t('dayGridSaved', { count: res.count ?? d.lines.length }));
@@ -1385,10 +1402,11 @@ export function TxnWorkspace({
     startTransition(async () => {
       const res = await runSave(f);
       if (!res.ok) {
-        setFormError(t(res.error as never));
+        setFormError(t(res.error as never, res.errorValues as never));
+        setScopeFix(res.scopeFix ?? null);
         return;
       }
-      setFormError(null);
+      clearFormError();
       refreshPanel();
       if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
       toast.success(t(f.mode === 'edit' ? 'updated' : 'created'));
@@ -1396,6 +1414,61 @@ export function TxnWorkspace({
       else closeForm();
     });
   };
+
+  /**
+   * 4b909202 — ADD THE REFUSED EMPLOYEE TO THE RUN, then make the save that was refused.
+   *
+   * TWO SERVER CALLS, DELIBERATELY. Widening a payroll run and posting money onto it are separate
+   * decisions with separate audit trails, and the service will not fold them into one write (see
+   * `addEmployeeToRunAction`). What this spares the operator is having to make the second decision by
+   * hand: the entry is still on screen, so the retry is the SAME save through the SAME path
+   * (`submitForm` / `submitDaily`), never a second write path that could drift from them.
+   *
+   * The pair it sends is the pair the SERVICE refused — carried back on the error, not assembled here —
+   * so a run the operator was never refused on cannot be widened from this screen.
+   */
+  const addToRun = () => {
+    const fix = scopeFix;
+    if (!fix) return;
+    startTransition(async () => {
+      const res = await addEmployeeToRunAction(fix);
+      if (!res.ok) {
+        setFormError(t(res.error as never));
+        // r255 — THE OFFER SURVIVES A REFUSAL THAT PRESSING AGAIN COULD RESOLVE, AND ONLY THAT. A denial
+        // of authority is one somebody else can grant, so the button stays and the operator reads why.
+        // "Not employed in that month" can never become true by pressing again — the server only reaches
+        // it if the employment was terminated between the refusal and this click, which is exactly when a
+        // button still offering the impossible would be at its most misleading.
+        if (res.error === 'addToRunNotEmployed') setScopeFix(null);
+        return;
+      }
+      setScopeFix(null);
+      toast.success(
+        t(res.markedForRecalc ? 'addToRunDoneRecalc' : 'addToRunDone', {
+          employee: selected?.name ?? '',
+          period: res.payPeriod,
+        }),
+      );
+      // Same contract as a save: the run that now owes a recalculation, reported by the action.
+      if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
+      if (form) submitForm(false);
+      else if (daily) submitDaily();
+    });
+  };
+
+  /** The form's error and — when it was the scope refusal — the offer that resolves it. Built once and
+   *  rendered under BOTH machines (single entry and the day grid), because it is one situation and the
+   *  request's whole complaint was that it did not read the same way everywhere. */
+  const formErrorBlock = formError ? (
+    <div className="space-y-2">
+      <p className="text-sm text-destructive">{formError}</p>
+      {scopeFix && (
+        <Button type="button" size="sm" variant="secondary" onClick={addToRun} disabled={isPending}>
+          {isPending ? t('addToRunBusy') : t('addToRunCta', { employee: selected?.name ?? '' })}
+        </Button>
+      )}
+    </div>
+  ) : null;
 
   const doDelete = (id: string) => {
     startTransition(async () => {
@@ -1407,7 +1480,7 @@ export function TxnWorkspace({
         toast.success(t('deleted'));
         if (form?.id === id) closeForm();
       } else {
-        toast.error(t(res.error as never));
+        toast.error(t(res.error as never, res.errorValues as never));
       }
     });
   };
@@ -1476,7 +1549,8 @@ export function TxnWorkspace({
           completeSwitch();
         } else {
           cancelGate();
-          setFormError(t(res.error as never));
+          setFormError(t(res.error as never, res.errorValues as never));
+          setScopeFix(res.scopeFix ?? null);
         }
       });
       return;
@@ -1498,7 +1572,8 @@ export function TxnWorkspace({
         completeSwitch();
       } else {
         cancelGate();
-        setFormError(t(res.error as never));
+        setFormError(t(res.error as never, res.errorValues as never));
+        setScopeFix(res.scopeFix ?? null);
       }
     });
   };
@@ -2048,7 +2123,7 @@ export function TxnWorkspace({
                     </ul>
                   </div>
                 )}
-                {formError && <p className="text-sm text-destructive">{formError}</p>}
+                {formErrorBlock}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" size="sm" onClick={() => submitForm(false)} disabled={isPending}>
@@ -2363,7 +2438,7 @@ export function TxnWorkspace({
                     </ul>
                   </div>
                 )}
-                {formError && <p className="text-sm text-destructive">{formError}</p>}
+                {formErrorBlock}
 
                 <div className="flex flex-wrap items-center gap-2">
                   {/* ONE save for every line. Not "save each row" — the service writes the whole set in one

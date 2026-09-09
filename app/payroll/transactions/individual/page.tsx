@@ -155,7 +155,20 @@ export default async function IndividualTransactionPage({
     'componentRequired',
     'componentInvalid',
   ]);
-  const errorMessage = error && errorKeys.has(error) ? t(`individual.${error}`) : error;
+  /**
+   * r255 — ONE SITUATION, TWO SENTENCES, BECAUSE THIS PATH HAS NO VALUES TO PUT IN ONE.
+   *
+   * `?error=` is the pre-44129979 redirect shape: a bare token in the URL and nothing else. 4b909202 gave
+   * `employeeNotInScope` an ICU body that interpolates the employee, the run's month and a scope token,
+   * which this path cannot supply — so resolving the parameterised key here would print a sentence full
+   * of holes. Dropping the token from the set instead was worse: `errorKeys.has` is what stands between
+   * a token and the banner, so a bookmarked or hand-typed `?error=employeeNotInScope` was rendered to the
+   * operator as the literal word "employeeNotInScope". It resolves the VALUE-FREE variant of the same
+   * refusal instead. The parameterised one still reaches the operator through the action result, which
+   * carries the values — see `txnFailure`.
+   */
+  const valuelessVariant: Record<string, string> = { employeeNotInScope: 'employeeNotInScopeNoDetail' };
+  const errorMessage = error && errorKeys.has(error) ? t(`individual.${valuelessVariant[error] ?? error}`) : error;
 
   // 5c65367d — the Excel import's reference sheets, read from the same catalogues the validator resolves
   // against. Built here rather than inside the template builder because that module is client-safe and a

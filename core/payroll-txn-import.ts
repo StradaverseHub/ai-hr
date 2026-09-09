@@ -147,7 +147,18 @@ export function txnImportReason(e: unknown): { reason: string; detail?: Record<s
   if (e instanceof ComponentRequiredError) return { reason: 'componentRequired' };
   if (e instanceof InvalidTxnComponentError) return { reason: 'payItemUnsupported' };
   if (e instanceof InvalidTxnKindError) return { reason: 'kindUnknown' };
-  if (e instanceof EmploymentNotInBatchScopeError) return { reason: 'employeeNotInScope' };
+  // 4b909202 — THE SAME SITUATION, TOLD THE SAME WAY. A file row refused for scope now carries the run,
+  // the employee and the scope reason into the downloadable error report, exactly as the entry screen
+  // renders them, so an operator who meets this from a file and an operator who meets it from the form
+  // are not reading two different explanations of one refusal. Every value comes off the error's own
+  // `detail` — a person's name and two tokens the CATALOGUE turns into words; nothing English is built
+  // here (see this function's note above).
+  if (e instanceof EmploymentNotInBatchScopeError) {
+    return {
+      reason: 'employeeNotInScope',
+      detail: { employee: e.detail.employeeName, period: e.detail.payPeriod, scope: e.detail.reason },
+    };
+  }
   if (e instanceof BatchNotDraftError) return { reason: 'runNotWritable' };
   if (e instanceof PayRuleEvalError) return { reason: 'derivedAmountUnavailable' };
   // A Postgres 23P01 from the 0426 exclusion constraint would land here. It should be unreachable —
