@@ -147,9 +147,22 @@ describe('4b0e76ae · openLeaveYearAction has EXACTLY ONE caller', () => {
     expect(actions.match(/export async function openLeaveYearAction/g)).toHaveLength(1);
   });
 
-  it('is called from the Generate page and NOWHERE else (the r106 lesson)', () => {
+  it('is called from the Generate ENTITLEMENT screen and NOWHERE else (the r106 lesson)', () => {
+    // ⚠️ a6fe37fc ROUND 3 WIDENED THIS SET BY EXACTLY ONE FILE, AND THE CASE IS UPDATED RATHER THAN
+    // DELETED. The r106 lesson is that only the Generate Entitlement SCREEN may reach the grant sweep —
+    // no other flow, no other button, nothing that opens a leave year as a side effect. That is still
+    // asserted, and it is still a CLOSED set. What changed is that the screen now exists at two
+    // addresses at once: `/admin/leave-config/generate` is the new module's copy, built ALONGSIDE the old
+    // page and mounting the SAME `GenerateForm` with the SAME action, because the migration order
+    // requires something that works at every point (docs/design/a6fe37fc-migration-order.md, Round 3).
+    // Round 5 empties `app/admin/leave/generate/page.tsx` into a redirect stub, at which point this list
+    // goes back to one entry — the NEW one. Until then, two entries, and no third.
+    const NEW_MODULE_GENERATE_PAGE = 'app/admin/leave-config/generate/page.tsx';
     const callers = codeReferences('openLeaveYearAction').filter((f) => f !== ACTIONS);
-    expect(callers, `expected only ${GENERATE_PAGE} to reach the grant sweep`).toEqual([GENERATE_PAGE]);
+    expect(
+      callers,
+      'expected ONLY the two Generate Entitlement pages (old + a6fe37fc Round 3) to reach the grant sweep',
+    ).toEqual([NEW_MODULE_GENERATE_PAGE, GENERATE_PAGE].sort());
   });
 
   it('is ADMIN-gated — requireAdmin(), never getSession()', () => {

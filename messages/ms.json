@@ -8587,6 +8587,7 @@
       },
       "item": {
         "leaveTypes": "Jenis cuti",
+        "companyRules": "Peraturan syarikat",
         "entitlementTables": "Jadual kelayakan",
         "approvalChain": "Rantaian kelulusan",
         "replacementLeave": "Cuti ganti",
@@ -8616,6 +8617,14 @@
         "application": "Syarat yang mesti dipenuhi oleh permohonan cuti jenis ini. Setiap kad disimpan secara berasingan.",
         "approvers": "Tetapan kelulusan yang menjadi milik jenis cuti ini sendiri. Rantaian kelulusan dibina dan diumpukkan pada skrin Rantaian kelulusan."
       }
+    },
+    "leaveConfigPreview": {
+      "note": "Ini skrin Konfigurasi Cuti yang baharu, dibina seiring dengan skrin yang masih dipautkan oleh menu. Kedua-duanya menyimpan ke rekod yang sama, dan sehingga pertukaran dibuat, penyimpanan di sini akan membawa anda kembali ke skrin semasa."
+    },
+    "leaveConfigCompanyRules": {
+      "pageDescription": "Tetapan cuti yang menjadi milik sesebuah syarikat atau seluruh organisasi, dikumpulkan di satu tempat.",
+      "intro": "Empat tetapan ini bukan ciri mana-mana jenis cuti tertentu, jadi ia ditetapkan sekali di sini dan bukan diulang pada setiap jenis cuti serta bertaburan merentasi tiga skrin.",
+      "introTwoEditors": "Setiap satu daripadanya masih boleh diubah pada skrin tempatnya berada hari ini. Kedua-dua skrin menulis ke rekod yang sama, dan skrin lama akan dibuang pada pertukaran nanti."
     }
   },
   "topbar": {

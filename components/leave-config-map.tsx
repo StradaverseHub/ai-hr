@@ -48,6 +48,23 @@ import { getTranslations } from 'next-intl/server';
 
 /** Every screen in the area. The id is also its label key and its page heading. */
 export type LeaveConfigScreenId =
+  /**
+   * a6fe37fc ROUND 3 — `companyRules` IS A SCREEN ID WITH NO MAP ENTRY, AND THAT IS THE POINT.
+   *
+   * `/admin/leave-config/company-rules` is the one genuinely new destination in the redesign (IA §2.0.3):
+   * four settings that belong to a company or the tenant, today spread across three screens and one step
+   * inside every leave type. It is built ALONGSIDE those surfaces and replaces none of them yet, so it is
+   * deliberately absent from `LEAVE_CONFIG_MAP` below — the map is the customer's MENU and the menu moves
+   * at the Round 5 cutover, one commit per screen. Listing a half-migrated screen beside the ones it will
+   * absorb would put two entries for one job in front of the administrator.
+   *
+   * The id exists now for two reasons that both cost a round if deferred: the new page must be able to
+   * render the map at all (every leave-config screen reaching every other is the defect this component
+   * was built for), and `leaveConfigScreenTitle('companyRules')` gives that page its heading from the
+   * SAME key the menu entry will use — so Round 5 adds one line to the list rather than renaming a
+   * screen the customer has already learned. Every other id below is on the map; this one joins it there.
+   */
+  | 'companyRules'
   | 'leaveTypes'
   | 'entitlementTables'
   | 'approvalChain'
@@ -93,6 +110,37 @@ export const LEAVE_CONFIG_MAP: Group[] = [
     ],
   },
 ];
+
+/**
+ * a6fe37fc ROUND 3 (r259 finding 3) — THE ADDRESS THE MAP GIVES A SCREEN, so a link to a screen can
+ * never disagree with the menu entry for it.
+ *
+ * ⚠️ THE PREVIEW MODULE HAD TWO NAVIGATION DIRECTIONS AT ONCE. The map on all seven new
+ * `/admin/leave-config/` pages links to the OLD addresses, while four of those same pages' back-links
+ * pointed back INTO the new module. Each half is defensible alone; together they put two answers to
+ * "where is the leave type screen" on one page, and they would have made Round 5 move one set and leave
+ * the other — the inverse of the cutover instinct.
+ *
+ * ⚠️ ONE DIRECTION NOW, AND IT IS **OUT** UNTIL ROUND 5: every cross-screen link inside the module
+ * resolves through here, so it points where the MAP points — at the screen that is live today. That is
+ * also the choice that survives the cutover untouched: Round 5 empties each old page into a redirect
+ * stub aimed at the new module (docs/design/a6fe37fc-migration-order.md → Round 5), so a link resolved
+ * here reaches the NEW screen the moment the old one goes, and the cutover moves `LEAVE_CONFIG_MAP`
+ * alone rather than hunting inbound links.
+ *
+ * `companyRules` is excluded by TYPE, not by a runtime fallback: it is the one screen id with no map
+ * entry until the cutover, so asking this function for its address is a mistake tsc should refuse rather
+ * than one this function should paper over with a guessed href.
+ */
+export type MappedLeaveConfigScreenId = Exclude<LeaveConfigScreenId, 'companyRules'>;
+
+const HREF_BY_ID = Object.fromEntries(
+  LEAVE_CONFIG_MAP.flatMap((g) => g.items).map((i) => [i.id, i.href] as const),
+) as Record<MappedLeaveConfigScreenId, string>;
+
+export function leaveConfigScreenHref(id: MappedLeaveConfigScreenId): string {
+  return HREF_BY_ID[id];
+}
 
 /** The heading for one screen — the SAME string the map shows for it. */
 export async function leaveConfigScreenTitle(id: LeaveConfigScreenId): Promise<string> {
