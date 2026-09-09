@@ -2981,7 +2981,10 @@
     "maSectionAll": "全部",
     "maSectionAllHelp": "所有需要你处理的日子。",
     "maFoundForYouAll": "为你找到的日子",
-    "maEmptyAll": "本期间没有需要你处理的事项。"
+    "maEmptyAll": "本期间没有需要你处理的事项。",
+    "myPerformanceLink": "我的绩效",
+    "performancePageDescription": "您的目标、反馈请求和一对一面谈记录。",
+    "complianceFieldsNeedApproval": "出生日期、性别、婚姻状况和身份证件由人力资源部保管。如需更改，请在「银行与法定」页面提出申请。"
   },
   "approvals": {
     "title": "审批",

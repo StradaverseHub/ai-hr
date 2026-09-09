@@ -13,6 +13,19 @@
  * 0bb0e303 rev2: the three attendance/overtime/travel request forms moved to /attendance/requests. Same
  * treatment as the Leave tab — the actions leave ACTIONS but do NOT stop being checked; they are checked
  * at their new page, below, so "the capability vanished" still fails.
+ *
+ * r259 (board item 9583deac) — THE TABS THEMSELVES CHANGED, and this file follows the change rather than
+ * being deleted around it. My Profile was rebuilt in the shape of the Personnel record: six tabs —
+ * Profile, Employment, Bank & Statutory, Payroll, Family, Documents — carrying Personnel Management's own
+ * catalogue keys, because "an employee and the HR team are looking at two different shapes of the same
+ * person" was the reported fault. Two of the five tabs it replaced had no Personnel counterpart, so their
+ * contents MOVED and the move is asserted below exactly the way the Leave tab's was:
+ *   • Performance (goals / 360 feedback / 1:1 check-ins) → /me/performance, a screen of its own, because
+ *     /performance redirects a plain employee away and this was their only route to their own goals;
+ *   • Overview → its clock in/out control stayed on /me ABOVE the tab strip (one of only two places a
+ *     geofenced punch can be made), and its concurrent-positions list moved onto the Employment tab.
+ * The tab NAMES are no longer asserted here — they are Personnel's keys now, and
+ * test/me-profile-visibility.test.ts is where that relationship is pinned.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -63,13 +76,16 @@ const ACTIONS = [
   // test/leave-request-relocation.test.ts.
   'myUpdateContact',
   'myRequestProfileChange',
-  'myUpdateGoalProgress',
-  'myCreateGoal',
-  'mySubmitPeerFeedback',
-  'myDeclinePeerFeedback',
+  // myUpdateGoalProgress / myCreateGoal / mySubmitPeerFeedback / myDeclinePeerFeedback left this list at
+  // r259 with the Performance tab — they are bound on /me/performance, asserted in the describe at the
+  // foot of this file, so "the capability vanished" still fails.
   'mySubmitResignation',
   'myWithdrawResignation',
 ];
+const PERFORMANCE_PAGE_SRC = fs.readFileSync(
+  path.resolve(__dirname, '../app/me/performance/page.tsx'),
+  'utf8',
+);
 
 describe('/me — tabbed My Workspace (311ad7ba)', () => {
   it('keeps every server-action binding present after the tab restructure', () => {
@@ -78,9 +94,16 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     }
   });
 
-  it('wires the five profile tab keys and no Leave tab (moved to /leave · a7cbd895)', () => {
-    for (const key of ['overview', 'profile', 'pay', 'performance', 'documents']) {
-      expect(PAGE.includes(`key: '${key}'`), `missing tab key '${key}'`).toBe(true);
+  it('wires the six Personnel-shaped tabs, and no Leave tab (moved to /leave · a7cbd895)', () => {
+    // r259 REPLACED the five-key list that used to be here, and the replacement is not a weaker check:
+    // the tab set now comes from ME_TABS (app/me/visible-fields.ts), so asserting the panel wiring is
+    // asserting the whole strip. The five retired keys are asserted GONE below, which the old case could
+    // not do because they were what it required.
+    for (const key of ['profile', 'job', 'bankStatutory', 'payroll', 'family', 'documents']) {
+      expect(new RegExp(`^\\s+${key}: `, 'm').test(PAGE), `missing panel for tab '${key}'`).toBe(true);
+    }
+    for (const dead of ["key: 'overview'", "key: 'pay'", "key: 'performance'"]) {
+      expect(PAGE.includes(dead), `${dead} belongs to the arrangement r259 replaced`).toBe(false);
     }
     // The Leave tab is gone — leave self-service lives on /leave ("My Absence").
     expect(PAGE.includes("key: 'leave'")).toBe(false);
@@ -89,8 +112,13 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
   });
 
   it('deep-links reloads back to their tab (native GET forms carry ?tab=)', () => {
-    // Payslip month/cycle selector — a GET <form> that reloads the whole document.
-    expect(PAGE.includes('name="tab" value="pay"')).toBe(true);
+    // Payslip month/cycle selector — a GET <form> that reloads the whole document. r259 renamed the tab
+    // it lands on (`pay` → Personnel's `payroll`); the property is unchanged and the OLD address still
+    // resolves, which the legacy map below is for.
+    expect(PAGE.includes('name="tab" value="payroll"')).toBe(true);
+    expect(PAGE, 'an old ?tab=pay bookmark must still land somewhere real').toContain(
+      "const LEGACY_TAB: Record<string, MeTabKey> = { overview: 'profile', pay: 'payroll' };",
+    );
     // The server validates ?tab= and feeds it to the shell as defaultTab.
     expect(PAGE.includes('defaultTab={activeTab}')).toBe(true);
   });
@@ -100,7 +128,8 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     expect(fs.existsSync(path.resolve(__dirname, '../components/section-jump-nav.tsx'))).toBe(false);
   });
 
-  it('replaces the Overview recent-days list with a link to the Attendance page', () => {
+  it('keeps the link to the Attendance page after the Overview tab was retired (r259)', () => {
+    // The link outlived the tab it was on. It now sits beside the clock control above the tab strip.
     expect(PAGE.includes("href=\"/attendance\"")).toBe(true);
     expect(PAGE.includes("t('viewAttendanceHistory')")).toBe(true);
   });
@@ -206,6 +235,9 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
   it('keeps the geofenced punch on /me (311ad7ba) — only the request forms travelled', () => {
     // /me is one of only two places a punch can be made. A relocation that took the clock control with the
     // forms would remove that, quietly, on a change nobody read as touching clocking.
+    //
+    // r259 is precisely such a change and this is what stopped it: the six Personnel-shaped tabs have no
+    // clocking card, so the control moved ABOVE the strip rather than into a tab. Same page, same actions.
     expect(PAGE.includes('action={myCheckIn}')).toBe(true);
     expect(PAGE.includes('action={myCheckOut}')).toBe(true);
     expect(PAGE.includes('<LocationNotice />')).toBe(true);
@@ -399,3 +431,70 @@ describe('r227 — Request opens the existing pop-up, and nothing is left behind
   });
 });
 
+
+/**
+ * r259 — the Performance tab moved off /me, and it did not disappear.
+ *
+ * Same three facts the Leave and attendance-request relocations had to prove, and for the same reason:
+ * the forms exist on the new page, /me reaches it, and there is ONE implementation rather than a fork.
+ * The stakes are higher here than for the earlier moves. /performance redirects anyone who is neither an
+ * administrator nor a manager back to the dashboard, so for a plain employee /me was the ONLY route to
+ * their own goals, their peer-feedback requests and their check-in history. A tab deleted without its
+ * contents would have removed four live self-service capabilities on a change nobody read as touching
+ * performance — invisible to types, to a 200 and to the rest of the suite.
+ */
+describe('r259 — /me → /me/performance: the goals and feedback moved, they did not disappear', () => {
+  const MOVED_ACTIONS = ['myCreateGoal', 'myUpdateGoalProgress', 'mySubmitPeerFeedback', 'myDeclinePeerFeedback'];
+
+  it('binds every moved action on the page that now carries it', () => {
+    for (const a of MOVED_ACTIONS) {
+      expect(PERFORMANCE_PAGE_SRC.includes(`action={${a}}`), `missing action={${a}} on /me/performance`).toBe(true);
+    }
+    // The reads travelled too — a page that binds the forms but lists nothing is the same lost capability.
+    for (const readFn of ['myGoals', 'myFeedbackRequests', 'myCheckIns', 'myReviews']) {
+      expect(PERFORMANCE_PAGE_SRC.includes(readFn), `/me/performance no longer reads ${readFn}`).toBe(true);
+    }
+  });
+
+  it('reuses /me’s actions rather than forking a second copy', () => {
+    // A fork is the failure mode that matters: two implementations of "record my goal progress" drift, and
+    // the second one skips whatever the first learns.
+    expect(PERFORMANCE_PAGE_SRC).toContain("from '../actions'");
+    expect(
+      fs.existsSync(path.resolve(__dirname, '../app/me/performance/actions.ts')),
+      'no second copy of the performance actions beside the new page',
+    ).toBe(false);
+  });
+
+  it('/me no longer binds them, and links across instead', () => {
+    for (const a of MOVED_ACTIONS) {
+      expect(PAGE.includes(`action={${a}}`), `${a} is still bound on /me — the forms are in two places`).toBe(false);
+    }
+    expect(PAGE.includes('href="/me/performance"')).toBe(true);
+    expect(PAGE.includes("t('myPerformanceLink')")).toBe(true);
+    // An existing /me?tab=performance bookmark or notification link must still arrive.
+    expect(PAGE).toContain("if (spTab === 'performance') redirect('/me/performance');");
+  });
+
+  it('lands the employee back on the page they posted from', () => {
+    // The actions used to redirect to /me because that is where the forms were. Left unchanged, every
+    // submission would have bounced the employee off the performance page — and an error would have shown
+    // its banner on a screen with no form on it. The same rule 1e9145d4 and c6bb5f5a wrote down.
+    const actions = fs.readFileSync(path.resolve(__dirname, '../app/me/actions.ts'), 'utf8');
+    expect(actions).toContain("const PERFORMANCE_PAGE = '/me/performance'");
+    for (const marker of ['Goal+added', 'Goal+updated', 'Feedback+submitted', 'Declined']) {
+      const line = actions.split('\n').find((l) => l.includes(`toast=${marker}`));
+      expect(line, `redirect for ${marker}`).toBeDefined();
+      expect(line, `${marker} must return to the performance page`).toContain('${PERFORMANCE_PAGE}');
+    }
+    expect(actions.includes("redirect('/me?toast=Goal+added')"), 'the old /me redirect is gone').toBe(false);
+  });
+
+  it('the new page carries the six new locale-safe strings it needs', () => {
+    for (const [locale, m] of Object.entries(MESSAGES)) {
+      for (const added of ['myPerformanceLink', 'performancePageDescription', 'complianceFieldsNeedApproval']) {
+        expect((m.me as Record<string, unknown>)[added], `${locale}.me.${added}`).toBeTruthy();
+      }
+    }
+  });
+});

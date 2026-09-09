@@ -1,0 +1,115 @@
+# My Profile — exactly what an employee sees of their own record, and what they do not
+
+Board item **9583deac**, stage one. r259.
+
+The approved plan promises you this list in writing:
+
+> Some tabs will show less than the administrator's view even when the layout matches — an employee has no
+> business seeing another person's cost centre or an internal note. **The list of exactly which fields are
+> hidden is written down and shown to you before stage one is built, not decided as we go.**
+
+This is that list. It is the difference between a self-service screen and a data leak, so it is a
+deliverable of the round rather than a note about one.
+
+It is not prose that can rot. `app/me/visible-fields.ts` holds the same list as code, the screen renders
+from it, and `test/me-profile-visibility.test.ts` fails the build if this document and that file stop
+agreeing.
+
+---
+
+## The shape
+
+My Profile now carries the **same six tabs, in the same order, with the same names** as the Personnel
+record an administrator sees:
+
+| Tab | The card(s) on it |
+| --- | --- |
+| **Profile** | Personal Details · Contact & Address · Emergency Contact |
+| **Employment** | Employment Information · Direct Superior · (other current positions, if any) |
+| **Bank & Statutory** | Bank Information · Statutory (Malaysia) · Others Statutory · Request a change |
+| **Payroll** | Basic Salary · My Payslips · Personal Tax Relief (TP1) · My Loans |
+| **Family** | Family & Dependants |
+| **Documents** | Annual Tax Statement (EA) · Review Outcome · Resignation |
+
+The tab names are not copies of the Personnel screen's words — they are the **same catalogue entries**,
+read from the same place. Rename a tab on the Personnel side and it renames here. That is what stops the
+two screens drifting apart again, which was the original complaint.
+
+Two things sit **outside** the tabs, on purpose:
+
+- **Clock in / out** stays at the top of the page. It is one of only two places a geofenced punch can be
+  made, and the Personnel record has no clocking card, so putting it in a tab would have meant deleting it.
+- **My Performance** (goals, feedback requests, one-to-one check-ins) moved to its own screen at
+  `/me/performance`, linked from the top of My Profile. The Personnel record has no Performance tab; the
+  contents moved rather than disappearing.
+
+---
+
+## What an employee **cannot** see on their own record
+
+Three kinds of thing are withheld, and the difference between them matters.
+
+### 1. Other people's data, reachable from a field on this person's record
+
+| Tab | Field | Why |
+| --- | --- | --- |
+| Bank & Statutory | Duplicate income-tax-number warning | It names the **other** employees filed under the same tax reference. A warning meant for HR would tell an employee who else shares their number. |
+| Employment | Cost centre and cost-recharge allocation | Which companies this salary is charged to is the group's internal accounting, not a fact about the person, and the percentages disclose an inter-company arrangement. |
+| Employment | Delegations (who covers this person’s approvals) | An operational authority setting about other employees' approval rights; changing it is an HR act, and reading it tells an employee who can approve in their name. |
+| Family | Dependant remarks and employer details of a working spouse | Free-text HR notes about a family member, and a third party's employer address, neither of which the employee record needs to show back. |
+
+### 2. The employer's own commercial position, recorded against the employee
+
+| Tab | Field | Why |
+| --- | --- | --- |
+| Bank & Statutory | Employer-borne EPF / SOCSO / EIS / SKBBK / tax flags | These record which contributions the **company** absorbs on the employee's behalf — an employment-cost arrangement, not the employee's statutory position. |
+| Bank & Statutory | Child-relief rate table (full / half categories) | Tenant-level tax configuration shared by every employee; the employee's own relief **count** is shown, the grid behind it is not. |
+| Payroll | Payroll policy assignment (which pay template applies) | Internal payroll configuration. What it produces — pay mode, payment term, the payslip — is shown; the template name is not. |
+| Payroll | Pay component catalogue and recurring component setup | HR master data for building pay. Every amount it produces already appears on the employee's own payslip. |
+| Employment | Contract remark | A free-text HR note on the contract ("renew at revised rate", "do not extend"). The contract **dates** are shown; the note is an internal judgement. |
+
+### 3. An internal judgement about this person
+
+The most dangerous class: it *is* their data, and it is still not a thing to hand them without an HR
+decision.
+
+| Tab | Field | Why |
+| --- | --- | --- |
+| Employment | Blacklist flag and blacklist reason | An internal HR decision about re-employment. Disclosing it on a self-service screen would be the employee learning it from a web page. |
+| Payroll | Salary revision remarks and the full revision history | The **current** salary, currency and effective date are shown. The remark on each past revision is HR's reasoning, and the increment history is a performance conversation, not a field. |
+| Documents | HR personnel-file documents (the Documents repository) | The file can hold a warning letter or an investigation note, and there is no per-document "visible to employee" switch yet. Payslips, EA statements and review letters — the documents meant **for** the employee — are shown. |
+| Every tab | Change History / audit trail | It names which member of staff changed what and when. It is HR's record of its own handling of the person. |
+| Every tab | Data privacy tools (PDPA export / erasure controls) | Administrative controls that act on the record; a request route, not a self-service button. |
+| Every tab | Movement history (transfer / termination / blacklist events) | The event ledger carries the reasons behind each movement, including exit reasons recorded by HR before anything is communicated. |
+
+---
+
+## Two more decisions worth stating plainly
+
+**The bank account number is masked.** The employee sees the bank and the last four digits, which is
+enough to confirm which account is on file without the full number rendering onto a shared screen or into
+a screenshot. That is how My Profile has always shown it; nothing changed.
+
+**Nothing new became editable.** Stage one shows the record. The two ways to change something were
+already there and are unchanged:
+
+- low-risk contact details (mobile, personal email, home address, emergency contact) save immediately;
+- bank details, PCB category, number of children, date of birth, gender and marital status raise a
+  **request** that waits for an administrator.
+
+Stage two widens which fields may be requested and adds the rejection reason. Stage three adds the
+setting that controls, field by field, what an employee may ask to change, and who approves it.
+
+---
+
+## The one item we would like a decision on
+
+**The HR personnel file (the Documents repository) is withheld for now.** Technically an employee is
+already permitted to read the documents filed against their own employment — the database allows it. We
+have not surfaced them, because there is no way today to mark a single document "the employee may see
+this", and the same folder is where a warning letter would be filed. Surfacing the folder wholesale would
+publish those.
+
+The right fix is a per-document visibility switch on the HR side, which is a small piece of work but is
+not in stage one's scope. Until then the Documents tab shows only what is produced **for** the employee:
+their EA statements, their review outcome, and their own resignation.

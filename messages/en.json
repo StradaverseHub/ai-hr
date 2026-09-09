@@ -2981,7 +2981,10 @@
     "maSectionAll": "All",
     "maSectionAllHelp": "Every day that needs something from you.",
     "maFoundForYouAll": "Days we found for you",
-    "maEmptyAll": "Nothing in this period needs anything from you."
+    "maEmptyAll": "Nothing in this period needs anything from you.",
+    "myPerformanceLink": "My performance",
+    "performancePageDescription": "Your goals, feedback requests and one-to-one check-ins.",
+    "complianceFieldsNeedApproval": "Date of birth, gender, marital status and your identity documents are kept by HR. Ask for a change under Bank & Statutory."
   },
   "approvals": {
     "title": "Approvals",

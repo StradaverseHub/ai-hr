@@ -793,6 +793,14 @@ export async function myCheckOut(formData: FormData) {
 }
 
 // ── Goals (ADR-0022) — the employee's own continuous goals ──
+//
+// r259 — THE PAGE THESE POST FROM MOVED, so their redirects moved with it. Goals, 360 feedback and 1:1
+// check-ins left /me when My Profile was rebuilt in the shape of the Personnel record (six tabs, none of
+// them Performance) and now live on /me/performance. The rule is the one 1e9145d4 and c6bb5f5a already
+// wrote down for the attendance forms: an action must return the employee to the screen they posted from.
+// Left unchanged, every one of these would have bounced the employee off the page they were reading, and
+// an error banner would have rendered on a screen with no form on it. Pinned by test/me-tabs.test.ts.
+const PERFORMANCE_PAGE = '/me/performance';
 
 const strOrUndef = (v: FormDataEntryValue | null) => {
   const s = String(v ?? '').trim();
@@ -814,10 +822,10 @@ export async function myCreateGoal(formData: FormData) {
       weight: weightRaw != null ? Number(weightRaw) : null,
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Goal+added');
+  revalidatePath(PERFORMANCE_PAGE);
+  redirect(`${PERFORMANCE_PAGE}?toast=Goal+added`);
 }
 
 export async function myUpdateGoalProgress(formData: FormData) {
@@ -830,10 +838,10 @@ export async function myUpdateGoalProgress(formData: FormData) {
       status: String(formData.get('status')) as GoalStatus,
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Goal+updated');
+  revalidatePath(PERFORMANCE_PAGE);
+  redirect(`${PERFORMANCE_PAGE}?toast=Goal+updated`);
 }
 
 export async function mySubmitPeerFeedback(formData: FormData) {
@@ -846,10 +854,10 @@ export async function mySubmitPeerFeedback(formData: FormData) {
       named: formData.get('named') === 'on',
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Feedback+submitted');
+  revalidatePath(PERFORMANCE_PAGE);
+  redirect(`${PERFORMANCE_PAGE}?toast=Feedback+submitted`);
 }
 
 export async function myDeclinePeerFeedback(formData: FormData) {
@@ -857,10 +865,10 @@ export async function myDeclinePeerFeedback(formData: FormData) {
   try {
     await declinePeerFeedback(s, { requestId: String(formData.get('requestId')) });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Declined');
+  revalidatePath(PERFORMANCE_PAGE);
+  redirect(`${PERFORMANCE_PAGE}?toast=Declined`);
 }
 
 export async function myEditGoal(formData: FormData) {
@@ -873,8 +881,8 @@ export async function myEditGoal(formData: FormData) {
       description: strOrUndef(formData.get('description')) ?? '',
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/me');
-  redirect('/me?toast=Goal+updated');
+  revalidatePath(PERFORMANCE_PAGE);
+  redirect(`${PERFORMANCE_PAGE}?toast=Goal+updated`);
 }
