@@ -678,6 +678,25 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       const nav = page.indexOf('<form method="get"');
       expect(nav).toBeGreaterThan(-1);
       expect(page.slice(nav, page.indexOf('</form>', nav))).not.toContain('data-save-section');
+
+      // r257 — THE READING ORDER, guarded, because the bar's honesty argument rests on it. r255's verify
+      // pass reported this tab's Save bar rendering in the MIDDLE of the tab, above two editable cards it
+      // does not cover, and the answer was `covers` naming the one card it owns rather than moving the
+      // bar (Employment Information has to lead the tab, and a bar pushed to the foot would then read as
+      // covering the two below it — worse). That answer only holds while the scope LEADS the tab: move
+      // either bucket (b) card above it and the bar sinks further into the middle with more uncovered
+      // cards above it as well as below. Attendance got this guard in r255
+      // (test/personnel-holiday-grade-relocation.test.ts) and Payroll in r256
+      // (test/personnel-payroll-tab-order.test.ts); this is the same guard for the third tab whose bar is
+      // not last.
+      const jobPanel = page.slice(page.indexOf('job: ('), page.indexOf('careerMovement: ('));
+      expect(jobPanel).toContain('{directSuperiorCard}');
+      expect(jobPanel).toContain('{delegationsCard}');
+      expect(
+        jobPanel.indexOf('{employmentInfoCard}'),
+        'the consolidated card leads the tab, so the Save bar sits above only the two (b) cards',
+      ).toBeLessThan(jobPanel.indexOf('{directSuperiorCard}'));
+      expect(jobPanel.indexOf('{directSuperiorCard}')).toBeLessThan(jobPanel.indexOf('{delegationsCard}'));
     });
 
     it('Payroll: the three registers are OUTSIDE the scope, and the salary revision has no marker', () => {

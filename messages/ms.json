@@ -8644,6 +8644,7 @@
       "discardChanges": "Buang Perubahan",
       "cancel": "Batal",
       "saving": "Menyimpan…",
+      "discarding": "Membuang…",
       "savedToast": "Perubahan disimpan",
       "saveFailed": "Perubahan anda tidak dapat disimpan",
       "noChanges": "Tiada perubahan belum disimpan",

@@ -348,7 +348,7 @@ describe('§4 THE FENCE — a card outside the scope is untouched by the tab-wid
   it('editing a bucket (b) card neither arms the tab Save nor reaches the payload nor is undone by Discard', async () => {
     const user = userEvent.setup();
     const save = saveMock(async () => ok(['person']));
-    render(<Screen save={save} />);
+    const { rerender } = render(<Screen save={save} />);
     const { name, salary, saveBtn, discardBtn } = fields();
 
     // A salary revision typed into its own card is invisible to the tab.
@@ -367,6 +367,11 @@ describe('§4 THE FENCE — a card outside the scope is untouched by the tab-wid
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     const fd = save.mock.calls[0]![0] as FormData;
     expect([...fd.keys()].some((k) => k.includes('amount'))).toBe(false);
+
+    // The refresh that save asked for, coming back. Every save on the real page is followed by one; here
+    // it has to be handed over by hand, and a Discard pressed before it arrives is deliberately HELD
+    // rather than run against markup that is a round trip behind the record (§17).
+    rerender(<Screen save={save} />);
 
     // …and Discard, the dangerous half, leaves it exactly where it was.
     await user.clear(name);
@@ -1094,5 +1099,451 @@ describe('§13 a bucket (b) form INSIDE a consolidated card is still fenced off,
     await user.type(screen.getByLabelText('Confirmation Date'), '{Enter}');
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ── §14 (r257) DISCARD PUTS THE INFORMATION BACK TO THE LAST SAVED VERSION ──────────────────────────
+ *
+ * The plan's own words. §5 above already pins "Discard restores", but it only ever discards a FIRST
+ * edit — and on a page nobody has saved yet, "the last saved version" and "the page as it first
+ * rendered" are the same string, so §5 cannot tell the two apart. Everything the mechanism actually
+ * depends on lives in the gap between them: Discard remounts the scope's subtree (`key={nonce}`), which
+ * resets every uncontrolled input to the `defaultValue` its SERVER-RENDERED element carries, and that
+ * element is only the last saved one because a successful save calls `router.refresh()` and the fresh
+ * RSC payload replaces it. Save's own re-baseline is in-place and deliberately does NOT remount, so
+ * nothing else on the save path moves those defaults.
+ *
+ * So this section drives a SECOND edit after a save, and asserts on the value the FIRST save wrote —
+ * a value that does not appear in the initial render at all, which is what makes the assertion able to
+ * fail. `rerender` with a new `serverName` IS `router.refresh()` landing; the real page gets the same
+ * new element from the server, this test hands it over by hand because there is no server here.
+ *
+ * THE WINDOW BETWEEN THE SAVE AND THAT PAYLOAD is where this used to go wrong, and §17 below is where it
+ * is now pinned: until the refresh comes back, the element this restore reads is still the PRE-save one.
+ * r257 first documented that as a stale render and left it; the verify pass measured it properly and it
+ * was worse than documented — the pre-save value went back into the input, became the new baseline, and
+ * was posted by the next save. `discard` in components/tab-save-scope.tsx now waits for the payload.
+ */
+function RefreshableScreen({ save, serverName }: { save: SaveFn; serverName: string }) {
+  return (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <TabSaveScope tabKey="profile" employmentId={EMPLOYMENT_ID} saveAction={save} covers={['Personal Details']}>
+        <form data-save-section="person">
+          <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
+          <input type="hidden" name="personId" defaultValue={PERSON_ID} />
+          <label>
+            <span>Full Name</span>
+            {/* What the RSC page renders. It changes when — and only when — a save has landed and the
+                refresh has come back, which is exactly what makes it "the last saved version". */}
+            <input name="fullName" defaultValue={serverName} />
+          </label>
+          {/* A SECOND field in the SAME section, never saved and never refreshed — §17 edits this one so
+              the tab can be dirty without touching the name the first save wrote. */}
+          <label>
+            <span>Date of Birth</span>
+            <input name="dateOfBirth" defaultValue="1990-01-01" />
+          </label>
+        </form>
+      </TabSaveScope>
+    </NextIntlClientProvider>
+  );
+}
+
+describe('§14 Discard restores the LAST SAVED version, not the page as it first rendered', () => {
+  const SAVED_ONCE = 'Ali bin Hassan';
+  const nameField = () => screen.getByLabelText('Full Name') as HTMLInputElement;
+
+  /** Edit → Save → the refresh lands. The baseline is now SAVED_ONCE, which was never on screen at mount. */
+  const saveOnce = async (
+    user: ReturnType<typeof userEvent.setup>,
+    save: ReturnType<typeof saveMock>,
+    rerender: ReturnType<typeof render>['rerender'],
+  ) => {
+    await user.clear(nameField());
+    await user.type(nameField(), SAVED_ONCE);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    // A save re-baselines IN PLACE and asks the router to refresh; this is that refresh coming back.
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    rerender(<RefreshableScreen save={save} serverName={SAVED_ONCE} />);
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+  };
+
+  it('a second edit discarded lands on what the first save wrote, not on what the page opened with', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    const { rerender } = render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveOnce(user, save, rerender);
+
+    await user.clear(nameField());
+    await user.type(nameField(), 'Ali bin Ismail');
+    const discardBtn = screen.getByRole('button', { name: 'Discard Changes' });
+    await waitFor(() => expect(discardBtn).toBeEnabled());
+
+    await user.click(discardBtn);
+
+    // THE ASSERTION THIS SECTION EXISTS FOR.
+    await waitFor(() => expect(nameField().value).toBe(SAVED_ONCE));
+    expect(nameField().value).not.toBe(SAVED_NAME);
+    expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    // Discard is not a write.
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('the change summary counts the second edit from the saved value, not from the opening one', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    const { rerender } = render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveOnce(user, save, rerender);
+
+    await user.clear(nameField());
+    await user.type(nameField(), 'Ali bin Ismail');
+    await waitFor(() => expect(screen.getByText('Unsaved changes: 1')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Review changes' }));
+
+    const changeRow = document.querySelector('[data-change-row="person.fullName"]') as HTMLElement | null;
+    expect(changeRow).not.toBeNull();
+    // "Original" is the LAST SAVED value. Reading the opening render here would tell the admin they had
+    // changed something they had already saved.
+    expect(within(changeRow!).getByText(SAVED_ONCE)).toBeInTheDocument();
+    expect(within(changeRow!).getByText('Ali bin Ismail')).toBeInTheDocument();
+    expect(within(changeRow!).queryByText(SAVED_NAME)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ── §15 (r257) A RECORDED SALARY REVISION SURVIVES THE TAB'S DISCARD ────────────────────────────────
+ *
+ * The plan's own worked example, and the sentence the whole classification exists to keep true:
+ * "Rolling them into a tab-wide Save would mean Discard Changes could silently undo a salary revision
+ * you had already recorded."
+ *
+ * §4 and §13 pin the half before the write — an unsubmitted (b) form is invisible to the count, the
+ * payload and the restore. This section pins the half AFTER it: the revision is actually RECORDED, and
+ * only then is the tab's Discard pressed. Nothing may take it back, and nothing may replay it.
+ *
+ * THE SHAPE IS THE PAYROLL TAB'S, which is the sharpest one on the screen: `setCompensationAction`'s
+ * revision dialog and the salary history it appends to both live INSIDE compensationCard, and that card
+ * is INSIDE the scope (r256) because the tab's Payment Method field edit is nested in it. So Discard's
+ * remount sweeps the very subtree the revision was recorded in. What keeps the record safe is not
+ * distance — it is that the fence is the SECTION MARKER: the revision form carries none, so it is never
+ * read, marked, packed or reset, and the history it wrote is rendered from state the scope does not own.
+ *
+ * WHAT THIS CASE DOES **NOT** REST ON, corrected after the r257 verify pass. "The recorded row is still
+ * on screen" cannot fail here and is not the proof: the history is rendered by the component that RENDERS
+ * the scope, so `key={nonce}` cannot reach it by construction — exactly as on the real page, where it is
+ * server markup the remount re-renders unchanged. Stating that as a pinned result was overclaiming. The
+ * assertions that CAN fail, and therefore carry the case, are these: the sweep really did happen and
+ * really did cross this card (the unmarked Revision Note inside it is back to its server value); the
+ * revision's own action ran exactly once and was neither replayed nor reversed; the tab reported nothing
+ * to discard the moment the revision was written; and the amount reached no namespace of the payload.
+ * The row's presence is kept as a consequence worth reading, below those, and labelled as one.
+ */
+function PayrollScreen({ save, revise }: { save: SaveFn; revise: (fd: FormData) => void }) {
+  // Stands in for the salary history the server re-renders after `setCompensationAction` redirects.
+  const [history, setHistory] = useState<string[]>(['5,000.00 from 2026-01-01']);
+  const record = async (fd: FormData) => {
+    revise(fd);
+    setHistory((h) => [...h, `${String(fd.get('amount'))} from ${String(fd.get('effectiveFrom'))}`]);
+  };
+  return (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <TabSaveScope
+        tabKey="payroll"
+        employmentId={EMPLOYMENT_ID}
+        saveAction={save}
+        covers={['How This Employee Is Paid']}
+      >
+        {/* ONE card, three things — the shape of compensationCard on the real page. */}
+        <div data-testid="compensation-card">
+          <ul data-testid="revision-history">
+            {history.map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+          </ul>
+          {/* BUCKET (b): the effective-dated revision. Its own button, its own action, NO marker. */}
+          <form data-testid="salary-revision" action={record}>
+            <label>
+              <span>New Basic Salary</span>
+              <input name="amount" defaultValue="" />
+            </label>
+            <label>
+              <span>Effective From</span>
+              <input name="effectiveFrom" defaultValue="2026-10-01" />
+            </label>
+            <button type="submit">Record revision</button>
+          </form>
+          {/* NEITHER BUCKET — a control that belongs to no section and to no (b) form, the shape of the
+              Employment tab's company-transfer inputs, which live inside a consolidated card. The remount
+              DOES reset this one, and that is what makes "the sweep reached inside this card" an assertion
+              capable of failing rather than a claim about geometry. */}
+          <label>
+            <span>Revision Note</span>
+            <input data-testid="revision-note" defaultValue="" />
+          </label>
+          {/* BUCKET (a): the one field edit nested inside this card, which is why the scope encloses it. */}
+          <form data-save-section="payment">
+            <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
+            <label>
+              <span>Payment Method</span>
+              <select name="paymentMethod" defaultValue="bank">
+                <option value="bank">Bank transfer</option>
+                <option value="cash">Cash</option>
+              </select>
+            </label>
+          </form>
+        </div>
+      </TabSaveScope>
+    </NextIntlClientProvider>
+  );
+}
+
+describe('§15 a revision that was RECORDED is not undone by the tab’s Discard', () => {
+  const history = () => within(screen.getByTestId('revision-history'));
+  const REVISION = '9000 from 2026-10-01';
+
+  it('records it, then discards the tab, and the revision is still there', async () => {
+    const user = userEvent.setup();
+    const revise = vi.fn();
+    const save = saveMock(async () => ok(['payment']));
+    render(<PayrollScreen save={save} revise={revise} />);
+
+    // 1 — typing the revision amount arms nothing at all, even though it is inside the scope's subtree.
+    await user.type(screen.getByLabelText('New Basic Salary'), '9000');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+
+    // 2 — RECORD it. The tab is clean, so the write goes straight through with no prompt.
+    await user.click(screen.getByRole('button', { name: 'Record revision' }));
+    await waitFor(() => expect(revise).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(history().getByText(REVISION)).toBeInTheDocument());
+    // A revision that has been WRITTEN is not a pending edit: the tab has nothing to save and nothing to
+    // discard. Were the revision form ever given a section marker, the amount would read here as an
+    // unsaved change and the tab would be offering to discard something already recorded.
+    expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard Changes' })).toBeDisabled();
+
+    // 3 — type into a control that belongs to nothing, so the sweep has something to prove itself on,
+    //     then edit the card's OWN field and press the tab's Discard.
+    await user.type(screen.getByLabelText('Revision Note'), 'agreed at review');
+    await user.selectOptions(screen.getByLabelText('Payment Method'), 'cash');
+    const discardBtn = screen.getByRole('button', { name: 'Discard Changes' });
+    await waitFor(() => expect(discardBtn).toBeEnabled());
+    await user.click(discardBtn);
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+
+    // THE ASSERTIONS THIS SECTION EXISTS FOR. First, the remount really happened and really did sweep the
+    // INSIDE of the card the revision was recorded in: a control that belongs to no section at all is
+    // back to its server value, and so is the field the tab does own. Discard IS reaching this subtree —
+    // which is what makes the revision's survival a fact about the fence rather than about distance.
+    expect((screen.getByTestId('revision-note') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Payment Method') as HTMLSelectElement).value).toBe('bank');
+    // Second, the recorded revision came through that sweep as a WRITE, not as an edit: not reversed,
+    // and — the fault a subtree fence would cause — not replayed either.
+    expect(revise).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
+    // And so the row is still on screen. Read as a consequence, not as the proof: the history is state
+    // of the component that renders the scope (server markup on the real page), which `key={nonce}`
+    // cannot reach — see the note above this describe.
+    expect(history().getByText(REVISION)).toBeInTheDocument();
+    expect(history().getByText('5,000.00 from 2026-01-01')).toBeInTheDocument();
+  });
+
+  it('and the amount that recorded it never reaches the tab’s payload, under any namespace', async () => {
+    const user = userEvent.setup();
+    const revise = vi.fn();
+    const save = saveMock(async () => ok(['payment']));
+    render(<PayrollScreen save={save} revise={revise} />);
+
+    await user.type(screen.getByLabelText('New Basic Salary'), '9000');
+    await user.click(screen.getByRole('button', { name: 'Record revision' }));
+    await waitFor(() => expect(revise).toHaveBeenCalledTimes(1));
+
+    await user.selectOptions(screen.getByLabelText('Payment Method'), 'cash');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const sent = save.mock.calls[0]![0] as FormData;
+    expect(sent.get('sections')).toBe('payment');
+    expect(sent.get('section.payment.paymentMethod')).toBe('cash');
+    expect([...sent.keys()].some((k) => k.includes('amount'))).toBe(false);
+    expect([...sent.keys()].some((k) => k.includes('effectiveFrom'))).toBe(false);
+  });
+});
+
+/**
+ * ── §16 (r257) THE LAST WAY OFF THE SCREEN — reload, close, and an address typed into the bar ────────
+ *
+ * The plan promises that leaving the SCREEN with unsaved changes asks first, and the screen has two kinds
+ * of exit. §10 pins the in-app one, which is a client-side navigation no unload event ever sees. This is
+ * the other one: a reload, a closed tab, an external address, and the HARD navigation a bare `<a>`
+ * performs — every one of which arrives as `beforeunload`, and none of which a router guard can reach.
+ * The browser draws its own dialog there, so what a test can pin is the only half the page controls:
+ * whether the event is cancelled, and whether it is cancelled on a page with nothing to lose.
+ */
+describe('§16 a reload or a close asks too, and only when there is something to lose', () => {
+  const fireBeforeUnload = () => {
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    return e;
+  };
+
+  it('a clean tab lets the page go without a word', async () => {
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+
+    expect(fireBeforeUnload().defaultPrevented).toBe(false);
+  });
+
+  it('a dirty tab cancels the unload, which is what makes the browser ask', async () => {
+    const user = userEvent.setup();
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+    const { name, saveBtn } = fields();
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(saveBtn).toBeEnabled());
+
+    expect(fireBeforeUnload().defaultPrevented).toBe(true);
+  });
+
+  it('and stops asking again the moment the edits are dealt with', async () => {
+    const user = userEvent.setup();
+    render(<Screen save={saveMock(async () => ok(['person']))} />);
+    const { name, discardBtn } = fields();
+    await user.clear(name);
+    await user.type(name, 'Ali bin Hassan');
+    await waitFor(() => expect(discardBtn).toBeEnabled());
+    expect(fireBeforeUnload().defaultPrevented).toBe(true);
+
+    await user.click(discardBtn);
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+
+    expect(fireBeforeUnload().defaultPrevented).toBe(false);
+  });
+});
+
+/**
+ * ── §17 (r257 verify) A DISCARD PRESSED BEFORE THE REFRESH COMES BACK CANNOT UN-SAVE A SAVED FIELD ───
+ *
+ * THE DEFECT THIS PINS, MEASURED RATHER THAN REASONED ABOUT. A successful save re-baselines in place and
+ * asks the router to refresh; `router.refresh()` dispatches inside its own transition and returns
+ * synchronously, so the bar is live again while `children` still carries the values the page opened with.
+ * Discard restores by REMOUNTING that subtree. So a Discard pressed in the window between the two put the
+ * PRE-save value back into an input the admin had already saved, the fresh baseline adopted it as "last
+ * saved", and the next save of that section posted it — `buildTabPayload` packs every control of a dirty
+ * section, and `syncCarriedValues` mirrors the same stale value into the sibling section's carry-through
+ * input. r257 first wrote that down as a stale render and left it; the verify pass showed it was a lost
+ * save, which is a different thing altogether.
+ *
+ * WHAT THE FIX IS. `discard` waits for the payload it restores from — see the note over it in
+ * components/tab-save-scope.tsx — and nothing can be written on top of it in the meantime. The wait ends
+ * when a new `children` identity arrives, which in the real page is the refreshed RSC tree and here is the
+ * `rerender` below; it is bounded by REFRESH_WAIT_MS so that a refresh which never comes back cannot leave
+ * Discard as a control that does nothing.
+ *
+ * The window is entered here by saving and NOT calling `rerender` — the save has resolved and the payload
+ * has not landed, which is exactly the state the real page is in for one round trip after every save.
+ */
+describe('§17 a Discard in the refresh window cannot put back a value that was already saved', () => {
+  const SAVED_ONCE = 'Ali bin Hassan';
+  const DISCARDING = messages.components.tabSave.discarding;
+  const nameField = () => screen.getByLabelText('Full Name') as HTMLInputElement;
+  const dobField = () => screen.getByLabelText('Date of Birth') as HTMLInputElement;
+
+  /** Save the name and stop there: the action has resolved, the refresh has been ASKED for, and the
+   *  payload has not come back (no `rerender`). That is the window. */
+  const saveNameAndStayInTheWindow = async (
+    user: ReturnType<typeof userEvent.setup>,
+    save: ReturnType<typeof saveMock>,
+  ) => {
+    await user.clear(nameField());
+    await user.type(nameField(), SAVED_ONCE);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+    expect(nameField().value).toBe(SAVED_ONCE);
+  };
+
+  /** Then edit a DIFFERENT field of the same section and press Discard. */
+  const editDobAndDiscard = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.clear(dobField());
+    await user.type(dobField(), '1991-02-02');
+    const discardBtn = screen.getByRole('button', { name: 'Discard Changes' });
+    await waitFor(() => expect(discardBtn).toBeEnabled());
+    await user.click(discardBtn);
+  };
+
+  it('holds the discard instead of restoring the pre-save value, and nothing can be written meanwhile', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveNameAndStayInTheWindow(user, save);
+    await editDobAndDiscard(user);
+
+    // THE ASSERTION THIS SECTION EXISTS FOR, and it is taken the instant the click returns because that
+    // is when the remount used to happen: before the fix it put 'Ali bin Ahmad' — the value the page
+    // opened with, and the one the record no longer holds — straight back into this input.
+    expect(nameField().value).toBe(SAVED_ONCE);
+    expect(nameField().value).not.toBe(SAVED_NAME);
+    // …and the second half of the same defect: nothing may post while the discard is still owed, or the
+    // stale value would be written back under a payload the admin never asked for.
+    await waitFor(() => expect(screen.getByRole('button', { name: DISCARDING })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: DISCARDING })).toBeDisabled();
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('and runs it the moment the refreshed payload lands, so the discard is honoured, not dropped', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    const { rerender } = render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveNameAndStayInTheWindow(user, save);
+    await editDobAndDiscard(user);
+    await waitFor(() => expect(screen.getByRole('button', { name: DISCARDING })).toBeInTheDocument());
+
+    // The refresh coming back — the real page gets this element from the server.
+    rerender(<RefreshableScreen save={save} serverName={SAVED_ONCE} />);
+
+    // The held discard runs: the second edit is gone, the tab is clean, the bar is a bar again.
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+    expect(dobField().value).toBe('1990-01-01');
+    expect(nameField().value).toBe(SAVED_ONCE);
+    expect(screen.getByRole('button', { name: 'Discard Changes' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: DISCARDING })).not.toBeInTheDocument();
+  });
+
+  it('so the next save of that section carries the name the first save wrote', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    const { rerender } = render(<RefreshableScreen save={save} serverName={SAVED_NAME} />);
+
+    await saveNameAndStayInTheWindow(user, save);
+    await editDobAndDiscard(user);
+    rerender(<RefreshableScreen save={save} serverName={SAVED_ONCE} />);
+    await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+
+    await user.clear(dobField());
+    await user.type(dobField(), '1992-03-03');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+
+    // A whole-section pack: the name rides along with the date edit whether it moved or not. It must be
+    // the saved one.
+    const sent = save.mock.calls[1]![0] as FormData;
+    expect(sent.get('section.person.dateOfBirth')).toBe('1992-03-03');
+    expect(sent.get('section.person.fullName')).toBe(SAVED_ONCE);
+    expect(sent.get('section.person.fullName')).not.toBe(SAVED_NAME);
   });
 });
